@@ -679,6 +679,207 @@ export function updateMasteryReviewSettings(
   );
 }
 
+export async function resolveMasterySession(
+  pathId: string,
+  mode: string,
+  knowledgePointId = "",
+  leavingKnowledgePointId = "",
+): Promise<{ session_id: string; created: boolean; mode: string; knowledge_point_id: string }> {
+  return masteryJson(
+    `/api/mastery-paths/topics/${encodeURIComponent(pathId)}/sessions/resolve`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        mode,
+        knowledge_point_id: knowledgePointId,
+        ...(leavingKnowledgePointId
+          ? { leaving_knowledge_point_id: leavingKnowledgePointId }
+          : {}),
+      }),
+    },
+    "open mastery session",
+  );
+}
+
+export async function commitOutlineAddition(
+  pathId: string,
+  body: { preview_id: number; session_id: string; module_id: string },
+): Promise<{ status: string; note: string }> {
+  return masteryJson(
+    `/api/mastery-paths/topics/${encodeURIComponent(pathId)}/outline-additions`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+    "add outline knowledge point",
+  );
+}
+
+/** One section-level change the model proposes to a lecture. */
+export interface LectureChange {
+  op: "added" | "removed" | "replaced";
+  heading: string;
+  before: string;
+  after: string;
+}
+
+/** The unconfirmed lecture a study conversation rolled up. */
+export interface LectureDraft {
+  session_id: string;
+  body: string;
+  diff: LectureChange[];
+  base_revision: number;
+  covered_message_id: number;
+  origin: string;
+  updated_at: number;
+}
+
+export interface PointLecture {
+  /** What review renders: the confirmed lecture, or the draft standing in for it. */
+  body: string;
+  /** The confirmed lecture alone. Empty means nothing has been confirmed. */
+  confirmed_body: string;
+  /** ``confirmed`` | ``draft_only`` | ``none`` — never infer this from ``body``. */
+  status: "confirmed" | "draft_only" | "none";
+  revision: number;
+  source: string;
+  confirmed_at: number;
+  covered_message_id: number;
+  latest_message_id: number;
+  has_study: boolean;
+  /** The confirmed lecture is behind the study conversation. */
+  stale: boolean;
+  /** Study rolled up new content that has not been applied over the confirmed one. */
+  stale_from_study: boolean;
+  draft: LectureDraft | null;
+}
+
+export function fetchPointLecture(pathId: string, knowledgePointId: string): Promise<PointLecture> {
+  return masteryJson(
+    `/api/mastery-paths/topics/${encodeURIComponent(pathId)}/lectures/${encodeURIComponent(knowledgePointId)}`,
+    undefined,
+    "load lecture",
+  );
+}
+
+/** Write or roll the unconfirmed draft. Never confirms it. */
+export function rollPointLectureDraft(
+  pathId: string,
+  knowledgePointId: string,
+  body: { session_id?: string; request_id?: string; force?: boolean } = {},
+): Promise<PointLecture> {
+  return masteryJson(
+    `/api/mastery-paths/topics/${encodeURIComponent(pathId)}/lectures/${encodeURIComponent(knowledgePointId)}/drafts`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+    "write lecture",
+  );
+}
+
+/** Promote the draft to the lecture review shows. */
+export function confirmPointLecture(
+  pathId: string,
+  knowledgePointId: string,
+  body: { session_id?: string; expected_revision?: number; source?: string } = {},
+): Promise<{ status: string; revision: number; body: string; source: string }> {
+  return masteryJson(
+    `/api/mastery-paths/topics/${encodeURIComponent(pathId)}/lectures/${encodeURIComponent(knowledgePointId)}/drafts/commit`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+    "confirm lecture",
+  );
+}
+
+export function discardPointLectureDraft(
+  pathId: string,
+  knowledgePointId: string,
+  sessionId = "",
+): Promise<{ status: string }> {
+  const query = sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : "";
+  return masteryJson(
+    `/api/mastery-paths/topics/${encodeURIComponent(pathId)}/lectures/${encodeURIComponent(knowledgePointId)}/drafts${query}`,
+    { method: "DELETE" },
+    "discard lecture draft",
+  );
+}
+
+/** Ask for a change in the learner's own words; the result needs applying. */
+export function proposePointLectureRevision(
+  pathId: string,
+  knowledgePointId: string,
+  body: {
+    instruction: string;
+    session_id?: string;
+    section_heading?: string;
+    quoted_text?: string;
+    request_id?: string;
+  },
+): Promise<{
+  preview_id: number;
+  session_id: string;
+  base_revision: number;
+  changes: LectureChange[];
+  body: string;
+}> {
+  return masteryJson(
+    `/api/mastery-paths/topics/${encodeURIComponent(pathId)}/lectures/${encodeURIComponent(knowledgePointId)}/revisions`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+    "revise lecture",
+  );
+}
+
+/** Save a hand edit, against the revision the learner was reading. */
+export function savePointLecture(
+  pathId: string,
+  knowledgePointId: string,
+  body: { body: string; expected_revision: number },
+): Promise<{ status: string; revision: number; body: string }> {
+  return masteryJson(
+    `/api/mastery-paths/topics/${encodeURIComponent(pathId)}/lectures/${encodeURIComponent(knowledgePointId)}`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+    "save lecture",
+  );
+}
+
+/** Undo a lecture that was saved automatically, keeping its text as a draft. */
+export function revertPointLecture(
+  pathId: string,
+  knowledgePointId: string,
+  sessionId = "",
+): Promise<{ status: string }> {
+  const query = sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : "";
+  return masteryJson(
+    `/api/mastery-paths/topics/${encodeURIComponent(pathId)}/lectures/${encodeURIComponent(knowledgePointId)}/revert${query}`,
+    { method: "POST" },
+    "revert lecture",
+  );
+}
+
+/** Legacy single-shot write: rolls the draft and confirms it in one call. */
+export function refreshPointLecture(pathId: string, knowledgePointId: string): Promise<PointLecture> {
+  return masteryJson(
+    `/api/mastery-paths/topics/${encodeURIComponent(pathId)}/lectures/${encodeURIComponent(knowledgePointId)}`,
+    { method: "POST" },
+    "write lecture",
+  );
+}
+
 /** Change what a conversation is doing, from the learner's own mode buttons. */
 export async function setMasterySessionMode(
   pathId: string,

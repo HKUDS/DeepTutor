@@ -2748,7 +2748,8 @@ async def test_first_round_transport_failure_retries_then_becomes_structured_err
     assert raised.value.error_code == "provider_transport"
     assert raised.value.retryable is True
     assert raised.value.partial_response is False
-    assert str(raised.value) == "Unable to reach the model provider. Please retry."
+    assert str(raised.value).startswith("Unable to reach the model provider. Please retry.")
+    assert "request timed out." in str(raised.value)
 
 
 @pytest.mark.asyncio
@@ -4207,16 +4208,29 @@ async def test_request_guard_budgets_projected_images_and_preserves_tool_history
     monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
     monkeypatch.setattr(pipeline, "_build_loop_messages", lambda *_args, **_kwargs: messages)
 
+    if distinct:
+        await _run(pipeline, UnifiedContext(session_id="s", user_message="again"))
+        wire = client.calls[0]["messages"]
+        assert any(
+            str(message.get("content") or "").startswith("[Session compact]") for message in wire
+        )
+        assert messages[: len(original)] == original
+        wired_images = sum(
+            1
+            for message in wire
+            if isinstance(message.get("content"), list)
+            for part in message["content"]
+            if isinstance(part, dict) and part.get("type") == "image_url"
+        )
+        assert wired_images < 16
+        return
+
     await _run(pipeline, UnifiedContext(session_id="s", user_message="again"))
 
     wire_tools = [
         message["content"] for message in client.calls[0]["messages"] if message["role"] == "tool"
     ]
-    expected = (
-        [pipeline._tool_result_snip_marker()] * 4
-        if distinct
-        else [f"evidence {turn}" for turn in range(4)]
-    )
+    expected = [f"evidence {turn}" for turn in range(4)]
     assert wire_tools == expected
     assert messages[: len(original)] == original
 

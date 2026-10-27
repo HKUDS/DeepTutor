@@ -382,6 +382,9 @@ class MasteryLoopCapability:
             # (and every CLI / SDK turn, which pass none) would be enforced as
             # a study session and lose tools it has always been able to call.
             updated["_mastery_session_mode"] = context.metadata.get("mastery_session_mode")
+            updated["_mastery_knowledge_point_id"] = context.metadata.get(
+                "mastery_knowledge_point_id"
+            )
             updated["_session_id"] = str(context.session_id or "").strip()
             updated["_turn_id"] = str(context.metadata.get("turn_id") or "").strip()
             if tool_name == "mastery_profile":

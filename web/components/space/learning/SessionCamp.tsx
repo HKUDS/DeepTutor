@@ -16,6 +16,7 @@ export function SessionCamp({
   loading,
   stale = false,
   onRetry,
+  onNewSession,
   zh,
 }: {
   pathId: string;
@@ -24,16 +25,23 @@ export function SessionCamp({
   /** The last fetch failed; whatever is listed may be out of date. */
   stale?: boolean;
   onRetry?: () => void;
+  /** Opens the next knowledge point's study session. */
+  onNewSession?: () => void;
   zh: boolean;
 }) {
   const { t } = useTranslation();
   const router = useRouter();
-  const openStudy = (sessionId?: string) =>
-    router.push(
-      sessionId
-        ? masterySessionRoute(pathId, sessionId)
-        : masterySessionsRoute(pathId),
-    );
+  const openStudy = (sessionId?: string) => {
+    if (sessionId) {
+      router.push(masterySessionRoute(pathId, sessionId));
+      return;
+    }
+    if (onNewSession) {
+      onNewSession();
+      return;
+    }
+    router.push(masterySessionsRoute(pathId));
+  };
 
   return (
     // The one panel that grows without limit: a goal worked over months has

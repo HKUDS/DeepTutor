@@ -56,6 +56,8 @@ import {
 import {
   TraceCache,
   compactTracePreview,
+  hasDeferredTrace,
+  preserveLoadedTraces,
   settleMessageTrace,
   traceSettleAction,
   type MessageTraceMetadata,
@@ -222,6 +224,9 @@ export interface ChatState {
    *  accepted (#1594). Drives the composer-adjacent error banner; the
    *  error must not render as an assistant reply. */
   submissionFailed: boolean;
+  /** Why the server refused this submission, when it refused on purpose.
+   *  Empty means the request never arrived and the cause is local. */
+  submissionRejectionReason: string;
   /** The text was recovered without its attachments or other request context. */
   submissionNeedsReview: boolean;
   /** No browser storage accepted even the text. Copy before leaving this tab. */
@@ -433,6 +438,10 @@ type Action =
       /** The turn never left this tab: the WebSocket could not connect, so
        *  the server never saw the user's message (#1594). */
       submissionFailed?: boolean;
+      /** The server refused on purpose and said why (e.g. the mastery path is
+       *  held by another session). Carried through so the banner repeats the
+       *  real cause instead of blaming the network. */
+      submissionRejectionReason?: string;
     }
   | {
       type: "BIND_SERVER_SESSION";
@@ -523,6 +532,7 @@ function createSessionEntry(
     selectedBranches: {},
     lastTurnFailed: false,
     submissionFailed: false,
+    submissionRejectionReason: "",
     submissionNeedsReview: false,
     submissionNotSaved: false,
   };
@@ -926,6 +936,9 @@ function reducer(state: ProviderState, action: Action): ProviderState {
             ...session,
             isStreaming: true,
             status: "running",
+            // A new attempt is in flight; any explanation of why the last one
+            // was refused belongs to that attempt, not this one.
+            submissionRejectionReason: "",
             // Sequence numbers belong to one turn, not the conversation.
             // Reusing the previous turn's cursor when answering ask_user
             // makes the transport drop the new turn's reply and done frames.
@@ -1081,6 +1094,7 @@ function reducer(state: ProviderState, action: Action): ProviderState {
                 currentStage: "",
                 status: action.status ?? "failed",
                 activeTurnId: null,
+                submissionRejectionReason: action.submissionRejectionReason ?? "",
                 updatedAt: Date.now(),
               },
             },
@@ -1137,6 +1151,11 @@ function reducer(state: ProviderState, action: Action): ProviderState {
             currentStage: "",
             status: action.status ?? "completed",
             submissionBaseStatus: action.status ?? "completed",
+            // Only a refusal carries an explanation. An accepted message (or
+            // any other ending) must not inherit one.
+            submissionRejectionReason: action.submissionFailed
+              ? (action.submissionRejectionReason ?? "")
+              : "",
             activeTurnId:
               action.status === "running" || pendingAskUser
                 ? action.turnId ||
@@ -1247,7 +1266,10 @@ function reducer(state: ProviderState, action: Action): ProviderState {
               action.resourceSelection !== undefined
                 ? action.resourceSelection
                 : existing.resourceSelection,
-            messages: action.messages,
+            messages:
+              action.type === "REVALIDATE_SESSION"
+                ? preserveLoadedTraces(existing.messages, action.messages)
+                : action.messages,
             isStreaming: (action.status || "idle") === "running",
             currentStage: "",
             activeTurnId: action.activeTurnId || null,
@@ -1263,6 +1285,9 @@ function reducer(state: ProviderState, action: Action): ProviderState {
                 : existing.replyLanguageOverride,
             selectedBranches:
               action.selectedBranches ?? existing.selectedBranches,
+            // A fresh snapshot means the refused tail row is gone from the
+            // transcript, so the refusal explanation must go with it.
+            submissionRejectionReason: "",
             updatedAt: Date.now(),
           },
         },
@@ -1975,7 +2000,10 @@ export function ChatStateAdapterProvider({
           (message) =>
             normalizeMessageContent(message.content as unknown).trim() !== "" ||
             (message.attachments?.length ?? 0) > 0 ||
-            (Array.isArray(message.events) && message.events.length > 0),
+            (Array.isArray(message.events) && message.events.length > 0) ||
+            // A tool-only turn has no bubble and no card. The header is still
+            // expandable; the fold arrives when the reader opens the trace.
+            hasDeferredTrace(message),
         )
         .map((message) => {
           const raw = normalizeMessageContent(message.content as unknown);
@@ -2265,6 +2293,11 @@ export function ChatStateAdapterProvider({
           status: status as SessionRuntimeStatus,
           turnId: event.turn_id || null,
           submissionFailed: submissionRejected,
+          // The refusal text is the server's own explanation. Pass it on so
+          // the banner can name the real cause (a path held by another
+          // session, a workspace that moved) instead of a generic
+          // "couldn't reach the server".
+          submissionRejectionReason: submissionRejected ? event.content : "",
         });
       }
     },
@@ -3544,6 +3577,14 @@ export function ChatStateAdapterProvider({
           tail?.role === "user" &&
           tail.failedSubmission === true
         );
+      })(),
+      // Only meaningful while a refused row is still the tail: once the
+      // learner sends again, the older explanation no longer describes it.
+      submissionRejectionReason: (() => {
+        const tail = current.messages[current.messages.length - 1];
+        return tail?.role === "user" && tail.failedSubmission === true
+          ? current.submissionRejectionReason
+          : "";
       })(),
       submissionNeedsReview: (() => {
         const tail = current.messages[current.messages.length - 1];

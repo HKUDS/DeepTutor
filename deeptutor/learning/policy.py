@@ -178,13 +178,44 @@ def objective_status(progress: LearningProgress, kp: KnowledgePoint) -> str:
 
 def due_reviews(progress: LearningProgress, *, now: float | None = None) -> list[ReviewTask]:
     """Spaced-repetition tasks whose ``due_at`` has passed, highest forgetting
-    risk first. Pure read over ``progress.review_queue`` (built by the scheduler)."""
+    risk first. Pure read over ``progress.review_queue`` (built by the scheduler).
+
+    Every task is returned, mastered or not — the review *plan* shows the whole
+    queue, and a learner is allowed to look at a due item they have not yet
+    cleared. :func:`next_objective` applies the mastery filter itself.
+    """
     from deeptutor.learning.scheduler import review_sort_key
 
     moment = time.time() if now is None else now
     due = [task for task in progress.review_queue if task.due_at <= moment]
     due.sort(key=lambda task: review_sort_key(task, now=moment))
     return due
+
+
+def reviewable_reviews(
+    progress: LearningProgress, *, now: float | None = None
+) -> list[ReviewTask]:
+    """Due reviews that review mode can actually examine.
+
+    A due date is a reminder, not a permission — but review re-tests what the
+    learner has already proven, and the engine refuses to examine an objective
+    that has not been mastered. So a due task on an unmastered objective is not
+    a reviewable one: it is unfinished work that happens to carry a schedule.
+
+    :func:`next_objective` therefore returns those as the learning frontier
+    (the first unmastered objective), not as reviews. The review *plan* on the
+    topic page still shows the whole queue — a learner is allowed to look at a
+    due item they have not cleared yet — but the button that starts the next
+    sitting must never point at a review of something they had not learned.
+    """
+    due = due_reviews(progress, now=now)
+    reviewable: list[ReviewTask] = []
+    for task in due:
+        kp, _module_id, _module_name = find_knowledge_point(progress, task.knowledge_point_id)
+        if kp is None or not is_mastered(progress, kp):
+            continue
+        reviewable.append(task)
+    return reviewable
 
 
 @dataclass(frozen=True)
@@ -195,12 +226,17 @@ class NextStep:
     objective and whether it is mastered. Values:
 
     * ``answer_pending`` — a posed question awaits the learner's answer.
-    * ``review`` — a spaced-repetition item is due.
+    * ``review`` — a spaced-repetition item is due for something already
+      mastered. Never for an objective the learner has not cleared: review
+      re-tests proven work, so the frontier must not ask for it here.
     * ``probe`` — an untouched objective; test out before teaching.
     * ``teach`` — teach an untouched objective before assessing it, by request.
     * ``practice`` — a quantitative objective below its gate.
     * ``assess`` — a qualitative objective awaiting a Feynman-style check.
     * ``complete`` — every objective mastered, nothing due.
+
+    The order the gate returns these in is the order of the learning
+    frontier: unfinished work first, reviews only once there is none left.
     """
 
     action: str
@@ -272,10 +308,27 @@ def next_objective(
     """Decide the next thing to work on. Order of precedence:
 
     1. an outstanding posed question (grade it before moving on);
-    2. a due spaced-repetition review (don't let mastered ground decay);
-    3. the first not-yet-mastered objective in module/KP order (the gate IS
+    2. the first not-yet-mastered objective in module/KP order (the gate IS
        the cursor — mastered objectives are skipped);
+    3. a due spaced-repetition review of something already mastered (don't let
+       mastered ground decay);
     4. otherwise the path is complete.
+
+    The learning frontier comes *before* the review queue, and that order is the
+    point. A due date is a reminder, not a permission, and review re-tests
+    proven work only — the engine refuses to examine an objective the learner
+    has not cleared. So a due task on an unmastered objective is unfinished
+    work that happens to carry a schedule, and it belongs to step 2.
+
+    Putting reviews first (as this used to) meant an objective with a lapsed
+    attempt jumped the curriculum: the topic page's banner then advertised a
+    *review* of something the learner had not yet learned, and its button
+    opened a review conversation the tutor was not allowed to conduct. The
+    learner was sent to consolidate ground they had never covered, and the
+    frontier they were actually working toward stayed dark in the outline.
+
+    Reviews of mastered objectives still win once there is no unfinished work
+    left — but only then, and only because there is nothing else to do.
     """
     pending = progress.pending_question
     if pending is not None:
@@ -298,30 +351,6 @@ def next_objective(
         )
 
     deferred_ids = set(progress.deferred_objectives)
-    due = [
-        task
-        for task in due_reviews(progress, now=now)
-        if task.knowledge_point_id not in deferred_ids
-    ]
-    if due:
-        kp, module_id, module_name = find_knowledge_point(progress, due[0].knowledge_point_id)
-        if kp is not None:
-            task = due[0]
-            return NextStep(
-                action="review",
-                module_id=module_id,
-                module_name=module_name,
-                knowledge_point_id=kp.id,
-                knowledge_point_name=kp.name,
-                knowledge_point_type=kp.type.value,
-                status=objective_status(progress, kp),
-                gate=gate_kind(kp),
-                mastery=display_mastery(progress, kp),
-                threshold=gate_threshold(kp.type),
-                reason=(task.reason or "This objective is due for spaced-repetition review."),
-                forgetting_risk=task.forgetting_risk,
-            )
-
     deferred_fallback: NextStep | None = None
     for module in sorted(progress.modules, key=lambda m: m.order):
         for kp in module.knowledge_points:
@@ -369,6 +398,34 @@ def next_objective(
 
     if deferred_fallback is not None:
         return deferred_fallback
+
+    # Nothing unfinished is left, so the frontier can be a review: only work
+    # the learner has already proven is reviewable, and review mode refuses
+    # anything else. A due task on an unmastered objective never reaches here —
+    # it was returned above as unfinished work.
+    due = [
+        task
+        for task in reviewable_reviews(progress, now=now)
+        if task.knowledge_point_id not in deferred_ids
+    ]
+    if due:
+        kp, module_id, module_name = find_knowledge_point(progress, due[0].knowledge_point_id)
+        if kp is not None:
+            task = due[0]
+            return NextStep(
+                action="review",
+                module_id=module_id,
+                module_name=module_name,
+                knowledge_point_id=kp.id,
+                knowledge_point_name=kp.name,
+                knowledge_point_type=kp.type.value,
+                status=objective_status(progress, kp),
+                gate=gate_kind(kp),
+                mastery=display_mastery(progress, kp),
+                threshold=gate_threshold(kp.type),
+                reason=(task.reason or "This objective is due for spaced-repetition review."),
+                forgetting_risk=task.forgetting_risk,
+            )
 
     return NextStep(action="complete", reason="All objectives are mastered and no reviews are due.")
 
@@ -559,6 +616,7 @@ __all__ = [
     "objective_status",
     "objective_report",
     "due_reviews",
+    "reviewable_reviews",
     "find_knowledge_point",
     "next_objective",
     "map_summary",

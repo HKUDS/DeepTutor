@@ -6,6 +6,10 @@ import type { StreamEvent } from "@/features/chat/model/protocol";
 function posed(questionId: string): StreamEvent {
   return {
     type: "tool_result",
+    source: "chat",
+    stage: "responding",
+    content: "",
+    timestamp: 0,
     metadata: {
       tool_metadata: {
         mastery_question: {
@@ -17,7 +21,22 @@ function posed(questionId: string): StreamEvent {
         },
       },
     },
-  } as StreamEvent;
+  };
+}
+
+function rejected(questionId: string): StreamEvent {
+  return {
+    type: "tool_result",
+    source: "chat",
+    stage: "responding",
+    content: "",
+    timestamp: 0,
+    metadata: {
+      tool_metadata: {
+        mastery_answer_rejected: { question_id: questionId },
+      },
+    },
+  };
 }
 
 describe("latestOpenMasteryQuestion", () => {
@@ -66,14 +85,7 @@ describe("latestOpenMasteryQuestion", () => {
       {
         role: "assistant",
         events: [
-          {
-            type: "tool_result",
-            metadata: {
-              tool_metadata: {
-                mastery_answer_rejected: { question_id: "q-1" },
-              },
-            },
-          } as StreamEvent,
+          rejected("q-1"),
         ],
       },
     ];

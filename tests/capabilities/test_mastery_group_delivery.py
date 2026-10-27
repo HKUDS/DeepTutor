@@ -187,6 +187,24 @@ async def test_tool_resume_rejects_conflicting_payloads(service, monkeypatch, ex
 
 
 @pytest.mark.asyncio
+async def test_tool_resume_ignores_echoed_objective_fields(service, monkeypatch):
+    from deeptutor.capabilities.mastery import tools
+
+    monkeypatch.setattr(tools, "_new_service", lambda: service)
+    result = await tools.MasteryQuizTool().execute(
+        _mastery_path_id="path",
+        pending_action="resume",
+        resume_question_id="parent",
+        question="",
+        question_type="group",
+        knowledge_point_id="one",
+        difficulty="",
+    )
+    assert result.success
+    assert result.metadata["mastery_question"]["question_id"] == "parent"
+
+
+@pytest.mark.asyncio
 async def test_guard_redirects_markdown_assessment_to_existing_card(service, monkeypatch):
     from deeptutor.capabilities.mastery import tools
     from deeptutor.capabilities.mastery.loop import MasteryLoopCapability

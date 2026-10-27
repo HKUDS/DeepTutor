@@ -108,3 +108,85 @@ async def test_native_pending_question_and_profile_remain_exact(tmp_path, monkey
     assert brief["learner_profile"] == full["learner_profile"]
     assert "private key" not in block.content
     assert {p["id"] for m in brief["map"]["modules"] for p in m["knowledge_points"]} == {"two"}
+
+
+@pytest.mark.asyncio
+async def test_placed_session_brief_teaches_its_own_point_not_the_frontier(
+    tmp_path, monkeypatch
+):
+    """Opening a later point must not be taught as the path's first unfinished point."""
+    from deeptutor.learning.models import LearnerProfile
+
+    store = LearningStore(root=tmp_path)
+    service = LearningService(store)
+    service.save(
+        LearningProgress(
+            book_id="path",
+            modules=[
+                LearningModule(
+                    id="m0",
+                    name="Agent loop",
+                    order=0,
+                    knowledge_points=[
+                        KnowledgePoint(
+                            id="frontier",
+                            name="Agent loop boundary",
+                            module_id="m0",
+                            type="concept",
+                        )
+                    ],
+                ),
+                LearningModule(
+                    id="m1",
+                    name="Support",
+                    order=1,
+                    knowledge_points=[
+                        KnowledgePoint(
+                            id="support",
+                            name="Support point",
+                            module_id="m1",
+                            type="concept",
+                        )
+                    ],
+                ),
+                LearningModule(
+                    id="m2",
+                    name="Context",
+                    order=2,
+                    knowledge_points=[
+                        KnowledgePoint(
+                            id="opened",
+                            name="Context window budget",
+                            module_id="m2",
+                            type="concept",
+                            prerequisite_ids=["support"],
+                        )
+                    ],
+                ),
+            ],
+            learner_profile=LearnerProfile(preferences="One concrete example"),
+        )
+    )
+    monkeypatch.setattr("deeptutor.capabilities.mastery.tools._new_service", lambda: service)
+    context = UnifiedContext(
+        metadata={
+            "mastery_mode": True,
+            "mastery_path_id": "path",
+            "mastery_session_mode": "study",
+            "mastery_knowledge_point_id": "opened",
+        }
+    )
+    block = await MasteryLoopCapability().pre_loop(context, None)
+    brief = json.loads(block.content[block.content.index("{") :])
+    assert brief["conversation"]["knowledge_point_id"] == "opened"
+    assert brief["conversation"]["knowledge_point_name"] == "Context window budget"
+    assert "Do not teach" in brief["conversation"]["instruction"]
+    assert brief["next"]["knowledge_point_id"] == "frontier"
+    points = {
+        point["id"]
+        for module in brief["map"]["modules"]
+        for point in module["knowledge_points"]
+    }
+    assert points == {"opened", "support"}
+    assert brief["learner_profile"]["teaching_focus"]["knowledge_point_id"] == "opened"
+    assert "conversation" in brief["inspection_instruction"]

@@ -40,6 +40,7 @@ from deeptutor.utils.secret_files import ensure_private_directory, ensure_privat
 
 from .ask_user_trace import select_ask_user_events
 from .event_preview import MAX_TRACE_PREVIEW_EVENTS, compact_trace_preview
+from .opening_preview import select_opening_events
 from .provider_response_state import redact_private_message_metadata
 from .search import bounded_search_excerpt, normalize_search_query
 from .workspace_preferences import upgrade_workspace_preferences
@@ -2824,6 +2825,26 @@ class SQLiteSessionStore:
     async def get_messages(self, session_id: str) -> list[dict[str, Any]]:
         return await self._run(self._get_messages_sync, session_id)
 
+    async def list_bubble_texts(self, session_id: str) -> list[dict[str, Any]]:
+        """Message text only, without the per-turn event preview scan."""
+        return await self._run(self._list_bubble_texts_sync, session_id)
+
+    def _list_bubble_texts_sync(self, session_id: str) -> list[dict[str, Any]]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT id, role, content FROM messages
+                WHERE session_id = ? AND role IN ('user', 'assistant')
+                ORDER BY id ASC
+                """,
+                (session_id,),
+            ).fetchall()
+        return [
+            {"id": int(row["id"]), "role": str(row["role"] or ""), "content": str(row["content"] or "")}
+            for row in rows
+            if str(row["content"] or "").strip()
+        ]
+
     def _get_messages_for_context_sync(
         self, session_id: str, leaf_message_id: int | None = None
     ) -> list[dict[str, Any]]:
@@ -3223,10 +3244,160 @@ class SQLiteSessionStore:
         session = await self.get_session(session_id)
         if session is None:
             return None
-        session["messages"] = await self.get_messages(session_id)
+        # Opening a conversation reads bubble text and unfinished question
+        # cards. Tool folds stay in turn_events until the trace is expanded.
+        session["messages"] = await self._run(self._get_opening_messages_sync, session_id)
         redact_private_message_metadata(session["messages"])
         session["active_turns"] = await self.list_active_turns(session_id)
         return session
+
+    def _get_opening_messages_sync(self, session_id: str) -> list[dict[str, Any]]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT m.id, m.session_id, m.role, m.content, m.capability,
+                       m.attachments_json,
+                       CASE
+                         WHEN m.metadata_json IS NULL OR length(m.metadata_json) < 2
+                         THEN '{}'
+                         ELSE json_remove(
+                           m.metadata_json,
+                           '$.model_turn',
+                           '$.provider_response_state'
+                         )
+                       END AS metadata_json,
+                       m.created_at,
+                       m.parent_message_id, t.id AS trace_turn_id
+                FROM messages AS m
+                LEFT JOIN turns AS t ON t.assistant_message_id = m.id
+                WHERE m.session_id = ?
+                ORDER BY m.id ASC
+                """,
+                (session_id,),
+            ).fetchall()
+            seen: set[int] = set()
+            unique: list[sqlite3.Row] = []
+            for row in rows:
+                message_id = int(row["id"])
+                if message_id in seen:
+                    continue
+                seen.add(message_id)
+                unique.append(row)
+            stats_rows = conn.execute(
+                """
+                SELECT t.id AS turn_id, COUNT(te.seq) AS total,
+                       COALESCE(MAX(te.seq), 0) AS last_seq,
+                       MIN(te.timestamp) AS started_at, MAX(te.timestamp) AS ended_at
+                FROM turns AS t
+                LEFT JOIN turn_events AS te ON te.turn_id = t.id
+                WHERE t.session_id = ? AND t.assistant_message_id IS NOT NULL
+                GROUP BY t.id
+                """,
+                (session_id,),
+            ).fetchall()
+            card_rows = conn.execute(
+                """
+                SELECT t.id AS turn_id, te.seq, te.type, te.source, te.stage,
+                       te.content, te.metadata_json, te.timestamp
+                FROM turns AS t
+                JOIN turn_events AS te ON te.turn_id = t.id
+                WHERE t.session_id = ?
+                  AND t.assistant_message_id IS NOT NULL
+                  AND (
+                    json_extract(te.metadata_json, '$.ask_user') IS NOT NULL
+                    OR json_extract(te.metadata_json, '$.ask_user_resolved') IS NOT NULL
+                    OR json_extract(te.metadata_json, '$.tool_metadata.ask_user') IS NOT NULL
+                    OR json_extract(te.metadata_json, '$.mastery_question') IS NOT NULL
+                    OR json_extract(
+                        te.metadata_json, '$.tool_metadata.mastery_question'
+                    ) IS NOT NULL
+                    OR json_extract(te.metadata_json, '$.tool_metadata.mastery_grade') IS NOT NULL
+                    OR json_extract(
+                        te.metadata_json, '$.tool_metadata.mastery_skip_question'
+                    ) IS NOT NULL
+                    OR json_extract(
+                        te.metadata_json, '$.tool_metadata.mastery_answer_rejected'
+                    ) IS NOT NULL
+                  )
+                ORDER BY te.seq ASC
+                """,
+                (session_id,),
+            ).fetchall()
+            legacy_events: dict[int, list[dict[str, Any]]] = {}
+            for row in unique:
+                if row["role"] != "assistant" or row["trace_turn_id"] is not None:
+                    continue
+                blob = conn.execute(
+                    "SELECT events_json FROM messages WHERE id = ?",
+                    (int(row["id"]),),
+                ).fetchone()
+                parsed = _json_loads(blob["events_json"] if blob else None, [])
+                legacy_events[int(row["id"])] = parsed if isinstance(parsed, list) else []
+
+        stats_by_turn = {row["turn_id"]: row for row in stats_rows}
+        cards_by_turn: dict[str, list[dict[str, Any]]] = {}
+        for row in card_rows:
+            event = self._turn_event_row_to_payload(row)
+            event["session_id"] = session_id
+            cards_by_turn.setdefault(row["turn_id"], []).append(event)
+
+        prepared: list[dict[str, Any]] = []
+        for row in unique:
+            turn_id = row["trace_turn_id"]
+            metadata = _json_loads(row["metadata_json"], {})
+            if row["role"] == "assistant" and turn_id is not None:
+                candidates = cards_by_turn.get(turn_id, [])
+                project = True
+            elif row["role"] == "assistant":
+                candidates = legacy_events.get(int(row["id"]), [])
+                project = False
+            else:
+                candidates = []
+                project = False
+            prepared.append(
+                {
+                    "id": int(row["id"]),
+                    "role": row["role"],
+                    "metadata": metadata if isinstance(metadata, dict) else {},
+                    "candidates": candidates,
+                    "project": project,
+                }
+            )
+        kept = select_opening_events(prepared)
+
+        result: list[dict[str, Any]] = []
+        for row in unique:
+            turn_id = row["trace_turn_id"]
+            if row["role"] == "assistant" and turn_id is not None:
+                events = kept.get(int(row["id"]), [])
+                stats = stats_by_turn.get(turn_id)
+                total = int(stats["total"]) if stats is not None else 0
+                result.append(
+                    self._serialize_message(
+                        row,
+                        events=events,
+                        trace={
+                            "turn_id": turn_id,
+                            "total": total,
+                            "last_seq": int(stats["last_seq"]) if stats is not None else 0,
+                            "truncated": total != len(events),
+                            **(
+                                _trace_bounds(stats["started_at"], stats["ended_at"])
+                                if stats is not None
+                                else {}
+                            ),
+                        },
+                    )
+                )
+                continue
+            if row["role"] == "assistant":
+                events, trace = self._legacy_trace_preview_sync(
+                    legacy_events.get(int(row["id"]), [])
+                )
+                result.append(self._serialize_message(row, events=events, trace=trace))
+                continue
+            result.append(self._serialize_message(row, events=[]))
+        return result
 
     # ── Notebook entries ──────────────────────────────────────────────
 

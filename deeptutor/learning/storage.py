@@ -468,10 +468,51 @@ class LearningStore:
                         session_id TEXT NOT NULL,
                         created_at REAL NOT NULL,
                         last_seen_at REAL NOT NULL,
+                        mode TEXT NOT NULL DEFAULT '',
+                        knowledge_point_id TEXT NOT NULL DEFAULT '',
                         PRIMARY KEY(path_id, session_id)
                     );
                     CREATE INDEX IF NOT EXISTS idx_mastery_sessions_session
                         ON mastery_path_sessions(session_id, last_seen_at DESC);
+
+                    -- The lecture a learner has *confirmed*. One row per
+                    -- knowledge point, and the only thing review renders.
+                    -- ``revision`` is a linear chain: every write carries the
+                    -- revision it was based on, so a second editor conflicts
+                    -- instead of silently overwriting the first.
+                    CREATE TABLE IF NOT EXISTS mastery_lectures (
+                        path_id TEXT NOT NULL REFERENCES mastery_paths(path_id) ON DELETE CASCADE,
+                        knowledge_point_id TEXT NOT NULL,
+                        body TEXT NOT NULL DEFAULT '',
+                        covered_message_id INTEGER NOT NULL DEFAULT 0,
+                        revision INTEGER NOT NULL DEFAULT 1,
+                        confirmed_at REAL NOT NULL DEFAULT 0,
+                        source TEXT NOT NULL DEFAULT 'study_roll',
+                        updated_at REAL NOT NULL,
+                        PRIMARY KEY(path_id, knowledge_point_id)
+                    );
+
+                    -- The lecture a learner has *not* confirmed yet. One row
+                    -- per (point, conversation): rolling content, not a
+                    -- version history, so a learner who keeps talking keeps
+                    -- editing one draft instead of collecting buttons.
+                    -- ``base_revision`` is the confirmed revision this draft
+                    -- was written against (0 when it came from study roll-up);
+                    -- committing it fails if the confirmed lecture has moved.
+                    CREATE TABLE IF NOT EXISTS mastery_lecture_drafts (
+                        path_id TEXT NOT NULL REFERENCES mastery_paths(path_id) ON DELETE CASCADE,
+                        knowledge_point_id TEXT NOT NULL,
+                        session_id TEXT NOT NULL,
+                        body TEXT NOT NULL DEFAULT '',
+                        diff_json TEXT NOT NULL DEFAULT '[]',
+                        base_revision INTEGER NOT NULL DEFAULT 0,
+                        covered_message_id INTEGER NOT NULL DEFAULT 0,
+                        request_id TEXT NOT NULL DEFAULT '',
+                        origin TEXT NOT NULL DEFAULT 'study_roll',
+                        created_at REAL NOT NULL,
+                        updated_at REAL NOT NULL,
+                        PRIMARY KEY(path_id, knowledge_point_id, session_id)
+                    );
 
                     CREATE TABLE IF NOT EXISTS mastery_interactions (
                         interaction_id TEXT PRIMARY KEY,
@@ -695,6 +736,83 @@ class LearningStore:
                 ON mastery_path_sessions(session_id)
             """
         )
+        if "mode" not in binding_columns:
+            conn.execute(
+                "ALTER TABLE mastery_path_sessions ADD COLUMN mode TEXT NOT NULL DEFAULT ''"
+            )
+        if "knowledge_point_id" not in binding_columns:
+            conn.execute(
+                "ALTER TABLE mastery_path_sessions ADD COLUMN knowledge_point_id TEXT NOT NULL DEFAULT ''"
+            )
+        conn.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_mastery_outline_session
+                ON mastery_path_sessions(path_id)
+                WHERE mode = 'outline'
+            """
+        )
+        conn.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_mastery_point_session
+                ON mastery_path_sessions(path_id, mode, knowledge_point_id)
+                WHERE mode IN ('study', 'review') AND knowledge_point_id != ''
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS mastery_lectures (
+                path_id TEXT NOT NULL REFERENCES mastery_paths(path_id) ON DELETE CASCADE,
+                knowledge_point_id TEXT NOT NULL,
+                body TEXT NOT NULL DEFAULT '',
+                covered_message_id INTEGER NOT NULL DEFAULT 0,
+                revision INTEGER NOT NULL DEFAULT 1,
+                confirmed_at REAL NOT NULL DEFAULT 0,
+                source TEXT NOT NULL DEFAULT 'study_roll',
+                updated_at REAL NOT NULL,
+                PRIMARY KEY(path_id, knowledge_point_id)
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS mastery_lecture_drafts (
+                path_id TEXT NOT NULL REFERENCES mastery_paths(path_id) ON DELETE CASCADE,
+                knowledge_point_id TEXT NOT NULL,
+                session_id TEXT NOT NULL,
+                body TEXT NOT NULL DEFAULT '',
+                diff_json TEXT NOT NULL DEFAULT '[]',
+                base_revision INTEGER NOT NULL DEFAULT 0,
+                covered_message_id INTEGER NOT NULL DEFAULT 0,
+                request_id TEXT NOT NULL DEFAULT '',
+                origin TEXT NOT NULL DEFAULT 'study_roll',
+                created_at REAL NOT NULL,
+                updated_at REAL NOT NULL,
+                PRIMARY KEY(path_id, knowledge_point_id, session_id)
+            )
+            """
+        )
+        # A database created before drafts, confirmations and revision chains
+        # existed has every lecture stored as a bare snapshot. Backfill the new
+        # columns rather than leaving them at defaults that would misreport
+        # "confirmed at time zero, based on revision 1".
+        lecture_columns = {
+            str(row["name"]) for row in conn.execute("PRAGMA table_info(mastery_lectures)")
+        }
+        for column, ddl in (
+            ("revision", "INTEGER NOT NULL DEFAULT 1"),
+            ("confirmed_at", "REAL NOT NULL DEFAULT 0"),
+            ("source", "TEXT NOT NULL DEFAULT 'study_roll'"),
+        ):
+            if column in lecture_columns:
+                continue
+            conn.execute(f"ALTER TABLE mastery_lectures ADD COLUMN {column} {ddl}")
+            if column == "confirmed_at":
+                # An existing row *was* the lecture review showed, so it was
+                # already effectively confirmed; stamping it now keeps it out
+                # of the "draft only" branch on the next read.
+                conn.execute(
+                    "UPDATE mastery_lectures SET confirmed_at = updated_at WHERE confirmed_at = 0"
+                )
 
     @contextmanager
     def _connect(self, *, initialize: bool = True) -> Iterator[sqlite3.Connection]:
@@ -1698,7 +1816,15 @@ class LearningStore:
 
     # ---- explicit path/session ownership ---------------------------------
 
-    def bind_session(self, path_id: str, session_id: str, *, owns_path: bool = False) -> None:
+    def bind_session(
+        self,
+        path_id: str,
+        session_id: str,
+        *,
+        owns_path: bool = False,
+        mode: str | None = None,
+        knowledge_point_id: str | None = None,
+    ) -> None:
         """Make ``path_id`` the one path this conversation is on.
 
         Membership is exclusive and always current: a conversation that moves
@@ -1763,15 +1889,36 @@ class LearningStore:
                         """,
                         (path_id, now),
                     )
+                placed_mode = "" if mode is None else str(mode or "").strip().lower()
+                placed_point = (
+                    "" if knowledge_point_id is None else str(knowledge_point_id or "").strip()
+                )
                 conn.execute(
                     """
                     INSERT INTO mastery_path_sessions (
-                        path_id, session_id, created_at, last_seen_at
-                    ) VALUES (?, ?, ?, ?)
+                        path_id, session_id, created_at, last_seen_at, mode, knowledge_point_id
+                    ) VALUES (?, ?, ?, ?, ?, ?)
                     ON CONFLICT(path_id, session_id) DO UPDATE SET
-                        last_seen_at = excluded.last_seen_at
+                        last_seen_at = excluded.last_seen_at,
+                        mode = CASE
+                            WHEN ? IS NULL THEN mastery_path_sessions.mode
+                            ELSE excluded.mode
+                        END,
+                        knowledge_point_id = CASE
+                            WHEN ? IS NULL THEN mastery_path_sessions.knowledge_point_id
+                            ELSE excluded.knowledge_point_id
+                        END
                     """,
-                    (path_id, session_id, now, now),
+                    (
+                        path_id,
+                        session_id,
+                        now,
+                        now,
+                        placed_mode,
+                        placed_point,
+                        mode,
+                        knowledge_point_id,
+                    ),
                 )
                 if owns_path:
                     # Granted once and never transferred: a path has exactly
@@ -1809,6 +1956,299 @@ class LearningStore:
                 "session.released",
                 scope=self.event_scope,
             )
+
+    def find_placed_session(self, path_id: str, mode: str, knowledge_point_id: str = "") -> str:
+        """The session bound to this phase, or ``""`` when none has been opened."""
+        path_id = self._validate_id(path_id)
+        placed_mode = str(mode or "").strip().lower()
+        placed_point = "" if placed_mode == "outline" else str(knowledge_point_id or "").strip()
+        if not placed_mode:
+            return ""
+        self._import_legacy_if_needed(path_id)
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT session_id FROM mastery_path_sessions
+                WHERE path_id = ? AND mode = ? AND knowledge_point_id = ?
+                ORDER BY last_seen_at DESC LIMIT 1
+                """,
+                (path_id, placed_mode, placed_point),
+            ).fetchone()
+        return str(row["session_id"]) if row is not None else ""
+
+    def get_lecture(self, path_id: str, knowledge_point_id: str) -> dict[str, Any] | None:
+        path_id = self._validate_id(path_id)
+        point_id = str(knowledge_point_id or "").strip()
+        if not point_id:
+            return None
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT body, covered_message_id, revision, confirmed_at, source, updated_at
+                FROM mastery_lectures
+                WHERE path_id = ? AND knowledge_point_id = ?
+                """,
+                (path_id, point_id),
+            ).fetchone()
+        if row is None:
+            return None
+        return {
+            "body": str(row["body"] or ""),
+            "covered_message_id": int(row["covered_message_id"] or 0),
+            "revision": int(row["revision"] or 1),
+            "confirmed_at": float(row["confirmed_at"] or 0),
+            "source": str(row["source"] or "study_roll"),
+            "updated_at": float(row["updated_at"] or 0),
+        }
+
+    def save_lecture(
+        self,
+        path_id: str,
+        knowledge_point_id: str,
+        body: str,
+        covered_message_id: int,
+        *,
+        source: str = "study_roll",
+        expected_revision: int | None = None,
+        conn: sqlite3.Connection | None = None,
+    ) -> int:
+        """Confirm one lecture and return its new revision.
+
+        ``expected_revision`` is the caller's basis. ``None`` means "write
+        whatever the current state is" and is reserved for the study roll-up,
+        which is the only writer that is allowed to replace its own earlier
+        output. Every other caller passes the revision it read, so a lecture
+        the learner edited by hand cannot be silently replaced by a stale
+        conversation.
+
+        ``conn`` lets a caller write this inside an open ``transaction`` so the
+        confirmation and the event that announces it commit as one revision.
+        """
+        path_id = self._validate_id(path_id)
+        point_id = str(knowledge_point_id or "").strip()
+        if not point_id:
+            raise ValueError("knowledge_point_id must not be empty")
+        now = time.time()
+        text = str(body or "").strip()
+
+        def _write(target: sqlite3.Connection) -> int:
+            current = target.execute(
+                """
+                SELECT revision FROM mastery_lectures
+                WHERE path_id = ? AND knowledge_point_id = ?
+                """,
+                (path_id, point_id),
+            ).fetchone()
+            current_revision = int(current["revision"] or 0) if current is not None else 0
+            if expected_revision is not None and current_revision != int(expected_revision):
+                raise LearningConflictError(path_id, int(expected_revision), current_revision)
+            next_revision = current_revision + 1
+            target.execute(
+                """
+                INSERT INTO mastery_lectures (
+                    path_id, knowledge_point_id, body, covered_message_id,
+                    revision, confirmed_at, source, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(path_id, knowledge_point_id) DO UPDATE SET
+                    body = excluded.body,
+                    covered_message_id = excluded.covered_message_id,
+                    revision = excluded.revision,
+                    confirmed_at = excluded.confirmed_at,
+                    source = excluded.source,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    path_id,
+                    point_id,
+                    text,
+                    int(covered_message_id or 0),
+                    next_revision,
+                    now,
+                    str(source or "study_roll"),
+                    now,
+                ),
+            )
+            return next_revision
+
+        if conn is not None:
+            return _write(conn)
+        with self._connect() as own:
+            return _write(own)
+
+    def delete_lecture(self, path_id: str, knowledge_point_id: str) -> bool:
+        """Drop the confirmed lecture, so an implicit confirmation can be undone."""
+        path_id = self._validate_id(path_id)
+        point_id = str(knowledge_point_id or "").strip()
+        if not point_id:
+            return False
+        with self._connect() as conn:
+            cursor = conn.execute(
+                "DELETE FROM mastery_lectures WHERE path_id = ? AND knowledge_point_id = ?",
+                (path_id, point_id),
+            )
+            return cursor.rowcount > 0
+
+    def get_lecture_draft(
+        self,
+        path_id: str,
+        knowledge_point_id: str,
+        *,
+        session_id: str = "",
+    ) -> dict[str, Any] | None:
+        """The unconfirmed draft for this point, newest conversation first."""
+        path_id = self._validate_id(path_id)
+        point_id = str(knowledge_point_id or "").strip()
+        if not point_id:
+            return None
+        scope = str(session_id or "").strip()
+        with self._connect() as conn:
+            if scope:
+                row = conn.execute(
+                    """
+                    SELECT * FROM mastery_lecture_drafts
+                    WHERE path_id = ? AND knowledge_point_id = ? AND session_id = ?
+                    """,
+                    (path_id, point_id, scope),
+                ).fetchone()
+            else:
+                row = conn.execute(
+                    """
+                    SELECT * FROM mastery_lecture_drafts
+                    WHERE path_id = ? AND knowledge_point_id = ?
+                    ORDER BY updated_at DESC LIMIT 1
+                    """,
+                    (path_id, point_id),
+                ).fetchone()
+        return self._draft_from_row(row)
+
+    @staticmethod
+    def _draft_from_row(row: sqlite3.Row | None) -> dict[str, Any] | None:
+        if row is None:
+            return None
+        try:
+            diff = json.loads(row["diff_json"] or "[]")
+        except (TypeError, ValueError, json.JSONDecodeError):
+            diff = []
+        return {
+            "path_id": str(row["path_id"]),
+            "knowledge_point_id": str(row["knowledge_point_id"]),
+            "session_id": str(row["session_id"]),
+            "body": str(row["body"] or ""),
+            "diff": diff if isinstance(diff, list) else [],
+            "base_revision": int(row["base_revision"] or 0),
+            "covered_message_id": int(row["covered_message_id"] or 0),
+            "request_id": str(row["request_id"] or ""),
+            "origin": str(row["origin"] or "study_roll"),
+            "created_at": float(row["created_at"] or 0),
+            "updated_at": float(row["updated_at"] or 0),
+        }
+
+    def save_lecture_draft(
+        self,
+        path_id: str,
+        knowledge_point_id: str,
+        *,
+        session_id: str,
+        body: str,
+        base_revision: int = 0,
+        covered_message_id: int = 0,
+        diff: list[dict[str, Any]] | None = None,
+        request_id: str = "",
+        origin: str = "study_roll",
+    ) -> dict[str, Any]:
+        """Create or roll the one draft this conversation holds for a point.
+
+        Rolling, not appending: a learner who keeps talking about the same
+        point keeps editing the same draft, because a second button asking
+        "which of these two lectures is yours?" has no good answer.
+        """
+        path_id = self._validate_id(path_id)
+        point_id = str(knowledge_point_id or "").strip()
+        scope = str(session_id or "").strip()
+        if not point_id or not scope:
+            raise ValueError("A lecture draft needs a knowledge point and a session")
+        now = time.time()
+        payload = json.dumps(diff or [], ensure_ascii=False, allow_nan=False)
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO mastery_lecture_drafts (
+                    path_id, knowledge_point_id, session_id, body, diff_json,
+                    base_revision, covered_message_id, request_id, origin,
+                    created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(path_id, knowledge_point_id, session_id) DO UPDATE SET
+                    body = excluded.body,
+                    diff_json = excluded.diff_json,
+                    base_revision = excluded.base_revision,
+                    covered_message_id = excluded.covered_message_id,
+                    request_id = excluded.request_id,
+                    origin = excluded.origin,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    path_id,
+                    point_id,
+                    scope,
+                    str(body or "").strip(),
+                    payload,
+                    int(base_revision or 0),
+                    int(covered_message_id or 0),
+                    str(request_id or ""),
+                    str(origin or "study_roll"),
+                    now,
+                    now,
+                ),
+            )
+        draft = self.get_lecture_draft(path_id, point_id, session_id=scope)
+        assert draft is not None
+        return draft
+
+    def delete_lecture_draft(
+        self,
+        path_id: str,
+        knowledge_point_id: str,
+        *,
+        session_id: str = "",
+    ) -> bool:
+        path_id = self._validate_id(path_id)
+        point_id = str(knowledge_point_id or "").strip()
+        if not point_id:
+            return False
+        scope = str(session_id or "").strip()
+        with self._connect() as conn:
+            if scope:
+                cursor = conn.execute(
+                    """
+                    DELETE FROM mastery_lecture_drafts
+                    WHERE path_id = ? AND knowledge_point_id = ? AND session_id = ?
+                    """,
+                    (path_id, point_id, scope),
+                )
+            else:
+                cursor = conn.execute(
+                    "DELETE FROM mastery_lecture_drafts WHERE path_id = ? AND knowledge_point_id = ?",
+                    (path_id, point_id),
+                )
+            return cursor.rowcount > 0
+
+    def delete_lecture_drafts_for_session(self, path_id: str, session_id: str) -> int:
+        """Drop drafts whose study transcript no longer exists.
+
+        A draft's coverage watermark only means something against the
+        conversation it was written from. Reopening a point on a fresh
+        session makes every old watermark meaningless, so those drafts go.
+        """
+        path_id = self._validate_id(path_id)
+        scope = str(session_id or "").strip()
+        if not scope:
+            return 0
+        with self._connect() as conn:
+            cursor = conn.execute(
+                "DELETE FROM mastery_lecture_drafts WHERE path_id = ? AND session_id = ?",
+                (path_id, scope),
+            )
+            return cursor.rowcount
 
     def list_session_ids(self, path_id: str) -> list[str]:
         path_id = self._validate_id(path_id)

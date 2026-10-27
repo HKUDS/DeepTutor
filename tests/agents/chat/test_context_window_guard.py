@@ -8,12 +8,17 @@ from typing import Any
 
 import pytest
 
-from deeptutor.agents.loop.pipeline import CONTEXT_WINDOW_GUARD_RATIO, AgenticLoopPipeline
+from deeptutor.agents.loop.pipeline import (
+    CONTEXT_WINDOW_GUARD_RATIO,
+    AgenticLoopPipeline,
+    ContextWindowExceeded,
+)
 from deeptutor.runtime.stream_bus import StreamBus
 from deeptutor.services.session.context_builder import _count_model_context_tokens, count_tokens
 
 WINDOW = 8192
-BUDGET = int(WINDOW * CONTEXT_WINDOW_GUARD_RATIO)
+OUTPUT_RESERVE = 256
+BUDGET = int(WINDOW * CONTEXT_WINDOW_GUARD_RATIO) - OUTPUT_RESERVE
 
 
 def _text(tokens: int) -> str:
@@ -26,6 +31,9 @@ def _text(tokens: int) -> str:
 def _pipeline() -> AgenticLoopPipeline:
     pipeline = AgenticLoopPipeline(language="en")
     pipeline.llm_config = dataclasses.replace(pipeline.llm_config, context_window=WINDOW)
+    # The guard reserves the answer budget. Keep it small so these fixtures
+    # still measure input trimming against the window.
+    pipeline._respond_max_tokens = 256
     return pipeline
 
 
@@ -104,19 +112,20 @@ def test_estimate_counts_tool_call_arguments_like_history_planning() -> None:
 
 
 @pytest.mark.asyncio
-async def test_guard_warns_and_proceeds_when_nothing_is_left_to_trim(caplog) -> None:
+async def test_guard_refuses_to_send_when_nothing_is_left_to_trim(caplog) -> None:
     pipeline = _pipeline()
     messages: list[dict[str, Any]] = [{"role": "user", "content": _text(BUDGET + 1000)}]
     before = copy.deepcopy(messages)
     caplog.clear()
 
-    with caplog.at_level(logging.WARNING, logger="deeptutor.agents.loop.pipeline"):
+    with (
+        caplog.at_level(logging.WARNING, logger="deeptutor.agents.loop.pipeline"),
+        pytest.raises(ContextWindowExceeded),
+    ):
         await pipeline._guard_context_window(messages, StreamBus())
 
     assert messages == before
-    assert any(
-        "no tool results are left to trim" in record.getMessage() for record in caplog.records
-    )
+    assert any("still does not fit" in record.getMessage() for record in caplog.records)
 
 
 @pytest.mark.asyncio

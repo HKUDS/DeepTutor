@@ -128,6 +128,7 @@ KNOWN_CONTEXT_WINDOWS: dict[str, int] = {
     "minimax-m2.7": 204800,
     "minimax-m2.7-highspeed": 204800,
     "minimax-m3": 1000000,
+    "minimax-m3.1-flash": 1048576,
     "o1": 200000,
     "o1-pro": 200000,
     "o3": 200000,

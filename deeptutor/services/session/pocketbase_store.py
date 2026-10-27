@@ -31,6 +31,7 @@ from deeptutor.services.workspace.context import current_workspace_id
 
 from .ask_user_trace import filter_ask_user_events
 from .event_preview import MAX_TRACE_PREVIEW_EVENTS, compact_trace_preview
+from .opening_preview import project_loaded_messages
 from .provider_response_state import redact_private_message_metadata
 from .scope import StoreScope
 from .search import bounded_search_excerpt, normalize_search_query
@@ -858,6 +859,7 @@ class PocketBaseSessionStore:
         if session is None:
             return None
         session["messages"] = await self.get_messages(session_id)
+        project_loaded_messages(session["messages"])
         redact_private_message_metadata(session["messages"])
         session["active_turns"] = await self.list_active_turns(session_id)
         return session

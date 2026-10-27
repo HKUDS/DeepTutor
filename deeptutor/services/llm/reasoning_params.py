@@ -135,6 +135,29 @@ def thinking_off_effort_for(provider: str | None, model: str | None) -> str:
     return "none"
 
 
+def _reasoning_off_forbidden(provider_name: str, model_name: str) -> bool:
+    """Whether this endpoint has already refused a "stop reasoning" request.
+
+    OpenRouter fronts many providers, and some of them answer 400 to
+    ``reasoning: {"effort": "none"}`` with *"Reasoning is mandatory for this
+    endpoint and cannot be disabled"*. The reader-facing book blocks ask for
+    exactly that, so without a remembered answer every block on the page
+    failed with the same 400.
+
+    The answer is recorded per (binding, model) by the provider layer when
+    the rejection is seen, so this is a lookup, not a guess: a provider that
+    simply ignored the request is unaffected.
+    """
+    if not model_name:
+        return False
+    try:
+        from deeptutor.services.llm.capabilities import is_reasoning_off_disabled_at_runtime
+
+        return is_reasoning_off_disabled_at_runtime(provider_name, model_name)
+    except Exception:  # noqa: BLE001 - a lookup must never break a request
+        return False
+
+
 def build_openai_compatible_reasoning_kwargs(
     *,
     spec: Any,
@@ -227,6 +250,19 @@ def build_openai_compatible_reasoning_kwargs(
         extra = _THINKING_STYLE_MAP.get(thinking_style, lambda _enabled: None)(False)
         if extra:
             kwargs.setdefault("extra_body", {}).update(extra)
+
+    # An endpoint that has already refused to be told to stop reasoning does
+    # not want the parameter at all — asking again only earns the same 400.
+    if _reasoning_off_forbidden(provider_name, model_name):
+        extra_body = kwargs.get("extra_body")
+        if isinstance(extra_body, dict):
+            extra_body = dict(extra_body)
+            extra_body.pop("reasoning", None)
+            if extra_body:
+                kwargs["extra_body"] = extra_body
+            else:
+                kwargs.pop("extra_body", None)
+        kwargs.pop("reasoning_effort", None)
 
     return kwargs
 

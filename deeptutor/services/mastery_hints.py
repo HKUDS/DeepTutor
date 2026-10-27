@@ -112,12 +112,15 @@ class _Material:
         return bool(self.waypoint)
 
 
-def _load_position(path_id: str) -> tuple[str, str, str, str, str, str, str]:
+def _load_position(
+    path_id: str, knowledge_point_id: str = ""
+) -> tuple[str, str, str, str, str, str, str]:
     """``(path_name, goal, module, waypoint, kp_type, status, kp_id)``.
 
-    Reads the same policy the tutor and the outline read, so the hint is about
-    the waypoint the screen says the learner is on rather than a second guess
-    at it.
+    A study or review conversation is placed on one point, and that is the
+    point on screen. ``next_objective`` is the path frontier and can be a
+    different point, so it is only the fallback when this session has no
+    placement.
     """
     from deeptutor.learning import policy as learning_policy
     from deeptutor.learning.storage import LearningStore
@@ -126,6 +129,23 @@ def _load_position(path_id: str) -> tuple[str, str, str, str, str, str, str]:
     progress = store.load(path_id)
     if progress is None:
         return ("", "", "", "", "", "", "")
+    placed = str(knowledge_point_id or "").strip()
+    if placed:
+        kp, _module_id, module_name = learning_policy.find_knowledge_point(progress, placed)
+        if kp is not None:
+            topic = store.get_topic(path_id, progress=progress)
+            goal = ""
+            if topic is not None:
+                goal = str(topic.metadata.description or topic.metadata.goal or "")
+            return (
+                learning_policy.path_display_name(progress),
+                goal,
+                module_name,
+                kp.name,
+                kp.type.value,
+                learning_policy.objective_status(progress, kp),
+                kp.id,
+            )
     step = learning_policy.next_objective(progress)
     kp, _module_id, module_name = learning_policy.find_knowledge_point(
         progress, step.knowledge_point_id
@@ -179,8 +199,26 @@ async def _load_transcript(session_id: str) -> tuple[list[tuple[str, str]], str]
     return (tail, f"{len(messages)}")
 
 
+async def _placed_point_id(session_id: str) -> str:
+    """The knowledge point this conversation was opened for, or ""."""
+    if not session_id:
+        return ""
+    try:
+        from deeptutor.services.session import get_session_store
+
+        session = await get_session_store().get_session(session_id)
+    except Exception:
+        logger.debug("ask-hint: session %s unreadable", session_id, exc_info=True)
+        return ""
+    preferences = session.get("preferences") if isinstance(session, dict) else None
+    if not isinstance(preferences, dict):
+        return ""
+    return str(preferences.get("mastery_knowledge_point_id") or "").strip()
+
+
 async def _collect(path_id: str, session_id: str) -> _Material:
-    position = await asyncio.to_thread(_load_position, path_id)
+    placed = await _placed_point_id(session_id)
+    position = await asyncio.to_thread(_load_position, path_id, placed)
     path_name, goal, module_name, waypoint, kp_type, status, kp_id = position
     transcript, anchor = await _load_transcript(session_id)
     return _Material(

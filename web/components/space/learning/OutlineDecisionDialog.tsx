@@ -7,6 +7,7 @@ import {
   AskUserOptions,
   type AskUserCardData,
 } from "@/components/chat/home/AskUserOptions";
+import { STUDY_COMPOSER_WIDTH } from "./MasteryComposer";
 
 /**
  * A choice parked above the composer.
@@ -29,10 +30,15 @@ export function ComposerChoiceDock({
 }) {
   const [open, setOpen] = useState(false);
   return (
-    <div data-testid={testId} className="px-4 pb-2 sm:px-7">
-      <div className="mx-auto w-full max-w-[900px] overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)] shadow-[0_8px_28px_rgba(0,0,0,0.08)]">
+    <div
+      data-testid={testId}
+      className={`mx-auto w-full px-6 pb-2 ${STUDY_COMPOSER_WIDTH}`}
+    >
+      <div className="w-full overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)] shadow-[0_8px_28px_rgba(0,0,0,0.08)]">
         {open ? (
-          <div className="max-h-[min(420px,46vh)] overflow-y-auto">{children}</div>
+          <div className="max-h-[min(38vh,360px)] overflow-y-auto overscroll-contain">
+            {children}
+          </div>
         ) : (
           <div className="flex items-center justify-between gap-3 px-3.5 py-2.5">
             <p className="min-w-0 text-[13px] leading-5 text-[var(--foreground)]">

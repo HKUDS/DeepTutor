@@ -6,6 +6,8 @@ import {
   MAX_LEGACY_PAYLOAD_CHARS,
   TraceCache,
   compactTracePreview,
+  hasDeferredTrace,
+  preserveLoadedTraces,
   settleMessageTrace,
   traceSettleAction,
 } from "../features/chat/trace/memory";
@@ -226,4 +228,33 @@ test("nothing is compacted on the strength of a message with no turn", () => {
     traceSettleAction({ id: 6, role: "user", events: [] }, 7),
     "skip",
   );
+});
+
+test("a tool-only turn still counts as a deferred trace", () => {
+  assert.equal(
+    hasDeferredTrace({
+      events: [],
+      trace: { turn_id: "t1", total: 4, truncated: true },
+    }),
+    true,
+  );
+  assert.equal(hasDeferredTrace({ events: [], trace: { total: 4 } }), false);
+});
+
+test("a background refresh keeps a trace the reader already loaded", () => {
+  const loaded = assistant(3, [event("tool_call", "lookup"), event("tool_result", "page")], {
+    turn_id: "t3",
+    total: 2,
+    truncated: false,
+  });
+  const opening = assistant(3, [], { turn_id: "t3", total: 2, truncated: true });
+  const [kept] = preserveLoadedTraces([loaded], [opening]);
+  assert.equal(kept.events?.length, 2);
+  assert.equal(kept.trace?.truncated, false);
+
+  const [fresh] = preserveLoadedTraces(
+    [assistant(3, [], { turn_id: "t3", total: 2, truncated: true })],
+    [opening],
+  );
+  assert.equal(fresh.events?.length, 0);
 });

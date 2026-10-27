@@ -35,6 +35,9 @@ export const NEXT_LABELS: Record<string, LocalizedCopy> = {
 
 export const NEXT_CTA_LABELS: Record<string, LocalizedCopy> = {
   teach: { zh: "开始学习这个知识点", en: "Learn this knowledge point" },
+  probe: { zh: "开始学习这个知识点", en: "Learn this knowledge point" },
+  practice: { zh: "继续练习这个知识点", en: "Keep practising this point" },
+  assess: { zh: "开始学习这个知识点", en: "Learn this knowledge point" },
   review: { zh: "开始本次复习", en: "Start this review" },
   answer_pending: {
     zh: "回到原会话作答",

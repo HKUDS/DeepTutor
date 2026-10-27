@@ -82,12 +82,14 @@ export function ModuleOutline({
   zh,
   onSelect,
   onOverride,
+  onOpenPoint,
 }: {
   topic: MasteryTopic;
   revision: number;
   selectedId: string | null;
   zh: boolean;
   onSelect: (id: string | null) => void;
+  onOpenPoint?: (knowledgePointId: string) => void;
   onOverride: (
     objectiveId: string,
     mastered: boolean,
@@ -187,6 +189,7 @@ export function ModuleOutline({
                         zh={zh}
                         onClose={() => onSelect(null)}
                         onOverride={onOverride}
+                        onOpenPoint={onOpenPoint}
                       />
                     )}
                   </li>
@@ -207,12 +210,14 @@ function ObjectiveDrawer({
   zh,
   onClose,
   onOverride,
+  onOpenPoint,
 }: {
   pathId: string;
   objectiveId: string;
   revision: number;
   zh: boolean;
   onClose: () => void;
+  onOpenPoint?: (knowledgePointId: string) => void;
   onOverride: (
     objectiveId: string,
     mastered: boolean,
@@ -279,6 +284,15 @@ function ObjectiveDrawer({
             </button>
           </div>
           <ObjectiveDetail report={report} zh={zh} />
+          {onOpenPoint ? (
+            <button
+              type="button"
+              onClick={() => onOpenPoint(objectiveId)}
+              className="mt-3 inline-flex h-9 items-center rounded-xl bg-[var(--primary)] px-3 text-xs font-medium text-[var(--primary-foreground)]"
+            >
+              {t("Open this knowledge point")}
+            </button>
+          ) : null}
 
           {!report.assessed_mastered && (
             <div className="mt-5 border-t border-[var(--border)] pt-4">

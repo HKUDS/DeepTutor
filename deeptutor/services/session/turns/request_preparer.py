@@ -482,6 +482,9 @@ class TurnRequestPreparer:
             "mastery_path_id": mastery_path_id,
             "mastery_path_lease_managed": mastery_lease_managed,
             "mastery_session_mode": mastery_session_mode,
+            "mastery_knowledge_point_id": str(
+                preferences.get("mastery_knowledge_point_id") or ""
+            ).strip(),
         }
         # Persona is a session-level preference (mirrors llm_selection): an
         # explicit ``persona`` key in the payload — including an empty string,
@@ -1103,6 +1106,13 @@ class TurnRequestPreparer:
                 if "mastery_session_mode" in overrides
                 else preferences.get("mastery_session_mode")
             ),
+            # The point this conversation is placed on. A regenerate has to
+            # run against the same point as the turn it replaces — the tutor
+            # refuses to examine a different one, and the outline would
+            # highlight a point this session is not about.
+            "mastery_knowledge_point_id": str(
+                preferences.get("mastery_knowledge_point_id") or ""
+            ).strip(),
             # Recovered from the original turn's snapshot so the regenerate runs
             # against the same document. An explicit override wins (the reader
             # may have moved on), and the viewport is deliberately not restored —

@@ -57,17 +57,22 @@ function PointMark({
 export function StudyOutline({
   topic,
   currentPointId,
+  nextPointId = "",
   justMasteredId,
   collapsed,
   onToggleCollapsed,
+  onSelectPoint,
 }: {
   topic: MasteryTopic;
-  /** The waypoint the tutor is on — highlighted, never a link. */
+  /** The knowledge point whose conversation is open. */
   currentPointId: string;
+  /** The engine's next point, marked separately from the one being viewed. */
+  nextPointId?: string;
   /** Knowledge point that just cleared its gate, for the arrival animation. */
   justMasteredId?: string | null;
   collapsed: boolean;
   onToggleCollapsed: () => void;
+  onSelectPoint?: (pointId: string) => void;
 }) {
   const { t } = useTranslation();
   const { mastered, total } = topic.map.counts;
@@ -137,18 +142,17 @@ export function StudyOutline({
             <ul className="relative mt-1.5 before:absolute before:bottom-[14px] before:left-[21px] before:top-[14px] before:w-px before:bg-[var(--border)]">
               {module.knowledge_points.map((point) => {
                 const current = point.id === currentPointId;
+                const upcoming = point.id === nextPointId && !current;
                 const justMastered = point.id === justMasteredId;
-                return (
-                  <li key={point.id} className="relative">
-                    <div
-                      className={`flex items-start gap-2 rounded-md py-[5px] pl-[18px] pr-2 ${
-                        justMastered
-                          ? "mastery-just-mastered-row"
-                          : current
-                            ? "bg-[color-mix(in_srgb,var(--primary)_7%,transparent)]"
-                            : ""
-                      }`}
-                    >
+                const rowClass = `flex w-full items-start gap-2 rounded-md py-[5px] pl-[18px] pr-2 text-left ${
+                  justMastered
+                    ? "mastery-just-mastered-row"
+                    : current
+                      ? "bg-[color-mix(in_srgb,var(--primary)_7%,transparent)]"
+                      : ""
+                }`;
+                const body = (
+                  <>
                       <span
                         className={`relative z-[1] flex h-[18px] w-[7px] shrink-0 items-center justify-center ${
                           justMastered ? "mastery-just-mastered-halo" : ""
@@ -172,8 +176,21 @@ export function StudyOutline({
                         }`}
                       >
                         {point.name}
+                        {upcoming ? (
+                          <span className="ml-1 text-[10px] text-[var(--primary)]">{t("Next")}</span>
+                        ) : null}
                       </span>
-                    </div>
+                    </>
+                );
+                return (
+                  <li key={point.id} className="relative">
+                    {onSelectPoint ? (
+                      <button type="button" className={rowClass} onClick={() => onSelectPoint(point.id)}>
+                        {body}
+                      </button>
+                    ) : (
+                      <div className={rowClass}>{body}</div>
+                    )}
                   </li>
                 );
               })}

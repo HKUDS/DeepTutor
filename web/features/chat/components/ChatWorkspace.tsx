@@ -153,6 +153,7 @@ import {
   type SelectionTutorContext,
 } from "@/lib/selection-tutor";
 import { shouldReturnToChatAfterResearch } from "@/lib/deep-research-report";
+import { localizedRejectionReason } from "@/lib/submission-rejection";
 
 const NotebookRecordPicker = dynamic(
   () => import("@/components/notebook/NotebookRecordPicker"),
@@ -247,7 +248,6 @@ interface KnowledgeBase {
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                           */
 /* ------------------------------------------------------------------ */
-
 
 /* ------------------------------------------------------------------ */
 /*  Chat page                                                         */
@@ -2658,7 +2658,15 @@ export default function ChatWorkspace() {
                       aria-hidden="true"
                     />
                     <span className="min-w-0 flex-1 text-[12px] leading-[1.5] text-[var(--foreground)]">
-                      {state.submissionNotSaved
+                      {state.submissionRejectionReason
+                        ? // The server refused and said why. Show its words:
+                          // "the path is already active in session …" is
+                          // actionable, "check your connection" is not.
+                          localizedRejectionReason(
+                            state.submissionRejectionReason,
+                            t,
+                          )
+                        : state.submissionNotSaved
                         ? t("This unsent message could not be saved in your browser. Copy it before leaving this page.")
                         : state.submissionNeedsReview
                         ? t("Message text was saved, but its attachments or settings could not be restored. Copy it and send again.")

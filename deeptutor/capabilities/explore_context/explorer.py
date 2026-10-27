@@ -29,6 +29,7 @@ from dataclasses import dataclass, field
 import logging
 from typing import Any, Callable
 
+from deeptutor.agents.loop.stored_results import observation_char_budget_for_config
 from deeptutor.core.context import UnifiedContext
 from deeptutor.core.trace import build_trace_metadata, merge_trace_metadata, new_call_id
 from deeptutor.runtime.agentic import (
@@ -315,6 +316,9 @@ class ContextExplorer:
                     kwarg_augmenter=augmenter,
                     tool_call_label=self._t("labels.tool_call", default="Tool call"),
                     trace_id_prefix="explore-context",
+                    observation_chars=observation_char_budget_for_config(
+                        get_llm_config(), str(self.model or "")
+                    ),
                 )
                 messages.extend(dispatch.tool_messages)
             await stream.progress(

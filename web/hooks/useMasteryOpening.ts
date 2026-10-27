@@ -14,6 +14,7 @@ export function useMasteryOpening({
   pathId,
   topicReady,
   hasMessages,
+  hasOutline,
   sessionLoading,
   sessionError,
   sessionMode,
@@ -23,6 +24,8 @@ export function useMasteryOpening({
   pathId: string;
   topicReady: boolean;
   hasMessages: boolean;
+  /** An outline already exists, so the outline sitting is an edit, not a draft. */
+  hasOutline: boolean;
   sessionLoading: boolean;
   sessionError: string | null;
   sessionMode: MasteryMode;
@@ -35,13 +38,26 @@ export function useMasteryOpening({
     if (!topicReady || hasMessages || sessionLoading || sessionError)
       return;
     if (isStreaming || openingSentRef.current === pathId) return;
+    const pending = consumePendingPrompt(MASTERY_OPENING_SCOPE).trim();
+    // A review conversation opened from the outline stays empty. The review
+    // plan and the topic-page button leave a pending prompt when they want
+    // one spoken. Outline drafts still open themselves.
+    //
+    // An outline that already exists is the one exception among outlines.
+    // "Design the outline with me" is a request to build one, and sending it
+    // over a map the learner has been studying invites a rebuild they did not
+    // ask for; 修改大纲 means *edit this, keep the rest*. Nothing needs to be
+    // said for that: the tutor reads `mastery_status`, sees an active outline,
+    // and the screen offers the edits to pick from.
     const opening =
-      consumePendingPrompt(MASTERY_OPENING_SCOPE).trim() ||
-      masteryOpeningMessage(sessionMode, t);
-    // Study mode has no automatic opening. Latch only after submitting.
+      pending ||
+      (sessionMode === "review" || (sessionMode === "outline" && hasOutline)
+        ? ""
+        : masteryOpeningMessage(sessionMode, t));
     if (opening && submit(opening)) openingSentRef.current = pathId;
   }, [
     hasMessages,
+    hasOutline,
     pathId,
     sessionError,
     sessionLoading,

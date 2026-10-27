@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 import json
+import re
 from typing import Any
 
 MODEL_TURN_KEY = "model_turn"
@@ -21,6 +22,7 @@ _MASTERY_SNAPSHOT_NOTICE = (
     "Refresh with mastery_status after changing the path, mode, outline, or progress "
     "when updated state is needed. Earlier turns' snapshots are historical only.\n"
 )
+_ARCHIVE_ID = re.compile(r'"archive_id"\s*:\s*"(hs-tutor-[^"]+)"')
 _MESSAGE_KEYS = frozenset(
     {
         "role",
@@ -101,6 +103,15 @@ def normalize_model_turn(value: Any) -> dict[str, Any] | None:
     for key in ("system", "tools", "route", "request_fingerprint"):
         if key in value:
             record[key] = value[key]
+    stored = value.get("stored_results")
+    if isinstance(stored, dict) and stored:
+        cleaned_stored = {
+            key: body
+            for key, body in stored.items()
+            if isinstance(key, str) and key and isinstance(body, str)
+        }
+        if cleaned_stored:
+            record["stored_results"] = cleaned_stored
     try:
         return json.loads(json.dumps(record, ensure_ascii=False, allow_nan=False))
     except (TypeError, ValueError):
@@ -196,10 +207,54 @@ def summary_snapshot(summary: str) -> dict[str, Any] | None:
     }
 
 
+def bound_tool_replay(
+    message: dict[str, Any],
+    *,
+    max_chars: int,
+    language: str = "en",
+) -> dict[str, Any]:
+    """Keep a long tool body out of the next request without erasing the record.
+
+    The original message is left untouched. The copy names the tool and, when
+    the body is a stored exchange, the archive id the model can read back.
+    """
+    content = message.get("content")
+    if message.get("role") != "tool" or not isinstance(content, str) or len(content) <= max_chars:
+        return message
+    name = str(message.get("name") or "tool")
+    found = _ARCHIVE_ID.search(content[:4000])
+    archive = found.group(1) if found else ""
+    copied = dict(message)
+    if language.startswith("zh"):
+        pointer = f"archive_id={archive}。需要原文时，用 read_source 读取这个编号。\n" if archive else ""
+        copied["content"] = (
+            f"此前的 {name} 结果有 {len(content)} 字符，这次没有随请求重放。"
+            "会话记录里仍保留原文。\n"
+            f"{pointer}"
+            "这段省略不能当作学习者已经理解。"
+        )
+    else:
+        pointer = (
+            f"archive_id={archive}. Use read_source with that id if the exchange is still needed.\n"
+            if archive
+            else ""
+        )
+        copied["content"] = (
+            f"Earlier {name} result was {len(content)} characters and was left out of this request. "
+            "The session record still has the original.\n"
+            f"{pointer}"
+            "This omission is not evidence the learner understood."
+        )
+    return copied
+
+
 def replay_history(
     rows: list[dict[str, Any]],
     summary: str = "",
     route: dict[str, str] | None = None,
+    *,
+    tool_page_chars: int | None = None,
+    language: str = "en",
 ) -> list[dict[str, Any]]:
     """Replay the retained model turns. ``summary`` is *not* injected here.
 
@@ -223,7 +278,7 @@ def replay_history(
         name = message.get("_context_snapshot")
         if isinstance(name, str):
             latest[name] = index
-    return [
+    replayed = [
         message
         for index, message in enumerate(messages)
         if not (
@@ -233,6 +288,12 @@ def replay_history(
                 and latest[message["_context_snapshot"]] != index
             )
         )
+    ]
+    if tool_page_chars is None:
+        return replayed
+    page = max(1, int(tool_page_chars))
+    return [
+        bound_tool_replay(message, max_chars=page, language=language) for message in replayed
     ]
 
 

@@ -250,6 +250,7 @@ function emptyChatState(): ChatState {
     selectedBranches: {},
     lastTurnFailed: false,
     submissionFailed: false,
+    submissionRejectionReason: '',
     submissionNeedsReview: false,
     submissionNotSaved: false,
   }
@@ -436,6 +437,34 @@ describe('ChatWorkspace smoke', () => {
       'Message text was saved, but its attachments or settings could not be restored. Copy it and send again.'
     )
     expect(screen.queryByRole('button', { name: 'Resend' })).toBeNull()
+    view.unmount()
+  })
+
+  it('repeats the server\'s own refusal instead of blaming the network', async () => {
+    const view = renderWorkspace()
+    await waitFor(() => expect(fixture.adapter.newSession).toHaveBeenCalled())
+
+    // A mastery path held by another session is a deliberate refusal with a
+    // reason. The learner needs that reason; "check your connection" sends
+    // them to troubleshoot the wrong thing.
+    applyState({
+      sessionId: 's-1',
+      submissionFailed: true,
+      submissionRejectionReason: "mastery_path_busy: path 'topic-1' is already active in session 's-9'",
+      messages: [
+        {
+          id: 2,
+          role: 'user',
+          content: 'Hello offline',
+          failedSubmission: true,
+        },
+      ],
+    })
+    view.rerender(<ChatWorkspace />)
+
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Another session is still working on this topic. Close it or let it finish, then send again.'
+    )
     view.unmount()
   })
 

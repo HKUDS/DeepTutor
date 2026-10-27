@@ -50,7 +50,7 @@ export function LearningBoard({
   modules: BoardModule[];
   revision: number;
   zh: boolean;
-  onStartTutoring: (knowledgePointName: string) => void;
+  onStartTutoring: (knowledgePointId: string, knowledgePointName: string) => void;
 }) {
   const { t } = useTranslation();
   const [openId, setOpenId] = useState<string | null>(null);
@@ -135,7 +135,7 @@ export function LearningBoard({
                         <ObjectiveDetail report={report} zh={zh} />
                         <button
                           type="button"
-                          onClick={() => onStartTutoring(card.name)}
+                          onClick={() => onStartTutoring(card.id, card.name)}
                           className="mt-2 flex h-8 w-full items-center justify-center gap-1.5 rounded-lg bg-[var(--primary)] px-3 text-xs font-medium text-[var(--primary-foreground)] transition hover:opacity-90"
                         >
                           <MessageSquare className="h-3.5 w-3.5" />

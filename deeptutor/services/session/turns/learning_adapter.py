@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
+import time
 from typing import TYPE_CHECKING, Any
 
 from deeptutor.core.stream import StreamEvent, StreamEventType
@@ -17,6 +19,41 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger(__name__)
+
+
+def _turn_taught_this_point(
+    events: list[dict[str, Any]], knowledge_point_id: str
+) -> bool:
+    """Whether the turn actually taught or cleared this objective.
+
+    Two things count, and both are already in the turn's own event trace: the
+    gate was cleared for this point, or an explanation for it was recorded.
+    Merely mentioning the point does not — a reply that says "let's move on to
+    X" must not produce a lecture for X out of nothing.
+    """
+    point = str(knowledge_point_id or "").strip()
+    if not point:
+        return False
+    for event in events:
+        metadata = event.get("metadata")
+        if not isinstance(metadata, dict):
+            continue
+        tool_metadata = metadata.get("tool_metadata")
+        containers = [metadata] + ([tool_metadata] if isinstance(tool_metadata, dict) else [])
+        for container in containers:
+            grade = container.get("mastery_grade")
+            if isinstance(grade, dict) and grade.get("mastered"):
+                if str(grade.get("knowledge_point_id") or "") in {"", point}:
+                    return True
+            assess = container.get("mastery_assess")
+            if isinstance(assess, dict) and assess.get("mastered"):
+                if str(assess.get("knowledge_point_id") or "") in {"", point}:
+                    return True
+            noted = container.get("mastery_note_explained")
+            if isinstance(noted, dict):
+                if str(noted.get("knowledge_point_id") or "") in {"", point}:
+                    return True
+    return False
 
 
 class LearningTurnAdapter:
@@ -41,8 +78,10 @@ class LearningTurnAdapter:
     async def _release_superseded_lease(self, path_id: str, lease: MasteryPathLease) -> None:
         """Free ``lease`` when its turn can no longer be working on the path.
 
-        Two cases release it. A turn that is no longer ``running`` (finished,
-        or orphaned by a restart) is simply gone. A turn parked inside
+        Three cases release it. A turn that is no longer live (finished) is
+        simply gone. A turn whose worker died left a ``running`` row and no
+        owner: reading only the durable row would call it busy forever, which
+        is how one crashed turn locks the whole path. A turn parked inside
         ``ask_user`` is alive but idle — it holds the lease for as long as the
         learner takes to answer, which may be forever. Since the posed question
         is persisted on the path itself, the arriving turn resumes exactly
@@ -51,18 +90,44 @@ class LearningTurnAdapter:
         longer owns. Only a turn that is actively generating keeps the lease.
         """
         from deeptutor.learning.storage import LearningStore
+        from deeptutor.services.session.orphan_turns import reap_orphaned_turn
 
-        # Liveness is coordinator-owned. A request handled by another worker
-        # must never infer that a persisted running turn is orphaned merely
-        # because no Python task exists in this process.
         leased_turn = await self.store.get_turn(lease.turn_id)
-        alive = leased_turn is not None and str(leased_turn.get("status") or "") == "running"
-        if alive:
-            if not await self._is_awaiting_user_reply(lease.turn_id):
+        status = str((leased_turn or {}).get("status") or "")
+        # A live row is only proof of a live worker while some worker still
+        # holds that turn's own lease. A restart leaves the row behind and
+        # drops the lease, and nothing else would ever move it off ``running``
+        # for this path: the recovery pass only fails rows it can see expired,
+        # and this lease outlives every one of those passes.
+        if status in {"running", "waiting_input"} and self.coordinator is not None:
+            if await self.coordinator.get_lease(lease.turn_id) is None:
+                await reap_orphaned_turn(self.store, self.coordinator, lease.turn_id)
+                leased_turn = await self.store.get_turn(lease.turn_id)
+                status = str((leased_turn or {}).get("status") or "")
+
+        # ``waiting_input`` is the durable shape of a parked ``ask_user`` turn.
+        # It is alive but not generating, so it is the one live status this may
+        # take over — and the in-memory flag covers turns parked before the row
+        # was moved.
+        parked = status == "waiting_input" or await self._is_awaiting_user_reply(
+            lease.turn_id
+        )
+        if status in {"running", "waiting_input"}:
+            if not parked:
                 # Genuinely busy — leave the lease, and let the store report
                 # the conflict to the caller.
                 return
-            await self.cancel_turn(lease.turn_id)
+            if not await self.cancel_turn(lease.turn_id) and not await self._stop_remote_turn(
+                lease.turn_id
+            ):
+                # The parked turn belongs to another worker that would not
+                # stop. Handing the path over would let it resume and write to
+                # a path it no longer holds, so the conflict is the honest
+                # answer here.
+                raise RuntimeError(
+                    "mastery_path_busy: "
+                    f"path {path_id!r} is already active in session {lease.session_id!r}"
+                )
         # Scoped to the superseded turn id, so a lease already re-taken by
         # someone else survives.
         await asyncio.to_thread(
@@ -70,6 +135,32 @@ class LearningTurnAdapter:
             path_id,
             turn_id=lease.turn_id,
         )
+
+    async def _stop_remote_turn(self, turn_id: str, *, timeout_seconds: float = 5.0) -> bool:
+        """Cancel a turn owned by another worker and wait for it to settle.
+
+        A parked turn's worker is the only thing that can unwind it, and it
+        unwinds through the coordinator's command queue. Waiting matters: the
+        caller releases a path lease on the strength of this answer, so
+        returning before the row has left the live set would hand the path to a
+        turn that is still about to wake up.
+        """
+        if self.coordinator is None:
+            return False
+        with contextlib.suppress(Exception):
+            await self.coordinator.submit_command(turn_id, "cancel", {})
+        deadline = time.monotonic() + max(0.0, timeout_seconds)
+        while True:
+            turn = await self.store.get_turn(turn_id)
+            if turn is None or str(turn.get("status") or "") not in {
+                "queued",
+                "running",
+                "waiting_input",
+            }:
+                return True
+            if time.monotonic() >= deadline:
+                return False
+            await asyncio.sleep(0.05)
 
     async def _commit_mastery_card_answer(
         self,
@@ -349,6 +440,58 @@ class LearningTurnAdapter:
             ),
         )
         return payload
+
+    async def _roll_mastery_lecture_draft(
+        self,
+        execution: _TurnExecution,
+        *,
+        path_id: str,
+        mode: str,
+        knowledge_point_id: str,
+        events: list[dict[str, Any]],
+    ) -> dict[str, Any] | None:
+        """Keep a study point's lecture draft in step with what was just taught.
+
+        Deliberately server-side and deterministic rather than another tool the
+        model has to remember. A tutor that has just spent a long turn teaching
+        is exactly the model least likely to end by summarising itself, and the
+        failure is silent: review simply has nothing to show. So the condition
+        is a comparison the engine can make — did this turn clear the point's
+        gate, or add teaching past the draft's watermark — not a request.
+
+        The draft is *unconfirmed* by construction. Confirming it here would
+        remove the learner's only chance to read the summary before review
+        treats it as settled.
+
+        Best-effort: a lecture is a convenience next to the turn's answer, and
+        an LLM failure writing one must never fail a turn that already
+        succeeded.
+        """
+        if mode != "study" or not path_id or not knowledge_point_id:
+            return None
+        if not _turn_taught_this_point(events, knowledge_point_id):
+            return None
+        from deeptutor.learning.placement import write_lecture_draft
+
+        try:
+            status = await write_lecture_draft(path_id, knowledge_point_id)
+        except Exception:
+            logger.warning(
+                "Could not roll the lecture draft for path %s point %s",
+                path_id,
+                knowledge_point_id,
+                exc_info=True,
+            )
+            return None
+        draft = status.get("draft")
+        if not isinstance(draft, dict) or not draft.get("body"):
+            return None
+        # No event is published for this. The client's confirm card reads the
+        # lecture from the API, and it has to — a card driven by a stream event
+        # is one a reloaded page never shows, which is exactly when a learner
+        # comes back to check what was written.
+        _ = execution
+        return status
 
     async def _acquire_mastery_path_lease(
         self,

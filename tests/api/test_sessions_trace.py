@@ -49,8 +49,10 @@ def test_message_trace_is_paginated_and_session_scoped(tmp_path, monkeypatch) ->
     detail = asyncio.run(store.get_session_with_messages(session["id"]))
     assert detail is not None
     message = detail["messages"][0]
-    assert message["events"][0]["type"] == "tool_call"
-    assert message["events"][-1]["type"] == "done"
+    assert message["content"] == "answer"
+    # Opening the conversation does not ship the tool fold. The trace handle
+    # is what lets the reader fetch it when they expand the activity header.
+    assert message["events"] == []
     trace = message["trace"]
     assert {
         "turn_id": trace["turn_id"],
@@ -61,13 +63,9 @@ def test_message_trace_is_paginated_and_session_scoped(tmp_path, monkeypatch) ->
         "turn_id": turn["id"],
         "total": 2,
         "last_seq": 2,
-        "truncated": False,
+        "truncated": True,
     }
-    # The turn's real span travels with the preview, because the preview keeps
-    # only tool and terminal events and so cannot say when the turn began.
-    first, last = message["events"][0], message["events"][-1]
-    assert trace["started_at"] <= first["timestamp"]
-    assert trace["ended_at"] >= last["timestamp"]
+    assert trace["started_at"] <= trace["ended_at"]
 
 
 def test_worker_lost_without_assistant_is_visible_after_session_reload(

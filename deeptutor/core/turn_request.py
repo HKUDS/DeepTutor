@@ -177,6 +177,12 @@ class TurnRequest(BaseModel):
     #: read as the ordinary study session every mastery conversation was
     #: before kinds existed.
     mastery_session_mode: str | None = None
+    #: Which knowledge point this conversation is placed on. A study or review
+    #: session belongs to one point; the tutor refuses to examine another one
+    #: and the outline highlights the point it is actually on. Durable session
+    #: state, like the mode above: read from the session's preferences when a
+    #: turn does not name one.
+    mastery_knowledge_point_id: str | None = None
     mastery_path_lease_managed: bool = False
     mastery_answer: MasteryCardAnswer | None = None
     mastery_skip: MasteryCardSkip | None = None

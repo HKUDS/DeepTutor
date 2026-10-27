@@ -38,6 +38,9 @@ import {
 } from "@/lib/ask-user-state";
 import { notify } from "@/lib/notifications";
 
+/** Shared by the empty screen and the transcript, so the outline control stays on the input. */
+export const STUDY_COMPOSER_WIDTH = "max-w-[768px]";
+
 export function MasteryComposer({
   placeholder,
   askHint,
@@ -135,6 +138,8 @@ export function MasteryComposer({
     <StandaloneComposer
       showCapabilityChip={false}
       hasMessages={state.messages.length > 0}
+      maxWidthClass={STUDY_COMPOSER_WIDTH}
+      maxInputHeight={128}
       isStreaming={state.isStreaming}
       awaitingUserReply={awaitingUserReply}
       selectedKnowledgeBases={state.knowledgeBases}

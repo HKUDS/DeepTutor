@@ -5,6 +5,7 @@ import {
   masteryTopicRoute,
   masterySessionsRoute,
   masterySessionRoute,
+  withKnowledgePoint,
   readingCollectionRoute,
   readingSessionRoute,
   readingSessionIdFromPath,
@@ -17,6 +18,11 @@ test('learning route builders encode resource identities once', () => {
   assert.equal(bookRoute(id, id), `/learning/books/${encoded}/pages/${encoded}`)
   assert.equal(masteryTopicRoute(id), `/learning/mastery/${encoded}`)
   assert.equal(masterySessionRoute(id, id), `/learning/mastery/${encoded}/sessions/${encoded}`)
+  assert.equal(
+    withKnowledgePoint(masterySessionRoute(id, id), 'kp 1'),
+    `/learning/mastery/${encoded}/sessions/${encoded}?point=${encodeURIComponent('kp 1').replace(/%20/g, '+')}`,
+  )
+  assert.equal(withKnowledgePoint(masterySessionRoute(id, id), '  '), masterySessionRoute(id, id))
   assert.equal(readingCollectionRoute(id), `/learning/reading/${encoded}`)
   assert.equal(readingSessionIdFromPath(readingSessionRoute(id, id)), id)
   assert.equal(watchingRoute(id), `/learning/watching/${encoded}`)

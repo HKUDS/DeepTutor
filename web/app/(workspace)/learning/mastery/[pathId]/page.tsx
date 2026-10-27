@@ -2,7 +2,7 @@
 
 import { PageContainer, PAGE_DESCRIPTION_CLASS } from '@/components/layout/FeaturePage'
 import { scopedUrl } from "@/lib/workspace-scope";
-import { MASTERY_HOME, masterySessionRoute as existingMasterySessionRoute, masterySessionsRoute } from "@/lib/learning-routes";
+import { MASTERY_HOME, masterySessionRoute as existingMasterySessionRoute, withKnowledgePoint } from "@/lib/learning-routes";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
@@ -27,7 +27,6 @@ import {
 import {
   MASTERY_OPENING_SCOPE,
   masteryOpeningMessage,
-  masterySessionRoute,
 } from "@/lib/mastery-mode";
 import { LearnerProfileCard } from "@/components/space/learning/LearnerProfileCard";
 import { ModuleOutline } from "@/components/space/learning/ModuleOutline";
@@ -46,6 +45,7 @@ import {
   deleteProgress,
   fetchMasteryTopic,
   fetchMasteryTopicSessions,
+  resolveMasterySession,
   fetchLearningBoard,
   redoProgress,
   renameProgress,
@@ -245,12 +245,22 @@ export default function MasteryTopicPage() {
     }
   };
 
-  const startBoardTutoring = (knowledgePointName: string) => {
+  const openPlaced = async (mode: "outline" | "study" | "review", knowledgePointId = "") => {
+    const placed = await resolveMasterySession(pathId, mode, knowledgePointId);
+    router.push(
+      withKnowledgePoint(
+        existingMasterySessionRoute(pathId, placed.session_id),
+        placed.knowledge_point_id,
+      ),
+    );
+  };
+
+  const startBoardTutoring = (knowledgePointId: string, knowledgePointName: string) => {
     setPendingPrompt(
       `Please tutor me on: ${knowledgePointName}. Start with a quick check of what I already know, then guide me step by step.`,
       "mastery_path",
     );
-    router.push(masterySessionsRoute(pathId));
+    void openPlaced("study", knowledgePointId);
   };
 
   const startReview = (objectiveId: string, knowledgePointName: string) => {
@@ -261,7 +271,7 @@ export default function MasteryTopicPage() {
       MASTERY_OPENING_SCOPE,
     );
     setSelectedId(objectiveId);
-    router.push(masterySessionRoute(pathId, "review"));
+    void openPlaced("review", objectiveId);
   };
 
   if (loading && !topic) {
@@ -303,9 +313,7 @@ export default function MasteryTopicPage() {
     topic.next.session_id ||
     sessions.find((session) => session.has_pending_question)?.session_id;
   const continuationSessionId =
-    topic.next.action === "answer_pending"
-      ? pendingSessionId
-      : sessions[0]?.session_id;
+    topic.next.action === "answer_pending" ? pendingSessionId : "";
 
   return (
     // One screen, not a scroll. A goal's dashboard answers "where am I and
@@ -447,9 +455,14 @@ export default function MasteryTopicPage() {
               <ArrowRight className="h-3.5 w-3.5" />
             </button>
           ) : (
-            <Link
+            <button
+              type="button"
               onClick={() => {
-                if (topic.next.action === "review") {
+                if (continuationSessionId) {
+                  router.push(existingMasterySessionRoute(pathId, continuationSessionId));
+                  return;
+                }
+                if (topic.next.action === "review" && topic.next.knowledge_point_id) {
                   setPendingPrompt(
                     masteryOpeningMessage("review", t as Translate, {
                       dueTitles: topic.next.knowledge_point_name
@@ -458,15 +471,13 @@ export default function MasteryTopicPage() {
                     }),
                     MASTERY_OPENING_SCOPE,
                   );
+                  void openPlaced("review", topic.next.knowledge_point_id);
+                  return;
+                }
+                if (topic.next.knowledge_point_id) {
+                  void openPlaced("study", topic.next.knowledge_point_id);
                 }
               }}
-              href={
-                continuationSessionId
-                  ? existingMasterySessionRoute(pathId, continuationSessionId)
-                  : topic.next.action === "review"
-                    ? masterySessionRoute(pathId, "review")
-                    : masterySessionsRoute(pathId)
-              }
               className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-[var(--primary)] px-3.5 text-[13px] font-medium text-[var(--primary-foreground)] transition hover:opacity-90"
             >
               {nextCta
@@ -477,7 +488,7 @@ export default function MasteryTopicPage() {
                   ? t("Continue learning")
                   : t("Begin first waypoint")}
               <ArrowRight className="h-3.5 w-3.5" />
-            </Link>
+            </button>
           )}
         </section>
 
@@ -497,19 +508,20 @@ export default function MasteryTopicPage() {
                   "Open a session and the tutor will read your materials, ask what you already know and how much time you have, then design the outline with you.",
                 )}
               </p>
-              <Link
-                onClick={() =>
+              <button
+                type="button"
+                onClick={() => {
                   setPendingPrompt(
                     masteryOpeningMessage("outline", t),
                     MASTERY_OPENING_SCOPE,
-                  )
-                }
-                href={masterySessionRoute(pathId, "outline")}
+                  );
+                  void openPlaced("outline");
+                }}
                 className="mt-5 inline-flex h-10 items-center gap-2 rounded-xl bg-[var(--primary)] px-4 text-sm font-medium text-[var(--primary-foreground)] transition hover:opacity-90"
               >
                 {t("Design the outline with the tutor")}
                 <ArrowRight className="h-4 w-4" />
-              </Link>
+              </button>
               <button
                 type="button"
                 onClick={(event) => openEditor(event.currentTarget)}
@@ -573,6 +585,9 @@ export default function MasteryTopicPage() {
                   zh={zh}
                   onSelect={setSelectedId}
                   onOverride={handleOverride}
+                  onOpenPoint={(knowledgePointId) => {
+                    void openPlaced("study", knowledgePointId);
+                  }}
                 />
               ) : board ? (
                 <LearningBoard
@@ -627,6 +642,10 @@ export default function MasteryTopicPage() {
               loading={sessionsLoading}
               stale={sessionsError}
               onRetry={() => void loadSessions()}
+              onNewSession={() => {
+                const pointId = topic.next.knowledge_point_id;
+                if (pointId) void openPlaced("study", pointId);
+              }}
               zh={zh}
             />
           </div>

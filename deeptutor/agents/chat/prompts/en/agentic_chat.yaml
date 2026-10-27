@@ -158,7 +158,8 @@ knowledge_base_seed:
 
 notices:
   conversation_summary_header: "[Conversation summary]"
-  tool_result_snipped: "[earlier tool result snipped to stay within context window; call the same tool again if the content is still needed]"
+  tool_result_snipped: "[earlier tool result omitted from this request; use read_stored_result with its result_id and an offset/limit range. Do not call the original tool again.]"
+  context_compacted: "Compacted earlier rounds of this turn so the request can continue. The original rounds stay in the session."
   ask_user_resolved_directive: "[ask_user resolved. Continue the user's original request using these answers. Do not stop with an acknowledgement.]"
   too_many_tool_calls: "The model requested {requested} tool calls; this round will process only the first {limit}. Remaining calls will receive a not-executed result."
   tool_error: "{tool} failed: {error}"

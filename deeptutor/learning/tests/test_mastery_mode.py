@@ -34,6 +34,15 @@ from deeptutor.tools.mastery_tool import (
 )
 
 
+@pytest.fixture(autouse=True)
+def isolated_session_store(tmp_path, monkeypatch):
+    from deeptutor.services.session.sqlite_store import SQLiteSessionStore
+
+    store = SQLiteSessionStore(db_path=tmp_path / "chat.sqlite3")
+    monkeypatch.setattr("deeptutor.services.session.get_session_store", lambda: store)
+    return store
+
+
 @pytest.fixture
 def path_id(tmp_path, monkeypatch):
     def _init(self, root_arg=None):
@@ -218,29 +227,28 @@ async def test_review_may_re_examine_something_already_mastered_even_when_not_du
 
 
 @pytest.mark.asyncio
-async def test_switching_mode_rebinds_the_live_turn_and_returns_the_new_framing(path_id):
+async def test_switching_mode_opens_the_other_phase_session(path_id):
     await _build(path_id)
     bound: list[str] = []
     result = await MasteryModeTool().execute(
         _mastery_path_id=path_id,
         _mastery_session_mode=OUTLINE,
+        _mastery_knowledge_point_id=f"{path_id}_m0_kp0",
         _bind_active_mode=bound.append,
         mode=STUDY,
         reason="大纲定好了，开始学",
     )
     payload = json.loads(result.content)
-    assert payload["status"] == "switched"
+    assert payload["status"] == "open_session"
     assert payload["previous_mode"] == OUTLINE and payload["mode"] == STUDY
-    assert bound == [STUDY]
-    # The system prompt above still frames the mode the turn opened in, so the
-    # new one has to travel down inside the result.
+    assert payload["session_id"]
+    assert bound == []
     assert payload["instructions"].strip()
 
 
 @pytest.mark.asyncio
-async def test_a_tool_refused_for_the_wrong_mode_works_after_switching(path_id):
-    """The whole point of a mutable mode: one call unlocks the tool inside the
-    same turn, instead of asking the learner to open another conversation."""
+async def test_a_tool_refused_for_the_wrong_mode_works_in_the_opened_phase(path_id):
+    """Switching opens the other conversation. This one stays in its phase."""
     await _build(path_id)
     kp = f"{path_id}_m0_kp0"
     args = dict(
@@ -252,16 +260,79 @@ async def test_a_tool_refused_for_the_wrong_mode_works_after_switching(path_id):
     )
     assert (await MasteryQuizTool().execute(_mastery_session_mode=OUTLINE, **args)).success is False
 
-    bound: list[str] = []
-    await MasteryModeTool().execute(
+    opened = await MasteryModeTool().execute(
         _mastery_path_id=path_id,
         _mastery_session_mode=OUTLINE,
-        _bind_active_mode=bound.append,
+        _mastery_knowledge_point_id=kp,
         mode=STUDY,
     )
-    assert (
-        await MasteryQuizTool().execute(_mastery_session_mode=bound[-1], **args)
-    ).success is True
+    assert json.loads(opened.content)["mode"] == STUDY
+    assert (await MasteryQuizTool().execute(_mastery_session_mode=OUTLINE, **args)).success is False
+    assert (await MasteryQuizTool().execute(_mastery_session_mode=STUDY, **args)).success is True
+
+
+@pytest.mark.asyncio
+async def test_a_placed_session_cannot_examine_another_knowledge_point(path_id):
+    """A question for another point would move the path's next step there."""
+    await _build(path_id)
+    refused = await MasteryQuizTool().execute(
+        _mastery_path_id=path_id,
+        _mastery_session_mode=STUDY,
+        _mastery_knowledge_point_id=f"{path_id}_m0_kp0",
+        knowledge_point_id=f"{path_id}_m0_kp1",
+        question="重参数化技巧是什么？",
+        expected_answer="A",
+        question_type="short",
+    )
+    assert refused.success is False
+    assert f"{path_id}_m0_kp0" in refused.content
+    assert "knowledge_point_id" in refused.content
+
+
+@pytest.mark.asyncio
+async def test_study_mode_opens_another_points_own_session(path_id):
+    """Leaving this point opens that point's conversation, not this one."""
+    await _build(path_id)
+    current = f"{path_id}_m0_kp0"
+    other = f"{path_id}_m0_kp1"
+    here = await MasteryModeTool().execute(
+        _mastery_path_id=path_id,
+        _mastery_session_mode=STUDY,
+        _mastery_knowledge_point_id=current,
+        mode=STUDY,
+    )
+    there = await MasteryModeTool().execute(
+        _mastery_path_id=path_id,
+        _mastery_session_mode=STUDY,
+        _mastery_knowledge_point_id=current,
+        mode=STUDY,
+        knowledge_point_id=other,
+    )
+    opened_here = json.loads(here.content)
+    opened_there = json.loads(there.content)
+    assert opened_there["status"] == "open_session"
+    assert opened_there["knowledge_point_id"] == other
+    assert opened_there["session_id"] != opened_here["session_id"]
+
+    missing = await MasteryModeTool().execute(
+        _mastery_path_id=path_id,
+        _mastery_session_mode=STUDY,
+        _mastery_knowledge_point_id=current,
+        mode=STUDY,
+        knowledge_point_id="not-on-the-outline",
+    )
+    assert missing.success is False
+
+    same = await MasteryQuizTool().execute(
+        _mastery_path_id=path_id,
+        _mastery_session_mode=STUDY,
+        _mastery_knowledge_point_id=f"{path_id}_m0_kp0",
+        knowledge_point_id=f"{path_id}_m0_kp0",
+        question="加噪调度是什么？",
+        expected_answer="A",
+        question_type="short",
+    )
+    assert same.success is True
 
 
 @pytest.mark.asyncio
@@ -278,7 +349,10 @@ async def test_switching_to_review_is_never_refused(path_id):
     """A due date is a passive reminder; active review is always allowed."""
     await _build(path_id)
     result = await MasteryModeTool().execute(
-        _mastery_path_id=path_id, _mastery_session_mode=STUDY, mode=REVIEW
+        _mastery_path_id=path_id,
+        _mastery_session_mode=STUDY,
+        _mastery_knowledge_point_id=f"{path_id}_m0_kp0",
+        mode=REVIEW,
     )
     assert result.success is True
     assert json.loads(result.content)["mode"] == REVIEW
@@ -297,16 +371,16 @@ async def test_revising_is_reachable_from_a_lesson_by_switching(path_id):
         )
     ).success is False
 
-    bound: list[str] = []
-    await MasteryModeTool().execute(
+    opened = await MasteryModeTool().execute(
         _mastery_path_id=path_id,
         _mastery_session_mode=STUDY,
-        _bind_active_mode=bound.append,
+        _mastery_knowledge_point_id=f"{path_id}_m0_kp0",
         mode=OUTLINE,
     )
+    assert json.loads(opened.content)["mode"] == OUTLINE
     revised = await MasteryReviseTool().execute(
         _mastery_path_id=path_id,
-        _mastery_session_mode=bound[-1],
+        _mastery_session_mode=OUTLINE,
         module_id=module_id,
         remove=[f"{path_id}_m0_kp1"],
     )

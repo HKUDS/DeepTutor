@@ -67,12 +67,17 @@ function deferred<T>() {
   });
   return { promise, resolve, reject };
 }
-const topic = (pathId: string) => ({
+const topic = (pathId: string, knowledgePoints = 0) => ({
   path_id: pathId,
   sources: [],
   map: {
     modules: [],
-    counts: { mastered: 0, learning: 0, new: 0, total: 0 },
+    counts: {
+      mastered: 0,
+      learning: 0,
+      new: knowledgePoints,
+      total: knowledgePoints,
+    },
   },
 });
 function Harness({
@@ -111,6 +116,7 @@ function Harness({
     pathId,
     topicReady: Boolean(session.topic),
     hasMessages: state.messages.length > 0,
+    hasOutline: (session.topic?.map.counts.total ?? 0) > 0,
     sessionLoading: session.sessionLoading,
     sessionError: session.sessionError,
     sessionMode: session.sessionMode,
@@ -178,6 +184,18 @@ describe("mastery opening binding", () => {
       ),
     );
     expect(starts()).toHaveLength(1);
+  });
+
+  it("does not re-ask for an outline that already exists", async () => {
+    // 修改大纲 lands on the path's one outline conversation. It already holds
+    // the sitting that built the outline, and sending "design the outline"
+    // there would tell the tutor to rebuild a map the learner agreed to.
+    mocks.topic.mockResolvedValue(topic("topic_active", 3));
+    render(view("topic_active"));
+    await waitFor(() =>
+      expect(screen.getByTestId("loading")).toHaveTextContent("false"),
+    );
+    expect(starts()).toHaveLength(0);
   });
 
   it("ignores a delayed topic after switching paths", async () => {

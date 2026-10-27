@@ -11,6 +11,10 @@ import time
 from typing import Any
 
 from deeptutor.runtime.coordination import RuntimeCoordinator
+from deeptutor.services.session.orphan_turns import (
+    ORPHANED_SUBMISSION_ERROR,
+    reap_orphaned_turn,
+)
 from deeptutor.services.session.protocol import ActiveTurnConflict, SessionStoreProtocol
 from deeptutor.services.session.turn_runtime import TurnRuntimeManager
 from deeptutor.services.workspace.activity import workspace_writer
@@ -504,69 +508,18 @@ class TurnApplicationService:
         ``_begin_turn_sync`` counts as active, so any of them left behind by a
         lost worker blocks the whole session, not just the card on screen.
 
-        Mirrors :class:`TurnRecoveryService`'s terminal write (CAS on status
-        with the fencing token, ``worker_lost`` failure code, error+done
-        events) so whatever raced us wins cleanly and subscribed clients
-        stop deterministically. Returns ``True`` when a zombie was reaped.
+        The terminal write itself lives in :mod:`~deeptutor.services.session.
+        orphan_turns` because the mastery path lease has to make the identical
+        write from a different layer; sharing it keeps the two from disagreeing
+        about whether a turn is still alive.
         """
         store, _runtime = self._resolve()
-        try:
-            turn = await store.get_turn(turn_id)
-        except Exception:
-            return False
-        if turn is None or str(turn.get("status") or "") not in {
-            "queued",
-            "running",
-            "waiting_input",
-        }:
-            return False
-        error = "The worker executing this turn was lost; resend your answer as a new message"
-        metadata = {
-            "turn_terminal": True,
-            "status": "failed",
-            "error_code": "worker_lost",
-            "retryable": True,
-        }
-        reap_event: dict[str, Any] = {
-            "type": "error",
-            "source": "turn_recovery",
-            "stage": "recovery",
-            "content": error,
-            "metadata": metadata,
-            "session_id": turn.get("session_id", ""),
-        }
-        done_event: dict[str, Any] = {
-            "type": "done",
-            "source": "turn_recovery",
-            "stage": "recovery",
-            "content": "",
-            "metadata": {"status": "failed", "error_code": "worker_lost", "retryable": True},
-            "session_id": turn.get("session_id", ""),
-        }
-        try:
-            transitioned = await store.transition_turn(
-                turn_id,
-                "failed",
-                expected_status=str(turn["status"]),
-                fencing_token=int(turn.get("fencing_token") or 0),
-                error=error,
-                failure_code="worker_lost",
-                retryable=True,
-            )
-            if not transitioned:
-                # A recovery pass or a late executor write beat us to it.
-                return False
-            await store.append_events(
-                turn_id,
-                [reap_event, done_event],
-                fencing_token=int(turn.get("fencing_token") or 0),
-            )
-        except Exception:
-            return False
-        for event in (reap_event, done_event):
-            with contextlib.suppress(Exception):
-                await self.coordinator.publish_event(turn_id, event)
-        return True
+        return await reap_orphaned_turn(
+            store,
+            self.coordinator,
+            turn_id,
+            error=ORPHANED_SUBMISSION_ERROR,
+        )
 
     async def submit_user_input(
         self,

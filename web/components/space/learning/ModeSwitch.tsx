@@ -29,12 +29,15 @@ export function ModeSwitch({
   mode,
   onSelect,
   disabled = false,
+  modes = MASTERY_MODES,
   className = "",
 }: {
   mode: MasteryMode;
   onSelect: (next: MasteryMode) => void;
   /** A turn is live: its tool surface was decided when it started. */
   disabled?: boolean;
+  /** Which phases this conversation can switch between. */
+  modes?: readonly MasteryMode[];
   className?: string;
 }) {
   const { t } = useTranslation();
@@ -45,7 +48,7 @@ export function ModeSwitch({
       aria-label={t("Conversation mode")}
       className={`flex items-center gap-0.5 rounded-lg bg-[var(--muted)]/60 p-0.5 ${className}`}
     >
-      {MASTERY_MODES.map((candidate) => {
+      {modes.map((candidate) => {
         const active = candidate === mode;
         return (
           <Tooltip

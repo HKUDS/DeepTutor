@@ -114,6 +114,25 @@ describe("Mastery teaching visibility", () => {
     expect(await screen.findByText(question.prompt)).toBeVisible();
   });
 
+  it("folds an earlier lesson when a later passage restates it", async () => {
+    const shared = "Layer one separates a fixed workflow from an agent loop that chooses its own next tool. Layer two is the stop signal: a final answer, a tool error, or a step limit. Layer three is the fallback when quality or budget runs out.";
+    const first = `Three checks passed. ${shared}`;
+    const second = `Those three checks all passed, so the boundary is clear. ${shared}`;
+    const events = [
+      event("content", first, { call_id: "round-1", call_kind: "agent_loop_round" }),
+      event("tool_call", "mastery_note_explained", { call_id: "note-1", tool_name: "mastery_note_explained", assistant_content_offset: first.length }),
+      event("tool_result", "Recorded", { call_id: "note-1", tool_name: "mastery_note_explained" }),
+      event("tool_call", "mastery_status", { call_id: "status-1", tool_name: "mastery_status", assistant_content_offset: first.length }),
+      event("tool_result", "ok", { call_id: "status-1", tool_name: "mastery_status" }),
+      event("content", second, { call_id: "round-2", call_kind: "agent_loop_round" }),
+      event("done", "", { status: "completed" }),
+    ];
+    render(<AssistantMessage msg={{ content: first + second, capability: "mastery_path", events }} />);
+    expect(screen.getByText(/Those three checks all passed/)).toBeVisible();
+    const earlier = screen.queryByText(/Three checks passed/);
+    if (earlier) expect(earlier).not.toBeVisible();
+  });
+
   it("does not restore a rejected answer as visible teaching", async () => {
     const rejected = "A rejected explanation that must not become lesson text.";
     const events = [

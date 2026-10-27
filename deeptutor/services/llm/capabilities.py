@@ -533,6 +533,31 @@ def is_forced_tool_choice_disabled_at_runtime(
     return (binding.lower(), model.lower()) in _RUNTIME_DISABLED_FORCED_TOOL_CHOICE
 
 
+# Runtime cache for endpoints that refuse to be told to stop reasoning.
+# Keyed by (binding_lower, model_lower), populated when a request carrying
+# ``reasoning: {"effort": "none"}`` is rejected ("Reasoning is mandatory for
+# this endpoint and cannot be disabled"). Recorded so the next call omits the
+# parameter instead of paying for a rejected request first.
+_RUNTIME_DISABLED_REASONING_OFF: set[tuple[str, str]] = set()
+
+
+def disable_reasoning_off_at_runtime(binding: str | None, model: str | None) -> None:
+    """Mark a (binding, model) pair as unable to turn reasoning off."""
+    if not binding or not model:
+        return
+    _RUNTIME_DISABLED_REASONING_OFF.add((binding.lower(), model.lower()))
+
+
+def is_reasoning_off_disabled_at_runtime(
+    binding: str | None,
+    model: str | None,
+) -> bool:
+    """Whether this pair was recorded by :func:`disable_reasoning_off_at_runtime`."""
+    if not binding or not model:
+        return False
+    return (binding.lower(), model.lower()) in _RUNTIME_DISABLED_REASONING_OFF
+
+
 def supports_response_format(binding: str, model: str | None = None) -> bool:
     """
     Check if the provider/model supports response_format parameter.

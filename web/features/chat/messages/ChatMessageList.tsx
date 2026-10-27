@@ -390,6 +390,29 @@ type MessageBlock =
   | { kind: "answer"; key: string; segment: MessageSegment };
 
 /**
+ * Whether a later passage rewrites an earlier lesson.
+ *
+ * A short follow-up ("apply that") does not count: the lesson before a
+ * bookkeeping tool has to stay on screen. A second long passage that
+ * reuses the earlier wording is the same lesson written again after the
+ * tools, and showing both is what the learner reads as a repeated answer.
+ */
+function restatesLesson(earlier: string, later: string): boolean {
+  const normalize = (value: string) => value.replace(/\s+/g, "");
+  const previous = normalize(earlier);
+  const next = normalize(later);
+  if (previous.length < 80 || next.length < 160) return false;
+  const size = 12;
+  let hits = 0;
+  let samples = 0;
+  for (let index = 0; index + size <= previous.length; index += 6) {
+    samples += 1;
+    if (next.includes(previous.slice(index, index + size))) hits += 1;
+  }
+  return samples > 0 && hits / samples >= 0.45;
+}
+
+/**
  * Split a message into its blocks.
  *
  * A mastery question ends its turn, so the prose introducing it is teaching,
@@ -425,6 +448,19 @@ function buildMessageBlocks(
   // when a turn ends with bookkeeping without posing an assessment at all.
   // Explicitly retracted prose is already a trace, not a text segment.
   if (isMastery) preserveTeachingBefore(segments.length);
+  if (isMastery) {
+    const prose = segments.flatMap((segment, index) =>
+      segment.kind === "text" ? [{ index, text: segment.text }] : [],
+    );
+    for (const item of prose) {
+      if (!teaching.has(item.index)) continue;
+      const rewritten = prose.some(
+        (later) =>
+          later.index > item.index && restatesLesson(item.text, later.text),
+      );
+      if (rewritten) teaching.delete(item.index);
+    }
+  }
   const blocks: MessageBlock[] = [];
   let run: MessageSegment[] = [];
   const flush = () => {
@@ -2072,6 +2108,8 @@ export const ChatMessageList = memo(function ChatMessageList({
   onReleaseMessageTrace,
   deferPendingAskUser = false,
   deferPendingMasteryQuestion = false,
+  outlineAddition,
+  lectureRevision,
 }: {
   messages: ChatMessageItem[];
   isStreaming: boolean;
@@ -2145,6 +2183,10 @@ export const ChatMessageList = memo(function ChatMessageList({
   deferPendingAskUser?: boolean;
   /** See ``AssistantMessage``. */
   deferPendingMasteryQuestion?: boolean;
+  outlineAddition?: (message: ChatMessageItem) => ReactNode;
+  /** A lecture change a reply proposed. Same one-shot shape as
+   *  ``outlineAddition``: the card applies it, the transcript never does. */
+  lectureRevision?: (message: ChatMessageItem) => ReactNode;
 }) {
   const { t } = useTranslation();
   // Visible path: when no branching has happened the result is identical
@@ -2492,6 +2534,8 @@ export const ChatMessageList = memo(function ChatMessageList({
                 deferPendingMasteryQuestion={deferPendingMasteryQuestion}
               />
             </InlineFileCardProvider>
+            {outlineAddition ? outlineAddition(msg) : null}
+            {lectureRevision ? lectureRevision(msg) : null}
             <GeneratedFileCards
               attachments={msg.attachments ?? []}
               events={msg.events}

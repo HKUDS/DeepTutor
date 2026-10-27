@@ -97,6 +97,16 @@ class TurnExecutor:
             skip: dict[str, Any],
         ) -> dict[str, Any] | None: ...
 
+        async def _roll_mastery_lecture_draft(
+            self,
+            execution: _TurnExecution,
+            *,
+            path_id: str,
+            mode: str,
+            knowledge_point_id: str,
+            events: list[dict[str, Any]],
+        ) -> dict[str, Any] | None: ...
+
         async def _publish_mastery_path_change(
             self,
             execution: _TurnExecution,
@@ -938,6 +948,12 @@ class TurnExecutor:
                 runtime=TurnRuntimeContext(
                     model_history=getattr(history_result, "model_history", None),
                     previous_model_turn=getattr(history_result, "previous_model_turn", None),
+                    stored_results=dict(getattr(history_result, "stored_results", None) or {}),
+                    checkpoint_anchor=str(
+                        new_user_message_id
+                        or payload.get("regenerated_from_message_id")
+                        or ""
+                    ),
                     turn_id=turn_id,
                     wait_for_user_reply=_wait_for_user_reply,
                     subagent_consult_budget=payload.get("subagent_consult_budget"),
@@ -976,6 +992,9 @@ class TurnExecutor:
                     # to reach the turn context, not just the payload. Raw:
                     # "never recorded" is a distinct state from any mode.
                     "mastery_session_mode": payload.get("mastery_session_mode"),
+                    "mastery_knowledge_point_id": str(
+                        payload.get("mastery_knowledge_point_id") or ""
+                    ).strip(),
                     # The ruling this turn opened with, when it opened with one.
                     # The tutor reads it as a seed rather than grading again.
                     "mastery_card_grade": mastery_card_grade or {},
@@ -1026,6 +1045,31 @@ class TurnExecutor:
                     },
                 },
             )
+
+            from deeptutor.agents.loop.stored_results import (
+                clear_loop_checkpoint,
+                read_loop_checkpoint,
+            )
+
+            if is_regenerate:
+                checkpoint = read_loop_checkpoint(session_id)
+                resumed = checkpoint.get("model_turn") if isinstance(checkpoint, dict) else None
+                stored_anchor = str(checkpoint.get("anchor") or "") if isinstance(checkpoint, dict) else ""
+                same_turn = not stored_anchor or stored_anchor == context.runtime.checkpoint_anchor
+                if same_turn and isinstance(resumed, dict) and resumed.get("messages"):
+                    context.runtime.resume_model_turn = resumed
+                    bodies = resumed.get("stored_results")
+                    if isinstance(bodies, dict):
+                        context.runtime.stored_results.update(
+                            {
+                                key: value
+                                for key, value in bodies.items()
+                                if isinstance(key, str) and isinstance(value, str)
+                            }
+                        )
+            else:
+                # A new question does not continue the previous failed turn.
+                clear_loop_checkpoint(session_id)
 
             pending_done_event: StreamEvent | None = None
             async for event in self.turn_engine.execute(context):
@@ -1241,6 +1285,29 @@ class TurnExecutor:
                     logger.warning(
                         "Session title generation failed for turn %s", turn_id, exc_info=True
                     )
+            # A study turn that taught something owes review a lecture.
+            #
+            # Post-DONE on purpose. Writing the lecture is a full-document LLM
+            # call, and doing it before DONE held the learner's composer shut
+            # for many seconds after the answer they asked for had finished.
+            # The client learns the draft exists by reading the lecture from
+            # the API once the turn settles, so nothing is lost by finishing
+            # the turn first — and the assistant row and its events are both
+            # persisted by this point, so the draft still covers this turn.
+            if (
+                workspace_mode == WORKSPACE_MODE_MASTERY
+                and not execution.lease_lost
+                and turn_status == "completed"
+            ):
+                await self._roll_mastery_lecture_draft(
+                    execution,
+                    path_id=_mastery_path_id(payload.get("mastery_path_id")),
+                    mode=str(context.metadata.get("mastery_session_mode") or ""),
+                    knowledge_point_id=str(
+                        payload.get("mastery_knowledge_point_id") or ""
+                    ).strip(),
+                    events=assistant_events,
+                )
             # Flush once every terminal/post-turn event (DONE, and the title
             # ``session_meta`` above) has been published, not before: a
             # client that reconnects after this task's ``finally`` pops

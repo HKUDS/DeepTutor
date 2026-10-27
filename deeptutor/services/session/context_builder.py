@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, field
 import json
 import logging
@@ -190,6 +191,19 @@ def expand_message_context(message: dict[str, Any]) -> list[dict[str, Any]]:
     return expanded
 
 
+def _latest_model_turn(messages: list[dict[str, Any]]) -> dict[str, Any] | None:
+    return next(
+        (record for row in reversed(messages) if (record := model_turn(row)) is not None),
+        None,
+    )
+
+
+def _stored_results_for(
+    messages: list[dict[str, Any]], collect: Callable[..., Any]
+) -> dict[str, str]:
+    return collect([record for row in messages if (record := model_turn(row)) is not None])
+
+
 def format_messages_as_transcript(messages: list[dict[str, Any]]) -> str:
     lines: list[str] = []
     role_map = {
@@ -246,6 +260,7 @@ class ContextBuildResult:
     model_history: list[dict[str, Any]] | None = None
     previous_model_turn: dict[str, Any] | None = None
     history_sources: dict[str, str] = field(default_factory=dict)
+    stored_results: dict[str, str] = field(default_factory=dict)
 
 
 class _ContextSummaryAgent(BaseAgent):
@@ -284,6 +299,21 @@ class ContextBuilder:
             context_window=getattr(llm_config, "context_window", None),
             model=str(getattr(llm_config, "model", "") or ""),
             max_tokens=getattr(llm_config, "max_tokens", None),
+        )
+
+    def _replay(
+        self,
+        rows: list[dict[str, Any]],
+        summary: str = "",
+        route: dict[str, str] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Replay history, leaving oversized tool bodies in the session record."""
+        return replay_history(
+            rows,
+            summary,
+            route,
+            tool_page_chars=getattr(self, "_tool_page_chars", None),
+            language=getattr(self, "_replay_language", "en"),
         )
 
     def _history_budget(self, llm_config: LLMConfig) -> int:
@@ -357,7 +387,7 @@ class ContextBuilder:
             # Rebuild each group once, then find the longest fitting suffix.
             # Images are shared across turns: adding per-group costs overcounts
             # repeats, while replaying every growing tail is quadratic work.
-            replay_groups = [replay_history(group, route=route) for group in groups]
+            replay_groups = [self._replay(group, route=route) for group in groups]
             start, end = 0, len(groups) - 1
             while start < end:
                 middle = (start + end) // 2
@@ -393,7 +423,7 @@ class ContextBuilder:
         route: dict[str, str] | None = None,
     ) -> int:
         if any(model_turn(row) is not None for row in messages):
-            replayed = replay_history(messages, route=route)
+            replayed = self._replay(messages, route=route)
             tokens = _count_projected_model_tokens(replayed)
             # The answer loop appends the summary as a trailing snapshot, but
             # only when it differs from the revision already replayed with the
@@ -642,6 +672,12 @@ class ContextBuilder:
         budget = self._history_budget(llm_config)
         summary_budget = self._summary_budget(budget, llm_config)
         recent_budget = self._recent_budget(budget)
+        self._replay_language = language
+        from deeptutor.agents.loop.stored_results import observation_char_budget
+
+        self._tool_page_chars = observation_char_budget(
+            self._effective_context_window(llm_config)
+        )
 
         stored_summary = str(session.get("compressed_summary", "") or "").strip()
         summary_up_to_msg_id = session.get("summary_up_to_msg_id", 0) or 0
@@ -668,13 +704,24 @@ class ContextBuilder:
         route = (
             {"provider": binding, "model": llm_config.model} if isinstance(binding, str) else None
         )
+        # Replaying a model turn deep-copies its stored tool bodies. On this
+        # session that copy is tens of megabytes; doing it on the event loop
+        # starves the turn lease and the UI stays on "reasoning" after the
+        # worker is cancelled. The thread keeps the loop free to renew.
         current_history = self._build_history(stored_summary, unsummarized)
-        current_tokens = self._model_tokens(unsummarized, stored_summary, route)
-        previous_model_turn = next(
-            (record for row in reversed(messages) if (record := model_turn(row)) is not None),
-            None,
+        current_tokens = await asyncio.to_thread(
+            self._model_tokens, unsummarized, stored_summary, route
+        )
+        previous_model_turn = await asyncio.to_thread(_latest_model_turn, messages)
+        from deeptutor.agents.loop.stored_results import collect_stored_results
+
+        stored_results = await asyncio.to_thread(
+            _stored_results_for, messages, collect_stored_results
         )
         if current_tokens <= budget:
+            model_history = await asyncio.to_thread(
+                self._replay, unsummarized, stored_summary, route
+            )
             return ContextBuildResult(
                 conversation_history=current_history,
                 conversation_summary=stored_summary,
@@ -682,12 +729,13 @@ class ContextBuilder:
                 events=[],
                 token_count=current_tokens,
                 budget=budget,
-                model_history=replay_history(unsummarized, stored_summary, route),
+                model_history=model_history,
                 previous_model_turn=previous_model_turn,
+                stored_results=stored_results,
             )
 
-        older_unsummarized, recent_messages = self._select_recent_messages(
-            unsummarized, recent_budget, route=route
+        older_unsummarized, recent_messages = await asyncio.to_thread(
+            self._select_recent_messages, unsummarized, recent_budget, route
         )
         # Everything not retained verbatim: previously summarized messages
         # plus the older unsummarized turns.
@@ -727,7 +775,7 @@ class ContextBuilder:
                     {"role": "system", "content": previous_model_turn["system"]},
                     *[
                         {key: value for key, value in message.items() if key != "_context_snapshot"}
-                        for message in replay_history(older_unsummarized, stored_summary, route)
+                        for message in self._replay(older_unsummarized, stored_summary, route)
                     ],
                 ],
                 "tools": previous_model_turn.get("tools"),
@@ -764,9 +812,14 @@ class ContextBuilder:
             new_summary = ""
             events = []
             # Keep private transcript/provider details out of diagnostics.
+            detail = ""
+            message = str(exc)
+            if message.startswith("Tutoring memory:"):
+                detail = f": {message[:200]}"
             logger.warning(
-                "Context condensation failed (%s); bounding recent history without advancing its watermark",
+                "Context condensation failed (%s%s); bounding recent history without advancing its watermark",
                 type(exc).__name__,
+                detail,
             )
 
         if summarize_ok and new_summary:
@@ -783,13 +836,9 @@ class ContextBuilder:
             # unsummarized turns as fit; nothing is marked as summarized, so
             # the next turn retries with the full material.
             retained_rows = unsummarized
-        retained_groups = history_groups(retained_rows)
-        while (
-            len(retained_groups) > 1
-            and self._model_tokens(retained_rows, stored_summary, route) > budget
-        ):
-            retained_groups.pop(0)
-            retained_rows = [row for group in retained_groups for row in group]
+        retained_rows, token_count, model_history = await asyncio.to_thread(
+            self._fit_retained_history, retained_rows, stored_summary, route, budget
+        )
         final_history = self._build_history(stored_summary, retained_rows)
 
         final_text = build_history_text(final_history)
@@ -798,10 +847,31 @@ class ContextBuilder:
             conversation_summary=stored_summary,
             context_text=final_text,
             events=events,
-            token_count=self._model_tokens(retained_rows, stored_summary, route),
+            token_count=token_count,
             budget=budget,
-            model_history=replay_history(retained_rows, stored_summary, route),
+            model_history=model_history,
             previous_model_turn=previous_model_turn,
+            stored_results=stored_results,
+        )
+
+    def _fit_retained_history(
+        self,
+        retained_rows: list[dict[str, Any]],
+        stored_summary: str,
+        route: dict[str, str] | None,
+        budget: int,
+    ) -> tuple[list[dict[str, Any]], int, list[dict[str, Any]]]:
+        retained_groups = history_groups(retained_rows)
+        while (
+            len(retained_groups) > 1
+            and self._model_tokens(retained_rows, stored_summary, route) > budget
+        ):
+            retained_groups.pop(0)
+            retained_rows = [row for group in retained_groups for row in group]
+        return (
+            retained_rows,
+            self._model_tokens(retained_rows, stored_summary, route),
+            self._replay(retained_rows, stored_summary, route),
         )
 
 

@@ -1,14 +1,16 @@
 "use client";
 
 import { scopedUrl } from "@/lib/workspace-scope";
-import { MASTERY_HOME, masterySessionsRoute, masteryTopicRoute } from "@/lib/learning-routes";
+import { MASTERY_HOME, masterySessionRoute as openPlacedSession, masterySessionsRoute, masteryTopicRoute, withKnowledgePoint } from "@/lib/learning-routes";
 
 import { browserStorage } from "@/shared/storage";
 import Tooltip from "@/shared/ui/Tooltip";
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
+  AlertCircle,
   ArrowLeft,
   ArrowRight,
   BookmarkPlus,
@@ -35,6 +37,7 @@ import {
   OutlineDecisionDialog,
 } from "@/components/space/learning/OutlineDecisionDialog";
 import { latestOpenMasteryQuestion } from "@/lib/mastery-question";
+import { localizedRejectionReason } from "@/lib/submission-rejection";
 import { ChatViewerBridges } from "@/components/chat/home/ChatViewerBridges";
 import { buildSessionActivity } from "@/components/chat/home/SessionActivityPanel";
 import { TurnNavigator } from "@/components/chat/home/TurnNavigator";
@@ -51,41 +54,54 @@ import { useMasteryStudySession } from "@/hooks/useMasteryStudySession";
 import { useMeasuredHeight } from "@/hooks/useMeasuredHeight";
 import { useResearchOutlineContinuation } from "@/hooks/useResearchOutlineContinuation";
 import {
+  commitOutlineAddition,
   fetchMasteryAskHint,
-  setMasterySessionMode as setMasterySessionMode_api,
+  resolveMasterySession,
   type MasteryTopic,
 } from "@/lib/learning-api";
+import { isReviewAvailable, isRoutedStudySessionReady, modeSwitchTarget } from "@/lib/mastery-study-route";
+import { lectureRevisionOnMessage } from "@/lib/lecture-preview";
+import {
+  modeHandoffFingerprint,
+  outlinePreviewOnMessage,
+  shouldFollowModeHandoff,
+} from "@/lib/outline-preview";
+import { getSession } from "@/lib/session-api";
 import { notify } from "@/lib/notifications";
 import { copyText } from "@/lib/clipboard";
 import { consumePendingPrompt } from "@/lib/pending-prompt";
 import { buildChatOutline, scrollToChatTurn } from "@/lib/chat-outline";
 import { buildConversationNotebookSave } from "@/lib/conversation-notebook-save";
-import {
-  masterySessionRoute,
-  type MasteryMode,
-} from "@/lib/mastery-mode";
+import { type MasteryMode } from "@/lib/mastery-mode";
 import { workspaceActionNeedsConfiguration } from "@/lib/workspace-mode";
 
 import { ActivityHeader } from "@/components/activity";
 
+import { LectureDraftCard } from "./LectureDraftCard";
+import { LectureReaderPane } from "./LectureReaderPane";
+import { LectureRevisionCard } from "./LectureRevisionCard";
+import { ReadingPanelSeparator } from "@/components/reading/workspace/ReadingPanelSeparator";
 import { ModeSwitch } from "./ModeSwitch";
+import { viewedKnowledgePoint } from "./viewed-point";
 import { topicDisplayName, type Translate } from "./format";
 import { LevelUpCelebration } from "./LevelUpCelebration";
-import { MasteryComposer } from "./MasteryComposer";
+import { MasteryComposer, STUDY_COMPOSER_WIDTH } from "./MasteryComposer";
 import { ProgressRing } from "./ProgressRing";
 import { StudyOutline } from "./StudyOutline";
+import { useMasteryLectureLayout } from "./useMasteryLectureLayout";
 
 const OUTLINE_STORAGE_KEY = "dt.mastery.outline";
 
 /**
- * How each kind of session presents itself, and what it opens with.
+ * How each kind of session presents itself.
  *
- * ``autoOpen`` is the message the screen sends on the learner's behalf. Only
- * the outline session has one, and it has one for a reason: arriving there is
- * not a choice the learner made from a menu — they pressed "design the outline
- * with the tutor" and were moved to a screen that, left alone, would sit empty
- * waiting for them to work out what to type. The work is already agreed; the
- * session should be doing it.
+ * The outline is the one mode with two jobs under one name. Opened on a goal
+ * that has no outline it is a *drafting* sitting; opened on a goal that has
+ * one — which is what 修改大纲 does — it is an *editing* sitting, and every
+ * line on the screen has to say which. Telling someone who came to change one
+ * knowledge point to "design your outline" invites a rebuild of a map they
+ * already agreed to, and offering "draft an outline from the materials I
+ * chose" as a way in offers exactly that.
  */
 const MODE_PRESENTATION: Record<
   MasteryMode,
@@ -95,6 +111,10 @@ const MODE_PRESENTATION: Record<
     /** The empty conversation's heading and the line under it. */
     emptyTitleKey: string;
     emptyBodyKey: string;
+    /** The same two, for an outline that already exists and is being edited. */
+    reviseTitleKey?: string;
+    reviseBodyKey?: string;
+    reviseNoteKey?: string;
   }
 > = {
   outline: {
@@ -102,6 +122,11 @@ const MODE_PRESENTATION: Record<
     emptyTitleKey: "Design your outline",
     emptyBodyKey:
       "The tutor reads the materials you chose, asks what you already know, and proposes a route you can change.",
+    reviseTitleKey: "Change your outline",
+    reviseBodyKey:
+      "Say what should be different — a point to add, one that is too hard, the order of two modules. The tutor revises the map and keeps the rest.",
+    reviseNoteKey:
+      "This session changes the outline. Nothing here is taught or tested.",
   },
   study: {
     noteKey: "",
@@ -148,6 +173,23 @@ const STARTERS: Record<
 };
 
 /**
+ * Ways into an outline that already exists.
+ *
+ * None of the drafting starters belong here: "draft an outline" over a map the
+ * learner has been studying is a request to start over. These name the edits
+ * people actually make — a point that is wrong, one that is missing, an order
+ * that stops making sense — and each is a one-tap way to say so.
+ */
+const OUTLINE_REVISION_STARTERS: readonly {
+  icon: typeof Compass;
+  key: string;
+}[] = [
+  { icon: Compass, key: "Change what one knowledge point covers" },
+  { icon: Sparkles, key: "Add a knowledge point I am missing" },
+  { icon: Flag, key: "Reorder the modules on this outline" },
+];
+
+/**
  * Where the tutor is. The id matters as much as the name: the outline
  * highlights by id, so two knowledge points that happen to share a name
  * can no longer both light up.
@@ -171,19 +213,83 @@ function currentWaypoint(topic: MasteryTopic, fallback: string, t: Translate) {
   };
 }
 
+function OutlineAdditionButton({
+  modules,
+  defaultModuleId,
+  onConfirm,
+}: {
+  modules: { id: string; name: string }[];
+  defaultModuleId: string;
+  onConfirm: (moduleId: string) => Promise<void>;
+}) {
+  const { t } = useTranslation();
+  const [moduleId, setModuleId] = useState(defaultModuleId);
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
+  if (done) return null;
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-2">
+      <select
+        value={moduleId}
+        onChange={(event) => setModuleId(event.target.value)}
+        className="h-8 rounded-lg border border-[var(--input)] bg-[var(--card)] px-2 text-[12px]"
+        aria-label={t("Module {{n}}", { n: "" })}
+      >
+        {modules.map((module, index) => (
+          <option key={module.id} value={module.id}>
+            {t("Module {{n}}", { n: index + 1 })} {module.name}
+          </option>
+        ))}
+      </select>
+      <button
+        type="button"
+        disabled={busy || !moduleId}
+        onClick={() => {
+          setBusy(true);
+          void onConfirm(moduleId)
+            .then(() => setDone(true))
+            .catch((reason: unknown) => {
+              notify(
+                reason instanceof Error ? reason.message : t("Update failed"),
+                { tone: "error" },
+              );
+            })
+            .finally(() => setBusy(false));
+        }}
+        className="h-8 rounded-lg border border-[var(--border)] px-2.5 text-[12px] font-medium hover:bg-[var(--muted)] disabled:opacity-40"
+      >
+        {busy ? t("Saving...") : t("Add as an outline knowledge point")}
+      </button>
+    </div>
+  );
+}
+
 export function MasteryStudy({
   pathId,
   routeSessionId,
   courseId = "",
   requestedMode = "study",
+  hintedPointId = "",
 }: {
   pathId: string;
   routeSessionId?: string;
   courseId?: string;
   /** What a conversation opened here is for; ignored for an existing one. */
   requestedMode?: MasteryMode;
+  /** Point this navigation opened, used until the session preference arrives. */
+  hintedPointId?: string;
 }) {
   const { t } = useTranslation();
+  const router = useRouter();
+  const [boundPointId, setBoundPointId] = useState<string | null>(
+    hintedPointId.trim() || null,
+  );
+  const handedOffRef = useRef("");
+  const handoffBaselineRef = useRef("");
+  useEffect(() => {
+    handedOffRef.current = "";
+    handoffBaselineRef.current = "";
+  }, [routeSessionId]);
   const {
     state,
     sendMessage,
@@ -197,7 +303,6 @@ export function MasteryStudy({
     switchBranch,
     loadMessageTrace,
     releaseMessageTrace,
-    setMasterySessionMode,
   } = useChatStateAdapter();
   const confirmResearchOutline = useResearchOutlineContinuation();
   const {
@@ -213,21 +318,29 @@ export function MasteryStudy({
     courseId,
     requestedMode,
   );
+  const sessionReady = isRoutedStudySessionReady({
+    routeSessionId,
+    adapterSessionId: state.sessionId,
+    sessionLoading,
+  });
   const hasMessages = state.messages.length > 0;
   const outlineDecision = useMemo(
     () =>
-      latestPendingAskUser(state.messages, {
-        streaming: state.isStreaming,
-      }),
-    [state.messages, state.isStreaming],
+      sessionReady
+        ? latestPendingAskUser(state.messages, {
+            streaming: state.isStreaming,
+          })
+        : null,
+    [sessionReady, state.messages, state.isStreaming],
   );
   const proseDecision = useMemo(() => {
-    if (outlineDecision || state.isStreaming) return null;
+    if (!sessionReady || outlineDecision || state.isStreaming) return null;
     return pendingProseDecision(state.messages);
-  }, [outlineDecision, state.isStreaming, state.messages]);
+  }, [outlineDecision, sessionReady, state.isStreaming, state.messages]);
   const openQuestion = useMemo(
-    () => latestOpenMasteryQuestion(state.messages),
-    [state.messages],
+    () =>
+      sessionReady ? latestOpenMasteryQuestion(state.messages) : null,
+    [sessionReady, state.messages],
   );
   const proseDecisionCard = useMemo<AskUserCardData | null>(() => {
     if (!proseDecision) return null;
@@ -406,10 +519,19 @@ export function MasteryStudy({
   // meanwhile — this only ever replaces a placeholder, so a slow or failed
   // call costs nothing but the offer.
   const [askHint, setAskHint] = useState("");
+  const hintSessionRef = useRef(state.sessionId ?? "");
   useEffect(() => {
     if (state.isStreaming || sessionLoading || sessionError) return;
+    const sessionId = state.sessionId ?? "";
+    // A hint written for another point's conversation must not stay in the
+    // box while this one is still fetching its own question.
+    if (hintSessionRef.current !== sessionId) {
+      hintSessionRef.current = sessionId;
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setAskHint("");
+    }
     let cancelled = false;
-    void fetchMasteryAskHint(pathId, state.sessionId ?? "")
+    void fetchMasteryAskHint(pathId, sessionId)
       .then((hint) => {
         if (!cancelled) setAskHint(hint);
       })
@@ -550,6 +672,7 @@ export function MasteryStudy({
     pathId,
     topicReady: Boolean(topic),
     hasMessages,
+    hasOutline: (topic?.map.counts.total ?? 0) > 0,
     sessionLoading,
     sessionError,
     sessionMode,
@@ -561,35 +684,180 @@ export function MasteryStudy({
   // move the tutor makes with ``mastery_mode``, through the same admission
   // rule — so a refusal reads the same whoever asked for it.
   const [modeBusy, setModeBusy] = useState(false);
-  const changeMode = useCallback(
-    (next: MasteryMode) => {
-      const sessionId = state.sessionId;
-      if (!sessionId) {
-        // Nothing has been said yet, so there is no conversation to record it
-        // on. Keeping it locally is enough: the first turn carries it.
-        setMasterySessionMode(next);
-        return;
-      }
+  // Navigation itself, without the busy flag: an effect that advances the
+  // learner to the next point has no button to disable, and setting state in
+  // an effect body is a cascading render the learner pays for.
+  //
+  // Every phase is a conversation of its own: the outline sits on the path,
+  // study and review on a knowledge point. Switching phase therefore means
+  // opening that conversation, never restyling the one on screen — an outline
+  // edit is a different sitting from the lesson, and must not overwrite it.
+  const navigateToPlaced = useCallback(
+    (mode: MasteryMode, pointId = "") => {
+      if (mode !== "outline" && !pointId) return Promise.resolve();
+      // The point being left, when this is a departure and a study session to
+      // save it from. The same rule the tutor's ``mastery_mode`` applies: a
+      // draft nobody pressed the button on is still better saved than lost,
+      // and it is what review is about to show. Switching study -> review on
+      // one point is not a departure, so nothing is confirmed for it. Nor is
+      // stepping into the outline conversation: the learner is going to look
+      // at the map, not to close the lecture they were reading.
+      const leaving =
+        mode !== "review" || !pointId || pointId === boundPointId
+          ? ""
+          : (boundPointId ?? "");
+      return resolveMasterySession(pathId, mode, pointId, leaving).then((placed) => {
+        if (placed.session_id && placed.session_id !== state.sessionId) {
+          router.push(
+            withKnowledgePoint(
+              openPlacedSession(pathId, placed.session_id),
+              placed.knowledge_point_id,
+            ),
+          );
+        }
+      });
+    },
+    [boundPointId, pathId, router, state.sessionId],
+  );
+  const openPlaced = useCallback(
+    (mode: MasteryMode, pointId = "") => {
+      if (mode !== "outline" && !pointId) return;
       setModeBusy(true);
-      void setMasterySessionMode_api(pathId, sessionId, next)
-        .then(() => setMasterySessionMode(next))
+      void navigateToPlaced(mode, pointId)
         .catch((reason: unknown) => {
           notify(
-            reason instanceof Error
-              ? reason.message
-              : t("The mode could not be changed"),
+            reason instanceof Error ? reason.message : t("The mode could not be changed"),
             { tone: "error" },
           );
         })
         .finally(() => setModeBusy(false));
     },
-    [pathId, setMasterySessionMode, state.sessionId, t],
+    [navigateToPlaced, t],
   );
+  const changeMode = useCallback(
+    (next: MasteryMode) => {
+      if (next === "outline") {
+        openPlaced("outline");
+        return;
+      }
+      if (!topic || boundPointId === null) return;
+      const points = topic.map.modules.flatMap((module) => module.knowledge_points);
+      // The mode switch never moves the learner to another point: each point
+      // has its own study and review transcript, and the outline is what
+      // changes which point those transcripts belong to.
+      const pointId =
+        modeSwitchTarget(points, boundPointId, topic.next.knowledge_point_id) ||
+        currentWaypoint(topic, topicDisplayName(topic, t), t).id;
+      openPlaced(next, pointId);
+    },
+    [boundPointId, openPlaced, t, topic],
+  );
+
+  const advancedCelebrationRef = useRef(0);
+  useEffect(() => {
+    if (!celebration || state.isStreaming || sessionMode !== "study" || !topic) return;
+    if (celebration.key === advancedCelebrationRef.current) return;
+    const viewed = boundPointId || celebration.pointId;
+    if (celebration.pointId !== viewed) return;
+    const ordered = topic.map.modules.flatMap((module) => module.knowledge_points);
+    const currentIndex = ordered.findIndex((point) => point.id === celebration.pointId);
+    const nextPoint = ordered.slice(currentIndex + 1).find((point) => point.status !== "mastered");
+    if (!nextPoint) return;
+    advancedCelebrationRef.current = celebration.key;
+    void navigateToPlaced("study", nextPoint.id).catch(() => {
+      // The learner stays where they are; the next session can be opened from
+      // the outline rail.
+    });
+  }, [boundPointId, celebration, navigateToPlaced, sessionMode, state.isStreaming, topic]);
+
+  useEffect(() => {
+    const sessionId = state.sessionId;
+    // The chat adapter can still be holding the previous conversation while
+    // this route's session is reopening. Reading that one would place the
+    // outline on the wrong knowledge point.
+    if (!sessionId || (routeSessionId && sessionId !== routeSessionId)) return;
+    const hint = hintedPointId.trim();
+    let cancelled = false;
+    void getSession(sessionId)
+      .then((detail) => {
+        if (cancelled) return;
+        const pointId = detail.preferences?.mastery_knowledge_point_id;
+        setBoundPointId(typeof pointId === "string" ? pointId : "");
+      })
+      .catch(() => {
+        if (!cancelled) setBoundPointId(hint || null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [hintedPointId, routeSessionId, state.sessionId]);
+
+  useEffect(() => {
+    // Cached transcripts still carry the last mastery_mode jump. Following
+    // that on open sends the learner back to a different knowledge point.
+    if (!sessionReady || state.isStreaming) return;
+    const found = modeHandoffFingerprint(state.messages, state.sessionId);
+    if (!handoffBaselineRef.current) {
+      handoffBaselineRef.current = found.fingerprint;
+      return;
+    }
+    if (
+      !shouldFollowModeHandoff({
+        ...found,
+        sessionId: state.sessionId,
+        baselineFingerprint: handoffBaselineRef.current,
+      }) ||
+      found.target === handedOffRef.current
+    ) {
+      return;
+    }
+    handedOffRef.current = found.target;
+    handoffBaselineRef.current = found.fingerprint;
+    router.push(openPlacedSession(pathId, found.target));
+  }, [pathId, router, sessionReady, state.isStreaming, state.messages, state.sessionId]);
 
   const copyAssistantMessage = useCallback(
     (content: string) => copyText(content),
     [],
   );
+
+  // Hooks have to run before the loading and not-found returns below, so the
+  // layout and the lecture cards are set up unconditionally and merely render
+  // nothing until a topic exists.
+  const topicModules: MasteryTopic["map"]["modules"] = topic?.map.modules ?? [];
+  const viewedPoint = topic
+    ? viewedKnowledgePoint(topicModules, boundPointId, sessionMode, currentWaypoint(topic, "", t))
+    : null;
+  // The review screen is the lecture beside the conversation about it. The
+  // layout only applies there: study is one column of teaching, and an empty
+  // lecture pane next to it would be a promise the screen cannot keep.
+  const lecturePoint = viewedPoint?.id || boundPointId || "";
+  const { gridAttach: lectureGridAttach, ...lectureLayout } = useMasteryLectureLayout({
+    enabled: sessionMode === "review" && Boolean(lecturePoint),
+  });
+  const reviewSplit = lectureLayout.split;
+
+  // The panes read the lecture independently, so a card applied in the chat
+  // has to tell the reader pane to refetch. A counter is the smallest thing
+  // that does that without lifting the whole lecture into this component.
+  const [lectureEpoch, setLectureEpoch] = useState(0);
+  const handleLectureConfirmed = useCallback(() => setLectureEpoch((value) => value + 1), []);
+
+  // The study draft is rolled after the assistant message is persisted, so it
+  // lands slightly after the stream ends. Bumping once per settled turn makes
+  // the card re-read the draft instead of waiting for a reload.
+  const [turnEpoch, setTurnEpoch] = useState(0);
+  const wasStreamingRef = useRef(false);
+  useEffect(() => {
+    if (state.isStreaming) {
+      wasStreamingRef.current = true;
+      return;
+    }
+    if (!wasStreamingRef.current) return;
+    wasStreamingRef.current = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setTurnEpoch((value) => value + 1);
+  }, [state.isStreaming]);
 
   if (!topic && !topicError) {
     return (
@@ -623,6 +891,20 @@ export function MasteryStudy({
   const waypoint = currentWaypoint(topic, displayName, t);
   const completed = topic.map.counts.mastered;
   const total = topic.map.counts.total;
+  // The outline sitting says which of its two jobs it is doing. "Nothing is
+  // being taught yet" is true of a first draft and wrong for an edit, and the
+  // learner reaching this screen from 修改大纲 is doing the second.
+  const editingOutline = sessionMode === "outline" && total > 0;
+  const modeNote = editingOutline
+    ? t(MODE_PRESENTATION.outline.reviseNoteKey ?? "")
+    : MODE_PRESENTATION[sessionMode].noteKey
+      ? t(MODE_PRESENTATION[sessionMode].noteKey)
+      : "";
+  const reviewAvailable = isReviewAvailable({
+    modules: topicModules,
+    pointId: lecturePoint,
+    sessionMode,
+  });
 
   return (
     <main className="mastery-shell flex h-full min-h-0 flex-col overflow-hidden">
@@ -645,29 +927,36 @@ export function MasteryStudy({
           <h1 className="shrink-0 truncate text-[14.5px] font-semibold tracking-[-0.01em] text-[var(--foreground)]">
             {displayName}
           </h1>
-          <span
-            aria-hidden="true"
-            className="hidden shrink-0 text-[var(--muted-foreground)]/40 sm:inline"
-          >
-            /
-          </span>
-          {sessionMode === "study" ? (
-            <span className="hidden min-w-0 truncate text-[12.5px] text-[var(--muted-foreground)] sm:inline">
-              {waypoint.name}
-            </span>
+          {sessionMode === "study" && viewedPoint ? (
+            <>
+              <span
+                aria-hidden="true"
+                className="hidden shrink-0 text-[var(--muted-foreground)]/40 sm:inline"
+              >
+                /
+              </span>
+              <span className="hidden min-w-0 truncate text-[12.5px] text-[var(--muted-foreground)] sm:inline">
+                {viewedPoint.name}
+              </span>
+            </>
           ) : null}
         </div>
 
-        {/* All three modes, with the live one marked. The mode decides which
-            tools the tutor may use, so it is the answer to "why can't it just
-            fix that for me" — and that question can only be asked by someone
-            who can see the other two exist. */}
-        <ModeSwitch
-          mode={sessionMode}
-          onSelect={changeMode}
-          disabled={state.isStreaming || modeBusy || sessionLoading}
-          className="hidden shrink-0 sm:flex"
-        />
+        {/* Study and review are the two conversations this page can be.
+            The outline is the button above the composer: it opens the path's
+            other session and does not restyle this one. Review appears only
+            once the point on screen is mastered — before that there is
+            nothing to consolidate, and the tutor refuses to examine it. A
+            lone "study" button is not a choice, so the whole control waits. */}
+        {reviewAvailable ? (
+          <ModeSwitch
+            mode={sessionMode}
+            modes={["study", "review"]}
+            onSelect={changeMode}
+            disabled={state.isStreaming || modeBusy || sessionLoading}
+            className="hidden shrink-0 sm:flex"
+          />
+        ) : null}
 
         <div className="flex shrink-0 items-center gap-1.5 pl-2">
           <Tooltip label={t("Save to Notebook")}>
@@ -707,18 +996,79 @@ export function MasteryStudy({
           className={`hidden shrink-0 overflow-y-auto border-r border-[var(--border)] bg-[var(--card)]/30 transition-[width] duration-200 xl:block ${
             outlineOpen ? "w-[252px] px-5 py-5" : "w-9"
           }`}
-        >
-          <StudyOutline
+        >          <StudyOutline
             topic={topic}
-            currentPointId={waypoint.id}
+            currentPointId={viewedPoint?.id ?? ""}
+            nextPointId={topic.next.knowledge_point_id}
             justMasteredId={celebration?.pointId ?? null}
             collapsed={!outlineOpen}
             onToggleCollapsed={toggleOutline}
+            onSelectPoint={(pointId) => {
+              // A mastered objective opens its review conversation — study
+              // has nothing left to work on there. Anything else opens study:
+              // review re-tests proven work, so an unmastered point has no
+              // review conversation worth opening.
+              const mastered = topic.map.modules.some((module) =>
+                module.knowledge_points.some(
+                  (point) => point.id === pointId && point.status === "mastered",
+                ),
+              );
+              openPlaced(mastered ? "review" : "study", pointId);
+            }}
           />
         </aside>
 
+        <div
+          ref={lectureGridAttach}
+          style={reviewSplit ? lectureLayout.gridStyle : undefined}
+          // Grid only while the lecture actually sits beside the chat. In
+          // study — and in review when the lecture is collapsed or stacked —
+          // this stays a plain flex column so the conversation keeps the full
+          // width it has everywhere else.
+          //
+          // `flex-1` stays on in both cases. Turning it into `flex-none`
+          // while splitting made the grid's own width indefinite, so the
+          // `1fr` chat track resolved to its max-content width and the whole
+          // container grew past its parent — the right edge of the
+          // conversation was clipped off-screen instead of sharing the row.
+          className={`flex min-h-0 min-w-0 flex-1 flex-col ${
+            reviewSplit ? "xl:grid" : ""
+          }`}
+        >
+          {reviewSplit ? (
+            <>
+              <LectureReaderPane
+                key={`split-${lectureEpoch}`}
+                pathId={pathId}
+                knowledgePointId={lecturePoint}
+                pointName={viewedPoint?.name ?? ""}
+                onLectureConfirmed={handleLectureConfirmed}
+              />
+              <ReadingPanelSeparator
+                label={t("Resize lecture")}
+                width={lectureLayout.lectureWidth}
+                min={lectureLayout.lectureMin}
+                max={lectureLayout.lectureMax}
+                direction={1}
+                onResize={lectureLayout.resize}
+              />
+            </>
+          ) : sessionMode === "review" && lecturePoint && !lectureLayout.collapsed ? (
+            // Too narrow for two columns. Stacked, collapsible: review still
+            // has its lecture, without stealing the width the conversation
+            // needs or silently hiding the thing the learner came to read.
+            <div className="h-[42%] min-h-[200px] shrink-0 border-b border-[var(--border)] xl:hidden">
+              <LectureReaderPane
+                key={`stack-${lectureEpoch}`}
+                pathId={pathId}
+                knowledgePointId={lecturePoint}
+                pointName={viewedPoint?.name ?? ""}
+                onLectureConfirmed={handleLectureConfirmed}
+              />
+            </div>
+          ) : null}
         <section className="relative flex min-w-0 flex-1 flex-col bg-[var(--background)]">
-          <div className="relative min-h-0 flex-1">
+          <div className="relative min-h-0 flex-1 basis-0">
             <div
               ref={messagesContainerRef}
               // Opts this scrollport into the global `overflow-anchor: none`
@@ -752,10 +1102,15 @@ export function MasteryStudy({
                     conversation rather than only on the empty state: the
                     question "have we started learning yet?" is asked by
                     someone scrolled halfway down, not by someone looking at a
-                    blank screen. */}
-                {MODE_PRESENTATION[sessionMode].noteKey && (
+                    blank screen.
+
+                    The outline's own line needs the same care for the opposite
+                    reason: an outline that already exists is being *edited*
+                    here, and telling its author "nothing is being taught yet"
+                    describes a first draft they are not writing. */}
+                {modeNote && (
                   <p className="mb-6 rounded-lg border border-[var(--border)] bg-[var(--secondary)] px-3.5 py-2.5 text-[12px] leading-5 text-[var(--muted-foreground)]">
-                    {t(MODE_PRESENTATION[sessionMode].noteKey)}
+                    {modeNote}
                   </p>
                 )}
                 {sessionLoading ? (
@@ -779,8 +1134,7 @@ export function MasteryStudy({
                       {t("Start a new session")}
                     </Link>
                   </div>
-                ) : !hasMessages ? (
-                  // Reached only when nothing was sent for the learner — a
+                ) : !hasMessages ? (                  // Reached only when nothing was sent for the learner — a
                   // study conversation, or an opening the send refused. It
                   // therefore has to offer a way in rather than describing
                   // work that is not happening: a screen that claims the tutor
@@ -792,21 +1146,43 @@ export function MasteryStudy({
                     </div>
                     <h2 className="mt-1.5 font-serif text-[20px] font-semibold tracking-[-0.01em] text-[var(--foreground)]">
                       {sessionMode === "study"
-                        ? waypoint.name
-                        : t(MODE_PRESENTATION[sessionMode].emptyTitleKey)}
+                        ? viewedPoint?.name || displayName
+                        : t(
+                            (total > 0 &&
+                              MODE_PRESENTATION[sessionMode].reviseTitleKey) ||
+                              MODE_PRESENTATION[sessionMode].emptyTitleKey,
+                          )}
                     </h2>
                     <p className="mt-2 max-w-xl text-sm leading-6 text-[var(--muted-foreground)]">
-                      {t(MODE_PRESENTATION[sessionMode].emptyBodyKey)}
+                      {t(
+                        (total > 0 &&
+                          MODE_PRESENTATION[sessionMode].reviseBodyKey) ||
+                          MODE_PRESENTATION[sessionMode].emptyBodyKey,
+                      )}
                     </p>
                     <div className="mt-7 grid w-full gap-2 sm:grid-cols-3">
-                      {STARTERS[sessionMode].map((starter) => {
+                      {(
+                        sessionMode === "outline" && total > 0
+                          ? OUTLINE_REVISION_STARTERS
+                          : STARTERS[sessionMode]
+                      ).map((starter) => {
                         const Icon = starter.icon;
                         const label = t(starter.key);
                         return (
                           <button
                             key={starter.key}
                             type="button"
-                            onClick={() => startFromPrompt(label)}
+                            onClick={() => {
+                              const pointName = viewedPoint?.name.trim() ?? "";
+                              startFromPrompt(
+                                pointName
+                                  ? t(
+                                      "{{prompt}} This conversation's knowledge point is {{name}}.",
+                                      { prompt: label, name: pointName },
+                                    )
+                                  : label,
+                              );
+                            }}
                             disabled={state.isStreaming || sessionLoading}
                             className="group rounded-lg border border-[var(--border)] bg-[var(--card)] p-4 text-left transition hover:-translate-y-0.5 hover:border-[var(--primary)]/35 disabled:opacity-50"
                           >
@@ -840,13 +1216,30 @@ export function MasteryStudy({
                             )}
                           </p>
                         </div>
-                        <Link
-                          href={masterySessionRoute(pathId, "study", courseId)}
-                          className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg bg-[var(--primary)] px-3.5 text-[13px] font-medium text-[var(--primary-foreground)] transition hover:opacity-90"
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const pointId =
+                              topic.next.knowledge_point_id ||
+                              topic.map.modules[0]?.knowledge_points[0]?.id ||
+                              "";
+                            // Study is its own conversation per knowledge
+                            // point; landing on "the next one" means opening
+                            // that conversation, not a fresh draft.
+                            if (pointId) openPlaced("study", pointId);
+                          }}
+                          disabled={
+                            modeBusy ||
+                            !(
+                              topic.next.knowledge_point_id ||
+                              topic.map.modules[0]?.knowledge_points[0]?.id
+                            )
+                          }
+                          className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg bg-[var(--primary)] px-3.5 text-[13px] font-medium text-[var(--primary-foreground)] transition hover:opacity-90 disabled:opacity-40"
                         >
                           {t("Start learning")}
                           <ArrowRight className="h-3.5 w-3.5" />
-                        </Link>
+                        </button>
                       </div>
                     )}
                     <ChatMessageList
@@ -889,7 +1282,75 @@ export function MasteryStudy({
                       showModeBadge={false}
                       deferPendingAskUser
                       deferPendingMasteryQuestion
+                      outlineAddition={
+                        sessionMode === "outline" || !state.sessionId
+                          ? undefined
+                          : (message) => {
+                              const preview = outlinePreviewOnMessage(message.events);
+                              if (!preview || !topic) return null;
+                              const moduleId =
+                                topic.map.modules.find((module) =>
+                                  module.knowledge_points.some(
+                                    (point) => point.id === viewedPoint?.id,
+                                  ),
+                                )?.id || topic.map.modules[0]?.id || "";
+                              if (!moduleId) return null;
+                              return (
+                                <OutlineAdditionButton
+                                  modules={topic.map.modules.map((module) => ({
+                                    id: module.id,
+                                    name: module.name,
+                                  }))}
+                                  defaultModuleId={moduleId}
+                                  onConfirm={async (chosen) => {
+                                    await commitOutlineAddition(pathId, {
+                                      preview_id: preview.previewId,
+                                      session_id: state.sessionId || "",
+                                      module_id: chosen,
+                                    });
+                                    notify(t("Added to the outline"));
+                                  }}
+                                />
+                              );
+                            }
+                      }
+                      lectureRevision={
+                        sessionMode === "outline" || !state.sessionId
+                          ? undefined
+                          : (message) => {
+                              const preview = lectureRevisionOnMessage(message.events);
+                              if (!preview) return null;
+                              return (
+                                <LectureRevisionCard
+                                  key={preview.previewId}
+                                  preview={preview}
+                                  pathId={pathId}
+                                  knowledgePointId={
+                                    lecturePoint || (viewedPoint?.id ?? "")
+                                  }
+                                  onApplied={handleLectureConfirmed}
+                                />
+                              );
+                            }
+                      }
                     />
+                    {sessionMode === "study" && lecturePoint ? (
+                      // Last thing in the transcript, where the learner is
+                      // already looking when the section they just studied
+                      // ends. Always mounted: the card asks the API whether an
+                      // unconfirmed draft exists, so it survives a reload and
+                      // appears for a lecture written before this tab opened.
+                      // `refreshToken` re-reads it once each turn settles.
+                      <LectureDraftCard
+                        key={`draft-${lecturePoint}`}
+                        pathId={pathId}
+                        knowledgePointId={lecturePoint}
+                        sessionId={state.sessionId ?? ""}
+                        pointName={viewedPoint?.name ?? ""}
+                        refreshToken={lectureEpoch + turnEpoch}
+                        onConfirmed={handleLectureConfirmed}
+                      />
+                    ) : null}
                   </div>
                 )}
                 <div ref={messagesEndRef} className="h-px" />
@@ -906,8 +1367,58 @@ export function MasteryStudy({
           {!sessionError && (
             <div
               ref={composerBoxRef}
-              className="shrink-0 bg-[var(--background)]"
+              className={`flex min-h-0 shrink-0 flex-col bg-[var(--background)] px-3 pb-2 sm:px-4 ${
+                openQuestion || outlineDecision || proseDecisionCard
+                  ? ""
+                  : "max-h-[min(42vh,400px)] overflow-y-auto overscroll-contain"
+              }`}
             >
+              <div className={`mx-auto w-full shrink-0 px-6 ${STUDY_COMPOSER_WIDTH}`}>
+                <div className="mb-2 flex">
+                  {sessionMode === "outline" ? (
+                    // The outline sitting is where the map is designed, so the
+                    // way back to it is a way into learning: the first point
+                    // that still has something left to work on.
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const pointId =
+                          currentWaypoint(topic, displayName, t).id ||
+                          topic.map.modules[0]?.knowledge_points[0]?.id ||
+                          "";
+                        if (pointId) openPlaced("study", pointId);
+                      }}
+                      disabled={total === 0 || modeBusy}
+                      className="rounded-full border border-[var(--border)] bg-[var(--card)] px-3 py-1 text-[12px] font-medium text-[var(--foreground)] hover:bg-[var(--muted)] disabled:opacity-40"
+                    >
+                      {t("Start learning")}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => openPlaced("outline")}
+                      disabled={modeBusy}
+                      className="rounded-full border border-[var(--border)] bg-[var(--card)] px-3 py-1 text-[12px] font-medium text-[var(--foreground)] hover:bg-[var(--muted)] disabled:opacity-40"
+                    >
+                      {t("Outline chat")}
+                    </button>
+                  )}
+                  {sessionMode === "review" && lecturePoint && !reviewSplit ? (
+                    // Below the split threshold there is no room for two
+                    // columns, so the lecture becomes something the learner
+                    // opens rather than something they see.
+                    <button
+                      type="button"
+                      onClick={lectureLayout.toggle}
+                      className="ml-1.5 rounded-full border border-[var(--border)] bg-[var(--card)] px-3 py-1 text-[12px] font-medium text-[var(--foreground)] hover:bg-[var(--muted)]"
+                    >
+                      {t("Lecture")}
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+              {openQuestion || outlineDecision || proseDecisionCard ? (
+                <div className="min-h-0 shrink">
               {openQuestion ? (
                 <ComposerChoiceDock
                   testId="mastery-answer-dock"
@@ -929,6 +1440,7 @@ export function MasteryStudy({
                       question={openQuestion}
                       grade={null}
                       answered={false}
+                      submittedAnswer=""
                       onSubmit={({ text, answers }) =>
                         answerMasteryQuestion({
                           questionId: openQuestion.questionId,
@@ -976,17 +1488,73 @@ export function MasteryStudy({
                   }}
                 />
               ) : null}
+                </div>
+              ) : null}
+              <div className="shrink-0">
+              {/* The refusal banner lives here too, not only on the chat page:
+                  study and review send through the same runtime, so they hit
+                  the same admission refusals — and without this the learner
+                  saw a bare "Not sent" badge and no reason at all. */}
+              {state.submissionFailed ? (
+                <div
+                  role="alert"
+                  data-submission-error="true"
+                  className={`mx-auto w-full px-6 pb-1 ${STUDY_COMPOSER_WIDTH}`}
+                >
+                  <div className="flex w-full items-center gap-2 rounded-xl border border-[var(--destructive)]/30 bg-[var(--destructive)]/5 px-3 py-2">
+                    <AlertCircle
+                      className="h-4 w-4 shrink-0 text-[var(--destructive)]"
+                      aria-hidden="true"
+                    />
+                    <span className="min-w-0 flex-1 text-[12px] leading-[1.5] text-[var(--foreground)]">
+                      {state.submissionRejectionReason
+                        ? localizedRejectionReason(
+                            state.submissionRejectionReason,
+                            t,
+                          )
+                        : state.submissionNotSaved
+                          ? t(
+                              "This unsent message could not be saved in your browser. Copy it before leaving this page.",
+                            )
+                          : state.submissionNeedsReview
+                            ? t(
+                                "Message text was saved, but its attachments or settings could not be restored. Copy it and send again.",
+                              )
+                            : t(
+                                "Couldn't reach the server. Please check your connection and retry.",
+                              )}
+                    </span>
+                  </div>
+                </div>
+              ) : null}
               <MasteryComposer
-                placeholder={t("Ask your tutor about “{{waypoint}}”…", {
-                  waypoint: waypoint.name,
-                })}
-                askHint={askHint}
+                placeholder={
+                  sessionMode === "outline"
+                    ? // The outline sitting has no waypoint to name: it is
+                      // about the map itself. Before there is a map the line
+                      // is the goal; after it, the change they want.
+                      editingOutline
+                      ? t("Describe what to change in the outline…")
+                      : t("Say what you want to be able to do…")
+                    : t("Ask your tutor about “{{waypoint}}”…", {
+                        waypoint: viewedPoint?.name || displayName,
+                      })
+                }
+                askHint={
+                  // The hint is written for the waypoint in view, and the
+                  // outline sitting has none. Leaving it on replaced this
+                  // screen's own placeholder with a question about a
+                  // knowledge point the sitting cannot teach.
+                  sessionMode === "outline" ? "" : askHint
+                }
                 disabled={sessionLoading}
                 prefillInputRef={prefillInputRef}
               />
+              </div>
             </div>
           )}
         </section>
+        </div>
       </div>
 
       {celebration && (

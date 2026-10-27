@@ -78,6 +78,10 @@ TOOL_MODES: dict[str, frozenset[str]] = {
     "mastery_repair_question": frozenset({STUDY, REVIEW}),
     "mastery_defer_objective": frozenset({STUDY, REVIEW}),
     "mastery_note_explained": frozenset({STUDY, REVIEW}),
+    # A lecture is written by study and edited by review, so both may ask for
+    # a revision. Neither may publish one directly — the tool returns a
+    # preview and the learner applies it.
+    "mastery_lecture": frozenset({STUDY, REVIEW}),
 }
 
 

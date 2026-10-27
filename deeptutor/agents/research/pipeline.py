@@ -2792,6 +2792,7 @@ class _BlockLoopHost:
             too_many_tool_calls_message=too_many,
             tool_error_message_factory=tool_error_message_factory(self._pipeline._t),
             trace_id_prefix=f"research-{self._block.block_id}-iter",
+            observation_chars=self._pipeline.observation_char_budget(),
             tool_timeout=self._pipeline.tool_timeout,
             tool_max_retries=self._pipeline.tool_max_retries,
         )
@@ -3178,6 +3179,7 @@ class _RephraseLoopHost:
             too_many_tool_calls_message=too_many,
             tool_error_message_factory=tool_error_message_factory(self._pipeline._t),
             trace_id_prefix="research-rephrase-iter",
+            observation_chars=self._pipeline.observation_char_budget(),
         )
         if rejected:
             outcome.tool_messages.extend(rejected)

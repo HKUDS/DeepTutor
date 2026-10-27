@@ -210,7 +210,15 @@ def test_pending_non_choice_context_keeps_type_without_options_or_answer():
     }
 
 
-def test_next_objective_due_review_beats_new_ground():
+def test_next_objective_new_ground_beats_due_review():
+    """Unfinished work outranks the review queue.
+
+    A due date is a reminder, not a permission, and review re-tests only what
+    the learner has already proven. So a due review of a *mastered* objective
+    must not jump ahead of an objective that has not been learned yet — that
+    sent the topic page's button into a review of something the learner had
+    never covered, and the engine then refused to conduct it.
+    """
     kp1, kp2 = _kp("kp1", KnowledgeType.MEMORY), _kp("kp2", KnowledgeType.MEMORY)
     progress = _progress(kp1, kp2)
     progress.mastery_levels["kp1"] = 0.95  # mastered, but due for review
@@ -225,7 +233,58 @@ def test_next_objective_due_review_beats_new_ground():
         )
     ]
     step = policy.next_objective(progress)
+    assert step.action == "probe"
+    assert step.knowledge_point_id == "kp2"
+
+
+def test_next_objective_due_review_wins_when_nothing_is_unfinished():
+    """With no unfinished work left, a due review of mastered ground is next."""
+    kp1 = _kp("kp1", KnowledgeType.MEMORY)
+    progress = _progress(kp1)
+    progress.mastery_levels["kp1"] = 0.95  # mastered, but due for review
+    progress.review_queue = [
+        ReviewTask(
+            id="r1",
+            knowledge_point_id="kp1",
+            knowledge_type=KnowledgeType.MEMORY,
+            due_at=time.time() - 10,
+            priority=1,
+            state=RepetitionState(next_review_at=time.time() - 10),
+        )
+    ]
+    step = policy.next_objective(progress)
     assert step.action == "review"
+    assert step.knowledge_point_id == "kp1"
+    assert step.forgetting_risk == 0.0
+
+
+def test_next_objective_unmastered_due_task_is_unfinished_work_not_a_review():
+    """A due date on an unmastered objective is a schedule, not a clearance.
+
+    The objective below its gate was attempted and lapsed, so the scheduler
+    gave it a due date. It is still unfinished work: review mode refuses to
+    examine it, so it must never be returned as a review.
+    """
+    kp1 = _kp("kp1", KnowledgeType.MEMORY)
+    progress = _progress(kp1)
+    progress.mastery_levels["kp1"] = 0.4  # attempted, below the gate
+    progress.quiz_attempts.append(
+        QuizAttempt(question_id="q", knowledge_point_id="kp1", is_correct=False)
+    )
+    progress.review_queue = [
+        ReviewTask(
+            id="r1",
+            knowledge_point_id="kp1",
+            knowledge_type=KnowledgeType.MEMORY,
+            due_at=time.time() - 10,
+            priority=1,
+            state=RepetitionState(next_review_at=time.time() - 10),
+            forgetting_risk=0.85,
+            reason="due now; retrievability 40% below 90% target; 1 lapse.",
+        )
+    ]
+    step = policy.next_objective(progress)
+    assert step.action == "practice"
     assert step.knowledge_point_id == "kp1"
     assert step.forgetting_risk == 0.0
 
@@ -258,10 +317,10 @@ def test_due_reviews_order_by_forgetting_risk_before_priority():
     ]
     due = policy.due_reviews(progress, now=now)
     assert [task.knowledge_point_id for task in due] == ["kp_high", "kp_low"]
-    step = policy.next_objective(progress, now=now)
-    assert step.knowledge_point_id == "kp_high"
-    assert step.forgetting_risk == 0.85
-    assert "retrievability" in step.reason
+    # The order the plan shows. The frontier picks the first *reviewable*
+    # one — these objectives are not mastered, so neither can be reviewed.
+    reviewable = policy.reviewable_reviews(progress, now=now)
+    assert reviewable == []
 
 
 def test_next_objective_complete_when_all_mastered():

@@ -38,6 +38,7 @@ from deeptutor.capabilities.mastery.choices import (
 from deeptutor.capabilities.mastery.mode import (
     MODES,
     REVIEW,
+    STUDY,
     admission_error,
     enforced_mode,
     normalize_mode,
@@ -76,6 +77,7 @@ from deeptutor.learning.policy import (
     learning_stage,
     map_summary,
     next_objective,
+    objective_status,
     path_display_name,
     visual_achievements,
 )
@@ -106,6 +108,7 @@ MASTERY_TOOL_NAMES: tuple[str, ...] = (
     "mastery_mode",
     "mastery_profile",
     "mastery_revise",
+    "mastery_lecture",
     "mastery_paths",
     "mastery_switch",
     "mastery_leave",
@@ -554,6 +557,77 @@ def _profile_status(
     }
 
 
+def _placed_point_refusal(kwargs: dict[str, Any], kp_id: str) -> ToolResult | None:
+    """A placed study or review conversation examines only its own point.
+
+    Posting a question for a different point records it there. The path's
+    next step then follows that question, so opening this session lights the
+    other point. Working on another point is ``mastery_mode``, which opens
+    that point's own session.
+    """
+    if enforced_mode(kwargs.get("_mastery_session_mode")) not in {STUDY, REVIEW}:
+        return None
+    bound = str(kwargs.get("_mastery_knowledge_point_id") or "").strip()
+    asked = str(kp_id or "").strip()
+    if not bound or not asked or asked == bound:
+        return None
+    return ToolResult(
+        content=(
+            f"This conversation is for knowledge point {bound}, not {asked}. "
+            "Use this conversation's knowledge point. To work on another point, "
+            "call mastery_mode with mode='study' or 'review' and knowledge_point_id "
+            f"{asked} so its own session opens. Do not teach or quiz it here."
+        ),
+        success=False,
+    )
+
+
+def _conversation_point(
+    progress: LearningProgress | None, kwargs: dict[str, Any]
+) -> dict[str, Any] | None:
+    """The knowledge point this study or review conversation is placed on.
+
+    ``next`` stays the path frontier. Opening a later point used to be taught
+    as that frontier, because the snapshot the model reads named only ``next``.
+    """
+    if enforced_mode(kwargs.get("_mastery_session_mode")) not in {STUDY, REVIEW}:
+        return None
+    bound = str(kwargs.get("_mastery_knowledge_point_id") or "").strip()
+    if not bound or progress is None:
+        return None
+    kp, module_id, module_name = find_knowledge_point(progress, bound)
+    if kp is None:
+        return None
+    return {
+        "knowledge_point_id": kp.id,
+        "knowledge_point_name": kp.name,
+        "module_id": module_id,
+        "module_name": module_name,
+        "type": kp.type.value,
+        "status": objective_status(progress, kp),
+        "instruction": (
+            "This conversation belongs to this knowledge point only. "
+            "Teach, explain, and quiz this point, and call it by knowledge_point_name. "
+            "`next` is the path frontier and may be a different point. Do not teach, "
+            "explain, or quiz `next` here unless its knowledge_point_id equals this one. "
+            "A pending question or due review for another point stays in that point's "
+            "session. Call mastery_mode with that point's id to open it. Do not continue it here."
+        ),
+    }
+
+
+def _interaction_on_point(interaction: Any, point_id: str) -> bool:
+    question = getattr(interaction, "question", None)
+    if question is None:
+        return False
+    if str(getattr(question, "knowledge_point_id", "") or "") == point_id:
+        return True
+    return any(
+        str(getattr(child, "knowledge_point_id", "") or "") == point_id
+        for child in getattr(question, "questions", ()) or ()
+    )
+
+
 def _review_scope_refusal(
     kwargs: dict[str, Any],
     progress: LearningProgress | None,
@@ -581,7 +655,7 @@ def _review_scope_refusal(
             "reviewing. Review re-tests what the learner has already proven; "
             "teaching something new is what 'study' is for. Either pick a "
             "mastered knowledge point, or call mastery_mode with mode='study' "
-            "and say why you are switching."
+            "and that point's knowledge_point_id, and say why you are switching."
         ),
         success=False,
     )
@@ -724,14 +798,21 @@ class MasteryStatusTool(BaseTool):
         """Project relevant state; this never alters the stored path or transcript."""
         from deeptutor.learning.policy import due_reviews
 
-        selected = {payload["next"]["knowledge_point_id"], focus_id} - {""}
+        focus = str(focus_id or "").strip()
         reviews = due_reviews(progress)
-        selected.update(task.knowledge_point_id for task in reviews[:3])
-        if progress.pending_question is not None:
-            selected.add(progress.pending_question.knowledge_point_id)
-            selected.update(
-                q.knowledge_point_id for q in getattr(progress.pending_question, "questions", ())
-            )
+        pending = progress.pending_question
+        if focus:
+            # A placed conversation expands its own point. The path frontier
+            # stays in ``next`` for the hand-off, and is not the lesson.
+            selected = {focus}
+        else:
+            selected = {payload["next"]["knowledge_point_id"]} - {""}
+            selected.update(task.knowledge_point_id for task in reviews[:3])
+            if pending is not None:
+                selected.add(pending.knowledge_point_id)
+                selected.update(
+                    q.knowledge_point_id for q in getattr(pending, "questions", ())
+                )
         points = {kp.id: kp for module in progress.modules for kp in module.knowledge_points}
         # Preserve the prerequisite closure, even across module boundaries.
         todo = list(selected)
@@ -759,13 +840,24 @@ class MasteryStatusTool(BaseTool):
             payload[key] = {kp: value for kp, value in payload[key].items() if kp in selected}
         payload["due_review_ids"] = [task.knowledge_point_id for task in reviews[:3]]
         payload["state_scope"] = "working_brief"
-        payload["inspection_instruction"] = (
-            "This is the current working brief, not the full outline. Counts describe the whole path; "
-            "only the current/focused objective, pending group, prerequisites and first three due "
-            "reviews are expanded. Call mastery_status for the full map before selecting an omitted "
-            "lesson or editing the outline. "
-            "Current learner requests and fresh corrections override historical summaries."
-        )
+        if payload.get("conversation"):
+            payload["inspection_instruction"] = (
+                "This conversation's knowledge point is `conversation`. "
+                "The expanded outline is that point and its prerequisites. "
+                "`next` is the path frontier and may be a different point; "
+                "do not teach or quiz it here. "
+                "Counts describe the whole path. "
+                "Call mastery_status for the full outline before editing it. "
+                "Current learner requests and fresh corrections override historical summaries."
+            )
+        else:
+            payload["inspection_instruction"] = (
+                "This is the current working brief, not the full outline. Counts describe the whole path; "
+                "only the current/focused objective, pending group, prerequisites and first three due "
+                "reviews are expanded. Call mastery_status for the full map before selecting an omitted "
+                "lesson or editing the outline. "
+                "Current learner requests and fresh corrections override historical summaries."
+            )
         return payload
 
     def get_definition(self) -> ToolDefinition:
@@ -837,6 +929,8 @@ class MasteryStatusTool(BaseTool):
                 },
                 meta_key="mastery_status",
             )
+        conversation = _conversation_point(progress, kwargs)
+        focus_id = "" if conversation is None else str(conversation["knowledge_point_id"])
         payload = {
             "status": "active",
             "path_revision": progress.version,
@@ -847,9 +941,14 @@ class MasteryStatusTool(BaseTool):
             # What this conversation is doing right now. Reported so the tutor
             # reasons from the same fact its tool calls are checked against.
             "mode": normalize_mode(kwargs.get("_mastery_session_mode")),
+            **({"conversation": conversation} if conversation else {}),
             "next": next_objective(progress).to_dict(),
             "map": map_summary(progress),
-            **_profile_status(progress, include_teaching_history=include_history),
+            **_profile_status(
+                progress,
+                focus_id or None,
+                include_teaching_history=include_history,
+            ),
             "learning_stages": {
                 kp.id: learning_stage(progress, kp.id)
                 for module in progress.modules
@@ -869,6 +968,12 @@ class MasteryStatusTool(BaseTool):
             else {},
         }
         interaction = service.store.get_active_interaction(path_id)
+        if (
+            interaction is not None
+            and conversation is not None
+            and not _interaction_on_point(interaction, focus_id)
+        ):
+            interaction = None
         if interaction is not None:
             pending_interaction: dict[str, Any] = {
                 "question_id": interaction.interaction_id,
@@ -913,7 +1018,7 @@ class MasteryStatusTool(BaseTool):
                 )
             payload["pending_interaction"] = pending_interaction
         if kwargs.get("_working_brief"):
-            payload = self._working_brief(payload, progress)
+            payload = self._working_brief(payload, progress, focus_id)
         return _json_result(payload, meta_key="mastery_status")
 
 
@@ -1264,23 +1369,31 @@ class MasteryQuizTool(BaseTool):
         pending_action = kwargs.get("pending_action", "retain")
         resume_id = kwargs.get("resume_question_id")
         if pending_action == "resume":
-            contract_fields = {
-                "knowledge_point_id",
+            # A resume re-shows the stored card. Models often echo the current
+            # objective and question type, and send blank strings for unused
+            # contract fields. Those are not a new question. A real prompt,
+            # key, option list, group, or replacement request still conflicts.
+            blocking_fields = {
                 "question",
                 "expected_answer",
-                "question_type",
                 "options",
                 "explanation",
-                "difficulty",
                 "visual",
                 "questions",
                 "replace_question_id",
                 "replacement_request",
             }
+
+            def _supplied(field: str) -> bool:
+                value = kwargs.get(field)
+                if value is None or (isinstance(value, str) and not value.strip()):
+                    return False
+                return True
+
             if (
                 not isinstance(resume_id, str)
                 or not resume_id.strip()
-                or any(kwargs.get(field) is not None for field in contract_fields)
+                or any(_supplied(field) for field in blocking_fields)
             ):
                 return ToolResult(
                     content="Resume needs only pending_action='resume' and the exact pending parent resume_question_id; omit new-question and replacement arguments.",
@@ -1531,6 +1644,9 @@ class MasteryQuizTool(BaseTool):
         kp_id = str(kwargs.get("knowledge_point_id") or "").strip()
         question = str(kwargs.get("question") or "").strip()
         expected = str(kwargs.get("expected_answer") or "").strip()
+        placed = _placed_point_refusal(kwargs, kp_id)
+        if placed is not None:
+            return placed
         if not kp_id or not question or not expected:
             return ToolResult(
                 content="mastery_quiz needs knowledge_point_id, question, and expected_answer.",
@@ -1990,6 +2106,9 @@ class MasteryAssessTool(BaseTool):
         kp_id = str(kwargs.get("knowledge_point_id") or "").strip()
         if not kp_id:
             return ToolResult(content="mastery_assess needs a knowledge_point_id.", success=False)
+        placed = _placed_point_refusal(kwargs, kp_id)
+        if placed is not None:
+            return placed
         learner_answer = str(kwargs.get("_learner_message") or "").strip()
 
         service = _new_service()
@@ -2468,13 +2587,15 @@ class MasteryModeTool(BaseTool):
         return ToolDefinition(
             name="mastery_mode",
             description=(
-                "Switch what this conversation is doing: 'outline' to design "
-                "or change the outline, 'study' to work it forward, 'review' to "
-                "re-test what is already mastered. Call it when the learner "
-                "asks for something the current mode's tools cannot do — a "
-                "refused tool names the mode it needs. Say what you are "
-                "switching to and why: the learner sees the mode above the "
-                "conversation and can change it themselves."
+                "Open the conversation for another phase or another knowledge "
+                "point. 'outline' is the path's single planning session. "
+                "'study' or 'review' opens one knowledge point's own session: "
+                "pass knowledge_point_id to leave this conversation's point, "
+                "or omit it to stay on the point already bound here. Call it "
+                "when the learner asks for something this phase or this point "
+                "cannot do. Say which session you are opening and why. Do not "
+                "keep teaching or quizzing the other point inside this "
+                "conversation — the page opens that session."
             ),
             parameters=[
                 ToolParameter(
@@ -2482,6 +2603,17 @@ class MasteryModeTool(BaseTool):
                     type="string",
                     description="outline | study | review",
                     enum=list(MODES),
+                ),
+                ToolParameter(
+                    name="knowledge_point_id",
+                    type="string",
+                    description=(
+                        "study or review only: the outline id of the knowledge "
+                        "point whose session to open. Copy it from mastery_status. "
+                        "Required when the work leaves this conversation's point. "
+                        "Omit to stay on the point already bound here."
+                    ),
+                    required=False,
                 ),
                 ToolParameter(
                     name="reason",
@@ -2520,24 +2652,78 @@ class MasteryModeTool(BaseTool):
         if refusal:
             return ToolResult(content=refusal, success=False)
 
-        bind = kwargs.get("_bind_active_mode")
-        if callable(bind):
-            bind(requested)
-        # Two places, like a path switch: the live turn so the rest of it can
-        # use the new mode's tools, and the conversation so the next turn (and
-        # a reload) resumes in it.
-        from deeptutor.capabilities.mastery.binding import remember_mode_on_session
+        from deeptutor.learning.placement import resolve_placed_session
 
-        await remember_mode_on_session(_resolve_session_id(kwargs), requested)
+        requested_point = str(kwargs.get("knowledge_point_id") or "").strip()
+        point_id = str(kwargs.get("_mastery_knowledge_point_id") or "").strip()
+        if requested != "outline" and requested_point:
+            point_id = requested_point
+        if requested != "outline" and not point_id and progress is not None:
+            step = None
+            try:
+                from deeptutor.learning import policy as learning_policy
+
+                step = learning_policy.next_objective(progress)
+            except Exception:
+                step = None
+            point_id = str(getattr(step, "knowledge_point_id", "") or "")
+        if requested == REVIEW and not requested_point and progress is not None:
+            # The path frontier is unfinished work — review re-tests what the
+            # learner has already proven, so opening it in review mode would
+            # land on a session the tutor is not allowed to conduct. Ask the
+            # frontier for a reviewable target instead: something already
+            # mastered, and due if anything is.
+            from deeptutor.learning import policy as learning_policy
+
+            reviews = learning_policy.reviewable_reviews(progress)
+            if reviews:
+                point_id = reviews[0].knowledge_point_id
+            else:
+                mastered = [
+                    kp
+                    for module in progress.modules
+                    for kp in module.knowledge_points
+                    if learning_policy.is_mastered(progress, kp)
+                ]
+                point_id = mastered[0].id if mastered else point_id
+        try:
+            placed = await resolve_placed_session(path_id, requested, point_id)
+        except ValueError as exc:
+            return ToolResult(content=str(exc), success=False)
+
+        # Leaving a point confirms the lecture nobody pressed the button on.
+        # Without this, a learner who simply walks forward leaves review with
+        # either nothing to read or a draft that never becomes the real one.
+        # Only an *existing* draft is confirmed here: rolling a new one would
+        # put an LLM call between the learner and the page they asked for.
+        #
+        # Only a departure counts, not a mode change on the same point:
+        # ``review_entry -> draft_marked`` is a deliberate decision, because
+        # review is exactly where an unconfirmed lecture should be shown as
+        # unconfirmed and offered for confirmation.
+        lecture_saved = False
+        previous_point = str(kwargs.get("_mastery_knowledge_point_id") or "").strip()
+        if current == STUDY and previous_point and previous_point != point_id:
+            from deeptutor.learning.placement import auto_confirm_lecture
+
+            try:
+                lecture_saved = await asyncio.to_thread(
+                    auto_confirm_lecture, path_id, previous_point
+                )
+            except Exception:
+                logger.warning("Could not save the lecture for %s on mode change", previous_point, exc_info=True)
+
         return _json_result(
             {
-                "status": "unchanged" if requested == current else "switched",
+                "status": "open_session",
                 "previous_mode": current,
                 "mode": requested,
-                # The framing for the mode just entered: the system prompt
-                # still describes the one this turn opened in.
+                "session_id": placed["session_id"],
+                "knowledge_point_id": placed.get("knowledge_point_id") or "",
+                "created": placed["created"],
                 "instructions": _mode_instructions(requested),
                 "reason": str(kwargs.get("reason") or "").strip()[:200],
+                **({"lecture_saved": True} if lecture_saved else {}),
             },
             meta_key="mastery_mode",
         )
@@ -2931,16 +3117,29 @@ class MasteryReviseTool(BaseTool):
         )
 
     async def execute(self, **kwargs: Any) -> ToolResult:
-        refusal = _wrong_mode_result("mastery_revise", kwargs)
-        if refusal is not None:
-            return refusal
+        action = kwargs.get("action")
+        # Study and review may propose a point. They may not write the map:
+        # the learner confirms that preview from the button under the reply.
+        if enforced_mode(kwargs.get("_mastery_session_mode")) in {STUDY, REVIEW}:
+            if action != "preview":
+                return ToolResult(
+                    content=(
+                        "In study or review, propose an outline change with action "
+                        "preview. The learner adds it from the button under this "
+                        "reply. Do not say it has already been added."
+                    ),
+                    success=False,
+                )
+        else:
+            refusal = _wrong_mode_result("mastery_revise", kwargs)
+            if refusal is not None:
+                return refusal
         path_id = _resolve_path_id(kwargs)
         if not path_id:
             return _no_path_result()
 
         from deeptutor.learning.storage import LearningConflictError
 
-        action = kwargs.get("action")
         if action not in (None, "preview", "commit"):
             return ToolResult(content="Use action preview or commit, or omit it.", success=False)
         service = _new_service()
@@ -3016,7 +3215,12 @@ class MasteryReviseTool(BaseTool):
                     "status": "preview_only_not_saved",
                     **result,
                     "proposed_map": map_summary(proposed),
-                    "next_step": "Review every change and objective reset. Commit this preview_id in a later model round if coherent and within the learner's request; otherwise correct the edits and preview again.",
+                    "next_step": (
+                        "The learner confirms this from the button under your reply. "
+                        "Do not say the knowledge point has already been added."
+                        if enforced_mode(kwargs.get("_mastery_session_mode")) in {STUDY, REVIEW}
+                        else "Review every change and objective reset. Commit this preview_id in a later model round if coherent and within the learner's request; otherwise correct the edits and preview again."
+                    ),
                 },
                 meta_key="mastery_revision_preview",
             )
@@ -3077,6 +3281,122 @@ class MasteryReviseTool(BaseTool):
                 "map": map_summary(progress),
             },
             meta_key="mastery_revise",
+        )
+
+
+class MasteryLectureTool(BaseTool):
+    """Propose a lecture revision for the learner to apply, never write it directly.
+
+    The counterpart of ``mastery_revise`` for the lecture itself. A lecture is
+    long markdown; letting a model rewrite it in place meant it quietly dropped
+    sections it judged redundant and restyled paragraphs the learner had
+    written themselves — and the learner only found out by rereading the whole
+    document. So this tool produces a candidate and a section-level diff, and
+    the learner applies it from the card under the reply.
+    """
+
+    def get_definition(self) -> ToolDefinition:
+        return ToolDefinition(
+            name="mastery_lecture",
+            description=(
+                "Propose a change to this knowledge point's lecture (讲义) from "
+                "the learner's request. Returns a preview with a section-level "
+                "diff; the learner applies it from the button under your reply. "
+                "This never saves the lecture itself, so never say the lecture "
+                "has been changed. Use it for 'shorten section 2', 'add an "
+                "example about X', 'fix the wording here' — anything that edits "
+                "the study notes rather than teaching something new."
+            ),
+            parameters=[
+                ToolParameter(
+                    name="knowledge_point_id",
+                    type="string",
+                    description=(
+                        "The objective whose lecture to change. Usually the "
+                        "conversation's own knowledge_point_id from mastery_status."
+                    ),
+                ),
+                ToolParameter(
+                    name="instruction",
+                    type="string",
+                    description=(
+                        "What the learner asked for, in their own words. Copy "
+                        "their request rather than summarising it — the writer "
+                        "reads this literally."
+                    ),
+                ),
+                ToolParameter(
+                    name="section_heading",
+                    type="string",
+                    required=False,
+                    description=(
+                        "Heading text of the section to change, exactly as it "
+                        "appears in the lecture. Omit when the request is about "
+                        "the whole document."
+                    ),
+                ),
+                ToolParameter(
+                    name="quoted_text",
+                    type="string",
+                    required=False,
+                    description=(
+                        "When the learner selected text in the lecture, their "
+                        "exact selection. Anchors the change to what they were "
+                        "looking at."
+                    ),
+                ),
+            ],
+        )
+
+    async def execute(self, **kwargs: Any) -> ToolResult:
+        refusal = _wrong_mode_result("mastery_lecture", kwargs)
+        if refusal is not None:
+            return refusal
+        path_id = _resolve_path_id(kwargs)
+        if not path_id:
+            return _no_path_result()
+        kp_id = str(kwargs.get("knowledge_point_id") or "").strip()
+        if not kp_id:
+            return ToolResult(content="mastery_lecture needs a knowledge_point_id.", success=False)
+        placed = _placed_point_refusal(kwargs, kp_id)
+        if placed is not None:
+            return placed
+        instruction = str(kwargs.get("instruction") or "").strip()
+        if not instruction:
+            return ToolResult(
+                content=(
+                    "Pass the learner's own request as instruction — the writer "
+                    "has no other description of what to change."
+                ),
+                success=False,
+            )
+
+        from deeptutor.learning.placement import revise_lecture_draft
+
+        try:
+            preview = await revise_lecture_draft(
+                path_id,
+                kp_id,
+                session_id=_resolve_session_id(kwargs),
+                instruction=instruction[:4000],
+                section_heading=str(kwargs.get("section_heading") or "").strip()[:300],
+                quoted_text=str(kwargs.get("quoted_text") or "").strip()[:4000],
+                request_id=str(kwargs.get("_revision_request_id") or ""),
+            )
+        except ValueError as exc:
+            return ToolResult(content=str(exc), success=False)
+        except RuntimeError as exc:
+            return ToolResult(content=f"The lecture could not be revised: {exc}", success=False)
+        return _json_result(
+            {
+                "status": "preview_only_not_saved",
+                **preview,
+                "next_step": (
+                    "The change is prepared and waiting for the learner's button. "
+                    "Say what you would change, not that you changed it."
+                ),
+            },
+            meta_key="mastery_lecture_preview",
         )
 
 
@@ -3720,6 +4040,7 @@ MASTERY_TOOL_TYPES: tuple[type[BaseTool], ...] = (
     MasteryModeTool,
     MasteryProfileTool,
     MasteryReviseTool,
+    MasteryLectureTool,
     MasteryPathsTool,
     MasterySwitchTool,
     MasteryLeaveTool,
@@ -3734,6 +4055,7 @@ __all__ = [
     "MasteryDeferObjectiveTool",
     "MasteryGradeTool",
     "MasteryLeaveTool",
+    "MasteryLectureTool",
     "MasteryPathsTool",
     "MasteryModeTool",
     "MasteryNoteExplainedTool",

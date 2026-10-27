@@ -122,6 +122,8 @@ class DispatchOutcome:
     pause: bool = False
     pause_payload: dict[str, Any] | None = None
     pause_tool_call_id: str | None = None
+    # Full text for tool results that were replaced by a preview in tool_messages.
+    stored_results: dict[str, str] = field(default_factory=dict)
 
 
 async def dispatch_tool_calls(
@@ -145,6 +147,7 @@ async def dispatch_tool_calls(
     trace_id_prefix: str = "iter",
     tool_timeout: float | None = None,
     tool_max_retries: int = 0,
+    observation_chars: int | None = None,
 ) -> DispatchOutcome:
     """Execute tool calls in parallel and assemble a :class:`DispatchOutcome`."""
     registry = registry or get_tool_registry()
@@ -345,6 +348,8 @@ async def dispatch_tool_calls(
         stream=stream,
         source=source,
         stage=stage,
+        language=str(getattr(context, "language", None) or "en"),
+        observation_chars=observation_chars,
     )
     # The assistant message still contains every requested call. Both Chat
     # Completions and Responses require an output for each id, even when the
@@ -860,6 +865,8 @@ async def _collect_outcome(
     stream: StreamBus,
     source: str,
     stage: str,
+    language: str = "en",
+    observation_chars: int | None = None,
 ) -> DispatchOutcome:
     """Walk tool results: emit ``tool_result`` events and assemble the outcome.
 
@@ -870,6 +877,7 @@ async def _collect_outcome(
     """
     aggregated_sources: list[dict[str, Any]] = []
     tool_messages: list[dict[str, Any]] = []
+    stored_results: dict[str, str] = {}
     model_messages: list[dict[str, Any]] = []
     model_image_count = 0
     tool_metadata_by_id: dict[str, dict[str, Any]] = {}
@@ -904,12 +912,28 @@ async def _collect_outcome(
                 metadata=result_event_meta,
             )
         aggregated_sources.extend((public_result if projected else result).get("sources") or [])
+        from deeptutor.agents.loop.stored_results import preview_file_read, preview_stored
+
+        shown = preview_file_read(
+            tool_name,
+            _exec_args,
+            result_text,
+            tool_extra_meta if isinstance(tool_extra_meta, dict) else None,
+            language=language,
+            max_chars=observation_chars,
+        )
+        if shown is None:
+            shown, stored = preview_stored(
+                result_text, language=language, max_chars=observation_chars
+            )
+            if stored is not None:
+                stored_results[stored[0]] = stored[1]
         tool_messages.append(
             {
                 "role": "tool",
                 "tool_call_id": tool_call_id,
                 "name": tool_name,
-                "content": result_text,
+                "content": shown,
             }
         )
         private_message = result.get("model_message")
@@ -952,4 +976,5 @@ async def _collect_outcome(
         pause=pause,
         pause_payload=pause_payload,
         pause_tool_call_id=pause_tool_call_id,
+        stored_results=stored_results,
     )

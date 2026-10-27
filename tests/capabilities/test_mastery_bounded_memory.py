@@ -345,12 +345,11 @@ async def test_one_oversized_exchange_uses_exact_recall_without_cutting_tool_pai
     )
     store.update_summary.assert_not_awaited()
     assert result.token_count <= result.budget
-    assert "hs-tutor-2" in json.dumps(result.model_history)
     assert "distinct-0 " * 40000 in result.history_sources["hs-tutor-2"]
-    assert not any(
-        message.get("tool_calls") or message.get("role") == "tool"
-        for message in result.model_history
-    )
+    sent = json.dumps(result.model_history)
+    assert "distinct-0 " * 40000 not in sent
+    assert "left out of this request" in sent
+    assert any(message.get("role") == "tool" for message in result.model_history)
     assert rows == original
 
 

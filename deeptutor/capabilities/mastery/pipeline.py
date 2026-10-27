@@ -200,7 +200,18 @@ class MasteryLoopPipeline(AgenticLoopPipeline):
                 }
             )
             return []
-        message = {"role": "user", "content": lesson_context(evidence), "_lesson_packet": True}
+        from deeptutor.agents.loop.stored_results import retain_observation
+
+        message = {
+            "role": "user",
+            "content": retain_observation(
+                context.runtime.stored_results,
+                lesson_context(evidence),
+                language=getattr(self, "language", None) or context.language or "en",
+                max_chars=self.observation_char_budget(),
+            ),
+            "_lesson_packet": True,
+        }
         messages.append(message)
         pixels = getattr(self, "_lesson_pixels", None)
         if pixels is None or pixels[0] != evidence["id"]:
@@ -304,7 +315,14 @@ class MasteryLoopPipeline(AgenticLoopPipeline):
         )
         snapshot = context.extension("mastery").get("status_snapshot")
         if snapshot:
-            self._runtime_snapshots["mastery_status_snapshot"] = snapshot
+            from deeptutor.agents.loop.stored_results import retain_observation
+
+            self._runtime_snapshots["mastery_status_snapshot"] = retain_observation(
+                context.runtime.stored_results,
+                snapshot,
+                language=getattr(self, "language", None) or context.language or "en",
+                max_chars=self.observation_char_budget(),
+            )
         return prompt + STATE_REFERENCE_NOTICE + MEMORY_NOTICE
 
     def project_model_request(self, messages):

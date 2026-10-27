@@ -78,6 +78,9 @@ WORKSPACE_BASELINE_TOOLS: tuple[str, ...] = (
     "workspace_read",
     "workspace_search",
     "workspace_present",
+    # Long tool output is stored beside the conversation. Every loop, including
+    # an exclusive capability, needs to read a range back by id.
+    "read_stored_result",
 )
 
 

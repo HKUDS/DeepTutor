@@ -759,23 +759,22 @@ async def test_a_switch_and_a_build_in_one_round_land_on_the_switched_path(tmp_p
 
 
 @pytest.mark.asyncio
-async def test_a_mode_switch_and_a_quiz_in_one_round_use_the_new_mode(tmp_path, monkeypatch):
-    """The regression behind "it asked a question, then answered it itself".
+async def test_a_mode_switch_opens_another_session_without_retargeting_this_turn(
+    tmp_path, monkeypatch
+):
+    """A phase change opens that phase's conversation. This turn stays put.
 
-    ``mastery_mode`` repoints the turn exactly the way ``mastery_switch`` does,
-    but it was not declared to the dispatcher as a rebinding tool — so it ran
-    in the concurrent batch and ``mastery_quiz`` kept the mode bound before the
-    switch. The prompt asks for precisely this round ("switch and get on with
-    it"), and "继续学" at the end of an outline sitting produces it, so the
-    quiz was refused for being in ``outline`` in the same round that left it.
-
-    The tutor had already streamed the lead-in, no card appeared, and the turn
-    carried on — which is one of the ways the question ends up answered in
-    prose next to no card at all.
+    Finishing the other phase's work in the same round is what let a quiz
+    appear inside an outline sitting. The page follows ``session_id`` instead.
     """
     from deeptutor.runtime.agentic.tool_dispatch import dispatch_tool_calls
+    from deeptutor.services.session.sqlite_store import SQLiteSessionStore
 
     _use_store_root(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        "deeptutor.services.session.get_session_store",
+        lambda: SQLiteSessionStore(db_path=tmp_path / "chat.sqlite3"),
+    )
     LearningStore().save(_built_path("path-a"))
 
     context = UnifiedContext(
@@ -816,8 +815,10 @@ async def test_a_mode_switch_and_a_quiz_in_one_round_use_the_new_mode(tmp_path, 
     )
 
     quiz = next(message for message in results.tool_messages if message.get("tool_call_id") == "c1")
-    assert "belongs to the" not in str(quiz.get("content", "")), quiz
-    assert context.metadata["mastery_session_mode"] == "study"
+    assert "belongs to the" in str(quiz.get("content", "")), quiz
+    opened = next(message for message in results.tool_messages if message.get("tool_call_id") == "c2")
+    assert "open_session" in str(opened.get("content", ""))
+    assert context.metadata["mastery_session_mode"] == "outline"
 
 
 @pytest.mark.parametrize(

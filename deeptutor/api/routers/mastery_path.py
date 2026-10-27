@@ -775,6 +775,270 @@ async def set_session_mode(path_id: str, session_id: str, body: SetSessionModeRe
     return {"session_id": session_id, "mode": normalize_mode(requested)}
 
 
+class ResolveSessionRequest(BaseModel):
+    mode: str = Field(..., max_length=32)
+    knowledge_point_id: str = Field(default="", max_length=200)
+    #: The point the learner is walking away from, if any. Its unconfirmed
+    #: lecture draft is saved on the way out — see ``auto_confirm_lecture``.
+    leaving_knowledge_point_id: str = Field(default="", max_length=200)
+
+
+@router.post("/topics/{path_id}/sessions/resolve")
+async def resolve_topic_session(path_id: str, body: ResolveSessionRequest):
+    """Open the conversation for this phase and, for study or review, this point."""
+    from deeptutor.learning.placement import auto_confirm_lecture, resolve_placed_session
+
+    _validate_book_id(path_id)
+    store = LearningStore()
+    if not await asyncio.to_thread(store.exists, path_id):
+        raise HTTPException(status_code=404, detail="Mastery topic not found")
+    # The mode buttons navigate through here, so this is where the learner
+    # "leaves" a point in the UI — the same moment ``mastery_mode`` treats as
+    # implicit confirmation, and with the same rule: only a real departure
+    # counts. Opening review on the point they are already on must keep the
+    # draft marked unconfirmed, which is what review is for.
+    if body.leaving_knowledge_point_id and (
+        body.leaving_knowledge_point_id != body.knowledge_point_id
+    ):
+        await asyncio.to_thread(
+            auto_confirm_lecture,
+            path_id,
+            body.leaving_knowledge_point_id,
+            store=store,
+        )
+    try:
+        placed = await resolve_placed_session(
+            path_id,
+            body.mode,
+            body.knowledge_point_id,
+            store=store,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return placed
+
+
+class CommitOutlineRequest(BaseModel):
+    preview_id: int = Field(..., ge=1)
+    session_id: str = Field(..., min_length=1, max_length=200)
+    module_id: str = Field(..., min_length=1, max_length=200)
+
+
+@router.post("/topics/{path_id}/outline-additions")
+async def commit_outline_addition(path_id: str, body: CommitOutlineRequest):
+    """Save a preview the learner confirmed from a study or review reply."""
+    from deeptutor.learning.placement import commit_outline_addition as commit_addition
+
+    _validate_book_id(path_id)
+    try:
+        return await commit_addition(
+            path_id,
+            preview_id=body.preview_id,
+            session_id=body.session_id,
+            module_id=body.module_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+class LectureDraftRequest(BaseModel):
+    """Roll this point's lecture draft forward from its study conversation."""
+
+    session_id: str = Field("", max_length=200)
+    request_id: str = Field("", max_length=200)
+    force: bool = False
+
+
+class LectureCommitRequest(BaseModel):
+    session_id: str = Field("", max_length=200)
+    #: The confirmed revision the learner was looking at. Omitted by the study
+    #: roll-up button, which is asking to save whatever the draft became.
+    expected_revision: int | None = Field(None, ge=0)
+    source: str = Field("learner_confirmed", max_length=40)
+
+
+class LectureRevisionRequest(BaseModel):
+    instruction: str = Field(..., min_length=1, max_length=4000)
+    session_id: str = Field("", max_length=200)
+    section_heading: str = Field("", max_length=300)
+    quoted_text: str = Field("", max_length=4000)
+    request_id: str = Field("", max_length=200)
+
+
+class LectureEditRequest(BaseModel):
+    body: str = Field(..., max_length=200_000)
+    expected_revision: int = Field(..., ge=1)
+
+
+@router.get("/topics/{path_id}/lectures/{kp_id}")
+async def get_point_lecture(path_id: str, kp_id: str):
+    from deeptutor.learning.placement import lecture_status, study_bubbles
+
+    _validate_book_id(path_id)
+    store = LearningStore()
+    bubbles = await study_bubbles(path_id, kp_id, store=store)
+    return await asyncio.to_thread(lecture_status, store, path_id, kp_id, bubbles)
+
+
+@router.post("/topics/{path_id}/lectures/{kp_id}/drafts")
+async def roll_point_lecture_draft(path_id: str, kp_id: str, body: LectureDraftRequest | None = None):
+    """Write or roll the unconfirmed draft. Never touches the confirmed lecture."""
+    from deeptutor.learning.placement import write_lecture_draft
+
+    _validate_book_id(path_id)
+    request = body or LectureDraftRequest()
+    try:
+        return await write_lecture_draft(
+            path_id,
+            kp_id,
+            session_id=request.session_id,
+            request_id=request.request_id,
+            force=request.force,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@router.post("/topics/{path_id}/lectures/{kp_id}/drafts/commit")
+async def confirm_point_lecture(path_id: str, kp_id: str, body: LectureCommitRequest | None = None):
+    """Promote the draft to the lecture review shows."""
+    from deeptutor.learning.placement import commit_lecture_draft
+    from deeptutor.learning.storage import LearningConflictError
+
+    _validate_book_id(path_id)
+    request = body or LectureCommitRequest()
+    store = LearningStore()
+    try:
+        return await asyncio.to_thread(
+            commit_lecture_draft,
+            store,
+            path_id,
+            kp_id,
+            session_id=request.session_id,
+            source=request.source,
+            expected_revision=request.expected_revision,
+        )
+    except LearningConflictError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="This lecture changed while you were reading it. Reload before confirming.",
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.delete("/topics/{path_id}/lectures/{kp_id}/drafts")
+async def discard_point_lecture_draft(path_id: str, kp_id: str, session_id: str = ""):
+    from deeptutor.learning.placement import abandon_lecture_draft
+
+    _validate_book_id(path_id)
+    return await asyncio.to_thread(
+        abandon_lecture_draft, LearningStore(), path_id, kp_id, session_id=session_id
+    )
+
+
+@router.post("/topics/{path_id}/lectures/{kp_id}/revisions")
+async def propose_point_lecture_revision(
+    path_id: str, kp_id: str, body: LectureRevisionRequest
+):
+    """Propose a revision from the learner's own words, for them to apply."""
+    from deeptutor.learning.placement import revise_lecture_draft
+
+    _validate_book_id(path_id)
+    try:
+        return await revise_lecture_draft(
+            path_id,
+            kp_id,
+            session_id=body.session_id,
+            instruction=body.instruction,
+            quoted_text=body.quoted_text,
+            section_heading=body.section_heading,
+            request_id=body.request_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@router.put("/topics/{path_id}/lectures/{kp_id}")
+async def edit_point_lecture(path_id: str, kp_id: str, body: LectureEditRequest):
+    """Save a lecture the learner edited by hand, against the revision they read."""
+    from deeptutor.learning.storage import LearningConflictError
+
+    _validate_book_id(path_id)
+    store = LearningStore()
+    text = str(body.body or "").strip()
+    if not text:
+        raise HTTPException(status_code=422, detail="A lecture cannot be empty.")
+
+    def _save() -> dict:
+        saved = store.get_lecture(path_id, kp_id) or {}
+        revision = store.save_lecture(
+            path_id,
+            kp_id,
+            text,
+            int(saved.get("covered_message_id") or 0),
+            source="learner_edit",
+            expected_revision=int(body.expected_revision),
+        )
+        return {"status": "saved", "revision": revision, "body": text}
+
+    try:
+        return await asyncio.to_thread(_save)
+    except LearningConflictError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="This lecture changed while you were editing it. Reload before saving.",
+        ) from exc
+
+
+@router.post("/topics/{path_id}/lectures/{kp_id}/revert")
+async def revert_point_lecture(path_id: str, kp_id: str, session_id: str = ""):
+    """Undo a lecture that was saved automatically, keeping its text as a draft."""
+    from deeptutor.learning.placement import revert_lecture_confirmation
+
+    _validate_book_id(path_id)
+    try:
+        return await asyncio.to_thread(
+            revert_lecture_confirmation,
+            LearningStore(),
+            path_id,
+            kp_id,
+            session_id=session_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.post("/topics/{path_id}/lectures/{kp_id}")
+async def refresh_point_lecture(path_id: str, kp_id: str):
+    """Legacy single-shot write: roll the draft, then confirm it in one step."""
+    from deeptutor.learning.placement import (
+        commit_lecture_draft,
+        lecture_status,
+        study_bubbles,
+        write_lecture_draft,
+    )
+
+    _validate_book_id(path_id)
+    try:
+        status = await write_lecture_draft(path_id, kp_id)
+        store = LearningStore()
+        if status.get("draft"):
+            await asyncio.to_thread(
+                commit_lecture_draft, store, path_id, kp_id, source="study_roll"
+            )
+        bubbles = await study_bubbles(path_id, kp_id, store=store)
+        return await asyncio.to_thread(lecture_status, store, path_id, kp_id, bubbles)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
 @router.get("/topics/{path_id}/ask-hint")
 async def get_topic_ask_hint(path_id: str, session_id: str = ""):
     """One question the learner could ask here, for the composer placeholder.

@@ -158,7 +158,8 @@ def test_image_and_resolved_user_reply_survive_the_private_history_projection():
 
 @pytest.mark.asyncio
 async def test_compaction_preserves_whole_tool_turns_and_reuses_the_old_prefix():
-    old = turn_record("evidence " * 1800)
+    old = turn_record("tool evidence")
+    old["messages"][0]["content"] = "evidence " * 1800
     recent = turn_record("recent evidence")
     records = rows(old) + rows(recent, 3)
     store = MagicMock()
@@ -224,6 +225,7 @@ async def test_summary_instruction_is_appended_after_original_messages_and_tools
 
 @pytest.mark.asyncio
 async def test_summary_replay_projects_duplicate_images_without_losing_provider_state(monkeypatch):
+    monkeypatch.setattr("deeptutor.agents.base_agent.get_agent_params", lambda _module: {})
     captured = {}
 
     async def stream(_self, **kwargs):
@@ -350,9 +352,11 @@ def test_summary_sanitizer_does_not_restore_removed_reasoning(raw, expected):
 
 @pytest.mark.asyncio
 async def test_recompaction_retains_prior_summary_when_history_replay_has_no_summary_row():
+    middle = turn_record("tool evidence")
+    middle["messages"][0]["content"] = "evidence " * 1800
     records = (
         rows(turn_record("already condensed"))
-        + rows(turn_record("evidence " * 1800), 3)
+        + rows(middle, 3)
         + rows(turn_record("recent"), 5)
     )
     store = MagicMock()
@@ -371,3 +375,39 @@ async def test_recompaction_retains_prior_summary_when_history_replay_has_no_sum
     assert request["messages"][-1]["content"] == "[Conversation summary]\nEarlier stable preference"
     assert all("_context_snapshot" not in message for message in request["messages"])
     assert "already condensed" not in str(request["messages"])
+
+
+def test_replay_leaves_a_long_tool_body_in_the_record():
+    body = '{"archive_id":"hs-tutor-70","messages":[' + ("x" * 8000) + "]}"
+    record = turn_record(body)
+    record["messages"][2]["name"] = "read_source"
+    source = rows(record)
+    replayed = replay_history(source, tool_page_chars=200, language="zh")
+    tool = next(message for message in replayed if message["role"] == "tool")
+
+    assert "xxxxxxxx" not in tool["content"]
+    assert "read_source" in tool["content"]
+    assert "archive_id=hs-tutor-70" in tool["content"]
+    assert record["messages"][2]["content"] == body
+    assert replay_history(source)[2]["content"] == body
+
+
+@pytest.mark.asyncio
+async def test_history_plan_does_not_resend_a_long_tool_body():
+    body = "z" * 20000
+    store = MagicMock()
+    store.get_session = AsyncMock(return_value={"compressed_summary": "", "summary_up_to_msg_id": 0})
+    store.get_messages_for_context = AsyncMock(return_value=rows(turn_record(body)))
+    store.update_summary = AsyncMock()
+    builder = ContextBuilder(store)
+    builder._summarize = AsyncMock(return_value=("Updated summary", []))
+    result = await builder.build(
+        session_id="s",
+        llm_config=SimpleNamespace(model="gpt-test", max_tokens=256, context_window=4096),
+        language="zh",
+    )
+
+    assert body not in str(result.model_history)
+    assert store.get_messages_for_context.return_value[1]["metadata"]["model_turn"]["messages"][2][
+        "content"
+    ] == body

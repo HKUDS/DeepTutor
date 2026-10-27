@@ -1982,6 +1982,7 @@ class LearningService:
         session_id: str,
         turn_id: str = "",
         request_id: str = "",
+        learner_confirmed: bool = False,
     ) -> tuple[LearningProgress, dict[str, Any]]:
         """Apply only the persisted draft; stale state rolls back instead of overwriting."""
         from deeptutor.learning.outline_revision import state_digest
@@ -1991,8 +1992,10 @@ class LearningService:
             draft = tx.module_preview(preview_id, session_id=session_id)
             replayed = draft["committed_revision"] is not None
             if not replayed:
-                if draft.get("request_id") and (
-                    not request_id or request_id == draft["request_id"]
+                if (
+                    not learner_confirmed
+                    and draft.get("request_id")
+                    and (not request_id or request_id == draft["request_id"])
                 ):
                     raise ValueError(
                         "Inspect this preview in a later model round before committing it."

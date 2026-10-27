@@ -358,6 +358,8 @@ class AgentLoop:
                 kb_seed=seed_block,
                 include_tool_manifest=bool(self.tool_schemas),
             )
+            self._apply_resume_checkpoint(messages)
+            completed = False
             try:
                 outcome = await self._run_loop(
                     messages=messages,
@@ -370,26 +372,25 @@ class AgentLoop:
                     # Terminator tools and capability overrides can produce the
                     # visible answer without a final model message.
                     messages.append({"role": "assistant", "content": outcome.final_text})
+                completed = bool(outcome.completed)
             finally:
-                from deeptutor.services.session.model_history import (
-                    complete_tool_results,
-                    normalize_model_turn,
-                )
-
                 # Keep the prepared input (including attachments and briefings)
                 # and every model/tool message, independently of display repair.
-                self.context.runtime.model_turn = normalize_model_turn(
-                    {
-                        "version": 1,
-                        "messages": complete_tool_results(
-                            messages[self.pipeline._model_turn_start :]
-                        ),
-                        "system": messages[0]["content"],
-                        "tools": self._request_tools,
-                        "route": {"provider": self.pipeline.binding, "model": self.pipeline.model},
-                        "request_fingerprint": self._request_fingerprint,
-                    }
+                self._capture_model_turn(messages)
+                from deeptutor.agents.loop.stored_results import (
+                    clear_loop_checkpoint,
+                    write_loop_checkpoint,
                 )
+
+                if completed and self.context.runtime.model_turn:
+                    clear_loop_checkpoint(self.context.session_id)
+                elif self.context.runtime.model_turn:
+                    write_loop_checkpoint(
+                        self.context.session_id,
+                        self.context.runtime.turn_id,
+                        self.context.runtime.model_turn,
+                        anchor=self.context.runtime.checkpoint_anchor,
+                    )
         if outcome.provider_response_state is not None:
             self.context.runtime.provider_response_state = outcome.provider_response_state
 
@@ -784,7 +785,19 @@ class AgentLoop:
             state.tool_steps += 1
             state.sources.extend(dispatch.sources)
             messages.extend(dispatch.tool_messages)
+            if dispatch.stored_results:
+                self.context.runtime.stored_results.update(dispatch.stored_results)
             extend_transient_model_messages(self._transient_model_messages, dispatch.model_messages)
+            self._capture_model_turn(messages)
+            from deeptutor.agents.loop.stored_results import write_loop_checkpoint
+
+            if self.context.runtime.model_turn:
+                write_loop_checkpoint(
+                    self.context.session_id,
+                    self.context.runtime.turn_id,
+                    self.context.runtime.model_turn,
+                    anchor=self.context.runtime.checkpoint_anchor,
+                )
 
             if dispatch.pause:
                 resumed = await self.pipeline._await_user_reply_and_resolve(
@@ -845,6 +858,118 @@ class AgentLoop:
         self._append_loop_instruction(
             messages,
             self.pipeline._settle_exhausted_instruction(),
+        )
+
+    def _capture_model_turn(self, messages: list[dict[str, Any]]) -> None:
+        """Record completed rounds. Compression of the provider view does not run here."""
+        from deeptutor.services.session.model_history import (
+            complete_tool_results,
+            normalize_model_turn,
+        )
+
+        start = getattr(self.pipeline, "_model_turn_start", 0)
+        stored = {
+            key: value
+            for key, value in self.context.runtime.stored_results.items()
+            if isinstance(key, str) and isinstance(value, str)
+        }
+        payload: dict[str, Any] = {
+            "version": 1,
+            "messages": complete_tool_results(messages[start:]),
+            "system": messages[0]["content"] if messages and messages[0].get("role") == "system" else "",
+            "tools": self._request_tools,
+            "route": {"provider": self.pipeline.binding, "model": self.pipeline.model},
+            "request_fingerprint": self._request_fingerprint,
+        }
+        if stored:
+            payload["stored_results"] = stored
+        self.context.runtime.model_turn = normalize_model_turn(payload)
+
+    def _apply_resume_checkpoint(self, messages: list[dict[str, Any]]) -> None:
+        """Continue a retried turn after the last completed tool result."""
+        resume = self.context.runtime.resume_model_turn
+        if not isinstance(resume, dict):
+            return
+        prior = resume.get("messages")
+        if not isinstance(prior, list) or not prior:
+            return
+        start = self.pipeline._model_turn_start
+        messages[start:] = [dict(message) for message in prior if isinstance(message, dict)]
+        bodies = resume.get("stored_results")
+        if isinstance(bodies, dict):
+            self.context.runtime.stored_results.update(
+                {
+                    key: value
+                    for key, value in bodies.items()
+                    if isinstance(key, str) and isinstance(value, str)
+                }
+            )
+
+    async def _shrink_request_view(
+        self,
+        messages: list[dict[str, Any]],
+        tool_schemas: list[dict[str, Any]] | None,
+    ) -> None:
+        """Shorten the provider copy until it fits. ``messages`` here is that copy."""
+        from deeptutor.agents.loop.compact import compact_view, summarize_earlier_rounds
+        from deeptutor.agents.loop.pipeline import ContextWindowExceeded
+
+        async def guard() -> None:
+            await self.pipeline._guard_context_window(
+                messages, self.stream, tool_schemas=tool_schemas
+            )
+
+        try:
+            await guard()
+            return
+        except ContextWindowExceeded:
+            pass
+        for keep_rounds in (2, 1):
+            compacted = await compact_view(
+                list(messages),
+                keep_rounds=keep_rounds,
+                summarize=lambda middle: summarize_earlier_rounds(self.pipeline, middle),
+            )
+            if compacted is None:
+                continue
+            messages[:] = compacted
+            await self._emit_compact_notice()
+            try:
+                await guard()
+                return
+            except ContextWindowExceeded:
+                continue
+        raise ContextWindowExceeded(
+            "This turn is too long to send. The current message or the system prompt "
+            "alone exceeds the model window."
+        )
+
+    async def _compact_rejected_view(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Build one shorter copy after the provider rejected the request."""
+        from deeptutor.agents.loop.compact import compact_view, summarize_earlier_rounds
+
+        for keep_rounds in (2, 1):
+            compacted = await compact_view(
+                messages,
+                keep_rounds=keep_rounds,
+                summarize=lambda middle: summarize_earlier_rounds(self.pipeline, middle),
+            )
+            if compacted is not None:
+                return compacted
+        return messages
+
+    async def _emit_compact_notice(self) -> None:
+        await self.stream.progress(
+            self.pipeline._t(
+                "notices.context_compacted",
+                default=(
+                    "Compacted earlier rounds of this turn so the request can continue. "
+                    "The original rounds stay in the session."
+                ),
+            ),
+            source=self.source,
+            stage=self.stage,
+            metadata={"trace_kind": "warning"},
         )
 
     @staticmethod
@@ -1137,9 +1262,7 @@ class AgentLoop:
                 for message in request_messages
             ]
         )
-        await self.pipeline._guard_context_window(
-            projected_messages, self.stream, tool_schemas=tool_schemas
-        )
+        await self._shrink_request_view(projected_messages, tool_schemas)
         stage = self.stage
         call_id = new_call_id(f"{self.source}-{stage}")
         # Runtime-only invocation identity: reviewed mutations can require a
@@ -1225,7 +1348,12 @@ class AgentLoop:
 
         chunk_meta = merge_trace_metadata(trace_meta, {"trace_kind": "llm_chunk"})
 
-        for attempt in range(len(_PROVIDER_RETRY_DELAYS) + 1):
+        context_compacted = False
+        # One extra slot exists only for a context-length retry. A transport
+        # retry never uses it, and a second context-length rejection raises.
+        for attempt in range(len(_PROVIDER_RETRY_DELAYS) + 2):
+            if attempt == len(_PROVIDER_RETRY_DELAYS) + 1 and not context_compacted:
+                break
             # Providers (esp. Gemini OpenAI-compat) may attach ``usage`` to
             # more than one stream chunk. Keep the latest frame and record it
             # once, only after a successful attempt.
@@ -1511,6 +1639,32 @@ class AgentLoop:
                     )
                 raise
             except Exception as exc:
+                from deeptutor.services.llm.exceptions import ProviderContextWindowError
+
+                if (
+                    isinstance(exc, ProviderContextWindowError)
+                    and not output_emitted
+                    and not context_compacted
+                ):
+                    context_compacted = True
+                    kwargs["messages"] = await self._compact_rejected_view(list(kwargs["messages"]))
+                    self._last_request = LLMRequestSnapshot(
+                        messages=list(kwargs["messages"]),
+                        tool_schemas=list(tool_schemas or []),
+                    )
+                    await self.stream.progress(
+                        self.pipeline._t(
+                            "notices.context_compacted",
+                            default=(
+                                "Compacted earlier rounds of this turn so the request can continue. "
+                                "The original rounds stay in the session."
+                            ),
+                        ),
+                        source=self.source,
+                        stage=stage,
+                        metadata={"trace_kind": "warning"},
+                    )
+                    continue
                 if not is_transient_transport_error(exc):
                     if text_parts or reasoning_parts:
                         messages.append(
@@ -1598,6 +1752,12 @@ class AgentLoop:
                     hint = unreachable_endpoint_hint(self.pipeline.base_url)
                     if hint:
                         message = f"{message} {hint}"
+                    # A finished provider error used to be replaced by the
+                    # generic sentence above, so the chat sat on "reasoning"
+                    # through the retries and then still hid the reason.
+                    detail = logged_error_text(exc).strip()
+                    if detail and detail not in message.lower():
+                        message = f"{message} ({detail[:180]})"
                 raise LLMProviderTransportError(
                     message,
                     partial_response=partial_response,

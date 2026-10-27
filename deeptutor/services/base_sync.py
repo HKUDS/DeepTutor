@@ -80,10 +80,19 @@ class BaseSourceSyncService(ABC):
 
     async def stop(self) -> None:
         self._running = False
-        if self._task and not self._task.done():
-            self._task.cancel()
+        task = self._task
+        if task and not task.done():
+            task.cancel()
             try:
-                await self._task
+                # A cycle blocked in sync I/O never observes cancellation.
+                # Waiting for it here also blocks leader recovery, so a turn
+                # whose lease expired stays "running" and the chat spins.
+                await asyncio.wait_for(task, timeout=5)
+            except TimeoutError:
+                logger.warning(
+                    "%s stop timed out; continuing without that task",
+                    self.__class__.__name__,
+                )
             except asyncio.CancelledError:
                 pass
         self._task = None

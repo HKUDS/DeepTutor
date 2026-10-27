@@ -23,6 +23,7 @@ from openai import AsyncOpenAI
 from deeptutor.services.keypool import KeyPool
 from deeptutor.services.llm.capabilities import (
     disable_forced_tool_choice_at_runtime,
+    disable_reasoning_off_at_runtime,
     disable_response_format_at_runtime,
     is_forced_tool_choice_disabled_at_runtime,
 )
@@ -43,6 +44,7 @@ from deeptutor.services.llm.reasoning_params import (
 )
 from deeptutor.services.llm.request_compat import (
     is_forced_tool_choice_unsupported,
+    is_reasoning_disabled_rejected,
     is_response_format_unsupported,
 )
 from deeptutor.services.llm.usage_frame import usage_breakdown
@@ -662,8 +664,53 @@ class OpenAICompatProvider(LLMProvider):
     def _is_response_format_error(exc: Exception) -> bool:
         return is_response_format_unsupported(exc)
 
+    def _note_reasoning_off_rejected(self, exc: Exception, model: str | None) -> bool:
+        """Record a refusal to turn reasoning off; True when a retry is worth it.
+
+        Some endpoints fronted by OpenRouter answer *"Reasoning is mandatory
+        for this endpoint and cannot be disabled"* when the payload asks for
+        no reasoning at all. The reader-facing book blocks ask for exactly
+        that, so the whole page failed with the same 400.
+
+        Remembering the answer per (binding, model) means the retry goes out
+        without the parameter, and every later call for that pair is correct
+        the first time.
+        """
+        if not is_reasoning_disabled_rejected(exc):
+            return False
+        target = model or self.default_model
+        disable_reasoning_off_at_runtime(self._binding_name(), target)
+        # loguru formats with ``{}``, not printf placeholders.
+        logger.warning(
+            "endpoint refused reasoning=off for model={}; retrying without it. error={}",
+            target,
+            str(exc)[:200],
+        )
+        return True
+
     def _binding_name(self) -> str:
         return self._provider_name or (self._spec.name if self._spec else "openai")
+
+    @staticmethod
+    def _without_reasoning_params(request_kwargs: dict[str, Any]) -> dict[str, Any]:
+        """A copy of *request_kwargs* with every "turn reasoning off" knob removed.
+
+        Only the reasoning knobs go: ``extra_body["reasoning"]`` is what the
+        endpoint objected to, and anything else riding along in ``extra_body``
+        (a provider's ``thinking`` switch, for instance) is none of this
+        rejection's business.
+        """
+        retry_kwargs = dict(request_kwargs)
+        extra_body = retry_kwargs.get("extra_body")
+        if isinstance(extra_body, dict):
+            extra_body = dict(extra_body)
+            extra_body.pop("reasoning", None)
+            if extra_body:
+                retry_kwargs["extra_body"] = extra_body
+            else:
+                retry_kwargs.pop("extra_body", None)
+        retry_kwargs.pop("reasoning_effort", None)
+        return retry_kwargs
 
     def _effective_tool_choice(
         self,
@@ -1052,6 +1099,16 @@ class OpenAICompatProvider(LLMProvider):
                             self._client.chat.completions.create, retry_kwargs
                         )
                     )
+                if self._note_reasoning_off_rejected(exc, model):
+                    # The rejection happens when the request is created, so no
+                    # part of a response has been produced yet and replaying
+                    # without the reasoning parameter is safe.
+                    retry_kwargs = self._without_reasoning_params(request_kwargs)
+                    return self._parse(
+                        await self._create_with_key_rotation(
+                            self._client.chat.completions.create, retry_kwargs
+                        )
+                    )
                 raise
         except Exception as e:
             if self._note_forced_tool_choice_rejected(e, tool_choice, model):
@@ -1206,6 +1263,14 @@ class OpenAICompatProvider(LLMProvider):
                     disable_response_format_at_runtime(binding, request_kwargs.get("model"))
                     retry_kwargs = dict(request_kwargs)
                     retry_kwargs.pop("response_format", None)
+                    stream = await self._create_with_key_rotation(
+                        self._client.chat.completions.create, retry_kwargs
+                    )
+                elif self._note_reasoning_off_rejected(exc, model):
+                    # The refusal happens when the request is created, so no
+                    # part of a response has been streamed yet and replaying
+                    # without the reasoning parameter is safe.
+                    retry_kwargs = self._without_reasoning_params(request_kwargs)
                     stream = await self._create_with_key_rotation(
                         self._client.chat.completions.create, retry_kwargs
                     )

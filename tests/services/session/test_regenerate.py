@@ -552,6 +552,35 @@ class TestRegenerateLastTurn:
 
         assert recorder.calls[0]["mastery_path_id"] == "path-1"
 
+    def test_replays_the_placed_knowledge_point(self, store: SQLiteSessionStore) -> None:
+        """A regenerate runs on the point its conversation is placed on.
+
+        The turn request forbade unknown keys, so naming the point without a
+        field to carry it failed the whole regenerate — the answer the learner
+        was retrying could not be replaced at all.
+        """
+        sid, _, _ = _seed_session(
+            store,
+            user_metadata={"request_snapshot": {"masterySessionMode": "study"}},
+        )
+        asyncio.run(
+            store.update_session_preferences(
+                sid,
+                {
+                    "mastery_path_id": "path-1",
+                    "mastery_session_mode": "study",
+                    "mastery_knowledge_point_id": "path-1_m0_kp1",
+                },
+            )
+        )
+        runtime = TurnRuntimeManager(store=store)
+        recorder = _FakeStartTurnRecorder(store)
+
+        with patch.object(runtime, "start_turn", new=recorder):
+            asyncio.run(runtime.regenerate_last_turn(sid))
+
+        assert recorder.calls[0]["mastery_knowledge_point_id"] == "path-1_m0_kp1"
+
     def test_user_tail_is_kept_and_no_delete(self, store: SQLiteSessionStore) -> None:
         sid, user_id, _ = _seed_session(store, assistant_content=None)
         runtime = TurnRuntimeManager(store=store)

@@ -105,6 +105,8 @@ export interface SessionPreferences {
   mastery_path_id?: string;
   /** "outline" | "study" | "review" — what this mastery conversation is for. */
   mastery_session_mode?: string;
+  /** Set on study and review sessions. Empty for the path-level outline session. */
+  mastery_knowledge_point_id?: string;
   /** Session-level persona preference; "" / absent = Default (no persona). */
   persona?: string;
   /** What this conversation narrowed its skill / MCP reach to. Absent or empty

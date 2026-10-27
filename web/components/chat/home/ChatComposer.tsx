@@ -216,6 +216,8 @@ export default memo(function ChatComposer({
   workspacePending = false,
   spaceMenuOpen,
   hasMessages,
+  maxWidthClass,
+  maxInputHeight,
   attachments,
   attachmentError,
   attachmentProcessing = [],
@@ -331,6 +333,18 @@ export default memo(function ChatComposer({
   workspacePending?: boolean;
   spaceMenuOpen: boolean;
   hasMessages: boolean;
+  /**
+   * Pins the shell width. The chat page widens once a transcript exists;
+   * a surface that passes this keeps one width so controls above the box
+   * stay on the input's left edge.
+   */
+  maxWidthClass?: string;
+  /**
+   * Caps how tall the draft may grow. Omitted, the box grows to 200px and
+   * then scrolls. A transcript underneath passes a lower cap so the draft
+   * stays in the box and the conversation stays above it.
+   */
+  maxInputHeight?: number;
   attachments: PendingAttachment[];
   attachmentError: string | null;
   attachmentProcessing?: AttachmentProcessingItem[];
@@ -1076,10 +1090,19 @@ export default memo(function ChatComposer({
   }
 
 
+  const shellWidth =
+    maxWidthClass ?? (hasMessages ? "max-w-[960px]" : "max-w-[768px]");
   return (
     <div
       ref={composerRef}
-      className={`relative ${spaceMenuOpen || personaSelectorOpen ? "z-[61]" : "z-20"} mx-auto w-full shrink-0 px-6 pb-5 ${hasMessages ? "pt-1 max-w-[960px]" : "max-w-[768px]"}`}
+      className={[
+        "relative mx-auto w-full shrink-0 px-6 pb-5",
+        spaceMenuOpen || personaSelectorOpen ? "z-[61]" : "z-20",
+        hasMessages ? "pt-1" : "",
+        shellWidth,
+      ]
+        .filter(Boolean)
+        .join(" ")}
       style={{
         transition: "max-width 650ms cubic-bezier(0.16, 1, 0.3, 1)",
       }}
@@ -1168,6 +1191,7 @@ export default memo(function ChatComposer({
             placeholder={inputPlaceholder}
             placeholderCompletion={inputPlaceholderCompletion}
             minHeight={hasMessages ? 28 : 64}
+            maxHeight={maxInputHeight}
           />
 
           {attachmentError && (

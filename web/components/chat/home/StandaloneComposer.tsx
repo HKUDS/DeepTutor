@@ -157,6 +157,10 @@ interface StandaloneComposerProps {
   isStreaming: boolean;
   /** Drives the composer's empty-state → conversation layout transition. */
   hasMessages: boolean;
+  /** Pins the shell width. See ChatComposer. */
+  maxWidthClass?: string;
+  /** Caps the draft height. See ChatComposer. */
+  maxInputHeight?: number;
   /** The live turn is paused on an ask_user card and needs an answer. */
   awaitingUserReply?: boolean;
   inputPlaceholder?: string;
@@ -220,6 +224,8 @@ function StandaloneComposerImpl({
   onCancelStreaming,
   isStreaming,
   hasMessages,
+  maxWidthClass,
+  maxInputHeight,
   awaitingUserReply = false,
   inputPlaceholder,
   inputPlaceholderCompletion,
@@ -891,6 +897,8 @@ function StandaloneComposerImpl({
         capMenuOpen={capMenuOpen}
         spaceMenuOpen={spaceMenuOpen}
         hasMessages={hasMessages}
+        maxWidthClass={maxWidthClass}
+        maxInputHeight={maxInputHeight}
         contextBudget={contextBudget ?? null}
         attachments={attachments}
         attachmentError={attachmentError}

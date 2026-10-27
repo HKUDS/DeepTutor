@@ -37,6 +37,11 @@ _FIELDS = {
     "mastery_revise": ("map",),
     "mastery_revise_batch": ("map", "proposed_map"),
     "mastery_profile": ("learner_profile",),
+    # A lecture preview carries the candidate body, and the card the learner
+    # already had in front of them never needs it again — only the diff and
+    # the id the button posts back. Sharing the repeat keeps a long review
+    # conversation from re-sending whole markdown documents every round.
+    "mastery_lecture": ("body",),
 }
 
 

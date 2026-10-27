@@ -2004,6 +2004,21 @@ class QuestionPipeline:
         )
 
     # ------------------------------------------------------------------
+    # Context budget
+    # ------------------------------------------------------------------
+    def observation_char_budget(self) -> int:
+        """How many characters of one tool result this turn's model may see.
+
+        The chat loop exposes this on ``AgentPipeline``; the quiz pipeline is
+        a separate class with no shared base, so it needs its own copy. Without
+        it every quiz block raised ``AttributeError`` and the whole page lost
+        its quizzes.
+        """
+        from deeptutor.agents.loop.stored_results import observation_char_budget_for_config
+
+        return observation_char_budget_for_config(self.llm_config, str(self.model or ""))
+
+    # ------------------------------------------------------------------
     # YAML lookup
     # ------------------------------------------------------------------
     def _t(self, key: str, default: str = "", **kwargs: Any) -> str:
@@ -2086,6 +2101,7 @@ class _BaseLoopHost:
             too_many_tool_calls_message=too_many,
             tool_error_message_factory=tool_error_message_factory(self._pipeline._t),
             trace_id_prefix=self._trace_id_prefix,
+            observation_chars=self._pipeline.observation_char_budget(),
         )
         pageindex_sources = [
             source for source in outcome.sources if source.get("type") == "pageindex"

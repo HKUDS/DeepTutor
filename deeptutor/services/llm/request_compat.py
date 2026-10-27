@@ -132,6 +132,36 @@ def is_forced_tool_choice_unsupported(exc: Exception) -> bool:
     )
 
 
+def is_reasoning_disabled_rejected(exc: Exception) -> bool:
+    """Whether a provider refused a request that asked it to stop reasoning.
+
+    OpenRouter routes a request to whichever upstream provider serves the
+    model, and some of them answer ``"Reasoning is mandatory for this endpoint
+    and cannot be disabled"`` with a 400 when the payload carries
+    ``reasoning: {"effort": "none"}`` (#1968). The reader-facing book blocks
+    ask for exactly that — a plain answer with no scratchpad — so every block
+    on the page failed with the same 400 and the page never got past its
+    first few blocks.
+
+    The remedy is the same shape as the two degradations above: drop the
+    offending parameter and retry once, remembering the answer for the pair
+    so the next call goes out correct the first time.
+    """
+    text = error_text(exc)
+    if "reasoning" not in text:
+        return False
+    return any(
+        marker in text
+        for marker in (
+            "reasoning is mandatory",
+            "mandatory for this endpoint",
+            "cannot be disabled",
+            "reasoning cannot be disabled",
+            "reasoning is required",
+        )
+    )
+
+
 def is_tool_schema_unsupported(exc: Exception) -> bool:
     """Whether a provider rejected native tool/function-calling schemas.
 
@@ -243,6 +273,7 @@ def is_transient_transport_error(exc: Exception) -> bool:
 __all__ = [
     "error_text",
     "is_image_input_unsupported",
+    "is_reasoning_disabled_rejected",
     "is_response_format_unsupported",
     "is_stream_options_unsupported",
     "is_transient_transport_error",

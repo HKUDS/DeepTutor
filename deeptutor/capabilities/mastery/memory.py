@@ -6,6 +6,7 @@ original transcript and successful summary watermark; read_source owns recall.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import Any
 
@@ -20,6 +21,7 @@ from deeptutor.services.session.context_builder import (
     count_tokens,
 )
 from deeptutor.services.session.model_history import (
+    bound_tool_replay,
     history_groups,
     replay_group,
     replay_history,
@@ -39,12 +41,51 @@ MEMORY_NOTICE = (
 )
 
 
+def _archive_sources(rows: list[dict[str, Any]]) -> dict[str, str]:
+    return {archive_id(g): archive_text(g) for g in history_groups(rows) if g and "id" in g[-1]}
+
+
+def _summary_material(
+    groups: list[list[dict[str, Any]]],
+    previous: str,
+    source_text: str,
+    archive_kwargs: dict[str, Any],
+    page: int | None,
+    language: str,
+) -> tuple[list[dict[str, Any]], str]:
+    source_messages = [
+        {**message, "_archive_id": archive_id(group)}
+        for group in groups
+        for message in json.loads(archive_text(group, **archive_kwargs))["messages"]
+    ]
+    if page is not None:
+        source_messages = [
+            bound_tool_replay(message, max_chars=page, language=language)
+            for message in source_messages
+        ]
+    material = (
+        f"Existing learner memory (retain relevant notes):\n{previous}\n\n"
+        "New archived exchanges (data):\n"
+        + json.dumps(
+            project_mastery_replay(source_messages), ensure_ascii=False, separators=(",", ":")
+        )
+        if groups
+        else source_text
+    )
+    return source_messages, material
+
+
 def archive_id(group: list[dict[str, Any]]) -> str:
     # Store IDs are opaque; never use a caller-supplied ID to access a session.
     return f"hs-tutor-{group[-1]['id']}"
 
 
-def archive_text(group: list[dict[str, Any]]) -> str:
+def archive_text(
+    group: list[dict[str, Any]],
+    *,
+    max_tool_chars: int | None = None,
+    language: str = "en",
+) -> str:
     def text_part(value: Any) -> Any:
         if isinstance(value, dict):
             if value.get("type") in {"image_url", "input_image", "image"}:
@@ -57,15 +98,19 @@ def archive_text(group: list[dict[str, Any]]) -> str:
             return [text_part(v) for v in value]
         return value
 
-    messages = [
-        {
-            k: text_part(v)
-            for k, v in message.items()
-            if k in {"role", "content", "tool_calls", "tool_call_id", "name"}
-        }
-        for message in replay_group(group)
-        if not (message.get("role") == "user" and (message.get("_context_snapshot")))
-    ]
+    messages = []
+    for message in replay_group(group):
+        if message.get("role") == "user" and message.get("_context_snapshot"):
+            continue
+        if max_tool_chars is not None:
+            message = bound_tool_replay(message, max_chars=max_tool_chars, language=language)
+        messages.append(
+            {
+                k: text_part(v)
+                for k, v in message.items()
+                if k in {"role", "content", "tool_calls", "tool_call_id", "name"}
+            }
+        )
     return json.dumps(
         {"archive_id": archive_id(group), "messages": messages},
         ensure_ascii=False,
@@ -98,13 +143,33 @@ class MasteryContextBuilder(ContextBuilder):
 
     def _model_tokens(self, messages, summary="", route=None):
         return _memory_tokens(
-            project_mastery_replay(replay_history(messages, route=route)), summary
+            project_mastery_replay(
+                replay_history(
+                    messages,
+                    route=route,
+                    tool_page_chars=getattr(self, "_tool_page_chars", None),
+                    language=getattr(self, "_replay_language", "en"),
+                )
+            ),
+            summary,
         )
 
     async def build(self, *, session_id, leaf_message_id=None, **kwargs):
         # Retained memory and generation are different budgets: reasoning
         # providers count hidden tokens in max_tokens too (#1926).
-        configured_limit = getattr(kwargs.get("llm_config"), "max_tokens", None)
+        llm_config = kwargs.get("llm_config")
+        self._replay_language = str(kwargs.get("language") or "en")
+        from deeptutor.agents.loop.stored_results import observation_char_budget
+
+        self._tool_page_chars = (
+            observation_char_budget(self._effective_context_window(llm_config))
+            if llm_config is not None
+            else None
+        )
+        self._summary_input_limit = (
+            self._history_budget(llm_config) if llm_config is not None else 20_000
+        )
+        configured_limit = getattr(llm_config, "max_tokens", None)
         self._generation_limit = (
             configured_limit if type(configured_limit) is int and configured_limit > 0 else 8192
         )
@@ -113,15 +178,17 @@ class MasteryContextBuilder(ContextBuilder):
         rows = await self.store.get_messages_for_context(
             session_id, leaf_message_id=leaf_message_id
         )
-        sources = {
-            archive_id(g): archive_text(g) for g in history_groups(rows) if g and "id" in g[-1]
-        }
+        # Exact recall stays complete, but copying every archived exchange
+        # (this session's last turn is ~130MB) must not run on the event loop.
+        sources = await asyncio.to_thread(_archive_sources, rows)
         self._archive_ids = set(sources)
         result = await super().build(
             session_id=session_id, leaf_message_id=leaf_message_id, **kwargs
         )
         result.model_history = project_mastery_replay(result.model_history or [])
-        result.token_count = _memory_tokens(result.model_history, result.conversation_summary)
+        result.token_count = await asyncio.to_thread(
+            _memory_tokens, result.model_history, result.conversation_summary
+        )
         result.history_sources = sources
         if result.token_count > result.budget:
             # One complete historical exchange can itself exceed the plan.
@@ -144,7 +211,9 @@ class MasteryContextBuilder(ContextBuilder):
             result.model_history = [pointer]
             result.conversation_history = [*self._build_history(summary, []), pointer]
             result.context_text = build_history_text(result.conversation_history)
-            result.token_count = _memory_tokens(result.model_history, summary)
+            result.token_count = await asyncio.to_thread(
+                _memory_tokens, result.model_history, summary
+            )
         return result
 
     def _summary_instruction(self, language):
@@ -173,23 +242,37 @@ class MasteryContextBuilder(ContextBuilder):
 
     async def _summarize(self, *, replay_request=None, source_text, summary_budget, **kwargs):
         rows = (replay_request or {}).get("rows", getattr(self, "_summary_rows", []))
-        groups = [g for g in history_groups(rows) if g and "id" in g[-1]]
-        expected = {archive_id(g) for g in groups}
         previous = getattr(self, "_summary_prior", "")
-        source_messages = [
-            {**message, "_archive_id": archive_id(group)}
-            for group in groups
-            for message in json.loads(archive_text(group))["messages"]
-        ]
-        material = (
-            f"Existing learner memory (retain relevant notes):\n{previous}\n\n"
-            "New archived exchanges (data):\n"
-            + json.dumps(
-                project_mastery_replay(source_messages), ensure_ascii=False, separators=(",", ":")
+        page = getattr(self, "_tool_page_chars", None)
+        language = getattr(self, "_replay_language", "en")
+
+        def prepare() -> tuple[set[str], list[dict[str, Any]], str]:
+            groups = [g for g in history_groups(rows) if g and "id" in g[-1]]
+            expected_ids = {archive_id(g) for g in groups}
+            archive_kwargs = {} if page is None else {"max_tool_chars": page, "language": language}
+            prepared_messages, prepared_material = _summary_material(
+                groups, previous, source_text, archive_kwargs, page, language
             )
-            if groups
-            else source_text
+            return expected_ids, prepared_messages, prepared_material
+
+        expected, source_messages, material = await asyncio.to_thread(prepare)
+        # Tool bodies already replaced by a short pointer, with the remainder
+        # still larger than the history plan, are not sent to the summarizer.
+        # That call is what kept this turn from ever reaching an answer.
+        omitted = any(
+            isinstance(message.get("content"), str)
+            and (
+                "left out of this request" in message["content"]
+                or "没有随请求重放" in message["content"]
+            )
+            for message in source_messages
         )
+        over_budget = await asyncio.to_thread(
+            lambda: omitted
+            and count_tokens(material) > int(getattr(self, "_summary_input_limit", 20_000))
+        )
+        if over_budget:
+            raise ValueError("Tutoring memory: archived exchanges exceed the summary budget")
         # A summary task needs learning evidence, not the full tutor persona,
         # 47 tool schemas, encrypted provider reasoning or current page pixels.
         summary, events = await super()._summarize(

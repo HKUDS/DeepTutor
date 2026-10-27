@@ -105,10 +105,44 @@ KB_SEED_CHARS_PER_KB = 4000
 # tool calls ends the loop early — that is the normal exit.
 DEFAULT_MAX_ROUNDS = 8
 CONTEXT_WINDOW_GUARD_RATIO = 0.9
+
+
+class ContextWindowExceeded(Exception):
+    """The request copy still does not fit after it was shortened."""
 # Provider image token accounting varies by model and resolution. Reserve a
 # conservative amount for each image instead of treating source pixels as free.
 IMAGE_TOKEN_GUARD_RESERVE = 4096
 _DispatchOutcome = DispatchOutcome
+_IMAGE_PART_TYPES = frozenset({"image_url", "input_image", "image"})
+
+
+def _image_block_count(messages: list[dict[str, Any]]) -> int:
+    count = 0
+    for message in messages:
+        content = message.get("content")
+        if not isinstance(content, list):
+            continue
+        count += sum(
+            1
+            for part in content
+            if isinstance(part, dict) and part.get("type") in _IMAGE_PART_TYPES
+        )
+    return count
+
+
+def _omitted_tool_result(content: str, marker: str) -> str:
+    from deeptutor.agents.loop.stored_results import file_read_in, result_id_in
+
+    result_id = result_id_in(content)
+    if result_id:
+        return f"{marker}\nresult_id={result_id}"
+    tool_name, path = file_read_in(content)
+    if tool_name and path:
+        return (
+            f"{marker}\nfile_path={path}\nread_with={tool_name}\n"
+            "Read a later range with that tool's offset and limit."
+        )
+    return marker
 
 
 def _read_int(cfg: Any, *, key: str, default: int) -> int:
@@ -579,12 +613,19 @@ class AgenticLoopPipeline:
             logger.warning("failed to build tool prompt text", exc_info=True)
             return ""
 
+    def observation_char_budget(self) -> int:
+        """How many characters of one result this turn's model may see at once."""
+        from deeptutor.agents.loop.stored_results import observation_char_budget_for_config
+
+        return observation_char_budget_for_config(self.llm_config, str(self.model or ""))
+
     def _tool_result_snip_marker(self) -> str:
         return self._t(
             "notices.tool_result_snipped",
             default=(
-                "[earlier tool result snipped to stay within context window; "
-                "call the same tool again if the content is still needed]"
+                "[earlier tool result omitted from this request; "
+                "use read_stored_result with its result_id and an offset/limit range. "
+                "Do not call the original tool again.]"
             ),
         )
 
@@ -1206,6 +1247,7 @@ class AgenticLoopPipeline:
             too_many_tool_calls_message=too_many,
             tool_error_message_factory=tool_error_message_factory(self._t),
             trace_id_prefix=f"{self.event_source}-loop",
+            observation_chars=self.observation_char_budget(),
         )
 
     async def _notify_pause_hooks(
@@ -1422,6 +1464,12 @@ class AgenticLoopPipeline:
             kwargs["language"] = context.language or "en"
         elif tool_name == "load_tools":
             kwargs["_tool_loader"] = self._deferred_loader
+        elif tool_name == "read_stored_result":
+            # Session-scoped map assembled for this turn. The model cannot
+            # supply a different store or another session's id. The page size
+            # follows this turn's model window, not a fixed character count.
+            kwargs["_stored_results"] = context.runtime.stored_results
+            kwargs["_observation_chars"] = self.observation_char_budget()
         elif tool_name == "cron":
             # Owner routing is supplied server-side — the model never picks
             # where a scheduled task's output lands.
@@ -1687,7 +1735,12 @@ class AgenticLoopPipeline:
             return
         if not window or window <= 0:
             return
-        budget = int(window * CONTEXT_WINDOW_GUARD_RATIO)
+        try:
+            output_reserve = max(0, int(self.loop_max_tokens))
+        except Exception:
+            output_reserve = 0
+        image_reserve = _image_block_count(messages) * IMAGE_TOKEN_GUARD_RESERVE
+        budget = max(256, int(window * CONTEXT_WINDOW_GUARD_RATIO) - output_reserve - image_reserve)
         # Each message is counted once; the running total moves as tool results are snipped.
         counts = [self._request_message_tokens(msg) for msg in messages]
         total = sum(counts) + self._tool_schema_tokens(tool_schemas)
@@ -1696,29 +1749,36 @@ class AgenticLoopPipeline:
         marker = self._tool_result_snip_marker()
         snipped = False
         for index, msg in enumerate(messages):
-            if msg.get("role") != "tool" or msg.get("content") == marker:
+            if msg.get("role") != "tool":
                 continue
-            msg["content"] = marker
+            content = str(msg.get("content") or "")
+            replacement = _omitted_tool_result(content, marker)
+            if content == replacement:
+                continue
+            msg["content"] = replacement
             snipped = True
             after = self._request_message_tokens(msg)
             total += after - counts[index]
             counts[index] = after
             if total <= budget:
                 break
-        if total > budget:
-            logger.warning(
-                "Context-window guard: request is about %d tokens against a %d-token budget "
-                "(window %d) and no tool results are left to trim; sending it as-is",
-                total,
-                budget,
-                window,
-            )
         if snipped:
             await stream.progress(
                 self._t("notices.context_window_guard"),
                 source=self.event_source,
                 stage=self.event_stage,
                 metadata={"trace_kind": "warning"},
+            )
+        if total > budget:
+            logger.warning(
+                "Context-window guard: request is about %d tokens against a %d-token budget "
+                "(window %d) and still does not fit",
+                total,
+                budget,
+                window,
+            )
+            raise ContextWindowExceeded(
+                "The request is still over the context window after older tool results were omitted."
             )
 
     def measure_context_budget(self, request: LLMRequestSnapshot) -> dict[str, Any] | None:

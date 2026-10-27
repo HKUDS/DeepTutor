@@ -95,6 +95,12 @@ interface ComposerInputProps {
    * composer so the resting box looks inviting rather than crammed.
    */
   minHeight?: number;
+  /**
+   * Maximum textarea height in pixels. Past this the draft scrolls inside
+   * the box. A surface that sits under a transcript passes a lower cap so
+   * a long draft cannot push the transcript off the screen.
+   */
+  maxHeight?: number;
 }
 
 export interface ComposerInputHandle {
@@ -182,6 +188,7 @@ export const ComposerInput = memo(
       placeholder,
       placeholderCompletion,
       minHeight = 28,
+      maxHeight = 200,
     },
     ref,
   ) {
@@ -260,7 +267,7 @@ export const ComposerInput = memo(
       [setInputBoth, onInputChange, textareaRef],
     );
 
-    useAutoSizedTextarea(textareaRef, input, { min: minHeight, max: 200 });
+    useAutoSizedTextarea(textareaRef, input, { min: minHeight, max: maxHeight });
 
     const updateSlashPopup = useCallback((value: string, cursorPos: number) => {
       const matches = matchingSlashCommands(value, cursorPos, availableSlashCommands);

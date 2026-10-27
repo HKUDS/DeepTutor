@@ -23,12 +23,12 @@ import { TopicAtlas } from "@/components/space/learning/TopicAtlas";
 import { activeWorkspaceId } from "@/lib/workspace-scope";
 import { learningLibrary } from "@/lib/learning-library";
 import { useLearningCreation, requestedLearningCreation } from "@/components/learning/LibraryWorkspace";
-import { type MasteryTopic } from "@/lib/learning-api";
+import { type MasteryTopic, resolveMasterySession } from "@/lib/learning-api";
 import {
   MASTERY_OPENING_SCOPE,
   masteryOpeningMessage,
-  masterySessionRoute,
 } from "@/lib/mastery-mode";
+import { masterySessionRoute as existingMasterySessionRoute, masteryTopicRoute } from "@/lib/learning-routes";
 import { setPendingPrompt } from "@/lib/pending-prompt";
 
 function MasteryPathRoute() {
@@ -108,11 +108,22 @@ function MasteryPathRoute() {
             // reading their materials rather than waiting to be prompted.
             // The button they pressed is the request; the conversation opens
             // by sending it rather than by asking them to phrase it again.
+            //
+            // Resolved rather than routed: a path has exactly one outline
+            // conversation, and a bare `?mode=outline` route would open a
+            // second one the moment the learner came back to edit the outline.
             setPendingPrompt(
               masteryOpeningMessage("outline", t),
               MASTERY_OPENING_SCOPE,
             );
-            router.push(masterySessionRoute(topic.path_id, "outline"));
+            try {
+              const placed = await resolveMasterySession(topic.path_id, "outline");
+              router.push(existingMasterySessionRoute(topic.path_id, placed.session_id));
+            } catch {
+              // The goal still exists, so land on its page: it offers the same
+              // way in, and the opening line is still waiting to be sent.
+              router.push(masteryTopicRoute(topic.path_id));
+            }
           }}
         />
       )}

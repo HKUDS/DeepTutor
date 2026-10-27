@@ -7,7 +7,6 @@ from types import SimpleNamespace
 
 from deeptutor.services.session.event_preview import (
     MAX_LEGACY_EVENT_PAYLOAD_CHARS,
-    MAX_TRACE_PREVIEW_EVENTS,
     compact_trace_preview,
 )
 from deeptutor.services.session.pocketbase_store import PocketBaseSessionStore
@@ -180,8 +179,10 @@ def test_session_preview_reads_a_bounded_number_of_canonical_rows(tmp_path, monk
     message = detail["messages"][0]
     assert message["trace"]["total"] == 1_000
     assert message["trace"]["truncated"] is True
-    assert len(message["events"]) == 200
-    assert converted == 200
+    # Tool rows stay in turn_events. Opening the conversation does not
+    # materialize them; the reader fetches the fold by expanding the trace.
+    assert message["events"] == []
+    assert converted == 0
 
 
 def test_an_early_mastery_card_survives_a_long_turns_preview(tmp_path) -> None:
@@ -224,13 +225,18 @@ def test_an_early_mastery_card_survives_a_long_turns_preview(tmp_path) -> None:
     detail = asyncio.run(store.get_session_with_messages(session["id"]))
 
     assert detail is not None
-    events = detail["messages"][0]["events"]
-    assert len(events) == MAX_TRACE_PREVIEW_EVENTS
+    message = detail["messages"][0]
+    events = message["events"]
+    # The unanswered card is part of the open payload. The thousand tool
+    # calls behind it are not — those wait until the trace is expanded.
+    assert message["trace"]["truncated"] is True
+    assert message["trace"]["total"] == 1_001
     posed = [
         (event.get("metadata") or {}).get("tool_metadata", {}).get("mastery_question")
         for event in events
     ]
     assert [card["question_id"] for card in posed if card] == ["q-1"]
+    assert all(event["type"] != "tool_call" for event in events)
 
 
 def test_pocketbase_trace_uses_server_side_pagination(monkeypatch) -> None:

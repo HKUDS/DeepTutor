@@ -28,6 +28,14 @@ export function masterySessionsRoute(pathId: string, query?: URLSearchParams, wo
 export function masterySessionRoute(pathId: string, sessionId: string, workspaceId = activeWorkspaceId()): string {
   return inWorkspace(`${masterySessionsRoute(pathId, undefined, "")}/${segment(sessionId)}`, workspaceId)
 }
+/** Remember which knowledge point this navigation opened, before the session preference loads. */
+export function withKnowledgePoint(route: string, pointId: string): string {
+  const point = pointId.trim()
+  if (!point) return route
+  const url = new URL(route, "http://local")
+  url.searchParams.set("point", point)
+  return `${url.pathname}${url.search}${url.hash}`
+}
 export function readingCollectionRoute(workspaceId: string, contentWorkspaceId = activeWorkspaceId()): string {
   return inWorkspace(`${READING_HOME}/${segment(workspaceId)}`, contentWorkspaceId)
 }

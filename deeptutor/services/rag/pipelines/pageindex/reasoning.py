@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from deeptutor.agents.loop.stored_results import observation_char_budget_for_config
 from deeptutor.core.context import UnifiedContext
 from deeptutor.core.trace import build_trace_metadata, new_call_id
 from deeptutor.runtime.agentic import (
@@ -101,6 +102,9 @@ class _ReadingHost:
             start_retrieval_message="Reading PageIndex documents",
             too_many_tool_calls_message="Too many tool calls in one round.",
             trace_id_prefix=f"{self.source}-pageindex",
+            observation_chars=observation_char_budget_for_config(
+                get_llm_config(), str(self.model or "")
+            ),
         )
 
     async def resolve_pause(self, dispatch: DispatchOutcome) -> bool:

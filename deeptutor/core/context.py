@@ -59,6 +59,15 @@ class TurnRuntimeContext:
     model_history: list[dict[str, Any]] | None = None
     model_turn: dict[str, Any] | None = None
     previous_model_turn: dict[str, Any] | None = None
+    # Full text of long tool results and injected observations, keyed by result id.
+    # The model sees a preview. ``read_stored_result`` reads a range from here.
+    stored_results: dict[str, str] = field(default_factory=dict)
+    # Set when a failed turn is retried. The loop continues after these messages
+    # instead of dispatching the same tools again.
+    resume_model_turn: dict[str, Any] | None = None
+    # User-message id this turn belongs to. A retry resumes only the checkpoint
+    # written for the same message.
+    checkpoint_anchor: str = ""
     subagent_consult_budget: int | None = None
     consult_partner_id: str | None = None
     partner_discussion_group_id: str | None = None

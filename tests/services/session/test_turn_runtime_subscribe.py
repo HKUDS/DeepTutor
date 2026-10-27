@@ -8,6 +8,7 @@ import pytest
 
 from deeptutor.core.stream import StreamEvent, StreamEventType
 from deeptutor.learning.storage import LearningStore
+from deeptutor.runtime.coordination import MemoryCoordinator
 from deeptutor.services.courses import CourseService
 from deeptutor.services.session._turn_runtime_shared import _resolve_turn_failure_metadata
 from deeptutor.services.session.sqlite_store import SQLiteSessionStore
@@ -1054,6 +1055,50 @@ async def test_mastery_path_does_not_steal_apparently_orphaned_lease(
     assert lease is not None
     assert lease.turn_id == stale_turn["id"]
     LearningStore().release_path_lease("shared", turn_id=stale_turn["id"])
+
+
+@pytest.mark.asyncio
+async def test_mastery_path_reclaims_lease_from_a_turn_whose_worker_died(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    """A restart leaves a ``running`` row and a path lease behind.
+
+    The row is the only thing that looks alive: the coordinator that owned the
+    turn went away with the process. Reading the row alone made the path look
+    busy forever, so every later session on it was refused with
+    ``mastery_path_busy`` — which is what the learner saw as "your message
+    wasn't sent".
+    """
+    _isolate_learning_store(monkeypatch, tmp_path)
+    store = SQLiteSessionStore(tmp_path / "chat_history.db")
+    dead_session = await store.ensure_session("dead-session")
+    dead_turn = await store.create_turn(dead_session["id"], capability="mastery_path")
+    LearningStore().acquire_path_lease("shared", dead_session["id"], dead_turn["id"])
+
+    # Same store, fresh coordinator: nothing holds the dead turn any more.
+    runtime = TurnRuntimeManager(store, coordinator=MemoryCoordinator())
+    live_session = await store.ensure_session("live-session")
+    hold = asyncio.Event()
+
+    async def _hold_turn(_execution):
+        await hold.wait()
+
+    monkeypatch.setattr(runtime, "_run_turn", _hold_turn)
+    try:
+        _, turn = await runtime.start_turn(_mastery_payload(live_session["id"], "shared"))
+
+        lease = LearningStore().get_path_lease("shared")
+        assert lease is not None
+        assert lease.turn_id == turn["id"]
+        reaped = await store.get_turn(dead_turn["id"])
+        assert reaped is not None
+        assert reaped["status"] == "failed"
+        assert reaped["failure_code"] == "worker_lost"
+    finally:
+        if runtime._executions:
+            for turn_id in list(runtime._executions):
+                await runtime.cancel_turn(turn_id)
+        LearningStore().release_leases_for_turn(dead_turn["id"])
 
 
 @pytest.mark.asyncio

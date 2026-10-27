@@ -319,3 +319,58 @@ export class TraceCache {
     return this.entries.size;
   }
 }
+
+/**
+ * Whether opening this message left trace rows on the server.
+ *
+ * The open payload carries bubble text and unfinished question cards. A stored
+ * trace is what makes the activity header expandable so the tool fold can be
+ * fetched when the reader asks for it — including a turn whose bubble is empty
+ * because the only thing it did was call tools.
+ */
+export function hasDeferredTrace(message: {
+  trace?: { turn_id?: string | null; truncated?: boolean; total?: number } | null;
+  events?: unknown[] | null;
+}): boolean {
+  const trace = message.trace;
+  if (!trace?.turn_id) return false;
+  const count = message.events?.length ?? 0;
+  return Boolean(trace.truncated) || (trace.total ?? 0) > count;
+}
+
+/**
+ * Keep a trace the reader already has when a background refresh arrives.
+ *
+ * The refresh carries the light opening payload. Replacing a message that
+ * still holds the turn just watched, or a trace they expanded, would fold
+ * that work away and fetch it back.
+ */
+export function preserveLoadedTraces<
+  T extends {
+    id?: number;
+    role: string;
+    events?: unknown[];
+    trace?: { truncated?: boolean; total?: number };
+  },
+>(existing: readonly T[] | undefined, incoming: readonly T[]): T[] {
+  if (!existing?.length) return [...incoming];
+  const prior = new Map<number, T>();
+  for (const message of existing) {
+    if (message.id != null) prior.set(message.id, message);
+  }
+  return incoming.map((message) => {
+    if (message.role !== "assistant" || message.id == null) return message;
+    const local = prior.get(message.id);
+    if (!local) return message;
+    const localCount = local.events?.length ?? 0;
+    const incomingCount = message.events?.length ?? 0;
+    const localComplete =
+      local.trace?.truncated === false &&
+      localCount > 0 &&
+      localCount >= (local.trace.total ?? 0);
+    if (localComplete || localCount > incomingCount) {
+      return { ...message, events: local.events, trace: local.trace ?? message.trace };
+    }
+    return message;
+  });
+}
