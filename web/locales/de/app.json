@@ -3364,7 +3364,6 @@
   "Use the materials I chose and design the outline for this goal with me.": "Verwende die von mir ausgewählten Materialien und entwirf mit mir die Gliederung für dieses Ziel.",
   "Describe what to change in the outline…": "Beschreibe, was an der Gliederung geändert werden soll…",
   "Say what you want to be able to do…": "Sag, was du danach können möchtest…",
-  "Say what you want to be able to do…": "Sag, was du danach können möchtest…",
   "This session changes the outline. Nothing here is taught or tested.": "Diese Sitzung ändert nur die Gliederung. Hier wird weder unterrichtet noch geprüft.",
   "Change your outline": "Ändere deine Gliederung",
   "Say what should be different — a point to add, one that is too hard, the order of two modules. The tutor revises the map and keeps the rest.": "Sag, was anders sein soll: ein Punkt zum Ergänzen, einer, der zu schwer ist, oder die Reihenfolge zweier Module. Der Tutor ändert nur das und lässt den Rest stehen.",
@@ -5573,5 +5572,10 @@
   "Applies to Chat, Solve, Ask Questions, Guided Learning, Reading, Course Study and standard visualizations. Changes take effect on the next turn.": "Gilt für Chat, Problemlösung, Rückfragen, geführtes Lernen, Lesen, Kurslernen und Standardvisualisierungen. Änderungen gelten ab der nächsten Runde.",
   "Clear instructions": "Anweisungen leeren",
   "{{used}} / {{limit}} characters": "{{used}} / {{limit}} Zeichen",
-  "contextBudget.segment.workspace_instructions": "Arbeitsbereichsanweisungen"
+  "contextBudget.segment.workspace_instructions": "Arbeitsbereichsanweisungen",
+  "Modify outline with the tutor": "Lehrplan mit dem Tutor anpassen…",
+  "No outline chat yet": "Noch kein Lehrplan-Chat",
+  "Could not load the outline conversation.": "Der Lehrplan-Chat konnte nicht geladen werden.",
+  "Describe how you want to change the outline, and the tutor will help you adjust it.": "Beschreibe, wie du den Lehrplan ändern möchtest, und der Tutor hilft dir bei der Anpassung.",
+  "Could not start the outline conversation.": "Der Lehrplan-Chat konnte nicht gestartet werden."
 }

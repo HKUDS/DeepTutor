@@ -5548,5 +5548,10 @@
   "Applies to Chat, Solve, Ask Questions, Guided Learning, Reading, Course Study and standard visualizations. Changes take effect on the next turn.": "Застосовується до чату, розв’язування, запитань, керованого навчання, читання, курсів і стандартних візуалізацій. Зміни діють із наступного ходу.",
   "Clear instructions": "Очистити інструкції",
   "{{used}} / {{limit}} characters": "{{used}} / {{limit}} символів",
-  "contextBudget.segment.workspace_instructions": "Інструкції робочого простору"
+  "contextBudget.segment.workspace_instructions": "Інструкції робочого простору",
+  "Modify outline with the tutor": "Змінити план разом із тьютором…",
+  "No outline chat yet": "Ще немає розмови про план",
+  "Could not load the outline conversation.": "Не вдалося завантажити розмову про план.",
+  "Describe how you want to change the outline, and the tutor will help you adjust it.": "Опишіть, як ви хочете змінити план, і тьютор допоможе вам його скоригувати.",
+  "Could not start the outline conversation.": "Не вдалося запустить розмову про план."
 }

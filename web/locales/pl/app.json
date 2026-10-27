@@ -5593,5 +5593,10 @@
   "Applies to Chat, Solve, Ask Questions, Guided Learning, Reading, Course Study and standard visualizations. Changes take effect on the next turn.": "Dotyczy czatu, rozwiązywania, pytań, nauki z przewodnikiem, czytania, kursów i standardowych wizualizacji. Zmiany obowiązują od następnej tury.",
   "Clear instructions": "Wyczyść instrukcje",
   "{{used}} / {{limit}} characters": "{{used}} / {{limit}} znaków",
-  "contextBudget.segment.workspace_instructions": "Instrukcje obszaru roboczego"
+  "contextBudget.segment.workspace_instructions": "Instrukcje obszaru roboczego",
+  "Modify outline with the tutor": "Zmień plan z tutorem…",
+  "No outline chat yet": "Brak rozmowy o planie",
+  "Could not load the outline conversation.": "Nie udało się wczytać rozmowy o planie.",
+  "Describe how you want to change the outline, and the tutor will help you adjust it.": "Opisz, jak chcesz zmienić plan, a tutor pomoże Ci go dostosować.",
+  "Could not start the outline conversation.": "Nie udało się rozpocząć rozmowy o planie."
 }
