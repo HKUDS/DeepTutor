@@ -264,14 +264,17 @@ class FileTypeRouter:
             unsupported=unsupported,
         )
 
+    # latin-1 accepts every byte, so anything listed after it never runs.
+    # cp1254 differs from cp1252 only in six Icelandic letters it reuses for ğ ı ş Ğ İ Ş.
     TEXT_DECODING_CANDIDATES = (
         "utf-8",
         "utf-8-sig",
         "gbk",
         "gb2312",
         "gb18030",
-        "latin-1",
+        "cp1254",
         "cp1252",
+        "latin-1",
     )
 
     @classmethod
