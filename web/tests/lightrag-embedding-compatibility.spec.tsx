@@ -201,3 +201,5 @@ it.each(["ready", "error"])(
     ).toBe(true);
   },
 );
+
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));

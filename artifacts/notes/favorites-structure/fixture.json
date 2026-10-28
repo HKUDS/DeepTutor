@@ -1,0 +1,42 @@
+{
+  "id": "60b5f3fff04b",
+  "title": "收藏块 · 批量与结构验收",
+  "content": "批量插入起点：收藏将放在这里之后。\n\n- 嵌套资料组\n\n  嵌套插入起点。\n\n正文末尾：此段必须始终保留。",
+  "blocks": [
+    {
+      "id": "audit-start",
+      "type": "paragraph",
+      "props": {},
+      "content": "批量插入起点：收藏将放在这里之后。"
+    },
+    {
+      "id": "audit-parent",
+      "type": "toggleListItem",
+      "props": {},
+      "content": "嵌套资料组",
+      "children": [
+        {
+          "id": "audit-child",
+          "type": "paragraph",
+          "props": {},
+          "content": "嵌套插入起点。"
+        }
+      ]
+    },
+    {
+      "id": "audit-end",
+      "type": "paragraph",
+      "props": {},
+      "content": "正文末尾：此段必须始终保留。"
+    }
+  ],
+  "schema_version": 1,
+  "revision": 0,
+  "parent_id": null,
+  "icon": "",
+  "cover": "",
+  "pinned": false,
+  "applied_suggestion_ids": [],
+  "created_at": 1792246032.045156,
+  "updated_at": 1792246032.045156
+}

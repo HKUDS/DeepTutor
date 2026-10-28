@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from pathlib import Path
 from typing import Any
 
@@ -41,7 +42,6 @@ from deeptutor.agents._shared.tool_runtime import (
     bind_workspace_tool_runtime,
     drop_unconfigured_generation_tools,
 )
-from deeptutor.agents.loop.agent_loop import AgentLoop
 from deeptutor.agents.loop.context_budget import LLMRequestSnapshot, build_context_budget
 from deeptutor.agents.loop.prompt_blocks import LoopPromptAssembler
 from deeptutor.capabilities import (
@@ -420,6 +420,20 @@ class AgenticLoopPipeline:
             order = {item["function"]["name"]: i for i, item in enumerate(prior)}
             tool_schemas.sort(key=lambda item: order.get(item["function"]["name"], len(order)))
 
+        from deeptutor.runtime.ts_engine.config import compatibility_reason
+
+        if os.getenv("DEEPTUTOR_CHAT_ENGINE") == "typescript-native" and not compatibility_reason(
+            self.llm_config
+        ):
+            from deeptutor.agents.loop.native_adapter import run_native_turn
+
+            self.last_result = await run_native_turn(
+                self, context, stream, enabled_tools if use_native_tools else [], tool_schemas or []
+            )
+            return self.last_result
+
+        from deeptutor.agents.loop.agent_loop import AgentLoop
+
         loop = AgentLoop(
             pipeline=self,
             context=context,
@@ -683,6 +697,8 @@ class AgenticLoopPipeline:
         )
 
     async def _pageindex_sdk_tool_bundles(self, context: UnifiedContext):
+        if not self._selected_kbs(context):
+            return []
         from deeptutor.multi_user.knowledge_access import resolve_kb
         from deeptutor.services.rag.factory import PAGEINDEX_OSS_PROVIDER, PAGEINDEX_PROVIDER
         from deeptutor.services.rag.pipelines.pageindex.tools import build_sdk_tool_bundle
@@ -752,16 +768,22 @@ class AgenticLoopPipeline:
 
     def _compose_enabled_tools(self, context: UnifiedContext) -> list[str]:
         is_partner = self._is_partner_turn(context)
-        from deeptutor.tools.research_tools import scientific_context
+        from deeptutor.modules.catalog import module_enabled
+
+        scientific = False
+        if module_enabled("research"):
+            from deeptutor.tools.research_tools import scientific_context
+
+            scientific = scientific_context(
+                context.user_message, context.active_capability, context.enabled_tools or []
+            )
 
         composed = compose_enabled_tools(
             registry=self.tool_lookup,
             requested_tools=context.enabled_tools,
             optional_whitelist=LOOP_OPTIONAL_TOOLS,
             mount_flags=ToolMountFlags(
-                has_scientific_research=scientific_context(
-                    context.user_message, context.active_capability, context.enabled_tools or []
-                ),
+                has_scientific_research=scientific,
                 # PageIndex KBs are read via the preloaded MCP tools, not rag —
                 # a conversation with only PageIndex KBs doesn't mount rag at all.
                 # Excludes KBs owned by an exclusive capability (an Obsidian vault
@@ -1011,14 +1033,8 @@ class AgenticLoopPipeline:
         republished verbatim by ``final_text_override`` and would otherwise
         appear twice.
 
-        It is the wrong trade for a capability that merely guards how a turn
-        may *end*. Mastery and Partner authoring stream ordinary teaching prose
-        and reject a finish only in the uncommon case (a question that was
-        never posed, a draft that was never created). Buffering every round of
-        theirs to catch that case removed streaming from those surfaces
-        entirely; a rejected finish is instead withdrawn after the fact by the
-        round's ``narration`` marker, which is how the reader's answer text is
-        reconciled anyway.
+        Ordinary tutoring and authoring prose streams immediately. Finish
+        checks may request more tool work, but cannot withdraw public text.
 
         Declared explicitly rather than inferred, because the two groups are
         indistinguishable from their hooks: both define ``finish_instruction``.
@@ -1093,7 +1109,9 @@ class AgenticLoopPipeline:
         if not choices:
             return ""
         capped = choices[:30]
-        lines = ["[用户的笔记本列表]" if self.language == "zh" else "[User's notebooks]"]
+        lines = [
+            "[用户的收藏夹列表]" if self.language == "zh" else "[User's favorites collections]"
+        ]
         for entry in capped:
             nid = entry.get("id", "")
             name = entry.get("name", nid)
@@ -1101,7 +1119,7 @@ class AgenticLoopPipeline:
             lines.append(f"- `{nid}` - {name} ({count} records)")
         if len(choices) > len(capped):
             lines.append(
-                f"... (+{len(choices) - len(capped)} more; call `list_notebook` to see the rest)"
+                f"... (+{len(choices) - len(capped)} more; call `list_favorites` to see the rest)"
             )
         return "\n".join(lines)
 
@@ -1443,6 +1461,7 @@ class AgenticLoopPipeline:
                 }
             else:
                 from deeptutor.multi_user.context import get_current_user
+                from deeptutor.services.workspace.context import current_workspace_id
 
                 user = get_current_user()
                 kwargs["_cron_owner"] = {
@@ -1450,6 +1469,7 @@ class AgenticLoopPipeline:
                     "user_id": user.id,
                     "is_admin": user.is_admin,
                     "session_id": context.session_id,
+                    "workspace_id": current_workspace_id(),
                     "language": context.language or "en",
                 }
         elif tool_name in {"reason", "brainstorm"}:
@@ -1462,7 +1482,7 @@ class AgenticLoopPipeline:
             kwargs.setdefault("query", context.user_message)
             if task_dir is not None:
                 kwargs.setdefault("output_dir", str(task_dir / "web_search"))
-        elif tool_name == "write_note":
+        elif tool_name == "save_favorite":
             kwargs["conversation_history"] = list(context.conversation_history or [])
             kwargs["current_user_message"] = context.user_message or ""
         elif tool_name == "geogebra_analysis":
@@ -1825,6 +1845,8 @@ class AgenticLoopPipeline:
 
     def _rag_kbs(self, context: UnifiedContext) -> list[str]:
         """Attached KBs served by rag; PageIndex KBs use their SDK tools."""
+        if not self._selected_kbs(context):
+            return []
         from deeptutor.services.rag.pipelines.pageindex import is_pageindex_kb
 
         return [kb for kb in self._selected_kbs(context) if not is_pageindex_kb(kb)]

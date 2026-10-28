@@ -109,7 +109,7 @@ def test_source_key_change_invalidates_open_question(bank):
         repo.review(entry["id"], "stale", 0, "good", "A")
 
 
-def test_timezone_due_order_resolved_and_empty_course_scope(bank):
+def test_timezone_due_order_and_resolved_entries(bank):
     store, repo, client = bank
     old = seed(store)
     new = seed(store, question_id="q2")
@@ -117,7 +117,6 @@ def test_timezone_due_order_resolved_and_empty_course_scope(bank):
         conn.execute("UPDATE practice_review_state SET due_at=100 WHERE entry_id=?", (old["id"],))
         conn.execute("UPDATE practice_review_state SET due_at=200 WHERE entry_id=?", (new["id"],))
     assert repo.queue("Asia/Shanghai", now=DAY) == [old["id"], new["id"]]
-    assert repo.queue("UTC", session_ids=[], now=DAY) == []
     asyncio.run(store.update_notebook_entry(old["id"], {"resolved": True}))
     assert repo.queue("UTC", now=DAY) == [new["id"]]
     assert repo.overview("UTC", now=DAY)["mistakes"] == 2
@@ -315,15 +314,10 @@ def test_import_receipts_and_questions_are_isolated_between_stores(bank, tmp_pat
         other_repo.review(1, "other-user-attempt", 0, "again", "")
 
 
-def test_course_imports_keep_their_course_and_file_provenance(bank, monkeypatch):
-    from types import SimpleNamespace
-
-    monkeypatch.setattr(
-        "deeptutor.services.courses.get_course_service", lambda: SimpleNamespace(get=lambda _: {})
-    )
+def test_imports_keep_file_provenance_without_creating_sessions(bank):
     store, repo, client = bank
     question = normalize_question({"question": "Q", "answer": "A"})
-    repo.commit_import(repo.stage_import("lesson.csv", "mistakes", [question], "course-a"))
+    repo.commit_import(repo.stage_import("lesson.csv", "mistakes", [question]))
     listing = asyncio.run(store.list_notebook_entries())
     assert listing["total"] == 1
     item = listing["items"][0]
@@ -332,12 +326,9 @@ def test_course_imports_keep_their_course_and_file_provenance(bank, monkeypatch)
     assert item["origin_ref"] == "practice-import"
     assert item["material_id"].startswith("import:")
     assert repo.overview("UTC")["mistakes"] == 1
-    # Import provenance must not manufacture a conversation or leak into a
-    # conversation-derived course scope.
     assert asyncio.run(store.list_sessions()) == []
-    assert client.get("/bank/entries?course_id=course-a").json()["total"] == 0
-    assert client.get("/practice/summary?course_id=course-a").json()["mistakes"] == 0
-    assert client.get("/bank/entries?course_id=course-b").json()["total"] == 0
+    assert client.get("/bank/entries").json()["total"] == 1
+    assert client.get("/practice/summary").json()["mistakes"] == 1
 
 
 def test_analytics_separates_creation_first_mistake_and_repeat_reviews(bank):
@@ -365,7 +356,6 @@ def test_analytics_separates_creation_first_mistake_and_repeat_reviews(bank):
     assert report["sources"] == [{"source": "mastery_path", **report["totals"]}]
     asyncio.run(store.update_notebook_entry(entry["id"], {"resolved": True}))
     assert repo.analytics("Asia/Shanghai", 7, now=now)["totals"] == report["totals"]
-    assert repo.analytics("Asia/Shanghai", 7, session_ids=[], now=now)["totals"]["questions"] == 0
     assert client.get("/practice/analytics?days=8").status_code == 422
     assert client.get("/practice/analytics?timezone=not-a-zone").status_code == 422
 

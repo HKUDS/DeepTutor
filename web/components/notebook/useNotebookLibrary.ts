@@ -33,7 +33,7 @@ export interface NotebookLibrary {
   detailError: string | null;
   select: (notebookId: string | null) => void;
   reload: () => Promise<void>;
-  create: (name: string, description: string) => Promise<string | null>;
+  create: (name: string, description: string, color?: string) => Promise<string | null>;
   rename: (
     notebookId: string,
     changes: { name?: string; description?: string; color?: string },
@@ -62,27 +62,7 @@ function messageOf(error: unknown): string {
 
 export function useNotebookLibrary(
   initialId?: string | null,
-  /**
-   * Ids this visit is allowed to open, or null for the whole library.
-   *
-   * The scope has to live here rather than being corrected by the caller after
-   * the fact: `reload` picks a default whenever the current selection is gone,
-   * and a caller-side correction loses that race every time the list refreshes
-   * — after creating a notebook, after deleting one — putting an out-of-scope
-   * notebook back in the pane each time.
-   */
-  scopeIds?: readonly string[] | null,
 ): NotebookLibrary {
-  // Read through a ref so `reload` stays stable across renders: callers build
-  // this list with `useMemo` at best, and a fresh array identity would restart
-  // the load effect on every render.
-  const scopeRef = useRef<readonly string[] | null>(scopeIds ?? null);
-  scopeRef.current = scopeIds ?? null;
-  const inScope = useCallback(
-    (id: string) => !scopeRef.current || scopeRef.current.includes(id),
-    [],
-  );
-
   const [notebooks, setNotebooks] = useState<NotebookSummary[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(
     initialId ?? null,
@@ -121,17 +101,20 @@ export function useNotebookLibrary(
     try {
       const next = await listNotebooks();
       setNotebooks(next);
-      setSelectedId((current) => {
-        const allowed = next.filter((notebook) => inScope(notebook.id));
-        if (current && allowed.some((n) => n.id === current)) return current;
-        return allowed.length ? allowed[0].id : null;
-      });
+      // Only the route opens a notebook: `/notebooks` itself is the list.
+      setSelectedId((current) =>
+        current &&
+        (current === previousRouteIdRef.current ||
+          next.some((n) => n.id === current))
+          ? current
+          : null,
+      );
     } catch (err) {
       setError(messageOf(err));
     } finally {
       setLoading(false);
     }
-  }, [inScope]);
+  }, []);
 
   useEffect(() => {
     void reload();
@@ -144,22 +127,15 @@ export function useNotebookLibrary(
     const routeId = initialId ?? null;
     if (previousRouteIdRef.current === routeId) return;
     previousRouteIdRef.current = routeId;
-    if (routeId) {
-      setSelectedId(routeId);
-      return;
-    }
-    const allowed = notebooks.filter((notebook) => inScope(notebook.id));
-    setSelectedId(allowed[0]?.id ?? null);
-  }, [initialId, inScope, notebooks]);
+    setSelectedId(routeId);
+  }, [initialId]);
 
   useEffect(() => {
     if (!selectedId) {
       // Bump the request counter as well as clearing. `loadDetail` stamps each
       // fetch and drops its own result if a *newer* one started — but clearing
       // starts no fetch, so without this an in-flight response lands after the
-      // clear and puts the notebook straight back on screen. That is what made
-      // a course with no notebooks show some other course's notes beside a list
-      // saying it had none.
+      // clear and puts the notebook straight back on screen.
       detailRequestRef.current += 1;
       setSelected(null);
       setDetailError(null);
@@ -174,12 +150,13 @@ export function useNotebookLibrary(
   }, []);
 
   const create = useCallback(
-    async (name: string, description: string) => {
+    async (name: string, description: string, color?: string) => {
       const trimmed = name.trim();
       if (!trimmed) return null;
       const created = await createNotebook({
         name: trimmed,
         description: description.trim(),
+        ...(color ? { color } : {}),
       });
       await reload();
       setSelectedId(created.id);
@@ -208,13 +185,9 @@ export function useNotebookLibrary(
     async (notebookId: string) => {
       await deleteNotebook(notebookId);
       setNotebooks((prev) => prev.filter((n) => n.id !== notebookId));
-      setSelectedId((current) => {
-        if (current !== notebookId) return current;
-        const rest = notebooks.filter((n) => n.id !== notebookId);
-        return rest.length ? rest[0].id : null;
-      });
+      setSelectedId((current) => (current === notebookId ? null : current));
     },
-    [notebooks],
+    [],
   );
 
   // Keep the sidebar's record count honest after any record-level change
@@ -288,9 +261,11 @@ export function useNotebookLibrary(
         );
         adjustCount(selectedId, -1);
       }
-      adjustCount(targetNotebookId, 1);
+      // A multi-collection save can already exist at the destination.
+      // Re-read counts instead of inventing an additional record.
+      await reload();
     },
-    [selectedId, adjustCount],
+    [selectedId, adjustCount, reload],
   );
 
   return useMemo(

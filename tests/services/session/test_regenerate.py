@@ -359,7 +359,7 @@ class TestRegenerateLastTurn:
         assert payload["persona"] == ""
         assert payload["llm_selection"] == snapshot["llmSelection"]
         assert payload["workspace_mode"] == ""
-        assert payload["course_id"] == ""
+        assert "course_id" not in payload  # Retired course metadata is not replayed.
         assert payload["mastery_path_id"] == ""
         assert payload["mastery_session_mode"] == "study"
         assert payload["auto_route"] is False
@@ -551,6 +551,44 @@ class TestRegenerateLastTurn:
             asyncio.run(runtime.regenerate_last_turn(sid))
 
         assert recorder.calls[0]["mastery_path_id"] == "path-1"
+
+    def test_replays_note_page_and_learning_block_from_request_snapshot(
+        self, store: SQLiteSessionStore
+    ) -> None:
+        sid, _, _ = _seed_session(
+            store,
+            user_metadata={
+                "request_snapshot": {
+                    "noteDocumentId": "0c2d24985c4f",
+                    "noteGeneration": {"block_id": "timeline-learning", "kind": "timeline"},
+                }
+            },
+        )
+        runtime = TurnRuntimeManager(store=store)
+        recorder = _FakeStartTurnRecorder(store)
+
+        with patch.object(runtime, "start_turn", new=recorder):
+            asyncio.run(runtime.regenerate_last_turn(sid))
+
+        assert recorder.calls[0]["note_document_id"] == "0c2d24985c4f"
+        assert recorder.calls[0]["note_generation"] == {
+            "block_id": "timeline-learning",
+            "kind": "timeline",
+        }
+
+    def test_note_companion_answer_without_snapshot_keeps_its_page(
+        self, store: SQLiteSessionStore
+    ) -> None:
+        sid, _, _ = _seed_session(store)
+        asyncio.run(store.update_session_preferences(sid, {"note_document_id": "0c2d24985c4f"}))
+        runtime = TurnRuntimeManager(store=store)
+        recorder = _FakeStartTurnRecorder(store)
+
+        with patch.object(runtime, "start_turn", new=recorder):
+            asyncio.run(runtime.regenerate_last_turn(sid))
+
+        assert recorder.calls[0]["note_document_id"] == "0c2d24985c4f"
+        assert recorder.calls[0]["note_generation"] is None
 
     def test_user_tail_is_kept_and_no_delete(self, store: SQLiteSessionStore) -> None:
         sid, user_id, _ = _seed_session(store, assistant_content=None)

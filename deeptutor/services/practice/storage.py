@@ -112,24 +112,9 @@ class PracticeStore:
         finally:
             conn.close()
 
-    @staticmethod
-    def _scope(session_ids: list[str] | None) -> tuple[str, list]:
-        # Independent imports/document questions have no chat to delete. They
-        # stay visible in the global bank, while an explicit course/session
-        # scope continues to select conversation-backed entries only.
-        sql = "(n.session_id IS NULL OR s.deleted_at IS NULL)"
-        params: list = []
-        if session_ids is not None:
-            sql += " AND n.session_id IN (" + (",".join("?" for _ in session_ids) or "NULL") + ")"
-            params.extend(session_ids)
-        return sql, params
-
-    def overview(
-        self, timezone: str, session_ids: list[str] | None = None, now: float | None = None
-    ) -> dict:
+    def overview(self, timezone: str, now: float | None = None) -> dict:
         now = time.time() if now is None else now
         start, end = day_bounds(timezone, now)
-        scope, params = self._scope(session_ids)
         with self.connect() as conn:
             row = conn.execute(
                 f"""
@@ -139,17 +124,17 @@ class PracticeStore:
                     COALESCE(SUM({_DUE_AT_SQL} <= ?), 0) AS overdue,
                     MIN({_DUE_AT_SQL}) AS next_due_at
                 FROM notebook_entries n LEFT JOIN sessions s ON s.id = n.session_id
-                LEFT JOIN practice_review_state r ON r.entry_id = n.id WHERE {scope}
+                LEFT JOIN practice_review_state r ON r.entry_id = n.id WHERE (n.session_id IS NULL OR s.deleted_at IS NULL)
             """,  # nosec B608 - fixed scope SQL; values bound
-                [now, start, *params],
+                [now, start],
             ).fetchone()  # nosec B608 - bound scope values
             completed = conn.execute(
-                f"""
+                """
                 SELECT COUNT(DISTINCT e.entry_id) FROM practice_review_events e
                 JOIN notebook_entries n ON n.id = e.entry_id LEFT JOIN sessions s ON s.id = n.session_id
-                WHERE e.reviewed_at >= ? AND e.reviewed_at < ? AND {scope}
+                WHERE e.reviewed_at >= ? AND e.reviewed_at < ? AND (n.session_id IS NULL OR s.deleted_at IS NULL)
             """,  # nosec B608 - fixed scope SQL; values bound
-                [start, end, *params],
+                [start, end],
             ).fetchone()[0]  # nosec B608
         return {**dict(row), "reviewed_today": completed, "day_end": end, "timezone": timezone}
 
@@ -157,28 +142,24 @@ class PracticeStore:
         self,
         timezone: str,
         days: int = 30,
-        session_ids: list[str] | None = None,
         now: float | None = None,
     ) -> dict:
         from .analytics import analytics
 
-        scope, params = self._scope(session_ids)
         with self.connect() as conn:
-            return analytics(
-                conn, timezone, days, time.time() if now is None else now, scope, params
-            )
+            return analytics(conn, timezone, days, time.time() if now is None else now)
 
     def queue(
         self,
         timezone: str,
-        session_ids: list[str] | None = None,
         category_id: int | None = None,
         limit: int = 20,
         now: float | None = None,
     ) -> list[int]:
         now = time.time() if now is None else now
         day_bounds(timezone, now)
-        scope, params = self._scope(session_ids)
+        scope = "(n.session_id IS NULL OR s.deleted_at IS NULL)"
+        params: list[int] = []
         if category_id is not None:
             scope += " AND EXISTS(SELECT 1 FROM notebook_entry_categories c WHERE c.entry_id=n.id AND c.category_id=?)"
             params.append(category_id)
@@ -323,7 +304,7 @@ class PracticeStore:
         return outcome
 
     def entries_by_id(self, entry_ids: list[int]) -> list[dict]:
-        """Read notebook rows in the caller's order; missing ids are dropped."""
+        """Read visible notebook rows in caller order; missing or hidden ids are dropped."""
         if not entry_ids:
             return []
         from deeptutor.services.session.sqlite_store import SQLiteSessionStore
@@ -333,7 +314,8 @@ class PracticeStore:
             rows = conn.execute(
                 # The placeholder list is generated from the integer id count;
                 # every value still binds through ?.
-                f"SELECT * FROM notebook_entries WHERE id IN ({placeholders})",  # nosec B608
+                f"""SELECT n.* FROM notebook_entries n LEFT JOIN sessions s ON s.id=n.session_id
+                WHERE n.id IN ({placeholders}) AND (n.session_id IS NULL OR s.deleted_at IS NULL)""",  # nosec B608
                 tuple(entry_ids),
             ).fetchall()
         by_id = {int(row["id"]): SQLiteSessionStore._serialize_notebook_entry(row) for row in rows}
@@ -344,7 +326,6 @@ class PracticeStore:
         filename: str,
         target: str,
         questions: list[dict],
-        course_id: str = "",
         report: dict | None = None,
     ) -> str:
         token, now = uuid.uuid4().hex, time.time()
@@ -360,7 +341,7 @@ class PracticeStore:
                     filename[:200],
                     target,
                     json.dumps(
-                        {"questions": questions, "course_id": course_id, "report": report},
+                        {"questions": questions, "report": report},
                         ensure_ascii=False,
                     ),
                     now,

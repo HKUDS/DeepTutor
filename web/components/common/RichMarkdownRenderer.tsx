@@ -697,8 +697,11 @@ export default function RichMarkdownRenderer({
   // clickable file links (no-op outside a chat message — fileCtx is null).
   const fileCtx = useInlineFileCardContext();
   const fileLinkPlugin = useMemo(
-    () => makeFileLinkRemarkPlugin(fileCtx?.files ?? []),
-    [fileCtx?.files],
+    () => makeFileLinkRemarkPlugin(
+      fileCtx?.files ?? [],
+      fileCtx?.unresolvedRelativeLinksAsText,
+    ),
+    [fileCtx?.files, fileCtx?.unresolvedRelativeLinksAsText],
   );
   const remarkPlugins = useMemo(() => {
     const p: Array<any> = [remarkGfm];

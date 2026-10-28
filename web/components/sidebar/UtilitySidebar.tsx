@@ -1,24 +1,23 @@
 "use client";
 
-import { navigateTask } from "@/lib/workspace-scope";
+import { activeWorkspaceId, navigateTask } from "@/lib/workspace-scope";
 import { sessionWorkspaceId } from "@/lib/session-api";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslation } from "react-i18next";
-import { SidebarShell } from "@/components/sidebar/SidebarShell";
+import { LayoutSidebarShell } from "@/features/ui-layout/slots";
 import { LogoutButton } from "@/components/auth/LogoutButton";
 import { AdminLink } from "@/components/auth/AdminLink";
 import { ProfileLink } from "@/components/auth/ProfileLink";
 import { useAppShell } from "@/context/AppShellContext";
 import {
   deleteSession,
-  listSessions,
+  listAllSessions,
   updateSessionOrganization,
   updateSessionTitle,
   type SessionOrganizationPatch,
   type SessionSummary,
 } from "@/lib/session-api";
-import { listCourses, type StudyCourse } from "@/lib/courses-api";
 import {
   fetchReadingCollectionIndex,
   type ReadingCollectionLabel,
@@ -35,7 +34,6 @@ export default function UtilitySidebar() {
   const router = useRouter();
   const { activeSessionId, setActiveSessionId } = useAppShell();
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
-  const [courses, setCourses] = useState<StudyCourse[]>([]);
   const [masteryTopics, setMasteryTopics] = useState<MasteryTopicLabel[]>([]);
   const [readingCollections, setReadingCollections] = useState<
     ReadingCollectionLabel[]
@@ -49,15 +47,13 @@ export default function UtilitySidebar() {
     }
     try {
       // Labels only name a heading, so losing them costs grouping, not the list.
-      const [nextSessions, nextCourses, nextTopics, nextCollections] =
+      const [nextSessions, nextTopics, nextCollections] =
         await Promise.all([
-          listSessions(50, 0, { force: true, allWorkspaces: true }),
-          listCourses({ force: true }).catch(() => [] as StudyCourse[]),
+          listAllSessions({ force: true }),
           fetchMasteryTopicIndex().catch(() => [] as MasteryTopicLabel[]),
           fetchReadingCollectionIndex().catch(() => [] as ReadingCollectionLabel[]),
         ]);
       setSessions(nextSessions);
-      setCourses(nextCourses);
       setMasteryTopics(nextTopics);
       setReadingCollections(nextCollections);
       hasLoadedSessionsRef.current = true;
@@ -126,27 +122,26 @@ export default function UtilitySidebar() {
   const handleOrganizeSession = useCallback(
     async (sessionId: string, patch: SessionOrganizationPatch) => {
       const updated = await updateSessionOrganization(sessionId, patch, sessionWorkspaceId(sessions.find(item => item.session_id === sessionId)));
+      // A conversation moved to another workspace has left this list.
+      const movedAway = "workspace_id" in patch &&
+        (updated.preferences?.workspace_id || "") !== activeWorkspaceId();
       setSessions((previous) =>
-        previous.map((session) =>
-          session.session_id === sessionId
-            ? {
-                ...session,
-                updated_at: updated.updated_at,
-                preferences: updated.preferences,
-                content_workspace_id: "workspace_id" in patch ? updated.preferences?.workspace_id || "" : session.content_workspace_id,
-              }
-            : session,
-        ),
+        movedAway
+          ? previous.filter((session) => session.session_id !== sessionId)
+          : previous.map((session) =>
+              session.session_id === sessionId
+                ? { ...session, updated_at: updated.updated_at, preferences: updated.preferences }
+                : session,
+            ),
       );
     },
     [sessions],
   );
 
   return (
-    <SidebarShell
+    <LayoutSidebarShell
       showSessions
       sessions={sessions}
-      courses={courses}
       masteryTopics={masteryTopics}
       readingCollections={readingCollections}
       activeSessionId={activeSessionId}

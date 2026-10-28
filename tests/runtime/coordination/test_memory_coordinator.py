@@ -136,6 +136,65 @@ async def test_background_leader_is_singleton_and_transferable() -> None:
 
 
 @pytest.mark.asyncio
+async def test_a_released_turn_tail_is_dropped_after_its_retention(monkeypatch) -> None:
+    """The durable journal holds a finished turn; the live tail is a bridge
+    and must not outlive the process's interest in it."""
+    coordinator = MemoryCoordinator()
+    coordinator.retention_seconds = 0.0
+    lease = await coordinator.acquire_turn("turn-a", "session-1", "worker-a")
+    assert lease is not None
+    for index in range(3):
+        await coordinator.publish_event("turn-a", {"type": "content", "content": str(index)})
+    await coordinator.submit_command("turn-a", "cancel", {}, command_id="cancel-1")
+
+    # Still live: nothing is dropped while the lease is held.
+    assert len(await coordinator.read_events("turn-a")) == 3
+
+    await coordinator.release_turn(lease)
+    assert await coordinator.read_events("turn-a") == []
+    assert await coordinator.read_commands("turn-a") == []
+    assert coordinator._events == {} and coordinator._commands == {}
+    assert coordinator._command_ids == {}
+
+
+@pytest.mark.asyncio
+async def test_a_late_write_for_an_unleased_turn_still_expires() -> None:
+    coordinator = MemoryCoordinator()
+    coordinator.retention_seconds = 0.0
+    await coordinator.publish_event("turn-late", {"type": "session_meta"})
+    assert await coordinator.read_events("turn-late") == []
+
+
+@pytest.mark.asyncio
+async def test_replays_and_reads_use_the_sequence_not_a_scan() -> None:
+    coordinator = MemoryCoordinator()
+    published = [
+        await coordinator.publish_event("turn-a", {"type": "content", "content": str(i)})
+        for i in range(50)
+    ]
+    assert await coordinator.publish_event("turn-a", dict(published[17])) == published[17]
+    with pytest.raises(ValueError, match="conflict"):
+        await coordinator.publish_event("turn-a", {"seq": 18, "type": "content", "content": "x"})
+    tail = await coordinator.read_events("turn-a", 45)
+    assert [row["seq"] for row in tail] == [46, 47, 48, 49, 50]
+
+
+@pytest.mark.asyncio
+async def test_acknowledged_background_commands_are_released() -> None:
+    coordinator = MemoryCoordinator()
+    for index in range(3):
+        await coordinator.submit_background_command("cron_reload", command_id=f"reload-{index}")
+    rows = await coordinator.read_background_commands()
+    await coordinator.acknowledge_background_command(rows[1][0])
+
+    assert [command.command_id for _, command in coordinator._background_commands] == ["reload-2"]
+    later = await coordinator.submit_background_command("cron_reload", command_id="reload-3")
+    assert later is not None
+    # Numbering keeps counting after the list was trimmed.
+    assert [cursor for cursor, _ in await coordinator.read_background_commands()] == ["3-0", "4-0"]
+
+
+@pytest.mark.asyncio
 async def test_acknowledged_turn_releases_payloads_but_live_owner_keeps_them() -> None:
     coordinator = MemoryCoordinator()
     lease = await coordinator.acquire_turn("turn-a", "session-a", "worker")

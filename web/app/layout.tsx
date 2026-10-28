@@ -1,6 +1,8 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Lora } from "next/font/google";
 import "./globals.css";
+import "@/features/ui-layout/classic/classic.css";
+import "@/features/ui-layout/modern/modern.css";
 import ThemeScript from "@/components/ThemeScript";
 import ToastViewport from "@/components/common/ToastViewport";
 import MotionProvider from "@/components/common/MotionProvider";
@@ -22,6 +24,8 @@ const fontSerif = Lora({
   display: "swap",
   variable: "--font-serif",
 });
+
+export const viewport: Viewport = { interactiveWidget: "resizes-content" };
 
 export const metadata: Metadata = {
   title: "DeepTutor",

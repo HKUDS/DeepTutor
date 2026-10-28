@@ -1578,6 +1578,12 @@ class QuestionPipeline:
     # Tool integration (mirrors chat's policy)
     # ------------------------------------------------------------------
     async def _prepare_pageindex_tools(self) -> None:
+        from deeptutor.modules.catalog import require_module
+
+        self._pageindex_tool_context = None
+        if not self.kb_name:
+            return
+        require_module("knowledge")
         from deeptutor.services.rag.pipelines.pageindex.tools import (
             build_pageindex_tool_context,
         )
@@ -1683,7 +1689,7 @@ class QuestionPipeline:
             kwargs.setdefault("sort_by", "relevance")
         elif tool_name == "read_source":
             kwargs["source_index"] = self._source_index(context)
-        elif tool_name == "write_note":
+        elif tool_name == "save_favorite":
             kwargs["conversation_history"] = list(context.conversation_history or [])
             kwargs["current_user_message"] = context.user_message or ""
         return kwargs

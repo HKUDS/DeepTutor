@@ -45,10 +45,10 @@ export function ReviewTrail({
     ? RETENTION_TARGETS
     : [...RETENTION_TARGETS, desiredRetention].sort((a, b) => a - b);
   return (
-    <section className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)] lg:max-h-[min(30vh,260px)] lg:shrink-0">
-      <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] bg-[var(--secondary)] px-4 py-2.5">
+    <section className="dt-panel min-h-0 flex-col lg:max-h-[min(30vh,260px)] lg:shrink-0">
+      <div className="dt-panel-head flex-wrap justify-between gap-3">
         <Tooltip label={t("Scheduled by your forgetting curve")} as="div" side="top">
-          <h2 tabIndex={0} className="text-[12px] font-semibold text-[var(--foreground)]">
+          <h2 tabIndex={0} className="text-[13px] font-semibold text-[var(--foreground)]">
             {t("Review plan")}
           </h2>
         </Tooltip>
@@ -60,7 +60,7 @@ export function ReviewTrail({
               onChange={(event) => onRetentionChange(Number(event.target.value))}
               disabled={retentionBusy}
               aria-describedby="review-retention-hint"
-              className="h-7 rounded-md border border-[var(--border)] bg-[var(--card)] px-1.5 text-[11px] font-medium tabular-nums text-[var(--foreground)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]/40 disabled:opacity-60"
+              className="h-7 rounded-md bg-[var(--background)] px-1.5 text-[11px] font-medium tabular-nums text-[var(--foreground)] shadow-[0_0_0_1px_rgb(0_0_0/0.06)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]/40 disabled:opacity-60"
             >
               {retentionTargets.map((target) => (
                 <option key={target} value={target}>
@@ -80,7 +80,7 @@ export function ReviewTrail({
           </span>
         </div>
       </div>
-      <p id="review-retention-hint" className="shrink-0 px-4 pt-2 text-[10px] text-[var(--muted-foreground)]">
+      <p id="review-retention-hint" className="shrink-0 px-4 text-[11px] text-[var(--muted-foreground)]">
         {t("Higher targets schedule reviews sooner.")}
       </p>
       {retentionError && (
@@ -96,11 +96,11 @@ export function ReviewTrail({
           )}
         </div>
       ) : (
-        <div className="min-h-0 overflow-y-auto p-2">
+        <div className="dt-panel-body min-h-0 overflow-y-auto pt-1">
           {visible.map((review) => (
             <div
               key={review.id}
-              className="group flex items-center gap-2 rounded-lg px-2.5 py-2 transition hover:bg-[var(--muted)]"
+              className="group flex items-center gap-2 rounded-xl px-2.5 py-2 transition hover:bg-[rgb(var(--dt-ink,55_53_47)/0.045)]"
             >
               <Clock3
                 className={`h-3.5 w-3.5 shrink-0 ${review.due ? "text-[var(--primary)]" : "text-[var(--muted-foreground)]"}`}

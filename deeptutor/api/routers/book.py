@@ -1391,6 +1391,16 @@ async def set_page_chat_session(req: PageChatSessionRequest) -> dict[str, Any]:
         )
     if book is None:
         raise HTTPException(status_code=404, detail="Book or page not found")
+    from deeptutor.book.chat_sessions import tag_book_chat_session
+    from deeptutor.services.session import get_session_store
+
+    # The conversation names its book too, so the sidebar can file it there.
+    await tag_book_chat_session(
+        get_session_store(),
+        book_id=req.book_id,
+        page_id=req.page_id,
+        session_id=req.session_id.strip(),
+    )
     return {"book": _book_payload(book, resolved)}
 
 

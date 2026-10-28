@@ -13,6 +13,7 @@ import logging
 from typing import Any
 
 from deeptutor.core.tool_protocol import BaseTool, ToolDefinition, ToolPromptHints
+from deeptutor.modules.catalog import contribution_enabled
 from deeptutor.plugins.entry_points import load_entry_point_group
 from deeptutor.tools.builtin_specs import (
     BUILTIN_TOOL_NAMES,
@@ -118,11 +119,20 @@ class ToolRegistry:
 
     def get(self, name: str) -> BaseTool | None:
         resolved_name, _ = self._resolve_request(name)
+        if not contribution_enabled("tools", resolved_name):
+            return None
         return self._tools.get(resolved_name) or self._load_builtin(resolved_name)
 
     def list_tools(self) -> list[str]:
         builtin = [name for name in BUILTIN_TOOL_NAMES if name in self._builtin_specs]
-        return [*builtin, *(name for name in self._tools if name not in self._builtin_specs)]
+        return [
+            name
+            for name in [
+                *builtin,
+                *(name for name in self._tools if name not in self._builtin_specs),
+            ]
+            if contribution_enabled("tools", name)
+        ]
 
     def get_enabled(self, names: list[str]) -> list[BaseTool]:
         """Return tool instances for the given names (skipping unknown)."""
@@ -181,7 +191,7 @@ class ToolRegistry:
         positionally.
         """
         resolved_name, resolved_kwargs = self._resolve_request(name, kwargs)
-        tool = self._tools.get(resolved_name) or self._load_builtin(resolved_name)
+        tool = self.get(resolved_name)
         if tool is None:
             raise KeyError(f"Unknown tool: {name}")
         return await tool.execute(**resolved_kwargs)

@@ -116,7 +116,7 @@ export default function QuizBlock({
             type="button"
             onClick={onRequestSupplement}
             disabled={supplementing}
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--card)] px-2.5 py-1 text-xs font-medium text-[var(--muted-foreground)] hover:border-[var(--primary)]/40 hover:text-[var(--primary)] disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-[rgb(var(--dt-ink,55_53_47)/0.05)] px-2.5 py-1 transition-colors hover:bg-[rgb(var(--dt-ink,55_53_47)/0.085)] text-xs font-medium text-[var(--muted-foreground)] hover:text-[var(--primary)] disabled:cursor-not-allowed disabled:opacity-60"
           >
             {supplementing ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -198,7 +198,7 @@ function QuizQuestionCard({
   };
 
   return (
-    <div className="rounded-xl border border-[var(--border)] bg-[var(--background)] p-3">
+    <div className="rounded-xl bg-[rgb(var(--dt-ink,55_53_47)/0.03)] p-3">
       <div className="flex items-start justify-between gap-2">
         <div className="flex min-w-0 flex-1 items-start gap-2">
           <span className="pt-0.5 text-sm font-medium text-[var(--foreground)]">
@@ -239,7 +239,7 @@ function QuizQuestionCard({
                       ? "border-rose-300 bg-rose-50 text-rose-900 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-100"
                       : isSelected
                         ? "border-[var(--primary)] bg-[var(--primary)]/8 text-[var(--foreground)]"
-                        : "border-[var(--border)] bg-[var(--card)] text-[var(--foreground)] hover:border-[var(--primary)]/40"
+                        : "border-transparent bg-[rgb(var(--dt-ink,55_53_47)/0.035)] text-[var(--foreground)] hover:bg-[rgb(var(--dt-ink,55_53_47)/0.06)]"
                 }`}
               >
                 <span className="font-mono text-xs uppercase text-[var(--muted-foreground)]">
@@ -270,7 +270,7 @@ function QuizQuestionCard({
       <div className="mt-3 flex items-center justify-between gap-2">
         <button
           onClick={() => setRevealed((v) => !v)}
-          className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--card)] px-2.5 py-1 text-xs font-medium text-[var(--muted-foreground)] hover:border-[var(--primary)]/40 hover:text-[var(--primary)]"
+          className="inline-flex items-center gap-1.5 rounded-md bg-[rgb(var(--dt-ink,55_53_47)/0.05)] px-2.5 py-1 transition-colors hover:bg-[rgb(var(--dt-ink,55_53_47)/0.085)] text-xs font-medium text-[var(--muted-foreground)] hover:text-[var(--primary)]"
         >
           {revealed ? (
             <EyeOff className="h-3.5 w-3.5" />
@@ -290,7 +290,7 @@ function QuizQuestionCard({
       </div>
 
       {revealed && correct && !isChoice && (
-        <div className="mt-2 rounded-lg border border-[var(--border)] bg-[var(--card)]/70 p-2">
+        <div className="mt-2 rounded-lg bg-[rgb(var(--dt-ink,55_53_47)/0.035)] p-2">
           <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--muted-foreground)]">
             {t("Answer")}
           </div>
@@ -328,7 +328,7 @@ function QuizQuestionCard({
       )}
 
       {revealed && question.explanation && (
-        <div className="mt-2 rounded-lg border border-[var(--border)] bg-[var(--muted)]/40 p-2">
+        <div className="mt-2 rounded-lg bg-[rgb(var(--dt-ink,55_53_47)/0.045)] p-2">
           <MarkdownRenderer
             content={String(question.explanation)}
             variant="compact"
@@ -362,7 +362,7 @@ function SelfGradeButton({
       className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-medium transition-colors ${
         active
           ? activeClass
-          : "border-[var(--border)] bg-[var(--card)] text-[var(--muted-foreground)] hover:border-[var(--primary)]/40 hover:text-[var(--foreground)]"
+          : "border-transparent bg-[rgb(var(--dt-ink,55_53_47)/0.05)] text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
       }`}
     >
       {tone === "correct" ? (

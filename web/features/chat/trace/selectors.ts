@@ -118,24 +118,7 @@ export function isChatLoopAnswerContent(event: StreamEvent): boolean {
   );
 }
 
-/**
- * Whether this group's own text was taken back out of the answer. Only then
- * is a chat-loop round's prose trace material — ordinary commentary stays in
- * the bubble where the reader watched it arrive.
- */
-export function isRetractedRound(events: StreamEvent[]): boolean {
-  return events.some((event) => {
-    const meta = getTraceMeta(event);
-    return (
-      meta.trace_kind === "call_status" &&
-      meta.call_state === "complete" &&
-      meta.answer_visible === false
-    );
-  });
-}
-
 export function groupHasTraceSubstance(events: StreamEvent[]): boolean {
-  const retracted = isRetractedRound(events);
   return events.some((event) => {
     if (
       event.type === "tool_call" ||
@@ -155,7 +138,7 @@ export function groupHasTraceSubstance(events: StreamEvent[]): boolean {
     }
     if (event.type === "content") {
       return (
-        (retracted || !isChatLoopAnswerContent(event)) &&
+        !isChatLoopAnswerContent(event) &&
         Boolean(event.content.trim())
       );
     }
@@ -175,9 +158,7 @@ export function groupHasTraceSubstance(events: StreamEvent[]): boolean {
  * token-truncated round is explicitly non-terminal, so once its own next round
  * completes, that marker supersedes this one.
  *
- * ``answer_visible`` is deliberately not consulted: it says whether a round's
- * text belongs to the answer, which is true of nearly every round and says
- * nothing about whether the turn is over.
+ * Legacy visibility metadata does not determine completion or suppress text.
  */
 export function hasSettledFinalRound(events: StreamEvent[]): boolean {
   for (let idx = events.length - 1; idx >= 0; idx -= 1) {

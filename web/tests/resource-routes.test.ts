@@ -31,10 +31,10 @@ test("dynamic resource parameters decode back to stored identities", () => {
   assert.equal(decodeResourceSegment(null), null);
 });
 
-test("filters remain query state rather than resource identity", () => {
-  assert.equal(notebookRoute(null, "course one"), "/notebooks?course=course%20one");
+test("record selection remains query state rather than resource identity", () => {
+  assert.equal(notebookRoute(null, "record one"), "/notebooks?record=record%20one");
   assert.equal(
-    notebookRoute("notes", "course one"),
-    "/notebooks/notes?course=course%20one",
+    notebookRoute("notes", "record one"),
+    "/notebooks/notes?record=record%20one",
   );
 });

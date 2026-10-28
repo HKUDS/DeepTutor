@@ -55,8 +55,8 @@ def _concat_l3() -> str:
 
 def _resolve_partner_id() -> str | None:
     """The active partner id, or ``None`` when not inside a partner scope."""
+    from deeptutor.core.identities import PARTNER_USER_PREFIX
     from deeptutor.multi_user.context import get_current_user_or_none
-    from deeptutor.services.partners.scope import PARTNER_USER_PREFIX
 
     user = get_current_user_or_none()
     user_id = user.scope.user_id if user and user.scope else ""

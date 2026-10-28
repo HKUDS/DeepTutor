@@ -174,6 +174,7 @@ def test_loop_entry_point_waits_for_approval(monkeypatch, tmp_path) -> None:
 
 
 def test_reading_entry_point_waits_for_approval(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(entry_points, "_module_entry_points", lambda _group: {})
     registry = _plugin_registry(
         tmp_path,
         [{"type": "reading_extension", "id": "translation", "entry_point": "translation"}],
@@ -192,3 +193,28 @@ def test_reading_entry_point_waits_for_approval(monkeypatch, tmp_path) -> None:
     registry.approve("org.author.gated")
     allowed = ReadingExtensionRegistry()
     assert allowed.get("translation") is not None
+
+
+def test_module_entries_do_not_bypass_external_reading_approval(monkeypatch, tmp_path):
+    class ExternalTranslation(TranslationExtension):
+        manifest = TranslationExtension.manifest.model_copy(update={"id": "external_translation"})
+
+    registry = _plugin_registry(
+        tmp_path,
+        [
+            {
+                "type": "reading_extension",
+                "id": "external_translation",
+                "entry_point": "external_translation",
+            }
+        ],
+    )
+    monkeypatch.setattr("deeptutor.plugins.registry.PluginRegistry", lambda: registry)
+    _patch_entry_points(
+        monkeypatch, "deeptutor.reading_extensions", "external_translation", ExternalTranslation
+    )
+    blocked = ReadingExtensionRegistry()
+    assert blocked.get("read_aloud") is not None
+    assert blocked.get("external_translation") is None
+    registry.approve("org.author.gated")
+    assert ReadingExtensionRegistry().get("external_translation") is not None

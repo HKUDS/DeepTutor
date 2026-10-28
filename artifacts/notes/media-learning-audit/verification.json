@@ -1,0 +1,239 @@
+{
+  "date": "2026-10-17",
+  "branch": "dt-exp-idp",
+  "scope": "真实浏览器验证原位审批、媒体上传和 AI 学习块；仅使用独立测试笔记。",
+  "inline_review": {
+    "document_id": "c6a1da96041a",
+    "revision": 9,
+    "passed": [
+      "替换、插入、删除在目标段落原位接受",
+      "多条建议连续接受",
+      "忽略建议不改动正文",
+      "接受前立即输入的人工编辑先保存且保留",
+      "人工编辑后的旧建议被阻止覆盖",
+      "冲突提示在对应审批卡片内显示中文",
+      "同一目标的多个建议在第一次替换后保持原位",
+      "同一位置的第二轮修改及保存重开",
+      "待审批建议重开后恢复，已处理建议不重复出现",
+      "真实 AI 润色请求、原位审批、接受和重开"
+    ],
+    "saved_blocks": [
+      {
+        "id": "3f4f61b7-17a5-4581-b105-df47f2e1e767",
+        "type": "paragraph",
+        "props": {
+          "backgroundColor": "default",
+          "textColor": "default",
+          "textAlignment": "left"
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "光合作用利用光能，将水和二氧化碳转化为糖，氧气是这个过程的产物。",
+            "styles": {}
+          }
+        ],
+        "children": []
+      },
+      {
+        "id": "review-middle",
+        "type": "paragraph",
+        "props": {
+          "backgroundColor": "default",
+          "textColor": "default",
+          "textAlignment": "left"
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "这里保留一段未修改的学习笔记，验证审批不会集中到文末。 人工补充：保留我的编辑。",
+            "styles": {}
+          }
+        ],
+        "children": []
+      },
+      {
+        "id": "review-insert",
+        "type": "paragraph",
+        "props": {
+          "backgroundColor": "default",
+          "textColor": "default",
+          "textAlignment": "left"
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "光合作用把光能转化为化学能，储存在生成的糖中。",
+            "styles": {}
+          }
+        ],
+        "children": []
+      },
+      {
+        "id": "ea88c517-42f9-4371-9ac0-17383f72ff7b",
+        "type": "paragraph",
+        "props": {
+          "backgroundColor": "default",
+          "textColor": "default",
+          "textAlignment": "left"
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "补充：光能为上述将水和二氧化碳转化为糖的过程提供能量。",
+            "styles": {}
+          }
+        ],
+        "children": []
+      },
+      {
+        "id": "review-end",
+        "type": "paragraph",
+        "props": {
+          "backgroundColor": "default",
+          "textColor": "default",
+          "textAlignment": "left"
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "笔记末尾：这一段应保持不变。",
+            "styles": {}
+          }
+        ],
+        "children": []
+      }
+    ],
+    "review_statuses": [
+      {
+        "id": "348528f0d0e146c49ea9d6ee884c7253",
+        "block_id": "review-top",
+        "operation": "replace",
+        "status": "accepted"
+      },
+      {
+        "id": "e2b3e8a3b059443b97ed42937bfccc2a",
+        "block_id": "review-insert",
+        "operation": "insert",
+        "status": "accepted"
+      },
+      {
+        "id": "1a0f1d4e137a45e5b0cf6b553a3767f0",
+        "block_id": "review-delete",
+        "operation": "delete",
+        "status": "dismissed"
+      },
+      {
+        "id": "4433507abc6f4b609e3c29f2d2713cee",
+        "block_id": "review-delete",
+        "operation": "delete",
+        "status": "accepted"
+      },
+      {
+        "id": "b9ef280d1ab24345ae1f17a5ae47e232",
+        "block_id": "d44665a5-8de2-450b-8359-26ae03d590b3",
+        "operation": "replace",
+        "status": "accepted"
+      },
+      {
+        "id": "c34f2fed67c843c3a81aec9f165885a3",
+        "block_id": "review-middle",
+        "operation": "replace",
+        "status": "dismissed"
+      },
+      {
+        "id": "489db693d9dd486fa83cddde26132884",
+        "block_id": "review-end",
+        "operation": "replace",
+        "status": "dismissed"
+      },
+      {
+        "id": "66d3220b4bd345ca8c771b500e6f27aa",
+        "block_id": "review-insert",
+        "operation": "replace",
+        "status": "accepted"
+      },
+      {
+        "id": "a5fb4cd3ad814d0aa49c17fd1a684153",
+        "block_id": "review-insert",
+        "operation": "replace",
+        "status": "dismissed"
+      },
+      {
+        "id": "ec946542f3ed4e5da65f496a4365d15d",
+        "block_id": "ea88c517-42f9-4371-9ac0-17383f72ff7b",
+        "operation": "replace",
+        "status": "accepted"
+      }
+    ],
+    "screenshots": [
+      "inline-ai-live.jpg",
+      "inline-conflict.jpg",
+      "inline-review-reopened.jpg",
+      "inline-review-mobile.jpg"
+    ]
+  },
+  "media": {
+    "document_id": "46c793263607",
+    "passed": [
+      "PNG/WAV/MP4/PDF 实际文件选择与上传",
+      "不支持格式的原位报错、重开和重试",
+      "音视频实际播放",
+      "PDF 实际下载",
+      "保存重开：图片 800 px，音频/视频均 readyState=4、2 秒",
+      "390px 窄屏布局"
+    ],
+    "screenshots": [
+      "media-saved.jpg",
+      "media-mobile.jpg",
+      "upload-retry.jpg"
+    ]
+  },
+  "learning": {
+    "documents": [
+      "fc07c552d7ea",
+      "e32ddbd18b9e"
+    ],
+    "passed": [
+      "真实生成测验并接受、选择答案、展开解析、保存重开",
+      "真实生成闪卡并接受、翻转两张、前后切换及重开",
+      "时间线、概念图、Mermaid 真实生成和接受",
+      "生成图片转为持久资源地址并实际加载",
+      "研究大纲原位确认、真实研究、关闭后恢复待审批结果、接受和重开",
+      "Manim 动画生成并接受，实际播放且重开后 readyState=4，约 3 秒",
+      "GeoGebra 渲染、拖动、接受和重开；内角和动态标签另做纠正",
+      "几何第二轮真实 AI 修正建议：接受、内角 90/45/45、拖动后长度 2.83→2.91、面积 2→2.35、保存重开成功",
+      "语音供应商额度错误在块内显示中文提示，无账号信息泄露"
+    ],
+    "external_limitations": [
+      "语音生成实际请求被供应商 HTTP 402 额度不足拒绝；未成功生成语音。图像生成供应商同样不可用，实际接受的插图来自绘图工具产物。"
+    ],
+    "screenshots": [
+      "animation-playing.jpg",
+      "geometry-interactive.jpg",
+      "geometry-reopened.jpg"
+    ]
+  },
+  "fixes": [
+    "编辑器默认格式归一化避免误报审批冲突",
+    "替换保留块 ID，保证连续审批定位",
+    "审批错误原位显示",
+    "审批前保存最新编辑",
+    "AI 生成结果恢复及来源轮次去重",
+    "上传进度、错误、重试与持久文件 URL",
+    "学习块可见后保持渲染、测验预览不写入学习记录",
+    "几何图样式使用 API，避免把颜色和线宽误报成命令失败"
+  ],
+  "checks": {
+    "backend_tests": 24,
+    "geometry_incremental_test": "9 passed after final style fix; total suite coverage 75",
+    "production_build": "passed after final geometry style fix",
+    "typescript": "passed",
+    "scoped_eslint": "passed",
+    "architecture": "passed",
+    "i18n_parity": "passed",
+    "frontend_tests": 75
+  },
+  "environment_note": "开发模式浏览器出现资源加载超时，剩余重开检查改用同一份代码的生产构建（3785），后端仍为本地 8000。",
+  "source_reference": "https://geogebra.github.io/docs/reference/en/GeoGebra_Apps_API/"
+}

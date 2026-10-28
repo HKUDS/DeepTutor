@@ -224,6 +224,21 @@ def test_dashboard_learning_library_follows_the_policy(learner_client, as_user):
         assert "reading surface" in denied.json()["detail"]
 
 
+def test_learning_navigation_index_filters_sources_without_opening_dashboard(
+    learner_client, as_user
+):
+    client, learner, current_user, tmp_path = learner_client
+    with as_user(current_user.id, username="student"):
+        material = _seed_material(tmp_path, "navigation.txt", "Assigned reading.")
+        _save_learner_grant(learner["id"], material.material_id, allowed_surfaces=["reading"])
+
+    response = client.get("/api/dashboard/learning-index")
+    assert response.status_code == 200, response.text
+    sources = response.json()["sources"]
+    assert sources["books"] == sources["mastery"] == sources["practice"] == []
+    assert client.get("/api/dashboard/overview").status_code == 403
+
+
 @pytest.mark.parametrize(
     "surfaces", [["reading"], ["chat"], ["books"], ["books", "chat", "reading"]]
 )

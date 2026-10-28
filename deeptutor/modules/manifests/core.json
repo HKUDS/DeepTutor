@@ -1,0 +1,210 @@
+{
+  "schema_version": 1,
+  "id": "core",
+  "distribution": "deeptutor",
+  "requires": [],
+  "optional": [],
+  "paths": [
+    "deeptutor/knowledge/manifest.py",
+    "deeptutor/knowledge/kb_types.py"
+  ],
+  "capabilities": {
+    "chat": {
+      "class_path": "deeptutor.agents.chat.capability:ChatCapability",
+      "config_model": "deeptutor.runtime.request_contracts:ChatRequestConfig",
+      "manifest": {
+        "name": "chat",
+        "description": "Agentic chat: an exploring agent loop with tools, followed by a respond stage that streams the answer.",
+        "stages": [
+          "exploring",
+          "responding"
+        ],
+        "tools_used": [
+          "brainstorm",
+          "web_search",
+          "paper_search",
+          "zotero_search",
+          "reason",
+          "geogebra_analysis",
+          "imagegen",
+          "videogen"
+        ],
+        "cli_aliases": [
+          "chat"
+        ]
+      },
+      "order": 0
+    },
+    "ask_questions": {
+      "class_path": "deeptutor.capabilities.ask_questions.capability:AskQuestionsCapability",
+      "config_model": "deeptutor.runtime.request_contracts:AskQuestionsRequestConfig",
+      "manifest": {
+        "name": "ask_questions",
+        "description": "Ask the user high-value questions to fill in missing context, then complete the original request with their answers.",
+        "stages": [
+          "responding"
+        ],
+        "tools_used": [
+          "ask_user"
+        ],
+        "cli_aliases": [
+          "ask"
+        ]
+      },
+      "order": 1
+    }
+  },
+  "loops": {
+    "ask_questions": {
+      "class_path": "deeptutor.capabilities.ask_questions.loop:AskQuestionsLoopCapability"
+    },
+    "subagent": {
+      "class_path": "deeptutor.capabilities.subagent.capability:SubagentCapability"
+    },
+    "explore_context": {
+      "class_path": "deeptutor.capabilities.explore_context.capability:ExploreContextCapability"
+    },
+    "setup": {
+      "class_path": "deeptutor.capabilities.setup.capability:SetupCapability"
+    }
+  },
+  "tools": {
+    "brainstorm": {
+      "class_path": "deeptutor.tools.builtin:BrainstormTool",
+      "order": 4
+    },
+    "web_search": {
+      "class_path": "deeptutor.tools.builtin:WebSearchTool",
+      "order": 8
+    },
+    "reason": {
+      "class_path": "deeptutor.tools.builtin:ReasonTool",
+      "order": 9
+    },
+    "zotero_search": {
+      "class_path": "deeptutor.tools.builtin:ZoteroSearchToolWrapper",
+      "order": 11
+    },
+    "read_source": {
+      "class_path": "deeptutor.tools.builtin:ReadSourceTool",
+      "order": 12
+    },
+    "read_skill": {
+      "class_path": "deeptutor.tools.builtin:ReadSkillTool",
+      "order": 15
+    },
+    "load_tools": {
+      "class_path": "deeptutor.tools.builtin:LoadToolsTool",
+      "order": 16
+    },
+    "web_fetch": {
+      "class_path": "deeptutor.tools.builtin:WebFetchTool",
+      "order": 17
+    },
+    "github": {
+      "class_path": "deeptutor.tools.builtin:GithubTool",
+      "order": 22
+    },
+    "ask_user": {
+      "class_path": "deeptutor.tools.builtin:AskUserTool",
+      "order": 23
+    },
+    "geogebra_analysis": {
+      "class_path": "deeptutor.tools.builtin:GeoGebraAnalysisTool",
+      "order": 25
+    },
+    "learning_status": {
+      "class_path": "deeptutor.tools.learning_journal_tools:LearningStatusTool",
+      "order": 26
+    },
+    "learning_update": {
+      "class_path": "deeptutor.tools.learning_journal_tools:LearningUpdateTool",
+      "order": 27
+    },
+    "exec": {
+      "class_path": "deeptutor.tools.exec_tool:ExecTool",
+      "order": 31
+    },
+    "workspace_list": {
+      "class_path": "deeptutor.tools.workspace:WorkspaceListTool",
+      "order": 32
+    },
+    "workspace_read": {
+      "class_path": "deeptutor.tools.workspace:WorkspaceReadTool",
+      "order": 33
+    },
+    "workspace_search": {
+      "class_path": "deeptutor.tools.workspace:WorkspaceSearchTool",
+      "order": 34
+    },
+    "workspace_present": {
+      "class_path": "deeptutor.tools.workspace:WorkspacePresentTool",
+      "order": 35
+    },
+    "workspace_export": {
+      "class_path": "deeptutor.tools.workspace:WorkspaceExportTool",
+      "order": 36
+    },
+    "imagegen": {
+      "class_path": "deeptutor.tools.media_gen_tool:ImagegenTool",
+      "order": 38
+    },
+    "videogen": {
+      "class_path": "deeptutor.tools.media_gen_tool:VideogenTool",
+      "order": 39
+    },
+    "consult_subagent": {
+      "class_path": "deeptutor.capabilities.subagent.tools:ConsultSubagentTool",
+      "order": 79
+    },
+    "inspect_setup": {
+      "class_path": "deeptutor.capabilities.setup.tools:InspectSetupTool",
+      "order": 93
+    },
+    "apply_setting": {
+      "class_path": "deeptutor.capabilities.setup.tools:ApplySettingTool",
+      "order": 94
+    },
+    "request_credential": {
+      "class_path": "deeptutor.capabilities.setup.tools:RequestCredentialTool",
+      "order": 95
+    },
+    "run_setup_job": {
+      "class_path": "deeptutor.capabilities.setup.tools:RunSetupJobTool",
+      "order": 96
+    }
+  },
+  "routes": [],
+  "commands": [],
+  "navigation": [],
+  "services": [],
+  "requirements": [
+    "PyYAML>=6.0",
+    "jinja2>=3.1.0",
+    "openai>=1.30.0",
+    "tiktoken>=0.5.0",
+    "aiohttp>=3.9.4",
+    "httpx>=0.27.0",
+    "requests>=2.32.2",
+    "ddgs>=9.9.1",
+    "nest_asyncio>=1.5.8",
+    "tenacity>=8.0.0",
+    "pydantic>=2.0.0",
+    "pydantic-settings>=2.0.0",
+    "packaging>=24.2",
+    "jsonschema>=4.20.0,<5.0.0",
+    "aiosqlite>=0.19.0",
+    "typer>=0.9.0",
+    "rich>=13.0.0",
+    "prompt_toolkit>=3.0.36",
+    "pyte>=0.8.1",
+    "mcp>=1.26.0,<2.0.0",
+    "tzdata>=2024.1",
+    "loguru>=0.7.3,<1.0.0",
+    "json-repair>=0.57.0,<1.0.0",
+    "psutil>=5.9.0,<8.0.0",
+    "python-docx>=1.1.0",
+    "openpyxl>=3.1.0"
+  ],
+  "executables": []
+}

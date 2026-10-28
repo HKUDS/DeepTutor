@@ -1,4 +1,8 @@
-"""User-scoped atomic storage for Partner Groups and speaker-aware transcripts."""
+"""Account-level atomic storage for Partner Groups and speaker-aware transcripts.
+
+Partners belong to the account, not to a content workspace, and so do their
+groups: every workspace sees the same ones.
+"""
 
 from __future__ import annotations
 
@@ -10,7 +14,7 @@ import shutil
 import threading
 
 from deeptutor.multi_user.context import get_current_user
-from deeptutor.multi_user.paths import get_current_path_service
+from deeptutor.multi_user.paths import get_account_path_service
 from deeptutor.services.partner_groups.models import (
     GroupMessage,
     GroupSessionSummary,
@@ -21,6 +25,7 @@ from deeptutor.services.partner_groups.models import (
 _SAFE_ID = re.compile(r"^[a-z0-9][a-z0-9_-]{0,79}$")
 _LOCKS: dict[Path, threading.Lock] = {}
 _LOCKS_GUARD = threading.Lock()
+_ADOPTED: set[Path] = set()
 
 PUBLIC_TRANSCRIPT_MAX_MESSAGES = 40
 PUBLIC_TRANSCRIPT_MAX_CHARS = 16_000
@@ -51,11 +56,39 @@ def render_recent_lines(lines: list[str], *, max_chars: int, separator: str) -> 
     return separator.join(reversed(kept))
 
 
+def _adopt_workspace_groups(root: Path) -> None:
+    """Groups were once stored per workspace; bring them into the account once."""
+    from deeptutor.services.workspace import get_content_workspace_service
+    from deeptutor.services.workspace.context import workspace_context
+    from deeptutor.services.workspace.models import WorkspaceError
+
+    for row in get_content_workspace_service().list_workspaces():
+        if row["kind"] != "workspace" or row["status"] != "ready":
+            continue
+        try:
+            with workspace_context(row["workspace_id"]):
+                from deeptutor.multi_user.paths import get_current_path_service
+
+                legacy = get_current_path_service().get_user_root() / "partner_groups"
+        except WorkspaceError:
+            continue
+        if legacy.resolve() == root.resolve() or not legacy.is_dir():
+            continue
+        for directory in legacy.iterdir():
+            if directory.is_dir() and not (root / directory.name).exists():
+                shutil.move(str(directory), str(root / directory.name))
+
+
 class PartnerGroupStore:
     @property
     def root(self) -> Path:
-        root = get_current_path_service().get_user_root() / "partner_groups"
+        root = get_account_path_service().get_user_root() / "partner_groups"
         root.mkdir(parents=True, exist_ok=True)
+        with _LOCKS_GUARD:
+            pending = root not in _ADOPTED
+            _ADOPTED.add(root)
+        if pending:
+            _adopt_workspace_groups(root)
         return root
 
     def list(self) -> list[PartnerGroupConfig]:

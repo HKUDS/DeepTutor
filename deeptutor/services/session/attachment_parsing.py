@@ -9,7 +9,6 @@ import re
 from typing import Any
 
 from deeptutor.services.config.runtime_settings import get_chat_attachment_limits
-from deeptutor.services.parsing import get_parse_service
 from deeptutor.services.storage import AttachmentStore
 from deeptutor.utils.document_images import find_markers
 
@@ -30,6 +29,11 @@ async def parse_chat_pdf_attachments(
     contexts = list(document_texts)
     if not any(str(record.get("filename") or "").lower().endswith(".pdf") for record in updated):
         return updated, contexts
+    from deeptutor.modules.catalog import require_module
+
+    require_module("parsing")
+    from deeptutor.services.parsing import get_parse_service
+
     limits = get_chat_attachment_limits()
     total_chars = sum(
         int(record.get("extracted_chars") or 0)

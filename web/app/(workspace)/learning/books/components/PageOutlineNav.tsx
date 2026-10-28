@@ -182,8 +182,8 @@ export default function PageOutlineNav({
           its own content). */}
       <div
         className={[
-          "pointer-events-auto relative overflow-hidden border border-[var(--border)] bg-[var(--card)]/85 shadow-md backdrop-blur",
-          collapsed ? "w-6 rounded-l-md border-r-0" : "w-56 rounded-xl",
+          "pointer-events-auto relative overflow-hidden bg-[var(--popover)] shadow-[0_0_0_1px_rgb(var(--dt-ink,55_53_47)/0.06),0_12px_32px_-12px_rgb(15_15_15/0.18)]",
+          collapsed ? "w-6 rounded-l-md" : "w-56 rounded-2xl",
         ].join(" ")}
         style={{
           transition: [
@@ -220,7 +220,7 @@ export default function PageOutlineNav({
               : `max-height 320ms ${EASE}, opacity 220ms ease-out 100ms, transform 320ms ${EASE} 60ms`,
           }}
         >
-          <div className="flex items-center justify-between gap-2 border-b border-[var(--border)] px-3 py-2">
+          <div className="flex items-center justify-between gap-2 px-3 pb-1 pt-2.5">
             <div className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground)]">
               <Layers className="h-3 w-3" />
               <span>{headerText}</span>

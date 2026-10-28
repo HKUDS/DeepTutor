@@ -232,6 +232,55 @@ async def test_export_requires_existing_rows(exchange: QtiExchange):
         await exchange.export([99])
 
 
+async def test_export_respects_session_visibility_and_workspace(
+    exchange: QtiExchange, tmp_path: Path
+):
+    store = SQLiteSessionStore(exchange.store.db_path)
+    await store.ensure_notebook_session("visible", "Visible")
+    await store.ensure_notebook_session("hidden", "Hidden")
+    for session_id in ("visible", "hidden"):
+        await store.upsert_notebook_entries(
+            session_id,
+            [
+                {
+                    "question_id": session_id,
+                    "turn_id": "t1",
+                    "source": "deep_question",
+                    "question_type": "choice",
+                    "question": session_id,
+                    "options": {"A": "yes", "B": "no"},
+                    "correct_answer": "A",
+                }
+            ],
+        )
+    preview = await exchange.preview(await _package([_bank_question()]), "import.zip")
+    await exchange.commit(preview["token"], ["item_1"])
+    with exchange.store.connect() as conn:
+        conn.execute("UPDATE sessions SET deleted_at=1 WHERE id='hidden'")
+        rows = conn.execute("SELECT id, session_id FROM notebook_entries").fetchall()
+    ids = {row["session_id"]: row["id"] for row in rows}
+    visible, hidden, imported = ids["visible"], ids["hidden"], ids[None]
+
+    other_store = SQLiteSessionStore(tmp_path / "other-workspace.db")
+    other_exchange = QtiExchange(PracticeStore(other_store.db_path))
+    other_preview = await other_exchange.preview(await _package(_kitchen_sink()), "other.zip")
+    await other_exchange.commit(other_preview["token"], ["item_1", "item_2", "item_3", "item_4"])
+    other_only = 4
+
+    assert [row["id"] for row in exchange.store.entries_by_id([imported, hidden, visible, 99])] == [
+        imported,
+        visible,
+    ]
+    assert exchange.store.entries_by_id([]) == []
+    assert exchange.store.is_visible(imported)
+    assert not exchange.store.is_visible(hidden)
+    await exchange.export([visible, imported])
+    for selection in ([hidden], [visible, hidden], [visible, 99], [visible, other_only]):
+        with pytest.raises(LookupError):
+            await exchange.export(selection)
+    await other_exchange.export([other_only])
+
+
 async def test_external_fill_policy_can_be_explicitly_imported_for_self_assessment(exchange):
     document = _bank_question(
         question_id="comparison",

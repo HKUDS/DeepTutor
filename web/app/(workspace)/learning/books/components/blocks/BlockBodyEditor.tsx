@@ -65,7 +65,7 @@ export default function BlockBodyEditor({
             void commit();
           }
         }}
-        className="w-full resize-y rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 font-mono text-[13px] leading-relaxed text-[var(--foreground)] outline-none focus:border-[var(--primary)]/50"
+        className="w-full resize-y dt-soft-input rounded-lg bg-[var(--background)] px-3 py-2 font-mono text-[13px] leading-relaxed text-[var(--foreground)] outline-none"
       />
       <div className="flex items-center justify-between gap-2">
         <span className="text-[11px] text-[var(--muted-foreground)]">
@@ -76,7 +76,7 @@ export default function BlockBodyEditor({
             type="button"
             onClick={onCancel}
             disabled={saving}
-            className="inline-flex items-center gap-1 rounded-md border border-[var(--border)] bg-[var(--card)] px-2 py-1 text-[11px] font-medium text-[var(--muted-foreground)] hover:text-[var(--foreground)] disabled:opacity-50"
+            className="inline-flex items-center gap-1 rounded-md bg-[rgb(var(--dt-ink,55_53_47)/0.05)] px-2 py-1 transition-colors hover:bg-[rgb(var(--dt-ink,55_53_47)/0.085)] text-[11px] font-medium text-[var(--muted-foreground)] hover:text-[var(--foreground)] disabled:opacity-50"
           >
             <X className="h-3 w-3" />
             {t("Cancel")}

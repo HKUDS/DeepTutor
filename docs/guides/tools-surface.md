@@ -120,9 +120,9 @@ deeptutor/core/tool_protocol.py:220   deeptutor/tools/builtin_specs.py:20   deep
 - **prompting/**：见 §2 末条。`ToolPromptComposer:89` 五种格式（list/table/aliases/phased/list_with_usage）。
 - **vision/**：见 §6。
 
-## 5. builtin 集：94 个注册名与四种挂载类别
+## 5. builtin 集：101 个注册名与四种挂载类别
 
-`BUILTIN_TOOL_SPECS`（`deeptutor/tools/builtin_specs.py:46-205`）共 94 个名字，按宿主分：`tools/builtin` 21 + `exec` 1 + `workspace` 5 + `submit_visualization` 1 + `imagegen/videogen` 2 + `mastery_nav` 4 + capabilities 持有的 60（mastery 14、solve 3、obsidian 9、marginnote4 7、subagent 1、ima 5、reading 8、setup 4、partner_authoring 1、partner_group 1、course_study 4）+ `partner_memory` 3。
+`BUILTIN_TOOL_SPECS`（`deeptutor/tools/builtin_specs.py`）共 101 个名字，按宿主分：`tools/builtin` 22 + `exec` 1 + `workspace` 5 + `submit_visualization` 1 + `imagegen/videogen` 2 + `mastery_nav` 4 + `research_tools` 3 + `learning_journal_tools` 2 + capabilities 持有的 58（mastery 15、solve 3、notes 4、obsidian 9、marginnote4 7、subagent 1、ima 5、reading 8、setup 4、partner_authoring 1、partner_group 1）+ `partner_memory` 3。
 
 挂载类别（决定谁有权开关它）：
 

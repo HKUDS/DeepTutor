@@ -411,6 +411,69 @@ async def test_question_support_must_quote_real_evidence(service, monkeypatch):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "source_text, quote",
+    [
+        # A PDF line wrap and indentation split the parsed words.
+        (
+            "…看出如何組織、表達與連結數學想\n   法；…",
+            "…看出如何組織、表達與連結數學想法；…",
+        ),
+        # HTML table markup is present only in the parsed text.
+        (
+            "<tr><td>alpha</td><td>is</td></tr> the first letter",
+            "alpha is the first letter",
+        ),
+        # Full-width parentheses in the parsed text vs. half-width in the quote.
+        (
+            "The set （alpha, beta） is ordered",
+            "The set (alpha, beta) is ordered",
+        ),
+    ],
+)
+async def test_faithful_citation_tolerates_formatting_only_differences(
+    service, monkeypatch, source_text, quote
+):
+    from deeptutor.learning import lesson_evidence
+    from deeptutor.learning import semantic_assessment as semantic
+
+    progress = service.store.load("p")
+    progress.lesson_evidence["kp1"] = {"sources": [{"ref": {}, "text": source_text}]}
+    monkeypatch.setattr(lesson_evidence, "validate_evidence", lambda *args, **kwargs: None)
+
+    async def request(*args, **kwargs):
+        return {
+            "supported": True,
+            "citations": [{"index": 0, "quote": quote}],
+            "provenance": "adapted",
+        }
+
+    monkeypatch.setattr(semantic, "_request", request)
+    question = leaf()
+    await semantic.bind_question(service.store, progress, question)
+    assert question.source_evidence["assessment_contract"]["citations"] == [
+        {"index": 0, "quote": quote}
+    ]
+
+
+@pytest.mark.asyncio
+async def test_whitespace_only_quote_still_rejected_after_normalization(service, monkeypatch):
+    from deeptutor.learning import lesson_evidence
+    from deeptutor.learning import semantic_assessment as semantic
+
+    progress = service.store.load("p")
+    progress.lesson_evidence["kp1"] = {"sources": [{"ref": {}, "text": "alpha and beta"}]}
+    monkeypatch.setattr(lesson_evidence, "validate_evidence", lambda *args, **kwargs: None)
+
+    async def request(*args, **kwargs):
+        return {"supported": True, "citations": [{"index": 0, "quote": " \n\t*_`| "}]}
+
+    monkeypatch.setattr(semantic, "_request", request)
+    with pytest.raises(semantic.AssessmentUnavailable, match="absent"):
+        await semantic.bind_question(service.store, progress, leaf())
+
+
+@pytest.mark.asyncio
 async def test_group_source_binding_is_one_call_with_individual_contracts(service, monkeypatch):
     from deeptutor.learning import lesson_evidence
     from deeptutor.learning import semantic_assessment as semantic
@@ -618,3 +681,34 @@ async def test_scoped_group_clarification_resume_and_exactly_once_credit(service
     assert [attempt.question_id for attempt in progress.quiz_attempts] == ["q1", "q2"]
     replay, _, replayed = await service.grade_interaction_semantic("p", answer="", question_id="g")
     assert replayed and len(replay.learning_evidence) == 2 and len(calls) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "source_text, quote",
+    [
+        ("x_1", "x1"),
+        ("a*b", "ab"),
+        ("x < 0 and y > 1", "x1"),
+        ("x₂", "x2"),
+        ("x²", "x2"),
+        ("not able", "notable"),
+        ("|x|", "||"),
+    ],
+)
+async def test_citation_normalization_does_not_accept_changed_math_or_words(
+    service, monkeypatch, source_text, quote
+):
+    from deeptutor.learning import lesson_evidence
+    from deeptutor.learning import semantic_assessment as semantic
+
+    progress = service.store.load("p")
+    progress.lesson_evidence["kp1"] = {"sources": [{"ref": {}, "text": source_text}]}
+    monkeypatch.setattr(lesson_evidence, "validate_evidence", lambda *args, **kwargs: None)
+
+    async def request(*args, **kwargs):
+        return {"supported": True, "citations": [{"index": 0, "quote": quote}]}
+
+    monkeypatch.setattr(semantic, "_request", request)
+    with pytest.raises(semantic.AssessmentUnavailable, match="absent"):
+        await semantic.bind_question(service.store, progress, leaf())

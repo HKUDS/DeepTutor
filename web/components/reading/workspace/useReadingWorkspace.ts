@@ -8,7 +8,6 @@ import { useTranslation } from "react-i18next";
 
 import { useReading } from "@/context/ReadingContext";
 import { useChatStateAdapter } from "@/features/chat/ChatStateAdapter";
-import { courseSessionConfiguration } from "@/lib/course-session-scope";
 import {
   addBookmark,
   deleteBookmark,
@@ -52,7 +51,6 @@ const NO_BOOKMARKS: ReadingBookmark[] = [];
 export function useReadingWorkspace(
   workspaceId: string,
   sessionIdParam: string | null,
-  courseId = "",
 ) {
   const router = useRouter();
   const { t } = useTranslation();
@@ -77,13 +75,19 @@ export function useReadingWorkspace(
   const sessionBootRef = useRef("");
   const transcriptRequestRef = useRef(0);
 
+  const refreshConversations = useCallback(async () => {
+    const result = await listReadingConversations(workspaceId);
+    setConversations(result);
+    return result;
+  }, [workspaceId]);
+
   const refresh = useCallback(async () => {
     const result = await getReadingWorkspace(workspaceId);
-    const sessionRows = await listReadingConversations(workspaceId);
+    const sessionRows = await refreshConversations();
     setWorkspace(result.workspace);
     setConversations(sessionRows);
     return { workspace: result.workspace, sessions: sessionRows };
-  }, [workspaceId]);
+  }, [workspaceId, refreshConversations]);
 
   useEffect(() => {
     let cancelled = false;
@@ -171,7 +175,7 @@ export function useReadingWorkspace(
 
   useEffect(() => {
     if (!workspace || loading) return;
-    const bootKey = `${workspaceId}:${sessionIdParam ?? "new"}:${courseId.trim()}`;
+    const bootKey = `${workspaceId}:${sessionIdParam ?? "new"}`;
     if (sessionBootRef.current === bootKey) return;
     sessionBootRef.current = bootKey;
 
@@ -194,15 +198,11 @@ export function useReadingWorkspace(
         // the backend attaches the session to this workspace when the first
         // turn runs (see `turn_runtime`), so opening a collection and walking
         // away no longer litters it with empty conversations.
-        const scopedSessionConfiguration = courseSessionConfiguration(
-          sessionConfiguration,
-          courseId,
-        );
         if (sessionIdParam) {
           await loadSession(sessionIdParam);
-          configureSession(scopedSessionConfiguration, sessionIdParam);
+          configureSession(sessionConfiguration, sessionIdParam);
         } else {
-          newSession({ ...scopedSessionConfiguration, capability: null });
+          newSession({ ...sessionConfiguration, capability: null });
         }
       } catch (caught) {
         setError(
@@ -214,7 +214,6 @@ export function useReadingWorkspace(
     })();
   }, [
     configureSession,
-    courseId,
     loadSession,
     loading,
     newSession,
@@ -512,6 +511,7 @@ export function useReadingWorkspace(
     loading,
     error,
     notice,
+    refreshConversations,
     setNotice,
     material,
     annotations,

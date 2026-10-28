@@ -166,11 +166,11 @@ export default function BookCreator({
       <PageHeader title={t('Create a new book')} description={t('Describe what you want to learn, then pick the knowledge sources to fuse into a structured, interactive book.')} />
       <div className="space-y-5">
 
-      <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] shadow-sm">
+      <div className="dt-panel">
         <button
           type="button"
           onClick={() => setFormCollapsed(v => !v)}
-          className="flex w-full items-center justify-between gap-3 rounded-t-2xl px-5 py-3 text-left hover:bg-[var(--muted)]/40"
+          className="flex w-full items-center justify-between gap-3 rounded-t-[18px] px-5 py-3.5 text-left transition-colors hover:bg-[rgb(var(--dt-ink,55_53_47)/0.025)]"
         >
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
@@ -228,7 +228,7 @@ export default function BookCreator({
                 placeholder={t(
                   'e.g. Build intuition for transformer attention with derivations and exercises.'
                 )}
-                className="mt-1.5 w-full resize-none rounded-xl border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--primary)]/50"
+                className="dt-soft-input mt-1.5 w-full resize-none rounded-xl bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none"
               />
             </label>
 
@@ -257,7 +257,7 @@ export default function BookCreator({
                     onChange={e => {
                       setLanguage(e.target.value)
                     }}
-                    className="ml-1 rounded-md border border-[var(--border)] bg-[var(--background)] px-1.5 py-0.5 text-xs text-[var(--foreground)]"
+                    className="dt-soft-input ml-1 rounded-md bg-[var(--background)] px-1.5 py-0.5 text-xs text-[var(--foreground)] outline-none"
                   >
                     {BOOK_LANGUAGES.map(option => (
                       <option key={option.code} value={option.code}>
@@ -269,17 +269,17 @@ export default function BookCreator({
 
                 <div className="flex items-center gap-1.5 text-xs text-[var(--muted-foreground)]">
                   {t('Depth')}
-                  <div className="inline-flex overflow-hidden rounded-md border border-[var(--border)] text-[11px]">
+                  <div className="inline-flex rounded-[8px] bg-[rgb(var(--dt-ink,55_53_47)/0.06)] p-[3px] text-[11px]">
                     {DEPTH_OPTIONS.map(option => (
                       <Tooltip key={option.value} label={t(option.hint)}>
                         <button
                           type="button"
                           onClick={() => setDepth(option.value)}
                           aria-pressed={depth === option.value}
-                          className={`px-2 py-0.5 font-medium transition-colors ${
+                          className={`rounded-[6px] px-2 py-0.5 font-medium transition-colors ${
                             depth === option.value
-                              ? 'bg-[var(--primary)]/12 text-[var(--foreground)]'
-                              : 'text-[var(--muted-foreground)] hover:bg-[var(--muted)]/40 hover:text-[var(--foreground)]'
+                              ? 'bg-[var(--background)] text-[var(--foreground)] shadow-[0_0_0_1px_rgb(15_15_15/0.04),0_1px_2px_rgb(15_15_15/0.08)]'
+                              : 'text-[var(--muted-foreground)] hover:text-[var(--foreground)]'
                           }`}
                         >
                           {t(option.label)}
@@ -307,7 +307,7 @@ export default function BookCreator({
       </div>
 
       {currentProposal && onConfirmProposal && (
-        <div className="space-y-4 rounded-2xl border border-[var(--border)] bg-[var(--card)] p-5 shadow-sm">
+        <div className="space-y-4 rounded-[18px] bg-[rgb(var(--dt-ink,55_53_47)/0.028)] p-5">
           <div>
             <h2 className="text-base font-semibold text-[var(--foreground)]">{t('Proposal')}</h2>
             <p className="text-xs text-[var(--muted-foreground)]">
@@ -372,7 +372,7 @@ function ProposalForm({
         <input
           value={proposal.title}
           onChange={e => update({ title: e.target.value })}
-          className="mt-1 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-2.5 py-1.5 text-sm text-[var(--foreground)]"
+          className="dt-soft-input mt-1 w-full rounded-lg bg-[var(--background)] outline-none px-2.5 py-1.5 text-sm text-[var(--foreground)]"
         />
       </label>
       <label className="block sm:col-span-2">
@@ -383,7 +383,7 @@ function ProposalForm({
           value={proposal.description}
           onChange={e => update({ description: e.target.value })}
           rows={3}
-          className="mt-1 w-full resize-none rounded-md border border-[var(--border)] bg-[var(--background)] px-2.5 py-1.5 text-sm text-[var(--foreground)]"
+          className="dt-soft-input mt-1 w-full resize-none rounded-lg bg-[var(--background)] outline-none px-2.5 py-1.5 text-sm text-[var(--foreground)]"
         />
       </label>
       <label className="block">
@@ -393,7 +393,7 @@ function ProposalForm({
         <input
           value={proposal.scope}
           onChange={e => update({ scope: e.target.value })}
-          className="mt-1 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-2.5 py-1.5 text-sm text-[var(--foreground)]"
+          className="dt-soft-input mt-1 w-full rounded-lg bg-[var(--background)] outline-none px-2.5 py-1.5 text-sm text-[var(--foreground)]"
         />
       </label>
       <label className="block">
@@ -403,7 +403,7 @@ function ProposalForm({
         <input
           value={proposal.target_level}
           onChange={e => update({ target_level: e.target.value })}
-          className="mt-1 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-2.5 py-1.5 text-sm text-[var(--foreground)]"
+          className="dt-soft-input mt-1 w-full rounded-lg bg-[var(--background)] outline-none px-2.5 py-1.5 text-sm text-[var(--foreground)]"
         />
       </label>
       <label className="block">
@@ -416,7 +416,7 @@ function ProposalForm({
           max={12}
           value={proposal.estimated_chapters}
           onChange={e => update({ estimated_chapters: Number(e.target.value) || 0 })}
-          className="mt-1 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-2.5 py-1.5 text-sm text-[var(--foreground)]"
+          className="dt-soft-input mt-1 w-full rounded-lg bg-[var(--background)] outline-none px-2.5 py-1.5 text-sm text-[var(--foreground)]"
         />
       </label>
       <div className="block sm:col-span-2">
@@ -432,7 +432,7 @@ function ProposalForm({
             effectiveKbs.map(kb => (
               <span
                 key={kb}
-                className="inline-flex items-center rounded-full border border-[var(--border)] bg-[var(--muted)]/40 px-2.5 py-0.5 text-[11px] text-[var(--foreground)]"
+                className="inline-flex items-center rounded-full bg-[rgb(var(--dt-ink,55_53_47)/0.06)] px-2.5 py-0.5 text-[11px] text-[var(--foreground)]"
               >
                 {kb}
               </span>

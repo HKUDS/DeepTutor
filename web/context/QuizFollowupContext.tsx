@@ -41,7 +41,8 @@ import {
 } from "@/features/chat/model/protocol";
 import { UnifiedTurnClient } from "@/features/chat/transport/UnifiedTurnClient";
 import type { QuizQuestion } from "@/lib/quiz-types";
-import type { SelectionTutorContext } from "@/lib/selection-tutor";
+import { isQuoteAttachment, quoteText } from "@/lib/quote-attachments";
+import type { SideChatContext } from "@/lib/side-chat";
 
 export interface FollowupMessage {
   role: "user" | "assistant" | "system";
@@ -53,6 +54,8 @@ export interface FollowupMessage {
    * main chat uses — reasoning blocks, tool calls, stage transitions, etc.
    */
   events?: StreamEvent[];
+  /** Passages the learner quoted with this message (user turns only). */
+  quotes?: string[];
 }
 
 export interface FollowupThreadState {
@@ -64,6 +67,8 @@ export interface FollowupThreadState {
   activeTurnId: string | null;
   messages: FollowupMessage[];
   error: string | null;
+  /** The skills and connectors this thread narrows itself to. */
+  resourceSelection: { skills: string[]; mcp: string[] };
 }
 
 export function createEmptyThreadState(): FollowupThreadState {
@@ -76,6 +81,7 @@ export function createEmptyThreadState(): FollowupThreadState {
     activeTurnId: null,
     messages: [],
     error: null,
+    resourceSelection: { skills: [], mcp: [] },
   };
 }
 
@@ -113,8 +119,11 @@ export interface QuizFollowupTabContext {
   language: string;
   /** Short label for the tab strip, e.g. "Q1 follow-up". */
   tabLabel: string;
-  /** Present when this thread tutors a selected chat passage, not a quiz. */
-  tutorSelection?: SelectionTutorContext;
+  /** Present when this thread is a side chat about a conversation, not a quiz. */
+  sideChat?: SideChatContext;
+  /** A passage to drop into the composer, once per ``id`` — "ask about this"
+   *  from a selection lands here as a quote attachment, never auto-sent. */
+  seedQuote?: { id: number; text: string };
 }
 
 export interface SendMessageInput {
@@ -142,12 +151,16 @@ export interface SendMessageInput {
   persona?: string;
   /** Pinned LLM selection — when null/undefined the server default applies. */
   llmSelection?: LLMSelection | null;
+  /** Skills and MCP connectors the turn may use; empty means none narrowed. */
+  skills?: string[];
+  mcp?: string[];
 }
 
 export interface HydratedFollowupMessage {
   role: "user" | "assistant" | "system";
   content: string;
   events?: StreamEvent[];
+  quotes?: string[];
 }
 
 export interface QuizFollowupController {
@@ -186,6 +199,10 @@ export interface QuizFollowupController {
           answers?: Array<{ questionId: string; text: string }>;
         },
   ): Promise<boolean>;
+  /** Stop the thread's running turn — the composer's Stop button. Same
+   *  sequence as the main chat: ask the server to cancel, then drop the
+   *  socket so nothing more streams into the thread. */
+  cancelTurn(questionKey: string): void;
   /** Tab open helper — forwards to whoever registered an open handler. */
   openFollowupTab(context: QuizFollowupTabContext): void;
   /**
@@ -457,7 +474,14 @@ export function QuizFollowupProvider({ children }: ProviderProps) {
         input: "",
         isStreaming: true,
         error: null,
-        messages: [...prev.messages, { role: "user", content }],
+        messages: [
+          ...prev.messages,
+          {
+            role: "user",
+            content,
+            quotes: input.attachments.filter(isQuoteAttachment).map(quoteText),
+          },
+        ],
       }));
 
       const {
@@ -466,6 +490,7 @@ export function QuizFollowupProvider({ children }: ProviderProps) {
         subagent_consult_budget: subagentConsultBudget,
         consult_partner_id: consultPartnerId,
         partner_discussion_group_id: partnerDiscussionGroupId,
+        answer_by: answerBy,
         auto_route: autoRoute,
         ...capabilityConfig
       } = input.config ?? {};
@@ -475,6 +500,8 @@ export function QuizFollowupProvider({ children }: ProviderProps) {
         tools: [],
         capability: "chat",
         knowledge_bases: input.knowledgeBases ?? [],
+        skills: input.skills ?? [],
+        mcp: input.mcp ?? [],
         session_id: current.sessionId,
         attachments: input.attachments,
         language: input.language,
@@ -500,6 +527,8 @@ export function QuizFollowupProvider({ children }: ProviderProps) {
           : {}),
         ...(typeof consultPartnerId === "string" && consultPartnerId ? { consult_partner_id: consultPartnerId } : {}),
         ...(typeof partnerDiscussionGroupId === "string" && partnerDiscussionGroupId ? { partner_discussion_group_id: partnerDiscussionGroupId } : {}),
+        // Always restated, like the main chat: "" hands the thread back to Dito.
+        ...(typeof answerBy === "string" ? { answer_by: answerBy } : {}),
         ...(typeof subagentConsultBudget === "number"
           ? { subagent_consult_budget: subagentConsultBudget }
           : {}),
@@ -573,6 +602,29 @@ export function QuizFollowupProvider({ children }: ProviderProps) {
     [sendThroughRunner, updateThread],
   );
 
+  const cancelTurn = useCallback(
+    (key: string) => {
+      const current = threadsRef.current[key];
+      const turnId = current?.activeTurnId;
+      const runner = runnersRef.current.get(key);
+      if (runner) {
+        if (runner.client.connected && turnId) {
+          runner.client.send({ type: "cancel_turn", turn_id: turnId });
+        }
+        runner.client.disconnect();
+        runnersRef.current.delete(key);
+      }
+      if (!current?.isStreaming) return;
+      updateThread(key, (prev) => ({
+        ...prev,
+        isStreaming: false,
+        currentStage: "",
+        activeTurnId: null,
+      }));
+    },
+    [updateThread],
+  );
+
   const openFollowupTab = useCallback((context: QuizFollowupTabContext) => {
     entryIdsRef.current.set(context.questionKey, context.notebookEntryId);
     const handler = openTabHandlerRef.current;
@@ -596,6 +648,7 @@ export function QuizFollowupProvider({ children }: ProviderProps) {
           role: m.role,
           content: m.content,
           events: m.events ?? [],
+          ...(m.quotes?.length ? { quotes: m.quotes } : {}),
         })),
       }));
     },
@@ -622,6 +675,7 @@ export function QuizFollowupProvider({ children }: ProviderProps) {
       hydrateThread,
       sendMessage,
       submitAskUserReply,
+      cancelTurn,
       openFollowupTab,
       setOpenTabHandler,
       getAllThreads,
@@ -632,6 +686,7 @@ export function QuizFollowupProvider({ children }: ProviderProps) {
       hydrateThread,
       sendMessage,
       submitAskUserReply,
+      cancelTurn,
       openFollowupTab,
       setOpenTabHandler,
       getAllThreads,
@@ -655,6 +710,12 @@ export function useQuizFollowupController(): QuizFollowupController {
     );
   }
   return ctx;
+}
+
+/** The controller where one is mounted — the viewer panel also renders in
+ *  places (tests, the reading page) that have no follow-up threads. */
+export function useOptionalQuizFollowupController(): QuizFollowupController | null {
+  return useContext(QuizFollowupCtx);
 }
 
 /** Returns the live thread snapshot for a question key, re-rendering on

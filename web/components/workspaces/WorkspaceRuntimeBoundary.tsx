@@ -1,7 +1,7 @@
 'use client'
 
 import { Fragment, useEffect, type ReactNode } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useActiveWorkspaceId } from '@/hooks/useActiveWorkspaceId'
 import { resetReadingTurnState } from '@/lib/reading-turn-state'
 
 function ScopeLifetime({ children }: { children: ReactNode }) {
@@ -13,7 +13,6 @@ function ScopeLifetime({ children }: { children: ReactNode }) {
 
 /** Reset content state even for query-only navigation and browser back/forward. */
 export function WorkspaceRuntimeBoundary({ children }: { children: ReactNode }) {
-  const query = useSearchParams()
-  const workspaceId = query.get('dt_workspace') ?? query.get('workspace') ?? ''
+  const workspaceId = useActiveWorkspaceId()
   return <Fragment key={workspaceId}><ScopeLifetime>{children}</ScopeLifetime></Fragment>
 }

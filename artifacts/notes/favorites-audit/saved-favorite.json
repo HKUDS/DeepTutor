@@ -1,0 +1,33 @@
+{
+  "id": "83d7e5c6",
+  "name": "收藏夹验收 · 收件箱",
+  "description": "",
+  "created_at": 1792239510.328375,
+  "updated_at": 1792239664.413095,
+  "records": [
+    {
+      "id": "22754e42",
+      "type": "chat",
+      "title": "水循环 · 已整理的收藏",
+      "summary": "验收备注：保留原文，供笔记本引用；移动后仍可返回来源。",
+      "user_query": "请记录水循环的三个阶段，供收藏夹流程验收。",
+      "output": "## User\n请记录水循环的三个阶段，供收藏夹流程验收。\n\n## Assistant\n## 水循环原始资料\n\n水循环包括 **蒸发、凝结和降水**。\n\n1. 太阳加热水面，液态水变成水汽。\n2. 水汽冷却凝结成云。\n3. 云滴增大后形成降水。\n\n> 原文校验：这段内容在收藏和引用后应保持不变。",
+      "metadata": {
+        "source": "chat",
+        "capability": "chat",
+        "ui_language": "zh",
+        "session_id": "unified_1792239246535_e22c126e",
+        "total_message_count": 2,
+        "message_count": 2,
+        "selected_message_indexes": [
+          0,
+          1
+        ]
+      },
+      "created_at": 1792239528.303999,
+      "kb_name": null
+    }
+  ],
+  "color": "#6366F1",
+  "icon": "book"
+}

@@ -24,7 +24,6 @@ export function LibraryShell({
   materialCount,
   actionLabel,
   onAction,
-  scopeChip,
   children,
 }: {
   view: 'collections' | 'materials'
@@ -32,8 +31,6 @@ export function LibraryShell({
   materialCount?: number
   actionLabel: string
   onAction: () => void
-  /** Rendered beside the title when this visit belongs to one course. */
-  scopeChip?: ReactNode
   children: ReactNode
 }) {
   const { t } = useTranslation()
@@ -73,7 +70,6 @@ export function LibraryShell({
       subtitle={t(
         'Put PDFs, web pages and lectures into one collection and read them with an AI companion that can always point back to the source.'
       )}
-      scopeChip={scopeChip}
       action={
         <button
           type="button"

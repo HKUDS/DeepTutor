@@ -39,23 +39,21 @@ export function LearnerProfileCard({ profile }: { profile: LearnerProfile | null
     : [];
 
   return (
-    <section className="flex min-h-0 shrink-0 flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)] lg:max-h-[46%]">
-      <div className="flex shrink-0 items-center gap-2 border-b border-[var(--border)] bg-[var(--secondary)] px-4 py-2.5">
-        <UserRound className="h-3.5 w-3.5 text-[var(--muted-foreground)]" />
-        <h2 className="text-[12px] font-semibold text-[var(--foreground)]">
-          {t("About you")}
-        </h2>
+    <section className="dt-panel shrink-0 lg:max-h-[46%]">
+      <div className="dt-panel-head">
+        <UserRound className="h-3.5 w-3.5" />
+        <h2>{t("About you")}</h2>
       </div>
       {rows.length === 0 ? (
-        <p className="px-4 py-3.5 text-[12px] leading-5 text-[var(--muted-foreground)]">
+        <p className="px-4 pb-4 pt-1 text-[12.5px] leading-5 text-[var(--muted-foreground)]">
           {t(
             "The tutor has not asked about you yet. It will before it designs the outline.",
           )}
         </p>
       ) : (
-        <dl className="min-h-0 flex-1 divide-y divide-[var(--border)] overflow-y-auto">
+        <dl className="min-h-0 flex-1 overflow-y-auto pb-2">
           {rows.map(([label, value]) => (
-            <div key={label} className="px-4 py-2.5">
+            <div key={label} className="px-4 py-2">
               <dt className="text-[11px] text-[var(--muted-foreground)]">
                 {label}
               </dt>

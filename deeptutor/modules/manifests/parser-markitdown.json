@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "id": "parser-markitdown",
+  "distribution": "deeptutor-parser-markitdown",
+  "requires": [
+    "parsing"
+  ],
+  "optional": [],
+  "paths": [],
+  "capabilities": {},
+  "loops": {},
+  "tools": {},
+  "routes": [],
+  "commands": [],
+  "navigation": [],
+  "services": [],
+  "requirements": [
+    "markitdown[all]>=0.1.7"
+  ],
+  "executables": [],
+  "parser_engine": "markitdown"
+}

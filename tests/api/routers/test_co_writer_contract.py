@@ -131,7 +131,23 @@ def test_create_document_returns_full_document_shape(client, storage):
     response = client.post("/documents", json={"title": "My Draft", "content": "# Hi\nBody"})
     assert response.status_code == 200, response.text
     payload = response.json()
-    assert set(payload) == {"id", "title", "content", "created_at", "updated_at"}
+    assert set(payload) == {
+        "id",
+        "title",
+        "content",
+        "created_at",
+        "updated_at",
+        "blocks",
+        "schema_version",
+        "revision",
+        "parent_id",
+        "icon",
+        "cover",
+        "pinned",
+        "applied_suggestion_ids",
+    }
+    assert payload["blocks"] is None and payload["revision"] == 0
+    assert payload["schema_version"] == 1
     assert _DOC_ID_RE.fullmatch(payload["id"])
     assert payload["title"] == "My Draft"
     assert payload["content"] == "# Hi\nBody"
@@ -172,8 +188,39 @@ def test_list_documents_returns_summary_views_without_content(client, storage):
     assert {s["id"] for s in summaries} == {first.id, second.id}
     assert summaries[0]["id"] == first.id, "most recently updated document must sort first"
     for summary in summaries:
-        assert set(summary) == {"id", "title", "created_at", "updated_at", "preview"}
+        assert set(summary) == {
+            "id",
+            "title",
+            "created_at",
+            "updated_at",
+            "preview",
+            "parent_id",
+            "icon",
+            "cover",
+            "pinned",
+            "revision",
+        }
         assert "content" not in summary
+
+
+def test_list_documents_previews_readable_text_not_markdown(client, storage):
+    storage.create_document(
+        title="Water cycle",
+        content=(
+            "# Water cycle\n"
+            "## Evidence\n"
+            "Heat drives **evaporation**; see [the source](/notebooks/x?record=y).\n"
+            "![chart](/api/documents/a/assets/b.png)\n"
+            "| Stage | Energy |\n| --- | --- |\n| Evaporation | absorbs |\n"
+            "```python\nprint('hidden')\n```\n"
+            "- [ ] Check the units"
+        ),
+    )
+    preview = client.get("/documents").json()["documents"][0]["preview"]
+    assert preview == (
+        "Evidence  Heat drives evaporation; see the source.  "
+        "Stage · Energy  Evaporation · absorbs  Check the units"
+    )
 
 
 def test_list_documents_truncates_preview_at_160_chars(client, storage):

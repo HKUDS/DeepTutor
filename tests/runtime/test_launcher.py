@@ -862,8 +862,8 @@ def test_start_uses_ipv4_loopback_for_frontend_proxy(
     monkeypatch.setattr(launcher, "_wait_for_http", wait_for_http)
     monkeypatch.setattr(
         launcher,
-        "_terminate",
-        lambda process: termination_order.append(process.name) if process else None,
+        "_terminate_all",
+        lambda processes, **_kwargs: termination_order.extend(p.name for p in processes),
     )
 
     def _capture_spawn(_command, *, cwd, env, name):
@@ -1193,6 +1193,8 @@ def test_terminate_warns_when_both_signal_rounds_fail(
     monkeypatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     """A child no signal reaches must surface every failed round."""
+    monkeypatch.setattr(launcher, "SHUTDOWN_GRACE_SECONDS", 0)
+    monkeypatch.setattr(launcher, "_group_alive", lambda _proc: False)
     child = _StubbornPopen()
     proc = launcher.ManagedProcess(name="backend", process=child, pgid=4242)
     sent: list[int] = []
@@ -1217,6 +1219,8 @@ def test_terminate_warns_on_sigterm_but_accepts_kill_escalation(
     monkeypatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     """The ladder keeps its shape: refused SIGTERM, working SIGKILL, done."""
+    monkeypatch.setattr(launcher, "SHUTDOWN_GRACE_SECONDS", 0)
+    monkeypatch.setattr(launcher, "_group_alive", lambda _proc: False)
     child = _StubbornPopen()
     proc = launcher.ManagedProcess(name="backend", process=child, pgid=4242)
 
@@ -1241,6 +1245,8 @@ def test_terminate_skips_absent_or_exited_child(
     monkeypatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     """Nothing to stop means no signal and no warning."""
+    monkeypatch.setattr(launcher, "SHUTDOWN_GRACE_SECONDS", 0)
+    monkeypatch.setattr(launcher, "_group_alive", lambda _proc: False)
     sent: list[int] = []
 
     def fake_send(pid, pgid, sig):

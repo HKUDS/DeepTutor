@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "id": "notebook",
+  "distribution": "deeptutor-notebook",
+  "requires": [],
+  "optional": [],
+  "paths": [
+    "deeptutor/services/notebook",
+    "deeptutor_cli/notebook.py",
+    "deeptutor/api/routers/notebook.py"
+  ],
+  "capabilities": {},
+  "loops": {},
+  "tools": {
+    "list_notebook": {
+      "class_path": "deeptutor.tools.builtin:ListNotebookTool",
+      "order": 18
+    },
+    "list_favorites": {
+      "class_path": "deeptutor.tools.builtin:ListFavoritesTool",
+      "order": 19
+    },
+    "save_favorite": {
+      "class_path": "deeptutor.tools.builtin:SaveFavoriteTool",
+      "order": 20
+    }
+  },
+  "routes": [
+    {
+      "reference": "deeptutor.api.routers.notebook:router",
+      "options": {
+        "prefix": "/api",
+        "tags": [
+          "notebooks"
+        ]
+      },
+      "auth": "learning",
+      "order": 631
+    }
+  ],
+  "commands": [
+    {
+      "name": "notebook",
+      "register": "deeptutor_cli.notebook:register",
+      "help": "Manage notebook."
+    }
+  ],
+  "navigation": [
+    "/notebooks",
+    "/learning/practice"
+  ],
+  "services": [],
+  "requirements": [],
+  "executables": []
+}

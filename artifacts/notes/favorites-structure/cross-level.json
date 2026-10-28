@@ -1,0 +1,205 @@
+{
+  "id": "60b5f3fff04b",
+  "title": "收藏块 · 批量与结构验收",
+  "content": "批量插入起点：收藏将放在这里之后。\n\n# 核心概念\n水循环包含三种变化。\n\n## 我的观察\n雨后水洼逐渐缩小。\n\n## 下一步\n记录每日水位。\n\n[Source](/notebooks/215dbe83?record=f8892445)\n\n# 学习目标\n理解水的状态变化。\n\n## 第一步\n观察杯壁水滴。\n\n## 反思\n为什么水滴出现在外壁？\n\n[Source](/notebooks/215dbe83?record=ba719159)\n\n# 研究问题\n水在环境中如何循环？\n\n## 证据\n| 过程 | 能量 |\n| --- | --- |\n| 蒸发 | 吸热 |\n| 凝结 | 放热 |\n\n## 结论\n水循环依靠太阳能驱动。\n\n## 资料边界\n这是交互验收用的简短研究资料。\n\n[Source](/notebooks/215dbe83?record=0f1dfc6c)\n\n# 题目\n水循环的三个主要阶段是什么？\n\n- A. 蒸发、凝结和降水\n- B. 燃烧、熔化和结晶\n\n## 答案\n**A**。水从液态蒸发，水汽凝结，随后形成降水。\n\n[Source](/notebooks/215dbe83?record=9ca5160e)\n\n# 题目\n水池原有 10 L 水，蒸发 2 L 后剩余多少？\n\n## 解答\n$10-2=8$ L。\n\n先确定初始量，再减去蒸发量。\n\n[Source](/notebooks/215dbe83?record=f5034ee1)\n\n- 嵌套资料组\n\n  嵌套插入起点。\n\n  ## User\n  怎样记住水循环？\n  \n  ## Assistant\n  想象一滴水旅行：**升空、成云、落雨**。\n  \n  [Source](/notebooks/215dbe83?record=17b3249c)\n\n  # 原文摘录\n  > 水是生命活动的重要介质。\n  \n  ## 阅读批注\n  关注水的比热容和相变。\n  \n  ## 延伸思考\n  海洋如何调节温度？\n  \n  [Source](/notebooks/215dbe83?record=6024a065)\n\n  # 视频学习\n  00:00 学习开始\n  00:01 观察水循环\n  \n  ## 笔记\n  通过播放进度核对时间点。\n  \n  [Source](/notebooks/215dbe83?record=ad7c3961)\n\n正文末尾：此段必须始终保留。",
+  "blocks": [
+    {
+      "id": "audit-start",
+      "type": "paragraph",
+      "props": {
+        "backgroundColor": "default",
+        "textColor": "default",
+        "textAlignment": "left"
+      },
+      "content": [
+        {
+          "type": "text",
+          "text": "批量插入起点：收藏将放在这里之后。",
+          "styles": {}
+        }
+      ],
+      "children": []
+    },
+    {
+      "id": "98e3e2c1-2aa7-4824-b6cd-f6ebea631bc5",
+      "type": "clip",
+      "props": {
+        "title": "笔记 · 整理材料",
+        "markdown": "# 核心概念\n水循环包含三种变化。\n\n## 我的观察\n雨后水洼逐渐缩小。\n\n## 下一步\n记录每日水位。",
+        "sourceUrl": "/notebooks/215dbe83?record=f8892445",
+        "sourceId": "f8892445",
+        "favoriteType": "co_writer",
+        "summary": "交互验收：展开原文、返回来源、保存重开。",
+        "metadata": "{}",
+        "expanded": false
+      },
+      "children": []
+    },
+    {
+      "id": "0ec53006-4b3d-475e-beaa-f6ea62f9d014",
+      "type": "clip",
+      "props": {
+        "title": "引导学习 · 逐步理解",
+        "markdown": "# 学习目标\n理解水的状态变化。\n\n## 第一步\n观察杯壁水滴。\n\n## 反思\n为什么水滴出现在外壁？",
+        "sourceUrl": "/notebooks/215dbe83?record=ba719159",
+        "sourceId": "ba719159",
+        "favoriteType": "chat",
+        "summary": "交互验收：展开原文、返回来源、保存重开。",
+        "metadata": "{\"source\":\"chat\",\"capability\":\"mastery_path\"}",
+        "expanded": false
+      },
+      "children": []
+    },
+    {
+      "id": "24cab4f4-f49f-4fd1-a7b4-62361d0c15b2",
+      "type": "clip",
+      "props": {
+        "title": "研究 · 水循环证据",
+        "markdown": "# 研究问题\n水在环境中如何循环？\n\n## 证据\n| 过程 | 能量 |\n| --- | --- |\n| 蒸发 | 吸热 |\n| 凝结 | 放热 |\n\n## 结论\n水循环依靠太阳能驱动。\n\n## 资料边界\n这是交互验收用的简短研究资料。",
+        "sourceUrl": "/notebooks/215dbe83?record=0f1dfc6c",
+        "sourceId": "0f1dfc6c",
+        "favoriteType": "research",
+        "summary": "交互验收：展开原文、返回来源、保存重开。",
+        "metadata": "{}",
+        "expanded": false
+      },
+      "children": []
+    },
+    {
+      "id": "86992c9d-c52c-411a-8ea9-850df2c03027",
+      "type": "clip",
+      "props": {
+        "title": "题目 · 三阶段复习",
+        "markdown": "# 题目\n水循环的三个主要阶段是什么？\n\n- A. 蒸发、凝结和降水\n- B. 燃烧、熔化和结晶\n\n## 答案\n**A**。水从液态蒸发，水汽凝结，随后形成降水。",
+        "sourceUrl": "/notebooks/215dbe83?record=9ca5160e",
+        "sourceId": "9ca5160e",
+        "favoriteType": "question",
+        "summary": "交互验收：展开原文、返回来源、保存重开。",
+        "metadata": "{}",
+        "expanded": false
+      },
+      "children": []
+    },
+    {
+      "id": "6c0f5edc-fb00-436e-a085-2b1db2642b76",
+      "type": "clip",
+      "props": {
+        "title": "解题 · 水量守恒",
+        "markdown": "# 题目\n水池原有 10 L 水，蒸发 2 L 后剩余多少？\n\n## 解答\n$10-2=8$ L。\n\n先确定初始量，再减去蒸发量。",
+        "sourceUrl": "/notebooks/215dbe83?record=f5034ee1",
+        "sourceId": "f5034ee1",
+        "favoriteType": "solve",
+        "summary": "交互验收：展开原文、返回来源、保存重开。",
+        "metadata": "{}",
+        "expanded": false
+      },
+      "children": []
+    },
+    {
+      "id": "audit-parent",
+      "type": "toggleListItem",
+      "props": {
+        "backgroundColor": "default",
+        "textColor": "default",
+        "textAlignment": "left"
+      },
+      "content": [
+        {
+          "type": "text",
+          "text": "嵌套资料组",
+          "styles": {}
+        }
+      ],
+      "children": [
+        {
+          "id": "audit-child",
+          "type": "paragraph",
+          "props": {
+            "backgroundColor": "default",
+            "textColor": "default",
+            "textAlignment": "left"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "嵌套插入起点。",
+              "styles": {}
+            }
+          ],
+          "children": []
+        },
+        {
+          "id": "fe4a830d-e1c7-4f6e-9422-a4f186c69011",
+          "type": "clip",
+          "props": {
+            "title": "伙伴 · 学习对话",
+            "markdown": "## User\n怎样记住水循环？\n\n## Assistant\n想象一滴水旅行：**升空、成云、落雨**。",
+            "sourceUrl": "/notebooks/215dbe83?record=17b3249c",
+            "sourceId": "17b3249c",
+            "favoriteType": "tutorbot",
+            "summary": "交互验收：展开原文、返回来源、保存重开。",
+            "metadata": "{\"partner_name\":\"学习伙伴\"}",
+            "expanded": false
+          },
+          "children": []
+        },
+        {
+          "id": "ff0a3566-dfe3-4768-8876-d834c389bb9d",
+          "type": "clip",
+          "props": {
+            "title": "阅读 · 摘录与批注",
+            "markdown": "# 原文摘录\n> 水是生命活动的重要介质。\n\n## 阅读批注\n关注水的比热容和相变。\n\n## 延伸思考\n海洋如何调节温度？",
+            "sourceUrl": "/notebooks/215dbe83?record=6024a065",
+            "sourceId": "6024a065",
+            "favoriteType": "reading",
+            "summary": "交互验收：展开原文、返回来源、保存重开。",
+            "metadata": "{}",
+            "expanded": false
+          },
+          "children": []
+        },
+        {
+          "id": "ef4370f1-f279-4235-8128-51fb3466c06f",
+          "type": "clip",
+          "props": {
+            "title": "视频 · 时间点学习",
+            "markdown": "# 视频学习\n00:00 学习开始\n00:01 观察水循环\n\n## 笔记\n通过播放进度核对时间点。",
+            "sourceUrl": "/notebooks/215dbe83?record=ad7c3961",
+            "sourceId": "ad7c3961",
+            "favoriteType": "video_learning",
+            "summary": "交互验收：展开原文、返回来源、保存重开。",
+            "metadata": "{\"video_url\":\"/api/documents/46c793263607/assets/2987657e75cb40bba8c0d49208c609e6.mp4?dt_workspace=\"}",
+            "expanded": false
+          },
+          "children": []
+        }
+      ]
+    },
+    {
+      "id": "audit-end",
+      "type": "paragraph",
+      "props": {
+        "backgroundColor": "default",
+        "textColor": "default",
+        "textAlignment": "left"
+      },
+      "content": [
+        {
+          "type": "text",
+          "text": "正文末尾：此段必须始终保留。",
+          "styles": {}
+        }
+      ],
+      "children": []
+    }
+  ],
+  "schema_version": 1,
+  "revision": 17,
+  "parent_id": null,
+  "icon": "",
+  "cover": "",
+  "pinned": false,
+  "applied_suggestion_ids": [],
+  "created_at": 1792246032.045156,
+  "updated_at": 1792246696.4202812
+}

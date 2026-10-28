@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "id": "co-writer",
+  "distribution": "deeptutor-co-writer",
+  "requires": [
+    "knowledge"
+  ],
+  "optional": [],
+  "paths": [
+    "deeptutor/co_writer",
+    "deeptutor/api/routers/co_writer.py",
+    "deeptutor/capabilities/notes",
+    "deeptutor/notes"
+  ],
+  "capabilities": {},
+  "loops": {
+    "notes": {
+      "class_path": "deeptutor.capabilities.notes.capability:NotesCapability"
+    }
+  },
+  "tools": {
+    "write_note": {
+      "class_path": "deeptutor.capabilities.notes.tools:WriteNoteTool",
+      "order": 0
+    },
+    "search_notes": {
+      "class_path": "deeptutor.capabilities.notes.tools:SearchNotesTool",
+      "order": 1
+    },
+    "note_read": {
+      "class_path": "deeptutor.capabilities.notes.tools:NoteReadTool",
+      "order": 2
+    },
+    "note_suggest": {
+      "class_path": "deeptutor.capabilities.notes.tools:NoteSuggestTool",
+      "order": 3
+    }
+  },
+  "routes": [
+    {
+      "reference": "deeptutor.api.routers.co_writer:router",
+      "options": {
+        "prefix": "/api",
+        "tags": [
+          "documents"
+        ]
+      },
+      "auth": "learning",
+      "order": 628
+    }
+  ],
+  "commands": [],
+  "navigation": [
+    "/co-writer"
+  ],
+  "services": [],
+  "requirements": [],
+  "executables": []
+}

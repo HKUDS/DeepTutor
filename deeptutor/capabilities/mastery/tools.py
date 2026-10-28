@@ -2851,6 +2851,8 @@ class MasteryReviseTool(BaseTool):
                     type="integer",
                     description="Commit only: the identifier returned by the reviewed preview.",
                     required=False,
+                    nullable=True,
+                    minimum=1,
                 ),
                 ToolParameter(
                     name="module_order",
@@ -2858,10 +2860,12 @@ class MasteryReviseTool(BaseTool):
                     items={"type": "string"},
                     description=(
                         "Preview only: complete requested sequence of existing module IDs. "
-                        "Omit to keep order unchanged; may be used without content edits. "
+                        "Leave it out or empty to keep the order unchanged; may be used "
+                        "without content edits. "
                         "Does not rename modules, waive prerequisites, or move the current objective."
                     ),
                     required=False,
+                    nullable=True,
                 ),
                 ToolParameter(
                     name="module_id",
@@ -2872,6 +2876,7 @@ class MasteryReviseTool(BaseTool):
                         "coordinated multi-module adjustment use 'modules'."
                     ),
                     required=False,
+                    nullable=True,
                 ),
                 ToolParameter(
                     name="rewrite",
@@ -2882,6 +2887,7 @@ class MasteryReviseTool(BaseTool):
                         "value when omitted."
                     ),
                     required=False,
+                    nullable=True,
                     items=revise_items,
                 ),
                 ToolParameter(
@@ -2889,6 +2895,7 @@ class MasteryReviseTool(BaseTool):
                     type="array",
                     description=("Knowledge points to append to this module: each {name, type}."),
                     required=False,
+                    nullable=True,
                     items=add_items,
                 ),
                 ToolParameter(
@@ -2896,6 +2903,7 @@ class MasteryReviseTool(BaseTool):
                     type="array",
                     description="Knowledge point ids to drop from this module.",
                     required=False,
+                    nullable=True,
                     items={"type": "string"},
                 ),
                 ToolParameter(
@@ -2910,6 +2918,7 @@ class MasteryReviseTool(BaseTool):
                         "the learner's request spans multiple modules."
                     ),
                     required=False,
+                    nullable=True,
                     items={
                         "type": "object",
                         "properties": {
@@ -2941,9 +2950,14 @@ class MasteryReviseTool(BaseTool):
         from deeptutor.learning.storage import LearningConflictError
 
         action = kwargs.get("action")
+        if isinstance(action, str) and not action.strip():
+            # A provider that has to fill every field sends "" for "no action";
+            # read it as the omitted action, which is the direct revision.
+            action = None
         if action not in (None, "preview", "commit"):
             return ToolResult(content="Use action preview or commit, or omit it.", success=False)
         service = _new_service()
+        kwargs = _omitting_idle_placeholders(kwargs, commit=action == "commit")
         if action == "commit":
             if any(
                 kwargs.get(key) is not None
@@ -3420,6 +3434,29 @@ def _plan_module_revision(
 
         applied = reorder_modules(applied, module_order)
     return applied, targets, revised_by_module, resets_by_module
+
+
+def _omitting_idle_placeholders(kwargs: dict[str, Any], *, commit: bool) -> dict[str, Any]:
+    """Read the fields the model filled only because it had to fill them.
+
+    Endpoints that normalise optional properties into required ones leave the
+    model no way to omit a field, so it sends ``0`` / ``""`` / ``[]`` for the
+    ones this call does not use (issue #2047). Left as-is, those read as a real
+    edit or a real preview id and the call is refused before it is planned.
+
+    Normalized one level deep only: a nested ``prerequisite_ids: []`` is how a
+    caller clears a relationship, not a placeholder. ``preview_id`` is idle
+    outside commit only — a commit names one preview or nothing.
+    """
+    cleaned = dict(kwargs)
+    # None of the revision arguments has a meaningful falsy value, so falsy is
+    # placeholder whatever shape it arrives in (0, "", [], False).
+    for key in ("module_order", "module_id", "modules", "rewrite", "add", "remove"):
+        if not cleaned.get(key):
+            cleaned.pop(key, None)
+    if not commit and not cleaned.get("preview_id"):
+        cleaned.pop("preview_id", None)
+    return cleaned
 
 
 def _revise_specs(kwargs: dict[str, Any]) -> tuple[dict[str, dict[str, Any]], str | None]:

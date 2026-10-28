@@ -38,6 +38,7 @@ FEATURES = {
     "notebook": "Notebooks",
     "co-writer": "Writing",
     "courses": "Courses",
+    "learning_journal": "Learning journal",
     "files": "File library",
     "knowledge_bases": "Knowledge bases",
     "parse_cache": "Document cache",
@@ -77,6 +78,8 @@ def _feature_path(paths, feature: str) -> Path:
         return paths.get_knowledge_bases_root()
     if feature == "parse_cache":
         return paths.get_parse_cache_root()
+    if feature == "learning_journal":
+        return paths.get_learning_journal_dir()
     if feature == "files":
         return paths.get_workspace_dir() / "library"
     if feature == "outputs":

@@ -960,27 +960,16 @@ def test_install_manager_spec_allowlist() -> None:
     assert "mineru" not in ENGINE_PIP_SPECS
 
 
-def test_install_manager_upgrades_existing_package(monkeypatch) -> None:
+def test_install_manager_requires_offline_module_change(monkeypatch) -> None:
     from deeptutor.services.parsing.engines import _install
 
     manager = _install.BackgroundJobManager()
-    captured: dict = {}
-
-    def fake_launch(**kwargs):
-        captured.update(kwargs)
-        return {"ok": True, "message": ""}
-
-    monkeypatch.setattr(manager, "_launch", fake_launch)
-    manager.start_install(engine="docling", specs=_install.ENGINE_PIP_SPECS["docling"])
-
-    assert captured["cmd"][:6] == [
-        _install.sys.executable,
-        "-m",
-        "pip",
-        "install",
-        "--upgrade",
-        "--no-input",
-    ]
+    monkeypatch.setattr(
+        manager, "_launch", lambda **kwargs: pytest.fail("mutated live environment")
+    )
+    result = manager.start_install(engine="docling", specs=_install.ENGINE_PIP_SPECS["docling"])
+    assert result["ok"] is False
+    assert "deeptutor module install parser-docling" in result["message"]
 
 
 def test_model_download_allowlist() -> None:

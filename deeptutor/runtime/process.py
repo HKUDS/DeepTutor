@@ -1,8 +1,34 @@
-"""Cross-platform process liveness checks with no process-side effects."""
+"""Cross-platform liveness checks and cleanup of owned subprocess trees."""
 
 from __future__ import annotations
 
 import os
+import signal
+import subprocess
+
+
+def kill_process_tree(pid: int) -> None:
+    """Kill an owned child (started in a new POSIX session) and its helpers.
+
+    Callers still reap their process/streams before releasing runtime leases.
+    Windows Process.kill() alone leaves build and renderer children running.
+    """
+    if os.name != "nt":
+        try:
+            os.killpg(pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        return
+    result = subprocess.run(
+        ["taskkill", "/PID", str(pid), "/T", "/F"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        timeout=10,
+        check=False,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    )
+    if result.returncode not in (0, 128):
+        raise RuntimeError(f"Could not terminate process tree {pid}: {result.returncode}")
 
 
 def _is_windows_process_alive(pid: int) -> bool:
@@ -48,4 +74,4 @@ def is_process_alive(pid: int | None) -> bool:
     return True
 
 
-__all__ = ["is_process_alive"]
+__all__ = ["is_process_alive", "kill_process_tree"]

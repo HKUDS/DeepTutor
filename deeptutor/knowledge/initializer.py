@@ -9,7 +9,6 @@ from datetime import datetime
 import json
 import logging
 from pathlib import Path
-import shutil
 from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
@@ -18,16 +17,17 @@ if TYPE_CHECKING:
 
 from deeptutor.knowledge.naming import validate_knowledge_base_name
 from deeptutor.knowledge.progress_tracker import ProgressStage, ProgressTracker
+from deeptutor.knowledge.staging import stage_source
 from deeptutor.services.config import resolve_llm_runtime_config
 from deeptutor.services.file_io import atomic_write_json
 from deeptutor.services.rag.factory import normalize_provider_name
-from deeptutor.services.rag.file_routing import FileTypeRouter
 from deeptutor.services.rag.service import RAGService
 from deeptutor.services.setup.data_volume import (
     DataVolumePermissionError,
     ensure_data_volume_writable,
     format_data_volume_permission_error,
 )
+from deeptutor.utils.file_types import FileTypeRouter
 
 logger = logging.getLogger(__name__)
 
@@ -153,16 +153,27 @@ class KnowledgeBaseInitializer:
         self._register_to_config()
 
     def copy_documents(self, source_files: list[str]) -> list[str]:
-        """Copy source documents into raw directory."""
+        """Stage source documents into the raw directory.
+
+        Sources arrive flattened to their basename, so a docs tree holding one
+        ``full.md`` per volume wants the same path over and over. Each document
+        is kept under a distinct name instead of overwriting the one before it
+        (#2041) — the same rule the incremental add path already followed.
+        """
         copied_files: list[str] = []
+        staged: set[Path] = set()
         for source in source_files:
             source_path = Path(source)
             if not source_path.exists() or not source_path.is_file():
                 logger.warning(f"Source file not found: {source}")
                 continue
-            dest_path = self.raw_dir / source_path.name
-            shutil.copy2(source_path, dest_path)
-            copied_files.append(str(dest_path))
+            staged_path, copied = stage_source(source_path, self.raw_dir / source_path.name)
+            if staged_path in staged:
+                continue
+            staged.add(staged_path)
+            copied_files.append(str(staged_path))
+            if copied and staged_path.name != source_path.name:
+                logger.warning(f"Name taken by another document, staged as {staged_path}")
         return copied_files
 
     async def process_documents(

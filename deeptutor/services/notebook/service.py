@@ -8,7 +8,7 @@ can operate on the same files under ``data/user``.
 from __future__ import annotations
 
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from enum import Enum
 import json
 import logging
@@ -610,26 +610,53 @@ class NotebookManager:
             self._touch_index_entry(target_notebook_id, target)
         return copied
 
+    def locate_record(self, record_id: str, notebook_id: str = "") -> str | None:
+        """Find a saved source within this workspace, preferring its original collection."""
+        ids = [notebook_id] if notebook_id else []
+        ids.extend(item["id"] for item in self.list_notebooks() if item["id"] != notebook_id)
+        for candidate in ids:
+            try:
+                if self.get_record(candidate, record_id) is not None:
+                    return candidate
+            except NotebookCorruptedError:
+                continue
+        return None
+
     def move_record(
         self, source_notebook_id: str, record_id: str, target_notebook_id: str
     ) -> dict | None:
-        """Move a record between notebooks.
+        """Move without changing identity, so existing note citations remain valid.
 
-        Writes the copy first and only then removes the original, so an
-        interruption leaves the record duplicated rather than destroyed.
+        Lock both collections in stable order. Write the destination first so
+        an interrupted write can never destroy the only copy of the source.
         """
-        copied = self.copy_record(source_notebook_id, record_id, target_notebook_id)
-        if copied is None:
+        if source_notebook_id == target_notebook_id:
             return None
-        if not self.remove_record(source_notebook_id, record_id):
-            # The copy already landed; report it rather than failing outright.
-            logger.warning(
-                "moved record %s into %s but could not remove the original from %s",
-                record_id,
-                target_notebook_id,
-                source_notebook_id,
-            )
-        return copied
+        with ExitStack() as stack:
+            for notebook_id in sorted([source_notebook_id, target_notebook_id]):
+                stack.enter_context(self._locked(notebook_id))
+            source = self._load_notebook(source_notebook_id)
+            target = self._load_notebook(target_notebook_id)
+            if source is None or target is None:
+                return None
+            record = next((r for r in source.get("records", []) if r["id"] == record_id), None)
+            if record is None:
+                return None
+            existing = next((r for r in target.get("records", []) if r["id"] == record_id), None)
+            if existing is not None and existing != record:
+                raise ValueError(
+                    "The destination already contains a different version of this favorite."
+                )
+            if existing is None:
+                target.setdefault("records", []).append(record)
+            target["updated_at"] = time.time()
+            self._save_notebook(target_notebook_id, target)
+            self._touch_index_entry(target_notebook_id, target)
+            source["records"] = [r for r in source.get("records", []) if r["id"] != record_id]
+            source["updated_at"] = time.time()
+            self._save_notebook(source_notebook_id, source)
+            self._touch_index_entry(source_notebook_id, source)
+            return record
 
     def export_markdown(self, notebook_id: str) -> str | None:
         """Render a whole notebook as one Markdown document."""

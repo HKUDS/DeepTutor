@@ -320,3 +320,44 @@ async def test_cached_batch_ingestion_keeps_source_alignment_and_reports_all_pro
         assert [d.text for d in docs] == ["[Image] a.png\n\nfirst", "[Image] b.png\n\nsecond"]
         assert progress == [(1, 2), (2, 2)]
     assert len(calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_raising_caption_group_does_not_abort_the_ingest(tmp_path, monkeypatch):
+    """Captions are best-effort: every other image failure skips and logs.
+
+    The batch group was the one seam that re-raised, so an unexpected error
+    from the batcher (or from a future client wrapper) aborted the whole
+    ingest instead of dropping that group's captions.
+    """
+    pytest.importorskip("llama_index.core")
+    from deeptutor.services.rag.pipelines.llamaindex import document_loader as loader_module
+
+    async def never_called(*args, **kwargs):
+        raise AssertionError("the batcher stub owns this call")
+
+    groups: list[int] = []
+
+    class _RaisingBatcher:
+        halted = False
+
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def describe(self, images):
+            groups.append(len(images))
+            raise RuntimeError("provider contract broke")
+
+    _install_multimodal_clients(monkeypatch, complete_fn=never_called)
+    monkeypatch.setattr(loader_module, "image_description_batch_size", lambda: 2)
+    monkeypatch.setattr(loader_module, "ImageCaptionBatcher", _RaisingBatcher)
+    paths = _make_images(tmp_path, ["a.png", "b.png"])
+    text = tmp_path / "notes.txt"
+    text.write_text("text that must survive", encoding="utf-8")
+
+    docs = await loader_module.LlamaIndexDocumentLoader().load(
+        [str(p) for p in paths] + [str(text)]
+    )
+
+    assert groups == [2], "the failing group must actually have run"
+    assert [d.metadata["file_name"] for d in docs] == ["notes.txt"]

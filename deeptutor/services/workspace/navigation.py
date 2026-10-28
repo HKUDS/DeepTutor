@@ -1,6 +1,7 @@
-"""Account navigation across content stores, without changing their isolation.
+"""Account-level indexes across content stores, without changing their isolation.
 
-Only index readers opt in. Content reads and mutations still resolve exactly
+Only account management (Settings) opts in; navigation surfaces stay within
+the request's workspace. Content reads and mutations still resolve exactly
 one workspace from the request. Every row names its authoritative source,
 including legacy records whose preferences contain no workspace id.
 """
@@ -45,26 +46,17 @@ async def read_workspace_indexes(
     return rows, unavailable
 
 
-async def session_index(limit: int, offset: int, query: str | None = None) -> dict[str, Any]:
+async def session_index(limit: int, offset: int) -> dict[str, Any]:
     from deeptutor.services.session import get_session_store
 
-    total = 0
-
     async def read():
-        nonlocal total
         store = get_session_store()
         rows = []
         # Read only the prefix needed for the globally sorted page. Store APIs
         # have their own page caps; never pass an unbounded offset+limit to them.
         for start in range(0, offset + limit, 100):
             size = min(100, offset + limit - start)
-            if query is None:
-                page = await store.list_sessions(limit=size, offset=start)
-            else:
-                result = await store.search_sessions(query, limit=size, offset=start)
-                if start == 0:
-                    total += result["total"]
-                page = result["sessions"]
+            page = await store.list_sessions(limit=size, offset=start)
             rows.extend(page)
             if len(page) < size:
                 break
@@ -74,7 +66,6 @@ async def session_index(limit: int, offset: int, query: str | None = None) -> di
     rows.sort(key=lambda row: (-row["updated_at"], row["content_workspace_id"], row["session_id"]))
     return {
         "sessions": rows[offset : offset + limit],
-        "total": total,
         "limit": limit,
         "offset": offset,
         "unavailable_workspaces": unavailable,

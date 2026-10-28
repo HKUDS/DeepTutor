@@ -21,6 +21,11 @@ import { agentGlyph } from "@/components/agents/agent-icons";
 import { shouldSubmitOnEnter } from "@/lib/composer-keyboard";
 import { useAutoSizedTextarea } from "@/lib/use-auto-sized-textarea";
 import { useImeComposing } from "@/lib/use-ime-composing";
+import { ComposerLead, type LeadToken } from "./ComposerLead";
+
+/** The lead strip overhangs by its tokens' own padding; text starts a gap after it. */
+const LEAD_BLEED = 6;
+const LEAD_GAP = 4;
 
 interface ComposerInputProps {
   textareaRef: RefObject<HTMLTextAreaElement | null>;
@@ -95,6 +100,12 @@ interface ComposerInputProps {
    * composer so the resting box looks inviting rather than crammed.
    */
   minHeight?: number;
+  /**
+   * What this message uses — skills and connectors from the tray — written
+   * at the start of the text. Backspace at the very start marks the last
+   * one, and a second Backspace removes it.
+   */
+  lead?: LeadToken[];
 }
 
 export interface ComposerInputHandle {
@@ -182,11 +193,16 @@ export const ComposerInput = memo(
       placeholder,
       placeholderCompletion,
       minHeight = 28,
+      lead = [],
     },
     ref,
   ) {
     const { t } = useTranslation();
     const [input, setInput] = useState("");
+    const [leadWidth, setLeadWidth] = useState(0);
+    const [armed, setArmed] = useState(false);
+    const [scrolled, setScrolled] = useState(false);
+    const indent = lead.length && leadWidth ? leadWidth - LEAD_BLEED + LEAD_GAP : 0;
     const [showAtPopup, setShowAtPopup] = useState(false);
     const [showSlashPopup, setShowSlashPopup] = useState(false);
     const [slashCommands, setSlashCommands] = useState<SlashCommand[]>([]);
@@ -274,6 +290,7 @@ export const ComposerInput = memo(
       (e: React.ChangeEvent<HTMLTextAreaElement>) => {
         const value = e.target.value;
         const cursorPos = e.target.selectionStart ?? value.length;
+        setArmed(false);
         setInputBoth(value);
         onInputChange(value);
         const atOpen = shouldOpenAtPopup(value, cursorPos);
@@ -352,6 +369,21 @@ export const ComposerInput = memo(
 
     const handleKeyDown = useCallback(
       (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+        // Backspace before the first character reaches back into the lead:
+        // once to mark the last token, again to remove it, so holding the
+        // key down to clear a draft never takes the skills with it.
+        if (lead.length && !isComposingRef.current) {
+          const target = e.currentTarget;
+          if (e.key === "Backspace" && target.selectionStart === 0 && target.selectionEnd === 0) {
+            e.preventDefault();
+            if (!e.repeat && armed) {
+              lead[lead.length - 1].onRemove();
+              setArmed(false);
+            } else if (!e.repeat) setArmed(true);
+            return;
+          }
+          if (armed && e.key !== "Shift") setArmed(false);
+        }
         if (showLanguagePopup && !isComposingRef.current) {
           if (e.key === "ArrowDown" || e.key === "ArrowUp") {
             e.preventDefault();
@@ -444,6 +476,8 @@ export const ComposerInput = memo(
         onInputChange,
         placeholderCompletion,
         setInputBoth,
+        lead,
+        armed,
       ],
     );
 
@@ -716,6 +750,8 @@ export const ComposerInput = memo(
             onCompositionStart={onCompositionStart}
             onCompositionEnd={onCompositionEnd}
             onClick={handleTextareaClick}
+            onBlur={() => setArmed(false)}
+            onScroll={(event) => setScrolled(event.currentTarget.scrollTop > 0)}
             onPaste={onPaste}
             rows={1}
             // Cap input at 32k chars. A bigger paste (e.g. an entire textbook
@@ -744,12 +780,16 @@ export const ComposerInput = memo(
                 : undefined
             }
             className="w-full resize-none overflow-hidden bg-transparent text-[16px] leading-relaxed text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)]"
-            style={{ transition: "height 0.15s ease-out" }}
+            style={{
+              textIndent: indent || undefined,
+              transition: "height 0.15s ease-out, text-indent 0.18s cubic-bezier(0.16, 1, 0.3, 1)",
+            }}
           />
           {showHintOverlay ? (
             <div
               aria-hidden="true"
               className="pointer-events-none absolute inset-0 flex items-start gap-1 overflow-hidden text-[16px] leading-relaxed text-[var(--muted-foreground)]"
+              style={{ paddingLeft: indent || undefined }}
             >
               <span className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
                 {placeholderCompletion}
@@ -759,6 +799,9 @@ export const ComposerInput = memo(
               </span>
             </div>
           ) : null}
+          {lead.length > 0 && (
+            <ComposerLead tokens={lead} armed={armed} hidden={scrolled} onWidth={setLeadWidth} />
+          )}
         </div>
       </div>
     );

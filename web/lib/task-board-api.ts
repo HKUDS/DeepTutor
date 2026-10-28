@@ -1,5 +1,5 @@
 import { apiFetch } from '@/shared/api/client'
-import { scopedUrl } from '@/lib/workspace-scope'
+import { activeWorkspaceId, scopedUrl } from '@/lib/workspace-scope'
 
 export type TaskStatus = 'todo' | 'doing' | 'done'
 export type TaskColors = Record<TaskStatus, string>
@@ -18,6 +18,8 @@ export interface TaskCard {
   created_at: string
   updated_at: string
   workspace_id: string | null
+  /** A plain local calendar day ("YYYY-MM-DD"), never shifted through UTC. */
+  due_date: string | null
 }
 export interface SessionTaskLinks {
   workspace_id: string
@@ -33,8 +35,8 @@ export interface TaskBoard {
 }
 
 const endpoint = '/api/task-board'
-const listeners = new Set<(board: TaskBoard) => void>()
-export function subscribeTaskBoardChanges(listener: (board: TaskBoard) => void) {
+const listeners = new Set<(board: TaskBoard, workspaceId: string) => void>()
+export function subscribeTaskBoardChanges(listener: (board: TaskBoard, workspaceId: string) => void) {
   listeners.add(listener)
   return () => {
     listeners.delete(listener)
@@ -48,33 +50,45 @@ export function normalizeTaskBoard(board: TaskBoard): TaskBoard {
     revision: board.revision ?? 0,
   }
 }
-export function publishTaskBoard(board: TaskBoard) {
-  listeners.forEach(listener => listener(normalizeTaskBoard(board)))
+export function publishTaskBoard(board: TaskBoard, workspaceId = activeWorkspaceId()) {
+  listeners.forEach(listener => listener(normalizeTaskBoard(board), workspaceId))
 }
-export function taskBoardUrl(path = '') {
-  return scopedUrl(`${endpoint}${path}`, '')
+export function taskBoardUrl(path = '', workspaceId = activeWorkspaceId()) {
+  return scopedUrl(`${endpoint}${path}`, workspaceId)
 }
 
-async function request(path: string, init?: RequestInit): Promise<TaskBoard> {
-  const response = await apiFetch(taskBoardUrl(path), init)
+async function request(
+  path: string,
+  init?: RequestInit,
+  workspaceId = activeWorkspaceId()
+): Promise<TaskBoard> {
+  const response = await apiFetch(taskBoardUrl(path, workspaceId), init)
   if (!response.ok) throw new Error('Task board request failed')
   const board = normalizeTaskBoard(await response.json())
-  if (init?.method) publishTaskBoard(board)
+  // A response belongs to the workspace selected when the request started.
+  if (init?.method) publishTaskBoard(board, workspaceId)
   return board
 }
-export function getTaskBoard(signal?: AbortSignal): Promise<TaskBoard> {
-  return request('', { signal, cache: 'no-store' })
+export function getTaskBoard(signal?: AbortSignal, workspaceId = activeWorkspaceId()): Promise<TaskBoard> {
+  return request('', { signal, cache: 'no-store' }, workspaceId)
 }
-export function createTaskCard(title: string): Promise<TaskBoard> {
+export function createTaskCard(
+  title: string,
+  options: { due_date?: string | null } = {}
+): Promise<TaskBoard> {
   return request('/cards', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ title }),
+    body: JSON.stringify(
+      options.due_date !== undefined ? { title, due_date: options.due_date } : { title }
+    ),
   })
 }
 export function updateTaskCard(
   id: string,
-  changes: Partial<Pick<TaskCard, 'title' | 'note' | 'status' | 'archived' | 'workspace_id'>>
+  changes: Partial<
+    Pick<TaskCard, 'title' | 'note' | 'status' | 'archived' | 'workspace_id' | 'due_date'>
+  >
 ): Promise<TaskBoard> {
   return request(`/cards/${encodeURIComponent(id)}`, {
     method: 'PATCH',
@@ -98,7 +112,7 @@ export function linkSessionTasks(
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ workspace_id: workspaceId, task_ids: taskIds }),
-  })
+  }, workspaceId)
 }
 export function setTaskStatusLink(
   sessionId: string,
@@ -109,7 +123,7 @@ export function setTaskStatusLink(
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ workspace_id: workspaceId, enabled }),
-  })
+  }, workspaceId)
 }
 export function sessionTaskLinks(
   board: TaskBoard | null,

@@ -39,7 +39,7 @@ test("session search sends a literal bounded query and pagination", async () => 
   }
 });
 
-test("history search fetches every account-scoped result page", async () => {
+test("history search fetches every result page of the current workspace", async () => {
   const original = globalThis.fetch;
   const urls: string[] = [];
   (globalThis as { fetch: typeof fetch }).fetch = async (input) => {
@@ -68,16 +68,15 @@ test("history search fetches every account-scoped result page", async () => {
   };
 
   try {
-    const sessions = await searchAllSessions("Bayes", undefined, {
-      allWorkspaces: true,
-    });
+    const sessions = await searchAllSessions("Bayes");
     assert.equal(sessions.length, 150);
     assert.equal(urls.length, 2);
+    // Search stays inside the current workspace.
     assert.equal(
       new URL(urls[0], "http://deeptutor.local").searchParams.get(
         "all_workspaces",
       ),
-      "true",
+      null,
     );
     assert.equal(
       new URL(urls[1], "http://deeptutor.local").searchParams.get("offset"),

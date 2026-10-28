@@ -40,7 +40,7 @@ export function WorkspaceInstructionsField({
       />
       <p id={`${id}-scope`} className="text-xs leading-relaxed text-[var(--muted-foreground)]">
         {t(
-          'Applies to Chat, Solve, Ask Questions, Guided Learning, Reading, Course Study and standard visualizations. Changes take effect on the next turn.'
+          'Applies to Chat, Solve, Ask Questions, Guided Learning, Reading and standard visualizations. Changes take effect on the next turn.'
         )}
       </p>
       <div className="flex items-center justify-between gap-3 text-xs text-[var(--muted-foreground)]">

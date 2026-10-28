@@ -452,7 +452,7 @@ async def test_build_inventory_fresh_shadows_historical_on_same_sid() -> None:
 async def test_build_inventory_adds_server_resolved_reading_units(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from deeptutor.services.session import source_inventory
+    from deeptutor.reading import references
 
     seen: list[dict[str, Any]] = []
 
@@ -466,7 +466,7 @@ async def test_build_inventory_adds_server_resolved_reading_units(
             )
         ]
 
-    monkeypatch.setattr(source_inventory, "resolve_reading_sources", resolve)
+    monkeypatch.setattr(references, "resolve_reading_sources", resolve)
     inv = await build_inventory(
         FakeStore(),
         session_id="s1",
@@ -493,10 +493,10 @@ async def test_build_inventory_adds_server_resolved_reading_units(
 async def test_historical_reading_units_are_re_resolved_from_snapshot(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from deeptutor.services.session import source_inventory
+    from deeptutor.reading import references
 
     monkeypatch.setattr(
-        source_inventory,
+        references,
         "resolve_reading_sources",
         lambda refs: (
             [

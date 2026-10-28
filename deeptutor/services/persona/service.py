@@ -4,6 +4,11 @@ PersonaService
 
 Loads user-authored PERSONA.md files from ``data/user/workspace/personas/``.
 
+Personas belong to the account, not to a content workspace: a response style
+is part of how the learner is talked to, and it is the same in every
+workspace. Personas that were once written inside a workspace are adopted
+into the account on first access.
+
 A persona is a behaviour/voice preset ("teacher", "peer", …) the user picks
 for a conversation. Unlike capability skills (see
 :mod:`deeptutor.services.skill`), a persona must shape the model's voice from
@@ -34,7 +39,7 @@ from typing import Any
 
 import yaml
 
-from deeptutor.services.path_service import get_path_service
+from deeptutor.multi_user.paths import get_account_path_service
 
 _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n?", re.DOTALL)
 _NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
@@ -100,7 +105,7 @@ class PersonaService:
     """CRUD + context rendering for PERSONA.md files under one workspace."""
 
     def __init__(self, root: Path | None = None) -> None:
-        self._root = root or (get_path_service().get_workspace_dir() / "personas")
+        self._root = root or (get_account_path_service().get_workspace_dir() / "personas")
 
     @property
     def root(self) -> Path:
@@ -342,19 +347,48 @@ class PersonaService:
 _instances: dict[str, PersonaService] = {}
 
 
-def get_persona_service() -> PersonaService:
-    """Return the PersonaService for the active user's workspace.
+def _adopt_workspace_personas(root: Path) -> None:
+    """Personas were once stored per workspace; bring them into the account once.
 
-    First access for a workspace also runs the one-shot legacy migration of
-    persona-type skills (idempotent, see
-    :meth:`PersonaService.migrate_legacy_skills`).
+    A name the account already uses keeps the account's persona; the workspace
+    copy is left where it was rather than overwritten or lost.
     """
-    workspace = get_path_service().get_workspace_dir()
+    from deeptutor.services.workspace import get_content_workspace_service
+    from deeptutor.services.workspace.context import workspace_context
+    from deeptutor.services.workspace.models import WorkspaceError
+
+    for row in get_content_workspace_service().list_workspaces():
+        if row["kind"] != "workspace" or row["status"] != "ready":
+            continue
+        try:
+            with workspace_context(row["workspace_id"]):
+                from deeptutor.multi_user.paths import get_current_path_service
+
+                legacy = get_current_path_service().get_workspace_dir() / "personas"
+        except WorkspaceError:
+            continue
+        if legacy.resolve() == root or not legacy.is_dir():
+            continue
+        for directory in legacy.iterdir():
+            if directory.is_dir() and not (root / directory.name).exists():
+                root.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(directory), str(root / directory.name))
+
+
+def get_persona_service() -> PersonaService:
+    """Return the PersonaService for the active account.
+
+    First access for an account also runs the one-shot legacy migrations:
+    persona-type skills (see :meth:`PersonaService.migrate_legacy_skills`) and
+    personas written inside a content workspace. Both are idempotent.
+    """
+    workspace = get_account_path_service().get_workspace_dir()
     root = (workspace / "personas").resolve()
     key = str(root)
     if key not in _instances:
         service = PersonaService(root=root)
         service.migrate_legacy_skills(workspace / "skills")
+        _adopt_workspace_personas(root)
         _instances[key] = service
     return _instances[key]
 
@@ -365,11 +399,10 @@ def load_visible_for_context(
     workspace: PersonaService | None = None,
     admin: PersonaService | None = None,
 ) -> str:
-    """Render a persona from the active workspace, then admin presets.
+    """Render a persona from the account, then admin presets.
 
-    Workspace-local files stay isolated. Admin presets are a read-only overlay
-    visible to every role — including an admin in an explicit workspace whose
-    own ``personas/`` directory is empty.
+    Admin presets are a read-only overlay visible to every role — including an
+    admin whose own ``personas/`` directory is empty.
     """
     if not name:
         return ""

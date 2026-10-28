@@ -19,8 +19,6 @@ import threading
 from types import SimpleNamespace
 from typing import Any
 
-from openai import AsyncAzureOpenAI, AsyncOpenAI
-
 from deeptutor.services.config import load_system_settings
 from deeptutor.services.keypool import KeyPool, primary_api_key
 from deeptutor.services.llm import get_token_limit_kwargs, supports_tools
@@ -118,6 +116,19 @@ def _client_cache_key(
         config.api_format,
         disable_ssl_verify,
     )
+
+
+def AsyncOpenAI(**kwargs: Any) -> Any:
+    """Lazy SDK constructor; native turns need only the parameter helpers."""
+    from openai import AsyncOpenAI as Client
+
+    return Client(**kwargs)
+
+
+def AsyncAzureOpenAI(**kwargs: Any) -> Any:
+    from openai import AsyncAzureOpenAI as Client
+
+    return Client(**kwargs)
 
 
 def _build_openai_client(
@@ -308,6 +319,7 @@ def _build_anthropic_adapter(config: LLMClientConfig, spec: Any) -> Any:
         default_model=config.model or "claude-sonnet-4-20250514",
         extra_headers=config.extra_headers,
         supports_prompt_caching=spec.supports_prompt_caching,
+        binding=spec.name,
     )
     return _ProviderOpenAIAdapter(anthropic_provider)
 
@@ -417,6 +429,18 @@ class _ProviderOpenAIAdapter:
         if max_tokens is None:
             max_tokens = kwargs.pop("max_tokens", 4096)
         reasoning_effort = kwargs.pop("reasoning_effort", None)
+        if getattr(self._provider, "_binding", "") in {"minimax", "minimax_anthropic"} and (
+            model or self._provider.default_model
+        ).lower() in {"minimax-m3.1-flash", "minimax-m3"}:
+            # Convert the facade's OpenAI-only controls back to intent before
+            # the native Anthropic provider builds its protocol-specific body.
+            extra_body = dict(kwargs.pop("extra_body", None) or {})
+            thinking = extra_body.pop("thinking", None)
+            extra_body.pop("reasoning_split", None)
+            if thinking and reasoning_effort is None:
+                reasoning_effort = "none" if thinking.get("type") == "disabled" else "adaptive"
+            if extra_body:
+                kwargs["extra_body"] = extra_body
         kwargs.pop("stream_options", None)
 
         if stream:

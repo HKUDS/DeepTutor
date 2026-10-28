@@ -444,9 +444,8 @@ async def _capture_limited(
 
 
 async def _terminate_process_tree(process: asyncio.subprocess.Process) -> None:
-    if process.returncode is not None:
-        return
-
+    # A leader can exit while its descendants keep stdout/stderr open.
+    # Its POSIX group must still be terminated on timeout or cancellation.
     if sys.platform != "win32":
         killed_group = False
         try:
@@ -454,8 +453,11 @@ async def _terminate_process_tree(process: asyncio.subprocess.Process) -> None:
             killed_group = True
         except (ProcessLookupError, PermissionError):
             pass
-        if not killed_group:
+        if not killed_group and process.returncode is None:
             process.kill()
+        return
+
+    if process.returncode is not None:
         return
 
     # ``Process.kill`` only terminates powershell.exe; taskkill's /T flag also
@@ -491,13 +493,15 @@ async def _communicate(
             asyncio.gather(wait_task, stdout_task, stderr_task),
             timeout=timeout_s,
         )
-    except asyncio.TimeoutError:
+    except (asyncio.TimeoutError, asyncio.CancelledError) as exc:
         for task in (wait_task, stdout_task, stderr_task):
             task.cancel()
         await asyncio.gather(wait_task, stdout_task, stderr_task, return_exceptions=True)
         await _terminate_process_tree(process)
         with suppress(asyncio.TimeoutError):
             await asyncio.wait_for(process.wait(), timeout=5.0)
+        if isinstance(exc, asyncio.CancelledError):
+            raise
         return ExecResult(timed_out=True, exit_code=124)
     return ExecResult(
         stdout=_decode_process_output(stdout),

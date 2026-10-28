@@ -4,7 +4,8 @@ import dynamic from "next/dynamic";
 import { browserStorage } from "@/shared/storage";
 import Tooltip from "@/shared/ui/Tooltip";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
+import { createPortal } from "react-dom";
 import {
   ArrowLeft,
   ArrowRight,
@@ -27,7 +28,8 @@ import {
   READER_TURN_END_EVENT,
   type ReaderActionPayload,
 } from "@/lib/reading-reader-action";
-import { citationTargetFromHref } from "@/lib/reading-citations";
+import { scopedUrl } from "@/lib/workspace-scope";
+import { citationTargetFromHref, readingPassageHref } from "@/lib/reading-citations";
 import {
   fetchExport,
   getMaterial,
@@ -147,6 +149,13 @@ export interface ReaderPaneProps {
    * the narrowest thing on screen.
    */
   ownAnnotationList?: boolean;
+  /**
+   * Where the document's title row goes when the host has a bar for it. The
+   * workspace gives its own top bar, so the title, place and bookmark read on
+   * one line with the collection rather than as a second strip under it.
+   * Without one the row renders here, at the top of the pane.
+   */
+  headSlot?: HTMLElement | null;
 }
 
 /**
@@ -179,6 +188,7 @@ export function ReaderPane({
   onToggleBookmark,
   onLocatorChange,
   ownAnnotationList = true,
+  headSlot = null,
 }: ReaderPaneProps) {
   const { t, i18n } = useTranslation();
   // Document + annotations live in the provider (workspace layout), so they
@@ -629,6 +639,19 @@ export function ReaderPane({
     ],
   );
 
+  const followedSource = useRef('');
+  useEffect(() => {
+    const follow = () => {
+      const href = window.location.hash;
+      if (!material || !citationTargetFromHref(href) || followedSource.current === href) return;
+      followedSource.current = href;
+      void navigateCitation(href);
+    };
+    follow();
+    window.addEventListener('hashchange', follow);
+    return () => window.removeEventListener('hashchange', follow);
+  }, [material, navigateCitation]);
+
   useEffect(() => {
     if (!externalJump) return;
     if (externalJumpNonceRef.current === externalJump.nonce) return;
@@ -963,24 +986,31 @@ export function ReaderPane({
   const menuHosted = useWorkspaceMenuSection("material", menuItems);
 
   return (
-    <div className="relative flex h-full min-w-0 flex-col border-r border-[var(--border)] bg-[var(--background)]">
-      <header className="flex h-11 shrink-0 items-center gap-1 border-b border-[var(--border)] px-2.5">
-        <FileText
-          size={14}
-          className="hidden shrink-0 text-[var(--muted-foreground)] md:block"
-        />
-        {/* The title, not the filename. A material saved from the web is
-            stored under its content hash, so this line read
-            "65228f9f372d6e9b.md" for every page the learner opened — the one
-            place in the reader that names what they are reading, spelling it
-            as a checksum. The filename is worth keeping for uploads, where it
-            is what the learner recognises, so it stays as the tooltip. */}
-        <span
-          className="min-w-0 flex-1 truncate text-[12.5px] font-medium text-[var(--foreground)]"
-          title={material?.filename || material?.title}
-        >
-          {material?.title || material?.filename || t("Immersive reading")}
-        </span>
+    <div className="dt-reader-pane relative flex h-full min-w-0 flex-col bg-[var(--background)]">
+      <ReaderHead slot={headSlot}>
+        {/* Under the workspace's bar the document is a crumb of that bar
+            (it switches between the collection's files), so the head only
+            brings its place, history and bookmark. */}
+        {!headSlot && (
+          <>
+            <FileText
+              size={14}
+              className="hidden shrink-0 text-[var(--muted-foreground)] md:block"
+            />
+            {/* The title, not the filename. A material saved from the web is
+                stored under its content hash, so this line read
+                "65228f9f372d6e9b.md" for every page the learner opened — the one
+                place in the reader that names what they are reading, spelling it
+                as a checksum. The filename is worth keeping for uploads, where it
+                is what the learner recognises, so it stays as the tooltip. */}
+            <span
+              className="min-w-0 flex-1 truncate text-[12.5px] font-medium text-[var(--foreground)]"
+              title={material?.filename || material?.title}
+            >
+              {material?.title || material?.filename || t("Immersive reading")}
+            </span>
+          </>
+        )}
 
         {/* Back and Forward stay in the bar because they are how a learner
             returns from a citation the assistant jumped to. Everything else
@@ -1067,14 +1097,14 @@ export function ReaderPane({
             )}
           </>
         )}
-      </header>
+      </ReaderHead>
 
       {showMoreTools && material && !menuHosted && (
         <div
           ref={moreToolsMenuRef}
           role="menu"
           aria-label={t("More")}
-          className="absolute top-11 right-2 z-40 w-64 rounded-xl border border-[var(--border)] bg-[var(--background)] p-1.5 shadow-xl"
+          className={`absolute ${headSlot ? "top-2" : "top-11"} right-2 z-40 w-64 rounded-xl border border-[var(--border)] bg-[var(--background)] p-1.5 shadow-xl`}
         >
           {locationHistory.entries.length > 0 && (
             <MenuToolButton
@@ -1139,7 +1169,7 @@ export function ReaderPane({
       {showHistory && locationHistory.entries.length > 0 && (
         <div
           ref={historyPanelRef}
-          className="absolute top-11 right-2 z-30 max-h-72 w-72 overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--background)] p-1.5 shadow-xl">
+          className={`absolute ${headSlot ? "top-2" : "top-11"} right-2 z-30 max-h-72 w-72 overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--background)] p-1.5 shadow-xl`}>
           {[...locationHistory.entries]
             .map((entry, index) => ({ entry, index }))
             .reverse()
@@ -1281,7 +1311,7 @@ export function ReaderPane({
         </div>
 
         {material && ownAnnotationList && showAnnotations && (
-          <aside className="hidden w-[248px] shrink-0 border-l border-[var(--border)] bg-[var(--background)] lg:block">
+          <aside className="hidden w-[248px] shrink-0 bg-[var(--background)] lg:block">
             <AnnotationList
               annotations={annotations}
               unit={material.unit}
@@ -1303,6 +1333,7 @@ export function ReaderPane({
         <AnnotationPopover
           anchor={selection.anchor}
           quote={selection.quote}
+          noteSource={{title: `${material.title} · ${unitLabel(material.unit)} ${selection.locator}`, url: scopedUrl(window.location.pathname + window.location.search) + readingPassageHref(material.material_id, selection.locator, material.revision), id: `${material.material_id}:${selection.locator}`}}
           onHighlight={(color) => commitSelection("highlight", color)}
           onUnderline={(color) => commitSelection("underline", color)}
           onNote={(note, color) => commitSelection("note", color, note)}
@@ -1415,5 +1446,15 @@ function MenuToolButton({
         ) : null}
       </span>
     </button>
+  );
+}
+
+/** The title row: in the host's bar when it offers one, else atop the pane. */
+function ReaderHead({ slot, children }: { slot: HTMLElement | null; children: ReactNode }) {
+  if (slot) return createPortal(children, slot);
+  return (
+    <header className="dt-reader-head flex h-11 shrink-0 items-center gap-1 px-3">
+      {children}
+    </header>
   );
 }

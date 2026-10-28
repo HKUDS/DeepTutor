@@ -26,7 +26,12 @@ def main() -> None:
         response = handle_http(request.get("http") or {})
     else:
         response = {"error": f"unknown operation: {operation}"}
-    print(json.dumps(response, ensure_ascii=False))
+    if operation == "run_capability" and request.get("transport") == "ndjson-v1":
+        for event in response["events"]:
+            print(json.dumps({"kind": "event", "event": event}), flush=True)
+        print(json.dumps({"kind": "complete"}), flush=True)
+    else:
+        print(json.dumps(response, ensure_ascii=False))
 
 
 def describe_tool() -> dict[str, Any]:
@@ -56,6 +61,7 @@ def execute_tool(arguments: dict[str, Any]) -> dict[str, Any]:
 
 def describe_capability() -> dict[str, Any]:
     return {
+        "transport": "ndjson-v1",
         "permissions": {},
         "capability": {
             "name": "learning_echo_capability",

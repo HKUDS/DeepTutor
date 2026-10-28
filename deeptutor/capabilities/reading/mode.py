@@ -29,27 +29,17 @@ from deeptutor.capabilities.reading.capability import (
     MODE_KEY,
     resolve_material_id,
 )
-from deeptutor.capabilities.reading.tools import READING_TOOL_NAMES
 from deeptutor.core.capability_protocol import (
-    CapabilityManifest,
     StreamBusProtocol,
     TurnCapability,
 )
 from deeptutor.core.context import UnifiedContext
+from deeptutor.runtime.bootstrap.builtin_capabilities import builtin_capability_manifest
 from deeptutor.runtime.stream_bus import StreamBus
 
 
 class ImmersiveReadingCapability(TurnCapability):
-    manifest = CapabilityManifest(
-        name="immersive_reading",
-        description=(
-            "Read a document alongside the assistant, which cites the exact "
-            "page or section behind every claim."
-        ),
-        stages=["responding"],
-        tools_used=[*READING_TOOL_NAMES, "web_search", "exec", "reason"],
-        cli_aliases=["reading", "read"],
-    )
+    manifest = builtin_capability_manifest("immersive_reading")
 
     async def run(self, context: UnifiedContext, stream: StreamBusProtocol) -> None:
         # Normalised so the flag and the id can never disagree: the loop

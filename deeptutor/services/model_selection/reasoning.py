@@ -31,6 +31,11 @@ def supported_reasoning_efforts(
         "anthropic_compatible": "custom_anthropic",
     }.get(provider, provider)
     spec = find_by_name(provider)
+    if spec and spec.name in {"minimax", "minimax_anthropic"}:
+        if model.lower() == "minimax-m3.1-flash":
+            return ["low", "medium", "high", "xhigh", "max"]
+        if model.lower() == "minimax-m3":
+            return ["none", "adaptive"]
     binary_choices = None
     if spec is None or spec.backend in {"openai_compat", "azure_openai"}:
         # Use the actual wire mapper, including custom model-family inference.

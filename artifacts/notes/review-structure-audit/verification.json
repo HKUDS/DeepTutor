@@ -1,0 +1,40 @@
+{
+  "branch": "dt-exp-idp",
+  "note_id": "019a3693d633",
+  "revision": 21,
+  "total_blocks_including_children": 6,
+  "pending_suggestions": 0,
+  "proposal_setup": "Deterministic local API fixtures; approvals, dismissals, dragging, undo/redo and navigation exercised through the in-app browser.",
+  "verified": [
+    "Three simultaneous proposals anchored at separate blocks, including a nested child",
+    "Accepted two independent proposals; undid both separately and redid both",
+    "Dragged pending top-level block to front; card followed; undo and redo preserved content",
+    "Dragged a parent with nested pending review; moved the child inside its group",
+    "Deleted pending child: inline card stayed near sibling and accept was disabled",
+    "Undo deletion restored child and acceptance; redo disabled it again",
+    "Opened a second tab after save: deleted-target review remained after the correct nested sibling",
+    "Restored synthetic fixture through API after hot reload reset editor history, then accepted nested revision through UI and dismissed the other proposal",
+    "Collapsed and expanded tree branches; current page and complete title available",
+    "Typed a final sentence and immediately navigated to child then parent; text saved and page tree stayed open",
+    "Final saved document preserves all six stable IDs and intended hierarchy",
+    "Parent text-only proposal appears directly after parent text, before children; UI explains children are retained",
+    "Accepted child first, then parent: latest child text and untouched sibling both retained",
+    "Accepted parent first, then child: both changes and stable IDs retained",
+    "Undid and redid both parent/child approvals separately; final saved order and all six blocks verified"
+  ],
+  "automated": {
+    "frontend_tests": 78,
+    "backend_tests": 30,
+    "ruff": "passed",
+    "eslint": "passed",
+    "architecture": "passed",
+    "i18n_parity": "passed",
+    "typecheck": "passed",
+    "production_build": ".next-notes-structure passed"
+  },
+  "screenshots": [
+    "reopened-deleted-target.jpg",
+    "final-reopened.jpg",
+    "parent-child-inline.jpg"
+  ]
+}

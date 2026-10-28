@@ -1,8 +1,20 @@
+import pytest
+
+from deeptutor.services.llm.capabilities import set_catalog_capability_overrides
 from deeptutor.services.model_selection import (
     LLMSelection,
     apply_llm_selection_to_catalog,
     list_llm_options,
 )
+
+
+@pytest.fixture(autouse=True)
+def _clear_overrides():
+    # supports_vision() reads a process-global table; pin it empty so these
+    # assertions cannot inherit a leftover declaration from another test file.
+    set_catalog_capability_overrides([])
+    yield
+    set_catalog_capability_overrides([])
 
 
 def _catalog():
@@ -66,6 +78,29 @@ def test_list_llm_options_is_redacted_and_marks_active_default():
     assert "api_key" not in payload["options"][0]
     assert "base_url" not in payload["options"][0]
     assert "extra_headers" not in payload["options"][0]
+
+
+def test_list_llm_options_reports_effective_vision_support():
+    def vision_by_model(catalog):
+        return {o["model_id"]: o["supports_vision"] for o in list_llm_options(catalog)["options"]}
+
+    # Provider defaults when the catalog declares nothing: openrouter is
+    # vision-capable, ollama is per-model.
+    assert vision_by_model(_catalog()) == {"m1": True, "m2": True, "m3": False}
+
+    # A declaration in the catalog itself must decide on its own. The global
+    # override table is empty here, exactly as in a process that has not
+    # resolved a runtime config yet -- relying on it left the model hidden.
+    declared = _catalog()
+    declared["services"]["llm"]["profiles"][1]["models"][0]["capabilities"] = {"vision": True}
+    assert vision_by_model(declared)["m3"] is True
+
+    # The declaration also wins when it turns a table-true model off (openrouter
+    # m1 is True above), so `option.get("declared_vision") or supports_vision(...)`
+    # cannot pass the suite.
+    disabled = _catalog()
+    disabled["services"]["llm"]["profiles"][0]["models"][0]["capabilities"] = {"vision": False}
+    assert vision_by_model(disabled)["m1"] is False
 
 
 def test_apply_llm_selection_to_catalog_returns_copy_with_selected_active_ids():

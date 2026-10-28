@@ -11,7 +11,7 @@
 import { FeaturePage, PageHeader, pageActionClass, pageGridClass } from '@/components/layout/FeaturePage'
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { HeartHandshake, Loader2, Plus, Users } from "lucide-react";
+import { HeartHandshake, Loader2, Plus, Users, MessageCircle } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { listPartners, type PartnerInfo } from "@/lib/partners-api";
 import { listPartnerGroups, type PartnerGroup } from "@/lib/partner-groups-api";
@@ -60,9 +60,24 @@ export default function PartnersPage() {
     };
   }, []);
 
+  useEffect(() => {
+    if (loading) return;
+    const revealDirectorySection = () => {
+      const section = window.location.hash.slice(1);
+      if (section === "groups" || section === "partners") {
+        document.getElementById(section)?.scrollIntoView({ block: "start" });
+      }
+    };
+    revealDirectorySection();
+    window.addEventListener("hashchange", revealDirectorySection);
+    return () => window.removeEventListener("hashchange", revealDirectorySection);
+  }, [loading]);
+
   return (
     <FeaturePage>
       <PageHeader
+        icon={MessageCircle}
+        titleId="partners"
         title={t("Partners")}
         description={anyAssigned
           ? t("Your companions, plus the ones shared with you — each with its own soul, library, and channels.")
@@ -171,7 +186,7 @@ export default function PartnersPage() {
       )}
 
       {!loading && partners.length > 0 ? (
-        <section className="mt-9 border-t border-[var(--border)] pt-7">
+        <section id="groups" className="mt-9 scroll-mt-7 border-t border-[var(--border)] pt-7">
           <PageHeader
             level={2}
             title={t("Groups")}

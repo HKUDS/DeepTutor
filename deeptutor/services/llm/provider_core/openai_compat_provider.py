@@ -269,30 +269,38 @@ class OpenAICompatProvider(LLMProvider):
     # Prompt caching
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _mark_cache_control(msg: dict[str, Any]) -> dict[str, Any]:
+        """Attach an ephemeral cache breakpoint to a message's last block."""
+        cache_marker = {"type": "ephemeral"}
+        content = msg.get("content")
+        if isinstance(content, str):
+            return {
+                **msg,
+                "content": [
+                    {"type": "text", "text": content, "cache_control": cache_marker},
+                ],
+            }
+        if isinstance(content, list) and content:
+            new_content = list(content)
+            new_content[-1] = {**new_content[-1], "cache_control": cache_marker}
+            return {**msg, "content": new_content}
+        return msg
+
     @classmethod
     def _apply_cache_control(
         cls,
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]] | None,
+        *,
+        stable_history_end: bool = False,
     ) -> tuple[list[dict[str, Any]], list[dict[str, Any]] | None]:
         cache_marker = {"type": "ephemeral"}
         new_messages = list(messages)
         budget = 4
 
         def _mark(msg: dict[str, Any]) -> dict[str, Any]:
-            content = msg.get("content")
-            if isinstance(content, str):
-                return {
-                    **msg,
-                    "content": [
-                        {"type": "text", "text": content, "cache_control": cache_marker},
-                    ],
-                }
-            if isinstance(content, list) and content:
-                nc = list(content)
-                nc[-1] = {**nc[-1], "cache_control": cache_marker}
-                return {**msg, "content": nc}
-            return msg
+            return cls._mark_cache_control(msg)
 
         if new_messages and new_messages[0].get("role") == "system":
             new_messages[0] = _mark(new_messages[0])
@@ -301,12 +309,57 @@ class OpenAICompatProvider(LLMProvider):
             new_messages[-1] = _mark(new_messages[-1])
             budget -= 1
 
+        if stable_history_end and budget > 0:
+            # The loop appends a transient per-turn context message just before
+            # the learner's message and never persists it, so a breakpoint on
+            # the last message alone leaves the next turn's prefix diverging at
+            # that transient block. Mark the end of the durable history — the
+            # last non-empty message before the trailing user turn — so the
+            # previous turn's prefix still matches and can be reused.
+            index = cls._stable_history_end_index(new_messages)
+            if index is not None:
+                new_messages[index] = _mark(new_messages[index])
+                budget -= 1
+
         new_tools = tools
         if tools:
             new_tools = list(tools)
             for idx in cls._tool_cache_marker_indices(new_tools)[:budget]:
                 new_tools[idx] = {**new_tools[idx], "cache_control": cache_marker}
         return new_messages, new_tools
+
+    @staticmethod
+    def _stable_history_end_index(messages: list[dict[str, Any]]) -> int | None:
+        """Index of the last persisted message before the trailing user turn.
+
+        Walks back over the final user block (the transient context message and
+        the learner's message share the ``user`` role) and skips empty text
+        blocks, which cannot carry ``cache_control``. Returns ``None`` when the
+        marker would fall outside the request.
+        """
+        start = len(messages) - 1
+        while start > 0 and messages[start].get("role") != "user":
+            start -= 1
+        while start > 1 and messages[start - 1].get("role") == "user":
+            start -= 1
+        index = start - 1
+        while index > 0 and not messages[index].get("content"):
+            index -= 1
+        if 0 < index < len(messages) - 1:
+            return index
+        return None
+
+    @classmethod
+    def supports_prompt_caching_for(cls, model: str | None) -> bool:
+        """Whether *model* uses explicit ``cache_control`` breakpoints.
+
+        Anthropic models reached through an OpenAI-compatible gateway cache
+        only when the request carries breakpoints, and only those families
+        understand the marker. Kept here so the agent loop and the provider
+        agree on the same gate.
+        """
+        name = str(model or "").lower()
+        return name.startswith(("anthropic/", "claude"))
 
     # ------------------------------------------------------------------
     # Message sanitization

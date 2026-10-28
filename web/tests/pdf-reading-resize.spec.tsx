@@ -12,6 +12,7 @@ const pdf = vi.hoisted(() => ({ ratios: new Map<number, number>() }));
 vi.mock("@/lib/pdfjs-loader", () => ({
   outputScale: () => 1,
   pdfjsWasmUrl: () => "/pdfjs/wasm/",
+  pdfjsCMapUrl: () => "/pdfjs/cmaps/",
   loadPdfjs: async () => ({
     getDocument: () => ({
       destroy: async () => undefined,

@@ -431,6 +431,18 @@ export function ServiceConfigEditor({
               };
         });
         if (
+          service === "llm" &&
+          ["minimax", "minimax_anthropic", "openrouter"].includes(binding)
+        ) {
+          // Discovery recommendations must not erase saved legacy/custom models.
+          const discovered = new Set(fetched.map((item) => item.id));
+          profile.models.push(
+            ...Array.from(existing.values()).filter(
+              (model) => !discovered.has(model.model),
+            ),
+          );
+        }
+        if (
           target.active_profile_id === profile.id &&
           !profile.models.some(
             (model) => model.id === target.active_model_id,

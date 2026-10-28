@@ -1,0 +1,802 @@
+[
+  {
+    "clipped": false,
+    "kind": "ai",
+    "rect": {
+      "bottom": 673.203125,
+      "height": 231.2734375,
+      "left": 704.5,
+      "right": 928.5,
+      "top": 441.9296875,
+      "width": 224,
+      "x": 704.5,
+      "y": 441.9296875
+    },
+    "text": "Ask DitoExplain this concept with an example.Review changes",
+    "title": "Ask Dito"
+  },
+  {
+    "clipped": false,
+    "kind": "source",
+    "rect": {
+      "bottom": 673.203125,
+      "height": 211.890625,
+      "left": 704.5,
+      "right": 928.5,
+      "top": 461.3125,
+      "width": 224,
+      "x": 704.5,
+      "y": 461.3125
+    },
+    "text": "A useful passage, kept in context.Source · Page 12",
+    "title": "Reference a source"
+  },
+  {
+    "clipped": false,
+    "kind": "favorite",
+    "rect": {
+      "bottom": 673.203125,
+      "height": 211.890625,
+      "left": 704.5,
+      "right": 928.5,
+      "top": 461.3125,
+      "width": 224,
+      "x": 704.5,
+      "y": 461.3125
+    },
+    "text": "Saved answerKeep the key idea in sight.Source · Dito",
+    "title": "Insert favorite"
+  },
+  {
+    "clipped": false,
+    "kind": "paragraph",
+    "rect": {
+      "bottom": 673.203125,
+      "height": 192.6953125,
+      "left": 704.5,
+      "right": 928.5,
+      "top": 480.5078125,
+      "width": 224,
+      "x": 704.5,
+      "y": 480.5078125
+    },
+    "text": "Write a thought, connect it to what you know, and let the next idea follow.",
+    "title": "Paragraph"
+  },
+  {
+    "clipped": false,
+    "kind": "heading",
+    "rect": {
+      "bottom": 673.203125,
+      "height": 192.6953125,
+      "left": 704.5,
+      "right": 928.5,
+      "top": 480.5078125,
+      "width": 224,
+      "x": 704.5,
+      "y": 480.5078125
+    },
+    "text": "Heading 1Give this section a clear place in your notes.",
+    "title": "Heading 1#"
+  },
+  {
+    "clipped": false,
+    "kind": "heading_2",
+    "rect": {
+      "bottom": 673.203125,
+      "height": 192.6953125,
+      "left": 704.5,
+      "right": 928.5,
+      "top": 480.5078125,
+      "width": 224,
+      "x": 704.5,
+      "y": 480.5078125
+    },
+    "text": "Heading 2Give this section a clear place in your notes.",
+    "title": "Heading 2##"
+  },
+  {
+    "clipped": false,
+    "kind": "heading_3",
+    "rect": {
+      "bottom": 673.203125,
+      "height": 192.6953125,
+      "left": 704.5,
+      "right": 928.5,
+      "top": 480.5078125,
+      "width": 224,
+      "x": 704.5,
+      "y": 480.5078125
+    },
+    "text": "Heading 3Give this section a clear place in your notes.",
+    "title": "Heading 3###"
+  },
+  {
+    "clipped": false,
+    "kind": "heading_4",
+    "rect": {
+      "bottom": 673.203125,
+      "height": 192.6953125,
+      "left": 704.5,
+      "right": 928.5,
+      "top": 480.5078125,
+      "width": 224,
+      "x": 704.5,
+      "y": 480.5078125
+    },
+    "text": "Heading 4Give this section a clear place in your notes.",
+    "title": "Heading 4####"
+  },
+  {
+    "clipped": false,
+    "kind": "bullet_list",
+    "rect": {
+      "bottom": 673.203125,
+      "height": 192.6953125,
+      "left": 704.5,
+      "right": 928.5,
+      "top": 480.5078125,
+      "width": 224,
+      "x": 704.5,
+      "y": 480.5078125
+    },
+    "text": "Ask a questionConnect the ideasTest your understanding",
+    "title": "Bullet List-"
+  },
+  {
+    "clipped": false,
+    "kind": "numbered_list",
+    "rect": {
+      "bottom": 673.203125,
+      "height": 192.6953125,
+      "left": 704.5,
+      "right": 928.5,
+      "top": 480.5078125,
+      "width": 224,
+      "x": 704.5,
+      "y": 480.5078125
+    },
+    "text": "Ask a questionConnect the ideasTest your understanding",
+    "title": "Numbered List1."
+  },
+  {
+    "clipped": false,
+    "kind": "check_list",
+    "rect": {
+      "bottom": 673.203125,
+      "height": 192.6953125,
+      "left": 704.5,
+      "right": 928.5,
+      "top": 480.5078125,
+      "width": 224,
+      "x": 704.5,
+      "y": 480.5078125
+    },
+    "text": "Review the conceptTry an example",
+    "title": "Check List[]"
+  },
+  {
+    "clipped": false,
+    "kind": "toggle_list",
+    "rect": {
+      "bottom": 673.203125,
+      "height": 192.6953125,
+      "left": 704.5,
+      "right": 928.5,
+      "top": 480.5078125,
+      "width": 224,
+      "x": 704.5,
+      "y": 480.5078125
+    },
+    "text": "Explore the detailsHide supporting notes until you need them.",
+    "title": "Toggle List>"
+  },
+  {
+    "clipped": false,
+    "kind": "quote",
+    "rect": {
+      "bottom": 673.203125,
+      "height": 192.6953125,
+      "left": 704.5,
+      "right": 928.5,
+      "top": 480.5078125,
+      "width": 224,
+      "x": 704.5,
+      "y": 480.5078125
+    },
+    "text": "A useful passage, kept in context.",
+    "title": "Quote\""
+  },
+  {
+    "clipped": false,
+    "kind": "table",
+    "rect": {
+      "bottom": 673.203125,
+      "height": 192.6953125,
+      "left": 704.5,
+      "right": 928.5,
+      "top": 480.5078125,
+      "width": 224,
+      "x": 704.5,
+      "y": 480.5078125
+    },
+    "text": "ConceptNotesFourier transformFrequencyDerivativeRate of change",
+    "title": "Table"
+  },
+  {
+    "clipped": false,
+    "kind": "divider",
+    "rect": {
+      "bottom": 673.203125,
+      "height": 192.6953125,
+      "left": 704.5,
+      "right": 928.5,
+      "top": 480.5078125,
+      "width": 224,
+      "x": 704.5,
+      "y": 480.5078125
+    },
+    "text": "Key ideaTry an example",
+    "title": "Divider---"
+  },
+  {
+    "clipped": false,
+    "kind": "code_block",
+    "rect": {
+      "bottom": 673.203125,
+      "height": 192.6953125,
+      "left": 704.5,
+      "right": 928.5,
+      "top": 480.5078125,
+      "width": 224,
+      "x": 704.5,
+      "y": 480.5078125
+    },
+    "text": "Pythondef learn(topic):\n    return explore(topic)",
+    "title": "Code Block```"
+  },
+  {
+    "clipped": false,
+    "kind": "callout",
+    "rect": {
+      "bottom": 673.203125,
+      "height": 192.6953125,
+      "left": 704.5,
+      "right": 928.5,
+      "top": 480.5078125,
+      "width": 224,
+      "x": 704.5,
+      "y": 480.5078125
+    },
+    "text": "Keep the key idea in sight.",
+    "title": "Callout"
+  },
+  {
+    "clipped": false,
+    "kind": "pageLink",
+    "rect": {
+      "bottom": 673.203125,
+      "height": 192.6953125,
+      "left": 704.5,
+      "right": 928.5,
+      "top": 480.5078125,
+      "width": 224,
+      "x": 704.5,
+      "y": 480.5078125
+    },
+    "text": "Fourier transformOpen linked page",
+    "title": "Page link"
+  },
+  {
+    "clipped": false,
+    "kind": "image",
+    "rect": {
+      "bottom": 673.203125,
+      "height": 203.6953125,
+      "left": 704.5,
+      "right": 928.5,
+      "top": 469.5078125,
+      "width": 224,
+      "x": 704.5,
+      "y": 469.5078125
+    },
+    "text": "Image caption",
+    "title": "Image"
+  },
+  {
+    "clipped": false,
+    "kind": "video",
+    "rect": {
+      "bottom": 673.203125,
+      "height": 229.09375,
+      "left": 704.5,
+      "right": 928.5,
+      "top": 444.109375,
+      "width": 224,
+      "x": 704.5,
+      "y": 444.109375
+    },
+    "text": "Learning video0:00",
+    "title": "Video"
+  },
+  {
+    "clipped": false,
+    "kind": "audio",
+    "rect": {
+      "bottom": 673.203125,
+      "height": 192.6953125,
+      "left": 704.5,
+      "right": 928.5,
+      "top": 480.5078125,
+      "width": 224,
+      "x": 704.5,
+      "y": 480.5078125
+    },
+    "text": "Audio recording0:00 / 3:24",
+    "title": "Audio"
+  },
+  {
+    "clipped": false,
+    "kind": "file",
+    "rect": {
+      "bottom": 673.203125,
+      "height": 192.6953125,
+      "left": 704.5,
+      "right": 928.5,
+      "top": 480.5078125,
+      "width": 224,
+      "x": 704.5,
+      "y": 480.5078125
+    },
+    "text": "Notes.pdfPDF · 2.4 MB",
+    "title": "File"
+  },
+  {
+    "clipped": false,
+    "kind": "bookmark",
+    "rect": {
+      "bottom": 673.203125,
+      "height": 216.6796875,
+      "left": 704.5,
+      "right": 928.5,
+      "top": 456.5234375,
+      "width": 224,
+      "x": 704.5,
+      "y": 456.5234375
+    },
+    "text": "Fourier transformFrom signals to frequencies.wikipedia.org",
+    "title": "Web bookmark"
+  },
+  {
+    "clipped": false,
+    "kind": "embed",
+    "rect": {
+      "bottom": 673.203125,
+      "height": 290.890625,
+      "left": 704.5,
+      "right": 928.5,
+      "top": 382.3125,
+      "width": 224,
+      "x": 704.5,
+      "y": 382.3125
+    },
+    "text": "Embedded pageQuestionExplore the detailsKey idea",
+    "title": "Embed"
+  },
+  {
+    "clipped": false,
+    "kind": "htmlEmbed",
+    "rect": {
+      "bottom": 673.203125,
+      "height": 250.875,
+      "left": 704.5,
+      "right": 928.5,
+      "top": 422.328125,
+      "width": 224,
+      "x": 704.5,
+      "y": 422.328125
+    },
+    "text": "HTML · PreviewKey ideaFrom signals to frequencies.f(x) → F(ω)",
+    "title": "HTML"
+  },
+  {
+    "clipped": false,
+    "kind": "task_table",
+    "rect": {
+      "bottom": 673.203125,
+      "height": 211.890625,
+      "left": 704.5,
+      "right": 928.5,
+      "top": 461.3125,
+      "width": 224,
+      "x": 704.5,
+      "y": 461.3125
+    },
+    "text": "TaskStatusReview the conceptDoneTry an exampleTo do",
+    "title": "Task table"
+  },
+  {
+    "clipped": false,
+    "kind": "task_board",
+    "rect": {
+      "bottom": 673.203125,
+      "height": 212.0859375,
+      "left": 704.5,
+      "right": 928.5,
+      "top": 461.1171875,
+      "width": 224,
+      "x": 704.5,
+      "y": 461.1171875
+    },
+    "text": "To do · 1Review the conceptDone · 1Try an example",
+    "title": "Task board"
+  },
+  {
+    "clipped": false,
+    "kind": "task_list",
+    "rect": {
+      "bottom": 673.203125,
+      "height": 211.890625,
+      "left": 704.5,
+      "right": 928.5,
+      "top": 461.3125,
+      "width": 224,
+      "x": 704.5,
+      "y": 461.3125
+    },
+    "text": "Review the conceptTry an exampleAdd task",
+    "title": "Task list"
+  },
+  {
+    "clipped": false,
+    "kind": "toc",
+    "rect": {
+      "bottom": 673.203125,
+      "height": 215.8671875,
+      "left": 704.5,
+      "right": 928.5,
+      "top": 457.3359375,
+      "width": 224,
+      "x": 704.5,
+      "y": 457.3359375
+    },
+    "text": "Table of contentsFourier transformKey ideaTry an example",
+    "title": "Table of contents"
+  },
+  {
+    "clipped": false,
+    "kind": "math",
+    "rect": {
+      "bottom": 673.203125,
+      "height": 211.890625,
+      "left": 704.5,
+      "right": 928.5,
+      "top": 461.3125,
+      "width": 224,
+      "x": 704.5,
+      "y": 461.3125
+    },
+    "text": "f(x)=x2+2x+1f(x) = x^2 + 2x + 1f(x)=x2+2x+1",
+    "title": "Math formula$$"
+  },
+  {
+    "clipped": false,
+    "kind": "toggle_heading_1",
+    "rect": {
+      "bottom": 673.203125,
+      "height": 211.890625,
+      "left": 704.5,
+      "right": 928.5,
+      "top": 461.3125,
+      "width": 224,
+      "x": 704.5,
+      "y": 461.3125
+    },
+    "text": "Heading 1Give this section a clear place in your notes.",
+    "title": "Toggle heading 1"
+  },
+  {
+    "clipped": false,
+    "kind": "toggle_heading_2",
+    "rect": {
+      "bottom": 673.203125,
+      "height": 211.890625,
+      "left": 704.5,
+      "right": 928.5,
+      "top": 461.3125,
+      "width": 224,
+      "x": 704.5,
+      "y": 461.3125
+    },
+    "text": "Heading 2Give this section a clear place in your notes.",
+    "title": "Toggle heading 2"
+  },
+  {
+    "clipped": false,
+    "kind": "toggle_heading_3",
+    "rect": {
+      "bottom": 673.203125,
+      "height": 211.890625,
+      "left": 704.5,
+      "right": 928.5,
+      "top": 461.3125,
+      "width": 224,
+      "x": 704.5,
+      "y": 461.3125
+    },
+    "text": "Heading 3Give this section a clear place in your notes.",
+    "title": "Toggle heading 3"
+  },
+  {
+    "clipped": false,
+    "kind": "columns_2",
+    "rect": {
+      "bottom": 673.203125,
+      "height": 211.890625,
+      "left": 704.5,
+      "right": 928.5,
+      "top": 461.3125,
+      "width": 224,
+      "x": 704.5,
+      "y": 461.3125
+    },
+    "text": "Ax + yBa² + b²",
+    "title": "2 columns"
+  },
+  {
+    "clipped": false,
+    "kind": "columns_3",
+    "rect": {
+      "bottom": 673.203125,
+      "height": 211.890625,
+      "left": 704.5,
+      "right": 928.5,
+      "top": 461.3125,
+      "width": 224,
+      "x": 704.5,
+      "y": 461.3125
+    },
+    "text": "Ax + yBa² + b²Cf(x)",
+    "title": "3 columns"
+  },
+  {
+    "clipped": false,
+    "kind": "columns_4",
+    "rect": {
+      "bottom": 673.203125,
+      "height": 211.890625,
+      "left": 704.5,
+      "right": 928.5,
+      "top": 461.3125,
+      "width": 224,
+      "x": 704.5,
+      "y": 461.3125
+    },
+    "text": "Ax + yBa² + b²Cf(x)D2πr",
+    "title": "4 columns"
+  },
+  {
+    "clipped": false,
+    "kind": "columns_5",
+    "rect": {
+      "bottom": 673.203125,
+      "height": 211.890625,
+      "left": 704.5,
+      "right": 928.5,
+      "top": 461.3125,
+      "width": 224,
+      "x": 704.5,
+      "y": 461.3125
+    },
+    "text": "Ax + yBa² + b²Cf(x)D2πrEE = mc²",
+    "title": "5 columns"
+  },
+  {
+    "clipped": false,
+    "kind": "date",
+    "rect": {
+      "bottom": 673.203125,
+      "height": 192.6953125,
+      "left": 704.5,
+      "right": 928.5,
+      "top": 480.5078125,
+      "width": 224,
+      "x": 704.5,
+      "y": 480.5078125
+    },
+    "text": "Review on 2026-10-17",
+    "title": "Date"
+  },
+  {
+    "clipped": false,
+    "kind": "inlineMath",
+    "rect": {
+      "bottom": 673.203125,
+      "height": 192.6953125,
+      "left": 704.5,
+      "right": 928.5,
+      "top": 480.5078125,
+      "width": 224,
+      "x": 704.5,
+      "y": 480.5078125
+    },
+    "text": "For example, x2+y2=r2x^2 + y^2 = r^2x2+y2=r2.",
+    "title": "Inline formula$…$"
+  },
+  {
+    "clipped": false,
+    "kind": "mermaid",
+    "rect": {
+      "bottom": 673.203125,
+      "height": 244.890625,
+      "left": 704.5,
+      "right": 928.5,
+      "top": 428.3125,
+      "width": 224,
+      "x": 704.5,
+      "y": 428.3125
+    },
+    "text": "QuestionExplore the detailsKey idea",
+    "title": "Diagram"
+  },
+  {
+    "clipped": false,
+    "kind": "quiz",
+    "rect": {
+      "bottom": 673.203125,
+      "height": 247.078125,
+      "left": 704.5,
+      "right": 928.5,
+      "top": 426.125,
+      "width": 224,
+      "x": 704.5,
+      "y": 426.125
+    },
+    "text": "What does a derivative measure?AFrequencyBRate of changeCheck answer",
+    "title": "Quiz me"
+  },
+  {
+    "clipped": false,
+    "kind": "flashcards",
+    "rect": {
+      "bottom": 673.203125,
+      "height": 233.0859375,
+      "left": 704.5,
+      "right": 928.5,
+      "top": 440.1171875,
+      "width": 224,
+      "x": 704.5,
+      "y": 440.1171875
+    },
+    "text": "1 / 8Fourier transformTap to reveal the answer",
+    "title": "Flash Cards"
+  },
+  {
+    "clipped": false,
+    "kind": "timeline",
+    "rect": {
+      "bottom": 673.203125,
+      "height": 262.4765625,
+      "left": 704.5,
+      "right": 928.5,
+      "top": 410.7265625,
+      "width": 224,
+      "x": 704.5,
+      "y": 410.7265625
+    },
+    "text": "1807Fourier1822Heat theory1965FFT",
+    "title": "Timeline"
+  },
+  {
+    "clipped": false,
+    "kind": "research",
+    "rect": {
+      "bottom": 673.203125,
+      "height": 211.890625,
+      "left": 704.5,
+      "right": 928.5,
+      "top": 461.3125,
+      "width": 224,
+      "x": 704.5,
+      "y": 461.3125
+    },
+    "text": "Fourier transformFrom signals to frequencies. [1][1] Sources and references",
+    "title": "Research"
+  },
+  {
+    "clipped": false,
+    "kind": "task",
+    "rect": {
+      "bottom": 673.203125,
+      "height": 232.4765625,
+      "left": 704.5,
+      "right": 928.5,
+      "top": 440.7265625,
+      "width": 224,
+      "x": 704.5,
+      "y": 440.7265625
+    },
+    "text": "Study planReview the conceptTry an exampleTo do · Task",
+    "title": "Task"
+  },
+  {
+    "clipped": false,
+    "kind": "animation",
+    "rect": {
+      "bottom": 673.203125,
+      "height": 235.484375,
+      "left": 704.5,
+      "right": 928.5,
+      "top": 437.71875,
+      "width": 224,
+      "x": 704.5,
+      "y": 437.71875
+    },
+    "text": "y=sin⁡(x)y = \\sin(x)y=sin(x)0:06 / 0:30",
+    "title": "Animation"
+  },
+  {
+    "clipped": false,
+    "kind": "concept_map",
+    "rect": {
+      "bottom": 673.203125,
+      "height": 211.890625,
+      "left": 704.5,
+      "right": 928.5,
+      "top": 461.3125,
+      "width": 224,
+      "x": 704.5,
+      "y": 461.3125
+    },
+    "text": "Fourier transformFrequencySignals",
+    "title": "Concept map"
+  },
+  {
+    "clipped": false,
+    "kind": "geogebra",
+    "rect": {
+      "bottom": 673.203125,
+      "height": 243.890625,
+      "left": 704.5,
+      "right": 928.5,
+      "top": 429.3125,
+      "width": 224,
+      "x": 704.5,
+      "y": 429.3125
+    },
+    "text": "ABCAB = AC = BC",
+    "title": "Geometry"
+  },
+  {
+    "clipped": false,
+    "kind": "generated_image",
+    "rect": {
+      "bottom": 673.203125,
+      "height": 245.890625,
+      "left": 704.5,
+      "right": 928.5,
+      "top": 427.3125,
+      "width": 224,
+      "x": 704.5,
+      "y": 427.3125
+    },
+    "text": "Image captionGenerate image",
+    "title": "Generate image"
+  },
+  {
+    "clipped": false,
+    "kind": "podcast",
+    "rect": {
+      "bottom": 673.203125,
+      "height": 230.0859375,
+      "left": 704.5,
+      "right": 928.5,
+      "top": 443.1171875,
+      "width": 224,
+      "x": 704.5,
+      "y": 443.1171875
+    },
+    "text": "Fourier transformPodcast · 3:240:00 / 3:24From signals to frequencies.",
+    "title": "Podcast"
+  }
+]

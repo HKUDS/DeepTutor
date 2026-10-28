@@ -1,10 +1,12 @@
 'use client'
 
 import { pageGridClass } from '@/components/layout/FeaturePage'
-import { useEffect, useState } from 'react'
+import Link from 'next/link'
+import { useState } from 'react'
 import { BookOpen, Route } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { apiFetch, apiUrl } from '@/lib/api'
+import { useLearningIndex } from '@/hooks/useLearningIndex'
+import { LearningCreateMenu } from './LearningCreateMenu'
 import { scopedUrl } from '@/lib/workspace-scope'
 import { bookRoute } from '@/lib/learning-routes'
 import {
@@ -15,9 +17,8 @@ import {
 import { setPendingPrompt } from '@/lib/pending-prompt'
 import {
   learningTodos,
-  recentLearningActivity,
+  allLearningActivity,
   type LearningKind,
-  type LearningSources,
 } from '@/lib/learning-dashboard'
 import {
   LearningShell,
@@ -31,76 +32,37 @@ import { LEARNING_SURFACES, learningSurface } from './surfaces'
 
 export function LearningDashboard() {
   const { t } = useTranslation()
-  const [sources, setSources] = useState<LearningSources>({
-    books: [],
-    mastery: [],
-    reading: [],
-    watching: [],
-  })
-  const [failed, setFailed] = useState<LearningKind[]>([])
-  const [loading, setLoading] = useState(true)
-  const [reload, setReload] = useState(0)
+  const { sources, failed, loading, retry } = useLearningIndex()
+  const [kind, setKind] = useState<LearningKind | 'all'>('all')
+  const [query, setQuery] = useState('')
+  const [limit, setLimit] = useState(24)
 
-  useEffect(() => {
-    let alive = true
-    let busy = false
-    const refresh = async () => {
-      if (busy || document.visibilityState === 'hidden') return
-      busy = true
-      let failures: LearningKind[] = []
-      let result: LearningSources = { books: [], mastery: [], reading: [], watching: [] }
-      try {
-        const response = await apiFetch(apiUrl(scopedUrl('/api/dashboard/learning-index', '')), { signal: AbortSignal.timeout(20000) })
-        if (!response.ok) throw new Error('Learning index unavailable')
-        const payload = await response.json() as { sources: LearningSources; failed: LearningKind[] }
-        result = payload.sources
-        failures = payload.failed
-      } catch { failures = ['books', 'mastery', 'reading', 'watching'] }
-      const { books, mastery, reading, watching } = result
-      if (alive) {
-        // Preserve previously loaded content if a refresh fails.
-        setSources(previous => ({
-          books: failures.includes('books') && !books.length ? previous.books : books,
-          mastery: failures.includes('mastery') && !mastery.length ? previous.mastery : mastery,
-          reading: failures.includes('reading') && !reading.length ? previous.reading : reading,
-          watching: failures.includes('watching') && !watching.length ? previous.watching : watching,
-        }))
-        setFailed(failures)
-        setLoading(false)
-      }
-      busy = false
-    }
-    void refresh()
-    window.addEventListener('focus', refresh)
-    document.addEventListener('visibilitychange', refresh)
-    const timer = window.setInterval(refresh, 30_000)
-    return () => {
-      alive = false
-      window.clearInterval(timer)
-      window.removeEventListener('focus', refresh)
-      document.removeEventListener('visibilitychange', refresh)
-    }
-  }, [reload])
-
+  const selectedSurface = LEARNING_SURFACES.find(surface => surface.kind === kind)
   const todos = learningTodos(sources)
-  const recent = recentLearningActivity(sources)
+  const all = allLearningActivity(sources)
+  const recent = all.filter(item => (kind === 'all' || item.kind === kind || (kind === 'reading' && item.kind === 'watching')) && item.title.toLocaleLowerCase().includes(query.toLocaleLowerCase()))
   return (
     <LearningShell
       back={false}
-      title={t('Personalized Learning')}
-      subtitle={t('One tutor, your own way to learn.')}
+      title={t('navigation.learning')}
+      subtitle={t('navigation.learningDescription')}
+      action={<LearningCreateMenu />}
     >
-      {/* The ways in lead the page: everything below them assumes you already
-          chose one. Each opens its own introduction before it commits you. */}
-      <LearningWays />
+      <div className="mb-6 flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap gap-1" role="group" aria-label={t('navigation.learningFilter')}>
+          {[{ kind: 'all', title: 'navigation.allLearning' }, ...LEARNING_SURFACES].map(surface => <button key={surface.kind} type="button" aria-pressed={kind === surface.kind} onClick={() => { setKind(surface.kind as LearningKind | 'all'); setLimit(24) }} className={`rounded-full px-3 py-1.5 text-xs transition-colors ${kind === surface.kind ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted/60'}`}>{t(surface.title)}</button>)}
+        </div>
+        <input aria-label={t('navigation.searchLearning')} placeholder={t('navigation.searchLearning')} value={query} onChange={event => { setQuery(event.target.value); setLimit(24) }} className="ml-auto h-9 rounded-lg border border-border bg-transparent px-3 text-xs outline-none focus:border-ring" />
+      </div>
+      {selectedSurface && <Link href={scopedUrl(selectedSurface.href)} prefetch={false} className="mb-5 inline-flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground">{t('Open')} {t(selectedSurface.title)} <span aria-hidden>↗</span></Link>}
       {failed.length > 0 && (
         <LearningErrorState
           message={t('Some learning activity could not be loaded: {{sources}}.', {
-            sources: LEARNING_SURFACES.filter(surface => surface.kind !== "practice" && failed.includes(surface.kind))
+            sources: LEARNING_SURFACES.filter(surface => failed.includes(surface.kind))
               .map(surface => t(surface.title))
               .join(t('source list separator')),
           })}
-          onRetry={() => setReload(value => value + 1)}
+          onRetry={retry}
         />
       )}
       {loading ? (
@@ -116,7 +78,7 @@ export function LearningDashboard() {
                 {todos.reviews.map(topic => (
                   <LearningCard
                     key={`${topic.content_workspace_id}:${topic.path_id}`}
-                    href={scopedUrl(masterySessionRoute(topic.path_id, 'review', '', topic.content_workspace_id || ''), topic.content_workspace_id || '')}
+                    href={scopedUrl(masterySessionRoute(topic.path_id, 'review', topic.content_workspace_id || ''), topic.content_workspace_id || '')}
                     title={topic.name || topic.metadata.goal}
                     icon={<Route size={19} />}
                     subtitle={t('{{count}} reviews due', {
@@ -157,10 +119,10 @@ export function LearningDashboard() {
           {recent.length > 0 && (
             <section aria-labelledby="learning-recent">
               <h2 id="learning-recent" className="mb-3 text-[13.5px] font-semibold">
-                {t('Recent activity')}
+                {t('navigation.learningRecords')}
               </h2>
               <div className={pageGridClass(2)}>
-                {recent.map(item => {
+                {recent.slice(0, limit).map(item => {
                   const surface = learningSurface(item.kind)
                   return (
                     <LearningCard
@@ -169,7 +131,7 @@ export function LearningDashboard() {
                       title={item.title}
                       updatedAt={item.updatedAt}
                       progress={item.progress}
-                      subtitle={<>{t(surface.title)}{item.workspaceName ? ` · ${item.workspaceName}` : ""}</>}
+                      subtitle={t(surface.title)}
                       icon={<surface.icon size={19} />}
                     />
                   )
@@ -177,9 +139,11 @@ export function LearningDashboard() {
               </div>
             </section>
           )}
+          {recent.length > limit && <button className="mt-5 rounded-lg border border-border px-4 py-2 text-sm" onClick={() => setLimit(value => value + 24)}>{t('Show more')}</button>}
+          {!all.length && failed.length === 0 && <LearningWays />}
           {!recent.length && failed.length === 0 && (
             <LearningEmptyState
-              title={t('Your next learning journey starts here')}
+              title={t(all.length ? 'navigation.noResults' : 'Your next learning journey starts here')}
               description={t('Choose a book, a topic, a collection or a video to begin.')}
             />
           )}

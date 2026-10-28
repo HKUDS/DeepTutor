@@ -600,7 +600,7 @@ def _require_codex_oauth_actor() -> None:
     including signing them out. Partners inherit the owner's login at call
     time and need no lifecycle of their own.
     """
-    from deeptutor.services.partners.scope import is_partner_user_id
+    from deeptutor.core.identities import is_partner_user_id
 
     if is_partner_user_id(get_current_user().id):
         raise HTTPException(

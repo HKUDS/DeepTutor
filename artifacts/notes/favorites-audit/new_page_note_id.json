@@ -1,0 +1,31 @@
+{
+  "id": "ab03bf4a11c2",
+  "title": "研究 · 水循环证据",
+  "content": "# 研究问题\n水在环境中如何循环？\n\n## 证据\n| 过程 | 能量 |\n| --- | --- |\n| 蒸发 | 吸热 |\n| 凝结 | 放热 |\n\n## 结论\n水循环依靠太阳能驱动。\n\n## 资料边界\n这是交互验收用的简短研究资料。\n\n[Source](/notebooks/215dbe83?record=0f1dfc6c)",
+  "blocks": [
+    {
+      "id": "8b6eee8422664c2cb2d371179d04c965",
+      "type": "clip",
+      "props": {
+        "title": "研究 · 水循环证据",
+        "markdown": "# 研究问题\n水在环境中如何循环？\n\n## 证据\n| 过程 | 能量 |\n| --- | --- |\n| 蒸发 | 吸热 |\n| 凝结 | 放热 |\n\n## 结论\n水循环依靠太阳能驱动。\n\n## 资料边界\n这是交互验收用的简短研究资料。",
+        "sourceUrl": "/notebooks/215dbe83?record=0f1dfc6c",
+        "sourceId": "0f1dfc6c",
+        "favoriteType": "research",
+        "summary": "交互验收：展开原文、返回来源、保存重开。",
+        "metadata": "{}",
+        "expanded": true
+      },
+      "children": []
+    }
+  ],
+  "schema_version": 1,
+  "revision": 2,
+  "parent_id": null,
+  "icon": "",
+  "cover": "",
+  "pinned": false,
+  "applied_suggestion_ids": [],
+  "created_at": 1792242057.559506,
+  "updated_at": 1792242109.330133
+}

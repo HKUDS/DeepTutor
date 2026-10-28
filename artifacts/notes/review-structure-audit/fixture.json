@@ -1,0 +1,200 @@
+{
+  "id": "c1b1b4de342b",
+  "blocks": [
+    {
+      "id": "multi-a",
+      "type": "paragraph",
+      "props": {},
+      "content": [
+        {
+          "type": "text",
+          "text": "第一节：水循环从蒸发开始。",
+          "styles": {}
+        }
+      ],
+      "children": []
+    },
+    {
+      "id": "nested-parent",
+      "type": "bulletListItem",
+      "props": {},
+      "content": [
+        {
+          "type": "text",
+          "text": "第二节：凝结与降水",
+          "styles": {}
+        }
+      ],
+      "children": [
+        {
+          "id": "nested-child",
+          "type": "paragraph",
+          "props": {},
+          "content": [
+            {
+              "type": "text",
+              "text": "嵌套内容：水汽凝结形成云。",
+              "styles": {}
+            }
+          ],
+          "children": []
+        },
+        {
+          "id": "nested-keep",
+          "type": "paragraph",
+          "props": {},
+          "content": [
+            {
+              "type": "text",
+              "text": "嵌套保留：降水回到河流。",
+              "styles": {}
+            }
+          ],
+          "children": []
+        }
+      ]
+    },
+    {
+      "id": "drag-target",
+      "type": "paragraph",
+      "props": {},
+      "content": [
+        {
+          "type": "text",
+          "text": "第三节：待拖动的总结。",
+          "styles": {}
+        }
+      ],
+      "children": []
+    },
+    {
+      "id": "safe-end",
+      "type": "paragraph",
+      "props": {},
+      "content": [
+        {
+          "type": "text",
+          "text": "末尾校验：这一段始终保留。",
+          "styles": {}
+        }
+      ],
+      "children": []
+    }
+  ],
+  "proposals": [
+    {
+      "id": "d87cfe42765a4d1289ceb4da526af67f",
+      "operation": "replace",
+      "block_id": "multi-a",
+      "markdown": "第一节：太阳能驱动蒸发，水由液态变成水汽。",
+      "blocks": [
+        {
+          "id": "multi-a",
+          "type": "paragraph",
+          "props": {},
+          "content": [
+            {
+              "type": "text",
+              "text": "第一节：太阳能驱动蒸发，水由液态变成水汽。",
+              "styles": {}
+            }
+          ],
+          "children": []
+        }
+      ],
+      "explanation": "结构与撤销重做验收",
+      "original": {
+        "id": "multi-a",
+        "type": "paragraph",
+        "props": {},
+        "content": [
+          {
+            "type": "text",
+            "text": "第一节：水循环从蒸发开始。",
+            "styles": {}
+          }
+        ],
+        "children": []
+      },
+      "status": "pending",
+      "source_turn_id": "",
+      "created_at": 1792229652.585215
+    },
+    {
+      "id": "fffaa86d6cc34f659b5cf2e0ec5b1127",
+      "operation": "replace",
+      "block_id": "nested-child",
+      "markdown": "嵌套内容：水汽遇冷凝结为小水滴，聚集成云。",
+      "blocks": [
+        {
+          "id": "nested-child",
+          "type": "paragraph",
+          "props": {},
+          "content": [
+            {
+              "type": "text",
+              "text": "嵌套内容：水汽遇冷凝结为小水滴，聚集成云。",
+              "styles": {}
+            }
+          ],
+          "children": []
+        }
+      ],
+      "explanation": "结构与撤销重做验收",
+      "original": {
+        "id": "nested-child",
+        "type": "paragraph",
+        "props": {},
+        "content": [
+          {
+            "type": "text",
+            "text": "嵌套内容：水汽凝结形成云。",
+            "styles": {}
+          }
+        ],
+        "children": []
+      },
+      "status": "pending",
+      "source_turn_id": "",
+      "created_at": 1792229652.587852
+    },
+    {
+      "id": "117642a734a744a9bd1d6f1a5090ced4",
+      "operation": "replace",
+      "block_id": "drag-target",
+      "markdown": "第三节：蒸发、凝结与降水构成水循环。",
+      "blocks": [
+        {
+          "id": "drag-target",
+          "type": "paragraph",
+          "props": {},
+          "content": [
+            {
+              "type": "text",
+              "text": "第三节：蒸发、凝结与降水构成水循环。",
+              "styles": {}
+            }
+          ],
+          "children": []
+        }
+      ],
+      "explanation": "结构与撤销重做验收",
+      "original": {
+        "id": "drag-target",
+        "type": "paragraph",
+        "props": {},
+        "content": [
+          {
+            "type": "text",
+            "text": "第三节：待拖动的总结。",
+            "styles": {}
+          }
+        ],
+        "children": []
+      },
+      "status": "pending",
+      "source_turn_id": "",
+      "created_at": 1792229652.5904179
+    }
+  ]
+}

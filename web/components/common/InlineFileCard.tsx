@@ -168,9 +168,12 @@ function boundaryOk(text: string, start: number, len: number): boolean {
  * Build a remark plugin that wraps every plain-text occurrence of a known
  * generated filename in an ``attachment:`` link. Matches the exact filename
  * and a separator-normalized variant (``_``/``-`` ⇄ space), longest first.
- * Returns null when there are no filenames to match.
+ * Returns null when there are no filenames and relative-link fallback is off.
  */
-export function makeFileLinkRemarkPlugin(files: MessageAttachment[]) {
+export function makeFileLinkRemarkPlugin(
+  files: MessageAttachment[],
+  unresolvedRelativeLinksAsText = false,
+) {
   const entries: Array<{ needle: string; name: string }> = [];
   const seen = new Set<string>();
   for (const file of files) {
@@ -189,7 +192,7 @@ export function makeFileLinkRemarkPlugin(files: MessageAttachment[]) {
       }
     }
   }
-  if (!entries.length) return null;
+  if (!entries.length && !unresolvedRelativeLinksAsText) return null;
   // Prefer the most specific (longest) needle when several could match.
   entries.sort((a, b) => b.needle.length - a.needle.length);
 
@@ -307,13 +310,30 @@ export function makeFileLinkRemarkPlugin(files: MessageAttachment[]) {
     return nodes;
   };
 
-  const visit = (node: Record<string, unknown>): void => {
+  const visit = (
+    node: Record<string, unknown>,
+    definitions: Map<string, Record<string, unknown>>,
+  ): void => {
     const children = node.children as
       | Array<Record<string, unknown>>
       | undefined;
     if (!Array.isArray(children)) return;
     const out: Array<Record<string, unknown>> = [];
-    for (const child of children) {
+    for (let child of children) {
+      if (
+        unresolvedRelativeLinksAsText &&
+        (child.type === "linkReference" || child.type === "imageReference")
+      ) {
+        const definition = definitions.get(String(child.identifier).toUpperCase());
+        if (definition) {
+          child = {
+            ...child,
+            type: child.type === "linkReference" ? "link" : "image",
+            url: definition.url,
+            title: definition.title,
+          };
+        }
+      }
       if (child.type === "text" && typeof child.value === "string") {
         out.push(...splitText(child.value));
       } else if (child.type === "link" || child.type === "image") {
@@ -324,17 +344,40 @@ export function makeFileLinkRemarkPlugin(files: MessageAttachment[]) {
         const real = linkTargetFile(child);
         if (real) {
           child.url = `${ATTACHMENT_HREF_PREFIX}${encodeURIComponent(real)}`;
+        } else if (
+          unresolvedRelativeLinksAsText &&
+          !/^(?:[a-z][a-z\d+.-]*:|\/|#|\?)/i.test(String(child.url ?? ""))
+        ) {
+          // Archive file paths without a published snapshot must not navigate.
+          out.push(
+            ...(child.type === "image"
+              ? [{ type: "text", value: String(child.alt ?? "") }]
+              : ((child.children as Record<string, unknown>[] | undefined) ?? [])),
+          );
+          continue;
         }
         out.push(child);
       } else {
-        if (!SKIP_NODE_TYPES.has(child.type as string)) visit(child);
+        if (!SKIP_NODE_TYPES.has(child.type as string)) visit(child, definitions);
         out.push(child);
       }
     }
     node.children = out;
   };
 
-  return () => (tree: Record<string, unknown>) => visit(tree);
+  return () => (tree: Record<string, unknown>) => {
+    const definitions = new Map<string, Record<string, unknown>>();
+    const collectDefinitions = (node: Record<string, unknown>): void => {
+      // mdast already normalizes identifiers; match mdast-to-hast's case fold.
+      const id = String(node.identifier).toUpperCase();
+      if (node.type === "definition" && !definitions.has(id)) definitions.set(id, node);
+      for (const child of (node.children as Record<string, unknown>[] | undefined) ?? []) {
+        collectDefinitions(child);
+      }
+    };
+    if (unresolvedRelativeLinksAsText) collectDefinitions(tree);
+    visit(tree, definitions);
+  };
 }
 
 /** Files with no visible inline link in the rendered Markdown. Reuse the
@@ -378,6 +421,7 @@ interface InlineFileCardValue {
   files: MessageAttachment[];
   resolve: (name: string) => MessageAttachment | undefined;
   onOpen?: (attachment: MessageAttachment) => void;
+  unresolvedRelativeLinksAsText: boolean;
 }
 
 const InlineFileCardContext = createContext<InlineFileCardValue | null>(null);
@@ -400,11 +444,13 @@ export function InlineFileCardProvider({
   attachments,
   events,
   onOpen,
+  unresolvedRelativeLinksAsText = false,
   children,
 }: {
   attachments: MessageAttachment[];
   events?: StreamEvent[];
   onOpen?: (attachment: MessageAttachment) => void;
+  unresolvedRelativeLinksAsText?: boolean;
   children: ReactNode;
 }) {
   const files = useMemo(
@@ -430,8 +476,8 @@ export function InlineFileCardProvider({
       if (direct) return direct;
       return base.get(norm(basename(name)));
     };
-    return { files, resolve, onOpen };
-  }, [files, onOpen]);
+    return { files, resolve, onOpen, unresolvedRelativeLinksAsText };
+  }, [files, onOpen, unresolvedRelativeLinksAsText]);
   return (
     <InlineFileCardContext.Provider value={value}>
       {children}

@@ -10,7 +10,12 @@ import {
 } from "react";
 import { Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { loadPdfjs, pdfjsWasmUrl, type PdfDocument } from "@/lib/pdfjs-loader";
+import {
+  loadPdfjs,
+  pdfjsCMapUrl,
+  pdfjsWasmUrl,
+  type PdfDocument,
+} from "@/lib/pdfjs-loader";
 import type {
   AnnotationItem,
   NormalisedRect,
@@ -28,6 +33,8 @@ import { PdfPage } from "./PdfPage";
 
 /** Pages kept rendered on each side of the viewport. */
 const RENDER_MARGIN = 1;
+/** Pages this close keep their parsed form after their canvas is freed. */
+const RETAIN_MARGIN = 6;
 /** How long a `reader_goto` highlight pulses before fading. */
 const PAGE_GAP = 16;
 
@@ -135,9 +142,19 @@ export function PdfDocumentView({
           // PDF.js loads OpenJPEG/JBIG2/QCMS from these assets when a PDF uses
           // JPEG2000 or other formats that are not decoded in pure JS.
           wasmUrl: pdfjsWasmUrl(),
+          // CID fonts (most CJK documents) are translated through PDF.js'
+          // predefined character maps; without this the font is dropped and its
+          // runs vanish from both the canvas and the text layer.
+          cMapUrl: pdfjsCMapUrl(),
+          cMapPacked: true,
           // The raw route sits behind the session cookie like every other API
           // route; pdf.js does its own fetching, so it needs telling.
           withCredentials: true,
+          // pdf.js asks for the file in 64 KB ranges by default. Behind the
+          // app's proxy each range is a full request, and a browser runs six
+          // at a time, so a few-MB paper queued dozens of them before its
+          // pages could draw. 1 MB ranges ask for the same bytes in a handful.
+          rangeChunkSize: 1 << 20,
         });
         task = loadingTask;
         const opened: PdfDocument = await loadingTask.promise;
@@ -506,6 +523,7 @@ export function PdfDocumentView({
                 width={pageWidth}
                 fallbackRatio={fallbackRatio}
                 active={isActive(locator)}
+                retain={Math.abs(locator - visibleLocator) <= RETAIN_MARGIN || isActive(locator)}
                 annotations={annotations}
                 highlightedAnnotationId={highlightedAnnotationId}
                 flashRects={

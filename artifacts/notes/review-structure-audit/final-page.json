@@ -1,0 +1,127 @@
+{
+  "id": "019a3693d633",
+  "title": "原位审批 · 排序与重开复验",
+  "content": "- 第二节：水汽凝结形成云，水以降水返回地面。\n\n  嵌套保留：降水回到河流。\n\n  嵌套内容：云滴逐渐增大，在适宜条件下形成降水。\n\n第三节：待拖动的总结。\n\n第一节：太阳能驱动蒸发，水由液态变成水汽。\n\n末尾校验：这一段始终保留。 切换页面前的补充已保存。",
+  "blocks": [
+    {
+      "id": "nested-parent",
+      "type": "bulletListItem",
+      "props": {
+        "backgroundColor": "default",
+        "textColor": "default",
+        "textAlignment": "left"
+      },
+      "content": [
+        {
+          "type": "text",
+          "text": "第二节：水汽凝结形成云，水以降水返回地面。",
+          "styles": {}
+        }
+      ],
+      "children": [
+        {
+          "id": "nested-keep",
+          "type": "paragraph",
+          "props": {
+            "backgroundColor": "default",
+            "textColor": "default",
+            "textAlignment": "left"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "嵌套保留：降水回到河流。",
+              "styles": {}
+            }
+          ],
+          "children": []
+        },
+        {
+          "id": "nested-child",
+          "type": "paragraph",
+          "props": {
+            "backgroundColor": "default",
+            "textColor": "default",
+            "textAlignment": "left"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "嵌套内容：云滴逐渐增大，在适宜条件下形成降水。",
+              "styles": {}
+            }
+          ],
+          "children": []
+        }
+      ]
+    },
+    {
+      "id": "drag-target",
+      "type": "paragraph",
+      "props": {
+        "backgroundColor": "default",
+        "textColor": "default",
+        "textAlignment": "left"
+      },
+      "content": [
+        {
+          "type": "text",
+          "text": "第三节：待拖动的总结。",
+          "styles": {}
+        }
+      ],
+      "children": []
+    },
+    {
+      "id": "multi-a",
+      "type": "paragraph",
+      "props": {
+        "backgroundColor": "default",
+        "textColor": "default",
+        "textAlignment": "left"
+      },
+      "content": [
+        {
+          "type": "text",
+          "text": "第一节：太阳能驱动蒸发，水由液态变成水汽。",
+          "styles": {}
+        }
+      ],
+      "children": []
+    },
+    {
+      "id": "safe-end",
+      "type": "paragraph",
+      "props": {
+        "backgroundColor": "default",
+        "textColor": "default",
+        "textAlignment": "left"
+      },
+      "content": [
+        {
+          "type": "text",
+          "text": "末尾校验：这一段始终保留。 切换页面前的补充已保存。",
+          "styles": {}
+        }
+      ],
+      "children": []
+    }
+  ],
+  "schema_version": 1,
+  "revision": 21,
+  "parent_id": null,
+  "icon": "",
+  "cover": "",
+  "pinned": false,
+  "applied_suggestion_ids": [
+    "d6330055db3e4b92a531d0d5c9222823",
+    "ea6e52deb68746d29546138a3f9cc1b6",
+    "3dd93054687f41b5ad57dcdf3cd0059a",
+    "c6937c78a1bf43d99d82a78dafb05a8d",
+    "5da8798ee4c64d84b0774771a21f4c0f",
+    "7e34f022ffba430eaa5cdec4ca651535",
+    "192ed0764a024dd1a21c2ceb57724c32"
+  ],
+  "created_at": 1792230264.74371,
+  "updated_at": 1792231849.009674
+}

@@ -1,0 +1,27 @@
+{
+  "id": "a8efdf7eee87",
+  "title": "水循环 · 已整理的收藏",
+  "content": "## User\n请记录水循环的三个阶段，供收藏夹流程验收。\n\n## Assistant\n## 水循环原始资料\n\n水循环包括 **蒸发、凝结和降水**。\n\n1. 太阳加热水面，液态水变成水汽。\n2. 水汽冷却凝结成云。\n3. 云滴增大后形成降水。\n\n> 原文校验：这段内容在收藏和引用后应保持不变。\n\n[Source](/notebooks/83d7e5c6?record=22754e42)",
+  "blocks": [
+    {
+      "id": "536a1283e1d14e9ab2e5fd6d2d268b7a",
+      "type": "clip",
+      "props": {
+        "title": "水循环 · 已整理的收藏",
+        "markdown": "## User\n请记录水循环的三个阶段，供收藏夹流程验收。\n\n## Assistant\n## 水循环原始资料\n\n水循环包括 **蒸发、凝结和降水**。\n\n1. 太阳加热水面，液态水变成水汽。\n2. 水汽冷却凝结成云。\n3. 云滴增大后形成降水。\n\n> 原文校验：这段内容在收藏和引用后应保持不变。",
+        "sourceUrl": "/notebooks/83d7e5c6?record=22754e42",
+        "sourceId": "22754e42"
+      },
+      "children": []
+    }
+  ],
+  "schema_version": 1,
+  "revision": 1,
+  "parent_id": null,
+  "icon": "",
+  "cover": "",
+  "pinned": false,
+  "applied_suggestion_ids": [],
+  "created_at": 1792239955.009933,
+  "updated_at": 1792239956.522229
+}

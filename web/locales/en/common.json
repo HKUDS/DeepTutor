@@ -39,7 +39,7 @@
   "Workspace instructions": "Workspace instructions",
   "Set learning goals, teaching style and response preferences for this workspace. Leave blank to use the default behavior.": "Set learning goals, teaching style and response preferences for this workspace. Leave blank to use the default behavior.",
   "For example: I am learning linear algebra. Explain the geometric intuition before introducing formulas, and give hints before complete solutions.": "For example: I am learning linear algebra. Explain the geometric intuition before introducing formulas, and give hints before complete solutions.",
-  "Applies to Chat, Solve, Ask Questions, Guided Learning, Reading, Course Study and standard visualizations. Changes take effect on the next turn.": "Applies to Chat, Solve, Ask Questions, Guided Learning, Reading, Course Study and standard visualizations. Changes take effect on the next turn.",
+  "Applies to Chat, Solve, Ask Questions, Guided Learning, Reading and standard visualizations. Changes take effect on the next turn.": "Applies to Chat, Solve, Ask Questions, Guided Learning, Reading and standard visualizations. Changes take effect on the next turn.",
   "Clear instructions": "Clear instructions",
   "{{used}} / {{limit}} characters": "{{used}} / {{limit}} characters"
 }

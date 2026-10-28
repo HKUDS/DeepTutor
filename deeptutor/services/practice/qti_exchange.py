@@ -78,9 +78,7 @@ class QtiExchange:
             raise ValueError("Invalid QTI preview token")
         return self._source_dir() / f"{token}.bin"
 
-    async def preview(
-        self, data: bytes, filename: str, *, target: str = "bank", course_id: str = ""
-    ) -> dict:
+    async def preview(self, data: bytes, filename: str, *, target: str = "bank") -> dict:
         """Parse a package and stage the items that can enter the bank."""
         if not data or len(data) > QTI_MAX_BYTES:
             raise ValueError("Choose a non-empty QTI file up to 50 MiB")
@@ -182,7 +180,6 @@ class QtiExchange:
             filename,
             "qti-mistakes" if target == "mistakes" else "qti3",
             questions,
-            course_id,
             report,
         )
         self._write_source(token, data)

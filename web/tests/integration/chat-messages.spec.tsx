@@ -37,6 +37,31 @@ describe('chat message feature', () => {
     expect(retry).toHaveBeenCalledOnce()
   })
 
+  // Regenerate and Resend used to sit side by side as two identical icons on a
+  // turn that had failed. A surface that can take the turn back offers one
+  // Retry instead, and hands over the learner's message to edit.
+  it('offers one Retry that hands the turn back instead of two identical icons', async () => {
+    const retry = vi.fn()
+    const user = { id: 7, role: 'user' as const, content: 'Explain DFT', parentMessageId: 3,
+      requestSnapshot: { content: 'Explain DFT', enabledTools: [], knowledgeBases: [], language: 'en' } }
+    render(
+      <ChatMessageList
+        messages={[user, { id: 8, role: 'assistant', content: 'The DFT is…', parentMessageId: 7 }]}
+        isStreaming={false}
+        canResendLastTurn
+        onResendLastTurn={vi.fn()}
+        onRetryTurn={retry}
+        onCopyAssistantMessage={vi.fn()}
+        onRegenerateMessage={vi.fn()}
+      />,
+    )
+
+    expect(screen.queryByRole('button', { name: 'Regenerate' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Resend' })).toBeNull()
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Retry' }))
+    expect(retry).toHaveBeenCalledWith(expect.objectContaining({ id: 7, content: 'Explain DFT' }))
+  })
+
   // The snapshot stores the qualified KB ref, but the reference chip under a
   // sent message used to print that ref verbatim — while the composer chip
   // for the same resource showed its readable name. The label now resolves

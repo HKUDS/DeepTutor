@@ -1,7 +1,6 @@
 'use client'
 
 import { pageGridClass } from '@/components/layout/FeaturePage'
-import { useLibraryFilter, WorkspaceLabel } from '@/components/learning/LibraryWorkspace'
 import { libraryItemKey } from '@/lib/learning-library'
 import { LearningCardContent } from '@/components/learning/LearningCard'
 
@@ -76,12 +75,12 @@ export interface BookLibraryProps {
   onRetry?: () => void
   canCreate: boolean
   onNewBook: () => void
-  onSelectBook: (id: string, workspaceId: string) => void
-  onDeleteBook: (id: string, workspaceId: string) => void
+  onSelectBook: (id: string) => void
+  onDeleteBook: (id: string) => void
 }
 
 export default function BookLibrary({
-  books: allBooks,
+  books,
   loading,
   error,
   onRetry,
@@ -91,7 +90,6 @@ export default function BookLibrary({
   onDeleteBook,
 }: BookLibraryProps) {
   const { t, i18n } = useTranslation()
-  const { rows: books, control } = useLibraryFilter(allBooks)
   const [query, setQuery] = useState('')
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
 
@@ -141,7 +139,6 @@ export default function BookLibrary({
         role="search"
         aria-label={t('Search books')}
       >
-        {control}
         <div className="relative min-w-48 flex-1 sm:max-w-sm">
           <Search
             size={14}
@@ -213,11 +210,11 @@ export default function BookLibrary({
                   key={libraryItemKey(book, book.id)}
                   role="button"
                   tabIndex={0}
-                  onClick={() => onSelectBook(book.id, book.content_workspace_id ?? '')}
+                  onClick={() => onSelectBook(book.id)}
                   onKeyDown={event => {
                     if (event.key === 'Enter' || event.key === ' ') {
                       event.preventDefault()
-                      onSelectBook(book.id, book.content_workspace_id ?? '')
+                      onSelectBook(book.id)
                     }
                   }}
                   className="group relative flex cursor-pointer flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)]/70 transition-all hover:-translate-y-0.5 hover:border-[var(--primary)]/40 hover:shadow-md"
@@ -257,7 +254,7 @@ export default function BookLibrary({
                           onClick={event => {
                             event.stopPropagation()
                             if (isPendingDelete) {
-                              onDeleteBook(book.id, book.content_workspace_id ?? '')
+                              onDeleteBook(book.id)
                               setPendingDeleteId(null)
                             } else {
                               setPendingDeleteId(libraryItemKey(book, book.id))
@@ -281,7 +278,6 @@ export default function BookLibrary({
 
                   {/* Body */}
                   <div className="flex flex-1 flex-col gap-2 p-4">
-                    <WorkspaceLabel row={book} />
                     <div className="flex items-center gap-3 pr-3">
                       <LearningCardContent
                         title={book.title || t('Untitled book')}
@@ -348,7 +344,7 @@ export default function BookLibrary({
                       type="button"
                       onClick={e => {
                         e.stopPropagation()
-                        onSelectBook(book.id, book.content_workspace_id ?? '')
+                        onSelectBook(book.id)
                       }}
                       className="mt-2 inline-flex items-center justify-center gap-1 rounded-md bg-[var(--primary)] px-3 py-1.5 text-xs font-medium text-[var(--primary-foreground)] transition-opacity hover:opacity-90"
                     >

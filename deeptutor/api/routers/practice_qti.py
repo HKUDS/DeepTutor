@@ -16,8 +16,6 @@ from deeptutor.services.practice.qti_exchange import QTI_MAX_BYTES, QtiExchange
 from deeptutor.services.practice.storage import PracticeStore
 from deeptutor.services.session import get_sqlite_session_store
 
-from .question_notebook import _course_session_ids
-
 router = APIRouter()
 
 
@@ -56,14 +54,10 @@ def _download(data: bytes, media: str, filename: str) -> Response:
 async def qti_import_preview(
     file: UploadFile = File(...),
     target: Literal["bank", "mistakes"] = Form("bank"),
-    course_id: str = Form("", max_length=200),
 ):
     try:
-        await _course_session_ids(get_sqlite_session_store(), course_id)
         data = await file.read(QTI_MAX_BYTES + 1)
-        return await QtiExchange(_store()).preview(
-            data, file.filename or "", target=target, course_id=course_id
-        )
+        return await QtiExchange(_store()).preview(data, file.filename or "", target=target)
     except RuntimeError as exc:
         raise HTTPException(503, str(exc)) from exc
     except ValueError as exc:

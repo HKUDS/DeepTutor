@@ -1,0 +1,514 @@
+[
+  {
+    "html": "<div class=\"bn-block-outer\" data-node-type=\"blockOuter\" data-id=\"case-paragraph\"><div class=\"bn-block\" data-node-type=\"blockContainer\" data-id=\"case-paragraph\"><div class=\"bn-block-content\" data-content-type=\"paragraph\"><p class=\"bn-inline-content\">正文：<strong>理解一个概念</strong>，再联系<em>已有的知识</em>。</p></div></div></div>",
+    "id": "paragraph",
+    "overflowX": false,
+    "rect": {
+      "bottom": 329.296875,
+      "height": 28.5,
+      "left": 374,
+      "right": 1178,
+      "top": 300.796875,
+      "width": 804,
+      "x": 374,
+      "y": 300.796875
+    },
+    "text": "正文：理解一个概念，再联系已有的知识。"
+  },
+  {
+    "html": "<div class=\"bn-block-outer\" data-node-type=\"blockOuter\" data-id=\"case-heading1\"><div class=\"bn-block\" data-node-type=\"blockContainer\" data-id=\"case-heading1\"><div class=\"bn-block-content\" data-content-type=\"heading\"><h1 class=\"bn-inline-content\">一级标题 · 学习主题</h1></div></div></div>",
+    "id": "heading1",
+    "overflowX": false,
+    "rect": {
+      "bottom": 425.796875,
+      "height": 68,
+      "left": 374,
+      "right": 1178,
+      "top": 357.796875,
+      "width": 804,
+      "x": 374,
+      "y": 357.796875
+    },
+    "text": "一级标题 · 学习主题"
+  },
+  {
+    "html": "<div class=\"bn-block-outer\" data-node-type=\"blockOuter\" data-id=\"case-heading2\"><div class=\"bn-block\" data-node-type=\"blockContainer\" data-id=\"case-heading2\"><div class=\"bn-block-content\" data-content-type=\"heading\" data-level=\"2\"><h2 class=\"bn-inline-content\">二级标题 · 核心概念</h2></div></div></div>",
+    "id": "heading2",
+    "overflowX": false,
+    "rect": {
+      "bottom": 453.296875,
+      "height": 60.5,
+      "left": 374,
+      "right": 1178,
+      "top": 392.796875,
+      "width": 804,
+      "x": 374,
+      "y": 392.796875
+    },
+    "text": "二级标题 · 核心概念"
+  },
+  {
+    "html": "<div class=\"bn-block-outer\" data-node-type=\"blockOuter\" data-id=\"case-heading3\"><div class=\"bn-block\" data-node-type=\"blockContainer\" data-id=\"case-heading3\"><div class=\"bn-block-content\" data-content-type=\"heading\" data-level=\"3\"><h3 class=\"bn-inline-content\">三级标题 · 推导过程</h3></div></div></div>",
+    "id": "heading3",
+    "overflowX": false,
+    "rect": {
+      "bottom": 447.296875,
+      "height": 54.5,
+      "left": 374,
+      "right": 1178,
+      "top": 392.796875,
+      "width": 804,
+      "x": 374,
+      "y": 392.796875
+    },
+    "text": "三级标题 · 推导过程"
+  },
+  {
+    "html": "<div class=\"bn-block-outer\" data-node-type=\"blockOuter\" data-id=\"case-heading4\"><div class=\"bn-block\" data-node-type=\"blockContainer\" data-id=\"case-heading4\"><div class=\"bn-block-content\" data-content-type=\"heading\" data-level=\"4\"><h4 class=\"bn-inline-content\">四级标题 · 补充说明</h4></div></div></div>",
+    "id": "heading4",
+    "overflowX": false,
+    "rect": {
+      "bottom": 442.796875,
+      "height": 50,
+      "left": 374,
+      "right": 1178,
+      "top": 392.796875,
+      "width": 804,
+      "x": 374,
+      "y": 392.796875
+    },
+    "text": "四级标题 · 补充说明"
+  },
+  {
+    "html": "<div class=\"bn-block-outer\" data-node-type=\"blockOuter\" data-id=\"case-bullet\"><div class=\"bn-block\" data-node-type=\"blockContainer\" data-id=\"case-bullet\"><div class=\"bn-block-content\" data-content-type=\"bulletListItem\"><p class=\"bn-inline-content\">列出一个需要探索的问题</p></div></div></div>",
+    "id": "bullet",
+    "overflowX": false,
+    "rect": {
+      "bottom": 421.296875,
+      "height": 28.5,
+      "left": 374,
+      "right": 1178,
+      "top": 392.796875,
+      "width": 804,
+      "x": 374,
+      "y": 392.796875
+    },
+    "text": "列出一个需要探索的问题"
+  },
+  {
+    "html": "<div class=\"bn-block-outer\" data-node-type=\"blockOuter\" data-id=\"case-numbered\"><div class=\"bn-block\" data-node-type=\"blockContainer\" data-id=\"case-numbered\"><div class=\"bn-block-content\" data-content-type=\"numberedListItem\" data-index=\"1\"><p class=\"bn-inline-content\">定义问题与已知条件</p></div></div></div>",
+    "id": "numbered",
+    "overflowX": false,
+    "rect": {
+      "bottom": 421.296875,
+      "height": 28.5,
+      "left": 374,
+      "right": 1178,
+      "top": 392.796875,
+      "width": 804,
+      "x": 374,
+      "y": 392.796875
+    },
+    "text": "定义问题与已知条件"
+  },
+  {
+    "html": "<div class=\"bn-block-outer\" data-node-type=\"blockOuter\" data-id=\"case-check\"><div class=\"bn-block\" data-node-type=\"blockContainer\" data-id=\"case-check\"><div class=\"bn-block-content\" data-content-type=\"checkListItem\" data-checked=\"true\"><div contenteditable=\"false\"><input type=\"checkbox\" checked=\"\"></div><p class=\"bn-inline-content\">完成一次练习</p></div></div></div>",
+    "id": "check",
+    "overflowX": false,
+    "rect": {
+      "bottom": 422.796875,
+      "height": 30,
+      "left": 374,
+      "right": 1178,
+      "top": 392.796875,
+      "width": 804,
+      "x": 374,
+      "y": 392.796875
+    },
+    "text": "完成一次练习"
+  },
+  {
+    "html": "<div class=\"bn-block-outer\" data-node-type=\"blockOuter\" data-id=\"case-toggle\"><div class=\"bn-block\" data-node-type=\"blockContainer\" data-id=\"case-toggle\"><div class=\"bn-toggle-wrapper bn-toggle-frame\"><button class=\"bn-toggle-button\" type=\"button\" aria-label=\"Expand or collapse\" aria-expanded=\"false\"><svg aria-hidden=\"true\" xmlns=\"http://www.w3.org/2000/svg\" height=\"24px\" viewBox=\"0 -960 960 960\" width=\"24px\" fill=\"CURRENTCOLOR\"><path d=\"M320-200v-560l440 280-440 280Z\"></path></svg></button><div class=\"bn-toggle-slot\"><div class=\"bn-block-content\" data-content-type=\"toggleListItem\"><p class=\"bn-inline-content\">展开查看推导细节</p></div><div class=\"bn-block-group\" data-node-type=\"blockGroup\"><div class=\"bn-block-outer\" data-node-type=\"blockOuter\" data-id=\"3d8431a3-c992-45f6-a099-31acd8cb6ded\"><div class=\"bn-block\" data-node-type=\"blockContainer\" data-id=\"3d8431a3-c992-45f6-a099-31acd8cb6ded\"><div class=\"bn-block-content\" data-content-type=\"paragraph\"><p class=\"bn-inline-content\">支持内容：列出假设，并逐步推导。</p></div></div></div></div></div></div></div></div>",
+    "id": "toggle",
+    "overflowX": false,
+    "rect": {
+      "bottom": 421.296875,
+      "height": 28.5,
+      "left": 374,
+      "right": 1178,
+      "top": 392.796875,
+      "width": 804,
+      "x": 374,
+      "y": 392.796875
+    },
+    "text": "展开查看推导细节支持内容：列出假设，并逐步推导。"
+  },
+  {
+    "html": "<div class=\"bn-block-outer\" data-node-type=\"blockOuter\" data-id=\"case-quote\"><div class=\"bn-block\" data-node-type=\"blockContainer\" data-id=\"case-quote\"><div class=\"bn-block-content\" data-content-type=\"quote\"><blockquote class=\"bn-inline-content\">真正理解，来自建立概念之间的联系。</blockquote></div></div></div>",
+    "id": "quote",
+    "overflowX": false,
+    "rect": {
+      "bottom": 421.296875,
+      "height": 28.5,
+      "left": 374,
+      "right": 1178,
+      "top": 392.796875,
+      "width": 804,
+      "x": 374,
+      "y": 392.796875
+    },
+    "text": "真正理解，来自建立概念之间的联系。"
+  },
+  {
+    "html": "<div class=\"bn-block-outer\" data-node-type=\"blockOuter\" data-id=\"case-table\"><div class=\"bn-block\" data-node-type=\"blockContainer\" data-id=\"case-table\"><div class=\"bn-block-content\" data-content-type=\"table\"><div class=\"tableWrapper\"><div class=\"tableWrapper-inner\"><table style=\"--default-cell-min-width: 120px; min-width: 360px;\"><colgroup><col><col><col></colgroup><tbody><tr><td colspan=\"1\" rowspan=\"1\"><p>概念</p></td><td colspan=\"1\" rowspan=\"1\"><p>含义</p></td><td colspan=\"1\" rowspan=\"1\"><p>示例</p></td></tr><tr><td colspan=\"1\" rowspan=\"1\"><p>导数</p></td><td colspan=\"1\" rowspan=\"1\"><p>变化率</p></td><td colspan=\"1\" rowspan=\"1\"><p>速度</p></td></tr></tbody></table></div><div class=\"table-widgets-container\" style=\"position: relative;\"></div></div></div></div></div>",
+    "id": "table",
+    "overflowX": false,
+    "rect": {
+      "bottom": 500.796875,
+      "height": 108,
+      "left": 374,
+      "right": 1178,
+      "top": 392.796875,
+      "width": 804,
+      "x": 374,
+      "y": 392.796875
+    },
+    "text": "概念含义示例导数变化率速度"
+  },
+  {
+    "html": "<div class=\"bn-block-outer\" data-node-type=\"blockOuter\" data-id=\"case-divider\"><div class=\"bn-block\" data-node-type=\"blockContainer\" data-id=\"case-divider\"><div class=\"bn-block-content\" data-content-type=\"divider\" contenteditable=\"false\"><hr></div></div></div>",
+    "id": "divider",
+    "overflowX": false,
+    "rect": {
+      "bottom": 414.796875,
+      "height": 22,
+      "left": 374,
+      "right": 1178,
+      "top": 392.796875,
+      "width": 804,
+      "x": 374,
+      "y": 392.796875
+    },
+    "text": ""
+  },
+  {
+    "html": "<div class=\"bn-block-outer\" data-node-type=\"blockOuter\" data-id=\"case-code\"><div class=\"bn-block\" data-node-type=\"blockContainer\" data-id=\"case-code\"><div class=\"bn-block-content\" data-content-type=\"codeBlock\"><pre><code class=\"bn-inline-content\">def learn(topic):\n    return explore(topic)</code></pre></div></div></div>",
+    "id": "code",
+    "overflowX": false,
+    "rect": {
+      "bottom": 491.796875,
+      "height": 99,
+      "left": 374,
+      "right": 1178,
+      "top": 392.796875,
+      "width": 804,
+      "x": 374,
+      "y": 392.796875
+    },
+    "text": "def learn(topic):\n    return explore(topic)"
+  },
+  {
+    "html": "<div class=\"bn-block-outer\" data-node-type=\"blockOuter\" data-id=\"e562e41b-2d53-4e6d-a681-9d8be19f9bac\"><div class=\"bn-block\" data-node-type=\"blockContainer\" data-id=\"e562e41b-2d53-4e6d-a681-9d8be19f9bac\"><div class=\"react-renderer node-callout bn-react-node-view-renderer\"><div class=\"bn-block-content\" data-content-type=\"callout\" data-tone=\"info\" data-node-view-wrapper=\"\" style=\"white-space: normal;\"><div class=\"dt-note-callout\" data-tone=\"info\"><button contenteditable=\"false\" aria-label=\"Change callout style\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-info\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"12\" r=\"10\"></circle><path d=\"M12 16v-4\"></path><path d=\"M12 8h.01\"></path></svg></button><div class=\"bn-inline-content dt-note-callout-text\" data-node-view-content=\"\"><div data-node-view-content-react=\"\" data-node-view-wrapper=\"\" style=\"white-space: inherit;\">关键提示：关注概念适用的前提。</div></div></div></div></div></div></div>",
+    "id": "callout",
+    "overflowX": false,
+    "rect": {
+      "bottom": 449.796875,
+      "height": 57,
+      "left": 374,
+      "right": 1178,
+      "top": 392.796875,
+      "width": 804,
+      "x": 374,
+      "y": 392.796875
+    },
+    "text": "关键提示：关注概念适用的前提。"
+  },
+  {
+    "html": "<div class=\"bn-block-outer\" data-node-type=\"blockOuter\" data-id=\"case-pageLink\"><div class=\"bn-block\" data-node-type=\"blockContainer\" data-id=\"case-pageLink\"><div class=\"bn-block-content\" data-content-type=\"paragraph\"><p class=\"bn-inline-content\"><img class=\"ProseMirror-separator\" alt=\"\"><span class=\"react-renderer node-pageLink bn-ic-react-node-view-renderer\" contenteditable=\"false\"><span as=\"span\" class=\"bn-inline-content-section\" data-inline-content-type=\"pageLink\" data-page-id=\"a6063f5c1634\" data-title=\"傅里叶学习笔记\" data-node-view-wrapper=\"\" style=\"white-space: normal;\"><a class=\"dt-note-link\" href=\"/co-writer/a6063f5c1634\">↗ 傅里叶学习笔记</a></span></span> </p></div></div></div>",
+    "id": "pageLink",
+    "overflowX": false,
+    "rect": {
+      "bottom": 421.296875,
+      "height": 28.5,
+      "left": 374,
+      "right": 1178,
+      "top": 392.796875,
+      "width": 804,
+      "x": 374,
+      "y": 392.796875
+    },
+    "text": "↗ 傅里叶学习笔记 "
+  },
+  {
+    "html": "<div class=\"bn-block-outer\" data-node-type=\"blockOuter\" data-id=\"8e5808bf-92ab-43de-a91e-0b98b034c361\"><div class=\"bn-block\" data-node-type=\"blockContainer\" data-id=\"8e5808bf-92ab-43de-a91e-0b98b034c361\"><div class=\"react-renderer node-webCard bn-react-node-view-renderer\" contenteditable=\"false\"><div class=\"bn-block-content\" data-content-type=\"webCard\" data-url=\"https://en.wikipedia.org/wiki/Fourier_transform\" data-title=\"傅里叶变换\" data-description=\"从信号到频率，理解变换的核心思想。\" data-node-view-wrapper=\"\" style=\"white-space: normal;\"><div contenteditable=\"false\" class=\"dt-note-web-card\"><div class=\"dt-note-web-card-header\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"22\" height=\"22\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-globe\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"12\" r=\"10\"></circle><path d=\"M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20\"></path><path d=\"M2 12h20\"></path></svg><a href=\"https://en.wikipedia.org/wiki/Fourier_transform\" target=\"_blank\" rel=\"noopener noreferrer\"><strong>傅里叶变换</strong><span>从信号到频率，理解变换的核心思想。</span><small>en.wikipedia.org <svg xmlns=\"http://www.w3.org/2000/svg\" width=\"11\" height=\"11\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-external-link\" aria-hidden=\"true\"><path d=\"M15 3h6v6\"></path><path d=\"M10 14 21 3\"></path><path d=\"M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6\"></path></svg></small></a><button aria-label=\"Edit link\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-pencil\" aria-hidden=\"true\"><path d=\"M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z\"></path><path d=\"m15 5 4 4\"></path></svg></button></div></div></div></div></div></div>",
+    "id": "bookmark",
+    "overflowX": false,
+    "rect": {
+      "bottom": 508.296875,
+      "height": 115.5,
+      "left": 374,
+      "right": 1178,
+      "top": 392.796875,
+      "width": 804,
+      "x": 374,
+      "y": 392.796875
+    },
+    "text": "傅里叶变换从信号到频率，理解变换的核心思想。en.wikipedia.org "
+  },
+  {
+    "html": "<div class=\"bn-block-outer\" data-node-type=\"blockOuter\" data-id=\"e1c815b9-2650-4c53-9794-0e31b2a428cf\"><div class=\"bn-block\" data-node-type=\"blockContainer\" data-id=\"e1c815b9-2650-4c53-9794-0e31b2a428cf\"><div class=\"react-renderer node-webCard bn-react-node-view-renderer\" contenteditable=\"false\"><div class=\"bn-block-content\" data-content-type=\"webCard\" data-url=\"https://example.com/\" data-title=\"嵌入页面示例\" data-mode=\"embed\" data-node-view-wrapper=\"\" style=\"white-space: normal;\"><div contenteditable=\"false\" class=\"dt-note-web-card\"><div class=\"dt-note-web-card-header\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"22\" height=\"22\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-globe\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"12\" r=\"10\"></circle><path d=\"M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20\"></path><path d=\"M2 12h20\"></path></svg><a href=\"https://example.com/\" target=\"_blank\" rel=\"noopener noreferrer\"><strong>嵌入页面示例</strong><span>https://example.com/</span><small>example.com <svg xmlns=\"http://www.w3.org/2000/svg\" width=\"11\" height=\"11\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-external-link\" aria-hidden=\"true\"><path d=\"M15 3h6v6\"></path><path d=\"M10 14 21 3\"></path><path d=\"M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6\"></path></svg></small></a><button aria-label=\"Edit link\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-pencil\" aria-hidden=\"true\"><path d=\"M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z\"></path><path d=\"m15 5 4 4\"></path></svg></button></div><iframe title=\"嵌入页面示例\" src=\"https://example.com/\" sandbox=\"allow-scripts allow-presentation\" referrerpolicy=\"no-referrer\" loading=\"lazy\"></iframe><p class=\"dt-note-hint\">If the site blocks embedding, open the link above</p></div></div></div></div></div>",
+    "id": "embed",
+    "overflowX": false,
+    "rect": {
+      "bottom": 560.796875,
+      "height": 492,
+      "left": 374,
+      "right": 1178,
+      "top": 68.796875,
+      "width": 804,
+      "x": 374,
+      "y": 68.796875
+    },
+    "text": "嵌入页面示例https://example.com/example.com If the site blocks embedding, open the link above"
+  },
+  {
+    "html": "<div class=\"bn-block-outer\" data-node-type=\"blockOuter\" data-id=\"a607edb8-8ded-415e-95cc-d0ad32535336\"><div class=\"bn-block\" data-node-type=\"blockContainer\" data-id=\"a607edb8-8ded-415e-95cc-d0ad32535336\"><div class=\"react-renderer node-htmlEmbed bn-react-node-view-renderer\" contenteditable=\"false\"><div class=\"bn-block-content\" data-content-type=\"htmlEmbed\" data-source=\"&lt;h2&gt;核心概念&lt;/h2&gt;&lt;p&gt;从信号到&lt;strong&gt;频率&lt;/strong&gt;。&lt;/p&gt;\" data-node-view-wrapper=\"\" style=\"white-space: normal;\"><div contenteditable=\"false\" class=\"dt-note-html\"><div class=\"dt-note-block-label\"><span>HTML</span><button>Edit</button></div><iframe title=\"HTML preview\" sandbox=\"\" srcdoc=\"&lt;meta http-equiv=&quot;Content-Security-Policy&quot; content=&quot;default-src 'none'; img-src https: data:; style-src 'unsafe-inline';&quot;&gt;&lt;style&gt;body{font:15px system-ui;line-height:1.6;padding:16px;overflow-wrap:anywhere}&lt;/style&gt;&lt;h2&gt;核心概念&lt;/h2&gt;&lt;p&gt;从信号到&lt;strong&gt;频率&lt;/strong&gt;。&lt;/p&gt;\"></iframe></div></div></div></div></div>",
+    "id": "html",
+    "overflowX": false,
+    "rect": {
+      "bottom": 465.796875,
+      "height": 397,
+      "left": 374,
+      "right": 1178,
+      "top": 68.796875,
+      "width": 804,
+      "x": 374,
+      "y": 68.796875
+    },
+    "text": "HTMLEdit"
+  },
+  {
+    "html": "<div class=\"bn-block-outer\" data-node-type=\"blockOuter\" data-id=\"9e7f4899-67a5-4b8b-a541-edb752a5c6c6\"><div class=\"bn-block\" data-node-type=\"blockContainer\" data-id=\"9e7f4899-67a5-4b8b-a541-edb752a5c6c6\"><div class=\"react-renderer node-tableOfContents bn-react-node-view-renderer\" contenteditable=\"false\"><div class=\"bn-block-content\" data-content-type=\"tableOfContents\" data-node-view-wrapper=\"\" style=\"white-space: normal;\"><nav class=\"dt-note-toc\" contenteditable=\"false\" aria-label=\"Table of contents\"><div class=\"dt-note-block-label\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-list-tree\" aria-hidden=\"true\"><path d=\"M8 5h13\"></path><path d=\"M13 12h8\"></path><path d=\"M13 19h8\"></path><path d=\"M3 10a2 2 0 0 0 2 2h3\"></path><path d=\"M3 5v12a2 2 0 0 0 2 2h3\"></path></svg>Table of contents</div><a href=\"#case-heading1\" style=\"padding-inline-start: 0px;\">一级标题 · 学习主题</a><a href=\"#case-heading2\" style=\"padding-inline-start: 14px;\">二级标题 · 核心概念</a><a href=\"#case-heading3\" style=\"padding-inline-start: 28px;\">三级标题 · 推导过程</a><a href=\"#case-heading4\" style=\"padding-inline-start: 42px;\">四级标题 · 补充说明</a><a href=\"#a3b4c8b4-3a75-488f-865b-ebe16f722f0c\" style=\"padding-inline-start: 0px;\">折叠标题 1</a><a href=\"#08b086ff-fe1d-4403-9624-5d6bbfcc8ca8\" style=\"padding-inline-start: 14px;\">折叠标题 2</a><a href=\"#91debd90-3abc-484c-be4c-49095a5df658\" style=\"padding-inline-start: 28px;\">折叠标题 3</a></nav></div></div></div></div>",
+    "id": "toc",
+    "overflowX": false,
+    "rect": {
+      "bottom": 655.5859375,
+      "height": 262.7890625,
+      "left": 374,
+      "right": 1178,
+      "top": 392.796875,
+      "width": 804,
+      "x": 374,
+      "y": 392.796875
+    },
+    "text": "Table of contents一级标题 · 学习主题二级标题 · 核心概念三级标题 · 推导过程四级标题 · 补充说明折叠标题 1折叠标题 2折叠标题 3"
+  },
+  {
+    "html": "<div class=\"bn-block-outer\" data-node-type=\"blockOuter\" data-id=\"4cb49c37-65f9-4a54-a790-1675cd44102e\"><div class=\"bn-block\" data-node-type=\"blockContainer\" data-id=\"4cb49c37-65f9-4a54-a790-1675cd44102e\"><div class=\"react-renderer node-math bn-react-node-view-renderer\" contenteditable=\"false\"><div class=\"bn-block-content\" data-content-type=\"math\" data-formula=\"\\frac{a}{b} + x^2\" data-node-view-wrapper=\"\" style=\"white-space: normal;\"><div class=\"dt-note-math\" contenteditable=\"false\"><button><span class=\"dt-note-formula display\"><span class=\"katex-display\"><span class=\"katex\"><span class=\"katex-mathml\"><math xmlns=\"http://www.w3.org/1998/Math/MathML\" display=\"block\"><semantics><mrow><mfrac><mi>a</mi><mi>b</mi></mfrac><mo>+</mo><msup><mi>x</mi><mn>2</mn></msup></mrow><annotation encoding=\"application/x-tex\">\\frac{a}{b} + x^2</annotation></semantics></math></span><span class=\"katex-html\" aria-hidden=\"true\"><span class=\"base\"><span class=\"strut\" style=\"height:1.7936em;vertical-align:-0.686em;\"></span><span class=\"mord\"><span class=\"mopen nulldelimiter\"></span><span class=\"mfrac\"><span class=\"vlist-t vlist-t2\"><span class=\"vlist-r\"><span class=\"vlist\" style=\"height:1.1076em;\"><span style=\"top:-2.314em;\"><span class=\"pstrut\" style=\"height:3em;\"></span><span class=\"mord\"><span class=\"mord mathnormal\">b</span></span></span><span style=\"top:-3.23em;\"><span class=\"pstrut\" style=\"height:3em;\"></span><span class=\"frac-line\" style=\"border-bottom-width:0.04em;\"></span></span><span style=\"top:-3.677em;\"><span class=\"pstrut\" style=\"height:3em;\"></span><span class=\"mord\"><span class=\"mord mathnormal\">a</span></span></span></span><span class=\"vlist-s\">​</span></span><span class=\"vlist-r\"><span class=\"vlist\" style=\"height:0.686em;\"><span></span></span></span></span></span><span class=\"mclose nulldelimiter\"></span></span><span class=\"mspace\" style=\"margin-right:0.2222em;\"></span><span class=\"mbin\">+</span><span class=\"mspace\" style=\"margin-right:0.2222em;\"></span></span><span class=\"base\"><span class=\"strut\" style=\"height:0.8641em;\"></span><span class=\"mord\"><span class=\"mord mathnormal\">x</span><span class=\"msupsub\"><span class=\"vlist-t\"><span class=\"vlist-r\"><span class=\"vlist\" style=\"height:0.8641em;\"><span style=\"top:-3.113em;margin-right:0.05em;\"><span class=\"pstrut\" style=\"height:2.7em;\"></span><span class=\"sizing reset-size6 size3 mtight\"><span class=\"mord mtight\">2</span></span></span></span></span></span></span></span></span></span></span></span></span></button></div></div></div></div></div>",
+    "id": "math",
+    "overflowX": false,
+    "rect": {
+      "bottom": 469.640625,
+      "height": 76.5546875,
+      "left": 374,
+      "right": 1178,
+      "top": 393.0859375,
+      "width": 804,
+      "x": 374,
+      "y": 393.0859375
+    },
+    "text": "ab+x2\\frac{a}{b} + x^2ba​+x2"
+  },
+  {
+    "html": "<div class=\"dt-note-toggle\" data-collapsed=\"true\"><button contenteditable=\"false\" aria-label=\"Expand\" aria-expanded=\"false\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"17\" height=\"17\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-chevron-right\" aria-hidden=\"true\"><path d=\"m9 18 6-6-6-6\"></path></svg></button><div class=\"dt-note-toggle-body\" data-node-view-content=\"\"><div data-node-view-content-react=\"\" data-node-view-wrapper=\"\" style=\"white-space: inherit;\"><div class=\"react-renderer node-toggleHeading bn-react-node-view-renderer\"><div class=\"bn-block-content\" data-content-type=\"toggleHeading\" data-level=\"1\" data-collapsed=\"true\" data-node-view-wrapper=\"\" style=\"white-space: normal;\"><div role=\"heading\" aria-level=\"1\" class=\"bn-inline-content dt-note-toggle-title level-1\" data-node-view-content=\"\"><div data-node-view-content-react=\"\" data-node-view-wrapper=\"\" style=\"white-space: inherit;\">折叠标题 1</div></div></div></div><div class=\"bn-block-group\" data-node-type=\"blockGroup\"><div class=\"bn-block-outer\" data-node-type=\"blockOuter\" data-id=\"b7c75192-9cbf-48f2-b9fc-adff472a28e3\"><div class=\"bn-block\" data-node-type=\"blockContainer\" data-id=\"b7c75192-9cbf-48f2-b9fc-adff472a28e3\"><div class=\"bn-block-content\" data-content-type=\"paragraph\"><p class=\"bn-inline-content\">隐藏的推导：先定义变量，再展开计算。</p></div></div></div></div></div></div></div>",
+    "id": "toggle1",
+    "overflowX": false,
+    "rect": {
+      "bottom": 410.640625,
+      "height": 64,
+      "left": 374,
+      "right": 1178,
+      "top": 346.640625,
+      "width": 804,
+      "x": 374,
+      "y": 346.640625
+    },
+    "text": "折叠标题 1隐藏的推导：先定义变量，再展开计算。"
+  },
+  {
+    "html": "<div class=\"bn-block-outer\" data-node-type=\"blockOuter\" data-id=\"08b086ff-fe1d-4403-9624-5d6bbfcc8ca8\"><div class=\"bn-block\" data-node-type=\"blockContainer\" data-id=\"08b086ff-fe1d-4403-9624-5d6bbfcc8ca8\"><div class=\"react-renderer node-blockContainer bn-react-node-view-renderer bn-frame-node-view\"><div data-node-view-wrapper=\"\" style=\"white-space: normal; display: contents;\"><div class=\"dt-note-toggle\" data-collapsed=\"false\"><button contenteditable=\"false\" aria-label=\"Collapse\" aria-expanded=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"17\" height=\"17\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-chevron-right\" aria-hidden=\"true\"><path d=\"m9 18 6-6-6-6\"></path></svg></button><div class=\"dt-note-toggle-body\" data-node-view-content=\"\"><div data-node-view-content-react=\"\" data-node-view-wrapper=\"\" style=\"white-space: inherit;\"><div class=\"react-renderer node-toggleHeading bn-react-node-view-renderer\"><div class=\"bn-block-content\" data-content-type=\"toggleHeading\" data-node-view-wrapper=\"\" style=\"white-space: normal;\"><div role=\"heading\" aria-level=\"2\" class=\"bn-inline-content dt-note-toggle-title level-2\" data-node-view-content=\"\"><div data-node-view-content-react=\"\" data-node-view-wrapper=\"\" style=\"white-space: inherit;\">折叠标题 2</div></div></div></div><div class=\"bn-block-group\" data-node-type=\"blockGroup\"><div class=\"bn-block-outer\" data-node-type=\"blockOuter\" data-id=\"b9531af0-f99a-4667-8524-fb1c3ffd051c\"><div class=\"bn-block\" data-node-type=\"blockContainer\" data-id=\"b9531af0-f99a-4667-8524-fb1c3ffd051c\"><div class=\"bn-block-content\" data-content-type=\"paragraph\"><p class=\"bn-inline-content\"><br class=\"ProseMirror-trailingBreak\"></p></div></div></div></div></div></div></div></div></div></div></div>",
+    "id": "toggle2",
+    "overflowX": false,
+    "rect": {
+      "bottom": 478.140625,
+      "height": 85,
+      "left": 374,
+      "right": 1178,
+      "top": 393.140625,
+      "width": 804,
+      "x": 374,
+      "y": 393.140625
+    },
+    "text": "折叠标题 2"
+  },
+  {
+    "html": "<div class=\"bn-block-outer\" data-node-type=\"blockOuter\" data-id=\"91debd90-3abc-484c-be4c-49095a5df658\"><div class=\"bn-block\" data-node-type=\"blockContainer\" data-id=\"91debd90-3abc-484c-be4c-49095a5df658\"><div class=\"react-renderer node-blockContainer bn-react-node-view-renderer bn-frame-node-view\"><div data-node-view-wrapper=\"\" style=\"white-space: normal; display: contents;\"><div class=\"dt-note-toggle\" data-collapsed=\"false\"><button contenteditable=\"false\" aria-label=\"Collapse\" aria-expanded=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"17\" height=\"17\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-chevron-right\" aria-hidden=\"true\"><path d=\"m9 18 6-6-6-6\"></path></svg></button><div class=\"dt-note-toggle-body\" data-node-view-content=\"\"><div data-node-view-content-react=\"\" data-node-view-wrapper=\"\" style=\"white-space: inherit;\"><div class=\"react-renderer node-toggleHeading bn-react-node-view-renderer\"><div class=\"bn-block-content\" data-content-type=\"toggleHeading\" data-level=\"3\" data-node-view-wrapper=\"\" style=\"white-space: normal;\"><div role=\"heading\" aria-level=\"3\" class=\"bn-inline-content dt-note-toggle-title level-3\" data-node-view-content=\"\"><div data-node-view-content-react=\"\" data-node-view-wrapper=\"\" style=\"white-space: inherit;\">折叠标题 3</div></div></div></div><div class=\"bn-block-group\" data-node-type=\"blockGroup\"><div class=\"bn-block-outer\" data-node-type=\"blockOuter\" data-id=\"7278d1fd-f877-476d-8455-9e45b469bca8\"><div class=\"bn-block\" data-node-type=\"blockContainer\" data-id=\"7278d1fd-f877-476d-8455-9e45b469bca8\"><div class=\"bn-block-content\" data-content-type=\"paragraph\"><p class=\"bn-inline-content\"><br class=\"ProseMirror-trailingBreak\"></p></div></div></div></div></div></div></div></div></div></div></div>",
+    "id": "toggle3",
+    "overflowX": false,
+    "rect": {
+      "bottom": 472.140625,
+      "height": 79,
+      "left": 374,
+      "right": 1178,
+      "top": 393.140625,
+      "width": 804,
+      "x": 374,
+      "y": 393.140625
+    },
+    "text": "折叠标题 3"
+  },
+  {
+    "html": "<div class=\"react-renderer node-noteColumns bn-react-node-view-renderer bn-frame-node-view\"><div data-node-view-wrapper=\"\" style=\"white-space: normal; display: contents;\"><div class=\"dt-note-columns\" data-node-view-content=\"\" data-frame-slot=\"\" data-node-type=\"noteColumns\" data-id=\"5d532ffa-484f-4696-a268-7746cff2fd2c\"><div data-node-view-content-react=\"\" data-node-view-wrapper=\"\" style=\"white-space: inherit; display: contents;\"><div class=\"react-renderer node-noteColumn bn-react-node-view-renderer bn-frame-node-view\"><div data-node-view-wrapper=\"\" style=\"white-space: normal; display: contents;\"><div class=\"dt-note-column\" data-node-view-content=\"\" data-frame-slot=\"\" data-node-type=\"noteColumn\" data-id=\"d380b231-0ad5-494c-9f07-81b6db9ff690\"><div data-node-view-content-react=\"\" data-node-view-wrapper=\"\" style=\"white-space: inherit; display: contents;\"><div class=\"bn-block-outer\" data-node-type=\"blockOuter\" data-id=\"68869f16-0383-4e59-a1fe-6103944f8531\"><div class=\"bn-block\" data-node-type=\"blockContainer\" data-id=\"68869f16-0383-4e59-a1fe-6103944f8531\"><div class=\"bn-block-content\" data-content-type=\"paragraph\"><p class=\"bn-inline-content\">第一列：核心概念</p></div></div></div></div></div></div></div><div class=\"react-renderer node-noteColumn bn-react-node-view-renderer bn-frame-node-view\"><div data-node-view-wrapper=\"\" style=\"white-space: normal; display: contents;\"><div class=\"dt-note-column\" data-node-view-content=\"\" data-frame-slot=\"\" data-node-type=\"noteColumn\" data-id=\"daf44d5e-6f35-49f7-b6b9-24130fd39d09\"><div data-node-view-content-react=\"\" data-node-view-wrapper=\"\" style=\"white-space: inherit; display: contents;\"><div class=\"bn-block-outer\" data-node-type=\"blockOuter\" data-id=\"3683f1f1-1dff-4da7-ac6c-3227149f6a1f\"><div class=\"bn-block\" data-node-type=\"blockContainer\" data-id=\"3683f1f1-1dff-4da7-ac6c-3227149f6a1f\"><div class=\"bn-block-content\" data-content-type=\"paragraph\"><p class=\"bn-inline-content\">第二列：推导</p></div></div></div></div></div></div></div></div></div></div></div>",
+    "id": "columns2",
+    "overflowX": false,
+    "rect": {
+      "bottom": 455.140625,
+      "height": 50,
+      "left": 374,
+      "right": 1178,
+      "top": 405.140625,
+      "width": 804,
+      "x": 374,
+      "y": 405.140625
+    },
+    "text": "第一列：核心概念第二列：推导"
+  },
+  {
+    "html": "<div class=\"react-renderer node-noteColumns bn-react-node-view-renderer bn-frame-node-view\"><div data-node-view-wrapper=\"\" style=\"white-space: normal; display: contents;\"><div class=\"dt-note-columns\" data-node-view-content=\"\" data-frame-slot=\"\" data-node-type=\"noteColumns\" data-id=\"024dc7a0-ed18-4a57-aa28-94db25cb4ff5\"><div data-node-view-content-react=\"\" data-node-view-wrapper=\"\" style=\"white-space: inherit; display: contents;\"><div class=\"react-renderer node-noteColumn bn-react-node-view-renderer bn-frame-node-view\"><div data-node-view-wrapper=\"\" style=\"white-space: normal; display: contents;\"><div class=\"dt-note-column\" data-node-view-content=\"\" data-frame-slot=\"\" data-node-type=\"noteColumn\" data-id=\"82da2834-f419-4c74-9921-9de5ebdbb75b\"><div data-node-view-content-react=\"\" data-node-view-wrapper=\"\" style=\"white-space: inherit; display: contents;\"><div class=\"bn-block-outer\" data-node-type=\"blockOuter\" data-id=\"95b673c5-cc3e-4fb4-b637-5c2f0f648ef9\"><div class=\"bn-block\" data-node-type=\"blockContainer\" data-id=\"95b673c5-cc3e-4fb4-b637-5c2f0f648ef9\"><div class=\"bn-block-content\" data-content-type=\"paragraph\"><p class=\"bn-inline-content\">第一列：核心概念</p></div></div></div></div></div></div></div><div class=\"react-renderer node-noteColumn bn-react-node-view-renderer bn-frame-node-view\"><div data-node-view-wrapper=\"\" style=\"white-space: normal; display: contents;\"><div class=\"dt-note-column\" data-node-view-content=\"\" data-frame-slot=\"\" data-node-type=\"noteColumn\" data-id=\"d1c652b9-cbd5-484f-ac5e-0bb25664c68e\"><div data-node-view-content-react=\"\" data-node-view-wrapper=\"\" style=\"white-space: inherit; display: contents;\"><div class=\"bn-block-outer\" data-node-type=\"blockOuter\" data-id=\"a00cd7c6-f0d7-4177-95f9-9af0b650fbc1\"><div class=\"bn-block\" data-node-type=\"blockContainer\" data-id=\"a00cd7c6-f0d7-4177-95f9-9af0b650fbc1\"><div class=\"bn-block-content\" data-content-type=\"paragraph\"><p class=\"bn-inline-content\">第二列：推导</p></div></div></div></div></div></div></div><div class=\"react-renderer node-noteColumn bn-react-node-view-renderer bn-frame-node-view\"><div data-node-view-wrapper=\"\" style=\"white-space: normal; display: contents;\"><div class=\"dt-note-column\" data-node-view-content=\"\" data-frame-slot=\"\" data-node-type=\"noteColumn\" data-id=\"c82793e9-a7d7-465b-9862-e2e093306a37\"><div data-node-view-content-react=\"\" data-node-view-wrapper=\"\" style=\"white-space: inherit; display: contents;\"><div class=\"bn-block-outer\" data-node-type=\"blockOuter\" data-id=\"b40f4ebc-8884-4549-b1c9-d98d84a29cd1\"><div class=\"bn-block\" data-node-type=\"blockContainer\" data-id=\"b40f4ebc-8884-4549-b1c9-d98d84a29cd1\"><div class=\"bn-block-content\" data-content-type=\"paragraph\"><p class=\"bn-inline-content\">第三列：例题</p></div></div></div></div></div></div></div></div></div></div></div>",
+    "id": "columns3",
+    "overflowX": false,
+    "rect": {
+      "bottom": 455.140625,
+      "height": 50,
+      "left": 374,
+      "right": 1178,
+      "top": 405.140625,
+      "width": 804,
+      "x": 374,
+      "y": 405.140625
+    },
+    "text": "第一列：核心概念第二列：推导第三列：例题"
+  },
+  {
+    "html": "<div class=\"react-renderer node-noteColumns bn-react-node-view-renderer bn-frame-node-view\"><div data-node-view-wrapper=\"\" style=\"white-space: normal; display: contents;\"><div class=\"dt-note-columns\" data-node-view-content=\"\" data-frame-slot=\"\" data-node-type=\"noteColumns\" data-id=\"c9c1817e-5935-4259-8c5e-f21e3351844d\"><div data-node-view-content-react=\"\" data-node-view-wrapper=\"\" style=\"white-space: inherit; display: contents;\"><div class=\"react-renderer node-noteColumn bn-react-node-view-renderer bn-frame-node-view\"><div data-node-view-wrapper=\"\" style=\"white-space: normal; display: contents;\"><div class=\"dt-note-column\" data-node-view-content=\"\" data-frame-slot=\"\" data-node-type=\"noteColumn\" data-id=\"e38eb32a-e57a-489a-a316-18eb46d4f8f9\"><div data-node-view-content-react=\"\" data-node-view-wrapper=\"\" style=\"white-space: inherit; display: contents;\"><div class=\"bn-block-outer\" data-node-type=\"blockOuter\" data-id=\"e6a3ad1d-c2c0-4369-9f6a-ab9d8d4e0dda\"><div class=\"bn-block\" data-node-type=\"blockContainer\" data-id=\"e6a3ad1d-c2c0-4369-9f6a-ab9d8d4e0dda\"><div class=\"bn-block-content\" data-content-type=\"paragraph\"><p class=\"bn-inline-content\">第一列：核心概念</p></div></div></div></div></div></div></div><div class=\"react-renderer node-noteColumn bn-react-node-view-renderer bn-frame-node-view\"><div data-node-view-wrapper=\"\" style=\"white-space: normal; display: contents;\"><div class=\"dt-note-column\" data-node-view-content=\"\" data-frame-slot=\"\" data-node-type=\"noteColumn\" data-id=\"26041ffa-4bfc-4c85-923c-edadbfa182f5\"><div data-node-view-content-react=\"\" data-node-view-wrapper=\"\" style=\"white-space: inherit; display: contents;\"><div class=\"bn-block-outer\" data-node-type=\"blockOuter\" data-id=\"003e3900-8ce5-40e7-8187-eb233d53c580\"><div class=\"bn-block\" data-node-type=\"blockContainer\" data-id=\"003e3900-8ce5-40e7-8187-eb233d53c580\"><div class=\"bn-block-content\" data-content-type=\"paragraph\"><p class=\"bn-inline-content\">第二列：推导</p></div></div></div></div></div></div></div><div class=\"react-renderer node-noteColumn bn-react-node-view-renderer bn-frame-node-view\"><div data-node-view-wrapper=\"\" style=\"white-space: normal; display: contents;\"><div class=\"dt-note-column\" data-node-view-content=\"\" data-frame-slot=\"\" data-node-type=\"noteColumn\" data-id=\"797d9d6a-a3a8-4844-b2e2-ce46d1cbae03\"><div data-node-view-content-react=\"\" data-node-view-wrapper=\"\" style=\"white-space: inherit; display: contents;\"><div class=\"bn-block-outer\" data-node-type=\"blockOuter\" data-id=\"1e1d87df-8a95-4b10-8398-a6900b2d6555\"><div class=\"bn-block\" data-node-type=\"blockContainer\" data-id=\"1e1d87df-8a95-4b10-8398-a6900b2d6555\"><div class=\"bn-block-content\" data-content-type=\"paragraph\"><p class=\"bn-inline-content\">第三列：例题</p></div></div></div></div></div></div></div><div class=\"react-renderer node-noteColumn bn-react-node-view-renderer bn-frame-node-view\"><div data-node-view-wrapper=\"\" style=\"white-space: normal; display: contents;\"><div class=\"dt-note-column\" data-node-view-content=\"\" data-frame-slot=\"\" data-node-type=\"noteColumn\" data-id=\"3b6ac6fb-15f6-4c1a-a5c0-49dd9c5e6f7e\"><div data-node-view-content-react=\"\" data-node-view-wrapper=\"\" style=\"white-space: inherit; display: contents;\"><div class=\"bn-block-outer\" data-node-type=\"blockOuter\" data-id=\"a3e82fb2-c5d2-4948-a942-fd464d1e17cd\"><div class=\"bn-block\" data-node-type=\"blockContainer\" data-id=\"a3e82fb2-c5d2-4948-a942-fd464d1e17cd\"><div class=\"bn-block-content\" data-content-type=\"paragraph\"><p class=\"bn-inline-content\">第四列：练习</p></div></div></div></div></div></div></div></div></div></div></div>",
+    "id": "columns4",
+    "overflowX": false,
+    "rect": {
+      "bottom": 455.140625,
+      "height": 50,
+      "left": 374,
+      "right": 1178,
+      "top": 405.140625,
+      "width": 804,
+      "x": 374,
+      "y": 405.140625
+    },
+    "text": "第一列：核心概念第二列：推导第三列：例题第四列：练习"
+  },
+  {
+    "html": "<div class=\"react-renderer node-noteColumns bn-react-node-view-renderer bn-frame-node-view\"><div data-node-view-wrapper=\"\" style=\"white-space: normal; display: contents;\"><div class=\"dt-note-columns\" data-node-view-content=\"\" data-frame-slot=\"\" data-node-type=\"noteColumns\" data-id=\"18549e5b-219b-4914-b299-222992d6f27b\"><div data-node-view-content-react=\"\" data-node-view-wrapper=\"\" style=\"white-space: inherit; display: contents;\"><div class=\"react-renderer node-noteColumn bn-react-node-view-renderer bn-frame-node-view\"><div data-node-view-wrapper=\"\" style=\"white-space: normal; display: contents;\"><div class=\"dt-note-column\" data-node-view-content=\"\" data-frame-slot=\"\" data-node-type=\"noteColumn\" data-id=\"6bcc1d4a-15c5-48a4-af1b-febc73ee3c51\"><div data-node-view-content-react=\"\" data-node-view-wrapper=\"\" style=\"white-space: inherit; display: contents;\"><div class=\"bn-block-outer\" data-node-type=\"blockOuter\" data-id=\"05fad9e3-fb78-48f2-ad1b-03cbf1ce19ba\"><div class=\"bn-block\" data-node-type=\"blockContainer\" data-id=\"05fad9e3-fb78-48f2-ad1b-03cbf1ce19ba\"><div class=\"bn-block-content\" data-content-type=\"paragraph\"><p class=\"bn-inline-content\">第一列：核心概念</p></div></div></div></div></div></div></div><div class=\"react-renderer node-noteColumn bn-react-node-view-renderer bn-frame-node-view\"><div data-node-view-wrapper=\"\" style=\"white-space: normal; display: contents;\"><div class=\"dt-note-column\" data-node-view-content=\"\" data-frame-slot=\"\" data-node-type=\"noteColumn\" data-id=\"e5d8b78d-676b-405f-a8ca-728d3a8abf48\"><div data-node-view-content-react=\"\" data-node-view-wrapper=\"\" style=\"white-space: inherit; display: contents;\"><div class=\"bn-block-outer\" data-node-type=\"blockOuter\" data-id=\"41e6d0e9-18a4-410c-b419-f61e3df99fab\"><div class=\"bn-block\" data-node-type=\"blockContainer\" data-id=\"41e6d0e9-18a4-410c-b419-f61e3df99fab\"><div class=\"bn-block-content\" data-content-type=\"paragraph\"><p class=\"bn-inline-content\">第二列：推导</p></div></div></div></div></div></div></div><div class=\"react-renderer node-noteColumn bn-react-node-view-renderer bn-frame-node-view\"><div data-node-view-wrapper=\"\" style=\"white-space: normal; display: contents;\"><div class=\"dt-note-column\" data-node-view-content=\"\" data-frame-slot=\"\" data-node-type=\"noteColumn\" data-id=\"b030394e-f9e4-4939-85b6-914ec66f49eb\"><div data-node-view-content-react=\"\" data-node-view-wrapper=\"\" style=\"white-space: inherit; display: contents;\"><div class=\"bn-block-outer\" data-node-type=\"blockOuter\" data-id=\"1fcd5ffb-bb77-4547-a074-29e182db9c9c\"><div class=\"bn-block\" data-node-type=\"blockContainer\" data-id=\"1fcd5ffb-bb77-4547-a074-29e182db9c9c\"><div class=\"bn-block-content\" data-content-type=\"paragraph\"><p class=\"bn-inline-content\">第三列：例题</p></div></div></div></div></div></div></div><div class=\"react-renderer node-noteColumn bn-react-node-view-renderer bn-frame-node-view\"><div data-node-view-wrapper=\"\" style=\"white-space: normal; display: contents;\"><div class=\"dt-note-column\" data-node-view-content=\"\" data-frame-slot=\"\" data-node-type=\"noteColumn\" data-id=\"20ed2a80-2736-4cf3-9eed-319ad3baf064\"><div data-node-view-content-react=\"\" data-node-view-wrapper=\"\" style=\"white-space: inherit; display: contents;\"><div class=\"bn-block-outer\" data-node-type=\"blockOuter\" data-id=\"480b5104-8f78-4363-8713-5e1aff50ee5b\"><div class=\"bn-block\" data-node-type=\"blockContainer\" data-id=\"480b5104-8f78-4363-8713-5e1aff50ee5b\"><div class=\"bn-block-content\" data-content-type=\"paragraph\"><p class=\"bn-inline-content\">第四列：练习</p></div></div></div></div></div></div></div><div class=\"react-renderer node-noteColumn bn-react-node-view-renderer bn-frame-node-view\"><div data-node-view-wrapper=\"\" style=\"white-space: normal; display: contents;\"><div class=\"dt-note-column\" data-node-view-content=\"\" data-frame-slot=\"\" data-node-type=\"noteColumn\" data-id=\"b93963ba-2f93-4af2-8c7a-745e981a22be\"><div data-node-view-content-react=\"\" data-node-view-wrapper=\"\" style=\"white-space: inherit; display: contents;\"><div class=\"bn-block-outer\" data-node-type=\"blockOuter\" data-id=\"0a72a73c-e2b4-46a5-bd92-437fba4de5cb\"><div class=\"bn-block\" data-node-type=\"blockContainer\" data-id=\"0a72a73c-e2b4-46a5-bd92-437fba4de5cb\"><div class=\"bn-block-content\" data-content-type=\"paragraph\"><p class=\"bn-inline-content\">第五列：总结</p></div></div></div></div></div></div></div></div></div></div></div>",
+    "id": "columns5",
+    "overflowX": false,
+    "rect": {
+      "bottom": 455.140625,
+      "height": 50,
+      "left": 374,
+      "right": 1178,
+      "top": 405.140625,
+      "width": 804,
+      "x": 374,
+      "y": 405.140625
+    },
+    "text": "第一列：核心概念第二列：推导第三列：例题第四列：练习第五列：总结"
+  },
+  {
+    "html": "<div class=\"bn-block-outer\" data-node-type=\"blockOuter\" data-id=\"case-date\"><div class=\"bn-block\" data-node-type=\"blockContainer\" data-id=\"case-date\"><div class=\"bn-block-content\" data-content-type=\"paragraph\"><p class=\"bn-inline-content\"><img class=\"ProseMirror-separator\" alt=\"\"><span class=\"react-renderer node-noteDate bn-ic-react-node-view-renderer\" contenteditable=\"false\"><span as=\"span\" class=\"bn-inline-content-section\" data-inline-content-type=\"noteDate\" data-date=\"2026-10-20\" data-node-view-wrapper=\"\" style=\"white-space: normal;\"><input class=\"dt-note-date\" contenteditable=\"false\" aria-label=\"Date\" type=\"date\" value=\"2026-10-20\"></span></span> </p></div></div></div>",
+    "id": "date",
+    "overflowX": false,
+    "rect": {
+      "bottom": 422.140625,
+      "height": 29,
+      "left": 374,
+      "right": 1178,
+      "top": 393.140625,
+      "width": 804,
+      "x": 374,
+      "y": 393.140625
+    },
+    "text": " "
+  },
+  {
+    "html": "<div class=\"bn-block-outer\" data-node-type=\"blockOuter\" data-id=\"case-inlineMath\"><div class=\"bn-block\" data-node-type=\"blockContainer\" data-id=\"case-inlineMath\"><div class=\"bn-block-content\" data-content-type=\"paragraph\"><p class=\"bn-inline-content\"><img class=\"ProseMirror-separator\" alt=\"\"><span class=\"react-renderer node-inlineMath bn-ic-react-node-view-renderer\" contenteditable=\"false\"><span as=\"span\" class=\"bn-inline-content-section\" data-inline-content-type=\"inlineMath\" data-formula=\"E=mc^2\" data-node-view-wrapper=\"\" style=\"white-space: normal;\"><span contenteditable=\"false\" class=\"dt-note-inline-math\"><button><span class=\"dt-note-formula\"><span class=\"katex\"><span class=\"katex-mathml\"><math xmlns=\"http://www.w3.org/1998/Math/MathML\"><semantics><mrow><mi>E</mi><mo>=</mo><mi>m</mi><msup><mi>c</mi><mn>2</mn></msup></mrow><annotation encoding=\"application/x-tex\">E=mc^2</annotation></semantics></math></span><span class=\"katex-html\" aria-hidden=\"true\"><span class=\"base\"><span class=\"strut\" style=\"height:0.6833em;\"></span><span class=\"mord mathnormal\" style=\"margin-right:0.05764em;\">E</span><span class=\"mspace\" style=\"margin-right:0.2778em;\"></span><span class=\"mrel\">=</span><span class=\"mspace\" style=\"margin-right:0.2778em;\"></span></span><span class=\"base\"><span class=\"strut\" style=\"height:0.8141em;\"></span><span class=\"mord mathnormal\">m</span><span class=\"mord\"><span class=\"mord mathnormal\">c</span><span class=\"msupsub\"><span class=\"vlist-t\"><span class=\"vlist-r\"><span class=\"vlist\" style=\"height:0.8141em;\"><span style=\"top:-3.063em;margin-right:0.05em;\"><span class=\"pstrut\" style=\"height:2.7em;\"></span><span class=\"sizing reset-size6 size3 mtight\"><span class=\"mord mtight\">2</span></span></span></span></span></span></span></span></span></span></span></span></button></span></span></span> </p></div></div></div>",
+    "id": "inlineMath",
+    "overflowX": false,
+    "rect": {
+      "bottom": 421.640625,
+      "height": 28.5,
+      "left": 374,
+      "right": 1178,
+      "top": 393.140625,
+      "width": 804,
+      "x": 374,
+      "y": 393.140625
+    },
+    "text": "E=mc2E=mc^2E=mc2 "
+  },
+  {
+    "html": "<div class=\"bn-block-outer\" data-node-type=\"blockOuter\" data-id=\"7356c536-b6ef-4afd-b802-830a4c8d963b\"><div class=\"bn-block\" data-node-type=\"blockContainer\" data-id=\"7356c536-b6ef-4afd-b802-830a4c8d963b\"><div class=\"react-renderer node-taskView bn-react-node-view-renderer\" contenteditable=\"false\"><div class=\"bn-block-content\" data-content-type=\"taskView\" data-node-view-wrapper=\"\" style=\"white-space: normal;\"><div contenteditable=\"false\" class=\"dt-note-data-view\"><section><header><strong>Workspace tasks</strong><div role=\"tablist\" aria-label=\"Task view\"><button role=\"tab\" aria-selected=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-table2 lucide-table-2\" aria-hidden=\"true\"><path d=\"M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2V9M9 21H5a2 2 0 0 1-2-2V9m0 0h18\"></path></svg>Table</button><button role=\"tab\" aria-selected=\"false\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-columns3 lucide-columns-3\" aria-hidden=\"true\"><rect width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\"></rect><path d=\"M9 3v18\"></path><path d=\"M15 3v18\"></path></svg>Board</button><button role=\"tab\" aria-selected=\"false\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-list\" aria-hidden=\"true\"><path d=\"M3 5h.01\"></path><path d=\"M3 12h.01\"></path><path d=\"M3 19h.01\"></path><path d=\"M8 5h13\"></path><path d=\"M8 12h13\"></path><path d=\"M8 19h13\"></path></svg>List</button></div></header><label class=\"dt-note-view-search\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-search\" aria-hidden=\"true\"><path d=\"m21 21-4.34-4.34\"></path><circle cx=\"11\" cy=\"11\" r=\"8\"></circle></svg><input aria-label=\"Search tasks\" placeholder=\"Search tasks\" value=\"\"></label><div class=\"dt-note-table-scroll\"><table><thead><tr><th>Task</th><th>Status</th><th>Due date</th></tr></thead><tbody><tr><td>复习傅里叶变换</td><td><select aria-label=\"Status: 复习傅里叶变换\"><option value=\"todo\">To do</option><option value=\"doing\">In progress</option><option value=\"done\">Done</option></select></td><td><input aria-label=\"Due date: 复习傅里叶变换\" type=\"date\" value=\"\"></td></tr></tbody></table></div><form class=\"dt-note-new-task\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-plus\" aria-hidden=\"true\"><path d=\"M5 12h14\"></path><path d=\"M12 5v14\"></path></svg><input aria-label=\"New task\" placeholder=\"New task\" value=\"\"><button disabled=\"\">Add</button></form></section></div></div></div></div></div>",
+    "id": "taskTable",
+    "overflowX": false,
+    "rect": {
+      "bottom": 610.640625,
+      "height": 217.5,
+      "left": 374,
+      "right": 1178,
+      "top": 393.140625,
+      "width": 804,
+      "x": 374,
+      "y": 393.140625
+    },
+    "text": "Workspace tasksTableBoardListTaskStatusDue date复习傅里叶变换To doIn progressDoneAdd"
+  },
+  {
+    "html": "<div class=\"bn-block-outer\" data-node-type=\"blockOuter\" data-id=\"185d1c84-deea-4e70-a334-a40e0b281c20\"><div class=\"bn-block\" data-node-type=\"blockContainer\" data-id=\"185d1c84-deea-4e70-a334-a40e0b281c20\"><div class=\"react-renderer node-taskView bn-react-node-view-renderer\" contenteditable=\"false\"><div class=\"bn-block-content\" data-content-type=\"taskView\" data-view=\"board\" data-node-view-wrapper=\"\" style=\"white-space: normal;\"><div contenteditable=\"false\" class=\"dt-note-data-view\"><section><header><strong>Workspace tasks</strong><div role=\"tablist\" aria-label=\"Task view\"><button role=\"tab\" aria-selected=\"false\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-table2 lucide-table-2\" aria-hidden=\"true\"><path d=\"M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2V9M9 21H5a2 2 0 0 1-2-2V9m0 0h18\"></path></svg>Table</button><button role=\"tab\" aria-selected=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-columns3 lucide-columns-3\" aria-hidden=\"true\"><rect width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\"></rect><path d=\"M9 3v18\"></path><path d=\"M15 3v18\"></path></svg>Board</button><button role=\"tab\" aria-selected=\"false\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-list\" aria-hidden=\"true\"><path d=\"M3 5h.01\"></path><path d=\"M3 12h.01\"></path><path d=\"M3 19h.01\"></path><path d=\"M8 5h13\"></path><path d=\"M8 12h13\"></path><path d=\"M8 19h13\"></path></svg>List</button></div></header><label class=\"dt-note-view-search\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-search\" aria-hidden=\"true\"><path d=\"m21 21-4.34-4.34\"></path><circle cx=\"11\" cy=\"11\" r=\"8\"></circle></svg><input aria-label=\"Search tasks\" placeholder=\"Search tasks\" value=\"\"></label><div class=\"dt-note-task-columns\"><div><h4>To do<span>0</span></h4></div><div><h4>In progress<span>0</span></h4></div><div><h4>Done<span>1</span></h4><article><p>复习傅里叶变换</p><select aria-label=\"Status: 复习傅里叶变换\"><option value=\"todo\">To do</option><option value=\"doing\">In progress</option><option value=\"done\">Done</option></select></article></div></div><form class=\"dt-note-new-task\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-plus\" aria-hidden=\"true\"><path d=\"M5 12h14\"></path><path d=\"M12 5v14\"></path></svg><input aria-label=\"New task\" placeholder=\"New task\" value=\"\"><button disabled=\"\">Add</button></form></section></div></div></div></div></div>",
+    "id": "taskBoard",
+    "overflowX": false,
+    "rect": {
+      "bottom": 673.640625,
+      "height": 280.5,
+      "left": 374,
+      "right": 1178,
+      "top": 393.140625,
+      "width": 804,
+      "x": 374,
+      "y": 393.140625
+    },
+    "text": "Workspace tasksTableBoardListTo do0In progress0Done1复习傅里叶变换To doIn progressDoneAdd"
+  },
+  {
+    "html": "<div class=\"bn-block-outer\" data-node-type=\"blockOuter\" data-id=\"0e25430d-f802-4db6-b3eb-8c20dbff265c\"><div class=\"bn-block\" data-node-type=\"blockContainer\" data-id=\"0e25430d-f802-4db6-b3eb-8c20dbff265c\"><div class=\"react-renderer node-taskView bn-react-node-view-renderer\" contenteditable=\"false\"><div class=\"bn-block-content\" data-content-type=\"taskView\" data-view=\"list\" data-node-view-wrapper=\"\" style=\"white-space: normal;\"><div contenteditable=\"false\" class=\"dt-note-data-view\"><section><header><strong>Workspace tasks</strong><div role=\"tablist\" aria-label=\"Task view\"><button role=\"tab\" aria-selected=\"false\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-table2 lucide-table-2\" aria-hidden=\"true\"><path d=\"M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2V9M9 21H5a2 2 0 0 1-2-2V9m0 0h18\"></path></svg>Table</button><button role=\"tab\" aria-selected=\"false\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-columns3 lucide-columns-3\" aria-hidden=\"true\"><rect width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\"></rect><path d=\"M9 3v18\"></path><path d=\"M15 3v18\"></path></svg>Board</button><button role=\"tab\" aria-selected=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-list\" aria-hidden=\"true\"><path d=\"M3 5h.01\"></path><path d=\"M3 12h.01\"></path><path d=\"M3 19h.01\"></path><path d=\"M8 5h13\"></path><path d=\"M8 12h13\"></path><path d=\"M8 19h13\"></path></svg>List</button></div></header><label class=\"dt-note-view-search\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-search\" aria-hidden=\"true\"><path d=\"m21 21-4.34-4.34\"></path><circle cx=\"11\" cy=\"11\" r=\"8\"></circle></svg><input aria-label=\"Search tasks\" placeholder=\"Search tasks\" value=\"\"></label><div class=\"dt-note-task-list\"><label><input type=\"checkbox\" checked=\"\"><span>复习傅里叶变换</span><small></small></label></div><form class=\"dt-note-new-task\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"15\" height=\"15\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-plus\" aria-hidden=\"true\"><path d=\"M5 12h14\"></path><path d=\"M12 5v14\"></path></svg><input aria-label=\"New task\" placeholder=\"New task\" value=\"\"><button disabled=\"\">Add</button></form></section></div></div></div></div></div>",
+    "id": "taskList",
+    "overflowX": false,
+    "rect": {
+      "bottom": 576.140625,
+      "height": 183,
+      "left": 374,
+      "right": 1178,
+      "top": 393.140625,
+      "width": 804,
+      "x": 374,
+      "y": 393.140625
+    },
+    "text": "Workspace tasksTableBoardList复习傅里叶变换Add"
+  }
+]

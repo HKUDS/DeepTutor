@@ -39,6 +39,8 @@ export interface StartTurnInput {
   workspaceMode?: string | null;
   masteryPathId?: string | null;
   masterySessionMode?: string | null;
+  noteDocumentId?: string | null;
+  noteGeneration?: { block_id: string; kind?: string } | null;
   masteryPathLeaseManaged?: boolean;
   masteryAnswer?: MasteryCardAnswer | null;
   masterySkip?: MasteryCardSkip | null;
@@ -49,7 +51,6 @@ export interface StartTurnInput {
   timedMediaId?: string | null;
   timedMediaViewport?: TimedMediaViewport | null;
   parentMessageId?: number | null;
-  courseId?: string | null;
   persistUserMessage?: boolean;
   regenerate?: boolean;
   regeneratedFromMessageId?: number | null;
@@ -59,6 +60,8 @@ export interface StartTurnInput {
   subagentConsultBudget?: number | null;
   consultPartnerId?: string | null;
   partnerDiscussionGroupId?: string | null;
+  /** Hand the turn to a partner or a connected agent: `partner:<id>` / `subagent:<name>`. */
+  answerBy?: string | null;
   autoRoute?: boolean | null;
   /** Run `capability` for this turn only; the session keeps its own mode. */
   capabilityOnce?: boolean;

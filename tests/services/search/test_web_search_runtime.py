@@ -688,6 +688,49 @@ def test_source_filter_moderation_fails_open_on_errors() -> None:
     assert filtered.metadata["source_filter"]["removed_citations"] == 0
 
 
+def test_source_filter_moderation_flags_long_reference_truncated_on_whitespace() -> None:
+    # A reference whose text exceeds the 4000-char moderation cap and whose cut
+    # lands on whitespace must still be dropped when Moderation flags it. The
+    # decision dict was keyed by text.strip()[:4000] while the lookup used the
+    # unstripped row text, so the flag silently missed (fail-open).
+    flagged_texts: list[str] = []
+
+    def _flag_all(texts: list[str], *, api_key: str) -> list[bool]:
+        flagged_texts.extend(texts)
+        return [True for _ in texts]
+
+    long_content = "a " * 3000  # 6000 chars; the [:4000] cut lands on a space
+
+    response = WebSearchResponse(
+        query="news",
+        answer="",
+        provider="test",
+        citations=[
+            Citation(
+                id=1,
+                reference="[1]",
+                url="https://news.example/a",
+                title="flag",
+                snippet="this",
+                content=long_content,
+            ),
+        ],
+        search_results=[],
+    )
+
+    filtered = filter_web_search_response(
+        response,
+        content_filtering=False,
+        use_moderation=True,
+        moderation_api_key="sk-test",
+        request_moderation=_flag_all,
+    )
+
+    assert flagged_texts, "moderation requester was never called"
+    assert [c.id for c in filtered.citations] == []
+    assert "moderation_flagged" in filtered.metadata["source_filter"]["rejected_reasons"]
+
+
 def test_settings_from_config_defaults_and_educational_flag(monkeypatch) -> None:
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("DEEPTUTOR_OPENAI_API_KEY", raising=False)

@@ -8,7 +8,6 @@ import pytest
 
 from deeptutor.core.stream import StreamEvent, StreamEventType
 from deeptutor.learning.storage import LearningStore
-from deeptutor.services.courses import CourseService
 from deeptutor.services.session._turn_runtime_shared import _resolve_turn_failure_metadata
 from deeptutor.services.session.sqlite_store import SQLiteSessionStore
 from deeptutor.services.session.turn_runtime import (
@@ -447,76 +446,35 @@ async def test_start_turn_preserves_selection_tutor_runtime_context(
 
 
 @pytest.mark.asyncio
-async def test_start_turn_persists_requested_course(
+async def test_side_chat_starts_from_the_parent_alone(
     monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> None:
-    store = SQLiteSessionStore(tmp_path / "course-chat.db")
+    store = SQLiteSessionStore(tmp_path / "side-chat.db")
     runtime = TurnRuntimeManager(store)
-    course_service = CourseService(tmp_path / "courses")
-    course = course_service.create(name="Operating Systems")
-
-    monkeypatch.setattr("deeptutor.services.courses.get_course_service", lambda: course_service)
-
-    async def _noop_run_turn(_execution):
-        return None
-
-    monkeypatch.setattr(runtime, "_run_turn", _noop_run_turn)
-
-    session, _ = await runtime.start_turn(
-        {
-            "type": "start_turn",
-            "session_id": None,
-            "capability": "chat",
-            "content": "Explain virtual memory",
-            "tools": [],
-            "knowledge_bases": [],
-            "attachments": [],
-            "language": "en",
-            "config": {"_course_id": course.id},
-        }
-    )
-
-    persisted = await store.get_session(session["id"])
-    assert persisted is not None
-    assert persisted["preferences"]["course_id"] == course.id
-
-
-@pytest.mark.asyncio
-async def test_selection_tutor_inherits_parent_course(
-    monkeypatch: pytest.MonkeyPatch, tmp_path
-) -> None:
-    store = SQLiteSessionStore(tmp_path / "course-tutor.db")
-    runtime = TurnRuntimeManager(store)
-    course_service = CourseService(tmp_path / "courses")
-    course = course_service.create(name="Operating Systems")
     parent = await store.ensure_session(None)
-    await store.update_session_preferences(parent["id"], {"course_id": course.id})
-    source_text = "Load code and static data into memory before execution."
-    source_message_id = await store.add_message(parent["id"], "assistant", source_text)
-
-    monkeypatch.setattr("deeptutor.services.courses.get_course_service", lambda: course_service)
+    await store.add_message(parent["id"], "user", "Explain fork()")
+    leaf = await store.add_message(parent["id"], "assistant", "It returns twice.")
 
     async def _noop_run_turn(_execution):
         return None
 
     monkeypatch.setattr(runtime, "_run_turn", _noop_run_turn)
 
-    child, _ = await runtime.start_turn(
+    child, turn = await runtime.start_turn(
         {
             "type": "start_turn",
             "session_id": None,
             "capability": "chat",
-            "content": "Will memory explode?",
+            "content": "Why twice?",
             "tools": [],
             "knowledge_bases": [],
             "attachments": [],
             "language": "en",
             "config": {
                 "selection_tutor_context": {
-                    "selected_text": "Load code and static data into memory",
+                    "scope": "conversation",
                     "parent_session_id": parent["id"],
-                    "source_message_id": source_message_id,
-                    "source_message_text": "forged fallback",
+                    "source_message_id": leaf,
                 }
             },
         }
@@ -524,9 +482,12 @@ async def test_selection_tutor_inherits_parent_course(
 
     persisted = await store.get_session(child["id"])
     assert persisted is not None
-    assert persisted["preferences"]["course_id"] == course.id
     assert persisted["preferences"]["parent_session_id"] == parent["id"]
     assert persisted["preferences"]["session_kind"] == "selection_tutor"
+    assert persisted["preferences"]["tutor_scope"] == "conversation"
+    # The transcript is resolved again when the turn runs, never queued with it.
+    queued = runtime._executions[turn["id"]].payload["selection_tutor_context"]
+    assert "conversation_messages" not in queued
 
 
 @pytest.mark.asyncio

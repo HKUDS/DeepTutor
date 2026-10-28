@@ -204,7 +204,7 @@ function ExtensionToolbar({
     <>
       <div
         data-reading-presentation={ageMode}
-        className="flex shrink-0 gap-1.5 overflow-x-auto border-b border-[var(--border)] bg-[color-mix(in_srgb,var(--muted)_25%,transparent)] px-2.5 py-2"
+        className="dt-reading-extensions flex shrink-0 gap-1.5 overflow-x-auto border-b border-[var(--border)] bg-[color-mix(in_srgb,var(--muted)_25%,transparent)] px-2.5 py-2"
       >
         {actions.map(({ extension, action }) => {
           const key = `${extension.id}:${action.id}`;
@@ -277,7 +277,7 @@ function ExtensionToolbar({
       {speaking ? (
         <div
           role="status"
-          className="flex shrink-0 items-center gap-2 border-b border-[var(--border)] bg-[var(--card)] px-3 py-2 text-xs text-[var(--muted-foreground)]"
+          className="mx-3 mb-2 flex shrink-0 items-center gap-2 rounded-xl bg-[var(--card)] px-3 py-2 text-xs text-[var(--muted-foreground)] shadow-[var(--dt-shadow-xs,0_0_0_1px_rgba(0,0,0,.06))]"
         >
           <Volume2 size={14} />
           <span>{t("Reading aloud")}</span>
@@ -388,7 +388,7 @@ export function ExtensionResult({
       className={
         card
           ? "text-[12.5px] leading-relaxed text-[var(--foreground)] [&>*:first-child]:mt-0"
-          : "relative shrink-0 border-b border-[var(--border)] bg-[var(--card)] px-3 py-3 text-xs text-[var(--foreground)]"
+          : "relative mx-3 mb-2 shrink-0 rounded-xl bg-[var(--card)] px-3 py-3 text-xs text-[var(--foreground)] shadow-[var(--dt-shadow-xs,0_0_0_1px_rgba(0,0,0,.06))]"
       }
     >
       {card ? null : (
@@ -440,7 +440,7 @@ export function ExtensionResult({
           {terms.map((term, index) => (
             <div
               key={`${index}-${term.term}`}
-              className="border-t border-[var(--border)] pt-2 first:border-t-0 first:pt-0"
+              className="pt-2.5 first:pt-0"
             >
               <dt className="font-medium">{term.term}</dt>
               <dd className="mt-1 text-[var(--muted-foreground)]">{term.meaning}</dd>
@@ -543,7 +543,7 @@ function QuizQuestions({
                   onClick={() => {
                     void persistAnswer(question, index, choiceIndex);
                   }}
-                  className="rounded-md border border-[var(--border)] px-2 py-1.5 text-left text-[var(--muted-foreground)] transition hover:bg-[var(--muted)] aria-pressed:bg-[var(--muted)] aria-pressed:text-[var(--foreground)]"
+                  className="rounded-md bg-[var(--muted)]/50 px-2 py-1.5 text-left text-[var(--muted-foreground)] transition hover:bg-[var(--muted)] aria-pressed:bg-[color-mix(in_srgb,var(--primary)_10%,transparent)] aria-pressed:text-[var(--foreground)]"
                 >
                   {String.fromCharCode(65 + choiceIndex)}. {choice}
                 </button>

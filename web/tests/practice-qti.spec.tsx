@@ -41,8 +41,8 @@ beforeEach(async () => {
 it.each([
   { filename: "questions.xml", type: "application/xml", target: "bank" as const },
   { filename: "questions.zip", type: "application/zip", target: "mistakes" as const },
-])("previews $filename as QTI with the selected target and course", async ({ filename, type, target }) => {
-  render(<PracticeImport initialTarget="bank" courseId="course-qti" onClose={vi.fn()} onImported={vi.fn()} />);
+])("previews $filename as QTI with the selected target", async ({ filename, type, target }) => {
+  render(<PracticeImport initialTarget="bank" onClose={vi.fn()} onImported={vi.fn()} />);
   fireEvent.change(screen.getByRole("combobox", { name: "Import into" }), {
     target: { value: target },
   });
@@ -50,7 +50,7 @@ it.each([
   fireEvent.change(screen.getByLabelText(/Choose a question file/), { target: { files: [file] } });
 
   expect(await screen.findByText(filename)).toBeVisible();
-  expect(api.previewQtiImport).toHaveBeenCalledExactlyOnceWith(file, target, "course-qti");
+  expect(api.previewQtiImport).toHaveBeenCalledExactlyOnceWith(file, target);
   expect(api.previewPracticeImport).not.toHaveBeenCalled();
   expect(screen.getByRole("checkbox", { name: /ready-a/ })).toBeChecked();
   expect(screen.getByRole("checkbox", { name: /ready-b/ })).toBeChecked();

@@ -130,6 +130,8 @@ loop:
     Complete only protocol steps, state transitions, or user interactions already made
     necessary by the work above; tools remain available only for that required follow-up.
     Then stop calling tools and provide the final user-facing answer.
+  user_sent_while_working: |-
+    [The user sent this while you were working. Take it into account from here on: answer it, or adjust what you are doing.]
   continue_truncated: |-
     Your previous response stopped at the token limit. Continue from where it ended
     without repeating it, and complete the user-facing answer.

@@ -77,7 +77,7 @@ Multi-stage pipelines that own the turn:
 | `math_animator`  | concept_analysis → concept_design → code_generation → code_retry → summary → render_output |
 | `mastery_path`   | responding (Guided Learning — chat loop + mastery tools, gated per topic type) |
 | `immersive_reading` | responding (document- or timestamp-grounded media reading loop) |
-| `course_study`   | responding (course-state sensing and hand-off loop)   |
+| `video_lesson`   | code_generation → render_check → render_output (Remotion lesson played live in the browser, with TTS narration) |
 
 All capabilities converge on `emit_capability_result()` in
 `deeptutor/capabilities/_shared.py` so every turn emits the same envelope

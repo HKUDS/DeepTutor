@@ -1,0 +1,209 @@
+{
+  "id": "0c2d24985c4f",
+  "title": "收藏夹 · 旧笔记兼容验收",
+  "content": "# 原有标题\n\n保留 **加粗** 与 $E=mc^2$。\n\n| 条目 | 数值 |\n| --- | --- |\n| A | 1 |\n\n$$\nx^2+y^2=1\n$$\n\n原文末尾校验。\n\n# 研究问题\n水在环境中如何循环？\n\n## 证据\n| 过程 | 能量 |\n| --- | --- |\n| 蒸发 | 吸热 |\n| 凝结 | 放热 |\n\n## 结论\n水循环依靠太阳能驱动。\n\n## 资料边界\n这是交互验收用的简短研究资料。\n\n[Source](/notebooks/215dbe83?record=0f1dfc6c)",
+  "blocks": [
+    {
+      "id": "9aa0e2f5-069a-402d-94e0-c32a7081e4b3",
+      "type": "heading",
+      "props": {
+        "backgroundColor": "default",
+        "textColor": "default",
+        "textAlignment": "left",
+        "level": 1,
+        "isToggleable": false
+      },
+      "content": [
+        {
+          "type": "text",
+          "text": "原有标题",
+          "styles": {}
+        }
+      ],
+      "children": []
+    },
+    {
+      "id": "956b8a79-5b05-4713-9eda-07c4354c7485",
+      "type": "paragraph",
+      "props": {
+        "backgroundColor": "default",
+        "textColor": "default",
+        "textAlignment": "left"
+      },
+      "content": [
+        {
+          "type": "text",
+          "text": "保留 ",
+          "styles": {}
+        },
+        {
+          "type": "text",
+          "text": "加粗",
+          "styles": {
+            "bold": true
+          }
+        },
+        {
+          "type": "text",
+          "text": " 与 ",
+          "styles": {}
+        },
+        {
+          "type": "inlineMath",
+          "props": {
+            "formula": "E=mc^2"
+          }
+        },
+        {
+          "type": "text",
+          "text": "。",
+          "styles": {}
+        }
+      ],
+      "children": []
+    },
+    {
+      "id": "f13e867c-e989-427c-80ff-b75b6cc8bb96",
+      "type": "table",
+      "props": {
+        "textColor": "default"
+      },
+      "content": {
+        "type": "tableContent",
+        "columnWidths": [
+          null,
+          null
+        ],
+        "headerRows": 1,
+        "rows": [
+          {
+            "cells": [
+              {
+                "type": "tableCell",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "条目",
+                    "styles": {}
+                  }
+                ],
+                "props": {
+                  "colspan": 1,
+                  "rowspan": 1,
+                  "backgroundColor": "default",
+                  "textColor": "default",
+                  "textAlignment": "left"
+                }
+              },
+              {
+                "type": "tableCell",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "数值",
+                    "styles": {}
+                  }
+                ],
+                "props": {
+                  "colspan": 1,
+                  "rowspan": 1,
+                  "backgroundColor": "default",
+                  "textColor": "default",
+                  "textAlignment": "left"
+                }
+              }
+            ]
+          },
+          {
+            "cells": [
+              {
+                "type": "tableCell",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "A",
+                    "styles": {}
+                  }
+                ],
+                "props": {
+                  "colspan": 1,
+                  "rowspan": 1,
+                  "backgroundColor": "default",
+                  "textColor": "default",
+                  "textAlignment": "left"
+                }
+              },
+              {
+                "type": "tableCell",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "1",
+                    "styles": {}
+                  }
+                ],
+                "props": {
+                  "colspan": 1,
+                  "rowspan": 1,
+                  "backgroundColor": "default",
+                  "textColor": "default",
+                  "textAlignment": "left"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "children": []
+    },
+    {
+      "id": "78193efd-5cee-4a45-8e32-72b555e7492c",
+      "type": "math",
+      "props": {
+        "formula": "x^2+y^2=1"
+      },
+      "children": []
+    },
+    {
+      "id": "170bb051-b66d-4c6f-9511-e9df62b7a1d4",
+      "type": "paragraph",
+      "props": {
+        "backgroundColor": "default",
+        "textColor": "default",
+        "textAlignment": "left"
+      },
+      "content": [
+        {
+          "type": "text",
+          "text": "原文末尾校验。",
+          "styles": {}
+        }
+      ],
+      "children": []
+    },
+    {
+      "id": "a984ae9a77d143b8aac19eb0720c188c",
+      "type": "clip",
+      "props": {
+        "title": "研究 · 水循环证据",
+        "markdown": "# 研究问题\n水在环境中如何循环？\n\n## 证据\n| 过程 | 能量 |\n| --- | --- |\n| 蒸发 | 吸热 |\n| 凝结 | 放热 |\n\n## 结论\n水循环依靠太阳能驱动。\n\n## 资料边界\n这是交互验收用的简短研究资料。",
+        "sourceUrl": "/notebooks/215dbe83?record=0f1dfc6c",
+        "sourceId": "0f1dfc6c",
+        "favoriteType": "research",
+        "summary": "交互验收：展开原文、返回来源、保存重开。",
+        "metadata": "{}",
+        "expanded": true
+      },
+      "children": []
+    }
+  ],
+  "schema_version": 1,
+  "revision": 3,
+  "parent_id": null,
+  "icon": "",
+  "cover": "",
+  "pinned": false,
+  "applied_suggestion_ids": [],
+  "created_at": 1792242251.730655,
+  "updated_at": 1792242361.0827892
+}

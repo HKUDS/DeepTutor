@@ -5,7 +5,10 @@ import LearningJournalPanel from "@/components/space/LearningJournalPanel";
 import { getLearningJournal, type LearningJournal } from "@/lib/learning-journal-api";
 
 const route = vi.hoisted(() => ({ workspace: "a" }));
-vi.mock("next/navigation", () => ({ useSearchParams: () => new URLSearchParams({ dt_workspace: route.workspace }) }));
+vi.mock("next/navigation", () => ({
+  usePathname: () => "/space/journal",
+  useSearchParams: () => new URLSearchParams({ dt_workspace: route.workspace }),
+}));
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 vi.mock("@/lib/learning-journal-api", () => ({ getLearningJournal: vi.fn() }));
 const empty: LearningJournal = {

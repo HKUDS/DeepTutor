@@ -1,0 +1,105 @@
+{
+  "branch": "dt-exp-idp",
+  "frontend_unit_tests": 70,
+  "note_regression_tests": 13,
+  "backend_tests": 99,
+  "production_build": "passed",
+  "ui_types": [
+    "chat",
+    "research",
+    "question",
+    "solve",
+    "reading",
+    "video_learning",
+    "co_writer",
+    "tutorbot",
+    "guided_learning"
+  ],
+  "fixture_provenance": "Synthetic learning data; all collection insertion, expansion, collapse, moves, source navigation and rename flows exercised in the browser. Chat capture saved through actual UI and AI summary. Other typed records prepared with local API.",
+  "source_collection_renamed": "收藏夹验收 · 已归档资料",
+  "note_title": "收藏夹 · 多类型与来源验收",
+  "revision": 9,
+  "checks": [
+    {
+      "type": "",
+      "id": "22754e42",
+      "expanded": false,
+      "source_resolves": true,
+      "original_matches": true,
+      "sha256": "22865c01659d1e96decc3cc2bc366a3a93a34e07e1d7125b6aa0a0a8d11cf5b0"
+    },
+    {
+      "type": "chat",
+      "id": "22754e42",
+      "expanded": false,
+      "source_resolves": true,
+      "original_matches": true,
+      "sha256": "22865c01659d1e96decc3cc2bc366a3a93a34e07e1d7125b6aa0a0a8d11cf5b0"
+    },
+    {
+      "type": "research",
+      "id": "0f1dfc6c",
+      "expanded": false,
+      "source_resolves": true,
+      "original_matches": true,
+      "sha256": "58708a2d0d36609d54bd9e9455d9db7acb9b6a8f700dad63822448c98195512b"
+    },
+    {
+      "type": "question",
+      "id": "9ca5160e",
+      "expanded": true,
+      "source_resolves": true,
+      "original_matches": true,
+      "sha256": "b3bb7d9436b739524edaf0031f5b04cf30f829b93503a3bf14bb7d6a8afd9de7"
+    },
+    {
+      "type": "solve",
+      "id": "f5034ee1",
+      "expanded": false,
+      "source_resolves": true,
+      "original_matches": true,
+      "sha256": "9efd76fbd028639d2e086cad15b9966c33180065649e02f1c414db196538f0e9"
+    },
+    {
+      "type": "reading",
+      "id": "6024a065",
+      "expanded": false,
+      "source_resolves": true,
+      "original_matches": true,
+      "sha256": "812e1a16cb594dfc0d286ea605ddb2355df4faa3c06d5f5c9de6b1f7d34b7b18"
+    },
+    {
+      "type": "video_learning",
+      "id": "ad7c3961",
+      "expanded": false,
+      "source_resolves": true,
+      "original_matches": true,
+      "sha256": "eced9cbdbcd6fe1b6a0468243a96eb848fe3b1938ce6a107c30b62169f2f460c"
+    },
+    {
+      "type": "co_writer",
+      "id": "f8892445",
+      "expanded": false,
+      "source_resolves": true,
+      "original_matches": true,
+      "sha256": "d550c84d9431e936dc641d10477b45929bb365cfd437b07e127f77450c59ea6b"
+    },
+    {
+      "type": "tutorbot",
+      "id": "17b3249c",
+      "expanded": false,
+      "source_resolves": true,
+      "original_matches": true,
+      "sha256": "ff47fe8d7c7051ca5a805d391a1cea1db348e866b49965fcb19da9df00f7dcc8"
+    },
+    {
+      "type": "chat",
+      "id": "ba719159",
+      "expanded": false,
+      "source_resolves": true,
+      "original_matches": true,
+      "sha256": "b3161890bfb5f3d2c809173b5f1c0e6e372d55f72c81caadb4db30b31259ca7c"
+    }
+  ],
+  "final_url": "http://127.0.0.1:3784/co-writer/a8efdf7eee87?dt_workspace="
+}

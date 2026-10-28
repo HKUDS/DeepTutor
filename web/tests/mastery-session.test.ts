@@ -127,3 +127,8 @@ test("only reading URLs are read as reading conversations", () => {
   assert.equal(readingSessionIdFromPath("/chat/abc"), null);
   assert.equal(readingSessionIdFromPath("/learning/mastery/p1/sessions/abc"), null);
 });
+
+test("a note companion conversation opens back on its page with its thread", () => {
+  const item = session({ note_document_id: "0c2d24985c4f" });
+  assert.match(sessionRoute(item), /^\/co-writer\/0c2d24985c4f\?chat=session-1/);
+});

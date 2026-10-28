@@ -1,0 +1,41 @@
+{
+  "branch": "dt-exp-idp",
+  "note_id": "60b5f3fff04b",
+  "clips": 11,
+  "unique_sources": 9,
+  "ui_checks": [
+    "batch insert after text and active favorite",
+    "single-step immediate undo/redo after picker closes",
+    "nested batch order and undo/redo",
+    "nest/unnest via block menu",
+    "drag parent with entire child subtree",
+    "drag nested favorite to root and undo/redo",
+    "expanded state survives reopening",
+    "nine source round-trips open the exact favorite"
+  ],
+  "persistence": {
+    "full_tree_identical_after_reopen": true,
+    "original_markdown_and_metadata_match_sources": true,
+    "unique_block_ids": true,
+    "source_ids_and_links_preserved": true
+  },
+  "fixes": [
+    "active favorite becomes insertion anchor",
+    "atomic ordered batch insertion with separate history boundary",
+    "picker returns keyboard focus to document",
+    "favorite controls support document undo/redo",
+    "view expansion does not consume content history",
+    "nest/unnest controls for atomic blocks",
+    "hide lossy text conversion for non-inline blocks"
+  ],
+  "validation": {
+    "frontend_tests": 31,
+    "typecheck": "passed",
+    "eslint": "passed",
+    "architecture": "passed",
+    "production_build": "passed",
+    "production_ui": "11 clips reopened with saved expansion; nested source opened exact favorite",
+    "production_persistence": "full block tree equals before-reopen snapshot"
+  },
+  "url": "http://127.0.0.1:3784/co-writer/60b5f3fff04b?dt_workspace="
+}

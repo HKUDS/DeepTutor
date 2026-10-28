@@ -265,7 +265,7 @@ async def test_unknown_objective_cannot_gain_delivered_record(lesson):
 
 
 @pytest.mark.asyncio
-async def test_retracted_optimistic_prose_cannot_supply_teaching_evidence(lesson):
+async def test_finish_check_cannot_retract_delivered_teaching(lesson):
     bus = StreamBus(assign_seq=True)
     await bus.content(
         EXPLANATION,
@@ -283,12 +283,12 @@ async def test_retracted_optimistic_prose_cannot_supply_teaching_evidence(lesson
             completion_metadata={"call_id": "rejected", "answer_visible": True},
         )
     )
-    assert not (await note(bus)).success
-    assert not lesson.store.load("p").explained_objectives
+    assert (await note(bus)).success
+    assert lesson.store.load("p").explained_objectives
 
 
 @pytest.mark.asyncio
-async def test_visibility_corrections_are_scoped_to_the_matching_call():
+async def test_legacy_visibility_marker_cannot_retract_public_content():
     bus = StreamBus(assign_seq=True)
     await bus.content(
         "discarded",
@@ -310,4 +310,4 @@ async def test_visibility_corrections_are_scoped_to_the_matching_call():
         metadata={"call_id": "bad", "answer_visible": False},
     )
     snapshot = bus.public_content_snapshot(source="mastery_path", stage="responding")
-    assert [part[2] for part in snapshot] == ["accepted", "callless"]
+    assert [part[2] for part in snapshot] == ["discarded", "accepted", "callless"]

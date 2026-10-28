@@ -378,7 +378,17 @@ class PartnerActivityFeed:
                 recent[activity_id] = []
                 while len(recent) > self.max_recent:
                     recent.pop(next(iter(recent)))
-            recent[activity_id].append(dict(frame))
+            retained = recent[activity_id]
+            retained.append(dict(frame))
+            if frame.get("type") == "done":
+                # Live subscribers have every frame already. What a late one
+                # replays of a finished turn is the gap before history caught
+                # up — the question and the answer — and history carries the
+                # trace. Holding every streamed delta of 32 turns per person
+                # was most of a busy partner's memory.
+                recent[activity_id] = [
+                    item for item in retained if item.get("type") != "stream_event"
+                ]
         for queue in tuple(self._subscribers.get(key, ())):
             queue.put_nowait(dict(frame))
 
@@ -1410,6 +1420,15 @@ class PartnerManager:
                     {"type": "done"},
                 ]
             )
+        finally:
+            # A finished turn is read back from history, never re-attached
+            # (see ``subscribe_web_turn``), and its subscribers already hold
+            # every frame. Keeping it kept each conversation's last reply —
+            # every streamed delta — for as long as the partner ran.
+            instance = self._partners.get(partner_id)
+            if instance is not None and instance.live_turns.get(session_key) is turn:
+                instance.live_turns.pop(session_key, None)
+            turn.events.clear()
 
     # ── Session lifecycle (web management) ────────────────────────
 

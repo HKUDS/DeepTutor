@@ -1,0 +1,151 @@
+{
+  "expandResults": [
+    {
+      "title": "聊天 · 收藏原文 水循环",
+      "expanded": "true",
+      "body": "用户\n助手"
+    },
+    {
+      "title": "研究 · 收藏原文 研究",
+      "expanded": "true",
+      "body": "目录\n研究问题\n\n水在环境中如何循环？\n\n证据\n过程\t能量\n蒸发\t吸热\n凝结\t放热\n结论\n\n水循环依靠太阳能驱动。\n\n资料边界\n\n这是交互验收用的简短研究资料。"
+    },
+    {
+      "title": "题目 · 收藏原文 题目",
+      "expanded": "true",
+      "body": "题目\n\n水循环的三个主要阶段是什么？\n\nA. 蒸发、凝结和降水\nB. 燃烧、熔化和结晶\n查看答案与解析"
+    },
+    {
+      "title": "解答 · 收藏原文 解题",
+      "expanded": "true",
+      "body": "题目\n\n水池原有 10 L 水，蒸发 2 L 后剩余多少？\n\n查看答案与解析"
+    },
+    {
+      "title": "阅读 · 收藏原文 阅读",
+      "expanded": "true",
+      "body": "目录\n原文摘录\n\n水是生命活动的重要介质。\n\n阅读批注\n\n关注水的比热容和相变。\n\n延伸思考\n\n海洋如何调节温度？"
+    },
+    {
+      "title": "视频学习 · 收藏原文 视频",
+      "expanded": "true",
+      "body": "00:00 · 学习开始\n00:01 · 观察水循环\n视频学习\n\n00:00 学习开始 00:01 观察水循环\n\n笔记\n\n通过播放进度核对时间点。"
+    },
+    {
+      "title": "笔记本 · 收藏原文 笔记",
+      "expanded": "true",
+      "body": "目录\n核心概念\n\n水循环包含三种变化。\n\n我的观察\n\n雨后水洼逐渐缩小。\n\n下一步\n\n记录每日水位。"
+    },
+    {
+      "title": "伙伴 · 收藏原文 伙伴",
+      "expanded": "true",
+      "body": "用户\n\n怎样记住水循环？\n\n助手\n\n想象一滴水旅行：升空、成云、落雨。"
+    },
+    {
+      "title": "引导学习 · 收藏原文 引导学习",
+      "expanded": "true",
+      "body": "目录\n学习目标\n\n理解水的状态变化。\n\n第一步\n\n观察杯壁水滴。\n\n反思\n\n为什么水滴出现在外壁？"
+    }
+  ],
+  "sourceChecks": [
+    {
+      "kind": "研究",
+      "expanded": "true"
+    },
+    {
+      "kind": "题目",
+      "expanded": "true"
+    },
+    {
+      "kind": "解答",
+      "expanded": "true"
+    },
+    {
+      "kind": "阅读",
+      "expanded": "true"
+    },
+    {
+      "kind": "视频学习",
+      "expanded": "true"
+    },
+    {
+      "kind": "笔记本",
+      "expanded": "true"
+    },
+    {
+      "kind": "伙伴",
+      "expanded": "true"
+    },
+    {
+      "kind": "引导学习",
+      "expanded": "true"
+    }
+  ],
+  "moveChecks": [
+    {
+      "kind": "研究",
+      "source": "true"
+    },
+    {
+      "kind": "题目",
+      "source": "true"
+    },
+    {
+      "kind": "解答",
+      "source": "true"
+    },
+    {
+      "kind": "阅读",
+      "source": "true"
+    },
+    {
+      "kind": "视频学习",
+      "source": "true"
+    },
+    {
+      "kind": "笔记本",
+      "source": "true"
+    },
+    {
+      "kind": "伙伴",
+      "source": "true"
+    },
+    {
+      "kind": "引导学习",
+      "source": "true"
+    }
+  ],
+  "movedLinkChecks": [
+    {
+      "kind": "研究",
+      "expanded": "true"
+    },
+    {
+      "kind": "题目",
+      "expanded": "true"
+    },
+    {
+      "kind": "解答",
+      "expanded": "true"
+    },
+    {
+      "kind": "阅读",
+      "expanded": "true"
+    },
+    {
+      "kind": "视频学习",
+      "expanded": "true"
+    },
+    {
+      "kind": "笔记本",
+      "expanded": "true"
+    },
+    {
+      "kind": "伙伴",
+      "expanded": "true"
+    },
+    {
+      "kind": "引导学习",
+      "expanded": "true"
+    }
+  ]
+}

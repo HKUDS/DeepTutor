@@ -20,12 +20,10 @@ export function PracticeImport({
   onClose,
   onImported,
   initialTarget,
-  courseId = "",
 }: {
   onClose: () => void;
   onImported: (message: string) => void;
   initialTarget: "bank" | "mistakes";
-  courseId?: string;
 }) {
   const { t } = useTranslation();
   const [target, setTarget] = useState(initialTarget);
@@ -62,13 +60,13 @@ export function PracticeImport({
           setError(t("QTI files must not exceed 50 MiB."));
           return;
         }
-        const result = await previewQtiImport(file, target, courseId);
+        const result = await previewQtiImport(file, target);
         setQtiPreview(result);
         setSelected(result.packageValidation === "valid"
           ? result.items.filter(item => item.bankAdmission === "ready").map(item => item.itemKey)
           : []);
       } else {
-        setPreview(await previewPracticeImport(file, target, courseId));
+        setPreview(await previewPracticeImport(file, target));
       }
     } catch (err) {
       setError(importError(err));

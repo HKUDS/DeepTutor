@@ -27,7 +27,7 @@ at http://localhost:3784 (API :8000). No remote deployment was performed.
 - SQLite backup includes WAL content. Numeric IDs are preserved. Nonempty target
   features and conflicting IDs block migration; initialized empty databases do
   not. Explicit output exports include orphaned files.
-- Referenced courses, historical request snapshots, quiz followups, attachments
+- Historical request snapshots, quiz followups, attachments
   and published blobs participate in migration. PocketBase conversations and
   the accompanying local SQLite quiz store move together.
 - Cross-process activity leases exclude migrations from app writes and archive
