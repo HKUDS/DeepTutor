@@ -112,6 +112,16 @@ _INLINE_CODE_SPAN_RE = re.compile(r"`[^`\n]*`")
 _MATH_SPAN_RE = re.compile(
     r"\\\[[\s\S]*?\\\]|\\\([\s\S]*?\\\)|\$\$[\s\S]*?\$\$|\$(?!\s)(?:\\.|[^$\n])*?(?<!\s)\$"
 )
+# One pass over all literal spans: the leftmost span wins, and at the same
+# position fenced code beats inline code beats math. Masking them in separate
+# passes lets a later pattern swallow an earlier placeholder (``$`` inside
+# inline code), which then never gets restored.
+_PROTECTED_SPAN_RE = re.compile(
+    "|".join(
+        f"(?:{pattern.pattern})"
+        for pattern in (_FENCED_CODE_BLOCK_RE, _INLINE_CODE_SPAN_RE, _MATH_SPAN_RE)
+    )
+)
 
 
 def _is_escaped(text: str, index: int) -> bool:
@@ -240,9 +250,7 @@ def _repair_chinese_emphasis_for_persistence(content: str, language: str) -> str
         protected.append(match.group(0))
         return f"\x00CJK_PROTECTED_{len(protected) - 1}\x00"
 
-    masked = _FENCED_CODE_BLOCK_RE.sub(mask, content)
-    masked = _MATH_SPAN_RE.sub(mask, masked)
-    masked = _INLINE_CODE_SPAN_RE.sub(mask, masked)
+    masked = _PROTECTED_SPAN_RE.sub(mask, content)
     repaired = "\n".join(_repair_chinese_emphasis_line(line) for line in masked.split("\n"))
     return re.sub(
         r"\x00CJK_PROTECTED_(\d+)\x00",

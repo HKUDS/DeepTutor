@@ -98,6 +98,15 @@ class TestAssemblePersistedAnswer:
         content = "`中文*，重点*`\n$中文*，重点*$\n中文***，重点***内容"
         assert _repair_chinese_emphasis_for_persistence(content, "zh") == content
 
+    def test_preserves_inline_code_containing_dollar_signs(self) -> None:
+        content = "PHP 对象：`$b = $a`；PHP 数组：`$b = $a`。"
+        assert _repair_chinese_emphasis_for_persistence(content, "zh") == content
+        content = "价格 $5 与 `$x$`，公式 $a`b$ 后中文*，重点*内容"
+        assert (
+            _repair_chinese_emphasis_for_persistence(content, "zh")
+            == "价格 $5 与 `$x$`，公式 $a`b$ 后中文 *，重点* 内容"
+        )
+
     def test_continuation_preserves_exact_visible_boundary(self) -> None:
         segments = [
             ("round-part-1", "Part one. "),
