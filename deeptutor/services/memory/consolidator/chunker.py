@@ -51,12 +51,18 @@ def chunk_with_boundary(
 ) -> list[ChunkSpan]:
     """Cut ``text`` into ≤ ``budget`` chunks aligned to natural boundaries.
 
-    * Target size = ``clamp(ceil(len(text) / budget), min, max)``.
+    * Target size = ``clamp(ceil(len(text) / budget), min, max)``,
+      widened when needed so ``budget`` overlapped windows still reach
+      the end of the text.
     * Right edge of each chunk is extended forward to the next
       ``boundary`` so no sentence/paragraph is split.
     * Adjacent chunks overlap by ``round(target * overlap_ratio)`` chars.
     * If the input is short enough to fit in a single chunk, returns
       one ``ChunkSpan`` covering everything.
+
+    Returns at most ``budget`` chunks unless ``max_chunk_chars`` forces
+    more (each window is capped, so covering a very long text with a
+    tiny cap needs more than ``budget`` pieces).
     """
     if not text.strip():
         return []
@@ -67,6 +73,15 @@ def chunk_with_boundary(
     target = math.ceil(n / budget)
     target = max(min_chunk_chars, min(max_chunk_chars, target))
     overlap = max(0, min(target - 1, round(target * overlap_ratio)))
+    # Overlap shrinks the advance to ``target - overlap`` per chunk, so a
+    # budget of windows would stop short of the end and overflow the
+    # budget (see #2111). Widen the window until ``(budget - 1)`` strides
+    # plus one window cover ``n``. The cap still wins: if ``target`` is
+    # already at ``max_chunk_chars``, more chunks are unavoidable.
+    while target < max_chunk_chars and (budget - 1) * (target - overlap) + target < n:
+        covered = (budget - 1) * (target - overlap) + target
+        target = min(max_chunk_chars, target + max(1, math.ceil((n - covered) / budget)))
+        overlap = max(0, min(target - 1, round(target * overlap_ratio)))
 
     # Short-circuit: input fits in one chunk.
     if n <= target:

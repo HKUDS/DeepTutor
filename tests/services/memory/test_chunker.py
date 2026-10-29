@@ -74,6 +74,33 @@ def test_budget_caps_chunk_count() -> None:
     assert len(chunks) <= 5
 
 
+def test_budget_holds_when_overlap_shrinks_the_stride() -> None:
+    # Regression: with overlap_ratio > 0 the stride is shorter than the
+    # window, so budget windows used to stop short of the end and one
+    # extra chunk was emitted (issue #2111).
+    text = "".join(f"paragraph {i}. " + "x" * 120 + "\n\n" for i in range(200))
+    for budget in (2, 5, 10, 20):
+        chunks = chunk_with_boundary(
+            text, budget=budget, overlap_ratio=0.10,
+            min_chunk_chars=1000, max_chunk_chars=64000,
+        )
+        assert len(chunks) <= budget, (budget, len(chunks))
+        assert chunks[-1].end == len(text)
+
+
+def test_budget_holds_across_overlap_ratios() -> None:
+    text = "".join(f"para {i}: " + "y" * 90 + "\n\n" for i in range(120))
+    for budget in (3, 4, 7):
+        for ratio in (0.0, 0.05, 0.15, 0.30):
+            chunks = chunk_with_boundary(
+                text, budget=budget, overlap_ratio=ratio,
+                min_chunk_chars=100, max_chunk_chars=64000,
+            )
+            assert len(chunks) <= budget, (budget, ratio, len(chunks))
+            assert chunks[0].start == 0
+            assert chunks[-1].end == len(text)
+
+
 def test_overlap_visible_in_adjacent_chunks() -> None:
     text = ("paragraph body. " * 20 + "\n\n") * 10
     chunks = chunk_with_boundary(
