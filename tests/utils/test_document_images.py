@@ -154,7 +154,7 @@ def _omml_docx(body_xml: str) -> bytes:
     """A minimal DOCX whose body carries the given (OMML) markup."""
     document = (
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-        f'<w:document {_DOCX_NS}><w:body>{body_xml}<w:sectPr/></w:body></w:document>'
+        f"<w:document {_DOCX_NS}><w:body>{body_xml}<w:sectPr/></w:body></w:document>"
     )
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -193,8 +193,7 @@ def test_docx_rich_linearizes_fraction() -> None:
 
 def test_docx_rich_linearizes_superscript_and_sqrt() -> None:
     sup = _inline_math(
-        "<m:sSup><m:e><m:r><m:t>2</m:t></m:r></m:e>"
-        "<m:sup><m:r><m:t>3</m:t></m:r></m:sup></m:sSup>"
+        "<m:sSup><m:e><m:r><m:t>2</m:t></m:r></m:e><m:sup><m:r><m:t>3</m:t></m:r></m:sup></m:sSup>"
     )
     rad = _inline_math("<m:rad><m:e><m:r><m:t>9</m:t></m:r></m:e></m:rad>")
     rich = extract_docx_rich(_omml_docx(_omml_paragraph(sup) + _omml_paragraph(rad)))
@@ -228,12 +227,10 @@ def test_docx_rich_parenthesises_nested_fraction_operands() -> None:
 
 def test_docx_rich_linearizes_subscript_and_nth_root() -> None:
     sub = _inline_math(
-        "<m:sSub><m:e><m:r><m:t>a</m:t></m:r></m:e>"
-        "<m:sub><m:r><m:t>b</m:t></m:r></m:sub></m:sSub>"
+        "<m:sSub><m:e><m:r><m:t>a</m:t></m:r></m:e><m:sub><m:r><m:t>b</m:t></m:r></m:sub></m:sSub>"
     )
     rad = _inline_math(
-        "<m:rad><m:deg><m:r><m:t>n</m:t></m:r></m:deg>"
-        "<m:e><m:r><m:t>x</m:t></m:r></m:e></m:rad>"
+        "<m:rad><m:deg><m:r><m:t>n</m:t></m:r></m:deg><m:e><m:r><m:t>x</m:t></m:r></m:e></m:rad>"
     )
     rich = extract_docx_rich(_omml_docx(_omml_paragraph(sub) + _omml_paragraph(rad)))
 
@@ -262,6 +259,30 @@ def test_docx_rich_display_equation_becomes_its_own_line() -> None:
     rich = extract_docx_rich(_omml_docx(paragraph))
 
     assert rich.paragraphs == ("Before", "1/2", "After")
+
+
+def test_docx_rich_keeps_delimiter_characters_and_every_item() -> None:
+    square = _inline_math(
+        '<m:d><m:dPr><m:begChr m:val="["/><m:endChr m:val="]"/></m:dPr>'
+        "<m:e><m:r><m:t>0, 1</m:t></m:r></m:e></m:d>"
+    )
+    pair = _inline_math(
+        '<m:d><m:dPr><m:sepChr m:val=","/></m:dPr>'
+        "<m:e><m:r><m:t>a</m:t></m:r></m:e><m:e><m:r><m:t>b</m:t></m:r></m:e></m:d>"
+    )
+    rich = extract_docx_rich(_omml_docx(_omml_paragraph(square) + _omml_paragraph(pair)))
+
+    assert rich.paragraphs == ("[0, 1]", "(a,b)")
+
+
+def test_docx_rich_does_not_double_parenthesise_a_bracketed_base() -> None:
+    power = _inline_math(
+        "<m:sSup><m:e><m:d><m:e><m:r><m:t>a+b</m:t></m:r></m:e></m:d></m:e>"
+        "<m:sup><m:r><m:t>2</m:t></m:r></m:sup></m:sSup>"
+    )
+    rich = extract_docx_rich(_omml_docx(_omml_paragraph(power)))
+
+    assert rich.paragraphs == ("(a+b)^2",)
 
 
 def test_docx_rich_unsupported_omml_degrades_to_leaf_text() -> None:

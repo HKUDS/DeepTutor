@@ -378,10 +378,49 @@ def _math_child_text(node: Any, child_name: str) -> str:
     return ""
 
 
+_OPENERS = "([{"
+_CLOSERS = ")]}"
+
+
+def _is_grouped(text: str) -> bool:
+    """True when ``text`` is one bracketed group, e.g. ``(a+b)`` but not ``(a)+(b)``."""
+    if not text or text[0] not in _OPENERS:
+        return False
+    depth = 0
+    for index, char in enumerate(text):
+        if char in _OPENERS:
+            depth += 1
+        elif char in _CLOSERS:
+            depth -= 1
+            if depth == 0:
+                return index == len(text) - 1
+    return False
+
+
 def _parenthesize(text: str) -> str:
-    if any(char in _OPERATOR_CHARS for char in text):
+    if any(char in _OPERATOR_CHARS for char in text) and not _is_grouped(text):
         return f"({text})"
     return text
+
+
+def _delimiter_chars(node: Any) -> tuple[str, str, str]:
+    """An ``m:d``'s opening, closing and separator characters.
+
+    OMML defaults to ``(``, ``)`` and ``|``; an empty ``m:val`` means no
+    character, as in a one-sided brace.
+    """
+    chars = {"begChr": "(", "endChr": ")", "sepChr": "|"}
+    for prop in node:
+        if _local_name(prop.tag) != "dPr":
+            continue
+        for child in prop:
+            key = _local_name(child.tag)
+            if key not in chars:
+                continue
+            for attr, value in child.attrib.items():
+                if _local_name(attr) == "val":
+                    chars[key] = value
+    return chars["begChr"], chars["endChr"], chars["sepChr"]
 
 
 def _linearize_math_node(node: Any) -> str:
@@ -416,7 +455,9 @@ def _linearize_math_node(node: Any) -> str:
             return f"root({degree}, {radicand})"
         return f"sqrt({radicand})"
     if name == "d":
-        return f"({_math_child_text(node, 'e')})"
+        begin, end, separator = _delimiter_chars(node)
+        items = [_linearize_math_node(child) for child in node if _local_name(child.tag) == "e"]
+        return begin + separator.join(items) + end
     # m:num/m:den/m:e/m:sup/m:sub/m:deg, n-ary operators, functions, accents,
     # matrices and any unknown construct: keep every leaf run in document
     # order. This is what turns malformed OMML into a harmless concatenation

@@ -52,7 +52,7 @@ def _omml_docx(body_xml: str) -> bytes:
     """A minimal DOCX whose body carries the given (OMML) markup."""
     document = (
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-        f'<w:document {_DOCX_NS}><w:body>{body_xml}<w:sectPr/></w:body></w:document>'
+        f"<w:document {_DOCX_NS}><w:body>{body_xml}<w:sectPr/></w:body></w:document>"
     )
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:

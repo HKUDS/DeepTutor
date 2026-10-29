@@ -133,7 +133,6 @@ cache/
 .cache/
 .ruff_cache
 .import_linter_cache/
-.sentrux/
 .playwright-cli/
 # Written by `npm run audit` (the playwright ui-audit project).
 web/test-results/
