@@ -31,9 +31,19 @@ class TurnRecoveryService:
             # check in _recover_turn protects both new and parked live turns.
             persisted = await self.repository.list_nonterminal_turns()
             candidates = set(turn_ids)
+            # Grace window: turns updated within this many seconds are considered alive.
+            # This prevents reaping live turns in other processes (e.g., CLI) that share
+            # the same DEEPTUTOR_HOME but whose lease is invisible to this process.
+            grace_seconds = 30
+            now = int(time.time())
             for turn in persisted:
                 turn_id = str(turn["id"])
                 if await self.coordinator.get_lease(turn_id) is None:
+                    # Check if the turn has been updated recently (within grace window).
+                    updated_at = turn.get("updated_at")
+                    if updated_at is not None and (now - updated_at) <= grace_seconds:
+                        # Turn is still alive; skip recovery.
+                        continue
                     candidates.add(turn_id)
             turn_ids = sorted(candidates)
         self.backlog = len(turn_ids)
