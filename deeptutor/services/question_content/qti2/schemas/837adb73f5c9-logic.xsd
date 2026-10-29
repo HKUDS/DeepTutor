@@ -1,0 +1,53 @@
+<xs:schema 
+  xmlns:xs="http://www.w3.org/2001/XMLSchema"
+  xmlns="http://www.w3.org/1998/Math/MathML"
+  targetNamespace="http://www.w3.org/1998/Math/MathML"
+  elementFormDefault="qualified"
+ >
+
+<xs:annotation>
+  <xs:documentation>
+  This is an XML Schema module for the logic operators of content MathML.
+  Author: St&#233;phane Dalmas, INRIA.
+  </xs:documentation>
+</xs:annotation>
+
+<!-- a common type for all this -->
+
+<xs:complexType name="Logic.type">
+  <xs:attributeGroup ref="Definition.attrib"/>
+  <xs:attributeGroup ref="Common.attrib"/>
+</xs:complexType>
+
+<xs:element name="and" type="Elementary-functions.type"/>
+<xs:element name="or" type="Logic.type"/>
+<xs:element name="xor" type="Logic.type"/>
+
+<xs:element name="not" type="Logic.type"/>
+
+<xs:element name="exists" type="Logic.type"/>
+<xs:element name="forall" type="Logic.type"/>
+
+<xs:element name="implies" type="Logic.type"/>
+
+<!-- And the group of everything -->
+
+<xs:group name="Content-logic.class">
+  <xs:choice>
+    <xs:element ref="and"/>
+    <xs:element ref="or"/>
+    <xs:element ref="xor"/>
+    <xs:element ref="not"/>
+    <xs:element ref="exists"/>
+    <xs:element ref="forall"/>
+    <xs:element ref="implies"/>
+  </xs:choice>
+</xs:group>
+
+</xs:schema>
+<!--
+  Copyright &#251; 2002 World Wide Web Consortium, (Massachusetts Institute
+  of Technology, Institut National de Recherche en Informatique et en
+  Automatique, Keio University). All Rights Reserved. See
+  http://www.w3.org/Consortium/Legal/.
+  -->

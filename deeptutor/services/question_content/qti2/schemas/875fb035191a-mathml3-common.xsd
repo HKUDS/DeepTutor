@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+   xmlns:m="http://www.w3.org/2010/Math/MathML"
+           elementFormDefault="qualified"
+           targetNamespace="http://www.w3.org/2010/Math/MathML">
+   <xs:element name="math">
+      <xs:complexType>
+         <xs:group minOccurs="0" maxOccurs="unbounded" ref="m:MathExpression"/>
+         <xs:attributeGroup ref="m:math.attributes"/>
+      </xs:complexType>
+   </xs:element>
+   <xs:attributeGroup name="CommonDeprecatedAtt">
+      <xs:attribute name="other"/>
+   </xs:attributeGroup>
+   <xs:attributeGroup name="CommonAtt">
+      <xs:attribute name="id" type="xs:ID"/>
+      <xs:attribute name="xref"/>
+      <xs:attribute name="class" type="xs:NMTOKENS"/>
+      <xs:attribute name="style" type="xs:string"/>
+      <xs:attribute name="href" type="xs:anyURI"/>
+      <xs:attributeGroup ref="m:CommonDeprecatedAtt"/>
+      <xs:anyAttribute namespace="##other" processContents="skip"/>
+   </xs:attributeGroup>
+   <xs:attributeGroup name="math.deprecatedattributes">
+      <xs:attribute name="mode" type="xs:string"/>
+      <xs:attribute name="macros" type="xs:string"/>
+   </xs:attributeGroup>
+   <xs:attributeGroup name="name">
+      <xs:attribute name="name" use="required" type="xs:NCName"/>
+   </xs:attributeGroup>
+   <xs:attributeGroup name="cd">
+      <xs:attribute name="cd" use="required" type="xs:NCName"/>
+   </xs:attributeGroup>
+   <xs:attributeGroup name="src">
+      <xs:attribute name="src" type="xs:anyURI"/>
+   </xs:attributeGroup>
+   <xs:element name="annotation">
+      <xs:complexType mixed="true">
+         <xs:attributeGroup ref="m:annotation.attributes"/>
+      </xs:complexType>
+   </xs:element>
+   <xs:complexType name="annotation-xml.model"><!--content model altered for libxml (annotation-xml)--><xs:sequence>
+         <xs:any processContents="lax"/>
+      </xs:sequence>
+   </xs:complexType>
+   <xs:group name="anyElement">
+      <xs:choice>
+         <xs:any namespace="##other" processContents="skip"/>
+         <xs:any namespace="##local" processContents="skip"/>
+      </xs:choice>
+   </xs:group>
+   <xs:element name="annotation-xml">
+      <xs:complexType>
+         <xs:complexContent>
+            <xs:extension base="m:annotation-xml.model">
+               <xs:attributeGroup ref="m:annotation.attributes"/>
+            </xs:extension>
+         </xs:complexContent>
+      </xs:complexType>
+   </xs:element>
+   <xs:attributeGroup name="annotation.attributes">
+      <xs:attributeGroup ref="m:CommonAtt"/>
+      <xs:attribute name="cd" type="xs:NCName"/>
+      <xs:attribute name="name" type="xs:NCName"/>
+      <xs:attributeGroup ref="m:DefEncAtt"/>
+      <xs:attributeGroup ref="m:src"/>
+   </xs:attributeGroup>
+   <xs:attributeGroup name="DefEncAtt">
+      <xs:attribute name="encoding" type="xs:string"/>
+      <xs:attribute name="definitionURL" type="xs:anyURI"/>
+   </xs:attributeGroup>
+   <xs:group name="semantics">
+      <xs:sequence>
+         <xs:element name="semantics">
+            <xs:complexType>
+               <xs:sequence>
+                  <xs:group ref="m:MathExpression"/>
+                  <xs:choice minOccurs="0" maxOccurs="unbounded">
+                     <xs:element ref="m:annotation"/>
+                     <xs:element ref="m:annotation-xml"/>
+                  </xs:choice>
+               </xs:sequence>
+               <xs:attributeGroup ref="m:semantics.attributes"/>
+            </xs:complexType>
+         </xs:element>
+      </xs:sequence>
+   </xs:group>
+   <xs:attributeGroup name="semantics.attributes">
+      <xs:attributeGroup ref="m:CommonAtt"/>
+      <xs:attributeGroup ref="m:DefEncAtt"/>
+      <xs:attribute name="cd" type="xs:NCName"/>
+      <xs:attribute name="name" type="xs:NCName"/>
+   </xs:attributeGroup>
+   <xs:simpleType name="length">
+      <xs:restriction base="xs:string">
+         <xs:pattern value="\s*((-?[0-9]*([0-9]\.?|\.[0-9])[0-9]*(e[mx]|in|cm|mm|p[xtc]|%)?)|(negative)?((very){0,2}thi(n|ck)|medium)mathspace)\s*"/>
+      </xs:restriction>
+   </xs:simpleType>
+</xs:schema>

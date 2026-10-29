@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import csv
 import io
+import json
 import time
 from typing import Literal
 import zipfile
@@ -14,6 +15,7 @@ from fastapi import APIRouter, File, Form, HTTPException, Query, Response, Uploa
 from pydantic import BaseModel, Field
 
 from deeptutor.services.practice.answers import check_answer
+from deeptutor.services.practice.import_formats import json_import_schema, json_template
 from deeptutor.services.practice.importing import MAX_BYTES, preview
 from deeptutor.services.practice.scheduler import Rating, day_bounds
 from deeptutor.services.practice.storage import PracticeStore, ReviewConflict
@@ -184,7 +186,7 @@ async def review(entry_id: int, payload: ReviewRequest):
 
 
 @router.get("/import/template")
-async def import_template(format: Literal["csv", "xlsx"] = "csv"):
+async def import_template(format: Literal["csv", "xlsx", "json", "json-schema"] = "csv"):
     rows = [
         [
             "question",
@@ -225,7 +227,11 @@ async def import_template(format: Literal["csv", "xlsx"] = "csv"):
             "",
         ],
     ]
-    if format == "xlsx":
+    if format in {"json", "json-schema"}:
+        payload = json_template() if format == "json" else json_import_schema()
+        data = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
+        media = "application/json" if format == "json" else "application/schema+json"
+    elif format == "xlsx":
         from openpyxl import Workbook
 
         book = Workbook()
@@ -243,7 +249,13 @@ async def import_template(format: Literal["csv", "xlsx"] = "csv"):
     return Response(
         data,
         media_type=media,
-        headers={"Content-Disposition": f'attachment; filename="practice-template.{format}"'},
+        headers={
+            "Content-Disposition": (
+                f'attachment; filename="practice-template.{format}.json"'
+                if format == "json-schema"
+                else f'attachment; filename="practice-template.{format}"'
+            )
+        },
     )
 
 

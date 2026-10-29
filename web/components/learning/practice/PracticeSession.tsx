@@ -1,7 +1,7 @@
 'use client'
 
 import Markdown from '@/components/common/MarkdownRenderer'
-import { practiceMarkdown } from '@/lib/practice-content'
+import { practiceMarkdown, practiceQuestionMarkdown } from '@/lib/practice-content'
 import { randomUuid } from '@/lib/random-uuid'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -252,7 +252,7 @@ function PracticeTurn({
           </div>
           <div className="text-base leading-relaxed">
             <Markdown
-              content={practiceMarkdown(entry.question)}
+              content={practiceQuestionMarkdown(entry.question)}
               allowHtml={false}
               className="[overflow-wrap:anywhere] [&_pre]:max-w-full [&_pre]:overflow-x-auto"
             />

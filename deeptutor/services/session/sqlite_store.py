@@ -529,6 +529,9 @@ class SQLiteSessionStore:
             self._migrate_notebook_entries_add_assessment_review(conn)
             self._migrate_notebook_entries_add_assessment_v2(conn)
             self._migrate_notebook_entry_origins(conn)
+            # Runs after the origin rebuild, which copies an explicit column
+            # list and would otherwise drop the newly added canonical columns.
+            self._migrate_notebook_entries_add_question_content(conn)
             self._migrate_assessment_attempt_origins(conn)
             self._migrate_assessment_attempt_link_state(conn)
             self._migrate_turn_runtime_columns(conn)
@@ -805,6 +808,24 @@ class SQLiteSessionStore:
             ON notebook_entries(source, material_id, resolved, created_at DESC)
             """
         )
+
+    @staticmethod
+    def _migrate_notebook_entries_add_question_content(conn: sqlite3.Connection) -> None:
+        """Add canonical question columns without rewriting historical rows.
+
+        Existing entries stay NULL and are projected from the flat fields on
+        read. Backfilling would freeze a canonical answer that the learner can
+        still edit through the notebook UI.
+        """
+        cols = {row[1] for row in conn.execute("PRAGMA table_info(notebook_entries)").fetchall()}
+        if not cols:
+            return
+        for name, definition in (
+            ("fill_spec_json", "TEXT DEFAULT 'null'"),
+            ("question_content_json", "TEXT DEFAULT 'null'"),
+        ):
+            if name not in cols:
+                conn.execute(f"ALTER TABLE notebook_entries ADD COLUMN {name} {definition}")
 
     @staticmethod
     def _migrate_notebook_entries_add_assessment_v2(
@@ -3333,13 +3354,33 @@ class SQLiteSessionStore:
             is_correct = 1 if item.get("is_correct") else 0
             existing = conn.execute(
                 """
-                SELECT is_correct FROM notebook_entries
+                SELECT * FROM notebook_entries
                 WHERE origin_type = ? AND origin_ref = ?
                   AND turn_id = ? AND question_id = ?
                 """,
                 (origin_type, origin_ref, turn_id, question_id),
             ).fetchone()
             previous = bool(existing["is_correct"]) if existing is not None else None
+            existing_entry = (
+                self._serialize_notebook_entry(existing) if existing is not None else None
+            )
+            from .question_content_adapter import content_for_write, resolved_fill_spec
+
+            effective_fill_spec = resolved_fill_spec(item, existing_entry)
+            content = content_for_write(
+                {
+                    **item,
+                    "question": question,
+                    "question_id": question_id,
+                    "fill_spec": effective_fill_spec,
+                },
+                existing_entry,
+            )
+            if content is not None:
+                # Keep the flat spec column in step with the canonical
+                # document, which also derives a spec for chat-generated
+                # single blanks.
+                effective_fill_spec = content["author"]["fillSpec"]
             if previous is None or previous == bool(is_correct):
                 score_trend = "new" if previous is None else "unchanged"
             else:
@@ -3364,7 +3405,8 @@ class SQLiteSessionStore:
                 """
                 INSERT INTO notebook_entries (
                     session_id, origin_type, origin_ref, turn_id, question_id,
-                    question, question_type, options_json, correct_answer,
+                    question, question_type, options_json, fill_spec_json,
+                    question_content_json, correct_answer,
                     explanation, difficulty, user_answer,
                     user_answer_images_json, source, material_id,
                     material_title, section_id, section_title, score_trend,
@@ -3372,12 +3414,14 @@ class SQLiteSessionStore:
                     attempt_count, hints_used, confidence, response_time, quality,
                     is_correct, resolved, bookmarked, followup_session_id,
                     created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, '', ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(origin_type, origin_ref, turn_id, question_id) DO UPDATE SET
                     session_id = excluded.session_id,
                     question = excluded.question,
                     question_type = excluded.question_type,
                     options_json = excluded.options_json,
+                    fill_spec_json = excluded.fill_spec_json,
+                    question_content_json = excluded.question_content_json,
                     correct_answer = excluded.correct_answer,
                     explanation = excluded.explanation,
                     difficulty = excluded.difficulty,
@@ -3420,6 +3464,8 @@ class SQLiteSessionStore:
                     question,
                     item.get("question_type") or "",
                     _json_dumps(item.get("options") or {}),
+                    _json_dumps(effective_fill_spec),
+                    _json_dumps(content),
                     item.get("correct_answer") or "",
                     item.get("explanation") or "",
                     item.get("difficulty") or "",
@@ -3429,6 +3475,8 @@ class SQLiteSessionStore:
                     *assessment,
                     is_correct,
                     resolved_on_insert,
+                    0,
+                    "",
                     now,
                     now,
                     images_json is None,
@@ -3949,6 +3997,11 @@ class SQLiteSessionStore:
         else:
             result = "correct" if is_correct else "incorrect"
         assessment_type = (row["assessment_type"] or "") if "assessment_type" in keys else ""
+        explanation = row["explanation"] or ""
+        if "origin_ref" in keys and row["origin_ref"] == "qti-import":
+            from deeptutor.services.practice.qti_text import readable_explanation
+
+            explanation = readable_explanation(explanation)
         return {
             "id": int(row["id"]),
             "session_id": (row["session_id"] or "") if "session_id" in keys else "",
@@ -3964,8 +4017,14 @@ class SQLiteSessionStore:
             "question": row["question"],
             "question_type": row["question_type"] or "",
             "options": _json_loads(row["options_json"], {}),
+            "fill_spec": _json_loads(row["fill_spec_json"], None)
+            if "fill_spec_json" in keys
+            else None,
+            "question_content": _json_loads(row["question_content_json"], None)
+            if "question_content_json" in keys
+            else None,
             "correct_answer": row["correct_answer"] or "",
-            "explanation": row["explanation"] or "",
+            "explanation": explanation,
             "difficulty": row["difficulty"] or "",
             "user_answer": row["user_answer"] or "",
             "user_answer_images": images,
@@ -4144,6 +4203,7 @@ class SQLiteSessionStore:
                 n.id, n.session_id, COALESCE(s.title, '') AS session_title,
                 n.origin_type, n.origin_ref, n.turn_id, n.question_id,
                 n.question, n.question_type, n.options_json,
+                n.fill_spec_json, n.question_content_json,
                 n.correct_answer, n.explanation, n.difficulty,
                 n.user_answer, n.user_answer_images_json, n.source, n.material_id,
                 n.material_title, n.section_id, n.section_title, n.score_trend,

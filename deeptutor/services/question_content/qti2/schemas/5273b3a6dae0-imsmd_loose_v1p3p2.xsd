@@ -1,0 +1,1646 @@
+<?xml version = "1.0" encoding = "UTF-8"?>
+<xs:schema xmlns="http://ltsc.ieee.org/xsd/LOM"
+     targetNamespace="http://ltsc.ieee.org/xsd/LOM"
+     xmlns:xs="http://www.w3.org/2001/XMLSchema"
+     xmlns:sch="http://purl.oclc.org/dsdl/schematron"
+     version="IMS MD 1.3.2"
+     elementFormDefault="qualified"
+     attributeFormDefault="unqualified">
+
+    <xs:annotation>
+        <xs:documentation>
+            XSD Data File Information
+            =========================
+            Author:         Colin Smythe
+            Date:           30th April, 2012
+            Version:        1.3.2
+            Status:         Final
+            Description:    This is the IMS GLC Meta-data v1.3 binding of the IEEE LOMv1.0.
+                            This is a Loose binding of LOMv1.0.  The strict multiplicity of elements 
+                            has been imposed, there is no vocabulary validation and extensions are 
+                            permitted as elements and attributes.
+
+            History:        Version 1.3: This replaces the IMS GLC Metadata v1.2.4 binding;
+                            Version 1.3.1: Small bug correction i.e. change 'datetime' to 'dateTime';
+                            Version 1.3.2: Corrects the use of the 'Type' class for the 'type' attribute in the 'OrComposite' class.
+
+            License:        IPR and Distribution Notices
+
+                            This machine readable file is derived from IMS Global specification IMS Meta-data (LOM) Version 1.3
+                            found at http://www.imsglobal.org/metadata and the original IMS Global schema binding or code base
+                            http://www.imsglobal.org/metadata.
+
+                            Recipients of this document are requested to submit, with their comments, notification of any relevant 
+                            patent claims or other intellectual property rights of which they may be aware that might be infringed by
+                            any implementation of the specification set forth in this document, and to provide supporting documentation.
+
+                            IMS takes no position regarding the validity or scope of any intellectual property or other rights that might
+                            be claimed to pertain to the implementation or use of the technology described in this document or the extent 
+                            to which any license under such rights might or might not be available; neither does it represent that it has 
+                            made any effort to identify any such rights. Information on IMS procedures with respect to rights in IMS 
+                            specifications can be found at the IMS Global Intellectual Property Rights web page: http://www.imsglobal.org/ipr/imsipr_policyFinal.pdf.
+
+                            Copyright (c) IMS Global Learning Consortium 1999-2014. All Rights Reserved.
+
+                            Use of this specification to develop products or services is governed by the license with IMS found on the IMS website: http://www.imsglobal.org/license.html.
+
+                            Permission is granted to all parties to use excerpts from this document as needed in producing requests for proposals.
+
+                            The limited permissions granted above are perpetual and will not be revoked by IMS or its successors or assigns.
+
+                            THIS SPECIFICATION IS BEING OFFERED WITHOUT ANY WARRANTY WHATSOEVER, AND IN PARTICULAR, ANY WARRANTY OF NONINFRINGEMENT IS
+                            EXPRESSLY DISCLAIMED. ANY USE OF THIS SPECIFICATION SHALL BE MADE ENTIRELY AT THE IMPLEMENTERS OWN RISK, AND NEITHER THE CONSORTIUM
+                            NOR ANY OF ITS MEMBERS OR SUBMITTERS, SHALL HAVE ANY LIABILITY WHATSOEVER TO ANY IMPLEMENTER OR THIRD PARTY FOR ANY DAMAGES OF
+                            ANY NATURE WHATSOEVER, DIRECTLY OR INDIRECTLY, ARISING FROM THE USE OF THIS SPECIFICATION.
+
+            Source UML File Information
+            ===========================
+            The source file information must be supplied as an XMI file (without diagram layout information).
+            The supported UML authoring tools are:
+            (a) Poseidon - v6 (and later)
+            (b) Papyrus - v0.10.2 (and later)
+
+            Source XSLT File Information
+            ============================
+            XSL Generator:    Specificationv1p0_GenerationToolv1.xsl
+            XSLT Processor:   Saxon-PE-9.5.0.2
+            Release:          1.0
+            Date:             31st July, 2014
+            Autogen Engineer: Colin Smythe (IMS Global, UK)
+            Autogen Date:     2014-12-07
+
+            IMS Global Auto-generation Binding Tool-kit (I-BAT)
+            ===================================================
+            This file was auto-generated using the IMS Global Binding Auto-generation Tool-kit (I-BAT).  While every
+            attempt has been made to ensure that this tool auto-generates the files correctly, users should be aware
+            that this is an experimental tool.  Permission is given to make use of this tool.  IMS Global makes no
+            claim on the materials created by third party users of this tool.  Details on how to use this tool
+            are contained in the IMS Global "I-BAT" documentation available at the IMS Global web-site:
+            http://www.imsglobal.org.
+
+            Tool Copyright:  2012-2014  (c) IMS Global Learning Consortium Inc.  All Rights Reserved.
+        </xs:documentation>
+    </xs:annotation>
+
+    <xs:annotation>
+        <xs:documentation>
+            Schematron Strict Selection Validation Rules
+            ============================================
+            This is the set of Schematron rules that have been created to enforce the use of the "Unordered" stereotype.
+            These rules ensure that the number of entries in an unordered complexType of an element obey the multiplicity constraints.
+            This is required so that any-order/any-multiplicity complexTypes can be constructed and validated.
+        </xs:documentation>
+        <xs:appinfo>
+            <sch:ns uri="http://ltsc.ieee.org/xsd/LOM" prefix="lom" />
+            <sch:title>Schematron validation rules for the enforcement of the Unordered stereotype.</sch:title>
+
+            <!-- RULESET ******************************************************************* -->
+            <sch:pattern abstract="false" id="AggregationLevel.Type">
+                <sch:title>[RULESET] For the AggregationLevel.Type complexType.</sch:title>
+
+                <sch:rule abstract="false" context="lom:lom/lom:general/lom:aggregationLevel">
+
+                    <sch:assert test="count(lom:source) = 0 or count(lom:source) = 1">
+                        [RULE for Local Attribute 1] Invalid number of "source" elements: <sch:value-of select="count(lom:source)" />.
+                    </sch:assert>
+
+                    <sch:assert test="count(lom:value) = 0 or count(lom:value) = 1">
+                        [RULE for Local Attribute 2] Invalid number of "value" elements: <sch:value-of select="count(lom:value)" />.
+                    </sch:assert>
+
+                </sch:rule>
+
+            </sch:pattern>
+            <!-- *************************************************************************** -->
+
+            <!-- RULESET ******************************************************************* -->
+            <sch:pattern abstract="false" id="Annotation.Type">
+                <sch:title>[RULESET] For the Annotation.Type complexType.</sch:title>
+
+                <sch:rule abstract="false" context="lom:lom/lom:annotation">
+
+                    <sch:assert test="count(lom:entity) = 0 or count(lom:entity) = 1">
+                        [RULE for Local Attribute 1] Invalid number of "entity" elements: <sch:value-of select="count(lom:entity)" />.
+                    </sch:assert>
+
+                    <sch:assert test="count(lom:date) = 0 or count(lom:date) = 1">
+                        [RULE for Local Attribute 2] Invalid number of "date" elements: <sch:value-of select="count(lom:date)" />.
+                    </sch:assert>
+
+                    <sch:assert test="count(lom:description) = 0 or count(lom:description) = 1">
+                        [RULE for Local Attribute 3] Invalid number of "description" elements: <sch:value-of select="count(lom:description)" />.
+                    </sch:assert>
+
+                </sch:rule>
+
+            </sch:pattern>
+            <!-- *************************************************************************** -->
+
+            <!-- RULESET ******************************************************************* -->
+            <sch:pattern abstract="false" id="Classification.Type">
+                <sch:title>[RULESET] For the Classification.Type complexType.</sch:title>
+
+                <sch:rule abstract="false" context="lom:lom/lom:classification">
+
+                    <sch:assert test="count(lom:purpose) = 0 or count(lom:purpose) = 1">
+                        [RULE for Local Attribute 1] Invalid number of "purpose" elements: <sch:value-of select="count(lom:purpose)" />.
+                    </sch:assert>
+
+                    <sch:assert test="count(lom:description) = 0 or count(lom:description) = 1">
+                        [RULE for Local Attribute 3] Invalid number of "description" elements: <sch:value-of select="count(lom:description)" />.
+                    </sch:assert>
+
+                </sch:rule>
+
+            </sch:pattern>
+            <!-- *************************************************************************** -->
+
+            <!-- RULESET ******************************************************************* -->
+            <sch:pattern abstract="false" id="Context.Type">
+                <sch:title>[RULESET] For the Context.Type complexType.</sch:title>
+
+                <sch:rule abstract="false" context="lom:lom/lom:educational/lom:context">
+
+                    <sch:assert test="count(lom:source) = 0 or count(lom:source) = 1">
+                        [RULE for Local Attribute 1] Invalid number of "source" elements: <sch:value-of select="count(lom:source)" />.
+                    </sch:assert>
+
+                    <sch:assert test="count(lom:value) = 0 or count(lom:value) = 1">
+                        [RULE for Local Attribute 2] Invalid number of "value" elements: <sch:value-of select="count(lom:value)" />.
+                    </sch:assert>
+
+                </sch:rule>
+
+            </sch:pattern>
+            <!-- *************************************************************************** -->
+
+            <!-- RULESET ******************************************************************* -->
+            <sch:pattern abstract="false" id="ContributeLifeCycle.Type">
+                <sch:title>[RULESET] For the ContributeLifeCycle.Type complexType.</sch:title>
+
+                <sch:rule abstract="false" context="lom:lom/lom:lifeCycle/lom:contribute">
+
+                    <sch:assert test="count(lom:role) = 0 or count(lom:role) = 1">
+                        [RULE for Local Attribute 1] Invalid number of "role" elements: <sch:value-of select="count(lom:role)" />.
+                    </sch:assert>
+
+                    <sch:assert test="count(lom:date) = 0 or count(lom:date) = 1">
+                        [RULE for Local Attribute 3] Invalid number of "date" elements: <sch:value-of select="count(lom:date)" />.
+                    </sch:assert>
+
+                </sch:rule>
+
+            </sch:pattern>
+            <!-- *************************************************************************** -->
+
+            <!-- RULESET ******************************************************************* -->
+            <sch:pattern abstract="false" id="ContributeMetaMetadata.Type">
+                <sch:title>[RULESET] For the ContributeMetaMetadata.Type complexType.</sch:title>
+
+                <sch:rule abstract="false" context="lom:lom/lom:metaMetadata/lom:contribute">
+
+                    <sch:assert test="count(lom:role) = 0 or count(lom:role) = 1">
+                        [RULE for Local Attribute 1] Invalid number of "role" elements: <sch:value-of select="count(lom:role)" />.
+                    </sch:assert>
+
+                    <sch:assert test="count(lom:date) = 0 or count(lom:date) = 1">
+                        [RULE for Local Attribute 3] Invalid number of "date" elements: <sch:value-of select="count(lom:date)" />.
+                    </sch:assert>
+
+                </sch:rule>
+
+            </sch:pattern>
+            <!-- *************************************************************************** -->
+
+            <!-- RULESET ******************************************************************* -->
+            <sch:pattern abstract="false" id="CopyrightAndOtherRestrictions.Type">
+                <sch:title>[RULESET] For the CopyrightAndOtherRestrictions.Type complexType.</sch:title>
+
+                <sch:rule abstract="false" context="lom:lom/lom:rights/lom:copyrightAndOtherRestrictions">
+
+                    <sch:assert test="count(lom:source) = 0 or count(lom:source) = 1">
+                        [RULE for Local Attribute 1] Invalid number of "source" elements: <sch:value-of select="count(lom:source)" />.
+                    </sch:assert>
+
+                    <sch:assert test="count(lom:value) = 0 or count(lom:value) = 1">
+                        [RULE for Local Attribute 2] Invalid number of "value" elements: <sch:value-of select="count(lom:value)" />.
+                    </sch:assert>
+
+                </sch:rule>
+
+            </sch:pattern>
+            <!-- *************************************************************************** -->
+
+            <!-- RULESET ******************************************************************* -->
+            <sch:pattern abstract="false" id="Cost.Type">
+                <sch:title>[RULESET] For the Cost.Type complexType.</sch:title>
+
+                <sch:rule abstract="false" context="lom:lom/lom:rights/lom:cost">
+
+                    <sch:assert test="count(lom:source) = 0 or count(lom:source) = 1">
+                        [RULE for Local Attribute 1] Invalid number of "source" elements: <sch:value-of select="count(lom:source)" />.
+                    </sch:assert>
+
+                    <sch:assert test="count(lom:value) = 0 or count(lom:value) = 1">
+                        [RULE for Local Attribute 2] Invalid number of "value" elements: <sch:value-of select="count(lom:value)" />.
+                    </sch:assert>
+
+                </sch:rule>
+
+            </sch:pattern>
+            <!-- *************************************************************************** -->
+
+            <!-- RULESET ******************************************************************* -->
+            <sch:pattern abstract="false" id="DateTime.Type">
+                <sch:title>[RULESET] For the DateTime.Type complexType.</sch:title>
+
+                <sch:rule abstract="false" context="lom:lom/lom:annotation/lom:date">
+
+                    <sch:assert test="count(lom:dateTime) = 0 or count(lom:dateTime) = 1">
+                        [RULE for Local Attribute 1] Invalid number of "dateTime" elements: <sch:value-of select="count(lom:dateTime)" />.
+                    </sch:assert>
+
+                    <sch:assert test="count(lom:description) = 0 or count(lom:description) = 1">
+                        [RULE for Local Attribute 2] Invalid number of "description" elements: <sch:value-of select="count(lom:description)" />.
+                    </sch:assert>
+
+                </sch:rule>
+
+                <sch:rule abstract="false" context="lom:lom/lom:lifeCycle/lom:contribute/lom:date">
+
+                    <sch:assert test="count(lom:dateTime) = 0 or count(lom:dateTime) = 1">
+                        [RULE for Local Attribute 1] Invalid number of "dateTime" elements: <sch:value-of select="count(lom:dateTime)" />.
+                    </sch:assert>
+
+                    <sch:assert test="count(lom:description) = 0 or count(lom:description) = 1">
+                        [RULE for Local Attribute 2] Invalid number of "description" elements: <sch:value-of select="count(lom:description)" />.
+                    </sch:assert>
+
+                </sch:rule>
+
+                <sch:rule abstract="false" context="lom:lom/lom:metaMetadata/lom:contribute/lom:date">
+
+                    <sch:assert test="count(lom:dateTime) = 0 or count(lom:dateTime) = 1">
+                        [RULE for Local Attribute 1] Invalid number of "dateTime" elements: <sch:value-of select="count(lom:dateTime)" />.
+                    </sch:assert>
+
+                    <sch:assert test="count(lom:description) = 0 or count(lom:description) = 1">
+                        [RULE for Local Attribute 2] Invalid number of "description" elements: <sch:value-of select="count(lom:description)" />.
+                    </sch:assert>
+
+                </sch:rule>
+
+            </sch:pattern>
+            <!-- *************************************************************************** -->
+
+            <!-- RULESET ******************************************************************* -->
+            <sch:pattern abstract="false" id="Difficulty.Type">
+                <sch:title>[RULESET] For the Difficulty.Type complexType.</sch:title>
+
+                <sch:rule abstract="false" context="lom:lom/lom:educational/lom:difficulty">
+
+                    <sch:assert test="count(lom:source) = 0 or count(lom:source) = 1">
+                        [RULE for Local Attribute 1] Invalid number of "source" elements: <sch:value-of select="count(lom:source)" />.
+                    </sch:assert>
+
+                    <sch:assert test="count(lom:value) = 0 or count(lom:value) = 1">
+                        [RULE for Local Attribute 2] Invalid number of "value" elements: <sch:value-of select="count(lom:value)" />.
+                    </sch:assert>
+
+                </sch:rule>
+
+            </sch:pattern>
+            <!-- *************************************************************************** -->
+
+            <!-- RULESET ******************************************************************* -->
+            <sch:pattern abstract="false" id="Duration.Type">
+                <sch:title>[RULESET] For the Duration.Type complexType.</sch:title>
+
+                <sch:rule abstract="false" context="lom:lom/lom:educational/lom:typicalLearningTime">
+
+                    <sch:assert test="count(lom:duration) = 0 or count(lom:duration) = 1">
+                        [RULE for Local Attribute 1] Invalid number of "duration" elements: <sch:value-of select="count(lom:duration)" />.
+                    </sch:assert>
+
+                    <sch:assert test="count(lom:description) = 0 or count(lom:description) = 1">
+                        [RULE for Local Attribute 2] Invalid number of "description" elements: <sch:value-of select="count(lom:description)" />.
+                    </sch:assert>
+
+                </sch:rule>
+
+                <sch:rule abstract="false" context="lom:lom/lom:technical/lom:duration">
+
+                    <sch:assert test="count(lom:duration) = 0 or count(lom:duration) = 1">
+                        [RULE for Local Attribute 1] Invalid number of "duration" elements: <sch:value-of select="count(lom:duration)" />.
+                    </sch:assert>
+
+                    <sch:assert test="count(lom:description) = 0 or count(lom:description) = 1">
+                        [RULE for Local Attribute 2] Invalid number of "description" elements: <sch:value-of select="count(lom:description)" />.
+                    </sch:assert>
+
+                </sch:rule>
+
+            </sch:pattern>
+            <!-- *************************************************************************** -->
+
+            <!-- RULESET ******************************************************************* -->
+            <sch:pattern abstract="false" id="Educational.Type">
+                <sch:title>[RULESET] For the Educational.Type complexType.</sch:title>
+
+                <sch:rule abstract="false" context="lom:lom/lom:educational">
+
+                    <sch:assert test="count(lom:interactivityType) = 0 or count(lom:interactivityType) = 1">
+                        [RULE for Local Attribute 1] Invalid number of "interactivityType" elements: <sch:value-of select="count(lom:interactivityType)" />.
+                    </sch:assert>
+
+                    <sch:assert test="count(lom:interactivityLevel) = 0 or count(lom:interactivityLevel) = 1">
+                        [RULE for Local Attribute 3] Invalid number of "interactivityLevel" elements: <sch:value-of select="count(lom:interactivityLevel)" />.
+                    </sch:assert>
+
+                    <sch:assert test="count(lom:semanticDensity) = 0 or count(lom:semanticDensity) = 1">
+                        [RULE for Local Attribute 4] Invalid number of "semanticDensity" elements: <sch:value-of select="count(lom:semanticDensity)" />.
+                    </sch:assert>
+
+                    <sch:assert test="count(lom:difficulty) = 0 or count(lom:difficulty) = 1">
+                        [RULE for Local Attribute 8] Invalid number of "difficulty" elements: <sch:value-of select="count(lom:difficulty)" />.
+                    </sch:assert>
+
+                    <sch:assert test="count(lom:typicalLearningTime) = 0 or count(lom:typicalLearningTime) = 1">
+                        [RULE for Local Attribute 9] Invalid number of "typicalLearningTime" elements: <sch:value-of select="count(lom:typicalLearningTime)" />.
+                    </sch:assert>
+
+                    <sch:assert test="count(lom:description) = 0 or count(lom:description) = 1">
+                        [RULE for Local Attribute 10] Invalid number of "description" elements: <sch:value-of select="count(lom:description)" />.
+                    </sch:assert>
+
+                </sch:rule>
+
+            </sch:pattern>
+            <!-- *************************************************************************** -->
+
+            <!-- RULESET ******************************************************************* -->
+            <sch:pattern abstract="false" id="General.Type">
+                <sch:title>[RULESET] For the General.Type complexType.</sch:title>
+
+                <sch:rule abstract="false" context="lom:lom/lom:general">
+
+                    <sch:assert test="count(lom:title) = 0 or count(lom:title) = 1">
+                        [RULE for Local Attribute 2] Invalid number of "title" elements: <sch:value-of select="count(lom:title)" />.
+                    </sch:assert>
+
+                    <sch:assert test="count(lom:structure) = 0 or count(lom:structure) = 1">
+                        [RULE for Local Attribute 7] Invalid number of "structure" elements: <sch:value-of select="count(lom:structure)" />.
+                    </sch:assert>
+
+                    <sch:assert test="count(lom:aggregationLevel) = 0 or count(lom:aggregationLevel) = 1">
+                        [RULE for Local Attribute 8] Invalid number of "aggregationLevel" elements: <sch:value-of select="count(lom:aggregationLevel)" />.
+                    </sch:assert>
+
+                </sch:rule>
+
+            </sch:pattern>
+            <!-- *************************************************************************** -->
+
+            <!-- RULESET ******************************************************************* -->
+            <sch:pattern abstract="false" id="Identifier.Type">
+                <sch:title>[RULESET] For the Identifier.Type complexType.</sch:title>
+
+                <sch:rule abstract="false" context="lom:lom/lom:general/lom:identifier">
+
+                    <sch:assert test="count(lom:catalog) = 0 or count(lom:catalog) = 1">
+                        [RULE for Local Attribute 1] Invalid number of "catalog" elements: <sch:value-of select="count(lom:catalog)" />.
+                    </sch:assert>
+
+                    <sch:assert test="count(lom:entry) = 0 or count(lom:entry) = 1">
+                        [RULE for Local Attribute 2] Invalid number of "entry" elements: <sch:value-of select="count(lom:entry)" />.
+                    </sch:assert>
+
+                </sch:rule>
+
+                <sch:rule abstract="false" context="lom:lom/lom:metaMetadata/lom:identifier">
+
+                    <sch:assert test="count(lom:catalog) = 0 or count(lom:catalog) = 1">
+                        [RULE for Local Attribute 1] Invalid number of "catalog" elements: <sch:value-of select="count(lom:catalog)" />.
+                    </sch:assert>
+
+                    <sch:assert test="count(lom:entry) = 0 or count(lom:entry) = 1">
+                        [RULE for Local Attribute 2] Invalid number of "entry" elements: <sch:value-of select="count(lom:entry)" />.
+                    </sch:assert>
+
+                </sch:rule>
+
+                <sch:rule abstract="false" context="lom:lom/lom:relation/lom:resource/lom:identifier">
+
+                    <sch:assert test="count(lom:catalog) = 0 or count(lom:catalog) = 1">
+                        [RULE for Local Attribute 1] Invalid number of "catalog" elements: <sch:value-of select="count(lom:catalog)" />.
+                    </sch:assert>
+
+                    <sch:assert test="count(lom:entry) = 0 or count(lom:entry) = 1">
+                        [RULE for Local Attribute 2] Invalid number of "entry" elements: <sch:value-of select="count(lom:entry)" />.
+                    </sch:assert>
+
+                </sch:rule>
+
+            </sch:pattern>
+            <!-- *************************************************************************** -->
+
+            <!-- RULESET ******************************************************************* -->
+            <sch:pattern abstract="false" id="IntendedEndUserRole.Type">
+                <sch:title>[RULESET] For the IntendedEndUserRole.Type complexType.</sch:title>
+
+                <sch:rule abstract="false" context="lom:lom/lom:educational/lom:intendedEndUserRole">
+
+                    <sch:assert test="count(lom:source) = 0 or count(lom:source) = 1">
+                        [RULE for Local Attribute 1] Invalid number of "source" elements: <sch:value-of select="count(lom:source)" />.
+                    </sch:assert>
+
+                    <sch:assert test="count(lom:value) = 0 or count(lom:value) = 1">
+                        [RULE for Local Attribute 2] Invalid number of "value" elements: <sch:value-of select="count(lom:value)" />.
+                    </sch:assert>
+
+                </sch:rule>
+
+            </sch:pattern>
+            <!-- *************************************************************************** -->
+
+            <!-- RULESET ******************************************************************* -->
+            <sch:pattern abstract="false" id="InteractivityLevel.Type">
+                <sch:title>[RULESET] For the InteractivityLevel.Type complexType.</sch:title>
+
+                <sch:rule abstract="false" context="lom:lom/lom:educational/lom:interactivityLevel">
+
+                    <sch:assert test="count(lom:source) = 0 or count(lom:source) = 1">
+                        [RULE for Local Attribute 1] Invalid number of "source" elements: <sch:value-of select="count(lom:source)" />.
+                    </sch:assert>
+
+                    <sch:assert test="count(lom:value) = 0 or count(lom:value) = 1">
+                        [RULE for Local Attribute 2] Invalid number of "value" elements: <sch:value-of select="count(lom:value)" />.
+                    </sch:assert>
+
+                </sch:rule>
+
+            </sch:pattern>
+            <!-- *************************************************************************** -->
+
+            <!-- RULESET ******************************************************************* -->
+            <sch:pattern abstract="false" id="InteractivityType.Type">
+                <sch:title>[RULESET] For the InteractivityType.Type complexType.</sch:title>
+
+                <sch:rule abstract="false" context="lom:lom/lom:educational/lom:interactivityType">
+
+                    <sch:assert test="count(lom:source) = 0 or count(lom:source) = 1">
+                        [RULE for Local Attribute 1] Invalid number of "source" elements: <sch:value-of select="count(lom:source)" />.
+                    </sch:assert>
+
+                    <sch:assert test="count(lom:value) = 0 or count(lom:value) = 1">
+                        [RULE for Local Attribute 2] Invalid number of "value" elements: <sch:value-of select="count(lom:value)" />.
+                    </sch:assert>
+
+                </sch:rule>
+
+            </sch:pattern>
+            <!-- *************************************************************************** -->
+
+            <!-- RULESET ******************************************************************* -->
+            <sch:pattern abstract="false" id="Kind.Type">
+                <sch:title>[RULESET] For the Kind.Type complexType.</sch:title>
+
+                <sch:rule abstract="false" context="lom:lom/lom:relation/lom:kind">
+
+                    <sch:assert test="count(lom:source) = 0 or count(lom:source) = 1">
+                        [RULE for Local Attribute 1] Invalid number of "source" elements: <sch:value-of select="count(lom:source)" />.
+                    </sch:assert>
+
+                    <sch:assert test="count(lom:value) = 0 or count(lom:value) = 1">
+                        [RULE for Local Attribute 2] Invalid number of "value" elements: <sch:value-of select="count(lom:value)" />.
+                    </sch:assert>
+
+                </sch:rule>
+
+            </sch:pattern>
+            <!-- *************************************************************************** -->
+
+            <!-- RULESET ******************************************************************* -->
+            <sch:pattern abstract="false" id="LearningResourceType.Type">
+                <sch:title>[RULESET] For the LearningResourceType.Type complexType.</sch:title>
+
+                <sch:rule abstract="false" context="lom:lom/lom:educational/lom:learningResourceType">
+
+                    <sch:assert test="count(lom:source) = 0 or count(lom:source) = 1">
+                        [RULE for Local Attribute 1] Invalid number of "source" elements: <sch:value-of select="count(lom:source)" />.
+                    </sch:assert>
+
+                    <sch:assert test="count(lom:value) = 0 or count(lom:value) = 1">
+                        [RULE for Local Attribute 2] Invalid number of "value" elements: <sch:value-of select="count(lom:value)" />.
+                    </sch:assert>
+
+                </sch:rule>
+
+            </sch:pattern>
+            <!-- *************************************************************************** -->
+
+            <!-- RULESET ******************************************************************* -->
+            <sch:pattern abstract="false" id="LifeCycle.Type">
+                <sch:title>[RULESET] For the LifeCycle.Type complexType.</sch:title>
+
+                <sch:rule abstract="false" context="lom:lom/lom:lifeCycle">
+
+                    <sch:assert test="count(lom:version) = 0 or count(lom:version) = 1">
+                        [RULE for Local Attribute 1] Invalid number of "version" elements: <sch:value-of select="count(lom:version)" />.
+                    </sch:assert>
+
+                    <sch:assert test="count(lom:status) = 0 or count(lom:status) = 1">
+                        [RULE for Local Attribute 2] Invalid number of "status" elements: <sch:value-of select="count(lom:status)" />.
+                    </sch:assert>
+
+                </sch:rule>
+
+            </sch:pattern>
+            <!-- *************************************************************************** -->
+
+            <!-- RULESET ******************************************************************* -->
+            <sch:pattern abstract="false" id="LOM.Type">
+                <sch:title>[RULESET] For the LOM.Type complexType.</sch:title>
+
+                <sch:rule abstract="false" context="lom:lom">
+
+                    <sch:assert test="count(lom:general) = 0 or count(lom:general) = 1">
+                        [RULE for Root Class Attribute 1] Invalid number of "general" elements: <sch:value-of select="count(lom:general)" />.
+                    </sch:assert>
+
+                    <sch:assert test="count(lom:lifeCycle) = 0 or count(lom:lifeCycle) = 1">
+                        [RULE for Root Class Attribute 2] Invalid number of "lifeCycle" elements: <sch:value-of select="count(lom:lifeCycle)" />.
+                    </sch:assert>
+
+                    <sch:assert test="count(lom:metaMetadata) = 0 or count(lom:metaMetadata) = 1">
+                        [RULE for Root Class Attribute 3] Invalid number of "metaMetadata" elements: <sch:value-of select="count(lom:metaMetadata)" />.
+                    </sch:assert>
+
+                    <sch:assert test="count(lom:technical) = 0 or count(lom:technical) = 1">
+                        [RULE for Root Class Attribute 4] Invalid number of "technical" elements: <sch:value-of select="count(lom:technical)" />.
+                    </sch:assert>
+
+                    <sch:assert test="count(lom:rights) = 0 or count(lom:rights) = 1">
+                        [RULE for Root Class Attribute 6] Invalid number of "rights" elements: <sch:value-of select="count(lom:rights)" />.
+                    </sch:assert>
+
+                </sch:rule>
+
+            </sch:pattern>
+            <!-- *************************************************************************** -->
+
+            <!-- RULESET ******************************************************************* -->
+            <sch:pattern abstract="false" id="MetaMetadata.Type">
+                <sch:title>[RULESET] For the MetaMetadata.Type complexType.</sch:title>
+
+                <sch:rule abstract="false" context="lom:lom/lom:metaMetadata">
+
+                    <sch:assert test="count(lom:language) = 0 or count(lom:language) = 1">
+                        [RULE for Local Attribute 4] Invalid number of "language" elements: <sch:value-of select="count(lom:language)" />.
+                    </sch:assert>
+
+                </sch:rule>
+
+            </sch:pattern>
+            <!-- *************************************************************************** -->
+
+            <!-- RULESET ******************************************************************* -->
+            <sch:pattern abstract="false" id="Name.Type">
+                <sch:title>[RULESET] For the Name.Type complexType.</sch:title>
+
+                <sch:rule abstract="false" context="lom:lom/lom:technical/lom:requirement/lom:orComposite/lom:name">
+
+                    <sch:assert test="count(lom:source) = 0 or count(lom:source) = 1">
+                        [RULE for Local Attribute 1] Invalid number of "source" elements: <sch:value-of select="count(lom:source)" />.
+                    </sch:assert>
+
+                    <sch:assert test="count(lom:value) = 0 or count(lom:value) = 1">
+                        [RULE for Local Attribute 2] Invalid number of "value" elements: <sch:value-of select="count(lom:value)" />.
+                    </sch:assert>
+
+                </sch:rule>
+
+            </sch:pattern>
+            <!-- *************************************************************************** -->
+
+            <!-- RULESET ******************************************************************* -->
+            <sch:pattern abstract="false" id="OrComposite.Type">
+                <sch:title>[RULESET] For the OrComposite.Type complexType.</sch:title>
+
+                <sch:rule abstract="false" context="lom:lom/lom:technical/lom:requirement/lom:orComposite">
+
+                    <sch:assert test="count(lom:type) = 0 or count(lom:type) = 1">
+                        [RULE for Local Attribute 1] Invalid number of "type" elements: <sch:value-of select="count(lom:type)" />.
+                    </sch:assert>
+
+                    <sch:assert test="count(lom:name) = 0 or count(lom:name) = 1">
+                        [RULE for Local Attribute 2] Invalid number of "name" elements: <sch:value-of select="count(lom:name)" />.
+                    </sch:assert>
+
+                    <sch:assert test="count(lom:minimumVersion) = 0 or count(lom:minimumVersion) = 1">
+                        [RULE for Local Attribute 3] Invalid number of "minimumVersion" elements: <sch:value-of select="count(lom:minimumVersion)" />.
+                    </sch:assert>
+
+                    <sch:assert test="count(lom:maximumVersion) = 0 or count(lom:maximumVersion) = 1">
+                        [RULE for Local Attribute 4] Invalid number of "maximumVersion" elements: <sch:value-of select="count(lom:maximumVersion)" />.
+                    </sch:assert>
+
+                </sch:rule>
+
+            </sch:pattern>
+            <!-- *************************************************************************** -->
+
+            <!-- RULESET ******************************************************************* -->
+            <sch:pattern abstract="false" id="Purpose.Type">
+                <sch:title>[RULESET] For the Purpose.Type complexType.</sch:title>
+
+                <sch:rule abstract="false" context="lom:lom/lom:classification/lom:purpose">
+
+                    <sch:assert test="count(lom:source) = 0 or count(lom:source) = 1">
+                        [RULE for Local Attribute 1] Invalid number of "source" elements: <sch:value-of select="count(lom:source)" />.
+                    </sch:assert>
+
+                    <sch:assert test="count(lom:value) = 0 or count(lom:value) = 1">
+                        [RULE for Local Attribute 2] Invalid number of "value" elements: <sch:value-of select="count(lom:value)" />.
+                    </sch:assert>
+
+                </sch:rule>
+
+            </sch:pattern>
+            <!-- *************************************************************************** -->
+
+            <!-- RULESET ******************************************************************* -->
+            <sch:pattern abstract="false" id="Relation.Type">
+                <sch:title>[RULESET] For the Relation.Type complexType.</sch:title>
+
+                <sch:rule abstract="false" context="lom:lom/lom:relation">
+
+                    <sch:assert test="count(lom:kind) = 0 or count(lom:kind) = 1">
+                        [RULE for Local Attribute 1] Invalid number of "kind" elements: <sch:value-of select="count(lom:kind)" />.
+                    </sch:assert>
+
+                    <sch:assert test="count(lom:resource) = 0 or count(lom:resource) = 1">
+                        [RULE for Local Attribute 2] Invalid number of "resource" elements: <sch:value-of select="count(lom:resource)" />.
+                    </sch:assert>
+
+                </sch:rule>
+
+            </sch:pattern>
+            <!-- *************************************************************************** -->
+
+            <!-- RULESET ******************************************************************* -->
+            <sch:pattern abstract="false" id="Requirement.Type">
+                <sch:title>[RULESET] For the Requirement.Type complexType.</sch:title>
+
+                <sch:rule abstract="false" context="lom:lom/lom:technical/lom:requirement">
+
+                </sch:rule>
+
+            </sch:pattern>
+            <!-- *************************************************************************** -->
+
+            <!-- RULESET ******************************************************************* -->
+            <sch:pattern abstract="false" id="Resource.Type">
+                <sch:title>[RULESET] For the Resource.Type complexType.</sch:title>
+
+                <sch:rule abstract="false" context="lom:lom/lom:relation/lom:resource">
+
+                </sch:rule>
+
+            </sch:pattern>
+            <!-- *************************************************************************** -->
+
+            <!-- RULESET ******************************************************************* -->
+            <sch:pattern abstract="false" id="Rights.Type">
+                <sch:title>[RULESET] For the Rights.Type complexType.</sch:title>
+
+                <sch:rule abstract="false" context="lom:lom/lom:rights">
+
+                    <sch:assert test="count(lom:cost) = 0 or count(lom:cost) = 1">
+                        [RULE for Local Attribute 1] Invalid number of "cost" elements: <sch:value-of select="count(lom:cost)" />.
+                    </sch:assert>
+
+                    <sch:assert test="count(lom:copyrightAndOtherRestrictions) = 0 or count(lom:copyrightAndOtherRestrictions) = 1">
+                        [RULE for Local Attribute 2] Invalid number of "copyrightAndOtherRestrictions" elements: <sch:value-of select="count(lom:copyrightAndOtherRestrictions)" />.
+                    </sch:assert>
+
+                    <sch:assert test="count(lom:description) = 0 or count(lom:description) = 1">
+                        [RULE for Local Attribute 3] Invalid number of "description" elements: <sch:value-of select="count(lom:description)" />.
+                    </sch:assert>
+
+                </sch:rule>
+
+            </sch:pattern>
+            <!-- *************************************************************************** -->
+
+            <!-- RULESET ******************************************************************* -->
+            <sch:pattern abstract="false" id="RoleLifeCycle.Type">
+                <sch:title>[RULESET] For the RoleLifeCycle.Type complexType.</sch:title>
+
+                <sch:rule abstract="false" context="lom:lom/lom:lifeCycle/lom:contribute/lom:role">
+
+                    <sch:assert test="count(lom:source) = 0 or count(lom:source) = 1">
+                        [RULE for Local Attribute 1] Invalid number of "source" elements: <sch:value-of select="count(lom:source)" />.
+                    </sch:assert>
+
+                    <sch:assert test="count(lom:value) = 0 or count(lom:value) = 1">
+                        [RULE for Local Attribute 2] Invalid number of "value" elements: <sch:value-of select="count(lom:value)" />.
+                    </sch:assert>
+
+                </sch:rule>
+
+            </sch:pattern>
+            <!-- *************************************************************************** -->
+
+            <!-- RULESET ******************************************************************* -->
+            <sch:pattern abstract="false" id="RoleMetaMetadata.Type">
+                <sch:title>[RULESET] For the RoleMetaMetadata.Type complexType.</sch:title>
+
+                <sch:rule abstract="false" context="lom:lom/lom:metaMetadata/lom:contribute/lom:role">
+
+                    <sch:assert test="count(lom:source) = 0 or count(lom:source) = 1">
+                        [RULE for Local Attribute 1] Invalid number of "source" elements: <sch:value-of select="count(lom:source)" />.
+                    </sch:assert>
+
+                    <sch:assert test="count(lom:value) = 0 or count(lom:value) = 1">
+                        [RULE for Local Attribute 2] Invalid number of "value" elements: <sch:value-of select="count(lom:value)" />.
+                    </sch:assert>
+
+                </sch:rule>
+
+            </sch:pattern>
+            <!-- *************************************************************************** -->
+
+            <!-- RULESET ******************************************************************* -->
+            <sch:pattern abstract="false" id="SemanticDensity.Type">
+                <sch:title>[RULESET] For the SemanticDensity.Type complexType.</sch:title>
+
+                <sch:rule abstract="false" context="lom:lom/lom:educational/lom:semanticDensity">
+
+                    <sch:assert test="count(lom:source) = 0 or count(lom:source) = 1">
+                        [RULE for Local Attribute 1] Invalid number of "source" elements: <sch:value-of select="count(lom:source)" />.
+                    </sch:assert>
+
+                    <sch:assert test="count(lom:value) = 0 or count(lom:value) = 1">
+                        [RULE for Local Attribute 2] Invalid number of "value" elements: <sch:value-of select="count(lom:value)" />.
+                    </sch:assert>
+
+                </sch:rule>
+
+            </sch:pattern>
+            <!-- *************************************************************************** -->
+
+            <!-- RULESET ******************************************************************* -->
+            <sch:pattern abstract="false" id="Status.Type">
+                <sch:title>[RULESET] For the Status.Type complexType.</sch:title>
+
+                <sch:rule abstract="false" context="lom:lom/lom:lifeCycle/lom:status">
+
+                    <sch:assert test="count(lom:source) = 0 or count(lom:source) = 1">
+                        [RULE for Local Attribute 1] Invalid number of "source" elements: <sch:value-of select="count(lom:source)" />.
+                    </sch:assert>
+
+                    <sch:assert test="count(lom:value) = 0 or count(lom:value) = 1">
+                        [RULE for Local Attribute 2] Invalid number of "value" elements: <sch:value-of select="count(lom:value)" />.
+                    </sch:assert>
+
+                </sch:rule>
+
+            </sch:pattern>
+            <!-- *************************************************************************** -->
+
+            <!-- RULESET ******************************************************************* -->
+            <sch:pattern abstract="false" id="Structure.Type">
+                <sch:title>[RULESET] For the Structure.Type complexType.</sch:title>
+
+                <sch:rule abstract="false" context="lom:lom/lom:general/lom:structure">
+
+                    <sch:assert test="count(lom:source) = 0 or count(lom:source) = 1">
+                        [RULE for Local Attribute 1] Invalid number of "source" elements: <sch:value-of select="count(lom:source)" />.
+                    </sch:assert>
+
+                    <sch:assert test="count(lom:value) = 0 or count(lom:value) = 1">
+                        [RULE for Local Attribute 2] Invalid number of "value" elements: <sch:value-of select="count(lom:value)" />.
+                    </sch:assert>
+
+                </sch:rule>
+
+            </sch:pattern>
+            <!-- *************************************************************************** -->
+
+            <!-- RULESET ******************************************************************* -->
+            <sch:pattern abstract="false" id="Taxon.Type">
+                <sch:title>[RULESET] For the Taxon.Type complexType.</sch:title>
+
+                <sch:rule abstract="false" context="lom:lom/lom:classification/lom:taxonPath/lom:taxon">
+
+                    <sch:assert test="count(lom:id) = 0 or count(lom:id) = 1">
+                        [RULE for Local Attribute 1] Invalid number of "id" elements: <sch:value-of select="count(lom:id)" />.
+                    </sch:assert>
+
+                    <sch:assert test="count(lom:entry) = 0 or count(lom:entry) = 1">
+                        [RULE for Local Attribute 2] Invalid number of "entry" elements: <sch:value-of select="count(lom:entry)" />.
+                    </sch:assert>
+
+                </sch:rule>
+
+            </sch:pattern>
+            <!-- *************************************************************************** -->
+
+            <!-- RULESET ******************************************************************* -->
+            <sch:pattern abstract="false" id="TaxonPath.Type">
+                <sch:title>[RULESET] For the TaxonPath.Type complexType.</sch:title>
+
+                <sch:rule abstract="false" context="lom:lom/lom:classification/lom:taxonPath">
+
+                    <sch:assert test="count(lom:source) = 0 or count(lom:source) = 1">
+                        [RULE for Local Attribute 1] Invalid number of "source" elements: <sch:value-of select="count(lom:source)" />.
+                    </sch:assert>
+
+                </sch:rule>
+
+            </sch:pattern>
+            <!-- *************************************************************************** -->
+
+            <!-- RULESET ******************************************************************* -->
+            <sch:pattern abstract="false" id="Technical.Type">
+                <sch:title>[RULESET] For the Technical.Type complexType.</sch:title>
+
+                <sch:rule abstract="false" context="lom:lom/lom:technical">
+
+                    <sch:assert test="count(lom:size) = 0 or count(lom:size) = 1">
+                        [RULE for Local Attribute 2] Invalid number of "size" elements: <sch:value-of select="count(lom:size)" />.
+                    </sch:assert>
+
+                    <sch:assert test="count(lom:installationRemarks) = 0 or count(lom:installationRemarks) = 1">
+                        [RULE for Local Attribute 5] Invalid number of "installationRemarks" elements: <sch:value-of select="count(lom:installationRemarks)" />.
+                    </sch:assert>
+
+                    <sch:assert test="count(lom:otherPlatformRequirements) = 0 or count(lom:otherPlatformRequirements) = 1">
+                        [RULE for Local Attribute 6] Invalid number of "otherPlatformRequirements" elements: <sch:value-of select="count(lom:otherPlatformRequirements)" />.
+                    </sch:assert>
+
+                    <sch:assert test="count(lom:duration) = 0 or count(lom:duration) = 1">
+                        [RULE for Local Attribute 7] Invalid number of "duration" elements: <sch:value-of select="count(lom:duration)" />.
+                    </sch:assert>
+
+                </sch:rule>
+
+            </sch:pattern>
+            <!-- *************************************************************************** -->
+
+            <!-- RULESET ******************************************************************* -->
+            <sch:pattern abstract="false" id="Type.Type">
+                <sch:title>[RULESET] For the Type.Type complexType.</sch:title>
+
+                <sch:rule abstract="false" context="lom:lom/lom:technical/lom:requirement/lom:orComposite/lom:type">
+
+                    <sch:assert test="count(lom:source) = 0 or count(lom:source) = 1">
+                        [RULE for Local Attribute 1] Invalid number of "source" elements: <sch:value-of select="count(lom:source)" />.
+                    </sch:assert>
+
+                    <sch:assert test="count(lom:value) = 0 or count(lom:value) = 1">
+                        [RULE for Local Attribute 2] Invalid number of "value" elements: <sch:value-of select="count(lom:value)" />.
+                    </sch:assert>
+
+                </sch:rule>
+
+            </sch:pattern>
+            <!-- *************************************************************************** -->
+
+        </xs:appinfo>
+    </xs:annotation>
+
+    <!-- Generate Global Attributes (non-assigned) ******************************************************** -->
+
+    <!-- ================================================================================================== -->
+
+    <!-- Generate Global Attributes *********************************************************************** -->
+
+    <!-- ================================================================================================== -->
+
+    <!-- Generate Global List Types *********************************************************************** -->
+
+    <!-- ================================================================================================== -->
+
+    <!-- Generate Namespaced extension Group  ************************************************************* -->
+
+    <xs:group name="grpLax.any">
+        <xs:annotation>
+            <xs:documentation>
+                Any namespaced element from any namespace may be included within an "any" element.
+                The namespace for the imported element must be defined in the instance, and the schema must be imported.
+                The extension has a definition of "lax" i.e. they can reuse elements from the target namespace.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+            <xs:any namespace = "##other" processContents = "lax" minOccurs = "0" maxOccurs = "unbounded" />
+        </xs:sequence>
+    </xs:group>
+
+    <!-- ================================================================================================== -->
+
+    <!-- Generate Special DataTypes  ********************************************************************** -->
+
+    <!-- ================================================================================================== -->
+
+    <!-- Generate the enumerated simpleType declarations ************************************************** -->
+
+    <!-- ================================================================================================== -->
+
+    <!-- Generate the simpleType elements based on IMS data-types (Parameter) ***************************** -->
+
+    <!-- ================================================================================================== -->
+
+    <!-- Generate the simpleType elements based on IMS data-types (Derived) ******************************* -->
+
+    <!-- ================================================================================================== -->
+
+    <!-- Generate the simpleType elements based on IMS data-types (Union) ********************************* -->
+
+    <!-- ================================================================================================== -->
+
+    <!-- Generate the simpleType elements based on IMS data-types (Complex) ******************************* -->
+
+    <!-- ================================================================================================== -->
+
+    <!-- Generate the derived data-type elements based upon simpleType ************************************ -->
+
+    <!-- ================================================================================================== -->
+
+    <!-- Generate the derived data-type elements based upon derived simpleType **************************** -->
+
+    <!-- ================================================================================================== -->
+
+    <!-- Generate the ComplexTypes ************************************************************************ -->
+
+    <xs:complexType name="AggregationLevel.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The AggregationLevel complexType is the container for the information about the 
+functional granularity of this learning object.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:choice minOccurs = "0" maxOccurs = "unbounded">
+            <xs:element name="source" type="CharacterString.Type" default="LOMv1.0" minOccurs="0" maxOccurs="1" />
+            <xs:element name="value" type="CharacterString.Type" minOccurs="0" maxOccurs="1" />
+            <xs:group ref="grpLax.any" />
+        </xs:choice>
+    </xs:complexType>
+
+    <xs:complexType name="Annotation.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The Annotation complexType is the container for comments on the educational use of this learning object, 
+and information on when and by whom the comments were created.  This category enables educators to share their
+assessements of learning objects suggestions for use, etc.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:choice minOccurs = "0" maxOccurs = "unbounded">
+            <xs:element name="entity" type="CharacterString.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="date" type="DateTime.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="description" type="LangString.Type" minOccurs="0" maxOccurs="1" />
+            <xs:group ref="grpLax.any" />
+        </xs:choice>
+        <xs:anyAttribute namespace = "##other" processContents = "lax" />
+    </xs:complexType>
+
+    <xs:complexType name="Classification.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The Classification complexType is the container for information which describes where this learning 
+object falls within a particular classification system.  To define multiple classifications, there may be 
+multiple instances of this category.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:choice minOccurs = "0" maxOccurs = "unbounded">
+            <xs:element name="purpose" type="Purpose.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="taxonPath" type="TaxonPath.Type" minOccurs="0" maxOccurs="unbounded" />
+            <xs:element name="description" type="LangString.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="keyword" type="LangString.Type" minOccurs="0" maxOccurs="unbounded" />
+            <xs:group ref="grpLax.any" />
+        </xs:choice>
+        <xs:anyAttribute namespace = "##other" processContents = "lax" />
+    </xs:complexType>
+
+    <xs:complexType name="Context.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The Context complexType is the container for the information about the principal environment within which the 
+learning and use of this learning object is intended to take place.  Suggested good practice is to use one of the 
+values of the value space and to use an additional instance of this data element for further refinement.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:choice minOccurs = "0" maxOccurs = "unbounded">
+            <xs:element name="source" type="CharacterString.Type" default="LOMv1.0" minOccurs="0" maxOccurs="1" />
+            <xs:element name="value" type="CharacterString.Type" minOccurs="0" maxOccurs="1" />
+            <xs:group ref="grpLax.any" />
+        </xs:choice>
+        <xs:anyAttribute namespace = "##other" processContents = "lax" />
+    </xs:complexType>
+
+    <xs:complexType name="ContributeLifeCycle.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The Contribute complexType is the container for the entities (i.e. people, organizations) that have
+contributed to the state of the learning object.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:choice minOccurs = "0" maxOccurs = "unbounded">
+            <xs:element name="role" type="RoleLifeCycle.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="entity" type="CharacterString.Type" minOccurs="0" maxOccurs="unbounded" />
+            <xs:element name="date" type="DateTime.Type" minOccurs="0" maxOccurs="1" />
+            <xs:group ref="grpLax.any" />
+        </xs:choice>
+        <xs:anyAttribute namespace = "##other" processContents = "lax" />
+    </xs:complexType>
+
+    <xs:complexType name="ContributeMetaMetadata.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The ContributeMetametadata complexType is the container for the information about those entities that have affected the 
+state of this metadata instance during its lifecycle e.g. creation, validation.  This information is about contributions to the metadata.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:choice minOccurs = "0" maxOccurs = "unbounded">
+            <xs:element name="role" type="RoleMetaMetadata.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="entity" type="CharacterString.Type" minOccurs="0" maxOccurs="unbounded" />
+            <xs:element name="date" type="DateTime.Type" minOccurs="0" maxOccurs="1" />
+            <xs:group ref="grpLax.any" />
+        </xs:choice>
+        <xs:anyAttribute namespace = "##other" processContents = "lax" />
+    </xs:complexType>
+
+    <xs:complexType name="CopyrightAndOtherRestrictions.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The CopyrightAndOtherRestrictions complexType defines whether copyright or other restrictions apply 
+to the use of this learning object.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:choice minOccurs = "0" maxOccurs = "unbounded">
+            <xs:element name="source" type="CharacterString.Type" default="LOMv1.0" minOccurs="0" maxOccurs="1" />
+            <xs:element name="value" type="CharacterString.Type" minOccurs="0" maxOccurs="1" />
+            <xs:group ref="grpLax.any" />
+        </xs:choice>
+        <xs:anyAttribute namespace = "##other" processContents = "lax" />
+    </xs:complexType>
+
+    <xs:complexType name="Cost.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The Cost complexType is the container for whether use of this learning object requires payment.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:choice minOccurs = "0" maxOccurs = "unbounded">
+            <xs:element name="source" type="CharacterString.Type" default="LOMv1.0" minOccurs="0" maxOccurs="1" />
+            <xs:element name="value" type="CharacterString.Type" minOccurs="0" maxOccurs="1" />
+            <xs:group ref="grpLax.any" />
+        </xs:choice>
+        <xs:anyAttribute namespace = "##other" processContents = "lax" />
+    </xs:complexType>
+
+    <xs:complexType name="DateTime.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The DateTime abstract complexType is the container for the annotated date/time.  An accuracy 
+of at least one second is supported.  The ISO 8601 format is used.  An associated description is also provided.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:choice minOccurs = "0" maxOccurs = "unbounded">
+            <xs:element name="dateTime" type="CharacterString.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="description" type="LangString.Type" minOccurs="0" maxOccurs="1" />
+            <xs:group ref="grpLax.any" />
+        </xs:choice>
+        <xs:anyAttribute namespace = "##other" processContents = "lax" />
+    </xs:complexType>
+
+    <xs:complexType name="Difficulty.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The Difficulty complexType is the container for the information about how hard it is to work with or through this 
+learning object for the typical intended target audience.  The typical audience can be characterised by the data 
+elements Educational.Context and Educational.TypicalAgeRange.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:choice minOccurs = "0" maxOccurs = "unbounded">
+            <xs:element name="source" type="CharacterString.Type" default="LOMv1.0" minOccurs="0" maxOccurs="1" />
+            <xs:element name="value" type="CharacterString.Type" minOccurs="0" maxOccurs="1" />
+            <xs:group ref="grpLax.any" />
+        </xs:choice>
+        <xs:anyAttribute namespace = "##other" processContents = "lax" />
+    </xs:complexType>
+
+    <xs:complexType name="Duration.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The Duration abstract complexType is the container for an annotated duration.  The value space 
+for the duration is defined as per ISO 8601:2000.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:choice minOccurs = "0" maxOccurs = "unbounded">
+            <xs:element name="duration" type="CharacterString.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="description" type="LangString.Type" minOccurs="0" maxOccurs="1" />
+            <xs:group ref="grpLax.any" />
+        </xs:choice>
+        <xs:anyAttribute namespace = "##other" processContents = "lax" />
+    </xs:complexType>
+
+    <xs:complexType name="Educational.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The Educational complexType is the container for the information that describes the key educational or
+pedagogic characteristics of this learning object.  This is pedagogical informtion essential to those involved
+in achieving a quality learning experience.  The audience for this metadata includes teachers, managers,
+authors and learners.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:choice minOccurs = "0" maxOccurs = "unbounded">
+            <xs:element name="interactivityType" type="InteractivityType.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="learningResourceType" type="LearningResourceType.Type" minOccurs="0" maxOccurs="unbounded" />
+            <xs:element name="interactivityLevel" type="InteractivityLevel.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="semanticDensity" type="SemanticDensity.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="intendedEndUserRole" type="IntendedEndUserRole.Type" minOccurs="0" maxOccurs="unbounded" />
+            <xs:element name="context" type="Context.Type" minOccurs="0" maxOccurs="unbounded" />
+            <xs:element name="typicalAgeRange" type="LangString.Type" minOccurs="0" maxOccurs="unbounded" />
+            <xs:element name="difficulty" type="Difficulty.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="typicalLearningTime" type="Duration.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="description" type="LangString.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="language" type="CharacterString.Type" minOccurs="0" maxOccurs="unbounded" />
+            <xs:group ref="grpLax.any" />
+        </xs:choice>
+        <xs:anyAttribute namespace = "##other" processContents = "lax" />
+    </xs:complexType>
+
+    <xs:complexType name="General.Type" abstract="false" mixed="false">
+        <xs:choice minOccurs = "0" maxOccurs = "unbounded">
+            <xs:element name="identifier" type="Identifier.Type" minOccurs="0" maxOccurs="unbounded" />
+            <xs:element name="title" type="LangString.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="language" type="CharacterString.Type" minOccurs="0" maxOccurs="unbounded" />
+            <xs:element name="description" type="LangString.Type" minOccurs="0" maxOccurs="unbounded" />
+            <xs:element name="keyword" type="LangString.Type" minOccurs="0" maxOccurs="unbounded" />
+            <xs:element name="coverage" type="LangString.Type" minOccurs="0" maxOccurs="unbounded" />
+            <xs:element name="structure" type="Structure.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="aggregationLevel" type="AggregationLevel.Type" minOccurs="0" maxOccurs="1" />
+            <xs:group ref="grpLax.any" />
+        </xs:choice>
+        <xs:anyAttribute namespace = "##other" processContents = "lax" />
+    </xs:complexType>
+
+    <xs:complexType name="Identifier.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The Identifier complexType is the container for the globally unique idenitifer that identifies 
+the associated parent object.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:choice minOccurs = "0" maxOccurs = "unbounded">
+            <xs:element name="catalog" type="CharacterString.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="entry" type="CharacterString.Type" minOccurs="0" maxOccurs="1" />
+            <xs:group ref="grpLax.any" />
+        </xs:choice>
+        <xs:anyAttribute namespace = "##other" processContents = "lax" />
+    </xs:complexType>
+
+    <xs:complexType name="IntendedEndUserRole.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The IntendedEndUserRole complexType is the container for the information about the principal user(s) for which this learning object
+was designed, most dominant first.  For Strict LOM binding this has an enumerated vocabulary.  The Classification element can be used
+to describe the role through the skills the user is intended to master, or the tasks he or she is intended to be able to accomplish.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:choice minOccurs = "0" maxOccurs = "unbounded">
+            <xs:element name="source" type="CharacterString.Type" default="LOMv1.0" minOccurs="0" maxOccurs="1" />
+            <xs:element name="value" type="CharacterString.Type" minOccurs="0" maxOccurs="1" />
+            <xs:group ref="grpLax.any" />
+        </xs:choice>
+        <xs:anyAttribute namespace = "##other" processContents = "lax" />
+    </xs:complexType>
+
+    <xs:complexType name="InteractivityLevel.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The InteractivityLevel complexType is the container for information about the degree of interactivity of the learning
+object.  Interactiviy in this context refers to the degree to which the learner can influence the aspect or behaviour
+of the learning object.  Inherently, this scale is meaningful within the context of a community of practice.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:choice minOccurs = "0" maxOccurs = "unbounded">
+            <xs:element name="source" type="CharacterString.Type" default="LOMv1.0" minOccurs="0" maxOccurs="1" />
+            <xs:element name="value" type="CharacterString.Type" minOccurs="0" maxOccurs="1" />
+            <xs:group ref="grpLax.any" />
+        </xs:choice>
+        <xs:anyAttribute namespace = "##other" processContents = "lax" />
+    </xs:complexType>
+
+    <xs:complexType name="InteractivityType.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The InteractivityType complexType is the container for the information about the predominant mode of learning
+supported by this learning project.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:choice minOccurs = "0" maxOccurs = "unbounded">
+            <xs:element name="source" type="CharacterString.Type" default="LOMv1.0" minOccurs="0" maxOccurs="1" />
+            <xs:element name="value" type="CharacterString.Type" minOccurs="0" maxOccurs="1" />
+            <xs:group ref="grpLax.any" />
+        </xs:choice>
+        <xs:anyAttribute namespace = "##other" processContents = "lax" />
+    </xs:complexType>
+
+    <xs:complexType name="Kind.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The Kind complexType is the container for the nature of the relationship between this learning object and the
+target learning object, identified by information in the associated Resource complexType.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:choice minOccurs = "0" maxOccurs = "unbounded">
+            <xs:element name="source" type="CharacterString.Type" default="LOMv1.0" minOccurs="0" maxOccurs="1" />
+            <xs:element name="value" type="CharacterString.Type" minOccurs="0" maxOccurs="1" />
+            <xs:group ref="grpLax.any" />
+        </xs:choice>
+        <xs:anyAttribute namespace = "##other" processContents = "lax" />
+    </xs:complexType>
+
+    <xs:complexType name="LangString.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The LangString complexType is the container for a group of language specific characterstrings.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+            <xs:element name="string" type="LanguageString.Type" minOccurs="0" maxOccurs="unbounded" />
+        </xs:sequence>
+        <xs:anyAttribute namespace = "##other" processContents = "lax" />
+    </xs:complexType>
+
+    <xs:complexType name="LearningResourceType.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The LearningResourceType complexType is the container for the information about the specific kind of learning object.
+The most dominant kind shall be first.  The vocabulary terms are defined as in OED:1989 and as used by any educational
+communties of practice.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:choice minOccurs = "0" maxOccurs = "unbounded">
+            <xs:element name="source" type="CharacterString.Type" default="LOMv1.0" minOccurs="0" maxOccurs="1" />
+            <xs:element name="value" type="CharacterString.Type" minOccurs="0" maxOccurs="1" />
+            <xs:group ref="grpLax.any" />
+        </xs:choice>
+        <xs:anyAttribute namespace = "##other" processContents = "lax" />
+    </xs:complexType>
+
+    <xs:complexType name="LifeCycle.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The LifeCycle complexType is the container for the history and current state of this
+learning object and those entities that have affected this learning object during its evolution.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:choice minOccurs = "0" maxOccurs = "unbounded">
+            <xs:element name="version" type="LangString.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="status" type="Status.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="contribute" type="ContributeLifeCycle.Type" minOccurs="0" maxOccurs="unbounded" />
+            <xs:group ref="grpLax.any" />
+        </xs:choice>
+        <xs:anyAttribute namespace = "##other" processContents = "lax" />
+    </xs:complexType>
+
+    <xs:complexType name="LOM.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The LOM complexType is the container for the metadata instance.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:choice minOccurs = "0" maxOccurs = "unbounded">
+            <xs:element name="general" type="General.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="lifeCycle" type="LifeCycle.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="metaMetadata" type="MetaMetadata.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="technical" type="Technical.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="educational" type="Educational.Type" minOccurs="0" maxOccurs="unbounded" />
+            <xs:element name="rights" type="Rights.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="relation" type="Relation.Type" minOccurs="0" maxOccurs="unbounded" />
+            <xs:element name="annotation" type="Annotation.Type" minOccurs="0" maxOccurs="unbounded" />
+            <xs:element name="classification" type="Classification.Type" minOccurs="0" maxOccurs="unbounded" />
+            <xs:group ref="grpLax.any" />
+        </xs:choice>
+        <xs:anyAttribute namespace = "##other" processContents = "lax" />
+    </xs:complexType>
+
+    <xs:complexType name="MetaMetadata.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The MetaMetadata complexType is the container for the information that describes this metadata record
+itself (raher than the learning object that this record describes).  This category describes how the metadata
+instance can be identified, who created this metadata instance, and how, when, and with what references.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:choice minOccurs = "0" maxOccurs = "unbounded">
+            <xs:element name="identifier" type="Identifier.Type" minOccurs="0" maxOccurs="unbounded" />
+            <xs:element name="contribute" type="ContributeMetaMetadata.Type" minOccurs="0" maxOccurs="unbounded" />
+            <xs:element name="metadataschema" type="CharacterString.Type" default="LOMv1.0" minOccurs="0" maxOccurs="unbounded" />
+            <xs:element name="language" type="CharacterString.Type" minOccurs="0" maxOccurs="1" />
+            <xs:group ref="grpLax.any" />
+        </xs:choice>
+        <xs:anyAttribute namespace = "##other" processContents = "lax" />
+    </xs:complexType>
+
+    <xs:complexType name="Name.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The Name complexType is the container for the name of the required technology to use this
+learning object.  The value for this element may be derived from the 'technical.format' automatically
+e.g. 'video/mpeg' implies 'multi-os'.  Also, this vocabulary includes most values in common use at the
+time the LOM Standard was created.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:choice minOccurs = "0" maxOccurs = "unbounded">
+            <xs:element name="source" type="CharacterString.Type" default="LOMv1.0" minOccurs="0" maxOccurs="1" />
+            <xs:element name="value" type="CharacterString.Type" minOccurs="0" maxOccurs="1" />
+            <xs:group ref="grpLax.any" />
+        </xs:choice>
+        <xs:anyAttribute namespace = "##other" processContents = "lax" />
+    </xs:complexType>
+
+    <xs:complexType name="OrComposite.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The OrComposite complexType is the container for grouping multiple requirements.  The composite requirement
+is satisfied when one of the component requirements is satisfied i.e. the logical connector is 'OR'.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:choice minOccurs = "0" maxOccurs = "unbounded">
+            <xs:element name="type" type="Type.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="name" type="Name.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="minimumVersion" type="CharacterString.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="maximumVersion" type="CharacterString.Type" minOccurs="0" maxOccurs="1" />
+            <xs:group ref="grpLax.any" />
+        </xs:choice>
+        <xs:anyAttribute namespace = "##other" processContents = "lax" />
+    </xs:complexType>
+
+    <xs:complexType name="Purpose.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The Purpose complexType is the container for the information on the purpose of
+classifying this learning obect.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:choice minOccurs = "0" maxOccurs = "unbounded">
+            <xs:element name="source" type="CharacterString.Type" default="LOMv1.0" minOccurs="0" maxOccurs="1" />
+            <xs:element name="value" type="CharacterString.Type" minOccurs="0" maxOccurs="1" />
+            <xs:group ref="grpLax.any" />
+        </xs:choice>
+        <xs:anyAttribute namespace = "##other" processContents = "lax" />
+    </xs:complexType>
+
+    <xs:complexType name="Relation.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The Relation complexType is the container for the information that defines the relationship between this 
+learning object and other learning objects, if any.  To define multiple relationships, there may be multiple 
+instances of this category.  If there is more than one target learning object the each object shall have a new 
+relationship instance.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:choice minOccurs = "0" maxOccurs = "unbounded">
+            <xs:element name="kind" type="Kind.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="resource" type="Resource.Type" minOccurs="0" maxOccurs="1" />
+            <xs:group ref="grpLax.any" />
+        </xs:choice>
+        <xs:anyAttribute namespace = "##other" processContents = "lax" />
+    </xs:complexType>
+
+    <xs:complexType name="Requirement.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The Requirement complexType is the container for the information about the technical capabilities necessary for 
+using this learning object.  If there are multiple requirements, then all are required i.e. the logical connector is 'AND'.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:choice minOccurs = "0" maxOccurs = "unbounded">
+            <xs:element name="orComposite" type="OrComposite.Type" minOccurs="0" maxOccurs="unbounded" />
+            <xs:group ref="grpLax.any" />
+        </xs:choice>
+        <xs:anyAttribute namespace = "##other" processContents = "lax" />
+    </xs:complexType>
+
+    <xs:complexType name="Resource.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The Resource complexType is the container for the information about the target learning object that this relationship references.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:choice minOccurs = "0" maxOccurs = "unbounded">
+            <xs:element name="identifier" type="Identifier.Type" minOccurs="0" maxOccurs="unbounded" />
+            <xs:element name="description" type="LangString.Type" minOccurs="0" maxOccurs="unbounded" />
+            <xs:group ref="grpLax.any" />
+        </xs:choice>
+        <xs:anyAttribute namespace = "##other" processContents = "lax" />
+    </xs:complexType>
+
+    <xs:complexType name="Rights.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The Rights complexType describes the intellectual property rights and conditions of use for this learning object.
+NOTE: The intent is to reuse results of ongoing work in the Intellectual Property Rights and e-commerce
+communities.  This category currently provides the absolute minimum level of detail only.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:choice minOccurs = "0" maxOccurs = "unbounded">
+            <xs:element name="cost" type="Cost.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="copyrightAndOtherRestrictions" type="CopyrightAndOtherRestrictions.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="description" type="LangString.Type" minOccurs="0" maxOccurs="1" />
+            <xs:group ref="grpLax.any" />
+        </xs:choice>
+        <xs:anyAttribute namespace = "##other" processContents = "lax" />
+    </xs:complexType>
+
+    <xs:complexType name="RoleLifeCycle.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The Role complexType is the container for the kind of contribution.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:choice minOccurs = "0" maxOccurs = "unbounded">
+            <xs:element name="source" type="CharacterString.Type" default="LOMv1.0" minOccurs="0" maxOccurs="1" />
+            <xs:element name="value" type="CharacterString.Type" minOccurs="0" maxOccurs="1" />
+            <xs:group ref="grpLax.any" />
+        </xs:choice>
+        <xs:anyAttribute namespace = "##other" processContents = "lax" />
+    </xs:complexType>
+
+    <xs:complexType name="RoleMetaMetadata.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The RoleMetaMetadata complexType is the container for the information about the kind of contribution.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:choice minOccurs = "0" maxOccurs = "unbounded">
+            <xs:element name="source" type="CharacterString.Type" default="LOMv1.0" minOccurs="0" maxOccurs="1" />
+            <xs:element name="value" type="CharacterString.Type" minOccurs="0" maxOccurs="1" />
+            <xs:group ref="grpLax.any" />
+        </xs:choice>
+        <xs:anyAttribute namespace = "##other" processContents = "lax" />
+    </xs:complexType>
+
+    <xs:complexType name="SemanticDensity.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The SemanticDensity complexType is the container for the information about the degree of conciseness of a learning object.
+The semantic density of a learning object may be estimated in terms of its size, or - in the case of self-timed resources
+such as audio or video - duration.  The semantic density of a learning object is independent of its difficulty.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:choice minOccurs = "0" maxOccurs = "unbounded">
+            <xs:element name="source" type="CharacterString.Type" default="LOMv1.0" minOccurs="0" maxOccurs="1" />
+            <xs:element name="value" type="CharacterString.Type" minOccurs="0" maxOccurs="1" />
+            <xs:group ref="grpLax.any" />
+        </xs:choice>
+        <xs:anyAttribute namespace = "##other" processContents = "lax" />
+    </xs:complexType>
+
+    <xs:complexType name="Status.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The Status complexType is the container for the completion status or the condition of this learning object.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:choice minOccurs = "0" maxOccurs = "unbounded">
+            <xs:element name="source" type="CharacterString.Type" default="LOMv1.0" minOccurs="0" maxOccurs="1" />
+            <xs:element name="value" type="CharacterString.Type" minOccurs="0" maxOccurs="1" />
+            <xs:group ref="grpLax.any" />
+        </xs:choice>
+        <xs:anyAttribute namespace = "##other" processContents = "lax" />
+    </xs:complexType>
+
+    <xs:complexType name="Structure.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The Structure complexType is the container about the underlying organizational structure of
+this learning object.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:choice minOccurs = "0" maxOccurs = "unbounded">
+            <xs:element name="source" type="CharacterString.Type" default="LOMv1.0" minOccurs="0" maxOccurs="1" />
+            <xs:element name="value" type="CharacterString.Type" minOccurs="0" maxOccurs="1" />
+            <xs:group ref="grpLax.any" />
+        </xs:choice>
+        <xs:anyAttribute namespace = "##other" processContents = "lax" />
+    </xs:complexType>
+
+    <xs:complexType name="Taxon.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The Taxon complexType is the container for the information about a particular term within a
+taxonomy.  A taxon is a node that has a defined label or term.  A taxon may also have an alphanumeric 
+designation or identifier for standardized reference.  Either or both the label and the entry may be used 
+to designate a particular taxon.  An ordered list of taxons creates a taxonomic path i.e. 'taxononomic 
+stairway': this is a path from a more general to more specific entry in a classification.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:choice minOccurs = "0" maxOccurs = "unbounded">
+            <xs:element name="id" type="CharacterString.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="entry" type="LangString.Type" minOccurs="0" maxOccurs="1" />
+            <xs:group ref="grpLax.any" />
+        </xs:choice>
+        <xs:anyAttribute namespace = "##other" processContents = "lax" />
+    </xs:complexType>
+
+    <xs:complexType name="TaxonPath.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The TaxonPath complexType is the container for the information about the taxonomic path in a 
+specific classification system.  Each succeeding level is a refinement in the definition of the 
+preceding level.  There may be different paths in the same or different classifications, which 
+describe the same characteristic.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:choice minOccurs = "0" maxOccurs = "unbounded">
+            <xs:element name="source" type="LangString.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="taxon" type="Taxon.Type" minOccurs="0" maxOccurs="unbounded" />
+            <xs:group ref="grpLax.any" />
+        </xs:choice>
+        <xs:anyAttribute namespace = "##other" processContents = "lax" />
+    </xs:complexType>
+
+    <xs:complexType name="Technical.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The Technical complexType is the container for the information that describes the technical requirements and 
+characteristics of this learning object.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:choice minOccurs = "0" maxOccurs = "unbounded">
+            <xs:element name="format" type="CharacterString.Type" minOccurs="0" maxOccurs="unbounded" />
+            <xs:element name="size" type="CharacterString.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="location" type="CharacterString.Type" minOccurs="0" maxOccurs="unbounded" />
+            <xs:element name="requirement" type="Requirement.Type" minOccurs="0" maxOccurs="unbounded" />
+            <xs:element name="installationRemarks" type="LangString.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="otherPlatformRequirements" type="LangString.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="duration" type="Duration.Type" minOccurs="0" maxOccurs="1" />
+            <xs:group ref="grpLax.any" />
+        </xs:choice>
+        <xs:anyAttribute namespace = "##other" processContents = "lax" />
+    </xs:complexType>
+
+    <xs:complexType name="Type.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The Type complexType is the container for the information about the technology required to use this 
+learning object e.g. hardware, software, network, etc.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:choice minOccurs = "0" maxOccurs = "unbounded">
+            <xs:element name="source" type="CharacterString.Type" default="LOMv1.0" minOccurs="0" maxOccurs="1" />
+            <xs:element name="value" type="CharacterString.Type" minOccurs="0" maxOccurs="1" />
+            <xs:group ref="grpLax.any" />
+        </xs:choice>
+        <xs:anyAttribute namespace = "##other" processContents = "lax" />
+    </xs:complexType>
+
+    <!-- ================================================================================================== -->
+
+    <!-- Generate the derived ComplexTypes **************************************************************** -->
+
+    <xs:complexType name="CharacterString.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The CharacterString derivedType is a String of unlimited size.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:simpleContent>
+            <xs:extension base="xs:string">
+                <xs:anyAttribute namespace = "##other" processContents = "lax" />
+            </xs:extension>
+        </xs:simpleContent>
+    </xs:complexType>
+
+    <xs:complexType name="LanguageString.Type" abstract="false" mixed="false">
+        <xs:simpleContent>
+            <xs:extension base="xs:string">
+                <xs:attribute name="language" use="optional" type="xs:string" />
+                <xs:anyAttribute namespace = "##other" processContents = "lax" />
+            </xs:extension>
+        </xs:simpleContent>
+    </xs:complexType>
+
+    <!-- ================================================================================================== -->
+
+    <!-- Declaration of the elements (Complex) ************************************************************ -->
+
+    <!-- ================================================================================================== -->
+
+    <!-- Declaration of the elements (Derived) ************************************************************ -->
+
+    <!-- ================================================================================================== -->
+
+    <!-- Declaration of the root element(s) *************************************************************** -->
+
+    <xs:element name="lom" type="LOM.Type" />
+
+    <!-- ================================================================================================== -->
+
+</xs:schema>

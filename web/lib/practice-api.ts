@@ -120,3 +120,45 @@ export async function downloadPracticeTemplate(format: 'csv' | 'xlsx') {
   anchor.click()
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
+
+export interface QtiImportPreview {
+  token: string
+  version: string | null
+  packageValidation: string
+  counts: { ready: number | null; review: number | null; blocked: number | null }
+  diagnostics: { code: string; severity: string }[]
+  items: {
+    itemKey: string
+    memberPath: string | null
+    bankAdmission: string
+    importable?: boolean
+    question?: string
+    correctAnswer?: string
+    questionType?: string | null
+    diagnostics: { code: string; severity: string }[]
+  }[]
+}
+export function previewQtiImport(file: File, target: 'bank' | 'mistakes') {
+  const data = new FormData()
+  data.append('file', file)
+  data.append('target', target)
+  return request<QtiImportPreview>('/import/qti/preview', { method: 'POST', body: data })
+}
+export const commitQtiImport = (token: string, selected: string[]) =>
+  request<{ created: number; duplicates: number }>('/import/qti/commit', json({ token, selected }))
+
+export async function exportQtiPackage(entryIds: number[]) {
+  const response = await apiFetch(apiUrl(`${ROOT}/export/qti`), {
+    ...json({ entry_ids: entryIds, version: '3.0', format: 'zip' }),
+    cache: 'no-store',
+  })
+  if (!response.ok) throw new PracticeRequestError('QTI export failed', response.status)
+  const url = URL.createObjectURL(await response.blob())
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = 'questions-qti-3.0.zip'
+  document.body.appendChild(anchor)
+  anchor.click()
+  anchor.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}

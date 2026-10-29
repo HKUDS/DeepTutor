@@ -1,0 +1,55 @@
+<xs:schema 
+  xmlns:xs="http://www.w3.org/2001/XMLSchema"
+  xmlns="http://www.w3.org/1998/Math/MathML"
+  targetNamespace="http://www.w3.org/1998/Math/MathML"
+  elementFormDefault="qualified"
+ >
+
+<xs:annotation>
+  <xs:documentation>
+  This is an XML Schema module for the relational operators of content MathML.
+  Author: St&#233;phane Dalmas, INRIA.
+  </xs:documentation>
+</xs:annotation>
+
+<!-- a common type for all this -->
+<xs:complexType name="Relations.type">
+  <xs:attributeGroup ref="Definition.attrib"/>
+  <xs:attributeGroup ref="Common.attrib"/>
+</xs:complexType>
+
+<xs:element name="eq" type="Relations.type"/>
+<xs:element name="neq" type="Relations.type"/>
+<xs:element name="leq" type="Relations.type"/>
+<xs:element name="lt" type="Relations.type"/>
+<xs:element name="geq" type="Relations.type"/>
+<xs:element name="gt" type="Relations.type"/>
+
+<xs:element name="equivalent" type="Relations.type"/>
+
+<xs:element name="approx" type="Relations.type"/>
+
+<xs:element name="factorof" type="Relations.type"/>
+
+<!-- And the group of everything -->
+<xs:group name="Content-relations.class">
+  <xs:choice>
+    <xs:element ref="eq"/>
+    <xs:element ref="neq"/>
+    <xs:element ref="leq"/>
+    <xs:element ref="lt"/>
+    <xs:element ref="geq"/>
+    <xs:element ref="gt"/>
+    <xs:element ref="equivalent"/>
+    <xs:element ref="approx"/>
+    <xs:element ref="factorof"/>
+  </xs:choice>
+</xs:group>
+
+</xs:schema>
+<!--
+  Copyright &#251; 2002 World Wide Web Consortium, (Massachusetts Institute
+  of Technology, Institut National de Recherche en Informatique et en
+  Automatique, Keio University). All Rights Reserved. See
+  http://www.w3.org/Consortium/Legal/.
+  -->

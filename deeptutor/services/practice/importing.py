@@ -10,6 +10,8 @@ from pathlib import Path
 import re
 import zipfile
 
+from .fill_blanks import legacy_single_blank_spec, normalize_fill_spec
+
 MAX_BYTES = 5 * 1024 * 1024
 MAX_ROWS = 500
 MAX_CELL = 20000
@@ -23,6 +25,7 @@ ALIASES = {
     "tags": ("tags", "标签", "分类"),
     "user_answer": ("user_answer", "我的答案", "作答"),
     "options": ("options", "选项"),
+    "fill_spec": ("fill_spec", "填空映射", "填空答案映射"),
 }
 TYPES = {
     "single_choice": "single_choice",
@@ -44,6 +47,9 @@ TYPES = {
     "简答题": "short_answer",
     "essay": "short_answer",
     "free_response": "short_answer",
+    "written": "written",
+    "论述": "written",
+    "论述题": "written",
 }
 
 
@@ -143,6 +149,14 @@ def normalize_question(raw: dict) -> dict:
     options = {
         str(key).strip().upper(): _cell(value) for key, value in options.items() if _cell(value)
     }
+    raw_fill_spec = fields["fill_spec"]
+    fill_spec = None
+    if raw_fill_spec not in (None, ""):
+        if isinstance(raw_fill_spec, str):
+            raw_fill_spec = json.loads(raw_fill_spec)
+        if not isinstance(raw_fill_spec, dict):
+            raise ValueError("Fill mapping must be a JSON object")
+        fill_spec = normalize_fill_spec(dict(raw_fill_spec))
     for letter in "ABCDEFGHIJ":
         value = row.get(letter.lower(), row.get(f"选项{letter.lower()}", ""))
         if _cell(value):
@@ -151,6 +165,10 @@ def normalize_question(raw: dict) -> dict:
     kind = TYPES.get(raw_type) if raw_type else ("single_choice" if options else "short_answer")
     if kind is None:
         raise ValueError("Unknown question type")
+    if fill_spec is not None and kind != "fill_blank":
+        raise ValueError("Fill mappings are only valid for fill-in-blank questions")
+    if fill_spec is None and kind == "fill_blank" and answer:
+        fill_spec = legacy_single_blank_spec(kind, answer)
     if kind == "true_false":
         truths = {"true", "正确", "对", "是", "t", "1"}
         falses = {"false", "错误", "错", "否", "f", "0"}
@@ -188,6 +206,8 @@ def normalize_question(raw: dict) -> dict:
         user_answer=_cell(fields["user_answer"]),
         tags=tags,
     )
+    if fill_spec is not None:
+        result["fill_spec"] = fill_spec
     identity = {
         key: result[key] for key in ("question", "question_type", "options", "correct_answer")
     }

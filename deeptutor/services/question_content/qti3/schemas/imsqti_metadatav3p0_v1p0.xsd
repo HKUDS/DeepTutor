@@ -1,0 +1,254 @@
+<?xml version = "1.0" encoding = "UTF-8"?>
+<xs:schema xmlns="http://www.imsglobal.org/xsd/imsqti_metadata_v3p0"
+     targetNamespace="http://www.imsglobal.org/xsd/imsqti_metadata_v3p0"
+     xmlns:xs="http://www.w3.org/2001/XMLSchema"
+     version="IMS QTI MD 3.0.0"
+     elementFormDefault="qualified"
+     attributeFormDefault="unqualified">
+
+    <xs:annotation>
+        <xs:documentation>
+            XSD Data File Information
+            =========================
+            Author:         Colin Smythe (IMS Global), Tom Hoffman (IMS Global) and Susan Haught (IMS Global)
+            Date:           1st May 2022
+            Version:        1.0
+            Status:         IMS Final Release
+            Description:    This is the Platform Specific Model of the Metadata object in the IMS QTIv3.0 Specification Information Model. It is this representation that is used to produce the XSD binding for the IMS QTI Metadata v3.0.
+
+            History:        This version supercedes the full IMS QTIv2.2 Metadata specification.
+            
+            License:        IPR and Distribution Notices
+            
+                            This machine readable file is derived from the IMS Question and Test Interoperability (QTI) Metadata Specification Version 3.0
+                            found at http://www.imsglobal.org/question and the original IMS Global schema binding or code base
+                            http://www.imsglobal.org/question.
+            
+                            Recipients of this document are requested to submit, with their comments, notification of any relevant 
+                            patent claims or other intellectual property rights of which they may be aware that might be infringed by
+                            any implementation of the specification set forth in this document, and to provide supporting documentation.
+            
+                            IMS takes no position regarding the validity or scope of any intellectual property or other rights that might
+                            be claimed to pertain to the implementation or use of the technology described in this document or the extent 
+                            to which any license under such rights might or might not be available; neither does it represent that it has 
+                            made any effort to identify any such rights. Information on IMS procedures with respect to rights in IMS 
+                            specifications can be found at the IMS Global Intellectual Property Rights web page: http://www.imsglobal.org/ipr/imsipr_policyFinal.pdf.
+            
+                            Copyright (c) IMS Global Learning Consortium 1999-2022. All Rights Reserved.
+            
+                            Use of this specification to develop products or services is governed by the license with IMS found on the IMS website: http://www.imsglobal.org/license.html.
+            
+                            Permission is granted to all parties to use excerpts from this document as needed in producing requests for proposals.
+            
+                            The limited permissions granted above are perpetual and will not be revoked by IMS or its successors or assigns.
+            
+                            THIS SPECIFICATION IS BEING OFFERED WITHOUT ANY WARRANTY WHATSOEVER, AND IN PARTICULAR, ANY WARRANTY OF NONINFRINGEMENT IS
+                            EXPRESSLY DISCLAIMED. ANY USE OF THIS SPECIFICATION SHALL BE MADE ENTIRELY AT THE IMPLEMENTERS OWN RISK, AND NEITHER THE CONSORTIUM
+                            NOR ANY OF ITS MEMBERS OR SUBMITTERS, SHALL HAVE ANY LIABILITY WHATSOEVER TO ANY IMPLEMENTER OR THIRD PARTY FOR ANY DAMAGES OF
+                            ANY NATURE WHATSOEVER, DIRECTLY OR INDIRECTLY, ARISING FROM THE USE OF THIS SPECIFICATION.
+            
+            Source UML File Information
+            ===========================
+            The source file information must be supplied as an XMI file (without diagram layout information).
+            The supported UML authoring tools are:
+            (a) Poseidon - v6 (and later)
+            (b) Papyrus - v1.1.3 (and later)
+            
+            Source XSLT File Information
+            ============================
+            XSL Generator:    Specificationv1p0_GenerationToolv1.xsl
+            XSLT Processor:   Saxon
+            Release:          1.0
+            Date:             31st January, 2021
+            Autogen Engineer: Colin Smythe (IMS Global, UK)
+            Autogen Date:     2022-03-30
+            
+            IMS Global Auto-generation Binding Tool-kit (I-BAT)
+            ===================================================
+            This file was auto-generated using the IMS Global Binding Auto-generation Tool-kit (I-BAT).  While every
+            attempt has been made to ensure that this tool auto-generates the files correctly, users should be aware
+            that this is an experimental tool.  Permission is given to make use of this tool.  IMS Global makes no
+            claim on the materials created by third party users of this tool.  Details on how to use this tool
+            are contained in the IMS Global "I-BAT" documentation available at the IMS Global web-site:
+            http://www.imsglobal.org.
+            
+            Tool Copyright:  2012-2022  (c) IMS Global Learning Consortium Inc.  All Rights Reserved.
+        </xs:documentation>
+    </xs:annotation>
+
+    <!-- Generate Global Attributes (non-assigned) ******************************************************** -->
+
+    <!-- ================================================================================================== -->
+
+    <!-- Generate Global Attributes *********************************************************************** -->
+
+    <!-- ================================================================================================== -->
+
+    <!-- Generate Global List Types *********************************************************************** -->
+
+    <!-- ================================================================================================== -->
+
+    <!-- Generate Namespaced extension Group  ************************************************************* -->
+
+    <!-- ================================================================================================== -->
+
+    <!-- Generate Special DataTypes  ********************************************************************** -->
+
+    <!-- ================================================================================================== -->
+
+    <!-- Generate the enumerated simpleType declarations ************************************************** -->
+
+    <!-- ================================================================================================== -->
+
+    <!-- Generate the simpleType elements based on IMS data-types (Parameter) ***************************** -->
+
+    <!-- ================================================================================================== -->
+
+    <!-- Generate the simpleType elements based on IMS data-types (Derived) ******************************* -->
+
+    <!-- ================================================================================================== -->
+
+    <!-- Generate the simpleType elements based on IMS data-types (Union) ********************************* -->
+
+    <!-- ================================================================================================== -->
+
+    <!-- Generate the simpleType elements based on IMS data-types (Complex) ******************************* -->
+
+    <!-- ================================================================================================== -->
+
+    <!-- Generate the derived data-type elements based upon simpleType ************************************ -->
+
+    <xs:simpleType name="String256DType">
+        <xs:restriction base="xs:string">
+            <xs:maxLength value="256" />
+            <xs:whiteSpace value="preserve" />
+        </xs:restriction>
+    </xs:simpleType>
+
+    <!-- ================================================================================================== -->
+
+    <!-- Generate the derived data-type elements based upon derived simpleType **************************** -->
+
+    <!-- ================================================================================================== -->
+
+    <!-- Generate the ComplexTypes ************************************************************************ -->
+
+    <xs:complexType name="PCIContextDType" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                This is the container for the contextual information that can be supplied for a PCI used  
+                within an Item. The contained information is only relevant when there is an 'interactionT-
+                ype' of 'portableCustomInteraction'.                                                      
+            </xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+            <xs:element name="customTypeIdentifier" type="xs:normalizedString" minOccurs="0" maxOccurs="1" />
+            <xs:element name="interactionKind" type="xs:normalizedString" minOccurs="0" maxOccurs="1" />
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:complexType name="QTIMetadataDType" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                This contains the new category of metadata for the recording of QTI specific information. 
+                It is designed to be treated as an additional top-level category to augment the IEEE LOM. 
+            </xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+            <xs:element name="itemTemplate" type="xs:boolean" minOccurs="0" maxOccurs="1" />
+            <xs:element name="timeDependent" type="xs:boolean" minOccurs="0" maxOccurs="1" />
+            <xs:element name="composite" type="xs:boolean" minOccurs="0" maxOccurs="1" />
+            <xs:element name="interactionType" minOccurs="0" maxOccurs="unbounded">
+                <xs:simpleType>
+                    <xs:annotation>
+                        <xs:documentation source="documentation">
+                            The set of enumerations for the type of interaction in the QTI Metadata.                  
+                        </xs:documentation>
+                    </xs:annotation>
+                    <xs:restriction base="xs:string">
+                        <xs:enumeration value="associateInteraction" />
+                        <xs:enumeration value="choiceInteraction" />
+                        <xs:enumeration value="customInteraction" />
+                        <xs:enumeration value="drawingInteraction" />
+                        <xs:enumeration value="endAttemptInteraction" />
+                        <xs:enumeration value="extendedTextInteraction" />
+                        <xs:enumeration value="gapMatchInteraction" />
+                        <xs:enumeration value="graphicAssociateInteraction" />
+                        <xs:enumeration value="graphicGapMatchInteraction" />
+                        <xs:enumeration value="graphicOrderInteraction" />
+                        <xs:enumeration value="hotspotInteraction" />
+                        <xs:enumeration value="hottextInteraction" />
+                        <xs:enumeration value="inlineChoiceInteraction" />
+                        <xs:enumeration value="matchInteraction" />
+                        <xs:enumeration value="mediaInteraction" />
+                        <xs:enumeration value="orderInteraction" />
+                        <xs:enumeration value="portableCustomInteraction" />
+                        <xs:enumeration value="positionObjectInteraction" />
+                        <xs:enumeration value="selectPointInteraction" />
+                        <xs:enumeration value="sliderInteraction" />
+                        <xs:enumeration value="textEntryInteraction" />
+                        <xs:enumeration value="uploadInteraction" />
+                    </xs:restriction>
+                </xs:simpleType>
+            </xs:element>
+            <xs:element name="portableCustomInteractionContext" type="PCIContextDType" minOccurs="0" maxOccurs="1" />
+            <xs:element name="feedbackType" minOccurs="0" maxOccurs="1">
+                <xs:simpleType>
+                    <xs:annotation>
+                        <xs:documentation source="documentation">
+                            The set of enumerations for the type of feedback in QTI Metadata.                         
+                        </xs:documentation>
+                    </xs:annotation>
+                    <xs:restriction base="xs:string">
+                        <xs:enumeration value="adaptive" />
+                        <xs:enumeration value="nonadaptive" />
+                        <xs:enumeration value="none" />
+                    </xs:restriction>
+                </xs:simpleType>
+            </xs:element>
+            <xs:element name="solutionAvailable" type="xs:boolean" minOccurs="0" maxOccurs="1" />
+            <xs:element name="scoringMode" minOccurs="0" maxOccurs="unbounded">
+                <xs:simpleType>
+                    <xs:annotation>
+                        <xs:documentation source="documentation">
+                            The set of enumerations for the scoring mode in the QTI Metadata.                         
+                        </xs:documentation>
+                    </xs:annotation>
+                    <xs:restriction base="xs:string">
+                        <xs:enumeration value="human" />
+                        <xs:enumeration value="externalmachine" />
+                        <xs:enumeration value="responseprocessing" />
+                    </xs:restriction>
+                </xs:simpleType>
+            </xs:element>
+            <xs:element name="toolName" type="String256DType" minOccurs="0" maxOccurs="1" />
+            <xs:element name="toolVersion" type="String256DType" minOccurs="0" maxOccurs="1" />
+            <xs:element name="toolVendor" type="String256DType" minOccurs="0" maxOccurs="1" />
+        </xs:sequence>
+    </xs:complexType>
+
+    <!-- ================================================================================================== -->
+
+    <!-- Generate the SOAP Binding ComplexTypes *********************************************************** -->
+
+    <!-- ================================================================================================== -->
+
+    <!-- Generate the derived ComplexTypes **************************************************************** -->
+
+    <!-- ================================================================================================== -->
+
+    <!-- Declaration of the elements (Complex) ************************************************************ -->
+
+    <!-- ================================================================================================== -->
+
+    <!-- Declaration of the elements (Derived) ************************************************************ -->
+
+    <!-- ================================================================================================== -->
+
+    <!-- Declaration of the root element(s) *************************************************************** -->
+
+    <xs:element name="qtiMetadata" type="QTIMetadataDType" />
+
+    <!-- ================================================================================================== -->
+
+</xs:schema>

@@ -303,7 +303,31 @@ class PracticeStore:
             )
         return outcome
 
-    def stage_import(self, filename: str, target: str, questions: list[dict]) -> str:
+    def entries_by_id(self, entry_ids: list[int]) -> list[dict]:
+        """Read visible notebook rows in caller order; missing or hidden ids are dropped."""
+        if not entry_ids:
+            return []
+        from deeptutor.services.session.sqlite_store import SQLiteSessionStore
+
+        placeholders = ",".join("?" * len(entry_ids))
+        with self.connect() as conn:
+            rows = conn.execute(
+                # The placeholder list is generated from the integer id count;
+                # every value still binds through ?.
+                f"""SELECT n.* FROM notebook_entries n LEFT JOIN sessions s ON s.id=n.session_id
+                WHERE n.id IN ({placeholders}) AND (n.session_id IS NULL OR s.deleted_at IS NULL)""",  # nosec B608
+                tuple(entry_ids),
+            ).fetchall()
+        by_id = {int(row["id"]): SQLiteSessionStore._serialize_notebook_entry(row) for row in rows}
+        return [by_id[entry_id] for entry_id in entry_ids if entry_id in by_id]
+
+    def stage_import(
+        self,
+        filename: str,
+        target: str,
+        questions: list[dict],
+        report: dict | None = None,
+    ) -> str:
         token, now = uuid.uuid4().hex, time.time()
         with self.connect() as conn:
             conn.execute(
@@ -316,13 +340,41 @@ class PracticeStore:
                     token,
                     filename[:200],
                     target,
-                    json.dumps({"questions": questions}, ensure_ascii=False),
+                    json.dumps(
+                        {"questions": questions, "report": report},
+                        ensure_ascii=False,
+                    ),
                     now,
                 ),
             )
         return token
 
-    def commit_import(self, token: str) -> dict:
+    def staged_import(self, token: str) -> dict | None:
+        """Read one preview receipt without mutating it."""
+        with self.connect() as conn:
+            row = conn.execute(
+                "SELECT filename, target, payload_json, result_json, created_at "
+                "FROM practice_imports WHERE token=?",
+                (token,),
+            ).fetchone()
+        if row is None:
+            return None
+        payload = json.loads(row["payload_json"] or "{}")
+        return {
+            "filename": row["filename"],
+            "target": row["target"],
+            "payload": payload if isinstance(payload, dict) else {},
+            "result": json.loads(row["result_json"]) if row["result_json"] else None,
+            "created_at": row["created_at"],
+        }
+
+    def commit_import(self, token: str, selected: list[str] | None = None) -> dict:
+        """Commit a staged import, optionally only the selected item keys.
+
+        ``selected`` is what the QTI preview uses: ten items can be staged while
+        the learner only ticks three. File imports pass ``None`` and keep their
+        historical commit-everything behaviour.
+        """
         now = time.time()
         with self.connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
@@ -337,36 +389,57 @@ class PracticeStore:
                 raise ValueError("Import preview expired. Select the file again.")
             payload = json.loads(staged["payload_json"])
             questions = payload if isinstance(payload, list) else payload["questions"]
-            # All practice-file imports share one durable origin namespace.
+            if selected is not None:
+                wanted = set(selected)
+                questions = [q for q in questions if q.get("item_key") in wanted]
+                if not questions:
+                    raise ValueError("Select at least one importable question")
+            # Each import surface keeps its own durable origin namespace.
             # ``question_id`` is a content hash, so re-importing the same
             # question remains idempotent without tying ownership to an
             # ephemeral preview receipt or a synthetic chat session.
-            origin_ref = "practice-import"
+            qti = str(staged["target"]).startswith("qti")
+            origin_ref = "qti-import" if qti else "practice-import"
+            # Imported locally: this module is also loaded by the session store
+            # during initialisation, so a module-level import would cycle.
+            from deeptutor.services.session.question_content_adapter import content_for_write
+
             created, skipped = 0, 0
             for question in questions:
+                fill_spec = question.get("fill_spec")
+                content = content_for_write(
+                    {**question, "source": "import", "fill_spec": fill_spec}, None
+                )
+                if content is not None:
+                    fill_spec = content["author"]["fillSpec"]
                 cursor = conn.execute(
                     """
                     INSERT OR IGNORE INTO notebook_entries(
                         session_id, origin_type, origin_ref, question_id, question, question_type,
-                        options_json, correct_answer, explanation, difficulty, user_answer, source,
+                        options_json, fill_spec_json, question_content_json, correct_answer,
+                        explanation, difficulty, user_answer, source,
                         result, assessment_type, created_at, updated_at, material_title, material_id)
-                    VALUES(NULL, 'external_import', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'import', ?, 'quiz', ?, ?, ?, ?)
+                    VALUES(NULL, 'external_import', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'import', ?, 'quiz', ?, ?, ?, ?)
                 """,
                     (
                         origin_ref,
                         question["question_id"],
                         question["question"],
                         question["question_type"],
-                        json.dumps(question["options"], ensure_ascii=False),
-                        question["correct_answer"],
-                        question["explanation"],
-                        question["difficulty"],
-                        question["user_answer"],
-                        "incorrect" if staged["target"] == "mistakes" else "ungraded",
+                        json.dumps(question.get("options") or {}, ensure_ascii=False),
+                        json.dumps(fill_spec, ensure_ascii=False),
+                        json.dumps(content, ensure_ascii=False),
+                        question.get("correct_answer") or "",
+                        question.get("explanation") or "",
+                        question.get("difficulty") or "",
+                        question.get("user_answer") or "",
+                        "incorrect"
+                        if staged["target"] in {"mistakes", "qti-mistakes"}
+                        else "ungraded",
                         now,
                         now,
                         staged["filename"],
-                        "import:" + token,
+                        ("qti3:" if qti else "import:") + token,
                     ),
                 )
                 created += cursor.rowcount
@@ -377,7 +450,7 @@ class PracticeStore:
                       AND question_id=? AND turn_id=''""",
                     (origin_ref, question["question_id"]),
                 ).fetchone()[0]
-                if staged["target"] == "mistakes":
+                if staged["target"] in {"mistakes", "qti-mistakes"}:
                     conn.execute(
                         "INSERT OR IGNORE INTO practice_review_state(entry_id, first_wrong_at, due_at) VALUES(?, ?, ?)",
                         (entry_id, now, now + DAY),
@@ -399,7 +472,19 @@ class PracticeStore:
                     )
             result = {"created": created, "duplicates": skipped, "total": created + skipped}
             conn.execute(
-                "UPDATE practice_imports SET result_json=?, payload_json='[]' WHERE token=?",
-                (json.dumps(result), token),
+                "UPDATE practice_imports SET result_json=?, payload_json=? WHERE token=?",
+                (
+                    json.dumps(result),
+                    # Drop the staged questions but keep the preview report so
+                    # the UI can still explain what was imported.
+                    json.dumps(
+                        {
+                            "questions": [],
+                            "report": payload.get("report") if isinstance(payload, dict) else None,
+                        },
+                        ensure_ascii=False,
+                    ),
+                    token,
+                ),
             )
         return result

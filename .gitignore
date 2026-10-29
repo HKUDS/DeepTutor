@@ -19,6 +19,9 @@ data/
 /.github/tdd/
 /site/
 .claude
+.omc/
+.trellis/
+.fewword/
 .agents/
 .workbuddy/
 

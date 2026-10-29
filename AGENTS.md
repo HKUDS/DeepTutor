@@ -160,13 +160,18 @@ Use the source helper for optional extras rather than installing feature wheels
 over the checkout:
 
 ```bash
-python scripts/install_extras.py partners       # Partner channel SDKs
+python scripts/install_extras.py partners       # Partner channel SDKs (alias: tutorbot)
 python scripts/install_extras.py matrix         # Matrix channel without E2EE/libolm
 python scripts/install_extras.py matrix-e2e     # Matrix with end-to-end encryption
 python scripts/install_extras.py math-animator  # Manim; also needs system LaTeX/ffmpeg
-python scripts/install_extras.py dev            # Test / lint tooling
+python scripts/install_extras.py qti            # QTI 2.1/2.2/3.0 import/export (lxml + offline XSD bundles)
+python scripts/install_extras.py dev            # Test / lint tooling, including qti
 python scripts/install_extras.py all            # Full + Manim + dev dependencies
 ```
+
+These are examples of valid extras; the complete set is defined in
+`tool.deeptutor.optional-dependencies` in `pyproject.toml`. `cli` is empty
+because CLI dependencies are part of core; `server` installs Web/API dependencies.
 
 Stop DeepTutor before module changes. Source supports `module enable/disable`;
 wheel environments also support `module install/uninstall`. Upgrading a legacy
