@@ -38,7 +38,13 @@ DEFAULT_KB_BASE_DIR = str(get_runtime_data_root() / "knowledge_bases")
 
 # How long an indexing step may run without reporting any progress before it
 # is treated as stalled (see _run_with_stall_guard).
-_INDEX_STALL_TIMEOUT_SECONDS = 600.0
+# Raised from the previous 600s default: reindexing very large knowledge
+# bases (tens of thousands of documents, e.g. on a CPU-only embedding host)
+# can take well over 10 minutes per stage, and the O(n^2) journal
+# serialization made that far worse. Keep a generous ceiling so a legitimate
+# long build is not killed as "stalled" while still detecting truly hung
+# workers.
+_INDEX_STALL_TIMEOUT_SECONDS = 14400.0
 # How often the stall guard checks the progress heartbeat.
 _INDEX_STALL_POLL_SECONDS = 5.0
 _INDEX_WORKERS: dict[str, threading.Event] = {}
