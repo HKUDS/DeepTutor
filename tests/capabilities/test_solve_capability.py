@@ -111,6 +111,48 @@ async def test_replan_is_budget_limited() -> None:
 
 
 @pytest.mark.asyncio
+async def test_second_plan_is_refused_and_keeps_progress() -> None:
+    sid = "test-plan-twice"
+    await SolvePlanTool().execute(
+        _solve_session_id=sid, analysis="a", steps=[{"goal": "factor"}, {"goal": "solve roots"}]
+    )
+    await SolveFinishStepTool().execute(_solve_session_id=sid, step_id="S1", summary="done")
+
+    again = await SolvePlanTool().execute(
+        _solve_session_id=sid, analysis="b", steps=[{"goal": "start over"}]
+    )
+
+    assert again.success is False
+    payload = json.loads(again.content)
+    assert payload["status"] == "plan_exists"
+    # The refusal re-grounds the model on the plan it already has.
+    assert "- S1 [done] factor" in payload["plan"]
+    assert "- S2 [next] solve roots" in payload["plan"]
+    session = get_session(sid)
+    assert [s.goal for s in session.steps] == ["factor", "solve roots"]
+    assert session.steps[0].done is True
+    assert session.replans == 0
+
+
+@pytest.mark.asyncio
+async def test_second_plan_cannot_bypass_spent_replan_budget() -> None:
+    sid = "test-plan-after-budget"
+    await SolvePlanTool().execute(_solve_session_id=sid, analysis="a", steps=[{"goal": "g1"}])
+    get_session(sid).max_replans = 0
+    refused = await SolveReplanTool().execute(
+        _solve_session_id=sid, reason="stuck", steps=[{"goal": "g2"}]
+    )
+    assert refused.success is False
+
+    bypass = await SolvePlanTool().execute(
+        _solve_session_id=sid, analysis="b", steps=[{"goal": "g3"}]
+    )
+
+    assert bypass.success is False
+    assert [s.goal for s in get_session(sid).steps] == ["g1"]
+
+
+@pytest.mark.asyncio
 async def test_tools_require_a_session_id() -> None:
     res = await SolvePlanTool().execute(analysis="a", steps=[{"goal": "g"}])
     assert res.success is False

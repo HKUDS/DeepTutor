@@ -1,0 +1,99 @@
+{
+  "schema_version": 1,
+  "id": "questions",
+  "distribution": "deeptutor-questions",
+  "requires": [
+    "parsing"
+  ],
+  "optional": [
+    "knowledge"
+  ],
+  "paths": [
+    "deeptutor/agents/question",
+    "deeptutor/api/routers/practice.py",
+    "deeptutor/api/routers/question.py",
+    "deeptutor/api/routers/question_notebook.py",
+    "deeptutor/tools/question"
+  ],
+  "capabilities": {
+    "deep_question": {
+      "class_path": "deeptutor.agents.question.capability:DeepQuestionCapability",
+      "config_model": "deeptutor.runtime.request_contracts:DeepQuestionRequestConfig",
+      "manifest": {
+        "name": "deep_question",
+        "description": "Fast question generation (Template batches -> Generate).",
+        "stages": [
+          "ideation",
+          "generation"
+        ],
+        "tools_used": [
+          "rag",
+          "web_search",
+          "exec"
+        ],
+        "cli_aliases": [
+          "quiz"
+        ]
+      },
+      "order": 3
+    }
+  },
+  "loops": {},
+  "tools": {
+    "question_bank": {
+      "class_path": "deeptutor.tools.builtin:QuestionBankTool",
+      "order": 21
+    }
+  },
+  "routes": [
+    {
+      "reference": "deeptutor.api.routers.question:router",
+      "options": {
+        "prefix": "/api/question",
+        "tags": [
+          "question"
+        ]
+      },
+      "auth": "learning",
+      "order": 572
+    },
+    {
+      "reference": "deeptutor.api.routers.question:ws_router",
+      "options": {
+        "prefix": "/ws/questions",
+        "tags": [
+          "question"
+        ]
+      },
+      "auth": "public",
+      "order": 617
+    },
+    {
+      "reference": "deeptutor.api.routers.question_notebook:router",
+      "options": {
+        "prefix": "/api/question-notebook",
+        "tags": [
+          "question-notebook"
+        ]
+      },
+      "auth": "learning",
+      "order": 689
+    },
+    {
+      "reference": "deeptutor.api.routers.practice:router",
+      "options": {
+        "prefix": "/api/question-notebook/practice",
+        "tags": [
+          "practice"
+        ]
+      },
+      "auth": "learning",
+      "order": 695
+    }
+  ],
+  "commands": [],
+  "navigation": [],
+  "services": [],
+  "requirements": [],
+  "executables": []
+}

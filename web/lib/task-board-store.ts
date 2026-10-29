@@ -1,6 +1,7 @@
 'use client'
 
 import { useSyncExternalStore } from 'react'
+import { activeWorkspaceId } from './workspace-scope'
 import {
   getTaskBoard,
   normalizeTaskBoard,
@@ -20,6 +21,7 @@ let generation = 0
 let refreshing: Promise<void> | undefined
 let owners = 0
 let stop: (() => void) | undefined
+let syncWorkspaceId: string | undefined
 
 function accept(board: TaskBoard) {
   // A delayed GET or mutation must not roll back a newer streamed snapshot.
@@ -32,7 +34,7 @@ export async function refreshTaskBoard() {
   const currentGeneration = generation
   refreshing = (async () => {
     try {
-      const board = await getTaskBoard()
+      const board = await getTaskBoard(undefined, syncWorkspaceId ?? activeWorkspaceId())
       if (generation === currentGeneration) accept(board)
     } catch {
       if (generation === currentGeneration) {
@@ -46,23 +48,31 @@ export async function refreshTaskBoard() {
   return refreshing
 }
 
-/** One account-level connection, owned by the workspace shell, outside its scope reset. */
-export function startTaskBoardSync() {
+/** One connection per workspace board, owned by the workspace shell and reset with its scope. */
+export function startTaskBoardSync({ stream = true }: { stream?: boolean } = {}) {
   if (++owners === 1) {
-    const unsubscribe = subscribeTaskBoardChanges(accept)
+    const workspaceId = activeWorkspaceId()
+    syncWorkspaceId = workspaceId
+    const currentGeneration = generation
+    const isCurrent = () => generation === currentGeneration
+    const unsubscribe = subscribeTaskBoardChanges((board, responseWorkspaceId) => {
+      if (isCurrent() && responseWorkspaceId === workspaceId) accept(board)
+    })
     void refreshTaskBoard()
     const source =
-      typeof EventSource !== 'undefined'
-        ? new EventSource(taskBoardUrl('/events'), { withCredentials: true })
+      stream && typeof EventSource !== 'undefined'
+        ? new EventSource(taskBoardUrl('/events', workspaceId), { withCredentials: true })
         : null
     let fallback: ReturnType<typeof setInterval> | undefined
     const startFallback = () => {
+      if (!isCurrent()) return
       fallback ??= setInterval(() => {
         if (!document.hidden) void refreshTaskBoard()
       }, 3000)
     }
     if (source) {
       source.onmessage = event => {
+        if (!isCurrent()) return
         try {
           accept(JSON.parse(event.data))
         } catch {
@@ -71,10 +81,11 @@ export function startTaskBoardSync() {
       }
       source.onerror = startFallback
       source.onopen = () => {
+        if (!isCurrent()) return
         clearInterval(fallback)
         fallback = undefined
       }
-    } else startFallback()
+    } else if (stream) startFallback()
     const focus = () => {
       if (!document.hidden) void refreshTaskBoard()
     }
@@ -93,6 +104,7 @@ export function startTaskBoardSync() {
       stop?.()
       stop = undefined
       state = empty
+      syncWorkspaceId = undefined
       generation++
       refreshing = undefined
     }

@@ -169,9 +169,11 @@ export default function BookChatPanel({
     setBusy(false);
 
     if (!open || !initialSessionId) return;
+    let settled = false;
     void getSession(initialSessionId)
       .then((session) => {
         if (cancelled) return;
+        settled = true;
         const restored = (session.messages || [])
           .filter((m) => m.role === "user" || m.role === "assistant")
           .map((m) => ({
@@ -188,6 +190,10 @@ export default function BookChatPanel({
 
     return () => {
       cancelled = true;
+      // A restore cut short (a re-render, StrictMode's second pass) has not
+      // shown this conversation yet: let the next run load it again rather
+      // than mistake it for the session this panel's own turn created.
+      if (!settled && sessionIdRef.current === initialSessionId) sessionIdRef.current = null;
     };
   }, [book?.id, page?.id, initialSessionId, open]);
 
@@ -418,7 +424,7 @@ export default function BookChatPanel({
 
   return (
     <aside
-      className="relative flex h-full shrink-0 flex-col border-l border-[var(--border)] bg-[var(--card)]/40 backdrop-blur"
+      className="relative flex h-full shrink-0 flex-col bg-[rgb(var(--dt-ink,55_53_47)/0.022)]"
       style={{ width }}
     >
       <div className="absolute inset-y-0 left-0 z-10 flex w-2">
@@ -453,11 +459,11 @@ export default function BookChatPanel({
                 setWidth(event.key === "Home" ? 300 : 720);
               }
             }}
-            className="h-full w-2 cursor-col-resize touch-none bg-transparent transition-colors hover:bg-[var(--primary)]/30 focus-visible:bg-[var(--primary)]/30 focus-visible:outline-2 focus-visible:outline-[var(--primary)]"
+            className="h-full w-2 cursor-col-resize touch-none bg-transparent transition-colors hover:bg-[color-mix(in_srgb,var(--primary)_30%,transparent)] focus-visible:bg-[color-mix(in_srgb,var(--primary)_30%,transparent)] focus-visible:outline-2 focus-visible:outline-[var(--primary)]"
           />
         </Tooltip>
       </div>
-      <header className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
+      <header className="flex items-center justify-between px-4 pb-2 pt-3.5">
         <div className="min-w-0">
           <div className="flex items-center gap-2 text-sm font-medium text-[var(--foreground)]">
             <MessageSquare className="h-4 w-4 text-[var(--primary)]" />
@@ -483,7 +489,7 @@ export default function BookChatPanel({
         className="flex-1 overflow-y-auto px-4 py-3"
       >
         {messages.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--background)]/50 p-4 text-xs leading-5 text-[var(--muted-foreground)]">
+          <div className="rounded-2xl bg-[var(--background)] p-4 text-xs leading-5 text-[var(--muted-foreground)]">
             {t(
               "Ask a question about this page. The current chapter content is sent to the assistant automatically.",
             )}
@@ -548,7 +554,7 @@ export default function BookChatPanel({
           e.preventDefault();
           void send();
         }}
-        className="border-t border-[var(--border)] p-3"
+        className="px-3 pb-3 pt-1"
       >
         <input
           ref={fileInputRef}
@@ -565,7 +571,7 @@ export default function BookChatPanel({
             {attachments.map((attachment, index) => (
               <span
                 key={`${attachment.filename}-${index}`}
-                className="inline-flex max-w-full items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--background)] px-2 py-1 text-[11px] text-[var(--foreground)]"
+                className="inline-flex max-w-full items-center gap-1.5 rounded-lg bg-[var(--background)] px-2 py-1 text-[11px] text-[var(--foreground)] shadow-[0_0_0_1px_rgb(var(--dt-ink,55_53_47)/0.08)]"
               >
                 <FileText className="h-3 w-3 shrink-0 text-[var(--muted-foreground)]" />
                 <span className="truncate">{attachment.filename}</span>
@@ -585,7 +591,7 @@ export default function BookChatPanel({
         {attachmentError && (
           <div className="mb-2 text-[11px] text-red-500">{attachmentError}</div>
         )}
-        <div className="flex items-end gap-2 rounded-2xl border border-[var(--border)] bg-[var(--background)] px-2 py-2 focus-within:border-[var(--primary)]/50 focus-within:ring-2 focus-within:ring-[var(--primary)]/10">
+        <div className="dt-soft-input flex items-end gap-2 rounded-2xl bg-[var(--background)] px-2 py-2">
           <Tooltip label={t("Attach files")}>
             <button
               type="button"

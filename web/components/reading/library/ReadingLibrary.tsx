@@ -1,8 +1,7 @@
 "use client";
 
 import { learningLibrary, libraryItemKey } from "@/lib/learning-library";
-import { activeWorkspaceId } from "@/lib/workspace-scope";
-import { useCreateRequest, useLibraryFilter, workspaceName } from "@/components/learning/LibraryWorkspace";
+import { useCreateRequest } from "@/components/learning/create-request";
 
 import {
   LearningEmptyState,
@@ -17,11 +16,9 @@ import InvidiousAccountFeedback from "./InvidiousAccountFeedback";
 import { useRouter } from "next/navigation";
 import {
   BookOpen,
-  FolderOpen,
   Loader2,
   MoreHorizontal,
   Palette,
-  Plus,
   Search,
   Trash2,
   TriangleAlert,
@@ -38,10 +35,6 @@ import {
 } from "@/lib/reading-workspace-api";
 import { readingFailureMessage } from "@/lib/reading-failure";
 
-import {
-  CourseScopeChip,
-  useCourseScope,
-} from "@/components/courses/CourseScope";
 
 import { FolderDialog } from "./FolderDialog";
 import { FolderGlyph } from "./FolderGlyph";
@@ -51,13 +44,13 @@ import { relativeDate } from "./shared";
 type SortMode = "recent" | "name";
 
 type FolderDialogState =
-  | { mode: "create"; workspaceId: string }
+  | { mode: "create" }
   | { mode: "edit"; collection: ReadingWorkspace };
 
 export function ReadingLibraryPage() {
   const { t, i18n } = useTranslation();
   const router = useRouter();
-  const [allCollections, setCollections] = useState<ReadingWorkspace[]>([]);
+  const [collections, setCollections] = useState<ReadingWorkspace[]>([]);
   const [materials, setMaterials] = useState<ReadingLibraryMaterial[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -66,23 +59,13 @@ export function ReadingLibraryPage() {
   const [folderDialog, setFolderDialog] = useState<FolderDialogState | null>(
     null
   );
-  const { rows: collections, picker, mixed } = useLibraryFilter(allCollections);
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ReadingWorkspace | null>(
     null
   );
 
-  // Present when opened from a course page or a Course Study hand-off.
-  const scope = useCourseScope();
 
-  // A new collection starts where the page is; the dialog can move it to
-  // another workspace, except inside a course, whose references must stay in
-  // the course's own store.
-  const create = useCallback(
-    (workspaceId = activeWorkspaceId()) =>
-      setFolderDialog({ mode: "create", workspaceId }),
-    []
-  );
+  const create = useCallback(() => setFolderDialog({ mode: "create" }), []);
   useCreateRequest(create);
 
   const refresh = useCallback(async () => {
@@ -94,7 +77,6 @@ export function ReadingLibraryPage() {
       ]);
       setCollections(collectionRows.items.filter(row => !search || `${row.title} ${row.description}`.toLowerCase().includes(search.toLowerCase())));
       setMaterials(library.items);
-      if (collectionRows.unavailable_workspaces.length || library.unavailable_workspaces.length) setError(t("Some workspaces could not be loaded. Available content is shown."));
     } catch (caught) {
       // Keep whatever is on screen: an empty list would claim the user has no
       // collections, which is a different statement from "the request failed".
@@ -127,37 +109,15 @@ export function ReadingLibraryPage() {
     [materials]
   );
 
-  // Opened inside a course, this is that course's shelf: only the collections
-  // it references, and anything made here joins it. A course that references
-  // none shows the empty pitch, which is now a real offer rather than a dead
-  // end — creating from it attaches on the way out.
   const rows = useMemo(() => {
-    const allowed = scope ? new Set(scope.refIds("reading_workspace")) : null;
-    const sorted = collections.filter(
-      collection => !allowed || (allowed.has(collection.workspace_id) && (collection.content_workspace_id ?? "") === activeWorkspaceId())
-    );
+    const sorted = [...collections];
     sorted.sort((a, b) =>
       sort === "name"
         ? a.title.localeCompare(b.title, i18n.language)
         : b.updated_at - a.updated_at
     );
     return sorted;
-  }, [collections, i18n.language, scope, sort]);
-
-  // A workspace holds collections, and each collection is stored in exactly
-  // one workspace: every shelf is headed by the workspace it lives in, so a
-  // folder is never mistaken for the workspace around it. Shelves keep the
-  // order their first folder has under the chosen sort.
-  const groups = useMemo(() => {
-    const byWorkspace = new Map<string, { key: string; name: string; rows: ReadingWorkspace[] }>();
-    for (const row of rows) {
-      const key = row.content_workspace_id ?? "";
-      const group = byWorkspace.get(key) ?? { key, name: workspaceName(row, t), rows: [] };
-      group.rows.push(row);
-      byWorkspace.set(key, group);
-    }
-    return [...byWorkspace.values()];
-  }, [rows, t]);
+  }, [collections, i18n.language, sort]);
 
   const menuKey = (collection: ReadingWorkspace) =>
     libraryItemKey(collection, collection.workspace_id);
@@ -168,8 +128,7 @@ export function ReadingLibraryPage() {
       collectionCount={rows.length}
       materialCount={materials.length}
       actionLabel={t("New collection")}
-      onAction={() => create()}
-      scopeChip={scope ? <CourseScopeChip scope={scope} /> : null}
+      onAction={create}
     >
       <InvidiousAccountFeedback />
       <div className="mt-5 flex flex-col gap-3 border-b border-[var(--border)] pb-3 sm:flex-row sm:items-center">
@@ -195,7 +154,6 @@ export function ReadingLibraryPage() {
           )}
         </label>
         <div className="flex items-center gap-2 sm:ml-auto">
-          {picker}
           <span className="text-[11px] text-[var(--muted-foreground)]">
             {t("{{count}} collections", { count: rows.length })}
           </span>
@@ -235,83 +193,47 @@ export function ReadingLibraryPage() {
         error ? null : (
           <EmptyCollections
             searching={Boolean(search)}
-            onCreate={() => create()}
+            onCreate={create}
           />
         )
       ) : (
-        groups.map(group => (
-          <section
-            key={group.key}
-            aria-label={t("Workspace {{name}}", { name: group.name })}
-            className="mt-6"
-          >
-            <h2 className="flex items-center gap-1.5 px-1 text-[11.5px] font-medium text-[var(--muted-foreground)]">
-              <FolderOpen size={13} strokeWidth={1.7} className="shrink-0" />
-              <span className="truncate">{group.name}</span>
-              <span className="tabular-nums opacity-70">{group.rows.length}</span>
-            </h2>
-            <ul className="mt-2 grid grid-cols-[repeat(auto-fill,minmax(148px,1fr))] gap-1">
-              {group.rows.map(collection => (
-                <FolderTile
-                  key={menuKey(collection)}
-                  collection={collection}
-                  menuOpen={menuFor === menuKey(collection)}
-                  onToggleMenu={() =>
-                    setMenuFor(current =>
-                      current === menuKey(collection) ? null : menuKey(collection)
-                    )
-                  }
-                  onCloseMenu={() => setMenuFor(null)}
-                  onEdit={() => {
-                    setMenuFor(null);
-                    setFolderDialog({ mode: "edit", collection });
-                  }}
-                  onDelete={() => {
-                    setMenuFor(null);
-                    setDeleteTarget(collection);
-                  }}
-                />
-              ))}
-              {/* Inside the course shelf, and when only one workspace is on
-                  screen, the header button already says where it goes. */}
-              {mixed && !scope && (
-                <li>
-                  <button
-                    type="button"
-                    onClick={() => create(group.key)}
-                    className="flex h-full min-h-[128px] w-full flex-col items-center justify-center gap-2 rounded-xl text-[11.5px] text-[var(--muted-foreground)] transition hover:bg-[var(--secondary)] hover:text-[var(--foreground)]"
-                  >
-                    <span className="flex h-[50px] w-16 items-center justify-center rounded-lg border border-dashed border-[var(--border)]">
-                      <Plus size={16} />
-                    </span>
-                    {t("New collection here")}
-                  </button>
-                </li>
-              )}
-            </ul>
-          </section>
-        ))
+        <ul className="mt-6 grid grid-cols-[repeat(auto-fill,minmax(148px,1fr))] gap-1">
+          {rows.map(collection => (
+            <FolderTile
+              key={menuKey(collection)}
+              collection={collection}
+              menuOpen={menuFor === menuKey(collection)}
+              onToggleMenu={() =>
+                setMenuFor(current =>
+                  current === menuKey(collection) ? null : menuKey(collection)
+                )
+              }
+              onCloseMenu={() => setMenuFor(null)}
+              onEdit={() => {
+                setMenuFor(null);
+                setFolderDialog({ mode: "edit", collection });
+              }}
+              onDelete={() => {
+                setMenuFor(null);
+                setDeleteTarget(collection);
+              }}
+            />
+          ))}
+        </ul>
       )}
 
       {folderDialog && (
         <FolderDialog
           collection={folderDialog.mode === "edit" ? folderDialog.collection : undefined}
-          workspaceId={folderDialog.mode === "create" ? folderDialog.workspaceId : ""}
-          lockWorkspace={Boolean(scope)}
           onClose={() => setFolderDialog(null)}
-          onSaved={async (collection, workspaceId) => {
+          onSaved={async (collection) => {
             const created = folderDialog.mode === "create";
             setFolderDialog(null);
             if (!created) {
               void refresh();
               return;
             }
-            await scope?.attach(
-              "reading_workspace",
-              collection.workspace_id,
-              collection.title
-            );
-            router.push(readingFolderRoute(collection.workspace_id, workspaceId));
+            router.push(readingFolderRoute(collection.workspace_id));
           }}
         />
       )}

@@ -12,6 +12,7 @@ from pydantic import BaseModel
 
 from deeptutor.core.capability_protocol import TurnCapability
 from deeptutor.i18n.metadata_i18n import capability_description_i18n
+from deeptutor.modules.catalog import contribution_enabled
 from deeptutor.plugins.entry_points import load_entry_point_group
 from deeptutor.runtime.bootstrap.builtin_capabilities import BUILTIN_CAPABILITY_SPECS
 from deeptutor.runtime.capability_catalog import (
@@ -83,6 +84,8 @@ class CapabilityRegistry:
 
     def load_builtins(self) -> None:
         for name, spec in BUILTIN_CAPABILITY_SPECS.items():
+            if not contribution_enabled("capabilities", name):
+                continue
             if self.catalog.get("turn", name) is not None:
                 continue
             class_path = spec.class_path
@@ -142,6 +145,8 @@ class CapabilityRegistry:
             logger.debug("Legacy plugin loader unavailable", exc_info=True)
 
     def get(self, name: str) -> TurnCapability | None:
+        if not contribution_enabled("capabilities", name):
+            return None
         if name not in BUILTIN_CAPABILITY_SPECS:
             from deeptutor.plugins.registry import PluginRegistry
             from deeptutor.plugins.runtime import PluginWorkerCapability, runtime_plugin_records
@@ -190,7 +195,8 @@ class CapabilityRegistry:
                 "config_defaults": entry.manifest.config_defaults,
             }
             for entry in self.catalog.entries("turn")
-            if getattr(entry.factory, "_plugin_allowed", lambda: True)()
+            if contribution_enabled("capabilities", entry.name)
+            and getattr(entry.factory, "_plugin_allowed", lambda: True)()
         ]
         from deeptutor.plugins.runtime import runtime_plugin_records
 

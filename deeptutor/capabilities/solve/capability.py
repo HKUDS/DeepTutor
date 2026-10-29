@@ -24,14 +24,12 @@ from typing import cast
 
 from deeptutor.agents.chat.agentic_pipeline import AgenticChatPipeline
 from deeptutor.capabilities.solve.session import DEFAULT_MAX_REPLANS
-from deeptutor.capabilities.solve.tools import SOLVE_TOOL_NAMES
 from deeptutor.core.capability_protocol import (
-    CapabilityManifest,
     StreamBusProtocol,
     TurnCapability,
 )
 from deeptutor.core.context import UnifiedContext
-from deeptutor.runtime.request_contracts import get_capability_request_schema
+from deeptutor.runtime.bootstrap.builtin_capabilities import builtin_capability_manifest
 from deeptutor.runtime.stream_bus import StreamBus
 from deeptutor.services.config.capabilities_settings import get_solve_params
 
@@ -62,14 +60,7 @@ def resolve_solve_session_id(context: UnifiedContext) -> str:
 
 
 class DeepSolveCapability(TurnCapability):
-    manifest = CapabilityManifest(
-        name="deep_solve",
-        description="Multi-step problem solving driven by the chat agent loop.",
-        stages=["responding"],
-        tools_used=[*SOLVE_TOOL_NAMES, "rag", "exec", "geogebra_analysis", "reason"],
-        cli_aliases=["solve"],
-        request_schema=get_capability_request_schema("deep_solve"),
-    )
+    manifest = builtin_capability_manifest("deep_solve")
 
     async def run(self, context: UnifiedContext, stream: StreamBusProtocol) -> None:
         context.metadata["solve_mode"] = True

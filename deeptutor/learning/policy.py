@@ -176,13 +176,28 @@ def objective_status(progress: LearningProgress, kp: KnowledgePoint) -> str:
     return "learning" if seen else "new"
 
 
+def reviewable_tasks(progress: LearningProgress) -> list[ReviewTask]:
+    """Scheduled items for objectives that have cleared the mastery gate.
+
+    Failed attempts can also carry retry schedules, but review mode is limited
+    to work the learner has already mastered.
+    """
+    mastered_ids = {
+        kp.id
+        for module in progress.modules
+        for kp in module.knowledge_points
+        if is_mastered(progress, kp)
+    }
+    return [task for task in progress.review_queue if task.knowledge_point_id in mastered_ids]
+
+
 def due_reviews(progress: LearningProgress, *, now: float | None = None) -> list[ReviewTask]:
-    """Spaced-repetition tasks whose ``due_at`` has passed, highest forgetting
+    """Mastered spaced-repetition tasks whose ``due_at`` has passed, highest forgetting
     risk first. Pure read over ``progress.review_queue`` (built by the scheduler)."""
     from deeptutor.learning.scheduler import review_sort_key
 
     moment = time.time() if now is None else now
-    due = [task for task in progress.review_queue if task.due_at <= moment]
+    due = [task for task in reviewable_tasks(progress) if task.due_at <= moment]
     due.sort(key=lambda task: review_sort_key(task, now=moment))
     return due
 

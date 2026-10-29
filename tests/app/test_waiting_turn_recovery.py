@@ -78,6 +78,12 @@ def _workspace_root(tmp_path, monkeypatch: pytest.MonkeyPatch):
     """
     root = tmp_path / "workspace"
     root.mkdir()
+    from deeptutor.services.path_service import PathService
+
+    # General/unbound sessions use the workspace catalog, not the legacy
+    # deployment-folder selector. Isolate that catalog as well.
+    paths = PathService(workspace_root=tmp_path / "data")
+    monkeypatch.setattr("deeptutor.services.workspace.service.get_path_service", lambda: paths)
     monkeypatch.setenv("DEEPTUTOR_WORKSPACE_ROOT", str(root))
     monkeypatch.delenv("DEEPTUTOR_WORKSPACE_ALLOWED_ROOTS", raising=False)
 

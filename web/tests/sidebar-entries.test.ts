@@ -94,36 +94,6 @@ test("conversations whose group label is gone are listed on their own", () => {
   );
 });
 
-test("a study conversation reached from a course still files under its topic", () => {
-  const entries = buildSidebarEntries({
-    roots: [
-      session("study", {
-        workspace_mode: "mastery_path",
-        mastery_path_id: "langgraph",
-        course_id: "algebra",
-      }),
-    ],
-    masteryTopics: TOPICS,
-    courses: [
-      {
-        id: "algebra",
-        name: "Algebra",
-        description: "",
-        color: "#f00",
-        created_at: 1,
-        updated_at: 1,
-        instructions: "",
-        agent_notes: "",
-        default_capability: "",
-        default_persona: "",
-      } as never,
-    ],
-  });
-  assert.deepEqual(
-    entries.map((entry) => entry.id),
-    ["langgraph"],
-  );
-});
 
 test("a hand-dragged order moves a group above a conversation", () => {
   const roots = [

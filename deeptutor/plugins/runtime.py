@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from contextvars import ContextVar
 from dataclasses import asdict, dataclass
 import json
 import logging
@@ -10,6 +11,8 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import threading
+import time
 from typing import Any, Mapping
 
 from deeptutor.core.capability_protocol import (
@@ -36,6 +39,9 @@ from deeptutor.plugins.registry import (
 )
 
 logger = logging.getLogger(__name__)
+_worker_cancellation: ContextVar[threading.Event | None] = ContextVar(
+    "worker_cancellation", default=None
+)
 
 
 class PluginRuntimeError(RuntimeError):
@@ -101,6 +107,116 @@ class _WorkerClient:
         self.validate_permissions(response.get("permissions"))
         return response
 
+    async def request_async(self, operation: str, payload: dict[str, Any]):
+        """Legacy buffered workers also stop when their owning turn is cancelled."""
+        cancelled = threading.Event()
+        token = _worker_cancellation.set(cancelled)
+        task = asyncio.create_task(asyncio.to_thread(self.request, operation, payload))
+        _worker_cancellation.reset(token)
+        try:
+            return await asyncio.shield(task)
+        except asyncio.CancelledError:
+            cancelled.set()
+            await asyncio.gather(task, return_exceptions=True)
+            raise
+
+    async def stream(self, operation: str, payload: dict[str, Any]):
+        """NDJSON v1: bounded live events, explicit completion and process cleanup."""
+
+        if self.guard is not None:
+            self.guard()
+        encoded = json.dumps(
+            {"operation": operation, "transport": "ndjson-v1", **payload},
+            ensure_ascii=False,
+            default=str,
+        ).encode()
+        if len(encoded) > 1024 * 1024:
+            raise PluginRuntimeError("Plugin worker request exceeds 1 MiB.")
+        process = await asyncio.create_subprocess_exec(
+            str(self.python_path),
+            "-m",
+            self.module,
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            env=_clean_env(),
+            cwd=self.venv_path,
+            start_new_session=os.name != "nt",
+            limit=1024 * 1024,
+        )
+        stderr = bytearray()
+
+        async def drain_errors():
+            while chunk := await process.stderr.read(8192):
+                stderr.extend(chunk)
+                if len(stderr) > 65536:
+                    raise PluginRuntimeError("Plugin worker stderr exceeds 64 KiB.")
+
+        async def produce():
+            process.stdin.write(encoded)
+            await process.stdin.drain()
+            process.stdin.close()
+            total = 0
+            completed = False
+            while line := await process.stdout.readline():
+                total += len(line)
+                if total > 16 * 1024 * 1024:
+                    raise PluginRuntimeError("Plugin worker stream exceeds 16 MiB.")
+                if self.guard is not None:
+                    self.guard()
+                try:
+                    row = json.loads(line)
+                except (ValueError, UnicodeError) as exc:
+                    raise PluginRuntimeError("Plugin worker returned invalid NDJSON.") from exc
+                if not isinstance(row, dict) or completed:
+                    raise PluginRuntimeError("Invalid plugin stream envelope/order.")
+                self.validate_permissions(row.get("permissions"))
+                if row.get("error") is not None:
+                    raise PluginRuntimeError(str(row["error"])[-2000:])
+                if row.get("kind") == "complete":
+                    completed = True
+                elif row.get("kind") == "event" and isinstance(row.get("event"), dict):
+                    await queue.put(row["event"])
+                else:
+                    raise PluginRuntimeError("Unknown plugin stream envelope.")
+            code = await process.wait()
+            if code or not completed:
+                raise PluginRuntimeError(
+                    f"Plugin stream ended without successful completion ({code}): "
+                    + stderr.decode("utf-8", "replace")[-2000:]
+                )
+
+        queue: asyncio.Queue = asyncio.Queue(maxsize=64)
+        consumer_closed = False
+
+        async def run():
+            try:
+                async with asyncio.timeout(300):
+                    async with asyncio.TaskGroup() as group:
+                        group.create_task(drain_errors())
+                        group.create_task(produce())
+            finally:
+                # Wake the consumer even when the worker fails with an empty stream.
+                # Python 3.11/3.12 TaskGroup failures leave an internal cancellation
+                # count behind. Only consumer shutdown may suppress this signal.
+                if not consumer_closed:
+                    await queue.put(None)
+
+        task = asyncio.create_task(run())
+        try:
+            while (item := await queue.get()) is not None:
+                yield item
+            await task
+        finally:
+            consumer_closed = True
+            task.cancel()
+            # Kill the entire session, including render helpers inheriting pipes.
+            from deeptutor.runtime.process import kill_process_tree
+
+            await asyncio.to_thread(kill_process_tree, process.pid)
+            await process.wait()
+            await asyncio.gather(task, return_exceptions=True)
+
     def validate_permissions(self, raw: Any) -> None:
         if raw is None:
             return
@@ -145,9 +261,7 @@ class PluginWorkerTool(BaseTool):
         return self._definition
 
     async def execute(self, **kwargs: Any) -> ToolResult:
-        response = await asyncio.to_thread(
-            self._client.request, "execute_tool", {"arguments": kwargs}
-        )
+        response = await self._client.request_async("execute_tool", {"arguments": kwargs})
         result = response.get("result")
         if not isinstance(result, dict):
             raise PluginRuntimeError("execute_tool response requires a result object")
@@ -226,6 +340,7 @@ class PluginWorkerCapability(TurnCapability):
             guard=_managed_guard(manifest, installation, registry),
         )
         described = self._client.request("describe_capability")
+        self._streaming = described.get("transport") == "ndjson-v1"
         raw = described.get("capability")
         if not isinstance(raw, dict) or raw.get("name") != extension_id:
             raise PluginRuntimeError(
@@ -245,24 +360,25 @@ class PluginWorkerCapability(TurnCapability):
         return PluginWorkerCapability(**self._clone_args)
 
     async def run(self, context: UnifiedContext, stream: StreamBusProtocol) -> None:
-        response = await asyncio.to_thread(
-            self._client.request,
-            "run_capability",
-            {
-                "context": {
-                    "session_id": context.session_id,
-                    "user_message": context.user_message,
-                    "conversation_history": context.conversation_history,
-                    "enabled_tools": context.enabled_tools,
-                    "active_capability": context.active_capability,
-                    "knowledge_bases": context.knowledge_bases,
-                    "attachments": [asdict(item) for item in context.attachments],
-                    "config_overrides": context.config_overrides,
-                    "language": context.language,
-                    "metadata": context.metadata,
-                }
-            },
-        )
+        payload = {
+            "context": {
+                "session_id": context.session_id,
+                "user_message": context.user_message,
+                "conversation_history": context.conversation_history,
+                "enabled_tools": context.enabled_tools,
+                "active_capability": context.active_capability,
+                "knowledge_bases": context.knowledge_bases,
+                "attachments": [asdict(item) for item in context.attachments],
+                "config_overrides": context.config_overrides,
+                "language": context.language,
+                "metadata": context.metadata,
+            }
+        }
+        if self._streaming:
+            async for raw in self._client.stream("run_capability", payload):
+                await stream.emit(_stream_event(raw, source=self.manifest.name))
+            return
+        response = await self._client.request_async("run_capability", payload)
         events = response.get("events", [])
         if not isinstance(events, list):
             raise PluginRuntimeError("run_capability events must be an array")
@@ -607,7 +723,6 @@ def _managed_guard(manifest, installation, registry=None):
 
 def _run_worker(argv, *, input, env, cwd):
     """Bound both worker time and captured output, without blocking the event loop."""
-    import signal
     import threading
     from types import SimpleNamespace
 
@@ -627,13 +742,9 @@ def _run_worker(argv, *, input, env, cwd):
     overflow = threading.Event()
 
     def stop():
-        try:
-            if os.name != "nt":
-                os.killpg(process.pid, signal.SIGKILL)
-            else:
-                process.kill()
-        except ProcessLookupError:
-            pass
+        from deeptutor.runtime.process import kill_process_tree
+
+        kill_process_tree(process.pid)
 
     def read(name, pipe, limit):
         while chunk := pipe.read(8192):
@@ -660,7 +771,19 @@ def _run_worker(argv, *, input, env, cwd):
     for thread in threads:
         thread.start()
     try:
-        process.wait(timeout=60)
+        deadline = time.monotonic() + 60
+        cancelled = _worker_cancellation.get()
+        while True:
+            if cancelled is not None and cancelled.is_set():
+                raise PluginRuntimeError("Plugin worker cancelled.")
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise subprocess.TimeoutExpired(argv, 60)
+            try:
+                process.wait(timeout=min(remaining, 0.1))
+                break
+            except subprocess.TimeoutExpired:
+                continue
     except BaseException:
         stop()
         process.wait(timeout=3)

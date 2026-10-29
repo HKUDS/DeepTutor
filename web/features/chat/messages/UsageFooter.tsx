@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { ChevronDown, Database, X } from 'lucide-react'
+import { ChevronDown, Coins, DatabaseZap, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { UsageSummary } from './usage-summary'
 
@@ -22,6 +22,8 @@ export function UsageFooter({ turn, session }: { turn: UsageSummary; session: Us
     notation: 'compact',
     maximumFractionDigits: 1,
   })
+  const tokenFigure = compact.format(turn.total_tokens ?? 0)
+  const hitFigure = rate(turn.cache_hit_rate)
   const seconds = (n?: number | null) =>
     n == null ? '—' : t('{{value}} s', { value: n.toFixed(2) })
   const cacheKnown = Boolean(summary.cache_reported_calls)
@@ -101,24 +103,34 @@ export function UsageFooter({ turn, session }: { turn: UsageSummary; session: Us
   ]
   return (
     <>
+      {/* Each figure carries its own icon. Where the row is narrow the words
+          drop away and the two icons stand for them: the slot this sits in is
+          the container measured, and the full wording stays the name. */}
       <button
         ref={anchor}
         type="button"
         aria-expanded={open}
         aria-controls={id}
         aria-haspopup="dialog"
+        aria-label={`${tokenFigure} ${t('tokens')}, ${t('Cache hit rate')} ${hitFigure}`}
         onClick={() => setOpen(!open)}
-        className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary)]"
+        className="inline-flex shrink-0 items-center gap-2.5 whitespace-nowrap rounded-full px-2.5 py-1 text-[11px] tabular-nums text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary)] [@container(max-width:240px)]:gap-2 [@container(max-width:240px)]:px-2"
       >
-        <Database size={12} aria-hidden="true" />
-        <span>
-          {compact.format(turn.total_tokens ?? 0)} {t('tokens')}
+        <span className="inline-flex items-center gap-1">
+          <Coins size={12} strokeWidth={1.8} aria-hidden="true" />
+          {tokenFigure}
+          <span className="[@container(max-width:240px)]:hidden">{t('tokens')}</span>
         </span>
-        <span aria-hidden="true">·</span>
-        <span>
-          {t('Cache hit rate')} {rate(turn.cache_hit_rate)}
+        <span className="inline-flex items-center gap-1">
+          <DatabaseZap size={12} strokeWidth={1.8} aria-hidden="true" />
+          <span className="[@container(max-width:240px)]:hidden">{t('Cache hit rate')}</span>
+          {hitFigure}
         </span>
-        <ChevronDown size={12} aria-hidden="true" className={open ? 'rotate-180' : ''} />
+        <ChevronDown
+          size={12}
+          aria-hidden="true"
+          className={`-ml-1 transition-transform ${open ? 'rotate-180' : ''}`}
+        />
       </button>
       {open &&
         createPortal(

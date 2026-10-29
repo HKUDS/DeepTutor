@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "id": "audio-overview",
+  "distribution": "deeptutor-audio-overview",
+  "requires": [
+    "knowledge"
+  ],
+  "optional": [
+    "co-writer"
+  ],
+  "paths": [
+    "deeptutor/capabilities/audio_overview"
+  ],
+  "capabilities": {
+    "audio_overview": {
+      "class_path": "deeptutor.capabilities.audio_overview.capability:AudioOverviewCapability",
+      "config_model": "deeptutor.capabilities.audio_overview.request_config:AudioOverviewRequestConfig",
+      "manifest": {
+        "name": "audio_overview",
+        "description": "Create a grounded two-voice audio overview and transcript from a knowledge base.",
+        "stages": [
+          "retrieving",
+          "script_writing",
+          "voice_generation",
+          "publishing"
+        ],
+        "tools_used": [
+          "rag"
+        ],
+        "cli_aliases": [
+          "audio-overview",
+          "overview"
+        ],
+        "config_defaults": {
+          "topic": "",
+          "target_minutes": 5,
+          "host_voice": null,
+          "expert_voice": null,
+          "max_context_chunks": 6
+        }
+      },
+      "order": 10
+    }
+  },
+  "loops": {},
+  "tools": {},
+  "routes": [],
+  "commands": [],
+  "navigation": [],
+  "services": [],
+  "requirements": [],
+  "executables": []
+}

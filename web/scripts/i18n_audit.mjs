@@ -133,7 +133,7 @@ function reportUntranslatedKeys() {
   }
   const locales = new Set(REQUIRED_LOCALES);
   for (const ent of fs.readdirSync(localeDir, { withFileTypes: true })) {
-    if (ent.isDirectory()) locales.add(ent.name);
+    if (ent.isDirectory() && !ent.name.startsWith(".")) locales.add(ent.name);
   }
 
   const known = new Map();

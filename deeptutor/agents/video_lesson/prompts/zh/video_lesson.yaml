@@ -1,0 +1,8 @@
+status:
+  preparing_runtime: "正在准备 Remotion 运行环境（首次使用需要安装依赖）。"
+  writing: "正在编写讲解动画。"
+  narrating: "正在录制旁白配音。"
+  checking: "正在编译并逐帧检查动画。"
+  retry: "第 {attempt} 次检查未通过，正在修复：{error}"
+  ready: "讲解动画已生成（{seconds} 秒）。"
+  llm_call_failed: "LLM 调用失败。"

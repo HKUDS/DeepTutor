@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "id": "parser-pymupdf4llm",
+  "distribution": "deeptutor-parser-pymupdf4llm",
+  "requires": [
+    "parsing"
+  ],
+  "optional": [],
+  "paths": [],
+  "capabilities": {},
+  "loops": {},
+  "tools": {},
+  "routes": [],
+  "commands": [],
+  "navigation": [],
+  "services": [],
+  "requirements": [
+    "pymupdf4llm>=1.28.2"
+  ],
+  "executables": [],
+  "parser_engine": "pymupdf4llm"
+}

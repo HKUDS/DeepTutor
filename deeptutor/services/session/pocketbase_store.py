@@ -818,7 +818,7 @@ class PocketBaseSessionStore:
 
     @_captured_store_context
     async def update_session_preferences(
-        self, session_id: str, preferences: dict[str, Any]
+        self, session_id: str, preferences: dict[str, Any], *, touch: bool = True
     ) -> bool:
         sid = _validate_id(session_id, "session_id")
 
@@ -840,7 +840,9 @@ class PocketBaseSessionStore:
                     merged[_SUMMARY_CURSOR_PREFERENCE_KEY] = current[_SUMMARY_CURSOR_PREFERENCE_KEY]
                 _pb().collection("sessions").update(
                     record.id,
-                    {"preferences_json": merged, "session_updated_at": time.time()},
+                    {"preferences_json": merged, "session_updated_at": time.time()}
+                    if touch
+                    else {"preferences_json": merged},
                 )
                 return True
 

@@ -34,7 +34,7 @@ test("partner tabs use a stable centered header column", () => {
 test("partner chat keeps old active and archived conversations reachable", () => {
   assert.match(pageSource, /handleArchiveConversation/);
   assert.match(pageSource, /archivePartnerSession\(partnerId, sessionKey\)/);
-  assert.match(pageSource, /if \(result\.active_session_key\) changeSessionKey\(result\.active_session_key, true\)/);
+  assert.match(pageSource, /if \(result\.active_session_key\) selectSessionKey\(result\.active_session_key, true\)/);
   assert.match(archiveSource, /const next = await getPartnerSessions\(partnerId\)/);
   assert.match(archiveSource, /resumePartnerSession/);
 });

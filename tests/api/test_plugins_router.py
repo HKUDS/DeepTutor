@@ -443,7 +443,7 @@ def test_real_wheel_http_flow_uses_managed_worker_subprocess(
     raw["permissions"]["ui"] = ["sandboxed-iframe"]
     raw["extensions"][1]["manifest"] = "frontend/page.json"
     wheel_path = tmp_path / "learning_echo-1.0.0-py3-none-any.whl"
-    source_root = Path(__file__).parents[2] / "examples" / "plugins" / "learning_echo"
+    source_root = Path(__file__).parents[2] / "docs-for-dev" / "examples" / "learning_echo"
     files = {
         "learning_echo/deeptutor.plugin.json": json.dumps(raw).encode("utf-8"),
         "learning_echo/__init__.py": (

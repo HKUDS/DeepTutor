@@ -1,0 +1,13 @@
+/* The bar shares the reader column, whose width is smaller than the viewport
+   when contents and the companion are docked. Keep history controls clickable. */
+.dt-reading-bar {
+  container-name: reader-bar;
+  container-type: inline-size;
+}
+
+@container reader-bar (max-width: 700px) {
+  .dt-reading-feature,
+  .dt-reading-collection {
+    display: none;
+  }
+}

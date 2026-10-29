@@ -2,6 +2,7 @@
 
 import { useTranslation } from "react-i18next";
 import { SettingsPageHeader } from "./shared";
+import ModulesPanel from "./ModulesPanel";
 import SettingsStatusPanel from "./SettingsStatusPanel";
 import SettingsReadinessPanel from "./SettingsReadinessPanel";
 import { useSettings } from "@/features/settings/store/SettingsStore";
@@ -17,6 +18,7 @@ export default function SettingsRuntimePage() {
           "Check configured services and resolve connection problems.",
         )}
       />
+      <ModulesPanel />
       <SettingsStatusPanel />
       <SettingsReadinessPanel enabled={catalogEditable === true} />
     </div>

@@ -1,7 +1,8 @@
 """Lossless sharing of repeated mastery state inside one model request.
 
 This is a request projection, not session compaction. Raw history stays intact.
-Only known state fields are eligible; dialogue and source/tool evidence are not.
+Known state fields can be shared; prior exact-history reads become recall
+references so an archive never embeds another archive's body.
 """
 
 from __future__ import annotations
@@ -53,16 +54,77 @@ def project_mastery_replay(messages: list[dict[str, Any]]) -> list[dict[str, Any
             if not (m.get("role") == "user" and (isinstance(m.get("_context_snapshot"), str)))
         ]
     )
+    reference_history_reads(projected)
     share_mastery_history(projected, len(projected))
     return projected
+
+
+def reference_history_reads(messages: list[dict[str, Any]]) -> None:
+    """Replace recalled archive bodies in an owned historical copy, not storage.
+
+    Resolve each result against its preceding call batch: providers may reuse
+    call IDs in later turns. Never inspect or recursively decode the recalled
+    body when the call already identifies the archive.
+    """
+    sources: dict[str, str] = {}
+    for message in messages:
+        if message.get("role") == "assistant":
+            sources = {}
+            calls = message.get("tool_calls") or []
+            counts = Counter(call.get("id") for call in calls)
+            for call in calls:
+                function = call.get("function", {})
+                if (
+                    function.get("name") not in {"read_source", "pdf"}
+                    or counts[call.get("id")] != 1
+                ):
+                    continue
+                try:
+                    args = json.loads(function.get("arguments", "{}"))
+                except (ValueError, TypeError):
+                    continue
+                source_id = args.get("source_id") if isinstance(args, dict) else None
+                if isinstance(args, dict) and not source_id:
+                    sources[call["id"]] = ""
+                elif isinstance(source_id, str) and source_id.strip().startswith("hs-tutor-"):
+                    sources[call["id"]] = source_id.strip()
+        elif message.get("role") == "tool":
+            source_id = sources.pop(message.get("tool_call_id"), None)
+            content = message.get("content")
+            if source_id == "" and isinstance(content, str):
+                # The reader may infer the only source when its ID was omitted.
+                # Our archive/page envelope puts the ID first. Decode just that
+                # small header, never the potentially multi-megabyte JSON body.
+                prefix = '{"archive_id":'
+                if content.startswith(prefix):
+                    try:
+                        inferred, _ = json.JSONDecoder().raw_decode(
+                            content[len(prefix) : 256].lstrip()
+                        )
+                        if isinstance(inferred, str) and inferred.startswith("hs-tutor-"):
+                            source_id = inferred
+                    except ValueError:
+                        pass
+            if source_id and isinstance(content, str) and not content.startswith("Error:"):
+                message["content"] = json.dumps(
+                    {
+                        "archive_id": source_id,
+                        "note": "Previously recalled tutoring history. Use read_source with this "
+                        "archive_id as source_id to inspect the original exchange again.",
+                    },
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                )
+        else:
+            sources = {}
 
 
 def share_mastery_history(messages: list[dict[str, Any]], history_end: int) -> None:
     """Share exact repeated state in the owned historical request copy in-place.
 
-    References point forward to full values, never to another reference. Current
-    messages are anchors only. No messages are added/removed, so turn boundaries
-    and tool protocol remain unchanged. Ambiguous call IDs are not eligible.
+    References point back to the earliest full values, never to another reference.
+    Current messages are anchors only. No messages are added/removed, so turn
+    boundaries and tool protocol remain unchanged. Ambiguous call IDs are not eligible.
     """
     calls = [call for m in messages for call in m.get("tool_calls", [])]
     counts = Counter(call.get("id") for call in calls)
@@ -103,8 +165,8 @@ def share_mastery_history(messages: list[dict[str, Any]], history_end: int) -> N
             anchors.setdefault(encoded, {**locator, "pointer": pointer})
         return result, changed
 
-    for index in range(len(messages) - 1, -1, -1):
-        message = messages[index]
+    # Appended state must not rewrite prefixes sent in earlier requests.
+    for index, message in enumerate(messages):
         content = message.get("content")
         if not isinstance(content, str):
             continue

@@ -130,6 +130,8 @@ def test_exclusive_compose_drops_builtins_but_keeps_coexisting_rag() -> None:
         "workspace_read",
         "workspace_search",
         "workspace_present",
+        "write_note",
+        "search_notes",
         "consult_subagent",
         "rag",
         "kb_files",
@@ -152,6 +154,8 @@ def test_exclusive_compose_pure_subagent_mounts_no_rag() -> None:
         "workspace_read",
         "workspace_search",
         "workspace_present",
+        "write_note",
+        "search_notes",
         "consult_subagent",
         "ask_user",
     }

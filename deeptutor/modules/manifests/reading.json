@@ -1,0 +1,169 @@
+{
+  "schema_version": 1,
+  "id": "reading",
+  "distribution": "deeptutor-reading",
+  "requires": [
+    "knowledge",
+    "parsing",
+    "mastery",
+    "notebook"
+  ],
+  "optional": [],
+  "paths": [
+    "deeptutor/capabilities/reading",
+    "deeptutor/reading",
+    "deeptutor/video_learning",
+    "deeptutor/api/routers/reading.py",
+    "deeptutor/api/routers/reading_extensions.py",
+    "deeptutor/api/routers/video_learning.py",
+    "deeptutor/api/routers/voice.py",
+    "deeptutor/services/reading_hints.py"
+  ],
+  "capabilities": {
+    "immersive_reading": {
+      "class_path": "deeptutor.capabilities.reading.mode:ImmersiveReadingCapability",
+      "config_model": "deeptutor.runtime.request_contracts:ImmersiveReadingRequestConfig",
+      "manifest": {
+        "name": "immersive_reading",
+        "description": "Read a document alongside the assistant, which cites the exact page or section behind every claim.",
+        "stages": [
+          "responding"
+        ],
+        "tools_used": [
+          "reading_list_tabs",
+          "reading_switch_tab",
+          "material_outline",
+          "search_material",
+          "read_material",
+          "view_figure",
+          "reader_goto",
+          "reader_annotate",
+          "web_search",
+          "exec",
+          "reason"
+        ],
+        "cli_aliases": [
+          "reading",
+          "read"
+        ]
+      },
+      "order": 9
+    }
+  },
+  "loops": {
+    "immersive_reading": {
+      "class_path": "deeptutor.capabilities.reading.capability:ReadingCapability"
+    }
+  },
+  "tools": {
+    "reading_list_tabs": {
+      "class_path": "deeptutor.capabilities.reading.tools:ReadingListTabsTool",
+      "order": 85
+    },
+    "reading_switch_tab": {
+      "class_path": "deeptutor.capabilities.reading.tools:ReadingSwitchTabTool",
+      "order": 86
+    },
+    "material_outline": {
+      "class_path": "deeptutor.capabilities.reading.tools:MaterialOutlineTool",
+      "order": 87
+    },
+    "search_material": {
+      "class_path": "deeptutor.capabilities.reading.tools:SearchMaterialTool",
+      "order": 88
+    },
+    "read_material": {
+      "class_path": "deeptutor.capabilities.reading.tools:ReadMaterialTool",
+      "order": 89
+    },
+    "view_figure": {
+      "class_path": "deeptutor.capabilities.reading.tools:ViewFigureTool",
+      "order": 90
+    },
+    "reader_goto": {
+      "class_path": "deeptutor.capabilities.reading.tools:ReaderGotoTool",
+      "order": 91
+    },
+    "reader_annotate": {
+      "class_path": "deeptutor.capabilities.reading.tools:ReaderAnnotateTool",
+      "order": 92
+    }
+  },
+  "routes": [
+    {
+      "reference": "deeptutor.api.routers.reading:router",
+      "options": {
+        "prefix": "/api/reading",
+        "tags": [
+          "reading"
+        ]
+      },
+      "auth": "learning",
+      "order": 650
+    },
+    {
+      "reference": "deeptutor.api.routers.reading_extensions:router",
+      "options": {
+        "prefix": "/api/reading",
+        "tags": [
+          "reading-extensions"
+        ]
+      },
+      "auth": "learning",
+      "order": 656
+    },
+    {
+      "reference": "deeptutor.api.routers.video_learning:settings_router",
+      "options": {
+        "prefix": "/api/settings/video-learning",
+        "tags": [
+          "video-learning-settings"
+        ]
+      },
+      "auth": "admin",
+      "order": 722
+    },
+    {
+      "reference": "deeptutor.api.routers.voice:router",
+      "options": {
+        "prefix": "/api/voice",
+        "tags": [
+          "voice"
+        ]
+      },
+      "auth": "learning",
+      "order": 775
+    },
+    {
+      "reference": "deeptutor.api.routers.video_learning:router",
+      "options": {
+        "prefix": "/api/video-learning",
+        "tags": [
+          "video-learning"
+        ]
+      },
+      "auth": "learning",
+      "order": 778
+    }
+  ],
+  "commands": [],
+  "navigation": [
+    "/reading",
+    "/learning/reading",
+    "/learning/watching"
+  ],
+  "services": [],
+  "requirements": [
+    "youtube-transcript-api>=1.2.0,<2.0.0"
+  ],
+  "executables": [],
+  "entry_points": {
+    "deeptutor.reading_extensions": {
+      "read_aloud": "deeptutor.reading.read_aloud:ReadAloudExtension",
+      "guided_learning": "deeptutor.reading.study_guidance:StudyGuidanceExtension",
+      "vocabulary": "deeptutor.reading.vocabulary:VocabularyExtension",
+      "quiz": "deeptutor.reading.quiz:ReadingQuizExtension",
+      "translation": "deeptutor.reading.translation:TranslationExtension"
+    }
+  }
+}

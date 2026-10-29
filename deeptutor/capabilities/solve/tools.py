@@ -119,6 +119,23 @@ class SolvePlanTool(BaseTool):
             )
         analysis = str(kwargs.get("analysis") or "").strip()
         session = get_session(session_id)
+        if session.steps:
+            # A second solve_plan would wipe progress and skip the replan budget.
+            return ToolResult(
+                content=json.dumps(
+                    {
+                        "status": "plan_exists",
+                        "plan": session.progress_text(),
+                        "instruction": (
+                            "A plan is already set. Continue it; call solve_replan "
+                            "only if the approach has genuinely failed."
+                        ),
+                    },
+                    ensure_ascii=False,
+                ),
+                success=False,
+                metadata={"solve_plan": {"status": "plan_exists"}},
+            )
         session.set_plan(analysis, steps)
         first = session.next_step()
         return _json_result(

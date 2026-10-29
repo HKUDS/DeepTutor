@@ -4,30 +4,22 @@ import { PageHeader, PAGE_SECTION_TITLE_CLASS, pageGridClass } from '@/component
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useTranslation } from "react-i18next";
+import { useUiLayoutLabel } from "@/features/ui-layout/tokens";
 import { useCapabilityFilter } from "@/features/capabilities/useCapabilityCatalog";
 import {
   ArrowUpRight,
-  BookOpen,
-  Brain,
-  ClipboardList,
-  Ear,
   Github,
-  History,
-  NotebookPen,
-  Plug,
-  Terminal,
-  UserRound,
-  Wand2,
-  type LucideIcon,
+  Library,
 } from "lucide-react";
+import {
+  DASHBOARD_GROUPS,
+  visibleGroups,
+  type DashboardGroup,
+  type DashboardItem,
+  type Lang,
+  type DashKey,
+} from "@/components/space/dashboard-groups";
 
-import { SPACE_MCP_SURFACE, loadMcpSurface } from "@/components/mcp/surface";
-import { getCliApps } from "@/lib/cli-apps-api";
-import { listSessions } from "@/lib/session-api";
-import { listNotebooks, listNotebookEntries } from "@/lib/notebook-api";
-import { listPersonas } from "@/lib/personas-api";
-import { listKnowledgeBases } from "@/features/knowledge/api/catalog";
-import { listSkills } from "@/lib/skills-api";
 import { scopedUrl } from "@/lib/workspace-scope";
 
 /**
@@ -39,249 +31,23 @@ import { scopedUrl } from "@/lib/workspace-scope";
  * section page (which keeps the mini-nav for lateral movement).
  */
 
-type Lang = { zh: string; en: string };
 
-type DashKey =
-  | "knowledge"
-  | "memory"
-  | "chat_history"
-  | "notebooks"
-  | "journal"
-  | "question_bank"
-  | "personas"
-  | "skills"
-  | "mcp"
-  | "cli_apps"
-  | "whisper";
-
-interface DashboardItem {
-  key: DashKey;
-  href: string;
-  icon: LucideIcon;
-  title: Lang;
-  blurb: Lang;
-  /**
-   * Unit shown after the live count, e.g. "168 conversations". Omitted
-   * together with ``load`` for a tile that has nothing to count.
-   */
-  unit?: Lang;
-  /** Icon-tile accent — full class strings so Tailwind keeps them. */
-  tile: string;
-  /**
-   * Live count for the tile. Optional: a surface with no countable rows (an
-   * ephemeral room, say) renders as title + blurb instead of showing a
-   * permanently-loading number.
-   */
-  load?: () => Promise<number>;
-  /** GitHub handle of the contributor this surface came from. */
-  credit?: string;
-  /**
-   * Turn capability this surface needs, when it is not served by this
-   * repository. The tile is withheld unless the backend registry actually
-   * holds the name, so a stock install never offers a room whose capability
-   * was never installed (#963).
-   */
-  requiresCapability?: string;
-}
-
-interface DashboardGroup {
-  label: Lang;
-  items: DashboardItem[];
-}
-
-const GROUPS: DashboardGroup[] = [
-  {
-    label: { zh: "对话与资料", en: "Conversations & Materials" },
-    items: [
-      {
-        key: "chat_history",
-        href: "/space/chat-history",
-        icon: History,
-        title: { zh: "聊天历史", en: "Chat History" },
-        blurb: {
-          zh: "回顾并继续此前的对话。",
-          en: "Review and reopen previous conversations.",
-        },
-        unit: { zh: "段对话", en: "conversations" },
-        tile: "bg-sky-500/10 text-sky-600 dark:text-sky-400",
-        load: async () => (await listSessions(200, 0, { force: true })).length,
-      },
-      {
-        key: "notebooks",
-        href: "/notebooks",
-        icon: NotebookPen,
-        title: { zh: "笔记本", en: "Notebooks" },
-        blurb: {
-          zh: "整理来自对话、研究、智能写作等的产出。",
-          en: "Organize saved outputs from chat, research, Co-Writer, and more.",
-        },
-        unit: { zh: "个笔记本", en: "notebooks" },
-        tile: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
-        load: async () => (await listNotebooks()).length,
-      },
-      {
-        key: "journal",
-        href: "/space/journal",
-        icon: NotebookPen,
-        title: { zh: "学习日志", en: "Learning journal" },
-        blurb: { zh: "查看当前目标、上次会话交接和已确认的学习记录。", en: "Inspect your mission, session handoff and confirmed records." },
-        tile: "bg-teal-500/10 text-teal-600 dark:text-teal-400",
-      },
-      {
-        key: "question_bank",
-        href: "/space/questions",
-        icon: ClipboardList,
-        title: { zh: "题库", en: "Question Bank" },
-        blurb: {
-          zh: "跨会话回顾和整理测验题目。",
-          en: "Review and organize quiz questions across sessions.",
-        },
-        unit: { zh: "道题", en: "questions" },
-        tile: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
-        load: async () => (await listNotebookEntries({ limit: 1 })).total,
-      },
-      {
-        key: "knowledge",
-        href: "/knowledge-bases",
-        icon: BookOpen,
-        title: { zh: "知识中心", en: "Knowledge Center" },
-        blurb: {
-          zh: "管理知识库与检索引擎。",
-          en: "Manage knowledge bases and retrieval engines.",
-        },
-        unit: { zh: "个知识库", en: "knowledge bases" },
-        tile: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
-        load: async () => (await listKnowledgeBases({ library: true })).length,
-      },
-    ],
-  },
-  {
-    label: { zh: "个性化", en: "Personalization" },
-    items: [
-      {
-        key: "personas",
-        href: "/space/personas",
-        icon: UserRound,
-        title: { zh: "Personas", en: "Personas" },
-        blurb: {
-          zh: "可在每轮对话中套用的行为预设。",
-          en: "Behavior presets you can apply per chat turn.",
-        },
-        unit: { zh: "个预设", en: "personas" },
-        tile: "bg-rose-500/10 text-rose-600 dark:text-rose-400",
-        load: async () => (await listPersonas()).length,
-      },
-      {
-        key: "skills",
-        href: "/space/skills",
-        icon: Wand2,
-        title: { zh: "技能", en: "Skills" },
-        blurb: {
-          zh: "模型按需读取的能力手册。",
-          en: "Capability playbooks the model reads on demand.",
-        },
-        unit: { zh: "个技能", en: "skills" },
-        tile: "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400",
-        load: async () => (await listSkills()).length,
-      },
-      {
-        key: "mcp",
-        href: "/space/mcp",
-        icon: Plug,
-        title: { zh: "MCP 服务", en: "MCP Services" },
-        blurb: {
-          zh: "连接托管 MCP 服务，把它们的工具带进对话。",
-          en: "Connect hosted MCP services and bring their tools into chat.",
-        },
-        unit: { zh: "个服务", en: "services" },
-        tile: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
-        // The account's own servers only: the deployment's are shown on the page
-        // but are not this reader's to count.
-        load: async () =>
-          Object.keys((await loadMcpSurface(SPACE_MCP_SURFACE)).servers).length,
-      },
-      {
-        key: "cli_apps",
-        href: "/space/cli-apps",
-        icon: Terminal,
-        title: { zh: "CLI 应用", en: "CLI Apps" },
-        blurb: {
-          zh: "来自 CLI-Anything 目录的命令行工具，启用后对话可直接调用。",
-          en: "Command-line tools from the CLI-Anything catalog, callable from chat.",
-        },
-        unit: { zh: "个应用", en: "apps" },
-        tile: "bg-violet-500/10 text-violet-600 dark:text-violet-400",
-        // What this reader can actually use, not what the deployment installed:
-        // an app they were not granted is visible on the page but is not theirs.
-        load: async () =>
-          (await getCliApps()).apps.filter(app => app.granted && app.enabled)
-            .length,
-      },
-      {
-        key: "memory",
-        href: "/memory",
-        icon: Brain,
-        title: { zh: "记忆", en: "Memory" },
-        blurb: {
-          zh: "查看与整理导师记住的偏好和学习经历。",
-          en: "Review what your tutor remembers about you.",
-        },
-        tile: "bg-rose-500/10 text-rose-600 dark:text-rose-400",
-      },
-    ],
-  },
-  {
-    label: { zh: "更多项目", en: "More Projects" },
-    items: [
-      {
-        key: "whisper",
-        href: "/whisper",
-        icon: Ear,
-        title: { zh: "密语", en: "Whisper" },
-        blurb: {
-          zh: "双席位咨询练习房间：督导只对受训者耳语。",
-          en: "Dual-seat practice room — the supervisor whispers to the trainee only.",
-        },
-        tile: "bg-fuchsia-500/10 text-fuchsia-600 dark:text-fuchsia-400",
-        credit: "alanguan73",
-        // Served by the out-of-tree psych-academy plugin, not by this repo.
-        requiresCapability: "whisper_visitor",
-      },
-    ],
-  },
-];
-
-const ALL_ITEMS = GROUPS.flatMap(g => g.items);
-
-/**
- * The groups to render, given what the backend can actually serve.
- *
- * `isAvailable` is null while the probe is in flight: gated tiles stay hidden
- * until then, so a surface whose capability was never installed does not flash
- * into view and out again — an ungated tile is never affected. A group left
- * with no tiles is dropped along with its heading, or "More Projects" would
- * render as a title over nothing (#963).
- */
-export function visibleGroups(
-  groups: DashboardGroup[],
-  isAvailable: ((name: string) => boolean) | null
-): DashboardGroup[] {
-  return groups
-    .map(group => ({
-      ...group,
-      items: group.items.filter(
-        item =>
-          !item.requiresCapability ||
-          (isAvailable?.(item.requiresCapability) ?? false)
-      ),
-    }))
-    .filter(group => group.items.length > 0);
-}
-
-export { GROUPS as DASHBOARD_GROUPS };
-
-export default function SpaceDashboard() {
+export default function SpaceDashboard({
+  title,
+  description,
+  icon = Library,
+  groups: shelves = DASHBOARD_GROUPS,
+  onNavigate,
+}: {
+  title?: string;
+  description?: string;
+  icon?: typeof Library;
+  /** The shelves this hub opens onto; the workspace's materials by default. */
+  groups?: DashboardGroup[];
+  onNavigate?: (href: string) => void;
+} = {}) {
   const { i18n } = useTranslation();
+  const spaceLabel = useUiLayoutLabel("space");
   const zh = i18n.language?.toLowerCase().startsWith("zh");
   const tr = useCallback((l: Lang) => (zh ? l.zh : l.en), [zh]);
 
@@ -289,15 +55,15 @@ export default function SpaceDashboard() {
 
   const capabilityAvailable = useCapabilityFilter();
   const groups = useMemo(
-    () => visibleGroups(GROUPS, capabilityAvailable),
-    [capabilityAvailable]
+    () => visibleGroups(shelves, capabilityAvailable),
+    [shelves, capabilityAvailable]
   );
 
   useEffect(() => {
     let cancelled = false;
     // Each tile loads independently so one slow/failed endpoint never blanks
     // the whole dashboard.
-    for (const item of ALL_ITEMS) {
+    for (const item of shelves.flatMap(group => group.items)) {
       if (!item.load) continue;
       item
         .load()
@@ -311,13 +77,14 @@ export default function SpaceDashboard() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [shelves]);
 
   return (
     <div>
       <PageHeader
-        title={tr({ zh: "学习空间", en: "Learning Space" })}
-        description={tr({
+        icon={icon}
+        title={title ?? spaceLabel}
+        description={description ?? tr({
             zh: "你的对话、智能体、笔记与题目，集中在一处 —— 从这里进入。",
             en: "Your conversations, agents, notebooks, and questions in one place — enter from here.",
           })}
@@ -335,6 +102,7 @@ export default function SpaceDashboard() {
                   key={item.key}
                   item={item}
                   count={counts[item.key]}
+                  onNavigate={onNavigate}
                   tr={tr}
                 />
               ))}
@@ -350,9 +118,11 @@ function DashboardCard({
   item,
   count,
   tr,
+  onNavigate,
 }: {
   item: DashboardItem;
   count: number | undefined;
+  onNavigate?: (href: string) => void;
   tr: (l: Lang) => string;
 }) {
   const Icon = item.icon;
@@ -364,7 +134,11 @@ function DashboardCard({
 
   return (
     <Link
-      href={item.key === "journal" ? scopedUrl(item.href) : item.href}
+      href={onNavigate ? `/preview#resource/${encodeURIComponent(item.href)}` : item.key === "journal" ? scopedUrl(item.href) : item.href}
+      onClick={onNavigate ? event => {
+        event.preventDefault();
+        onNavigate(item.href);
+      } : undefined}
       className="group relative flex flex-col rounded-xl border border-[var(--border)] bg-[var(--card)] p-4 transition-all duration-150 hover:-translate-y-0.5 hover:border-[var(--foreground)]/20 hover:shadow-[0_6px_20px_-12px_rgba(0,0,0,0.25)]"
     >
       <div className="flex items-start gap-3">

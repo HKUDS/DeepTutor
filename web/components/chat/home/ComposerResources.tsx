@@ -23,7 +23,7 @@ import {
 import {
   ArrowLeft,
   ChevronRight,
-  Layers,
+  Plus,
   Search,
   X,
   type LucideIcon,
@@ -37,7 +37,7 @@ export interface ComposerResourceItem {
   icon: LucideIcon;
   count: number;
   summary?: string;
-  group: "Reference materials" | "Answer preferences" | "Tools";
+  group: "Reference materials" | "Answer preferences";
   node: ReactNode;
   onClear?: () => void;
   resetLabel?: string;
@@ -248,7 +248,7 @@ export default function ComposerResources({
         className={`inline-flex h-8 items-center rounded-lg px-2 text-[14px] font-medium transition-colors hover:bg-[var(--muted)] ${configured ? "text-[var(--primary)]" : "text-[var(--muted-foreground)]"}`}
       >
         <span className="relative shrink-0">
-          <Layers size={16} strokeWidth={1.7} />
+          <Plus size={17} strokeWidth={1.7} />
           {configured && (
             <span
               className="absolute -right-1 -top-0.5 h-1.5 w-1.5 rounded-full bg-[var(--primary)]"
@@ -404,11 +404,7 @@ export default function ComposerResources({
                         />
                       </div>
                       {(
-                        [
-                          "Reference materials",
-                          "Answer preferences",
-                          "Tools",
-                        ] as const
+                        ["Reference materials", "Answer preferences"] as const
                       ).map((group) => {
                         const rows = items.filter(
                           (item) =>
@@ -417,6 +413,10 @@ export default function ComposerResources({
                               .toLowerCase()
                               .includes(query.toLowerCase().trim()),
                         );
+                        // Materials always have their own entries; any other
+                        // group shows only when something is filed under it.
+                        if (group !== "Reference materials" && !items.some((item) => item.group === group))
+                          return null;
                         return (
                           <section
                             key={group}

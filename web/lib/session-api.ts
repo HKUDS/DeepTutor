@@ -105,8 +105,13 @@ export interface SessionPreferences {
   mastery_path_id?: string;
   /** "outline" | "study" | "review" — what this mastery conversation is for. */
   mastery_session_mode?: string;
+  /** Note page a notebook companion conversation is held beside. */
+  note_document_id?: string;
   /** Session-level persona preference; "" / absent = Default (no persona). */
   persona?: string;
+  /** Who the conversation is handed to — `partner:<id>` / `subagent:<name>`;
+   *  "" / absent when DeepTutor answers. Rewritten with every turn. */
+  answer_by?: string;
   /** What this conversation narrowed its skill / MCP reach to. Absent or empty
    *  means it inherits everything its workspace allows. */
   skills?: string[];
@@ -115,15 +120,20 @@ export interface SessionPreferences {
    *  shown at that branch point. Missing keys default to the latest
    *  sibling (most recently created child). */
   selected_branches?: Record<string, number>;
-  /** Study-course organization. Empty/absent means Unclassified. */
-  course_id?: string;
-  /** Source conversation for nested selected-text tutor threads. */
+  /** The conversation a side chat was opened beside. */
   parent_session_id?: string;
+  /** ``selection_tutor`` marks a side chat (the name predates side chats). */
   session_kind?: "chat" | "selection_tutor" | "immersive_reading";
+  /** The partner group a side chat convenes; a partner or an agent answering
+   *  one is ``answer_by``. Written by the backend on each turn. */
+  side_chat_group_id?: string;
   /** Owning Immersive Reading workspace, present only for reading sessions. */
   reading_workspace_id?: string;
   /** Material active when the reading conversation was created. */
   reading_material_id?: string;
+  /** The book page whose tutor chat this is, written with the book's own record. */
+  book_id?: string;
+  book_page_id?: string;
   pinned?: boolean;
   archived?: boolean;
 }
@@ -240,7 +250,7 @@ export async function listSessions(
   );
 }
 
-/** Fetch the complete session index in bounded pages for course organization. */
+/** Fetch the complete session index in bounded pages for conversation organization. */
 export async function listAllSessions(options?: {
   force?: boolean;
   allWorkspaces?: boolean;
@@ -265,14 +275,12 @@ export async function searchSessions(
   limit = 50,
   offset = 0,
   signal?: AbortSignal,
-  options?: { allWorkspaces?: boolean },
 ): Promise<SessionSearchPage> {
   const qs = new URLSearchParams({
     q: query,
     limit: String(limit),
     offset: String(offset),
   });
-  if (options?.allWorkspaces) qs.set("all_workspaces", "true");
   const response = await apiFetch(apiUrl(`/api/sessions/search?${qs}`), {
     cache: "no-store",
     signal,
@@ -284,7 +292,6 @@ export async function searchSessions(
 export async function searchAllSessions(
   query: string,
   signal?: AbortSignal,
-  options?: { allWorkspaces?: boolean },
 ): Promise<SessionSearchResult[]> {
   const pageSize = 100;
   const sessions: SessionSearchResult[] = [];
@@ -295,7 +302,6 @@ export async function searchAllSessions(
       pageSize,
       offset,
       signal,
-      options,
     );
     for (const session of page.sessions) {
       const key = `${sessionWorkspaceId(session)}:${session.session_id}`;
@@ -415,7 +421,6 @@ export async function getMessageTrace(
 
 export type SessionOrganizationPatch = Partial<{
   workspace_id: string | null;
-  course_id: string;
   parent_session_id: string;
   session_kind: "chat" | "selection_tutor";
   pinned: boolean;
@@ -439,6 +444,34 @@ export async function updateSessionOrganization(
   invalidateClientCache("sessions:");
   notifySessionsChanged();
   return data.session;
+}
+
+/** A conversation's title, status and preferences — no transcript. */
+export async function getSessionOrganization(
+  sessionId: string,
+  workspaceId?: string,
+  signal?: AbortSignal,
+): Promise<SessionSummary> {
+  const response = await apiFetch(
+    apiUrl(scopedUrl(`/api/sessions/${sessionId}/organization`, workspaceId)),
+    { cache: "no-store", signal },
+  );
+  const data = await expectJson<{ session: SessionSummary }>(response);
+  return data.session;
+}
+
+/** The side chats opened from a conversation, newest first. */
+export async function listSessionThreads(
+  sessionId: string,
+  workspaceId?: string,
+  signal?: AbortSignal,
+): Promise<SessionSummary[]> {
+  const response = await apiFetch(
+    apiUrl(scopedUrl(`/api/sessions/${sessionId}/threads`, workspaceId)),
+    { cache: "no-store", signal },
+  );
+  const data = await expectJson<{ threads: SessionSummary[] }>(response);
+  return data.threads ?? [];
 }
 
 export async function deleteSession(sessionId: string, workspaceId?: string): Promise<void> {

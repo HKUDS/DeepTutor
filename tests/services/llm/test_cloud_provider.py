@@ -98,6 +98,18 @@ async def test_cloud_fetch_models_non_200_returns_empty(monkeypatch: MonkeyPatch
     assert await cloud_provider.fetch_models("https://api.openai.com/v1", "bad") == []
 
 
+@pytest.mark.asyncio
+async def test_minimax_discovery_recommends_current_text_models(monkeypatch: MonkeyPatch) -> None:
+    names = ["MiniMax-M2.7", "MiniMax-M3", "speech-2.8-hd", "MiniMax-M3.1-Flash"]
+    _install_session(monkeypatch, _FakeResponse(200, {"data": [{"id": name} for name in names]}))
+    assert await cloud_provider.fetch_models("https://api.minimax.io/v1", "fixture", "minimax") == [
+        "MiniMax-M3.1-Flash",
+        "MiniMax-M3",
+        "MiniMax-M2.7",
+        "speech-2.8-hd",
+    ]
+
+
 def test_ssl_connector(monkeypatch: MonkeyPatch) -> None:
     """The aiohttp connector only appears when TLS verification is disabled."""
     monkeypatch.delenv("DISABLE_SSL_VERIFY", raising=False)

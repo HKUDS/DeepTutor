@@ -95,7 +95,7 @@ test('surface stats count each kind and name the piece of it touched last', () =
   const stats = learningSurfaceStats(sources)
   assert.deepEqual(
     Object.fromEntries(Object.entries(stats).map(([kind, stat]) => [kind, stat.count])),
-    { books: 3, mastery: 1, reading: 1, watching: 2 }
+    { books: 3, mastery: 1, reading: 1, watching: 2, practice: 0 }
   )
   assert.equal(stats.books.latest?.title, 'c')
   assert.equal(stats.watching.latest?.updatedAt, 90)

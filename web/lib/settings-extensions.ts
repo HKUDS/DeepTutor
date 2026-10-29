@@ -49,6 +49,13 @@ export async function applyExtensionPayload(
     }
     return;
   }
+  if (key === "ui-layout") {
+    // Browser-local: there is no endpoint, the browser is the store.
+    const { isUiLayout, writeStoredUiLayout } = await import("@/lib/ui-layout");
+    if (!isUiLayout(payload)) throw new Error(`Invalid UI layout: ${String(payload)}`);
+    writeStoredUiLayout(payload);
+    return;
+  }
   if (key.startsWith("subagent:")) {
     const { updateSubagentSettings } = await import("@/lib/subagents-api");
     await updateSubagentSettings({ backends: { [key.slice(9)]: payload } });

@@ -1,3 +1,9 @@
+import {
+  DEFAULT_UI_LAYOUT,
+  UI_LAYOUT_ATTRIBUTE,
+  UI_LAYOUT_STORAGE_KEY,
+} from "@/lib/ui-layout";
+
 /**
  * ThemeScript - Initializes theme from localStorage before React hydration
  * This prevents the flash of wrong theme on page load.
@@ -36,6 +42,16 @@ export default function ThemeScript() {
         }
       } catch (e) {
         /* localStorage may be disabled */
+      }
+      // UI layout tokens (see lib/ui-layout.ts) must also paint before React.
+      try {
+        const layout = localStorage.getItem('${UI_LAYOUT_STORAGE_KEY}');
+        document.documentElement.setAttribute(
+          '${UI_LAYOUT_ATTRIBUTE}',
+          layout === 'classic' || layout === 'modern' ? layout : '${DEFAULT_UI_LAYOUT}',
+        );
+      } catch (e) {
+        document.documentElement.setAttribute('${UI_LAYOUT_ATTRIBUTE}', '${DEFAULT_UI_LAYOUT}');
       }
     })();
   `;

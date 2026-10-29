@@ -13,6 +13,14 @@ interface CacheOptions {
   force?: boolean;
 }
 
+/** A synchronous, workspace-scoped snapshot for views re-entered during SPA navigation. */
+export function readClientCache<T>(key: string): T | undefined {
+  if (typeof window === "undefined") return undefined;
+  const cached = clientCache.get(`${key}:workspace=${activeWorkspaceId()}`) as
+    CacheEntry<T> | undefined;
+  return cached && cached.expiresAt > Date.now() ? cached.data : undefined;
+}
+
 export async function withClientCache<T>(
   key: string,
   loader: () => Promise<T>,
@@ -37,7 +45,7 @@ export async function withClientCache<T>(
   }
 
   const promise = loader()
-    .then((value) => {
+    .then(value => {
       // Invalidated or superseded requests must not repopulate stale data.
       if (clientCache.get(key)?.promise === promise) {
         clientCache.set(key, {
@@ -47,12 +55,13 @@ export async function withClientCache<T>(
       }
       return value;
     })
-    .catch((error) => {
+    .catch(error => {
       if (clientCache.get(key)?.promise === promise) clientCache.delete(key);
       throw error;
     });
 
   clientCache.set(key, {
+    data: cached?.data,
     promise,
     expiresAt: now + ttlMs,
   });

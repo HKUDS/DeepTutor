@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "id": "research",
+  "distribution": "deeptutor-research",
+  "requires": [],
+  "optional": [
+    "knowledge"
+  ],
+  "paths": [
+    "deeptutor/agents/research",
+    "deeptutor/services/research",
+    "deeptutor/tools/research_tools.py",
+    "deeptutor/tools/paper_search_tool.py",
+    "deeptutor/tools/knowledge_frontier.py"
+  ],
+  "capabilities": {
+    "deep_research": {
+      "class_path": "deeptutor.agents.research.capability:DeepResearchCapability",
+      "config_model": "deeptutor.agents.research.request_config:DeepResearchRequestConfig",
+      "manifest": {
+        "name": "deep_research",
+        "description": "Agentic-loop deep research with iterative report generation.",
+        "stages": [
+          "rephrasing",
+          "decomposing",
+          "researching",
+          "reporting"
+        ],
+        "tools_used": [
+          "rag",
+          "web_search",
+          "paper_search",
+          "preprint",
+          "research_audit",
+          "research_lit",
+          "exec"
+        ],
+        "cli_aliases": [
+          "research"
+        ]
+      },
+      "validator": "deeptutor.agents.research.request_config:validate_research_request_config",
+      "order": 4
+    }
+  },
+  "loops": {},
+  "tools": {
+    "preprint": {
+      "class_path": "deeptutor.tools.research_tools:PreprintTool",
+      "order": 28
+    },
+    "research_audit": {
+      "class_path": "deeptutor.tools.research_tools:ResearchAuditTool",
+      "order": 29
+    },
+    "research_lit": {
+      "class_path": "deeptutor.tools.research_tools:ResearchLiteratureTool",
+      "order": 30
+    },
+    "paper_search": {
+      "class_path": "deeptutor.tools.builtin:PaperSearchToolWrapper",
+      "order": 10
+    },
+    "knowledge_frontier": {
+      "class_path": "deeptutor.tools.builtin:KnowledgeFrontierTool",
+      "order": 7,
+      "requires": [
+        "knowledge"
+      ]
+    }
+  },
+  "routes": [],
+  "commands": [],
+  "navigation": [],
+  "services": [],
+  "requirements": [
+    "arxiv>=2.0.0"
+  ],
+  "executables": []
+}

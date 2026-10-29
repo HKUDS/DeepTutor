@@ -15,13 +15,23 @@ raises cannot stop the others from loading.
 from __future__ import annotations
 
 from collections.abc import Callable
-from importlib.metadata import entry_points
+from importlib.metadata import EntryPoint, entry_points
 import logging
 from typing import Any, TypeVar
 
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
+
+
+def _module_entry_points(group: str) -> dict[tuple[str, str], bool]:
+    from deeptutor.modules.catalog import manifests, module_enabled
+
+    return {
+        (name, target): module_enabled(module)
+        for module, manifest in manifests().items()
+        for name, target in manifest.get("entry_points", {}).get(group, {}).items()
+    }
 
 
 def load_entry_point_group(
@@ -45,9 +55,31 @@ def load_entry_point_group(
         emit.warning("Failed to read %s entry points; no plugins loaded.", group, exc_info=True)
         return out
 
+    from deeptutor.modules.catalog import source_checkout
+
+    official = _module_entry_points(group)
+    if source_checkout():
+        # Editable core installs do not own optional modules' wheel metadata.
+        # Add their declared entries without duplicating installed module wheels.
+        packaged = {(ep.name, getattr(ep, "value", None)) for ep in discovered}
+        discovered.extend(
+            EntryPoint(name=name, value=target, group=group)
+            for (name, target), enabled in official.items()
+            if enabled and (name, target) not in packaged
+        )
+
     for ep in discovered:
         name = getattr(ep, "name", str(ep))
         try:
+            identity = (name, getattr(ep, "value", None))
+            if identity in official:
+                # Official code is governed by module selection, while external
+                # distributions retain the plugin approval/revocation checks.
+                if official[identity]:
+                    value = coerce(name, ep.load())
+                    if value is not None:
+                        out.append(value)
+                continue
             from deeptutor.plugins.runtime import entry_point_can_load, guard_entry_point_loaded
 
             if not entry_point_can_load(ep, group):

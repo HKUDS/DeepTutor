@@ -7,14 +7,12 @@ import argparse
 import asyncio
 from dataclasses import dataclass
 from datetime import datetime
-import hashlib
-import itertools
 import json
 import logging
 from pathlib import Path
-import shutil
 from typing import TYPE_CHECKING, List, Optional
 
+from deeptutor.knowledge.staging import content_hash, stage_source
 from deeptutor.services.config import resolve_llm_runtime_config
 from deeptutor.services.file_io import atomic_write_json
 from deeptutor.services.rag.factory import (
@@ -23,7 +21,6 @@ from deeptutor.services.rag.factory import (
     has_ready_provider_index,
     normalize_provider_name,
 )
-from deeptutor.services.rag.file_routing import FileTypeRouter
 from deeptutor.services.rag.index_probe import provider_failure_summary
 from deeptutor.services.rag.index_versioning import list_kb_versions
 from deeptutor.services.rag.provider_binding import resolve_bound_provider
@@ -33,6 +30,7 @@ from deeptutor.services.setup.data_volume import (
     ensure_data_volume_writable,
     format_data_volume_permission_error,
 )
+from deeptutor.utils.file_types import FileTypeRouter
 
 logger = logging.getLogger(__name__)
 
@@ -122,18 +120,10 @@ def _raw_hash_key(file_path: Path, raw_dir: Path) -> str:
         return file_path.name
 
 
-def _file_hash(file_path: Path) -> str:
-    sha256_hash = hashlib.sha256()
-    with open(file_path, "rb") as handle:
-        for block in iter(lambda: handle.read(65536), b""):
-            sha256_hash.update(block)
-    return sha256_hash.hexdigest()
-
-
 def hashes_for_indexed_files(file_paths: list[str], raw_dir: Path) -> dict[str, str]:
     """Hash source files already confirmed in an index, keyed by their raw path."""
     return {
-        _raw_hash_key(Path(file_path), raw_dir): _file_hash(Path(file_path))
+        _raw_hash_key(Path(file_path), raw_dir): content_hash(Path(file_path))
         for file_path in file_paths
     }
 
@@ -261,7 +251,7 @@ class DocumentAdder:
         return resolve_bound_provider(self.base_dir, self.kb_name)
 
     def _get_file_hash(self, file_path: Path) -> str:
-        return _file_hash(file_path)
+        return content_hash(file_path)
 
     def get_ingested_hashes(self) -> dict[str, str]:
         if self.metadata_file.exists():
@@ -272,24 +262,6 @@ class DocumentAdder:
             except Exception:
                 return {}
         return {}
-
-    @staticmethod
-    def _non_colliding(dest_path: Path) -> Path:
-        """A free sibling name for a *different* document that wants a taken one.
-
-        Two files can legitimately share a name and hold different content — a
-        docs tree with a README.md per folder is the ordinary case, and batched
-        syncs of sibling folders stage them against different roots, so they
-        land on the same name even with structure preserved. Dropping the later
-        one loses a document the user asked to index, silently.
-        """
-        if not dest_path.exists():
-            return dest_path
-        for index in itertools.count(2):
-            candidate = dest_path.with_name(f"{dest_path.stem} ({index}){dest_path.suffix}")
-            if not candidate.exists():
-                return candidate
-        raise AssertionError("unreachable")  # pragma: no cover
 
     def add_documents(
         self,
@@ -337,20 +309,12 @@ class DocumentAdder:
             else:
                 dest_path = self.raw_dir / source_path.name
 
-            if dest_path.exists():
-                dest_hash = self._get_file_hash(dest_path)
-                if dest_hash == current_hash:
-                    logger.info(f"Recovering staged file: {source_path.name}")
-                    files_to_process.append(dest_path)
-                    continue
-                # Same name, different document: keep both rather than
-                # silently dropping this one.
-                dest_path = self._non_colliding(dest_path)
-
-            dest_path.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(source_path, dest_path)
-            logger.info(f"Staged to raw: {dest_path.relative_to(self.raw_dir).as_posix()}")
-            files_to_process.append(dest_path)
+            staged_path, copied = stage_source(source_path, dest_path, source_hash=current_hash)
+            if copied:
+                logger.info(f"Staged to raw: {staged_path.relative_to(self.raw_dir).as_posix()}")
+            else:
+                logger.info(f"Recovering staged file: {source_path.name}")
+            files_to_process.append(staged_path)
 
         return files_to_process
 

@@ -3,6 +3,8 @@ import { expect, it, vi } from "vitest";
 import CoWriterWorkspace from "@/features/co-writer/components/CoWriterWorkspace";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
+// The header's workspace chip has its own tests; it reads the workspace list.
+vi.mock("@/components/sidebar/PageBar", () => ({ ScopeChip: () => null }));
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key, i18n: { language: "en" } }),
 }));

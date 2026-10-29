@@ -16,10 +16,10 @@ _LEGACY_RUNTIME_CONFIG_KEYS: dict[str, str] = {
     "_superseded_turn_id": "superseded_turn_id",
     "followup_question_context": "followup_question_context",
     "selection_tutor_context": "selection_tutor_context",
-    "_course_id": "course_id",
     "subagent_consult_budget": "subagent_consult_budget",
     "consult_partner_id": "consult_partner_id",
     "partner_discussion_group_id": "partner_discussion_group_id",
+    "answer_by": "answer_by",
     "auto_route": "auto_route",
 }
 
@@ -107,6 +107,20 @@ class MasteryCardAnswer(BaseModel):
         return value
 
 
+class NoteGeneration(BaseModel):
+    """The learning block on the open note page this turn fills in.
+
+    Sent by the note companion when a block's own "Generate" runs. The server
+    owns the instructions that follow from it, so the learner's message stays
+    exactly what they see in the conversation.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    block_id: str = Field(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
+    kind: str = Field(default="", max_length=32)
+
+
 class MasteryCardSkip(BaseModel):
     """A question the learner dropped instead of answering.
 
@@ -180,6 +194,8 @@ class TurnRequest(BaseModel):
     mastery_path_lease_managed: bool = False
     mastery_answer: MasteryCardAnswer | None = None
     mastery_skip: MasteryCardSkip | None = None
+    note_document_id: str | None = Field(default=None, pattern=r"^[0-9a-f]{8,32}$")
+    note_generation: NoteGeneration | None = None
     reading_material_id: str | None = None
     reading_material_revision: int | None = Field(default=None, ge=1)
     reading_workspace_id: str | None = None
@@ -189,7 +205,6 @@ class TurnRequest(BaseModel):
     parent_message_id: int | None = None
 
     # Runtime options are explicit and never passed to a capability schema.
-    course_id: str | None = None
     persist_user_message: bool = True
     regenerate: bool = False
     # A saved failed-turn Resend repeats the old request without changing the
@@ -207,6 +222,10 @@ class TurnRequest(BaseModel):
     subagent_consult_budget: int | None = Field(default=None, ge=0)
     consult_partner_id: str | None = None
     partner_discussion_group_id: str | None = None
+    # Who answers this turn when it is not DeepTutor: ``partner:<id>`` or
+    # ``subagent:<connection>``. The turn is handed over whole — see
+    # ``deeptutor.capabilities.handoff``.
+    answer_by: str | None = Field(default=None, pattern=r"^(partner|subagent):\S.*$")
     auto_route: bool | None = None
 
     @field_validator("reply_language_override")

@@ -100,6 +100,7 @@ class ApplicationContainer:
         )
         self._recovery_services: dict[str, TurnRecoveryService] = {}
         self._started = False
+        self._module_lease: contextlib.AbstractContextManager | None = None
 
     @classmethod
     def build(cls) -> "ApplicationContainer":
@@ -122,19 +123,41 @@ class ApplicationContainer:
     async def start(self) -> None:
         if self._started:
             return
-        if not await self.coordinator.health():
-            raise RuntimeConfigurationError(
-                "Turn coordination backend is unavailable; refusing to start"
-            )
-        self._started = True
+        from deeptutor.modules.lifecycle import environment_lease
+
+        lease = environment_lease()
+        lease.__enter__()
+        self._module_lease = lease
+        try:
+            if not await self.coordinator.health():
+                raise RuntimeConfigurationError(
+                    "Turn coordination backend is unavailable; refusing to start"
+                )
+            self._started = True
+        except BaseException:
+            lease.__exit__(None, None, None)
+            self._module_lease = None
+            raise
 
     async def close(self) -> None:
         if not self._started:
             return
-        await self.runtime_registry.close(drain_timeout_seconds=60.0)
-        with contextlib.suppress(Exception):
-            await self.coordinator.close()
-        self._started = False
+        try:
+            # Await cancellation cleanup before releasing the environment lease.
+            await self.runtime_registry.close(drain_timeout_seconds=0.0)
+            from deeptutor.runtime.memory_reclaim import cancel_idle_reclaim
+            from deeptutor.runtime.ts_engine import close_engine_clients
+
+            cancel_idle_reclaim()
+            await close_engine_clients()
+            with contextlib.suppress(Exception):
+                await self.coordinator.close()
+        finally:
+            self._started = False
+            lease = getattr(self, "_module_lease", None)
+            if lease is not None:
+                lease.__exit__(None, None, None)
+                self._module_lease = None
 
     async def recover_once(self) -> None:
         """Recover expired turns across every registered user repository.
@@ -285,12 +308,48 @@ class ApplicationContainer:
             )
         return reports
 
+    async def adopt_all_book_chat_sessions(self) -> list[dict[str, Any]]:
+        """Link page chats to their books in every account and workspace."""
+
+        from deeptutor.modules.catalog import module_enabled
+
+        if not module_enabled("books"):
+            return []
+        from deeptutor.book.chat_sessions import adopt_book_chat_sessions
+        from deeptutor.multi_user.paths import user_context
+        from deeptutor.services.workspace import get_content_workspace_service
+        from deeptutor.services.workspace.context import workspace_context
+        from deeptutor.services.workspace.models import WorkspaceError
+
+        reports: list[dict[str, Any]] = []
+        for user in self._local_users():
+            with user_context(user):
+                try:
+                    scopes = [""] + [
+                        row["workspace_id"]
+                        for row in get_content_workspace_service().list_workspaces()
+                        if row["kind"] == "workspace" and row["status"] == "ready"
+                    ]
+                except WorkspaceError as exc:
+                    reports.append({"user_id": user.id, "skipped": str(exc)})
+                    continue
+                tagged = 0
+                for scope in scopes:
+                    try:
+                        with workspace_context(scope):
+                            tagged += await adopt_book_chat_sessions()
+                    except WorkspaceError:
+                        continue
+                reports.append({"user_id": user.id, "tagged": tagged})
+        return reports
+
     async def run_startup_data_migrations(self) -> dict[str, list[dict[str, Any]]]:
         """Run every idempotent migration shared by all server launch modes."""
 
         result = {
             "legacy_chat": await self.migrate_all_legacy_chats(),
             "workspace_preferences": await self.migrate_all_workspace_preferences(),
+            "book_chats": await self.adopt_all_book_chat_sessions(),
         }
         from deeptutor.multi_user.paths import user_context
         from deeptutor.services.workspace.session_move import migrate_legacy_bindings
@@ -348,10 +407,24 @@ def set_application_container(container: ApplicationContainer | None) -> None:
     _default_container = container
 
 
+async def close_application_container() -> None:
+    """Close an existing default runtime without constructing one for cleanup."""
+    global _default_container
+    container = _default_container
+    if container is None:
+        return
+    try:
+        await container.close()
+    finally:
+        if _default_container is container:
+            _default_container = None
+
+
 __all__ = [
     "ApplicationContainer",
     "RuntimeRegistry",
     "StoreProvider",
     "get_application_container",
     "set_application_container",
+    "close_application_container",
 ]

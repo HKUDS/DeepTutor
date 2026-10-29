@@ -223,7 +223,7 @@ def parse_document_with_mineru_result(
 
         tail: deque[str] = deque(maxlen=40)
         last_emit = 0.0
-        from deeptutor.knowledge.indexing_run import IndexingCancelled, current_run
+        from deeptutor.services.parsing.progress import IndexingCancelled, current_run
 
         run = current_run()
         started = activity = time.monotonic()

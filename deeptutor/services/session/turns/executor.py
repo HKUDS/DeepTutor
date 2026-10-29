@@ -30,9 +30,9 @@ from .._turn_runtime_shared import (
     _count_branch_user_turns,
     _extract_followup_question_context,
     _extract_memory_references,
-    _extract_selection_tutor_context,
+    _extract_side_chat_context,
     _format_followup_question_context,
-    _format_selection_tutor_context,
+    _format_side_chat_context,
     _mastery_action_context,
     _mastery_path_id,
     _partner_group_references,
@@ -45,16 +45,17 @@ from .._turn_runtime_shared import (
     _reading_workspace_id,
     _repair_chinese_emphasis_for_persistence,
     _request_snapshot_metadata,
-    _resolve_selection_tutor_context,
+    _resolve_side_chat_context,
     _resolve_turn_failure_metadata,
     _resolve_turn_outcome,
-    _retracted_round_call_id,
     _should_capture_assistant_content,
     _stamp_content_offset,
     _topic_material_manifest,
     _TurnExecution,
     _workspace_mode,
 )
+from ..quote_attachments import is_quote, quote_block, read_quotes, with_quotes
+from .inbox import TurnInbox
 
 if TYPE_CHECKING:
     from deeptutor.runtime.coordination import RuntimeCoordinator
@@ -72,6 +73,7 @@ class TurnExecutor:
         _lock: asyncio.Lock
         _executions: dict[str, _TurnExecution]
         _reply_queues: dict[str, asyncio.Queue[dict[str, Any] | None]]
+        _inboxes: dict[str, TurnInbox]
 
         def _create_context_builder(self, *, tutoring: bool = False) -> Any: ...
 
@@ -149,19 +151,15 @@ class TurnExecutor:
         assistant_content = ""
         provider_response_state: dict[str, Any] | None = None
         context: UnifiedContext | None = None
-        # Per-round content segments + retracted call_ids: every chat-loop
-        # round's text is captured live and kept, commentary written before a
-        # tool call included. Only a round a capability retracted is dropped
-        # from the persisted answer (mirrors the frontend bubble).
+        # Keep every published answer segment, including commentary before tools.
         content_segments: list[tuple[str | None, str]] = []
-        retracted_call_ids: set[str] = set()
 
         def _persisted_answer() -> str:
             # clean_thinking_tags is a second line of defence: providers that
             # inline <think> in the content channel are split at streaming
             # time by the agent loop, but anything that slips through must
             # never be persisted as the user-facing answer.
-            return _assemble_persisted_answer(content_segments, retracted_call_ids)
+            return _assemble_persisted_answer(content_segments)
 
         # Files the model generated this turn (exec artifacts),
         # persisted as assistant-message attachments so the UI shows openable
@@ -177,6 +175,8 @@ class TurnExecutor:
         # Cleaned up unconditionally in the outer ``finally``.
         reply_queue: asyncio.Queue[dict[str, Any] | None] = asyncio.Queue()
         self._reply_queues[turn_id] = reply_queue
+        inbox = TurnInbox()
+        self._inboxes[turn_id] = inbox
 
         async def _wait_for_user_reply() -> dict[str, Any] | None:
             # Publish the pause so a turn that wants the same mastery path can
@@ -242,30 +242,29 @@ class TurnExecutor:
 
                 assert_learning_material(material_id)
             from deeptutor.agents.notebook import NotebookAnalysisAgent
-            from deeptutor.book.context import build_book_context
             from deeptutor.core.context import Attachment, TurnRuntimeContext, UnifiedContext
+            from deeptutor.core.source_context import SourceContext
+            from deeptutor.modules.catalog import require_module
             from deeptutor.services.learning_journal import get_learning_journal_store
-            from deeptutor.services.memory import get_memory_store
             from deeptutor.services.model_selection.runtime import (
                 activate_llm_selection,
             )
             from deeptutor.services.model_selection.runtime import (
                 reset_llm_selection as reset_active_llm_selection,
             )
-            from deeptutor.services.notebook import get_notebook_manager
             from deeptutor.services.workspace import get_content_workspace_service
 
             request_config = dict(payload.get("config", {}) or {})
             followup_question_context = _extract_followup_question_context(
                 {"followup_question_context": payload.get("followup_question_context")}
             )
-            selection_tutor_context = _extract_selection_tutor_context(
+            side_chat_context = _extract_side_chat_context(
                 {"selection_tutor_context": payload.get("selection_tutor_context")}
             )
-            if selection_tutor_context:
-                selection_tutor_context = await _resolve_selection_tutor_context(
+            if side_chat_context:
+                side_chat_context = await _resolve_side_chat_context(
                     self.store,
-                    selection_tutor_context,
+                    side_chat_context,
                 )
             persist_user_message = bool(payload.get("persist_user_message", True))
             is_regenerate = bool(payload.get("regenerate", False))
@@ -295,7 +294,16 @@ class TurnExecutor:
                 payload.get("partner_group_references")
             )
             question_notebook_references = payload.get("question_notebook_references", []) or []
-            book_context_result = build_book_context(payload.get("book_references", []) or [])
+            book_context_result = SourceContext()
+            if payload.get("book_references"):
+                require_module("books")
+                from deeptutor.book.context import build_book_context
+
+                book_context_result = build_book_context(payload["book_references"])
+            if notebook_references:
+                require_module("notebook")
+                from deeptutor.services.notebook import get_notebook_manager
+
             book_references = book_context_result.references
             reading_references = _reading_references(payload.get("reading_references"))
             memory_references = _extract_memory_references(payload)
@@ -368,7 +376,14 @@ class TurnExecutor:
             # every PDF's result with the configured parser output. Running the
             # configured parser regardless of a native text layer is what lets
             # OCR/layout engines see scanned pages and figures.
-            document_texts, attachment_records = extract_documents_from_records(attachment_records)
+            # A quote is text the learner pointed at, not a document: read it
+            # back as-is and keep it out of extraction.
+            quotes = read_quotes(attachment_records)
+            quote_records = [r for r in attachment_records if is_quote(r)]
+            document_texts, attachment_records = extract_documents_from_records(
+                [r for r in attachment_records if not is_quote(r)]
+            )
+            attachment_records = quote_records + attachment_records
             pdf_records = [
                 record
                 for record in attachment_records
@@ -496,9 +511,9 @@ class TurnExecutor:
             # resolves the bytes from the attachment store at request time) so
             # a vision model keeps seeing an image the learner attached before.
             # Text attachments are not repeated here — the source inventory's
-            # historical walk already serves them. Selection tutoring is
-            # deliberately isolated from conversation context.
-            if not selection_tutor_context:
+            # historical walk already serves them. A side chat is deliberately
+            # isolated from its own conversation's context.
+            if not side_chat_context:
                 from deeptutor.services.session.source_inventory import (
                     collect_prior_image_attachments,
                 )
@@ -524,9 +539,9 @@ class TurnExecutor:
                 )
 
             sidebar_system_context = ""
-            if selection_tutor_context:
-                sidebar_system_context = _format_selection_tutor_context(
-                    selection_tutor_context,
+            if side_chat_context:
+                sidebar_system_context = _format_side_chat_context(
+                    side_chat_context,
                     language=str(payload.get("language", "en") or "en"),
                 )
 
@@ -568,13 +583,17 @@ class TurnExecutor:
                 on_event=_emit_context_event,
                 leaf_message_id=branch_parent_id,
             )
-            memory_store = get_memory_store()
-            memory_context = memory_store.read_l3_concat() if memory_references else ""
+            memory_context = ""
+            if memory_references:
+                require_module("memory")
+                from deeptutor.services.memory import get_memory_store
+
+                memory_context = get_memory_store().read_l3_concat()
 
             # One snapshot per turn; selected-text tutoring stays independent
             # of an unrelated mission from earlier conversations (#1407).
             learning_journal_context = ""
-            if not selection_tutor_context:
+            if not side_chat_context:
                 try:
                     learning_journal_context = get_learning_journal_store().injection_markdown()
                 except (OSError, ValueError):
@@ -659,7 +678,7 @@ class TurnExecutor:
                     language=str(payload.get("language", "en") or "en"),
                 )
                 source_manifest_text, source_index = render_manifest(inventory)
-                effective_user_message = raw_user_content
+                effective_user_message = with_quotes(raw_user_content, quotes)
             else:
                 if notebook_references:
                     referenced_records = get_notebook_manager().get_records_by_references(
@@ -767,6 +786,8 @@ class TurnExecutor:
 
                 effective_user_message = raw_user_content
                 context_parts: list[str] = []
+                if quotes:
+                    context_parts.append(quote_block(quotes))
                 if document_texts:
                     context_parts.append("[Attached Documents]\n" + "\n\n".join(document_texts))
                 if book_context:
@@ -838,7 +859,6 @@ class TurnExecutor:
                 "deep_solve",
                 "immersive_reading",
                 "mastery_path",
-                "course_study",
             }:
                 workspace_context = ""
                 if workspace_mode == WORKSPACE_MODE_READING:
@@ -854,6 +874,21 @@ class TurnExecutor:
                         _mastery_path_id(payload.get("mastery_path_id")),
                         source_manifest_text,
                         mastery_topic_source_index,
+                    )
+                # Audio overview reads the page itself and takes the message as
+                # its topic, so the page must not be folded into the message.
+                elif payload.get("note_document_id") and capability_name != "audio_overview":
+                    from deeptutor.modules.catalog import require_module
+
+                    require_module("co-writer")
+                    from deeptutor.capabilities.notes.capability import note_action_context
+
+                    workspace_context = await asyncio.to_thread(
+                        note_action_context,
+                        str(payload.get("note_document_id")),
+                        payload.get("note_generation") or {},
+                        session_id=session_id,
+                        language=str(payload.get("language", "en") or "en"),
                     )
                 if workspace_context:
                     effective_user_message = (
@@ -905,7 +940,7 @@ class TurnExecutor:
                     **parent_kwargs,
                 )
 
-            if not selection_tutor_context:
+            if not side_chat_context:
                 from deeptutor.services.task_board import get_task_board_store
                 from deeptutor.services.workspace.context import current_workspace_id
 
@@ -921,9 +956,9 @@ class TurnExecutor:
                 user_message=effective_user_message,
                 conversation_history=conversation_history,
                 enabled_tools=payload.get("tools"),
-                # Selected-text tutoring must stay isolated from global
-                # memory and every other auto-mounted built-in.
-                allowed_builtin_tools=[] if selection_tutor_context else None,
+                # A side chat stays isolated from global memory and every
+                # other auto-mounted built-in.
+                allowed_builtin_tools=[] if side_chat_context else None,
                 active_capability=payload.get("capability"),
                 knowledge_bases=payload.get("knowledge_bases", []),
                 attachments=attachments,
@@ -940,9 +975,11 @@ class TurnExecutor:
                     previous_model_turn=getattr(history_result, "previous_model_turn", None),
                     turn_id=turn_id,
                     wait_for_user_reply=_wait_for_user_reply,
+                    drain_user_inputs=inbox.drain,
                     subagent_consult_budget=payload.get("subagent_consult_budget"),
                     consult_partner_id=payload.get("consult_partner_id"),
                     partner_discussion_group_id=payload.get("partner_discussion_group_id"),
+                    answer_by=payload.get("answer_by"),
                     workspace=get_content_workspace_service().create_runtime_context(
                         capability=capability_name,
                         session_id=session_id,
@@ -959,14 +996,12 @@ class TurnExecutor:
                     "reply_language_fixed": bool(payload.get("_reply_language_fixed")),
                     "turn_id": turn_id,
                     "question_followup_context": followup_question_context or {},
-                    "selection_tutor_context": selection_tutor_context or {},
+                    "side_chat_context": side_chat_context or {},
                     "notebook_references": notebook_references,
                     "history_references": history_references,
                     "partner_group_references": partner_group_references,
                     "question_notebook_references": question_notebook_references,
                     "book_references": book_references,
-                    "course_id": str(payload.get("course_id") or ""),
-                    "course_conventions": str(payload.get("course_conventions") or ""),
                     "reading_references": reading_references,
                     "learner_profile_prompt": learner_profile_prompt,
                     "mastery_path_id": _mastery_path_id(payload.get("mastery_path_id")),
@@ -989,6 +1024,8 @@ class TurnExecutor:
                     # Immersive reading: the open material activates the reading
                     # capability and binds its tools; the viewport tells the
                     # model where the user is actually looking.
+                    "note_document_id": payload.get("note_document_id"),
+                    "note_generation": payload.get("note_generation") or {},
                     "reading_material_id": _reading_material_id(payload.get("reading_material_id")),
                     "reading_material_revision": _reading_material_revision(
                         payload.get("reading_material_revision")
@@ -1049,14 +1086,11 @@ class TurnExecutor:
                     # reloaded turn lays the answer out the way it streamed,
                     # and so future context can replay assistant -> user ->
                     # assistant in order.
-                    _stamp_content_offset(payload_event, _persisted_answer())
+                    _stamp_content_offset(payload_event, _persisted_answer)
                     assistant_events.append(payload_event)
                 if _should_capture_assistant_content(event):
                     call_id = (event.metadata or {}).get("call_id")
                     content_segments.append((str(call_id) if call_id else None, event.content))
-                retracted_call_id = _retracted_round_call_id(event)
-                if retracted_call_id:
-                    retracted_call_ids.add(retracted_call_id)
                 for attachment in artifact_attachments(event):
                     if attachment["url"] not in seen_artifact_urls:
                         seen_artifact_urls.add(attachment["url"])
@@ -1103,9 +1137,8 @@ class TurnExecutor:
             # already unwinding and must not start new blocking work.
             await fill_preview_text(generated_attachments)
 
-            # The persisted answer is the captured content minus any round a
-            # capability retracted (that text stayed in the trace). Apply
-            # the CJK Markdown repair only after every streamed segment has
+            # Persist every published content segment. Apply the CJK Markdown
+            # repair only after every streamed segment has
             # arrived, so no incomplete response is ever rewritten.
             assistant_content = _repair_chinese_emphasis_for_persistence(
                 _persisted_answer(),
@@ -1201,6 +1234,40 @@ class TurnExecutor:
             }
             if persisted_ids:
                 pending_done_event.metadata = {**pending_done_event.metadata, **persisted_ids}
+            # A learning block's "Generate" ran a pipeline that cannot propose
+            # edits itself; file its result on that block before DONE, so the
+            # page finds the review as soon as it hears the turn ended.
+            note_generation = payload.get("note_generation") or {}
+            if (
+                turn_status == "completed"
+                and capability_name != "chat"
+                and note_generation.get("block_id")
+                and payload.get("note_document_id")
+            ):
+                from deeptutor.modules.catalog import require_module
+
+                require_module("co-writer")
+                from deeptutor.capabilities.notes.generation import propose_generated_block
+
+                zh = str(payload.get("language", "en") or "en").startswith("zh")
+                try:
+                    await asyncio.to_thread(
+                        propose_generated_block,
+                        note_document_id=str(payload.get("note_document_id")),
+                        generation=note_generation,
+                        events=assistant_events,
+                        response=assistant_content,
+                        turn_id=turn_id,
+                        explanation=(
+                            "为这个块生成的内容，替换前请先确认。"
+                            if zh
+                            else "Generated for this block. Review before replacing."
+                        ),
+                    )
+                except Exception:
+                    logger.warning(
+                        "Filing the generated note block failed for turn %s", turn_id, exc_info=True
+                    )
             # Commit all non-terminal events and the terminal row before DONE
             # becomes visible. The DONE envelope itself is then appended and
             # synchronously flushed, so a reconnect can never observe a
@@ -1425,6 +1492,7 @@ class TurnExecutor:
             # that finds the queue gone will return ``False`` rather than
             # accumulating on a dead turn.
             self._reply_queues.pop(turn_id, None)
+            self._inboxes.pop(turn_id, None)
             if bool(payload.get("mastery_path_lease_managed")):
                 from deeptutor.learning.storage import LearningStore
 
@@ -1455,9 +1523,8 @@ class TurnExecutor:
             if execution.lease is not None and self.coordinator is not None:
                 with contextlib.suppress(Exception):
                     await self.coordinator.release_turn(execution.lease)
-            # A turn may have parsed large attachments or built substantial
-            # temporary prompts/results. Reclaim after this coroutine returns,
-            # outside the user-visible streaming path.
-            from deeptutor.runtime.memory_reclaim import schedule_memory_reclaim
-
-            schedule_memory_reclaim()
+            # Release turn-owned references here and let Python's generational
+            # GC manage ordinary chat allocations. A full gc.collect() in a
+            # worker thread still holds the GIL and delays this turn's DONE
+            # frame and unrelated streams. Allocation-heavy workers retain
+            # their explicit memory-reclamation boundary.

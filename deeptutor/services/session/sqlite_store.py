@@ -2622,6 +2622,7 @@ class SQLiteSessionStore:
             OR json_extract(metadata_json, '$.tool_metadata.ask_user') IS NOT NULL
             OR json_extract(metadata_json, '$.mastery_question') IS NOT NULL
             OR json_extract(metadata_json, '$.tool_metadata.mastery_question') IS NOT NULL
+            OR json_extract(metadata_json, '$.trace_kind') = 'user_input'
         """
         conditions = (
             f"type IN ('done', 'error', 'cancelled', 'result') OR {cards}",
@@ -3189,7 +3190,7 @@ class SQLiteSessionStore:
         return await self._run(self._update_summary_sync, session_id, summary, int(up_to_msg_id))
 
     def _update_session_preferences_sync(
-        self, session_id: str, preferences: dict[str, Any]
+        self, session_id: str, preferences: dict[str, Any], touch: bool = True
     ) -> bool:
         with self._connect() as conn:
             current = conn.execute(
@@ -3203,21 +3204,25 @@ class SQLiteSessionStore:
                 **(preferences or {}),
             }
             merged = upgrade_workspace_preferences(merged)
+            # ``touch=False`` records metadata (a link, a migration) without
+            # making the conversation look recently used.
             cur = conn.execute(
                 """
                 UPDATE sessions
-                SET preferences_json = ?, updated_at = ?
+                SET preferences_json = ?, updated_at = COALESCE(?, updated_at)
                 WHERE id = ?
                 """,
-                (_json_dumps(merged), time.time(), session_id),
+                (_json_dumps(merged), time.time() if touch else None, session_id),
             )
             conn.commit()
         return cur.rowcount > 0
 
     async def update_session_preferences(
-        self, session_id: str, preferences: dict[str, Any]
+        self, session_id: str, preferences: dict[str, Any], *, touch: bool = True
     ) -> bool:
-        return await self._run(self._update_session_preferences_sync, session_id, preferences)
+        return await self._run(
+            self._update_session_preferences_sync, session_id, preferences, touch
+        )
 
     async def get_session_with_messages(self, session_id: str) -> dict[str, Any] | None:
         session = await self.get_session(session_id)
@@ -4171,6 +4176,28 @@ class SQLiteSessionStore:
             item["categories"] = grouped.get(int(item["id"]), [])
             item["practice"] = practice.get(int(item["id"]))
         return {"items": items, "total": total}
+
+    async def list_notebook_navigation(self) -> list[dict[str, Any]]:
+        """Read small question identities for navigation, without hydrating answers.
+
+        Uses the same recycle predicate as the Question Bank. No new schema or
+        migration: old entry IDs remain the IDs used by practice and review.
+        """
+
+        def read() -> list[dict[str, Any]]:
+            with self._connect() as conn:
+                return [
+                    dict(row)
+                    for row in conn.execute(
+                        # Only a fixed table alias is substituted into the local predicate.
+                        "SELECT id, substr(question, 1, 160) AS question, created_at, updated_at "  # nosec B608
+                        "FROM notebook_entries WHERE "
+                        + _NOT_RECYCLED_ENTRY_SQL.format(entries="notebook_entries")
+                        + " ORDER BY updated_at DESC, id DESC"
+                    ).fetchall()
+                ]
+
+        return await self._run(read)
 
     async def list_notebook_entries(
         self,

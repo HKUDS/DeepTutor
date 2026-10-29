@@ -3,8 +3,9 @@
  *
  * Two pieces:
  *
- * 1. `getDayGroupKey(ts)` — returns a stable token (`today` / `yesterday` /
- *    `last_7_days` / `earlier`) for grouping. Callers map that token to a
+ * 1. `getDayGroupKey(ts)` — returns a stable token (`today` / `this_week` /
+ *    `earlier`) for grouping: three buckets, so a list reads as "now, lately,
+ *    a while ago" rather than a calendar. Callers map that token to a
  *    translated label via i18next so the same grouping logic works across
  *    locales.
  *
@@ -14,7 +15,7 @@
  *    behaviour rather than throwing.
  */
 
-export type DayGroupKey = "today" | "yesterday" | "last_7_days" | "earlier";
+export type DayGroupKey = "today" | "this_week" | "earlier";
 
 export function getDayGroupKey(timestamp: number): DayGroupKey {
   const now = new Date();
@@ -33,8 +34,7 @@ export function getDayGroupKey(timestamp: number): DayGroupKey {
   );
   const diffDays = Math.floor((startOfToday - startOfItemDay) / 86400000);
   if (diffDays <= 0) return "today";
-  if (diffDays === 1) return "yesterday";
-  if (diffDays < 7) return "last_7_days";
+  if (diffDays < 7) return "this_week";
   return "earlier";
 }
 

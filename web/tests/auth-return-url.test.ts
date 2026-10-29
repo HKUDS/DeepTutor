@@ -11,13 +11,13 @@ import {
 test("return URLs preserve path, query, and fragment", () => {
   const destination = browserReturnPath({
     pathname: "/notebooks/notes-1",
-    search: "?course=course-2",
+    search: "?record=record-2",
     hash: "#notes",
   });
-  assert.equal(destination, "/notebooks/notes-1?course=course-2#notes");
+  assert.equal(destination, "/notebooks/notes-1?record=record-2#notes");
   assert.equal(
     loginHref(destination),
-    "/login?next=%2Fnotebooks%2Fnotes-1%3Fcourse%3Dcourse-2%23notes",
+    "/login?next=%2Fnotebooks%2Fnotes-1%3Frecord%3Drecord-2%23notes",
   );
 });
 

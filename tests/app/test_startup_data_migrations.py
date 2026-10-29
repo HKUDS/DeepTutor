@@ -28,5 +28,6 @@ async def test_startup_data_migrations_run_legacy_then_workspace_upgrade(monkeyp
     assert reports == {
         "legacy_chat": [{"imported": 2}],
         "workspace_preferences": [{"migrated": 3}],
+        "book_chats": [],
         "workspace_data": [],
     }

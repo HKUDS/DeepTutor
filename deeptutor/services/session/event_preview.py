@@ -48,17 +48,26 @@ def _carries_card(event: dict[str, Any]) -> bool:
     )
 
 
+def _carries_learner_words(event: dict[str, Any]) -> bool:
+    """A message the learner sent mid-turn, which the turn then read.
+
+    It is part of the conversation, not of the working-out: dropping it leaves
+    a reloaded answer responding to something nobody can see was said.
+    """
+    return _metadata(event).get("trace_kind") == "user_input"
+
+
 def _is_semantic(event: dict[str, Any]) -> bool:
     event_type = str(event.get("type") or "")
     if event_type in _SEMANTIC_EVENT_TYPES:
         return True
-    return _carries_card(event)
+    return _carries_card(event) or _carries_learner_words(event)
 
 
 def _is_critical(event: dict[str, Any]) -> bool:
     if str(event.get("type") or "") in _TERMINAL_EVENT_TYPES | {"result"}:
         return True
-    return _carries_card(event)
+    return _carries_card(event) or _carries_learner_words(event)
 
 
 def _truncate_legacy_payloads(event: dict[str, Any]) -> dict[str, Any]:

@@ -4,12 +4,9 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from functools import wraps
-import importlib.util
 import inspect
 import json
 from typing import Any, AsyncIterator
-
-from deeptutor.services.notebook import get_notebook_manager
 
 from .container import get_application_container
 from .contracts import TurnRequest
@@ -76,6 +73,11 @@ class DeepTutorApp:
 
     @property
     def notebooks(self):
+        from deeptutor.modules.catalog import require_module
+
+        require_module("notebook")
+        from deeptutor.services.notebook import get_notebook_manager
+
         with self._workspace_context():
             return get_notebook_manager()
 
@@ -114,19 +116,15 @@ class DeepTutorApp:
 
     def get_capability_availability(self, capability: str) -> CapabilityAvailability:
         resolved = self.resolve_capability(capability)
-        if resolved == "math_animator":
-            available = importlib.util.find_spec("manim") is not None
-            return CapabilityAvailability(
-                name=resolved,
-                available=available,
-                install_hint=(
-                    ""
-                    if available
-                    else "Install with `pip install -e '.[math-animator]'` "
-                    "or `pip install -r requirements/math-animator.txt`."
-                ),
-            )
-        return CapabilityAvailability(name=resolved, available=True)
+        from deeptutor.modules.catalog import contribution_owner, module_statuses
+
+        owner = contribution_owner("capabilities", resolved)
+        status = next(row for row in module_statuses() if row["id"] == owner)
+        return CapabilityAvailability(
+            name=resolved,
+            available=status["ready"],
+            install_hint="; ".join(status["issues"]) if not status["ready"] else "",
+        )
 
     async def start_turn(
         self, request: TurnRequest | dict[str, Any]

@@ -13,8 +13,7 @@ import { toolResultPayload } from "@/lib/tool-event";
  * hand-off as `mastery_handoff` on a tool result's metadata, and it becomes a
  * card.
  *
- * A card rather than an automatic redirect, for the same reason Course Study
- * uses one (`lib/course-handoff.ts`): a page that changes underneath the
+ * A card rather than an automatic redirect: a page that changes underneath the
  * learner reads as a malfunction, and the opening line is a proposal they
  * should be able to edit or ignore.
  *

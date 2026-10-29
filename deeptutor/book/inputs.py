@@ -186,6 +186,9 @@ async def _resolve_notebook_context(
     """Return (context_text, record_count). 0 records → empty context."""
     if not notebook_refs:
         return "", 0
+    from deeptutor.modules.catalog import require_module
+
+    require_module("notebook")
     try:
         from deeptutor.services.notebook import notebook_manager
 

@@ -47,6 +47,13 @@ def load_extras(pyproject: Path) -> dict[str, list[str]]:
     """``{extra: [requirement, …]}`` as declared by the project."""
     with open(pyproject, "rb") as handle:
         data = tomllib.load(handle)
+    if "optional-dependencies" in data.get("tool", {}).get("deeptutor", {}):
+        # This script runs directly in containers, so the repository root is
+        # not necessarily already on sys.path.
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+        from build_metadata import source_optional_dependencies
+
+        return source_optional_dependencies(pyproject.resolve().parent)
     optional = data.get("project", {}).get("optional-dependencies", {})
     return {
         str(name): [str(req) for req in reqs]

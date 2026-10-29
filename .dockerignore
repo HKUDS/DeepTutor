@@ -18,6 +18,7 @@
 *.md
 !README.md
 docs/
+docs-for-dev/
 assets/gifs/
 assets/figs/
 assets/README/
@@ -118,6 +119,8 @@ run_code_workspace/
 # Development and Testing
 # ============================================
 develop/
+artifacts/
+.github/tdd/
 .claude/
 .agents/
 .playwright-cli/

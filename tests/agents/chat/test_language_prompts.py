@@ -172,7 +172,6 @@ def test_prompt_blocks_include_localized_optional_context() -> None:
         "deep_solve",
         "ask_questions",
         "immersive_reading",
-        "course_study",
         "visualize",
         "mastery_path",
     ],

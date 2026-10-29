@@ -17,24 +17,17 @@ import tempfile
 from typing import Any
 
 from deeptutor.agents._shared.capability_result import emit_capability_result
-from deeptutor.core.capability_protocol import CapabilityManifest, TurnCapability
+from deeptutor.core.capability_protocol import TurnCapability
 from deeptutor.core.context import UnifiedContext
 from deeptutor.core.trace import merge_trace_metadata
 from deeptutor.i18n import StatusI18n
 from deeptutor.runtime.agentic.usage import UsageTracker
-from deeptutor.runtime.request_contracts import get_capability_request_schema
+from deeptutor.runtime.bootstrap.builtin_capabilities import builtin_capability_manifest
 from deeptutor.runtime.stream_bus import StreamBus
 
 
 class DeepQuestionCapability(TurnCapability):
-    manifest = CapabilityManifest(
-        name="deep_question",
-        description="Fast question generation (Template batches -> Generate).",
-        stages=["ideation", "generation"],
-        tools_used=["rag", "web_search", "exec"],
-        cli_aliases=["quiz"],
-        request_schema=get_capability_request_schema("deep_question"),
-    )
+    manifest = builtin_capability_manifest("deep_question")
 
     async def run(self, context: UnifiedContext, stream: StreamBus) -> None:
         from deeptutor.services.llm.config import get_llm_config

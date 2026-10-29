@@ -327,3 +327,34 @@ async def test_per_call_enable_preserves_runtime_rewrite_configuration(monkeypat
     assert complete.await_args.kwargs["model"] == "configured-rewrite-model"
     assert wait_for.await_args.kwargs["timeout"] == 0.25
     assert settings["enabled"] is False
+
+
+@pytest.mark.asyncio
+async def test_settings_load_failure_keeps_retrieval_query_and_records_diagnostic(
+    monkeypatch, caplog
+):
+    from deeptutor.services import config
+
+    def broken_settings():
+        raise OSError("settings unavailable")
+
+    monkeypatch.setattr(config, "get_runtime_settings_service", broken_settings)
+    query, outcome = await maybe_rewrite("original question")
+    assert query == "original question"
+    assert outcome is not None and outcome.error.startswith("OSError:")
+    assert not outcome.applied
+    assert "Query rewrite settings failed" in caplog.text
+    # An explicit opt-out must not consult potentially broken configuration.
+    assert await maybe_rewrite("original question", rewrite=False) == ("original question", None)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("key", ["min_query_chars", "timeout_seconds"])
+async def test_invalid_rewrite_numeric_settings_fail_open(key):
+    outcome = await rewrite_query(
+        "original question",
+        settings=_enabled_settings(**{key: "invalid"}),
+        complete_fn=_ok_complete(),
+    )
+    assert outcome.rewritten == "original question"
+    assert outcome.error.startswith("ValueError:")

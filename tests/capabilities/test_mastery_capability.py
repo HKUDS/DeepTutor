@@ -163,38 +163,29 @@ def test_open_question_still_allows_answering_the_learner():
     assert capability.finish_instruction(context, "会的，路由失败时它会重写查询再试。") is None
 
 
-def test_open_question_may_not_be_restated_in_prose():
-    """Re-posing the open question as text is still redirected to the card."""
+def test_open_question_allows_option_by_option_discussion():
+    """Discussing the open question does not force grading or a new card."""
     capability = MasteryLoopCapability()
     context = _context()
 
     context.extension("mastery")["quiz_awaiting_grade"] = True
 
     instruction = capability.finish_instruction(context, _GRADED_REVIEW)
-    assert instruction is not None
-    assert "mastery_grade" in instruction
+    assert instruction is None
 
 
-def test_plain_text_quiz_is_redirected_to_the_card():
-    """Posing a question as prose is still rejected before any grading."""
+def test_choice_prose_does_not_force_a_card():
+    """Choice-shaped text is ordinary dialogue until a quiz tool is called."""
     instruction = MasteryLoopCapability().finish_instruction(_context(), _GRADED_REVIEW)
-    assert instruction is not None
-    assert "mastery_quiz" in instruction
-    assert "ask_user" not in instruction
+    assert instruction is None
 
 
-def test_announced_but_unposed_question_is_redirected():
-    """An announced-but-unposed question is not a finished turn.
-
-    Posing a question ends the turn, so a reply that only announces one leaves
-    the learner reading a promise above an empty space with no way to answer.
-    """
+def test_question_wording_does_not_force_a_tool():
+    """A colon or question wording must not trigger mandatory tool work."""
     instruction = MasteryLoopCapability().finish_instruction(
         _context(), "让我们通过这道题来看看你对状态定义的掌握程度："
     )
-    assert instruction is not None
-    assert "mastery_quiz" in instruction
-    assert "SAME round" in instruction
+    assert instruction is None
 
 
 @pytest.mark.parametrize(
@@ -205,11 +196,10 @@ def test_announced_but_unposed_question_is_redirected():
         "Four options, choose one.",
     ],
 )
-def test_unposted_choice_lead_in_requires_a_card(reply: str) -> None:
-    """#1508: naming unseen choices cannot finish a mastery turn successfully."""
+def test_choice_wording_does_not_control_turn_completion(reply: str) -> None:
+    """Choice wording alone does not establish a pending tool operation."""
     instruction = MasteryLoopCapability().finish_instruction(_context(), reply)
-    assert instruction is not None
-    assert "mastery_quiz" in instruction
+    assert instruction is None
 
 
 def test_existing_question_can_remind_learner_to_choose() -> None:
@@ -237,14 +227,13 @@ def test_existing_question_can_remind_learner_to_choose() -> None:
         "I have reopened the card. Choose an option.",
     ],
 )
-def test_card_delivery_claim_needs_a_posted_card(reply: str) -> None:
-    """Real lead-ins without any question must enter the existing repair path."""
+def test_card_wording_does_not_control_turn_completion(reply: str) -> None:
+    """Mentioning a card cannot force the tutor away from a discussion."""
     context = _context()
     # A previous grade must not exempt a promise to pose the next question.
     context.metadata["mastery_card_grade"] = {"is_correct": True}
     instruction = MasteryLoopCapability().finish_instruction(context, reply)
-    assert instruction is not None
-    assert "mastery_quiz" in instruction
+    assert instruction is None
 
 
 @pytest.mark.parametrize(
@@ -815,3 +804,35 @@ def test_kb_seed_is_left_alone_outside_mastery_mode() -> None:
         metadata={"mastery_card_answered": True},
     )
     assert MasteryLoopCapability().skip_kb_seed(context) is False
+
+
+def test_seed_names_the_option_the_learner_picked_not_just_its_letter():
+    """A bare letter is ambiguous once the card shuffles the options.
+
+    The tutor registered the options in its own order; the card shows (and the
+    engine persists) a shuffled one. "D" therefore means a different option in
+    the tutor's context than on the learner's screen (HKUDS/DeepTutor#1993),
+    so the picked option's body has to travel with the letter.
+    """
+    from deeptutor.learning.question_card import build_grade_result
+
+    shuffled = {
+        "A": "Each instance remembers request ids in local memory",
+        "B": "Disable the send button while waiting",
+        "C": "SELECT first, then INSERT",
+        "D": "Idempotency key plus an atomic claim in the backend",
+    }
+    result = build_grade_result(
+        question_id="q-1",
+        is_correct=True,
+        learner_answer="D",
+        correct_label="D",
+        choice_options=shuffled,
+        explanation="why",
+    )
+    context = _context()
+    context.metadata["mastery_card_grade"] = {"is_correct": True, "result": result}
+
+    seed = MasteryLoopCapability()._grade_seed(context)
+
+    assert "Idempotency key plus an atomic claim in the backend" in seed

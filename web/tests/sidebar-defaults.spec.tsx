@@ -24,6 +24,7 @@ it("new profiles see five primary entries and two folded features", () => {
     "/partners",
     "/learning",
     "/space",
+    "/calendar",
     "/kanban",
   ]);
   expect(resolved.collapsed).toEqual(["/co-writer", "/agents"]);

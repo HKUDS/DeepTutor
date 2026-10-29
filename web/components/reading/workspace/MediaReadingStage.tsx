@@ -544,7 +544,7 @@ export function MediaReadingStage({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex h-10 shrink-0 items-center justify-between border-b border-[var(--border)] bg-[var(--background)] px-3 dark:border-[var(--border)] dark:bg-[var(--background)]">
+      <div className="flex h-10 shrink-0 items-center justify-between px-3">
         <div className="min-w-0">
           <p className="truncate text-[10.5px] font-semibold">{title}</p>
           <p className="truncate text-[10.5px] text-[var(--muted-foreground)]">
@@ -634,7 +634,7 @@ export function MediaReadingStage({
                 />
               </div>
             ) : material.render_mode === "audio" ? (
-              <div className="flex min-h-[260px] flex-col items-center justify-center rounded-2xl border border-[var(--border)] bg-[var(--card)] p-8 shadow-[0_18px_50px_rgba(0,0,0,.08)] dark:border-[var(--border)] dark:bg-[var(--card)]">
+              <div className="flex min-h-[260px] flex-col items-center justify-center rounded-2xl bg-[var(--card)] p-8 shadow-[var(--dt-shadow-xs,0_0_0_1px_rgba(0,0,0,.06))]">
                 <span className="mb-5 flex size-20 items-center justify-center rounded-full bg-[var(--muted)] text-[var(--primary)]">
                   <FileAudio size={30} />
                 </span>
@@ -666,7 +666,7 @@ export function MediaReadingStage({
 
             <div
               aria-live="polite"
-              className="grid shrink-0 grid-cols-1 gap-1 rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 py-2 text-[11.5px] leading-[1.55] dark:border-[var(--border)] dark:bg-[var(--card)]"
+              className="grid shrink-0 grid-cols-1 gap-1 rounded-xl bg-[var(--card)] px-3 py-2 text-[11.5px] leading-[1.55] shadow-[var(--dt-shadow-xs,0_0_0_1px_rgba(0,0,0,.06))]"
             >
               {[activeCue, nextCue].map((row, index) =>
                 row ? (
@@ -698,7 +698,7 @@ export function MediaReadingStage({
           </div>
 
           {(playerError || transcriptUnavailable) && (
-            <div className="mt-3 rounded-xl border border-[var(--border)] bg-[var(--card)] px-4 py-3 text-[10.5px] leading-relaxed text-[var(--muted-foreground)] dark:border-[var(--border)] dark:bg-[var(--card)]">
+            <div className="mt-3 rounded-xl bg-[var(--card)] px-4 py-3 text-[10.5px] leading-relaxed text-[var(--muted-foreground)] shadow-[var(--dt-shadow-xs,0_0_0_1px_rgba(0,0,0,.06))]">
               {playerError ||
                 (chaptersOnly
                   ? t(
@@ -721,7 +721,7 @@ export function MediaReadingStage({
             </div>
           )}
 
-          <div className="mt-4 flex items-center justify-between rounded-xl border border-[var(--border)] bg-[var(--card)] px-4 py-3 dark:border-[var(--border)] dark:bg-[var(--card)]">
+          <div className="mt-4 flex items-center justify-between rounded-xl bg-[var(--card)] px-4 py-3 shadow-[var(--dt-shadow-xs,0_0_0_1px_rgba(0,0,0,.06))]">
             <div className="min-w-0">
               <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--primary)]">
                 {t("Current passage")}
@@ -774,9 +774,9 @@ export function MediaReadingStage({
             </div>
           </div>
 
-          <div className="mt-3 rounded-xl border border-[var(--border)] bg-[var(--card)] dark:border-[var(--border)] dark:bg-[var(--card)]">
+          <div className="mt-3 overflow-hidden rounded-xl bg-[var(--card)] shadow-[var(--dt-shadow-xs,0_0_0_1px_rgba(0,0,0,.06))]">
             {noteEditorOpen && (
-              <div className="border-b border-[var(--border)] p-3 dark:border-[var(--border)]">
+              <div className="bg-[var(--muted)]/40 p-3">
                 <label className="block text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--muted-foreground)]">
                   {editingNoteId ? t("Edit note") : t("New note")}
                 </label>
@@ -791,7 +791,7 @@ export function MediaReadingStage({
                     }
                   }}
                   rows={3}
-                  className="mt-2 w-full resize-y rounded-lg border border-[var(--border)] bg-[var(--background)] p-2 text-[11.5px] leading-relaxed outline-none focus:border-[var(--primary)]"
+                  className="dt-soft-input mt-2 w-full resize-y rounded-lg bg-[var(--background)] p-2 text-[11.5px] leading-relaxed outline-none"
                 />
                 {noteError && <p role="alert" className="mt-2 text-xs text-destructive">{noteError}</p>}
                 <div className="mt-2 flex justify-end gap-1">
@@ -880,8 +880,8 @@ export function MediaReadingStage({
             )}
           </div>
 
-          <div className="mt-4 rounded-xl border border-[var(--border)] bg-[var(--card)] dark:border-[var(--border)] dark:bg-[var(--card)]">
-            <div className="flex flex-wrap items-center gap-2 border-b border-[var(--border)] px-3 py-2 dark:border-[var(--border)]">
+          <div className="mt-4 overflow-hidden rounded-xl bg-[var(--card)] shadow-[var(--dt-shadow-xs,0_0_0_1px_rgba(0,0,0,.06))]">
+            <div className="flex flex-wrap items-center gap-2 px-3 pb-1 pt-2.5">
               <label className="relative min-w-[180px] flex-1">
                 <span className="sr-only">{t("Search transcript")}</span>
                 <Search
@@ -911,7 +911,7 @@ export function MediaReadingStage({
                       moveTranscriptMatch(event.shiftKey ? -1 : 1);
                     }
                   }}
-                  className="h-8 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] pl-8 pr-2 text-[10.5px] outline-none"
+                  className="h-8 w-full rounded-lg bg-[var(--muted)]/60 pl-8 pr-2 text-[10.5px] outline-none transition-colors focus:bg-[var(--background)] focus:shadow-[0_0_0_1px_color-mix(in_srgb,var(--primary)_40%,transparent)]"
                 />
               </label>
               {!!normalizedTranscriptQuery && (
@@ -930,7 +930,7 @@ export function MediaReadingStage({
                   disabled={!transcriptMatches.length}
                   aria-label={t("Previous transcript match")}
                   onClick={() => moveTranscriptMatch(-1)}
-                  className="rounded-md border border-[var(--border)] p-1.5 text-[var(--muted-foreground)] disabled:opacity-40"
+                  className="rounded-md p-1.5 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)] disabled:opacity-40"
                 >
                   <ChevronUp size={11} />
                 </button>
@@ -939,7 +939,7 @@ export function MediaReadingStage({
                   disabled={!transcriptMatches.length}
                   aria-label={t("Next transcript match")}
                   onClick={() => moveTranscriptMatch(1)}
-                  className="rounded-md border border-[var(--border)] p-1.5 text-[var(--muted-foreground)] disabled:opacity-40"
+                  className="rounded-md p-1.5 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)] disabled:opacity-40"
                 >
                   <ChevronDown size={11} />
                 </button>
@@ -950,10 +950,10 @@ export function MediaReadingStage({
                   }
                   disabled={Boolean(normalizedTranscriptQuery)}
                   aria-pressed={followTranscript}
-                  className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1.5 text-[10px] font-medium disabled:cursor-not-allowed disabled:opacity-40 ${
+                  className={`inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-[10px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
                     followTranscript
-                      ? "border-[var(--primary)] text-[var(--primary)]"
-                      : "border-[var(--border)] text-[var(--muted-foreground)]"
+                      ? "bg-[color-mix(in_srgb,var(--primary)_10%,transparent)] text-[var(--primary)]"
+                      : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
                   }`}
                 >
                   <ChevronsDown size={11} />

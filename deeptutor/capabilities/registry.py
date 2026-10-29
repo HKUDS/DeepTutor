@@ -13,6 +13,7 @@ import warnings
 
 from deeptutor.capabilities.protocol import LoopExtension
 from deeptutor.core.context import UnifiedContext
+from deeptutor.modules.catalog import contribution_enabled, manifests
 from deeptutor.plugins.entry_points import load_entry_point_group
 from deeptutor.runtime.capability_catalog import EmptyConfig, get_capability_catalog
 
@@ -46,48 +47,10 @@ class LoopCapabilitySpec:
         return self.create()
 
 
-BUILTIN_LOOP_CAPABILITY_SPECS: tuple[LoopCapabilitySpec, ...] = (
-    LoopCapabilitySpec(
-        "ask_questions",
-        "deeptutor.capabilities.ask_questions.loop:AskQuestionsLoopCapability",
-    ),
-    LoopCapabilitySpec("mastery", "deeptutor.capabilities.mastery.loop:MasteryLoopCapability"),
-    LoopCapabilitySpec("solve", "deeptutor.capabilities.solve.loop:SolveLoopCapability"),
-    LoopCapabilitySpec("obsidian", "deeptutor.capabilities.obsidian.capability:ObsidianCapability"),
-    LoopCapabilitySpec(
-        "marginnote4",
-        "deeptutor.capabilities.marginnote4.capability:MarginNoteCapability",
-    ),
-    LoopCapabilitySpec(
-        "subagent",
-        "deeptutor.capabilities.subagent.capability:SubagentCapability",
-    ),
-    LoopCapabilitySpec("ima", "deeptutor.capabilities.ima.capability:ImaCapability"),
-    LoopCapabilitySpec(
-        "immersive_reading",
-        "deeptutor.capabilities.reading.capability:ReadingCapability",
-    ),
-    LoopCapabilitySpec(
-        "course_study",
-        "deeptutor.capabilities.course_study.capability:CourseStudyLoopCapability",
-    ),
-    LoopCapabilitySpec(
-        "explore_context",
-        "deeptutor.capabilities.explore_context.capability:ExploreContextCapability",
-    ),
-    LoopCapabilitySpec("setup", "deeptutor.capabilities.setup.capability:SetupCapability"),
-    LoopCapabilitySpec(
-        "partner_authoring",
-        "deeptutor.capabilities.partner_authoring.capability:PartnerAuthoringCapability",
-    ),
-    LoopCapabilitySpec(
-        "partner_group",
-        "deeptutor.capabilities.partner_group.capability:PartnerGroupCapability",
-    ),
-    LoopCapabilitySpec(
-        "visualization_generation",
-        "deeptutor.visualizers.loop_capability:VisualizationLoopCapability",
-    ),
+BUILTIN_LOOP_CAPABILITY_SPECS: tuple[LoopCapabilitySpec, ...] = tuple(
+    LoopCapabilitySpec(name, spec["class_path"])
+    for module in manifests().values()
+    for name, spec in module["loops"].items()
 )
 
 # Compatibility surface: the descriptors remain zero-argument callables.
@@ -97,14 +60,18 @@ LOOP_EXTENSION_FACTORIES: tuple[LoopFactory, ...] = cast(
 
 
 def _builtin_loop_extensions() -> tuple[LoopExtension, ...]:
-    return tuple(factory() for factory in LOOP_EXTENSION_FACTORIES)
+    return tuple(
+        spec() for spec in BUILTIN_LOOP_CAPABILITY_SPECS if contribution_enabled("loops", spec.name)
+    )
 
 
 class _LegacyLoopCapabilitiesView(Sequence[LoopExtension]):
     """Deprecated sequence view that never retains extension instances."""
 
     def __len__(self) -> int:
-        return len(LOOP_EXTENSION_FACTORIES)
+        return sum(
+            contribution_enabled("loops", spec.name) for spec in BUILTIN_LOOP_CAPABILITY_SPECS
+        )
 
     def __iter__(self) -> Iterator[LoopExtension]:
         return iter(_builtin_loop_extensions())
@@ -189,34 +156,41 @@ def discover_external_loop_capabilities():
 discover_external_loop_capabilities.cache_clear = _discover_external_loop_capabilities.cache_clear  # type: ignore[attr-defined]
 
 
-def _register_loop_entry(name: str, factory: LoopFactory) -> None:
-    preview = factory()
-    get_capability_catalog().register(
-        name=name,
-        kind="loop_extension",
-        manifest={"name": name, "owned_tools": tuple(preview.owned_tools)},
-        factory=factory,
-        config_model=EmptyConfig,
-        replace=True,
-    )
-
-
-def all_loop_capabilities() -> tuple[LoopExtension, ...]:
-    """Create an isolated extension set for the caller's turn."""
-
-    specs: list[tuple[str, LoopFactory]] = []
-    specs.extend((spec.name, spec) for spec in BUILTIN_LOOP_CAPABILITY_SPECS)
+def all_loop_capabilities(context: UnifiedContext | None = None) -> tuple[LoopExtension, ...]:
+    """Create once per turn, rechecking activation and revocation on each use."""
+    specs: list[tuple[str, LoopFactory]] = [
+        (spec.name, spec)
+        for spec in BUILTIN_LOOP_CAPABILITY_SPECS
+        if contribution_enabled("loops", spec.name)
+    ]
     specs.extend(discover_external_loop_capabilities())
+    instances = context.runtime.loop_extensions if context is not None else {}
+    allowed = {name for name, _ in specs}
+    for name in tuple(instances):
+        if name not in allowed:
+            del instances[name]
+    result = []
     for name, factory in specs:
-        _register_loop_entry(name, factory)
-    catalog = get_capability_catalog()
-    return tuple(
-        cast(LoopExtension, catalog.create("loop_extension", name)) for name, _factory in specs
-    )
+        instance = instances.get(name)
+        if instance is None:
+            instance = factory()
+            instances[name] = instance
+            get_capability_catalog().register(
+                name=name,
+                kind="loop_extension",
+                manifest={"name": name, "owned_tools": tuple(instance.owned_tools)},
+                factory=factory,
+                config_model=EmptyConfig,
+                replace=True,
+            )
+        result.append(cast(LoopExtension, instance))
+    return tuple(result)
 
 
 def active_loop_capabilities(context: UnifiedContext) -> tuple[LoopExtension, ...]:
-    return tuple(extension for extension in all_loop_capabilities() if extension.is_active(context))
+    return tuple(
+        extension for extension in all_loop_capabilities(context) if extension.is_active(context)
+    )
 
 
 def any_exclusive_capability_active(context: UnifiedContext) -> bool:

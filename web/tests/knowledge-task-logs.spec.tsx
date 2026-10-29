@@ -121,3 +121,5 @@ it("does not show a log panel for an idle KB with no local task", () => {
   );
   expect(screen.queryByRole("region", { name: "Process Logs" })).toBeNull();
 });
+
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));

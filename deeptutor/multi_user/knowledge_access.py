@@ -4,12 +4,13 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from fastapi import HTTPException
+if TYPE_CHECKING:
+    from deeptutor.knowledge.manager import KnowledgeBaseManager
 
+from deeptutor.core.errors import AccessError
 from deeptutor.knowledge.kb_types import SUBAGENT_KB_TYPE
-from deeptutor.knowledge.manager import KnowledgeBaseManager
 from deeptutor.knowledge.manifest import (
     MANIFEST_NOTE_LIMIT,
     KbManifest,
@@ -29,6 +30,11 @@ DEFAULT_KB_ALIASES = {"", "default", "current", "selected", "默认", "默认知
 
 @lru_cache(maxsize=128)
 def _manager_for(base_dir: str) -> KnowledgeBaseManager:
+    from deeptutor.modules.catalog import require_module
+
+    require_module("knowledge")
+    from deeptutor.knowledge.manager import KnowledgeBaseManager
+
     return KnowledgeBaseManager(base_dir=base_dir)
 
 
@@ -131,9 +137,9 @@ def _resolve_kb(kb_ref: str, *, require_write: bool = False) -> KnowledgeResourc
 
     if requested_source == "admin":
         if name not in assigned_names:
-            raise HTTPException(status_code=403, detail="Knowledge base is not assigned to you")
+            raise AccessError(status_code=403, detail="Knowledge base is not assigned to you")
         if require_write:
-            raise HTTPException(
+            raise AccessError(
                 status_code=403, detail="Assigned admin knowledge bases are read-only"
             )
         return KnowledgeResource(
@@ -180,7 +186,7 @@ def _resolve_kb(kb_ref: str, *, require_write: bool = False) -> KnowledgeResourc
 
     if name in assigned_names:
         if require_write:
-            raise HTTPException(
+            raise AccessError(
                 status_code=403, detail="Assigned admin knowledge bases are read-only"
             )
         return KnowledgeResource(
@@ -192,7 +198,7 @@ def _resolve_kb(kb_ref: str, *, require_write: bool = False) -> KnowledgeResourc
             read_only=True,
         )
 
-    raise HTTPException(status_code=404, detail=f"Knowledge base '{name}' not found")
+    raise AccessError(status_code=404, detail=f"Knowledge base '{name}' not found")
 
 
 def _resolve_default_or_name(manager: KnowledgeBaseManager, name: str) -> str:
@@ -204,8 +210,8 @@ def _resolve_default_or_name(manager: KnowledgeBaseManager, name: str) -> str:
         default_kb = manager.get_default()
         if default_kb and default_kb in names:
             return default_kb
-        raise HTTPException(status_code=404, detail="No default knowledge base is configured")
-    raise HTTPException(status_code=404, detail=f"Knowledge base '{requested}' not found")
+        raise AccessError(status_code=404, detail="No default knowledge base is configured")
+    raise AccessError(status_code=404, detail=f"Knowledge base '{requested}' not found")
 
 
 def manager_for_resource(resource: KnowledgeResource) -> KnowledgeBaseManager:
@@ -218,13 +224,18 @@ def list_visible_knowledge_bases() -> list[dict[str, Any]]:
         canonical_kb_id,
         knowledge_catalog,
         library_request,
+        library_viewer,
         move_aliases,
         parse_kb_id,
     )
     from deeptutor.services.workspace.resources import current_resources
 
     if library_request.get():
-        return knowledge_catalog()
+        viewer = library_viewer.get()
+        catalog_rows = knowledge_catalog()
+        if viewer is None:
+            return catalog_rows
+        return [item for item in catalog_rows if item["workspace_id"] == viewer]
     selected = current_resources().knowledge_bases
     if selected is None:
         own = _list_visible_knowledge_bases()
@@ -356,7 +367,7 @@ def resolve_kb_metadata(kb_ref: str | None) -> dict[str, Any] | None:
         return None
     try:
         resource = resolve_kb(str(kb_ref), require_write=False)
-    except HTTPException:
+    except AccessError:
         return None
     manager = _manager_for(str(resource.base_dir.resolve()))
     return manager.get_metadata(resource.name)
@@ -380,7 +391,7 @@ def resolve_kb_manifest(
         return None
     try:
         resource = resolve_kb(str(kb_ref), require_write=False)
-    except HTTPException:
+    except AccessError:
         return None
     manager = _manager_for(str(resource.base_dir.resolve()))
     entry = manager.get_kb_entry(resource.name)
@@ -413,7 +424,7 @@ def resolve_kb_document_path(kb_ref: str | None, rel_path: str) -> Path | None:
         return None
     try:
         resource = resolve_kb(str(kb_ref), require_write=False)
-    except HTTPException:
+    except AccessError:
         return None
     manager = _manager_for(str(resource.base_dir.resolve()))
     entry = manager.get_kb_entry(resource.name)

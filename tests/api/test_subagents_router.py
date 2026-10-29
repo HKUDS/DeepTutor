@@ -70,7 +70,7 @@ def client(monkeypatch, tmp_path):
         "list_backend_kinds",
         lambda: ["claude_code", "codex", "grok", "hermes_remote", "partner"],
     )
-    monkeypatch.setattr(subagents_module, "assert_path_allowed", lambda p: Path(p))
+    monkeypatch.setattr("deeptutor.services.rag.linked_kb.assert_path_allowed", lambda p: Path(p))
     # Isolate settings persistence to a temp file — the PUT path otherwise
     # writes the developer's real data/user/settings/subagent.json.
     monkeypatch.setattr(

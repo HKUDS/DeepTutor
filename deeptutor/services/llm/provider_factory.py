@@ -7,6 +7,7 @@ from collections import OrderedDict
 import contextlib
 import hashlib
 import json
+import os
 import threading
 from typing import Any
 
@@ -36,6 +37,7 @@ def _provider_cache_key(config: LLMConfig, loop: asyncio.AbstractEventLoop) -> t
         owner_identity = str(get_github_copilot_storage().credentials_path)
     return (
         loop,
+        os.getenv("DEEPTUTOR_CHAT_ENGINE", "python"),
         config.provider_name or config.binding,
         config.provider_mode,
         config.model,
@@ -48,6 +50,8 @@ def _provider_cache_key(config: LLMConfig, loop: asyncio.AbstractEventLoop) -> t
         config.temperature,
         config.max_tokens,
         config.reasoning_effort,
+        config.max_concurrency,
+        config.requests_per_minute,
         owner_identity,
     )
 
@@ -56,6 +60,7 @@ def _build_runtime_provider(
     llm_config: LLMConfig,
     *,
     configure_env: bool = True,
+    native_enabled: bool = True,
 ) -> LLMProvider:
     """Construct one provider, importing only the selected backend SDK."""
     provider_name = llm_config.provider_name or llm_config.binding
@@ -68,12 +73,25 @@ def _build_runtime_provider(
         # the Azure SDK; the services path must make the same call.
         backend = "azure_openai"
 
-    if backend == "openai_codex":
+    native = False
+    if native_enabled and os.getenv("DEEPTUTOR_CHAT_ENGINE") == "typescript-native":
+        from deeptutor.runtime.ts_engine.config import compatibility_reason
+
+        native = not compatibility_reason(llm_config)
+        # These profiles attach SDK-specific prompt caching or model rewrites.
+        if spec and (spec.supports_prompt_caching or spec.strip_model_prefix):
+            native = False
+    provider: LLMProvider
+    if native:
+        from deeptutor.services.llm.provider_core.typescript_provider import TypeScriptProvider
+
+        provider = TypeScriptProvider(llm_config)
+    elif backend == "openai_codex":
         from deeptutor.services.llm.provider_core.openai_codex_provider import (
             OpenAICodexProvider,
         )
 
-        provider: LLMProvider = OpenAICodexProvider(default_model=llm_config.model)
+        provider = OpenAICodexProvider(default_model=llm_config.model)
     elif backend == "github_copilot":
         from deeptutor.services.llm.provider_core.github_copilot_provider import (
             GitHubCopilotProvider,
@@ -112,6 +130,7 @@ def _build_runtime_provider(
             default_model=llm_config.model,
             extra_headers=llm_config.extra_headers or None,
             supports_prompt_caching=bool(spec and spec.supports_prompt_caching),
+            binding=spec.name if spec else llm_config.binding,
         )
     else:
         from deeptutor.services.llm.provider_core.openai_compat_provider import OpenAICompatProvider

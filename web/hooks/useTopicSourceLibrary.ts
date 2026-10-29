@@ -105,8 +105,7 @@ export function useTopicSourceLibrary(tr: Translate) {
       Promise.allSettled(
         kinds.map(kind =>
           sourceRequest<{ items: Record<string, unknown>[]; unavailable_workspaces: string[] }>(
-            `/api/dashboard/source-library/${kind}`,
-            ''
+            `/api/dashboard/source-library/${kind}`
           )
         )
       ),
@@ -472,7 +471,7 @@ async function hydrateSource(candidate: SourceCandidate): Promise<TopicSourceInp
   }
 }
 
-export async function sourceRequest<T>(path: string, workspaceId = ''): Promise<T> {
+export async function sourceRequest<T>(path: string, workspaceId?: string): Promise<T> {
   const response = await apiFetch(apiUrl(scopedUrl(path, workspaceId)), { cache: 'no-store' })
   if (!response.ok) throw new Error(`Could not load source (${response.status})`)
   return response.json() as Promise<T>

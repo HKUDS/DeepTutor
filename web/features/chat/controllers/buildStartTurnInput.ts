@@ -8,7 +8,6 @@ import type {
 } from "../model/start-turn";
 
 const RUNTIME_ONLY_CONFIG_KEYS = new Set([
-  "_course_id",
   "_persist_user_message",
   "_regenerate",
   "_regenerated_from_message_id",
@@ -19,6 +18,7 @@ const RUNTIME_ONLY_CONFIG_KEYS = new Set([
   "subagent_consult_budget",
   "consult_partner_id",
   "partner_discussion_group_id",
+  "answer_by",
 ]);
 
 function invalid(message: string): never {
@@ -97,6 +97,8 @@ export function buildStartTurnInput(input: StartTurnInput): StartTurnCommand {
     workspace_mode: input.workspaceMode ?? null,
     mastery_path_id: input.masteryPathId ?? null,
     mastery_session_mode: input.masterySessionMode ?? null,
+    ...(input.noteDocumentId ? { note_document_id: input.noteDocumentId } : {}),
+    ...(input.noteGeneration ? { note_generation: input.noteGeneration } : {}),
     mastery_path_lease_managed: input.masteryPathLeaseManaged ?? false,
     mastery_answer: input.masteryAnswer ?? null,
     mastery_skip: input.masterySkip ?? null,
@@ -109,7 +111,6 @@ export function buildStartTurnInput(input: StartTurnInput): StartTurnCommand {
     ...(input.parentMessageId !== undefined
       ? { parent_message_id: input.parentMessageId }
       : {}),
-    course_id: input.courseId ?? null,
     persist_user_message: input.persistUserMessage ?? true,
     regenerate: input.regenerate ?? false,
     regenerated_from_message_id: input.regeneratedFromMessageId ?? null,
@@ -119,6 +120,7 @@ export function buildStartTurnInput(input: StartTurnInput): StartTurnCommand {
     subagent_consult_budget: input.subagentConsultBudget ?? null,
     ...(input.consultPartnerId ? { consult_partner_id: input.consultPartnerId } : {}),
     ...(input.partnerDiscussionGroupId ? { partner_discussion_group_id: input.partnerDiscussionGroupId } : {}),
+    ...(input.answerBy ? { answer_by: input.answerBy } : {}),
     auto_route: input.autoRoute ?? null,
     ...(input.capabilityOnce ? { capability_once: true } : {}),
   });

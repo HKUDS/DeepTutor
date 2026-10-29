@@ -4,9 +4,7 @@ from typing import Any
 
 import pytest
 
-from deeptutor.api.routers import courses as courses_router
 from deeptutor.api.routers import sessions as sessions_router
-from deeptutor.services.courses import CourseNotFoundError, CourseService
 from deeptutor.services.session.organization import validate_parent_assignment
 
 
@@ -85,27 +83,53 @@ async def test_parent_assignment_rejects_indirect_cycle() -> None:
 
 
 @pytest.mark.asyncio
-async def test_course_delete_unclassifies_every_session_before_removing_course(
+async def test_threads_lists_only_this_conversations_tutor_threads(
     monkeypatch: pytest.MonkeyPatch,
-    tmp_path,
 ) -> None:
-    service = CourseService(tmp_path / "courses")
-    course = service.create(name="Operating Systems")
     store = _ReorderingStore(
         [
+            {"session_id": "root", "updated_at": 10, "preferences": {}},
             {
-                "session_id": f"session-{index}",
-                "updated_at": 300 - index,
-                "preferences": {"course_id": course.id},
-            }
-            for index in range(250)
+                "session_id": "older-thread",
+                "updated_at": 4,
+                "preferences": {"parent_session_id": "root", "session_kind": "selection_tutor"},
+            },
+            {
+                "session_id": "newer-thread",
+                "updated_at": 8,
+                "preferences": {"parent_session_id": "root", "session_kind": "selection_tutor"},
+            },
+            {
+                "session_id": "other-parent",
+                "updated_at": 9,
+                "preferences": {
+                    "parent_session_id": "elsewhere",
+                    "session_kind": "selection_tutor",
+                },
+            },
+            {
+                "session_id": "filed-child",
+                "updated_at": 7,
+                "preferences": {"parent_session_id": "root", "session_kind": "chat"},
+            },
         ]
     )
-    monkeypatch.setattr(courses_router, "get_course_service", lambda: service)
-    monkeypatch.setattr(courses_router, "get_session_store", lambda: store)
+    monkeypatch.setattr(sessions_router, "get_session_store", lambda: store)
 
-    await courses_router.delete_course(course.id)
+    result = await sessions_router.list_session_threads("root")
 
-    assert all(not row["preferences"].get("course_id") for row in store.rows.values())
-    with pytest.raises(CourseNotFoundError):
-        service.get(course.id)
+    assert [row["session_id"] for row in result["threads"]] == ["newer-thread", "older-thread"]
+
+
+@pytest.mark.asyncio
+async def test_organization_read_skips_the_transcript(monkeypatch: pytest.MonkeyPatch) -> None:
+    store = _ReorderingStore(
+        [{"session_id": "root", "updated_at": 1, "preferences": {"pinned": True}}]
+    )
+    monkeypatch.setattr(sessions_router, "get_session_store", lambda: store)
+
+    result = await sessions_router.get_session_organization("root")
+
+    assert result["session"]["preferences"] == {"pinned": True}
+    with pytest.raises(sessions_router.HTTPException):
+        await sessions_router.get_session_organization("missing")

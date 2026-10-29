@@ -4,7 +4,6 @@ import { Loader2 } from "lucide-react";
 import { useEffect, useId, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 
-import { useChatWorkspaces } from "@/hooks/useChatWorkspaces";
 import {
   createReadingWorkspace,
   updateReadingWorkspace,
@@ -16,32 +15,22 @@ import Tooltip from "@/shared/ui/Tooltip";
 
 /**
  * Creating a collection and renaming or recolouring one are the same small
- * form. Creating also says where the collection lives: a workspace holds
- * many collections, and a collection's files and conversations are stored
- * in exactly one of them.
+ * form. A new collection lives in the current workspace.
  */
 export function FolderDialog({
   collection,
-  workspaceId,
-  lockWorkspace = false,
   onClose,
   onSaved,
 }: {
   /** Present when editing; absent when creating. */
   collection?: ReadingWorkspace;
-  /** The workspace a new collection starts in. */
-  workspaceId: string;
-  /** A course keeps what it creates in its own workspace. */
-  lockWorkspace?: boolean;
   onClose: () => void;
-  onSaved: (collection: ReadingWorkspace, workspaceId: string) => void;
+  onSaved: (collection: ReadingWorkspace) => void;
 }) {
   const { t } = useTranslation();
   const headingId = useId();
-  const { workspaces } = useChatWorkspaces();
   const [title, setTitle] = useState(collection?.title ?? "");
   const [color, setColor] = useState(collection?.color ?? "");
-  const [destination, setDestination] = useState(workspaceId);
   const [working, setWorking] = useState(false);
   const [error, setError] = useState("");
 
@@ -55,34 +44,17 @@ export function FolderDialog({
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [onClose]);
 
-  const destinations = [
-    { id: "", name: t("Default workspace") },
-    ...workspaces
-      .filter((row) => !row.archived && row.status === "ready")
-      .map((row) => ({ id: row.workspace_id, name: row.display_name })),
-  ];
-  // Only worth asking when there is somewhere else to put it.
-  const askWorkspace =
-    !collection &&
-    !lockWorkspace &&
-    destinations.length > 1 &&
-    destinations.some((row) => row.id === destination);
-
   const submit = (event: FormEvent) => {
     event.preventDefault();
     if (working) return;
     setWorking(true);
     setError("");
     const name = title.trim() || t("Untitled collection");
-    const saved = collection
-      ? updateReadingWorkspace(
-          collection.workspace_id,
-          { title: name, color },
-          collection.content_workspace_id ?? "",
-        ).then((row) => onSaved(row, collection.content_workspace_id ?? ""))
-      : createReadingWorkspace({ title: name, color }, destination).then(
-          (row) => onSaved(row, destination),
-        );
+    const saved = (
+      collection
+        ? updateReadingWorkspace(collection.workspace_id, { title: name, color })
+        : createReadingWorkspace({ title: name, color })
+    ).then(onSaved);
     void saved
       .catch((caught) =>
         setError(
@@ -155,31 +127,6 @@ export function FolderDialog({
             })}
           </div>
         </fieldset>
-
-        {askWorkspace && (
-          <label className="mt-4 block">
-            <span className="text-[11.5px] font-medium text-[var(--muted-foreground)]">
-              {t("Workspace")}
-            </span>
-            <select
-              value={destination}
-              onChange={(event) => setDestination(event.target.value)}
-              aria-label={t("Workspace")}
-              className="mt-2 h-9 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-2.5 text-[13px] outline-none focus:border-[var(--ring)]"
-            >
-              {destinations.map((row) => (
-                <option key={row.id} value={row.id}>
-                  {row.name}
-                </option>
-              ))}
-            </select>
-            <span className="mt-1.5 block text-[11px] leading-relaxed text-[var(--muted-foreground)]">
-              {t(
-                "The collection's files and reading conversations are kept in this workspace.",
-              )}
-            </span>
-          </label>
-        )}
 
         {error && (
           <p role="alert" className="mt-3 text-[11px] text-[var(--destructive)]">

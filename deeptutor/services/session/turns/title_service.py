@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from typing import TYPE_CHECKING, Any
 
 from deeptutor.core.stream import StreamEvent, StreamEventType
@@ -104,6 +105,20 @@ class SessionTitleService:
                 )
 
             async def _collect_title() -> str:
+                if os.getenv("DEEPTUTOR_CHAT_ENGINE") == "typescript-native":
+                    from deeptutor.runtime.ts_engine.completion import complete_native
+                    from deeptutor.runtime.ts_engine.config import compatibility_reason
+                    from deeptutor.services.llm import get_llm_config
+
+                    config = get_llm_config()
+                    if not compatibility_reason(config):
+                        return await complete_native(
+                            config,
+                            system=sys_prompt,
+                            prompt=user_prompt,
+                            temperature=0.3,
+                            max_tokens=80,
+                        )
                 buf: list[str] = []
                 async for c in llm_stream(
                     prompt=user_prompt,

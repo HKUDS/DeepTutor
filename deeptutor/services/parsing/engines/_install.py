@@ -36,20 +36,12 @@ logger = logging.getLogger(__name__)
 # Engine id -> pip requirement specifiers. Mirrors the optional extras in
 # pyproject.toml. Engines absent here (text_only built-in, mineru external
 # CLI/API) have no one-click install.
+from deeptutor.modules.catalog import manifests
+
 ENGINE_PIP_SPECS: dict[str, list[str]] = {
-    "pymupdf4llm": ["pymupdf4llm>=1.28.2"],
-    # ``all`` is upstream's supported way to install every built-in converter
-    # dependency (PDF, Office, Outlook, audio, and future additions).
-    "markitdown": ["markitdown[all]>=0.1.7"],
-    # Keep the base converter and every format-specific dependency aligned
-    # with the Docling compatibility floor.  ``format-video`` also brings the
-    # ASR dependencies used by audio; legacy Office still needs LibreOffice
-    # and video conversion still needs ffmpeg on the host, per Docling.
-    "docling": [
-        "docling[xbrl]>=2.123.1",
-        "docling-slim[format-iwork,format-opendocument,format-video]>=2.123.1",
-    ],
-    "liteparse": ["liteparse>=2.14.2"],
+    row["parser_engine"]: list(row["requirements"])
+    for row in manifests().values()
+    if "parser_engine" in row
 }
 
 # Engine id -> console-script argv that downloads its model weights. The script
@@ -135,16 +127,18 @@ class BackgroundJobManager:
         self._cancel_requested = False
 
     def start_install(self, *, engine: str, specs: list[str]) -> dict[str, Any]:
-        # Always refresh an installed engine so one-click setup follows the
-        # newest release and picks up newly supported formats.
-        cmd = [sys.executable, "-m", "pip", "install", "--upgrade", "--no-input", *specs]
-        return self._launch(
-            kind="install",
-            engine=engine,
-            cmd=cmd,
-            env={"PIP_DISABLE_PIP_VERSION_CHECK": "1"},
-            on_success=_invalidate_import_caches,
-        )
+        # Host-package changes cannot be safe while turns/API workers run.
+        # Model downloads remain background jobs because they do not mutate code.
+        if engine not in ENGINE_PIP_SPECS or specs != ENGINE_PIP_SPECS[engine]:
+            return {"ok": False, "message": "Unknown parser installation request."}
+        return {
+            "ok": False,
+            "message": (
+                "Stop DeepTutor, then run `deeptutor module install parser-"
+                + engine
+                + "` in this environment and restart. User data is preserved."
+            ),
+        }
 
     def start_model_download(self, *, engine: str, cmd: list[str]) -> dict[str, Any]:
         return self._launch(kind="models", engine=engine, cmd=cmd)

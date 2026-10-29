@@ -18,7 +18,7 @@ test("citation capture extends the existing annotation contract", () => {
   );
   assert.match(
     source("components/reading/AnnotationPopover.tsx"),
-    /label=\{t\("Save citation"\)\}/,
+    /label=\{t\(["']Save citation["']\)\}/,
   );
 });
 

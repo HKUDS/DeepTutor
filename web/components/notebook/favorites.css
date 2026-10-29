@@ -1,0 +1,1156 @@
+/* ---- Favorites ---------------------------------------------------------
+   One visual language for a saved item wherever it shows up: the collection
+   pages, the note picker, and the card placed on a note page. */
+
+/* Kind tile: the icon on a soft tint of the kind's colour. */
+.dt-fav-kind {
+  --fav-tone: var(--folder-slate);
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border-radius: 9px;
+  color: var(--fav-tone);
+  background: color-mix(in srgb, var(--fav-tone) 13%, transparent);
+}
+.dt-fav-kind[data-kind="chat"] {
+  --fav-tone: var(--folder-blue);
+}
+.dt-fav-kind[data-kind="tutorbot"] {
+  --fav-tone: var(--folder-violet);
+}
+.dt-fav-kind[data-kind="research"] {
+  --fav-tone: var(--folder-green);
+}
+.dt-fav-kind[data-kind="reading"] {
+  --fav-tone: var(--folder-teal);
+}
+.dt-fav-kind[data-kind="video_learning"] {
+  --fav-tone: var(--folder-rose);
+}
+.dt-fav-kind[data-kind="question"] {
+  --fav-tone: var(--folder-orange);
+}
+.dt-fav-kind[data-kind="solve"] {
+  --fav-tone: var(--folder-violet);
+}
+.dt-fav-kind[data-kind="co_writer"] {
+  --fav-tone: var(--folder-amber);
+}
+.dt-fav-kind[data-kind="guided_learning"] {
+  --fav-tone: var(--folder-teal);
+}
+
+.dt-fav-icon-button {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  color: var(--muted-foreground);
+  transition:
+    background-color 120ms,
+    color 120ms;
+}
+.dt-fav-icon-button:hover {
+  background: var(--muted);
+  color: var(--foreground);
+}
+
+/* ---- The picker --------------------------------------------------------- */
+.dt-fav-picker {
+  display: flex;
+  flex-direction: column;
+  width: min(860px, calc(100vw - 32px));
+  height: min(620px, calc(100vh - 64px));
+  overflow: hidden;
+  border-radius: 16px;
+  background: var(--card);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--foreground) 8%, transparent),
+    0 24px 64px -16px rgb(0 0 0 / 0.28);
+}
+.dt-fav-picker-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 14px 14px 20px;
+  border-bottom: 1px solid var(--border);
+}
+.dt-fav-picker-head h2 {
+  flex-shrink: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+.dt-fav-search {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 10px;
+  border-radius: 10px;
+  background: var(--muted);
+  color: var(--muted-foreground);
+  transition:
+    box-shadow 140ms,
+    background-color 140ms;
+}
+.dt-fav-search:focus-within {
+  background: var(--card);
+  box-shadow:
+    0 0 0 1px var(--border),
+    0 0 0 4px color-mix(in srgb, var(--primary) 14%, transparent);
+}
+.dt-fav-search input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  outline: none;
+  font-size: 14px;
+  color: var(--foreground);
+}
+.dt-fav-search button {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+}
+.dt-fav-search button:hover {
+  background: color-mix(in srgb, var(--foreground) 10%, transparent);
+}
+.dt-fav-picker-body {
+  display: grid;
+  flex: 1;
+  min-height: 0;
+  grid-template-columns: 216px 1fr;
+}
+.dt-fav-collections {
+  overflow-y: auto;
+  padding: 10px 8px;
+  border-right: 1px solid var(--border);
+  background: color-mix(in srgb, var(--muted) 45%, var(--card));
+}
+.dt-fav-collections > button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  height: 34px;
+  padding: 0 10px;
+  border-radius: 8px;
+  font-size: 13.5px;
+  color: var(--foreground);
+  text-align: left;
+  transition: background-color 120ms;
+}
+.dt-fav-collections > button:hover {
+  background: color-mix(in srgb, var(--foreground) 5%, transparent);
+}
+.dt-fav-collections > button[aria-pressed="true"] {
+  background: var(--card);
+  font-weight: 550;
+  box-shadow:
+    0 0 0 1px var(--border),
+    0 1px 2px rgb(0 0 0 / 0.04);
+}
+.dt-fav-collection-icon {
+  flex-shrink: 0;
+  color: var(--muted-foreground);
+}
+.dt-fav-dot {
+  width: 9px;
+  height: 9px;
+  margin: 0 3px;
+  flex-shrink: 0;
+  border-radius: 3px;
+}
+.dt-fav-count {
+  margin-left: auto;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted-foreground);
+}
+.dt-fav-rail-label {
+  padding: 14px 10px 6px;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--muted-foreground);
+}
+.dt-fav-records {
+  min-width: 0;
+  overflow-y: auto;
+  padding: 12px 14px 16px;
+  scrollbar-gutter: stable;
+}
+.dt-fav-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 4px 10px;
+}
+.dt-fav-chips button {
+  height: 28px;
+  padding: 0 11px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  color: var(--muted-foreground);
+  box-shadow: inset 0 0 0 1px var(--border);
+  transition:
+    background-color 120ms,
+    color 120ms;
+}
+.dt-fav-chips button:hover {
+  color: var(--foreground);
+}
+.dt-fav-chips button[aria-pressed="true"] {
+  background: var(--foreground);
+  color: var(--background);
+  box-shadow: none;
+}
+.dt-fav-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.dt-fav-list > li {
+  border-radius: 12px;
+  transition:
+    background-color 120ms,
+    box-shadow 120ms;
+}
+.dt-fav-list > li:hover {
+  background: color-mix(in srgb, var(--muted) 70%, transparent);
+}
+.dt-fav-list > li.is-picked {
+  background: color-mix(in srgb, var(--primary) 7%, var(--card));
+  box-shadow: inset 0 0 0 1px
+    color-mix(in srgb, var(--primary) 28%, transparent);
+}
+.dt-fav-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  padding-right: 8px;
+}
+.dt-fav-row-main {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 6px 12px 12px;
+  cursor: pointer;
+}
+.dt-fav-row-main:has(input:focus-visible) {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+  border-radius: 12px;
+}
+.dt-fav-check {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  margin-top: 6px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  color: var(--primary-foreground, #fff);
+  box-shadow: inset 0 0 0 1.5px
+    color-mix(in srgb, var(--foreground) 25%, transparent);
+  transition:
+    background-color 120ms,
+    box-shadow 120ms;
+}
+.is-picked .dt-fav-check {
+  background: var(--primary);
+  box-shadow: none;
+}
+.dt-fav-title {
+  display: block;
+  font-size: 14px;
+  font-weight: 550;
+  line-height: 1.45;
+  color: var(--foreground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dt-fav-summary {
+  display: -webkit-box;
+  margin-top: 2px;
+  overflow: hidden;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--muted-foreground);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.dt-fav-meta {
+  display: block;
+  margin-top: 5px;
+  font-size: 11.5px;
+  color: color-mix(in srgb, var(--muted-foreground) 85%, transparent);
+}
+.dt-fav-preview-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 26px;
+  margin-top: 14px;
+  padding: 0 8px;
+  flex-shrink: 0;
+  border-radius: 7px;
+  font-size: 12px;
+  color: var(--muted-foreground);
+  opacity: 0;
+  transition:
+    opacity 120ms,
+    background-color 120ms;
+}
+.dt-fav-list > li:hover .dt-fav-preview-toggle,
+.dt-fav-preview-toggle:focus-visible,
+.dt-fav-preview-toggle[aria-expanded="true"] {
+  opacity: 1;
+}
+.dt-fav-preview-toggle:hover {
+  background: color-mix(in srgb, var(--foreground) 7%, transparent);
+  color: var(--foreground);
+}
+.dt-fav-preview {
+  max-height: 300px;
+  margin: 0 12px 12px 76px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--card);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+.dt-fav-preview .dt-favorite-content {
+  font-size: 13px;
+}
+.dt-fav-empty {
+  padding: 48px 24px;
+  font-size: 13px;
+  line-height: 1.6;
+  text-align: center;
+  color: var(--muted-foreground);
+}
+.dt-fav-empty.is-error {
+  color: var(--destructive);
+}
+.dt-fav-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px;
+}
+.dt-fav-skeleton span {
+  height: 64px;
+  border-radius: 12px;
+  background: linear-gradient(
+    90deg,
+    var(--muted) 0%,
+    color-mix(in srgb, var(--muted) 50%, transparent) 50%,
+    var(--muted) 100%
+  );
+  background-size: 200% 100%;
+  animation: dt-fav-shimmer 1.2s ease-in-out infinite;
+}
+@keyframes dt-fav-shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+.dt-fav-picker-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px 12px 20px;
+  border-top: 1px solid var(--border);
+}
+.dt-fav-selection {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: baseline;
+  gap: 2px;
+  font-size: 13px;
+  font-weight: 550;
+}
+.dt-fav-selection button {
+  margin-left: 8px;
+  font-size: 12.5px;
+  font-weight: 400;
+  color: var(--primary);
+}
+.dt-fav-hint {
+  overflow: hidden;
+  font-size: 12.5px;
+  font-weight: 400;
+  color: var(--muted-foreground);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dt-fav-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 14px;
+  flex-shrink: 0;
+  border-radius: 9px;
+  font-size: 13.5px;
+  color: var(--foreground);
+  transition:
+    background-color 120ms,
+    opacity 120ms;
+}
+.dt-fav-button:hover:not(:disabled) {
+  background: var(--muted);
+}
+.dt-fav-button:disabled {
+  opacity: 0.4;
+}
+.dt-fav-button.is-primary {
+  background: var(--primary);
+  color: var(--primary-foreground, #fff);
+  font-weight: 550;
+}
+.dt-fav-button.is-primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--primary) 88%, black);
+}
+@media (max-width: 640px) {
+  .dt-fav-picker-body {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+  }
+  .dt-fav-collections {
+    display: flex;
+    gap: 4px;
+    overflow-x: auto;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .dt-fav-collections > button {
+    width: auto;
+    flex-shrink: 0;
+  }
+  .dt-fav-rail-label,
+  .dt-fav-hint {
+    display: none;
+  }
+  .dt-fav-preview {
+    margin-left: 12px;
+  }
+}
+
+/* ---- The card on a note page -------------------------------------------- */
+.dt-note-favorite {
+  width: 100%;
+  overflow: hidden;
+  border-radius: 12px;
+  background: var(--card);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--foreground) 9%, transparent),
+    0 1px 2px rgb(0 0 0 / 0.03);
+  font-family: var(--font-sans);
+  transition: box-shadow 160ms;
+}
+.dt-note-favorite:hover {
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--foreground) 14%, transparent),
+    0 4px 14px -6px rgb(0 0 0 / 0.1);
+}
+.dt-note-favorite-head {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+}
+.dt-note-favorite-toggle {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 4px 14px 14px;
+  color: var(--foreground);
+  border-radius: 12px;
+}
+.dt-note-favorite-toggle:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+.dt-note-favorite-toggle .dt-fav-kind {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+}
+.dt-note-favorite-kind {
+  display: block;
+  overflow: hidden;
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--muted-foreground);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dt-note-favorite-title {
+  display: block;
+  margin-top: 1px;
+  overflow: hidden;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dt-note-favorite-summary {
+  display: -webkit-box;
+  margin-top: 3px;
+  overflow: hidden;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--muted-foreground);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.dt-note-favorite-tools {
+  display: flex;
+  gap: 2px;
+  padding: 12px 10px 0 0;
+}
+.dt-note-favorite-tools a,
+.dt-note-favorite-tools button {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  color: var(--muted-foreground);
+  transition:
+    background-color 120ms,
+    color 120ms;
+}
+.dt-note-favorite-tools a:hover,
+.dt-note-favorite-tools button:hover {
+  background: var(--muted);
+  color: var(--foreground);
+}
+.dt-note-favorite-tools svg {
+  transition: transform 160ms;
+}
+.dt-note-favorite-body {
+  position: relative;
+  overflow: hidden;
+  margin: 0 14px;
+  padding: 16px 2px 18px;
+  border-top: 1px solid var(--border);
+}
+.dt-note-favorite-body.is-capped {
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    #000 calc(100% - 72px),
+    transparent
+  );
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 72px), transparent);
+}
+.dt-note-favorite-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: 100%;
+  height: 38px;
+  font-size: 12.5px;
+  color: var(--muted-foreground);
+  border-top: 1px solid var(--border);
+  transition:
+    background-color 120ms,
+    color 120ms;
+}
+.dt-note-favorite-more:hover {
+  background: color-mix(in srgb, var(--muted) 50%, transparent);
+  color: var(--foreground);
+}
+
+/* ---- Saved content, read-only ------------------------------------------ */
+.dt-favorite-content {
+  min-width: 0;
+  font-size: 14px;
+  line-height: 1.75;
+}
+.dt-favorite-content h1,
+.dt-favorite-content h2,
+.dt-favorite-content h3 {
+  font-family: var(--font-sans);
+}
+.dt-favorite-content video,
+.dt-favorite-content audio {
+  display: block;
+  max-height: 320px;
+  margin-bottom: 16px;
+}
+.dt-favorite-content pre,
+.dt-favorite-content table {
+  max-width: 100%;
+  overflow-x: auto;
+}
+.dt-favorite-content img {
+  max-height: 420px;
+  object-fit: contain;
+}
+.dt-fav-transcript {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.dt-fav-turn.is-user {
+  align-self: flex-end;
+  max-width: 82%;
+  padding: 8px 14px;
+  border-radius: 16px 16px 4px 16px;
+  background: var(--secondary);
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+.dt-fav-turn.is-user .md-renderer > :last-child {
+  margin-bottom: 0;
+}
+.dt-fav-turn-role {
+  margin-bottom: 4px;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--muted-foreground);
+}
+.dt-fav-answer {
+  margin-top: 16px;
+  border-radius: 10px;
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+.dt-fav-answer > summary {
+  display: flex;
+  align-items: center;
+  height: 40px;
+  padding: 0 14px;
+  cursor: pointer;
+  list-style: none;
+  font-size: 13px;
+  font-weight: 550;
+  color: var(--primary);
+}
+.dt-fav-answer > summary::-webkit-details-marker {
+  display: none;
+}
+.dt-fav-answer-body {
+  padding: 4px 14px 12px;
+}
+.dt-fav-toc {
+  margin-bottom: 14px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--muted) 55%, transparent);
+}
+.dt-fav-toc > summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+.dt-fav-toc nav {
+  display: grid;
+  gap: 2px;
+  margin-top: 6px;
+}
+.dt-fav-toc nav button {
+  overflow: hidden;
+  font-size: 12.5px;
+  line-height: 1.7;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted-foreground);
+}
+.dt-fav-toc nav button:hover {
+  color: var(--foreground);
+}
+.dt-fav-chapters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+.dt-fav-chapter {
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+.dt-fav-chapter:hover {
+  background: var(--muted);
+}
+
+/* ---- Favorites home: folders of saved things ---------------------------- */
+.dt-fav-home-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  margin-bottom: 16px;
+}
+.dt-fav-home-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: min(320px, 100%);
+  height: 34px;
+  padding: 0 11px;
+  border-radius: 9px;
+  background: var(--muted);
+  color: var(--muted-foreground);
+  transition:
+    box-shadow 140ms,
+    background-color 140ms;
+}
+.dt-fav-home-search:focus-within {
+  background: var(--card);
+  box-shadow:
+    0 0 0 1px var(--border),
+    0 0 0 4px color-mix(in srgb, var(--primary) 12%, transparent);
+}
+.dt-fav-home-search input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  outline: none;
+  font-size: 13px;
+  color: var(--foreground);
+}
+.dt-fav-home-count {
+  margin-left: auto;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted-foreground);
+}
+.dt-fav-home-toolbar .dt-fav-chips {
+  margin: 0;
+}
+.dt-fav-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(248px, 1fr));
+  gap: 12px;
+}
+.dt-fav-grid > li {
+  min-width: 0;
+}
+.dt-fav-card {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-height: 188px;
+  padding: 16px 16px 14px;
+  border-radius: 12px;
+  background: var(--card);
+  text-align: left;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--foreground) 9%, transparent),
+    0 1px 2px rgb(0 0 0 / 0.03);
+  transition:
+    box-shadow 160ms,
+    transform 160ms;
+}
+.dt-fav-card:hover {
+  transform: translateY(-1px);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--foreground) 13%, transparent),
+    0 8px 22px -10px rgb(0 0 0 / 0.16);
+}
+.dt-fav-card:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+.dt-fav-card.is-new {
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--muted-foreground);
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px
+    color-mix(in srgb, var(--foreground) 10%, transparent);
+  border: 0;
+}
+.dt-fav-card.is-new:hover {
+  color: var(--foreground);
+  background: color-mix(in srgb, var(--muted) 50%, transparent);
+  box-shadow: inset 0 0 0 1.5px
+    color-mix(in srgb, var(--foreground) 16%, transparent);
+}
+.dt-fav-card-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-right: 24px;
+}
+.dt-fav-card-head svg {
+  flex-shrink: 0;
+}
+.dt-fav-card-title {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: 14.5px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--foreground);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.dt-fav-card-sub {
+  display: block;
+  margin-top: 2px;
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted-foreground);
+}
+.dt-fav-card-sub .dt-record-time {
+  font-size: inherit;
+  color: inherit;
+}
+.dt-fav-card-desc {
+  display: -webkit-box;
+  margin-top: 10px;
+  overflow: hidden;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--muted-foreground);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.dt-fav-card-files {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: auto;
+  padding-top: 14px;
+}
+.dt-fav-card-files.is-empty {
+  font-size: 12px;
+  color: color-mix(in srgb, var(--muted-foreground) 80%, transparent);
+}
+.dt-fav-card-file {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 12.5px;
+  color: color-mix(in srgb, var(--foreground) 82%, transparent);
+}
+.dt-fav-card-file .dt-fav-kind {
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+}
+.dt-fav-card-more {
+  padding-left: 28px;
+  font-size: 11.5px;
+  color: var(--muted-foreground);
+}
+.dt-fav-card-edit {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  color: var(--muted-foreground);
+  opacity: 0;
+  transition:
+    opacity 120ms,
+    background-color 120ms,
+    color 120ms;
+}
+.group\/nb:hover .dt-fav-card-edit,
+.dt-fav-card-edit:focus-visible {
+  opacity: 1;
+}
+.dt-fav-card-edit:hover {
+  background: var(--muted);
+  color: var(--foreground);
+}
+@media (hover: none) {
+  .dt-fav-card-edit {
+    opacity: 1;
+  }
+}
+.dt-fav-home-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 56px 24px;
+  font-size: 13px;
+  line-height: 1.6;
+  text-align: center;
+  color: var(--muted-foreground);
+}
+.dt-fav-home-empty > p {
+  max-width: 380px;
+}
+.dt-fav-home-empty-title {
+  margin-top: 6px;
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--foreground);
+}
+.dt-fav-home-empty button {
+  margin-top: 8px;
+}
+
+/* ---- Create / edit a folder --------------------------------------------- */
+.dt-fav-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: min(420px, calc(100vw - 32px));
+  padding: 22px 22px 18px;
+  border-radius: 16px;
+  background: var(--card);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--foreground) 8%, transparent),
+    0 24px 64px -16px rgb(0 0 0 / 0.28);
+}
+.dt-fav-dialog-preview {
+  display: grid;
+  place-items: center;
+  height: 104px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--muted) 60%, transparent);
+}
+.dt-fav-dialog-preview svg {
+  transition: filter 160ms;
+}
+.dt-fav-dialog-title {
+  font-size: 15px;
+  font-weight: 600;
+}
+.dt-fav-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.dt-fav-field > span {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted-foreground);
+}
+.dt-fav-field input {
+  height: 36px;
+  padding: 0 11px;
+  border-radius: 9px;
+  background: var(--background);
+  font-size: 13.5px;
+  color: var(--foreground);
+  outline: none;
+  box-shadow: inset 0 0 0 1px var(--border);
+  transition: box-shadow 140ms;
+}
+.dt-fav-field input:focus {
+  box-shadow:
+    inset 0 0 0 1px var(--primary),
+    0 0 0 4px color-mix(in srgb, var(--primary) 12%, transparent);
+}
+.dt-fav-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.dt-fav-swatches button {
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  transition:
+    transform 120ms,
+    box-shadow 120ms;
+}
+.dt-fav-swatches button:hover {
+  transform: scale(1.1);
+}
+.dt-fav-swatches button[aria-checked="true"] {
+  box-shadow:
+    0 0 0 2px var(--card),
+    0 0 0 4px color-mix(in srgb, var(--foreground) 45%, transparent);
+}
+.dt-fav-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+/* ---- One folder: its saved items ---------------------------------------- */
+.dt-fav-record-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.dt-fav-record {
+  border-radius: 12px;
+  background: var(--card);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--foreground) 8%, transparent);
+  transition:
+    box-shadow 160ms,
+    opacity 150ms;
+}
+.dt-fav-record:hover {
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--foreground) 12%, transparent),
+    0 4px 14px -8px rgb(0 0 0 / 0.12);
+}
+.dt-fav-record.is-open {
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--foreground) 12%, transparent),
+    0 10px 30px -14px rgb(0 0 0 / 0.18);
+}
+.dt-fav-record.is-busy {
+  pointer-events: none;
+  opacity: 0.5;
+}
+.dt-fav-record-head {
+  display: flex;
+  align-items: flex-start;
+}
+.dt-fav-record-toggle {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 6px 14px 14px;
+  text-align: left;
+  border-radius: 12px;
+}
+.dt-fav-record-toggle:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+.dt-fav-record-toggle .dt-fav-kind {
+  width: 34px;
+  height: 34px;
+}
+.dt-fav-record-title {
+  display: block;
+  overflow: hidden;
+  font-size: 14.5px;
+  font-weight: 600;
+  line-height: 1.45;
+  color: var(--foreground);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dt-fav-record.is-open .dt-fav-record-title {
+  white-space: normal;
+}
+.dt-fav-record-summary {
+  display: -webkit-box;
+  margin-top: 3px;
+  overflow: hidden;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--muted-foreground);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.dt-fav-record-meta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  color: color-mix(in srgb, var(--muted-foreground) 90%, transparent);
+}
+.dt-fav-record-tools {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 12px 10px 0 0;
+  opacity: 0;
+  transition: opacity 120ms;
+}
+.dt-fav-record:hover .dt-fav-record-tools,
+.dt-fav-record.is-open .dt-fav-record-tools,
+.dt-fav-record-tools:focus-within {
+  opacity: 1;
+}
+@media (hover: none) {
+  .dt-fav-record-tools {
+    opacity: 1;
+  }
+}
+.dt-fav-record-body {
+  margin: 0 14px;
+  padding: 4px 0 14px 46px;
+}
+.dt-fav-record-error {
+  margin-bottom: 10px;
+  padding: 8px 12px;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--destructive) 10%, transparent);
+  font-size: 12.5px;
+  color: var(--destructive);
+}
+.dt-fav-record-lead {
+  margin-bottom: 12px;
+  font-size: 13.5px;
+  line-height: 1.65;
+  color: color-mix(in srgb, var(--foreground) 78%, transparent);
+}
+.dt-fav-record-query {
+  margin-bottom: 12px;
+  font-size: 12.5px;
+  color: var(--muted-foreground);
+}
+.dt-fav-record-query > span {
+  font-weight: 550;
+}
+.dt-fav-record-content {
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+.dt-fav-record-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.dt-fav-record-actions .dt-fav-button {
+  height: 32px;
+  padding: 0 11px;
+  font-size: 13px;
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+.dt-fav-add-to-note {
+  font-size: 13px;
+}
+.dt-fav-add-to-note > button {
+  height: 32px;
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+@media (max-width: 640px) {
+  .dt-fav-record-body {
+    padding-left: 0;
+  }
+}

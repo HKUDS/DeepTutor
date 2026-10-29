@@ -49,18 +49,12 @@ export interface ReviewFilters {
   scoreTrend: ScoreTrend | "";
 }
 
-/**
- * A course narrows *which questions exist* for this visit; a scope narrows
- * which of those to show. They are separate axes on purpose — the course comes
- * from the URL and stays put while the learner clicks through wrong / bookmarked
- * / a category inside it.
- */
+/** Build the question filter for the selected view. */
 export function buildQuestionBankFilter(
   scope: BankScope,
   filters: ReviewFilters,
   search: string,
   sort: BankSort,
-  courseId = "",
 ) {
   return {
     category_id: scope.kind === "category" ? scope.categoryId : undefined,
@@ -74,7 +68,6 @@ export function buildQuestionBankFilter(
     search: search || undefined,
     sort,
     limit: PAGE_SIZE,
-    course_id: courseId || undefined,
   };
 }
 
@@ -147,9 +140,8 @@ const EMPTY_FILTERS: ReviewFilters = {
  *    filing a question does not make the page jump.
  */
 export function useQuestionBank(
-  options: { courseId?: string; mistakesOnly?: boolean } = {},
+  options: { mistakesOnly?: boolean } = {},
 ): QuestionBankController {
-  const courseId = options.courseId ?? "";
   const mistakesOnly = options.mistakesOnly ?? false;
   const [page, setPage] = useState(0);
   const [items, setItems] = useState<NotebookEntry[]>([]);
@@ -187,7 +179,7 @@ export function useQuestionBank(
     setError(null);
     try {
       const response = await listNotebookEntries({
-        ...buildQuestionBankFilter(scope, reviewFilters, search, sort, courseId),
+        ...buildQuestionBankFilter(scope, reviewFilters, search, sort),
         mistakes_only: mistakesOnly,
         offset: page * PAGE_SIZE,
       });
@@ -217,18 +209,18 @@ export function useQuestionBank(
         setRefreshing(false);
       }
     }
-  }, [courseId, scope, reviewFilters, search, sort, mistakesOnly, page]);
+  }, [scope, reviewFilters, search, sort, mistakesOnly, page]);
 
   const loadMeta = useCallback(async () => {
     const [nextCategories, nextStats, nextMaterials] = await Promise.allSettled([
-      listCategories(courseId),
-      getQuestionBankStats(courseId),
-      listQuestionBankMaterials(courseId),
+      listCategories(),
+      getQuestionBankStats(),
+      listQuestionBankMaterials(),
     ]);
     if (nextCategories.status === "fulfilled") setCategories(nextCategories.value);
     if (nextStats.status === "fulfilled") setStats(nextStats.value);
     if (nextMaterials.status === "fulfilled") setMaterials(nextMaterials.value);
-  }, [courseId]);
+  }, []);
 
   useEffect(() => {
     void loadEntries();

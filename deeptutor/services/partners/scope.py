@@ -10,19 +10,9 @@ scope is installed via ``user_context(...)``.
 
 from __future__ import annotations
 
+from deeptutor.core.identities import PARTNER_USER_PREFIX, is_partner_user_id, partner_user_id
 from deeptutor.multi_user.models import CurrentUser, UserScope
 from deeptutor.partners.config.paths import get_partner_workspace
-
-PARTNER_USER_PREFIX = "partner_"
-
-
-def partner_user_id(partner_id: str) -> str:
-    return f"{PARTNER_USER_PREFIX}{partner_id}"
-
-
-def is_partner_user_id(user_id: str) -> bool:
-    """Whether *user_id* names a synthetic partner scope rather than a person."""
-    return user_id.startswith(PARTNER_USER_PREFIX)
 
 
 def partner_scope(partner_id: str) -> UserScope:

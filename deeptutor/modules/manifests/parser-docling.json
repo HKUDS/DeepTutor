@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "id": "parser-docling",
+  "distribution": "deeptutor-parser-docling",
+  "requires": [
+    "parsing"
+  ],
+  "optional": [],
+  "paths": [],
+  "capabilities": {},
+  "loops": {},
+  "tools": {},
+  "routes": [],
+  "commands": [],
+  "navigation": [],
+  "services": [],
+  "requirements": [
+    "docling[xbrl]>=2.123.1",
+    "docling-slim[format-iwork,format-opendocument,format-video]>=2.123.1"
+  ],
+  "executables": [],
+  "parser_engine": "docling"
+}

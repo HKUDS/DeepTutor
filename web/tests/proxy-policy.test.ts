@@ -107,6 +107,10 @@ test("isAuthExempt allows public static assets through the auth gate (issue #599
   assert.equal(isAuthExempt("/logo.png"), true);
   assert.equal(isAuthExempt("/banner.png"), true);
   assert.equal(isAuthExempt("/logo_black.png"), true);
+  assert.equal(isAuthExempt("/brand/color-logo.png"), true);
+  assert.equal(isAuthExempt("/brand/color-word.png"), true);
+  assert.equal(isAuthExempt("/brand/black-logo.png"), true);
+  assert.equal(isAuthExempt("/brand/favicon-32x32.png"), true);
   assert.equal(isAuthExempt("/apple-touch-icon.png"), true);
   assert.equal(isAuthExempt("/provider-icons/openai.svg"), true);
   assert.equal(isAuthExempt("/pdfjs/wasm/openjpeg.wasm"), true);

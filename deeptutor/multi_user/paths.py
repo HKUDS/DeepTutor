@@ -179,7 +179,7 @@ def _resolve_owner() -> tuple[str, PathService]:
     "give up and assume admin" fallback fails open onto the most privileged
     account there is).
     """
-    from deeptutor.services.partners.scope import is_partner_user_id
+    from deeptutor.core.identities import is_partner_user_id
 
     from .context import get_current_user_or_none
 
