@@ -42,6 +42,52 @@ def _make_docx(paragraphs: list[str]) -> bytes:
     return buf.getvalue()
 
 
+_DOCX_NS = (
+    'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" '
+    'xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"'
+)
+
+
+def _omml_docx(body_xml: str) -> bytes:
+    """A minimal DOCX whose body carries the given (OMML) markup."""
+    document = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        f'<w:document {_DOCX_NS}><w:body>{body_xml}<w:sectPr/></w:body></w:document>'
+    )
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr(
+            "[Content_Types].xml",
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+            '<Default Extension="rels" '
+            'ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+            '<Default Extension="xml" ContentType="application/xml"/>'
+            '<Override PartName="/word/document.xml" '
+            'ContentType="application/vnd.openxmlformats-officedocument.'
+            'wordprocessingml.document.main+xml"/>'
+            "</Types>",
+        )
+        zf.writestr("word/document.xml", document)
+    return buf.getvalue()
+
+
+def _m_run(text: str) -> str:
+    return f"<m:r><m:t>{text}</m:t></m:r>"
+
+
+def _m_frac(num: str, den: str) -> str:
+    return f"<m:f><m:num>{_m_run(num)}</m:num><m:den>{_m_run(den)}</m:den></m:f>"
+
+
+def _omml_paragraph(inner: str) -> str:
+    return f"<w:p>{inner}</w:p>"
+
+
+def _inline_math(inner: str) -> str:
+    return f"<m:oMath>{inner}</m:oMath>"
+
+
 def _make_xlsx(sheets: dict[str, list[list[object]]]) -> bytes:
     wb = Workbook()
     default = wb.active
@@ -191,6 +237,66 @@ class TestExtractDocx:
 
         assert "Fallback paragraph" in text
         assert "第二段" in text
+
+    def test_omml_fraction_extracts(self) -> None:
+        data = _omml_docx(
+            _omml_paragraph(_inline_math(_m_frac("1", "2") + _m_run("+") + _m_frac("1", "3")))
+        )
+
+        text = extract_text_from_bytes("x.docx", data)
+
+        assert "1/2 + 1/3" in text
+        assert "12+13" not in text
+
+    def test_omml_superscript_and_sqrt_extract(self) -> None:
+        sup = _inline_math(
+            "<m:sSup><m:e><m:r><m:t>2</m:t></m:r></m:e>"
+            "<m:sup><m:r><m:t>3</m:t></m:r></m:sup></m:sSup>"
+        )
+        rad = _inline_math("<m:rad><m:e><m:r><m:t>9</m:t></m:r></m:e></m:rad>")
+        data = _omml_docx(_omml_paragraph(sup) + _omml_paragraph(rad))
+
+        text = extract_text_from_bytes("x.docx", data)
+
+        assert "2^3" in text
+        assert "23" not in text
+        assert "sqrt(9)" in text
+
+    def test_omml_nested_fraction_extracts_exact(self) -> None:
+        frac = _inline_math(
+            "<m:f>"
+            "<m:num><m:r><m:t>a</m:t></m:r><m:r><m:t>+</m:t></m:r><m:r><m:t>b</m:t></m:r></m:num>"
+            "<m:den><m:r><m:t>c</m:t></m:r><m:r><m:t>-</m:t></m:r><m:r><m:t>d</m:t></m:r></m:den>"
+            "</m:f>"
+        )
+        data = _omml_docx(_omml_paragraph(frac))
+
+        text = extract_text_from_bytes("x.docx", data)
+
+        assert "(a+b)/(c-d)" in text
+
+    def test_omml_fallback_without_python_docx(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(document_extractor_module, "DocxDocument", None)
+        data = _omml_docx(
+            _omml_paragraph(_inline_math(_m_frac("1", "2") + _m_run("+") + _m_frac("1", "3")))
+        )
+
+        text = extract_text_from_bytes("x.docx", data)
+
+        assert "1/2 + 1/3" in text
+        assert "12+13" not in text
+
+    def test_omml_pure_ooxml_fallback(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(document_extractor_module, "DocxDocument", None)
+        monkeypatch.setattr(document_extractor_module, "extract_docx_rich", lambda *a, **k: None)
+        data = _omml_docx(
+            _omml_paragraph(_inline_math(_m_frac("1", "2") + _m_run("+") + _m_frac("1", "3")))
+        )
+
+        text = extract_text_from_bytes("x.docx", data)
+
+        assert "1/2 + 1/3" in text
+        assert "12+13" not in text
 
 
 class TestExtractXlsx:

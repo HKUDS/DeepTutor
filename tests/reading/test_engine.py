@@ -338,6 +338,67 @@ def test_pptx_slides_become_units_when_the_extractor_marks_them(tmp_path: Path) 
     assert "First slide body" in extraction.units[0]
 
 
+_DOCX_NS = (
+    'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" '
+    'xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"'
+)
+
+
+def _omml_docx(body_xml: str) -> bytes:
+    """A minimal DOCX whose body carries the given (OMML) markup."""
+    document = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        f'<w:document {_DOCX_NS}><w:body>{body_xml}<w:sectPr/></w:body></w:document>'
+    )
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr(
+            "[Content_Types].xml",
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+            '<Default Extension="rels" '
+            'ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+            '<Default Extension="xml" ContentType="application/xml"/>'
+            '<Override PartName="/word/document.xml" '
+            'ContentType="application/vnd.openxmlformats-officedocument.'
+            'wordprocessingml.document.main+xml"/>'
+            "</Types>",
+        )
+        zf.writestr("word/document.xml", document)
+    return buf.getvalue()
+
+
+def _m_run(text: str) -> str:
+    return f"<m:r><m:t>{text}</m:t></m:r>"
+
+
+def _m_frac(num: str, den: str) -> str:
+    return f"<m:f><m:num>{_m_run(num)}</m:num><m:den>{_m_run(den)}</m:den></m:f>"
+
+
+def _omml_paragraph(inner: str) -> str:
+    return f"<w:p>{inner}</w:p>"
+
+
+def _inline_math(inner: str) -> str:
+    return f"<m:oMath>{inner}</m:oMath>"
+
+
+def test_docx_omml_equations_survive_extract_material(tmp_path: Path) -> None:
+    path = tmp_path / "equations.docx"
+    path.write_bytes(
+        _omml_docx(
+            _omml_paragraph(_inline_math(_m_frac("1", "2") + _m_run("+") + _m_frac("1", "3")))
+        )
+    )
+
+    extraction = extract_material(path)
+
+    assert extraction.unit == "section"
+    assert "1/2 + 1/3" in extraction.units[0]
+    assert "12+13" not in extraction.units[0]
+
+
 def _large_noise_jpeg(size: tuple[int, int] = (2000, 1200)) -> bytes:
     """A noisy JPEG past the inline long-edge bound, well inside byte budgets."""
     import random

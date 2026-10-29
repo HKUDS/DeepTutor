@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import io
 import random
+import zipfile
 
 from docx import Document as DocxDocument
 from docx.shared import Inches
@@ -133,6 +134,144 @@ def test_docx_rich_repeats_marker_for_reused_target(png: bytes) -> None:
     assert len(rich.collection.images) == 1
     markers = find_markers("\n".join(rich.paragraphs))
     assert len(markers) == 2
+
+
+def _m_run(text: str) -> str:
+    return f"<m:r><m:t>{text}</m:t></m:r>"
+
+
+def _m_frac(num: str, den: str) -> str:
+    return f"<m:f><m:num>{_m_run(num)}</m:num><m:den>{_m_run(den)}</m:den></m:f>"
+
+
+_DOCX_NS = (
+    'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" '
+    'xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"'
+)
+
+
+def _omml_docx(body_xml: str) -> bytes:
+    """A minimal DOCX whose body carries the given (OMML) markup."""
+    document = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        f'<w:document {_DOCX_NS}><w:body>{body_xml}<w:sectPr/></w:body></w:document>'
+    )
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr(
+            "[Content_Types].xml",
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+            '<Default Extension="rels" '
+            'ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+            '<Default Extension="xml" ContentType="application/xml"/>'
+            '<Override PartName="/word/document.xml" '
+            'ContentType="application/vnd.openxmlformats-officedocument.'
+            'wordprocessingml.document.main+xml"/>'
+            "</Types>",
+        )
+        zf.writestr("word/document.xml", document)
+    return buf.getvalue()
+
+
+def _omml_paragraph(inner: str) -> str:
+    return f"<w:p>{inner}</w:p>"
+
+
+def _inline_math(inner: str) -> str:
+    return f"<m:oMath>{inner}</m:oMath>"
+
+
+def test_docx_rich_linearizes_fraction() -> None:
+    inner = _inline_math(_m_frac("1", "2") + _m_run("+") + _m_frac("1", "3"))
+    rich = extract_docx_rich(_omml_docx(_omml_paragraph(inner)))
+
+    joined = "\n".join(rich.paragraphs)
+    assert "1/2 + 1/3" in joined
+    assert "12+13" not in joined
+
+
+def test_docx_rich_linearizes_superscript_and_sqrt() -> None:
+    sup = _inline_math(
+        "<m:sSup><m:e><m:r><m:t>2</m:t></m:r></m:e>"
+        "<m:sup><m:r><m:t>3</m:t></m:r></m:sup></m:sSup>"
+    )
+    rad = _inline_math("<m:rad><m:e><m:r><m:t>9</m:t></m:r></m:e></m:rad>")
+    rich = extract_docx_rich(_omml_docx(_omml_paragraph(sup) + _omml_paragraph(rad)))
+
+    joined = "\n".join(rich.paragraphs)
+    assert "2^3" in joined
+    assert "23" not in joined
+    assert "sqrt(9)" in joined
+
+
+def test_docx_rich_parenthesises_nested_fraction_operands() -> None:
+    frac = _inline_math(
+        "<m:f>"
+        "<m:num><m:r><m:t>a</m:t></m:r><m:r><m:t>+</m:t></m:r><m:r><m:t>b</m:t></m:r></m:num>"
+        "<m:den><m:r><m:t>c</m:t></m:r><m:r><m:t>-</m:t></m:r><m:r><m:t>d</m:t></m:r></m:den>"
+        "</m:f>"
+    )
+    rich = extract_docx_rich(_omml_docx(_omml_paragraph(frac)))
+    assert rich.paragraphs == ("(a+b)/(c-d)",)
+
+    power = _inline_math(
+        "<m:f>"
+        "<m:num><m:sSup><m:e><m:r><m:t>x</m:t></m:r></m:e>"
+        "<m:sup><m:r><m:t>2</m:t></m:r></m:sup></m:sSup></m:num>"
+        "<m:den><m:r><m:t>y</m:t></m:r><m:r><m:t>+</m:t></m:r><m:r><m:t>1</m:t></m:r></m:den>"
+        "</m:f>"
+    )
+    rich = extract_docx_rich(_omml_docx(_omml_paragraph(power)))
+    assert rich.paragraphs == ("(x^2)/(y+1)",)
+
+
+def test_docx_rich_linearizes_subscript_and_nth_root() -> None:
+    sub = _inline_math(
+        "<m:sSub><m:e><m:r><m:t>a</m:t></m:r></m:e>"
+        "<m:sub><m:r><m:t>b</m:t></m:r></m:sub></m:sSub>"
+    )
+    rad = _inline_math(
+        "<m:rad><m:deg><m:r><m:t>n</m:t></m:r></m:deg>"
+        "<m:e><m:r><m:t>x</m:t></m:r></m:e></m:rad>"
+    )
+    rich = extract_docx_rich(_omml_docx(_omml_paragraph(sub) + _omml_paragraph(rad)))
+
+    joined = "\n".join(rich.paragraphs)
+    assert "a_b" in joined
+    assert "root(n, x)" in joined
+
+
+def test_docx_rich_linearizes_equation_in_table_cell() -> None:
+    equation = _omml_paragraph(_inline_math(_m_frac("1", "2") + _m_run("+") + _m_frac("1", "3")))
+    body = f"<w:tbl><w:tr><w:tc>{equation}</w:tc></w:tr></w:tbl>"
+    rich = extract_docx_rich(_omml_docx(body))
+
+    joined = "\n".join(rich.paragraphs)
+    assert "1/2 + 1/3" in joined
+
+
+def test_docx_rich_display_equation_becomes_its_own_line() -> None:
+    paragraph = (
+        "<w:p>"
+        "<w:r><w:t>Before</w:t></w:r>"
+        f"<m:oMathPara>{_inline_math(_m_frac('1', '2'))}</m:oMathPara>"
+        "<w:r><w:t>After</w:t></w:r>"
+        "</w:p>"
+    )
+    rich = extract_docx_rich(_omml_docx(paragraph))
+
+    assert rich.paragraphs == ("Before", "1/2", "After")
+
+
+def test_docx_rich_unsupported_omml_degrades_to_leaf_text() -> None:
+    inner = _inline_math(
+        "<m:matrix><m:mr><m:e><m:r><m:t>1</m:t></m:r></m:e>"
+        "<m:e><m:r><m:t>2</m:t></m:r></m:e></m:mr></m:matrix>"
+    )
+    rich = extract_docx_rich(_omml_docx(_omml_paragraph(inner)))
+
+    assert rich.paragraphs == ("12",)
 
 
 # ---------------------------------------------------------------------------

@@ -35,6 +35,7 @@ import zipfile
 from deeptutor.utils.document_images import (
     EmbeddedImage,
     build_marker,
+    collect_docx_paragraph_texts,
     extract_docx_rich,
     extract_pdf_images,
     extract_pptx_rich,
@@ -1143,7 +1144,7 @@ def _extract_docx_ooxml(data: bytes, filename: str) -> str:
             root = _parse_xml_member(zf, member, filename)
             if root is None:
                 continue
-            chunks.extend(_extract_paragraph_text(root))
+            chunks.extend(collect_docx_paragraph_texts(root))
         return "\n\n".join(chunks)
 
 

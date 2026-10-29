@@ -327,6 +327,203 @@ def _normalise_ext(ext: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# OMML (native Word equations)
+# ---------------------------------------------------------------------------
+
+#: Binary operators that are spaced when they sit between terms at the top
+#: level of an equation. Nested sub-expressions are joined without spacing so
+#: a parenthesised numerator like ``(a+b)`` stays compact.
+_SPACED_BINARY_OPERATORS = frozenset(
+    {
+        "+",
+        "-",
+        "±",
+        "∓",
+        "×",
+        "÷",
+        "=",
+        "≠",
+        "<",
+        ">",
+        "≤",
+        "≥",
+        "≡",
+        "≈",
+        "≅",
+        "∝",
+        "∈",
+        "∉",
+    }
+)
+
+#: Characters that mark a sub-expression as compound, so it needs parentheses
+#: when used as a fraction operand or a superscript/subscript base.
+_OPERATOR_CHARS = frozenset("+-*/^_=<> ")
+
+
+def _math_run_text(node: Any) -> str:
+    """Concatenate the ``m:t``/``w:t`` text inside one math run."""
+    parts: list[str] = []
+    for child in node.iter():
+        if _local_name(child.tag) == "t" and child.text:
+            parts.append(child.text)
+    return "".join(parts)
+
+
+def _math_child_text(node: Any, child_name: str) -> str:
+    """Linearized text of one direct child, or ``""`` when it is absent."""
+    for child in node:
+        if _local_name(child.tag) == child_name:
+            return _linearize_math_node(child)
+    return ""
+
+
+def _parenthesize(text: str) -> str:
+    if any(char in _OPERATOR_CHARS for char in text):
+        return f"({text})"
+    return text
+
+
+def _linearize_math_node(node: Any) -> str:
+    """Linearize one OMML element (not an ``m:oMath`` zone) to text."""
+    name = _local_name(node.tag)
+    if name == "r":
+        return _math_run_text(node)
+    if name == "t":
+        return node.text or ""
+    if name == "f":
+        return (
+            _parenthesize(_math_child_text(node, "num"))
+            + "/"
+            + _parenthesize(_math_child_text(node, "den"))
+        )
+    if name == "sSup":
+        return _parenthesize(_math_child_text(node, "e")) + "^" + _math_child_text(node, "sup")
+    if name == "sSub":
+        return _parenthesize(_math_child_text(node, "e")) + "_" + _math_child_text(node, "sub")
+    if name == "sSubSup":
+        return (
+            _parenthesize(_math_child_text(node, "e"))
+            + "_"
+            + _math_child_text(node, "sub")
+            + "^"
+            + _math_child_text(node, "sup")
+        )
+    if name == "rad":
+        degree = _math_child_text(node, "deg")
+        radicand = _math_child_text(node, "e")
+        if degree:
+            return f"root({degree}, {radicand})"
+        return f"sqrt({radicand})"
+    if name == "d":
+        return f"({_math_child_text(node, 'e')})"
+    # m:num/m:den/m:e/m:sup/m:sub/m:deg, n-ary operators, functions, accents,
+    # matrices and any unknown construct: keep every leaf run in document
+    # order. This is what turns malformed OMML into a harmless concatenation
+    # of its leaf runs instead of dropping the paragraph.
+    return "".join(_linearize_math_node(child) for child in node)
+
+
+def _linearize_math_zone(node: Any) -> str:
+    """Linearize an ``m:oMath`` zone, spacing top-level binary operators."""
+    parts: list[str] = []
+    for child in node:
+        name = _local_name(child.tag)
+        text = _linearize_math_node(child)
+        if name == "r" and text in _SPACED_BINARY_OPERATORS:
+            parts.append(f" {text} ")
+        else:
+            parts.append(text)
+    return "".join(parts)
+
+
+def linearize_omml(node: Any) -> str:
+    """Turn one OMML element (``m:oMath`` / ``m:oMathPara``) into plain text.
+
+    Fractions become ``a/b``, superscripts ``a^b``, subscripts ``a_b``, square
+    roots ``sqrt(x)`` and n-th roots ``root(n, x)``. A compound operand is
+    parenthesised so ``(a+b)/(c-d)`` cannot be misread.
+    """
+    name = _local_name(node.tag)
+    if name == "oMathPara":
+        for child in node:
+            if _local_name(child.tag) == "oMath":
+                return _linearize_math_zone(child)
+        return _linearize_math_zone(node)
+    if name == "oMath":
+        return _linearize_math_zone(node)
+    return _linearize_math_node(node)
+
+
+def _walk_docx_children(
+    container: Any,
+    parts: list[str],
+    segments: list[str],
+    rids: list[str],
+) -> None:
+    """Collect one paragraph's text, linearizing OMML in document order.
+
+    Inline ``m:oMath`` is appended to the running line; display
+    ``m:oMathPara`` is flushed as its own line. ``rids`` receives ``a:blip``
+    relationship ids in order so the caller can place image markers once.
+    """
+    for child in container:
+        name = _local_name(child.tag)
+        if name == "oMathPara":
+            if parts:
+                segments.append("".join(parts).strip())
+                parts.clear()
+            segments.append(linearize_omml(child))
+        elif name == "oMath":
+            parts.append(linearize_omml(child))
+        elif name == "t":
+            if child.text:
+                parts.append(child.text)
+        elif name == "tab":
+            parts.append("\t")
+        elif name in {"br", "cr"}:
+            parts.append("\n")
+        elif name == "blip":
+            rid = _blip_embed_rid(child)
+            if rid and rid not in rids:
+                rids.append(rid)
+        else:
+            _walk_docx_children(child, parts, segments, rids)
+
+
+def _docx_paragraph_segments(node: Any) -> tuple[list[str], list[str]]:
+    """Paragraph strings plus image rids for one ``w:p`` element."""
+    parts: list[str] = []
+    segments: list[str] = []
+    rids: list[str] = []
+    _walk_docx_children(node, parts, segments, rids)
+    if parts:
+        segments.append("".join(parts).strip())
+    return [segment.strip() for segment in segments if segment.strip()], rids
+
+
+def collect_docx_paragraph_texts(node: Any) -> list[str]:
+    """Paragraph strings for a DOCX XML subtree, linearizing OMML.
+
+    This is the image-free text walk shared with
+    ``utils.document_extractor``'s pure-OOXML fallback. Display equations
+    become their own paragraph lines; inline equations linearize in place.
+    """
+    paragraphs: list[str] = []
+    for child in node:
+        name = _local_name(child.tag)
+        if name == "p":
+            paragraphs.extend(_docx_paragraph_segments(child)[0])
+        elif name == "oMathPara":
+            text = linearize_omml(child).strip()
+            if text:
+                paragraphs.append(text)
+        else:
+            paragraphs.extend(collect_docx_paragraph_texts(child))
+    return paragraphs
+
+
+# ---------------------------------------------------------------------------
 # DOCX
 # ---------------------------------------------------------------------------
 
@@ -353,36 +550,27 @@ def extract_docx_rich(data: bytes, *, budget: ImageBudget | None = None) -> Docx
         for node in root.iter():
             if _local_name(node.tag) != "p":
                 continue
-            text_parts: list[str] = []
+            segments, rids = _docx_paragraph_segments(node)
             markers: list[str] = []
             seen_rids: set[str] = set()
-            for child in node.iter():
-                name = _local_name(child.tag)
-                if name == "t" and child.text:
-                    text_parts.append(child.text)
-                elif name == "tab":
-                    text_parts.append("\t")
-                elif name in {"br", "cr"}:
-                    text_parts.append("\n")
-                elif name == "blip":
-                    rid = _blip_embed_rid(child)
-                    if not rid or rid in seen_rids:
-                        continue
-                    seen_rids.add(rid)
-                    target = rel_targets.get(rid, "")
-                    image = by_target.get(target)
-                    if image is None and target not in attempted:
-                        attempted.add(target)
-                        image = _load_office_image(zf, names, target, budget, images)
-                        if image is not None:
-                            by_target[target] = image
+            for rid in rids:
+                if rid in seen_rids:
+                    continue
+                seen_rids.add(rid)
+                target = rel_targets.get(rid, "")
+                image = by_target.get(target)
+                if image is None and target not in attempted:
+                    attempted.add(target)
+                    image = _load_office_image(zf, names, target, budget, images)
                     if image is not None:
-                        markers.append(build_marker(image))
-            paragraph = "".join(text_parts).strip()
-            if markers:
-                paragraph = (paragraph + "\n" if paragraph else "") + "\n".join(markers)
-            if paragraph:
-                paragraphs.append(paragraph)
+                        by_target[target] = image
+                if image is not None:
+                    markers.append(build_marker(image))
+            if segments and markers:
+                segments[-1] = f"{segments[-1]}\n" + "\n".join(markers)
+            elif markers:
+                segments.append("\n".join(markers))
+            paragraphs.extend(segments)
 
     return DocxRich(
         paragraphs=tuple(paragraphs),
@@ -693,9 +881,11 @@ __all__ = [
     "MAX_INLINE_IMAGE_EDGE",
     "SUPPORTED_IMAGE_EXTENSIONS",
     "build_marker",
+    "collect_docx_paragraph_texts",
     "find_markers",
     "fit_inline_image",
     "image_index_from_name",
+    "linearize_omml",
     "reading_image_budget",
     "extract_docx_rich",
     "extract_pptx_rich",
