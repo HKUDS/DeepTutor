@@ -1,5 +1,5 @@
 {
-  "fingerprint": "e45f04b9e8ee996cfc3914dd18e7d9dbec38a1cd73199cd527a9296dd355221a",
+  "fingerprint": "1d7765445b3314164a65e42f387e370bdc1c789f8aa4c53e56f0876cf9fb570c",
   "routers": {
     "deeptutor.api.routers.auth:router": [
       {
@@ -247,24 +247,6 @@
       {
         "path": "/{output_path:path}",
         "name": "read_output",
-        "kind": "http",
-        "methods": [
-          "GET"
-        ]
-      }
-    ],
-    "deeptutor.api.routers.workspace:files_router": [
-      {
-        "path": "/{workspace_id}/{workspace_item_id}",
-        "name": "read_workspace_item",
-        "kind": "http",
-        "methods": [
-          "HEAD"
-        ]
-      },
-      {
-        "path": "/{workspace_id}/{workspace_item_id}",
-        "name": "read_workspace_item",
         "kind": "http",
         "methods": [
           "GET"
@@ -1276,6 +1258,62 @@
         ]
       },
       {
+        "path": "/review-strategies",
+        "name": "list_review_strategies",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/review-strategies",
+        "name": "create_review_strategy",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/review-strategies/{template_id}",
+        "name": "get_review_strategy",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/review-strategies/{template_id}",
+        "name": "update_review_strategy",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/review-strategies/{template_id}/duplicate",
+        "name": "duplicate_review_strategy",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/review-strategies/{template_id}",
+        "name": "delete_review_strategy",
+        "kind": "http",
+        "methods": [
+          "DELETE"
+        ]
+      },
+      {
+        "path": "/topics/{path_id}/review-strategy",
+        "name": "update_path_review_strategy",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
         "path": "/topics/{path_id}/map",
         "name": "edit_topic_map",
         "kind": "http",
@@ -1622,6 +1660,14 @@
         ]
       },
       {
+        "path": "/documents/flashcards/export",
+        "name": "export_all_flashcards",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
         "path": "/documents/{doc_id}",
         "name": "get_document",
         "kind": "http",
@@ -1696,6 +1742,14 @@
       {
         "path": "/documents/review/due",
         "name": "due_note_cards",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/documents/{doc_id}/flashcards/export",
+        "name": "export_document_flashcards",
         "kind": "http",
         "methods": [
           "GET"
@@ -1923,6 +1977,14 @@
       }
     ],
     "deeptutor.api.routers.calendar:router": [
+      {
+        "path": "/export.ics",
+        "name": "export_ics",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
       {
         "path": "/calendars",
         "name": "calendars",
@@ -3878,6 +3940,30 @@
         ]
       },
       {
+        "path": "/page-customization",
+        "name": "get_page_customization",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/page-customization/chat",
+        "name": "update_chat_page_customization",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/page-customization/learning",
+        "name": "update_learning_page_customization",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
         "path": "/ui",
         "name": "update_ui_settings",
         "kind": "http",
@@ -4015,6 +4101,14 @@
       }
     ],
     "deeptutor.api.routers.workspace:settings_router": [
+      {
+        "path": "/folders",
+        "name": "list_server_folders",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
       {
         "path": "/knowledge-bases/preview-move",
         "name": "preview_knowledge_move",

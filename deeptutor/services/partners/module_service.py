@@ -6,7 +6,7 @@ async def start_partners(application_container) -> None:
 
     manager = get_partner_manager()
     manager.configure_runtime_owner(application_container.worker_id)
-    await manager.autostart_partners(application_container)
+    await manager.auto_start_partners()
 
 
 async def stop_partners(application_container) -> None:

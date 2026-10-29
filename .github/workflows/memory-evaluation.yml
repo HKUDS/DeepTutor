@@ -1,0 +1,46 @@
+name: Memory snapshot evaluation
+
+on:
+  push:
+    paths:
+      - 'deeptutor/services/memory/evaluation.py'
+      - 'examples/memory_evaluation/**'
+      - 'tests/services/memory/test_evaluation.py'
+      - 'tests/fixtures/memory_evaluation/**'
+      - '.github/workflows/memory-evaluation.yml'
+  pull_request:
+    paths:
+      - 'deeptutor/services/memory/evaluation.py'
+      - 'examples/memory_evaluation/**'
+      - 'tests/services/memory/test_evaluation.py'
+      - 'tests/fixtures/memory_evaluation/**'
+      - '.github/workflows/memory-evaluation.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  offline:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install source and test dependencies
+        run: python -m pip install -e . pytest pytest-asyncio
+      - name: Run evaluator regressions
+        run: python -m pytest tests/services/memory/test_evaluation.py -q
+      - name: Run neighboring memory tests on Linux
+        if: runner.os == 'Linux'
+        run: python -m pytest tests/services/memory -q
+      - name: Run packaged preflight without a model
+        run: python examples/memory_evaluation/run.py --cases tests/fixtures/memory_evaluation/cases.jsonl --output preflight.json

@@ -527,6 +527,7 @@ async def health_live():
     return {"status": "alive"}
 
 
+@app.get("/health", include_in_schema=False)
 @app.get("/health/ready")
 async def health_ready(request: Request):
     if not bool(getattr(request.app.state, "ready", False)):

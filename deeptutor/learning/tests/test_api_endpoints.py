@@ -77,6 +77,7 @@ def test_path_retention_setting_persists_and_reschedules_review(client, tmp_path
     assert response.json()["review_settings"] == {
         "desired_retention": 0.97,
         "scope": "path",
+        "strategy": None,
     }
     reloaded = LearningStore(root=tmp_path).load("srs-path")
     assert reloaded is not None
@@ -86,6 +87,7 @@ def test_path_retention_setting_persists_and_reschedules_review(client, tmp_path
     assert client.get("/api/mastery-paths/topics/srs-path/review-settings").json() == {
         "desired_retention": 0.97,
         "scope": "path",
+        "strategy": None,
     }
 
 

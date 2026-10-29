@@ -100,7 +100,7 @@ class ApplicationContainer:
         )
         self._recovery_services: dict[str, TurnRecoveryService] = {}
         self._started = False
-        self._module_lease = None
+        self._module_lease: contextlib.AbstractContextManager | None = None
 
     @classmethod
     def build(cls) -> "ApplicationContainer":

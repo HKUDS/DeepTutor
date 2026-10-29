@@ -4249,7 +4249,8 @@ class SQLiteSessionStore:
                 return [
                     dict(row)
                     for row in conn.execute(
-                        "SELECT id, substr(question, 1, 160) AS question, created_at, updated_at "
+                        # Only a fixed table alias is substituted into the local predicate.
+                        "SELECT id, substr(question, 1, 160) AS question, created_at, updated_at "  # nosec B608
                         "FROM notebook_entries WHERE "
                         + _NOT_RECYCLED_ENTRY_SQL.format(entries="notebook_entries")
                         + " ORDER BY updated_at DESC, id DESC"

@@ -719,6 +719,13 @@ def test_llm_provider_choices_include_onomeo() -> None:
     assert llm["onomeo"]["base_url"] == "https://onomeo.com/v1"
 
 
+def test_llm_provider_choices_include_runcrate() -> None:
+    llm = {item["value"]: item for item in settings_router._provider_choices()["llm"]}
+
+    assert llm["runcrate"]["label"] == "Runcrate"
+    assert llm["runcrate"]["base_url"] == "https://api.runcrate.ai/v1"
+
+
 def test_llm_provider_choices_include_novita() -> None:
     llm = {item["value"]: item for item in settings_router._provider_choices()["llm"]}
 
@@ -1775,7 +1782,7 @@ async def test_update_ui_settings_persists_explicit_theme_and_language_defaults(
         }
     )
 
-    # When: the frontend explicitly provides the full-model default values.
+    # When: the frontend explicitly provides a palette and language.
     await settings_router.update_ui_settings(
         settings_router.UISettingsUpdate(theme="snow", language="en")
     )
@@ -1784,6 +1791,25 @@ async def test_update_ui_settings_persists_explicit_theme_and_language_defaults(
     persisted = settings_router.load_ui_settings()
     assert persisted["theme"] == "snow"
     assert persisted["language"] == "en"
+
+
+@pytest.mark.asyncio
+async def test_ui_updates_accept_system_theme(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    """System is a stored preference, not only a client-side fallback."""
+    settings_file = tmp_path / "interface.json"
+    monkeypatch.setattr(settings_router, "_settings_file", lambda: settings_file)
+    settings_router.save_ui_settings({**settings_router.DEFAULT_UI_SETTINGS, "theme": "dark"})
+
+    await settings_router.update_ui_settings(
+        settings_router.UISettingsUpdate(theme="system", language="en")
+    )
+    assert settings_router.load_ui_settings()["theme"] == "system"
+
+    await settings_router.update_theme(settings_router.ThemeUpdate(theme="glass"))
+    await settings_router.update_theme(settings_router.ThemeUpdate(theme="system"))
+
+    stored = json.loads(settings_file.read_text(encoding="utf-8"))
+    assert stored["theme"] == "system"
 
 
 def test_get_ui_settings_is_public_without_auth(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:

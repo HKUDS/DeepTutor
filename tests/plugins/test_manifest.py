@@ -157,6 +157,9 @@ def test_executable_frontend_page_requires_sandboxed_ui_permission() -> None:
             "name-and-version",
         ),
         ({"dependencies": ["requests", "REQUESTS>=2"]}, "duplicate"),
+        # PEP 503 treats '.', '-' and '_' as equivalent, so these name the
+        # same PyPI project and must be rejected as a duplicate.
+        ({"dependencies": ["Flask.Thing==1", "flask-thing==2"]}, "duplicate"),
         (
             {
                 "compatibility": {"deeptutor": ">=1.6.0,<2", "api": {}},

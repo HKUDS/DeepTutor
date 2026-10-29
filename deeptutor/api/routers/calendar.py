@@ -7,10 +7,12 @@ from contextlib import contextmanager
 from datetime import timedelta
 
 from fastapi import APIRouter, HTTPException, Query, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from pydantic import ValidationError
 
+from deeptutor.api.utils.http_headers import content_disposition
 from deeptutor.services.calendar import models as m
+from deeptutor.services.calendar.ics import ics_filename, render_calendar
 from deeptutor.services.calendar.layers import owner_key, read_layers
 from deeptutor.services.calendar.recurrence import parse_instant, zone
 from deeptutor.services.calendar.store import get_calendar_store
@@ -61,6 +63,37 @@ def validate_task(payload, request):
     ):
         raise HTTPException(404, "Task not found in this workspace.")
     payload.task_workspace_id = workspace_id
+
+
+@router.get(
+    "/export.ics",
+    response_class=Response,
+    responses={200: {"content": {"text/calendar": {"schema": {"type": "string"}}}}},
+)
+def export_ics(calendar_id: str | None = Query(default=None)):
+    """Download stored events as an iCalendar attachment.
+
+    Args:
+        calendar_id: Limit the file to one calendar. Omit to include every
+            visible calendar. Unknown ids return 404. Workspace overlay
+            layers are not included.
+    """
+    store = get_calendar_store()
+    with errors():
+        calendars, events = store.export(calendar_id)
+    if calendar_id is None:
+        name = "DeepTutor"
+        filename = "deeptutor.ics"
+    else:
+        name = calendars[0].name.strip() or "calendar"
+        filename = ics_filename(name)
+    with errors():
+        body = render_calendar(calendars, events, calendar_name=name)
+    return Response(
+        content=body.encode("utf-8"),
+        media_type="text/calendar; charset=utf-8",
+        headers={"Content-Disposition": content_disposition(filename, disposition="attachment")},
+    )
 
 
 @router.get("/calendars", response_model=m.CalendarList)

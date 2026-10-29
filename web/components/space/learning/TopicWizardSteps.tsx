@@ -224,11 +224,15 @@ export function SourcesStep({
           {t('navigation.loadError')}
         </p>
       )}
+      {/* No nested scroll box: the step body above already scrolls, and a
+          fixed 360px cap with `overscroll-contain` swallowed the wheel once
+          a short list (the knowledge bases, 7 rows here) hit its end, which
+          read as the dialog freezing after a few rows. */}
       <div
         role="tabpanel"
         id={`${tabId}-panel`}
         aria-labelledby={`${tabId}-${tab}`}
-        className="max-h-[360px] min-h-40 overflow-y-auto overscroll-contain pr-1"
+        className="min-h-40 pr-1"
       >
         {loading ? (
           <div className="flex justify-center py-14">

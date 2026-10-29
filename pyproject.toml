@@ -7,7 +7,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "deeptutor"
-dynamic = ["version"]
+dynamic = ["version", "optional-dependencies"]
 description = "An agent-native intelligent learning companion with multi-agent collaboration and RAG"
 # Python 3.14 is supported by the core app now that compiled base dependencies
 # such as FAISS publish compatible wheels. Keep a forward cap so a future
@@ -34,6 +34,7 @@ dependencies = [
     "aiosqlite>=0.19.0",
     "typer>=0.9.0",
     "rich>=13.0.0",
+    "markdown-it-py>=3.0.0,<5.0.0",
     "prompt_toolkit>=3.0.36",
     "pyte>=0.8.1",
     "mcp>=1.26.0,<2.0.0",
@@ -48,24 +49,25 @@ dependencies = [
 [project.scripts]
 deeptutor = "deeptutor_cli.main:main"
 
-[project.optional-dependencies]
+[tool.deeptutor.optional-dependencies]
 # Optional modules own their code and dependencies. Full is an installation profile.
 cli = []
 codebuddy = ["codebuddy-agent-sdk>=0.3,<0.4"]
-video-learning = ["deeptutor-reading==1.6.15"]
+claude-code = ["claude-agent-sdk>=0.2.174,<0.3"]
+video-learning = ["deeptutor-reading=={version}"]
 edge-tts = ["edge-tts>=7.0,<8.0"]
-video-lesson = ["deeptutor-video-lesson==1.6.15", "edge-tts>=7.0,<8.0"]
-server = ["deeptutor-server==1.6.15"]
-partners = ["deeptutor-partners==1.6.15"]
-parse-markitdown = ["deeptutor-parser-markitdown==1.6.15"]
-parse-docling = ["deeptutor-parser-docling==1.6.15"]
-parse-pymupdf4llm = ["deeptutor-parser-pymupdf4llm==1.6.15"]
-parse-liteparse = ["deeptutor-parser-liteparse==1.6.15"]
-parse = ["deeptutor[parse-markitdown]", "deeptutor[parse-docling]", "deeptutor[parse-pymupdf4llm]", "deeptutor[parse-liteparse]"]
-tutorbot = ["deeptutor[partners]"]
+video-lesson = ["deeptutor-video-lesson=={version}", "edge-tts>=7.0,<8.0"]
+server = ["deeptutor-server=={version}"]
+partners = ["deeptutor-partners=={version}"]
+parse-markitdown = ["deeptutor-parser-markitdown=={version}"]
+parse-docling = ["deeptutor-parser-docling=={version}"]
+parse-pymupdf4llm = ["deeptutor-parser-pymupdf4llm=={version}"]
+parse-liteparse = ["deeptutor-parser-liteparse=={version}"]
+parse = ["deeptutor[parse-markitdown]=={version}", "deeptutor[parse-docling]=={version}", "deeptutor[parse-pymupdf4llm]=={version}", "deeptutor[parse-liteparse]=={version}"]
+tutorbot = ["deeptutor[partners]=={version}"]
 matrix = ["matrix-nio>=0.25.2,<1.0.0", "mistune>=3.0.0,<4.0.0", "nh3>=0.2.18,<1.0.0"]
-matrix-e2e = ["deeptutor[matrix]", "matrix-nio[e2e]>=0.25.2,<1.0.0"]
-math-animator = ["deeptutor-renderer-manim==1.6.15"]
+matrix-e2e = ["deeptutor[matrix]=={version}", "matrix-nio[e2e]>=0.25.2,<1.0.0"]
+math-animator = ["deeptutor-renderer-manim=={version}"]
 
 # QTI item-bank exchange. Mirrors requirements/qti.txt. ``lxml`` powers the
 # offline XSD validation and the QTI serializer; the schema bundles themselves
@@ -75,26 +77,26 @@ graphrag = ["graphrag>=3.0.1,<4.0.0; python_version < '3.14'"]
 rag-lightrag = ["lightrag-hku==1.5.7"]
 rag-rerank = ["sentence-transformers>=3.0.0,<6.0.0; python_version < '3.14'"]
 guard = ["fastapi-guard>=8.1.1,<9.0.0"]
-dev = ["deeptutor[server]", "deeptutor[qti]", "pytest>=7.0.0", "pytest-asyncio>=0.23.0", "pre-commit>=3.0.0", "safety<3.0.0", "bandit>=1.8.0", "import-linter>=2.1.0,<3.0.0", "python-docx>=1.1.0", "openpyxl>=3.1.0", "python-pptx>=1.0.0", "pypdf>=4.0.0", "defusedxml>=0.7.1"]
-all = ["deeptutor[full,math-animator,dev]"]
-audio-overview = ["deeptutor-audio-overview==1.6.15"]
-solve = ["deeptutor-solve==1.6.15"]
-reading = ["deeptutor-reading==1.6.15"]
-memory = ["deeptutor-memory==1.6.15"]
-providers = ["deeptutor-providers==1.6.15"]
-questions = ["deeptutor-questions==1.6.15"]
-notebook = ["deeptutor-notebook==1.6.15"]
-web = ["deeptutor-web==1.6.15"]
-parsing = ["deeptutor-parsing==1.6.15"]
-books = ["deeptutor-books==1.6.15"]
-research = ["deeptutor-research==1.6.15"]
-visualize = ["deeptutor-visualize==1.6.15"]
-renderer-manim = ["deeptutor-renderer-manim==1.6.15"]
-calendar = ["deeptutor-calendar==1.6.15"]
-knowledge = ["deeptutor-knowledge==1.6.15"]
-co-writer = ["deeptutor-co-writer==1.6.15"]
-mastery = ["deeptutor-mastery==1.6.15"]
-full = ["deeptutor-audio-overview==1.6.15", "deeptutor-solve==1.6.15", "deeptutor-server==1.6.15", "deeptutor-reading==1.6.15", "deeptutor-partners==1.6.15", "deeptutor-memory==1.6.15", "deeptutor-providers==1.6.15", "deeptutor-questions==1.6.15", "deeptutor-notebook==1.6.15", "deeptutor-web==1.6.15", "deeptutor-video-lesson==1.6.15", "deeptutor-parsing==1.6.15", "deeptutor-books==1.6.15", "deeptutor-research==1.6.15", "deeptutor-visualize==1.6.15", "deeptutor-calendar==1.6.15", "deeptutor-knowledge==1.6.15", "deeptutor-co-writer==1.6.15", "deeptutor-mastery==1.6.15"]
+dev = ["deeptutor[server]=={version}", "deeptutor[qti]=={version}", "pytest>=7.0.0", "pytest-asyncio>=0.23.0", "pre-commit>=3.0.0", "safety<3.0.0", "bandit>=1.8.0", "import-linter>=2.1.0,<3.0.0", "python-docx>=1.1.0", "openpyxl>=3.1.0", "python-pptx>=1.0.0", "pypdf>=4.0.0", "defusedxml>=0.7.1"]
+all = ["deeptutor[full,math-animator,dev]=={version}"]
+audio-overview = ["deeptutor-audio-overview=={version}"]
+solve = ["deeptutor-solve=={version}"]
+reading = ["deeptutor-reading=={version}"]
+memory = ["deeptutor-memory=={version}"]
+providers = ["deeptutor-providers=={version}"]
+questions = ["deeptutor-questions=={version}"]
+notebook = ["deeptutor-notebook=={version}"]
+web = ["deeptutor-web=={version}"]
+parsing = ["deeptutor-parsing=={version}"]
+books = ["deeptutor-books=={version}"]
+research = ["deeptutor-research=={version}"]
+visualize = ["deeptutor-visualize=={version}"]
+renderer-manim = ["deeptutor-renderer-manim=={version}"]
+calendar = ["deeptutor-calendar=={version}"]
+knowledge = ["deeptutor-knowledge=={version}"]
+co-writer = ["deeptutor-co-writer=={version}"]
+mastery = ["deeptutor-mastery=={version}"]
+full = ["deeptutor-audio-overview=={version}", "deeptutor-solve=={version}", "deeptutor-server=={version}", "deeptutor-reading=={version}", "deeptutor-partners=={version}", "deeptutor-memory=={version}", "deeptutor-providers=={version}", "deeptutor-questions=={version}", "deeptutor-notebook=={version}", "deeptutor-web=={version}", "deeptutor-video-lesson=={version}", "deeptutor-parsing=={version}", "deeptutor-books=={version}", "deeptutor-research=={version}", "deeptutor-visualize=={version}", "deeptutor-calendar=={version}", "deeptutor-knowledge=={version}", "deeptutor-co-writer=={version}", "deeptutor-mastery=={version}"]
 
 [tool.setuptools]
 include-package-data = true

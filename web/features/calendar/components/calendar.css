@@ -216,6 +216,12 @@
   color: var(--muted-foreground);
   font-weight: 400;
 }
+button.dt-cal-rail-link {
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
 .dt-cal-rail-link:hover {
   color: var(--foreground);
 }

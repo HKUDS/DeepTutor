@@ -71,7 +71,7 @@ export default function NoteBlockPreview({
   )
   const image = (
     <div className="dt-note-preview-image">
-      <Image src="/banner.png" alt="" width={440} height={180} unoptimized />
+      <Image src="/brand/color-full.png" alt="" width={1600} height={313} unoptimized />
       <small>{t('Image caption')}</small>
     </div>
   )

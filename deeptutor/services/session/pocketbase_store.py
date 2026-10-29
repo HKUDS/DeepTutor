@@ -954,17 +954,20 @@ class PocketBaseSessionStore:
             filter_str += f' && role="{role}"'
 
         def _get():
-            records = (
+            # get_full_list fetches every page, even with perPage=1.
+            page = (
                 _pb()
                 .collection("messages")
-                .get_full_list(
+                .get_list(
+                    1,
+                    1,
                     query_params={
                         "filter": filter_str,
                         "sort": "-msg_created_at",
-                        "perPage": 1,
-                    }
+                    },
                 )
             )
+            records = self._page_items(page)
             return records[0] if records else None
 
         try:

@@ -10,16 +10,22 @@ import {
   writeStoredResponseLanguage,
   type AppLanguage,
 } from "@/context/app-shell-storage";
-import { setTheme, type Theme } from "@/lib/theme";
+import { setTheme, type ThemePreference } from "@/lib/theme";
 import { collectAppliedSettingIds } from "@/lib/setup-signals";
 import type { StreamEvent } from "@/features/chat/model/protocol";
 
-const THEMES: readonly Theme[] = ["light", "dark", "glass", "snow"];
+const THEMES: readonly ThemePreference[] = [
+  "system",
+  "light",
+  "dark",
+  "glass",
+  "snow",
+];
 
-function asTheme(value: unknown): Theme | null {
+function asTheme(value: unknown): ThemePreference | null {
   return typeof value === "string" &&
     (THEMES as readonly string[]).includes(value)
-    ? (value as Theme)
+    ? (value as ThemePreference)
     : null;
 }
 

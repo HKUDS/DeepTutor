@@ -152,6 +152,7 @@ class TurnRequestPreparer:
         payload: dict[str, Any],
         *,
         replace_assistant_message_id: int | str | None = None,
+        persist_llm_selection_only: bool = False,
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         await self._ensure_accepting_turns()
         from deeptutor.services.workspace.context import get_workspace_scope
@@ -739,6 +740,15 @@ class TurnRequestPreparer:
         try:
             if not payload.get("preserve_session_preferences"):
                 await self.store.update_session_preferences(session["id"], preference_update)
+            elif persist_llm_selection_only and preference_update.get("llm_selection"):
+                # A recovered turn keeps the failed turn's context, but the model
+                # it ran with is the one the user selected now. Persist just
+                # that, so the choice survives a reload, and leave the failed
+                # turn's other preferences where they are (#2105).
+                await self.store.update_session_preferences(
+                    session["id"],
+                    {"llm_selection": preference_update["llm_selection"]},
+                )
             submission_kwargs = {}
             if (
                 payload.get("client_submission_id")
@@ -1168,8 +1178,13 @@ class TurnRequestPreparer:
             if last_message is not None and last_message.get("role") == "assistant"
             else None
         )
+        # A Resend runs with the model the user has selected now, so that one
+        # choice is written back to the conversation. The failed turn's other
+        # preferences are not (#2105).
         if replace_assistant_message_id is None:
-            return await self.start_turn(payload)
+            return await self.start_turn(payload, persist_llm_selection_only=replay_snapshot)
         return await self.start_turn(
-            payload, replace_assistant_message_id=replace_assistant_message_id
+            payload,
+            replace_assistant_message_id=replace_assistant_message_id,
+            persist_llm_selection_only=replay_snapshot,
         )

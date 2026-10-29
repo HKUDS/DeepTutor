@@ -13,6 +13,7 @@ import {
   getSuggestions,
   reviewSuggestion,
   noteRequest,
+  exportNoteFlashcards,
   type NoteBlock,
   type NotePage,
   type NoteSummary,
@@ -482,18 +483,20 @@ export default function NoteWorkspace({
       editor.current?.setEditable(true)
     }
   }
-  const exportFile = async (format: 'md' | 'docx') => {
+  const exportFile = async (format: 'md' | 'docx' | 'anki') => {
     try {
       await flush()
       const doc = latest.current!
       const blob =
         format === 'docx'
           ? await exportCoWriterDocx({ title: doc.title, content: doc.content })
-          : new Blob([doc.content], { type: 'text/markdown' })
+          : format === 'anki'
+            ? await exportNoteFlashcards(doc.id)
+            : new Blob([doc.content], { type: 'text/markdown' })
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
-      link.download = `${doc.title || 'Note'}.${format}`
+      link.download = `${doc.title || 'Note'}.${format === 'anki' ? 'txt' : format}`
       link.click()
       setTimeout(() => URL.revokeObjectURL(url), 1000)
     } catch (err) {

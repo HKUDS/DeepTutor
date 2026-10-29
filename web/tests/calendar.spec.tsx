@@ -60,6 +60,14 @@ beforeEach(() => {
       if (path === '/api/calendar/task-blocks') return Response.json({})
       if (path === '/api/calendar/layers')
         return Response.json({ workspace_id: '', reviews: [], automations: [], footprints: [] })
+      if (path === '/api/calendar/export.ics')
+        return new Response('BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n', {
+          status: 200,
+          headers: {
+            'Content-Type': 'text/calendar; charset=utf-8',
+            'Content-Disposition': 'attachment; filename="calendar.ics"',
+          },
+        })
       if (path === '/api/calendar/events' && init?.method === 'POST') {
         if (failSave) return Response.json({ detail: 'Save failed' }, { status: 500 })
         const fields = JSON.parse(String(init.body))
@@ -124,6 +132,43 @@ it('retains the editor draft when saving fails', async () => {
   expect(await screen.findByRole('alert')).toHaveTextContent('Save failed')
   expect(screen.getByRole('textbox', { name: 'Event title' })).toHaveValue('Keep this draft')
   expect(events).toHaveLength(0)
+})
+
+it('exports one calendar and all calendars from the rail', async () => {
+  const createObjectURL = vi.fn(() => 'blob:ics')
+  const revokeObjectURL = vi.fn()
+  const originalCreate = URL.createObjectURL
+  const originalRevoke = URL.revokeObjectURL
+  URL.createObjectURL = createObjectURL
+  URL.revokeObjectURL = revokeObjectURL
+  try {
+    mount()
+    fireEvent.click(await screen.findByRole('button', { name: 'Calendar options' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Export .ics' }))
+  await waitFor(() =>
+    expect(
+      vi
+        .mocked(fetch)
+        .mock.calls.some(
+          ([url]) =>
+            String(url).includes('/api/calendar/export.ics') && String(url).includes('calendar_id=default')
+        )
+    ).toBe(true)
+  )
+  fireEvent.click(screen.getByRole('button', { name: 'Export all calendars' }))
+  await waitFor(() =>
+    expect(
+      vi.mocked(fetch).mock.calls.some(([url]) => {
+        const value = String(url)
+        return value.includes('/api/calendar/export.ics') && !value.includes('calendar_id=')
+      })
+    ).toBe(true)
+  )
+    expect(createObjectURL).toHaveBeenCalled()
+  } finally {
+    URL.createObjectURL = originalCreate
+    URL.revokeObjectURL = originalRevoke
+  }
 })
 
 it('does not trigger calendar shortcuts while typing in the editor', async () => {

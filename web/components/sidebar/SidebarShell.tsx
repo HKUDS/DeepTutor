@@ -305,7 +305,7 @@ export function SidebarShell({
             menu of settings and account), the way back out, then search. */}
         {bodySlot ? (
           <Link href={brandHref} prefetch={false} aria-label="DeepTutor" className="dt-rail-brand">
-            <Image src="/logo.png" alt="DeepTutor" width={22} height={22} className="h-[22px] w-[22px] rounded-md" />
+            <Image src="/brand/color-logo.png" alt="DeepTutor" width={22} height={22} className="h-[22px] w-[22px] rounded-md" />
           </Link>
         ) : (
           <WorkspaceMenu compact accountSlot={renderedFooter} onNavigate={() => drawer?.close()} />
@@ -364,17 +364,17 @@ export function SidebarShell({
         <div className="flex h-[52px] shrink-0 items-center justify-between px-4">
           <Link href={brandHref} prefetch={false} className="group flex items-center gap-1.5">
             <Image
-              src="/logo.png"
+              src="/brand/color-logo.png"
               alt="DeepTutor"
               width={22}
               height={22}
               className="h-[22px] w-[22px] transition-transform duration-200 group-hover:scale-105"
             />
             <Image
-              src="/banner.png"
+              src="/brand/color-word.png"
               alt="DeepTutor"
-              width={897}
-              height={236}
+              width={1200}
+              height={310}
               priority
               className="h-[22px] w-auto transition-transform duration-200 group-hover:scale-105"
             />

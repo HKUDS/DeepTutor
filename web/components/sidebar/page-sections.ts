@@ -1,5 +1,5 @@
 import { CalendarDays } from 'lucide-react'
-import { Columns3, LayoutGrid, MessageCircle, PenLine, type LucideIcon } from 'lucide-react'
+import { Columns3, LayoutGrid, MessageCircle, PenLine, Plus, type LucideIcon } from 'lucide-react'
 import {
   HomeShelfIcon,
   LearningShelfIcon,
@@ -76,6 +76,7 @@ export function pageSections({
       label: t('navigation.learning'),
       icon: LearningShelfIcon,
       pages: [
+        { href: '/learning/new', label: t('navigation.createLearning'), icon: Plus },
         { href: '/learning', label: t('navigation.allLearning'), icon: LayoutGrid },
         ...LEARNING_SURFACES.filter(surface => surfaceAllowed(surface.kind)).map(surface => ({
           href: surface.href,

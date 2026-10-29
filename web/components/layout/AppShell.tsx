@@ -117,17 +117,17 @@ export default function AppShell({ sidebar, pageBar, children, homeHref = "/" }:
             </button>
             <Link href={homeHref} className="flex items-center gap-1.5">
               <Image
-                src="/logo.png"
+                src="/brand/color-logo.png"
                 alt="DeepTutor"
                 width={20}
                 height={20}
                 className="h-5 w-5"
               />
               <Image
-                src="/banner.png"
+                src="/brand/color-word.png"
                 alt="DeepTutor"
-                width={897}
-                height={236}
+                width={1200}
+                height={310}
                 className="h-[18px] w-auto"
               />
             </Link>

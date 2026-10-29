@@ -201,8 +201,8 @@ it("keeps an optimistic send while an earlier history poll resolves", async () =
     />,
   );
   await ready();
-  act(() => window.dispatchEvent(new Event("focus")));
-  await waitFor(() => expect(api.historyPage).toHaveBeenCalledTimes(2));
+  await act(async () => { window.dispatchEvent(new Event("focus")); });
+  expect(api.historyPage).toHaveBeenCalledTimes(2);
   act(() => {
     expect(composer.current?.onSend("Optimistic question", [])).toBe(true);
   });

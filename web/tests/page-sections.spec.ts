@@ -62,7 +62,7 @@ describe('page sections', () => {
 
   it('applies the same gates as the sidebar shelves', () => {
     const learning = sections(['books']).find(section => section.id === 'learning')!
-    expect(learning.pages.map(page => page.label)).toEqual(['navigation.allLearning', 'Books'])
+    expect(learning.pages.map(page => page.label)).toEqual(['navigation.createLearning', 'navigation.allLearning', 'Books'])
     // Capability-gated resources stay hidden until the backend registers them.
     const resources = sections().find(section => section.id === 'resources')!
     expect(resources.pages.some(page => page.href === '/whisper')).toBe(false)

@@ -1,8 +1,7 @@
 <div align="center">
 
-<p align="center"><img src="../../assets/figs/logo/logo.png" alt="شعار DeepTutor" height="56" style="vertical-align: middle;">&nbsp;<img src="../../assets/figs/logo/banner.png" alt="DeepTutor" height="48" style="vertical-align: middle;"></p>
-
-# DeepTutor: تدريس شخصي مدى الحياة
+<p align="center"><img src="../../assets/figs/logo/color-full.png" alt="DeepTutor" width="480"></p>
+<h1 align="center">DeepTutor: تدريس شخصي مدى الحياة</h1>
 
 <p align="center">
   <a href="https://deeptutor.info" target="_blank"><img alt="الوثائق — deeptutor.info" src="https://img.shields.io/badge/Docs-deeptutor.info%20%E2%86%97-0A0A0A?style=for-the-badge&labelColor=F5F5F4" height="36"></a>&nbsp;
@@ -10,7 +9,7 @@
 </p>
 
 <p align="center">
-<a href="https://www.star-history.com/hkuds/deeptutor"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending&amp;theme=dark"><source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending"><img alt="مستودع GitHub الرائج لهذا اليوم" src="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending" height="55"></picture></a>&#32;<a href="https://trendshift.io/repositories/17099"><img src="https://trendshift.io/api/badge/trendshift/repositories/17099/daily" alt="HKUDS/DeepTutor | Trendshift" width="250" height="55"></a>&#32;<a href="https://www.star-history.com/hkuds/deeptutor"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;theme=dark"><source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor"><img alt="ترتيب تاريخ النجوم" src="https://api.star-history.com/badge?repo=HKUDS/DeepTutor" width="185" height="55"></picture></a>
+<a href="https://www.star-history.com/hkuds/deeptutor"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending&amp;theme=dark" /><source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending" /><img alt="مستودع GitHub الرائج لهذا اليوم" src="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending" height="55" /></picture></a>&#32;<a href="https://trendshift.io/repositories/17099"><img src="https://trendshift.io/api/badge/trendshift/repositories/17099/daily" alt="HKUDS/DeepTutor | Trendshift" width="250" height="55"></a>&#32;<a href="https://www.star-history.com/hkuds/deeptutor"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;theme=dark"><source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor"><img alt="ترتيب تاريخ النجوم" src="https://api.star-history.com/badge?repo=HKUDS/DeepTutor" width="185" height="55"></picture></a>
 </p>
 
 <p align="center">
@@ -60,9 +59,9 @@
 
 DeepTutor هو بيئة تعلم أصيلة للوكلاء تربط التدريس وحل المشكلات وتوليد الاختبارات والبحث والتصور وممارسة الإتقان في نظام واحد قابل للتوسيع.
 
-- **بيئة تشغيل واحدة لجميع الأوضاع** — تشترك Chat وAsk Questions وQuiz وResearch وVisualize وSolve وCourse Study وMastery Path وImmersive Reading وAudio Overview في بيئة تشغيل واحدة للقدرات وسياق الجلسة، مع احتفاظ كل منها بحلقات وخطوط أنابيب مصممة لغرضها.
+- **بيئة تشغيل واحدة لجميع الأوضاع** — تشترك Chat وAsk Questions وQuiz وResearch وVisualize وSolve وMastery Path وImmersive Reading وAudio Overview في بيئة تشغيل واحدة للقدرات وسياق الجلسة، مع احتفاظ كل منها بحلقات وخطوط أنابيب مصممة لغرضها.
 - **Task Board** — تتبّع مهام الدراسة ضمن «للإنجاز» و«قيد التنفيذ» و«مكتمل»، مع ملاحظات وسحب وإفلات أو أزرار نقل يمكن استخدامها بلوحة المفاتيح، وأرشيف يمكنك الاستعادة منه. تبقى البطاقات في مساحة العمل الحالية وتتبع إعدادات المظهر واللغة القائمة؛ ولا يلزم تهيئة أي نموذج.
-- **سياق تعلم متصل** — يمكن إعادة استخدام قواعد المعرفة والكتب ومسودات Co-Writer ودفاتر الملاحظات وبنوك الأسئلة والشخصيات والذاكرة عبر سير العمل التي تدعمها، وفقاً لمنح الحساب وسياسات التعلّم.
+- **سياق تعلم متصل** — يمكن إعادة استخدام قواعد المعرفة والكتب وصفحات دفتر التعلّم والمفضلة وبنوك الأسئلة والشخصيات والذاكرة عبر سير العمل التي تدعمها، وفقاً لمنح الحساب وسياسات التعلّم.
 - **التعلّم الغامر بالفيديو** — أضف روابط YouTube أو Bilibili إلى Reading للتشغيل الأصلي والبحث في النصوص المفرّغة والتدريس المرتكز على الطوابع الزمنية والملاحظات المحفوظة والتقدّم القابل للاستئناف؛ ويمكن استخدام نسخة Invidious يهيئها المشرف لجلب ترجمات YouTube وتصفّحه.
 - **الوكلاء الفرعيون والشركاء** — من داخل Chat، استشر مُشغِّل وكيل حيّاً (Claude Code أو Codex أو Grok CLI أو Antigravity أو Kimi أو opencode أو MiMo أو Hermes أو OpenClaw أو DeepSeek) أو Partner، واستورد المحادثات السابقة، وشغّل رفاق IM دائمين على نفس الدماغ.
 - **معرفة متعددة المحركات** — مكتبات RAG مُصدَّرة عبر LlamaIndex وPageIndex وGraphRAG وLightRAG، أو LightRAG Server عن بُعد، أو قاعدة معرفة WeKnora ذاتية الاستضافة، أو مكتبة Tencent IMA أو MarginNote 4، أو أرشيف Kiwix ZIM متصل، أو مخزن Obsidian مرتبط، مع تحليل مستندات قابل للتوصيل. راجع [نماذج أدوار LightRAG الأصلية](../../deeptutor/services/rag/pipelines/lightrag/README.md) لإعدادات مستقلة للاستخراج والاستعلام والرؤية، والإنشاء بالنماذج الافتراضية فقط، وإعادة البناء بعد التأكيد.
@@ -78,18 +77,18 @@ DeepTutor هو بيئة تعلم أصيلة للوكلاء تربط التدري
 انسخ هذا الطلب إلى وكيل الذكاء الاصطناعي الذي يمكنه استخدام الطرفية (مثل Codex أو Claude Code):
 
 ```text
-Help me install and configure DeepTutor locally from https://github.com/HKUDS/DeepTutor.
-Clone the repository, or reuse my existing checkout, and read SKILL.md and
-docs-for-user/AGENT_SETUP.md first. Follow that guide to prepare the environment,
+Help me install and configure the current dev version of DeepTutor from https://github.com/HKUDS/DeepTutor.
+Clone the dev branch, or inspect and reuse my existing checkout, and read SKILL.md and
+docs-for-dev/AGENT_SETUP.md first. Follow that guide to prepare the environment,
 configure my model provider, verify the setup, and start the Web app.
 Ask me for any missing provider, model, or credential-source information;
 do not print API keys. Preserve my existing files and settings, and finish
 with the access URL and the results of your checks.
 ```
 
-يغطي [دليل إعداد الوكيل](../../docs-for-user/AGENT_SETUP.md) التدفق كاملاً، بما فيه التهيئة غير التفاعلية عبر CLI. لتثبيته بنفسك، اختر أحد المسارات أدناه.
+يغطي [دليل إعداد الوكيل](../../docs-for-dev/AGENT_SETUP.md) التدفق كاملاً، بما فيه التهيئة غير التفاعلية عبر CLI. لتثبيته بنفسك، اختر أحد المسارات أدناه.
 
-يأتي DeepTutor بأربعة مسارات تثبيت. وكلها تشترك في تخطيط واحد لمساحة عمل وقت التشغيل: تعيش الإعدادات الخاصة في `data/user/settings/` تحت الدليل الذي تُطلق منه التطبيق (أو تحت `DEEPTUTOR_HOME` / `deeptutor start --home` إذا حددت واحداً صراحةً). للتطبيق الكامل، التدفق الموصى به هو **اختر دليل مساحة عمل وقت التشغيل → تثبيت → `deeptutor init` → `deeptutor start`**.
+يأتي DeepTutor بأربعة مسارات تثبيت. وكلها تشترك في تخطيط واحد لمساحة عمل وقت التشغيل: تعيش الإعدادات الخاصة في `data/user/settings/` تحت الدليل الذي تُطلق منه التطبيق (أو تحت `DEEPTUTOR_HOME` / `deeptutor start --home` إذا حددت واحداً صراحةً). راجع [حفظ البيانات المحلية](../../docs-for-dev/DATA_STORAGE.md) للاطلاع على تخطيط التخزين الكامل ودعم قواعد البيانات وملاحظات النسخ الاحتياطي. للتطبيق الكامل، التدفق الموصى به هو **اختر دليل مساحة عمل وقت التشغيل → تثبيت → `deeptutor init` → `deeptutor start`**.
 
 ### تجربة Docker بأمر واحد
 
@@ -118,23 +117,25 @@ deeptutor workspace reset
 
 تفحص القدرات مساحة العمل المحددة لها من خلال أدوات مساحة العمل المدمجة. لا يتلقى النموذج سوى مسارات نسبية مثل `outputs/...`؛ وعندما يستخدم `workspace_present`، تُصيِّر الواجهة لقطة مصادَق عليها وقابلة للفتح. يعمل المسار النسبي الدقيق نفسه أيضاً في رابط أو صورة Markdown عادية. تغيير الملف المصدر لاحقاً لا يغيّر لقطة قُدِّمت مسبقاً.
 
-يدير فضاء التعلم مكتبة الموارد. في **الإعدادات ← مساحات العمل**، عيّن المهارات وخدمات MCP وقواعد المعرفة لكل مساحة عمل، أو احتفظ بقواعد الوصول الحالية. تحتفظ مساحات العمل الموجودة بصلاحيات وصولها الحالية حتى يُحفظ الاختيار. تشير التعيينات إلى الموارد الأصلية دون نسخ بيانات الاعتماد أو فهارس المعرفة؛ ويمكن للمهارات الخاصة بمساحة عمل أن تتجاوز النسخ المشتركة. راجع [تعيين موارد مساحات العمل](../../docs-for-user/workspaces.md).
+يدير فضاء التعلم مكتبة الموارد. في **الإعدادات ← مساحات العمل**، عيّن المهارات وخدمات MCP وقواعد المعرفة لكل مساحة عمل، أو احتفظ بقواعد الوصول الحالية. تحتفظ مساحات العمل الموجودة بصلاحيات وصولها الحالية حتى يُحفظ الاختيار. تشير التعيينات إلى الموارد الأصلية دون نسخ بيانات الاعتماد أو فهارس المعرفة؛ ويمكن للمهارات الخاصة بمساحة عمل أن تتجاوز النسخ المشتركة. راجع [تعيين موارد مساحات العمل](../../docs-for-dev/workspaces.md).
 
 التنفيذ للقراءة فقط خارج `outputs/`. نسخ ملف مُولَّد إلى مكان آخر في مساحة عمل المحتوى يتطلب تأكيد **السماح مرة واحدة** الصريح لذلك المصدر والوجهة المحددين تماماً. يفرض صندوق أمان النظام أو مُشغِّل Docker هذا الحد عند توفره؛ ويظهر الرجوع إلى العملية الفرعية المقيَّدة محلياً كـ **أفضل جهد ممكن** في إعدادات مساحة العمل.
 
 <details>
 <summary><b>الخيار 1 — التثبيت من PyPI</b> · تطبيق ويب محلي كامل + CLI، لا يلزم الاستنساخ</summary>
 
-تطبيق ويب محلي كامل + CLI، لا يلزم الاستنساخ. يحتاج **Python 3.11–3.14** وبيئة تشغيل **Node.js 20+** في PATH (يُشغَّل خادم Next.js المستقل المُحزَّم بواسطة `deeptutor start`).
+**التثبيت المعياري في 1.7.0:** استخدم `deeptutor[full]` لتطبيق الويب وCLI، أو `deeptutor` للمحادثة الأساسية. يجب أن تطابق إصدارات وحدات الميزات إصدار النواة؛ وتستخدم الإصدارات 1.6.15 والأقدم تخطيط الحزم السابق. للتطوير على فرع `dev` الحالي، اتبع تعليمات المصدر أدناه أو ابنِ [حزم wheel محلية](../../docs-for-dev/MODULES.md). يتطلب **Python 3.11–3.14** وبيئة تشغيل **Node.js 20+** على PATH (يشغّل `deeptutor start` خادم Next.js المستقل المضمّن في الحزمة).
 
 ```bash
 mkdir -p my-deeptutor && cd my-deeptutor
-pip install -U deeptutor
+pip install -U "deeptutor[full]"
 deeptutor init     # prompts for ports + LLM provider + optional embedding/search
 deeptutor start    # starts backend + frontend; keep the terminal open
 ```
 
 يطلب `deeptutor init` منفذ الخلفية (افتراضي `8001`)، ومنفذ الواجهة الأمامية (افتراضي `3782`)، ومزود LLM / عنوان URL الأساسي / مفتاح API / النموذج، ومزود تضمين اختياري لقاعدة المعرفة / RAG، ومزود بحث اختياري لـ Web Search.
+
+**الترقية إلى 1.7.0:** أوقف التطبيق وأنشئ نسخة احتياطية من دليل وقت التشغيل. استخدم `python -m pip install --upgrade "deeptutor[full]==1.7.0"`، ثم `python -m pip check` و`deeptutor module list`. إذا كانت حزمة `deeptutor-cli` القديمة مثبتة، فشغّل أولاً `python -m pip uninstall deeptutor-cli`، ثم أمر الترقية (مع إضافة `deeptutor-cli==1.7.0` اختيارياً). تمتلك حزمة CLI القديمة ملفات Python مشتركة، ولذلك قد تؤدي ترقيتها في العملية نفسها إلى حذف النواة الجديدة. لا يؤدي إلغاء تثبيت الحزمة إلى حذف بيانات دليل وقت التشغيل. احتفظ بقيمة `DEEPTUTOR_HOME` نفسها وبالإعدادات الحالية. في 1.7.0، يختار `pip install -U deeptutor` وحده النواة فقط؛ استخدم `[full]` لطلب مجموعة تثبيت التطبيق الكامل. للحزم المبنية محلياً، اتبع [تعليمات الترقية باستخدام wheel محلية](../../docs-for-dev/MODULES.md#upgrade-from-1615).
 
 بعد `deeptutor start`، افتح عنوان URL للواجهة الأمامية المطبوع في الطرفية — افتراضياً [http://127.0.0.1:3782](http://127.0.0.1:3782). اضغط `Ctrl+C` في تلك الطرفية لإيقاف الخلفية والواجهة الأمامية معاً. تخطي `deeptutor init` لا بأس به للتجربة السريعة؛ يُقلع التطبيق بالمنافذ الافتراضية وإعدادات نموذج فارغة، قم بتهيئتها لاحقاً في **الإعدادات ← المزودون** و**نماذج اللغة**.
 
@@ -148,7 +149,7 @@ deeptutor start    # starts backend + frontend; keep the terminal open
 للتطوير مقابل نسخة مسحوبة. استخدم **Python 3.11–3.14** و**Node.js 22 LTS** لمطابقة CI وDocker.
 
 ```bash
-git clone https://github.com/HKUDS/DeepTutor.git
+git clone --branch dev https://github.com/HKUDS/DeepTutor.git
 cd DeepTutor
 
 # Create a venv (macOS/Linux). Windows PowerShell:
@@ -157,7 +158,8 @@ python3 -m venv .venv && source .venv/bin/activate
 python -m pip install --upgrade pip
 
 # Install backend + frontend deps
-python -m pip install -e .
+python -m pip install -r requirements/full.txt
+python -m pip install -e . --no-deps
 ( cd web && npm ci --legacy-peer-deps )
 
 deeptutor init
@@ -181,15 +183,18 @@ python -m pip install --upgrade pip
 <summary><b>إضافات التثبيت الاختيارية</b> — محركات RAG / dev / partners / matrix / math-animator</summary>
 
 ```bash
-pip install -e ".[rag-lightrag]"    # Built-in LightRAG engine (exact supported SDK)
-pip install -e ".[graphrag]"        # Microsoft GraphRAG engine (Python 3.11–3.13)
-pip install -e ".[dev]"             # tests/lint tools
-pip install -e ".[partners]"        # Partner IM channel SDKs
-pip install -e ".[video-learning]"  # compatibility extra; captions ship in the full/CLI installs
-pip install -e ".[matrix]"          # Matrix channel without E2EE/libolm
-pip install -e ".[matrix-e2e]"      # Matrix E2EE; requires libolm
-pip install -e ".[math-animator]"   # Manim addon; requires LaTeX/ffmpeg/system libs
+python scripts/install_extras.py rag-lightrag    # Built-in LightRAG engine (exact supported SDK)
+python scripts/install_extras.py graphrag        # Microsoft GraphRAG engine (Python 3.11–3.13)
+python scripts/install_extras.py dev             # tests/lint tools
+python scripts/install_extras.py partners        # Partner IM channel SDKs
+python scripts/install_extras.py video-learning  # captions for reading/video-learning
+python scripts/install_extras.py matrix          # Matrix channel without E2EE/libolm
+python scripts/install_extras.py matrix-e2e      # Matrix E2EE; requires libolm
+python scripts/install_extras.py math-animator   # Manim addon; requires LaTeX/ffmpeg/system libs
+python scripts/install_extras.py edge-tts        # Optional free speech provider and video-lesson narration
 ```
+
+**درس فيديو:** اختر Video Lesson في المحادثة أو شغّل `deeptutor run video_lesson "Explain a concept"`. تحتاج الخلفية إلى Node.js 22+ وnpm. يُنزّل الاستخدام الأول حزم Remotion ذات الإصدارات المثبّتة ومفسّر JavaScript يعمل عبر WebAssembly؛ ولا يلزم Docker. تُجرى فحوص الإطارات داخل المفسّر دون الوصول إلى نظام ملفات المضيف أو بيانات الاعتماد أو الشبكة أو واجهات العمليات، مع حدود للذاكرة والتنفيذ. يوقف الإلغاء عملية البناء. تستخدم عمليات النشر المحلية والحاويات مسار التنفيذ نفسه، دون بديل يتجاوز صندوق الأمان. يعمل الدرس الناتج في المتصفح، مع نصوص توضيحية عندما لا يتوفر السرد الصوتي الاختياري.
 
 </details>
 
@@ -217,7 +222,7 @@ deeptutor start --dev
 - `ghcr.io/hkuds/deeptutor:latest` — أحدث إصدار مستقر
 - `ghcr.io/hkuds/deeptutor:<version>` — الإصدار المحدد بدقة من دون `v` في البداية (مثلاً `:1.6.3`)؛ لا تحصل الإصدارات الأولية إلا على وسم إصدارها
 
-> راجع [CONTAINERIZATION.md](../../docs-for-user/CONTAINERIZATION.md) لعمليات نشر podman/rootless/read-only-rootfs والدليل الكامل لكل تثبيت.
+> راجع [CONTAINERIZATION.md](../../docs-for-dev/CONTAINERIZATION.md) لعمليات نشر podman/rootless/read-only-rootfs والدليل الكامل لكل تثبيت.
 
 ```bash
 docker run --rm --name deeptutor \
@@ -287,7 +292,7 @@ docker run --rm --name deeptutor \
 
 عادةً ما يحل Docker Desktop (macOS/Windows) `host.docker.internal` بدون `--add-host`. على Linux، يُعدّ هذا العلم الطريقة المحمولة لإنشاء هذا الاسم المضيف على Docker Engine الحديث.
 
-**بديل Linux — شبكة المضيف:** أضف `--network=host` وأزل علامات `-p`. تشارك الحاوية شبكة المضيف مباشرةً، لذا افتح [http://127.0.0.1:3782](http://127.0.0.1:3782) (أو `frontend_port` في `system.json`)، ويمكن الوصول إلى خدمات المضيف بعناوين URL العادية لـ localhost مثل `http://127.0.0.1:11434/v1`. لاحظ أن شبكة المضيف تكشف منافذ الحاوية مباشرةً على المضيف وقد تتعارض مع الخدمات الموجودة — للإبقاء عليها على loopback، اضبط `BACKEND_HOST=127.0.0.1` و`FRONTEND_HOST=127.0.0.1` (راجع [CONTAINERIZATION.md](../../docs-for-user/CONTAINERIZATION.md)).
+**بديل Linux — شبكة المضيف:** أضف `--network=host` وأزل علامات `-p`. تشارك الحاوية شبكة المضيف مباشرةً، لذا افتح [http://127.0.0.1:3782](http://127.0.0.1:3782) (أو `frontend_port` في `system.json`)، ويمكن الوصول إلى خدمات المضيف بعناوين URL العادية لـ localhost مثل `http://127.0.0.1:11434/v1`. لاحظ أن شبكة المضيف تكشف منافذ الحاوية مباشرةً على المضيف وقد تتعارض مع الخدمات الموجودة — للإبقاء عليها على loopback، اضبط `BACKEND_HOST=127.0.0.1` و`FRONTEND_HOST=127.0.0.1` (راجع [CONTAINERIZATION.md](../../docs-for-dev/CONTAINERIZATION.md)).
 
 </details>
 
@@ -296,10 +301,10 @@ docker run --rm --name deeptutor \
 <details>
 <summary><b>الخيار 4 — واجهة سطر الأوامر فقط</b> · بدون واجهة ويب، من نسخة مسحوبة</summary>
 
-عندما لا تحتاج إلى واجهة مستخدم الويب. يُثبَّت حزمة CLI فقط من نسخة مسحوبة من المصدر، وليس من PyPI.
+عندما لا تحتاج إلى واجهة الويب، استخدم CLI من هذه النسخة وتجاوز إعداد Node/npm. تتيح نسخة المصدر جميع الوحدات الموجودة في المستودع وتحتاج إلى تبعياتها في Python. للتثبيت الأدنى مع الإصدار المعياري 1.7.0، استخدم حزمة wheel للنواة `deeptutor` وأضف وحدات الميزات بشكل منفصل.
 
 ```bash
-git clone https://github.com/HKUDS/DeepTutor.git
+git clone --branch dev https://github.com/HKUDS/DeepTutor.git
 cd DeepTutor
 
 # Create a venv (macOS/Linux). Windows PowerShell:
@@ -307,7 +312,8 @@ cd DeepTutor
 python3 -m venv .venv-cli && source .venv-cli/bin/activate
 python -m pip install --upgrade pip
 
-python -m pip install -e ./packaging/deeptutor-cli
+python -m pip install -r requirements/full.txt
+python -m pip install -e . --no-deps
 deeptutor init --cli
 deeptutor chat
 ```
@@ -319,9 +325,9 @@ deeptutor chat
 
 ```bash
 deeptutor chat                                          # interactive REPL
-deeptutor chat --capability deep_solve --tool rag --kb my-kb
+deeptutor chat --capability deep_solve --kb my-kb
 deeptutor run chat "Explain Fourier transform"
-deeptutor run deep_solve "Solve x^2 = 4" --tool rag --kb my-kb
+deeptutor run deep_solve "Solve x^2 = 4" --kb my-kb
 deeptutor kb create my-kb --doc textbook.pdf
 deeptutor memory show
 deeptutor config show
@@ -329,7 +335,7 @@ deeptutor config show
 
 </details>
 
-لا يشحن تثبيت `deeptutor-cli` المحلي بأصول الويب أو تبعيات الخادم. احتفظ بالنسخة المسحوبة من المصدر — يشير التثبيت القابل للتحرير إليها. لإضافة تطبيق الويب لاحقاً، ثبّت حزمة PyPI (الخيار 1) وشغّل `deeptutor init` + `deeptutor start` من نفس مساحة العمل.
+يتضمن هذا التثبيت من المصدر تبعيات الخادم، لكنه يتجاوز إعداد الواجهة الأمامية. احتفظ بنسخة المستودع، فالتثبيت القابل للتحرير يشير إليها. لإضافة واجهة الويب لاحقاً، ثبّت Node.js 22 LTS، وشغّل `npm ci --legacy-peer-deps` داخل `web/`، ثم شغّل `deeptutor init` و`deeptutor start` من جذر المشروع.
 
 </details>
 
@@ -417,21 +423,20 @@ deeptutor config show
 
 ## 📖 استكشاف DeepTutor
 
-ابدأ بالأسطح الرئيسية التي ستستخدمها يومياً: Chat وPartners وMy Agents وCo-Writer وBook ومركز المعرفة وفضاء التعلم والذاكرة والإعدادات. ثم تغطي الجولة عمليات النشر متعددة المستخدمين لمساحات العمل المشتركة المعزولة.
+ابدأ **بمساحة عمل** لمادة دراسية أو مشروع. تضم **الصفحة الرئيسية** و**التعلّم** و**الموارد** محادثاتك وأنشطتك التعليمية وموادك. ويبقى **الشركاء** و**التخصيص** مرتبطين بحسابك عبر مساحات العمل. تبيّن الجولة أدناه كيفية اتصال هذه الواجهات، ثم تتناول الإعدادات والنشر متعدد المستخدمين.
 
-إذا فقدت إجابة قيداً سابقاً، أو استشهدت بدليل ضعيف، أو خالفت المادة المحددة، فاجمع بيانات التشخيص في [`REASONING_SAFETY_CHECKLIST.md`](../../docs-for-user/REASONING_SAFETY_CHECKLIST.md) قبل فتح مشكلة.
+إذا فقدت إجابة قيداً سابقاً، أو استشهدت بدليل ضعيف، أو خالفت المادة المحددة، فاجمع بيانات التشخيص في [`REASONING_SAFETY_CHECKLIST.md`](../../docs-for-dev/REASONING_SAFETY_CHECKLIST.md) قبل فتح مشكلة.
 
 <div align="center">
-<img src="../../assets/figs/web-1.6.5/OVERVIEW.png" alt="الصفحة الرئيسية لـ DeepTutor — مساحة عمل Chat مع كل الأسطح في الشريط الجانبي" width="900">
+<img src="../../assets/figs/web-dev/overview.png" alt="الصفحة الرئيسية والتنقل بين مساحات العمل في DeepTutor" width="900">
 </div>
 
-> **حالة لقطات الشاشة:** الصورة العامة محدثة لـ v1.6.5. لقطات الواجهات أدناه لا تزال مراجع من v1.4.6 أثناء تحديثها. استخدمها لفهم سير العمل، لا كملاحة دقيقة للواجهة الحالية.
 
 <details>
 <summary><b>🏗️ معمارية النظام</b></summary>
 
 <div align="center">
-<img src="../../assets/figs/system/system%20architecture.png" alt="معمارية نظام DeepTutor" width="900">
+<img src="../../assets/figs/system/system-architecture.svg" alt="معمارية نظام DeepTutor" width="900">
 </div>
 
 </details>
@@ -442,20 +447,20 @@ deeptutor config show
 Chat هي القدرة الافتراضية والمكان الذي يبدأ فيه معظم العمل. يمكن لخيط واحد أن يتحدث عادياً، ويستدعي الأدوات، ويرتكز على قواعد المعرفة المحددة، ويقرأ المرفقات، ويولّد الصور، ويستشير الوكلاء الفرعيين، ويكتب سجلات دفتر الملاحظات، ويستمر بنفس السياق عبر الأدوار.
 
 <div align="center">
-<img src="../../assets/figs/web-1.4.6+/home/00-overview.png" alt="مساحة عمل محادثة DeepTutor" width="900">
+<img src="../../assets/figs/web-dev/chat.png" alt="مساحة عمل محادثة DeepTutor" width="900">
 </div>
 
-الحلقة بسيطة عمداً: يفكر النموذج في جولات، ويستدعي الأدوات عند الحاجة، ويلاحظ النتائج، وينتهي برسالة خالية من الأدوات. `ask_user` خاص — بدلاً من التخمين، يمكن للوكيل إيقاف الدور مؤقتاً، وطرح سؤال توضيحي منظَّم، والاستئناف بمجرد إجابتك.
+يستدعي المدرّس الأدوات حسب الحاجة ويمكنه التوقف لطرح أسئلة توضيحية. يتيح **تخصيص الصفحة** في أعلى اليمين اختيار الأوضاع الظاهرة وعناصر التحكم في المهارات وMCP والشركاء والتفضيلات والإدخال الصوتي. ضمن **مطالبات البداية**، أضف عناوين ومطالبات «اشرح» و«حلّ» و«تدرّب» و«خطّط» و«ابحث»، أو عدّلها أو احذفها. يطبّق الحفظ تفضيلات حسابك؛ ويلغي الإلغاء التعديلات، بينما تعيد استعادة الافتراضيات الخيارات الأصلية.
 
 <div align="center">
-<img src="../../assets/figs/system/chat-agent-loop.png" alt="حلقة وكيل محادثة DeepTutor" width="900">
+<img src="../../assets/figs/system/chat-agent-loop.svg" alt="حلقة وكيل محادثة DeepTutor" width="900">
 </div>
 
-الأدوات القابلة للتبديل من قِبَل المستخدم هي `brainstorm` و`web_search` و`paper_search` و`zotero_search` و`reason` و`geogebra_analysis` — بالإضافة إلى `imagegen` و`videogen` بمجرد تهيئة نموذج التوليد المطابق. الأدوات السياقية مثل `rag` و`kb_files` و`knowledge_frontier` و`read_source` و`read_memory` و`write_memory` و`read_skill` و`load_tools` و`exec` و`web_fetch` و`ask_user` و`list_notebook` و`write_note` و`question_bank` و`github` و`consult_subagent` و`workspace_list` و`workspace_read` و`workspace_search` و`workspace_present` و`workspace_export` تُثبَّت تلقائياً عندما يكون للدور السياق الصحيح.
+الأدوات القابلة للتبديل من قِبَل المستخدم هي `brainstorm` و`web_search` و`paper_search` و`zotero_search` و`reason` و`geogebra_analysis` — بالإضافة إلى `imagegen` و`videogen` بمجرد تهيئة نموذج التوليد المطابق. الأدوات السياقية مثل `rag` و`kb_files` و`knowledge_frontier` و`read_source` و`read_memory` و`write_memory` و`read_skill` و`load_tools` و`exec` و`web_fetch` و`ask_user` و`list_favorites` و`save_favorite` و`write_note` و`search_notes` و`question_bank` و`github` و`consult_subagent` و`workspace_list` و`workspace_read` و`workspace_search` و`workspace_present` و`workspace_export` تُثبَّت تلقائياً عندما يكون للدور السياق الصحيح.
 
 يأتي السياق في نوعين: يستمر **السياق الثابت للجلسة** (القدرة، ومساحة العمل أو الدورة، والأدوات، وقواعد المعرفة، والشخصية، والنموذج، وحالة Reading / Mastery) عبر الأدوار؛ وتأتي **المراجع لمرة واحدة** (الملفات وتاريخ المحادثة والكتب وأقسام القراءة ودفاتر الملاحظات ومدخلات بنك الأسئلة المحددة والوكلاء المستوردون) من قائمة `+` لدور واحد. ولا يفعل زر الصوت سوى تفريغ الرسالة الحالية نصياً.
 
-تُبقي الصفحة الرئيسية **Chat** و**Ask Questions** و**Quiz** و**Visualize** على بُعد نقرة واحدة؛ وتقع **Research** للتقارير المستشهَد بها و**Solve** للاستدلال المشروح تحت *المزيد من القدرات*. يجمع **التعلم المخصص** كلاً من Book و**Mastery Path** و**Immersive Reading** و**التدريب**؛ وتجمع Reading المستندات والفيديو والصوت مع استشهادات موثَّقة وملاحظات محفوظة وقراءة طبيعية بصوت عالٍ من مقاطع المصدر / إجراءات الإرشاد الدراسي / المفردات / الاختبار / الترجمة، والتقاط إلى دفتر الملاحظات، بينما يحتفظ Course Study بسياقه المرتبط بالدورة.
+مع مجموعة التثبيت الكاملة، تتيح الصفحة الرئيسية **Chat** و**Ask Questions** و**Quiz** و**Visualize** و**Video Lesson** بنقرة واحدة؛ وتقع **Research** للتقارير ذات الاستشهادات و**Solve** للاستدلال المشروح تحت *المزيد من القدرات*. يفتح **التعلّم ← تعلّم جديد**، فوق جميع أنشطة التعلّم، صفحة مخصصة للكتب و**Mastery Path** و**Immersive Reading** و**التدريب**. يتيح عنصر **تخصيص الصفحة** إخفاء طرق التعلّم أو استعادتها دون تغيير السجلات الحالية؛ وتبقى الوحدات غير المتاحة مستبعدة. تجمع Reading المستندات والفيديو والصوت مع استشهادات موثّقة وملاحظات محفوظة وقراءة طبيعية بصوت عالٍ من مقاطع المصدر / إجراءات الإرشاد الدراسي / المفردات / الاختبار / الترجمة، والتقاط المحتوى إلى دفتر الملاحظات.
 
 </details>
 
@@ -463,19 +468,19 @@ Chat هي القدرة الافتراضية والمكان الذي يبدأ ف�
 <summary><b>🤝 Partner — رفاق دائمون على نفس الدماغ</b></summary>
 
 <div align="center">
-<img src="../../assets/figs/web-1.4.6+/partners/00-partners%20overview.png" alt="مساحة عمل شركاء DeepTutor" width="900">
+<img src="../../assets/figs/web-dev/partners.png" alt="مساحة عمل شركاء DeepTutor" width="900">
 </div>
 
-الشركاء هم رفاق دائمون بروحهم الخاصة وسياسة النموذج ومكتبتهم وذاكرتهم وقنواتهم. إنهم ليسوا محرك بوت منفصلاً: كل رسالة ويب أو IM واردة تصبح دوراً عادياً لـ `ChatOrchestrator` داخل مساحة عمل محدودة بنطاق الشريك. الشريك هو "محادثة لها شخصية ورقم هاتف".
+الشركاء هم رفاق دائمون بروحهم الخاصة وسياسة النموذج ومكتبتهم وذاكرتهم وقنواتهم. إنهم ليسوا محرك بوت منفصلاً: كل رسالة ويب أو IM واردة تصبح دوراً عادياً لـ `ChatOrchestrator` داخل مساحة عمل المحتوى الخاصة به أو المرتبطة به. الشريك هو "محادثة لها شخصية ورقم هاتف".
 
 <div align="center">
 <img src="../../assets/figs/system/partners-architecture.png" alt="معمارية شركاء DeepTutor" width="900">
 </div>
 
-لكل شريك `SOUL.md` واختيار نموذج وقنوات وسياسة أدوات ومكتبة مخصصة. تنسخ مكتبته قواعد المعرفة والمهارات ودفاتر الملاحظات إلى `data/partners/<id>/workspace/`، أو تبقى مرتبطة بملفات مساحة عمل موجودة ومواردها؛ وتظل هوية الشريك ومحادثاته وذاكرة Partner منفصلة. يحتفظ المستخدمون غير المشرفين الذين تمت مصادقتهم بجلسات Partner وذاكرة علاقة خاصة، بينما يقرأ Partner ذاكرتهم الشخصية للقراءة فقط؛ وتستخدم حركة مرور المشرفين والمجموعات وغير المرتبطة نطاق Partner المشترك.
+لكل شريك `SOUL.md` واختيار نموذج وقنوات وسياسة أدوات ومكتبة مخصصة. تنسخ مكتبته قواعد المعرفة والمهارات ومجموعات المفضلة إلى `data/partners/<id>/workspace/`، أو تبقى مرتبطة بملفات مساحة عمل موجودة ومواردها؛ وتظل هوية الشريك ومحادثاته وذاكرة Partner منفصلة. يحتفظ المستخدمون غير المشرفين الذين تمت مصادقتهم بجلسات Partner وذاكرة علاقة خاصة، بينما يقرأ Partner ذاكرتهم الشخصية للقراءة فقط؛ وتستخدم حركة مرور المشرفين والمجموعات وغير المرتبطة نطاق Partner المشترك.
 
 <div align="center">
-<img src="../../assets/figs/web-1.4.6+/partners/02-IM%20config%20for%20each%20partner.png" alt="إعداد قناة IM لكل شريك" width="900">
+<img src="../../assets/figs/web-dev/partners-channels.png" alt="إعداد قناة IM لكل شريك" width="900">
 </div>
 
 طبقة القناة مدفوعة بالمخطط ويمكنها الاتصال بمنصات IM مثل Feishu وTelegram وSlack وDiscord وDingTalk وQQ/NapCat وWeCom وWhatsApp وZulip وMattermost وMatrix وMochat وMicrosoft Teams بناءً على الإضافات المثبتة والبيانات الاعتمادية المهيأة. يمكن أيضاً توصيل الشريك كوكيل فرعي واستشارته من دور محادثة عادي — راجع **My Agents** أدناه.
@@ -488,7 +493,7 @@ Chat هي القدرة الافتراضية والمكان الذي يبدأ ف�
 <summary><b>🧑‍🚀 My Agents — استشارة واستيراد الوكلاء الآخرين</b></summary>
 
 <div align="center">
-<img src="../../assets/figs/web-1.4.6+/myagents/00-overview.png" alt="مساحة عمل My Agents في DeepTutor" width="900">
+<img src="../../assets/figs/web-dev/agents.png" alt="مساحة عمل My Agents في DeepTutor" width="900">
 </div>
 
 يحوّل My Agents الوكلاء الآخرين إلى سياق لـ DeepTutor، ويقوم بشيئين متمايزين. **توصيل وكيل مباشر** — Claude Code أو Codex أو Grok CLI أو Antigravity أو Kimi أو opencode أو MiMo Code أو Hermes Agent أو OpenClaw أو DeepSeek Harness على جهازك، أو بوابة Hermes بعيدة، أو أحد Partners لديك — واستشارته من داخل دور محادثة: DeepTutor *يشغّل* الوكيل الآخر فعلاً ويبث عمله إلى لوحة Activity عبر أداة `consult_subagent`. اختره وحدّد له الحد الأقصى للجولات باستخدام شريحة Agent، أو صفِّ قائمة الوكلاء المتصلين نفسها باستخدام `@`؛ ويبقى اختيارك مرتبطاً بالجلسة.
@@ -500,7 +505,7 @@ Chat هي القدرة الافتراضية والمكان الذي يبدأ ف�
 يستخدم Grok مصادقته وتخزين جلسته الخاصين؛ ولا ينسخ DeepTutor بيانات اعتماده. تستأنف الاستشارات اللاحقة جلسة الاتصال نفسها في دليل العمل نفسه. يُبث النص ونشاط الأدوات مباشرة؛ وتُحذَف حمولات التفكير الخاصة. تُعطَّل ذاكرة Grok عبر الجلسات افتراضياً. يدعم هذا الموصِّل الأسئلة النصية وأدوات CLI، لا إعادة توجيه الصور أو استيراد محادثات Grok السابقة. في Docker، ثبّت Grok وصادِق عليه داخل حاوية الخلفية؛ فـ CLI المثبَّت فقط على جهاز المتصفح لا يمكن الوصول إليه.
 
 <div align="center">
-<img src="../../assets/figs/web-1.4.6+/home/08-subagent%20demo%20with%20claude%20code.png" alt="استشارة وكيل Claude Code الفرعي مباشرةً" width="900">
+<img src="../../assets/figs/web-dev/personalization.png" alt="تخصيص الحساب: الوكلاء والشخصيات والمهارات والاتصالات" width="900">
 </div>
 
 **استيراد المحادثات السابقة** — أحضر تاريخ ChatGPT وClaude Code وCodex الموجود لديك كمحادثات قابلة للبحث والاستئناف. اختر ملف `conversations.json` من تصدير بيانات ChatGPT رسمي لاستيراد لقطة آمنة ومتكافئة القوة (idempotent)، أو اختر تاريخ Claude حسب المشروع / دليل العمل، أو اختر تاريخ Codex حسب تاريخ التقويم. يبقى الوكلاء المستندون إلى مجلد قابلين للتحديث بحيث يمكن للنطاق المحدد أن يسحب محادثات جديدة. ارجع إلى إحداها من دور Chat عبر `+` ← My Agents، وسيقرأها DeepTutor كنصوص محادثة لطرف ثالث — تبقى *محادثتهم*، وليس صوت DeepTutor الخاص.
@@ -508,19 +513,19 @@ Chat هي القدرة الافتراضية والمكان الذي يبدأ ف�
 </details>
 
 <details>
-<summary><b>✍️ Co-Writer — صياغة Markdown واعية بالتحديد</b></summary>
+<summary><b>✍️ دفتر التعلّم — الصفحات والمصادر وDito</b></summary>
 
 <div align="center">
-<img src="../../assets/figs/web-1.4.6+/co-writer/00-overview.png" alt="مساحة عمل Co-Writer في DeepTutor" width="900">
+<img src="../../assets/figs/web-dev/co-writer.png" alt="صفحات دفتر التعلّم" width="900">
 </div>
 
-Co-Writer هو مساحة عمل Markdown ذات عرض مقسَّم للتقارير والدروس التعليمية والملاحظات والقطع التعليمية الطويلة. تحفظ المستندات تلقائياً وتُظهر معاينة مباشرة (رياضيات KaTeX وأسوار الرسم البياني)، ويمكن حفظها مرة أخرى في دفاتر الملاحظات عندما تصبح المسودة سياقاً قابلاً لإعادة الاستخدام. استورد ملف `.docx` لبدء مسودة جديدة، وصَدِّر المحرر الحالي كـ Markdown أو Word.
+ينظّم دفتر التعلّم، المعروف سابقاً باسم Co-Writer، كتاباتك في صفحات وصفحات فرعية وكتل داخل مساحة العمل النشطة. استورد مستندات Word، ورتّب شجرة الصفحات، وأدرج السجلات الأصلية من المفضلة كأدلة. تعرض الصفحات حالة الحفظ بوضوح وتُصدَّر إلى Markdown أو Word؛ ويصبح المحتوى التفاعلي ثابتاً في Word.
 
 <div align="center">
-<img src="../../assets/figs/web-1.4.6+/co-writer/01-edit%20panel.png" alt="محرر Co-Writer مع معاينة مباشرة" width="900">
+<img src="../../assets/figs/web-dev/notebook-detail.png" alt="محرر كتل دفتر التعلّم وDito" width="900">
 </div>
 
-الفكرة المحورية هي **التحرير الجراحي**: حدد نطاقاً واطلب من DeepTutor إعادة كتابته أو توسيعه أو تقصيره. اختر نموذج التحرير؛ ويمكنه استخدام قاعدة معرفة أو أدلة من الويب، ويحتفظ بأثر استدعاءات أدواته. وإذا لم تتغير المسودة أثناء عمله، تستبدل النتيجة النص المحدد مباشرةً وتظل قابلة للعكس باستخدام **Undo**.
+ناقش مقطعاً أو كتلة مع **Dito**: اطلب شرحاً أو مثالاً أو إعادة صياغة أو سؤالاً تدريبياً. تبقى المحادثات مرتبطة بالصفحة والسطر المعنيين. راجع التعديلات المقترحة قبل قبولها، أو أدرج إجابة أسفل السطر وواصل العمل. تحفظ المفضلة سجلات المصادر؛ أما دفتر التعلّم فهو المكان الذي تبني فيه فهمك الخاص.
 
 </details>
 
@@ -528,17 +533,17 @@ Co-Writer هو مساحة عمل Markdown ذات عرض مقسَّم للتقا�
 <summary><b>📖 Book — كتب حية من موادك</b></summary>
 
 <div align="center">
-<img src="../../assets/figs/web-1.4.6+/book/00-book_overview.png" alt="مكتبة كتب DeepTutor" width="900">
+<img src="../../assets/figs/web-dev/books.png" alt="مكتبة كتب DeepTutor" width="900">
 </div>
 
-يحوّل Book المصادر المحددة إلى **كتاب حي** تفاعلي — ليس PDF ثابتاً، بل بيئة قراءة مبنية من كتل مكتوبة. يمكن أن يبدأ الكتاب من قواعد المعرفة أو دفاتر الملاحظات أو بنوك الأسئلة أو تاريخ المحادثة؛ يقترح تدفق الإنشاء هيكل فصل قبل توليد المحتوى، لذا تراجع الشكل بدلاً من قبول مخرجات عشوائية.
+يحوّل Book المصادر المحددة إلى **كتاب حي** تفاعلي — ليس PDF ثابتاً، بل بيئة قراءة مبنية من كتل مكتوبة. يمكن أن يبدأ الكتاب من قواعد المعرفة أو المفضلة أو بنوك الأسئلة أو تاريخ المحادثة؛ يقترح تدفق الإنشاء هيكل فصل قبل توليد المحتوى، لذا تراجع الشكل بدلاً من قبول مخرجات عشوائية.
 
 <p align="center">
-<img src="../../assets/figs/web-1.4.6+/book/01-book-demo-quiz%20card.png" alt="كتلة اختبار في الكتاب" width="31%">
+<img src="../../assets/figs/web-dev/book-quiz.png" alt="كتلة اختبار في الكتاب" width="31%">
 &nbsp;
-<img src="../../assets/figs/web-1.4.6+/book/02-book-demo-manim%20video.png" alt="كتلة رسوم متحركة Manim في الكتاب" width="31%">
+<img src="../../assets/figs/web-dev/book-detail.png" alt="مخطط الكتاب وفصوله" width="31%">
 &nbsp;
-<img src="../../assets/figs/web-1.4.6+/book/03-book-demo%20interactive%20module.png" alt="كتلة ودجت تفاعلية في الكتاب" width="31%">
+<img src="../../assets/figs/web-dev/book-widget.png" alt="كتلة ودجت تفاعلية في الكتاب" width="31%">
 </p>
 
 يُجمِّع كل فصل إلى كتل ذات أنواع محددة وقابلة للتحرير — نصوص وتنبيهات واختبارات وبطاقات فلاش وجداول زمنية ورمز وأشكال وHTML تفاعلية ورسوم متحركة وأشكال مفاهيم وغوص عميق وملاحظات مستخدم — وله Page Chat الخاصة به. أدرج كتلة أو حرّكها أو أعد توليدها أو كتابتها أو غيّر نوعها؛ وتدخل المقاطع المحددة إلى صندوق وارد لمقتطفات التعلّم يمكن مراجعته. يبقى التقدّم والإشارات المرجعية ومحاولات الاختبار ومقتطفات التعلّم وPage Chat خاصاً بكل قارئ، حتى عندما يشارك المشرف كتاباً للقراءة فقط أو للتحرير التعاوني؛ ويظل حذف الكتب المشتركة مقصوراً على المشرف. يمكن تصدير أي كتاب إلى Markdown، وتتوقف عمليات التجميع الطويلة مؤقتاً وتُستأنف، ويكشف `deeptutor book health` / `refresh-fingerprints` عن انجراف المصادر.
@@ -549,16 +554,16 @@ Co-Writer هو مساحة عمل Markdown ذات عرض مقسَّم للتقا�
 <summary><b>📚 مركز المعرفة — مكتبات RAG متعددة المحركات</b></summary>
 
 <div align="center">
-<img src="../../assets/figs/web-1.4.6+/knowledge/00-overview.png" alt="مركز المعرفة في DeepTutor" width="900">
+<img src="../../assets/figs/web-dev/knowledge.png" alt="مركز المعرفة في DeepTutor" width="900">
 </div>
 
-قواعد المعرفة هي مجموعات المستندات وراء RAG — إنها ترسّخ أدوار Chat وتحرير Co-Writer وتوليد Book ومحادثات Partner. ما يميزها هو **اختيار محرك الاسترجاع**: **LlamaIndex** (الافتراضي، مزيج من المتجهات + BM25 مع إعادة ترتيب اختيارية بمرمّز متقاطع وفهارس FAISS من نوع exact-flat أو HNSW)، **PageIndex** (استرجاع تفكيري مع استشهادات على مستوى الصفحة، مستضاف أو مفتوح المصدر ذاتي الاستضافة)، **GraphRAG** و**LightRAG** (استرجاع قائم على الرسم البياني المعرفي)، **LightRAG Server** (استرجاع مُحال إلى نسخة LightRAG خارجية تتصل بها عبر HTTP)، **WeKnora** (استرجاع من قاعدة معرفة في نشرك ذاتي الاستضافة، بلا فهرس محلي أو نسخة من المستند)، **Tencent IMA** (مكتبة تنظّمها ضمن IMA — يُبحث فيها ويُتصفَّح ويُكتَب إليها عبر OpenAPI الخاصة بها)، **MarginNote 4** (بيانات دراستك في MN4 — المستندات والمقتطفات وبطاقات الخريطة الذهنية والروابط بينها — التي تدفعها إضافة (Add-on) التطبيق ويتم التنقل فيها بأدوات مخصصة)، **Kiwix** (أرشيف ZIM قابل للبحث يُقدَّم عبر HTTP دون فهرسة محلية)، أو مخزن **Obsidian** مرتبط يقرأ المدرس ويكتب فيه في مكانه. كل قاعدة معرفة مرتبطة بمحرك واحد.
+قواعد المعرفة هي مجموعات المستندات وراء RAG — إنها ترسّخ أدوار Chat وتحرير دفتر التعلّم وتوليد Book ومحادثات Partner. ما يميزها هو **اختيار محرك الاسترجاع**: **LlamaIndex** (الافتراضي، مزيج من المتجهات + BM25 مع إعادة ترتيب اختيارية بمرمّز متقاطع وفهارس FAISS من نوع exact-flat أو HNSW)، **PageIndex** (استرجاع تفكيري مع استشهادات على مستوى الصفحة، مستضاف أو مفتوح المصدر ذاتي الاستضافة)، **GraphRAG** و**LightRAG** (استرجاع قائم على الرسم البياني المعرفي)، **LightRAG Server** (استرجاع مُحال إلى نسخة LightRAG خارجية تتصل بها عبر HTTP)، **WeKnora** (استرجاع من قاعدة معرفة في نشرك ذاتي الاستضافة، بلا فهرس محلي أو نسخة من المستند)، **Tencent IMA** (مكتبة تنظّمها ضمن IMA — يُبحث فيها ويُتصفَّح ويُكتَب إليها عبر OpenAPI الخاصة بها)، **MarginNote 4** (بيانات دراستك في MN4 — المستندات والمقتطفات وبطاقات الخريطة الذهنية والروابط بينها — التي تدفعها إضافة (Add-on) التطبيق ويتم التنقل فيها بأدوات مخصصة)، **Kiwix** (أرشيف ZIM قابل للبحث يُقدَّم عبر HTTP دون فهرسة محلية)، أو مخزن **Obsidian** مرتبط يقرأ المدرس ويكتب فيه في مكانه. كل قاعدة معرفة مرتبطة بمحرك واحد.
 
 <div align="center">
-<img src="../../assets/figs/web-1.4.6+/knowledge/01-create%20knowledge%20base.png" alt="إنشاء قاعدة معرفة" width="900">
+<img src="../../assets/figs/web-dev/knowledge-create.png" alt="إنشاء قاعدة معرفة" width="900">
 </div>
 
-هل تنقل مكتبة Obsidian أو Hermes أو Markdown موجودة؟ راجع [دليل نقل المعرفة](../../docs-for-user/KNOWLEDGE_MIGRATION.md) لمساري المخزن المتصل والنسخة المفهرسة.
+هل تنقل مكتبة Obsidian أو Hermes أو Markdown موجودة؟ راجع [دليل نقل المعرفة](../../docs-for-dev/KNOWLEDGE_MIGRATION.md) لمساري المخزن المتصل والنسخة المفهرسة.
 
 عند إنشاء قاعدة معرفة، يمكنك **إنشاء جديدة** (تحميل المستندات وفهرستها)، أو **ربط موجودة** (إعادة استخدام فهرس في مكانه)، أو **توصيل Kiwix** (البحث عند الطلب في أرشيف ZIM واحد يقدّمه خادم). اختر مساحة عمل التخزين عند الإنشاء؛ ويمكن نقل قاعدة معرفة موجودة بين مساحات العمل بعد معاينة، مع الاحتفاظ بالتعيينات والمراجع المحفوظة. يمكن لقاعدة المعرفة أيضاً تتبُّع **مستودعات GitHub** (المستودع والفرع ونمط glob) أو **عناوين URL لمواقع التوثيق** (مع حدود لعمق الزحف وعدد الصفحات، وتُعاد مزامنتها كل 24 ساعة افتراضياً)؛ تقارن المزامنة تجزئات المحتوى لتحديد ما أُضيف أو تغيّر أو أُزيل، كي تبقى الوثائق التي تتابعها محدَّثة دون إعادة رفع، وتلتقط **المجلدات المرتبطة** الملفات المحلية الجديدة أو المتغيرة عند المزامنة. تكتب إعادة الفهرسة دليل `version-N` مسطحاً جديداً وتحتفظ بالسابقة، لذا لا يُدمَّر فهرس عامل أبداً أثناء إعادة البناء. يمكن إزالة مستند واحد حتى من قاعدة في حالة **خطأ** — إسقاط ملف فشل تحليله بدون حذف وإعادة بناء كاملين. يُختار تحليل المستندات — نص فقط أو MinerU أو Docling أو Tika أو markitdown أو PyMuPDF4LLM أو LiteParse — ونموذج اختياري لوصف الصور في **الإعدادات ← المعرفة والمستندات**، مع إيقاف تنزيلات النماذج المحلية افتراضياً. يمكن لـ Docling أيضاً العمل في وضع **بعيد** مقابل خادم Docling Serve (بلا حاجة إلى تثبيت محلي أو نماذج)، يُهيَّأ في الصفحة نفسها (`mode=remote`، وعنوان URL أساسي للخادم، ومفتاح API اختياري) أو متغيرات البيئة `DOCLING_MODE` / `DOCLING_API_BASE_URL` / `DOCLING_API_TOKEN`. أما Tika فهو بعيد فقط ويشير إلى خادم Apache Tika المهيَّأ في تلك الصفحة. تعكس واجهة CLI دورة الحياة عبر `list/info/create/connect-kiwix/add/search/eval/eval-diff/set-default/delete`، وأوامر إضافة المصادر وإزالتها، و`list-sources`، و`sync`.
 
@@ -575,16 +580,16 @@ Co-Writer هو مساحة عمل Markdown ذات عرض مقسَّم للتقا�
 </details>
 
 <details>
-<summary><b>🌐 فضاء التعلم — المهارات والشخصيات والسياق القابل لإعادة الاستخدام</b></summary>
+<summary><b>🌐 الموارد والتخصيص — المواد والمساعدة القابلة لإعادة الاستخدام</b></summary>
 
 <div align="center">
-<img src="../../assets/figs/web-1.4.6+/learning-space/00-overview.png" alt="مركز فضاء التعلم في DeepTutor" width="900">
+<img src="../../assets/figs/web-dev/resources.png" alt="الموارد في مساحة العمل النشطة" width="900">
 </div>
 
-فضاء التعلم هو طبقة المكتبة والتنظيم والتخصيص. تضم **المحادثات والمواد** سجل Chat ودفاتر الملاحظات بسجلات قابلة للنقل وتصدير إلى Markdown، وبنك أسئلة مع الإجابات والشروح. ابدأ **التدريب** من مجموعة أسئلة محددة في بنك الأسئلة أو من التعلم المخصص لجلسات المراجعة وتتبع الأخطاء والتكرار المجدول. أما **التخصيص** فيضم الشخصيات والمهارات (أدلة `SKILL.md`) و**خدمات MCP** التي تُثبَّت بنقرة واحدة و**تطبيقات CLI** من كتالوج [CLI-Anything](https://github.com/HKUDS/CLI-Anything)، ولكل تطبيق دليل استخدام يُحمَّل عند الطلب. وتجمع مساحة **دوراتي** المنفصلة محادثات المواد ومحادثات المدرّسين؛ ولا يُتاح كل أصل إلا في سير العمل التي تدعمه.
+تجمع **الموارد** سجل المحادثات و**المفضلة** بسجلات قابلة للنقل وتصدير إلى Markdown، و**يوميات التعلّم**، ومركز المعرفة، وبنك أسئلة مع الإجابات والشروح. ابدأ **التدريب** من مجموعة أسئلة محددة في بنك الأسئلة أو من **التعلّم ← التدريب** لجلسات المراجعة وتتبع الأخطاء والتكرار المجدول. تضم صفحة **التخصيص** المنفصلة الشخصيات والمهارات (أدلة `SKILL.md`) و**خدمات MCP** بنقرة واحدة و**تطبيقات CLI** من كتالوج [CLI-Anything](https://github.com/HKUDS/CLI-Anything)، ولكل تطبيق دليل استخدام عند الطلب. ويجمع **التعلّم** الكتب ومسارات الإتقان ومجموعات القراءة ومحادثات المدرّسين المرتبطة بها؛ ولا يُتاح كل أصل إلا في سير العمل التي تدعمه.
 
 <div align="center">
-<img src="../../assets/figs/web-1.4.6+/learning-space/07-%20download%20skills%20from%20eduhub.png" alt="استيراد مهارات من EduHub" width="900">
+<img src="../../assets/figs/web-dev/skills.png" alt="مكتبة مهارات التخصيص" width="900">
 </div>
 
 لا يجب عليك كتابة كل مهارة بنفسك — **الاستيراد من EduHub** يتصفح الكتالوج المجتمعي ويُنزّل المهارة مباشرةً إلى مكتبتك من خلال بوابة أمان (راجع [النظام البيئي](#-النظام-البيئي--eduhub-ومجتمع-المهارات)).
@@ -595,13 +600,13 @@ Co-Writer هو مساحة عمل Markdown ذات عرض مقسَّم للتقا�
 <summary><b>🧠 Memory — تخصيص قابل للتدقيق</b></summary>
 
 <div align="center">
-<img src="../../assets/figs/web-1.4.6+/memory/00-overview.png" alt="نظرة عامة على ذاكرة DeepTutor" width="900">
+<img src="../../assets/figs/web-dev/memory.png" alt="نظرة عامة على ذاكرة DeepTutor" width="900">
 </div>
 
 الذاكرة نظام ثلاثي الطبقات مدعوم بالملفات يمكنك قراءته وتنظيمه ومراجعته — وهو عمداً *ليس* مخزناً مخفياً للمتجهات. **L1** هو مرآة مساحة العمل بالإضافة إلى آثار أحداث تراكمية فقط (`trace/<surface>/<date>.jsonl`)؛ **L2** هو حقائق منظَّمة لكل سطح (`L2/<surface>.md`) مع مراجع إلى كيانات L1؛ و**L3** هو تركيب عبر الأسطح (`L3/<profile|recent|scope|preferences>.md`) يسجل أسطح L2 المساهمة فيه.
 
 <div align="center">
-<img src="../../assets/figs/web-1.4.6+/memory/01-3%20layer%20memory%20graph.png" alt="رسم بياني لذاكرة DeepTutor" width="900">
+<img src="../../assets/figs/web-dev/memory-graph.png" alt="رسم بياني لذاكرة DeepTutor" width="900">
 </div>
 
 يُظهر Memory Graph الهرم بأكمله — تركيب L3 في المركز وL2 في الحلقة الوسطى وآثار L1 في الخارج — مع حواف أدلة دقيقة تربط حقائق L2 بأدلة L1، وروابط تصل تركيب L3 بالأسطح المساهمة. تُتتبع الذاكرة عبر أسطح `chat` و`notebook` و`quiz` و`kb` و`book` والشريك و`cowriter`؛ وتُضبط ميزانيات تحديث الموحّد / تدقيقه / إلغاء تكراره في **الإعدادات ← الذاكرة**.
@@ -612,7 +617,7 @@ Co-Writer هو مساحة عمل Markdown ذات عرض مقسَّم للتقا�
 <summary><b>⚙️ الإعدادات — لوحة تحكم واحدة</b></summary>
 
 <div align="center">
-<img src="../../assets/figs/web-1.4.6+/settings/00-setting%20overview.png" alt="مركز إعدادات DeepTutor" width="900">
+<img src="../../assets/figs/web-dev/settings.png" alt="التنقل في الإعدادات" width="900">
 </div>
 
 الإعدادات هي لوحة التحكم التشغيلية، وتُفتح على صفحة **عام** لضبط لغة الواجهة ومخرجات النموذج. يربط شريط التنقل القابل للبحث صفحات مستقلة: تضم **شخصي** مساحات العمل ونقل البيانات والمظهر وإحصاءات الاستخدام؛ وتضم **التعلم والمحادثة** نقاط الانطلاق والمرفقات وVideo Learning وعناصر تحكم المتعلم وولي الأمر وتقدّم التعلّم والذاكرة؛ وتضم **النماذج والخدمات** المزودين ونماذج اللغة ونماذج المهام والتضمين والبحث والصوت والتوليد متعدد الوسائط؛ وتضم **الميزات والتكاملات** الأدوات ومعاملات القدرات والشركاء والوكلاء والمعرفة والمستندات. يضم **النظام** الشبكة وحالة التشغيل وحول؛ وتتيح **المحادثات المؤرشفة** البحث في المحادثات المؤرشفة واستعادتها أو حذفها نهائياً. تحتوي حالة التشغيل على سلامة الخلفية والذاكرة المقيمة ومصفوفة **جاهزية** (Readiness) التي تقيّم عوائق القدرات وتحذيراتها واقتراحاتها. تفصل مساحات العمل ملفات المواضيع وحالة التعلم، مع نقل موثَّق وتصدير ضمن نقل البيانات. يحتفظ **المزود** بعنوان مقدم الخدمة وبيانات اعتماده لتعيد نماذج خدماته استخدامها؛ وتختار صفحات النماذج مزودين محفوظين وتضبط أسماء النماذج وقدراتها. تُثبّت **نماذج المهام** نموذجاً صغيراً وسريعاً للأعمال الخلفية — تسمية المحادثات وكتابة نقاط الانطلاق — وتستخدم النموذج الافتراضي النشط عند تركها فارغة. يجمع الصوت توليد الكلام وتفريغه؛ ويجمع التوليد متعدد الوسائط نماذج الصور والفيديو. تضبط صفحة الشركاء والوكلاء المُشغِّلات المحلية وبوابة Hermes بعيدة.
@@ -622,10 +627,10 @@ Co-Writer هو مساحة عمل Markdown ذات عرض مقسَّم للتقا�
 **الكلام عبر MiniMax** — في الإعدادات ← الصوت، اختر MiniMax لتحويل النص إلى كلام وحدّد `speech-2.8-hd`. هيّئ مفتاح API لـ MiniMax واختر صراحةً صوتاً من أصوات النظام أو أدخل معرّف صوت مخصص. عنوان API الأساسي الافتراضي هو `https://api.minimax.io/v1`؛ ولمنطقة الصين استخدم `https://api.minimaxi.com/v1`. تستخدم القراءة بصوت عالٍ ومعاينات الصوت نقطة نهاية الكلام الأصلية، مع إخراج MP3 أو WAV أو FLAC أو PCM، وعناصر تحكم في معدل أخذ العينات والسرعة واللغة. راجع [واجهة API للكلام في MiniMax](https://platform.minimax.io/docs/api-reference/speech-t2a-http) لمعرّفات الأصوات وتوفرها للحساب.
 
 
-**Video Learning** ضمن الإعدادات ← التعلم والمحادثة يهيّئ ترجمات YouTube والوصول إلى Invidious لاستخدامهما في Reading. لاستخدام Invidious، اضبط أصل API الخلفية الذي يديره المشرف (مثلاً `http://127.0.0.1:3000`) والأصل العام الذي يمكن للمتصفح الوصول إليه، واختبر الاتصال، واختر Invidious، ثم احفظ. يبحث **تصفّح Invidious** في مربع حوار إضافة المواد في Reading عن مقاطع الفيديو ويتيح الوصول إلى الاشتراكات وقوائم التشغيل المتصلة. يستخدم تشغيل YouTube المشغّل الرسمي المعزَّز للخصوصية؛ ويظل غياب الترجمات ظاهراً ويحدّ من الأدلة المتاحة للمدرّس دون تعطيل التشغيل الأصلي. ثبّت `.[video-learning]` لاستخدام مُحمِّل ترجمات YouTube الافتراضي. تنتقل روابط Watching الموجودة إلى Reading مع الحفاظ على سجل المحادثة والنصوص المفرّغة المتوافقة والملاحظات والتقدّم؛ وتصبح الملاحظات الزمنية الجديدة تعليقات Reading التوضيحية. يستخدم Bilibili مساره الخاص للتشغيل والترجمات.
+**Video Learning** ضمن الإعدادات ← التعلم والمحادثة يهيّئ ترجمات YouTube والوصول إلى Invidious لاستخدامهما في Reading. لاستخدام Invidious، اضبط أصل API الخلفية الذي يديره المشرف (مثلاً `http://127.0.0.1:3000`) والأصل العام الذي يمكن للمتصفح الوصول إليه، واختبر الاتصال، واختر Invidious، ثم احفظ. يبحث **تصفّح Invidious** في مربع حوار إضافة المواد في Reading عن مقاطع الفيديو ويتيح الوصول إلى الاشتراكات وقوائم التشغيل المتصلة. يستخدم تشغيل YouTube المشغّل الرسمي المعزَّز للخصوصية؛ ويظل غياب الترجمات ظاهراً ويحدّ من الأدلة المتاحة للمدرّس دون تعطيل التشغيل الأصلي. في نسخة المصدر، شغّل `python scripts/install_extras.py video-learning` لاستخدام مُحمِّل ترجمات YouTube الافتراضي. تنتقل روابط Watching الموجودة إلى Reading مع الحفاظ على سجل المحادثة والنصوص المفرّغة المتوافقة والملاحظات والتقدّم؛ وتصبح الملاحظات الزمنية الجديدة تعليقات Reading التوضيحية. يستخدم Bilibili مساره الخاص للتشغيل والترجمات.
 
 <div align="center">
-<img src="../../assets/figs/web-1.4.6+/settings/01-appearance%20settings.png" alt="إعدادات المظهر والثيمات في DeepTutor" width="900">
+<img src="../../assets/figs/web-dev/appearance.png" alt="إعدادات المظهر والثيمات في DeepTutor" width="900">
 </div>
 
 تستخدم معظم الأقسام تدفق صياغة-وتطبيق، لذا يمكنك اختبار مزود قبل الالتزام به. يمكنك أيضاً أن تطلب ذلك ببساطة في Chat: يقرأ المساعد التهيئة الحالية، ويطبّق التغيير، ويخبرك إن كان يحتاج إلى إعادة تشغيل أو إعادة فهرسة — مع اختبار النموذج الجديد قبل الالتزام به، بحيث لا يمكنه تبديل نفسه إلى شيء يتعذّر الوصول إليه. مفاتيح API لا تمرّ أبداً عبر النموذج، الذي يفتح لك بدلاً من ذلك الاستمارة المطابقة. تشحن أربع ثيمات في الصندوق — Default وCream وDark وGlass. ملفات `.env` في جذر المشروع تُتجاهل عمداً؛ تعيش تهيئة وقت التشغيل تحت `data/user/settings/*.json` إلا إذا وجّه `DEEPTUTOR_HOME` أو `deeptutor start --home` التطبيق في مكان آخر.
@@ -636,7 +641,7 @@ Co-Writer هو مساحة عمل Markdown ذات عرض مقسَّم للتقا�
 
 يبقى سجل الإصدارات الناجحة قائماً عبر تجديد الرمز لنفس الحساب وأخطاء مصادقة الكتالوج، دون أن يعيد ذلك صلاحية بيانات نماذج أو ETags أُلغيت صلاحيتها. يمسح تسجيل الخروج الذاكرة المؤقتة المحلية لذلك الحساب، بما يشمل سجل الإصدارات. لا تستعلم قراءات الحالة العادية والاستدلال npm. لا تستبدل إدخالات الكتالوج الجديدة نموذجاً اخترته مسبقاً ولا تُعيد تشغيل جلسات التعلّم؛ وظهور نموذج في الكتالوج لا يثبت توافقاً كاملاً مع بروتوكول الاستدلال. لا يوجد مُحدِّث إصدار في الخلفية ولا إعداد إصدار يتحكم فيه المستخدم.
 
-تستخدم عمليات نشر Docker وPodman المحلية الافتراضية شبكات loopback منفصلة وتحتاج إلى جسر مؤقت أثناء تسجيل الدخول. اتبع [دليل جسر OAuth المؤقت المحلي لـ Codex](../../docs-for-user/CONTAINERIZATION.md#temporary-local-codex-oauth-bridge) للاطلاع على أوامر Docker وCompose وPodman والإزالة الدقيقة.
+تستخدم عمليات نشر Docker وPodman المحلية الافتراضية شبكات loopback منفصلة وتحتاج إلى جسر مؤقت أثناء تسجيل الدخول. اتبع [دليل جسر OAuth المؤقت المحلي لـ Codex](../../docs-for-dev/CONTAINERIZATION.md#temporary-local-codex-oauth-bridge) للاطلاع على أوامر Docker وCompose وPodman والإزالة الدقيقة.
 
 في حالة النشر عن بُعد، يكون `localhost` الخاص بالمتصفح و`localhost` الخاص بالخادم جهازين مختلفين، لذا لا يستطيع وكيل عكسي عادي وحده نقل استدعاء (callback) localhost من المتصفح إلى الخادم. استخدم نفق SSH كجسر للاستدعاء. يصل النفق إلى منفذ الويب المنشور بالفعل؛ يعيد Next.js توجيه مسار الاستدعاء الدقيق فقط إلى وسيط الاستدعاء العام، ويتحقق الوسيط من `state` قبل التوجيه إلى عملية OAuth الأصلية. يبقى مستمع الاستدعاء على loopback الخلفية، والمنفذان `1455` و`1457` غير منشورين، ويدعم هذا المسار شبكة جسر Docker الافتراضية.
 
@@ -676,7 +681,7 @@ data/
 
 **تفعيله:** فعّل المصادقة في `data/user/settings/auth.json`، وأعد تشغيل `deeptutor start`، وسجّل أول مشرف على `/register`، ثم أضف المستخدمين من `/admin/users` وعيّن النماذج وقواعد المعرفة والمهارات والـ Partners وسياسة الأداة/MCP/تطبيق CLI ووصول تنفيذ الرمز من خلال المنح؛ وهيّئ الكتب المشتركة من لوحة **الوصول إلى الكتب** لكل مستخدم.
 
-بالنسبة إلى الأصول (origins) الخاصة/العامة المنفصلة، اضبط `auth.private_login_hosts` (أو `AUTH_PRIVATE_LOGIN_HOSTS`) على مضيفات الواجهة الأمامية الخاصة التي يجوز لها إظهار تسجيل الدخول بكلمة مرور والتسجيل. تُمرِّر الواجهة الأمامية رأس `Host` الوارد عبر HTTP إلى الخلفية كتأكيد لمضيف الواجهة الأمامية. حافظ على `Host` الخاص بالمتصفح عبر وكيلك العكسي، واجعل مدخل الشبكة العام يرفض الطلبات التي تسمّي مضيفاً خاصاً؛ ولا تكشف منفذ Next.js الخام الذي يقبل أي قيمة لـ `Host`. يمكن تزوير `Host` عبر HTTP من قِبَل عميل مباشر، فتفويض المضيف الخاص يعتمد على تلك الحدود عند المدخل. تقبل الخلفية تأكيدات مضيف الواجهة الأمامية فقط من loopback افتراضياً. إذا كانت الواجهة الأمامية للويب تتصل من حاوية أو مضيف آخر، اضبط `AUTH_TRUSTED_FRONTEND_PROXY_IPS` على عنوان IP الدقيق لوكيل الواجهة الأمامية ذلك في عملية الخلفية (مفصولة بفواصل لأكثر من عنوان واحد). أبقِ واجهة برمجة تطبيقات الخلفية خاصة بوكيل الواجهة الأمامية ولا تُضمِّن شبكات العملاء العامة في هذه القائمة. يُسمح بـ loopback دائماً؛ وعندما تكون القائمة غير فارغة، يمكن لمستخدم مصادَق عليه على أصل خاص أن يفتح **الملف الشخصي ← تسجيل دخول جهاز عام** وينشئ رابط إقران قصير العمر ومرتبط بالمضيف لأصل عام عبر HTTPS. تستبدل صفحة `/handoff` العامة الرمز التسجيلي لمرة واحدة بتذكرة JWE قصيرة العمر أيضاً في نص طلب POST، وتستهلك التذكرة مرة واحدة، وتستلم كوكي الجلسة العادي HttpOnly.
+بالنسبة إلى الأصول (origins) الخاصة/العامة المنفصلة، اضبط `auth.private_login_hosts` (أو `AUTH_PRIVATE_LOGIN_HOSTS`) على مضيفات الواجهة الأمامية الخاصة التي يجوز لها إظهار تسجيل الدخول بكلمة مرور والتسجيل. تُمرِّر الواجهة الأمامية رأس `Host` الوارد عبر HTTP إلى الخلفية كتأكيد لمضيف الواجهة الأمامية. حافظ على `Host` الخاص بالمتصفح عبر وكيلك العكسي، واجعل مدخل الشبكة العام يرفض الطلبات التي تسمّي مضيفاً خاصاً؛ ولا تكشف منفذ Next.js الخام الذي يقبل أي قيمة لـ `Host`. يمكن تزوير `Host` عبر HTTP من قِبَل عميل مباشر، فتفويض المضيف الخاص يعتمد على تلك الحدود عند المدخل. تقبل الخلفية تأكيدات مضيف الواجهة الأمامية فقط من loopback افتراضياً. إذا كانت الواجهة الأمامية للويب تتصل من حاوية أو مضيف آخر، اضبط `AUTH_TRUSTED_FRONTEND_PROXY_IPS` على عنوان IP الدقيق لوكيل الواجهة الأمامية ذلك في عملية الخلفية (مفصولة بفواصل لأكثر من عنوان واحد). يحل هذا محل القيم الافتراضية؛ وأضف `127.0.0.1,::1` إذا كانت اتصالات الواجهة الأمامية المحلية مطلوبة أيضاً. أبقِ واجهة برمجة تطبيقات الخلفية خاصة بوكيل الواجهة الأمامية ولا تُضمِّن شبكات العملاء العامة في هذه القائمة. عندما لا تكون `private_login_hosts` فارغة، يمكن لمستخدم مصادَق عليه على أصل خاص أن يفتح **الملف الشخصي ← تسجيل دخول جهاز عام** وينشئ رابط إقران قصير العمر ومرتبط بالمضيف لأصل عام عبر HTTPS. تستبدل صفحة `/handoff` العامة الرمز التسجيلي لمرة واحدة بتذكرة JWE قصيرة العمر أيضاً في نص طلب POST، وتستهلك التذكرة مرة واحدة، وتستلم كوكي الجلسة العادي HttpOnly.
 
 > يبقى PocketBase تكاملاً لمستخدم واحد — أبقِ `integrations.pocketbase_url` فارغاً لعمليات النشر متعددة المستخدمين إلا إذا وصلت مخزن مستخدم خارجي.
 
@@ -693,14 +698,14 @@ data/
 
 ```bash
 deeptutor chat                                              # interactive REPL
-deeptutor chat --capability deep_solve --kb my-kb --tool rag
-deeptutor run chat "Explain the Fourier transform" --tool rag --kb textbook
-deeptutor run chat "Find recent work beyond this material" --kb textbook --tool knowledge_frontier
+deeptutor chat --capability deep_solve --kb my-kb
+deeptutor run chat "Explain the Fourier transform" --kb textbook
+deeptutor run chat "Find recent work beyond this material" --kb textbook
 deeptutor run deep_research "Survey 2026 papers on RAG" \
   --config mode=report --config depth=standard
 ```
 
-تتوفر هنا أيضاً إدارة مساحة العمل الأساسية — قواعد المعرفة (`kb`)، والجلسات (`session`)، والشركاء (`partner`)، والمهارات (`skill`)، ودفاتر الملاحظات، والذاكرة، والتهيئة؛ بينما يظل تنظيم الدورات والجلسات في تطبيق الويب. القائمة الكاملة أدناه.
+يوفر `--kb` السياق لأدوات RAG التلقائية وKnowledge Frontier؛ وتتطلب Frontier وحدتي المعرفة والبحث معاً. يختار `--tool` الأدوات التي يستطيع المستخدم تبديلها. كما توفر الوحدات المفعّلة أوامر قواعد المعرفة والجلسات والشركاء والمهارات ودفاتر الملاحظات والذاكرة والتهيئة.
 
 </details>
 
@@ -720,12 +725,14 @@ SID=$(deeptutor run deep_research "Survey 2026 papers on RAG" \
 deeptutor run deep_question "Quiz me on that survey" --session "$SID" --format json
 ```
 
-يأتي المستودع بملف [`SKILL.md`](../../SKILL.md) في الجذر — وثيقة تسليم موجزة لواجهة CLI. اطلب من وكيلك قراءته صراحةً؛ ويغطي [دليل إعداد الوكيل](../../docs-for-user/AGENT_SETUP.md) التثبيت والتهيئة. يمكنك أيضاً تغليف `deeptutor run` كأداة في حلقة LangChain / AutoGen. الوصفات الكاملة: [Agent Handoff](https://deeptutor.info/docs/cli/agent-handoff/).
+يأتي المستودع بملف [`SKILL.md`](../../SKILL.md) في الجذر — وثيقة تسليم موجزة لواجهة CLI. اطلب من وكيلك قراءته صراحةً؛ ويغطي [دليل إعداد الوكيل](../../docs-for-dev/AGENT_SETUP.md) التثبيت والتهيئة. يمكنك أيضاً تغليف `deeptutor run` كأداة في حلقة LangChain / AutoGen. الوصفات الكاملة: [Agent Handoff](https://deeptutor.info/docs/cli/agent-handoff/).
 
 </details>
 
 <details>
 <summary><b>مرجع الأوامر</b></summary>
+
+يغطي الجدول التثبيت الكامل والإضافات الاختيارية؛ وتتطلب الأوامر والقدرات تفعيل وحداتها. توفر النواة `chat` و`ask_questions`.
 
 | الأمر | الوصف |
 |:---|:---|
@@ -734,8 +741,9 @@ deeptutor run deep_question "Quiz me on that survey" --session "$SID" --format j
 | `deeptutor start [--home PATH] [--dev] [--detach] [--no-browser]` | تشغيل الخلفية + الواجهة الأمامية معاً؛ مع خيار العمل منفصلاً أو منع فتح المتصفح |
 | `deeptutor stop [--home PATH]` | إيقاف مُشغِّل بدأ باستخدام `--detach` |
 | `deeptutor serve [--port PORT]` | تشغيل خلفية FastAPI فقط |
+| `deeptutor module list/install/uninstall/enable/disable` | فحص الوحدات وتغييرها مع إيقاف DeepTutor؛ وتدعم نسخ المصدر التفعيل والتعطيل |
 | `deeptutor workspace show/set/reset` | فحص مساحة عمل المحتوى الخاصة بالمستخدم، أو اختيارها، أو استعادتها |
-| `deeptutor run <capability> <message>` | تشغيل دور قدرة واحدة (`chat` و`ask_questions` و`deep_solve` و`deep_question` و`deep_research` و`visualize` و`math_animator` و`mastery_path` و`immersive_reading` و`course_study` و`audio_overview`)؛ أضف `--format json` لإخراج NDJSON |
+| `deeptutor run <capability> <message>` | تشغيل دور قدرة واحدة (`chat` و`ask_questions` و`deep_solve` و`deep_question` و`deep_research` و`visualize` و`math_animator` و`video_lesson` و`mastery_path` و`immersive_reading` و`audio_overview`)؛ أضف `--format json` لإخراج NDJSON |
 | `deeptutor chat` | REPL تفاعلي مع تحكمات القدرة والأداة وقاعدة المعرفة ودفتر الملاحظات والتاريخ |
 | `deeptutor partner list/create/start/stop` | إدارة الشركاء المتصلين بـ IM |
 | `deeptutor kb list/info/create/connect-kiwix/add/search/eval/eval-diff/set-default/delete/list-sources/sync` | إدارة قواعد المعرفة، وتوصيل أرشيفات Kiwix، وتقييم عمليات الاسترجاع ومقارنتها، ومزامنة مصادر GitHub/الويب المسجَّلة (مع أوامر إضافة المصادر وإزالتها) |
@@ -765,13 +773,34 @@ deeptutor run deep_question "Quiz me on that survey" --session "$SID" --format j
 <details>
 <summary><b>توزيع CLI فقط</b></summary>
 
-حزمة CLI فقط تعيش في `packaging/deeptutor-cli`. في هذه النسخة، ثبّتها من المصدر:
+توفر حزمة wheel للنواة CLI وSDK؛ أما `deeptutor-cli` فهي حزمة وصفية للتوافق. يتيح المصدر جميع الوحدات الموجودة في المستودع، لذا ثبّت تبعياتها في Python وتجاوز إعداد الواجهة الأمامية عند استخدام CLI:
 
 ```bash
-python -m pip install -e ./packaging/deeptutor-cli
+python -m pip install -r requirements/full.txt
+python -m pip install -e . --no-deps
 ```
 
-لم تُنشر على PyPI بعد، لذا يحتفظ قسم [البدء](#-البدء) الرئيسي بمسار التثبيت من المصدر.
+للتثبيت الأدنى، استخدم حزمة wheel للنواة. تضيف التوزيعات الاختيارية أدوات وقدرات ومسارات API وخدمات خلفية وعناصر تنقل. تشترك الوحدات في بيئة Python واحدة ويجب أن تطابق إصدار النواة. يختار `deeptutor[full]` وحدات التطبيق الشائعة عند التثبيت؛ ويمكن إزالة الميزات الفردية لاحقاً.
+
+أوقف DeepTutor (بالضغط على `Ctrl+C` في طرفيته)، ثم استخدم بيئة Python نفسها و`DEEPTUTOR_HOME` نفسه:
+
+```bash
+deeptutor module list                       # installed / enabled / ready
+deeptutor module disable research           # hide and deactivate; keep code
+deeptutor module enable research            # restore it and required modules
+
+# Package installations only; source checkouts use enable / disable:
+deeptutor module install solve              # install the matching module and dependencies
+deeptutor module uninstall solve --dry-run  # inspect the plan and dependency blockers
+deeptutor module uninstall solve            # remove only this module's distribution
+deeptutor chat                              # restart the CLI; use start for an installed Web app
+```
+
+أمثلة: `solve` و`research` و`questions` و`knowledge` و`parsing` و`reading` و`mastery` و`books` و`memory` و`notebook` و`partners`. تمنع الوحدات التابعة إزالة ما تعتمد عليه؛ ولا يمكن إزالة النواة عبر أمر الوحدات. يحافظ التعطيل أو إلغاء التثبيت على الإعدادات والمحادثات وقواعد المعرفة والملفات المُولّدة. وتُحتفظ بتبعيات الجهات الخارجية المشتركة.
+
+**في المتصفح:** تعرض **الإعدادات ← حالة التشغيل ← الوحدات** حالة الوحدات وأوامر الطرفية المقابلة. تتطلب تغييرات الحزم إيقاف البيئة وتُجرى عبر CLI. تغيّر **المحادثة ← تخصيص الصفحة** و**التعلّم ← تعلّم جديد ← تخصيص الصفحة** اختيارات صفحاتك الشخصية فوراً؛ ولا يؤدي إخفاء عنصر إلى إلغاء تثبيت وحدته أو سحب صلاحية الوصول إليها.
+
+تستخدم عائلة حزم 1.7.0 إصدارات متطابقة للنواة وحزم wheel للميزات. للتثبيت من حزم wheel محلية، أضف `--wheelhouse /path/to/wheels` إلى `module install`. راجع [تثبيت الوحدات والتطوير من المصدر](../../docs-for-dev/MODULES.md) لبناء حزم wheel وتفاصيل النشر.
 
 </details>
 
@@ -919,11 +948,3 @@ DeepTutor هو مشروع مفتوح المصدر تقوده [Bingxi Zhao](https
 </p>
 
 </div>
-
-### إسناد أدوار الإتقان إلى حالة المسار
-
-تقرأ أدوار Mastery حالة المسار النشط قبل الطلب الأول إلى النموذج، باستخدام أداة الحالة نفسها وبوابات الإتقان نفسها المستخدمة عند استدعاء الأداة صراحةً. تكون هذه اللقطة حديثة لكل دور، وتتضمن وضع الجلسة النشط، ولا تُخزَّن مؤقتاً عبر الأدوار. عند فشل القراءة، يُرجَع إلى `mastery_status`؛ وبعد تغيير المسار أو الوضع أو المخطط أو التقدّم، يستطيع المدرّس تحديث الحالة عبر تلك الأداة. يظل تقييم البطاقات وآلية التسليم الحالية دون تغيير.
-
-### مرفقات الصور المتكررة
-
-ترسل حلقة الوكيل صور المستخدم المضمنة المتطابقة مرة واحدة لكل طلب، وتستبدل النسخ اللاحقة بمراجع إلى الصورة المحتفَظ بها. تحدد تسميات ثابتة خاصة بالطلب الصور المضمنة المحتفَظ بها عبر تحويلات المزودين والأدوار المُلحقة. تبقى كتل الصور الفريدة وعناوين URL البعيدة وخيارات الصور المختلفة ورسائل المساعد ونتائج الأدوات كاملة. يحتفظ السجل المحفوظ بكل مرفق أصلي؛ وتُعاد صياغة المراجع بعد تقليص السجل. يقلل ذلك حمولات الصور المتكررة، لكن الاستخدام الذي يبلّغ عنه المزود يظل مصدر الحقيقة للفوترة وإصابات الذاكرة المؤقتة.

@@ -745,6 +745,32 @@ def _content_disposition(filename: str) -> str:
     return f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{quoted}"
 
 
+def _txt_download_filename(title: str) -> str:
+    raw = (title or "flashcards").strip() or "flashcards"
+    safe = re.sub(r'[\\/:*?"<>|\x00-\x1f\x7f]', "-", raw).strip(" .")[:80]
+    safe = safe or "flashcards"
+    if not safe.lower().endswith(".txt"):
+        safe = f"{safe}.txt"
+    return safe
+
+
+def _txt_content_disposition(filename: str) -> str:
+    """RFC 5987 Content-Disposition for a ``.txt`` attachment."""
+    ascii_name = filename.encode("ascii", "ignore").decode("ascii").strip(" .")
+    if not ascii_name.lower().endswith(".txt"):
+        ascii_name = f"{ascii_name}.txt" if ascii_name else "flashcards.txt"
+    quoted = urllib.parse.quote(filename, safe="")
+    return f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{quoted}"
+
+
+def _anki_text_response(body: str, filename: str) -> Response:
+    return Response(
+        content=body.encode("utf-8"),
+        media_type="text/plain; charset=utf-8",
+        headers={"Content-Disposition": _txt_content_disposition(filename)},
+    )
+
+
 @router.post("/documents/import/docx", response_model=DocumentResponse)
 async def import_docx(file: UploadFile = File(...)) -> DocumentResponse:
     filename = (file.filename or "").strip()
@@ -811,6 +837,17 @@ async def export_docx(request: ExportDocxRequest) -> Response:
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         headers={"Content-Disposition": _content_disposition(filename)},
     )
+
+
+@router.get("/documents/flashcards/export")
+async def export_all_flashcards() -> Response:
+    """Download every notebook flashcard as Anki import text."""
+    from deeptutor.notes.anki_export import cards_from_storage, render_anki_export
+
+    cards = cards_from_storage(get_co_writer_storage())
+    if not cards:
+        raise HTTPException(status_code=404, detail="No flashcards to export")
+    return _anki_text_response(render_anki_export(cards), "deeptutor-flashcards.txt")
 
 
 @router.get("/documents/{doc_id}", response_model=DocumentResponse)
@@ -1040,6 +1077,23 @@ async def due_note_cards():
     from deeptutor.notes.review import due_cards
 
     return {"cards": due_cards(get_co_writer_storage())}
+
+
+@router.get("/documents/{doc_id}/flashcards/export")
+async def export_document_flashcards(doc_id: str) -> Response:
+    """Download one note's flashcards as Anki import text."""
+    from deeptutor.notes.anki_export import cards_from_document, render_anki_export
+
+    storage = get_co_writer_storage()
+    document = storage.load_document(_validate_doc_id(doc_id))
+    if document is None:
+        raise HTTPException(status_code=404, detail="Document not found")
+    cards = cards_from_document(document)
+    if not cards:
+        raise HTTPException(status_code=404, detail="This note has no flashcards to export")
+    return _anki_text_response(
+        render_anki_export(cards), _txt_download_filename(document.title or "flashcards")
+    )
 
 
 class ReviewCardRequest(BaseModel):

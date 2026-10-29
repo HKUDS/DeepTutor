@@ -5,8 +5,7 @@ import { RecordGroups, RecordHeader, RecordTime, useRecordView } from './RecordL
 import { useLayoutEffect, useState, type ReactNode } from 'react'
 import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
-import { ChevronRight, LayoutGrid, MessageCircle } from 'lucide-react'
-import { LearningCreateMenu } from '@/components/learning/LearningCreateMenu'
+import { ChevronRight, LayoutGrid, MessageCircle, Plus } from 'lucide-react'
 import { learningSurface } from '@/components/learning/surfaces'
 import { allLearningActivity, fileLearningSessions, type LearningActivity } from '@/lib/learning-dashboard'
 import { isNavigationTargetActive } from '@/lib/navigation'
@@ -89,11 +88,11 @@ export function LearningNavigation({
     })
   return (
     <div className="dt-learning-navigation">
+      <OverviewRow href="/learning/new" label={t('navigation.createLearning')} icon={Plus} />
       <OverviewRow
         href="/learning"
         label={t('navigation.allLearning')}
         icon={LayoutGrid}
-        action={<LearningCreateMenu compact />}
       />
       <RecordHeader
         title={t('navigation.learningRecords')}

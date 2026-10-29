@@ -88,6 +88,11 @@
       "sha256": "0a787846df588d136932f3bb373d5d796b28f0a545ff603cb013136148525922",
       "source": "Official website asset"
     },
+    "youcom.ico": {
+      "url": "https://you.com/favicon.ico",
+      "sha256": "bc108afac8491e981082ecbb84c1edc8a743c9da5d011bf50ccac677007b892e",
+      "source": "Official website asset"
+    },
     "cheaperinference.svg": {
       "url": "https://www.cheaperinference.com/icon.svg?7b25e69112bc955e",
       "sha256": "4c0bf6572d9077fd66fe338b80c18e4d227adb6a44bc176bf5eb5ea1271bf9d0",
@@ -96,6 +101,11 @@
     "onomeo.svg": {
       "url": "https://onomeo.com/icon.svg",
       "sha256": "656d46b8e33103edfc859afc19ca6dbed78683eb506e5714a00eaa4a3a251f65",
+      "source": "Official website asset"
+    },
+    "runcrate.png": {
+      "url": "https://www.runcrate.ai/apple-touch-icon.png",
+      "sha256": "a5ab289455324590b5e0cb2836e92f7b16fee59ee0d4fe417cbbabdeb534d7fb",
       "source": "Official website asset"
     },
     "api-route.png": {

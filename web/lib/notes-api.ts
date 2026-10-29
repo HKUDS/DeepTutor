@@ -52,6 +52,21 @@ export async function noteRequest<T>(path: string, body?: unknown, method = 'POS
   }
   return response.json()
 }
+
+export async function exportNoteFlashcards(docId?: string): Promise<Blob> {
+  const path = docId
+    ? `/api/documents/${encodeURIComponent(docId)}/flashcards/export`
+    : `/api/documents/flashcards/export`
+  const response = await apiFetch(apiUrl(path), { cache: 'no-store' })
+  if (!response.ok) {
+    const detail = await response.json().catch(() => null)
+    const message =
+      typeof detail?.detail === 'string' ? detail.detail : `Request failed (${response.status})`
+    throw new Error(message)
+  }
+  return response.blob()
+}
+
 export const getNote = (id: string) => noteRequest<NotePage>(`/${id}`)
 export const listNotes = () => noteRequest<{ documents: NoteSummary[] }>('')
 export const saveNote = (id: string, patch: Partial<NotePage> & { expected_revision: number }) =>

@@ -23,6 +23,7 @@ vi.mock('@/lib/notes-api', () => ({
   getSuggestions: vi.fn(),
   noteRequest: vi.fn(),
   reviewSuggestion: vi.fn(),
+  exportNoteFlashcards: vi.fn(),
 }))
 // The page's conversations run in the chat runtime; autosave does not.
 vi.mock('@/features/notes/components/useNoteThreads', () => ({

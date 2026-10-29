@@ -400,8 +400,22 @@ def validate_evidence(
         )
 
 
+def assessment_evidence(progress: Any, kp_id: str) -> dict[str, Any]:
+    """The packet that may authorize assessment, independent of teaching focus.
+
+    A later focus/teaching preparation overwrites ``lesson_evidence[kp_id]``,
+    which used to destroy the objective-scoped packet assessment needs. The
+    preserved ``assessment_evidence`` slot keeps that packet. Fall back to the
+    live slot so unpackaged/legacy objective packets still work.
+    """
+    preserved = progress.assessment_evidence.get(kp_id, {})
+    if preserved:
+        return preserved
+    return progress.lesson_evidence.get(kp_id, {})
+
+
 def question_snapshot(store: Any, progress: Any, kp_id: str) -> dict[str, Any]:
-    evidence = progress.lesson_evidence.get(kp_id, {})
+    evidence = assessment_evidence(progress, kp_id)
     validate_evidence(store, progress, kp_id, evidence)
     return json.loads(json.dumps(evidence))
 
@@ -1071,6 +1085,10 @@ async def prepare_lesson(
                     "The objective, course requirements or sources changed while preparing the lesson. Retry."
                 )
             tx.progress.lesson_evidence[kp_id] = evidence
+            if coverage["scope"] == "objective":
+                # Keep the objective-scoped packet available for assessment even
+                # when a later focus/teaching preparation replaces the live slot.
+                tx.progress.assessment_evidence[kp_id] = evidence
             tx.progress.source_grounded = True
             tx.touch()
 

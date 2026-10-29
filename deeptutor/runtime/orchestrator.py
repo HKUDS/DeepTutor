@@ -15,6 +15,7 @@ from typing import Any, AsyncIterator
 import uuid
 
 from deeptutor.capabilities.protocol import AGENT_OUTPUT, EVENT_METADATA
+from deeptutor.core.capability_protocol import TurnCapability
 from deeptutor.core.context import UnifiedContext
 from deeptutor.core.stream import StreamEvent, StreamEventType
 from deeptutor.events.event_bus import Event, EventType, get_event_bus
@@ -99,6 +100,7 @@ class ChatOrchestrator:
                 yield event
             return
 
+        capability: TurnCapability | None
         if context.runtime.answer_by:
             # The turn belongs to someone else: a partner or a connected agent
             # answers in place of the selected mode. Not a registry entry —

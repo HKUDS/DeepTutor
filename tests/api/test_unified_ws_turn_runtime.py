@@ -870,7 +870,13 @@ async def test_regenerate_reuses_snapshot_or_override_llm_selection(tmp_path) ->
     captured_payloads: list[dict] = []
 
     class CapturingRuntime(TurnRuntimeManager):
-        async def start_turn(self, payload: dict):
+        async def start_turn(
+            self,
+            payload: dict,
+            *,
+            replace_assistant_message_id: int | str | None = None,
+            persist_llm_selection_only: bool = False,
+        ):
             captured_payloads.append(payload)
             return {"id": payload["session_id"]}, {"id": "turn-test"}
 

@@ -80,6 +80,7 @@ class VisualizerRegistry:
         ]
 
     def set_enabled(self, visualizer_id: str, enabled: bool) -> None:
+        visualizer_id = str(visualizer_id or "").strip().lower()
         plugin = self._catalog.get(visualizer_id)
         if plugin is None or plugin.manifest.id not in self._installed:
             raise VisualizerStoreError(f"visualizer is not installed: {visualizer_id}")
@@ -87,6 +88,7 @@ class VisualizerRegistry:
         self.reload()
 
     def install_bundled(self, visualizer_id: str) -> None:
+        visualizer_id = str(visualizer_id or "").strip().lower()
         plugin = self._catalog.get(visualizer_id)
         if plugin is None or plugin.origin != "bundled":
             raise VisualizerStoreError(f"bundled visualizer not found: {visualizer_id}")
@@ -94,6 +96,7 @@ class VisualizerRegistry:
         self.reload()
 
     def uninstall(self, visualizer_id: str) -> None:
+        visualizer_id = str(visualizer_id or "").strip().lower()
         plugin = self._catalog.get(visualizer_id)
         if plugin is None:
             raise VisualizerStoreError(f"visualizer not found: {visualizer_id}")

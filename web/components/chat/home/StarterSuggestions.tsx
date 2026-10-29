@@ -16,6 +16,8 @@ import {
 import { useOutsideClick } from "@/hooks/use-outside-click";
 import { CornerDownLeft, Loader2, RefreshCw } from "lucide-react";
 import { activeWorkspaceId, scopedUrl } from "@/lib/workspace-scope";
+import { usePageCustomization } from "@/context/PageCustomizationContext";
+import { starterPrompts, type StarterGroup } from "@/lib/page-customization";
 import { apiFetch, apiUrl } from "@/lib/api";
 
 interface Suggestion {
@@ -63,14 +65,13 @@ const ready = (items: Suggestion[]): View => ({ kind: "ready", item: items[0] })
  * ask for when a detail is missing, so a learner can send one as it is and the
  * tutor fills the gap with a question rather than a guess.
  */
-const GUIDES: readonly { id: string; icon: StarterIcon }[] = [
+const GUIDES: readonly { id: StarterGroup; icon: StarterIcon }[] = [
   { id: "explain", icon: ExplainMark },
   { id: "solve", icon: SolveMark },
   { id: "practice", icon: PracticeMark },
   { id: "plan", icon: PlanMark },
   { id: "research", icon: ResearchMark },
 ];
-const PER_GUIDE = [1, 2, 3, 4];
 
 /**
  * What to start with, under the home composer.
@@ -100,6 +101,7 @@ export default function StarterSuggestions({
   workspaceId?: string;
 }) {
   const { t } = useTranslation();
+  const { value: { chat } } = usePageCustomization();
   const [view, setView] = useState<View>({ kind: "loading" });
   const [open, setOpen] = useState<string | null>(null);
   const panelId = useId();
@@ -267,7 +269,8 @@ export default function StarterSuggestions({
       </>
     );
   }
-  const guide = GUIDES.find((entry) => entry.id === open);
+  const guides = GUIDES.filter(entry => starterPrompts(chat, entry.id, t).length > 0);
+  const guide = guides.find((entry) => entry.id === open);
 
   return (
     // max-w-[768px] + px-6 mirrors ChatComposer's own empty-state container.
@@ -284,7 +287,7 @@ export default function StarterSuggestions({
           one never moves the composer the page is centred on. */}
       <div ref={menuRef} className="dt-starter-menu">
         <div className="dt-starter-tabs">
-          {GUIDES.map((entry) => (
+          {guides.map((entry) => (
             <button
               key={entry.id}
               type="button"
@@ -311,8 +314,7 @@ export default function StarterSuggestions({
             {/* Keyed so switching ways swaps the rows in place: the card stays,
                 only its content changes. */}
             <div key={guide.id} className="dt-starter-card-body">
-              {PER_GUIDE.map((n) => {
-                const prompt = t(`starters.${guide.id}.${n}.prompt`);
+              {starterPrompts(chat, guide.id, t).map(({ label, prompt }, n) => {
                 return (
                   // The whole request shows on hover: what the box will hold.
                   <Tooltip key={n} label={prompt} side="top" as="div" className="dt-starter-item" delay={500}>
@@ -325,7 +327,7 @@ export default function StarterSuggestions({
                       }}
                       className="dt-starter-row"
                     >
-                      <span className="min-w-0 flex-1 truncate">{t(`starters.${guide.id}.${n}`)}</span>
+                      <span className="min-w-0 flex-1 truncate">{label}</span>
                       <CornerDownLeft size={14} strokeWidth={1.8} aria-hidden className="dt-starter-enter" />
                     </button>
                   </Tooltip>

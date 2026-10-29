@@ -8,6 +8,29 @@ from types import SimpleNamespace
 import pytest
 
 
+@pytest.mark.parametrize("group_exists", [False, True])
+def test_cleanup_rechecks_group_after_permission_race(monkeypatch, group_exists):
+    from deeptutor.runtime import process
+
+    calls = []
+
+    def killpg(pid, signal):
+        calls.append((pid, signal))
+        if group_exists or len(calls) == 1:
+            raise PermissionError("group changed during signal")
+        raise ProcessLookupError("group already reaped")
+
+    monkeypatch.setattr(process, "os", SimpleNamespace(name="posix", killpg=killpg))
+    monkeypatch.setattr(process.time, "sleep", lambda _: None)
+    if group_exists:
+        with pytest.raises(PermissionError):
+            process.kill_process_tree(12345)
+    else:
+        process.kill_process_tree(12345)
+    assert len(calls) == (5 if group_exists else 2)
+    assert all(call == (12345, process.signal.SIGKILL) for call in calls)
+
+
 @pytest.mark.parametrize("returncode", [0, 128])
 def test_windows_cleanup_targets_the_entire_owned_tree(monkeypatch, returncode):
     from deeptutor.runtime import process

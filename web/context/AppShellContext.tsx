@@ -12,6 +12,7 @@ import { apiFetch, apiUrl } from "@/lib/api";
 import {
   getStoredTheme,
   getSystemTheme,
+  initializeTheme,
   setTheme as applyThemePreference,
   subscribeToThemeChanges,
   type Theme,
@@ -179,6 +180,12 @@ export function AppShellProvider({ children }: { children: React.ReactNode }) {
       if (fallbackTimer) clearTimeout(fallbackTimer);
       controller.abort();
     };
+  }, []);
+
+  useEffect(() => {
+    // ThemeScript paints before hydration. This starts the live
+    // prefers-color-scheme listener when the choice is system or unset.
+    setThemeState(initializeTheme());
   }, []);
 
   useEffect(() => {

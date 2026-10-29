@@ -64,7 +64,7 @@ class DeferredRouter(BaseRoute):
         return self.loaded
 
     def matches(self, scope: dict) -> tuple[Match, dict]:
-        partial = (Match.NONE, {})
+        partial: tuple[Match, dict] = (Match.NONE, {})
         for route in self.patterns:
             match, child = route.matches(scope)
             if match == Match.FULL:
@@ -133,7 +133,7 @@ class RouterLoader:
             self.app.include_router(router, **options)
 
     def expand(self) -> None:
-        routes = []
+        routes: list[BaseRoute] = []
         for route in self.app.router.routes:
             routes.extend(route.load().routes if isinstance(route, DeferredRouter) else [route])
         self.app.router.routes[:] = routes

@@ -116,7 +116,10 @@ def _dedupe_keep_last(chapters: list[Chapter]) -> list[Chapter]:
     order: list[str] = []
     for chapter in chapters:
         if chapter.title in by_title:
-            by_title[chapter.title] = chapter  # later (higher page) wins
+            # Keep the body hit (higher page). Comparing page_idx holds even when
+            # pdf_info is not ascending by page; relying on list order did not.
+            if chapter.page_idx > by_title[chapter.title].page_idx:
+                by_title[chapter.title] = chapter
         else:
             by_title[chapter.title] = chapter
             order.append(chapter.title)

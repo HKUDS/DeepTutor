@@ -105,6 +105,41 @@ class CalendarStore:
                 "revision": self._revision(db),
             }
 
+    def export(
+        self, calendar_id: str | None = None
+    ) -> tuple[list[CalendarEntry], list[CalendarEvent]]:
+        """Return calendar rows and events for an iCalendar export.
+
+        Args:
+            calendar_id: Restrict the dump to this calendar. Omit to include
+                every visible calendar. Unknown ids raise ``KeyError``.
+
+        Returns:
+            The selected calendars and their stored events, including series
+            overrides. Overlay layers are not persisted here.
+        """
+        with self.connect() as db:
+            db.execute("BEGIN")
+            calendars = [
+                CalendarEntry.model_validate_json(row[0])
+                for row in db.execute("SELECT payload FROM calendars")
+            ]
+            events = [
+                CalendarEvent.model_validate_json(row[0])
+                for row in db.execute("SELECT payload FROM events")
+            ]
+        if calendar_id is not None:
+            if not any(entry.id == calendar_id for entry in calendars):
+                raise KeyError(calendar_id)
+            calendars = [entry for entry in calendars if entry.id == calendar_id]
+        else:
+            calendars = [entry for entry in calendars if entry.visible]
+        wanted = {entry.id for entry in calendars}
+        events = [event for event in events if event.calendar_id in wanted]
+        calendars.sort(key=lambda entry: (entry.position, entry.id))
+        events.sort(key=lambda event: (event.start, event.id))
+        return calendars, events
+
     def create_calendar(self, payload: CreateCalendar):
         stamp = now()
         entry = CalendarEntry(

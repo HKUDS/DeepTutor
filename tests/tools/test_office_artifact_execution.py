@@ -233,9 +233,7 @@ def test_docx_xlsx_dependencies_cover_pip_source_cli_and_docker() -> None:
 
     core = tomllib.loads((root / "pyproject.toml").read_text())["project"]
     cli = tomllib.loads((root / "packaging/deeptutor-cli/pyproject.toml").read_text())["project"]
-    from deeptutor.__version__ import __version__
-
-    assert cli["dependencies"] == [f"deeptutor=={__version__}"]
+    assert "dependencies" in cli["dynamic"]
 
     def requirements(path):
         lines = []

@@ -30,9 +30,13 @@ const t = (key: string, values?: Record<string, unknown>) => key.replace(/{{(.*?
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t, i18n: { language: "en" } }),
 }));
-vi.mock("@/lib/theme", () => ({
-  setTheme: (...args: unknown[]) => mocks.theme(...args),
-}));
+vi.mock("@/lib/theme", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/theme")>("@/lib/theme");
+  return {
+    ...actual,
+    setTheme: (...args: unknown[]) => mocks.theme(...args),
+  };
+});
 vi.mock("@/context/AppShellContext", () => ({
   useAppShell: () => ({
     codeBlockTheme: "github",

@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import signal
 import subprocess
+import time
 
 
 def kill_process_tree(pid: int) -> None:
@@ -14,12 +15,22 @@ def kill_process_tree(pid: int) -> None:
     Windows Process.kill() alone leaves build and renderer children running.
     """
     if os.name != "nt":
-        try:
-            os.killpg(pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
+        for attempt in range(5):
+            try:
+                os.killpg(pid, signal.SIGKILL)
+                return
+            except ProcessLookupError:
+                return
+            except PermissionError:
+                # macOS can briefly report EPERM (even for signal 0) while
+                # reaping a group. Retry only briefly; persistent permission
+                # failures must still reach the caller, never imply cleanup.
+                if attempt == 4:
+                    raise
+                time.sleep(0.01)
         return
-    result = subprocess.run(
+    # Fixed Windows utility and argument list; no shell or caller-supplied executable.
+    result = subprocess.run(  # nosec B607
         ["taskkill", "/PID", str(pid), "/T", "/F"],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,

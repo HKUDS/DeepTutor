@@ -287,6 +287,26 @@
   font-size: 13px;
   font-weight: 500;
 }
+.dt-notes-review-heading {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+}
+.dt-notes-review-export {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--muted-foreground);
+}
+.dt-notes-review-export:hover:not(:disabled) {
+  color: var(--foreground);
+}
+.dt-notes-review-export:disabled {
+  opacity: 0.5;
+}
 .dt-notes-review header > span:nth-child(2) {
   margin-left: auto;
   font-weight: 400;

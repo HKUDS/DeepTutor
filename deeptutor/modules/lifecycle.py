@@ -108,7 +108,8 @@ def plan(action: str, name: str) -> dict:
 
         target = _canonical(manifests()[name]["distribution"])
         for distribution in metadata.distributions():
-            package = distribution.metadata.get("Name", "")
+            headers = distribution.metadata
+            package = headers["Name"] if "Name" in headers else ""
             if _canonical(package) == target:
                 continue
             for raw in distribution.requires or ():

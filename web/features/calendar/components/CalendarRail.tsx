@@ -9,6 +9,7 @@ import {
   GripVertical,
   Check,
   CircleDashed,
+  Download,
   Footprints,
   MoreHorizontal,
   Plus,
@@ -52,6 +53,8 @@ export function CalendarRail({
   onUpdateCalendar,
   onCreateCalendar,
   onDeleteCalendar,
+  onExportCalendar,
+  onExportAll,
   layers,
   onToggleLayer,
   notifications,
@@ -71,6 +74,8 @@ export function CalendarRail({
   ) => void
   onCreateCalendar: (name: string, color: string) => void
   onDeleteCalendar: (calendar: CalendarEntry) => void
+  onExportCalendar: (calendar: CalendarEntry) => void
+  onExportAll: () => void
   layers: LayerToggles
   onToggleLayer: (layer: LayerId) => void
   notifications: NotificationPermission | 'unsupported'
@@ -122,6 +127,9 @@ export function CalendarRail({
       <section className="dt-cal-rail-section">
         <div className="dt-cal-rail-label">
           <span>{t('Calendars')}</span>
+          <button type="button" className="dt-cal-rail-link" onClick={onExportAll}>
+            {t('Export all calendars')}
+          </button>
         </div>
         <ul className="dt-cal-calendar-list">
           {calendars.map(calendar => (
@@ -130,6 +138,7 @@ export function CalendarRail({
               calendar={calendar}
               onUpdate={changes => onUpdateCalendar(calendar, changes)}
               onDelete={() => onDeleteCalendar(calendar)}
+              onExport={() => onExportCalendar(calendar)}
             />
           ))}
         </ul>
@@ -249,10 +258,12 @@ function CalendarRow({
   calendar,
   onUpdate,
   onDelete,
+  onExport,
 }: {
   calendar: CalendarEntry
   onUpdate: (changes: Partial<Pick<CalendarEntry, 'name' | 'color' | 'visible'>>) => void
   onDelete: () => void
+  onExport: () => void
 }) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
@@ -333,6 +344,18 @@ function CalendarRow({
               </button>
             ))}
           </div>
+          <button
+            type="button"
+            role="menuitem"
+            className="dt-menu-item"
+            onClick={() => {
+              setOpen(false)
+              onExport()
+            }}
+          >
+            <Download size={14} strokeWidth={1.8} />
+            {t('Export .ics')}
+          </button>
           <button
             type="button"
             role="menuitem"

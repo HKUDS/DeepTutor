@@ -484,6 +484,27 @@ export interface TopicReview {
 export interface MasteryReviewSettings {
   desired_retention: number;
   scope: "path";
+  strategy?: ReviewStrategy | null;
+}
+
+export type ReviewIntervalType = "memory" | "concept" | "procedure" | "design";
+
+export interface ReviewStrategy {
+  template_id: string;
+  name: string;
+  description: string;
+  builtin: boolean;
+  desired_retention: number | null;
+  intervals: Record<ReviewIntervalType, number[]>;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface ReviewStrategyInput {
+  name: string;
+  description?: string;
+  desired_retention?: number | null;
+  intervals: Record<ReviewIntervalType, number[]>;
 }
 
 export interface MasteryTopic extends LearningOrigin {
@@ -676,6 +697,81 @@ export function updateMasteryReviewSettings(
       body: JSON.stringify({ desired_retention: desiredRetention }),
     },
     "update review target",
+  );
+}
+
+export function fetchMasteryReviewStrategies(
+  init?: RequestInit,
+): Promise<{ strategies: ReviewStrategy[] }> {
+  return masteryJson(
+    "/api/mastery-paths/review-strategies",
+    init,
+    "load review strategies",
+  );
+}
+
+export function createMasteryReviewStrategy(
+  input: ReviewStrategyInput,
+): Promise<ReviewStrategy> {
+  return masteryJson("/api/mastery-paths/review-strategies", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  }, "create review strategy");
+}
+
+export function updateMasteryReviewStrategy(
+  templateId: string,
+  input: ReviewStrategyInput,
+): Promise<ReviewStrategy> {
+  return masteryJson(
+    `/api/mastery-paths/review-strategies/${encodeURIComponent(templateId)}`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    },
+    "update review strategy",
+  );
+}
+
+export function duplicateMasteryReviewStrategy(
+  templateId: string,
+  name: string,
+): Promise<ReviewStrategy> {
+  return masteryJson(
+    `/api/mastery-paths/review-strategies/${encodeURIComponent(templateId)}/duplicate`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    },
+    "duplicate review strategy",
+  );
+}
+
+export function deleteMasteryReviewStrategy(
+  templateId: string,
+): Promise<{ deleted: boolean }> {
+  return masteryJson(
+    `/api/mastery-paths/review-strategies/${encodeURIComponent(templateId)}`,
+    { method: "DELETE" },
+    "delete review strategy",
+  );
+}
+
+export function bindMasteryReviewStrategy(
+  pathId: string,
+  templateId: string,
+): Promise<MasteryTopic> {
+  return masteryJson(
+    `/api/mastery-paths/topics/${encodeURIComponent(pathId)}/review-strategy`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ template_id: templateId }),
+    },
+    "update review strategy",
   );
 }
 

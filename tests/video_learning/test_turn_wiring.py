@@ -204,7 +204,12 @@ async def test_legacy_regenerate_snapshot_keeps_watching_migration_signal(
     runtime = TurnRuntimeManager(store)
     replayed: dict[str, object] = {}
 
-    async def capture_start_turn(payload: dict[str, object]):
+    async def capture_start_turn(
+        payload: dict[str, object],
+        *,
+        replace_assistant_message_id: int | str | None = None,
+        persist_llm_selection_only: bool = False,
+    ):
         replayed.update(payload)
         return session, {"id": "replayed-turn", "session_id": session["id"]}
 

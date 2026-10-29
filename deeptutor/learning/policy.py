@@ -453,9 +453,9 @@ def _review_report(
     if state is None:
         return None
     task = next((item for item in progress.review_queue if item.knowledge_point_id == kp_id), None)
-    from deeptutor.learning.scheduler import SpacedRepetitionScheduler
+    from deeptutor.learning.review_strategy import scheduler_for_progress
 
-    scheduler = SpacedRepetitionScheduler()
+    scheduler = scheduler_for_progress(progress)
     recall = scheduler.retrievability(state, now=now)
     risk = (
         task.forgetting_risk

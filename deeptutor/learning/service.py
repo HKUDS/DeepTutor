@@ -2832,20 +2832,22 @@ class LearningService:
                 raise MasteryInteractionError(
                     f"Objective {kp.name!r} must be graded with mastery_quiz + mastery_grade"
                 )
-            from deeptutor.learning.lesson_evidence import LessonUnavailable, validate_evidence
+            from deeptutor.learning.lesson_evidence import (
+                LessonUnavailable,
+                assessment_evidence,
+                validate_evidence,
+            )
 
             try:
-                validate_evidence(
-                    self._store, tx.progress, kp_id, tx.progress.lesson_evidence.get(kp_id, {})
-                )
+                packet = assessment_evidence(tx.progress, kp_id)
+                validate_evidence(self._store, tx.progress, kp_id, packet)
                 if _assessment:
                     from deeptutor.learning.lesson_evidence import objective_fingerprint
                     from deeptutor.learning.semantic_assessment import fingerprint
 
                     if (
                         objective_fingerprint(tx.progress, kp_id) != _assessment["objective"]
-                        or fingerprint(tx.progress.lesson_evidence.get(kp_id, {}))
-                        != _assessment["source"]
+                        or fingerprint(packet) != _assessment["source"]
                     ):
                         raise MasteryInteractionError(
                             "Objective or source changed during assessment; retry."
@@ -3046,6 +3048,7 @@ class LearningService:
         from deeptutor.learning import semantic_assessment as semantic
         from deeptutor.learning.lesson_evidence import (
             LessonUnavailable,
+            assessment_evidence,
             objective_fingerprint,
             validate_evidence,
         )
@@ -3075,7 +3078,7 @@ class LearningService:
                     confidence=existing.confidence if existing.confidence is not None else 1.0,
                     feedback=existing.feedback or "Previously saved assessment.",
                 ).receipt()
-        evidence = progress.lesson_evidence.get(kp_id, {})
+        evidence = assessment_evidence(progress, kp_id)
         try:
             validate_evidence(self._store, progress, kp_id, evidence)
             objective = objective_fingerprint(progress, kp_id)

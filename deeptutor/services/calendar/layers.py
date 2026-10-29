@@ -77,13 +77,14 @@ def read_layers(workspace_id, start, end, tzid):
     # The database is already workspace-scoped; match PracticeStore’s live-entry filter.
     scope = "(n.session_id IS NULL OR s.deleted_at IS NULL)"
     with practice.connect() as db:
+        # SQL fragments are local constants; both time bounds use parameters.
         for row in db.execute(
-            f"SELECT {_DUE_AT_SQL} AS due FROM notebook_entries n LEFT JOIN sessions s ON s.id=n.session_id LEFT JOIN practice_review_state r ON r.entry_id=n.id WHERE {scope} AND {_DUE_AT_SQL}>=? AND {_DUE_AT_SQL}<?",
+            f"SELECT {_DUE_AT_SQL} AS due FROM notebook_entries n LEFT JOIN sessions s ON s.id=n.session_id LEFT JOIN practice_review_state r ON r.entry_id=n.id WHERE {scope} AND {_DUE_AT_SQL}>=? AND {_DUE_AT_SQL}<?",  # nosec B608
             (lo, hi),
         ):
             review(row[0]).practice += 1
         for row in db.execute(
-            f"SELECT e.reviewed_at FROM practice_review_events e JOIN notebook_entries n ON n.id=e.entry_id LEFT JOIN sessions s ON s.id=n.session_id WHERE {scope} AND e.reviewed_at>=? AND e.reviewed_at<?",
+            f"SELECT e.reviewed_at FROM practice_review_events e JOIN notebook_entries n ON n.id=e.entry_id LEFT JOIN sessions s ON s.id=n.session_id WHERE {scope} AND e.reviewed_at>=? AND e.reviewed_at<?",  # nosec B608
             (lo, hi),
         ):
             footprint(row[0]).practice_reviews += 1

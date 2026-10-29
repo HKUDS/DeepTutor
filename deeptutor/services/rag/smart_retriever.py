@@ -4,9 +4,13 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable
+import re
 from typing import Any, Dict, List, Optional
 
 SearchFunc = Callable[..., Awaitable[Dict[str, Any]]]
+
+# A leading ordered ("1. ", "2) ") or unordered ("- ", "* ") list marker.
+_LIST_MARKER_RE = re.compile(r"^\s*(?:\d+[.)]|[-*+])\s+")
 
 
 class SmartRetriever:
@@ -57,7 +61,7 @@ class SmartRetriever:
             )
             raw = await complete(prompt, system_prompt="You are a search query generator.")
             lines = [
-                line.strip().lstrip("0123456789.-) ")
+                _LIST_MARKER_RE.sub("", line.strip())
                 for line in raw.strip().split("\n")
                 if line.strip()
             ]

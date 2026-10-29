@@ -3,9 +3,8 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 [project]
 name = "deeptutor-cli"
-version = "1.6.15"
+dynamic = ["version", "dependencies"]
 description = "Compatibility install for the minimal DeepTutor CLI"
 requires-python = ">=3.11,<3.15"
-dependencies = ["deeptutor==1.6.15"]
 [tool.setuptools]
 packages = []

@@ -49,12 +49,19 @@ import {
   fetchMasteryTopic,
   fetchMasteryTopicSessions,
   fetchLearningBoard,
+  fetchMasteryReviewStrategies,
   redoProgress,
   renameProgress,
   setMasteryObjectiveOverride,
   updateMasteryReviewSettings,
+  bindMasteryReviewStrategy,
+  createMasteryReviewStrategy,
+  deleteMasteryReviewStrategy,
+  duplicateMasteryReviewStrategy,
+  updateMasteryReviewStrategy,
   type MasteryTopic,
   type BoardResult,
+  type ReviewStrategyInput,
   type TopicSession,
 } from "@/lib/learning-api";
 import { setPendingPrompt } from "@/lib/pending-prompt";
@@ -84,6 +91,13 @@ export default function MasteryTopicPage() {
   const [mutationBusy, setMutationBusy] = useState(false);
   const [retentionBusy, setRetentionBusy] = useState(false);
   const [retentionError, setRetentionError] = useState<string | null>(null);
+  const [strategies, setStrategies] = useState<
+    Awaited<ReturnType<typeof fetchMasteryReviewStrategies>>["strategies"]
+  >([]);
+  const [strategiesLoading, setStrategiesLoading] = useState(true);
+  const [strategiesError, setStrategiesError] = useState<string | null>(null);
+  const [strategyBusy, setStrategyBusy] = useState(false);
+  const [strategyError, setStrategyError] = useState<string | null>(null);
   const editorTriggerRef = useRef<HTMLElement | null>(null);
   const confirmTriggerRef = useRef<HTMLElement | null>(null);
   const activity = useMasteryPathActivity(pathId || null);
@@ -131,6 +145,25 @@ export default function MasteryTopicPage() {
       setSessionsLoading(false);
     }
   }, [pathId]);
+
+  const loadStrategies = useCallback(async () => {
+    setStrategiesLoading(true);
+    try {
+      const result = await fetchMasteryReviewStrategies({
+        cache: "no-store",
+      });
+      setStrategies(result.strategies);
+      setStrategiesError(null);
+    } catch {
+      setStrategiesError(t("Could not load review strategies. Try again."));
+    } finally {
+      setStrategiesLoading(false);
+    }
+  }, [t]);
+
+  useEffect(() => {
+    void loadStrategies();
+  }, [loadStrategies]);
 
   useEffect(() => {
     void loadTopic();
@@ -222,6 +255,86 @@ export default function MasteryTopicPage() {
       setRetentionError(t("Could not save review target. Try again."));
     } finally {
       setRetentionBusy(false);
+    }
+  };
+
+  const handleStrategyChange = async (templateId: string) => {
+    setStrategyBusy(true);
+    setStrategyError(null);
+    try {
+      const saved = await bindMasteryReviewStrategy(pathId, templateId);
+      setTopic(saved);
+      activity.refresh();
+    } catch {
+      setStrategyError(t("Could not save review strategy. Try again."));
+    } finally {
+      setStrategyBusy(false);
+    }
+  };
+
+  const handleStrategySave = async (
+    input: ReviewStrategyInput,
+    templateId?: string,
+  ) => {
+    setStrategyBusy(true);
+    setStrategyError(null);
+    try {
+      const savedStrategy = templateId
+        ? await updateMasteryReviewStrategy(templateId, input)
+        : await createMasteryReviewStrategy(input);
+      const savedTopic = await bindMasteryReviewStrategy(
+        pathId,
+        savedStrategy.template_id,
+      );
+      setTopic(savedTopic);
+      await loadStrategies();
+      activity.refresh();
+    } catch (error) {
+      setStrategyError(
+        error instanceof Error
+          ? error.message
+          : t("Could not save review strategy. Try again."),
+      );
+    } finally {
+      setStrategyBusy(false);
+    }
+  };
+
+  const handleStrategyDuplicate = async (
+    templateId: string,
+    name: string,
+  ) => {
+    setStrategyBusy(true);
+    setStrategyError(null);
+    try {
+      const copy = await duplicateMasteryReviewStrategy(templateId, name);
+      const savedTopic = await bindMasteryReviewStrategy(
+        pathId,
+        copy.template_id,
+      );
+      setTopic(savedTopic);
+      await loadStrategies();
+      activity.refresh();
+    } catch {
+      setStrategyError(t("Could not duplicate review strategy. Try again."));
+    } finally {
+      setStrategyBusy(false);
+    }
+  };
+
+  const handleStrategyDelete = async (templateId: string) => {
+    setStrategyBusy(true);
+    setStrategyError(null);
+    try {
+      const savedTopic = await bindMasteryReviewStrategy(pathId, "");
+      await deleteMasteryReviewStrategy(templateId);
+      setTopic(savedTopic);
+      await loadStrategies();
+      activity.refresh();
+    } catch {
+      setStrategyError(t("Could not delete review strategy. Try again."));
+    } finally {
+      setStrategyBusy(false);
     }
   };
 
@@ -606,6 +719,18 @@ export default function MasteryTopicPage() {
                 retentionBusy={retentionBusy}
                 retentionError={retentionError}
                 onRetentionChange={(value) => void handleRetentionChange(value)}
+                strategies={strategies}
+                selectedStrategyId={
+                  topic.review_settings?.strategy?.template_id ?? ""
+                }
+                strategyLoading={strategiesLoading}
+                strategyError={strategiesError}
+                strategyBusy={strategyBusy}
+                onStrategyChange={(value) => void handleStrategyChange(value)}
+                onRetryStrategies={() => void loadStrategies()}
+                onStrategySave={handleStrategySave}
+                onStrategyDuplicate={handleStrategyDuplicate}
+                onStrategyDelete={handleStrategyDelete}
                 zh={zh}
                 onSelect={(objectiveId) => {
                   setSelectedId(objectiveId);

@@ -79,7 +79,9 @@ def manifests() -> dict[str, dict[str, Any]]:
 @cache
 def source_checkout() -> bool:
     root = Path(__file__).resolve().parents[2]
-    return (root / ".git").exists() and (root / "pyproject.toml").is_file()
+    # Docker and source archives deliberately omit Git metadata. Published
+    # wheels contain neither the project file nor the source build script.
+    return (root / "pyproject.toml").is_file() and (root / "scripts/build_modules.py").is_file()
 
 
 def state_path() -> Path:

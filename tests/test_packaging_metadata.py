@@ -6,6 +6,7 @@ import tomllib
 from packaging.requirements import Requirement
 import pytest
 
+from build_metadata import optional_dependencies, project_version, source_optional_dependencies
 from deeptutor.__version__ import __version__
 from deeptutor.modules.catalog import manifests
 from scripts.sync_module_requirements import generated
@@ -20,7 +21,8 @@ def project(path="pyproject.toml"):
 def test_core_and_cli_have_one_code_owner():
     assert project()["dependencies"] == manifests()["core"]["requirements"]
     cli = tomllib.loads((ROOT / "packaging/deeptutor-cli/pyproject.toml").read_text())
-    assert cli["project"]["dependencies"] == [f"deeptutor=={__version__}"]
+    assert set(cli["project"]["dynamic"]) == {"version", "dependencies"}
+    assert project_version() == __version__
     assert cli["tool"]["setuptools"]["packages"] == []
     assert "scripts" not in cli["project"]
     for spec in (project(), cli["project"]):
@@ -86,6 +88,37 @@ def test_windows_parser_worker_dependency_is_scoped():
 
 
 def test_optional_sdk_constraints_remain_intact():
-    extras = project()["optional-dependencies"]
+    extras = optional_dependencies()
     assert extras["rag-lightrag"] == ["lightrag-hku==1.5.7"]
     assert extras["graphrag"] == ["graphrag>=3.0.1,<4.0.0; python_version < '3.14'"]
+
+
+def test_next_release_pins_every_internal_dependency_to_the_new_version(tmp_path):
+    import shutil
+
+    shutil.copy(ROOT / "pyproject.toml", tmp_path)
+    (tmp_path / "deeptutor").mkdir()
+    (tmp_path / "deeptutor/__version__.py").write_text('__version__ = "9.8.7rc1"\n')
+    extras = optional_dependencies(tmp_path)
+    internal = [
+        Requirement(raw)
+        for rows in extras.values()
+        for raw in rows
+        if Requirement(raw).name.startswith("deeptutor")
+    ]
+    assert internal
+    assert all(str(requirement.specifier) == "==9.8.7rc1" for requirement in internal)
+    assert set(Requirement(raw).name for raw in extras["full"]) == {
+        row["distribution"]
+        for name, row in manifests().items()
+        if name not in {"core", "renderer-manim"} and not name.startswith("parser-")
+    }
+
+
+def test_source_extras_install_dependencies_without_module_wheels():
+    extras = source_optional_dependencies()
+    assert not any(
+        Requirement(raw).name.startswith("deeptutor") for rows in extras.values() for raw in rows
+    )
+    assert "manim>=0.19.0" in extras["math-animator"]
+    assert set(manifests()["partners"]["requirements"]) <= set(extras["partners"])

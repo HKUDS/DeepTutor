@@ -2361,6 +2361,46 @@
         "title": "ChatMessageRequest",
         "type": "object"
       },
+      "ChatPageCustomization": {
+        "additionalProperties": false,
+        "properties": {
+          "controls": {
+            "$ref": "#/components/schemas/ComposerControls"
+          },
+          "hidden_modes": {
+            "items": {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 64,
+            "title": "Hidden Modes",
+            "type": "array"
+          },
+          "starters": {
+            "additionalProperties": {
+              "items": {
+                "$ref": "#/components/schemas/StarterPrompt"
+              },
+              "maxItems": 20,
+              "type": "array"
+            },
+            "propertyNames": {
+              "enum": [
+                "explain",
+                "solve",
+                "practice",
+                "plan",
+                "research"
+              ]
+            },
+            "title": "Starters",
+            "type": "object"
+          }
+        },
+        "title": "ChatPageCustomization",
+        "type": "object"
+      },
       "ChatResponseTimeoutUpdate": {
         "properties": {
           "chat_response_timeout": {
@@ -2528,6 +2568,38 @@
           "page_id"
         ],
         "title": "CompilePageRequest",
+        "type": "object"
+      },
+      "ComposerControls": {
+        "additionalProperties": false,
+        "properties": {
+          "mcp": {
+            "default": true,
+            "title": "Mcp",
+            "type": "boolean"
+          },
+          "partners": {
+            "default": true,
+            "title": "Partners",
+            "type": "boolean"
+          },
+          "preferences": {
+            "default": true,
+            "title": "Preferences",
+            "type": "boolean"
+          },
+          "skills": {
+            "default": true,
+            "title": "Skills",
+            "type": "boolean"
+          },
+          "voice": {
+            "default": true,
+            "title": "Voice",
+            "type": "boolean"
+          }
+        },
+        "title": "ComposerControls",
         "type": "object"
       },
       "ConfirmPartnerDraftRequest": {
@@ -4278,6 +4350,18 @@
         "title": "DuplicateFileQuery",
         "type": "object"
       },
+      "DuplicateReviewStrategyRequest": {
+        "properties": {
+          "name": {
+            "default": "",
+            "maxLength": 120,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "title": "DuplicateReviewStrategyRequest",
+        "type": "object"
+      },
       "EditRequest": {
         "properties": {
           "action": {
@@ -5045,6 +5129,21 @@
           "goal"
         ],
         "title": "GenerateTopicDraftRequest",
+        "type": "object"
+      },
+      "GeneratedOutputCleanupPayload": {
+        "description": "Bind deletion to the file details reviewed by the caller.",
+        "properties": {
+          "fingerprint": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Fingerprint",
+            "type": "string"
+          }
+        },
+        "required": [
+          "fingerprint"
+        ],
+        "title": "GeneratedOutputCleanupPayload",
         "type": "object"
       },
       "GitHubSourceInfo": {
@@ -6147,6 +6246,27 @@
           }
         },
         "title": "LearningCaptureUpdateRequest",
+        "type": "object"
+      },
+      "LearningPageCustomization": {
+        "additionalProperties": false,
+        "properties": {
+          "hidden_features": {
+            "items": {
+              "enum": [
+                "books",
+                "mastery",
+                "practice",
+                "reading"
+              ],
+              "type": "string"
+            },
+            "maxItems": 4,
+            "title": "Hidden Features",
+            "type": "array"
+          }
+        },
+        "title": "LearningPageCustomization",
         "type": "object"
       },
       "LightRagConfigUpdate": {
@@ -8798,6 +8918,18 @@
         "title": "PartnerSeatRetryRequest",
         "type": "object"
       },
+      "PathReviewStrategyRequest": {
+        "description": "Bind a path to a strategy; an empty template_id restores the default.",
+        "properties": {
+          "template_id": {
+            "default": "",
+            "title": "Template Id",
+            "type": "string"
+          }
+        },
+        "title": "PathReviewStrategyRequest",
+        "type": "object"
+      },
       "PauseBookRequest": {
         "properties": {
           "book_id": {
@@ -10302,6 +10434,21 @@
         "title": "RenameTagRequest",
         "type": "object"
       },
+      "RenderCleanupPayload": {
+        "description": "Bind cleanup to the storage inventory reviewed by the caller.",
+        "properties": {
+          "fingerprint": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Fingerprint",
+            "type": "string"
+          }
+        },
+        "required": [
+          "fingerprint"
+        ],
+        "title": "RenderCleanupPayload",
+        "type": "object"
+      },
       "ResolveRequest": {
         "properties": {
           "language": {
@@ -10491,6 +10638,55 @@
           "desired_retention"
         ],
         "title": "ReviewSettingsRequest",
+        "type": "object"
+      },
+      "ReviewStrategyRequest": {
+        "description": "Create/edit a custom review strategy: per-round intervals per type.",
+        "properties": {
+          "description": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Description",
+            "type": "string"
+          },
+          "desired_retention": {
+            "anyOf": [
+              {
+                "maximum": 0.99,
+                "minimum": 0.7,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Desired Retention"
+          },
+          "intervals": {
+            "additionalProperties": {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            "propertyNames": {
+              "$ref": "#/components/schemas/KnowledgeType"
+            },
+            "title": "Intervals",
+            "type": "object"
+          },
+          "name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "intervals"
+        ],
+        "title": "ReviewStrategyRequest",
         "type": "object"
       },
       "ReviewSuggestionRequest": {
@@ -11417,6 +11613,29 @@
         "title": "SoulUpdateBody",
         "type": "object"
       },
+      "StarterPrompt": {
+        "additionalProperties": false,
+        "properties": {
+          "label": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          },
+          "prompt": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Prompt",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "prompt"
+        ],
+        "title": "StarterPrompt",
+        "type": "object"
+      },
       "StatusColors": {
         "additionalProperties": false,
         "properties": {
@@ -12121,6 +12340,7 @@
         "properties": {
           "theme": {
             "enum": [
+              "system",
               "light",
               "dark",
               "glass",
@@ -13171,6 +13391,7 @@
             "anyOf": [
               {
                 "enum": [
+                  "system",
                   "light",
                   "dark",
                   "glass",
@@ -20652,6 +20873,88 @@
         ]
       }
     },
+    "/api/calendar/export.ics": {
+      "get": {
+        "description": "Download stored events as an iCalendar attachment.\n\nArgs:\n    calendar_id: Limit the file to one calendar. Omit to include every\n        visible calendar. Unknown ids return 404. Workspace overlay\n        layers are not included.",
+        "operationId": "export_ics_api_calendar_export_ics_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "calendar_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Calendar Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/calendar": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Export Ics",
+        "tags": [
+          "calendar"
+        ]
+      }
+    },
     "/api/calendar/layers": {
       "get": {
         "operationId": "layers_api_calendar_layers_get",
@@ -22275,6 +22578,70 @@
         ]
       }
     },
+    "/api/documents/flashcards/export": {
+      "get": {
+        "description": "Download every notebook flashcard as Anki import text.",
+        "operationId": "export_all_flashcards_api_documents_flashcards_export_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Export All Flashcards",
+        "tags": [
+          "documents"
+        ]
+      }
+    },
     "/api/documents/history": {
       "get": {
         "description": "Get all operation history",
@@ -23172,6 +23539,79 @@
           }
         },
         "summary": "Append Note Clip",
+        "tags": [
+          "documents"
+        ]
+      }
+    },
+    "/api/documents/{doc_id}/flashcards/export": {
+      "get": {
+        "description": "Download one note's flashcards as Anki import text.",
+        "operationId": "export_document_flashcards_api_documents__doc_id__flashcards_export_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "doc_id",
+            "required": true,
+            "schema": {
+              "title": "Doc Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Export Document Flashcards",
         "tags": [
           "documents"
         ]
@@ -32210,6 +32650,445 @@
         ]
       }
     },
+    "/api/mastery-paths/review-strategies": {
+      "get": {
+        "description": "Every strategy the learner can bind: presets first, then their own.",
+        "operationId": "list_review_strategies_api_mastery_paths_review_strategies_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Review Strategies",
+        "tags": [
+          "mastery-path"
+        ]
+      },
+      "post": {
+        "operationId": "create_review_strategy_api_mastery_paths_review_strategies_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewStrategyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Review Strategy",
+        "tags": [
+          "mastery-path"
+        ]
+      }
+    },
+    "/api/mastery-paths/review-strategies/{template_id}": {
+      "delete": {
+        "operationId": "delete_review_strategy_api_mastery_paths_review_strategies__template_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "template_id",
+            "required": true,
+            "schema": {
+              "title": "Template Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Review Strategy",
+        "tags": [
+          "mastery-path"
+        ]
+      },
+      "get": {
+        "operationId": "get_review_strategy_api_mastery_paths_review_strategies__template_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "template_id",
+            "required": true,
+            "schema": {
+              "title": "Template Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Review Strategy",
+        "tags": [
+          "mastery-path"
+        ]
+      },
+      "put": {
+        "operationId": "update_review_strategy_api_mastery_paths_review_strategies__template_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "template_id",
+            "required": true,
+            "schema": {
+              "title": "Template Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewStrategyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Review Strategy",
+        "tags": [
+          "mastery-path"
+        ]
+      }
+    },
+    "/api/mastery-paths/review-strategies/{template_id}/duplicate": {
+      "post": {
+        "operationId": "duplicate_review_strategy_api_mastery_paths_review_strategies__template_id__duplicate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "template_id",
+            "required": true,
+            "schema": {
+              "title": "Template Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DuplicateReviewStrategyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Duplicate Review Strategy",
+        "tags": [
+          "mastery-path"
+        ]
+      }
+    },
     "/api/mastery-paths/topics": {
       "get": {
         "operationId": "list_topics_api_mastery_paths_topics_get",
@@ -32956,6 +33835,89 @@
           }
         },
         "summary": "Update Review Settings",
+        "tags": [
+          "mastery-path"
+        ]
+      }
+    },
+    "/api/mastery-paths/topics/{path_id}/review-strategy": {
+      "put": {
+        "description": "Bind which strategy a mastery path schedules with.\n\nThe binding snapshots the template's intervals onto the path, so later\nedits to the template do not rewrite existing schedules. A strategy that\ncarries a recall target applies it. Every bind or switch replays durable\nevidence under the new interval snapshot; unbinding keeps the learner's\ncurrent target.",
+        "operationId": "update_path_review_strategy_api_mastery_paths_topics__path_id__review_strategy_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "path_id",
+            "required": true,
+            "schema": {
+              "title": "Path Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PathReviewStrategyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Path Review Strategy",
         "tags": [
           "mastery-path"
         ]
@@ -55951,6 +56913,215 @@
         ]
       }
     },
+    "/api/settings/page-customization": {
+      "get": {
+        "operationId": "get_page_customization_api_settings_page_customization_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Page Customization",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/settings/page-customization/chat": {
+      "put": {
+        "operationId": "update_chat_page_customization_api_settings_page_customization_chat_put",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatPageCustomization"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Chat Page Customization",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/settings/page-customization/learning": {
+      "put": {
+        "operationId": "update_learning_page_customization_api_settings_page_customization_learning_put",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LearningPageCustomization"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Learning Page Customization",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
     "/api/settings/presets": {
       "get": {
         "description": "List value-free starting points for a reviewable draft.",
@@ -59437,6 +60608,84 @@
           }
         },
         "summary": "Preview Workspace Data",
+        "tags": [
+          "workspace-settings"
+        ]
+      }
+    },
+    "/api/settings/workspace/folders": {
+      "get": {
+        "description": "Return folders available to the authenticated workspace picker.",
+        "operationId": "list_server_folders_api_settings_workspace_folders_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "path",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Path",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Server Folders Api Settings Workspace Folders Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Server Folders",
         "tags": [
           "workspace-settings"
         ]
@@ -68010,6 +69259,542 @@
           }
         },
         "summary": "Read Workspace Item",
+        "tags": [
+          "workspace"
+        ]
+      }
+    },
+    "/files/workspace-items/{workspace_id}/{workspace_item_id}/clean-render-cache": {
+      "post": {
+        "description": "Clean a reviewed render directory while excluding active writers.",
+        "operationId": "clean_render_cache_files_workspace_items__workspace_id___workspace_item_id__clean_render_cache_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_item_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RenderCleanupPayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Clean Render Cache Files Workspace Items  Workspace Id   Workspace Item Id  Clean Render Cache Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Clean Render Cache",
+        "tags": [
+          "workspace"
+        ]
+      }
+    },
+    "/files/workspace-items/{workspace_id}/{workspace_item_id}/file-storage": {
+      "get": {
+        "description": "Return the local path of a generated chat tool attachment.",
+        "operationId": "chat_output_file_storage_files_workspace_items__workspace_id___workspace_item_id__file_storage_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_item_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Chat Output File Storage Files Workspace Items  Workspace Id   Workspace Item Id  File Storage Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Chat Output File Storage",
+        "tags": [
+          "workspace"
+        ]
+      }
+    },
+    "/files/workspace-items/{workspace_id}/{workspace_item_id}/remove-generated-output": {
+      "post": {
+        "description": "Remove an unchanged workspace copy while retaining the chat snapshot.",
+        "operationId": "remove_chat_output_file_files_workspace_items__workspace_id___workspace_item_id__remove_generated_output_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_item_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GeneratedOutputCleanupPayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Remove Chat Output File Files Workspace Items  Workspace Id   Workspace Item Id  Remove Generated Output Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove Chat Output File",
+        "tags": [
+          "workspace"
+        ]
+      }
+    },
+    "/files/workspace-items/{workspace_id}/{workspace_item_id}/render-storage": {
+      "get": {
+        "description": "Return the original path and a preview of reproducible render files.",
+        "operationId": "render_storage_files_workspace_items__workspace_id___workspace_item_id__render_storage_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_item_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Render Storage Files Workspace Items  Workspace Id   Workspace Item Id  Render Storage Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Render Storage",
+        "tags": [
+          "workspace"
+        ]
+      }
+    },
+    "/files/workspace-items/{workspace_id}/{workspace_item_id}/reveal": {
+      "post": {
+        "description": "Select an artifact in the local desktop file manager.",
+        "operationId": "reveal_render_file_files_workspace_items__workspace_id___workspace_item_id__reveal_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_item_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Reveal Render File Files Workspace Items  Workspace Id   Workspace Item Id  Reveal Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reveal Render File",
+        "tags": [
+          "workspace"
+        ]
+      }
+    },
+    "/files/workspace-items/{workspace_id}/{workspace_item_id}/reveal-generated-output": {
+      "post": {
+        "description": "Select a generated chat attachment in the local desktop file manager.",
+        "operationId": "reveal_chat_output_file_files_workspace_items__workspace_id___workspace_item_id__reveal_generated_output_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_item_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Reveal Chat Output File Files Workspace Items  Workspace Id   Workspace Item Id  Reveal Generated Output Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reveal Chat Output File",
         "tags": [
           "workspace"
         ]

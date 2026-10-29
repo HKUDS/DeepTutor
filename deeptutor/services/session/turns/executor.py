@@ -73,6 +73,7 @@ class TurnExecutor:
         _lock: asyncio.Lock
         _executions: dict[str, _TurnExecution]
         _reply_queues: dict[str, asyncio.Queue[dict[str, Any] | None]]
+        _inboxes: dict[str, TurnInbox]
 
         def _create_context_builder(self, *, tutoring: bool = False) -> Any: ...
 

@@ -48,6 +48,17 @@ def event(**extra):
     }
 
 
+def test_export_requires_auth_and_isolates_accounts(client):
+    assert client.get("/api/calendar/export.ics").status_code == 401
+    created = client.post("/api/calendar/events", headers=h(), json=event(title="Alice private"))
+    assert created.status_code == 201, created.text
+    alice = client.get("/api/calendar/export.ics", headers=h())
+    bob = client.get("/api/calendar/export.ics", headers=h("bob"))
+    assert alice.status_code == bob.status_code == 200
+    assert b"SUMMARY:Alice private" in alice.content
+    assert b"SUMMARY:Alice private" not in bob.content
+
+
 def test_requires_auth_and_isolates_accounts(client):
     assert client.get("/api/calendar/calendars").status_code == 401
     created = client.post("/api/calendar/events", headers=h(), json=event())

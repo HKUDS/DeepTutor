@@ -3,8 +3,8 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import Link from 'next/link'
 import './note-library.css'
-import { Layers, X } from 'lucide-react'
-import { noteRequest } from '@/lib/notes-api'
+import { FileDown, Layers, X } from 'lucide-react'
+import { exportNoteFlashcards, noteRequest } from '@/lib/notes-api'
 import PickerShell from '@/components/common/PickerShell'
 interface Card {
   page_id: string
@@ -27,6 +27,22 @@ export default function NoteReview() {
       .catch(e => setError(String(e)))
   }, [])
   const card = cards[0]
+  const exportAll = async () => {
+    setBusy(true)
+    try {
+      const blob = await exportNoteFlashcards()
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = 'deeptutor-flashcards.txt'
+      link.click()
+      setTimeout(() => URL.revokeObjectURL(url), 1000)
+    } catch (err) {
+      setError(String(err))
+    } finally {
+      setBusy(false)
+    }
+  }
   const grade = async (remembered: boolean) => {
     setBusy(true)
     try {
@@ -56,7 +72,18 @@ export default function NoteReview() {
       <PickerShell open={open} onClose={() => setOpen(false)} ariaLabel={t('Review flashcards')}>
         <div className="dt-notes-review">
           <header>
-            <span>{t('Review flashcards')}</span>
+            <span className="dt-notes-review-heading">
+              {t('Review flashcards')}
+              <button
+                type="button"
+                className="dt-notes-review-export"
+                disabled={busy}
+                onClick={() => void exportAll()}
+              >
+                <FileDown size={13} strokeWidth={1.7} />
+                {t('Export all for Anki')}
+              </button>
+            </span>
             {card && <span>{t('{{count}} left', { count: cards.length })}</span>}
             <button className="dt-note-icon-button" aria-label={t('Close')} onClick={() => setOpen(false)}>
               <X size={15} />

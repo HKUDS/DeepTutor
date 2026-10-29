@@ -22,8 +22,8 @@ from deeptutor.tools.builtin import USER_TOGGLEABLE_TOOL_NAMES
 UiLanguage = Literal["en", "zh", "fr", "de", "uk", "pl"]
 
 DEFAULT_UI_SETTINGS: dict[str, Any] = {
-    # "snow" is the pure-white neutral theme, shown as "Default" in the UI.
-    "theme": "snow",
+    # "system" follows the OS. "snow" is the pure-white Default palette.
+    "theme": "system",
     "language": "en",
     "response_language": "en",
     # When true, TTS verbalizes LaTeX (fractions, powers, Greek). Dollar

@@ -15,11 +15,11 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import tomllib
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+from build_metadata import optional_dependencies, project_version
 from build_support import owner
 
 
@@ -28,10 +28,7 @@ def build(output: Path, selected: list[str]) -> list[Path]:
         path.stem: json.loads(path.read_text())
         for path in (ROOT / "deeptutor/modules/manifests").glob("*.json")
     }
-    version_ns = {}
-    exec((ROOT / "deeptutor/__version__.py").read_text(), version_ns)
-    version = version_ns["__version__"]
-    project = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]
+    version = project_version(ROOT)
     names = selected or [*modules, "cli"]
     output.mkdir(parents=True, exist_ok=True)
     files = [
@@ -86,7 +83,7 @@ namespaces = true
             if name == "core":
                 config += '\n[project.scripts]\ndeeptutor = "deeptutor_cli.main:main"\n'
                 config += "\n[project.optional-dependencies]\n"
-                for key, values in project["optional-dependencies"].items():
+                for key, values in optional_dependencies(ROOT).items():
                     config += f"{json.dumps(key)} = {json.dumps(values)}\n"
             for group, entries in (module or {}).get("entry_points", {}).items():
                 config += f"\n[project.entry-points.{json.dumps(group)}]\n"

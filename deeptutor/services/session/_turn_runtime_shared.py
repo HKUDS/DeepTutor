@@ -112,6 +112,10 @@ _INLINE_CODE_SPAN_RE = re.compile(r"`[^`\n]*`")
 _MATH_SPAN_RE = re.compile(
     r"\\\[[\s\S]*?\\\]|\\\([\s\S]*?\\\)|\$\$[\s\S]*?\$\$|\$(?!\s)(?:\\.|[^$\n])*?(?<!\s)\$"
 )
+# One left-to-right pass, so a span is never masked inside another (a `$` in code is not math).
+_PROTECTED_SPAN_RE = re.compile(
+    "|".join(p.pattern for p in (_FENCED_CODE_BLOCK_RE, _INLINE_CODE_SPAN_RE, _MATH_SPAN_RE))
+)
 
 
 def _is_escaped(text: str, index: int) -> bool:
@@ -234,15 +238,16 @@ def _repair_chinese_emphasis_for_persistence(content: str, language: str) -> str
     """
     if not content or not str(language or "").lower().startswith("zh"):
         return content
+    # NUL delimits the placeholders below; text that already has one is left as is.
+    if "\x00" in content:
+        return content
     protected: list[str] = []
 
     def mask(match: re.Match[str]) -> str:
         protected.append(match.group(0))
         return f"\x00CJK_PROTECTED_{len(protected) - 1}\x00"
 
-    masked = _FENCED_CODE_BLOCK_RE.sub(mask, content)
-    masked = _MATH_SPAN_RE.sub(mask, masked)
-    masked = _INLINE_CODE_SPAN_RE.sub(mask, masked)
+    masked = _PROTECTED_SPAN_RE.sub(mask, content)
     repaired = "\n".join(_repair_chinese_emphasis_line(line) for line in masked.split("\n"))
     return re.sub(
         r"\x00CJK_PROTECTED_(\d+)\x00",
@@ -1524,6 +1529,13 @@ def _latex_selection_is_grounded(source: str, selected: str) -> bool:
     return body in normalized_source
 
 
+def _markdown_selection_is_grounded(source: str, selected: str) -> bool:
+    """Compare rendered source text without rewriting the claimed selection."""
+    from deeptutor.services.session.selection_grounding import rendered_markdown_text
+
+    return bool(selected) and selected in rendered_markdown_text(source)
+
+
 def _selection_is_grounded(source_text: str, selected_text: str) -> bool:
     """Whether the claimed selection occurs in its containing message."""
     source = str(source_text or "")
@@ -1539,7 +1551,9 @@ def _selection_is_grounded(source_text: str, selected_text: str) -> bool:
     normalized_selected = " ".join(selected.split())
     if normalized_selected and normalized_selected in normalized_source:
         return True
-    return _latex_selection_is_grounded(normalized_source, normalized_selected)
+    if _latex_selection_is_grounded(normalized_source, normalized_selected):
+        return True
+    return _markdown_selection_is_grounded(source, normalized_selected)
 
 
 async def _resolve_selection_tutor_context(

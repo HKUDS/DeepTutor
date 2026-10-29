@@ -80,6 +80,23 @@ def test_registry_lifecycle_for_bundled_and_imported_types(tmp_path: Path) -> No
     assert registry.get("number_line", require_enabled=False) is None
 
 
+def test_lifecycle_mutators_accept_mixed_case_ids(tmp_path: Path) -> None:
+    # ``get`` normalizes the id (strip + lower) but the lifecycle mutators keyed
+    # the catalog with the raw id, so a valid id in a different case was rejected
+    # as "not installed"/"not found" even though ``get`` accepts it.
+    registry = _registry(tmp_path)
+
+    registry.install_bundled("GeoGebra")
+    assert registry.get("geogebra") is not None
+
+    registry.set_enabled("GeoGebra", False)
+    assert registry.get("geogebra") is None
+    assert registry.get("geogebra", require_enabled=False) is not None
+
+    registry.uninstall("GeoGebra")
+    assert registry.get("geogebra", require_enabled=False) is None
+
+
 def test_import_rejects_reserved_id_and_path_traversal(tmp_path: Path) -> None:
     registry = _registry(tmp_path)
     with pytest.raises(VisualizerStoreError, match="reserved"):

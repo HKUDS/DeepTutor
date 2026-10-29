@@ -18,7 +18,8 @@ from datetime import date, datetime, time, timedelta, timezone
 import re
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from dateutil.rrule import rrule, rrulestr
+from dateutil.rrule import rrule as RecurrenceRule
+from dateutil.rrule import rruleset, rrulestr
 
 UTC_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
 WALL_FORMAT = "%Y-%m-%dT%H:%M:%S"
@@ -261,7 +262,7 @@ class Timing:
             self.dtstart, self.tzid, self.start_fold
         )
 
-    def rule(self) -> rrule | None:
+    def rule(self) -> RecurrenceRule | rruleset | None:
         if not self.rrule:
             return None
         return rrulestr("RRULE:" + self.rrule, dtstart=self.first)

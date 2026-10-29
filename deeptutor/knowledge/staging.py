@@ -56,11 +56,15 @@ def stage_source(
     written twice; a name holding a different document is left alone and the
     newcomer takes a free sibling name, so both get indexed.
     """
-    if dest_path.exists():
+    staged = dest_path
+    if staged.exists():
         current = source_hash or content_hash(source_path)
-        if current == content_hash(dest_path):
-            return dest_path, False
-    staged = non_colliding(dest_path)
+        for index in itertools.count(2):
+            if current == content_hash(staged):
+                return staged, False
+            staged = dest_path.with_name(f"{dest_path.stem} ({index}){dest_path.suffix}")
+            if not staged.exists():
+                break
     staged.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(source_path, staged)
     return staged, True

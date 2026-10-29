@@ -22,6 +22,7 @@ import { useMenuPopover } from '@/shared/ui/useMenuPopover'
 import { FeatureCrumb, InstanceCrumb } from '@/components/layout/LocationCrumbs'
 import { useShelfFeature } from '@/components/sidebar/PageBar'
 import type { NotePage, NoteSummary } from '@/lib/notes-api'
+import { pageHasFlashcards } from '../model/flashcards'
 
 export type NoteSaveStatus = 'Saved' | 'Saving…' | 'Unsaved changes' | 'Save failed'
 
@@ -79,7 +80,7 @@ export default function NoteTopBar({
   onCreatePage: () => void
   onMetadata: (patch: Partial<NotePage>) => void
   onInsertFavorite: () => void
-  onExport: (format: 'md' | 'docx') => void
+  onExport: (format: 'md' | 'docx' | 'anki') => void
 }) {
   const { t } = useTranslation()
   const feature = useShelfFeature('/co-writer')
@@ -310,6 +311,19 @@ export default function NoteTopBar({
                   <FileDown size={14} />
                   <span className="flex-1">{t('Export Word')}</span>
                 </button>
+                {pageHasFlashcards(page.blocks) && (
+                  <button
+                    role="menuitem"
+                    className="dt-menu-item"
+                    onClick={() => {
+                      setOpen(false)
+                      onExport('anki')
+                    }}
+                  >
+                    <FileDown size={14} />
+                    {t('Export flashcards (Anki)')}
+                  </button>
+                )}
                 <p className="dt-note-menu-note">
                   {t('Word export keeps text and source links; interactive blocks become static.')}
                 </p>

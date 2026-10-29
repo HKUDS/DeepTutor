@@ -232,10 +232,10 @@ def list_visible_knowledge_bases() -> list[dict[str, Any]]:
 
     if library_request.get():
         viewer = library_viewer.get()
-        catalog = knowledge_catalog()
+        catalog_rows = knowledge_catalog()
         if viewer is None:
-            return catalog
-        return [item for item in catalog if item["workspace_id"] == viewer]
+            return catalog_rows
+        return [item for item in catalog_rows if item["workspace_id"] == viewer]
     selected = current_resources().knowledge_bases
     if selected is None:
         own = _list_visible_knowledge_bases()

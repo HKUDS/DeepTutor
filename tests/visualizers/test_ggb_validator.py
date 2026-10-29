@@ -161,3 +161,21 @@ class TestScriptLevel:
         )
         _, warnings, errors = validate_ggbscript(script)
         assert errors == []
+
+
+class TestEscapedStringArgumentSplitting:
+    def test_split_respects_string_ending_in_escaped_backslash(self):
+        from deeptutor.tools.vision.ggb_validator import _split_command_args
+
+        # The string literal "a\\" has value a\ ; the closing quote is real, so
+        # the trailing ", B" is a separate argument. A single-char escape check
+        # misread the \\" as an escaped quote and swallowed the rest.
+        assert _split_command_args(r'"a\\", B') == [r'"a\\"', "B"]
+
+    def test_text_with_escaped_backslash_string_is_not_unterminated(self):
+        from deeptutor.tools.vision.ggb_validator import validate_text_command
+
+        fixed, warnings, errors = validate_text_command(r'Text["a\\", 1, 2]')
+
+        assert errors == []
+        assert any("Combined scalar" in warning for warning in warnings)

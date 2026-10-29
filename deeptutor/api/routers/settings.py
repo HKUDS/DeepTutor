@@ -78,6 +78,11 @@ from deeptutor.services.settings.interface_settings import (
 from deeptutor.services.settings.interface_settings import (
     get_enabled_optional_tools as _get_enabled_optional_tools,
 )
+from deeptutor.services.settings.page_customization import (
+    ChatPageCustomization,
+    LearningPageCustomization,
+    PageCustomization,
+)
 from deeptutor.services.settings.starter_settings import (
     TRACE_COUNT_RANGE as STARTER_TRACE_COUNT_RANGE,
 )
@@ -172,7 +177,7 @@ class SidebarNavOrder(BaseModel):
 
 
 class UISettings(BaseModel):
-    theme: Literal["light", "dark", "glass", "snow"] = "snow"
+    theme: Literal["system", "light", "dark", "glass", "snow"] = "system"
     language: UiLanguage = "en"
     response_language: ResponseLanguage = "en"
     sidebar_description: Optional[str] = None
@@ -195,7 +200,7 @@ class UISettingsUpdate(BaseModel):
     # Same Literal domains as UISettings — a None default keeps them optional
     # for exclude_unset partial merges, but an explicit value is still validated
     # so PUT /ui cannot persist a theme/language the app can't render.
-    theme: Literal["light", "dark", "glass", "snow"] | None = None
+    theme: Literal["system", "light", "dark", "glass", "snow"] | None = None
     language: UiLanguage | None = None
     response_language: ResponseLanguage | None = None
     sidebar_description: str | None = None
@@ -218,7 +223,7 @@ class ChatResponseTimeoutUpdate(BaseModel):
 
 
 class ThemeUpdate(BaseModel):
-    theme: Literal["light", "dark", "glass", "snow"]
+    theme: Literal["system", "light", "dark", "glass", "snow"]
 
 
 class LanguageUpdate(BaseModel):
@@ -2014,8 +2019,9 @@ async def fetch_models_from_provider(payload: FetchModelsPayload):
 
     base_url = (payload.base_url or "").strip()
     binding = (payload.binding or "").strip().lower() or "openai"
-    is_copilot = canonical_provider_name(binding) == "github_copilot"
-    if not base_url and binding != "codebuddy" and not is_copilot:
+    canonical = canonical_provider_name(binding)
+    is_copilot = canonical == "github_copilot"
+    if not base_url and canonical not in {"codebuddy", "claude_code"} and not is_copilot:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="base_url is required for this provider.",
@@ -2035,6 +2041,13 @@ async def fetch_models_from_provider(payload: FetchModelsPayload):
             api_key = profile.get("api_key") if profile else None
         if not api_format and profile:
             api_format = str(profile.get("api_format") or "")
+
+    if canonical == "claude_code":
+        from deeptutor.services.llm.provider_core.claude_code_provider import (
+            fetch_claude_code_catalog,
+        )
+
+        return {"models": await fetch_claude_code_catalog()}
 
     try:
         model_ids = await fetch_llm_models(binding, base_url, api_key, api_format or "auto")
@@ -2150,6 +2163,36 @@ async def get_ui_settings():
     return {field: settings.get(field) for field in PRESESSION_UI_FIELDS}
 
 
+# Private: user-authored starting prompts must never enter the public /ui payload.
+def _page_customization() -> PageCustomization:
+    return PageCustomization.model_validate(load_ui_settings().get("page_customization") or {})
+
+
+@router.get("/page-customization")
+async def get_page_customization():
+    return _page_customization().model_dump()
+
+
+def _save_page_section(section: str, value: BaseModel) -> dict[str, Any]:
+    def update(stored):
+        current = PageCustomization.model_validate(stored.get("page_customization") or {})
+        setattr(current, section, value)
+        return {**stored, "page_customization": current.model_dump()}
+
+    atomic_update(_settings_file(), update)
+    return _page_customization().model_dump()
+
+
+@router.put("/page-customization/chat")
+async def update_chat_page_customization(update: ChatPageCustomization):
+    return _save_page_section("chat", update)
+
+
+@router.put("/page-customization/learning")
+async def update_learning_page_customization(update: LearningPageCustomization):
+    return _save_page_section("learning", update)
+
+
 @router.put("/ui")
 async def update_ui_settings(update: UISettingsUpdate):
     """Merge frontend partial update into current UI settings.
@@ -2176,6 +2219,7 @@ async def reset_settings():
 async def get_themes():
     return {
         "themes": [
+            {"id": "system", "name": "System"},
             {"id": "snow", "name": "Default"},
             {"id": "light", "name": "Cream"},
             {"id": "dark", "name": "Dark"},

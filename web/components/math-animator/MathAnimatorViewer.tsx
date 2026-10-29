@@ -5,6 +5,7 @@ import { Code2, Expand, Image as ImageIcon, Timer, Video } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { apiUrl } from "@/lib/api";
 import type { MathAnimatorResult } from "@/lib/math-animator-types";
+import { RenderFileActions } from "./RenderFileActions";
 
 export default function MathAnimatorViewer({
   result,
@@ -102,6 +103,7 @@ export default function MathAnimatorViewer({
                 className="aspect-video w-full rounded-xl border border-[var(--border)] bg-black object-contain"
                 src={resolveAssetUrl(item.url)}
               />
+              <RenderFileActions url={item.url} />
             </div>
           ))}
         </section>

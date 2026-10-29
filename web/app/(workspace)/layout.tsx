@@ -1,3 +1,4 @@
+import { PageCustomizationProvider } from "@/context/PageCustomizationContext";
 import CalendarRuntime from "@/features/calendar/components/CalendarRuntime";
 import TaskBoardRuntime from "@/components/tasks/TaskBoardRuntime";
 import WorkspaceSidebar from "@/components/sidebar/WorkspaceSidebar";
@@ -17,6 +18,7 @@ export default function WorkspaceLayout({
 }>) {
   return (
     <CapabilityAccessProvider>
+      <PageCustomizationProvider>
       <Suspense>
         <WorkspaceRuntimeBoundary>
           <CalendarRuntime>
@@ -36,6 +38,7 @@ export default function WorkspaceLayout({
         </CalendarRuntime>
         </WorkspaceRuntimeBoundary>
       </Suspense>
+    </PageCustomizationProvider>
     </CapabilityAccessProvider>
   );
 }

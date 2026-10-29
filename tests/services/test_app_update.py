@@ -32,7 +32,8 @@ def _release(**overrides: object) -> dict:
 
 
 @pytest.mark.asyncio
-async def test_version_check_caches_success_for_the_ttl() -> None:
+async def test_version_check_caches_success_for_the_ttl(monkeypatch) -> None:
+    monkeypatch.setattr(app_update, "__version__", "1.6.15")
     calls = 0
 
     def handler(_request: httpx.Request) -> httpx.Response:

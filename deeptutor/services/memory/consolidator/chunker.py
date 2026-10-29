@@ -51,7 +51,10 @@ def chunk_with_boundary(
 ) -> list[ChunkSpan]:
     """Cut ``text`` into ≤ ``budget`` chunks aligned to natural boundaries.
 
-    * Target size = ``clamp(ceil(len(text) / budget), min, max)``.
+    * Target size = ``clamp(ceil(len(text) / span), min, max)`` where
+      ``span = budget - (budget - 1) * overlap_ratio`` is the distance the
+      ``budget`` overlapping chunks actually cover, since every cut loses one
+      ``overlap`` worth of stride.
     * Right edge of each chunk is extended forward to the next
       ``boundary`` so no sentence/paragraph is split.
     * Adjacent chunks overlap by ``round(target * overlap_ratio)`` chars.
@@ -64,7 +67,12 @@ def chunk_with_boundary(
         budget = 1
 
     n = len(text)
-    target = math.ceil(n / budget)
+    # Each chunk advances the cursor by ``target - overlap``, not by ``target``:
+    # the overlap is lost at every cut, so ``budget`` chunks only reach
+    # ``target + (budget - 1) * (target - overlap)`` chars. Sizing the target
+    # off ``n / budget`` ignores that stride and needs > ``budget`` chunks.
+    span = max(1.0, budget - (budget - 1) * overlap_ratio)
+    target = math.ceil(n / span)
     target = max(min_chunk_chars, min(max_chunk_chars, target))
     overlap = max(0, min(target - 1, round(target * overlap_ratio)))
 

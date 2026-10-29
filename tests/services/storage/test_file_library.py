@@ -206,6 +206,21 @@ def test_search_files_by_filename(store: FileLibraryStore) -> None:
     assert results[0]["filename"] == "project_proposal.pdf"
 
 
+def test_search_files_treats_like_wildcards_literally(store: FileLibraryStore) -> None:
+    """'_' and '%' in the query are literal characters, not SQL LIKE wildcards.
+
+    search_files promises case-insensitive *substring* matching, but the query
+    was interpolated into a LIKE pattern without escaping, so '_' matched any
+    single character.
+    """
+    asyncio.run(store.add_file(data=b"A", filename="report_v1.pdf", mime_type="application/pdf"))
+    asyncio.run(store.add_file(data=b"B", filename="reportXv1.pdf", mime_type="application/pdf"))
+
+    results = asyncio.run(store.search_files("report_v1"))
+
+    assert [r["filename"] for r in results] == ["report_v1.pdf"]
+
+
 def test_search_files_no_match_returns_empty(store: FileLibraryStore) -> None:
     """A query that matches nothing must return an empty list."""
     asyncio.run(store.add_file(data=b"Content", filename="other.txt", mime_type="text/plain"))

@@ -396,12 +396,15 @@ class FileLibraryStore:
     def _search_files_sync(self, query: str) -> list[dict[str, Any]]:
         if not query:
             return []
-        pattern = f"%{query}%"
+        # Escape LIKE metacharacters so '_' and '%' in the query match
+        # literally (substring search), not as single-char / any-run wildcards.
+        escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        pattern = f"%{escaped}%"
         with self._connect() as conn:
             rows = conn.execute(
                 """
                 SELECT * FROM library_files
-                WHERE is_deleted = 0 AND filename LIKE ?
+                WHERE is_deleted = 0 AND filename LIKE ? ESCAPE '\\'
                 ORDER BY created_at DESC, id DESC
                 """,
                 (pattern,),

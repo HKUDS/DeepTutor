@@ -113,3 +113,21 @@ it("does not yank the viewport when the reader opens working notes", () => {
   expect(top).toBe(800);
   expect(following.current).toBe(false);
 });
+
+it("lets the reader drag the scrollbar up while the reply is still growing (#2072)", () => {
+  render(<Harness />); flushLayout();
+  expect(top).toBe(800);
+  // A scrollbar drag fires no wheel/key event, and while streaming the reply
+  // grows between the drag and its scroll event.
+  top = 300; height = 1100;
+  fireEvent.scroll(screen.getByTestId("scroll")); flushLayout();
+  expect(following.current).toBe(false);
+  height = 1400; flushLayout();
+  expect(top).toBe(300);
+  // Dragging back to the live end follows again, even as it grows.
+  top = 1180; height = 1420;
+  fireEvent.scroll(screen.getByTestId("scroll")); flushLayout();
+  expect(following.current).toBe(true);
+  height = 1600; flushLayout();
+  expect(top).toBe(1400);
+});

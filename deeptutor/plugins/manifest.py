@@ -18,6 +18,7 @@ from urllib.parse import urlsplit
 
 from packaging.requirements import InvalidRequirement, Requirement
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
+from packaging.utils import canonicalize_name
 from packaging.version import InvalidVersion, Version
 
 SCHEMA_VERSION = "deeptutor.plugin/v1"
@@ -312,7 +313,7 @@ def _dependencies(raw: list[Any]) -> tuple[str, ...]:
             raise ManifestValidationError(
                 f"dependencies[{index}] must be a name-and-version requirement"
             )
-        canonical_name = str(getattr(requirement, "canonical_name", requirement.name)).casefold()
+        canonical_name = canonicalize_name(requirement.name)
         if canonical_name in seen:
             raise ManifestValidationError(f"dependencies contains duplicate {requirement.name}")
         seen.add(canonical_name)
