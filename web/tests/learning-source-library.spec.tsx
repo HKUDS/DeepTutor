@@ -11,7 +11,7 @@ vi.mock('@/lib/partner-groups-api', () => ({
 }))
 const translate = (key: string) => key
 
-it('uses global indexes and pins file expansion and book hydration to their source', async () => {
+it('reads the current workspace indexes and pins file expansion and book hydration to their source', async () => {
   window.history.replaceState({}, '', '/learning/books?dt_workspace=destination')
   const origin = { content_workspace_id: 'original', content_workspace_name: 'Original' }
   vi.mocked(apiFetch).mockImplementation(async url => {
@@ -52,7 +52,7 @@ it('uses global indexes and pins file expansion and book hydration to their sour
   expect(
     urls
       .filter(url => url.pathname.includes('source-library'))
-      .every(url => url.searchParams.get('dt_workspace') === '')
+      .every(url => url.searchParams.get('dt_workspace') === 'destination')
   ).toBe(true)
   expect(
     urls

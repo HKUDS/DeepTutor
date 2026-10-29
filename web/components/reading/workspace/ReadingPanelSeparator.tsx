@@ -10,6 +10,7 @@ export function ReadingPanelSeparator({
   max,
   direction,
   onResize,
+  className = '',
 }: {
   label: string
   width: number
@@ -17,6 +18,8 @@ export function ReadingPanelSeparator({
   max: number
   direction: 1 | -1
   onResize: (width: number) => void
+  /** Where it sits in the workspace grid. */
+  className?: string
 }) {
   const drag = useRef<{ id: number; x: number; width: number } | null>(null)
   const [resizing, setResizing] = useState(false)
@@ -75,9 +78,11 @@ export function ReadingPanelSeparator({
         event.preventDefault()
         resize(next)
       }}
-      className="group/resize relative z-10 hidden cursor-col-resize touch-none focus-visible:outline-2 focus-visible:outline-[var(--primary)] xl:block"
+      className={`group/resize relative z-10 hidden cursor-col-resize touch-none focus-visible:outline-2 focus-visible:outline-[var(--primary)] xl:block ${className}`}
     >
-      <span className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-[var(--border)] transition-colors group-hover/resize:bg-[var(--primary)] group-active/resize:bg-[var(--primary)]" />
+      {/* Invisible at rest — the panes' tones mark the edge — and a line
+          only while the handle is being found or dragged. */}
+      <span className="absolute inset-y-3 left-1/2 w-[3px] -translate-x-1/2 rounded-full bg-transparent transition-colors group-hover/resize:bg-[color-mix(in_srgb,var(--primary)_60%,transparent)] group-focus-visible/resize:bg-[var(--primary)] group-active/resize:bg-[var(--primary)]" />
     </div>
   )
 }

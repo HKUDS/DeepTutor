@@ -4,14 +4,11 @@ import {
   fireEvent,
   render,
   screen,
-  within,
   waitFor,
 } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { Wand2 } from "lucide-react";
 import ComposerResources from "@/components/chat/home/ComposerResources";
-import ResourceSelector from "@/components/chat/home/ResourceSelector";
-import AgentSelector from "@/components/chat/home/AgentSelector";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -44,7 +41,7 @@ function Harness({ answerKind }: { answerKind?: "persona" | "agent" } = {}) {
                 : answerKind === "agent"
                   ? "Collaborating agent"
                   : "Skills",
-            group: answerKind ? "Answer preferences" : "Tools",
+            group: answerKind ? "Answer preferences" : "Reference materials",
             icon: Wand2,
             count: picked ? 1 : 0,
             summary: picked ? "Tutor" : "Workspace default",
@@ -112,55 +109,6 @@ it("closes on outside click and traps tab within the panel", async () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
   );
 });
-it("embedded skill picker supports search and multi-selection without another popup", () => {
-  const toggle = vi.fn();
-  render(
-    <ResourceSelector
-      embedded
-      kind="skills"
-      options={[
-        {
-          id: "tutor",
-          name: "Tutor",
-          description: "Learning helper",
-          source: "account",
-          available: true,
-        },
-      ]}
-      selected={[]}
-      onToggle={toggle}
-    />,
-  );
-  expect(
-    screen.queryByRole("button", { name: "Select skills" }),
-  ).not.toBeInTheDocument();
-  fireEvent.change(screen.getByPlaceholderText("Search"), {
-    target: { value: "Learning" },
-  });
-  fireEvent.click(screen.getByRole("button", { name: /Tutor/ }));
-  expect(toggle).toHaveBeenCalledWith("tutor");
-});
-it("embedded agent selection keeps the round controls available", () => {
-  const select = vi.fn();
-  const budget = vi.fn();
-  const { container } = render(
-    <AgentSelector
-      embedded
-      agents={[{ name: "Helper" }]}
-      selected={null}
-      onSelect={select}
-      budget={5}
-      onBudgetChange={budget}
-    />,
-  );
-  fireEvent.click(screen.getByRole("button", { name: "Helper" }));
-  expect(select).toHaveBeenCalledWith("Helper");
-  fireEvent.click(
-    within(container).getByRole("button", { name: "More rounds" }),
-  );
-  expect(budget).toHaveBeenCalledWith(6);
-});
-
 it("keeps the measured anchor when a smaller submenu replaces the overview", () => {
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
     function (this: HTMLElement) {

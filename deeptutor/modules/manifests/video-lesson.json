@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "id": "video-lesson",
+  "distribution": "deeptutor-video-lesson",
+  "requires": [],
+  "optional": [],
+  "paths": [
+    "deeptutor/agents/video_lesson"
+  ],
+  "capabilities": {
+    "video_lesson": {
+      "class_path": "deeptutor.agents.video_lesson.capability:VideoLessonCapability",
+      "config_model": "deeptutor.runtime.request_contracts:VideoLessonRequestConfig",
+      "manifest": {
+        "name": "video_lesson",
+        "description": "Generate an animated video lesson (Remotion) that plays in the browser.",
+        "stages": [
+          "code_generation",
+          "render_check",
+          "render_output"
+        ],
+        "tools_used": [],
+        "cli_aliases": [
+          "lesson"
+        ]
+      },
+      "order": 6
+    }
+  },
+  "loops": {},
+  "tools": {},
+  "routes": [],
+  "commands": [],
+  "navigation": [],
+  "services": [],
+  "requirements": [],
+  "executables": [
+    "node",
+    "npm"
+  ]
+}

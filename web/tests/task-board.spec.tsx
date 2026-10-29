@@ -23,7 +23,8 @@ beforeEach(() => {
     vi.fn(async (input: string, init?: RequestInit) => {
       const url = new URL(input, window.location.origin)
       if (url.pathname.includes('/settings/workspace/registrations')) return Response.json({ workspaces: [] })
-      expect(url.searchParams.get('dt_workspace')).toBeNull()
+      // Each workspace reads its own board.
+      expect(url.searchParams.get('dt_workspace')).toBe('study')
       expect(init?.credentials).toBe('include')
       if (init?.method === 'POST') {
         if (failSave) return Response.json({}, { status: 500 })
@@ -31,8 +32,8 @@ beforeEach(() => {
         board.cards.push({
           id: 'task-1',
           title: payload.title,
-          note: '',
-          workspace_id: null,
+          note: '', due_date: null,
+          workspace_id: 'study',
           status: 'todo',
           archived: false,
           created_at: '2026-01-01',

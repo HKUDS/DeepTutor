@@ -1446,3 +1446,56 @@ class TestPartnerCommands:
 
         assert "Started a new conversation" in reply
         assert len(fake_orchestrator.seen_contexts) == 1
+
+
+def test_a_finished_activity_keeps_its_question_and_answer_not_every_delta() -> None:
+    from deeptutor.services.partners.manager import PartnerActivityFeed
+
+    feed = PartnerActivityFeed()
+    live = feed.subscribe("ada")
+    frames = [
+        {"type": "user_echo", "content": "hi", "activity_id": "a1"},
+        *(
+            {"type": "stream_event", "event": {"content": str(i)}, "activity_id": "a1"}
+            for i in range(50)
+        ),
+        {"type": "content", "content": "hello", "activity_id": "a1"},
+        {"type": "done", "activity_id": "a1"},
+    ]
+    for frame in frames:
+        feed.publish("ada", frame)
+
+    # Whoever was watching saw it all.
+    assert live.qsize() == len(frames)
+    # A late subscriber gets the gap, not the replay of every delta.
+    late = feed.subscribe("ada")
+    replayed = [late.get_nowait()["type"] for _ in range(late.qsize())]
+    assert replayed == ["user_echo", "content", "done"]
+
+
+def test_a_finished_web_turn_is_not_kept() -> None:
+    import asyncio
+
+    from deeptutor.services.partners.manager import LiveTurn, PartnerManager
+
+    async def run() -> None:
+        manager = object.__new__(PartnerManager)
+        instance = type("Instance", (), {"live_turns": {}})()
+        manager._partners = {"ada": instance}
+
+        async def send_message(*_args, on_event=None, **_kwargs):
+            await on_event(type("E", (), {"to_dict": lambda self: {"type": "content"}})())
+            return "done"
+
+        manager.send_message = send_message
+        turn = LiveTurn(user_content="hi")
+        instance.live_turns["s1"] = turn
+        queue = turn.subscribe()
+        await manager._drive_web_turn("ada", "s1", "hi", [], turn)
+        assert "s1" not in instance.live_turns
+        assert turn.events == []
+        # The subscriber still received the whole turn.
+        kinds = [queue.get_nowait()["type"] for _ in range(queue.qsize())]
+        assert kinds == ["stream_event", "content", "done"]
+
+    asyncio.run(run())

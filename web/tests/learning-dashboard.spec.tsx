@@ -1,7 +1,11 @@
 import React from 'react'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, expect, it, vi } from 'vitest'
+import { LearningWays } from '@/components/learning/LearningWays'
 import { LearningDashboard } from '@/components/learning/LearningDashboard'
+
+vi.mock('next/navigation', () => ({ usePathname: () => '/learning', useRouter: () => ({ push: vi.fn() }), useSearchParams: () => new URLSearchParams() }))
+vi.mock('@/hooks/useAuthStatus', () => ({ useAuthStatus: () => ({ learningPolicy: null }) }))
 
 const mock = vi.hoisted(() => ({
   books: vi.fn(),
@@ -121,7 +125,7 @@ it('a failed refresh keeps already loaded work visible', async () => {
 })
 
 it('a way introduces itself before it commits you, and hands focus back', async () => {
-  render(<LearningDashboard />)
+  render(<LearningWays />)
   const card = await screen.findByRole('button', { name: /Mastery Path/ })
   fireEvent.click(card)
   const panel = await screen.findByRole('dialog')
@@ -134,8 +138,7 @@ it('a way introduces itself before it commits you, and hands focus back', async 
 
 it('feature introductions do not show personal activity or source failures', async () => {
   mock.reading.mockRejectedValue(new Error('offline'))
-  render(<LearningDashboard />)
-  await screen.findByRole('alert')
+  render(<LearningWays />)
   const books = screen.getByRole('button', { name: /Books/ })
   expect(books).not.toHaveTextContent('Home')
   const reading = screen.getByRole('button', { name: /Immersive Reading/ })
@@ -147,7 +150,7 @@ it('feature introductions do not show personal activity or source failures', asy
 })
 
 it('contains focus and restores background interaction on Escape', async () => {
-  const { container } = render(<LearningDashboard />)
+  const { container } = render(<LearningWays />)
   const card = await screen.findByRole('button', { name: /Mastery Path/ })
   fireEvent.click(card)
   const panel = screen.getByRole('dialog')
@@ -171,7 +174,7 @@ it.each([
   ['Mastery Path', '/learning/mastery'],
   ['Immersive Reading', '/learning/reading'],
 ])('opens the complete library without assigning a workspace for %s', async (label, route) => {
-  render(<LearningDashboard />)
+  render(<LearningWays />)
   fireEvent.click(await screen.findByRole('button', { name: new RegExp(label) }))
   expect(screen.queryByRole('button', { name: 'Workspace' })).toBeNull()
   expect(screen.getByRole('link', { name: 'Start' })).toHaveAttribute('href', route)

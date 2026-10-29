@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "id": "parser-liteparse",
+  "distribution": "deeptutor-parser-liteparse",
+  "requires": [
+    "parsing"
+  ],
+  "optional": [],
+  "paths": [],
+  "capabilities": {},
+  "loops": {},
+  "tools": {},
+  "routes": [],
+  "commands": [],
+  "navigation": [],
+  "services": [],
+  "requirements": [
+    "liteparse>=2.14.2"
+  ],
+  "executables": [],
+  "parser_engine": "liteparse"
+}

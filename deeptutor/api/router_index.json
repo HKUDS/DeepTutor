@@ -1,0 +1,5752 @@
+{
+  "fingerprint": "6d90ec2c45a1d9f3f152c7577772bcdd05ea8b8f2b22a7dcca57e0d09db0097b",
+  "routers": {
+    "deeptutor.api.routers.auth:router": [
+      {
+        "path": "/openai-codex/callback",
+        "name": "receive_codex_oauth_callback",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/status",
+        "name": "auth_status",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/login",
+        "name": "login",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/device-login",
+        "name": "device_login",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/session-handoff",
+        "name": "create_session_handoff",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/session-handoff/exchange",
+        "name": "exchange_session_handoff",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/session-handoff/complete",
+        "name": "complete_session_handoff",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/device/heartbeat",
+        "name": "device_heartbeat",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/logout",
+        "name": "logout",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/register",
+        "name": "register",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/is_first_user",
+        "name": "check_is_first_user",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/profile",
+        "name": "get_profile",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/profile",
+        "name": "update_profile",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/profile/avatar",
+        "name": "upload_avatar",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/profile/avatar",
+        "name": "remove_avatar",
+        "kind": "http",
+        "methods": [
+          "DELETE"
+        ]
+      },
+      {
+        "path": "/avatar/{user_id}",
+        "name": "get_avatar_image",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/devices",
+        "name": "list_devices",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/devices",
+        "name": "issue_device",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/devices/{device_credential_id}",
+        "name": "revoke_device",
+        "kind": "http",
+        "methods": [
+          "DELETE"
+        ]
+      },
+      {
+        "path": "/users",
+        "name": "get_users",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/profile/learner-profile",
+        "name": "get_current_learner_profile",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/profile/learner-profile",
+        "name": "put_current_learner_profile",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/users/{username}/learner-profile",
+        "name": "get_learner_profile",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/users/{username}/learner-profile",
+        "name": "put_learner_profile",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/users",
+        "name": "admin_create_user",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/users/import",
+        "name": "admin_import_users",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/users/{username}",
+        "name": "remove_user",
+        "kind": "http",
+        "methods": [
+          "DELETE"
+        ]
+      },
+      {
+        "path": "/users/batch-delete",
+        "name": "batch_remove_users",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/users/{username}/role",
+        "name": "update_user_role",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.outputs:router": [
+      {
+        "path": "/{output_path:path}",
+        "name": "read_output",
+        "kind": "http",
+        "methods": [
+          "HEAD"
+        ]
+      },
+      {
+        "path": "/{output_path:path}",
+        "name": "read_output",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.workspace:files_router": [
+      {
+        "path": "/{workspace_id}/{workspace_item_id}",
+        "name": "read_workspace_item",
+        "kind": "http",
+        "methods": [
+          "HEAD"
+        ]
+      },
+      {
+        "path": "/{workspace_id}/{workspace_item_id}",
+        "name": "read_workspace_item",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.multi_user:router": [
+      {
+        "path": "/admin/resources",
+        "name": "admin_resources",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/admin/books",
+        "name": "admin_books",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/guardians",
+        "name": "list_guardian_relationships",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/guardians",
+        "name": "authorize_guardian_relationship",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/guardians/{relationship_id}",
+        "name": "revoke_guardian_relationship",
+        "kind": "http",
+        "methods": [
+          "DELETE"
+        ]
+      },
+      {
+        "path": "/me/guardianships",
+        "name": "my_guardianships",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/me/guardianships/{relationship_id}",
+        "name": "revoke_my_guardianship",
+        "kind": "http",
+        "methods": [
+          "DELETE"
+        ]
+      },
+      {
+        "path": "/learners/{learner_user_id}/guardian-report",
+        "name": "guardian_report",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/learners/{learner_user_id}/materials",
+        "name": "guardian_material_catalog",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/learners/{learner_user_id}/materials",
+        "name": "assign_guardian_materials",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/learners/{learner_user_id}/restrictions",
+        "name": "get_guardian_restrictions",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/learners/{learner_user_id}/restrictions",
+        "name": "put_guardian_restrictions",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/learners/{learner_user_id}/credentials/reset",
+        "name": "reset_learner_credentials",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/users/{user_id}/grants",
+        "name": "get_user_grants",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/users/{user_id}/grants",
+        "name": "put_user_grants",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/users/{user_id}/book-permission",
+        "name": "get_user_book_permission",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/users/{user_id}/book-permission",
+        "name": "put_user_book_permission",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/admin/skills/install",
+        "name": "admin_install_skill",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/users",
+        "name": "multi_user_list_users",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.question:router": [],
+    "deeptutor.api.routers.knowledge:router": [
+      {
+        "path": "/knowledge-bases/health",
+        "name": "health_check",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/rag-providers",
+        "name": "get_rag_providers",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/rag-providers/{provider}/mode",
+        "name": "set_rag_provider_mode",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/rag-pipelines/pageindex/config",
+        "name": "get_pageindex_pipeline_config",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/rag-pipelines/pageindex/config",
+        "name": "update_pageindex_pipeline_config",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/rag-pipelines/ima/config",
+        "name": "get_ima_pipeline_config",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/rag-pipelines/ima/config",
+        "name": "update_ima_pipeline_config",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/rag-pipelines/llamaindex/config",
+        "name": "get_llamaindex_pipeline_config",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/rag-pipelines/llamaindex/config",
+        "name": "update_llamaindex_pipeline_config",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/rag-pipelines/graphrag/config",
+        "name": "get_graphrag_pipeline_config",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/rag-pipelines/graphrag/config",
+        "name": "update_graphrag_pipeline_config",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/rag-pipelines/lightrag/config",
+        "name": "get_lightrag_pipeline_config",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/rag-pipelines/lightrag/model-options",
+        "name": "get_lightrag_model_options",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/rag-pipelines/lightrag/config",
+        "name": "update_lightrag_pipeline_config",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/rag-pipelines/lightrag-server/config",
+        "name": "get_lightrag_server_pipeline_config",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/rag-pipelines/lightrag-server/config",
+        "name": "update_lightrag_server_pipeline_config",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/rag-pipelines/{provider}/preflight",
+        "name": "get_rag_pipeline_preflight",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/rag-pipelines/model-options",
+        "name": "get_rag_model_options",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/embedding-usage",
+        "name": "get_embedding_usage",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/rag-pipelines/graphrag/model-compatibility",
+        "name": "test_graphrag_model_compatibility",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/rag-pipelines/active-model",
+        "name": "set_rag_active_model",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/supported-file-types",
+        "name": "get_supported_file_types",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/configs",
+        "name": "get_all_kb_configs",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/{kb_name}/config",
+        "name": "get_kb_config",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/{kb_name}/config",
+        "name": "update_kb_config",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/configs/sync",
+        "name": "sync_configs_from_metadata",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/default",
+        "name": "get_default_kb",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/default/{kb_name}",
+        "name": "set_default_kb",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/connect-obsidian",
+        "name": "connect_obsidian_vault",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/connect-marginnote4",
+        "name": "connect_marginnote4",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/probe-folder",
+        "name": "probe_linked_folder_route",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/connect-folder",
+        "name": "connect_linked_folder_route",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/probe-lightrag-server",
+        "name": "probe_lightrag_server_route",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/connect-lightrag-server",
+        "name": "connect_lightrag_server_route",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/probe-weknora",
+        "name": "probe_weknora_route",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/connect-weknora",
+        "name": "connect_weknora_route",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/list-ima",
+        "name": "list_ima_route",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/kiwix-catalog",
+        "name": "list_kiwix_catalog",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/probe-kiwix",
+        "name": "probe_kiwix_route",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/connect-kiwix",
+        "name": "connect_kiwix_route",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/kiwix-articles",
+        "name": "search_kiwix_articles",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/probe-ima",
+        "name": "probe_ima_route",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/connect-ima",
+        "name": "connect_ima_route",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/knowledge-bases",
+        "name": "list_knowledge_bases",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/list",
+        "name": "list_knowledge_bases_proxy_alias",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/{kb_name}",
+        "name": "get_knowledge_base_details",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/{kb_name}/files",
+        "name": "list_kb_raw_files",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/{kb_name}/folders",
+        "name": "create_kb_folder",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/{kb_name}/files/move",
+        "name": "move_kb_file",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/{kb_name}/file-preview-text/{filename:path}",
+        "name": "serve_kb_raw_file_text_preview",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/{kb_name}/files/{filename:path}",
+        "name": "serve_kb_raw_file",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/{kb_name}/visual-assets/{asset_id}",
+        "name": "serve_kb_visual_asset",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/{kb_name}/visual-coverage",
+        "name": "kb_visual_coverage",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/{kb_name}/source-page",
+        "name": "kb_source_page",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/{kb_name}/files/{filename:path}",
+        "name": "delete_kb_file",
+        "kind": "http",
+        "methods": [
+          "DELETE"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/delete",
+        "name": "delete_knowledge_base_by_name",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/{kb_name}",
+        "name": "delete_knowledge_base",
+        "kind": "http",
+        "methods": [
+          "DELETE"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/tasks/{task_id}/stream",
+        "name": "stream_task_logs",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/{kb_name}/upload",
+        "name": "upload_files",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/knowledge-bases",
+        "name": "create_knowledge_base",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/{kb_name}/reindex-config",
+        "name": "get_reindex_config",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/{kb_name}/reindex",
+        "name": "reindex_knowledge_base",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/{kb_name}/indexing-policy",
+        "name": "update_pending_indexing_policy",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/{kb_name}/retry",
+        "name": "retry_knowledge_base",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/{kb_name}/indexing-run",
+        "name": "get_indexing_run",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/{kb_name}/indexing-run/{task_id}/cancel",
+        "name": "cancel_indexing_run",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/{kb_name}/indexing-readiness",
+        "name": "get_indexing_readiness",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/{kb_name}/progress",
+        "name": "get_progress",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/{kb_name}/progress/clear",
+        "name": "clear_progress",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/{kb_name}/link-folder",
+        "name": "link_folder",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/{kb_name}/linked-folders",
+        "name": "get_linked_folders",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/{kb_name}/linked-folders/{folder_id}",
+        "name": "unlink_folder",
+        "kind": "http",
+        "methods": [
+          "DELETE"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/{kb_name}/sync-folder/{folder_id}",
+        "name": "sync_folder",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/{kb_name}/github-source",
+        "name": "add_github_source",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/{kb_name}/github-sources",
+        "name": "get_github_sources",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/{kb_name}/github-source/{source_id}",
+        "name": "remove_github_source",
+        "kind": "http",
+        "methods": [
+          "DELETE"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/{kb_name}/sync-github",
+        "name": "sync_github_sources",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/{kb_name}/web-source",
+        "name": "add_web_source",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/{kb_name}/web-sources",
+        "name": "get_web_sources",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/{kb_name}/web-source/{source_id}",
+        "name": "remove_web_source",
+        "kind": "http",
+        "methods": [
+          "DELETE"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/{kb_name}/web-source-sync",
+        "name": "get_web_source_sync_jobs",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/{kb_name}/web-source/{source_id}/pairings",
+        "name": "get_web_source_pairings",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/{kb_name}/web-source/{source_id}/schedule",
+        "name": "update_web_source_schedule",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/{kb_name}/web-source/{source_id}/cancel",
+        "name": "cancel_web_source_sync",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/{kb_name}/web-source/{source_id}/retry",
+        "name": "retry_web_source_sync",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/{kb_name}/sync-web",
+        "name": "sync_web_sources",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.file_preview:router": [
+      {
+        "path": "/pdf",
+        "name": "preview_office_source",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/pdf",
+        "name": "preview_office_upload",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.imports:router": [
+      {
+        "path": "/chat-history",
+        "name": "import_chat_history",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/chat-history",
+        "name": "list_imported_chat_history",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.dashboard:router": [
+      {
+        "path": "/recent",
+        "name": "get_recent_activities",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/suggestions",
+        "name": "get_starter_suggestions",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/suggestions/refresh",
+        "name": "refresh_starter_suggestions",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/learning-index",
+        "name": "get_learning_index",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/source-library/{kind}",
+        "name": "get_source_library",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/learning-library/{kind}",
+        "name": "get_learning_library",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/{entry_id}",
+        "name": "get_activity_entry",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.mastery_path:router": [
+      {
+        "path": "/topics",
+        "name": "list_topics",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/topics/index",
+        "name": "list_topic_index",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/reading/records",
+        "name": "list_reading_learning_records",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/topics/draft",
+        "name": "generate_topic_route",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/topics",
+        "name": "create_topic",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/topics/{path_id}",
+        "name": "get_topic",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/topics/{path_id}/review-settings",
+        "name": "get_review_settings",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/topics/{path_id}/review-settings",
+        "name": "update_review_settings",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/topics/{path_id}/map",
+        "name": "edit_topic_map",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/topics/{path_id}/objectives/{kp_id}/override",
+        "name": "set_learner_override",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/topics/{path_id}/sessions",
+        "name": "list_topic_sessions",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/topics/{path_id}/sessions/{session_id}/mode",
+        "name": "set_session_mode",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/topics/{path_id}/ask-hint",
+        "name": "get_topic_ask_hint",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/progress",
+        "name": "list_all_progress",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/progress/{book_id}",
+        "name": "get_progress",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/progress/{book_id}/map",
+        "name": "get_progress_map",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/progress/{book_id}/board",
+        "name": "get_progress_board",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/progress/{book_id}/objectives/{kp_id}",
+        "name": "get_objective_report",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/progress/{book_id}/events",
+        "name": "get_progress_events",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/progress/{book_id}/sessions",
+        "name": "get_progress_sessions",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/progress/{book_id}/init-modules",
+        "name": "init_modules",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/progress/{book_id}/import-from-book",
+        "name": "import_from_book",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/progress/{book_id}",
+        "name": "rename_progress",
+        "kind": "http",
+        "methods": [
+          "PATCH"
+        ]
+      },
+      {
+        "path": "/progress/{book_id}",
+        "name": "delete_progress",
+        "kind": "http",
+        "methods": [
+          "DELETE"
+        ]
+      },
+      {
+        "path": "/progress/{book_id}/skip-question",
+        "name": "skip_pending_question",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/progress/{book_id}/redo",
+        "name": "redo_progress",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/progress/{book_id}/generate-from-notebook",
+        "name": "generate_from_notebook",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/progress/{book_id}/generate-from-reading",
+        "name": "generate_from_reading",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.file_library:router": [
+      {
+        "path": "/",
+        "name": "list_library_files",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/",
+        "name": "add_library_file",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/search",
+        "name": "search_library_files",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/{file_id}",
+        "name": "get_library_file",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/{file_id}/download",
+        "name": "download_library_file",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/{file_id}/download",
+        "name": "download_library_file_head",
+        "kind": "http",
+        "methods": [
+          "HEAD"
+        ]
+      },
+      {
+        "path": "/{file_id}",
+        "name": "delete_library_file",
+        "kind": "http",
+        "methods": [
+          "DELETE"
+        ]
+      },
+      {
+        "path": "/{file_id}/restore",
+        "name": "restore_library_file",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.question:ws_router": [
+      {
+        "path": "/mimic",
+        "name": "websocket_mimic_generate",
+        "kind": "websocket",
+        "methods": []
+      },
+      {
+        "path": "/generate",
+        "name": "websocket_question_generate",
+        "kind": "websocket",
+        "methods": []
+      }
+    ],
+    "deeptutor.api.routers.knowledge:ws_router": [
+      {
+        "path": "/knowledge-bases/{kb_name}/progress",
+        "name": "websocket_progress",
+        "kind": "websocket",
+        "methods": []
+      }
+    ],
+    "deeptutor.api.routers.mastery_path:ws_router": [
+      {
+        "path": "/mastery-paths",
+        "name": "mastery_topic_websocket",
+        "kind": "websocket",
+        "methods": []
+      }
+    ],
+    "deeptutor.api.routers.co_writer:router": [
+      {
+        "path": "/documents/actions/edit",
+        "name": "edit_text",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/documents/actions/edit-react",
+        "name": "edit_text_react",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/documents/actions/edit-react/stream",
+        "name": "edit_text_react_stream",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/documents/actions/automark",
+        "name": "auto_mark_text",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/documents/history",
+        "name": "get_history",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/documents/history/{operation_id}",
+        "name": "get_operation",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/documents/tool-calls/{operation_id}",
+        "name": "get_tool_call",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/documents",
+        "name": "list_documents",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/documents",
+        "name": "create_document",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/documents/import/docx",
+        "name": "import_docx",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/documents/export/docx",
+        "name": "export_docx",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/documents/{doc_id}",
+        "name": "get_document",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/documents/{doc_id}",
+        "name": "update_document",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/documents/{doc_id}",
+        "name": "delete_document",
+        "kind": "http",
+        "methods": [
+          "DELETE"
+        ]
+      },
+      {
+        "path": "/documents/{doc_id}/suggestions",
+        "name": "note_suggestions",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/documents/{doc_id}/suggestions/{suggestion_id}",
+        "name": "review_note_suggestion",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/documents/{doc_id}/backlinks",
+        "name": "note_backlinks",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/documents/{doc_id}/assets",
+        "name": "upload_note_asset",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/documents/{doc_id}/assets/{name}",
+        "name": "read_note_asset",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/documents/{doc_id}/clips",
+        "name": "append_note_clip",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/documents/review/due",
+        "name": "due_note_cards",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/documents/{doc_id}/review",
+        "name": "grade_note_card",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/documents/{doc_id}/suggestions",
+        "name": "create_note_suggestion",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/documents/{doc_id}/threads",
+        "name": "note_threads",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/documents/{doc_id}/threads",
+        "name": "anchor_note_thread",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/documents/{doc_id}/threads/{session_id}",
+        "name": "delete_note_thread",
+        "kind": "http",
+        "methods": [
+          "DELETE"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.notebook:router": [
+      {
+        "path": "/notebooks/health",
+        "name": "health_check",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/notebooks",
+        "name": "list_notebooks",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/notebooks/statistics",
+        "name": "get_statistics",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/notebooks",
+        "name": "create_notebook",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/notebooks/{notebook_id}",
+        "name": "get_notebook",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/notebooks/{notebook_id}",
+        "name": "update_notebook",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/notebooks/{notebook_id}",
+        "name": "delete_notebook",
+        "kind": "http",
+        "methods": [
+          "DELETE"
+        ]
+      },
+      {
+        "path": "/notebooks/actions/add-record",
+        "name": "add_record",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/notebooks/actions/add-record-with-summary",
+        "name": "add_record_with_summary",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/notebooks/{notebook_id}/records/{record_id}",
+        "name": "remove_record",
+        "kind": "http",
+        "methods": [
+          "DELETE"
+        ]
+      },
+      {
+        "path": "/notebooks/records/{record_id}/location",
+        "name": "locate_record",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/notebooks/{notebook_id}/records/{record_id}",
+        "name": "update_record",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/notebooks/{notebook_id}/records/{record_id}/actions/copy",
+        "name": "copy_record",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/notebooks/{notebook_id}/records/{record_id}/actions/move",
+        "name": "move_record",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/notebooks/{notebook_id}/export",
+        "name": "export_notebook",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.task_board:router": [
+      {
+        "path": "",
+        "name": "get_board",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/events",
+        "name": "board_events",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/cards",
+        "name": "create_card",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/cards/{card_id}",
+        "name": "update_card",
+        "kind": "http",
+        "methods": [
+          "PATCH"
+        ]
+      },
+      {
+        "path": "/colors",
+        "name": "update_colors",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/sessions/{session_id}",
+        "name": "link_tasks",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/sessions/{session_id}/status",
+        "name": "link_status",
+        "kind": "http",
+        "methods": [
+          "PATCH"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.calendar:router": [
+      {
+        "path": "/calendars",
+        "name": "calendars",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/calendars",
+        "name": "create_calendar",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/calendars/{id}",
+        "name": "update_calendar",
+        "kind": "http",
+        "methods": [
+          "PATCH"
+        ]
+      },
+      {
+        "path": "/calendars/{id}",
+        "name": "delete_calendar",
+        "kind": "http",
+        "methods": [
+          "DELETE"
+        ]
+      },
+      {
+        "path": "/events",
+        "name": "events",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/events",
+        "name": "create_event",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/events/{id}",
+        "name": "update_event",
+        "kind": "http",
+        "methods": [
+          "PATCH"
+        ]
+      },
+      {
+        "path": "/events/{id}",
+        "name": "delete_event",
+        "kind": "http",
+        "methods": [
+          "DELETE"
+        ]
+      },
+      {
+        "path": "/undo/{token}",
+        "name": "undo",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/search",
+        "name": "search",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/layers",
+        "name": "layers",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/automations/{job_id}",
+        "name": "cancel_automation",
+        "kind": "http",
+        "methods": [
+          "DELETE"
+        ]
+      },
+      {
+        "path": "/stream",
+        "name": "stream",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/task-blocks",
+        "name": "task_blocks",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.book:router": [
+      {
+        "path": "/books/health",
+        "name": "health_check",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/books/estimate-basis",
+        "name": "estimate_basis",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/books/block-types",
+        "name": "block_types",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/books",
+        "name": "list_books",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/books/{book_id}/learning-captures",
+        "name": "list_learning_captures",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/books/{book_id}/learning-captures",
+        "name": "create_learning_capture",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/books/{book_id}/learning-captures/{capture_id}",
+        "name": "update_learning_capture",
+        "kind": "http",
+        "methods": [
+          "PATCH"
+        ]
+      },
+      {
+        "path": "/books/{book_id}",
+        "name": "get_book",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/books/{book_id}/spine",
+        "name": "get_spine",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/books/{book_id}/pages/{page_id}",
+        "name": "get_page",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/books/{book_id}",
+        "name": "delete_book",
+        "kind": "http",
+        "methods": [
+          "DELETE"
+        ]
+      },
+      {
+        "path": "/books",
+        "name": "create_book",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/books/confirm-proposal",
+        "name": "confirm_proposal",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/books/confirm-spine",
+        "name": "confirm_spine",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/books/compile-page",
+        "name": "compile_page",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/books/regenerate-block",
+        "name": "regenerate_block",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/books/insert-block",
+        "name": "insert_block",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/books/delete-block",
+        "name": "delete_block",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/books/move-block",
+        "name": "move_block",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/books/change-block-type",
+        "name": "change_block_type",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/books/deep-dive",
+        "name": "deep_dive",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/books/quiz-attempt",
+        "name": "quiz_attempt",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/books/update-block",
+        "name": "update_block",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/books/progress/visit",
+        "name": "mark_visited",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/books/progress/bookmark",
+        "name": "toggle_bookmark",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/books/{book_id}/export",
+        "name": "export_book",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/books/{book_id}/health",
+        "name": "book_health",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/books/{book_id}/refresh-fingerprints",
+        "name": "refresh_fingerprints",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/books/supplement",
+        "name": "supplement",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/books/page-chat-session",
+        "name": "set_page_chat_session",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/books/resume",
+        "name": "resume_book",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/books/pause",
+        "name": "pause_book",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/books/rebuild",
+        "name": "rebuild_book",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.book:ws_router": [
+      {
+        "path": "/books",
+        "name": "book_websocket",
+        "kind": "websocket",
+        "methods": []
+      }
+    ],
+    "deeptutor.api.routers.reading:router": [
+      {
+        "path": "/library/materials",
+        "name": "list_library_materials",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/library/duplicate-check",
+        "name": "duplicate_check",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/library/import-urls",
+        "name": "import_urls",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/library/import-zim-article",
+        "name": "import_zim_article",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/materials/{material_id}/retry",
+        "name": "retry_import",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/workspaces",
+        "name": "list_workspaces",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/workspaces/index",
+        "name": "list_workspace_index",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/workspaces",
+        "name": "create_workspace",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/workspaces/{workspace_id}",
+        "name": "get_workspace",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/workspaces/{workspace_id}/ask-hint",
+        "name": "get_workspace_ask_hint",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/workspaces/{workspace_id}",
+        "name": "update_workspace",
+        "kind": "http",
+        "methods": [
+          "PATCH"
+        ]
+      },
+      {
+        "path": "/workspaces/{workspace_id}",
+        "name": "delete_workspace",
+        "kind": "http",
+        "methods": [
+          "DELETE"
+        ]
+      },
+      {
+        "path": "/workspaces/{workspace_id}/materials",
+        "name": "add_workspace_material",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/workspaces/{workspace_id}/materials/order",
+        "name": "reorder_workspace_materials",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/workspaces/{workspace_id}/materials/{material_id}/active",
+        "name": "activate_workspace_material",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/workspaces/{workspace_id}/materials/{material_id}",
+        "name": "remove_workspace_material",
+        "kind": "http",
+        "methods": [
+          "DELETE"
+        ]
+      },
+      {
+        "path": "/workspaces/{workspace_id}/sessions",
+        "name": "list_reading_sessions",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/workspaces/{workspace_id}/sessions",
+        "name": "create_reading_session",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/workspaces/{workspace_id}/sessions/{session_id}",
+        "name": "rename_reading_session",
+        "kind": "http",
+        "methods": [
+          "PATCH"
+        ]
+      },
+      {
+        "path": "/workspaces/{workspace_id}/sessions/{session_id}",
+        "name": "delete_reading_session",
+        "kind": "http",
+        "methods": [
+          "DELETE"
+        ]
+      },
+      {
+        "path": "/workspaces/{workspace_id}/sessions/{session_id}/links",
+        "name": "link_reading_session",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/workspaces/{workspace_id}/sessions/{session_id}/links/{target_session_id}",
+        "name": "unlink_reading_session",
+        "kind": "http",
+        "methods": [
+          "DELETE"
+        ]
+      },
+      {
+        "path": "/workspaces/{workspace_id}/notes/organize",
+        "name": "organize_reading_notes",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/workspaces/{workspace_id}/notebook",
+        "name": "capture_reading_to_notebook",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/supported-formats",
+        "name": "supported_formats",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/materials",
+        "name": "list_materials",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/materials",
+        "name": "upload_material",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/materials/{material_id}",
+        "name": "get_material",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/materials/{material_id}/epub-pairing-candidates",
+        "name": "epub_pairing_candidates",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/epub-pairings",
+        "name": "epub_pairings",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/epub-pairings",
+        "name": "create_epub_pairing",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/epub-pairings/{pairing_id}",
+        "name": "remove_epub_pairing",
+        "kind": "http",
+        "methods": [
+          "DELETE"
+        ]
+      },
+      {
+        "path": "/materials/{material_id}",
+        "name": "delete_material",
+        "kind": "http",
+        "methods": [
+          "DELETE"
+        ]
+      },
+      {
+        "path": "/materials/{material_id}/transcript",
+        "name": "get_transcript",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/materials/{material_id}/units/{locator}",
+        "name": "get_unit",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/materials/{material_id}/revisions",
+        "name": "list_material_revisions",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/materials/{material_id}/revisions/{revision}/units/{locator}",
+        "name": "get_revision_unit",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/materials/{material_id}/raw",
+        "name": "get_raw",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/materials/{material_id}/render",
+        "name": "get_render",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/materials/{material_id}/assets/{asset_name}",
+        "name": "get_snapshot_asset",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/materials/{material_id}/media",
+        "name": "list_material_media",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/materials/{material_id}/media/{name}",
+        "name": "get_material_media",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/materials/{material_id}/annotations",
+        "name": "list_annotations",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/materials/{material_id}/position",
+        "name": "get_position",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/materials/{material_id}/position",
+        "name": "save_position",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/materials/{material_id}/bookmarks",
+        "name": "list_bookmarks",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/materials/{material_id}/bookmarks",
+        "name": "add_bookmark",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/materials/{material_id}/bookmarks/{bookmark_id}",
+        "name": "delete_bookmark",
+        "kind": "http",
+        "methods": [
+          "DELETE"
+        ]
+      },
+      {
+        "path": "/materials/{material_id}/annotations",
+        "name": "save_annotation",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/materials/{material_id}/annotations/{annotation_id}",
+        "name": "delete_annotation",
+        "kind": "http",
+        "methods": [
+          "DELETE"
+        ]
+      },
+      {
+        "path": "/materials/{material_id}/export",
+        "name": "export",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.reading_extensions:router": [
+      {
+        "path": "/extensions",
+        "name": "list_extensions",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/materials/{material_id}/read-aloud",
+        "name": "read_material_aloud",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/materials/{material_id}/extensions/{extension_id}/actions/{action}",
+        "name": "run_extension_action",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/materials/{material_id}/extensions/quiz/answers",
+        "name": "submit_quiz_answers",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/materials/{material_id}/quiz/rewards",
+        "name": "list_quiz_rewards",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.memory:router": [
+      {
+        "path": "/overview",
+        "name": "get_overview",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/resolve_entry/{entry_id}",
+        "name": "resolve_entry",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/backup",
+        "name": "list_backups",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/doc/{layer}/{key}",
+        "name": "get_doc",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/doc/{layer}/{key}",
+        "name": "put_doc",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/doc/{layer}/{key}/entry/{entry_id}",
+        "name": "delete_entry",
+        "kind": "http",
+        "methods": [
+          "DELETE"
+        ]
+      },
+      {
+        "path": "/doc/{layer}/{key}/reset",
+        "name": "reset_doc",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/runs/start",
+        "name": "start_run",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/runs/{run_id}",
+        "name": "get_run",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/runs/{run_id}/cancel",
+        "name": "cancel_run",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/runs/{run_id}/undo",
+        "name": "undo_run_edit",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/runs",
+        "name": "list_runs",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/runs/{run_id}/events",
+        "name": "stream_run_events",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/doc/{layer}/{key}/update",
+        "name": "update_doc",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/doc/{layer}/{key}/audit",
+        "name": "audit_doc",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/doc/{layer}/{key}/dedup",
+        "name": "dedup_doc",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/doc/{layer}/{key}/lines",
+        "name": "get_doc_lines",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/settings",
+        "name": "get_memory_settings_endpoint",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/settings",
+        "name": "put_memory_settings",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/doc/{layer}/{key}/apply",
+        "name": "apply_doc_ops",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/trace/{surface}",
+        "name": "get_trace",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/trace/{surface}",
+        "name": "clear_trace",
+        "kind": "http",
+        "methods": [
+          "DELETE"
+        ]
+      },
+      {
+        "path": "/trace/{surface}/day/{day}",
+        "name": "clear_trace_day",
+        "kind": "http",
+        "methods": [
+          "DELETE"
+        ]
+      },
+      {
+        "path": "/snapshot/{surface}",
+        "name": "get_snapshot",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/snapshot/{surface}/refresh",
+        "name": "refresh_snapshot",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/snapshot/{surface}/changes",
+        "name": "get_changes",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/snapshot/{surface}/changes",
+        "name": "clear_snapshot_changes",
+        "kind": "http",
+        "methods": [
+          "DELETE"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.learning_journal:router": [
+      {
+        "path": "",
+        "name": "overview",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.capabilities_settings:router": [
+      {
+        "path": "/settings",
+        "name": "get_capabilities_settings_endpoint",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/settings",
+        "name": "put_capabilities_settings",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.capabilities:router": [
+      {
+        "path": "/registered",
+        "name": "list_registered_capabilities",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.sessions:router": [
+      {
+        "path": "/capabilities",
+        "name": "session_store_capabilities",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/submission-replacement",
+        "name": "replace_submission",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "",
+        "name": "list_sessions",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/search",
+        "name": "search_sessions",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/recycle-bin",
+        "name": "list_recycle_bin",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/{session_id}/migrate-watching",
+        "name": "migrate_watching_session",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/{session_id}",
+        "name": "get_session",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/{session_id}/organization",
+        "name": "get_session_organization",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/{session_id}/threads",
+        "name": "list_session_threads",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/{session_id}/messages/{message_id}/events",
+        "name": "get_message_events",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/{session_id}/ask-hint",
+        "name": "get_session_ask_hint",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/{session_id}",
+        "name": "rename_session",
+        "kind": "http",
+        "methods": [
+          "PATCH"
+        ]
+      },
+      {
+        "path": "/{session_id}/reply-language",
+        "name": "update_session_reply_language",
+        "kind": "http",
+        "methods": [
+          "PATCH"
+        ]
+      },
+      {
+        "path": "/{session_id}/organization",
+        "name": "update_session_organization",
+        "kind": "http",
+        "methods": [
+          "PATCH"
+        ]
+      },
+      {
+        "path": "/{session_id}",
+        "name": "delete_session",
+        "kind": "http",
+        "methods": [
+          "DELETE"
+        ]
+      },
+      {
+        "path": "/{session_id}/restore",
+        "name": "restore_session",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/{session_id}/purge",
+        "name": "purge_session",
+        "kind": "http",
+        "methods": [
+          "DELETE"
+        ]
+      },
+      {
+        "path": "/{session_id}/branch-selection",
+        "name": "update_branch_selection",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/{session_id}/messages/{message_id}",
+        "name": "delete_turn_by_message",
+        "kind": "http",
+        "methods": [
+          "DELETE"
+        ]
+      },
+      {
+        "path": "/{session_id}/quiz-results",
+        "name": "record_quiz_results",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.question_notebook:router": [
+      {
+        "path": "/entries/upsert",
+        "name": "upsert_single_entry",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/entries",
+        "name": "list_entries",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/entries/lookup/by-question",
+        "name": "lookup_entry",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/entries/{entry_id}",
+        "name": "get_entry",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/entries/{entry_id}",
+        "name": "update_entry",
+        "kind": "http",
+        "methods": [
+          "PATCH"
+        ]
+      },
+      {
+        "path": "/entries/{entry_id}",
+        "name": "delete_entry",
+        "kind": "http",
+        "methods": [
+          "DELETE"
+        ]
+      },
+      {
+        "path": "/entries/categories/bulk",
+        "name": "bulk_link_entries",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/entries/{entry_id}/categories",
+        "name": "add_entry_to_category",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/entries/{entry_id}/categories/{category_id}",
+        "name": "remove_entry_from_category",
+        "kind": "http",
+        "methods": [
+          "DELETE"
+        ]
+      },
+      {
+        "path": "/stats",
+        "name": "question_bank_stats",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/materials",
+        "name": "list_question_bank_materials",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/categories",
+        "name": "list_categories",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/categories",
+        "name": "create_category",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/categories/{category_id}",
+        "name": "rename_category",
+        "kind": "http",
+        "methods": [
+          "PATCH"
+        ]
+      },
+      {
+        "path": "/categories/{category_id}",
+        "name": "delete_category",
+        "kind": "http",
+        "methods": [
+          "DELETE"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.practice:router": [
+      {
+        "path": "/summary",
+        "name": "summary",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/queue",
+        "name": "queue",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/analytics",
+        "name": "practice_analytics",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/questions/{entry_id}",
+        "name": "practice_question",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/questions/{entry_id}/check",
+        "name": "check",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/questions/{entry_id}/review",
+        "name": "review",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/import/template",
+        "name": "import_template",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/import/preview",
+        "name": "import_preview",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/import/commit",
+        "name": "import_commit",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.settings:public_router": [
+      {
+        "path": "/ui",
+        "name": "get_ui_settings",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.settings:router": [
+      {
+        "path": "",
+        "name": "get_settings",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/providers/openai-codex/oauth/start",
+        "name": "start_openai_codex_oauth",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/providers/openai-codex/oauth/status",
+        "name": "get_openai_codex_oauth_status",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/providers/openai-codex/oauth/complete",
+        "name": "complete_openai_codex_oauth",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/providers/openai-codex/oauth/cancel",
+        "name": "cancel_openai_codex_oauth",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/providers/openai-codex/oauth/logout",
+        "name": "logout_openai_codex_oauth",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/providers/openai-codex/models/refresh",
+        "name": "refresh_openai_codex_models",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/providers/codebuddy/auth/status",
+        "name": "get_codebuddy_auth_status",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/providers/codebuddy/auth/start",
+        "name": "start_codebuddy_auth",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/providers/codebuddy/auth/cancel",
+        "name": "cancel_codebuddy_auth",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/providers/codebuddy/auth/logout",
+        "name": "logout_codebuddy_auth",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/providers/openai-codex/models/reasoning-effort",
+        "name": "update_openai_codex_reasoning_effort",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/catalog",
+        "name": "get_catalog",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/network",
+        "name": "get_network_settings",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/network",
+        "name": "update_network_settings",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/chat-attachments",
+        "name": "get_chat_attachment_settings",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/chat-starters",
+        "name": "get_chat_starter_settings",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/chat-starters",
+        "name": "update_chat_starter_settings",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/chat-attachments",
+        "name": "update_chat_attachment_settings",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/mineru",
+        "name": "get_mineru_settings",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/mineru",
+        "name": "update_mineru_settings",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/document-parsing",
+        "name": "get_document_parsing_settings",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/readiness",
+        "name": "get_settings_readiness",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/profile",
+        "name": "get_settings_profile",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/profile/diff",
+        "name": "diff_settings_profile",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/presets",
+        "name": "get_settings_presets",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/presets/{preset_id}/draft",
+        "name": "stage_settings_preset",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/document-parsing",
+        "name": "update_document_parsing_settings",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/document-parsing/test",
+        "name": "test_document_parsing",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/document-parsing/docling/test",
+        "name": "test_docling_remote_connection",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/document-parsing/tika/test",
+        "name": "test_tika_remote_connection",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/document-parsing/install",
+        "name": "start_document_parsing_install",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/document-parsing/models/download",
+        "name": "start_document_parsing_model_download",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/document-parsing/job/status",
+        "name": "document_parsing_job_status",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/document-parsing/job/cancel",
+        "name": "cancel_document_parsing_job",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/mineru/models/download",
+        "name": "start_mineru_models_download",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/mineru/models/download/status",
+        "name": "mineru_models_download_status",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/mineru/models/download/cancel",
+        "name": "cancel_mineru_models_download",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/mineru/test",
+        "name": "test_mineru_connection",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/llm-options",
+        "name": "get_llm_options",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/catalog",
+        "name": "update_catalog",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/apply/registry",
+        "name": "apply_registry_edit",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/apply/provider",
+        "name": "apply_provider_edit",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/apply/service",
+        "name": "apply_catalog_service",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/draft",
+        "name": "get_settings_draft",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/draft",
+        "name": "update_settings_draft",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/draft",
+        "name": "discard_settings_draft",
+        "kind": "http",
+        "methods": [
+          "DELETE"
+        ]
+      },
+      {
+        "path": "/apply",
+        "name": "apply_catalog",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/test-provider",
+        "name": "test_provider_connection",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/fetch-models",
+        "name": "fetch_models_from_provider",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/model-capabilities",
+        "name": "resolve_model_capabilities",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/theme",
+        "name": "update_theme",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/language",
+        "name": "update_language",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/voice-autoplay",
+        "name": "update_voice_autoplay",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/voice-math-speak",
+        "name": "update_voice_math_speak",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/chat-response-timeout",
+        "name": "update_chat_response_timeout",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/page-customization",
+        "name": "get_page_customization",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/page-customization/chat",
+        "name": "update_chat_page_customization",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/page-customization/learning",
+        "name": "update_learning_page_customization",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/ui",
+        "name": "update_ui_settings",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/reset",
+        "name": "reset_settings",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/themes",
+        "name": "get_themes",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/sidebar",
+        "name": "get_sidebar_settings",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/sidebar/description",
+        "name": "update_sidebar_description",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/sidebar/nav-order",
+        "name": "update_sidebar_nav_order",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/enabled-tools",
+        "name": "update_enabled_tools",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/voice/voices",
+        "name": "list_voice_choices",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/voice/preview",
+        "name": "preview_voice",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/services/{service}/preview",
+        "name": "preview_service",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/tests/{service}/start",
+        "name": "start_service_test",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/tests/{service}/{run_id}/events",
+        "name": "stream_service_test_events",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/tests/{service}/{run_id}/cancel",
+        "name": "cancel_service_test",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/tour/status",
+        "name": "tour_status",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/tour/complete",
+        "name": "complete_tour",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/tour/reopen",
+        "name": "reopen_tour",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/usage",
+        "name": "get_usage_statistics",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.workspace:settings_router": [
+      {
+        "path": "/knowledge-bases/preview-move",
+        "name": "preview_knowledge_move",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/knowledge-bases/move",
+        "name": "move_knowledge_base",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/data/discover",
+        "name": "discover_workspace_data",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/data/preview",
+        "name": "preview_workspace_data",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/data/migrate",
+        "name": "migrate_workspace_data",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/data/export",
+        "name": "export_workspace_data",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/data/operations",
+        "name": "workspace_data_operations",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/data/operations/{operation_id}/recover",
+        "name": "recover_workspace_migration",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/data/exports/{operation_id}",
+        "name": "download_workspace_export",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/registrations",
+        "name": "list_workspaces",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/registrations/migrate-root",
+        "name": "migrate_workspace_root",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/registrations/{workspace_id}/migrate",
+        "name": "migrate_registered_workspace",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/registrations/system-snapshot",
+        "name": "system_workspace_snapshot",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/registrations/system-snapshot",
+        "name": "system_workspace_snapshot",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/resource-usage",
+        "name": "workspace_resource_usage",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/resources",
+        "name": "workspace_resource_catalog",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/registrations",
+        "name": "create_workspace",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/registrations/{workspace_id}",
+        "name": "update_registered_workspace",
+        "kind": "http",
+        "methods": [
+          "PATCH"
+        ]
+      },
+      {
+        "path": "",
+        "name": "get_workspace_settings",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/validate",
+        "name": "validate_workspace",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "",
+        "name": "update_workspace",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.video_learning:settings_router": [
+      {
+        "path": "",
+        "name": "get_video_learning_settings",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "",
+        "name": "update_video_learning_settings",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/test-invidious",
+        "name": "test_invidious",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.mcp_settings:router": [
+      {
+        "path": "",
+        "name": "get_mcp_settings",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "",
+        "name": "update_mcp_settings",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/servers/{name}",
+        "name": "upsert_mcp_server",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/servers/{name}",
+        "name": "delete_mcp_server",
+        "kind": "http",
+        "methods": [
+          "DELETE"
+        ]
+      },
+      {
+        "path": "/test",
+        "name": "test_mcp_server",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.space_mcp:router": [
+      {
+        "path": "/servers",
+        "name": "list_servers",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/servers/{name}",
+        "name": "upsert_server",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/servers/{name}",
+        "name": "remove_server",
+        "kind": "http",
+        "methods": [
+          "DELETE"
+        ]
+      },
+      {
+        "path": "/servers/{name}/authorize",
+        "name": "authorize_server",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/oauth/callback",
+        "name": "oauth_callback",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/servers/{name}/test",
+        "name": "test_server",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/catalog",
+        "name": "get_catalog",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/catalog/{entry_id}/install",
+        "name": "install_catalog_entry",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.space_cli_apps:router": [
+      {
+        "path": "/apps",
+        "name": "list_apps",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/apps/{app_id}/enabled",
+        "name": "set_enabled",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/catalog",
+        "name": "get_catalog",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/catalog/{app_id}/install",
+        "name": "install",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/apps/{app_id}",
+        "name": "uninstall",
+        "kind": "http",
+        "methods": [
+          "DELETE"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.skills:router": [
+      {
+        "path": "/tags/list",
+        "name": "list_tags",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/tags/create",
+        "name": "create_tag",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/tags/{tag}",
+        "name": "rename_tag",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/tags/{tag}",
+        "name": "delete_tag",
+        "kind": "http",
+        "methods": [
+          "DELETE"
+        ]
+      },
+      {
+        "path": "/list",
+        "name": "list_skills",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/hub/catalog",
+        "name": "hub_catalog",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/hub/detail",
+        "name": "hub_detail",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/{name}",
+        "name": "get_skill",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/create",
+        "name": "create_skill",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/install",
+        "name": "install_skill",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/{name}",
+        "name": "update_skill",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/{name}",
+        "name": "delete_skill",
+        "kind": "http",
+        "methods": [
+          "DELETE"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.subagents:router": [
+      {
+        "path": "/detect",
+        "name": "detect_subagents",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/backends/options",
+        "name": "backend_options",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/backends/{kind}/sync",
+        "name": "sync_backend",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/connections",
+        "name": "list_connections",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/connections",
+        "name": "create_connection",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/connections/{name}",
+        "name": "delete_connection",
+        "kind": "http",
+        "methods": [
+          "DELETE"
+        ]
+      },
+      {
+        "path": "/connections/{name}/message",
+        "name": "message_connection",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/settings",
+        "name": "get_settings",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/settings",
+        "name": "update_settings",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.personas:router": [
+      {
+        "path": "/personas",
+        "name": "list_personas",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/personas/{name}",
+        "name": "get_persona",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/personas",
+        "name": "create_persona",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/personas/{name}",
+        "name": "update_persona",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/personas/{name}",
+        "name": "delete_persona",
+        "kind": "http",
+        "methods": [
+          "DELETE"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.plugins:router": [
+      {
+        "path": "/extensions",
+        "name": "list_extensions",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/{plugin_id}/pages/{extension_id}",
+        "name": "redirect_plugin_frontend_page",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/{plugin_id}/pages/{extension_id}/",
+        "name": "get_plugin_frontend_page",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/{plugin_id}/pages/{extension_id}/assets/{asset_path:path}",
+        "name": "get_plugin_frontend_asset",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/catalog",
+        "name": "plugin_catalog",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/state",
+        "name": "plugin_state",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/{plugin_id}/info",
+        "name": "plugin_info",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/{plugin_id}/approve",
+        "name": "approve_plugin",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/{plugin_id}/enable",
+        "name": "enable_plugin",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/{plugin_id}/disable",
+        "name": "disable_plugin",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/{plugin_id}/install",
+        "name": "install_plugin",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/{plugin_id}/rollback",
+        "name": "rollback_plugin",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/{plugin_id}/installation",
+        "name": "uninstall_plugin",
+        "kind": "http",
+        "methods": [
+          "DELETE"
+        ]
+      },
+      {
+        "path": "/{plugin_id}/{plugin_path:path}",
+        "name": "dispatch_plugin_route",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/{plugin_id}/{plugin_path:path}",
+        "name": "dispatch_plugin_route",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/{plugin_id}/{plugin_path:path}",
+        "name": "dispatch_plugin_route",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/{plugin_id}/{plugin_path:path}",
+        "name": "dispatch_plugin_route",
+        "kind": "http",
+        "methods": [
+          "PATCH"
+        ]
+      },
+      {
+        "path": "/{plugin_id}/{plugin_path:path}",
+        "name": "dispatch_plugin_route",
+        "kind": "http",
+        "methods": [
+          "DELETE"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.tools:router": [
+      {
+        "path": "",
+        "name": "list_builtin_tools",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.system:router": [
+      {
+        "path": "/runtime",
+        "name": "get_runtime_status",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/update",
+        "name": "get_update_status",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/update/check",
+        "name": "check_for_update",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/update/settings",
+        "name": "update_check_settings",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/update/job",
+        "name": "get_update_job",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/update",
+        "name": "request_managed_update",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/status",
+        "name": "get_system_status",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/memory",
+        "name": "get_memory_usage",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/test/llm",
+        "name": "test_llm_connection",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/test/embeddings",
+        "name": "test_embeddings_connection",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/test/search",
+        "name": "test_search_connection",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.voice:router": [
+      {
+        "path": "/tts",
+        "name": "text_to_speech",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/stt",
+        "name": "speech_to_text",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.video_learning:router": [
+      {
+        "path": "/invidious/account/authorize",
+        "name": "authorize_invidious_account",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/invidious/account/callback",
+        "name": "invidious_account_callback",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/invidious/browse/{kind}",
+        "name": "browse_invidious",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/invidious/account/status",
+        "name": "get_invidious_account_status",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/invidious/account/disconnect",
+        "name": "disconnect_invidious_account",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/materials/resolve",
+        "name": "resolve_video",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/materials/{material_id}",
+        "name": "get_video_material",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/materials/{material_id}/transcript/refresh",
+        "name": "refresh_video_transcript",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/materials/{material_id}/progress",
+        "name": "save_video_progress",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/materials/{material_id}/notes",
+        "name": "list_video_notes",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/materials/{material_id}/notes.md",
+        "name": "export_video_notes",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/materials/{material_id}/notes",
+        "name": "create_video_note",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/materials/{material_id}/notes/{note_id}",
+        "name": "update_video_note",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/materials/{material_id}/notes/{note_id}",
+        "name": "delete_video_note",
+        "kind": "http",
+        "methods": [
+          "DELETE"
+        ]
+      },
+      {
+        "path": "/materials/{material_id}/marks",
+        "name": "list_video_marks",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/materials/{material_id}/marks/{mark_id}",
+        "name": "get_video_mark",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/materials/{material_id}/marks",
+        "name": "create_video_mark",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/materials/{material_id}/marks/{mark_id}",
+        "name": "update_video_mark",
+        "kind": "http",
+        "methods": [
+          "PATCH"
+        ]
+      },
+      {
+        "path": "/materials/{material_id}/marks/{mark_id}",
+        "name": "delete_video_mark",
+        "kind": "http",
+        "methods": [
+          "DELETE"
+        ]
+      },
+      {
+        "path": "/materials/{material_id}/mark-suggestions",
+        "name": "suggest_video_marks",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/materials/{material_id}/subtitles.vtt",
+        "name": "get_video_subtitles",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/materials/{material_id}/stream/{format_id}",
+        "name": "stream_video",
+        "kind": "http",
+        "methods": [
+          "HEAD"
+        ]
+      },
+      {
+        "path": "/materials/{material_id}/stream/{format_id}",
+        "name": "stream_video",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.visualizers:router": [
+      {
+        "path": "/list",
+        "name": "list_visualizers",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/bundled/{visualizer_id}/install",
+        "name": "install_bundled",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/{visualizer_id}/enable",
+        "name": "enable_visualizer",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/{visualizer_id}/disable",
+        "name": "disable_visualizer",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/{visualizer_id}",
+        "name": "uninstall_visualizer",
+        "kind": "http",
+        "methods": [
+          "DELETE"
+        ]
+      },
+      {
+        "path": "/import",
+        "name": "import_visualizer",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/{visualizer_id}/assets/{asset_path:path}",
+        "name": "get_visualizer_asset",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.agent_config:router": [
+      {
+        "path": "/agents",
+        "name": "get_agent_config",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/agents/{agent_type}",
+        "name": "get_single_agent_config",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.partners:router": [
+      {
+        "path": "/souls",
+        "name": "list_souls",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/souls",
+        "name": "create_soul",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/souls/{soul_id}",
+        "name": "get_soul",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/souls/{soul_id}",
+        "name": "update_soul",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/souls/{soul_id}",
+        "name": "delete_soul",
+        "kind": "http",
+        "methods": [
+          "DELETE"
+        ]
+      },
+      {
+        "path": "/soul-sources",
+        "name": "soul_sources",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "",
+        "name": "list_partners",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/navigation",
+        "name": "partner_navigation",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/consultation-session",
+        "name": "get_partner_consultation_session",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/recent",
+        "name": "recent_partners",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/channels/schema",
+        "name": "list_channel_schemas",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/{partner_id}/channels/weixin/qr",
+        "name": "start_weixin_qr",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/{partner_id}/channels/weixin/qr/{session_id}",
+        "name": "poll_weixin_qr",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/tool-options",
+        "name": "tool_options",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "",
+        "name": "create_partner",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/drafts/{draft_id}",
+        "name": "get_partner_draft",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/drafts/{draft_id}/confirm",
+        "name": "confirm_partner_draft",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/{partner_id}",
+        "name": "get_partner",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/{partner_id}",
+        "name": "update_partner",
+        "kind": "http",
+        "methods": [
+          "PATCH"
+        ]
+      },
+      {
+        "path": "/{partner_id}/start",
+        "name": "start_partner",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/{partner_id}/stop",
+        "name": "stop_partner",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/{partner_id}",
+        "name": "destroy_partner",
+        "kind": "http",
+        "methods": [
+          "DELETE"
+        ]
+      },
+      {
+        "path": "/{partner_id}/channels/reload",
+        "name": "reload_partner_channels",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/{partner_id}/channels/status",
+        "name": "get_partner_channel_status",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/{partner_id}/channel-onboarding/start",
+        "name": "start_partner_channel_onboarding",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/{partner_id}/channel-onboarding/{session_id}",
+        "name": "get_partner_channel_onboarding",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/{partner_id}/channel-onboarding/{session_id}",
+        "name": "cancel_partner_channel_onboarding",
+        "kind": "http",
+        "methods": [
+          "DELETE"
+        ]
+      },
+      {
+        "path": "/{partner_id}/channel-onboarding/{session_id}/apply",
+        "name": "apply_partner_channel_onboarding",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/{partner_id}/soul",
+        "name": "get_partner_soul",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/{partner_id}/soul",
+        "name": "put_partner_soul",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/{partner_id}/workspaces",
+        "name": "get_partner_workspaces",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/{partner_id}/assets",
+        "name": "get_partner_assets",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/{partner_id}/assets",
+        "name": "add_partner_assets",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/{partner_id}/assets/{asset_type}/{name}",
+        "name": "delete_partner_asset",
+        "kind": "http",
+        "methods": [
+          "DELETE"
+        ]
+      },
+      {
+        "path": "/{partner_id}/links/code",
+        "name": "create_partner_link_code",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/{partner_id}/links",
+        "name": "list_partner_links",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/{partner_id}/links/{key:path}",
+        "name": "delete_partner_link",
+        "kind": "http",
+        "methods": [
+          "DELETE"
+        ]
+      },
+      {
+        "path": "/{partner_id}/history",
+        "name": "get_partner_history",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/{partner_id}/history/page",
+        "name": "get_partner_history_page",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/{partner_id}/web-continuity",
+        "name": "get_partner_web_continuity",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/{partner_id}/web-continuity",
+        "name": "put_partner_web_continuity",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/{partner_id}/sessions",
+        "name": "get_partner_sessions",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/{partner_id}/sessions/archive",
+        "name": "archive_partner_session",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/{partner_id}/sessions/resume",
+        "name": "resume_partner_session",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/{partner_id}/sessions/delete",
+        "name": "delete_partner_session",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/{partner_id}/sessions/branch",
+        "name": "branch_partner_session",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/commands/palette",
+        "name": "partner_command_palette",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/{partner_id}/chat",
+        "name": "partner_chat_http",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/{partner_id}/chat/execute-stream",
+        "name": "partner_chat_http_stream",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.partner_groups:router": [
+      {
+        "path": "",
+        "name": "list_partner_groups",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/discussion-modes",
+        "name": "list_discussion_modes",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/shared-memory-types",
+        "name": "list_shared_memory_types",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "",
+        "name": "create_partner_group",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/{group_id}",
+        "name": "get_partner_group",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/{group_id}",
+        "name": "update_partner_group",
+        "kind": "http",
+        "methods": [
+          "PATCH"
+        ]
+      },
+      {
+        "path": "/{group_id}",
+        "name": "delete_partner_group",
+        "kind": "http",
+        "methods": [
+          "DELETE"
+        ]
+      },
+      {
+        "path": "/{group_id}/history",
+        "name": "partner_group_history",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/{group_id}/sessions",
+        "name": "list_partner_group_sessions",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/{group_id}/sessions",
+        "name": "create_partner_group_session",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/{group_id}/sessions/{session_key}",
+        "name": "delete_partner_group_session",
+        "kind": "http",
+        "methods": [
+          "DELETE"
+        ]
+      },
+      {
+        "path": "/{group_id}/whiteboard",
+        "name": "partner_group_whiteboard",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/{group_id}/whiteboard/pins",
+        "name": "pin_partner_group_whiteboard",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/{group_id}/whiteboard/pins/{event_id}",
+        "name": "unpin_partner_group_whiteboard",
+        "kind": "http",
+        "methods": [
+          "DELETE"
+        ]
+      },
+      {
+        "path": "/{group_id}/invocations",
+        "name": "partner_group_invocations",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/{group_id}/invocations",
+        "name": "create_partner_invocation",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/{group_id}/messages",
+        "name": "send_partner_group_message",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/{group_id}/turns/{turn_id}/partners/{partner_id}/retry",
+        "name": "retry_partner_group_seat",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/{group_id}/rounds/{turn_id}/summary",
+        "name": "summarize_partner_group_round",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/{group_id}/invocations/{invocation_id}/approve",
+        "name": "approve_partner_invocation",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/{group_id}/invocations/{invocation_id}/reject",
+        "name": "reject_partner_invocation",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.partners:ws_router": [
+      {
+        "path": "/{partner_id}",
+        "name": "partner_chat_ws",
+        "kind": "websocket",
+        "methods": []
+      }
+    ],
+    "deeptutor.api.routers.partner_groups:ws_router": [
+      {
+        "path": "/{group_id}",
+        "name": "partner_group_ws",
+        "kind": "websocket",
+        "methods": []
+      }
+    ],
+    "deeptutor.api.routers.attachments:router": [
+      {
+        "path": "/{session_id}/{attachment_id}/{filename:path}",
+        "name": "get_attachment",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.marginnote4:router": [
+      {
+        "path": "/pair",
+        "name": "pair_device",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/devices",
+        "name": "list_devices",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/devices/{device_id}",
+        "name": "revoke_device",
+        "kind": "http",
+        "methods": [
+          "DELETE"
+        ]
+      },
+      {
+        "path": "/status",
+        "name": "status",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/sync",
+        "name": "sync_objects",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/heartbeat",
+        "name": "heartbeat",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.unified_ws:router": [
+      {
+        "path": "/ws",
+        "name": "unified_websocket",
+        "kind": "websocket",
+        "methods": []
+      }
+    ],
+    "deeptutor.api.routers.quiz_judge:router": [
+      {
+        "path": "/questions/judge",
+        "name": "websocket_quiz_judge",
+        "kind": "websocket",
+        "methods": []
+      }
+    ],
+    "deeptutor.api.routers.modules:router": [
+      {
+        "path": "",
+        "name": "list_modules",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      }
+    ]
+  }
+}

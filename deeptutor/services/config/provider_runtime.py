@@ -391,6 +391,15 @@ TTS_PROVIDERS: dict[str, VoiceProviderSpec] = {
         default_api_base="",
         default_model="",
     ),
+    # Edge's free read-aloud voices via the edge-tts package; no key, no endpoint.
+    "edge": VoiceProviderSpec(
+        label="Microsoft Edge (free)",
+        default_api_base="",
+        adapter="edge",
+        default_model="edge-tts",
+        default_voice="zh-CN-XiaoxiaoNeural",
+        is_local=True,
+    ),
 }
 
 STT_PROVIDERS: dict[str, VoiceProviderSpec] = {

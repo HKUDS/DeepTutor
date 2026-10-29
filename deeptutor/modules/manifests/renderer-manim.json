@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "id": "renderer-manim",
+  "distribution": "deeptutor-renderer-manim",
+  "requires": [],
+  "optional": [],
+  "paths": [
+    "deeptutor/agents/math_animator"
+  ],
+  "capabilities": {
+    "math_animator": {
+      "class_path": "deeptutor.agents.math_animator.capability:MathAnimatorCapability",
+      "config_model": "deeptutor.agents.math_animator.request_config:MathAnimatorRequestConfig",
+      "manifest": {
+        "name": "math_animator",
+        "description": "Generate math animations or storyboard images with Manim.",
+        "stages": [
+          "concept_analysis",
+          "concept_design",
+          "code_generation",
+          "code_retry",
+          "summary",
+          "render_output"
+        ],
+        "tools_used": [],
+        "cli_aliases": [
+          "animate"
+        ],
+        "config_defaults": {
+          "output_mode": "video",
+          "quality": "medium",
+          "style_hint": ""
+        }
+      },
+      "validator": "deeptutor.agents.math_animator.request_config:validate_math_animator_request_config",
+      "order": 5
+    }
+  },
+  "loops": {},
+  "tools": {},
+  "routes": [],
+  "commands": [],
+  "navigation": [],
+  "services": [],
+  "requirements": [
+    "manim>=0.19.0"
+  ],
+  "executables": [
+    "ffmpeg",
+    "latex"
+  ]
+}

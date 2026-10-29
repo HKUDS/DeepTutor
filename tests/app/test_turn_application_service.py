@@ -540,3 +540,57 @@ async def test_replacement_availability_matches_configured_store_before_mutation
         await sessions.replace_submission(body)
     assert error.value.status_code == 501
     assert calls["count"] == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("interruption", ["append", "cancel", "publish"])
+@pytest.mark.parametrize("after_seq", [0, 1, 10])
+async def test_interrupted_worker_loss_recovery_replays_failure(
+    tmp_path, monkeypatch, interruption, after_seq
+):
+    from deeptutor.runtime.coordination.recovery import TurnRecoveryService
+
+    store = SQLiteSessionStore(tmp_path / "interrupted.db")
+    coordinator = MemoryCoordinator()
+    session = await store.ensure_session(None)
+    turn = await store.begin_turn(session["id"], capability="chat")
+    await store.append_events(turn["id"], [{"type": "content", "content": "Partial answer"}])
+
+    async def interrupt(*args, **kwargs):
+        if interruption == "cancel":
+            raise asyncio.CancelledError
+        raise RuntimeError("Injected recovery interruption")
+
+    with monkeypatch.context() as patch:
+        if interruption == "publish":
+            patch.setattr(coordinator, "publish_event", interrupt)
+        else:
+            patch.setattr(store, "append_events", interrupt)
+        recovery = TurnRecoveryService(coordinator, store)
+        if interruption == "cancel":
+            with pytest.raises(asyncio.CancelledError):
+                await recovery.recover_once()
+        else:
+            await recovery.recover_once()
+
+    assert (await store.get_turn(turn["id"]))["status"] == "failed"
+    # A restarted coordinator cannot rediscover an already terminal row.
+    restarted = MemoryCoordinator()
+    assert await TurnRecoveryService(restarted, store).recover_once() == 0
+    service, _ = _service(store, restarted, "replacement")
+
+    async def collect():
+        return [event async for event in service.subscribe_turn(turn["id"], after_seq)]
+
+    events = await asyncio.wait_for(collect(), timeout=2)
+    assert [event["type"] for event in events][-2:] == ["error", "done"]
+    assert events[-2]["content"]
+    assert events[-2]["metadata"]["turn_terminal"] is True
+    for event in events[-2:]:
+        assert event["metadata"]["error_code"] == "worker_lost"
+        assert event["metadata"]["retryable"] is True
+        assert event["turn_id"] == turn["id"]
+        assert event["seq"] > after_seq
+    assert events[-1]["seq"] == events[-2]["seq"] + 1
+    if after_seq == 0:
+        assert events[0]["content"] == "Partial answer"

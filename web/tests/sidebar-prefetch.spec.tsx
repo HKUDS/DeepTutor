@@ -38,6 +38,7 @@ vi.mock("next/link", () => ({
   ),
 }));
 vi.mock("next/navigation", () => ({
+  useSearchParams: () => new URLSearchParams(),
   usePathname: () => "/chat",
   useRouter: () => ({ push: fixture.push }),
 }));

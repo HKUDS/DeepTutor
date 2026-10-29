@@ -39,8 +39,13 @@ import type { ChatOutlineEntry } from "@/lib/chat-outline";
  * long transcript re-renders one small rail instead of the whole chat.
  */
 
-/** Gutter needed before the rail is worth showing (tick + breathing room). */
-const MIN_GUTTER_PX = 52;
+/**
+ * Room left of the *text* (not the column box) before the rail is worth
+ * showing: the widest hovered tick plus the edge pad. Measuring the box
+ * instead ignored the column's own padding and hid the rail at ordinary
+ * laptop widths, where the prose still had ~48 px of empty margin.
+ */
+const MIN_GUTTER_PX = 44;
 /** Resting distance from the scrollport's left edge. */
 const EDGE_PAD_PX = 14;
 /**
@@ -133,7 +138,9 @@ export function TurnNavigator({
       const gutter =
         column.getBoundingClientRect().left -
         wrapper.getBoundingClientRect().left;
-      if (gutter < MIN_GUTTER_PX) {
+      const textGutter =
+        gutter + (parseFloat(getComputedStyle(column).paddingLeft) || 0);
+      if (textGutter < MIN_GUTTER_PX) {
         setLeft(null);
         return;
       }

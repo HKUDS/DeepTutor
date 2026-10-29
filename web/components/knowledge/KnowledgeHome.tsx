@@ -5,6 +5,7 @@ import { knowledgeBaseRef } from "@/lib/knowledge-helpers";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
+  BookOpen,
   Check,
   ChevronRight,
   Cloud,
@@ -234,6 +235,7 @@ export default function KnowledgeHome({
   return (
     <FeaturePage>
         <PageHeader
+          icon={BookOpen}
           title={t("Knowledge Center")}
           description={t("Manage your knowledge bases and retrieval engines.")}
           action={
@@ -386,7 +388,7 @@ export default function KnowledgeHome({
                               />
                             )}
                           </div>
-                          {kb.provenance_label && <p className="mt-1 truncate text-xs text-[var(--muted-foreground)]">{kb.provenance_label}</p>}
+                          {kb.assigned && kb.provenance_label && <p className="mt-1 truncate text-xs text-[var(--muted-foreground)]">{kb.provenance_label}</p>}
                           <div className="mt-2 flex items-center gap-2 text-[11px] text-[var(--muted-foreground)]">
                             <span className="rounded-full border border-[var(--border)] px-1.5 py-0.5">
                               {providerName(kbProvider(kb))}

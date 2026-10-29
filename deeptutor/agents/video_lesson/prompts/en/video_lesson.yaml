@@ -1,0 +1,8 @@
+status:
+  preparing_runtime: "Preparing the Remotion runtime (first use installs its packages)."
+  writing: "Writing the explainer animation."
+  narrating: "Recording the narration."
+  checking: "Compiling the animation and checking its frames."
+  retry: "Check {attempt} failed, fixing: {error}"
+  ready: "Video lesson ready ({seconds} s)."
+  llm_call_failed: "LLM call failed."

@@ -12,6 +12,7 @@ from deeptutor.services.voice.adapters.dashscope import (
     DashScopeSTTAdapter,
     DashScopeTTSAdapter,
 )
+from deeptutor.services.voice.adapters.edge import EdgeTTSAdapter
 from deeptutor.services.voice.adapters.gemini import GeminiTTSAdapter
 from deeptutor.services.voice.adapters.mimo import MiMoTTSAdapter
 from deeptutor.services.voice.adapters.minimax import MiniMaxTTSAdapter
@@ -31,6 +32,7 @@ TTS_ADAPTERS: dict[str, BaseTTSAdapter] = {
     "openrouter_tts": OpenRouterTTSAdapter(),
     "dashscope": DashScopeTTSAdapter(),
     "gemini": GeminiTTSAdapter(),
+    "edge": EdgeTTSAdapter(),
 }
 
 STT_ADAPTERS: dict[str, BaseSTTAdapter] = {

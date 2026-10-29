@@ -168,6 +168,18 @@ def _tts_models(provider: str) -> tuple[list[dict], str]:
                 language_note="Saudi Arabic; enter a voice ID from the provider documentation.",
             ),
         ], "https://console.groq.com/docs/text-to-speech"
+    if provider == "edge":
+        return [
+            preset(
+                "edge-tts",
+                formats=["mp3"],
+                speed={"min": 0.5, "max": 2, "step": 0.05},
+                configuration_note=(
+                    "Free Microsoft Edge read-aloud voices; no API key. Not an official API, "
+                    "so it may be rate limited. Voices look like zh-CN-XiaoxiaoNeural."
+                ),
+            )
+        ], "https://github.com/rany2/edge-tts"
     if provider == "siliconflow":
         siliconflow_model = "FunAudioLLM/CosyVoice2-0.5B"
         return [
@@ -201,6 +213,8 @@ def voice_options(provider: str, service: str) -> dict:
             fallback = preset("", formats=["wav", "pcm16"], instructions=True)
         elif provider == "gemini":
             fallback = preset("", formats=["wav", "pcm"], instructions=True)
+        elif provider == "edge":
+            fallback = {**deepcopy(models[0]), "id": ""}
     else:
         ids = {
             "openai": ["gpt-4o-mini-transcribe", "gpt-4o-transcribe", "whisper-1"],

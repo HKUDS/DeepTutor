@@ -55,6 +55,7 @@ class CronOwner:
     user_id: str = ""  # chat: owning user
     is_admin: bool = True  # chat: scope restore
     session_id: str = ""  # chat: reply lands in this session
+    workspace_id: str = ""  # chat: the content workspace that stores the session
     language: str = "en"
     partner_id: str = ""  # partner: owning partner
     channel: str = ""  # partner: originating channel

@@ -10,6 +10,7 @@ import aiohttp
 import requests
 
 from deeptutor.services.llm.cloud_provider import _auth_binding, _get_aiohttp_connector
+from deeptutor.services.llm.minimax_models import prioritize_model_names
 from deeptutor.services.llm.utils import build_auth_headers, collect_model_names
 
 
@@ -336,7 +337,10 @@ async def probe_provider(
                     if kinds:
                         entry["services"] = kinds
                     models[name] = entry
-            result = {"status": "connected", "models": list(models.values())}
+            result = {
+                "status": "connected",
+                "models": [models[name] for name in prioritize_model_names(list(models), binding)],
+            }
             capabilities = detect_capabilities(all_items)
             if capabilities:
                 result["capabilities"] = capabilities

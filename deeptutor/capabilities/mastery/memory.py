@@ -10,7 +10,11 @@ import asyncio
 import json
 from typing import Any
 
-from deeptutor.capabilities.mastery.history import STATE_REFERENCE_NOTICE, project_mastery_replay
+from deeptutor.capabilities.mastery.history import (
+    STATE_REFERENCE_NOTICE,
+    project_mastery_replay,
+    reference_history_reads,
+)
 from deeptutor.services.llm.image_replay import deduplicate_user_images
 from deeptutor.services.llm.types import StreamOutcome
 from deeptutor.services.prompt.language import language_label
@@ -37,7 +41,9 @@ MEMORY_NOTICE = (
     "answer, explanation or preference is unclear, use read_source with its archive ID "
     "to recover that original exchange. Do not invent remembered details or assume "
     "understanding just because a topic was explained. Recall only relevant exchanges, "
-    "not the entire archive on every turn."
+    "not the entire archive on every turn. Previously recalled archive bodies are "
+    "represented by archive_id references, not copied into later exchanges. "
+    "Large archive reads are paginated; use the returned next_offset when needed."
 )
 
 
@@ -98,8 +104,10 @@ def archive_text(
             return [text_part(v) for v in value]
         return value
 
+    replayed = replay_group(group)
+    reference_history_reads(replayed)
     messages = []
-    for message in replay_group(group):
+    for message in replayed:
         if message.get("role") == "user" and message.get("_context_snapshot"):
             continue
         if max_tool_chars is not None:

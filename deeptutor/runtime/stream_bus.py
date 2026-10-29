@@ -82,19 +82,6 @@ class StreamBus:
         Taking a snapshot never subscribes, waits for future output or emits an
         event. Sequence zero remains zero for direct callers without sequencing.
         """
-        visibility: dict[str, bool] = {}
-        for event in self._history:
-            if event.source != source or event.stage != stage:
-                continue
-            if event.type not in {StreamEventType.CONTENT, StreamEventType.PROGRESS}:
-                continue
-            call_id = event.metadata.get("call_id")
-            if not isinstance(call_id, str) or not call_id:
-                continue
-            if event.metadata.get("finish_rejected") is True:
-                visibility[call_id] = False
-            elif isinstance(event.metadata.get("answer_visible"), bool):
-                visibility[call_id] = event.metadata["answer_visible"]
         return tuple(
             (event.seq, event.timestamp, event.content)
             for event in self._history
@@ -102,12 +89,6 @@ class StreamBus:
             and event.source == source
             and event.stage == stage
             and event.content
-            and event.metadata.get("answer_visible") is not False
-            and event.metadata.get("finish_rejected") is not True
-            and (
-                not isinstance(event.metadata.get("call_id"), str)
-                or visibility.get(event.metadata["call_id"], True)
-            )
         )
 
     async def emit(self, event: StreamEvent) -> None:

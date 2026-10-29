@@ -41,9 +41,7 @@ async def test_chat_pdf_always_uses_configured_parser(
             assert path.name == "pdf_notes.pdf"
             return ParsedDocument(markdown="# Parsed layout\n\n![figure](image.png)")
 
-    monkeypatch.setattr(
-        "deeptutor.services.session.attachment_parsing.get_parse_service", lambda: Parser()
-    )
+    monkeypatch.setattr("deeptutor.services.parsing.get_parse_service", lambda: Parser())
     records, contexts = await parse_chat_pdf_attachments(
         [
             {
@@ -73,9 +71,7 @@ async def test_configured_parser_keeps_native_image_page_markers(
         def parse(self, path: Path, **_: object) -> ParsedDocument:
             return ParsedDocument(markdown="# Parsed layout")
 
-    monkeypatch.setattr(
-        "deeptutor.services.session.attachment_parsing.get_parse_service", lambda: Parser()
-    )
+    monkeypatch.setattr("deeptutor.services.parsing.get_parse_service", lambda: Parser())
     native = (
         "--- Page 1 ---\nNative text\n[图片 1: image-01.png]"
         "\n\n--- Page 2 ---\nMore text\n[图片 1: image-01.png]"
@@ -105,9 +101,7 @@ async def test_image_page_markers_survive_parser_text_quota(
         def parse(self, path: Path, **_: object) -> ParsedDocument:
             return ParsedDocument(markdown="P" * 500)
 
-    monkeypatch.setattr(
-        "deeptutor.services.session.attachment_parsing.get_parse_service", lambda: Parser()
-    )
+    monkeypatch.setattr("deeptutor.services.parsing.get_parse_service", lambda: Parser())
     monkeypatch.setattr(
         "deeptutor.services.session.attachment_parsing.get_chat_attachment_limits",
         lambda: ChatAttachmentLimits(1000, 1000, 120, 120),
@@ -146,9 +140,7 @@ async def test_scan_pdf_uses_parser_and_reports_structured_progress(
                 on_output("MinerU page 1/1")
             return ParsedDocument(markdown="![page](page-1.png)")
 
-    monkeypatch.setattr(
-        "deeptutor.services.session.attachment_parsing.get_parse_service", lambda: Parser()
-    )
+    monkeypatch.setattr("deeptutor.services.parsing.get_parse_service", lambda: Parser())
     records, contexts = await parse_chat_pdf_attachments(
         [{"id": "scan", "filename": "scan.pdf", "extracted_text": "", "extracted_chars": 0}],
         attachment_store=store,
@@ -178,9 +170,7 @@ async def test_parser_failure_is_not_reported_as_empty_success(
         def parse(self, path: Path, **_: object) -> ParsedDocument:
             raise RuntimeError("parser unavailable")
 
-    monkeypatch.setattr(
-        "deeptutor.services.session.attachment_parsing.get_parse_service", lambda: Parser()
-    )
+    monkeypatch.setattr("deeptutor.services.parsing.get_parse_service", lambda: Parser())
     records, contexts = await parse_chat_pdf_attachments(
         [{"id": "bad", "filename": "bad.pdf"}],
         attachment_store=store,
@@ -205,9 +195,7 @@ async def test_parser_failure_preserves_usable_native_pdf_text(
         def parse(self, path: Path, **_: object) -> ParsedDocument:
             raise RuntimeError("configured parser offline")
 
-    monkeypatch.setattr(
-        "deeptutor.services.session.attachment_parsing.get_parse_service", lambda: Parser()
-    )
+    monkeypatch.setattr("deeptutor.services.parsing.get_parse_service", lambda: Parser())
     records, contexts = await parse_chat_pdf_attachments(
         [
             {

@@ -1,12 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
 import { useTranslation } from "react-i18next";
-import { AlertTriangle, ClipboardList, Inbox, Loader2, School, Search, X } from "lucide-react";
+import { AlertTriangle, ClipboardList, Inbox, Loader2, Search } from "lucide-react";
 import SpaceSectionHeader from "@/components/space/SpaceSectionHeader";
-import { listCourses, type StudyCourse } from "@/lib/courses-api";
 import BankScopeRail from "./BankScopeRail";
 import BankSelectionBar from "./BankSelectionBar";
 import BankToolbar from "./BankToolbar";
@@ -55,38 +52,10 @@ export default function QuestionBankSection({
   onChanged?: () => void;
 }) {
   const { t } = useTranslation();
-  const router = useRouter();
-  // A course arrives in the URL — from its page or from a Course Study
-  // hand-off — and narrows the whole surface for the visit. It is deliberately
-  // not part of the scope rail: the learner keeps clicking through wrong /
-  // bookmarked / a category *inside* the course.
-  const courseId = useSearchParams().get("course")?.trim() ?? "";
-  const bank = useQuestionBank({ courseId, mistakesOnly });
+  const bank = useQuestionBank({ mistakesOnly });
   useEffect(() => {
     onChanged?.();
   }, [bank.stats, onChanged]);
-  const [course, setCourse] = useState<StudyCourse | null>(null);
-
-  useEffect(() => {
-    if (!courseId) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setCourse(null);
-      return;
-    }
-    let cancelled = false;
-    void listCourses()
-      .then(courses => {
-        if (!cancelled) setCourse(courses.find(item => item.id === courseId) ?? null);
-      })
-      .catch(() => {
-        // The scope still applies server-side; only its name is missing, and
-        // the chip falls back to saying "this course".
-        if (!cancelled) setCourse(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [courseId]);
   const [managerOpen, setManagerOpen] = useState(false);
 
   const selectedIds = Array.from(bank.selectedIds);
@@ -105,25 +74,6 @@ export default function QuestionBankSection({
               <span className="rounded-full border border-[var(--border)] bg-[var(--card)] px-2 py-0.5 text-[10.5px] font-medium text-[var(--muted-foreground)]">
                 {bank.stats.total} {t("questions.count.suffix")}
               </span>
-              {courseId ? (
-                <span className="inline-flex items-center gap-1 rounded-full border border-[var(--border)] bg-[var(--card)] py-0.5 pl-2 pr-1 text-[10.5px] font-medium text-[var(--muted-foreground)]">
-                  <Link
-                    href={`/courses/${courseId}`}
-                    className="inline-flex items-center gap-1 transition-colors hover:text-[var(--foreground)]"
-                  >
-                    <School size={11} strokeWidth={1.8} />
-                    {course?.name || t("This course")}
-                  </Link>
-                  <button
-                    type="button"
-                    onClick={() => router.replace("/space/questions")}
-                    aria-label={t("Show every course")}
-                    className="rounded-full p-0.5 transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
-                  >
-                    <X size={11} />
-                  </button>
-                </span>
-              ) : null}
             </>
           }
         />
@@ -218,19 +168,12 @@ export default function QuestionBankSection({
             hint={t("No questions are waiting to be sorted into a category.")}
           />
         ) : bank.stats.total === 0 ? (
-          courseId ? (
-            <EmptyState
-              icon={ClipboardList}
-              title={t("No questions from this course yet")}
-              hint={t("Questions you answer in this course's conversations collect here.")}
-            />
-          ) : (
             <EmptyState
               icon={ClipboardList}
               title={t("No entries yet")}
               hint={t("Questions from your quizzes will appear here.")}
             />
-          )
+
         ) : (
           <EmptyState
             icon={ClipboardList}

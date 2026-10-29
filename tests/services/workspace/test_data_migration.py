@@ -33,7 +33,7 @@ def test_independent_task_board_is_not_part_of_workspace_data_migration(account)
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("interrupt_links", [False, True])
-async def test_conversation_move_preserves_task_links_and_recovers_cleanup(
+async def test_conversation_move_detaches_source_tasks_and_recovers_cleanup(
     account, monkeypatch, interrupt_links
 ):
     from deeptutor.services.task_board import (
@@ -42,17 +42,20 @@ async def test_conversation_move_preserves_task_links_and_recovers_cleanup(
         LinkTasks,
         TaskBoardStore,
         get_task_board_store,
+        workspace_board,
     )
     from deeptutor.services.workspace.data_migration import operations, recover_operation
     from deeptutor.services.workspace.session_move import move_chat
 
     target = account.create_workspace("Destination")["workspace_id"]
     session = await get_sqlite_session_store().create_session("Task conversation")
+    retained = await get_sqlite_session_store().create_session("Stays in General")
     board = get_task_board_store()
     first = board.create(CreateCard(title="First")).cards[-1]
     second = board.create(CreateCard(title="Latest")).cards[-1]
     board.link_tasks(session["id"], LinkTasks(task_ids=[first.id, second.id]))
     board.link_status(session["id"], LinkStatus(enabled=False))
+    board.link_tasks(retained["id"], LinkTasks(task_ids=[first.id]))
     original = TaskBoardStore.move_session_links
     if interrupt_links:
 
@@ -68,12 +71,23 @@ async def test_conversation_move_preserves_task_links_and_recovers_cleanup(
         assert recover_operation(operation["id"])["status"] == "completed"
     else:
         move_chat(session["id"], target)
-    links = board.read().session_links
+    links = workspace_board(board.read(), target).session_links
     assert len(links) == 1
     assert links[0].workspace_id == target
-    assert links[0].task_ids == [first.id, second.id]
+    assert links[0].task_ids == []
     assert not links[0].status_link_enabled
     assert all(card.workspace_id is None for card in board.read().cards)
+    assert workspace_board(board.read(), target).cards == []
+    assert board.context_text(target, session["id"]) == ""
+    source_board = workspace_board(board.read(), "")
+    assert [card.id for card in source_board.cards] == [first.id, second.id]
+    assert source_board.session_links[0].session_id == retained["id"]
+    assert source_board.session_links[0].task_ids == [first.id]
+    # Cleanup is safe to replay after recovery.
+    board.move_session_links([session["id"]], "", target)
+    assert workspace_board(board.read(), "") == source_board.model_copy(
+        update={"revision": board.read().revision}
+    )
     with workspace_context(target):
         assert await get_sqlite_session_store().get_session(session["id"]) is not None
 

@@ -27,6 +27,7 @@ _MAX_MARKDOWN_CHARS = 600_000
 _HYPERLINK_REL = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink"
 _CODE_FONTS = {"consolas", "courier new", "courier", "menlo", "monaco", "cascadia mono"}
 _CODE_FONT = "Consolas"
+_XML_INVALID_TEXT = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\ud800-\udfff\ufffe\uffff]")
 _XML_SPACE = "{http://www.w3.org/XML/1998/namespace}space"
 
 _HEADING_STYLES = {
@@ -458,7 +459,8 @@ def markdown_to_docx(content: str, title: str = "") -> bytes:
     del title  # any heading already lives in the markdown body
     docx = _docx_module()
     document = docx.Document()
-    lines = (content or "").replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    content = _XML_INVALID_TEXT.sub("", content or "")
+    lines = content.replace("\r\n", "\n").replace("\r", "\n").split("\n")
     index = 0
     while index < len(lines):
         line = lines[index]
@@ -624,6 +626,10 @@ def _unmask(fragment: str, saved: deque[str]) -> str:
 
 
 def _add_inline_runs(paragraph: Any, text: str) -> None:
+    # A literal NUL in the input collides with the escape sentinel ``_MASK``
+    # and would make ``_unmask`` pop a saved char that was never stored. NUL is
+    # not valid XML text content anyway, so drop it before masking.
+    text = _XML_INVALID_TEXT.sub("", text)
     masked, saved = _mask_escapes(text)
     cursor = 0
     for match in _INLINE_RE.finditer(masked):

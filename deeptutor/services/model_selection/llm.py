@@ -99,6 +99,9 @@ def list_llm_options(catalog: dict[str, Any]) -> dict[str, Any]:
     active_model_id = str(service.get("active_model_id") or "")
 
     options: list[dict[str, Any]] = []
+    # Local import: the llm package imports back into this module at load time.
+    from deeptutor.services.llm.capabilities import supports_vision_declared
+
     for profile in service.get("profiles", []) or []:
         if not isinstance(profile, dict):
             continue
@@ -156,6 +159,14 @@ def list_llm_options(catalog: dict[str, Any]) -> dict[str, Any]:
             for capability in ("reasoning", "vision"):
                 if type(declared.get(capability)) is bool:
                     option[f"declared_{capability}"] = declared[capability]
+            # The settings UI filters vision models on this field. A model's own
+            # declaration wins over the process-global override table, which
+            # only refreshes on the next runtime resolution -- otherwise a
+            # freshly declared model stays hidden until something else resolves
+            # (#2037). Same rule as `lightrag/roles.py` and the save-time gate.
+            option["supports_vision"] = supports_vision_declared(
+                declared.get("vision"), model_provider, model_value
+            )
             options.append(option)
 
     return {

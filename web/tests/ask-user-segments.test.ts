@@ -622,3 +622,48 @@ test("extractAskUserPayload reports a draft as streaming, then the real call", (
   assert.equal(dispatched?.streaming, false);
   assert.equal(dispatched?.payload.questions.length, 1);
 });
+
+const sentMidTurn = (content: string, offset?: number) =>
+  event("progress", {
+    trace_kind: "user_input",
+    user_inputs: [{ command_id: "cmd-1", content }],
+    ...(offset === undefined ? {} : { assistant_content_offset: offset }),
+  });
+
+test("a message the turn read mid-way splits the reply where it was read", () => {
+  const segments = extractMessageSegments([
+    event("content", { call_id: "r1", call_kind: "agent_loop_round" }, "Searching."),
+    event("tool_call", { call_id: "t1" }, "web_search"),
+    event("tool_result", { call_id: "t1" }, "results"),
+    sentMidTurn("Only the discrete case."),
+    event("content", { call_id: "r2", call_kind: "agent_loop_round" }, "The DFT is…"),
+  ]);
+
+  assert.deepEqual(
+    segments.map((segment) => segment.kind),
+    ["text", "trace", "user_input", "text"],
+  );
+  const said = segments[2];
+  assert.deepEqual(said.kind === "user_input" && said.messages, [
+    "Only the discrete case.",
+  ]);
+  // Not trace material: the run of work above holds only the tool rows.
+  assert.equal(segments[1].kind === "trace" && segments[1].events.length, 2);
+});
+
+test("a reloaded reply puts the mid-turn message back at its offset", () => {
+  const answer = "Searching.\nThe DFT is…";
+  const segments = extractMessageSegments(
+    [
+      event("tool_call", { call_id: "t1", assistant_content_offset: 11 }, "web_search"),
+      sentMidTurn("Only the discrete case.", 11),
+    ],
+    answer,
+  );
+
+  assert.deepEqual(
+    segments.map((segment) => segment.kind),
+    ["text", "trace", "user_input", "text"],
+  );
+  assert.equal(segments[3].kind === "text" && segments[3].text, "The DFT is…");
+});

@@ -55,12 +55,10 @@ export const MASTERY_MODE_LABELS: Record<MasteryMode, string> = {
 export function masterySessionRoute(
   pathId: string,
   mode: MasteryMode,
-  courseId = "",
   workspaceId?: string,
 ): string {
   const params = new URLSearchParams();
   if (mode !== DEFAULT_MASTERY_MODE) params.set("mode", mode);
-  if (courseId) params.set("course", courseId);
   return masterySessionsRoute(pathId, params, workspaceId);
 }
 

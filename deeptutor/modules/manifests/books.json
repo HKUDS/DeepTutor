@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "id": "books",
+  "distribution": "deeptutor-books",
+  "requires": [
+    "knowledge",
+    "parsing",
+    "questions",
+    "visualize",
+    "mastery"
+  ],
+  "optional": [
+    "notebook",
+    "renderer-manim"
+  ],
+  "paths": [
+    "deeptutor/book",
+    "deeptutor_cli/book.py",
+    "deeptutor/api/routers/book.py",
+    "deeptutor/multi_user/book_access.py"
+  ],
+  "capabilities": {},
+  "loops": {},
+  "tools": {},
+  "routes": [
+    {
+      "reference": "deeptutor.api.routers.book:router",
+      "options": {
+        "prefix": "/api",
+        "tags": [
+          "books"
+        ]
+      },
+      "auth": "learning",
+      "order": 646
+    },
+    {
+      "reference": "deeptutor.api.routers.book:ws_router",
+      "options": {
+        "prefix": "/ws",
+        "tags": [
+          "books"
+        ]
+      },
+      "auth": "public",
+      "order": 649
+    }
+  ],
+  "commands": [
+    {
+      "name": "book",
+      "register": "deeptutor_cli.book:register",
+      "help": "Manage book."
+    }
+  ],
+  "navigation": [
+    "/books",
+    "/learning/books"
+  ],
+  "services": [],
+  "requirements": [],
+  "executables": [],
+  "http_paths": [
+    "/api/multi-user/admin/books"
+  ]
+}

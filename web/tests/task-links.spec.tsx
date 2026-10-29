@@ -11,7 +11,7 @@ import {
   type TaskBoard,
 } from '@/lib/task-board-api'
 import translations from '@/locales/en/app.json'
-import OrganizedSessionList from '@/components/courses/OrganizedSessionList'
+import OrganizedSessionList from '@/components/sessions/OrganizedSessionList'
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -29,26 +29,27 @@ beforeEach(() => {
         id: 'one',
         title: 'First task',
         note: 'First note',
+        due_date: null,
         status: 'todo',
         archived: false,
-        workspace_id: null,
+        workspace_id: 'study',
         created_at: '',
         updated_at: '',
       },
       {
         id: 'two',
         title: 'Second task',
-        note: '',
+        note: '', due_date: null,
         status: 'done',
         archived: false,
-        workspace_id: null,
+        workspace_id: 'study',
         created_at: '',
         updated_at: '',
       },
       {
         id: 'workspace',
         title: 'Shared workspace task',
-        note: '',
+        note: '', due_date: null,
         status: 'doing',
         archived: false,
         workspace_id: 'study',
@@ -138,9 +139,11 @@ describe('task conversation integration', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Second task: Unlink task' }))
     await waitFor(() =>
       expect(
-        screen.queryByRole('combobox', { name: 'Second task: Task status' })
+        screen.queryByRole('button', { name: 'Second task: Unlink task' })
       ).not.toBeInTheDocument()
     )
+    // Unlinking leaves the card available as a workspace task.
+    expect(screen.getByRole('combobox', { name: 'Second task: Task status' })).toBeInTheDocument()
     expect(color(view)).toBe('rgb(37, 99, 235)')
   })
   it('lets the sidebar menu stop status sync without removing the task references', async () => {
@@ -162,7 +165,7 @@ describe('task conversation integration', () => {
               content_workspace_id: 'study',
             },
           ]}
-          courses={[]}
+
           activeSessionId="chat"
           onSelect={vi.fn()}
           onRename={vi.fn()}

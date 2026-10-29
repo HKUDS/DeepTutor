@@ -30,7 +30,7 @@ async def test_rejected_admission_releases_coordinator_lease(tmp_path, monkeypat
     }
     if failure == "selection":
         payload["config"] = {"selection_tutor_context": {"selected_text": " "}}
-        expected = "requires selected text"
+        expected = "needs selected text or the conversation"
     else:
 
         async def reject(*args, **kwargs):

@@ -12,6 +12,23 @@ export interface PendingAttachment {
   previewUrl?: string;
   size?: number;
   mimeType?: string;
+  /** A quote's own text (``type: "quote"``), for the composer to show. */
+  text?: string;
+}
+
+/** What one composer attachment becomes on the wire. */
+export function toOutgoingAttachment(attachment: PendingAttachment): {
+  type: string;
+  filename: string;
+  base64?: string;
+  mime_type?: string;
+} {
+  return {
+    type: attachment.type,
+    filename: attachment.filename,
+    base64: attachment.base64,
+    mime_type: attachment.mimeType,
+  };
 }
 
 export type AttachmentRejectionReason =

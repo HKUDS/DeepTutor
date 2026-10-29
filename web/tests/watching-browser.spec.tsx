@@ -8,7 +8,7 @@ const mock = vi.hoisted(() => ({
   browse: vi.fn(),
   push: vi.fn(),
 }));
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: mock.push }) }));
+vi.mock("next/navigation", () => ({ usePathname: () => "/learning/reading", useRouter: () => ({ push: mock.push }) }));
 const translate = (key: string) => key;
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: translate }) }));
 vi.mock("@/hooks/useAuthStatus", () => ({

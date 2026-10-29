@@ -91,7 +91,6 @@ function Harness({
   const session = useMasteryStudySession(
     pathId,
     sessionId,
-    "",
     "outline",
   );
   const submit = useCallback(

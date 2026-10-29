@@ -15,6 +15,7 @@ from typing import Any, AsyncIterator
 import uuid
 
 from deeptutor.capabilities.protocol import AGENT_OUTPUT, EVENT_METADATA
+from deeptutor.core.capability_protocol import TurnCapability
 from deeptutor.core.context import UnifiedContext
 from deeptutor.core.stream import StreamEvent, StreamEventType
 from deeptutor.events.event_bus import Event, EventType, get_event_bus
@@ -71,11 +72,15 @@ class ChatOrchestrator:
             context.session_id = str(uuid.uuid4())
 
         try:
-            from deeptutor.services.rag.pipelines.pageindex import (
-                validate_pageindex_oss_selection,
-            )
+            if context.knowledge_bases:
+                from deeptutor.modules.catalog import require_module
 
-            validate_pageindex_oss_selection(context.knowledge_bases)
+                require_module("knowledge")
+                from deeptutor.services.rag.pipelines.pageindex import (
+                    validate_pageindex_oss_selection,
+                )
+
+                validate_pageindex_oss_selection(context.knowledge_bases)
         except ValueError as exc:
             bus = StreamBus()
             await bus.error(
@@ -95,8 +100,18 @@ class ChatOrchestrator:
                 yield event
             return
 
-        cap_name = context.active_capability or "chat"
-        capability = self._cap_registry.get(cap_name)
+        capability: TurnCapability | None
+        if context.runtime.answer_by:
+            # The turn belongs to someone else: a partner or a connected agent
+            # answers in place of the selected mode. Not a registry entry —
+            # it is never a mode a learner picks, only who replies.
+            from deeptutor.capabilities.handoff import HandoffCapability
+
+            cap_name = "handoff"
+            capability = HandoffCapability()
+        else:
+            cap_name = context.active_capability or "chat"
+            capability = self._cap_registry.get(cap_name)
 
         if capability is None:
             bus = StreamBus()

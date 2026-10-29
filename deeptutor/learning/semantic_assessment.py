@@ -9,9 +9,28 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import re
 from typing import Literal
+import unicodedata
 
 from pydantic import BaseModel, ConfigDict, Field
+
+# Only strip known table layout tags. A generic <...> pattern also consumes
+# mathematical inequalities, and Markdown characters may be math operators.
+_TABLE_MARKUP = re.compile(
+    r"</?(?:table|thead|tbody|tfoot|tr|td|th)(?:\s+[^<>]*)?\s*/?>", re.IGNORECASE
+)
+_CJK_WRAP = re.compile(r"(?<=[\u3400-\u9fff])\s+(?=[\u3400-\u9fff])")
+_FULL_WIDTH_ASCII = str.maketrans({chr(c): chr(c - 0xFEE0) for c in range(0xFF01, 0xFF5F)})
+
+
+def _comparable(text: str) -> str:
+    """Fold layout differences without erasing mathematical or word boundaries."""
+    # NFC preserves subscripts/superscripts that NFKC would turn into digits.
+    text = unicodedata.normalize("NFC", str(text or "")).translate(_FULL_WIDTH_ASCII)
+    text = _TABLE_MARKUP.sub(" ", text)
+    text = _CJK_WRAP.sub("", text)
+    return " ".join(text.split())
 
 
 class AssessmentUnavailable(ValueError):
@@ -288,7 +307,12 @@ def _attach_support(question, sources, data):
         if not isinstance(quote, str) or not quote.strip():
             raise AssessmentUnavailable("Invalid question support citation.")
         if quote not in sources[index]["text"] and quote not in sources[index]["quote"]:
-            raise AssessmentUnavailable("Question support quote is absent from the source.")
+            needle = _comparable(quote)
+            if not needle or (
+                needle not in _comparable(sources[index]["text"])
+                and needle not in _comparable(sources[index]["quote"])
+            ):
+                raise AssessmentUnavailable("Question support quote is absent from the source.")
     # A choice label occurring somewhere on a page cannot prove the original
     # answer-key relationship. Conservatively label such questions adapted.
     exact_original = not question.choice_map and any(

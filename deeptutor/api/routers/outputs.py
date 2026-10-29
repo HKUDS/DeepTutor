@@ -12,10 +12,14 @@ from deeptutor.multi_user.context import get_current_user_or_none
 from deeptutor.multi_user.partner_access import visible_partners
 from deeptutor.multi_user.paths import get_current_path_service, get_path_service_for_scope
 from deeptutor.services.auth import TokenPayload
-from deeptutor.services.partners.scope import partner_scope
 from deeptutor.services.path_service import PathService
 
 router = APIRouter()
+
+# Video lessons are pages of model-written script. Served under this CSP they
+# run in an opaque origin even when opened directly, never with the API's
+# cookies or same-origin access.
+_SANDBOXED_PAGE_CSP = "sandbox allow-scripts allow-popups"
 
 
 def _request_path_service() -> PathService:
@@ -53,10 +57,13 @@ def _resolve_partner_output(relative_path: str) -> Path | None:
     the same relative path colliding across multiple partners is vanishingly
     unlikely. Fail closed anyway: only a unique partner match is served.
     """
+    from deeptutor.modules.catalog import module_enabled
     from deeptutor.services.workspace.context import current_workspace_id
 
-    if current_workspace_id():
+    if current_workspace_id() or not module_enabled("partners"):
         return None
+    from deeptutor.services.partners.scope import partner_scope
+
     matches: list[Path] = []
     for partner in visible_partners():
         partner_id = str(partner.get("partner_id") or "").strip()
@@ -85,4 +92,6 @@ async def read_output(
         path = _resolve_partner_output(output_path)
         if path is None:
             raise
+    if path.suffix.lower() == ".html" and "video_lesson" in path.parts:
+        return FileResponse(path, headers={"Content-Security-Policy": _SANDBOXED_PAGE_CSP})
     return FileResponse(path)

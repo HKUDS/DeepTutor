@@ -34,8 +34,6 @@ import re
 from typing import Any
 import zipfile
 
-from defusedxml import ElementTree as DefusedElementTree
-
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -258,6 +256,8 @@ def _local_name(tag: Any) -> str:
 
 
 def _parse_xml(raw: bytes) -> Any:
+    from defusedxml import ElementTree as DefusedElementTree
+
     return DefusedElementTree.fromstring(raw)
 
 

@@ -1,0 +1,376 @@
+/* Notebook library: page cards read like the pages themselves — icon,
+   title, a few lines of plain text — and keep their actions out of sight
+   until asked for. */
+.dt-notes-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.dt-notes-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: min(320px, 100%);
+  height: 34px;
+  padding: 0 11px;
+  border-radius: 9px;
+  background: var(--secondary);
+  color: var(--muted-foreground);
+  transition:
+    box-shadow 140ms,
+    background-color 140ms;
+}
+.dt-notes-search:focus-within {
+  background: var(--background);
+  box-shadow:
+    0 0 0 1px var(--border),
+    0 0 0 4px color-mix(in srgb, var(--ring) 14%, transparent);
+}
+.dt-notes-search input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  outline: none;
+  font-size: 13.5px;
+  color: var(--foreground);
+}
+.dt-notes-search input::-webkit-search-cancel-button {
+  display: none;
+}
+.dt-notes-count {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+.dt-notes-section + .dt-notes-section {
+  margin-top: 28px;
+}
+.dt-notes-section h2 {
+  margin-bottom: 10px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--muted-foreground);
+}
+.dt-notes-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(232px, 1fr));
+  gap: 12px;
+}
+.dt-notes-card {
+  position: relative;
+  min-width: 0;
+  border-radius: 12px;
+  background: var(--background);
+  box-shadow:
+    0 0 0 1px rgb(var(--dt-ink, 55 53 47) / 0.09),
+    0 1px 2px rgb(15 15 15 / 0.03);
+  transition:
+    box-shadow 180ms var(--dt-ease, ease-out),
+    transform 180ms var(--dt-ease, ease-out);
+}
+.dt-notes-card:hover,
+.dt-notes-card.is-menu-open,
+.dt-notes-card:focus-within {
+  box-shadow:
+    0 0 0 1px rgb(var(--dt-ink, 55 53 47) / 0.12),
+    0 2px 4px rgb(15 15 15 / 0.05),
+    0 10px 24px -10px rgb(15 15 15 / 0.16);
+}
+.dt-notes-card:hover {
+  transform: translateY(-1px);
+}
+.dt-notes-card-link {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 176px;
+  overflow: hidden;
+  border-radius: inherit;
+  outline: none;
+}
+.dt-notes-card-link:focus-visible {
+  box-shadow: 0 0 0 2px var(--ring);
+}
+.dt-notes-card-cover {
+  height: 46px;
+  flex-shrink: 0;
+}
+.dt-notes-card-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  padding: 16px 16px 14px;
+}
+.dt-notes-card.has-cover .dt-notes-card-body {
+  padding-top: 0;
+}
+.dt-notes-card-icon {
+  display: flex;
+  align-items: flex-end;
+  height: 28px;
+  margin-bottom: 8px;
+  font-size: 24px;
+  line-height: 1;
+  color: var(--muted-foreground);
+}
+.dt-notes-card.has-cover .dt-notes-card-icon {
+  height: 34px;
+  margin-top: -16px;
+  font-size: 28px;
+}
+.dt-notes-card h3 {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  font-size: 14.5px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--foreground);
+}
+.dt-notes-card p {
+  display: -webkit-box;
+  flex: 1;
+  margin-top: 6px;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--muted-foreground);
+  overflow-wrap: anywhere;
+}
+.dt-notes-card p.is-empty {
+  opacity: 0.6;
+}
+.dt-notes-card footer {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 5px;
+  margin-top: 12px;
+  font-size: 11.5px;
+  color: var(--muted-foreground);
+  opacity: 0.85;
+  white-space: nowrap;
+}
+.dt-notes-card-menu {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  opacity: 0;
+  transition: opacity 120ms;
+}
+.dt-notes-card:hover .dt-notes-card-menu,
+.dt-notes-card:focus-within .dt-notes-card-menu,
+.dt-notes-card.is-menu-open .dt-notes-card-menu {
+  opacity: 1;
+}
+.dt-notes-card-menu > .dt-note-icon-button {
+  background: color-mix(in srgb, var(--background) 86%, transparent);
+}
+.dt-notes-card-popover {
+  left: auto;
+  right: 0;
+  width: 220px;
+  transform-origin: top right;
+}
+.dt-menu-item.is-danger {
+  color: #dc2626;
+}
+.dt-notes-confirm {
+  padding: 4px 8px 6px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted-foreground);
+}
+.dt-notes-error {
+  margin-bottom: 16px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: color-mix(in srgb, #ef4444 8%, var(--background));
+  font-size: 12.5px;
+  color: #b91c1c;
+}
+.dt-notes-none {
+  padding: 48px 0;
+  text-align: center;
+  font-size: 13px;
+  color: var(--muted-foreground);
+}
+.dt-notes-skeleton {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(232px, 1fr));
+  gap: 12px;
+  margin-top: 52px;
+}
+.dt-notes-skeleton > div {
+  height: 176px;
+  border-radius: 12px;
+  background: var(--secondary);
+  animation: dt-notes-pulse 1.4s ease-in-out infinite;
+}
+@keyframes dt-notes-pulse {
+  50% {
+    opacity: 0.55;
+  }
+}
+.dt-notes-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 72px 24px;
+  text-align: center;
+}
+.dt-notes-empty > span {
+  font-size: 40px;
+}
+.dt-notes-empty h2 {
+  margin-top: 14px;
+  font-size: 15px;
+  font-weight: 600;
+}
+.dt-notes-empty p {
+  max-width: 380px;
+  margin-top: 6px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--muted-foreground);
+}
+.dt-notes-empty > div {
+  display: flex;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+/* Flashcard review: one card, one decision. */
+.dt-notes-review-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 10px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--foreground);
+  transition: background-color 120ms;
+}
+.dt-notes-review-trigger:hover {
+  background: var(--accent, var(--secondary));
+}
+.dt-notes-review-count {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-size: 11px;
+  line-height: 18px;
+  font-variant-numeric: tabular-nums;
+}
+.dt-notes-review {
+  width: min(520px, 92vw);
+  padding: 14px 18px 20px;
+  border-radius: 16px;
+  background: var(--background);
+  box-shadow: var(--dt-shadow-md, 0 20px 50px rgb(0 0 0 / 0.2));
+}
+.dt-notes-review header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+  font-size: 13px;
+  font-weight: 500;
+}
+.dt-notes-review header > span:nth-child(2) {
+  margin-left: auto;
+  font-weight: 400;
+  color: var(--muted-foreground);
+}
+.dt-notes-review-card {
+  display: flex;
+  min-height: 180px;
+  flex-direction: column;
+  justify-content: center;
+  gap: 14px;
+  padding: 28px 24px;
+  border-radius: 12px;
+  background: var(--secondary);
+  text-align: center;
+}
+.dt-notes-review-card .is-front {
+  font-family: var(--font-serif), Georgia, serif;
+  font-size: 19px;
+  line-height: 1.45;
+}
+.dt-notes-review-card .is-back {
+  padding-top: 14px;
+  border-top: 1px dashed var(--border);
+  font-size: 14.5px;
+  line-height: 1.6;
+  color: var(--foreground);
+}
+.dt-notes-review-source {
+  display: block;
+  margin-top: 10px;
+  font-size: 12px;
+  text-align: center;
+  color: var(--muted-foreground);
+}
+.dt-notes-review-source:hover {
+  color: var(--foreground);
+}
+.dt-notes-review-actions {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 18px;
+}
+.dt-notes-review-actions button {
+  min-width: 112px;
+  height: 36px;
+  padding: 0 16px;
+  border-radius: 9px;
+  font-size: 13px;
+  font-weight: 500;
+  box-shadow: inset 0 0 0 1px var(--border);
+  transition:
+    background-color 120ms,
+    opacity 120ms;
+}
+.dt-notes-review-actions button:hover {
+  background: var(--accent, var(--secondary));
+}
+.dt-notes-review-actions button.is-primary {
+  background: var(--foreground);
+  color: var(--background);
+  box-shadow: none;
+}
+.dt-notes-review-actions button.is-primary:hover {
+  opacity: 0.9;
+}
+.dt-notes-review-actions button:disabled {
+  opacity: 0.5;
+}
+.dt-notes-review-done {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 36px 0 20px;
+  font-size: 14px;
+}
+.dt-notes-review-done > span {
+  font-size: 32px;
+}
+.dt-notes-review-error {
+  margin-top: 12px;
+  font-size: 12px;
+  text-align: center;
+  color: #dc2626;
+}

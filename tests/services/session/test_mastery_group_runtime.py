@@ -117,12 +117,11 @@ async def test_commit_keeps_group_map_in_the_native_answer_record(monkeypatch):
         "Válaszolj erre a két gyakorló kérdésre.\n1. Melyik változás növeli a sebességet?\n2. Miért növeli?",
     ],
 )
-def test_explicit_numbered_assessment_cannot_finish_as_unregistered_prose(reply):
+def test_numbered_question_discussion_can_finish_without_tools(reply):
     instruction = MasteryLoopCapability().finish_instruction(
         UnifiedContext(metadata={"mastery_mode": True}), reply
     )
-    assert instruction is not None
-    assert "mastery_quiz" in instruction
+    assert instruction is None
 
 
 @pytest.mark.parametrize(

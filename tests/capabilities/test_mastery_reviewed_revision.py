@@ -392,7 +392,6 @@ async def test_reorder_only_preview_commit_preserves_every_objective_and_pending
 @pytest.mark.parametrize(
     "order",
     [
-        [],
         ["m0", "m1"],
         ["m0", "m1", "m1"],
         ["m0", "m1", "foreign"],
@@ -642,3 +641,188 @@ def test_group_child_revision_is_previewed_without_retiring_live_questions(syste
     service.commit_module_revision("path", result["preview_id"], session_id="session")
     assert store.get_active_interaction("path") is None
     assert store.load("path").pending_question is None
+
+
+# #2047: providers that normalise optional properties into required ones make the
+# model fill every field, so an unused one arrives as 0 / "" / []. Those are
+# absence, not content — unless the field is a nested relationship list, where an
+# empty list is how a caller says "clear it".
+_PLACEHOLDERS = {
+    "preview_id": 0,
+    "module_id": "",
+    "module_order": [],
+    "modules": [],
+    "rewrite": [],
+    "add": [],
+    "remove": [],
+}
+
+
+def _outline_bound():
+    return {
+        "_mastery_path_id": "path",
+        "_session_id": "session",
+        "_mastery_session_mode": "outline",
+    }
+
+
+@pytest.mark.asyncio
+async def test_inactive_placeholders_do_not_start_a_preview_as_a_commit(system, monkeypatch):
+    from deeptutor.capabilities.mastery import tools
+
+    monkeypatch.setattr(tools, "_new_service", lambda: system[1])
+    result = await MasteryReviseTool().execute(
+        action="preview",
+        **{**_PLACEHOLDERS, "modules": revisions()[:1]},
+        **_outline_bound(),
+    )
+    assert result.success, result.content
+    payload = json.loads(result.content)
+    assert payload["status"] == "preview_only_not_saved"
+    assert payload["proposed_module_order"] == ["m0", "m1", "m2"]
+    assert payload["module_order_changed"] is False
+
+
+@pytest.mark.asyncio
+async def test_commit_takes_the_preview_id_past_inactive_edit_placeholders(system, monkeypatch):
+    from deeptutor.capabilities.mastery import tools
+
+    monkeypatch.setattr(tools, "_new_service", lambda: system[1])
+    tool = MasteryReviseTool()
+    previewed = await tool.execute(action="preview", modules=revisions()[:1], **_outline_bound())
+    assert previewed.success, previewed.content
+    preview_id = json.loads(previewed.content)["preview_id"]
+
+    result = await tool.execute(
+        action="commit", **{**_PLACEHOLDERS, "preview_id": preview_id}, **_outline_bound()
+    )
+    assert result.success, result.content
+    committed = json.loads(result.content)
+    assert committed["status"] == "committed"
+    assert committed["replayed"] is False
+    assert system[0].load("path").version == committed["path_revision"]
+
+    for bad_id in (0, "", False):
+        rejected = await tool.execute(action="commit", preview_id=bad_id, **_outline_bound())
+        assert not rejected.success and "preview_id" in rejected.content
+
+
+@pytest.mark.asyncio
+async def test_an_empty_order_alone_is_not_a_silent_no_op(system, monkeypatch):
+    """module_order: [] means "unchanged", so a call that carries nothing else still
+    has to say what it wants revised."""
+    from deeptutor.capabilities.mastery import tools
+
+    monkeypatch.setattr(tools, "_new_service", lambda: system[1])
+    before = system[0].load("path").version
+    result = await MasteryReviseTool().execute(
+        action="preview", module_order=[], **_outline_bound()
+    )
+    assert not result.success and "needs a module_id" in result.content
+    assert system[0].load("path").version == before
+
+
+@pytest.mark.asyncio
+async def test_nested_empty_relationships_still_clear_instead_of_vanish(system, monkeypatch):
+    from deeptutor.capabilities.mastery import tools
+
+    monkeypatch.setattr(tools, "_new_service", lambda: system[1])
+    result = await MasteryReviseTool().execute(
+        action="preview",
+        **{
+            **_PLACEHOLDERS,
+            "modules": [
+                {
+                    "module_id": "m1",
+                    "rewrite": [
+                        {
+                            "knowledge_point_id": "p1",
+                            "name": "Objective 1",
+                            "prerequisite_ids": [],
+                        }
+                    ],
+                }
+            ],
+        },
+        **_outline_bound(),
+    )
+    assert result.success, result.content
+    changes = {c["path"]: c for c in json.loads(result.content)["changes"]}
+    cleared = next(c for path, c in changes.items() if path.endswith("/prerequisite_ids"))
+    assert cleared["after"] == []
+
+
+@pytest.mark.parametrize(
+    "field",
+    ["preview_id", "module_order", "module_id", "modules", "rewrite", "add", "remove"],
+)
+def test_schema_offers_null_for_every_idle_field(field):
+    import jsonschema
+
+    schema = MasteryReviseTool().get_definition().to_openai_schema()["function"]["parameters"]
+    jsonschema.validate({"action": "commit", field: None}, schema)
+
+
+def test_schema_requires_a_positive_commit_preview_id():
+    import jsonschema
+
+    schema = MasteryReviseTool().get_definition().to_openai_schema()["function"]["parameters"]
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate({"action": "commit", "preview_id": 0}, schema)
+
+
+@pytest.mark.asyncio
+async def test_blank_action_is_read_as_the_omitted_action(system, monkeypatch):
+    """#2047 again: a field that must be filled arrives as "" for "not using it"."""
+    from deeptutor.capabilities.mastery import tools
+
+    monkeypatch.setattr(tools, "_new_service", lambda: system[1])
+    result = await MasteryReviseTool().execute(
+        action="",
+        module_id="m0",
+        rewrite=[{"knowledge_point_id": "p0", "name": "Revised objective 0"}],
+        **_outline_bound(),
+    )
+    assert result.success, result.content
+    assert json.loads(result.content)["status"] == "revised"
+
+    # A blank action must not become a silent commit: the preview id is still
+    # only valid beside action=commit.
+    stray = await MasteryReviseTool().execute(
+        action="",
+        preview_id=7,
+        modules=[{"module_id": "m0", "rewrite": revisions()[:1][0]["rewrite"]}],
+        **_outline_bound(),
+    )
+    assert not stray.success and "only with action commit" in stray.content
+
+
+@pytest.mark.parametrize("idle", [0, "", False, 0.0])
+@pytest.mark.asyncio
+async def test_every_shape_of_an_idle_preview_id_is_read_as_absent(system, monkeypatch, idle):
+    """The placeholder arrives in whatever type the provider serialises it in."""
+    from deeptutor.capabilities.mastery import tools
+
+    monkeypatch.setattr(tools, "_new_service", lambda: system[1])
+    result = await MasteryReviseTool().execute(
+        action="preview", preview_id=idle, modules=revisions()[:1], **_outline_bound()
+    )
+    assert result.success, result.content
+    assert json.loads(result.content)["status"] == "preview_only_not_saved"
+
+
+@pytest.mark.asyncio
+async def test_a_zeroed_module_id_does_not_block_a_commit(system, monkeypatch):
+    from deeptutor.capabilities.mastery import tools
+
+    monkeypatch.setattr(tools, "_new_service", lambda: system[1])
+    tool = MasteryReviseTool()
+    previewed = await tool.execute(action="preview", modules=revisions()[:1], **_outline_bound())
+    assert previewed.success, previewed.content
+    preview_id = json.loads(previewed.content)["preview_id"]
+
+    result = await tool.execute(
+        action="commit", preview_id=preview_id, module_id=0, **_outline_bound()
+    )
+    assert result.success, result.content
+    assert json.loads(result.content)["status"] == "committed"

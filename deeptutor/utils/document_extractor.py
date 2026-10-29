@@ -32,10 +32,6 @@ from typing import Any
 from urllib.parse import unquote
 import zipfile
 
-from defusedxml import ElementTree as DefusedElementTree
-from defusedxml.common import DefusedXmlException
-
-from deeptutor.services.rag.file_routing import FileTypeRouter
 from deeptutor.utils.document_images import (
     EmbeddedImage,
     build_marker,
@@ -44,6 +40,7 @@ from deeptutor.utils.document_images import (
     extract_pptx_rich,
     image_index_from_name,
 )
+from deeptutor.utils.file_types import FileTypeRouter
 
 logger = logging.getLogger(__name__)
 
@@ -1091,6 +1088,9 @@ def _parse_xml_member(zf: zipfile.ZipFile, member: str, filename: str) -> Any | 
         raw = zf.read(member)
     except KeyError:
         return None
+    from defusedxml import ElementTree as DefusedElementTree
+    from defusedxml.common import DefusedXmlException
+
     try:
         return DefusedElementTree.fromstring(raw)
     except (DefusedElementTree.ParseError, DefusedXmlException) as exc:

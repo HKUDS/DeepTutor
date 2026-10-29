@@ -42,7 +42,7 @@ const labels: Record<string, [string, string]> = {
   timed_media: ['Immersive Watching', '沉浸式观看'],
   notebook: ['Notebooks', '笔记本'],
   'co-writer': ['Writing', '协作写作'],
-  courses: ['Courses', '课程'],
+  learning_journal: ['Learning journal', '学习日志'],
   files: ['File library', '文件库'],
   knowledge_bases: ['Knowledge bases', '知识库'],
   parse_cache: ['Document cache', '文档解析缓存'],

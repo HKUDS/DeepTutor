@@ -3,9 +3,8 @@
  *
  * Archiving a conversation only clears it out of the sidebar — nothing is
  * deleted and the flag is one boolean in the session's preferences. Until now
- * the only place that read the flag back was the chat-history console's filter
- * and a course page's own archive block, so an archived study or reading
- * conversation had no surface at all: it left the sidebar and, unless you knew
+ * the only place that read the flag back was the chat-history console's filter,
+ * so an archived study or reading conversation had no surface at all: it left the sidebar and, unless you knew
  * the console existed, that was the last you saw of it.
  *
  * Pure and free of React so the bucketing and the parent rule below can be

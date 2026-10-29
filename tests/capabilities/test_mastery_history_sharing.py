@@ -96,9 +96,44 @@ def test_exact_reconstruction_preserves_unique_old_state_and_all_dialogue():
     assert json.loads(messages[4]["content"])["progress_reset"] == ["m1"]
 
 
+def test_appending_repeated_state_preserves_the_projected_request_prefix() -> None:
+    """Repeated state must not change the bytes of an earlier request prefix."""
+    messages = []
+    previous = []
+    for index in range(5):
+        messages.extend(exchange(f"status{index}", "mastery_status", {"map": large_state()}))
+        projected = deepcopy(messages)
+        share_mastery_history(projected, len(projected))
+        assert json.dumps(projected[: len(previous)], ensure_ascii=False) == json.dumps(
+            previous, ensure_ascii=False
+        )
+        assert expand_shared(projected) == expand_shared(messages)
+        previous = projected
+
+
+def test_adding_a_current_snapshot_preserves_the_projected_history_prefix() -> None:
+    """A transient runtime snapshot must not replace a historical full value."""
+    payload = {"path_id": "p", "map": large_state()}
+    history = exchange("old", "mastery_status", payload)
+    previous = deepcopy(history)
+    share_mastery_history(previous, len(previous))
+    snapshot = {
+        "role": "user",
+        "content": _MASTERY_SNAPSHOT_NOTICE + json.dumps(payload),
+        "_context_snapshot": "mastery_status_snapshot",
+    }
+    projected = deepcopy([*history, snapshot])
+    share_mastery_history(projected, len(history))
+    assert projected[: len(history)] == previous
+    assert projected[-1] == snapshot
+    assert expand_shared(projected) == expand_shared([*history, snapshot])
+
+
 def test_current_snapshot_and_current_tool_results_are_full_anchors_only():
     payload = {"path_id": "p", "map": large_state()}
-    messages = exchange("old", "mastery_status", payload)
+    messages = exchange("old", "mastery_status", payload) + exchange(
+        "old2", "mastery_status", payload
+    )
     boundary = len(messages)
     messages += [
         {
@@ -113,7 +148,8 @@ def test_current_snapshot_and_current_tool_results_are_full_anchors_only():
     share_mastery_history(messages, boundary)
     assert messages[boundary:] == original[boundary:]
     assert expand_shared(messages) == expand_shared(original)
-    assert "$mastery_same_value" in messages[1]["content"]
+    assert messages[1] == original[1]
+    assert "$mastery_same_value" in messages[3]["content"]
 
 
 def test_sources_grades_answers_unknown_fields_and_tools_are_not_projected():
@@ -149,7 +185,7 @@ def test_no_reference_chains_and_json_pointer_special_keys():
     original = deepcopy(messages)
     share_mastery_history(messages, len(messages))
     assert expand_shared(messages) == expand_shared(original)
-    assert messages[-1] == original[-1]
+    assert messages[1] == original[1]
     once = deepcopy(messages)
     share_mastery_history(messages, len(messages))
     assert messages == once
@@ -174,7 +210,7 @@ def test_json_pointer_escaping_resolves_partial_sharing():
     )
     original = deepcopy(messages)
     share_mastery_history(messages, len(messages))
-    assert "/map/a~1b~0c" in messages[1]["content"]
+    assert "/map/a~1b~0c" in messages[3]["content"]
     assert expand_shared(messages) == expand_shared(original)
 
 
@@ -194,5 +230,5 @@ def test_current_round_projection_is_disposable_and_preserves_changed_state():
     projected = pipeline.project_model_request(messages)
     assert messages == original
     assert expand_shared(projected) == expand_shared(original)
-    assert "$mastery_same_value" in projected[1]["content"]
-    assert projected[-1] == original[-1]
+    assert projected[1] == original[1]
+    assert "$mastery_same_value" in projected[3]["content"]

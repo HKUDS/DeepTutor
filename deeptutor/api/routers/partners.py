@@ -13,6 +13,7 @@ import asyncio
 import base64
 import binascii
 from contextlib import nullcontext
+from datetime import datetime
 import json
 import logging
 from typing import Any, AsyncGenerator, Literal
@@ -642,6 +643,95 @@ async def soul_sources():
 async def list_partners():
     """Partners the caller may talk to — theirs in full, assigned ones as cards."""
     return visible_partners()
+
+
+class NavigationSession(BaseModel):
+    kind: Literal["partner", "group"]
+    owner_id: str
+    owner_name: str
+    session_key: str
+    title: str
+    updated_at: float
+
+
+class PartnerNavigation(BaseModel):
+    partners: list[dict[str, Any]]
+    groups: list[dict[str, Any]]
+    sessions: list[NavigationSession]
+    unavailable: list[str]
+
+
+def _navigation_timestamp(value: Any) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        try:
+            return datetime.fromisoformat(str(value).replace("Z", "+00:00")).timestamp()
+        except ValueError:
+            return 0.0
+
+
+@router.get("/navigation", response_model=PartnerNavigation)
+async def partner_navigation():
+    """Read existing identities and actor-scoped sessions without moving data.
+
+    Never enumerate the manager's global partner directories or shared channel
+    history here. Visibility and transcript ownership match the detail APIs.
+    """
+    from deeptutor.services.partner_groups import get_partner_group_manager
+
+    partners = [
+        {
+            key: row.get(key)
+            for key in (
+                "partner_id",
+                "name",
+                "description",
+                "emoji",
+                "color",
+                "avatar",
+                "can_manage",
+                "running",
+            )
+        }
+        for row in visible_partners()
+    ]
+    group_manager = get_partner_group_manager()
+    groups = group_manager.list_groups()
+    sessions: list[NavigationSession] = []
+    unavailable: list[str] = []
+    manager = get_partner_manager()
+    for kind, owners in (("partner", partners), ("group", groups)):
+        for owner in owners:
+            owner_id = owner[f"{kind}_id"]
+            try:
+                rows = (
+                    manager.session_store(owner_id).list_sessions()
+                    if kind == "partner"
+                    else group_manager.list_sessions(owner_id)
+                )
+                for row in rows:
+                    if row.get("archived"):
+                        continue
+                    sessions.append(
+                        NavigationSession(
+                            kind=kind,
+                            owner_id=owner_id,
+                            owner_name=owner["name"],
+                            session_key=row["session_key"],
+                            title=str(row.get("title") or row.get("last_message") or "")[:160],
+                            updated_at=_navigation_timestamp(row.get("updated_at")),
+                        )
+                    )
+            except Exception:
+                logger.warning(
+                    "Partner navigation unavailable: %s/%s", kind, owner_id, exc_info=True
+                )
+                unavailable.append(f"{kind}:{owner_id}")
+    sessions.sort(key=lambda row: (-row.updated_at, row.kind, row.owner_id, row.session_key))
+    return PartnerNavigation(
+        partners=partners, groups=groups, sessions=sessions, unavailable=unavailable
+    )
 
 
 @router.get("/consultation-session")

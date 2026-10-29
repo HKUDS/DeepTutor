@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import {
   ArrowRight,
+  Brain,
   Layers,
   Network,
   RefreshCw,
@@ -88,6 +89,7 @@ export default function MemoryHub() {
   return (
     <div className="space-y-9">
       <PageHeader
+        icon={Brain}
         title={t("Memory")}
         description={t("Everything DeepTutor remembers about you, organised across three layers. Click into any layer to inspect or curate it.")}
         action={

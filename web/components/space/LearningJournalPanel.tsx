@@ -1,15 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useActiveWorkspaceId } from "@/hooks/useActiveWorkspaceId";
 import { useTranslation } from "react-i18next";
 import { getLearningJournal, type LearningJournal } from "@/lib/learning-journal-api";
 import SpaceSectionHeader from "./SpaceSectionHeader";
 
 export default function LearningJournalPanel() {
   const { t } = useTranslation();
-  const params = useSearchParams();
-  const workspace = params.get("dt_workspace") ?? params.get("workspace") ?? "";
+  const workspace = useActiveWorkspaceId();
   const [result, setResult] = useState<{ workspace: string; revision: number; journal?: LearningJournal; error?: boolean } | null>(null);
   const [revision, setRevision] = useState(0);
   const current = result?.workspace === workspace && result.revision === revision ? result : null;

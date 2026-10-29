@@ -49,7 +49,8 @@ test("the dedicated workspace owns exactly one source navigator", () => {
   const reader = source("components/reading/ReaderPane.tsx");
 
   assert.match(page, /<ReaderPane/);
-  assert.match(page, /grid-rows-\[minmax\(0,1fr\)\]/);
+  // One bar row over the document; the panes below it fill the rest.
+  assert.match(page, /grid-rows-\[auto_minmax\(0,1fr\)\]/);
   assert.match(navigator, /export function SourceNavigator/);
   // The reader renders one open document and nothing else: navigation, tabs
   // and the resize seam belong to the workspace shell. A second mode here is
@@ -122,7 +123,7 @@ test("media relies on native player controls and PDF navigation is honest", () =
   assert.match(navigator, /synthesised/);
   assert.match(navigator, /Page \{\{page\}\}/);
   assert.match(
-    page,
+    workspace,
     /navigatorOpen \? t\("Collapse contents"\) : t\("Expand contents"\)/,
   );
   assert.match(page, /externalJump=\{documentJump\}/);
@@ -141,12 +142,12 @@ test("narrow reading workspaces keep the source primary and use dismissible pane
   // The companion is its own module now (`ReadingCompanion.tsx`), so these
   // two hold over the surface rather than over the shell — exactly the case
   // `workspaceSurface` exists for.
-  assert.match(workspace, /xl:static xl:w-auto xl:shadow-none/);
-  // The companion sheet has no header of its own; it is dismissed by the
-  // scrim over the document or by its switch on the workspace bar, which
-  // stays above the sheet.
+  assert.match(workspace, /xl:static .*xl:shadow-none/);
+  // The companion is a sheet with its own header: it is put away from
+  // there or by the scrim over the document, and the bar brings it back.
   assert.match(page, /aria-label=\{t\("Close panels"\)\}/);
-  assert.match(page, /toggleCompanion\(!companionOpen\)/);
+  assert.match(page, /onClose=\{\(\) => toggleCompanion\(false\)\}/);
+  assert.match(page, /onOpenCompanion=\{\(\) => toggleCompanion\(true\)\}/);
 });
 
 test("failed imports expose the durable retry endpoint in product UI", () => {

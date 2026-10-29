@@ -11,6 +11,10 @@ from deeptutor.runtime.coordination import MemoryCoordinator
 from deeptutor.services.session.sqlite_store import SQLiteSessionStore
 from deeptutor.services.session.turn_runtime import TurnRuntimeManager
 from deeptutor.services.workspace.activity import data_activity
+from tests.services.workspace.test_data_scope import account as account
+
+# Each test owns its maintenance-lock database as well as its session database.
+pytestmark = pytest.mark.usefixtures("account")
 
 
 class _ContextBuilder:

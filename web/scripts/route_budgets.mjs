@@ -9,23 +9,25 @@ const NEXT_OUTPUT_DIR = path.join(WEB_ROOT, ".next");
 const BUILD_MANIFEST_PATH = path.join(NEXT_OUTPUT_DIR, "build-manifest.json");
 const NEXT_BIN = path.join(WEB_ROOT, "node_modules", "next", "dist", "bin", "next");
 
+// Preview redesign baseline (2026-10-26, raw production JS): chat 1072KB,
+// notebook home 450KB, reading 1342KB, mastery 1063KB. These measurements
+// are identical on preview before the Edge TTS change; retain ~2–4% headroom.
 const ROUTE_TARGETS = [
-  { route: "/chat", requestPath: "/chat", budgetKb: 1_020 },
-  { route: "/chat/[sessionId]", requestPath: "/chat/perf-budget", budgetKb: 1_020 },
+  { route: "/chat", requestPath: "/chat", budgetKb: 1_100 },
+  { route: "/chat/[sessionId]", requestPath: "/chat/perf-budget", budgetKb: 1_100 },
   { route: "/settings", requestPath: "/settings", budgetKb: 840 },
   { route: "/knowledge-bases", requestPath: "/knowledge-bases", budgetKb: 550 },
-  { route: "/co-writer", requestPath: "/co-writer", budgetKb: 320 },
+  { route: "/co-writer", requestPath: "/co-writer", budgetKb: 470 },
   { route: "/co-writer/[docId]", requestPath: "/co-writer/perf-budget", budgetKb: 515 },
   {
     route: "/learning/reading/[workspaceId]/sessions/[sessionId]",
     requestPath: "/learning/reading/perf-budget/sessions/perf-session",
-    // v1.6.10 dependency upgrades moved the measured raw JS above 1120KB.
-    budgetKb: 1_160,
+    budgetKb: 1_370,
   },
   {
     route: "/learning/mastery/[pathId]/sessions/[sessionId]",
     requestPath: "/learning/mastery/perf-budget/sessions/perf-session",
-    budgetKb: 980,
+    budgetKb: 1_090,
   },
 ];
 

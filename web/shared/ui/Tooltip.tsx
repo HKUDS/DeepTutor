@@ -13,6 +13,7 @@ import {
   type ReactElement,
 } from "react";
 import type { TooltipSide } from "./tooltip-position";
+import type { Shortcut } from "@/lib/shortcuts";
 
 const loadTooltipLayer = () => import("./TooltipLayer");
 const TooltipLayer = lazy(loadTooltipLayer);
@@ -33,6 +34,8 @@ export interface TooltipProps {
   delay?: number;
   /** Suppress a tooltip while its trigger owns an open popover or menu. */
   suppressed?: boolean;
+  /** Keys that trigger the same action, printed after the label. */
+  shortcut?: Shortcut;
 }
 
 export function Tooltip({
@@ -44,6 +47,7 @@ export function Tooltip({
   side = "bottom",
   delay = 180,
   suppressed = false,
+  shortcut,
 }: TooltipProps) {
   const id = useId();
   const wrapperRef = useRef<HTMLElement>(null);
@@ -179,6 +183,7 @@ export function Tooltip({
                 id={id}
                 label={label}
                 description={description}
+                shortcut={shortcut}
                 side={side}
                 onMount={markLayerMounted}
               />

@@ -17,6 +17,7 @@ export type ClientCommand =
   | UserInputCommand
   | CheckActiveTurnCommand
   | PingCommand;
+export type AnswerBy = string | null;
 export type Base64 = string | null;
 export type Filename = string | null;
 export type Id = string | null;
@@ -33,7 +34,6 @@ export type CapabilityOnce = boolean;
 export type ClientSubmissionId = string | null;
 export type ConsultPartnerId = string | null;
 export type Content = string;
-export type CourseId = string | null;
 export type FollowupQuestionContext = {
   [k: string]: unknown;
 } | null;
@@ -55,6 +55,9 @@ export type Mcp = string[];
 export type MemoryReferences = (
   "recent" | "profile" | "scope" | "preferences" | "summary"
 )[];
+export type NoteDocumentId = string | null;
+export type BlockId = string;
+export type Kind = string;
 export type NotebookId = string;
 export type RecordIds = string[];
 export type NotebookReferences = NotebookReference[];
@@ -130,6 +133,7 @@ export type Content1 = string;
 export type ProtocolVersion8 = "2.0";
 export type TurnId5 = string;
 export type Type9 = "user_input";
+export type Withdraw = string | null;
 export type ProtocolVersion9 = "2.0";
 export type SessionId4 = string;
 export type Type10 = "check_active_turn";
@@ -279,6 +283,7 @@ export interface TurnProtocolDocument {
  * via the `definition` "StartTurnCommand".
  */
 export interface StartTurnCommand {
+  answer_by?: AnswerBy;
   attachments?: Attachments;
   auto_route?: AutoRoute;
   book_references?: BookReferences;
@@ -288,7 +293,6 @@ export interface StartTurnCommand {
   config?: Config;
   consult_partner_id?: ConsultPartnerId;
   content: Content;
-  course_id?: CourseId;
   followup_question_context?: FollowupQuestionContext;
   history_references?: HistoryReferences;
   knowledge_bases?: KnowledgeBases;
@@ -301,6 +305,8 @@ export interface StartTurnCommand {
   mastery_skip?: MasteryCardSkip | null;
   mcp?: Mcp;
   memory_references?: MemoryReferences;
+  note_document_id?: NoteDocumentId;
+  note_generation?: NoteGeneration | null;
   notebook_references?: NotebookReferences;
   parent_message_id?: ParentMessageId;
   partner_discussion_group_id?: PartnerDiscussionGroupId;
@@ -391,6 +397,20 @@ export interface MasteryCardAnswer {
  */
 export interface MasteryCardSkip {
   question_id: QuestionId1;
+}
+/**
+ * The learning block on the open note page this turn fills in.
+ *
+ * Sent by the note companion when a block's own "Generate" runs. The server
+ * owns the instructions that follow from it, so the learner's message stays
+ * exactly what they see in the conversation.
+ *
+ * This interface was referenced by `TurnProtocolDocument`'s JSON-Schema
+ * via the `definition` "NoteGeneration".
+ */
+export interface NoteGeneration {
+  block_id: BlockId;
+  kind?: Kind;
 }
 /**
  * This interface was referenced by `TurnProtocolDocument`'s JSON-Schema
@@ -509,6 +529,8 @@ export interface UserAnswer {
   text?: Text1;
 }
 /**
+ * A message for a turn that is still running, read at its next step.
+ *
  * This interface was referenced by `TurnProtocolDocument`'s JSON-Schema
  * via the `definition` "UserInputCommand".
  */
@@ -518,6 +540,7 @@ export interface UserInputCommand {
   protocol_version: ProtocolVersion8;
   turn_id: TurnId5;
   type?: Type9;
+  withdraw?: Withdraw;
 }
 /**
  * This interface was referenced by `TurnProtocolDocument`'s JSON-Schema

@@ -197,7 +197,16 @@ class LlamaIndexPipeline:
                 f"Could not clean up failed version dir for {storage_dir}: {cleanup_exc}"
             )
 
+    @staticmethod
+    def _embedding_source_records(run: Any) -> dict[str, storage.EmbeddingSourceRecord]:
+        return {
+            key: storage.EmbeddingSourceRecord(key=key, path=path, source_hash=source_hash)
+            for key, (path, source_hash) in run.source_receipts().items()
+        }
+
     async def initialize(self, kb_name: str, file_paths: List[str], **kwargs) -> bool:
+        from deeptutor.knowledge.indexing_run import current_run
+
         progress_callback = kwargs.get("progress_callback")
         image_progress_callback = kwargs.get("image_progress_callback")
         kb_dir = resolve_kb_dir(self.kb_base_dir, kb_name)
@@ -209,7 +218,19 @@ class LlamaIndexPipeline:
         )
 
         signature = self._current_signature()
-        storage_dir = resolve_storage_dir_for_rebuild(kb_dir, signature, publication_guard=True)
+        run = current_run()
+        source_records = self._embedding_source_records(run) if run is not None else {}
+        storage_dir = storage.resolve_resumable_rebuild_dir(
+            kb_dir,
+            signature,
+            previous_run=run.previous_run if run is not None else None,
+            source_records=source_records,
+        )
+        resumed = storage_dir is not None
+        if storage_dir is None:
+            storage_dir = resolve_storage_dir_for_rebuild(kb_dir, signature, publication_guard=True)
+        if run is not None:
+            run.set_candidate_storage(storage_dir)
 
         try:
             await self._verify_embedding_connectivity()
@@ -233,15 +254,32 @@ class LlamaIndexPipeline:
             # reference them. Failed indexing can leave unused immutable assets;
             # failed asset publication must not leave a partially accepted index.
             VisualAssetStore(kb_dir).publish(visual_candidates, prune_missing=True)
+
+            def checkpoint_document(path: Path, embedding_reused: bool) -> None:
+                if run is not None:
+                    run.document(
+                        path,
+                        "completed",
+                        embedding_checkpoint=True,
+                        embedding_reused=embedding_reused,
+                    )
+
             await _run_with_stall_guard(
-                lambda: storage.create_index(
-                    documents, storage_dir, show_progress=should_show_progress()
+                lambda: storage.create_resumable_index(
+                    documents,
+                    storage_dir,
+                    source_records=source_records,
+                    signature=signature,
+                    show_progress=should_show_progress(),
+                    checkpoint_callback=checkpoint_document if run is not None else None,
                 ),
                 progress_callback=progress_callback,
                 worker_key=str(kb_dir.resolve()),
             )
 
             self.logger.info(f"Index persisted to {storage_dir}")
+            if resumed:
+                self.logger.info(f"Resumed interrupted LlamaIndex candidate at {storage_dir}")
             await self._publish_verified(kb_dir, storage_dir, signature, documents)
 
             indexed_file_callback = kwargs.get("indexed_file_callback")

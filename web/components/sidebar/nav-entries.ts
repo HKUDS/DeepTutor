@@ -1,3 +1,4 @@
+import { CalendarDays } from 'lucide-react'
 import { LEARNING_HUB } from '@/lib/learning-routes'
 import {
   Bot,
@@ -61,6 +62,9 @@ export const PRIMARY_NAV: NavEntry[] = [
     surfaces: ['reading', 'chat', 'books'],
   },
   { href: '/space', label: 'Learning Space', icon: LayoutGrid, tooltipKey: 'Space tooltip' },
+  {
+    href: '/calendar', label: 'Calendar', icon: CalendarDays, surfaces: ['chat'],
+  },
   {
     href: '/kanban',
     label: 'Task Board',

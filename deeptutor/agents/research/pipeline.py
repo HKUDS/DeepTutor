@@ -2065,6 +2065,12 @@ class ResearchPipeline:
     # Tool composition for the block loop
     # ------------------------------------------------------------------
     async def _prepare_pageindex_tools(self) -> None:
+        from deeptutor.modules.catalog import require_module
+
+        self._pageindex_tool_context = None
+        if not self.kb_name:
+            return
+        require_module("knowledge")
         from deeptutor.services.rag.pipelines.pageindex.tools import (
             build_pageindex_tool_context,
         )

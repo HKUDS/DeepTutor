@@ -663,49 +663,33 @@ def _validate_doc_id(doc_id: str) -> str:
 
 
 class CreateDocumentRequest(BaseModel):
+    blocks: list[dict] | None = None
+    parent_id: str | None = None
     title: str | None = None
     content: str = ""
 
 
 class UpdateDocumentRequest(BaseModel):
+    blocks: list[dict] | None = None
+    expected_revision: int | None = Field(default=None, ge=0)
+    parent_id: str | None = None
+    icon: str = Field(default="", max_length=100)
+    cover: str = Field(default="", max_length=2000)
+    pinned: bool = False
     title: str | None = None
     content: str | None = None
 
 
-class DocumentResponse(BaseModel):
-    id: str
-    title: str
-    content: str
-    created_at: float
-    updated_at: float
-
+class DocumentResponse(CoWriterDocument):
     @classmethod
     def from_model(cls, doc: CoWriterDocument) -> "DocumentResponse":
-        return cls(
-            id=doc.id,
-            title=doc.title,
-            content=doc.content,
-            created_at=doc.created_at,
-            updated_at=doc.updated_at,
-        )
+        return cls(**doc.model_dump())
 
 
-class DocumentSummaryResponse(BaseModel):
-    id: str
-    title: str
-    created_at: float
-    updated_at: float
-    preview: str = ""
-
+class DocumentSummaryResponse(CoWriterDocumentSummary):
     @classmethod
     def from_summary(cls, summary: CoWriterDocumentSummary) -> "DocumentSummaryResponse":
-        return cls(
-            id=summary.id,
-            title=summary.title,
-            created_at=summary.created_at,
-            updated_at=summary.updated_at,
-            preview=summary.preview,
-        )
+        return cls(**summary.model_dump())
 
 
 @router.get("/documents")
@@ -725,8 +709,10 @@ async def create_document(request: CreateDocumentRequest) -> DocumentResponse:
     """Create a new Co-Writer document."""
     try:
         storage = get_co_writer_storage()
-        document = storage.create_document(title=request.title, content=request.content)
+        document = storage.create_document(**request.model_dump())
         return DocumentResponse.from_model(document)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
@@ -849,16 +835,19 @@ async def update_document(doc_id: str, request: UpdateDocumentRequest) -> Docume
     try:
         storage = get_co_writer_storage()
         document = storage.update_document(
-            _validate_doc_id(doc_id), title=request.title, content=request.content
+            _validate_doc_id(doc_id), **request.model_dump(exclude_unset=True)
         )
         if document is None:
             raise HTTPException(status_code=404, detail="Document not found")
         return DocumentResponse.from_model(document)
     except HTTPException:
         raise
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+    except ValueError as exc:
+        from deeptutor.co_writer.storage import RevisionConflict
+
+        raise HTTPException(
+            status_code=409 if isinstance(exc, RevisionConflict) else 400, detail=str(exc)
+        ) from exc
 
 
 @router.delete("/documents/{doc_id}")
@@ -876,3 +865,312 @@ async def delete_document(doc_id: str) -> dict[str, bool]:
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/documents/{doc_id}/suggestions")
+async def note_suggestions(doc_id: str):
+    from deeptutor.notes.proposals import list_proposals
+    from deeptutor.notes.resources import normalize_note_resources, saved_note_resources
+    from deeptutor.services.workspace import WorkspaceError
+
+    storage = get_co_writer_storage()
+    if not storage.doc_exists(_validate_doc_id(doc_id)):
+        raise HTTPException(status_code=404, detail="Page not found")
+    suggestions = list_proposals(storage, doc_id)
+    for suggestion in suggestions:
+        if suggestion["status"] == "pending":
+            try:
+                suggestion["markdown"], suggestion["blocks"] = normalize_note_resources(
+                    suggestion["markdown"],
+                    suggestion.get("blocks"),
+                    published=await saved_note_resources(
+                        suggestion["markdown"], suggestion.get("blocks")
+                    ),
+                )
+            except (WorkspaceError, ValueError):
+                # An unavailable file must not hide the rest of the review queue.
+                pass
+    return {"suggestions": suggestions}
+
+
+class ReviewSuggestionRequest(BaseModel):
+    accept: bool
+    blocks: list[dict] | None = None
+
+
+@router.post("/documents/{doc_id}/suggestions/{suggestion_id}", response_model=DocumentResponse)
+async def review_note_suggestion(doc_id: str, suggestion_id: str, request: ReviewSuggestionRequest):
+    from deeptutor.co_writer.storage import RevisionConflict
+    from deeptutor.notes.proposals import review
+
+    try:
+        return review(
+            get_co_writer_storage(), _validate_doc_id(doc_id), suggestion_id, **request.model_dump()
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=409 if isinstance(exc, RevisionConflict) else 400, detail=str(exc)
+        ) from exc
+
+
+@router.get("/documents/{doc_id}/backlinks")
+async def note_backlinks(doc_id: str):
+    _validate_doc_id(doc_id)
+    storage = get_co_writer_storage()
+    return {
+        "pages": [
+            s.model_dump()
+            for s in storage.list_documents()
+            if s.id != doc_id and f"/co-writer/{doc_id}" in storage.load_document(s.id).content
+        ]
+    }
+
+
+@router.post("/documents/{doc_id}/assets")
+async def upload_note_asset(doc_id: str, file: UploadFile = File(...)):
+    import uuid
+
+    storage = get_co_writer_storage()
+    if not storage.doc_exists(_validate_doc_id(doc_id)):
+        raise HTTPException(status_code=404, detail="Page not found")
+    allowed = {
+        "image/png": ".png",
+        "image/jpeg": ".jpg",
+        "image/webp": ".webp",
+        "image/gif": ".gif",
+        "audio/mpeg": ".mp3",
+        "audio/wav": ".wav",
+        "video/mp4": ".mp4",
+        "application/pdf": ".pdf",
+    }
+    suffix = allowed.get(file.content_type or "")
+    if not suffix:
+        raise HTTPException(status_code=400, detail="Unsupported attachment type")
+    data = await file.read(25 * 1024 * 1024 + 1)
+    if not data or len(data) > 25 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Attachments must be between 1 byte and 25 MB")
+    folder = storage.doc_root(doc_id) / "assets"
+    folder.mkdir(exist_ok=True)
+    name = uuid.uuid4().hex + suffix
+    (folder / name).write_bytes(data)
+    from deeptutor.services.workspace.context import current_workspace_id
+
+    return {
+        "url": f"/api/documents/{doc_id}/assets/{name}?dt_workspace={urllib.parse.quote(current_workspace_id() or '')}"
+    }
+
+
+@router.get("/documents/{doc_id}/assets/{name}")
+async def read_note_asset(doc_id: str, name: str):
+    from fastapi.responses import FileResponse
+
+    storage = get_co_writer_storage()
+    _validate_doc_id(doc_id)
+    if not re.fullmatch(r"[0-9a-f]{32}\.(png|jpg|webp|gif|mp3|wav|mp4|pdf)", name):
+        raise HTTPException(status_code=404, detail="Attachment not found")
+    path = storage.doc_root(doc_id) / "assets" / name
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="Attachment not found")
+    return FileResponse(path, headers={"X-Content-Type-Options": "nosniff"})
+
+
+class ClipRequest(BaseModel):
+    title: str = Field(default="", max_length=200)
+    markdown: str = Field(max_length=200000)
+    source_url: str = Field(default="", max_length=2000)
+    source_id: str = Field(default="", max_length=200)
+    favorite_type: str = Field(default="", max_length=60)
+    summary: str = Field(default="", max_length=200000)
+    favorite_metadata: dict = Field(default_factory=dict)
+
+
+@router.post("/documents/{doc_id}/clips", response_model=DocumentResponse)
+async def append_note_clip(doc_id: str, request: ClipRequest):
+    import uuid
+
+    from deeptutor.notes.blocks import blocks_to_markdown, safe_link, validate_blocks
+
+    if not safe_link(request.source_url):
+        raise HTTPException(status_code=400, detail="Unsupported source URL")
+    storage = get_co_writer_storage()
+    with storage.locked():
+        doc = storage.load_document(_validate_doc_id(doc_id))
+        if doc is None:
+            raise HTTPException(status_code=404, detail="Page not found")
+        if doc.blocks is None and doc.content.strip():
+            # Preserve legacy Markdown opaquely until the browser migrates it.
+            doc.content += f"\n\n## {request.title}\n\n{request.markdown}" + (
+                f"\n\n[Source]({request.source_url})" if request.source_url else ""
+            )
+        else:
+            if doc.blocks is None:
+                doc.blocks = []
+            doc.blocks.append(
+                {
+                    "id": uuid.uuid4().hex,
+                    "type": "clip",
+                    "props": {
+                        "title": request.title,
+                        "markdown": request.markdown,
+                        "sourceUrl": request.source_url,
+                        "sourceId": request.source_id,
+                        "favoriteType": request.favorite_type,
+                        "summary": request.summary,
+                        "metadata": json.dumps(request.favorite_metadata, ensure_ascii=False),
+                        "expanded": False,
+                    },
+                    "children": [],
+                }
+            )
+            try:
+                validate_blocks(doc.blocks)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+            doc.content = blocks_to_markdown(doc.blocks)
+        doc.revision += 1
+        import time
+
+        doc.updated_at = time.time()
+        storage._write(doc)
+        return doc
+
+
+@router.get("/documents/review/due")
+async def due_note_cards():
+    from deeptutor.notes.review import due_cards
+
+    return {"cards": due_cards(get_co_writer_storage())}
+
+
+class ReviewCardRequest(BaseModel):
+    card_id: str = Field(min_length=1, max_length=200)
+    remembered: bool
+
+
+@router.post("/documents/{doc_id}/review")
+async def grade_note_card(doc_id: str, request: ReviewCardRequest):
+    from deeptutor.notes.review import grade_card
+
+    try:
+        return grade_card(
+            get_co_writer_storage(), _validate_doc_id(doc_id), request.card_id, request.remembered
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+class CreateSuggestionRequest(BaseModel):
+    operation: str = "insert"
+    block_id: str = ""
+    markdown: str = Field(default="", max_length=200000)
+    explanation: str = Field(default="", max_length=10000)
+    blocks: list[dict] | None = None
+    expected_original: dict | None = None
+    source_turn_id: str = Field(default="", max_length=120)
+
+
+@router.post("/documents/{doc_id}/suggestions")
+async def create_note_suggestion(doc_id: str, request: CreateSuggestionRequest):
+    from deeptutor.co_writer.storage import RevisionConflict
+    from deeptutor.notes.proposals import propose
+
+    try:
+        values = request.model_dump(exclude_unset=True)
+        return propose(
+            get_co_writer_storage(),
+            _validate_doc_id(doc_id),
+            **{"operation": request.operation, **values},
+        )
+    except RevisionConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+# ── Threads: conversations held at a line of the page ───────────────────────
+
+_SESSION_ID_RE = r"^[A-Za-z0-9_.:-]{1,128}$"
+
+
+class AnchorThreadRequest(BaseModel):
+    session_id: str = Field(pattern=_SESSION_ID_RE)
+    block_id: str = Field(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
+    quote: str = Field(default="", max_length=4000)
+    origin: Literal["ask", "generate"] = "ask"
+
+
+@router.get("/documents/{doc_id}/threads")
+async def note_threads(doc_id: str):
+    """The page's conversations, each with its anchor and its session's state."""
+    from deeptutor.notes.threads import list_threads, prune_threads
+    from deeptutor.services.session import get_session_store
+
+    storage = get_co_writer_storage()
+    if not storage.doc_exists(_validate_doc_id(doc_id)):
+        raise HTTPException(status_code=404, detail="Page not found")
+    if not (storage.doc_root(doc_id) / "threads.json").exists():
+        from deeptutor.notes.threads import adopt_legacy_threads
+        from deeptutor.services.session.organization import list_all_sessions_snapshot
+
+        legacy = [
+            row["session_id"]
+            for row in await list_all_sessions_snapshot(get_session_store())
+            if str((row.get("preferences") or {}).get("note_document_id") or "") == doc_id
+        ]
+        adopt_legacy_threads(storage, doc_id, legacy)
+    threads = list_threads(storage, doc_id)
+    summaries = {
+        row["session_id"]: row
+        for row in await get_session_store().get_session_summaries(
+            [t["session_id"] for t in threads]
+        )
+    }
+    if threads and len(summaries) < len(threads):
+        prune_threads(storage, doc_id, set(summaries))
+    rows = []
+    for thread in threads:
+        summary = summaries.get(thread["session_id"])
+        if summary is None:
+            continue
+        rows.append(
+            {
+                **thread,
+                "title": summary.get("title") or "",
+                "status": summary.get("status") or "idle",
+                "updated_at": summary.get("updated_at") or thread.get("created_at"),
+                "message_count": summary.get("message_count") or 0,
+                "last_message": str(summary.get("last_message") or "")[:400],
+            }
+        )
+    return {"threads": rows}
+
+
+@router.post("/documents/{doc_id}/threads")
+async def anchor_note_thread(doc_id: str, request: AnchorThreadRequest):
+    from deeptutor.notes.threads import anchor_thread
+
+    try:
+        return anchor_thread(
+            get_co_writer_storage(), _validate_doc_id(doc_id), **request.model_dump()
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.delete("/documents/{doc_id}/threads/{session_id}")
+async def delete_note_thread(doc_id: str, session_id: str):
+    """Delete a page conversation: the session goes to the recycle bin with it."""
+    from deeptutor.api.routers.sessions import delete_session
+    from deeptutor.notes.threads import find_thread, remove_thread
+
+    storage = get_co_writer_storage()
+    _validate_doc_id(doc_id)
+    if find_thread(storage, doc_id, session_id) is None:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    try:
+        await delete_session(session_id)
+    except HTTPException as exc:
+        if exc.status_code != 404:
+            raise
+    remove_thread(storage, doc_id, session_id)
+    return {"deleted": True}

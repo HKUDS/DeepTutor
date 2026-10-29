@@ -11,7 +11,7 @@ import { useOutsideClick } from "@/hooks/use-outside-click";
 /**
  * Knowledge-base scope selector (composer toolbar).
  *
- * Mirrors PersonaSelector's collapse-to-icon chip + dropdown, because a
+ * A collapse-to-icon chip + dropdown, because a
  * KB selection is the same KIND of state: a SESSION-level retrieval
  * scope that persists across turns (stored in session.preferences),
  * NOT a one-shot reference like an attachment. Surfacing it as a

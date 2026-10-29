@@ -48,13 +48,13 @@ vi.mock("@/components/notebook/useNotebookLibrary", () => ({
   }),
 }));
 
-it("renames a notebook from its sidebar row without using the record menu", async () => {
-  render(<NotebookConsole initialNotebookId="notebook-2" />);
+it("renames a notebook from its row on the notebook list", async () => {
+  render(<NotebookConsole initialNotebookId={null} />);
 
-  const sidebar = screen.getByRole("navigation");
-  const secondNotebookRow = within(sidebar)
+  const list = screen.getByRole("navigation", { name: "Notebooks" });
+  const secondNotebookRow = within(list)
     .getByText("Second notebook")
-    .closest("div");
+    .closest("li");
   expect(secondNotebookRow).not.toBeNull();
 
   const editButton = within(secondNotebookRow!).getByRole("button", {

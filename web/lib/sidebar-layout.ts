@@ -293,7 +293,7 @@ export function writeSessionOrder(order: readonly string[]) {
   writeJson(SESSION_ORDER_STORAGE_KEY, order);
 }
 
-/** Headings the learner folded shut. Ids are a chat/course/topic/collection
+/** Headings the learner folded shut. Ids are a chat/topic/collection
  *  id, which never collide, so one list covers every kind of heading. */
 export function readCollapsedGroups(): string[] {
   const stored = readJson<unknown>(COLLAPSED_GROUPS_STORAGE_KEY, []);

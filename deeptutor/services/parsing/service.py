@@ -102,7 +102,7 @@ class ParseService:
         return not supported or _matches_supported_format(source_path, supported)
 
     def parse(self, source_path: str | Path, *, engine=None, on_output=None) -> ParsedDocument:
-        from deeptutor.knowledge.indexing_run import _redact, current_run, failure_code
+        from deeptutor.services.parsing.progress import _redact, current_run, failure_code
 
         run = current_run()
         source = Path(source_path)
@@ -189,7 +189,7 @@ class ParseService:
                 markdown, blocks, asset_dir = "", None, None
             if markdown.strip() or blocks:
                 logger.info("Parse cache hit for %s (%s/%s)", source_path.name, engine_name, sig)
-                from deeptutor.knowledge.indexing_run import current_run
+                from deeptutor.services.parsing.progress import current_run
 
                 if run := current_run():
                     run.document(source_path, "parsed", parse_reused=True)

@@ -7,14 +7,14 @@ import logging
 from typing import Any
 
 from deeptutor.agents._shared.capability_result import emit_capability_result
-from deeptutor.core.capability_protocol import CapabilityManifest, TurnCapability
+from deeptutor.core.capability_protocol import TurnCapability
 from deeptutor.core.context import UnifiedContext
 from deeptutor.core.trace import merge_trace_metadata
 from deeptutor.i18n import StatusI18n
 from deeptutor.runtime.agentic.usage import UsageTracker
+from deeptutor.runtime.bootstrap.builtin_capabilities import builtin_capability_manifest
 from deeptutor.runtime.request_contracts import (
     VisualizeRequestConfig,
-    get_capability_request_schema,
     validate_visualize_request_config,
 )
 from deeptutor.runtime.stream_bus import StreamBus
@@ -87,17 +87,7 @@ _VISUALIZE_SAFE_BUILTINS = (
 
 
 class VisualizeCapability(TurnCapability):
-    manifest = CapabilityManifest(
-        name="visualize",
-        description=(
-            "Generate a validated visualization with any installed visualizer "
-            "type, or render a Manim animation/storyboard artifact."
-        ),
-        stages=_VISUALIZE_STAGES,
-        tools_used=["submit_visualization"],
-        cli_aliases=["visualize", "viz"],
-        request_schema=get_capability_request_schema("visualize"),
-    )
+    manifest = builtin_capability_manifest("visualize")
 
     async def run(self, context: UnifiedContext, stream: StreamBus) -> None:
         request_config = validate_visualize_request_config(context.config_overrides)
@@ -286,6 +276,9 @@ class VisualizeCapability(TurnCapability):
         import importlib.util
         import time
 
+        from deeptutor.modules.catalog import require_module
+
+        require_module("renderer-manim")
         if importlib.util.find_spec("manim") is None:
             raise RuntimeError(
                 "Manim rendering requires optional dependencies. "

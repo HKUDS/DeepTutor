@@ -21,13 +21,17 @@ import StandaloneComposer, {
   type StandaloneComposerSubmission,
 } from "@/components/chat/home/StandaloneComposer";
 import {
+  type FollowupThreadState,
   type QuizFollowupTabContext,
   useFollowupThread,
   useQuizFollowupController,
 } from "@/context/QuizFollowupContext";
+import type { ComposerResourceCatalog } from "@/hooks/useComposerResources";
 import { hasPendingAskUser } from "@/lib/ask-user-state";
 import { buildQuizFollowupConfig } from "@/lib/quiz-types";
-import { buildSelectionTutorConfig } from "@/lib/selection-tutor";
+import { quoteAttachment } from "@/lib/quote-attachments";
+import SideChatResponderMenu from "@/components/chat/home/SideChatResponderMenu";
+import { sideChatTurnConfig, type SideChatResponder } from "@/lib/side-chat";
 
 // Single-capability list — the follow-up tab is locked to "chat".
 const FOLLOWUP_CAPABILITIES = [
@@ -40,11 +44,37 @@ const FOLLOWUP_CAPABILITIES = [
   },
 ];
 
-interface FollowupChatComposerProps {
-  context: QuizFollowupTabContext;
+/** One prompt per thing the thread is pinned to. A side chat names who will
+ *  read it, since that is the one thing that changes what to write. */
+export function followupPlaceholder(
+  context: QuizFollowupTabContext,
+  t: (key: string, options?: Record<string, unknown>) => string,
+): string {
+  const side = context.sideChat;
+  if (!side) {
+    return t("Ask anything about this question, your answer, or the AI judgment.");
+  }
+  return side.responder.kind === "dito"
+    ? t("Ask Dito…")
+    : t("Ask {{name}}…", { name: side.responder.name });
 }
 
-function FollowupChatComposerImpl({ context }: FollowupChatComposerProps) {
+interface FollowupChatComposerProps {
+  context: QuizFollowupTabContext;
+  /** The conversation's skills and connectors; each thread picks its own. */
+  resourceCatalog?: ComposerResourceCatalog;
+  /** Connected agents a side chat can be handed to. */
+  agents?: { name: string; kind?: string }[];
+  /** Hand a side chat to someone else; absent, who answers is fixed. */
+  onResponderChange?: (responder: SideChatResponder) => void;
+}
+
+function FollowupChatComposerImpl({
+  context,
+  resourceCatalog,
+  agents = [],
+  onResponderChange,
+}: FollowupChatComposerProps) {
   const { t } = useTranslation();
   const controller = useQuizFollowupController();
   const thread = useFollowupThread(context.questionKey);
@@ -99,8 +129,8 @@ function FollowupChatComposerImpl({ context }: FollowupChatComposerProps) {
             )
         : [];
 
-      const baseConfig = context.tutorSelection
-        ? buildSelectionTutorConfig(context.tutorSelection)
+      const baseConfig = context.sideChat
+        ? sideChatTurnConfig(context.sideChat)
         : buildQuizFollowupConfig(
             context.question,
             context.userAnswer,
@@ -134,16 +164,39 @@ function FollowupChatComposerImpl({ context }: FollowupChatComposerProps) {
         questionNotebookReferences: submission.questionNotebookReferences,
         persona: submission.persona ?? undefined,
         llmSelection: submission.llmSelection,
+        skills: thread.resourceSelection.skills,
+        mcp: thread.resourceSelection.mcp,
       });
     },
-    [awaitingUserReply, context, controller, isFirstSend, thread.isStreaming],
+    [
+      awaitingUserReply,
+      context,
+      controller,
+      isFirstSend,
+      thread.isStreaming,
+      thread.resourceSelection,
+    ],
+  );
+
+  const setResourceSelection = useCallback(
+    (resourceSelection: FollowupThreadState["resourceSelection"]) =>
+      controller.updateThread(context.questionKey, (prev) => ({
+        ...prev,
+        resourceSelection,
+      })),
+    [context.questionKey, controller],
   );
 
   const handleCancelStreaming = useCallback(() => {
-    // The follow-up runner is owned by the controller; we don't expose
-    // a hard cancel from the public surface. Treat this as a no-op for
-    // now — the user can refresh or close the tab to recover.
-  }, []);
+    controller.cancelTurn(context.questionKey);
+  }, [context.questionKey, controller]);
+
+  const seedAttachments = useMemo(() => {
+    const quote = context.seedQuote ? quoteAttachment(context.seedQuote.text) : null;
+    return context.seedQuote && quote
+      ? { id: context.seedQuote.id, attachments: [quote] }
+      : null;
+  }, [context.seedQuote]);
 
   const hasMessages = useMemo(
     () => thread.messages.some((m) => m.role !== "system"),
@@ -158,9 +211,27 @@ function FollowupChatComposerImpl({ context }: FollowupChatComposerProps) {
       awaitingUserReply={awaitingUserReply}
       onSubmit={handleSubmit}
       onCancelStreaming={handleCancelStreaming}
-      inputPlaceholder={t(
-        "Ask anything about this question, your answer, or the AI judgment.",
-      )}
+      inputPlaceholder={followupPlaceholder(context, t)}
+      seedAttachments={seedAttachments}
+      // A pane's composer: one line tall, lists opening upward, and no mode
+      // picker for a thread that only ever chats.
+      docked
+      showCapabilityChip={false}
+      // In a side chat, who answers is the side chat — its own menu says so.
+      partnerControls={!context.sideChat}
+      trayEnd={
+        context.sideChat && onResponderChange ? (
+          <SideChatResponderMenu
+            value={context.sideChat.responder}
+            onChange={onResponderChange}
+            agents={agents}
+            aboutConversation={Boolean(context.sideChat.parentSessionId)}
+          />
+        ) : undefined
+      }
+      resourceCatalog={resourceCatalog}
+      resourceSelection={thread.resourceSelection}
+      onResourceSelectionChange={setResourceSelection}
     />
   );
 }

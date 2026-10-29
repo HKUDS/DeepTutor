@@ -1,3 +1,5 @@
+import { sourceModuleInventory } from "./fixtures/modules";
+import { emptyLearningIndex } from "./fixtures/learning-index";
 import { readFile } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
 import { emptyTaskBoard } from "./fixtures/task-board";
@@ -84,9 +86,11 @@ const workspace = {
 test.beforeEach(async ({ page }) => {
   await page.route("**/api/**", async (route) => {
     const path = new URL(route.request().url()).pathname;
+    if (path === "/api/modules") return route.fulfill({ json: sourceModuleInventory });
     const json = (payload: unknown, status = 200) =>
       route.fulfill({ status, json: payload });
 
+    if (path === "/api/dashboard/learning-index") return json(emptyLearningIndex);
     if (path === "/api/partners" || path === "/api/partner-groups") return json([]);
     if (path === "/api/task-board") return json(emptyTaskBoard);
     if (path === "/api/auth/status") {

@@ -48,13 +48,13 @@ from deeptutor.services.rag.factory import (
     normalize_provider_name,
     provider_uses_embedding_versions,
 )
-from deeptutor.services.rag.file_routing import FileTypeRouter
 from deeptutor.services.rag.index_probe import (
     inspect_kb_versions,
     inspect_provider_version,
     provider_failure_summary,
 )
 from deeptutor.services.web_source.crawler import MAX_CRAWL_DEPTH, MAX_CRAWL_PAGES
+from deeptutor.utils.file_types import FileTypeRouter
 
 logger = logging.getLogger(__name__)
 

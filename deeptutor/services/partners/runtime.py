@@ -593,10 +593,6 @@ class PartnerRunner:
                                     # Already streamed live — freeze the segment.
                                     ended_rounds.add(call_id)
                                     await self._publish_stream_end(msg, turn_id, call_id)
-                                elif meta.get("answer_visible") is False:
-                                    # A capability retracted this round; it was
-                                    # never the reader's to see.
-                                    pass
                                 elif not is_im:
                                     # The web surface renders each round itself,
                                     # in place. Folding the text into the reply

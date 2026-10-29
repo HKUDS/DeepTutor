@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+from bisect import bisect_left, bisect_right
+from collections import OrderedDict
 from dataclasses import replace
 import time
 from typing import Any
@@ -10,8 +12,26 @@ from typing import Any
 from .types import BackgroundCommand, LeaderLease, TurnCommand, TurnLease
 
 
+def _seq(row: dict[str, Any]) -> int:
+    return int(row["seq"])
+
+
 class MemoryCoordinator:
+    """Leases, live event tails and command queues for one process.
+
+    The live tail is only the bridge between a running turn and its
+    subscribers: every replay starts from the durable journal, and once a
+    turn's lease is released its tail is complete there. So a released turn's
+    events and commands are dropped after ``retention_seconds`` — enough for a
+    subscriber still mid-poll — instead of living until the process exits,
+    which in a long-running server is every streamed delta of every turn.
+    Background commands are dropped once acknowledged, and the ids kept for
+    de-duplication are bounded.
+    """
+
     mode = "memory"
+    retention_seconds = 120.0
+    _command_id_limit = 4096
 
     def __init__(self, *, lease_ttl_seconds: float = 30.0) -> None:
         self.lease_ttl_seconds = float(lease_ttl_seconds)
@@ -21,16 +41,44 @@ class MemoryCoordinator:
         self._session_turns: dict[str, str] = {}
         self._known_turns: set[str] = set()
         self._events: dict[str, list[dict[str, Any]]] = {}
+        self._event_waiters: dict[str, set[asyncio.Future[None]]] = {}
         self._commands: dict[str, list[tuple[str, TurnCommand]]] = {}
-        self._command_ids: set[str] = set()
+        self._command_ids: dict[str, str] = {}
         self._background_commands: list[tuple[str, BackgroundCommand]] = []
-        self._background_command_ids: set[str] = set()
+        self._background_command_ids: OrderedDict[str, None] = OrderedDict()
+        self._background_seq = 0
         self._background_cursor = "0-0"
+        # Released turns, oldest first, with when their tail may be dropped.
+        self._retired: OrderedDict[str, float] = OrderedDict()
         self._leader: LeaderLease | None = None
         self._closed = False
 
     def _expires_at(self) -> float:
         return time.time() + self.lease_ttl_seconds
+
+    def _retire(self, turn_id: str) -> None:
+        """Mark a turn's live tail for removal (caller holds the lock)."""
+        self._retired.pop(turn_id, None)
+        self._retired[turn_id] = time.monotonic() + self.retention_seconds
+        self._sweep()
+
+    def _retire_if_unleased(self, turn_id: str) -> None:
+        """A write for a turn nobody holds (a late tail) must still expire."""
+        if turn_id not in self._turn_leases and turn_id not in self._retired:
+            self._retire(turn_id)
+
+    def _sweep(self) -> None:
+        now = time.monotonic()
+        while self._retired:
+            turn_id, due = next(iter(self._retired.items()))
+            if due > now:
+                break
+            self._retired.popitem(last=False)
+            if turn_id in self._turn_leases:
+                continue  # taken again since — still live
+            self._events.pop(turn_id, None)
+            for _, command in self._commands.pop(turn_id, []):
+                self._command_ids.pop(command.command_id, None)
 
     @staticmethod
     def _active(lease: TurnLease | LeaderLease | None) -> bool:
@@ -53,6 +101,7 @@ class MemoryCoordinator:
             self._turn_leases[turn_id] = lease
             self._session_turns[session_id] = turn_id
             self._known_turns.add(turn_id)
+            self._retired.pop(turn_id, None)
             return lease
 
     async def renew_turn(self, lease: TurnLease) -> TurnLease | None:
@@ -80,6 +129,8 @@ class MemoryCoordinator:
             self._turn_leases.pop(lease.turn_id, None)
             if self._session_turns.get(lease.session_id) == lease.turn_id:
                 self._session_turns.pop(lease.session_id, None)
+            self._retire(lease.turn_id)
+            self._wake_event_waiters(lease.turn_id)
             return True
 
     async def get_lease(self, turn_id: str) -> TurnLease | None:
@@ -105,11 +156,13 @@ class MemoryCoordinator:
             # payloads forever leaks every completed conversation (#1971).
             self._events.pop(turn_id, None)
             for _, command in self._commands.pop(turn_id, []):
-                self._command_ids.discard(command.command_id)
+                self._command_ids.pop(command.command_id, None)
             if lease is not None and not self._active(lease):
                 self._turn_leases.pop(turn_id, None)
                 if self._session_turns.get(lease.session_id) == turn_id:
                     self._session_turns.pop(lease.session_id, None)
+            if turn_id not in self._turn_leases:
+                self._retire(turn_id)
 
     async def publish_event(self, turn_id: str, event: dict[str, Any]) -> dict[str, Any]:
         async with self._lock:
@@ -120,24 +173,52 @@ class MemoryCoordinator:
                 seq = (int(rows[-1]["seq"]) if rows else 0) + 1
             payload["turn_id"] = payload.get("turn_id") or turn_id
             payload["seq"] = seq
-            for existing in rows:
-                if int(existing["seq"]) != seq:
-                    continue
-                if existing != payload:
-                    raise ValueError(f"Turn event conflict: {turn_id} seq={seq}")
-                return dict(existing)
-            if rows and seq <= int(rows[-1]["seq"]):
+            if rows and seq <= _seq(rows[-1]):
+                # A re-publish: rows are in seq order, so find it directly
+                # rather than scanning a long turn's whole tail every time.
+                index = bisect_left(rows, seq, key=_seq)
+                existing = rows[index] if index < len(rows) else None
+                if existing is not None and _seq(existing) == seq and existing == payload:
+                    return dict(existing)
                 raise ValueError(f"Turn event conflict: {turn_id} seq={seq}")
             rows.append(payload)
+            self._retire_if_unleased(turn_id)
+            self._wake_event_waiters(turn_id)
             return dict(payload)
+
+    def _wake_event_waiters(self, turn_id: str) -> None:
+        # Called under _lock. Futures carry notifications, never event bodies;
+        # the journal/ordered tail remains the source of truth for replay.
+        for waiter in self._event_waiters.pop(turn_id, ()):
+            if not waiter.done():
+                waiter.set_result(None)
+
+    async def wait_for_events(self, turn_id: str, after_seq: int, *, timeout: float = 1.0) -> None:
+        """Wait without polling, including publication between read and wait."""
+        async with self._lock:
+            rows = self._events.get(turn_id, [])
+            if self._closed or (rows and _seq(rows[-1]) > after_seq):
+                return
+            waiter = asyncio.get_running_loop().create_future()
+            self._event_waiters.setdefault(turn_id, set()).add(waiter)
+        try:
+            await asyncio.wait_for(waiter, timeout=timeout)
+        except TimeoutError:
+            pass  # Periodic durable-state/lease checks still detect recovery.
+        finally:
+            async with self._lock:
+                waiters = self._event_waiters.get(turn_id)
+                if waiters is not None:
+                    waiters.discard(waiter)
+                    if not waiters:
+                        self._event_waiters.pop(turn_id, None)
 
     async def read_events(self, turn_id: str, after_seq: int = 0) -> list[dict[str, Any]]:
         async with self._lock:
-            return [
-                dict(event)
-                for event in self._events.get(turn_id, [])
-                if int(event["seq"]) > max(0, int(after_seq))
-            ]
+            self._sweep()
+            rows = self._events.get(turn_id, [])
+            start = bisect_right(rows, max(0, int(after_seq)), key=_seq)
+            return [dict(event) for event in rows[start:]]
 
     async def submit_command(
         self,
@@ -151,10 +232,11 @@ class MemoryCoordinator:
         async with self._lock:
             if command.command_id in self._command_ids:
                 return None
-            self._command_ids.add(command.command_id)
+            self._command_ids[command.command_id] = turn_id
             rows = self._commands.setdefault(turn_id, [])
             stream_id = f"{len(rows) + 1}-0"
             rows.append((stream_id, command))
+            self._retire_if_unleased(turn_id)
             return command
 
     async def read_commands(
@@ -182,8 +264,11 @@ class MemoryCoordinator:
         async with self._lock:
             if command.command_id in self._background_command_ids:
                 return None
-            self._background_command_ids.add(command.command_id)
-            stream_id = f"{len(self._background_commands) + 1}-0"
+            self._background_command_ids[command.command_id] = None
+            while len(self._background_command_ids) > self._command_id_limit:
+                self._background_command_ids.popitem(last=False)
+            self._background_seq += 1
+            stream_id = f"{self._background_seq}-0"
             self._background_commands.append((stream_id, command))
             return command
 
@@ -218,6 +303,14 @@ class MemoryCoordinator:
                 ):
                     return False
             self._background_cursor = stream_id
+            # Nothing at or before the cursor is ever read again.
+            try:
+                done = int(stream_id.split("-", 1)[0])
+            except (TypeError, ValueError):
+                done = 0
+            self._background_commands = [
+                row for row in self._background_commands if int(row[0].split("-", 1)[0]) > done
+            ]
             return True
 
     async def acquire_leader(self, owner_id: str) -> LeaderLease | None:
@@ -256,7 +349,10 @@ class MemoryCoordinator:
         return not self._closed
 
     async def close(self) -> None:
-        self._closed = True
+        async with self._lock:
+            self._closed = True
+            for turn_id in list(self._event_waiters):
+                self._wake_event_waiters(turn_id)
 
 
 __all__ = ["MemoryCoordinator"]

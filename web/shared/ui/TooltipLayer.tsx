@@ -7,6 +7,7 @@ import {
   type RefObject,
 } from "react";
 import { createPortal } from "react-dom";
+import { shortcutKeys, type Shortcut } from "@/lib/shortcuts";
 import {
   placeTooltip,
   type TooltipPosition,
@@ -18,6 +19,7 @@ export default function TooltipLayer({
   id,
   label,
   description,
+  shortcut,
   side,
   onMount,
 }: {
@@ -25,6 +27,7 @@ export default function TooltipLayer({
   id: string;
   label: string;
   description?: string;
+  shortcut?: Shortcut;
   side: TooltipSide;
   onMount: () => void;
 }) {
@@ -67,7 +70,18 @@ export default function TooltipLayer({
       }
       className={`pointer-events-none fixed z-[1000] max-w-72 rounded-lg bg-[var(--foreground)] px-2.5 py-1.5 text-left text-[11px] font-medium leading-snug text-[var(--background)] shadow-lg [overflow-wrap:anywhere] ${position ? "opacity-100" : "opacity-0"}`}
     >
-      <span className="block">{label}</span>
+      {shortcut ? (
+        <span className="flex items-center gap-2">
+          <span>{label}</span>
+          <kbd className="inline-flex items-center gap-0.5 font-sans text-[11px] font-normal tracking-wide opacity-60">
+            {shortcutKeys(shortcut).map((key) => (
+              <span key={key}>{key}</span>
+            ))}
+          </kbd>
+        </span>
+      ) : (
+        <span className="block">{label}</span>
+      )}
       {description ? (
         <span className="mt-0.5 block font-normal opacity-80">
           {description}

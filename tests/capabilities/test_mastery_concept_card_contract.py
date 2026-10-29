@@ -18,14 +18,13 @@ def test_quiz_schema_allows_practice_cards_for_all_objective_types():
     assert "use mastery_assess instead" not in description
 
 
-def test_group_finish_nudge_preserves_concept_practice_and_separate_gate():
+def test_practice_discussion_does_not_force_an_assessment():
     instruction = MasteryLoopCapability().finish_instruction(
         UnifiedContext(metadata={"mastery_mode": True}),
         "Answer these two practice questions; I will grade both answers.\n"
         "1. Which change increases the rate?\n2. Explain why it increases?",
     )
-    assert "all objective types" in instruction
-    assert "qualitative gate" in instruction and "mastery_assess" in instruction
+    assert instruction is None
 
 
 @pytest.mark.asyncio

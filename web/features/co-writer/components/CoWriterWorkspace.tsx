@@ -175,9 +175,11 @@ interface StreamEditResult {
 
 export interface CoWriterWorkspaceProps {
   docId: string;
+  /** Let embedded workspaces return to their own library. */
+  onBack?: () => void;
 }
 
-export default function CoWriterWorkspace({ docId }: CoWriterWorkspaceProps) {
+export default function CoWriterWorkspace({ docId, onBack }: CoWriterWorkspaceProps) {
   const { t } = useTranslation();
   const router = useRouter();
   const draftRevisionRef = useRef(0);
@@ -1677,7 +1679,7 @@ export default function CoWriterWorkspace({ docId }: CoWriterWorkspaceProps) {
         </p>
         <button
           type="button"
-          onClick={() => router.push("/co-writer")}
+          onClick={() => onBack ? onBack() : router.push("/co-writer")}
           className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-3.5 py-2 text-[12.5px] font-medium text-[var(--primary-foreground)] transition-opacity hover:opacity-90"
         >
           <ChevronLeft size={14} />
@@ -1699,12 +1701,14 @@ export default function CoWriterWorkspace({ docId }: CoWriterWorkspaceProps) {
   return (
     <div className="flex h-full min-h-full flex-col overflow-hidden bg-[var(--background)]">
       {/* ── Top bar ── */}
-      <header className="flex shrink-0 items-center justify-between border-b border-[var(--border)] px-4 py-1.5">
+      {/* One quiet band: the bar, then the formatting tools as a soft strip
+          under it, then the two panes told apart by tone — no rules between. */}
+      <header className="flex shrink-0 items-center justify-between px-4 py-2">
         <div className="flex min-w-0 items-center gap-3 text-sm text-[var(--muted-foreground)]">
           <Tooltip label={t("Back to documents")}>
             <button
               type="button"
-              onClick={() => router.push("/co-writer")}
+              onClick={() => onBack ? onBack() : router.push("/co-writer")}
               className="inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
               aria-label={t("Back to documents")}
             >
@@ -1811,12 +1815,11 @@ export default function CoWriterWorkspace({ docId }: CoWriterWorkspaceProps) {
             href="https://litewrite.ai/"
             target="_blank"
             rel="noreferrer"
-            className="inline-flex items-center gap-1 rounded-full border border-[var(--border)] px-2.5 py-1 text-[11px] font-medium text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+            className="dt-quiet-button h-7 rounded-full px-2.5 text-[11.5px] font-medium"
           >
             <span>{t("Pro Vide Writing")}</span>
             <ArrowUpRight size={12} strokeWidth={1.8} aria-hidden="true" />
           </a>
-          <div className="mx-1 h-5 w-px bg-[var(--border)]" />
           <button
             onClick={() => setIsEditModalOpen(true)}
             className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--primary)] px-3 py-1.5 text-[12.5px] font-medium text-[var(--primary-foreground)] transition-[opacity,transform] duration-150 hover:opacity-90 active:scale-[0.97]"
@@ -1828,7 +1831,7 @@ export default function CoWriterWorkspace({ docId }: CoWriterWorkspaceProps) {
       </header>
 
       {/* ── Toolbar ── */}
-      <div className="flex shrink-0 items-center gap-0.5 overflow-x-auto border-b border-[var(--border)] px-3 py-1">
+      <div className="mx-3 mb-1 flex shrink-0 items-center gap-0.5 overflow-x-auto rounded-xl bg-[rgb(var(--dt-ink,55_53_47)/0.035)] px-2 py-1">
         {TOOLBAR.map((item) => {
           if (item.type === "separator") {
             return (
@@ -1916,7 +1919,7 @@ export default function CoWriterWorkspace({ docId }: CoWriterWorkspaceProps) {
               width: showPreview ? `${editorRatio * 100}%` : "100%",
             }}
           >
-            <div className="flex shrink-0 items-center justify-between border-b border-[var(--border)] px-3 py-1">
+            <div className="flex shrink-0 items-center justify-between px-4 pb-0.5 pt-2">
               <span className="text-xs font-medium text-[var(--muted-foreground)]">
                 {t("Editor")}
               </span>
@@ -1971,11 +1974,7 @@ export default function CoWriterWorkspace({ docId }: CoWriterWorkspaceProps) {
                   setEditorRatio(0.5);
                 }
               }}
-              className={`group relative z-10 flex h-full w-1 shrink-0 cursor-col-resize items-stretch border-x border-[var(--border)] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary)] ${
-                isResizingSplit
-                  ? "bg-[var(--primary)]/40"
-                  : "bg-transparent hover:bg-[var(--primary)]/30"
-              }`}
+              className="group relative z-10 flex h-full w-1 shrink-0 cursor-col-resize items-stretch bg-transparent focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary)]"
             >
               {/* Wider invisible hit-area so the handle is easy to grab */}
               <div className="absolute inset-y-0 -left-1.5 -right-1.5" />
@@ -1997,7 +1996,7 @@ export default function CoWriterWorkspace({ docId }: CoWriterWorkspaceProps) {
               type="button"
               onClick={() => setEditorCollapsed(false)}
               aria-label={t("Expand editor")}
-              className="flex h-full w-7 shrink-0 items-center justify-center border-r border-[var(--border)] text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+              className="flex h-full w-7 shrink-0 items-center justify-center text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
             >
               <ChevronRight size={14} />
             </button>
@@ -2010,22 +2009,23 @@ export default function CoWriterWorkspace({ docId }: CoWriterWorkspaceProps) {
               type="button"
               onClick={() => setPreviewCollapsed(false)}
               aria-label={t("Expand preview")}
-              className="flex h-full w-7 shrink-0 items-center justify-center border-l border-[var(--border)] text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+              className="flex h-full w-7 shrink-0 items-center justify-center text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
             >
               <ChevronLeft size={14} />
             </button>
           </Tooltip>
         )}
 
-        {/* Preview panel */}
+        {/* Preview panel — set on a faint tone, which is what separates it
+            from the editor now that the rule between them is gone. */}
         {showPreview && (
           <div
-            className="flex min-h-0 flex-col"
+            className="flex min-h-0 flex-col bg-[rgb(var(--dt-ink,55_53_47)/0.022)]"
             style={{
               width: showEditor ? `${(1 - editorRatio) * 100}%` : "100%",
             }}
           >
-            <div className="flex shrink-0 items-center justify-between border-b border-[var(--border)] px-3 py-1">
+            <div className="flex shrink-0 items-center justify-between px-4 pb-0.5 pt-2">
               <span className="text-xs font-medium text-[var(--muted-foreground)]">
                 {t("Preview")}
               </span>
@@ -2059,7 +2059,7 @@ export default function CoWriterWorkspace({ docId }: CoWriterWorkspaceProps) {
         <div
           ref={selectionPopoverRef}
           onMouseDown={handleSelectionPopoverDragStart}
-          className={`dt-popup-up fixed z-50 rounded-2xl border border-[var(--border)] bg-[var(--popover)] p-2.5 shadow-lg backdrop-blur-md ${
+          className={`dt-popup-up fixed z-50 rounded-2xl bg-[var(--popover)] p-2.5 shadow-[0_0_0_1px_rgb(15_15_15/0.05),0_12px_32px_-10px_rgb(15_15_15/0.22),0_3px_8px_-3px_rgb(15_15_15/0.08)] ${
             isDraggingSelectionPopover ? "cursor-grabbing" : "cursor-grab"
           }`}
           style={{
@@ -2111,7 +2111,7 @@ export default function CoWriterWorkspace({ docId }: CoWriterWorkspaceProps) {
                   setIsToolMenuOpen((prev) => !prev);
                   setIsModeMenuOpen(false);
                 }}
-                className="flex h-8 w-full items-center justify-between rounded-lg border border-[var(--border)] px-2.5 text-[12.5px] text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]/55"
+                className="flex h-8 w-full items-center justify-between rounded-lg bg-[rgb(var(--dt-ink,55_53_47)/0.045)] px-2.5 text-[12.5px] text-[var(--foreground)] transition-colors hover:bg-[rgb(var(--dt-ink,55_53_47)/0.075)]"
               >
                 <span className="truncate">
                   {selectionTools.length === 0
@@ -2130,7 +2130,7 @@ export default function CoWriterWorkspace({ docId }: CoWriterWorkspaceProps) {
                 />
               </button>
               {isToolMenuOpen && (
-                <div className="dt-popup-up absolute left-0 top-full z-20 mt-1 w-full rounded-xl border border-[var(--border)] bg-[var(--popover)] p-1 shadow-lg backdrop-blur-md">
+                <div className="dt-popup-up absolute left-0 top-full z-20 mt-1 w-full rounded-xl bg-[var(--popover)] p-1 shadow-[0_0_0_1px_rgb(15_15_15/0.05),0_12px_32px_-10px_rgb(15_15_15/0.22),0_3px_8px_-3px_rgb(15_15_15/0.08)]">
                   {TOOL_OPTIONS.map((tool) => {
                     const active = selectionTools.includes(tool.name);
                     return (
@@ -2158,7 +2158,7 @@ export default function CoWriterWorkspace({ docId }: CoWriterWorkspaceProps) {
                   setIsModeMenuOpen((prev) => !prev);
                   setIsToolMenuOpen(false);
                 }}
-                className="flex h-8 w-full items-center justify-between rounded-lg border border-[var(--border)] px-2.5 text-[12.5px] text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]/55"
+                className="flex h-8 w-full items-center justify-between rounded-lg bg-[rgb(var(--dt-ink,55_53_47)/0.045)] px-2.5 text-[12.5px] text-[var(--foreground)] transition-colors hover:bg-[rgb(var(--dt-ink,55_53_47)/0.075)]"
               >
                 <span>
                   {t(
@@ -2172,7 +2172,7 @@ export default function CoWriterWorkspace({ docId }: CoWriterWorkspaceProps) {
                 />
               </button>
               {isModeMenuOpen && (
-                <div className="dt-popup-up absolute left-0 top-full z-20 mt-1 w-full rounded-xl border border-[var(--border)] bg-[var(--popover)] p-1 shadow-lg backdrop-blur-md">
+                <div className="dt-popup-up absolute left-0 top-full z-20 mt-1 w-full rounded-xl bg-[var(--popover)] p-1 shadow-[0_0_0_1px_rgb(15_15_15/0.05),0_12px_32px_-10px_rgb(15_15_15/0.22),0_3px_8px_-3px_rgb(15_15_15/0.08)]">
                   {MODE_OPTIONS.map((mode) => (
                     <button
                       key={mode.value}
@@ -2213,7 +2213,7 @@ export default function CoWriterWorkspace({ docId }: CoWriterWorkspaceProps) {
               value={kbName}
               onChange={(e) => setKbName(e.target.value)}
               aria-label={t("Knowledge Base")}
-              className="mt-2 h-8 w-full rounded-lg border border-[var(--border)] bg-transparent px-2.5 text-[12.5px] text-[var(--foreground)] outline-none transition-colors focus:border-[var(--primary)]/35"
+              className="dt-soft-input mt-2 h-8 w-full rounded-lg bg-[var(--background)] px-2.5 text-[12.5px] text-[var(--foreground)] outline-none"
             >
               <option value="">{t("Select a knowledge base...")}</option>
               {knowledgeBases.map((k) => (
@@ -2231,7 +2231,7 @@ export default function CoWriterWorkspace({ docId }: CoWriterWorkspaceProps) {
             // implementation of chat's reasoning trace. It now composes the
             // same activity primitives, so one tool call looks the same
             // wherever the reader meets it.
-            <div className="mt-2 rounded-xl border border-[var(--border)]/70 bg-[var(--muted)]/18 px-3 py-2">
+            <div className="mt-2 rounded-xl bg-[rgb(var(--dt-ink,55_53_47)/0.035)] px-3 py-2">
               <ActivityStack alignUnderOrb={false}>
                 {(selectionTrace?.toolTraces ?? []).map((trace, index) => {
                   const label = t(
@@ -2327,8 +2327,8 @@ export default function CoWriterWorkspace({ docId }: CoWriterWorkspaceProps) {
             if (e.target === e.currentTarget) setIsEditModalOpen(false);
           }}
         >
-          <div className="animate-in zoom-in-95 w-full max-w-md rounded-2xl border border-[var(--border)] bg-[var(--card)] shadow-2xl">
-            <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
+          <div className="animate-in zoom-in-95 w-full max-w-md rounded-2xl bg-[var(--card)] shadow-[0_0_0_1px_rgb(15_15_15/0.05),0_12px_32px_-10px_rgb(15_15_15/0.22),0_3px_8px_-3px_rgb(15_15_15/0.08)]">
+            <div className="flex items-center justify-between px-5 pb-2 pt-4">
               <h2 className="text-sm font-semibold text-[var(--foreground)]">
                 {t("Full Draft AI Edit")}
               </h2>
@@ -2349,7 +2349,7 @@ export default function CoWriterWorkspace({ docId }: CoWriterWorkspaceProps) {
                     className={`rounded-lg px-3 py-1.5 text-[12.5px] font-medium transition-colors ${
                       action === a
                         ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
-                        : "border border-[var(--border)] text-[var(--foreground)] hover:bg-[var(--muted)]/55"
+                        : "bg-[rgb(var(--dt-ink,55_53_47)/0.045)] text-[var(--foreground)] hover:bg-[rgb(var(--dt-ink,55_53_47)/0.075)]"
                     }`}
                   >
                     {t(ACTION_LABELS[a])}
@@ -2361,7 +2361,7 @@ export default function CoWriterWorkspace({ docId }: CoWriterWorkspaceProps) {
                 value={instruction}
                 onChange={(e) => setInstruction(e.target.value)}
                 rows={4}
-                className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--primary)]"
+                className="dt-soft-input w-full rounded-lg bg-[var(--background)] px-3 py-2 text-sm text-[var(--foreground)] outline-none"
                 placeholder={t("Describe how you want the text edited...")}
               />
 
@@ -2373,7 +2373,7 @@ export default function CoWriterWorkspace({ docId }: CoWriterWorkspaceProps) {
                   <select
                     value={source}
                     onChange={(e) => setSource(e.target.value as SourceOption)}
-                    className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-2 py-1.5 text-[12px] text-[var(--foreground)] outline-none transition-colors focus:border-[var(--primary)]"
+                    className="dt-soft-input w-full rounded-lg bg-[var(--background)] px-2 py-1.5 text-[12px] text-[var(--foreground)] outline-none"
                   >
                     <option value="none">{t("None")}</option>
                     <option value="rag">{t("Knowledge Base")}</option>
@@ -2388,7 +2388,7 @@ export default function CoWriterWorkspace({ docId }: CoWriterWorkspaceProps) {
                     value={kbName}
                     onChange={(e) => setKbName(e.target.value)}
                     disabled={source !== "rag"}
-                    className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-2 py-1.5 text-[12px] text-[var(--foreground)] outline-none transition-colors focus:border-[var(--primary)] disabled:cursor-not-allowed disabled:opacity-40"
+                    className="dt-soft-input w-full rounded-lg bg-[var(--background)] px-2 py-1.5 text-[12px] text-[var(--foreground)] outline-none disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     <option value="">{t("Select...")}</option>
                     {knowledgeBases.map((k) => (
@@ -2417,11 +2417,11 @@ export default function CoWriterWorkspace({ docId }: CoWriterWorkspaceProps) {
               </div>
             </div>
 
-            <div className="flex justify-end gap-2 border-t border-[var(--border)] px-4 py-3">
+            <div className="flex justify-end gap-2 px-5 pb-4 pt-2">
               <button
                 onClick={applyAutoMark}
                 disabled={isEditing || isAutoMarking}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 py-1.5 text-[12.5px] font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]/55 disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-[rgb(var(--dt-ink,55_53_47)/0.05)] px-3 py-1.5 text-[12.5px] font-medium text-[var(--foreground)] transition-colors hover:bg-[rgb(var(--dt-ink,55_53_47)/0.085)] disabled:opacity-50"
               >
                 {isAutoMarking ? (
                   <Loader2 size={13} className="animate-spin" />
@@ -2459,9 +2459,9 @@ export default function CoWriterWorkspace({ docId }: CoWriterWorkspaceProps) {
             aria-modal="true"
             aria-labelledby="co-writer-confirm-title"
             aria-describedby="co-writer-confirm-description"
-            className="animate-in zoom-in-95 w-full max-w-sm rounded-2xl border border-[var(--border)] bg-[var(--card)] shadow-2xl"
+            className="animate-in zoom-in-95 w-full max-w-sm rounded-2xl bg-[var(--card)] shadow-[0_0_0_1px_rgb(15_15_15/0.05),0_12px_32px_-10px_rgb(15_15_15/0.22),0_3px_8px_-3px_rgb(15_15_15/0.08)]"
           >
-            <div className="border-b border-[var(--border)] px-4 py-3">
+            <div className="px-5 pb-2 pt-4">
               <h2
                 id="co-writer-confirm-title"
                 className="text-sm font-semibold text-[var(--foreground)]"
@@ -2484,11 +2484,11 @@ export default function CoWriterWorkspace({ docId }: CoWriterWorkspaceProps) {
               </div>
             </div>
 
-            <div className="flex justify-end gap-2 border-t border-[var(--border)] px-4 py-3">
+            <div className="flex justify-end gap-2 px-5 pb-4 pt-2">
               <button
                 type="button"
                 onClick={() => setPendingConfirmAction(null)}
-                className="rounded-lg border border-[var(--border)] px-3 py-1.5 text-[12.5px] font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]/55"
+                className="rounded-lg bg-[rgb(var(--dt-ink,55_53_47)/0.05)] px-3 py-1.5 text-[12.5px] font-medium text-[var(--foreground)] transition-colors hover:bg-[rgb(var(--dt-ink,55_53_47)/0.085)]"
               >
                 {t("Cancel")}
               </button>

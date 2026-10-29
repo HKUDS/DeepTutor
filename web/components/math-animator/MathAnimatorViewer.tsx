@@ -8,8 +8,11 @@ import type { MathAnimatorResult } from "@/lib/math-animator-types";
 
 export default function MathAnimatorViewer({
   result,
+  bare = false,
 }: {
   result: MathAnimatorResult;
+  /** Only the output itself, as part of a page: no card, labels or review notes. */
+  bare?: boolean;
 }) {
   const { t } = useTranslation();
   const [fullscreenUrl, setFullscreenUrl] = useState<string | null>(null);
@@ -81,11 +84,15 @@ export default function MathAnimatorViewer({
   return (
     <div
       ref={rootRef}
-      className="mb-3 space-y-3 rounded-2xl border border-[var(--border)] bg-[var(--card)]/70 p-3"
+      className={
+        bare
+          ? "space-y-3"
+          : "mb-3 space-y-3 rounded-2xl border border-[var(--border)] bg-[var(--card)]/70 p-3"
+      }
     >
       {videos.length > 0 ? (
         <section className="space-y-2">
-          <Header icon={Video} title={t("Video Output")} />
+          {!bare && <Header icon={Video} title={t("Video Output")} />}
           {videos.map((item) => (
             <div key={item.url}>
               <video
@@ -102,7 +109,7 @@ export default function MathAnimatorViewer({
 
       {images.length > 0 ? (
         <section className="space-y-2">
-          <Header icon={ImageIcon} title={t("Image Output")} />
+          {!bare && <Header icon={ImageIcon} title={t("Image Output")} />}
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             {images.map((item) => (
               <button
@@ -138,7 +145,8 @@ export default function MathAnimatorViewer({
         </details>
       ) : null}
 
-      {result.render.visual_review &&
+      {!bare &&
+      result.render.visual_review &&
       result.render.visual_review.passed === false ? (
         <div className="rounded-xl border border-amber-500/35 bg-amber-500/10 px-3 py-2.5 text-[12px] leading-[1.6] text-amber-900 dark:text-amber-200">
           <div className="font-medium">

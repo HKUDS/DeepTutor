@@ -13,7 +13,6 @@ from deeptutor.api.routers.auth import require_auth
 from deeptutor.multi_user.partner_access import visible_partners
 from deeptutor.multi_user.paths import user_context
 from deeptutor.services.auth import TokenPayload
-from deeptutor.services.partners.scope import partner_user
 from deeptutor.services.workspace import (
     WorkspaceError,
     WorkspaceItem,
@@ -319,6 +318,8 @@ def _resolve_partner_item(
         partner_id = str(partner.get("partner_id") or "").strip()
         if not partner_id:
             continue
+        from deeptutor.services.partners.scope import partner_user
+
         with user_context(partner_user(partner_id)):
             try:
                 return get_content_workspace_service().resolve_published_item(

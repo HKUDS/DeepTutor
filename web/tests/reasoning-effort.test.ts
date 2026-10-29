@@ -10,6 +10,16 @@ import {
 const values = (binding: string, model: string, current = ""): string[] =>
   reasoningEffortOptions(binding, model, current).map((option) => option.value);
 
+test("MiniMax Flash exposes adaptive effort levels and preserves saved values", () => {
+  for (const binding of ["minimax", "minimax_anthropic"]) {
+    assert.deepEqual(values(binding, "MiniMax-M3.1-Flash"), [
+      "", "low", "medium", "high", "xhigh", "max",
+    ]);
+    assert.deepEqual(values(binding, "MiniMax-M3"), ["", "none", "adaptive"]);
+    assert.equal(values(binding, "MiniMax-M3.1-Flash", "none").includes("none"), true);
+  }
+});
+
 test("Gemini 3 and 2.5 Pro do not list the invalid none effort", () => {
   assert.deepEqual(values("gemini", "gemini-3.6-flash"), [
     "",

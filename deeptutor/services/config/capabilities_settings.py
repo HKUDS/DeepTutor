@@ -22,6 +22,7 @@ constants into settings, capabilities can be added here.
 
 from __future__ import annotations
 
+import copy
 from pathlib import Path
 from typing import Any
 
@@ -205,8 +206,10 @@ _CHAT_LEGACY_KEYS: tuple[str, ...] = (
 def _build_chat_block(agents_cfg: dict[str, Any]) -> dict[str, Any]:
     """Read agents.yaml.capabilities.chat into the UI schema with defaults."""
     chat_cfg: dict[str, Any] = _get_at(agents_cfg, ("capabilities", "chat"))
-    merged: dict[str, Any] = {}
-    _deep_merge(merged, DEFAULT_CHAT_PARAMS)
+    # Deep-copy the shipped defaults: ``_deep_merge`` mutates its first argument
+    # in place, so seeding from the module-level ``DEFAULT_CHAT_PARAMS`` would
+    # alias (and then overwrite) its nested stage dicts with the user's values.
+    merged: dict[str, Any] = copy.deepcopy(DEFAULT_CHAT_PARAMS)
     _deep_merge(merged, chat_cfg)
     return {
         "temperature": _coerce_float(merged.get("temperature"), DEFAULT_CHAT_PARAMS["temperature"]),

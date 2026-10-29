@@ -178,6 +178,9 @@ def _err(exc: Exception) -> str:
 
 
 def _copy_knowledge_base(kb_ref: str, partner_root: Path) -> str:
+    from deeptutor.modules.catalog import require_module
+
+    require_module("knowledge")
     from deeptutor.knowledge.kb_types import NON_RETRIEVABLE_KB_TYPES, is_connected_kb
     from deeptutor.knowledge.manager import KnowledgeBaseManager
     from deeptutor.multi_user.knowledge_access import resolve_kb

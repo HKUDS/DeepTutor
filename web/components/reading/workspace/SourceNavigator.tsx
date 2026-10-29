@@ -209,13 +209,13 @@ export function SourceNavigator({
 
   return (
     <aside
-      className={`min-h-0 min-w-0 flex-col border-r border-[var(--border)] bg-[var(--card)] dark:border-[var(--border)] dark:bg-[var(--card)] ${
+      className={`dt-reading-navigator min-h-0 min-w-0 flex-col bg-[var(--background)] ${
         open
-          ? "absolute inset-y-0 left-0 z-30 flex w-[min(300px,88vw)] shadow-[18px_0_42px_rgba(0,0,0,.12)] lg:static lg:w-auto lg:shadow-none"
+          ? "absolute inset-y-0 left-0 z-30 flex w-[min(300px,88vw)] shadow-[18px_0_42px_rgba(0,0,0,.12)] lg:static lg:row-start-2 lg:w-auto lg:shadow-none"
           : "hidden"
       }`}
     >
-      <div className="flex h-11 shrink-0 items-center gap-1 border-b border-[var(--border)] px-2 dark:border-[var(--border)]">
+      <div className="flex h-11 shrink-0 items-center gap-1 px-2">
         {notesAvailable ? (
           <div role="tablist" className="flex min-w-0 flex-1 items-center gap-0.5">
             <NavigatorTab
@@ -260,7 +260,7 @@ export function SourceNavigator({
         </div>
       ) : (
         <>
-          <label className="mx-2 mt-2 flex h-8 shrink-0 items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--card)] px-2.5 dark:border-[var(--border)] dark:bg-[var(--card)]">
+          <label className="mx-2 mt-1 flex h-8 shrink-0 items-center gap-2 rounded-lg bg-[rgb(var(--dt-ink,55_53_47)/0.045)] px-2.5 focus-within:bg-[rgb(var(--dt-ink,55_53_47)/0.06)]">
             <Search size={12} className="text-[var(--muted-foreground)]" />
             <input
               value={search}
@@ -276,7 +276,7 @@ export function SourceNavigator({
                  one. Above rather than below because it is the shorter list and
                  the one they came here for — scrolling past 74 outline rows to
                  reach three saved places would defeat the point. */
-              <div className="mb-2 border-b border-[var(--border)] pb-2">
+              <div className="mb-2 pb-1">
                 <p className="flex items-center gap-1.5 px-2 py-1 text-[10.5px] font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
                   <BookmarkCheck size={11} className="text-[var(--primary)]" />
                   {t("Bookmarks")}
@@ -422,7 +422,7 @@ export function SourceNavigator({
                       </div>
 
                       {expanded && (
-                        <div className="ml-2 mt-0.5 border-l border-[var(--border)] pl-1">
+                        <div className="ml-2 mt-0.5 border-l border-[rgb(var(--dt-ink,55_53_47)/0.08)] pl-1">
                           {mediaSource ? (
                             rows.map((row) => (
                               <button
@@ -504,7 +504,7 @@ export function SourceNavigator({
             )}
           </div>
 
-          <div className="shrink-0 border-t border-[var(--border)] px-3 py-2 text-[11px] text-[var(--muted-foreground)] dark:border-[var(--border)]">
+          <div className="shrink-0 px-3 py-2 text-[11px] text-[var(--muted-foreground)]">
             {material && material.status === "ready"
               ? mediaSource
                 ? t("{{count}} passages available to the companion", {
@@ -594,7 +594,7 @@ export function WorkspaceOutlineBranch({
 }) {
   const { t } = useTranslation();
   return (
-    <ul className={depth ? "ml-2 border-l border-[var(--border)] pl-1" : ""}>
+    <ul className={depth ? "ml-2 border-l border-[rgb(var(--dt-ink,55_53_47)/0.08)] pl-1" : ""}>
       {nodes.map((node) => {
         const key = `${node.row.locator}-${node.row.title}`;
         const active = node.row === activeRow;

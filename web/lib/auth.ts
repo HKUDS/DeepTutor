@@ -1,3 +1,4 @@
+import { invalidateClientCache } from "./client-cache";
 import { browserStorage } from "@/shared/storage";
 import { apiFetch, apiUrl, setRuntimeAuthEnabled } from "@/lib/api";
 import { updateRecoveryPrincipal } from "@/lib/recovery-principal";
@@ -43,6 +44,7 @@ let cachedAuthStatus: { value: AuthStatus | null; expiresAt: number } | null =
   null;
 
 export function invalidateAuthStatusCache(): void {
+  invalidateClientCache("navigation:");
   authGeneration += 1;
   authStatusRequest = null;
   cachedAuthStatus = null;

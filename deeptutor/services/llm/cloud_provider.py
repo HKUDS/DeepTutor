@@ -18,6 +18,7 @@ import aiohttp
 from deeptutor.services.config import load_system_settings
 from deeptutor.services.provider_registry import effective_backend, find_by_name
 
+from .minimax_models import prioritize_model_names
 from .utils import build_auth_headers, collect_model_names
 
 logger = logging.getLogger(__name__)
@@ -102,9 +103,13 @@ async def fetch_models(
                         mapping = cast(Mapping[str, object], payload)
                         items = mapping.get("data")
                         if isinstance(items, list):
-                            return collect_model_names(cast(list[object], items))
+                            return prioritize_model_names(
+                                collect_model_names(cast(list[object], items)), binding
+                            )
                     elif isinstance(payload, list):
-                        return collect_model_names(cast(list[object], payload))
+                        return prioritize_model_names(
+                            collect_model_names(cast(list[object], payload)), binding
+                        )
             return []
         except Exception as e:
             logger.error("Error fetching models from %s: %s", base_url, e)

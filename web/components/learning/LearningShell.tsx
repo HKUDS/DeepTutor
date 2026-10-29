@@ -1,37 +1,44 @@
 'use client'
 
 import Link from 'next/link'
-import { ArrowLeft, AlertCircle, RefreshCw } from 'lucide-react'
+import { usePathname } from 'next/navigation'
+import { ArrowLeft, AlertCircle, BookOpen, RefreshCw, type LucideIcon } from 'lucide-react'
 import type { ReactNode, Ref, UIEventHandler } from 'react'
 import { useTranslation } from 'react-i18next'
 import { LEARNING_HUB } from '@/lib/learning-routes'
 import { FeaturePage, PageHeader } from '@/components/layout/FeaturePage'
+import { useUiLayoutLabel } from '@/features/ui-layout/tokens'
+import { LEARNING_SURFACES } from './surfaces'
 
 /** The same page rhythm for the hub and each library; readers keep their full-screen layouts. */
 export function LearningShell({
   title,
   subtitle,
   action,
-  scopeChip,
   tabs,
   children,
   back = true,
   className = '',
   scrollRef,
   onScroll,
+  icon,
 }: {
   title: ReactNode
   subtitle: ReactNode
   action?: ReactNode
-  scopeChip?: ReactNode
   tabs?: ReactNode
   children: ReactNode
   back?: boolean
   className?: string
   scrollRef?: Ref<HTMLElement>
   onScroll?: UIEventHandler<HTMLElement>
+  /** Defaults to the icon of the learning surface this page belongs to. */
+  icon?: LucideIcon
 }) {
-  const { t } = useTranslation()
+  const pathname = usePathname()
+  const learningLabel = useUiLayoutLabel('learning')
+  // usePathname is null outside the App Router (tests, embeds): no icon then.
+  const surfaceIcon = LEARNING_SURFACES.find(surface => pathname?.startsWith(surface.href))?.icon
   return (
     <FeaturePage
       scrollRef={scrollRef}
@@ -41,13 +48,13 @@ export function LearningShell({
       {back && (
         <Link
           href={LEARNING_HUB}
-          className="mb-5 inline-flex items-center gap-1.5 text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+          className="dt-section-back mb-5 inline-flex items-center gap-1.5 text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
         >
           <ArrowLeft size={14} />
-          {t('Personalized Learning')}
+          {learningLabel}
         </Link>
       )}
-      <PageHeader title={title} description={subtitle} action={action} meta={scopeChip} />
+      <PageHeader title={title} description={subtitle} action={action} icon={icon ?? surfaceIcon ?? BookOpen} />
       {tabs}
       <div className={tabs ? 'mt-6' : ''}>{children}</div>
     </FeaturePage>

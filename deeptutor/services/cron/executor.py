@@ -76,6 +76,9 @@ async def _maybe_send_desktop_notification(job: CronJob, text: str) -> None:
 
 async def _execute_partner_job(job: CronJob) -> tuple[str, str | None]:
     """Run the partner turn and publish the reply through the original channel."""
+    from deeptutor.modules.catalog import require_module
+
+    require_module("partners")
     from deeptutor.partners.bus.events import InboundMessage
     from deeptutor.services.partners import get_partner_manager
 
@@ -123,12 +126,10 @@ async def _execute_partner_job(job: CronJob) -> tuple[str, str | None]:
 async def _execute_chat_job(job: CronJob) -> tuple[str, str | None]:
     """Run one chat turn in the owner's scope and append the exchange to the
     originating session, so the result is waiting in their chat history."""
-    from deeptutor.core.context import UnifiedContext
-    from deeptutor.core.stream import StreamEventType
     from deeptutor.multi_user.models import CurrentUser
     from deeptutor.multi_user.paths import local_admin_user, scope_for_user, user_context
-    from deeptutor.runtime.turn_engine import get_turn_engine
-    from deeptutor.services.session import get_sqlite_session_store
+    from deeptutor.services.workspace.context import resolve_workspace_scope, workspace_context
+    from deeptutor.services.workspace.models import WorkspaceError
 
     if job.owner.is_admin:
         user = local_admin_user()
@@ -142,56 +143,71 @@ async def _execute_chat_job(job: CronJob) -> tuple[str, str | None]:
 
     prompt = _reminder_prompt(job)
     with user_context(user):
-        store = get_sqlite_session_store()
-        session = await store.get_session(job.owner.session_id)
-        if session is None:
-            return "error", "session no longer exists"
+        # The session lives in the store of the workspace it was scheduled from.
+        try:
+            scope = resolve_workspace_scope(job.owner.workspace_id)
+        except WorkspaceError:
+            return "error", "workspace no longer exists"
+        with workspace_context(scope):
+            return await _run_chat_turn(job, prompt)
 
-        history = await store.get_messages_for_context(job.owner.session_id)
-        context = UnifiedContext(
-            session_id=job.owner.session_id,
-            user_message=prompt,
-            conversation_history=[
-                {"role": m.get("role"), "content": m.get("content")}
-                for m in history
-                if m.get("role") in {"user", "assistant"} and m.get("content")
-            ],
-            active_capability="chat",
-            language=job.owner.language or "en",
-            metadata={
-                "turn_id": f"cron-{job.id}-{uuid.uuid4().hex[:8]}",
-                "source": "cron",
-                "cron_job_id": job.id,
-            },
-        )
 
-        final_text = ""
-        errors: list[str] = []
-        async for event in get_turn_engine().execute(context):
-            meta: dict[str, Any] = event.metadata or {}
-            if event.type == StreamEventType.RESULT and event.source == "chat":
-                final_text = str(meta.get("response") or "")
-            elif event.type == StreamEventType.ERROR and event.content:
-                errors.append(event.content)
+async def _run_chat_turn(job: CronJob, prompt: str) -> tuple[str, str | None]:
+    from deeptutor.core.context import UnifiedContext
+    from deeptutor.core.stream import StreamEventType
+    from deeptutor.runtime.turn_engine import get_turn_engine
+    from deeptutor.services.session import get_sqlite_session_store
 
-        if not final_text.strip():
-            return "error", (errors[-1] if errors else "turn produced no answer")
+    store = get_sqlite_session_store()
+    session = await store.get_session(job.owner.session_id)
+    if session is None:
+        return "error", "session no longer exists"
 
-        await store.add_message(
-            session_id=job.owner.session_id,
-            role="user",
-            content=prompt,
-            capability="chat",
-            metadata={"cron_job_id": job.id},
-        )
-        await store.add_message(
-            session_id=job.owner.session_id,
-            role="assistant",
-            content=final_text,
-            capability="chat",
-            metadata={"cron_job_id": job.id},
-        )
-        await _maybe_send_desktop_notification(job, final_text)
+    history = await store.get_messages_for_context(job.owner.session_id)
+    context = UnifiedContext(
+        session_id=job.owner.session_id,
+        user_message=prompt,
+        conversation_history=[
+            {"role": m.get("role"), "content": m.get("content")}
+            for m in history
+            if m.get("role") in {"user", "assistant"} and m.get("content")
+        ],
+        active_capability="chat",
+        language=job.owner.language or "en",
+        metadata={
+            "turn_id": f"cron-{job.id}-{uuid.uuid4().hex[:8]}",
+            "source": "cron",
+            "cron_job_id": job.id,
+        },
+    )
+
+    final_text = ""
+    errors: list[str] = []
+    async for event in get_turn_engine().execute(context):
+        meta: dict[str, Any] = event.metadata or {}
+        if event.type == StreamEventType.RESULT and event.source == "chat":
+            final_text = str(meta.get("response") or "")
+        elif event.type == StreamEventType.ERROR and event.content:
+            errors.append(event.content)
+
+    if not final_text.strip():
+        return "error", (errors[-1] if errors else "turn produced no answer")
+
+    await store.add_message(
+        session_id=job.owner.session_id,
+        role="user",
+        content=prompt,
+        capability="chat",
+        metadata={"cron_job_id": job.id},
+    )
+    await store.add_message(
+        session_id=job.owner.session_id,
+        role="assistant",
+        content=final_text,
+        capability="chat",
+        metadata={"cron_job_id": job.id},
+    )
+    await _maybe_send_desktop_notification(job, final_text)
     return "ok", None
 
 

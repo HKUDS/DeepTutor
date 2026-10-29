@@ -1,4 +1,4 @@
-"""Starter suggestions — the three lines offered under the home composer.
+"""Starter suggestions — the one line offered under the home composer.
 
 What makes one of these worth showing is a jump, not a summary. The material
 is a set of traces — a session titled "Agentic RAG retrieval flow", a quiz
@@ -33,9 +33,16 @@ When it regenerates
 -------------------
 The background pass regenerates when the material changed (a fingerprint over
 the labels) or when the set is older than :data:`_TTL_SECONDS` — the first is
-when the *content* should change, the second is so the same three lines do not
+when the *content* should change, the second is so the same line does not
 greet someone all week. A manual refresh bypasses both and generates
 synchronously, because there a human is deliberately waiting.
+
+One at a time
+-------------
+The home screen offers a single line, and refreshing asks for another. Each
+generation is told what was offered lately (:data:`_SHOWN_LIMIT` labels, kept
+with the cache), so stepping through them walks the learner's material
+instead of circling one idea.
 
 Empty is a valid answer. A learner with no usable history gets no lines and no
 LLM call, and the frontend renders nothing at all — generic copy in that slot
@@ -59,10 +66,13 @@ from deeptutor.services.prompt.language import is_chinese as _is_zh
 
 logger = logging.getLogger(__name__)
 
-# How many starting points the home screen offers. One per line, so fewer than
-# three reads as a stub and more turns the empty screen into a menu.
-_COUNT = 3
-# Long enough that the same three lines are not re-generated all afternoon,
+# How many starting points one generation offers. One: the home screen shows a
+# single line, and the learner asks for the next one when they want it.
+_COUNT = 1
+# How many recently offered labels a new generation is told to steer clear of.
+# Enough to walk a few subjects before one may come round again.
+_SHOWN_LIMIT = 8
+# Long enough that the same line is not re-generated all afternoon,
 # short enough to feel responsive to a day's work.
 _TTL_SECONDS = 6 * 3600
 # Floor between two background material checks for one user. Page loads can
@@ -142,6 +152,8 @@ class SuggestionSet:
     generated_at: float
     fingerprint: str
     status: str = "ready"
+    # Labels offered before this set, newest first — what the next one avoids.
+    shown: tuple[str, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -150,7 +162,13 @@ class SuggestionSet:
             "generated_at": self.generated_at,
             "fingerprint": self.fingerprint,
             "status": self.status,
+            "shown": list(self.shown),
         }
+
+    def recent_labels(self) -> tuple[str, ...]:
+        """This set's labels and the ones before it, newest first, bounded."""
+        labels = [item.label for item in self.suggestions] + list(self.shown)
+        return tuple(dict.fromkeys(labels))[:_SHOWN_LIMIT]
 
 
 # ── Cache ────────────────────────────────────────────────────────────────
@@ -195,6 +213,7 @@ def _load() -> SuggestionSet | None:
             generated_at=float(raw.get("generated_at") or 0.0),
             fingerprint=str(raw.get("fingerprint") or ""),
             status="ready" if items else "no-material",
+            shown=tuple(str(label) for label in (raw.get("shown") or []) if label),
         )
     except Exception:
         logger.debug("suggestions cache unreadable", exc_info=True)
@@ -312,6 +331,10 @@ def _render_l3(cap: int) -> str:
     "Unsure"), and reading them is exactly the model's job; a lookup table here
     would be a second place for that vocabulary to drift.
     """
+    from deeptutor.modules.catalog import module_enabled
+
+    if not module_enabled("memory"):
+        return ""
     from deeptutor.services.memory import get_memory_store
 
     try:
@@ -363,6 +386,10 @@ def _collect_material(trace_count: int) -> _Material:
     what they are in the middle of, and which surface it happened on says
     nothing about that.
     """
+    from deeptutor.modules.catalog import module_enabled
+
+    if not module_enabled("memory"):
+        return _Material(profile="", topics=[])
     from deeptutor.services.memory import recall
 
     seen: set[str] = set()
@@ -412,11 +439,11 @@ def _fingerprint(material: _Material, language: str) -> str:
 # ── Generation ───────────────────────────────────────────────────────────
 
 
-_SYSTEM_EN = """You propose the three things a learner should explore next. Each is one line they click to begin.
+_SYSTEM_EN = """You propose the one thing a learner should explore next. It is one line they click to begin.
 
 You are given traces of what they have been working on — conversations, practice questions, searches, documents. Your job is to see the *subject* behind those traces and name something specific about it that is worth understanding.
 
-Each proposal is an object with two fields:
+The proposal is an object with two fields:
 - "label": the line they read. 4 to 10 words, no ending punctuation. It names a specific idea, distinction, mechanism or question — never an activity.
 - "prompt": the message sent as the learner's own words when they click. First person, complete, and pointed enough that a good answer teaches them something.
 
@@ -429,17 +456,17 @@ The move you are making, in one example:
 Other good shapes: "Why the chain rule underlies backpropagation" / "Where self-attention beats a plain RNN" / "What an eigenvalue actually measures" / "When BM25 still beats embeddings"
 
 Rules:
-- Reply with ONLY a JSON array of exactly 3 such objects. No prose, no markdown fence.
-- Every proposal must be traceable to the material below. Going one step beyond what it literally says is the point — but never introduce a subject with no root in it.
-- The material is raw activity and some of it is noise: a scratch file, a one-word search, a conversation that went nowhere. Skip those and build on the traces that carry a real subject. Three proposals from two good traces beat three that include one about "hello".
-- Make the three differ: different subjects from the material, and different kinds of question (a distinction, a mechanism, a why, a boundary case).
+- Reply with ONLY a JSON array holding exactly 1 such object. No prose, no markdown fence.
+- The proposal must be traceable to the material below. Going one step beyond what it literally says is the point — but never introduce a subject with no root in it.
+- The material is raw activity and some of it is noise: a scratch file, a one-word search, a conversation that went nowhere. Skip those and build on a trace that carries a real subject.
+- If you are shown what was already suggested, propose something different: another subject from the material where there is one, otherwise another kind of question (a distinction, a mechanism, a why, a boundary case).
 - No greetings, no emoji, no quotes around the fields' text."""
 
-_SYSTEM_ZH = """你要提出三个"接下来值得探索什么"。每一个都是一行字，学习者点一下就开始。
+_SYSTEM_ZH = """你要提出一个"接下来值得探索什么"。它是一行字，学习者点一下就开始。
 
 给你的是这个学习者最近留下的痕迹——对话、错题、检索、文档。你要做的是：看出这些痕迹背后是什么**学科内容**，然后点出关于它的、一个具体的、值得搞懂的东西。
 
-每一个是一个对象，含两个字段：
+它是一个对象，含两个字段：
 - "label"：学习者读到的那行字。8 到 20 个字，结尾不加标点。它点出的是一个具体的概念、区别、机制或问题，绝不是一类活动。
 - "prompt"：学习者点击后以自己的身份发出的那句话。第一人称、完整、问得足够到位，好的回答能让他真的学到东西。
 
@@ -452,10 +479,10 @@ _SYSTEM_ZH = """你要提出三个"接下来值得探索什么"。每一个都�
 其他好的形态："为什么链式法则是反向传播的基础" / "自注意力比 RNN 强在哪一步" / "特征值到底在度量什么" / "什么时候 BM25 反而比向量检索准"
 
 规则：
-- 只回复一个 JSON 数组，正好 3 个这样的对象。不要有任何解释文字，不要 markdown 代码块。
-- 每一个都必须能追溯到下面的素材。比素材字面上说的**多走一步**正是要点——但绝不能引入素材里毫无根据的话题。
-- 素材是原始活动记录，其中有噪音：随手建的文件、一个词的检索、没聊起来的对话。跳过它们，只在真正有内容的痕迹上做文章。宁可三个都从两条好素材里长出来，也不要有一个是关于 "hello" 的。
-- 三个之间要有区别：取素材里不同的内容，也问不同类型的问题（一个区别、一个机制、一个为什么、一个边界情况）。
+- 只回复一个 JSON 数组，里面正好 1 个这样的对象。不要有任何解释文字，不要 markdown 代码块。
+- 它必须能追溯到下面的素材。比素材字面上说的**多走一步**正是要点——但绝不能引入素材里毫无根据的话题。
+- 素材是原始活动记录，其中有噪音：随手建的文件、一个词的检索、没聊起来的对话。跳过它们，只在真正有内容的痕迹上做文章。
+- 如果给出了"已经建议过的"，就提一个不一样的：素材里有别的内容就换内容，没有就换一种问题（一个区别、一个机制、一个为什么、一个边界情况）。
 - 不要问候语、不要 emoji、字段文本里不要加引号。"""
 
 
@@ -479,11 +506,10 @@ def _bound(table: dict[str, int], language: str) -> int:
 
 
 def _sanitize(raw: str, language: str = "en") -> tuple[Suggestion, ...]:
-    """Exactly :data:`_COUNT` usable lines, or nothing at all.
+    """The first :data:`_COUNT` usable lines, or nothing at all.
 
-    Partial output is discarded rather than shown: one lonely line under the
-    composer reads as a rendering bug, and rendering nothing is the honest
-    alternative.
+    A model that answers with more than asked still gave a usable line; one
+    that answers with an object instead of an array of one did too.
 
     The length bounds are per language — see :data:`_MAX_LABEL_CHARS`. Applying
     a CJK-sized bound to English silently rejects every well-formed answer,
@@ -492,6 +518,8 @@ def _sanitize(raw: str, language: str = "en") -> tuple[Suggestion, ...]:
     from deeptutor.utils.json_parser import parse_json_response
 
     decoded = parse_json_response(raw, fallback=None)
+    if isinstance(decoded, dict):
+        decoded = [decoded]
     if not isinstance(decoded, list):
         return ()
 
@@ -516,7 +544,9 @@ def _sanitize(raw: str, language: str = "en") -> tuple[Suggestion, ...]:
     return tuple(items[:_COUNT]) if len(items) >= _COUNT else ()
 
 
-async def _generate(language: str, material: _Material) -> SuggestionSet:
+async def _generate(
+    language: str, material: _Material, avoid: tuple[str, ...] = ()
+) -> SuggestionSet:
     """Build a fresh set from *material*. Always returns one — empty on failure.
 
     Takes the material rather than collecting it, so one pass reads memory once
@@ -530,6 +560,7 @@ async def _generate(language: str, material: _Material) -> SuggestionSet:
         generated_at=time.time(),
         fingerprint=fingerprint,
         status="error" if material else "no-material",
+        shown=avoid,
     )
     if not material:
         # Nothing to ground a suggestion in. Say so instead of asking a model
@@ -548,9 +579,16 @@ async def _generate(language: str, material: _Material) -> SuggestionSet:
             ("# 最近的活动痕迹\n" if zh else "# Recent activity\n")
             + _render_topics(material.topics, zh)
         )
-    closing = (
-        "\n请提出那三个探索方向。" if zh else "\nPropose the three things worth exploring next."
-    )
+    if avoid:
+        sections.append(
+            (
+                "# 已经建议过的（这次换一个）\n"
+                if zh
+                else "# Already suggested (propose something else)\n"
+            )
+            + "\n".join(f"- {label}" for label in avoid)
+        )
+    closing = "\n请提出那一个探索方向。" if zh else "\nPropose the one thing worth exploring next."
     user_prompt = "\n\n".join(sections) + "\n" + closing
 
     try:
@@ -586,6 +624,7 @@ async def _generate(language: str, material: _Material) -> SuggestionSet:
         generated_at=time.time(),
         fingerprint=fingerprint,
         status="ready" if items else "error",
+        shown=avoid,
     )
 
 
@@ -600,7 +639,9 @@ def _is_fresh(cached: SuggestionSet | None, language: str, *, now: float) -> boo
     )
 
 
-async def _generate_and_cache(language: str, material: _Material) -> SuggestionSet:
+async def _generate_and_cache(
+    language: str, material: _Material, avoid: tuple[str, ...] = ()
+) -> SuggestionSet:
     """Generate from *material* and cache the result — unless it is a failure.
 
     An empty result is only written when it is the *right* answer: there was no
@@ -611,7 +652,7 @@ async def _generate_and_cache(language: str, material: _Material) -> SuggestionS
     pass would see nothing due and never retry. Those are dropped instead, and
     the next visit tries again.
     """
-    value = await _generate(language, material)
+    value = await _generate(language, material, avoid)
     if value.status == "error":
         _failures[_scope_key()] = language
     else:
@@ -636,7 +677,10 @@ async def refresh_suggestions() -> SuggestionSet:
     async def generate():
         language = _output_language()
         material = await asyncio.to_thread(_collect_material, _trace_count())
-        return await _generate_and_cache(language, material)
+        # "Another one": everything offered lately is off the table.
+        cached = _load()
+        avoid = cached.recent_labels() if cached and cached.language == language else ()
+        return await _generate_and_cache(language, material, avoid)
 
     task = asyncio.create_task(_bounded_generation(generate))
     _inflight[key] = task
@@ -677,7 +721,8 @@ async def _regenerate_if_due() -> SuggestionSet:
     cached = _load()
     if _is_fresh(cached, language, now=time.time()) and cached.fingerprint == fingerprint:
         return cached
-    return await _generate_and_cache(language, material)
+    avoid = cached.recent_labels() if cached and cached.language == language else ()
+    return await _generate_and_cache(language, material, avoid)
 
 
 def _schedule_probe(*, force: bool = False) -> None:

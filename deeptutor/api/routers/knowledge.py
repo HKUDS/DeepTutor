@@ -79,7 +79,6 @@ from deeptutor.services.rag.factory import (
     normalize_provider_name,
     provider_uses_embedding_versions,
 )
-from deeptutor.services.rag.file_routing import FileTypeRouter
 from deeptutor.services.rag.linked_kb import (
     LINKABLE_PROVIDERS,
     assert_path_allowed,
@@ -108,6 +107,7 @@ from deeptutor.utils.document_extractor import (
 )
 from deeptutor.utils.document_validator import DocumentValidator
 from deeptutor.utils.error_utils import format_exception_message
+from deeptutor.utils.file_types import FileTypeRouter
 
 # Initialize logger with config
 config = load_config_with_main("main.yaml", PROJECT_ROOT)

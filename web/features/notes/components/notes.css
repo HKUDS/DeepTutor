@@ -1,0 +1,1959 @@
+.dt-note-editor {
+  --bn-colors-editor-background: transparent;
+  --bn-colors-editor-text: var(--foreground);
+  color: var(--foreground);
+  width: 100%;
+}
+.dt-note-editor .bn-editor {
+  padding: 14px var(--note-gutter, 46px) 64px;
+  background: transparent;
+  color: var(--foreground);
+  font-family: inherit;
+  font-size: 15px;
+  line-height: 1.75;
+  min-height: 50vh;
+}
+.dt-note-editor .bn-block-content {
+  padding: 3px 0;
+}
+/* BlockNote italicises its hint; ours is a quiet line of ordinary text. */
+.dt-note-editor .bn-block-content:has(.ProseMirror-trailingBreak:only-child)::after {
+  font-style: normal;
+  color: var(--muted-foreground);
+  opacity: 0.75;
+}
+.dt-note-editor .bn-block-content[data-content-type='heading'] {
+  margin-top: 20px;
+}
+.dt-note-editor .bn-container {
+  font-family: inherit;
+}
+.dt-note-menu,
+.dt-note-toolbar {
+  background: var(--card);
+  color: var(--foreground);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 4px 18px #00000014;
+  padding: 4px;
+  z-index: 60;
+}
+.dt-note-menu {
+  min-width: 200px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+.dt-note-menu button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  text-align: left;
+  padding: 6px 8px;
+  font-size: 13px;
+  border-radius: 4px;
+}
+.dt-note-menu button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.dt-note-menu button:hover:not(:disabled),
+.dt-note-menu button.selected,
+.dt-note-toolbar button:hover {
+  background: var(--secondary);
+}
+.dt-note-toolbar button[aria-pressed='true'] {
+  background: var(--secondary);
+  color: var(--primary);
+}
+.dt-note-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.dt-note-toolbar button {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+.dt-note-toolbar select {
+  font-size: 12px;
+  max-width: 70px;
+  background: transparent;
+}
+.dt-note-handle {
+  display: flex;
+  position: relative;
+  box-sizing: border-box;
+  align-items: center;
+  gap: 1px;
+  color: var(--muted-foreground);
+}
+.dt-note-handle > span {
+  display: flex;
+}
+.dt-note-drag-handle {
+  touch-action: none;
+  cursor: grab;
+}
+.dt-note-drag-handle:active {
+  cursor: grabbing;
+}
+.dt-note-drop-line {
+  position: fixed;
+  height: 3px;
+  background: var(--primary);
+  border-radius: 2px;
+  pointer-events: none;
+  z-index: 1000;
+}
+.dt-note-handle > button,
+.dt-note-handle > span button {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 24px;
+  border-radius: 5px;
+  opacity: 0.7;
+  transition:
+    background-color 120ms,
+    opacity 120ms;
+}
+.dt-note-handle > button:hover,
+.dt-note-handle > span button:hover {
+  background: var(--accent, var(--secondary));
+  opacity: 1;
+}
+.dt-note-handle .dt-note-menu {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 2px);
+}
+.dt-note-clip {
+  padding: 10px 14px;
+  border-left: 3px solid var(--border);
+  width: 100%;
+  background: color-mix(in srgb, var(--secondary) 40%, transparent);
+}
+.dt-note-clip summary {
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--muted-foreground);
+}
+.dt-note-clip a,
+.dt-note-link {
+  color: var(--primary);
+  text-decoration: underline;
+  font-size: 13px;
+}
+.dt-note-math {
+  width: 100%;
+  text-align: center;
+  padding: 8px;
+}
+.dt-note-math input {
+  width: 100%;
+  background: var(--secondary);
+  padding: 8px;
+}
+.dt-note-math button {
+  width: 100%;
+}
+.dt-note-learning {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin: 8px 0;
+  transition:
+    border-color 160ms,
+    box-shadow 160ms;
+}
+/* Generated material sits in the page like any other block. */
+.dt-note-learning[data-state='filled'] {
+  border-color: transparent;
+  padding: 0;
+  margin: 6px 0;
+}
+.dt-note-bare > div {
+  padding: 4px 0;
+  background: none;
+}
+.dt-note-learning[data-state='pending'] {
+  border-color: color-mix(in srgb, var(--primary) 32%, var(--border));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 6%, transparent);
+}
+.dt-note-learning input:not([type='checkbox']):not([type='date']) {
+  background: transparent;
+  outline: none;
+  width: 100%;
+  font-size: 13px;
+}
+.dt-note-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 7px;
+  border-radius: 5px;
+  font-size: 13px;
+}
+.dt-note-button:hover {
+  background: var(--secondary);
+}
+.dt-note-button:disabled {
+  opacity: 0.4;
+}
+@media (max-width: 640px) {
+  .dt-note-editor .bn-editor {
+    padding-left: 30px;
+    padding-right: 16px;
+  }
+}
+
+.dt-note-inline-math,
+.dt-note-inline-math button,
+.dt-note-inline-math .prose,
+.dt-note-inline-math p {
+  display: inline;
+  margin: 0;
+}
+.dt-note-inline-math input {
+  width: 150px;
+  background: var(--secondary);
+}
+
+.dt-note-editor .bn-block-content[data-content-type='codeBlock'] {
+  border-radius: 6px;
+}
+.dt-note-editor .bn-side-menu {
+  z-index: 20;
+}
+
+.dt-note-editor .bn-block-content[data-content-type='heading'] h1 {
+  font-size: 28px;
+}
+.dt-note-editor .bn-block-content[data-content-type='heading'] h2 {
+  font-size: 23px;
+}
+.dt-note-editor .bn-block-content[data-content-type='heading'] h3 {
+  font-size: 19px;
+}
+.dt-note-editor .bn-block-content[data-content-type='heading'] :is(h1, h2, h3, h4, h5, h6) {
+  font-family: var(--font-serif), Georgia, serif;
+  font-weight: 600;
+}
+
+/* Insertion palette: readable groups, quiet chrome and a separate example. */
+.dt-note-insert-menu {
+  position: relative;
+  width: 300px;
+  max-width: calc(100vw - 32px);
+  color: var(--foreground);
+  background: var(--card);
+  border: 0;
+  border-radius: 12px;
+  box-shadow: var(
+    --dt-shadow-md,
+    0 0 0 1px rgb(15 15 15 / 0.05),
+    0 3px 6px rgb(15 15 15 / 0.08),
+    0 9px 24px rgb(15 15 15 / 0.14)
+  );
+  font-family: var(--font-geist-sans), sans-serif;
+  font-size: 13.5px;
+  z-index: 70;
+}
+.dt-note-menu-hint {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 10px 13px 4px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+.dt-note-menu-items {
+  max-height: min(380px, 48vh);
+  overflow: auto;
+  padding: 0 5px 6px;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+.dt-note-menu-group {
+  padding: 10px 8px 4px;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--muted-foreground);
+}
+.dt-note-menu-items > div:has(.dt-note-menu-group):not(:first-child) {
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+}
+.dt-note-menu-items button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 32px;
+  padding: 4px 8px;
+  width: 100%;
+  text-align: left;
+  border-radius: 6px;
+}
+.dt-note-menu-items button.selected {
+  background: var(--accent, var(--secondary));
+}
+.dt-note-menu-icon {
+  display: flex;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  color: var(--foreground);
+  opacity: 0.85;
+}
+.dt-note-menu-icon svg {
+  width: 17px;
+  height: 17px;
+}
+.dt-note-menu-items kbd {
+  margin-left: auto;
+  font: 11.5px inherit;
+  color: var(--muted-foreground);
+}
+.dt-note-insert-menu footer {
+  display: flex;
+  justify-content: space-between;
+  padding: 7px 12px;
+  border-top: 1px solid var(--border);
+  font-size: 11.5px;
+  color: var(--muted-foreground);
+}
+.dt-note-insert-menu footer button,
+.dt-note-insert-menu footer span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.dt-note-insert-menu footer kbd {
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 0 3px;
+  font-size: 10px;
+}
+.dt-note-menu-preview {
+  position: absolute;
+  top: 0;
+  width: 236px;
+  padding: 6px 6px 12px;
+  background: var(--popover, var(--card));
+  border-radius: 12px;
+  box-shadow: var(
+    --dt-shadow-md,
+    0 0 0 1px rgb(15 15 15 / 0.05),
+    0 3px 6px rgb(15 15 15 / 0.08),
+    0 9px 24px rgb(15 15 15 / 0.14)
+  );
+  pointer-events: none;
+}
+.dt-note-menu-preview.right {
+  left: calc(100% + 10px);
+}
+.dt-note-menu-preview.left {
+  right: calc(100% + 10px);
+}
+.dt-note-menu-preview > strong {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  margin: 10px 8px 2px;
+}
+.dt-note-menu-preview > p {
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--muted-foreground);
+  margin: 0 8px;
+}
+.dt-note-preview-example {
+  background: var(--secondary);
+  border: 0;
+  border-radius: 8px;
+  min-height: 112px;
+  padding: 14px 16px;
+  font-size: 12px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+  overflow: hidden;
+}
+.dt-note-preview-example h3 {
+  font-family: var(--font-serif), Georgia, serif;
+  font-size: 18px;
+  font-weight: 600;
+}
+.dt-note-preview-example p {
+  display: block;
+  margin: 0;
+}
+.dt-note-preview-example label {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+}
+.dt-note-preview-example input {
+  accent-color: var(--primary);
+}
+.dt-note-preview-example blockquote {
+  border-left: 3px solid var(--border);
+  padding-left: 10px;
+}
+.dt-note-preview-example ul {
+  padding-left: 16px;
+  list-style: disc;
+  line-height: 1.8;
+}
+.dt-note-preview-example table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 10px;
+}
+.dt-note-preview-example :is(td, th) {
+  border: 1px solid var(--border);
+  padding: 4px;
+  text-align: left;
+}
+.dt-note-preview-example pre {
+  white-space: pre-wrap;
+  font-size: 10px;
+}
+.dt-note-preview-equation {
+  font-family: Georgia, serif;
+  font-size: 17px;
+}
+.dt-note-callout {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  border-radius: 6px;
+  padding: 14px 16px;
+  width: 100%;
+  background: color-mix(in srgb, var(--secondary) 80%, transparent);
+}
+.dt-note-callout[data-tone='tip'] {
+  background: color-mix(in srgb, #e0b54a 12%, var(--card));
+}
+.dt-note-callout[data-tone='warning'] {
+  background: color-mix(in srgb, #f59e0b 13%, var(--card));
+}
+.dt-note-callout[data-tone='info'] {
+  background: color-mix(in srgb, #3b82f6 9%, var(--card));
+}
+.dt-note-callout > button {
+  padding-top: 3px;
+  flex-shrink: 0;
+  color: var(--muted-foreground);
+}
+.dt-note-callout-text {
+  flex: 1;
+  min-width: 0;
+}
+.dt-note-toggle {
+  display: flex;
+  gap: 6px;
+  width: 100%;
+}
+.dt-note-toggle > button {
+  flex-shrink: 0;
+  align-self: flex-start;
+  margin-top: 24px;
+  padding: 4px;
+  border-radius: 4px;
+}
+.dt-note-toggle > button:hover {
+  background: var(--secondary);
+}
+.dt-note-toggle[data-collapsed='false'] > button svg {
+  transform: rotate(90deg);
+}
+.dt-note-toggle-body {
+  min-width: 0;
+  flex: 1;
+}
+.dt-note-toggle[data-collapsed='true'] > .dt-note-toggle-body > .bn-block-group {
+  display: none;
+}
+.dt-note-toggle-title {
+  font-family: var(--font-serif), Georgia, serif;
+  font-weight: 600;
+  margin-top: 16px;
+}
+.dt-note-toggle-title.level-1 {
+  font-size: 28px;
+}
+.dt-note-toggle-title.level-2 {
+  font-size: 23px;
+}
+.dt-note-toggle-title.level-3 {
+  font-size: 19px;
+}
+.dt-note-columns {
+  display: flex;
+  width: 100%;
+  gap: 28px;
+  margin: 12px 0;
+}
+.dt-note-columns > .bn-block-group {
+  display: contents;
+}
+.dt-note-columns > :is(.bn-block-group > *, .bn-block-outer) {
+  flex: 1;
+  min-width: 0;
+}
+.dt-note-column {
+  min-width: 0;
+  width: 100%;
+  min-height: 50px;
+}
+.dt-note-column > .bn-block-group {
+  padding: 0 !important;
+  border: 0 !important;
+  margin: 0 !important;
+}
+.dt-note-column:hover {
+  outline: 1px dashed var(--border);
+  outline-offset: 8px;
+}
+.dt-note-toc {
+  width: 100%;
+  padding: 12px 0;
+}
+.dt-note-toc a {
+  display: block;
+  color: var(--muted-foreground);
+  font-size: 13px;
+  line-height: 1.8;
+  text-decoration: none;
+  padding-top: 3px;
+  padding-bottom: 3px;
+  border-radius: 3px;
+}
+.dt-note-toc a:hover {
+  color: var(--foreground);
+  background: var(--secondary);
+}
+.dt-note-block-label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--muted-foreground);
+  margin-bottom: 9px;
+}
+.dt-note-block-label button {
+  margin-left: auto;
+}
+.dt-note-toc p,
+.dt-note-hint {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  padding: 8px 0;
+}
+.dt-note-web-card,
+.dt-note-html,
+.dt-note-data-view {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  width: 100%;
+  overflow: hidden;
+  margin: 6px 0;
+}
+.dt-note-web-card-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px;
+}
+.dt-note-web-card-header > svg {
+  color: var(--muted-foreground);
+  flex-shrink: 0;
+}
+.dt-note-web-card-header a {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: inherit;
+  text-decoration: none;
+  font-size: 13px;
+}
+.dt-note-web-card-header a span {
+  color: var(--muted-foreground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dt-note-web-card-header small {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+.dt-note-web-card-header > button {
+  opacity: 0;
+  color: var(--muted-foreground);
+}
+.dt-note-web-card:hover .dt-note-web-card-header > button,
+.dt-note-web-card:focus-within .dt-note-web-card-header > button {
+  opacity: 1;
+}
+.dt-note-web-card form {
+  padding: 14px;
+}
+.dt-note-web-card label {
+  display: flex;
+  flex-direction: column;
+  font-size: 12px;
+  color: var(--muted-foreground);
+  gap: 4px;
+  margin-bottom: 10px;
+}
+.dt-note-web-card input,
+.dt-note-link-form input {
+  border: 1px solid var(--border);
+  background: var(--background);
+  border-radius: 5px;
+  padding: 7px 9px;
+  font-size: 13px;
+  color: var(--foreground);
+  width: 100%;
+}
+.dt-note-web-card iframe,
+.dt-note-html iframe {
+  width: 100%;
+  height: 340px;
+  border: 0;
+  background: white;
+}
+.dt-note-web-card .dt-note-hint {
+  padding: 4px 16px 10px;
+}
+.dt-note-html > .dt-note-block-label {
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--border);
+  margin: 0;
+}
+.dt-note-html textarea {
+  width: 100%;
+  min-height: 200px;
+  padding: 12px;
+  background: var(--secondary);
+  font: 13px/1.6 monospace;
+  resize: vertical;
+  outline: none;
+}
+.dt-note-date {
+  font-size: 13px;
+  color: var(--primary);
+  background: var(--secondary);
+  border-radius: 4px;
+  padding: 0 3px;
+}
+.dt-note-data-view {
+  font-size: 13px;
+}
+.dt-note-data-view header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.dt-note-data-view [role='tablist'] {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+}
+.dt-note-data-view [role='tab'] {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+.dt-note-data-view [aria-selected='true'] {
+  background: var(--secondary);
+}
+.dt-note-view-search {
+  display: flex;
+  gap: 6px;
+  padding: 8px 12px;
+  align-items: center;
+  color: var(--muted-foreground);
+}
+.dt-note-data-view input:not([type='checkbox']),
+.dt-note-data-view select {
+  background: transparent;
+  min-width: 0;
+  max-width: 100%;
+  outline: none;
+  font-size: 12px;
+}
+.dt-note-table-scroll {
+  overflow: auto;
+}
+.dt-note-data-view table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.dt-note-data-view :is(th, td) {
+  text-align: left;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  font-weight: normal;
+}
+.dt-note-data-view th {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  background: var(--secondary);
+}
+.dt-note-task-columns {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  padding: 10px;
+}
+.dt-note-task-columns > div {
+  background: var(--secondary);
+  padding: 8px;
+  border-radius: 6px;
+}
+.dt-note-task-columns h4 {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--muted-foreground);
+  margin-bottom: 8px;
+}
+.dt-note-task-columns article {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  margin-bottom: 7px;
+  padding: 9px;
+}
+.dt-note-task-columns article p {
+  margin-bottom: 8px;
+  overflow-wrap: anywhere;
+}
+.dt-note-task-columns small {
+  display: block;
+  color: var(--muted-foreground);
+  margin-top: 5px;
+}
+.dt-note-task-list label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.dt-note-task-list small {
+  margin-left: auto;
+  color: var(--muted-foreground);
+}
+.dt-note-new-task {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 12px;
+  color: var(--muted-foreground);
+}
+.dt-note-new-task input {
+  flex: 1;
+}
+.dt-note-new-task button {
+  color: var(--foreground);
+}
+.dt-note-data-view .dt-note-hint {
+  padding: 8px 12px;
+}
+.dt-note-link-form {
+  position: absolute;
+  top: calc(100% + 5px);
+  left: 0;
+  width: 290px;
+  padding: 10px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 4px 20px #0002;
+}
+.dt-note-toolbar {
+  position: relative;
+  flex-wrap: wrap;
+  max-width: calc(100vw - 24px);
+}
+@media (max-width: 640px) {
+  .dt-note-columns {
+    display: block;
+  }
+  .dt-note-column {
+    margin-bottom: 16px;
+  }
+  .dt-note-task-columns {
+    grid-template-columns: 1fr;
+  }
+  .dt-note-web-card-header > button {
+    opacity: 1;
+  }
+}
+.dt-note-generation-preview {
+  padding: 2px 0;
+  margin: 4px 0 6px;
+  max-height: 420px;
+  overflow: auto;
+  font-size: 14px;
+}
+.dt-note-generation-preview > p {
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+.dt-note-insert-menu {
+  display: flex;
+  flex-direction: column;
+  max-height: inherit;
+}
+.dt-note-menu-hint,
+.dt-note-insert-menu footer {
+  flex-shrink: 0;
+}
+.dt-note-menu-items {
+  min-height: 0;
+  flex: 1 1 auto;
+}
+.dt-note-preview-paragraph {
+  font-size: 13px;
+  line-height: 1.75;
+}
+.dt-note-preview-heading {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-serif), Georgia, serif;
+  font-weight: 600;
+  line-height: 1.3;
+  margin-bottom: 8px;
+}
+.dt-note-preview-heading.level-1 {
+  font-size: 25px;
+}
+.dt-note-preview-heading.level-2 {
+  font-size: 21px;
+}
+.dt-note-preview-heading.level-3 {
+  font-size: 18px;
+}
+.dt-note-preview-heading.level-4 {
+  font-size: 16px;
+}
+.dt-note-preview-section > p {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.dt-note-preview-example ol {
+  padding-left: 18px;
+  list-style: decimal;
+  line-height: 1.8;
+}
+.dt-note-preview-toggle-body {
+  padding-left: 20px;
+  line-height: 1.6;
+  color: var(--muted-foreground);
+}
+.dt-note-preview-example hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  width: 100%;
+}
+.dt-note-preview-example label:has(input:checked) {
+  text-decoration: line-through;
+  color: var(--muted-foreground);
+}
+.dt-note-columns .dt-note-column {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+}
+.dt-note-columns > [data-node-view-content-react] > .node-noteColumn {
+  flex: 1;
+  min-width: 0;
+}
+.dt-note-toggle[data-collapsed='true']
+  > .dt-note-toggle-body
+  > [data-node-view-content-react]
+  > .bn-block-group {
+  display: none;
+}
+
+/* The same math renderer serves inline, display and insertion previews. */
+.dt-note-formula {
+  display: inline;
+}
+.dt-note-formula .katex {
+  font-size: 1.08em;
+}
+.dt-note-formula.display {
+  display: block;
+  overflow-x: auto;
+  width: 100%;
+}
+.dt-note-formula.display .katex-display {
+  margin: 0.65em 0;
+}
+.dt-note-inline-math button {
+  vertical-align: baseline;
+  font: inherit;
+}
+.dt-note-editor .bn-block-content[data-content-type='heading'] h4 {
+  font-size: 16px;
+}
+.dt-note-menu-preview.inline {
+  position: static;
+  order: 2;
+  width: auto;
+  margin: 0 8px 8px;
+  padding: 8px;
+  box-shadow: none;
+  flex-shrink: 1;
+  min-height: 100px;
+  overflow-y: auto;
+  pointer-events: auto;
+}
+.dt-note-insert-menu.preview-inline footer {
+  order: 3;
+}
+.dt-note-menu-preview.inline .dt-note-preview-example {
+  min-height: 72px;
+  padding: 9px 12px;
+}
+.dt-note-menu-preview.inline > strong {
+  margin: 5px 3px 0;
+  font-size: 12px;
+}
+.dt-note-menu-preview.inline > p {
+  display: none;
+}
+.dt-note-insert-menu.preview-inline .dt-note-menu-items {
+  min-height: 74px;
+  max-height: min(280px, 36vh);
+}
+.dt-note-preview-example {
+  line-height: 1.6;
+}
+.dt-note-preview-example svg {
+  flex-shrink: 0;
+}
+.dt-note-preview-example .dt-note-preview-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.dt-note-preview-example small {
+  font-size: 10px;
+  line-height: 1.5;
+}
+.dt-note-preview-muted {
+  color: var(--muted-foreground);
+}
+.dt-note-preview-example .dt-note-callout {
+  padding: 10px;
+  gap: 7px;
+}
+.dt-note-preview-example .dt-note-formula {
+  font-size: 12px;
+}
+.dt-note-preview-code {
+  background: #161616;
+  color: #f0f0f0;
+  padding: 9px;
+  border-radius: 5px;
+}
+.dt-note-preview-code small {
+  color: #aaa;
+}
+.dt-note-link {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  vertical-align: baseline;
+}
+.dt-note-link svg {
+  flex-shrink: 0;
+  align-self: center;
+}
+.dt-note-preview-page-link {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--primary);
+}
+.dt-note-preview-page-link span {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  overflow-wrap: anywhere;
+}
+.dt-note-preview-checks > div {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 5px 0;
+}
+.dt-note-preview-checkbox {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 13px;
+  height: 13px;
+  border: 1px solid var(--muted-foreground);
+  border-radius: 2px;
+}
+.dt-note-preview-checks .done {
+  text-decoration: line-through;
+  color: var(--muted-foreground);
+}
+.dt-note-preview-checks .done .dt-note-preview-checkbox {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  border-color: var(--primary);
+}
+.dt-note-preview-image img {
+  width: 100%;
+  height: 74px;
+  object-fit: contain;
+  border-radius: 3px;
+  background: white;
+}
+.dt-note-preview-image small {
+  display: block;
+  margin-top: 5px;
+  color: var(--muted-foreground);
+}
+.dt-note-preview-video {
+  background: var(--secondary);
+  height: 85px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border-radius: 5px;
+}
+.dt-note-preview-player {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 9px;
+  padding: 6px 0;
+}
+.dt-note-preview-player i {
+  height: 3px;
+  border-radius: 3px;
+  background: var(--border);
+  flex: 1;
+}
+.dt-note-preview-file {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.dt-note-preview-file div {
+  flex: 1;
+  min-width: 0;
+}
+.dt-note-preview-file small {
+  display: block;
+  color: var(--muted-foreground);
+  margin-top: 4px;
+}
+.dt-note-preview-bookmark {
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 10px;
+}
+.dt-note-preview-bookmark p {
+  font-size: 11px;
+  color: var(--muted-foreground);
+  margin: 5px 0 9px;
+}
+.dt-note-preview-bookmark small {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.dt-note-preview-window {
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  overflow: hidden;
+}
+.dt-note-preview-window > small {
+  padding: 4px 7px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--muted-foreground);
+}
+.dt-note-preview-window > div {
+  padding: 10px;
+}
+.dt-note-preview-window h3 {
+  font-size: 17px;
+}
+.dt-note-preview-window p {
+  font-size: 11px;
+  margin: 4px 0 8px;
+}
+.dt-note-preview-tag {
+  display: inline-block;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--secondary);
+  font-size: 10px;
+  white-space: nowrap;
+}
+.dt-note-preview-board {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+}
+.dt-note-preview-board > div {
+  background: var(--secondary);
+  padding: 6px;
+  border-radius: 4px;
+}
+.dt-note-preview-board article {
+  background: var(--card);
+  border: 1px solid var(--border);
+  padding: 6px;
+  border-radius: 4px;
+  margin-top: 6px;
+  font-size: 10px;
+}
+.dt-note-preview-task-list > small {
+  display: block;
+  border-top: 1px solid var(--border);
+  color: var(--muted-foreground);
+  padding-top: 5px;
+}
+.dt-note-preview-toc {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.dt-note-preview-toc strong {
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+.dt-note-preview-toc span {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.dt-note-preview-toc span:not(:nth-child(2)) {
+  padding-left: 12px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+.dt-note-preview-columns {
+  display: grid;
+  gap: 7px;
+}
+.dt-note-preview-columns > div {
+  border-left: 1px solid var(--border);
+  padding-left: 6px;
+  min-height: 70px;
+  min-width: 0;
+}
+.dt-note-preview-columns > div:first-child {
+  border: 0;
+  padding-left: 0;
+}
+.dt-note-preview-columns strong {
+  display: block;
+  margin-bottom: 6px;
+}
+.dt-note-preview-columns p {
+  font:
+    11px/1.7 var(--font-serif),
+    Georgia,
+    serif;
+  overflow-wrap: anywhere;
+}
+.dt-note-preview-date {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  color: var(--primary);
+  background: var(--secondary);
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+.dt-note-preview-diagram {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+.dt-note-preview-diagram span {
+  border: 1px solid var(--border);
+  background: var(--secondary);
+  padding: 3px 9px;
+  border-radius: 4px;
+  font-size: 10px;
+}
+.dt-note-preview-quiz > strong {
+  display: block;
+  font-size: 11px;
+  margin-bottom: 6px;
+}
+.dt-note-preview-quiz > div {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 6px;
+  margin: 4px 0;
+  font-size: 10px;
+}
+.dt-note-preview-quiz > div.answer {
+  background: var(--secondary);
+  border-color: var(--primary);
+}
+.dt-note-preview-quiz > div > span {
+  color: var(--muted-foreground);
+}
+.dt-note-preview-quiz > small {
+  display: block;
+  margin-top: 6px;
+  color: var(--primary);
+}
+.dt-note-preview-flashcard {
+  text-align: center;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 12px 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.dt-note-preview-flashcard small,
+.dt-note-preview-flashcard span {
+  color: var(--muted-foreground);
+  font-size: 10px;
+}
+.dt-note-preview-flashcard strong {
+  font-family: var(--font-serif), Georgia, serif;
+  font-size: 17px;
+}
+.dt-note-preview-timeline {
+  border-left: 2px solid var(--border);
+  margin: 0 5px;
+  padding-left: 12px;
+}
+.dt-note-preview-timeline > div {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  margin: 4px 0 12px;
+}
+.dt-note-preview-timeline > div:last-child {
+  margin-bottom: 0;
+}
+.dt-note-preview-timeline > div::before {
+  content: '';
+  position: absolute;
+  left: -16px;
+  top: 5px;
+  height: 6px;
+  width: 6px;
+  background: var(--primary);
+  border-radius: 50%;
+}
+.dt-note-preview-timeline b {
+  font-size: 10px;
+  color: var(--muted-foreground);
+}
+.dt-note-preview-research p {
+  margin: 8px 0;
+  font-size: 11px;
+}
+.dt-note-preview-research small {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted-foreground);
+}
+.dt-note-preview-research sup {
+  color: var(--primary);
+}
+.dt-note-preview-animation {
+  text-align: center;
+  padding: 10px;
+  background: var(--secondary);
+  border-radius: 5px;
+}
+.dt-note-preview-wave {
+  margin: 10px auto 0;
+  width: 110px;
+  height: 23px;
+  border-top: 2px solid var(--primary);
+  border-radius: 50%;
+  transform: rotate(-12deg);
+}
+.dt-note-preview-concepts {
+  text-align: center;
+}
+.dt-note-preview-concepts > strong {
+  display: inline-block;
+  background: var(--secondary);
+  border: 1px solid var(--border);
+  padding: 5px;
+  border-radius: 5px;
+  font-size: 11px;
+}
+.dt-note-preview-concepts > div {
+  display: flex;
+  gap: 7px;
+  justify-content: center;
+  padding-top: 22px;
+}
+.dt-note-preview-concepts span {
+  position: relative;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px;
+  font-size: 10px;
+}
+.dt-note-preview-concepts span::before {
+  content: '';
+  height: 22px;
+  border-left: 1px solid var(--border);
+  position: absolute;
+  left: 50%;
+  bottom: 100%;
+}
+.dt-note-preview-geometry svg {
+  width: 100%;
+  height: 100px;
+  color: var(--primary);
+}
+.dt-note-preview-geometry small {
+  color: var(--muted-foreground);
+  display: block;
+  text-align: center;
+}
+.dt-note-preview-transcript {
+  border-left: 2px solid var(--border);
+  padding-left: 6px;
+  font-size: 10px;
+  color: var(--muted-foreground);
+}
+.dt-note-preview-ai {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 1.55;
+}
+.dt-note-preview-ai p.is-suggested {
+  padding: 4px 8px;
+  margin-left: -8px;
+  border-left: 2px solid var(--primary);
+  background: color-mix(in srgb, var(--primary) 7%, transparent);
+  border-radius: 0 4px 4px 0;
+}
+.dt-note-preview-ai small {
+  font-size: 10.5px;
+  color: var(--primary);
+}
+
+/* ---- Learning blocks: kind, request, generate ------------------------- */
+.dt-note-learning-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  margin: -4px 0 10px;
+}
+.dt-note-kind {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  margin-left: -6px;
+  padding: 0 8px 0 7px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--foreground);
+  transition: background-color 120ms;
+}
+.dt-note-kind > svg:first-child {
+  color: var(--primary);
+}
+.dt-note-kind:hover:not(:disabled),
+.dt-note-kind[aria-expanded='true'] {
+  background: var(--secondary);
+}
+.dt-note-kind:disabled {
+  cursor: default;
+}
+.dt-note-kind-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: -6px;
+  z-index: 40;
+  min-width: 210px;
+  max-height: 340px;
+  overflow-y: auto;
+  padding: 4px;
+}
+.dt-note-kind-menu.is-up {
+  top: auto;
+  bottom: calc(100% + 6px);
+  left: 0;
+}
+.dt-note-kind-menu-title {
+  padding: 6px 8px 4px;
+  font-size: 11.5px;
+  color: var(--muted-foreground);
+}
+.dt-note-learning-prompt {
+  min-width: 0;
+  max-width: 60%;
+  height: 26px;
+  overflow: hidden;
+  padding: 0 7px;
+  border-radius: 6px;
+  font-size: 12.5px;
+  color: var(--muted-foreground);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition:
+    background-color 120ms,
+    color 120ms;
+}
+.dt-note-learning-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--primary) 9%, transparent);
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 500;
+}
+.dt-note-learning-status:hover {
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
+}
+.dt-note-generation-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.dt-note-generation-form > textarea {
+  width: 100%;
+  min-width: 0;
+  min-height: 64px;
+  resize: vertical;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--background);
+  color: var(--foreground);
+  line-height: 1.55;
+  font-size: 13.5px;
+  transition:
+    border-color 120ms,
+    box-shadow 120ms;
+}
+.dt-note-generation-form > textarea::placeholder {
+  color: var(--muted-foreground);
+  opacity: 0.7;
+}
+.dt-note-generation-form > textarea:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--primary) 55%, var(--border));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 14%, transparent);
+}
+.dt-note-generation-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.dt-note-generation-hint {
+  margin-right: auto;
+  font-size: 11.5px;
+  color: var(--muted-foreground);
+  opacity: 0.85;
+}
+/* A real button: bordered secondary, filled primary. Text-only ghosts read
+   as labels inside a card, so a card's actions use these. */
+.dt-note-action {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--background);
+  color: var(--foreground);
+  font-size: 12.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  transition:
+    background-color 120ms,
+    filter 120ms,
+    transform 120ms,
+    opacity 120ms;
+}
+.dt-note-action:hover:not(:disabled) {
+  background: var(--secondary);
+}
+.dt-note-action:active:not(:disabled) {
+  transform: scale(0.97);
+}
+.dt-note-action.is-primary {
+  border-color: transparent;
+  background: var(--primary);
+  color: var(--primary-foreground, #fff);
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 0.14),
+    inset 0 1px 0 rgb(255 255 255 / 0.14);
+}
+.dt-note-action.is-primary:hover:not(:disabled) {
+  background: var(--primary);
+  filter: brightness(1.07);
+}
+.dt-note-action:disabled {
+  opacity: 0.45;
+}
+.dt-note-generation-shimmer {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 4px 0;
+}
+.dt-note-generation-shimmer span {
+  height: 10px;
+  border-radius: 5px;
+  background: linear-gradient(
+    90deg,
+    var(--secondary) 0%,
+    color-mix(in srgb, var(--primary) 12%, var(--secondary)) 50%,
+    var(--secondary) 100%
+  );
+  background-size: 200% 100%;
+  animation: dt-note-shimmer 1.4s linear infinite;
+}
+.dt-note-generation-shimmer span:nth-child(2) {
+  width: 86%;
+  animation-delay: 0.12s;
+}
+.dt-note-generation-shimmer span:nth-child(3) {
+  width: 62%;
+  animation-delay: 0.24s;
+}
+@keyframes dt-note-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dt-note-generation-shimmer span {
+    animation: none;
+  }
+}
+.dt-note-upload {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.dt-note-upload > svg {
+  flex-shrink: 0;
+}
+.dt-note-upload > button {
+  white-space: nowrap;
+}
+.dt-note-learning {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.dt-note-learning audio,
+.dt-note-learning video,
+.dt-note-learning img {
+  max-width: 100%;
+}
+
+.dt-note-file {
+  width: 100%;
+  margin: 4px 0;
+}
+.dt-note-file a {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  text-decoration: none;
+}
+.dt-note-file a:hover {
+  background: var(--secondary);
+}
+.dt-note-file a:focus-visible {
+  outline: 2px solid var(--primary);
+}
+.dt-note-file a span {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.dt-note-file svg {
+  flex-shrink: 0;
+}
+.dt-note-file p {
+  margin-top: 6px;
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+
+.dt-note-audio-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 14px;
+  border: 0;
+  padding: 0;
+}
+.dt-note-audio-options label {
+  display: flex;
+  flex: 1 1 140px;
+  min-width: 0;
+  flex-direction: column;
+  gap: 5px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+.dt-note-learning .dt-note-audio-options input,
+.dt-note-audio-options select {
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 7px;
+  background: var(--background);
+  color: var(--foreground);
+  min-width: 0;
+}
+
+.dt-note-inline-review {
+  width: 100%;
+  padding: 8px 0 18px;
+  white-space: normal;
+}
+.dt-note-review-original {
+  background: color-mix(in srgb, var(--primary) 4%, transparent);
+  border-radius: 6px;
+}
+.dt-note-review-card {
+  border: 1px solid color-mix(in srgb, var(--primary) 25%, var(--border));
+  border-radius: 12px;
+  padding: 16px;
+  background: var(--background);
+  box-shadow: 0 3px 12px #00000005;
+  font-size: 14px;
+  line-height: 1.6;
+}
+.dt-note-review-card header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.dt-note-review-card header > span,
+.dt-note-review-card header > div {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.dt-note-review-card header > span {
+  color: var(--primary);
+  font-weight: 600;
+}
+.dt-note-review-card .dt-note-review-accept {
+  color: var(--primary-foreground);
+  background: var(--primary);
+}
+.dt-note-review-reason {
+  color: var(--muted-foreground);
+  margin: 0 0 12px;
+  font-size: 12px;
+}
+.dt-note-review-content {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  margin-bottom: 10px;
+}
+.dt-note-review-content .dt-note-learning {
+  border: none;
+  padding: 0;
+  background: transparent;
+}
+.dt-note-review-content img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 6px;
+}
+.dt-note-editor .md-renderer {
+  font-family: inherit;
+  font-size: 15px;
+  line-height: 1.75;
+}
+.dt-note-review-content .md-renderer :is(h1, h2, h3, h4, h5, h6) {
+  font-family: var(--font-serif), Georgia, serif;
+  font-weight: 600;
+}
+.dt-note-review-content .md-renderer h1 {
+  font-size: 28px;
+}
+.dt-note-review-content .md-renderer h2 {
+  font-size: 23px;
+}
+.dt-note-review-content .md-renderer h3 {
+  font-size: 19px;
+}
+.dt-note-review-error {
+  color: var(--destructive, #b42318);
+  background: color-mix(in srgb, var(--destructive, #b42318) 6%, transparent);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+/* Selection toolbar: Dito first, then marks; every choice opens below. */
+.dt-note-toolbar {
+  gap: 1px;
+  padding: 3px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--popover, var(--card));
+  box-shadow: var(
+    --dt-shadow-md,
+    0 0 0 1px rgb(15 15 15 / 0.05),
+    0 3px 6px rgb(15 15 15 / 0.08),
+    0 9px 24px rgb(15 15 15 / 0.14)
+  );
+}
+.dt-note-toolbar > button,
+.dt-note-toolbar > span > button {
+  height: 28px;
+  min-width: 28px;
+  justify-content: center;
+  padding: 0 6px;
+  border-radius: 6px;
+  color: var(--foreground);
+}
+.dt-note-toolbar button:hover,
+.dt-note-toolbar button[aria-expanded='true'] {
+  background: var(--accent, var(--secondary));
+}
+.dt-note-toolbar button[aria-pressed='true'] {
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+  color: var(--primary);
+}
+.dt-note-toolbar-ai {
+  gap: 5px !important;
+  padding: 0 7px 0 8px !important;
+  font-size: 13px !important;
+  font-weight: 500;
+}
+.dt-note-toolbar-ai > svg:first-child {
+  color: var(--primary);
+}
+.dt-note-toolbar-sep {
+  width: 1px;
+  height: 16px;
+  margin: 0 3px;
+  background: var(--border);
+}
+.dt-note-color-glyph {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1;
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+}
+.dt-note-color-glyph[data-color='gray'] {
+  color: #9b9a97;
+}
+.dt-note-color-glyph[data-color='red'] {
+  color: #e03e3e;
+}
+.dt-note-color-glyph[data-color='orange'] {
+  color: #d9730d;
+}
+.dt-note-color-glyph[data-color='yellow'] {
+  color: #cb912f;
+}
+.dt-note-color-glyph[data-color='green'] {
+  color: #448361;
+}
+.dt-note-color-glyph[data-color='blue'] {
+  color: #337ea9;
+}
+.dt-note-color-glyph[data-color='purple'] {
+  color: #9065b0;
+}
+.dt-note-toolbar-panel,
+.dt-note-toolbar .dt-note-link-form {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 2;
+  min-width: 210px;
+  padding: 5px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--popover, var(--card));
+  box-shadow: var(
+    --dt-shadow-md,
+    0 0 0 1px rgb(15 15 15 / 0.05),
+    0 3px 6px rgb(15 15 15 / 0.08),
+    0 9px 24px rgb(15 15 15 / 0.14)
+  );
+  animation: dt-pop-in 140ms var(--dt-ease, ease-out);
+}
+.dt-note-toolbar-panel.is-colors {
+  left: auto;
+  right: 0;
+  min-width: 160px;
+}
+.dt-note-toolbar-panel button {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 9px;
+  height: 30px;
+  padding: 0 8px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--foreground);
+}
+.dt-note-toolbar-panel button > svg {
+  color: var(--muted-foreground);
+}
+.dt-note-toolbar-panel button .dt-note-color-glyph {
+  width: 16px;
+  text-align: center;
+}
+.dt-note-toolbar-divider {
+  height: 1px;
+  margin: 4px 2px;
+  background: var(--border);
+}
+.dt-note-toolbar .dt-note-link-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  width: 300px;
+  padding: 6px;
+}
+.dt-note-toolbar .dt-note-link-form input {
+  flex: 1;
+  width: auto;
+  height: 30px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--secondary);
+  outline: none;
+}
+.dt-note-toolbar .dt-note-link-form button[type='submit'] {
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 6px;
+  background: var(--foreground);
+  color: var(--background);
+  font-size: 12.5px;
+}
+.dt-note-toolbar .dt-note-link-form p {
+  width: 100%;
+  padding: 0 4px;
+  font-size: 12px;
+  color: #dc2626;
+}
+.dt-note-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+/* Two-way switch inside a card header (HTML: edit / preview). */
+.dt-note-segment {
+  display: inline-flex;
+  margin-left: auto;
+  padding: 2px;
+  border-radius: 8px;
+  background: var(--secondary);
+}
+.dt-note-segment button {
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--muted-foreground);
+  transition:
+    background-color 120ms,
+    color 120ms;
+}
+.dt-note-segment button[aria-pressed='true'] {
+  background: var(--background);
+  color: var(--foreground);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.08);
+}
+.dt-note-segment button:disabled {
+  opacity: 0.45;
+}
+.dt-note-block-label .dt-note-segment button {
+  margin-left: 0;
+}
+.dt-note-upload[aria-busy='false'] > svg {
+  color: var(--muted-foreground);
+}
+.dt-note-upload p[role='alert'] {
+  color: var(--destructive, #dc2626);
+}

@@ -16,6 +16,7 @@ from typing import Any
 import json_repair
 
 from deeptutor.services.llm.provider_core.base import LLMProvider, LLMResponse, ToolCallRequest
+from deeptutor.services.llm.reasoning_params import minimax_reasoning_kwargs
 from deeptutor.services.provider_registry import ANTHROPIC_EFFORT_BASED_FAMILIES
 from deeptutor.services.session.provider_response_state import (
     normalize_provider_response_state,
@@ -44,11 +45,13 @@ class AnthropicProvider(LLMProvider):
         default_model: str = "claude-sonnet-4-20250514",
         extra_headers: dict[str, str] | None = None,
         supports_prompt_caching: bool = True,
+        binding: str = "anthropic",
     ):
         super().__init__(api_key, api_base)
         self.default_model = default_model
         self.extra_headers = extra_headers or {}
         self._supports_prompt_caching = supports_prompt_caching
+        self._binding = binding
 
         from anthropic import AsyncAnthropic
 
@@ -412,7 +415,15 @@ class AnthropicProvider(LLMProvider):
         if system:
             kwargs["system"] = system
 
-        if thinking_enabled and effort_based:
+        minimax = (
+            minimax_reasoning_kwargs(model_name, effort, anthropic=True)
+            if getattr(self, "_binding", "anthropic") in {"minimax", "minimax_anthropic"}
+            else None
+        )
+        if minimax is not None:
+            kwargs.update(minimax)
+            thinking_enabled = minimax["thinking"]["type"] != "disabled"
+        elif thinking_enabled and effort_based:
             # These families reject enabled+budget_tokens with a 400 —
             # adaptive is their only on-mode, so any real effort level maps
             # to adaptive (no budget headroom needed). Off-sentinels omit

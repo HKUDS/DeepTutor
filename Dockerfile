@@ -75,7 +75,9 @@ WORKDIR /app
 # Install system dependencies
 # Note: libgl1 and libglib2.0-0 are required for OpenCV (used by mineru)
 # Rust is required for building tiktoken and other packages without pre-built wheels
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN sed -i 's|http://deb.debian.org|https://deb.debian.org|g' /etc/apt/sources.list.d/debian.sources \
+    && apt-get -o Acquire::Retries=3 update \
+    && apt-get -o Acquire::Retries=3 install -y --no-install-recommends \
     curl \
     git \
     build-essential \
@@ -135,7 +137,9 @@ WORKDIR /app
 # Office previews convert documents to PDF in the main app. Writer, Calc and
 # Impress cover DOCX, XLSX and PPTX; Noto CJK preserves Chinese text and
 # Liberation supplies common Latin font substitutes in the rendered pages.
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN sed -i 's|http://deb.debian.org|https://deb.debian.org|g' /etc/apt/sources.list.d/debian.sources \
+    && apt-get -o Acquire::Retries=3 update \
+    && apt-get -o Acquire::Retries=3 install -y --no-install-recommends \
     curl \
     ca-certificates \
     bash \
@@ -161,6 +165,9 @@ RUN ln -sf /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
     && node --version && npm --version
 
 # Copy Python packages from builder stage
+# Replace the base image's package tree instead of merging dist-info from
+# different pip/setuptools versions into one environment.
+RUN rm -rf /usr/local/lib/python3.11/site-packages
 COPY --from=python-base /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
 COPY --from=python-base /usr/local/bin /usr/local/bin
 
@@ -175,7 +182,7 @@ COPY --from=frontend-builder /app/web/public/ ./web/public/
 COPY deeptutor/ ./deeptutor/
 COPY deeptutor_cli/ ./deeptutor_cli/
 COPY scripts/ ./scripts/
-COPY pyproject.toml ./
+COPY pyproject.toml build_metadata.py ./
 COPY requirements/ ./requirements/
 COPY requirements.txt ./
 

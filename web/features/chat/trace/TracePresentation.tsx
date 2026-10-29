@@ -25,6 +25,8 @@ import {
   type DetailRow,
 } from "@/components/activity";
 import { MODE_SPEED, MODE_TO_ORB } from "./ActivityOrb";
+import { AnswererMark } from "./AnswererMark";
+import type { Answerer } from "./answerer";
 import type {
   ResearchStageCard,
   ResearchStageId,
@@ -44,7 +46,6 @@ import {
   hasRenderableCallTrace as selectHasRenderableCallTrace,
   hasSettledFinalRound,
   isChatLoopAnswerContent,
-  isRetractedRound,
   isTracePending,
   selectTraceDisplayItems,
 } from "./selectors";
@@ -447,25 +448,16 @@ function getTraceHeader(
   return title;
 }
 
-// Chat-loop `content` (call_kind "agent_loop_round") is the model's
-// user-facing text, and it stays in the answer bubble — commentary written
-// before a tool call included. So it is kept OUT of the trace by default, to
-// avoid showing the same sentence twice. The one exception is a round a
-// capability retracted: that text is no longer in the bubble, so the trace is
-// the only place left for it.
+// Chat-loop prose belongs to the answer and must not be duplicated in the trace.
 function getTraceText(
   events: StreamEvent[],
   eventTypes: Array<StreamEvent["type"]>,
-  // When the caller knows this group's text was retracted, its
-  // ``agent_loop_round`` content is trace material and should NOT be
-  // filtered out as answer-bubble text.
-  includeChatLoopContent = false,
 ) {
   const textEvents = events.filter(
     (event) =>
       eventTypes.includes(event.type) &&
       event.content.trim().length > 0 &&
-      (includeChatLoopContent || !isChatLoopAnswerContent(event)),
+      !isChatLoopAnswerContent(event),
   );
   if (!textEvents.length) return "";
 
@@ -781,16 +773,9 @@ function TraceRowBody({
   );
   const thoughtText = getTraceText(callEvents, ["thinking"]);
   const observationText = getTraceText(callEvents, ["observation"]);
-  // A chat round can emit BOTH reasoning (thinking) and retracted commentary
-  // (content) in a single call; both are trace material and render as
-  // separate stacked blocks. Other pipelines keep the legacy "thought or
-  // content" fallback so their rows are unchanged.
+  // Chat-loop reasoning belongs in the trace; its public prose stays in the answer.
   const isChatRound = kind === "agent_loop_round";
-  const contentText = getTraceText(
-    callEvents,
-    ["content"],
-    isRetractedRound(callEvents),
-  );
+  const contentText = getTraceText(callEvents, ["content"]);
   const bodyBlocks =
     role === "observe"
       ? [observationText]
@@ -951,11 +936,7 @@ function hasExpandableContent(
   );
   const thoughtText = getTraceText(callEvents, ["thinking"]);
   const observationText = getTraceText(callEvents, ["observation"]);
-  const contentText = getTraceText(
-    callEvents,
-    ["content"],
-    isRetractedRound(callEvents),
-  );
+  const contentText = getTraceText(callEvents, ["content"]);
   const genericBodyText =
     role === "observe"
       ? observationText
@@ -1021,7 +1002,6 @@ function TraceRowItem({
   const isToolRow = kind === "tool_planning" || group === "tool_call";
   const isChatRound = kind === "agent_loop_round";
   const isRetrieve = role === "retrieve";
-  const retracted = isRetractedRound(callEvents);
   // The model's own text-form deliberation — chat-loop reasoning/narration and
   // pipeline "Thought"/"Plan" rounds. Unlike a tool call (whose result is
   // secondary detail worth folding away), here the text IS the substance, so
@@ -1041,7 +1021,6 @@ function TraceRowItem({
   const isContextExploration = kind === "context_exploration";
   const answering =
     isChatRound &&
-    !retracted &&
     callEvents.some(isChatLoopAnswerContent);
   const autoOpen =
     isThinking && !isContextExploration && !answering ? active : false;
@@ -1063,7 +1042,7 @@ function TraceRowItem({
     | undefined;
 
   const thoughtText = getTraceText(callEvents, ["thinking"]).trim();
-  const contentText = getTraceText(callEvents, ["content"], retracted).trim();
+  const contentText = getTraceText(callEvents, ["content"]).trim();
 
   // Resolve every row into a uniform { icon, headline, chip } triple so the
   // activity feed reads consistently across pipelines. Tool calls get a human
@@ -1526,12 +1505,15 @@ export function StreamingStatus({
   onToggle,
   summary,
   agentName,
+  answerer,
   showMark = true,
   traceBounds,
 }: {
   events: StreamEvent[];
   isStreaming?: boolean;
   content?: string;
+  /** A turn handed to a partner or an agent: they own the line, mark and all. */
+  answerer?: Answerer;
   /** The turn's real span, when ``events`` is only a preview of it. */
   traceBounds?: { started_at?: number | null; ended_at?: number | null } | null;
   // Extra layout classes from the call site (e.g. ``mt-3`` when the row
@@ -1614,6 +1596,35 @@ export function StreamingStatus({
   );
   const durationLabel =
     turnSeconds != null ? formatTurnDuration(turnSeconds) : null;
+
+  if (answerer) {
+    // Their mark where the orb would be, their name held still, and what
+    // they are doing breathing beside it — "Paul is thinking…", "Paul
+    // answered". DeepTutor's own phase words do not apply to someone else.
+    const doing =
+      mode === "responded"
+        ? t("trace.answerer.done")
+        : mode === "tool_using"
+          ? t("trace.answerer.tools")
+          : hasFinalContent
+            ? t("trace.answerer.answering")
+            : t("trace.answerer.thinking");
+    return (
+      <ActivityHeader
+        orb={MODE_TO_ORB[mode]}
+        mark={<AnswererMark answerer={answerer} working={mode !== "responded"} />}
+        lead={<span className="dt-answerer-name">{answerer.name}</span>}
+        label={doing}
+        duration={durationLabel}
+        settled={mode === "responded"}
+        expandable={expandable}
+        expanded={expanded}
+        onToggle={onToggle}
+        summary={summary}
+        className={className}
+      />
+    );
+  }
   // Static label after the answer is done — no breathing animation. Every
   // other state is live, so the label breathes to signal ongoing work while
   // the orb beside it runs its own motion.
@@ -1766,6 +1777,7 @@ export function AssistantActivity({
   content,
   className = "",
   agentName,
+  answerer,
   showMark = true,
   headerClassName = "",
   onTraceToggle,
@@ -1789,6 +1801,8 @@ export function AssistantActivity({
   className?: string;
   /** Forwarded to StreamingStatus — names the thinker in the status row. */
   agentName?: string;
+  /** Forwarded to StreamingStatus — the partner or agent a turn was handed to. */
+  answerer?: Answerer;
   /** Hide the activity mark (partner chat shows its avatar instead). */
   showMark?: boolean;
   /** Extra classes on the status header row (e.g. a min-height so the row
@@ -1865,6 +1879,7 @@ export function AssistantActivity({
         }}
         summary={processSummary}
         agentName={agentName}
+        answerer={answerer}
         showMark={showMark}
         className={headerClassName}
         traceBounds={traceBounds}

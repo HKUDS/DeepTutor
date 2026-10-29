@@ -6,6 +6,7 @@ import asyncio
 from dataclasses import dataclass, field
 import json
 import logging
+import os
 import re
 from typing import Any, Awaitable, Callable
 
@@ -704,6 +705,23 @@ class ContextBuilder:
         route = (
             {"provider": binding, "model": llm_config.model} if isinstance(binding, str) else None
         )
+        if os.getenv("DEEPTUTOR_CHAT_ENGINE") == "typescript-native":
+            from deeptutor.runtime.ts_engine.config import compatibility_reason
+
+            if not compatibility_reason(llm_config):
+                from .native_history import build_native_history
+
+                return await build_native_history(
+                    self,
+                    session_id=session_id,
+                    llm_config=llm_config,
+                    language=language,
+                    messages=messages,
+                    unsummarized=unsummarized,
+                    summary=stored_summary,
+                    route=route,
+                    on_event=on_event,
+                )
         # Replaying a model turn deep-copies its stored tool bodies. On this
         # session that copy is tens of megabytes; doing it on the event loop
         # starves the turn lease and the UI stays on "reasoning" after the

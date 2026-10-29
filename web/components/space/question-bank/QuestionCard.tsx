@@ -253,12 +253,12 @@ export default function QuestionCard({
             onUnpick={onUnfile}
             onCreate={onCreateAndFile}
           />
-          <Tooltip label={entry.bookmarked ? t("Remove Bookmark") : t("Bookmark")}>
+          <Tooltip label={entry.bookmarked ? t("Unmark question") : t("Mark question")}>
             <button
               type="button"
               onClick={onToggleBookmark}
               disabled={disabled}
-              aria-label={entry.bookmarked ? t("Remove Bookmark") : t("Bookmark")}
+              aria-label={entry.bookmarked ? t("Unmark question") : t("Mark question")}
               className={`rounded-lg p-1.5 transition-colors disabled:opacity-40 ${
                 entry.bookmarked
                   ? "text-[var(--primary)]"

@@ -1,4 +1,4 @@
-"""Cross-workspace navigation must not weaken scoped content access."""
+"""Navigation reads one workspace; only the account index (Settings) spans them."""
 
 from __future__ import annotations
 
@@ -29,13 +29,10 @@ async def test_equal_timestamps_use_the_same_order_before_and_after_pagination(a
                 expected.append((scope, row["id"]))
             with sqlite3.connect(get_path_service().get_chat_history_db()) as conn:
                 conn.execute("UPDATE sessions SET updated_at=100")
-    for query in (None, "Tied"):
-        rows = []
-        for offset in range(6):
-            rows.extend((await session_index(1, offset, query))["sessions"])
-        assert [(row["content_workspace_id"], row["session_id"]) for row in rows] == sorted(
-            expected
-        )
+    rows = []
+    for offset in range(6):
+        rows.extend((await session_index(1, offset))["sessions"])
+    assert [(row["content_workspace_id"], row["session_id"]) for row in rows] == sorted(expected)
 
 
 @pytest.mark.asyncio
@@ -59,14 +56,9 @@ async def test_index_merges_pages_and_keeps_origin_without_changing_scope(accoun
         )
         assert {row["content_workspace_id"] for row in rows} == {"", a}
         assert current_workspace_id() == a
-        searched = await session_index(2, 1, "vectors")
-        assert searched["total"] == 6
-        assert len(searched["sessions"]) == 2
 
 
-def test_http_navigation_is_account_wide_but_detail_and_mutations_are_scoped(
-    account, scoped_client
-):
+def test_http_lists_and_search_are_scoped_and_only_the_account_index_spans(account, scoped_client):
     a = account.create_workspace("A")["workspace_id"]
     with workspace_context(""):
         default = asyncio.run(get_sqlite_session_store().create_session(title="Default lesson"))
@@ -77,7 +69,11 @@ def test_http_navigation_is_account_wide_but_detail_and_mutations_are_scoped(
     assert index.status_code == 200, index.text
     assert {row["session_id"] for row in index.json()["sessions"]} == {default["id"], custom["id"]}
     scoped = client.get(f"/api/sessions?dt_workspace={a}").json()["sessions"]
-    assert [row["session_id"] for row in scoped] == [custom["id"]]
+    assert [(row["session_id"], row["content_workspace_id"]) for row in scoped] == [
+        (custom["id"], a)
+    ]
+    searched = client.get(f"/api/sessions/search?q=lesson&dt_workspace={a}").json()["sessions"]
+    assert [row["session_id"] for row in searched] == [custom["id"]]
     assert client.get(f"/api/sessions/{default['id']}?dt_workspace={a}").status_code == 404
     assert (
         client.patch(
@@ -120,9 +116,7 @@ def test_move_rejects_combined_changes_before_mutating_either_store(account, sco
     assert scoped_client.get(f"/api/sessions/{row['id']}?dt_workspace={target}").status_code == 404
 
 
-def test_learning_index_includes_each_workspace_and_keeps_feature_lists_scoped(
-    account, scoped_client
-):
+def test_learning_index_reads_only_the_request_workspace(account, scoped_client):
     from deeptutor.api.routers.dashboard import router
     from deeptutor.book.models import Book
     from deeptutor.book.storage import get_book_storage
@@ -132,17 +126,17 @@ def test_learning_index_includes_each_workspace_and_keeps_feature_lists_scoped(
     for scope, book_id in (("", "bk_default"), (a, "bk_custom")):
         with workspace_context(scope):
             get_book_storage().save_book(Book(id=book_id, title=book_id))
-    result = scoped_client.get("/api/dashboard/learning-index").json()
-    assert result["failed"] == []
-    assert {(row["id"], row["content_workspace_id"]) for row in result["sources"]["books"]} == {
-        ("bk_default", ""),
-        ("bk_custom", a),
-    }
-    scoped = scoped_client.get("/api/book/books", params={"dt_workspace": a}).json()
-    assert [book["id"] for book in scoped["books"]] == ["bk_custom"]
+    for scope, book_id in (("", "bk_default"), (a, "bk_custom")):
+        result = scoped_client.get(
+            "/api/dashboard/learning-index", params={"dt_workspace": scope}
+        ).json()
+        assert result["failed"] == []
+        assert [(row["id"], row["content_workspace_id"]) for row in result["sources"]["books"]] == [
+            (book_id, scope)
+        ]
 
 
-def test_learning_library_keeps_equal_ids_distinct_and_mutations_bound(account, scoped_client):
+def test_learning_library_lists_its_own_workspace_and_mutations_stay_bound(account, scoped_client):
     from deeptutor.api.routers.dashboard import router
     from deeptutor.book.models import Book
     from deeptutor.book.storage import get_book_storage
@@ -157,34 +151,22 @@ def test_learning_library_keeps_equal_ids_distinct_and_mutations_bound(account, 
     )
     assert result.status_code == 200
     rows = result.json()["items"]
-    assert {(row["title"], row["content_workspace_id"]) for row in rows} == {
-        ("Original book", ""),
-        ("Custom book", custom),
-    }
+    assert [(row["title"], row["content_workspace_id"]) for row in rows] == [
+        ("Custom book", custom)
+    ]
+    assert (
+        scoped_client.delete("/api/book/books/same-id", params={"dt_workspace": custom}).status_code
+        == 200
+    )
     assert (
         scoped_client.get("/api/book/books/same-id", params={"dt_workspace": ""}).json()["book"][
             "title"
         ]
         == "Original book"
     )
-    assert (
-        scoped_client.get("/api/book/books/same-id", params={"dt_workspace": custom}).json()[
-            "book"
-        ]["title"]
-        == "Custom book"
-    )
-    assert (
-        scoped_client.delete("/api/book/books/same-id", params={"dt_workspace": custom}).status_code
-        == 200
-    )
-    assert (
-        scoped_client.get("/api/book/books/same-id", params={"dt_workspace": ""}).status_code == 200
-    )
 
 
-def test_learning_library_mastery_and_reading_are_visible_from_other_workspaces(
-    account, scoped_client
-):
+def test_learning_library_mastery_and_reading_stay_in_their_workspace(account, scoped_client):
     from deeptutor.api.routers.dashboard import router
 
     scoped_client.app.include_router(router, prefix="/api/dashboard")
@@ -199,17 +181,19 @@ def test_learning_library_mastery_and_reading_are_visible_from_other_workspaces(
     )
     assert collection.status_code == 201
     for kind in ("mastery", "reading"):
-        result = scoped_client.get(
+        elsewhere = scoped_client.get(
             f"/api/dashboard/learning-library/{kind}", params={"dt_workspace": target}
         )
-        assert result.status_code == 200
-        assert result.json()["unavailable_workspaces"] == []
-        assert len(result.json()["items"]) == 1
-        assert result.json()["items"][0]["content_workspace_id"] == ""
+        assert elsewhere.status_code == 200
+        assert elsewhere.json()["items"] == []
+        home = scoped_client.get(
+            f"/api/dashboard/learning-library/{kind}", params={"dt_workspace": ""}
+        ).json()["items"]
+        assert [row["content_workspace_id"] for row in home] == [""]
 
 
 @pytest.mark.asyncio
-async def test_learning_library_does_not_hide_records_when_one_folder_is_offline(account):
+async def test_learning_library_is_unaffected_by_another_offline_folder(account):
     from pathlib import Path
 
     from deeptutor.api.routers.dashboard import get_learning_library
@@ -220,6 +204,6 @@ async def test_learning_library_does_not_hide_records_when_one_folder_is_offline
     Path(missing["path"]).rename(Path(missing["path"]).with_name("moved"))
     with workspace_context(""):
         get_book_storage().save_book(Book(id="still-here", title="Still here"))
-    result = await get_learning_library("books")
+        result = await get_learning_library("books")
     assert [row["id"] for row in result["items"]] == ["still-here"]
-    assert result["unavailable_workspaces"] == [missing["workspace_id"]]
+    assert result["unavailable_workspaces"] == []

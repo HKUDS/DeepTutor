@@ -26,7 +26,6 @@ import {
 
 import type { SourceChildren, SourceCandidate, SourceLibrary } from '@/hooks/useTopicSourceLibrary'
 
-import { useLibraryFilter, WorkspaceLabel } from '@/components/learning/LibraryWorkspace'
 import type { Translate } from './format'
 import { useTranslation } from 'react-i18next'
 
@@ -152,14 +151,9 @@ export function SourcesStep({
   const [tab, setTab] = useState<string>('knowledgeBases')
   const tabId = useId()
   const [search, setSearch] = useState('')
-  const all = groups.flatMap(group => library[group.key])
-  const { rows, control } = useLibraryFilter(all)
   const group = groups.find(group => group.key === tab)!
-  const ids = new Set(library[group.key].map(item => item.key))
-  const visible = rows.filter(
-    item =>
-      ids.has(item.key) &&
-      `${item.label} ${item.detail}`.toLowerCase().includes(search.toLowerCase())
+  const visible = library[group.key].filter(item =>
+    `${item.label} ${item.detail}`.toLowerCase().includes(search.toLowerCase())
   )
   return (
     <div className="space-y-4">
@@ -169,13 +163,7 @@ export function SourcesStep({
           {t('{{count}} selected', { count: selected.size })}
         </span>
       </div>
-      <p className="text-xs leading-5 text-muted-foreground">
-        {t(
-          'Choose from all workspaces. Sources stay where they are; new content is saved to your chosen workspace.'
-        )}
-      </p>
       <div className="flex flex-wrap items-center gap-3">
-        {control}
         <input
           type="search"
           aria-label={t('Search materials')}
@@ -226,14 +214,14 @@ export function SourcesStep({
               <item.icon size={14} />
               {t(item.label)}
               <span className="tabular-nums opacity-60">
-                {library[item.key].filter(candidate => rows.includes(candidate)).length}
+                {library[item.key].length}
               </span>
             </button>
           ))}
       </div>
       {library.failures.length > 0 && (
         <p role="alert" className="text-xs text-destructive">
-          {t('Some workspaces could not be loaded. Available content is shown.')}
+          {t('navigation.loadError')}
         </p>
       )}
       <div
@@ -324,12 +312,6 @@ function SourceRow({
         </span>
         <span className="mt-0.5 block truncate text-xs text-[var(--muted-foreground)]">
           {note || (item.available ? item.detail : t('Currently unavailable'))}
-          {item.content_workspace_id !== undefined && !item.parentKey && (
-            <>
-              {(note || item.detail) && ' · '}
-              <WorkspaceLabel row={item} />
-            </>
-          )}
         </span>
       </span>
     </button>

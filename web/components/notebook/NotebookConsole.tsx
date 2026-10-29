@@ -1,17 +1,14 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
-  ArrowLeft,
+  Bookmark,
   Download,
   Loader2,
-  NotebookPen,
   Pencil,
   Plus,
-  School,
   Search,
   Trash2,
   X,
@@ -19,225 +16,81 @@ import {
 import { useTranslation } from "react-i18next";
 import Tooltip from "@/shared/ui/Tooltip";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import {
+  FeaturePage,
+  PageHeader,
+  pageActionClass,
+} from "@/components/layout/FeaturePage";
+import { PageBarSlot } from "@/components/layout/PageChrome";
+import {
+  InstanceCrumb,
+  type CrumbItem,
+} from "@/components/layout/LocationCrumbs";
+import "@/components/notebook/favorites.css";
 import NotebookRecordRow from "@/components/notebook/NotebookRecordRow";
+import PickerShell from "@/components/common/PickerShell";
+import { FolderGlyph } from "@/components/reading/library/FolderGlyph";
+import {
+  FavoriteKindIcon,
+  favoriteLabel,
+} from "@/components/notebook/favorite-kinds";
+import { favoriteKind } from "@/lib/favorite-content";
+import { RecordTime } from "@/components/sidebar/RecordList";
 import { useNotebookLibrary } from "@/components/notebook/useNotebookLibrary";
-import { attachCourseResource } from "@/lib/courses-api";
 import { notify } from "@/lib/notifications";
 import {
   exportNotebookMarkdown,
+  getNotebook,
+  listNotebooks,
+  locateFavoriteRecord,
+  type NotebookRecordItem,
   type NotebookSummary,
 } from "@/lib/notebook-api";
 import { notebookRoute } from "@/lib/resource-routes";
 
+// Indigo first: it is what every notebook was created with before colours
+// could be picked. The rest follow the folder palette in globals.css.
 const SWATCHES = [
   "#6366F1",
-  "#3B82F6",
-  "#10B981",
-  "#F59E0B",
-  "#EF4444",
-  "#8B5CF6",
-  "#64748B",
+  "#4F86F7",
+  "#1FB5A8",
+  "#43B05C",
+  "#EAA221",
+  "#F07B3F",
+  "#E8577A",
+  "#8E6CF0",
+  "#6B7A90",
 ];
-
-/** The course this visit is scoped to, resolved by the route. */
-export interface NotebookCourseScope {
-  id: string;
-  /** Empty when the course could not be read; the chip then says "this course". */
-  name: string;
-  /** Notebooks the course references. Empty means the course has none. */
-  notebookIds: string[];
-}
+const DEFAULT_COLOR = SWATCHES[0];
 
 interface NotebookConsoleProps {
-  /** Notebook to open on arrival from `/notebooks/<id>`. */
+  /** Notebook to open on arrival from `/notebooks/<id>`; none is the list. */
   initialNotebookId?: string | null;
-  /** Present when arriving from a course; narrows the library to its notebooks. */
-  courseScope?: NotebookCourseScope | null;
-  /** Called after this console attaches something to the course, so the route can re-read it. */
-  onScopeChanged?: () => void;
+  initialRecordId?: string | null;
+  /** Arrive with the new-notebook form open (`/notebooks?create=1`). */
+  startCreating?: boolean;
 }
 
+/**
+ * 收藏夹, as every feature reads: `/notebooks` lists the notebooks, and
+ * `/notebooks/<id>` is one of them — 「收藏夹 / its name」 in the page bar,
+ * where the name switches to the others. Notebooks are created and edited
+ * from the list; the open one can be edited, exported or deleted from its
+ * own header.
+ */
 export default function NotebookConsole({
   initialNotebookId,
-  courseScope = null,
-  onScopeChanged,
+  initialRecordId = null,
+  startCreating = false,
 }: NotebookConsoleProps) {
   const { t } = useTranslation();
   const router = useRouter();
-  const library = useNotebookLibrary(
-    initialNotebookId,
-    courseScope?.notebookIds ?? null,
-  );
-
-  const [notebookQuery, setNotebookQuery] = useState("");
-  const [recordQuery, setRecordQuery] = useState("");
-  const [expandedRecordId, setExpandedRecordId] = useState<string | null>(null);
-  const [creating, setCreating] = useState(false);
-  const [newName, setNewName] = useState("");
-  const [newDescription, setNewDescription] = useState("");
-  const [editingNotebookId, setEditingNotebookId] = useState<string | null>(
-    null,
-  );
-  const [metaName, setMetaName] = useState("");
-  const [metaDescription, setMetaDescription] = useState("");
-  const [metaColor, setMetaColor] = useState(SWATCHES[0]);
+  const library = useNotebookLibrary(initialNotebookId);
   const [banner, setBanner] = useState<string | null>(null);
-  const [confirmingDelete, setConfirmingDelete] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-
-  const { notebooks, selected, selectedId } = library;
-  const courseId = courseScope?.id ?? null;
-
-  // Default selection, scope repair, create, and delete can all change the
-  // visible resource without a click. Keep the address bar canonical too.
-  useEffect(() => {
-    if (!selectedId || selectedId === initialNotebookId) return;
-    router.replace(notebookRoute(selectedId, courseId));
-  }, [courseId, initialNotebookId, router, selectedId]);
-
-  // How many notebooks exist *for this visit*. Everything the console counts —
-  // the badge, whether a filter box is worth showing, which empty state to use
-  // — reads this rather than the whole library, or a course-scoped visit would
-  // report numbers the list does not back up.
-  const scopedNotebooks = useMemo(
-    () =>
-      courseScope
-        ? notebooks.filter((notebook) =>
-            courseScope.notebookIds.includes(notebook.id),
-          )
-        : notebooks,
-    [courseScope, notebooks],
-  );
-
-  const visibleNotebooks = useMemo(() => {
-    const needle = notebookQuery.trim().toLowerCase();
-    if (!needle) return scopedNotebooks;
-    return scopedNotebooks.filter((notebook) =>
-      `${notebook.name} ${notebook.description ?? ""}`
-        .toLowerCase()
-        .includes(needle),
-    );
-  }, [scopedNotebooks, notebookQuery]);
-
-  // The library opens the most recent notebook by default, which under a course
-  // scope can be one the course does not reference — the list then shows one
-  // notebook while the pane beside it shows another. Pull the selection back
-  // inside the scope, and when the scope is empty clear it outright: a course
-  // with no notebooks must not leave some other course's notes on screen next
-  // to a list that says there are none.
-  const scopedSelect = library.select;
-  useEffect(() => {
-    if (!courseScope) return;
-    if (selectedId && courseScope.notebookIds.includes(selectedId)) return;
-    scopedSelect(scopedNotebooks.length ? scopedNotebooks[0].id : null);
-  }, [courseScope, scopedNotebooks, scopedSelect, selectedId]);
-
-  const visibleRecords = useMemo(() => {
-    const records = selected?.records ?? [];
-    const needle = recordQuery.trim().toLowerCase();
-    if (!needle) return records;
-    return records.filter((record) =>
-      `${record.title} ${record.summary ?? ""} ${record.output ?? ""}`
-        .toLowerCase()
-        .includes(needle),
-    );
-  }, [selected, recordQuery]);
-
-  const handleCreate = useCallback(async () => {
-    const name = newName.trim();
-    if (!name) return;
-    try {
-      const createdId = await library.create(name, newDescription);
-      // Made while looking at one course, so it belongs to that course. Asking
-      // the learner to go back and attach what they just created inside the
-      // course's own view is the busywork the container exists to remove.
-      if (createdId && courseScope) {
-        await attachCourseResource(courseScope.id, {
-          kind: "notebook",
-          ref_id: createdId,
-          label: name,
-        });
-        onScopeChanged?.();
-      }
-      if (createdId) router.push(notebookRoute(createdId, courseId));
-      setNewName("");
-      setNewDescription("");
-      setCreating(false);
-    } catch (err) {
-      setBanner(err instanceof Error ? err.message : String(err));
-    }
-  }, [
-    courseId,
-    courseScope,
-    library,
-    newName,
-    newDescription,
-    onScopeChanged,
-    router,
-  ]);
-
-  const beginNotebookEdit = useCallback((notebook: NotebookSummary) => {
-    setMetaName(notebook.name);
-    setMetaDescription(notebook.description ?? "");
-    setMetaColor(notebook.color ?? SWATCHES[0]);
-    setEditingNotebookId(notebook.id);
-  }, []);
-
-  const saveMeta = useCallback(async () => {
-    if (!editingNotebookId || !metaName.trim()) return;
-    try {
-      await library.rename(editingNotebookId, {
-        name: metaName.trim(),
-        description: metaDescription.trim(),
-        color: metaColor,
-      });
-      setEditingNotebookId(null);
-    } catch (err) {
-      setBanner(err instanceof Error ? err.message : String(err));
-    }
-  }, [editingNotebookId, library, metaName, metaDescription, metaColor]);
-
-  const handleDeleteNotebook = useCallback(async () => {
-    if (!selected) return;
-    const name = selected.name;
-    setDeleting(true);
-    try {
-      await library.remove(selected.id);
-      router.replace(notebookRoute(null, courseId));
-      notify(t('Deleted "{{name}}"', { name }), { tone: "success" });
-      setConfirmingDelete(false);
-      setEditingNotebookId(null);
-    } catch (err) {
-      setBanner(err instanceof Error ? err.message : String(err));
-    } finally {
-      setDeleting(false);
-    }
-  }, [courseId, library, router, selected, t]);
-
-  const handleExport = useCallback(async () => {
-    if (!selected) return;
-    try {
-      const markdown = await exportNotebookMarkdown(selected.id);
-      const blob = new Blob([markdown], {
-        type: "text/markdown;charset=utf-8",
-      });
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = `${selected.name || selected.id}.md`;
-      anchor.click();
-      URL.revokeObjectURL(url);
-      notify(t("Notebook exported"), { tone: "success" });
-    } catch (err) {
-      setBanner(err instanceof Error ? err.message : String(err));
-    }
-  }, [selected, t]);
-
-  const openSession = useCallback(
-    (sessionId: string) => {
-      router.push(`/chat/${encodeURIComponent(sessionId)}`);
-    },
-    [router],
+  const fail = useCallback(
+    (err: unknown) =>
+      setBanner(err instanceof Error ? err.message : String(err)),
+    [],
   );
 
   if (library.loading) {
@@ -248,426 +101,704 @@ export default function NotebookConsole({
     );
   }
 
-  return (
-    <div className="flex h-full min-h-0 bg-[var(--background)]">
-      {/* ── Notebook rail ─────────────────────────────────── */}
-      <aside className="flex w-[250px] shrink-0 flex-col border-r border-[var(--border)]">
-        <div className="flex flex-col gap-2.5 px-3 pb-2.5 pt-3">
-          <Link
-            href="/space"
-            className="group inline-flex w-fit items-center gap-1.5 text-[12px] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
-          >
-            <ArrowLeft
-              size={13}
-              strokeWidth={1.8}
-              className="transition-transform group-hover:-translate-x-0.5"
-            />
-            {t("Learning Space")}
-          </Link>
+  const bannerNode = banner ? (
+    <div
+      role="alert"
+      className="mb-4 flex items-center gap-2 rounded-lg bg-[var(--destructive)]/10 px-3 py-2 text-[12px] text-[var(--destructive)]"
+    >
+      <AlertTriangle size={13} />
+      <span className="flex-1">{banner}</span>
+      <button
+        type="button"
+        onClick={() => setBanner(null)}
+        aria-label={t("Dismiss")}
+      >
+        <X size={13} />
+      </button>
+    </div>
+  ) : null;
 
-          <div className="flex items-center justify-between">
-            <h1 className="flex items-center gap-1.5 font-serif text-[15px] font-semibold tracking-tight text-[var(--foreground)]">
-              <NotebookPen size={14} strokeWidth={1.7} />
-              {t("Notebooks")}
-              <span className="rounded-full bg-[var(--muted)] px-1.5 py-0.5 text-[10px] font-normal tabular-nums text-[var(--muted-foreground)]">
-                {scopedNotebooks.length}
-              </span>
-            </h1>
-            <Tooltip label={t("New notebook")} side="top">
+  if (library.error) {
+    return (
+      <FeaturePage>
+        <ConsoleNotice
+          tone="error"
+          title={t("Could not load your notebooks")}
+          detail={library.error}
+          action={
+            <button
+              type="button"
+              onClick={() => void library.reload()}
+              className="rounded-lg bg-[var(--primary)] px-3.5 py-1.5 text-[12px] font-medium text-[var(--primary-foreground)]"
+            >
+              {t("Retry")}
+            </button>
+          }
+        />
+      </FeaturePage>
+    );
+  }
+
+  if (!initialNotebookId) {
+    return (
+      <NotebookList
+        library={library}
+        startCreating={startCreating}
+        banner={bannerNode}
+        onError={fail}
+        onOpen={(id) => router.push(notebookRoute(id))}
+      />
+    );
+  }
+  return (
+    <NotebookDetail
+      library={library}
+      notebookId={initialNotebookId}
+      initialRecordId={initialRecordId}
+      banner={bannerNode}
+      onError={fail}
+    />
+  );
+}
+
+type Library = ReturnType<typeof useNotebookLibrary>;
+
+// ── The list ───────────────────────────────────────────────────────────
+
+/** A peek inside each collection: its newest items and what kinds it holds.
+ *  Collections are few and small, so one detail read each is cheap; a failed
+ *  read just leaves that card without its peek. */
+function useCollectionPeeks(notebooks: NotebookSummary[]) {
+  const [peeks, setPeeks] = useState<Record<string, NotebookRecordItem[]>>({});
+  const signature = notebooks
+    .map(
+      (notebook) =>
+        `${notebook.id}:${notebook.record_count ?? 0}:${notebook.updated_at ?? 0}`,
+    )
+    .join("|");
+  useEffect(() => {
+    let cancelled = false;
+    const readable = notebooks.filter(
+      (notebook) => !notebook.unreadable && (notebook.record_count ?? 0) > 0,
+    );
+    void Promise.all(
+      readable.map((notebook) =>
+        getNotebook(notebook.id)
+          .then((detail) => [notebook.id, detail.records] as const)
+          .catch(() => [notebook.id, [] as NotebookRecordItem[]] as const),
+      ),
+    ).then((rows) => {
+      if (!cancelled) setPeeks(Object.fromEntries(rows));
+    });
+    return () => {
+      cancelled = true;
+    };
+    // Re-read when a collection's contents change, not on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [signature]);
+  return peeks;
+}
+
+function NotebookList({
+  library,
+  startCreating,
+  banner,
+  onError,
+  onOpen,
+}: {
+  library: Library;
+  startCreating: boolean;
+  banner: React.ReactNode;
+  onError: (err: unknown) => void;
+  onOpen: (id: string) => void;
+}) {
+  const { t } = useTranslation();
+  const router = useRouter();
+  const { notebooks } = library;
+  const [query, setQuery] = useState("");
+  const [creating, setCreating] = useState(startCreating);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const peeks = useCollectionPeeks(notebooks);
+  const editing = notebooks.find((notebook) => notebook.id === editingId);
+
+  const visible = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    const sorted = [...notebooks].sort(
+      (a, b) => (b.updated_at ?? 0) - (a.updated_at ?? 0),
+    );
+    if (!needle) return sorted;
+    return sorted.filter((notebook) =>
+      [
+        notebook.name,
+        notebook.description ?? "",
+        ...(peeks[notebook.id] ?? []).map((record) => record.title),
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(needle),
+    );
+  }, [notebooks, peeks, query]);
+  const total = notebooks.reduce(
+    (sum, notebook) => sum + (notebook.record_count ?? 0),
+    0,
+  );
+
+  return (
+    <FeaturePage>
+      <PageHeader
+        title={t("Notebooks")}
+        icon={Bookmark}
+        action={
+          <button
+            type="button"
+            onClick={() => setCreating(true)}
+            aria-expanded={creating}
+            className={pageActionClass("primary")}
+          >
+            <Plus size={14} strokeWidth={2} />
+            {t("New notebook")}
+          </button>
+        }
+      />
+      {banner}
+      {notebooks.length > 0 && (
+        <div className="dt-fav-home-toolbar">
+          <label className="dt-fav-home-search">
+            <Search size={14} strokeWidth={1.7} aria-hidden />
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder={t("Search favorites…")}
+              aria-label={t("Filter notebooks")}
+            />
+          </label>
+          <span className="dt-fav-home-count">
+            {t("{{folders}} folders · {{items}} items", {
+              folders: notebooks.length,
+              items: total,
+            })}
+          </span>
+        </div>
+      )}
+      <nav aria-label={t("Notebooks")}>
+        <ul className="dt-fav-grid">
+          {visible.map((notebook) => (
+            <CollectionCard
+              key={notebook.id}
+              notebook={notebook}
+              records={peeks[notebook.id]}
+              onOpen={() => onOpen(notebook.id)}
+              onEdit={() => setEditingId(notebook.id)}
+            />
+          ))}
+          {!query && notebooks.length > 0 && (
+            <li>
               <button
                 type="button"
-                onClick={() => setCreating((v) => !v)}
-                aria-label={t("New notebook")}
-                aria-expanded={creating}
-                className="rounded-md p-1.5 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+                className="dt-fav-card is-new"
+                onClick={() => setCreating(true)}
               >
-                <Plus size={15} />
+                <Plus size={18} strokeWidth={1.7} />
+                {t("New notebook")}
               </button>
-            </Tooltip>
+            </li>
+          )}
+        </ul>
+        {!visible.length && (
+          <div data-test="notebooks-empty" className="dt-fav-home-empty">
+            {notebooks.length ? (
+              <p>{t("No notebooks match your filter.")}</p>
+            ) : (
+              <>
+                <FolderGlyph tone="var(--folder-default)" files={0} size={64} />
+                <p className="dt-fav-home-empty-title">
+                  {t("No notebooks yet.")}
+                </p>
+                <p>
+                  {t(
+                    "Save a conversation, a research report or a question from anywhere in DeepTutor, and file it in a folder here.",
+                  )}
+                </p>
+                <button
+                  type="button"
+                  className={pageActionClass("primary")}
+                  onClick={() => setCreating(true)}
+                >
+                  <Plus size={14} strokeWidth={2} />
+                  {t("New notebook")}
+                </button>
+              </>
+            )}
           </div>
-
-          {creating && (
-            <div className="flex flex-col gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--card)] p-2">
-              <input
-                autoFocus
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") void handleCreate();
-                  if (e.key === "Escape") setCreating(false);
-                }}
-                placeholder={t("Notebook name")}
-                className="rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1.5 text-[12.5px] text-[var(--foreground)] outline-none focus:border-[var(--primary)]/50"
-              />
-              <input
-                value={newDescription}
-                onChange={(e) => setNewDescription(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") void handleCreate();
-                  if (e.key === "Escape") setCreating(false);
-                }}
-                placeholder={t("Description (optional)")}
-                className="rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1.5 text-[12px] text-[var(--foreground)] outline-none focus:border-[var(--primary)]/50"
-              />
-              <div className="flex gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => void handleCreate()}
-                  disabled={!newName.trim()}
-                  className="flex-1 rounded-md bg-[var(--primary)] px-2 py-1.5 text-[12px] font-medium text-[var(--primary-foreground)] disabled:opacity-40"
-                >
-                  {t("Create")}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setCreating(false)}
-                  className="rounded-md border border-[var(--border)] px-2 py-1.5 text-[12px] text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
-                >
-                  {t("Cancel")}
-                </button>
-              </div>
-            </div>
-          )}
-
-          {courseScope ? (
-            <div className="flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--card)] py-1 pl-2 pr-1 text-[11px] text-[var(--muted-foreground)]">
-              <School size={11} strokeWidth={1.8} className="shrink-0" />
-              <Link
-                href={`/courses/${courseScope.id}`}
-                className="min-w-0 flex-1 truncate transition-colors hover:text-[var(--foreground)]"
-              >
-                {courseScope.name || t("This course")}
-              </Link>
-              <Link
-                href="/notebooks"
-                aria-label={t("Show every notebook")}
-                className="shrink-0 rounded p-0.5 transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
-              >
-                <X size={11} />
-              </Link>
-            </div>
-          ) : null}
-
-          {scopedNotebooks.length > 6 && (
-            <div className="relative">
-              <Search
-                size={12}
-                className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-[var(--muted-foreground)]"
-              />
-              <input
-                value={notebookQuery}
-                onChange={(e) => setNotebookQuery(e.target.value)}
-                placeholder={t("Filter notebooks")}
-                className="w-full rounded-md border border-[var(--border)] bg-[var(--background)] py-1.5 pl-7 pr-2 text-[12px] text-[var(--foreground)] outline-none focus:border-[var(--primary)]/50"
-              />
-            </div>
-          )}
-        </div>
-
-        <nav className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
-          {visibleNotebooks.map((notebook) => {
-            const active = selectedId === notebook.id;
-            if (editingNotebookId === notebook.id) {
-              return (
-                <form
-                  key={notebook.id}
-                  aria-label={t("Edit notebook")}
-                  className="mb-0.5 flex flex-col gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--card)] p-2"
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    void saveMeta();
-                  }}
-                >
-                  <input
-                    autoFocus
-                    aria-label={t("Notebook name")}
-                    value={metaName}
-                    onChange={(e) => setMetaName(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Escape") setEditingNotebookId(null);
-                    }}
-                    placeholder={t("Notebook name")}
-                    className="rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1.5 text-[12.5px] text-[var(--foreground)] outline-none focus:border-[var(--primary)]/50"
-                  />
-                  <input
-                    aria-label={t("Description (optional)")}
-                    value={metaDescription}
-                    onChange={(e) => setMetaDescription(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Escape") setEditingNotebookId(null);
-                    }}
-                    placeholder={t("Description (optional)")}
-                    className="rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1.5 text-[12px] text-[var(--foreground)] outline-none focus:border-[var(--primary)]/50"
-                  />
-                  <div className="flex items-center gap-1.5">
-                    <div className="flex items-center gap-1">
-                      {SWATCHES.map((swatch) => (
-                        <button
-                          key={swatch}
-                          type="button"
-                          onClick={() => setMetaColor(swatch)}
-                          aria-label={swatch}
-                          className={`h-3.5 w-3.5 rounded-full transition-transform ${
-                            metaColor === swatch
-                              ? "ring-2 ring-[var(--foreground)]/40 ring-offset-1 ring-offset-[var(--card)]"
-                              : "hover:scale-110"
-                          }`}
-                          style={{ backgroundColor: swatch }}
-                        />
-                      ))}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setEditingNotebookId(null)}
-                      className="ml-auto rounded-md border border-[var(--border)] px-2 py-1 text-[11px] text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
-                    >
-                      {t("Cancel")}
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={!metaName.trim()}
-                      className="rounded-md bg-[var(--primary)] px-2 py-1 text-[11px] font-medium text-[var(--primary-foreground)] disabled:opacity-40"
-                    >
-                      {t("Save")}
-                    </button>
-                  </div>
-                </form>
-              );
+        )}
+      </nav>
+      {creating && (
+        <NotebookMetaDialog
+          label={t("New notebook")}
+          submitLabel={t("Create")}
+          onCancel={() => setCreating(false)}
+          onSubmit={async ({ name, description, color }) => {
+            try {
+              const createdId = await library.create(name, description, color);
+              setCreating(false);
+              if (createdId) router.push(notebookRoute(createdId));
+            } catch (err) {
+              onError(err);
             }
+          }}
+        />
+      )}
+      {editing && (
+        <NotebookMetaDialog
+          label={t("Edit notebook")}
+          submitLabel={t("Save")}
+          initial={editing}
+          onCancel={() => setEditingId(null)}
+          onSubmit={async (changes) => {
+            try {
+              await library.rename(editing.id, changes);
+              setEditingId(null);
+            } catch (err) {
+              onError(err);
+            }
+          }}
+        />
+      )}
+    </FeaturePage>
+  );
+}
 
-            return (
-              <div
-                key={notebook.id}
-                className={`group/nb relative mb-0.5 flex w-full items-start gap-2 rounded-lg py-2 pl-3 pr-2 text-left transition-[background-color,color] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]/40 ${
-                  active
-                    ? "bg-[var(--primary)]/10"
-                    : "hover:bg-[var(--muted)]/50"
-                }`}
-              >
-                {/* A left rail on the active row: the dot alone carries the
-                    notebook's colour, not its selected state. */}
-                <span
-                  aria-hidden
-                  className={`absolute left-0 top-1/2 w-[2.5px] -translate-y-1/2 rounded-r-full bg-[var(--primary)] transition-all duration-200 ${
-                    active ? "h-[62%] opacity-100" : "h-0 opacity-0"
-                  }`}
+/** A collection as a folder of files: what is inside, newest first. */
+function CollectionCard({
+  notebook,
+  records,
+  onOpen,
+  onEdit,
+}: {
+  notebook: NotebookSummary;
+  records?: NotebookRecordItem[];
+  onOpen: () => void;
+  onEdit: () => void;
+}) {
+  const { t } = useTranslation();
+  const count = notebook.record_count ?? records?.length ?? 0;
+  const newest = [...(records ?? [])]
+    .sort((a, b) => (b.created_at ?? 0) - (a.created_at ?? 0))
+    .slice(0, 3);
+  const tone = notebook.color || DEFAULT_COLOR;
+  return (
+    <li className="group/nb relative">
+      <button type="button" onClick={onOpen} className="dt-fav-card">
+        <span className="dt-fav-card-head">
+          <FolderGlyph tone={tone} files={count} size={40} />
+          <span className="min-w-0 flex-1">
+            <span className="dt-fav-card-title">{notebook.name}</span>
+            <span className="dt-fav-card-sub">
+              {notebook.unreadable ? (
+                <span className="inline-flex items-center gap-1 text-[var(--destructive)]">
+                  <AlertTriangle size={12} />
+                  {t("Unreadable")}
+                </span>
+              ) : (
+                t("{{count}} items", { count })
+              )}
+              {notebook.updated_at ? (
+                <>
+                  {" · "}
+                  <RecordTime seconds={notebook.updated_at} />
+                </>
+              ) : null}
+            </span>
+          </span>
+        </span>
+        {notebook.description && (
+          <span className="dt-fav-card-desc">{notebook.description}</span>
+        )}
+        {newest.length ? (
+          <span className="dt-fav-card-files">
+            {newest.map((record) => (
+              <span key={record.id} className="dt-fav-card-file">
+                <FavoriteKindIcon
+                  kind={favoriteKind(record.type, record.metadata)}
+                  size={12}
                 />
-                <span
-                  aria-hidden
-                  className="mt-1.5 h-2 w-2 shrink-0 rounded-full"
-                  style={{ backgroundColor: notebook.color || "#6366F1" }}
+                <span className="truncate">
+                  {record.title || t("Favorite content")}
+                </span>
+              </span>
+            ))}
+            {count > newest.length && (
+              <span className="dt-fav-card-more">
+                {t("+{{count}} more", { count: count - newest.length })}
+              </span>
+            )}
+          </span>
+        ) : (
+          <span className="dt-fav-card-files is-empty">
+            {count ? "" : t("Empty folder")}
+          </span>
+        )}
+      </button>
+      <Tooltip label={t("Edit notebook")} side="bottom">
+        <button
+          type="button"
+          aria-label={t("Edit notebook")}
+          onClick={onEdit}
+          className="dt-fav-card-edit"
+        >
+          <Pencil size={13} />
+        </button>
+      </Tooltip>
+    </li>
+  );
+}
+
+// ── One notebook ───────────────────────────────────────────────────────
+
+function NotebookDetail({
+  library,
+  notebookId,
+  initialRecordId,
+  banner,
+  onError,
+}: {
+  library: Library;
+  notebookId: string;
+  initialRecordId: string | null;
+  banner: React.ReactNode;
+  onError: (err: unknown) => void;
+}) {
+  const { t } = useTranslation();
+  const router = useRouter();
+  const { notebooks, selected, selectedId } = library;
+  const [recordQuery, setRecordQuery] = useState("");
+  const [recordKind, setRecordKind] = useState("");
+  const [recordError, setRecordError] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const recordRef = useRef<HTMLDivElement>(null);
+  const handledRecordRouteRef = useRef<string | null>(null);
+  const expandedRecordId = initialRecordId;
+  const summary = notebooks.find((notebook) => notebook.id === notebookId);
+  const name = selected?.name ?? summary?.name ?? "";
+  const color = selected?.color ?? summary?.color ?? DEFAULT_COLOR;
+
+  // Resolve moved favorites only after the requested collection has loaded.
+  // Never silently open an unrelated record when a saved source is gone.
+  useEffect(() => {
+    let cancelled = false;
+    setRecordError(null);
+    if (!initialRecordId) {
+      handledRecordRouteRef.current = null;
+      return;
+    }
+    if (
+      library.loading ||
+      library.detailLoading ||
+      selectedId !== notebookId
+    )
+      return;
+    if (
+      selected?.id === notebookId &&
+      selected.records.some((record) => record.id === initialRecordId)
+    ) {
+      const route = notebookRoute(notebookId, initialRecordId);
+      // Locate incoming source links once. In-place toggles mark their route
+      // as handled so neither opening nor refreshing a record moves the page.
+      if (handledRecordRouteRef.current !== route && recordRef.current) {
+        handledRecordRouteRef.current = route;
+        recordRef.current.scrollIntoView({ block: "start" });
+      }
+      return;
+    }
+    if (selected && selected.id !== notebookId) return;
+    if (!selected && !library.detailError) return;
+    void locateFavoriteRecord(initialRecordId, notebookId)
+      .then((collectionId) => {
+        if (cancelled) return;
+        if (collectionId && collectionId !== notebookId) {
+          router.replace(notebookRoute(collectionId, initialRecordId));
+        } else {
+          setRecordError(t("This favorite is no longer available."));
+        }
+      })
+      .catch(() => {
+        if (!cancelled)
+          setRecordError(
+            t("Could not locate this favorite. Try reopening the source link."),
+          );
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    initialRecordId,
+    notebookId,
+    library.loading,
+    library.detailLoading,
+    library.detailError,
+    selected,
+    selectedId,
+    router,
+    t,
+  ]);
+
+  const kinds = useMemo(
+    () => [
+      ...new Set(
+        (selected?.records ?? []).map((record) =>
+          favoriteKind(record.type, record.metadata),
+        ),
+      ),
+    ],
+    [selected],
+  );
+  const visibleRecords = useMemo(() => {
+    const records = selected?.records ?? [];
+    const needle = recordQuery.trim().toLowerCase();
+    if (!needle && !recordKind) return records;
+    return records.filter(
+      (record) =>
+        record.id === initialRecordId ||
+        ((!recordKind ||
+          favoriteKind(record.type, record.metadata) === recordKind) &&
+          `${record.title} ${record.summary ?? ""} ${record.output ?? ""}`
+            .toLowerCase()
+            .includes(needle)),
+    );
+  }, [selected, recordQuery, recordKind, initialRecordId]);
+
+  const loadNotebooks = useCallback(
+    async (): Promise<CrumbItem[]> =>
+      (await listNotebooks()).map((notebook) => ({
+        id: notebook.id,
+        label: notebook.name,
+        href: notebookRoute(notebook.id),
+        color: notebook.color || DEFAULT_COLOR,
+        detail: String(notebook.record_count ?? 0),
+      })),
+    [],
+  );
+
+  const handleDelete = useCallback(async () => {
+    setDeleting(true);
+    try {
+      await library.remove(notebookId);
+      router.replace(notebookRoute());
+      notify(t('Deleted "{{name}}"', { name }), { tone: "success" });
+      setConfirmingDelete(false);
+    } catch (err) {
+      onError(err);
+    } finally {
+      setDeleting(false);
+    }
+  }, [library, name, notebookId, onError, router, t]);
+
+  const handleExport = useCallback(async () => {
+    try {
+      const markdown = await exportNotebookMarkdown(notebookId);
+      const blob = new Blob([markdown], {
+        type: "text/markdown;charset=utf-8",
+      });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `${name || notebookId}.md`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+      notify(t("Notebook exported"), { tone: "success" });
+    } catch (err) {
+      onError(err);
+    }
+  }, [name, notebookId, onError, t]);
+
+  const openSession = useCallback(
+    (sessionId: string) =>
+      router.push(`/chat/${encodeURIComponent(sessionId)}`),
+    [router],
+  );
+
+  const missing = !selected && !library.detailLoading;
+  return (
+    <FeaturePage>
+      <PageBarSlot name="instance">
+        <InstanceCrumb
+          label={name || t("Notebooks")}
+          color={color}
+          menuLabel={t("Notebooks")}
+          currentId={notebookId}
+          load={loadNotebooks}
+          create={{ label: t("New notebook"), href: "/notebooks?create=1" }}
+          all={{ label: t("All notebooks"), href: notebookRoute() }}
+          onRename={selected ? () => setEditing(true) : undefined}
+        />
+      </PageBarSlot>
+      {banner}
+      {recordError && (
+        <p
+          role="alert"
+          className="mb-4 rounded-lg bg-[var(--muted)] px-3 py-2.5 text-[13px]"
+        >
+          {recordError}
+        </p>
+      )}
+      {missing ? (
+        <ConsoleNotice
+          tone="empty"
+          title={t("This notebook could not be opened")}
+          detail={library.detailError ?? t("It may have been deleted.")}
+        />
+      ) : (
+        <>
+          <PageHeader
+            title={
+              <span className="inline-flex min-w-0 items-center gap-3">
+                <FolderGlyph
+                  tone={color}
+                  files={selected?.records.length ?? 0}
+                  size={34}
                 />
-                <button
-                  type="button"
-                  onClick={() => {
-                    library.select(notebook.id);
-                    router.push(notebookRoute(notebook.id, courseId));
-                  }}
-                  aria-current={active ? "true" : undefined}
-                  className="flex min-w-0 flex-1 items-start gap-2 text-left focus-visible:outline-none"
+                <span className="min-w-0 truncate">{name}</span>
+              </span>
+            }
+            description={selected?.description || undefined}
+            meta={
+              <span className="text-[12.5px] tabular-nums text-[var(--muted-foreground)]">
+                {t("{{count}} items", { count: selected?.records.length ?? 0 })}
+              </span>
+            }
+            action={
+              <div className="flex items-center gap-0.5">
+                <HeaderAction
+                  label={t("Edit notebook")}
+                  icon={Pencil}
+                  onClick={() => setEditing(true)}
+                />
+                <HeaderAction
+                  label={t("Export as Markdown")}
+                  icon={Download}
+                  onClick={() => void handleExport()}
+                />
+                <HeaderAction
+                  label={t("Delete notebook")}
+                  icon={Trash2}
+                  tone="danger"
+                  onClick={() => setConfirmingDelete(true)}
+                />
+              </div>
+            }
+          />
+          {editing && selected && (
+            <NotebookMetaDialog
+              label={t("Edit notebook")}
+              submitLabel={t("Save")}
+              initial={selected}
+              onCancel={() => setEditing(false)}
+              onSubmit={async (changes) => {
+                try {
+                  await library.rename(notebookId, changes);
+                  setEditing(false);
+                } catch (err) {
+                  onError(err);
+                }
+              }}
+            />
+          )}
+
+          {(selected?.records.length ?? 0) > 0 && (
+            <div className="dt-fav-home-toolbar">
+              <label className="dt-fav-home-search">
+                <Search size={14} strokeWidth={1.7} aria-hidden />
+                <input
+                  value={recordQuery}
+                  onChange={(event) => setRecordQuery(event.target.value)}
+                  placeholder={t("Search records in this notebook")}
+                  aria-label={t("Search records in this notebook")}
+                />
+              </label>
+              {kinds.length > 1 && (
+                <div
+                  className="dt-fav-chips"
+                  role="group"
+                  aria-label={t("Type")}
                 >
-                  <span className="min-w-0 flex-1">
-                    <span className="flex items-center gap-1.5">
-                      <span
-                        className={`min-w-0 flex-1 truncate text-[12.5px] ${active ? "font-semibold text-[var(--foreground)]" : "font-medium text-[var(--foreground)]/85"}`}
-                      >
-                        {notebook.name}
-                      </span>
-                      {notebook.unreadable ? (
-                        <AlertTriangle
-                          size={11}
-                          className="shrink-0 text-[var(--destructive)]"
-                        />
-                      ) : (
-                        <span className="shrink-0 text-[10.5px] tabular-nums text-[var(--muted-foreground)]">
-                          {notebook.record_count ?? 0}
-                        </span>
-                      )}
-                    </span>
-                    {notebook.description && (
-                      <span className="mt-0.5 block truncate text-[11px] text-[var(--muted-foreground)]">
-                        {notebook.description}
-                      </span>
-                    )}
-                  </span>
-                </button>
-                <Tooltip label={t("Edit notebook")} side="bottom">
                   <button
                     type="button"
-                    aria-label={t("Edit notebook")}
-                    onClick={() => beginNotebookEdit(notebook)}
-                    className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[var(--muted-foreground)] opacity-60 transition-[background-color,color,opacity,transform] duration-150 active:scale-[0.97] hover:bg-[var(--muted)] hover:text-[var(--foreground)] hover:opacity-100 focus-visible:bg-[var(--muted)] focus-visible:text-[var(--foreground)] focus-visible:opacity-100 focus-visible:outline-none"
+                    aria-pressed={!recordKind}
+                    onClick={() => setRecordKind("")}
                   >
-                    <Pencil size={12} />
+                    {t("All")}
                   </button>
-                </Tooltip>
-              </div>
-            );
-          })}
-          {!visibleNotebooks.length && (
-            <p
-              data-test="notebooks-empty"
-              className="px-2 py-8 text-center text-[12px] text-[var(--muted-foreground)]"
-            >
-              {scopedNotebooks.length
-                ? t("No notebooks match your filter.")
-                : t("No notebooks yet.")}
-            </p>
-          )}
-        </nav>
-      </aside>
-
-      {/* ── Records ───────────────────────────────────────── */}
-      <section className="flex min-w-0 flex-1 flex-col">
-        {banner && (
-          <div
-            role="alert"
-            className="flex items-center gap-2 border-b border-[var(--destructive)]/30 bg-[var(--destructive)]/10 px-4 py-2 text-[12px] text-[var(--destructive)]"
-          >
-            <AlertTriangle size={13} />
-            <span className="flex-1">{banner}</span>
-            <button type="button" onClick={() => setBanner(null)}>
-              <X size={13} />
-            </button>
-          </div>
-        )}
-
-        {library.error ? (
-          <ConsoleNotice
-            tone="error"
-            title={t("Could not load your notebooks")}
-            detail={library.error}
-            action={
-              <button
-                type="button"
-                onClick={() => void library.reload()}
-                className="rounded-lg bg-[var(--primary)] px-3.5 py-1.5 text-[12px] font-medium text-[var(--primary-foreground)]"
-              >
-                {t("Retry")}
-              </button>
-            }
-          />
-        ) : !selected && !library.detailLoading ? (
-          <ConsoleNotice
-            tone="empty"
-            title={
-              library.detailError
-                ? t("This notebook could not be opened")
-                : courseScope && scopedNotebooks.length === 0
-                  ? t("This course has no notebook yet")
-                  : t("No notebook selected")
-            }
-            detail={
-              library.detailError ??
-              (courseScope && scopedNotebooks.length === 0
-                ? t(
-                    "Make one here and it joins this course — its notes then travel with everything else in it.",
-                  )
-                : t(
-                    "Pick a notebook on the left, or create one to get started.",
-                  ))
-            }
-          />
-        ) : (
-          <>
-            <header className="flex shrink-0 flex-col gap-2 border-b border-[var(--border)] px-4 py-3">
-              <div className="flex items-center gap-2.5">
-                <span
-                  aria-hidden
-                  className="h-2.5 w-2.5 shrink-0 rounded-full"
-                  style={{ backgroundColor: selected?.color || "#6366F1" }}
-                />
-                <div className="min-w-0 flex-1">
-                  <h2 className="truncate text-[14.5px] font-semibold tracking-tight text-[var(--foreground)]">
-                    {selected?.name}
-                  </h2>
-                  {selected?.description && (
-                    <p className="truncate text-[11.5px] text-[var(--muted-foreground)]">
-                      {selected.description}
-                    </p>
-                  )}
-                </div>
-                <span className="shrink-0 text-[11px] tabular-nums text-[var(--muted-foreground)]">
-                  {selected?.records.length ?? 0} {t("records")}
-                </span>
-                <div className="flex shrink-0 items-center gap-0.5">
-                  <HeaderAction
-                    label={t("Export as Markdown")}
-                    icon={Download}
-                    onClick={() => void handleExport()}
-                  />
-                  <HeaderAction
-                    label={t("Delete notebook")}
-                    icon={Trash2}
-                    tone="danger"
-                    onClick={() => setConfirmingDelete(true)}
-                  />
-                </div>
-              </div>
-
-              {(selected?.records.length ?? 0) > 8 && (
-                <div className="relative">
-                  <Search
-                    size={12}
-                    className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--muted-foreground)]"
-                  />
-                  <input
-                    value={recordQuery}
-                    onChange={(e) => setRecordQuery(e.target.value)}
-                    placeholder={t("Search records in this notebook")}
-                    className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] py-1.5 pl-8 pr-2 text-[12px] text-[var(--foreground)] outline-none focus:border-[var(--primary)]/50"
-                  />
-                </div>
-              )}
-            </header>
-
-            <div className="min-h-0 flex-1 overflow-y-auto">
-              {library.detailLoading ? (
-                <div className="flex h-full items-center justify-center">
-                  <Loader2 className="h-5 w-5 animate-spin text-[var(--muted-foreground)]" />
-                </div>
-              ) : visibleRecords.length ? (
-                <div className="divide-y divide-[var(--border)]/70">
-                  {visibleRecords.map((record) => (
-                    <NotebookRecordRow
-                      key={record.id}
-                      record={record}
-                      notebooks={notebooks}
-                      currentNotebookId={selected!.id}
-                      expanded={expandedRecordId === record.id}
-                      onToggle={() =>
-                        setExpandedRecordId(
-                          expandedRecordId === record.id ? null : record.id,
-                        )
+                  {kinds.map((value) => (
+                    <button
+                      key={value}
+                      type="button"
+                      aria-pressed={recordKind === value}
+                      onClick={() =>
+                        setRecordKind(recordKind === value ? "" : value)
                       }
-                      onEdit={library.editRecord}
-                      onDelete={library.removeRecord}
-                      onRelocate={library.relocateRecord}
-                      onOpenSession={openSession}
-                    />
+                    >
+                      {t(favoriteLabel(value))}
+                    </button>
                   ))}
                 </div>
-              ) : (
-                <ConsoleNotice
-                  tone="empty"
-                  title={
-                    recordQuery
-                      ? t("No records match your search")
-                      : t("This notebook is empty")
-                  }
-                  detail={
-                    recordQuery
-                      ? t("Try a different word.")
-                      : t(
-                          "Save something to it from a chat, research run, or Co-Writer document.",
-                        )
-                  }
-                />
               )}
             </div>
-          </>
-        )}
-      </section>
+          )}
+
+          {library.detailLoading ? (
+            <div className="flex justify-center py-16">
+              <Loader2 className="h-5 w-5 animate-spin text-[var(--muted-foreground)]" />
+            </div>
+          ) : visibleRecords.length ? (
+            <div className="dt-fav-record-list">
+              {visibleRecords.map((record) => (
+                <div
+                  key={record.id}
+                  ref={record.id === initialRecordId ? recordRef : undefined}
+                  className="scroll-mt-3"
+                >
+                  <NotebookRecordRow
+                    record={record}
+                    notebooks={notebooks}
+                    currentNotebookId={notebookId}
+                    expanded={expandedRecordId === record.id}
+                    onToggle={() => {
+                      const route = notebookRoute(
+                        notebookId,
+                        expandedRecordId === record.id ? null : record.id,
+                      );
+                      handledRecordRouteRef.current = route;
+                      router.replace(route, { scroll: false });
+                    }}
+                    onEdit={library.editRecord}
+                    onDelete={library.removeRecord}
+                    onRelocate={library.relocateRecord}
+                    onOpenSession={openSession}
+                  />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <ConsoleNotice
+              tone="empty"
+              title={
+                recordQuery || recordKind
+                  ? t("No records match your search")
+                  : t("This notebook is empty")
+              }
+              detail={
+                recordQuery || recordKind
+                  ? t("Try a different word.")
+                  : t(
+                      "Save something to it from a chat, research run, or Co-Writer document.",
+                    )
+              }
+            />
+          )}
+        </>
+      )}
 
       <ConfirmDialog
         open={confirmingDelete && Boolean(selected)}
@@ -675,22 +806,128 @@ export default function NotebookConsole({
         confirmLabel={t("Delete")}
         tone="danger"
         busy={deleting}
-        onConfirm={() => void handleDeleteNotebook()}
+        onConfirm={() => void handleDelete()}
         onCancel={() => setConfirmingDelete(false)}
       >
         <p className="text-[13px] leading-relaxed text-[var(--muted-foreground)]">
           {(selected?.record_count ?? 0) > 0
             ? t(
                 '"{{name}}" and its {{count}} records will be deleted. This cannot be undone.',
-                {
-                  name: selected?.name ?? "",
-                  count: selected?.record_count ?? 0,
-                },
+                { name, count: selected?.record_count ?? 0 },
               )
-            : t('"{{name}}" will be deleted.', { name: selected?.name ?? "" })}
+            : t('"{{name}}" will be deleted.', { name })}
         </p>
       </ConfirmDialog>
-    </div>
+    </FeaturePage>
+  );
+}
+
+// ── Pieces ─────────────────────────────────────────────────────────────
+
+/** Create or edit a notebook: name, description and folder colour, with the
+ *  folder drawn as it will appear on the list. */
+function NotebookMetaDialog({
+  label,
+  submitLabel,
+  initial,
+  onCancel,
+  onSubmit,
+}: {
+  label: string;
+  submitLabel: string;
+  initial?: NotebookSummary;
+  onCancel: () => void;
+  onSubmit: (changes: {
+    name: string;
+    description: string;
+    color: string;
+  }) => void | Promise<void>;
+}) {
+  const { t } = useTranslation();
+  const [name, setName] = useState(initial?.name ?? "");
+  const [description, setDescription] = useState(initial?.description ?? "");
+  const [color, setColor] = useState(initial?.color ?? DEFAULT_COLOR);
+  const [busy, setBusy] = useState(false);
+  const swatches = SWATCHES.includes(color) ? SWATCHES : [color, ...SWATCHES];
+  return (
+    <PickerShell open onClose={onCancel} ariaLabel={label}>
+      <form
+        aria-label={label}
+        className="dt-fav-dialog"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (!name.trim() || busy) return;
+          setBusy(true);
+          void Promise.resolve(
+            onSubmit({
+              name: name.trim(),
+              description: description.trim(),
+              color,
+            }),
+          ).finally(() => setBusy(false));
+        }}
+      >
+        <div className="dt-fav-dialog-preview">
+          <FolderGlyph
+            tone={color}
+            files={initial?.record_count ?? 0}
+            size={72}
+          />
+        </div>
+        <h2 className="dt-fav-dialog-title">{label}</h2>
+        <label className="dt-fav-field">
+          <span>{t("Notebook name")}</span>
+          <input
+            autoFocus
+            aria-label={t("Notebook name")}
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            placeholder={t("e.g. Thermodynamics, Exam review")}
+          />
+        </label>
+        <label className="dt-fav-field">
+          <span>{t("Description (optional)")}</span>
+          <input
+            aria-label={t("Description (optional)")}
+            value={description}
+            onChange={(event) => setDescription(event.target.value)}
+            placeholder={t("What goes in this folder")}
+          />
+        </label>
+        <div className="dt-fav-field">
+          <span>{t("Colour")}</span>
+          <div
+            className="dt-fav-swatches"
+            role="radiogroup"
+            aria-label={t("Colour")}
+          >
+            {swatches.map((swatch) => (
+              <button
+                key={swatch}
+                type="button"
+                role="radio"
+                aria-label={swatch}
+                aria-checked={color === swatch}
+                onClick={() => setColor(swatch)}
+                style={{ background: swatch }}
+              />
+            ))}
+          </div>
+        </div>
+        <div className="dt-fav-dialog-actions">
+          <button type="button" className="dt-fav-button" onClick={onCancel}>
+            {t("Cancel")}
+          </button>
+          <button
+            type="submit"
+            className="dt-fav-button is-primary"
+            disabled={!name.trim() || busy}
+          >
+            {submitLabel}
+          </button>
+        </div>
+      </form>
+    </PickerShell>
   );
 }
 
@@ -711,13 +948,13 @@ function HeaderAction({
         type="button"
         onClick={onClick}
         aria-label={label}
-        className={`inline-flex h-7 w-7 items-center justify-center rounded-lg text-[var(--muted-foreground)] transition-[background-color,color,transform] duration-150 active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]/40 ${
+        className={`inline-flex h-8 w-8 items-center justify-center rounded-lg text-[var(--muted-foreground)] transition-[background-color,color,transform] duration-150 active:scale-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] ${
           tone === "danger"
             ? "hover:bg-[var(--destructive)]/10 hover:text-[var(--destructive)]"
-            : "hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+            : "hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
         }`}
       >
-        <Icon size={13} />
+        <Icon size={15} strokeWidth={1.6} />
       </button>
     </Tooltip>
   );
@@ -734,11 +971,11 @@ function ConsoleNotice({
   detail: string;
   action?: React.ReactNode;
 }) {
-  const Icon = tone === "error" ? AlertTriangle : NotebookPen;
+  const Icon = tone === "error" ? AlertTriangle : Bookmark;
   return (
     <div
       role={tone === "error" ? "alert" : undefined}
-      className="flex h-full flex-col items-center justify-center gap-2.5 px-6 py-16 text-center"
+      className="flex flex-col items-center justify-center gap-2.5 px-6 py-16 text-center"
     >
       <span
         className={`flex h-9 w-9 items-center justify-center rounded-xl ${

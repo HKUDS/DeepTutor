@@ -212,7 +212,7 @@ function Harness() {
       <button onClick={() => {
         configureSession({
           capability: "deep_research", workspaceMode: "immersive_reading",
-          workspaceId: "other-workspace", courseId: "other-course",
+          workspaceId: "other-workspace",
           masteryPathId: "other-path", masterySessionMode: "study",
         });
         setPersonaSelection("other-persona");
@@ -864,7 +864,7 @@ it("retries a failed draft with its original settings after live settings change
     await act(async () => { fireEvent.click(screen.getByText("Resend")); });
     expect(fixture.sent.at(-1)).toMatchObject({
       type: "start_turn", content: "Hello offline", capability: null,
-      workspace_mode: "", workspace_id: null, course_id: null,
+      workspace_mode: "", workspace_id: null,
       mastery_path_id: null, mastery_session_mode: null, persona: "",
       llm_selection: null, language: "en", reading_workspace_id: null,
       reading_material_id: null, timed_media_id: null,

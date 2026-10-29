@@ -13,7 +13,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import OrganizedSessionList from "@/components/courses/OrganizedSessionList";
+import OrganizedSessionList from "@/components/sessions/OrganizedSessionList";
 import ArchivedConversations from "@/components/space/ArchivedConversations";
 import SpaceSectionHeader from "@/components/space/SpaceSectionHeader";
 import { useAppShell } from "@/context/AppShellContext";
@@ -75,7 +75,6 @@ export default function ChatHistorySection({
   const [searchError, setSearchError] = useState(false);
   const [searchVersion, setSearchVersion] = useState(0);
   const searchGenerationRef = useRef(0);
-  const [courseFilter] = useState("all");
   const [kindFilter, setKindFilter] = useState("all");
   const [archiveFilter, setArchiveFilter] = useState("active");
 
@@ -89,7 +88,7 @@ export default function ChatHistorySection({
       // conversation came from, so losing them costs that line, never the
       // conversation.
       const [nextSessions, nextTopics, nextCollections] = await Promise.all([
-        listAllSessions({ force, allWorkspaces: true }),
+        listAllSessions({ force }),
         fetchMasteryTopicIndex().catch(() => [] as MasteryTopicLabel[]),
         fetchReadingCollectionIndex().catch(
           () => [] as ReadingCollectionLabel[],
@@ -130,7 +129,7 @@ export default function ChatHistorySection({
     let controller: AbortController | null = null;
     const timer = window.setTimeout(() => {
       controller = new AbortController();
-      searchAllSessions(term, controller.signal, { allWorkspaces: true })
+      searchAllSessions(term, controller.signal)
         .then((results) => {
           if (generation !== searchGenerationRef.current) return;
           setSearchResults(results);
@@ -160,13 +159,6 @@ export default function ChatHistorySection({
       const prefs = session.preferences ?? {};
       if (archiveFilter === "active" && prefs.archived) return false;
       if (archiveFilter === "archived" && !prefs.archived) return false;
-      if (courseFilter === "unclassified" && prefs.course_id) return false;
-      if (
-        courseFilter !== "all" &&
-        courseFilter !== "unclassified" &&
-        prefs.course_id !== courseFilter
-      )
-        return false;
       if (kindFilter === "chat" && prefs.session_kind === "selection_tutor")
         return false;
       if (
@@ -176,7 +168,7 @@ export default function ChatHistorySection({
         return false;
       return true;
     });
-  }, [archiveFilter, courseFilter, kindFilter, query, searchResults, sessions]);
+  }, [archiveFilter, kindFilter, query, searchResults, sessions]);
 
   const handleSelect = useCallback(
     (sessionId: string) => {
@@ -322,9 +314,6 @@ export default function ChatHistorySection({
               className="min-w-0 flex-1 bg-transparent text-[13px] text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)]/55"
             />
           </label>
-          {/* Course filter temporarily hidden pending further product work;
-              courseFilter stays at its "all" default so filteredSessions is
-              unaffected. */}
           <div className={`mt-2 ${pageGridClass(2)}`}>
             <label className="sr-only" htmlFor="history-kind-filter">
               {t("Filter by conversation type")}
@@ -387,7 +376,6 @@ export default function ChatHistorySection({
           ) : (
             <OrganizedSessionList
               sessions={filteredSessions}
-              courses={[]}
               activeSessionId={activeSessionId}
               onSelect={handleSelect}
               onRename={handleRename}

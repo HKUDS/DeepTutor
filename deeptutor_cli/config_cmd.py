@@ -27,9 +27,7 @@ def register(app: typer.Typer) -> None:
 
     @app.command("apply")
     def config_apply(
-        file: Path = typer.Argument(
-            ..., help="Setup JSON file (see docs-for-user/AGENT_SETUP.md)."
-        ),
+        file: Path = typer.Argument(..., help="Setup JSON file (see docs-for-dev/AGENT_SETUP.md)."),
         home: Path | None = typer.Option(None, "--home", help="Runtime workspace root."),
         check: bool = typer.Option(
             False, "--check", help="Validate without writing settings or contacting providers."

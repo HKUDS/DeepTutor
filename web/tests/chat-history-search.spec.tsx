@@ -44,7 +44,7 @@ vi.mock("@/components/space/ArchivedConversations", () => ({
     <button onClick={() => onRestore("older")}>Unarchive</button>
   ),
 }));
-vi.mock("@/components/courses/OrganizedSessionList", () => ({
+vi.mock("@/components/sessions/OrganizedSessionList", () => ({
   default: ({
     sessions,
   }: {
@@ -187,7 +187,7 @@ it("reports a failed transcript search and retries the same query", async () => 
   expect(screen.getByRole("alert")).toHaveTextContent("Could not search chat history. Try again.");
   fireEvent.click(screen.getByRole("button", { name: "Retry" }));
   await act(async () => { vi.advanceTimersByTime(300); });
-  expect(searchMock).toHaveBeenLastCalledWith("Bayes", expect.any(AbortSignal), { allWorkspaces: true });
+  expect(searchMock).toHaveBeenLastCalledWith("Bayes", expect.any(AbortSignal));
   expect(screen.queryByRole("alert")).toBeNull();
   expect(screen.getByText("Older conversation")).toBeInTheDocument();
 });

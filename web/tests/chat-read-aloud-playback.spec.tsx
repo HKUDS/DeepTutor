@@ -17,11 +17,16 @@ vi.mock("@/lib/notifications", () => ({ notify: vi.fn() }));
 initI18n("en");
 const instances: FakeAudio[] = [];
 class FakeAudio {
+  src = "";
   pause = vi.fn();
   play = vi.fn().mockResolvedValue(undefined);
+  load = vi.fn();
   onended: (() => void) | null = null;
   onerror: (() => void) | null = null;
-  constructor() { instances.push(this); }
+  constructor(src?: string) {
+    this.src = src ?? "";
+    instances.push(this);
+  }
 }
 function installAudio() {
   vi.stubGlobal("Audio", FakeAudio);
@@ -45,6 +50,35 @@ it("switches between reply buttons without overlapping speech or a first-click p
   expect(screen.queryByText(/Automatically read/)).toBeNull();
 });
 
+it("unlocks the audio element during the click before speech synthesis resolves", async () => {
+  installAudio();
+  let resolveFetch!: (resp: Response) => void;
+  const fetchBody = new Promise<Response>((yes) => { resolveFetch = yes; });
+  vi.mocked(apiFetch).mockReturnValueOnce(fetchBody);
+  render(<PlayAudioButton content="First" autoPlayFresh={false} />);
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("button", { name: "Play aloud" }));
+
+  expect(instances).toHaveLength(1);
+  expect(instances[0].play).toHaveBeenCalledTimes(1);
+  expect(instances[0].src).toContain("data:audio/wav");
+  const bytes = Uint8Array.from(atob(instances[0].src.split(",")[1]), (c) => c.charCodeAt(0));
+  const wav = new DataView(bytes.buffer);
+  expect(wav.getUint32(40, true)).toBeGreaterThan(0);
+  expect(bytes.length).toBe(44 + wav.getUint32(40, true));
+  expect(URL.createObjectURL).not.toHaveBeenCalled();
+
+  await act(async () => {
+    resolveFetch({ ok: true, blob: async () => new Blob(["audio"]) } as Response);
+  });
+
+  expect(await screen.findByRole("button", { name: "Stop" })).toBeVisible();
+  expect(instances).toHaveLength(1);
+  expect(instances[0].load).toHaveBeenCalled();
+  expect(instances[0].play).toHaveBeenCalledTimes(2);
+  expect(instances[0].src).toBe("blob:test");
+});
+
 it("does not play a late response body after leaving the chat", async () => {
   installAudio();
   let resolve!: (blob: Blob) => void;
@@ -54,11 +88,13 @@ it("does not play a late response body after leaving the chat", async () => {
   await userEvent.setup().click(screen.getByRole("button", { name: "Play aloud" }));
   unmount();
   await act(async () => { resolve(new Blob(["audio"])); });
-  expect(instances).toHaveLength(0);
+  expect(instances).toHaveLength(1);
+  expect(instances[0].pause).toHaveBeenCalled();
   expect(URL.createObjectURL).not.toHaveBeenCalled();
 });
 
 it("does not show a late speech error after playback is cancelled", async () => {
+  installAudio();
   let resolve!: (body: { detail: string }) => void;
   const body = new Promise<{ detail: string }>((yes) => { resolve = yes; });
   vi.mocked(apiFetch).mockResolvedValueOnce({

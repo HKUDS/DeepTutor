@@ -51,11 +51,13 @@ class OpenAICodexProvider(LLMProvider):
         reasoning_effort: str | None,
         tool_choice: str | dict[str, Any] | None,
         on_content_delta: Callable[[str], Awaitable[None]] | None = None,
+        session_id: str | None = None,
     ) -> LLMResponse:
         model_name = model or self.default_model
         model_slug = _strip_model_prefix(model_name)
         system_prompt, input_items = convert_messages(messages)
 
+        prompt_cache_key = _prompt_cache_key(messages, session_id)
         body: dict[str, Any] = {
             "model": model_slug,
             "store": False,
@@ -64,7 +66,7 @@ class OpenAICodexProvider(LLMProvider):
             "input": input_items,
             "text": {"verbosity": "medium"},
             "include": ["reasoning.encrypted_content"],
-            "prompt_cache_key": _prompt_cache_key(messages),
+            "prompt_cache_key": prompt_cache_key,
             "tool_choice": convert_tool_choice(tool_choice) or "auto",
             "parallel_tool_calls": True,
         }
@@ -78,7 +80,9 @@ class OpenAICodexProvider(LLMProvider):
             try:
                 token = await self._load_token()
                 service.validate_runtime_profile(token, model_slug, reasoning_effort)
-                headers = _build_headers(token.account_id, token.access_token)
+                headers = _build_headers(
+                    token.account_id, token.access_token, session_id=prompt_cache_key
+                )
                 try:
                     content, tool_calls, finish_reason = await _request_codex(
                         CODEX_RESPONSES_URL,
@@ -145,8 +149,11 @@ class OpenAICodexProvider(LLMProvider):
         tool_choice: str | dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> LLMResponse:
-        del max_tokens, temperature, kwargs
-        return await self._call_codex(messages, tools, model, reasoning_effort, tool_choice)
+        del max_tokens, temperature
+        session_id = _pop_session_id(kwargs)
+        return await self._call_codex(
+            messages, tools, model, reasoning_effort, tool_choice, session_id=session_id
+        )
 
     async def chat_stream(
         self,
@@ -161,7 +168,8 @@ class OpenAICodexProvider(LLMProvider):
         on_reasoning_delta: Callable[[str], Awaitable[None]] | None = None,
         **kwargs: Any,
     ) -> LLMResponse:
-        del max_tokens, temperature, on_reasoning_delta, kwargs
+        del max_tokens, temperature, on_reasoning_delta
+        session_id = _pop_session_id(kwargs)
         return await self._call_codex(
             messages,
             tools,
@@ -169,6 +177,7 @@ class OpenAICodexProvider(LLMProvider):
             reasoning_effort,
             tool_choice,
             on_content_delta,
+            session_id=session_id,
         )
 
     def get_default_model(self) -> str:
@@ -181,7 +190,7 @@ def _strip_model_prefix(model: str) -> str:
     return model
 
 
-def _build_headers(account_id: str, token: str) -> dict[str, str]:
+def _build_headers(account_id: str, token: str, session_id: str | None = None) -> dict[str, str]:
     if not token:
         raise RuntimeError(
             "OpenAI Codex is not logged in. Run `deeptutor provider login openai-codex`."
@@ -196,6 +205,8 @@ def _build_headers(account_id: str, token: str) -> dict[str, str]:
     }
     if account_id:
         headers["chatgpt-account-id"] = str(account_id)
+    if session_id:
+        headers["session-id"] = session_id
     return headers
 
 
@@ -224,14 +235,23 @@ async def _request_codex(
             return await consume_sse(response, on_content_delta)
 
 
-def _prompt_cache_key(messages: list[dict[str, Any]]) -> str:
-    # Routing affinity must survive ordinary history growth. The system prefix
-    # identifies reusable instructions; the provider still verifies all tokens.
+def _pop_session_id(kwargs: dict[str, Any]) -> str | None:
+    return str(kwargs.pop("deeptutor_session_id", "") or "").strip() or None
+
+
+def _prompt_cache_key(messages: list[dict[str, Any]], session_id: str | None = None) -> str:
+    # Routing affinity must survive ordinary history growth. A conversation id,
+    # when the caller supplies one, scopes the key to that conversation so two
+    # chats sharing the same system prompt do not share a cache route; it is
+    # hashed so the raw id is not sent upstream. Without one, fall back to the
+    # first system message, which identifies the reusable instructions. Later
+    # system messages (e.g. a rolling summary) can change between calls and
+    # must not move the key. The provider still verifies all tokens.
+    if session_id:
+        return hashlib.sha256(f"session:{session_id}".encode()).hexdigest()
     prefix = []
-    for message in messages:
-        if message.get("role") != "system":
-            break
-        prefix.append({"role": "system", "content": message.get("content")})
+    if messages and messages[0].get("role") == "system":
+        prefix.append({"role": "system", "content": messages[0].get("content")})
     raw = json.dumps(prefix, ensure_ascii=True, sort_keys=True)
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 

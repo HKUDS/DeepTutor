@@ -34,7 +34,6 @@ import hashlib
 import logging
 from typing import Any, Sequence
 
-from deeptutor.reading.references import resolve_reading_sources
 from deeptutor.services.session.protocol import SessionStoreProtocol
 
 logger = logging.getLogger(__name__)
@@ -779,6 +778,14 @@ def _add_reading_sources(
     turns instead of leaving a stale or spoofable copy in session metadata.
     """
 
+    if not references:
+        return
+    from deeptutor.modules.catalog import module_enabled
+
+    if not module_enabled("reading"):
+        return
+    from deeptutor.reading.references import resolve_reading_sources
+
     for source in resolve_reading_sources(list(references)):
         if source.source_id in inv and not fresh:
             continue
@@ -821,6 +828,10 @@ def _resolve_book_section(book_reference: dict[str, Any]) -> tuple[str, str]:
     reference is rendered independently (so the per-book ``bk-{book_id}``
     source id stays stable). Returns ``("", "")`` on failure.
     """
+    from deeptutor.modules.catalog import module_enabled
+
+    if not module_enabled("books"):
+        return "", ""
     from deeptutor.book.context import build_book_context
 
     try:

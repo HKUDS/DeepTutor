@@ -46,12 +46,11 @@ test("plain, quiz, research, and visualize turns use one typed mapper", () => {
   }
 });
 
-test("course, Reading, Mastery, references, edit, and budget are explicit", () => {
+test("Reading, Mastery, references, edit, and budget are explicit", () => {
   const wire = buildStartTurnInput({
     content: "continue",
     sessionId: "session-1",
     workspaceMode: "immersive_reading",
-    courseId: "course-1",
     masteryPathId: "path-1",
     readingWorkspaceId: "reading-1",
     readingMaterialId: "material-1",
@@ -66,7 +65,6 @@ test("course, Reading, Mastery, references, edit, and budget are explicit", () =
     ],
     attachments: [{ type: "document", filename: "notes.pdf", url: "/a" }],
   });
-  assert.equal(wire.course_id, "course-1");
   assert.equal(wire.parent_message_id, 9);
   assert.equal(wire.subagent_consult_budget, 3);
   assert.equal(wire.reading_viewport?.locator, 4);
@@ -77,7 +75,7 @@ test("waiting-input replies stay commands and runtime config cannot leak into ca
     () =>
       buildStartTurnInput({
         content: "bad",
-        capabilityConfig: { _course_id: "hidden" },
+        capabilityConfig: { _persist_user_message: false },
       }),
     (error) => error instanceof ApiError && error.code === "invalid_turn_input",
   );
@@ -91,8 +89,7 @@ test("waiting-input replies stay commands and runtime config cannot leak into ca
     /Unsupported/,
   );
 
-  const wire = buildStartTurnInput({ content: "ok", courseId: "course-1" });
-  assert.equal("_course_id" in (wire.config ?? {}), false);
+  const wire = buildStartTurnInput({ content: "ok" });
   assert.equal("subagent_consult_budget" in (wire.config ?? {}), false);
 });
 
@@ -150,4 +147,29 @@ test("consultation selections travel as runtime fields, not capability config", 
   for (const key of ["consult_partner_id", "partner_discussion_group_id"]) {
     assert.throws(() => buildStartTurnInput({ content: "hi", capabilityConfig: { [key]: "id" } }), /must use its typed turn property/);
   }
+});
+
+test("a turn handed to someone names them as a typed property", () => {
+  const wire = buildStartTurnInput({ content: "Why does BM25 saturate?", answerBy: "partner:p1" });
+  assert.equal(wire.answer_by, "partner:p1");
+  assert.deepEqual(wire.config, {});
+  assert.equal(buildStartTurnInput({ content: "hi" }).answer_by, undefined);
+  assert.throws(
+    () => buildStartTurnInput({ content: "hi", capabilityConfig: { answer_by: "partner:p1" } }),
+    /must use its typed turn property/,
+  );
+});
+
+test("a note companion turn names its page and, when generating, the block", () => {
+  const wire = buildStartTurnInput({
+    content: "fill it",
+    capability: "chat",
+    noteDocumentId: "0c2d24985c4f",
+    noteGeneration: { block_id: "timeline-learning", kind: "timeline" },
+  });
+  assert.equal(wire.note_document_id, "0c2d24985c4f");
+  assert.deepEqual(wire.note_generation, { block_id: "timeline-learning", kind: "timeline" });
+  const plain = buildStartTurnInput({ content: "hello", capability: "chat" });
+  assert.equal("note_document_id" in plain, false);
+  assert.equal("note_generation" in plain, false);
 });

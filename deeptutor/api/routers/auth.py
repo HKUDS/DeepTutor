@@ -482,11 +482,17 @@ def _install_request_workspace(request) -> None:
         raise HTTPException(status_code=400, detail="Conflicting workspace scopes.")
     try:
         path = getattr(getattr(request, "url", None), "path", "")
-        from deeptutor.services.workspace.knowledge import library_request
+        from deeptutor.services.workspace.context import resolve_workspace_scope
+        from deeptutor.services.workspace.knowledge import library_request, library_viewer
 
         library_request.set(
             path.startswith(("/api/knowledge-bases", "/ws/knowledge-bases"))
             and params.get("resource_library") == "true"
+        )
+        library_viewer.set(
+            resolve_workspace_scope(header if header is not None else query).workspace_id
+            if library_request.get() and (header is not None or query is not None)
+            else None
         )
         from deeptutor.services.skill.runtime import library_workspace
 
@@ -498,7 +504,7 @@ def _install_request_workspace(request) -> None:
             ("/api/skills", "/api/space/mcp")
         )
         management = path.startswith(
-            ("/api/settings", "/api/auth", "/api/multi-user", "/api/task-board")
+            ("/api/settings", "/api/auth", "/api/multi-user", "/api/task-board", "/api/calendar")
         )
         selected = install_workspace_scope(
             None if management or catalog_management else header if header is not None else query
@@ -520,7 +526,9 @@ def _install_request_workspace(request) -> None:
         # Management/migration requests acquire their own exclusive lease.
         task_board_request = path == "/api/task-board" or path.startswith("/api/task-board/")
         if getattr(request, "method", None) is not None and (
-            not management or (task_board_request and path != "/api/task-board/events")
+            not management
+            or (task_board_request and path != "/api/task-board/events")
+            or (path.startswith("/api/calendar/") and path != "/api/calendar/stream")
         ):
             from deeptutor.services.workspace.activity import acquire_activity
 
@@ -616,12 +624,22 @@ _LEARNER_KB_READ_ROUTES = frozenset(
 )
 
 
+_PERSONAL_PAGE_ROUTES = frozenset(
+    {
+        ("GET", "/api/settings/page-customization"),
+        ("PUT", "/api/settings/page-customization/chat"),
+        ("PUT", "/api/settings/page-customization/learning"),
+    }
+)
+
+
 _LEARNER_SETTINGS_WRITE_ROUTES = frozenset(
     {
         # UI preferences resolve through the per-user path service into the
         # caller's OWN workspace (interface.json) — saving theme/language is
         # safe for learning accounts.
         ("PUT", "/api/settings/ui"),
+        *_PERSONAL_PAGE_ROUTES,
         # Per-user settings draft document. Applying a draft to the runtime
         # catalog stays admin-gated in the endpoint itself.
         ("PUT", "/api/settings/draft"),
@@ -656,6 +674,7 @@ def _learning_surface_for_path(
         ("/api/sessions", "chat"),
         # Task cards are private to the learner's current content workspace.
         ("/api/task-board", "chat"),
+        ("/api/calendar", "chat"),
         # Mastery Path progress/topics are the learner's own per-user data;
         # the router already scopes every record to the current account, so
         # all methods (including progress PATCH/POST) belong to "chat".
@@ -711,6 +730,10 @@ async def require_learning_surface(
     )
 
     route_path = _resolved_route_path(request)
+    # Personal presentation does not grant a learning surface. Any authenticated
+    # learner may customize these two pages, including reading-only accounts.
+    if (request.method, route_path) in _PERSONAL_PAGE_ROUTES:
+        return
     # The landing page combines independent learning surfaces (#1987). Admit
     # any granted surface; the handler filters its readers with the same policy.
     if (
@@ -719,6 +742,11 @@ async def require_learning_surface(
         and route_path == "/api/dashboard/learning-index"
         and any(learning_surface_allowed(surface) for surface in ("books", "chat", "reading"))
     ):
+        return
+
+    # This aggregate filters each source by the current policy itself. Exact
+    # GET only: it must never open the rest of the dashboard to learners.
+    if request.method == "GET" and request.url.path == "/api/dashboard/learning-index":
         return
 
     try:

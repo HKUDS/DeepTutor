@@ -30,6 +30,7 @@ export type PdfDocument = Awaited<ReturnType<Pdfjs["getDocument"]>["promise"]>;
 export type PdfPageProxy = Awaited<ReturnType<PdfDocument["getPage"]>>;
 
 const PDFJS_WASM_PATH = "/pdfjs/wasm/";
+const PDFJS_CMAP_PATH = "/pdfjs/cmaps/";
 
 let pending: Promise<Pdfjs> | null = null;
 
@@ -60,6 +61,25 @@ export function loadPdfjs(): Promise<Pdfjs> {
 export function pdfjsWasmUrl(): string {
   if (typeof window === "undefined") return PDFJS_WASM_PATH;
   return new URL(PDFJS_WASM_PATH, window.location.origin).toString();
+}
+
+/**
+ * Absolute same-origin base URL used by PDF.js for predefined character maps.
+ *
+ * Required whenever a document's text uses a CID font that relies on one of the
+ * PDF.js built-in CMaps (Adobe-GB1/Japan1/Korea1 and friends) — i.e. most CJK
+ * PDFs. Without it that font cannot be translated and is dropped entirely:
+ *
+ *   Warning: Error during font loading: Ensure that the `cMapUrl` API
+ *   parameter is provided.
+ *
+ * and because a dropped font also contributes no text items, the affected runs
+ * disappear from the canvas *and* from the text layer, so they cannot be
+ * selected, copied or searched either.
+ */
+export function pdfjsCMapUrl(): string {
+  if (typeof window === "undefined") return PDFJS_CMAP_PATH;
+  return new URL(PDFJS_CMAP_PATH, window.location.origin).toString();
 }
 
 /**

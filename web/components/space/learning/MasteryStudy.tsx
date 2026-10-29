@@ -83,6 +83,8 @@ import { LectureRevisionCard } from "./LectureRevisionCard";
 import { ReadingPanelSeparator } from "@/components/reading/workspace/ReadingPanelSeparator";
 import { ModeSwitch } from "./ModeSwitch";
 import { viewedKnowledgePoint } from "./viewed-point";
+import { MasteryPathCrumb } from "@/components/layout/instance-crumbs";
+import { PageBarSlot, usePageBarOffers } from "@/components/layout/PageChrome";
 import { topicDisplayName, type Translate } from "./format";
 import { LevelUpCelebration } from "./LevelUpCelebration";
 import { MasteryComposer, STUDY_COMPOSER_WIDTH } from "./MasteryComposer";
@@ -267,13 +269,11 @@ function OutlineAdditionButton({
 export function MasteryStudy({
   pathId,
   routeSessionId,
-  courseId = "",
   requestedMode = "study",
   hintedPointId = "",
 }: {
   pathId: string;
   routeSessionId?: string;
-  courseId?: string;
   /** What a conversation opened here is for; ignored for an existing one. */
   requestedMode?: MasteryMode;
   /** Point this navigation opened, used until the session preference arrives. */
@@ -315,7 +315,6 @@ export function MasteryStudy({
   } = useMasteryStudySession(
     pathId,
     routeSessionId,
-    courseId,
     requestedMode,
   );
   const sessionReady = isRoutedStudySessionReady({
@@ -496,7 +495,7 @@ export function MasteryStudy({
     });
   }, []);
 
-  // A Course Study hand-off may have written the opening line before sending
+  // A Mastery hand-off may have written the opening line before sending
   // the learner here. Consumed once, so a refresh does not retype it — but
   // held until the composer exists: on the first render this screen is still
   // waiting on the topic and has nothing to type into.
@@ -820,6 +819,7 @@ export function MasteryStudy({
     (content: string) => copyText(content),
     [],
   );
+  const locationInBar = usePageBarOffers("instance");
 
   // Hooks have to run before the loading and not-found returns below, so the
   // layout and the lecture cards are set up unconditionally and merely render
@@ -912,51 +912,64 @@ export function MasteryStudy({
           as a single "where am I" statement, and the ring + count are one
           unit rather than a ring on the left and its own number on the
           right saying the same thing twice. */}
-      <header className="flex h-[56px] shrink-0 items-center gap-1 border-b border-[var(--border)] bg-[var(--background)]/95 px-3 backdrop-blur sm:px-4">
-        <Tooltip label={t("Learning topics")} side="bottom">
-          <Link
-            href={masteryTopicRoute(pathId)}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)]/60 hover:text-[var(--foreground)]"
-            aria-label={t("Learning topics")}
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </Link>
-        </Tooltip>
+      {/* 「精通之路 / the path / the waypoint」 and the session's controls go
+          up into the page bar; without one this row keeps them, with its own
+          way back to the path. */}
+      <header className="dt-study-head flex h-[56px] shrink-0 items-center gap-1 bg-[var(--background)] px-3 sm:px-4">
+        {locationInBar ? (
+          <PageBarSlot name="instance">
+            <MasteryPathCrumb id={pathId} label={displayName} bare />
+            {sessionMode === "study" ? (
+              <>
+                <span aria-hidden className="dt-crumb-sep">
+                  /
+                </span>
+                <span className="dt-crumb-tail">{waypoint.name}</span>
+              </>
+            ) : null}
+          </PageBarSlot>
+        ) : (
+          <>
+            <Tooltip label={t("Learning topics")} side="bottom">
+              <Link
+                href={masteryTopicRoute(pathId)}
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)]/60 hover:text-[var(--foreground)]"
+                aria-label={t("Learning topics")}
+              >
+                <ArrowLeft className="h-4 w-4" />
+              </Link>
+            </Tooltip>
 
-        <div className="ml-1.5 flex min-w-0 flex-1 items-baseline gap-2">
-          <h1 className="shrink-0 truncate text-[14.5px] font-semibold tracking-[-0.01em] text-[var(--foreground)]">
-            {displayName}
-          </h1>
-          {sessionMode === "study" && viewedPoint ? (
-            <>
+            <div className="ml-1.5 flex min-w-0 flex-1 items-baseline gap-2">
+              <h1 className="shrink-0 truncate text-[14.5px] font-semibold tracking-[-0.01em] text-[var(--foreground)]">
+                {displayName}
+              </h1>
               <span
                 aria-hidden="true"
                 className="hidden shrink-0 text-[var(--muted-foreground)]/40 sm:inline"
               >
                 /
               </span>
-              <span className="hidden min-w-0 truncate text-[12.5px] text-[var(--muted-foreground)] sm:inline">
-                {viewedPoint.name}
-              </span>
-            </>
-          ) : null}
-        </div>
+              {sessionMode === "study" ? (
+                <span className="hidden min-w-0 truncate text-[12.5px] text-[var(--muted-foreground)] sm:inline">
+                  {waypoint.name}
+                </span>
+              ) : null}
+            </div>
+          </>
+        )}
 
-        {/* Study and review are the two conversations this page can be.
-            The outline is the button above the composer: it opens the path's
-            other session and does not restyle this one. Review appears only
-            once the point on screen is mastered — before that there is
-            nothing to consolidate, and the tutor refuses to examine it. A
-            lone "study" button is not a choice, so the whole control waits. */}
-        {reviewAvailable ? (
-          <ModeSwitch
-            mode={sessionMode}
-            modes={["study", "review"]}
-            onSelect={changeMode}
-            disabled={state.isStreaming || modeBusy || sessionLoading}
-            className="hidden shrink-0 sm:flex"
-          />
-        ) : null}
+        {/* All three modes, with the live one marked. The mode decides which
+            tools the tutor may use, so it is the answer to "why can't it just
+            fix that for me" — and that question can only be asked by someone
+            who can see the other two exist. */}
+        <PageBarSlot name="actions" className="contents">
+        <ModeSwitch
+          mode={sessionMode}
+          onSelect={changeMode}
+          disabled={state.isStreaming || modeBusy || sessionLoading}
+          className="hidden shrink-0 sm:flex"
+        />
 
         <div className="flex shrink-0 items-center gap-1.5 pl-2">
           <Tooltip label={t("Save to Notebook")}>
@@ -989,11 +1002,12 @@ export function MasteryStudy({
             {completed}/{total}
           </span>
         </div>
+        </PageBarSlot>
       </header>
 
       <div className="flex min-h-0 flex-1">
         <aside
-          className={`hidden shrink-0 overflow-y-auto border-r border-[var(--border)] bg-[var(--card)]/30 transition-[width] duration-200 xl:block ${
+          className={`hidden shrink-0 overflow-y-auto transition-[width] duration-200 xl:block ${
             outlineOpen ? "w-[252px] px-5 py-5" : "w-9"
           }`}
         >          <StudyOutline
@@ -1184,7 +1198,7 @@ export function MasteryStudy({
                               );
                             }}
                             disabled={state.isStreaming || sessionLoading}
-                            className="group rounded-lg border border-[var(--border)] bg-[var(--card)] p-4 text-left transition hover:-translate-y-0.5 hover:border-[var(--primary)]/35 disabled:opacity-50"
+                            className="group rounded-[14px] bg-[rgb(var(--dt-ink,55_53_47)/0.03)] p-4 text-left transition hover:-translate-y-0.5 hover:bg-[rgb(var(--dt-ink,55_53_47)/0.055)] disabled:opacity-50"
                           >
                             <Icon className="h-4 w-4 text-[var(--primary)]" />
                             <span className="mt-3 block text-xs font-medium leading-5 text-[var(--foreground)]">

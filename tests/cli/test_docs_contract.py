@@ -5,15 +5,45 @@ from __future__ import annotations
 from pathlib import Path
 import re
 import shlex
+from urllib.parse import unquote, urlsplit
 
 ROOT = Path(__file__).resolve().parents[2]
 DOCS_ROOT = ROOT / "site" / "src" / "content" / "docs"
+HANDBOOK_ROOT = ROOT / "docs-for-dev"
 PUBLIC_DOCS = (
     ROOT / "README.md",
     ROOT / "deeptutor_cli" / "README.md",
     ROOT / "SKILL.md",
-    ROOT / "docs-for-user" / "AGENT_SETUP.md",
+    ROOT / "docs-for-dev" / "AGENT_SETUP.md",
 )
+
+
+def test_handbook_links_resolve_and_index_reaches_every_guide() -> None:
+    """Moving guides/examples must retain a navigable, self-contained handbook."""
+    index = HANDBOOK_ROOT / "README.md"
+    assert index.is_file()
+    assert (HANDBOOK_ROOT / "AGENT_SETUP.md").is_file()
+    pages = {path.resolve() for path in HANDBOOK_ROOT.rglob("*.md")}
+    graph: dict[Path, set[Path]] = {}
+    for path in pages:
+        text = re.sub(r"```.*?```", "", path.read_text(encoding="utf-8"), flags=re.S)
+        graph[path] = set()
+        for href in re.findall(r"\[[^\]]+\]\(([^)]+)\)", text):
+            url = urlsplit(href.strip().strip("<>"))
+            if url.scheme or url.netloc:
+                continue
+            target = (path.parent / unquote(url.path)).resolve() if url.path else path
+            assert target.exists(), f"{path.relative_to(ROOT)}: broken link {href}"
+            if target in pages:
+                graph[path].add(target)
+    visited: set[Path] = set()
+    pending = [index.resolve()]
+    while pending:
+        page = pending.pop()
+        if page not in visited:
+            visited.add(page)
+            pending.extend(graph[page] - visited)
+    assert visited == pages, f"Guides unreachable from handbook index: {pages - visited}"
 
 
 def _command_doc_paths() -> list[Path]:
@@ -21,7 +51,8 @@ def _command_doc_paths() -> list[Path]:
     if DOCS_ROOT.exists():
         paths.extend(DOCS_ROOT.rglob("*.md"))
     paths.extend(path for path in PUBLIC_DOCS if path.exists())
-    return paths
+    paths.extend(HANDBOOK_ROOT.rglob("*.md"))
+    return list(dict.fromkeys(paths))
 
 
 def _docs_text() -> str:
@@ -82,6 +113,7 @@ def test_documented_deeptutor_subcommands_exist() -> None:
         "init",
         "kb",
         "memory",
+        "module",
         "notebook",
         "partner",
         "plugin",

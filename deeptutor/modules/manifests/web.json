@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "id": "web",
+  "distribution": "deeptutor-web",
+  "requires": [
+    "server"
+  ],
+  "optional": [],
+  "paths": [
+    "deeptutor_web"
+  ],
+  "capabilities": {},
+  "loops": {},
+  "tools": {},
+  "routes": [],
+  "commands": [],
+  "navigation": [],
+  "services": [],
+  "requirements": [],
+  "executables": []
+}

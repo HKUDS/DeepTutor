@@ -32,6 +32,7 @@ class PromptManager:
         "question",
         "co_writer",
         "math_animator",
+        "video_lesson",
         "book",
         "notebook",
         "visualize",

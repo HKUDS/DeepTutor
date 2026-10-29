@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "id": "visualize",
+  "distribution": "deeptutor-visualize",
+  "requires": [],
+  "optional": [
+    "renderer-manim"
+  ],
+  "paths": [
+    "deeptutor/agents/visualize",
+    "deeptutor/visualizers",
+    "deeptutor/api/routers/visualizers.py"
+  ],
+  "capabilities": {
+    "visualize": {
+      "class_path": "deeptutor.agents.visualize.capability:VisualizeCapability",
+      "config_model": "deeptutor.runtime.request_contracts:VisualizeRequestConfig",
+      "manifest": {
+        "name": "visualize",
+        "description": "Generate a validated visualization with any installed visualizer type, or render a Manim animation/storyboard artifact.",
+        "stages": [
+          "analyzing",
+          "generating",
+          "reviewing",
+          "concept_analysis",
+          "concept_design",
+          "code_generation",
+          "code_retry",
+          "summary",
+          "render_output"
+        ],
+        "tools_used": [
+          "submit_visualization"
+        ],
+        "cli_aliases": [
+          "visualize",
+          "viz"
+        ]
+      },
+      "order": 7
+    }
+  },
+  "loops": {
+    "visualization_generation": {
+      "class_path": "deeptutor.visualizers.loop_capability:VisualizationLoopCapability"
+    }
+  },
+  "tools": {
+    "submit_visualization": {
+      "class_path": "deeptutor.visualizers.tool:SubmitVisualizationTool",
+      "order": 37
+    }
+  },
+  "routes": [
+    {
+      "reference": "deeptutor.api.routers.visualizers:router",
+      "options": {
+        "prefix": "/api/visualizers",
+        "tags": [
+          "visualizers"
+        ]
+      },
+      "auth": "learning",
+      "order": 784
+    }
+  ],
+  "commands": [],
+  "navigation": [],
+  "services": [],
+  "requirements": [],
+  "executables": []
+}

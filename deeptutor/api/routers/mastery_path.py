@@ -362,7 +362,8 @@ def _review_queue(progress, *, now: float | None = None) -> list[dict]:
             ),
         }
         for task in sorted(
-            progress.review_queue, key=lambda item: review_sort_key(item, now=moment)
+            learning_policy.reviewable_tasks(progress),
+            key=lambda item: review_sort_key(item, now=moment),
         )
     ]
 

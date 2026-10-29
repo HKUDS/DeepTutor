@@ -30,6 +30,9 @@ class AnimationGenerator(BlockGenerator):
     async def _generate(
         self, ctx: BlockContext
     ) -> tuple[dict[str, Any], list[SourceAnchor], dict[str, Any]]:
+        from deeptutor.modules.catalog import require_module
+
+        require_module("renderer-manim")
         if importlib.util.find_spec("manim") is None:
             raise GenerationFailure(
                 "AnimationGenerator requires the optional math-animator extras. "

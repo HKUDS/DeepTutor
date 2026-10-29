@@ -225,6 +225,16 @@ def _rag_check(
     config: dict[str, Any],
     preflight: Callable[[str], dict[str, Any]],
 ) -> DoctorCheck:
+    from deeptutor.modules.catalog import module_enabled
+
+    if not module_enabled("knowledge"):
+        return DoctorCheck(
+            key="rag",
+            label="RAG prerequisites",
+            status="skip",
+            detail="Knowledge module is unavailable.",
+            required=False,
+        )
     knowledge_bases = config.get("knowledge_bases", {})
     if not isinstance(knowledge_bases, dict) or not knowledge_bases:
         return DoctorCheck(
@@ -387,6 +397,16 @@ async def run_diagnostics(
         from deeptutor.services.path_service import get_path_service
 
         data_root = get_path_service().get_user_root()
+    from deeptutor.modules.catalog import module_enabled
+
+    if not module_enabled("knowledge"):
+
+        def load_rag_config():
+            return {}
+
+        def rag_preflight(_name):
+            return {}
+
     if load_rag_config is None:
         from deeptutor.services.config import get_kb_config_service
 
