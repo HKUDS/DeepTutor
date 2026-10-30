@@ -1408,8 +1408,8 @@ export function MasteryStudy({
             >
               <div className={`mx-auto w-full shrink-0 px-6 ${STUDY_COMPOSER_WIDTH}`}>
                 {(sessionMode === "outline" ||
-                  (sessionMode === "review" && lecturePoint && !reviewSplit)) && (
-                  <div className="mb-2 flex">
+                  (sessionMode === "review" && lecturePoint)) && (
+                  <div className="mb-2 flex gap-1.5">
                     {sessionMode === "outline" ? (
                     // The outline sitting is where the map is designed, so the
                     // way back to it is a way into learning: the first point
@@ -1436,9 +1436,22 @@ export function MasteryStudy({
                     <button
                       type="button"
                       onClick={lectureLayout.toggle}
-                      className="ml-1.5 rounded-full border border-[var(--border)] bg-[var(--card)] px-3 py-1 text-[12px] font-medium text-[var(--foreground)] hover:bg-[var(--muted)]"
+                      className="rounded-full border border-[var(--border)] bg-[var(--card)] px-3 py-1 text-[12px] font-medium text-[var(--foreground)] hover:bg-[var(--muted)]"
                     >
                       {t("Lecture")}
+                    </button>
+                  ) : null}
+                  {sessionMode === "review" && lecturePoint ? (
+                    // The lecture is the tutor's account of the point. Writing
+                    // the learner's own beside it is the whole point of a
+                    // self-explanation, so it opens a blank page in the session
+                    // viewer, where it can also be discussed with Dito.
+                    <button
+                      type="button"
+                      onClick={() => viewerPanelRef.current?.openMarkdownNoteTab()}
+                      className="rounded-full border border-[var(--border)] bg-[var(--card)] px-3 py-1 text-[12px] font-medium text-[var(--foreground)] hover:bg-[var(--muted)]"
+                    >
+                      {t("Write it myself")}
                     </button>
                   ) : null}
                   </div>
