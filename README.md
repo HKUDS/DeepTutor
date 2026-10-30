@@ -289,6 +289,10 @@ docker run --rm --name deeptutor \
 
 Open [http://127.0.0.1:3782](http://127.0.0.1:3782), configure model providers in **Settings → Providers**, and press `Ctrl+C` when you are done. The named `deeptutor-data` volume keeps settings and local data for the next run.
 
+### Desktop App (Electron)
+
+[`desktop/`](desktop/README.md) wraps the same web UI in an Electron shell for Windows, macOS and Linux: it starts the backend and the Next.js server locally, then loads `http://127.0.0.1:3782` with native windows, menus, a tray icon and persisted preferences on top. The shell does **not** bundle the Python core — it attaches to an existing DeepTutor install (or you point `service.home` at one), which keeps the download small and the backend upgrade path unchanged. Flags, configuration keys, packaging and the `npm run smoke` verification matrix are documented in [desktop/README.md](desktop/README.md).
+
 ### Content Workspace
 
 In a new conversation, open the workspace menu and **Choose a server folder**
