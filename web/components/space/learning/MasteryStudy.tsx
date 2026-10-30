@@ -742,7 +742,9 @@ export function MasteryStudy({
   const changeMode = useCallback(
     (next: MasteryMode) => {
       if (next === "outline") {
-        openPlaced("outline");
+        // The outline is a modal on this screen, not another conversation —
+        // the same move as the "Outline chat" control above the composer.
+        setOutlineDialogOpen(true);
         return;
       }
       if (!topic || boundPointId === null) return;
