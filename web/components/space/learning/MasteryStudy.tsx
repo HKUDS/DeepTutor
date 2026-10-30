@@ -1396,8 +1396,10 @@ export function MasteryStudy({
               }`}
             >
               <div className={`mx-auto w-full shrink-0 px-6 ${STUDY_COMPOSER_WIDTH}`}>
-                <div className="mb-2 flex">
-                  {sessionMode === "outline" ? (
+                {(sessionMode === "outline" ||
+                  (sessionMode === "review" && lecturePoint && !reviewSplit)) && (
+                  <div className="mb-2 flex">
+                    {sessionMode === "outline" ? (
                     // The outline sitting is where the map is designed, so the
                     // way back to it is a way into learning: the first point
                     // that still has something left to work on.
@@ -1415,16 +1417,7 @@ export function MasteryStudy({
                     >
                       {t("Start learning")}
                     </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => setOutlineDialogOpen(true)}
-                      disabled={modeBusy}
-                      className="rounded-full border border-[var(--border)] bg-[var(--card)] px-3 py-1 text-[12px] font-medium text-[var(--foreground)] hover:bg-[var(--muted)] disabled:opacity-40"
-                    >
-                      {t("Outline chat")}
-                    </button>
-                  )}
+                  ) : null}
                   {sessionMode === "review" && lecturePoint && !reviewSplit ? (
                     // Below the split threshold there is no room for two
                     // columns, so the lecture becomes something the learner
@@ -1437,7 +1430,8 @@ export function MasteryStudy({
                       {t("Lecture")}
                     </button>
                   ) : null}
-                </div>
+                  </div>
+                )}
               </div>
               {openQuestion || outlineDecision || proseDecisionCard ? (
                 <div className="min-h-0 shrink">
