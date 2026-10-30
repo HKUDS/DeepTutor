@@ -1407,8 +1407,7 @@ export function MasteryStudy({
               }`}
             >
               <div className={`mx-auto w-full shrink-0 px-6 ${STUDY_COMPOSER_WIDTH}`}>
-                {(sessionMode === "outline" ||
-                  (sessionMode === "review" && lecturePoint)) && (
+                {(sessionMode === "outline" || lecturePoint) && (
                   <div className="mb-2 flex gap-1.5">
                     {sessionMode === "outline" ? (
                     // The outline sitting is where the map is designed, so the
@@ -1441,9 +1440,10 @@ export function MasteryStudy({
                       {t("Lecture")}
                     </button>
                   ) : null}
-                  {sessionMode === "review" && lecturePoint ? (
-                    // The lecture is the tutor's account of the point. Writing
-                    // the learner's own beside it is the whole point of a
+                  {sessionMode !== "outline" && lecturePoint ? (
+                    // The lecture is the tutor's account of the point; in study
+                    // it is the lesson the conversation is building. Writing the
+                    // learner's own beside it is the whole point of a
                     // self-explanation, so it opens a blank page in the session
                     // viewer, where it can also be discussed with Dito.
                     <button
