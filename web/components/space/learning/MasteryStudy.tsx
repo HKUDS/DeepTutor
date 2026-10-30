@@ -36,6 +36,7 @@ import {
   ComposerChoiceDock,
   OutlineDecisionDialog,
 } from "@/components/space/learning/OutlineDecisionDialog";
+import { OutlineChatDialog } from "@/components/space/learning/OutlineChatDialog";
 import { latestOpenMasteryQuestion } from "@/lib/mastery-question";
 import { localizedRejectionReason } from "@/lib/submission-rejection";
 import { ChatViewerBridges } from "@/components/chat/home/ChatViewerBridges";
@@ -312,6 +313,7 @@ export function MasteryStudy({
     sessionError,
     sessionLoading,
     sessionMode,
+    refreshTopic,
   } = useMasteryStudySession(
     pathId,
     routeSessionId,
@@ -683,6 +685,10 @@ export function MasteryStudy({
   // move the tutor makes with ``mastery_mode``, through the same admission
   // rule — so a refusal reads the same whoever asked for it.
   const [modeBusy, setModeBusy] = useState(false);
+  // The outline chat runs in a modal on this screen instead of navigating to
+  // the outline session page: the learner is mid-way through a lesson and the
+  // outline edit is a different sitting that must not overwrite it.
+  const [outlineDialogOpen, setOutlineDialogOpen] = useState(false);
   // Navigation itself, without the busy flag: an effect that advances the
   // learner to the next point has no button to disable, and setting state in
   // an effect body is a cascading render the learner pays for.
@@ -1410,7 +1416,7 @@ export function MasteryStudy({
                   ) : (
                     <button
                       type="button"
-                      onClick={() => openPlaced("outline")}
+                      onClick={() => setOutlineDialogOpen(true)}
                       disabled={modeBusy}
                       className="rounded-full border border-[var(--border)] bg-[var(--card)] px-3 py-1 text-[12px] font-medium text-[var(--foreground)] hover:bg-[var(--muted)] disabled:opacity-40"
                     >
@@ -1592,6 +1598,18 @@ export function MasteryStudy({
         onAutoOpen={() => setViewerOpen(true)}
       />
       <ChatViewerBridges viewerPanelRef={viewerPanelRef} />
+      {outlineDialogOpen && (
+        <OutlineChatDialog
+          pathId={pathId}
+          onClose={() => {
+            setOutlineDialogOpen(false);
+            // An outline edit may have rewritten the map while the learner
+            // was in the dialog; re-read the topic so the rail and waypoint
+            // reflect what the tutor just agreed to.
+            refreshTopic();
+          }}
+        />
+      )}
     </main>
   );
 }

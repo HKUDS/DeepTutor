@@ -6238,5 +6238,10 @@
   "customize.learningHint": "Виберіть методи навчання на цій сторінці. Приховані методи можна повернути будь-коли.",
   "customize.emptyLearning": "Підготуйтеся до наступної навчальної мети",
   "customize.emptyLearningHint": "Налаштуйте сторінку, щоб показати методи навчання. Недоступні модулі можна переглянути в Налаштування → Середовище виконання.",
-  "customize.learningFooter": "Ваш вибір зберігається в обліковому записі. Показано лише доступні методи навчання."
+  "customize.learningFooter": "Ваш вибір зберігається в обліковому записі. Показано лише доступні методи навчання.",
+  "Modify outline with the tutor": "Змінити план разом із тьютором…",
+  "No outline chat yet": "Ще немає розмови про план",
+  "Could not load the outline conversation.": "Не вдалося завантажити розмову про план.",
+  "Describe how you want to change the outline, and the tutor will help you adjust it.": "Опишіть, як ви хочете змінити план, і тьютор допоможе вам його скоригувати.",
+  "Could not start the outline conversation.": "Не вдалося запустить розмову про план."
 }

@@ -305,5 +305,7 @@ export function useMasteryStudySession(
     sessionError,
     sessionLoading,
     sessionMode,
+    /** Re-read the topic after a turn or a dialog (e.g. outline edit) changed it. */
+    refreshTopic: activity.refresh,
   };
 }

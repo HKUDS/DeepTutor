@@ -6265,5 +6265,10 @@
   "customize.learningHint": "Choose the learning methods shown on this page. Hidden methods can be added back at any time.",
   "customize.emptyLearning": "Make room for your next learning goal",
   "customize.emptyLearningHint": "Customize this page to show learning methods. Unavailable modules can be reviewed in Settings → Runtime.",
-  "customize.learningFooter": "Your choices are saved to your account. Only learning methods available in this environment are shown."
+  "customize.learningFooter": "Your choices are saved to your account. Only learning methods available in this environment are shown.",
+  "Modify outline with the tutor": "Modify the outline with the tutor",
+  "No outline chat yet": "No outline chat yet",
+  "Could not load the outline conversation.": "Could not load the outline conversation.",
+  "Describe how you want to change the outline, and the tutor will help you adjust it.": "Describe how you want to change the outline, and the tutor will help you adjust it.",
+  "Could not start the outline conversation.": "Could not start the outline conversation."
 }
