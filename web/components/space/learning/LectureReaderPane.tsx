@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle, CheckCircle2, Loader2, Pencil, RotateCcw, X } from "lucide-react";
+import { AlertCircle, CheckCircle2, Loader2, PanelLeftClose, Pencil, RotateCcw, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -34,12 +34,19 @@ export function LectureReaderPane({
   knowledgePointId,
   pointName,
   onLectureConfirmed,
+  onCollapse,
 }: {
   pathId: string;
   knowledgePointId: string;
   pointName: string;
   /** Lets the review chat know a draft became the real lecture. */
   onLectureConfirmed?: () => void;
+  /**
+   * Hides the lecture pane. The caller keeps a control that brings it back,
+   * so a learner who came to read the conversation can put the lecture away
+   * without losing it.
+   */
+  onCollapse?: () => void;
 }) {
   const { t } = useTranslation();
   // Keyed by point so switching points shows a loading state instead of the
@@ -197,6 +204,18 @@ export function LectureReaderPane({
                 aria-label={t("Undo automatic save")}
               >
                 <RotateCcw className="h-3.5 w-3.5" />
+              </button>
+            </Tooltip>
+          ) : null}
+          {onCollapse ? (
+            <Tooltip label={t("Collapse")} side="bottom">
+              <button
+                type="button"
+                onClick={onCollapse}
+                className="flex h-7 w-7 items-center justify-center rounded-md text-[var(--muted-foreground)] hover:bg-[var(--muted)]/60 hover:text-[var(--foreground)]"
+                aria-label={t("Collapse")}
+              >
+                <PanelLeftClose className="h-3.5 w-3.5" />
               </button>
             </Tooltip>
           ) : null}

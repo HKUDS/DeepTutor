@@ -1074,6 +1074,7 @@ export function MasteryStudy({
                 knowledgePointId={lecturePoint}
                 pointName={viewedPoint?.name ?? ""}
                 onLectureConfirmed={handleLectureConfirmed}
+                onCollapse={lectureLayout.toggle}
               />
               <ReadingPanelSeparator
                 label={t("Resize lecture")}
@@ -1095,6 +1096,7 @@ export function MasteryStudy({
                 knowledgePointId={lecturePoint}
                 pointName={viewedPoint?.name ?? ""}
                 onLectureConfirmed={handleLectureConfirmed}
+                onCollapse={lectureLayout.toggle}
               />
             </div>
           ) : null}
