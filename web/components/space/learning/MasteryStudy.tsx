@@ -913,6 +913,13 @@ export function MasteryStudy({
     pointId: lecturePoint,
     sessionMode,
   });
+  // Review is offered only once the point on screen is mastered — before that
+  // there is nothing to consolidate, and the tutor refuses to examine it. The
+  // outline and study tabs stay together either way: a lone "study" tab is not
+  // a choice, so the pair remains even before a review is possible.
+  const visibleModes: readonly MasteryMode[] = reviewAvailable
+    ? ["outline", "study", "review"]
+    : ["outline", "study"];
 
   return (
     <main className="mastery-shell flex h-full min-h-0 flex-col overflow-hidden">
@@ -967,13 +974,15 @@ export function MasteryStudy({
           </>
         )}
 
-        {/* All three modes, with the live one marked. The mode decides which
-            tools the tutor may use, so it is the answer to "why can't it just
-            fix that for me" — and that question can only be asked by someone
-            who can see the other two exist. */}
+        {/* The modes this conversation can switch between, with the live one
+            marked. The mode decides which tools the tutor may use, so it is the
+            answer to "why can't it just fix that for me" — and that question
+            can only be asked by someone who can see the other modes exist.
+            Review appears only once the point on screen is mastered. */}
         <PageBarSlot name="actions" className="contents">
         <ModeSwitch
           mode={sessionMode}
+          modes={visibleModes}
           onSelect={changeMode}
           disabled={state.isStreaming || modeBusy || sessionLoading}
           className="hidden shrink-0 sm:flex"
