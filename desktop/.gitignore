@@ -1,0 +1,20 @@
+# Desktop shell build output and local test profiles
+node_modules/
+release/
+artifacts/
+dist/
+*.log
+
+# Installer artifacts that can land outside release/
+*.dmg
+*.AppImage
+*.deb
+*.exe
+*.zip
+
+# Local overrides
+config.local.json
+
+# Python helper caches
+__pycache__/
+*.pyc

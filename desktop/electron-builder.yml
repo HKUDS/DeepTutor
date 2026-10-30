@@ -1,0 +1,127 @@
+# electron-builder configuration for the DeepTutor desktop shell.
+#
+# The shell itself is tiny (a few MB of JS); everything heavy lives in
+# `resources/web`, a prebuilt Next.js standalone bundle produced by
+# `scripts/prepare-web.mjs`. The Python backend is intentionally *not* bundled
+# here — it is either provided by the DeepTutor install the workspace points at,
+# or shipped separately as a frozen binary in `resources/backend`
+# (see README "打包与分发").
+
+appId: info.deeptutor.desktop
+productName: DeepTutor
+copyright: Copyright © 2026 DeepTutor contributors
+
+directories:
+  output: release/${version}
+  buildResources: build
+
+# Only the shell ships inside the asar; no runtime npm dependencies.
+# build/tray*.png are included because tray.js loads them from the asar at
+# runtime — missing entries degrade the tray to an invisible icon.
+files:
+  - package.json
+  - src/**/*
+  - build/tray.png
+  - build/tray@2x.png
+  - "!**/*.map"
+  - "!**/*.md"
+  - "!artifacts/**"
+  - "!release/**"
+  - "!scripts/**"
+
+extraResources:
+  # Next.js standalone server + baked static assets.
+  #
+  # node_modules gets its own entry below: electron-builder's glob matcher drops
+  # any `node_modules` path segment inside a resource copy, which would leave the
+  # packaged server dying on `Cannot find module 'next'`. Making node_modules the
+  # *root* of a separate entry sidesteps that filter entirely.
+  - from: ../web/.next-deeptutor/standalone
+    to: web
+    filter:
+      - "**/*"
+      - "!node_modules/**/*"
+      - "!**/*.map"
+  - from: ../web/.next-deeptutor/standalone/node_modules
+    to: web/node_modules
+    filter:
+      - "**/*"
+      - "!**/*.map"
+
+asar: true
+compression: normal
+removePackageScripts: true
+
+win:
+  target:
+    - target: nsis
+      arch: [x64, arm64]
+    - target: portable
+      arch: [x64]
+  icon: build/icon.ico
+  artifactName: ${productName}-${version}-${arch}-setup.${ext}
+  requestedExecutionLevel: asInvoker
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowElevation: true
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: DeepTutor
+  deleteAppDataOnUninstall: false
+  runAfterFinish: true
+
+portable:
+  artifactName: ${productName}-${version}-portable.${ext}
+
+mac:
+  target:
+    - target: dmg
+      arch: [x64, arm64]
+    - target: zip
+      arch: [x64, arm64]
+  category: public.app-category.education
+  icon: build/icon.png
+  artifactName: ${productName}-${version}-${arch}.${ext}
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  extendInfo:
+    NSMicrophoneUsageDescription: DeepTutor 需要麦克风权限用于语音口语练习。
+    NSCameraUsageDescription: DeepTutor 需要摄像头权限用于拍照上传题目。
+
+dmg:
+  artifactName: ${productName}-${version}-${arch}.${ext}
+  contents:
+    - x: 140
+      y: 200
+      type: file
+    - x: 400
+      y: 200
+      type: link
+      path: /Applications
+
+linux:
+  target:
+    - target: AppImage
+      arch: [x64, arm64]
+    - target: deb
+      arch: [x64]
+  category: Education
+  icon: build/icon.png
+  maintainer: DeepTutor Desktop <desktop@deeptutor.local>
+  synopsis: DeepTutor desktop shell
+  description: DeepTutor 桌面版：本地学习工作台，内置后端与界面服务的桌面封装。
+  desktop:
+    entry:
+      Name: DeepTutor
+      Comment: 本地学习工作台
+      Categories: Education;Science;
+
+appImage:
+  artifactName: ${productName}-${version}-${arch}.${ext}
+
+publish: null

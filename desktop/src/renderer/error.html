@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline';" />
+    <title>DeepTutor · 出错了</title>
+    <style>
+      :root {
+        --bg: #f4f5f7;
+        --card: #ffffff;
+        --text: #14161a;
+        --muted: #6b7280;
+        --hairline: #e5e7eb;
+        --accent: #2f6df6;
+        --danger: #d4453a;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root { --bg: #101215; --card: #17191d; --text: #ecedef; --muted: #9096a1; --hairline: #272a30; }
+      }
+      * { box-sizing: border-box; }
+      html, body {
+        height: 100%; margin: 0; background: var(--bg); color: var(--text);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+      body { display: flex; align-items: center; justify-content: center; padding: 32px; user-select: none; }
+      .card {
+        width: min(560px, 100%); background: var(--card); border: 1px solid var(--hairline);
+        border-radius: 18px; padding: 30px 32px; box-shadow: 0 18px 50px rgba(15, 23, 42, .09);
+      }
+      .badge {
+        display: inline-flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 600;
+        color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, transparent);
+        padding: 5px 10px; border-radius: 999px; margin-bottom: 16px;
+      }
+      h1 { font-size: 19px; margin: 0 0 10px; font-weight: 650; }
+      p { font-size: 14px; line-height: 1.65; color: var(--muted); margin: 0 0 16px; }
+      pre {
+        margin: 0 0 20px; padding: 12px 14px; border-radius: 10px; background: rgba(127, 127, 127, .09);
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;
+        color: var(--text); white-space: pre-wrap; word-break: break-word; max-height: 180px; overflow: auto;
+      }
+      .actions { display: flex; flex-wrap: wrap; gap: 10px; }
+      button {
+        font: inherit; font-size: 13px; padding: 9px 16px; border-radius: 9px; cursor: pointer;
+        border: 1px solid var(--hairline); background: transparent; color: var(--text);
+      }
+      button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+      .tip { margin-top: 18px; font-size: 12px; color: var(--muted); line-height: 1.6; }
+    </style>
+  </head>
+  <body>
+    <main class="card">
+      <span class="badge">● 加载异常</span>
+      <h1 id="title">界面加载失败</h1>
+      <p id="message">无法连接到 DeepTutor 界面。</p>
+      <pre id="detail" hidden></pre>
+      <div class="actions">
+        <button class="primary" id="retry">重新加载</button>
+        <button id="restart">重启本地服务</button>
+        <button id="logs">查看日志</button>
+        <button id="quit">退出</button>
+      </div>
+      <p class="tip">
+        常见原因：本地端口被占用、工作区数据损坏，或前端产物缺失。可在「帮助 → 打开配置文件夹」中调整端口后重启应用。
+      </p>
+    </main>
+
+    <script>
+      const api = window.deeptutor;
+      const params = new URLSearchParams(location.search);
+      const title = params.get('title');
+      const message = params.get('message');
+      const detail = params.get('detail');
+
+      if (title) document.getElementById('title').textContent = title;
+      if (message) document.getElementById('message').textContent = message;
+      if (detail) {
+        const detailEl = document.getElementById('detail');
+        detailEl.textContent = detail;
+        detailEl.hidden = false;
+      }
+
+      document.getElementById('retry').addEventListener('click', async () => {
+        if (api) {
+          try {
+            await api.window.reload();
+            return;
+          } catch (error) { /* fall through to a plain reload */ }
+        }
+        location.reload();
+      });
+
+      document.getElementById('restart').addEventListener('click', async () => {
+        const button = document.getElementById('restart');
+        button.disabled = true;
+        button.textContent = '正在重启…';
+        try {
+          if (api) await api.service.restart();
+          else location.reload();
+        } catch (error) {
+          document.getElementById('message').textContent = `重启失败：${error.message}`;
+        } finally {
+          button.disabled = false;
+          button.textContent = '重启本地服务';
+        }
+      });
+
+      document.getElementById('logs').addEventListener('click', () => api && api.app.openUserData());
+      document.getElementById('quit').addEventListener('click', () => api && api.app.quit());
+    </script>
+  </body>
+</html>

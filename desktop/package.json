@@ -1,0 +1,41 @@
+{
+  "name": "deeptutor-desktop",
+  "productName": "DeepTutor",
+  "version": "1.7.0",
+  "description": "DeepTutor desktop shell — a cross-platform Electron wrapper around the DeepTutor tutoring workspace.",
+  "license": "Apache-2.0",
+  "author": {
+    "name": "DeepTutor Desktop",
+    "email": "desktop@deeptutor.local"
+  },
+  "homepage": "https://deeptutor.info",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/HKUDS/DeepTutor.git",
+    "directory": "desktop"
+  },
+  "bugs": {
+    "url": "https://github.com/HKUDS/DeepTutor/issues"
+  },
+  "main": "src/main/index.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "smoke": "node scripts/smoke-test.js",
+    "shortcut": "python scripts/make-shortcut.py",
+    "version:check": "node scripts/version.mjs",
+    "version:sync": "node scripts/version.mjs --write",
+    "prepare:web": "node scripts/prepare-web.mjs",
+    "pack": "node scripts/version.mjs --write && node scripts/prepare-web.mjs --reuse && electron-builder --dir",
+    "dist": "node scripts/version.mjs --write && node scripts/prepare-web.mjs --reuse && electron-builder",
+    "dist:win": "node scripts/version.mjs --write && node scripts/prepare-web.mjs --reuse && electron-builder --win",
+    "dist:mac": "node scripts/version.mjs --write && node scripts/prepare-web.mjs --reuse && electron-builder --mac",
+    "dist:linux": "node scripts/version.mjs --write && node scripts/prepare-web.mjs --reuse && electron-builder --linux",
+    "dist:all": "node scripts/version.mjs --write && node scripts/prepare-web.mjs --reuse && electron-builder -mwl"
+  },
+  "devDependencies": {
+    "electron": "^45.1.0",
+    "electron-builder": "^26.0.12"
+  }
+}

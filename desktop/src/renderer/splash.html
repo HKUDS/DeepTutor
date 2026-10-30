@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:;" />
+    <title>DeepTutor</title>
+    <style>
+      :root {
+        --bg: #f4f5f7;
+        --card: #ffffff;
+        --text: #14161a;
+        --muted: #6b7280;
+        --hairline: #e5e7eb;
+        --accent: #2f6df6;
+        --danger: #d4453a;
+        --ok: #1f9d63;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #101215;
+          --card: #17191d;
+          --text: #ecedef;
+          --muted: #9096a1;
+          --hairline: #272a30;
+        }
+      }
+      * { box-sizing: border-box; }
+      html, body {
+        height: 100%;
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+      body {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 32px;
+        user-select: none;
+      }
+      .card {
+        width: min(460px, 100%);
+        background: var(--card);
+        border: 1px solid var(--hairline);
+        border-radius: 18px;
+        padding: 32px 32px 26px;
+        box-shadow: 0 18px 50px rgba(15, 23, 42, 0.09);
+      }
+      .brand { display: flex; align-items: center; gap: 12px; margin-bottom: 22px; }
+      .mark {
+        width: 40px; height: 40px; border-radius: 11px;
+        background: linear-gradient(135deg, #2f6df6, #7f5af0);
+        display: grid; place-items: center; color: #fff;
+        font-weight: 800; font-size: 19px; letter-spacing: -.5px;
+      }
+      .brand h1 { font-size: 17px; margin: 0; font-weight: 650; letter-spacing: .1px; }
+      .brand p { margin: 2px 0 0; font-size: 12px; color: var(--muted); }
+      .status { font-size: 14px; line-height: 1.5; margin: 0 0 18px; min-height: 21px; }
+      .bar { height: 4px; border-radius: 999px; background: var(--hairline); overflow: hidden; margin-bottom: 22px; }
+      .bar span {
+        display: block; height: 100%; width: 36%;
+        border-radius: 999px; background: var(--accent);
+        animation: slide 1.4s ease-in-out infinite;
+      }
+      @keyframes slide {
+        0% { transform: translateX(-100%); }
+        100% { transform: translateX(300%); }
+      }
+      .steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+      .steps li { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--muted); }
+      .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--hairline); flex: none; }
+      .steps li[data-state="active"] { color: var(--text); }
+      .steps li[data-state="active"] .dot { background: var(--accent); box-shadow: 0 0 0 4px rgba(47, 109, 246, .14); }
+      .steps li[data-state="done"] { color: var(--text); }
+      .steps li[data-state="done"] .dot { background: var(--ok); }
+      .steps li[data-state="failed"] .dot { background: var(--danger); }
+      .steps li[data-state="failed"] { color: var(--danger); }
+      .actions { display: none; gap: 10px; margin-top: 22px; }
+      .actions.visible { display: flex; }
+      button {
+        font: inherit; font-size: 13px; padding: 9px 16px; border-radius: 9px;
+        border: 1px solid var(--hairline); background: transparent; color: var(--text);
+        cursor: pointer;
+      }
+      button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+      button:hover { filter: brightness(1.05); }
+      .hint { margin-top: 18px; font-size: 12px; color: var(--muted); line-height: 1.6; }
+      .hint code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; }
+      .error-detail {
+        display: none; margin-top: 14px; padding: 10px 12px; border-radius: 10px;
+        background: color-mix(in srgb, var(--danger) 10%, transparent);
+        color: var(--danger); font-size: 12px; line-height: 1.5;
+        word-break: break-word; max-height: 120px; overflow: auto;
+      }
+      .error-detail.visible { display: block; }
+    </style>
+  </head>
+  <body>
+    <main class="card">
+      <div class="brand">
+        <div class="mark">D</div>
+        <div>
+          <h1>DeepTutor</h1>
+          <p>桌面版 · 本地学习工作台</p>
+        </div>
+      </div>
+
+      <p class="status" id="status">正在启动…</p>
+      <div class="bar" id="bar"><span></span></div>
+
+      <ul class="steps" id="steps">
+        <li data-step="probe"><i class="dot"></i><span>检测本地服务</span></li>
+        <li data-step="backend"><i class="dot"></i><span>启动后端 API</span></li>
+        <li data-step="frontend"><i class="dot"></i><span>启动界面服务</span></li>
+        <li data-step="ready"><i class="dot"></i><span>载入 DeepTutor 界面</span></li>
+      </ul>
+
+      <div class="actions" id="actions">
+        <button class="primary" id="retry">重试启动</button>
+        <button id="logs">查看日志</button>
+      </div>
+
+      <div class="error-detail" id="detail"></div>
+
+      <p class="hint" id="hint">
+        首次启动需要初始化本地环境，可能需要几十秒。
+      </p>
+    </main>
+
+    <script>
+      const api = window.deeptutor;
+      const statusEl = document.getElementById('status');
+      const stepsEl = document.getElementById('steps');
+      const actionsEl = document.getElementById('actions');
+      const detailEl = document.getElementById('detail');
+      const barEl = document.getElementById('bar');
+      const hintEl = document.getElementById('hint');
+      const retryBtn = document.getElementById('retry');
+      const logsBtn = document.getElementById('logs');
+
+      const STATE_TO_STEP = {
+        probing: 'probe',
+        idle: 'probe',
+        'starting-backend': 'backend',
+        'starting-frontend': 'frontend',
+        ready: 'ready',
+      };
+      const ORDER = ['probe', 'backend', 'frontend', 'ready'];
+
+      function setStepStates(activeKey, failed) {
+        const activeIndex = ORDER.indexOf(activeKey);
+        stepsEl.querySelectorAll('li').forEach((li) => {
+          const index = ORDER.indexOf(li.dataset.step);
+          if (failed) {
+            li.dataset.state = index <= Math.max(activeIndex, 0) ? 'failed' : '';
+          } else if (index < activeIndex) {
+            li.dataset.state = 'done';
+          } else if (index === activeIndex) {
+            li.dataset.state = 'active';
+          } else {
+            li.dataset.state = '';
+          }
+        });
+      }
+
+      function render(status) {
+        if (!status) return;
+        const state = status.state || 'probing';
+        const failed = state === 'error';
+        const label = status.message || '正在启动…';
+
+        statusEl.textContent = label;
+        setStepStates(STATE_TO_STEP[state] || 'probe', failed);
+
+        if (failed) {
+          barEl.style.display = 'none';
+          actionsEl.classList.add('visible');
+          detailEl.classList.add('visible');
+          detailEl.textContent = status.message || '未知错误';
+          hintEl.textContent = '可以修改端口或工作区路径后重试，也可以在终端运行 deeptutor start 排查。';
+        } else {
+          barEl.style.display = '';
+          actionsEl.classList.remove('visible');
+          detailEl.classList.remove('visible');
+        }
+
+        if (state === 'ready') {
+          statusEl.textContent = '界面已就绪，正在载入…';
+        }
+      }
+
+      async function loadInitial() {
+        if (!api) {
+          statusEl.textContent = '未检测到桌面桥接，请通过 DeepTutor 桌面应用打开。';
+          return;
+        }
+        try {
+          const status = await api.service.status();
+          render(status);
+        } catch (error) {
+          statusEl.textContent = `无法读取服务状态：${error.message}`;
+        }
+      }
+
+      if (api) {
+        api.on('service:status', render);
+        retryBtn.addEventListener('click', async () => {
+          retryBtn.disabled = true;
+          retryBtn.textContent = '正在重试…';
+          detailEl.classList.remove('visible');
+          try {
+            await api.service.restart();
+          } catch (error) {
+            detailEl.classList.add('visible');
+            detailEl.textContent = error.message;
+          } finally {
+            retryBtn.disabled = false;
+            retryBtn.textContent = '重试启动';
+          }
+        });
+        logsBtn.addEventListener('click', () => api.app.openUserData());
+      }
+
+      loadInitial();
+    </script>
+  </body>
+</html>
