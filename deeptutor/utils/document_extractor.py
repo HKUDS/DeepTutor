@@ -1155,6 +1155,23 @@ def _extract_docx_ooxml(data: bytes, filename: str) -> str:
         return "\n\n".join(chunks)
 
 
+def _xlsx_string_item_text(node: Any) -> str:
+    """Text of a SpreadsheetML string item (``<si>`` or ``<is>``).
+
+    Only the plain ``<t>`` and rich-text ``<r><t>`` runs are cell text.
+    ``<rPh>`` runs hold phonetic readings (furigana) for East Asian text and
+    are not part of the value, matching what openpyxl and Excel show.
+    """
+    parts: list[str] = []
+    for child in node:
+        name = _local_name(child.tag)
+        if name == "t":
+            parts.append(child.text or "")
+        elif name == "r":
+            parts.extend(sub.text or "" for sub in child if _local_name(sub.tag) == "t")
+    return "".join(parts).strip()
+
+
 def _xlsx_shared_strings(zf: zipfile.ZipFile, filename: str) -> list[str]:
     root = _parse_xml_member(zf, "xl/sharedStrings.xml", filename)
     if root is None:
@@ -1163,7 +1180,7 @@ def _xlsx_shared_strings(zf: zipfile.ZipFile, filename: str) -> list[str]:
     for node in root:
         if _local_name(node.tag) != "si":
             continue
-        strings.append(_collect_ooxml_text(node))
+        strings.append(_xlsx_string_item_text(node))
     return strings
 
 
@@ -1186,7 +1203,9 @@ def _xlsx_sheet_names(zf: zipfile.ZipFile, filename: str) -> dict[str, str]:
 def _xlsx_cell_text(cell: Any, shared_strings: list[str]) -> str:
     cell_type = cell.attrib.get("t", "")
     if cell_type == "inlineStr":
-        return _collect_ooxml_text(cell)
+        return "".join(
+            _xlsx_string_item_text(child) for child in cell if _local_name(child.tag) == "is"
+        )
 
     value = ""
     for child in cell:
