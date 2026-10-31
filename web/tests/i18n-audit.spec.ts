@@ -20,6 +20,7 @@ function runAudit(
       fr: partial.fr ?? en,
       de: en,
       uk: partial.uk ?? en,
+      tr: en,
     })) {
       mkdirSync(path.join(root, "locales", locale), { recursive: true });
       writeFileSync(path.join(root, "locales", locale, "app.json"), JSON.stringify(entries));

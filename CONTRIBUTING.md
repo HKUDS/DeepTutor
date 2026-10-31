@@ -95,7 +95,8 @@ pre-commit run --all-files
 Start with the [developer and agent handbook](docs-for-dev/README.md).
 [Agent setup](docs-for-dev/AGENT_SETUP.md) owns installation and configuration;
 [Development](docs-for-dev/DEVELOPMENT.md) and [Testing](docs-for-dev/TESTING.md)
-describe the source workflow and verification gates.
+describe the source workflow and verification gates. A Turkish translation of the
+handbook lives in [`docs-for-dev/tr`](docs-for-dev/tr/README.md).
 
 <details>
 <summary><b>Setting Up Your Environment</b></summary>
@@ -214,6 +215,7 @@ We use automated tools (configured via `pyproject.toml` and `.pre-commit-config.
 
 - Every new module, class, and public function should have a **docstring** (Google Python Style Guide format).
 - Update `README.md` if your change introduces new features or configuration.
+- Translated documentation (`assets/README/README_*.md`, `docs-for-dev/tr/`) follows the English source; when you change a guide, update its translation or note that it is out of date.
 
 ---
 

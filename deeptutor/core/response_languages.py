@@ -16,6 +16,7 @@ SUPPORTED_RESPONSE_LANGUAGES: tuple[str, ...] = (
     "pl",
     "uk",
     "ms",
+    "tr",
 )
 
 

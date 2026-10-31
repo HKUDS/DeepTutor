@@ -38,6 +38,7 @@ const BOOK_LANGUAGES: Array<{ code: string; label: string }> = [
   { code: 'ru', label: 'Русский' },
   { code: 'pt', label: 'Português' },
   { code: 'it', label: 'Italiano' },
+  { code: 'tr', label: 'Türkçe' },
 ]
 
 const DEPTH_OPTIONS: Array<{ value: BookDepth; label: string; hint: string }> = [

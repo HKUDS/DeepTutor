@@ -116,6 +116,7 @@ ResponseLanguage = Literal[
     "pl",
     "uk",
     "ms",
+    "tr",
 ]
 
 
