@@ -755,6 +755,8 @@ Context comes in two kinds: **sticky session context** (capability, workspace or
 
 With the full profile, Home keeps **Chat**, **Ask Questions**, **Quiz**, **Visualize**, and **Video Lesson** one click away; **Research** for cited reports and **Solve** for worked reasoning sit under *More Capabilities*. **Learning → New learning**, above All learning, opens a dedicated page for Books, **Mastery Path**, **Immersive Reading**, and **Practice**. Its **Customize page** control hides or restores learning methods without changing existing records; unavailable modules remain excluded. Reading brings documents, video, and audio together with verified citations, saved notes, natural read-aloud from source passages / study guidance / vocabulary / quiz / translation actions, and notebook capture.
 
+**Math Animator narration** — configure a speech synthesis model in **Settings → Voice** to add spoken explanations to Manim videos. Each teaching step uses the selected voice, and the animation holds long enough to finish its narration before moving on or ending. Speech failures are reported instead of returning a silently unvoiced video. Without an active speech model, videos retain their silent rendering; storyboard images are unchanged.
+
 </details>
 
 <details>
