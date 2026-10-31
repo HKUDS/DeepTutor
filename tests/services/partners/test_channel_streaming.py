@@ -34,6 +34,7 @@ def _meta(stream_id: str, end: bool = False) -> dict[str, Any]:
 def _telegram_channel() -> TelegramChannel:
     ch = TelegramChannel({"enabled": True, "token": "t", "allowFrom": ["*"]}, MessageBus())
     bot = SimpleNamespace(
+        do_api_request=AsyncMock(return_value={"message_id": 99}),
         send_message=AsyncMock(return_value=SimpleNamespace(message_id=99)),
         edit_message_text=AsyncMock(),
     )
@@ -53,10 +54,16 @@ class TestTelegramStreaming:
 
         await ch.send_delta("1", "**world**", _meta("s1"))
         await ch.send_delta("1", "", _meta("s1", end=True))
-        # Final edit renders markdown → HTML.
-        final_call = bot.edit_message_text.await_args_list[-1]
-        assert final_call.kwargs["message_id"] == 99
-        assert "<b>world</b>" in final_call.kwargs["text"]
+        # Final edit upgrades the existing preview to native rich Markdown.
+        bot.do_api_request.assert_awaited_once_with(
+            "editMessageText",
+            api_kwargs={
+                "chat_id": 1,
+                "message_id": 99,
+                "rich_message": {"markdown": "Hello **world**"},
+            },
+        )
+        bot.edit_message_text.assert_not_awaited()
         assert "1" not in ch._stream_bufs
 
     @pytest.mark.asyncio
@@ -85,6 +92,7 @@ class TestTelegramStreaming:
         ch = _telegram_channel()
         await ch.send_delta("1", "", _meta("s1", end=True))
         ch._app.bot.edit_message_text.assert_not_awaited()
+        ch._app.bot.do_api_request.assert_not_awaited()
 
 
 # ── Discord ──────────────────────────────────────────────────────────
