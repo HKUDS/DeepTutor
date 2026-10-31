@@ -37,6 +37,7 @@ import SessionViewerPanel, {
   type SessionViewerPanelHandle,
 } from "@/components/chat/home/SessionViewerPanel";
 import { ChatViewerBridges } from "@/components/chat/home/ChatViewerBridges";
+import ScrollToLatestButton from "@/components/chat/ScrollToLatestButton";
 import {
   type MessageAttachment,
   useChatStateAdapter,
@@ -180,6 +181,8 @@ export function ReadingCompanion({
     containerRef: messagesContainerRef,
     endRef: messagesEndRef,
     shouldAutoScrollRef,
+    isFollowing,
+    scrollToBottom,
     handleScroll: handleMessagesScroll,
   } = useChatAutoScroll({
     hasMessages: state.messages.length > 0,
@@ -409,30 +412,7 @@ export function ReadingCompanion({
         // without it the browser's own scroll anchoring fights the pin every
         // time a code block or KaTeX span reflows.
         data-chat-scroll-root="true"
-        onScroll={() => {
-          const container = messagesContainerRef.current;
-          if (!container) return;
-          const distanceFromBottom =
-            container.scrollHeight -
-            container.scrollTop -
-            container.clientHeight;
-          // Arm-only while streaming: the exported handler decides "did the
-          // user move?" by distance-from-bottom alone, a fine proxy in a
-          // 960px column but not in this 380px one — a single paragraph
-          // reflowing mid-answer can clear 80px with no user intent at all,
-          // and using that to RELEASE the pin mid-turn used to kill it
-          // halfway through a reply. Confirming the user scrolled back near
-          // the bottom is safe either way, though — that's a real "let me
-          // keep following" signal regardless of column width — so only that
-          // direction runs unconditionally; releasing on distance alone
-          // waits for the turn to finish (a gesture already releases it
-          // instantly and unconditionally, inside the hook itself).
-          if (distanceFromBottom < 80) {
-            shouldAutoScrollRef.current = true;
-          } else if (!state.isStreaming) {
-            handleMessagesScroll();
-          }
-        }}
+        onScroll={handleMessagesScroll}
         // No rule above the composer: the last lines fade out instead, so the
         // composer floats over the conversation as it does on /chat. The
         // bottom padding keeps that fade over empty space, not the last line.
@@ -482,6 +462,12 @@ export function ReadingCompanion({
         />
         <div ref={messagesEndRef} className="h-px" />
       </div>
+
+      <ScrollToLatestButton
+        visible={isFollowing === false && state.isStreaming}
+        onClick={() => scrollToBottom("instant")}
+        className="absolute bottom-24 right-3 z-20"
+      />
 
       <div
         ref={composerBoxRef}

@@ -27,6 +27,7 @@ import { ChatMessageList } from "@/features/chat/messages";
 import { ChatViewerBridges } from "@/components/chat/home/ChatViewerBridges";
 import { buildSessionActivity } from "@/lib/session-activity";
 import { TurnNavigator } from "@/components/chat/home/TurnNavigator";
+import ScrollToLatestButton from "@/components/chat/ScrollToLatestButton";
 import SessionViewerPanel, {
   type SessionViewerPanelHandle,
 } from "@/components/chat/home/LazySessionViewerPanel";
@@ -229,6 +230,7 @@ export function MasteryStudy({
     containerRef: messagesContainerRef,
     endRef: messagesEndRef,
     shouldAutoScrollRef,
+    isFollowing,
     scrollToBottom,
     handleScroll: handleMessagesScroll,
   } = useChatAutoScroll({
@@ -696,23 +698,7 @@ export function MasteryStudy({
               // rule; without it the browser's own scroll anchoring fights
               // the pin every time a code block or KaTeX span reflows.
               data-chat-scroll-root="true"
-              onScroll={() => {
-                const container = messagesContainerRef.current;
-                if (!container) return;
-                const distanceFromBottom =
-                  container.scrollHeight -
-                  container.scrollTop -
-                  container.clientHeight;
-                // Arm-only while streaming: position alone should never
-                // RELEASE the pin mid-turn (a gesture already does that,
-                // unconditionally, inside the hook) — only ever confirm the
-                // user scrolled back down to resume following.
-                if (distanceFromBottom < 80) {
-                  shouldAutoScrollRef.current = true;
-                } else if (!state.isStreaming) {
-                  handleMessagesScroll();
-                }
-              }}
+              onScroll={handleMessagesScroll}
               className="h-full overflow-y-auto [scrollbar-gutter:stable]"
             >
               <div
@@ -869,6 +855,11 @@ export function MasteryStudy({
               scrollRootRef={messagesContainerRef}
               onJump={jumpToTurn}
               onJumpToBottom={resumeFollowingLatest}
+            />
+            <ScrollToLatestButton
+              visible={isFollowing === false && state.isStreaming}
+              onClick={resumeFollowingLatest}
+              className="absolute bottom-4 right-4 z-20"
             />
           </div>
 
