@@ -24,7 +24,8 @@
   <a href="assets/README/README_HI.md"><img alt="Hindi" height="40" src="https://img.shields.io/badge/Hindi-CDCFD4"></a>&nbsp;
   <a href="assets/README/README_PT.md"><img alt="Português" height="40" src="https://img.shields.io/badge/Português-CDCFD4"></a>&nbsp;
   <a href="assets/README/README_TH.md"><img alt="Thai" height="40" src="https://img.shields.io/badge/Thai-CDCFD4"></a>&nbsp;
-  <a href="assets/README/README_PL.md"><img alt="Polski" height="40" src="https://img.shields.io/badge/Polski-CDCFD4"></a>
+  <a href="assets/README/README_PL.md"><img alt="Polski" height="40" src="https://img.shields.io/badge/Polski-CDCFD4"></a>&nbsp;
+  <a href="assets/README/README_TR.md"><img alt="Türkçe" height="40" src="https://img.shields.io/badge/Türkçe-CDCFD4"></a>
 </p>
 
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/downloads/)
@@ -283,7 +284,7 @@ do not print API keys. Preserve my existing files and settings, and finish
 with the access URL and the results of your checks.
 ```
 
-The [developer and agent handbook](docs-for-dev/README.md) is the documentation entry point for setup, architecture, extension development, testing, and troubleshooting. Its [Agent Setup guide](docs-for-dev/AGENT_SETUP.md) covers the full installation flow, including non-interactive CLI configuration. To install it yourself, choose one of the paths below.
+The [developer and agent handbook](docs-for-dev/README.md) is the documentation entry point for setup, architecture, extension development, testing, and troubleshooting. Its [Agent Setup guide](docs-for-dev/AGENT_SETUP.md) covers the full installation flow, including non-interactive CLI configuration. A Turkish translation of the handbook is available at [`docs-for-dev/tr`](docs-for-dev/tr/README.md) ([Türkçe README](assets/README/README_TR.md)). To install it yourself, choose one of the paths below.
 
 Claude Code connected-agent model Sync can use the optional `claude-code` extra for SDK-based model discovery. See [Claude model sync](docs-for-dev/CLAUDE_MODEL_SYNC.md)
 for versioned catalogs, CLI authentication, and the legacy fallback.
