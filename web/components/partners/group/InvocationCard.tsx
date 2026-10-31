@@ -88,7 +88,7 @@ export default function InvocationCard({
           ) : (
             <>
               <X size={11} />
-              {t("Declined")}
+              {t("partners.invocationDeclined")}
             </>
           )}
         </div>

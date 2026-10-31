@@ -3754,7 +3754,7 @@
   "Not now": "Pas maintenant",
   "Waiting for {{name}}": "En attente de {{name}}",
   "Discussed": "Discuté",
-  "Declined": "Refusé",
+  "Declined": "En baisse",
   "Unrecognized: {{names}}": "Non reconnu : {{names}}",
   "Following up on {{name}}": "Suite à {{name}}",
   "{{done}} of {{total}} answered": "{{done}} sur {{total}} ont répondu",
@@ -7311,5 +7311,6 @@
   "Availability refreshed. This parser is still unavailable; check the installation and startup logs, then retry.": "Disponibilité actualisée. Ce parseur reste indisponible ; vérifiez l’installation et les journaux de démarrage, puis réessayez.",
   "language.portuguese": "Portugais",
   "language.japanese": "Japonais",
-  "language.turkish": "Türkçe"
+  "language.turkish": "Türkçe",
+  "partners.invocationDeclined": "Refusé"
 }

@@ -6428,5 +6428,6 @@
   "Availability refreshed. This parser is still unavailable; check the installation and startup logs, then retry.": "Dostępność odświeżona. Ten parser nadal jest niedostępny; sprawdź instalację i dzienniki uruchamiania, a następnie ponów próbę.",
   "language.portuguese": "Portugalski",
   "language.japanese": "Japoński",
-  "language.turkish": "Türkçe"
+  "language.turkish": "Türkçe",
+  "partners.invocationDeclined": "Odrzucono"
 }

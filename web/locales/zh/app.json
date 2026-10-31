@@ -6406,5 +6406,6 @@
   "Reset learning text": "重置学习文字",
   "language.portuguese": "葡萄牙语",
   "language.japanese": "日语",
-  "language.turkish": "Türkçe"
+  "language.turkish": "Türkçe",
+  "partners.invocationDeclined": "已拒绝"
 }
