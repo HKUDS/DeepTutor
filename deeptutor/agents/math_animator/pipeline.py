@@ -27,6 +27,24 @@ from .visual_review import VisualReviewService
 MAX_LAYOUT_ROUNDS = 3
 
 
+def _record_only_review(
+    review: VisualReviewResult | None,
+) -> VisualReviewResult | None:
+    """Keep a post-render geometry report without asking for another repair.
+
+    The pre-render check owns the repair rounds. Once those are exhausted the
+    rendered lesson is final, so a remaining issue is recorded in
+    ``render_result.visual_review`` with ``passed=True``; leaving it false
+    would make ``CodeRetryManager`` repair and re-render again.
+    """
+    if review is None:
+        return None
+    if not review.passed:
+        review.summary = "Layout issues remain after repair rounds: " + review.summary
+        review.passed = True
+    return review
+
+
 class MathAnimatorPipeline:
     def __init__(
         self,
@@ -227,12 +245,7 @@ class MathAnimatorPipeline:
                 current_code: str, render_result: RenderResult
             ) -> VisualReviewResult | None:
                 # Record-only: what the rendered scene still has, for the result payload.
-                review = await geometry_review(current_code)
-                if review is None:
-                    return None
-                if not review.passed:
-                    review.summary = "Layout issues remain after repair rounds: " + review.summary
-                return review
+                return _record_only_review(await geometry_review(current_code))
 
             review_callback = _geometry_callback
 
