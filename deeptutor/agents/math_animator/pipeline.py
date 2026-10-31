@@ -22,6 +22,42 @@ from .request_config import MathAnimatorRequestConfig
 from .retry_manager import CodeRetryManager
 from .visual_review import VisualReviewService
 
+# Automatic vision review rounds; each failing round costs a repair and a full re-render.
+MAX_AUTO_VISION_ROUNDS = 1
+
+
+def _catalog_vision_model() -> str | None:
+    """A model in the active chat profile declared able to read images (same endpoint and key)."""
+    try:
+        from deeptutor.services.config.model_catalog import get_model_catalog_service
+
+        llm = get_model_catalog_service().load().get("services", {}).get("llm", {})
+        profile = next(
+            (p for p in llm.get("profiles", []) if p.get("id") == llm.get("active_profile_id")),
+            None,
+        )
+        for model in (profile or {}).get("models", []):
+            if (model.get("capabilities") or {}).get("vision") is True and model.get("model"):
+                return str(model["model"])
+    except Exception:
+        return None
+    return None
+
+
+def _auto_vision_model(agent: VisualReviewAgent) -> str | None:
+    """The model visual review can use without being asked: the chat model when it reads
+    images, else a vision model declared in the same profile; None when there is neither."""
+    from deeptutor.services.llm.capabilities import supports_vision
+
+    try:
+        model = agent.get_model()
+        if supports_vision(agent.binding, model):
+            return model
+    except Exception:
+        pass
+    declared = _catalog_vision_model()
+    return declared if declared and supports_vision(agent.binding, declared) else None
+
 
 class MathAnimatorPipeline:
     def __init__(
@@ -67,16 +103,25 @@ class MathAnimatorPipeline:
             api_version=api_version,
             language=language,
         )
-        self.visual_review_agent = (
-            VisualReviewAgent(
-                api_key=api_key,
-                base_url=base_url,
-                api_version=api_version,
-                language=language,
-            )
-            if enable_visual_review
-            else None
+        self.visual_review_agent: VisualReviewAgent | None = VisualReviewAgent(
+            api_key=api_key,
+            base_url=base_url,
+            api_version=api_version,
+            language=language,
         )
+        # Without an explicit request, review still runs when a vision-capable model is at
+        # hand, for a limited number of rounds; otherwise there is no reviewer.
+        self.auto_vision_rounds: int | None = None
+        if not enable_visual_review:
+            vision_model = _auto_vision_model(self.visual_review_agent)
+            if vision_model is None:
+                self.visual_review_agent = None
+            else:
+                self.visual_review_agent.agent_config = {
+                    **self.visual_review_agent.agent_config,
+                    "model": vision_model,
+                }
+                self.auto_vision_rounds = MAX_AUTO_VISION_ROUNDS
         self.set_trace_callback(trace_callback)
 
     def set_trace_callback(self, callback: Callable[[dict[str, Any]], Any] | None) -> None:
@@ -168,7 +213,7 @@ class MathAnimatorPipeline:
             )
         )
         review_callback: Callable[[str, RenderResult], Any] | None = None
-        if self.enable_visual_review and self.visual_review_agent is not None:
+        if self.visual_review_agent is not None:
             review_service = VisualReviewService(
                 turn_id,
                 progress_callback=on_render_progress,
@@ -188,6 +233,26 @@ class MathAnimatorPipeline:
                 )
 
             review_callback = _review_callback
+            if self.auto_vision_rounds is not None:
+                rounds = {"left": self.auto_vision_rounds}
+
+                async def _limited_review(
+                    current_code: str, render_result: RenderResult
+                ) -> VisualReviewResult:
+                    review = await _review_callback(current_code, render_result)
+                    if review.passed:
+                        return review
+                    if rounds["left"] > 0:
+                        rounds["left"] -= 1
+                        return review
+                    # Out of rounds: keep the render and record what the reviewer still saw.
+                    review.passed = True
+                    review.summary = "Visual issues remain after review rounds: " + (
+                        review.summary or ""
+                    )
+                    return review
+
+                review_callback = _limited_review
 
         retry_manager = CodeRetryManager(
             renderer=renderer,
