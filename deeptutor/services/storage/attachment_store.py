@@ -35,6 +35,7 @@ from pathlib import Path
 import shutil
 from typing import Protocol, runtime_checkable
 from urllib.parse import quote
+import uuid
 
 from deeptutor.services.config import load_system_settings
 from deeptutor.services.path_service import get_path_service
@@ -176,9 +177,13 @@ class LocalDiskAttachmentStore:
     @staticmethod
     def _write_sync(target: Path, data: bytes) -> None:
         target.parent.mkdir(parents=True, exist_ok=True)
-        # Atomic-ish write: write to .tmp then rename. Avoids exposing a
-        # half-written file via the static handler.
-        tmp = target.with_suffix(target.suffix + ".tmp")
+        # Atomic-ish write: stage to a private temp file in the same directory,
+        # then rename. Avoids exposing a half-written file via the static
+        # handler. The staging name must be unique per write: a shared
+        # "<target>.tmp" is truncated by a concurrent writer, and once the
+        # winner renames it away the loser's rename raises FileNotFoundError
+        # while its cleanup pass can delete the winner's staging file.
+        tmp = target.with_name("%s.%s.tmp" % (target.name, uuid.uuid4().hex))
         try:
             with tmp.open("wb") as fh:
                 fh.write(data)
