@@ -714,6 +714,10 @@ uninstalling DeepTutor.
 
 </details>
 
+## ☁️ One-Click Deploy
+
+[![Deploy on RepoCloud](https://d16t0pc4846x52.cloudfront.net/deploylobe.svg)](https://repocloud.io/details/DeepTutor/)
+
 ## 📖 Explore DeepTutor
 
 Start with a **workspace** for a subject or project. Its **Home**, **Learning**, and **Resources** hold your conversations, learning activities, and materials. **Partners** and **Personalization** stay with your account across workspaces. The tour below shows how these surfaces connect, followed by settings and multi-user deployment.
