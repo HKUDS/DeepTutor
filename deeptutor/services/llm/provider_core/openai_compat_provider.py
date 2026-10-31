@@ -142,19 +142,6 @@ def _accumulate_streamed_tool_call(
     return {**buffer, "id": buffer["id"] or f"call_{index}"}
 
 
-def _coerce_dict(value: Any) -> dict[str, Any] | None:
-    if value is None:
-        return None
-    if isinstance(value, dict):
-        return value if value else None
-    model_dump = getattr(value, "model_dump", None)
-    if callable(model_dump):
-        dumped = model_dump()
-        if isinstance(dumped, dict) and dumped:
-            return dumped
-    return None
-
-
 def _provider_state_output_items(message: dict[str, Any]) -> list[dict[str, Any]]:
     state = normalize_provider_response_state(message.get("_provider_response_state"))
     items = state.get("responses_output_items") if state is not None else None
