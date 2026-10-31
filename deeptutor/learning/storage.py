@@ -51,6 +51,8 @@ logger = logging.getLogger(__name__)
 _schema_lock = threading.RLock()
 _initialized_db_paths: set[Path] = set()
 _T = TypeVar("_T")
+# How long an explanation that needs clarification is kept for the follow-up.
+PENDING_EXPLANATION_TTL_SECONDS = 24 * 3600
 _ACTIVE_INTERACTION_STATES = (
     InteractionStatus.REGISTERED.value,
     InteractionStatus.AWAITING_INPUT.value,
@@ -193,6 +195,73 @@ class LearningTransaction:
             **json.loads(row["payload_json"]),
             "committed_revision": int(applied["revision"]) if applied else None,
         }
+
+    def record_pending_explanation(
+        self,
+        knowledge_point_id: str,
+        explanation: str,
+        *,
+        base: str,
+        session_id: str,
+        turn_id: str,
+    ) -> None:
+        """Keep an explanation that needs clarification, without a new revision.
+
+        ``base`` is the explanation that was already pending before this turn,
+        so a retried turn can rebuild its answer instead of appending twice.
+        """
+        self._conn.execute(
+            """INSERT INTO mastery_events
+               (path_id, revision, event_type, payload_json, session_id, turn_id, created_at)
+               VALUES (?, ?, 'qualitative.clarification_requested', ?, ?, ?, ?)""",
+            (
+                self.progress.book_id,
+                self.base_revision,
+                json.dumps(
+                    {
+                        "knowledge_point_id": knowledge_point_id,
+                        "explanation": explanation,
+                        "base": base,
+                    },
+                    ensure_ascii=False,
+                    allow_nan=False,
+                ),
+                session_id,
+                turn_id,
+                time.time(),
+            ),
+        )
+
+    def pending_explanation(self, knowledge_point_id: str, *, session_id: str, turn_id: str) -> str:
+        """The explanation still awaiting clarification in this session, if any.
+
+        A final qualitative assessment of the objective after the request, or
+        an expired request, means nothing is pending.
+        """
+        row = self._conn.execute(
+            """SELECT payload_json, turn_id, created_at FROM mastery_events
+               WHERE path_id = ? AND session_id = ?
+               AND event_type = 'qualitative.clarification_requested'
+               AND json_extract(payload_json, '$.knowledge_point_id') = ?
+               ORDER BY id DESC LIMIT 1""",
+            (self.progress.book_id, session_id, knowledge_point_id),
+        ).fetchone()
+        if row is None:
+            return ""
+        requested_at = float(row["created_at"])
+        if time.time() - requested_at > PENDING_EXPLANATION_TTL_SECONDS:
+            return ""
+        if any(
+            item.knowledge_point_id == knowledge_point_id
+            and item.assessment_type == "qualitative"
+            and item.timestamp >= requested_at
+            for item in self.progress.learning_evidence
+        ):
+            return ""
+        payload = json.loads(row["payload_json"] or "{}")
+        if turn_id and (row["turn_id"] or "") == turn_id:
+            return str(payload.get("base") or "")
+        return str(payload.get("explanation") or "")
 
     @staticmethod
     def _interaction_from_row(row: sqlite3.Row | None) -> MasteryInteraction | None:
