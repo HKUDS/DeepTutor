@@ -912,6 +912,33 @@ def test_ingestion_uses_active_parse_service_for_parser_files(tmp_path, monkeypa
     )
 
 
+def test_ingestion_parses_parser_files_off_the_event_loop(tmp_path, monkeypatch) -> None:
+    from deeptutor.services import parsing
+    import threading
+
+    root = tmp_path / "root"
+    pdf = tmp_path / "paper.pdf"
+    pdf.write_bytes(b"%PDF-1.4\n")
+    loop_thread = threading.get_ident()
+    parse_threads: list[int] = []
+
+    class _Parsed:
+        markdown = "parsed off-loop"
+        blocks: list[dict] = []
+
+    class _ParseService:
+        def parse(self, path):
+            parse_threads.append(threading.get_ident())
+            return _Parsed()
+
+    monkeypatch.setattr(parsing, "get_parse_service", lambda: _ParseService())
+
+    count = asyncio.run(ingestion.prepare_input([str(pdf)], root))
+
+    assert count == 1
+    assert parse_threads and parse_threads[0] != loop_thread
+
+
 def test_ingestion_parses_images_when_active_engine_supports_them(tmp_path, monkeypatch) -> None:
     from deeptutor.services import parsing
 
