@@ -3078,6 +3078,18 @@ class LearningService:
                     confidence=existing.confidence if existing.confidence is not None else 1.0,
                     feedback=existing.feedback or "Previously saved assessment.",
                 ).receipt()
+        # A reply to a clarification request completes the earlier explanation
+        # in this session; grading it alone would mark a full answer partial.
+        pending = ""
+        if session_id:
+            _, pending = self._store.mutate(
+                book_id,
+                lambda tx: tx.pending_explanation(kp_id, session_id=session_id, turn_id=turn_id),
+            )
+        if pending and len(pending) + len(answer) + 2 <= 10000:
+            answer = f"{pending}\n\n{answer}"
+        else:
+            pending = ""
         evidence = assessment_evidence(progress, kp_id)
         try:
             validate_evidence(self._store, progress, kp_id, evidence)
@@ -3100,6 +3112,13 @@ class LearningService:
             raise MasteryInteractionError(str(exc)) from exc
         receipt = decisions[kp_id].receipt()
         if not receipt["final"]:
+            if session_id:
+                self._store.mutate(
+                    book_id,
+                    lambda tx: tx.record_pending_explanation(
+                        kp_id, answer, base=pending, session_id=session_id, turn_id=turn_id
+                    ),
+                )
             return progress, receipt
         progress = self.record_qualitative_for_path(
             book_id,
