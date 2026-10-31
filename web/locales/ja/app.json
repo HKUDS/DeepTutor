@@ -1838,6 +1838,7 @@
   "Close tab": "タブを閉じる",
   "Close viewer": "ビューアを閉じる",
   "Back to conversation": "会話に戻る",
+  "Back to latest": "最新に戻る",
   "Loading {{host}}…": "{{host}} を読み込み中…",
   "Many sites refuse to embed for security reasons. If the page below stays blank, use “Open in browser”.": "多くのサイトはセキュリティ上の理由で埋め込みを拒否します。下のページが空白のままの場合は「ブラウザで開く」を使用してください。",
   "Open URL": "URL を開く",

@@ -37,6 +37,7 @@ import type { SelectedQuestionEntry } from "@/components/chat/QuestionBankPicker
 import ChatComposer from "@/components/chat/home/ChatComposer";
 import { ChatMessageList } from "@/features/chat/messages";
 import { TurnNavigator } from "@/components/chat/home/TurnNavigator";
+import ScrollToLatestButton from "@/components/chat/ScrollToLatestButton";
 import SessionLoadingView from "@/components/chat/home/SessionLoadingView";
 import {
   SESSION_LOAD_TIMEOUT_MS,
@@ -1155,6 +1156,7 @@ export default function ChatWorkspace() {
     containerRef: messagesContainerRef,
     endRef: messagesEndRef,
     shouldAutoScrollRef,
+    isFollowing,
     scrollToBottom,
     handleScroll: handleMessagesScroll,
   } = useChatAutoScroll({
@@ -2847,6 +2849,11 @@ export default function ChatWorkspace() {
                     scrollRootRef={messagesContainerRef}
                     onJump={jumpToTurn}
                     onJumpToBottom={resumeFollowingLatest}
+                  />
+                  <ScrollToLatestButton
+                    visible={isFollowing === false && state.isStreaming}
+                    onClick={resumeFollowingLatest}
+                    className="absolute bottom-4 right-4 z-20"
                   />
                 </div>
               )}

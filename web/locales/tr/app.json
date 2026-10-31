@@ -1838,6 +1838,7 @@
   "Close tab": "Sekmeyi kapat",
   "Close viewer": "Görüntüleyiciyi kapat",
   "Back to conversation": "Sohbete dön",
+  "Back to latest": "En sona dön",
   "Loading {{host}}…": "{{host}} yükleniyor…",
   "Many sites refuse to embed for security reasons. If the page below stays blank, use “Open in browser”.": "Birçok site güvenlik nedeniyle gömülmeyi reddeder. Aşağıdaki sayfa boş kalırsa “Tarayıcıda aç” seçeneğini kullanın.",
   "Open URL": "URL'yi aç",
