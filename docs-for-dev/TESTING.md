@@ -90,7 +90,7 @@ test counts and a mock provider do not establish current production behavior.
 ## Reviewing a documentation change
 
 Check relative links from each file, not from the repository root. Search
-README translations, CLI help, UI setup prompts and test fixtures when moving
+README translations (`assets/README/`, `docs-for-dev/tr/`), CLI help, UI setup prompts and test fixtures when moving
 a guide. Keep source links free of fragile line numbers. Use the installed
 CLI's `--help` and authoritative manifests/settings to validate commands and
 defaults. Keep local artifacts and secrets out of the commit.

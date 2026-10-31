@@ -1,5 +1,7 @@
 # DeepTutor developer and agent handbook
 
+> 🇹🇷 Türkçe sürüm: [`tr/README.md`](tr/README.md)
+
 Start here to install, diagnose, or change DeepTutor. This handbook describes
 the **1.7.0 source tree**; use the documentation from the same tag when working
 on another release. The version authority is
