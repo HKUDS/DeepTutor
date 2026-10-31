@@ -13,6 +13,32 @@ from deeptutor.services.parsing import progress
 from deeptutor.services.parsing.engines.mineru import local
 
 
+def _await_settled(pid: int, timeout: float = 0.25) -> bool:
+    """Whether an owned descendant is gone, or killed and awaiting reaping.
+
+    The tree is SIGKILLed, so the only thing left to observe is reaping, and
+    that is done by init for an orphaned grandchild. An immediate
+    ``pid_exists`` check races that window: it failed 2 of 8 whole-file runs on
+    40c051b7 and 5 of 8 on f7aed0744. A zombie pid is a settled tree; a
+    running pid is a leak.
+
+    The timeout only covers signal delivery, never reaping, so it must stay
+    small: the fixture child lives 2s, and a window of 1s would let a missed
+    kill die of old age and pass while ``elapsed`` approaches its 1.5s bound.
+    """
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            status = psutil.Process(pid).status()
+        except psutil.NoSuchProcess:
+            return True
+        if status in {psutil.STATUS_ZOMBIE, psutil.STATUS_DEAD}:
+            return True
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(0.02)
+
+
 def run_fixture(tmp_path, monkeypatch, code, run=None, idle=0.05, timeout=30, extra_env=None):
     source = tmp_path / "lesson.pdf"
     source.write_bytes(b"controlled fixture")
@@ -81,7 +107,7 @@ def test_parent_exit_does_not_wait_for_descendant_stdout(tmp_path, monkeypatch):
         assert result.ok, result
         assert elapsed < 1.5, "Waiting for inherited stdout instead of parent exit"
         child = int((tmp_path / "out" / "lesson" / "child.pid").read_text())
-        assert not psutil.pid_exists(child), "Owned child escaped cleanup"
+        assert _await_settled(child), "Owned child survived cleanup"
         assert unrelated.poll() is None, "Cleanup touched an unrelated process"
     finally:
         unrelated.terminate()
@@ -112,4 +138,22 @@ def test_deadline_and_cancellation_settle_the_owned_tree(tmp_path, monkeypatch, 
     )
     assert elapsed < 2
     (child_file,) = (tmp_path / "out").glob(".mineru-attempt-*/output/child.pid")
-    assert not psutil.pid_exists(int(child_file.read_text()))
+    assert _await_settled(int(child_file.read_text()))
+
+
+def test_settled_rejects_a_running_child() -> None:
+    """Both answers, with real processes: a live pid is not settled.
+
+    The cleanup assertions above only ever see the settled answer, so without
+    this they would keep passing if the helper lost its running/zombie
+    distinction and the original flake came back.
+    """
+    child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(5)"])
+    try:
+        assert _await_settled(child.pid, timeout=0.05) is False
+        child.kill()
+        # Not reaped here: an unreaped kill is the zombie the flake was about.
+        assert _await_settled(child.pid) is True
+    finally:
+        child.kill()
+        child.wait(timeout=5)
