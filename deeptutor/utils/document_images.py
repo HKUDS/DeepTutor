@@ -524,9 +524,9 @@ def _collect_shape_rich(
         if getattr(shape, "has_table", False):
             for row in shape.table.rows:
                 cells = [cell.text.strip() for cell in row.cells]
-                line = "\t".join(cell for cell in cells if cell)
-                if line:
-                    lines.append(line)
+                # Keep empty cells so each value stays under its column header
+                if any(cells):
+                    lines.append("\t".join(cells))
             continue
         text = getattr(shape, "text", "")
         if text and text.strip():

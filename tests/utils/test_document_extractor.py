@@ -227,6 +227,30 @@ class TestExtractPptx:
         assert "Slide 1 title" in text
         assert "Slide 2 only text" in text
 
+    @pytest.mark.parametrize("rich", [True, False], ids=["rich", "python-pptx"])
+    def test_table_keeps_empty_cells_in_their_columns(
+        self, monkeypatch: pytest.MonkeyPatch, rich: bool
+    ) -> None:
+        if not rich:
+            monkeypatch.setattr(
+                document_extractor_module,
+                "extract_pptx_rich",
+                lambda data: (_ for _ in ()).throw(ValueError("rich path off")),
+            )
+        prs = Presentation()
+        slide = prs.slides.add_slide(prs.slide_layouts[6])
+        rows = [["Name", "Score", "Grade"], ["Ada", "", "A"], ["", "71", "B"], ["", "", ""]]
+        table = slide.shapes.add_table(4, 3, Inches(1), Inches(1), Inches(6), Inches(2)).table
+        for r, row in enumerate(rows):
+            for c, value in enumerate(row):
+                table.cell(r, c).text = value
+        buf = io.BytesIO()
+        prs.save(buf)
+
+        text = extract_text_from_bytes("deck.pptx", buf.getvalue())
+
+        assert text == "--- Slide 1 ---\nName\tScore\tGrade\nAda\t\tA\n\t71\tB"
+
     def test_ooxml_fallback_without_python_pptx(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(document_extractor_module, "PptxPresentation", None)
         data = _make_pptx([["Fallback slide", "第二行"]])
