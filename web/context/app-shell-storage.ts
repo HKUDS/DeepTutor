@@ -25,7 +25,8 @@ export type ResponseLanguage =
   | "ar"
   | "pl"
   | "uk"
-  | "ms";
+  | "ms"
+  | "tr";
 
 const SUPPORTED_RESPONSE_LANGUAGE_CODES: readonly ResponseLanguage[] = [
   "en",
@@ -43,6 +44,7 @@ const SUPPORTED_RESPONSE_LANGUAGE_CODES: readonly ResponseLanguage[] = [
   "pl",
   "uk",
   "ms",
+  "tr",
 ];
 
 export function isResponseLanguage(value: unknown): value is ResponseLanguage {
@@ -67,6 +69,9 @@ const RESPONSE_LANGUAGE_ALIASES: Record<string, ResponseLanguage> = {
   ukrainian: "uk",
   malay: "ms",
   "bahasa melayu": "ms",
+  turkish: "tr",
+  "türkçe": "tr",
+  turkce: "tr",
   "zh-cn": "zh",
 };
 

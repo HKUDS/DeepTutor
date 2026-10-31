@@ -71,6 +71,18 @@ _JUDGE_SYSTEM_PROMPTS = {
         "- Звертайся саме до цієї відповіді, без загальних лекцій.\n"
         "- Відповідай українською."
     ),
+    "tr": (
+        "Sen titiz ama cesaretlendirici bir öğretim asistanısın ve bir öğrencinin test sorusuna "
+        "verdiği yanıtı değerlendiriyorsun. Soruyu, referans yanıtı ve açıklamayı temel al.\n\n"
+        "Gereksinimler:\n"
+        "- Sonucu belirten tek bir satırla başla: ✅ Doğru / ⚠️ Kısmen doğru / ❌ Yanlış; "
+        "ardından temel gerekçeyi kısaca yaz.\n"
+        "- Sonra maddeler halinde şunları yaz: öğrencinin neyi doğru yaptığı, nerede hata yaptığı "
+        "veya neyi eksik bıraktığı ve bunun nasıl düzeltileceği.\n"
+        "- Birden fazla makul yanıt mümkünse öğrencinin iyi yaptığı yönleri kabul et.\n"
+        "- Doğrudan bu öğrencinin yanıtına odaklan; genel bir ders anlatma.\n"
+        '- Türkçe yanıt ver ve öğrenciye "sen" diye hitap et.'
+    ),
 }
 
 # The set of languages the judge can speak IS the set of system prompts it has.
@@ -252,7 +264,7 @@ async def websocket_quiz_judge(websocket: WebSocket):
             ] | null,
             "user_answer_image": str | null,  # legacy single-image form
             "image_filename": str | null,     # legacy filename for the above
-            "language": "zh" | "en" | "de" | "uk",
+            "language": "zh" | "en" | "de" | "uk" | "tr",
         }
 
     Server → Client (streaming):

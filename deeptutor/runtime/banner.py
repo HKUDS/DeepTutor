@@ -485,6 +485,130 @@ LABELS: dict[str, dict[str, str]] = {
         "start.port_kill_failed": "Не вдалося звільнити порт {port} (PID {pid}).",
         "start.port_freed": "Порт {port} звільнено.",
     },
+    "tr": {
+        "tagline": "Ajan Odaklı Kişiselleştirilmiş Öğrenme Arkadaşı",
+        "lab": "Data Intelligence Lab @ HKU",
+        # init
+        "init.mode": "Çalışma alanı kurulumu",
+        "init.workspace": "Çalışma alanı",
+        "init.note_settings_dir": "Ayarlar data/user/settings altına yazılacak.",
+        "init.cancelled": "Kurulum iptal edildi. Hiçbir şey kaydedilmedi.",
+        "init.step_ports": "Adım {n}/{total} · Portlar",
+        "init.step_llm": "Adım {n}/{total} · LLM sağlayıcısı",
+        "init.step_embedding": "Adım {n}/{total} · Embedding (RAG / Bilgi tabanı)",
+        "init.step_search": "Adım {n}/{total} · Web araması",
+        "init.step_review": "Adım {n}/{total} · Gözden geçir ve kaydet",
+        "init.backend_port": "Backend portu",
+        "init.frontend_port": "Frontend portu",
+        "init.llm_section": "LLM sağlayıcısı",
+        "init.pick_provider": "Bir LLM sağlayıcısı seçin",
+        "init.pick_embedding_provider": "Bir embedding sağlayıcısı seçin",
+        "init.show_all": "Tüm sağlayıcıları göster",
+        "init.custom_provider": "Özel / Diğer",
+        "init.skip_step": "Atla / daha sonra yapılandır",
+        "init.back": "Geri",
+        "init.skipped": "Atlandı — bunu daha sonra Web Ayarları'ndan yapılandırabilirsiniz.",
+        "init.binding": "Binding",
+        "init.base_url": "Base URL",
+        "init.api_key": "API anahtarı",
+        "init.api_key_env_detected": "Ortamınızda {env_var}={masked} bulundu. Kullanılsın mı?",
+        "init.api_key_prompt": "API anahtarı (girdi gizli, atlamak için Enter)",
+        "init.api_key_reuse_llm": "LLM API anahtarı {masked} yeniden kullanılsın mı?",
+        "init.edit_base_url": "Base URL düzenlensin mi?",
+        "init.new_base_url": "Yeni Base URL",
+        "init.model": "Model",
+        "init.fetch_models": "Kullanılabilir modeller {url} adresinden alınıyor ...",
+        "init.fetch_models_ok": "{count} model bulundu.",
+        "init.fetch_models_fail": "Modeller listelenemedi ({error}). Yedek liste kullanılıyor.",
+        "init.pick_model": "Bir model seçin — ya da kendi modelinizi girmek için {marker} yazın",
+        "init.custom_model": "Özel model adı",
+        "init.embedding_section": "Embedding sağlayıcısı",
+        "init.embedding_endpoint": "Embedding uç nokta URL'si",
+        "init.embedding_api_key": "Embedding API anahtarı",
+        "init.embedding_model": "Embedding modeli",
+        "init.embedding_dimension": "Embedding boyutu (otomatik için boş bırakın)",
+        "init.search_section": "Web arama sağlayıcısı",
+        "init.pick_search_provider": "Bir web arama sağlayıcısı seçin",
+        "init.search_api_key_prompt": "API anahtarı (girdi gizli, atlamak için Enter)",
+        "init.search_base_url_prompt": "Base URL",
+        "init.search_no_key_note": "{label} için API anahtarı gerekmez.",
+        "init.search_disabled_note": "Web araması devre dışı bırakılacak. Ajanlar arama araçlarını atlayacak.",
+        "init.review_search": "Arama",
+        "init.review_search_disabled": "devre dışı",
+        "init.probe_offer": "Bağlantı şimdi test edilsin mi?",
+        "init.probe_running": "{what} test ediliyor ...",
+        "init.probe_ok": "{what} tamam  ·  {ms}ms",
+        "init.probe_fail": "{what} başarısız oldu: {error}",
+        "init.probe_retry": "API anahtarı yeniden girilip tekrar denensin mi?",
+        "init.copilot_reuse_login": "{account} için GitHub Copilot girişi yeniden kullanılsın mı?",
+        "init.copilot_login_start": "GitHub cihaz girişi başlatılıyor ...",
+        "init.copilot_login_ok": "{account} için GitHub Copilot girişi başarılı.",
+        "init.copilot_login_fail": "GitHub Copilot girişi başarısız oldu: {error}",
+        "init.review_title": "Gözden geçir",
+        "init.review_llm": "LLM",
+        "init.review_embedding": "Embedding",
+        "init.review_ports": "Portlar",
+        "init.review_ports_value": "backend {backend}, frontend {frontend}",
+        "init.confirm_save": "Bu ayarlar kaydedilsin mi?",
+        "init.saved": "Ayarlar kaydedildi. Daha sonra Web Ayarları sayfasından veya data/user/settings/ içinden düzenleyebilirsiniz.",
+        "init.next_step": "DeepTutor'u başlatmak için `deeptutor start` komutunu çalıştırın.",
+        "init.choice": "Seçim",
+        "init.choice_invalid": "Geçersiz seçim. Tekrar deneyin.",
+        # start (launcher)
+        "start.mode": "Backend + frontend başlatılıyor",
+        "start.backend": "Backend",
+        "start.browser_api": "Tarayıcı API'si",
+        "start.frontend": "Frontend",
+        "start.workspace": "Çalışma alanı",
+        "start.frontend_runtime": "Frontend çalışma zamanı",
+        "start.press_ctrl_c": "Durdurmak için Ctrl+C'ye basın.",
+        "start.detached_started": "DeepTutor arka planda başlatılıyor (başlatıcı PID {pid}).",
+        "start.detached_already_running": (
+            "Ayrık bir DeepTutor başlatıcısı zaten çalışıyor (PID {pid}). Günlük: {log}"
+        ),
+        "start.detached_log": "Günlük: {path}",
+        "start.detached_stop_hint": 'Durdurmak için `deeptutor stop --home "{home}"` komutunu kullanın.',
+        "start.starting_backend": "Backend başlatılıyor ...",
+        "start.starting_frontend": "Frontend başlatılıyor ...",
+        "start.reusing_frontend": "{url} adresindeki mevcut frontend yeniden kullanılıyor (PID {pid}).",
+        "start.restarting_frontend": (
+            "{url} adresindeki mevcut frontend yanıt vermiyor; yeniden başlatılıyor (PID {pid})."
+        ),
+        "start.frontend_restart_failed": (
+            "{url} adresindeki mevcut frontend yanıt vermiyor ve otomatik olarak durdurulamadı. "
+            "PID {pid} işlemini durdurup `deeptutor start` komutunu yeniden çalıştırın."
+        ),
+        "start.waiting_for": "{name} bekleniyor ({url}) ...",
+        "start.ready": "{name} hazır.",
+        "start.open_in_browser": "{url} adresini tarayıcınızda açın.",
+        "start.received_signal": "{signal} alındı; kapatılıyor ...",
+        "start.stopping": "{name} durduruluyor (PID {pid})",
+        "start.exited": "{name} {code} koduyla sonlandı",
+        "stop.not_running": "Çalışan ayrık bir DeepTutor başlatıcısı yok.",
+        "stop.requested": "Başlatıcı PID {pid} için düzgün durdurma istendi.",
+        "stop.complete": "DeepTutor durduruldu.",
+        "stop.timeout": "Başlatıcı PID {pid} zamanında durmadı. {log} dosyasını kontrol edin.",
+        "start.not_ready": (
+            "{name}, {timeout} sn içinde hazır olmadı. "
+            "Yavaş donanım veya taşınacak verisi olan bir çalışma alanı daha uzun sürebilir; "
+            "{env} değerini daha büyük bir saniye sayısına ayarlayın."
+        ),
+        "start.port_in_use": (
+            "DeepTutor başlatılamıyor, port(lar) zaten kullanımda: {ports}. "
+            "Mevcut işlemi durdurun veya data/user/settings/system.json dosyasını değiştirin."
+        ),
+        "start.port_conflict_title": "Port çakışması algılandı:",
+        "start.port_conflict_line": "  {role} portu {port} şu işlem tarafından kullanılıyor:",
+        "start.port_conflict_proc": "    PID {pid} · {command}",
+        "start.port_conflict_unknown_proc": "    (işlem bilgisi alınamıyor)",
+        "start.port_option_change": "Portları değiştir (data/user/settings/system.json dosyasına kaydedilir)",
+        "start.port_option_kill": "Portu kullanan işlem(ler)i durdur ve devam et",
+        "start.port_invalid": "Geçersiz port: {value}. 1 ile 65535 arasında boş bir port girin.",
+        "start.port_saved": "Portlar {path} dosyasına kaydedildi.",
+        "start.port_killing": "PID {pid} ({command}) durduruluyor ...",
+        "start.port_kill_failed": "Port {port} serbest bırakılamadı (PID {pid}).",
+        "start.port_freed": "Port {port} serbest bırakıldı.",
+    },
 }
 
 
@@ -498,6 +622,8 @@ def _pick_language(language: str | None) -> str:
         return "de"
     if code in {"uk", "uk-ua", "ukrainian", "ua"}:
         return "uk"
+    if code in {"tr", "tr-tr", "turkish", "türkçe", "turkce"}:
+        return "tr"
     return "en"
 
 

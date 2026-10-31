@@ -47,6 +47,8 @@ _CANONICAL_LANGUAGES: dict[str, str] = {
     "pt-pt": "pt",
     "it": "it",
     "it-it": "it",
+    "tr": "tr",
+    "tr-tr": "tr",
 }
 
 _KNOWN_LANG_CODES = frozenset(_CANONICAL_LANGUAGES.keys())
@@ -62,6 +64,7 @@ SUPPORTED_LANGUAGE_PAIRS = frozenset(
         frozenset({"en", "ru"}),
         frozenset({"en", "pt"}),
         frozenset({"en", "it"}),
+        frozenset({"en", "tr"}),
     }
 )
 
