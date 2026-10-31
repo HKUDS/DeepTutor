@@ -257,7 +257,8 @@ DeepTutor is an agent-native learning workspace that connects tutoring, problem 
 
 Choose the installation path that fits how you want to use DeepTutor. Terminal-based installs share one runtime home: private settings live in `data/user/settings/` under the launch directory, or under `DEEPTUTOR_HOME` / `deeptutor start --home` when set explicitly. After starting the app, configure a provider and model in **Settings → Providers** and **Language models**.
 
-### Desktop — macOS and Windows (Preview)
+<details>
+<summary><b>Desktop — macOS and Windows (Preview)</b></summary>
 
 **Open DeepTutor** bundles Python, Node.js, and the full learning workspace, so no terminal or separate runtime installation is needed. Desktop previews are available on `dev`; the **v1.7.0 Release does not include desktop installers**.
 
@@ -271,7 +272,10 @@ Open a successful [Desktop Release workflow run](https://github.com/HKUDS/DeepTu
 
 Windows preview builds are unsigned and may show a SmartScreen warning. See the [desktop guide](apps/desktop/README.md) for signing, local data, and source builds.
 
-### Docker — Fastest Full-App Trial
+</details>
+
+<details>
+<summary><b>Docker — Fastest Full-App Trial</b></summary>
 
 Run the full Web app without installing Python or Node.js:
 
@@ -284,7 +288,10 @@ docker run --rm --name deeptutor \
 
 Open [http://127.0.0.1:3782](http://127.0.0.1:3782). The named volume preserves settings and local data; only port `3782` is required for the Web app. See the [Docker guide](https://docs.deeptutor.info/get-started/docker/) for host workspaces, local model services, reverse proxies, and production deployment.
 
-### PyPI — Full Web App and CLI
+</details>
+
+<details>
+<summary><b>PyPI — Full Web App and CLI</b></summary>
 
 Use **Python 3.11–3.14** and **Node.js 20+**. In the modular 1.7.0 release, `deeptutor[full]` installs the Web app and CLI; bare `deeptutor` installs core chat and the SDK.
 
@@ -299,7 +306,10 @@ Open the URL printed in the terminal, by default [http://127.0.0.1:3782](http://
 
 **Upgrading from 1.6.15 or earlier:** stop DeepTutor, back up the runtime home, and uninstall a legacy `deeptutor-cli` package before installing the new family. Keep the same `DEEPTUTOR_HOME`, then run `python -m pip check` and `deeptutor module list`. See the [PyPI and migration guide](https://docs.deeptutor.info/get-started/pypi/) for the exact upgrade commands.
 
-### Source — Current Dev and Contributors
+</details>
+
+<details>
+<summary><b>Source — Current Dev and Contributors</b></summary>
 
 Use **Python 3.11–3.14** and **Node.js 22 LTS** to match CI and Docker.
 
@@ -317,7 +327,10 @@ deeptutor start --dev
 
 Use `deeptutor start` without `--dev` for a production build. Optional dependencies are installed from the repository root, for example `python scripts/install_extras.py dev,partners,math-animator`. See the [source installation guide](https://docs.deeptutor.info/get-started/from-source/) for Conda, extras, and troubleshooting, or the [Agent Setup guide](docs-for-dev/AGENT_SETUP.md) to let a terminal-capable agent perform and verify the setup.
 
-### CLI — Terminal and Agent Use
+</details>
+
+<details>
+<summary><b>CLI — Terminal and Agent Use</b></summary>
 
 For a minimal terminal installation, use the core wheel; no Node.js or Web frontend is required:
 
@@ -329,6 +342,8 @@ deeptutor chat
 ```
 
 Core includes Chat, Ask Questions, the CLI, and the SDK; other capabilities and management commands require their matching feature modules. For the current `dev` source installation and optional dependencies, see the [CLI-only guide](https://docs.deeptutor.info/get-started/cli-only/). The [CLI reference](#%EF%B8%8F-deeptutor-cli--agent-native-interface) below covers one-shot runs and machine-readable output.
+
+</details>
 
 **Workspaces and advanced setup:** see [Content Workspaces](docs-for-dev/workspaces.md), [Local Data Persistence](docs-for-dev/DATA_STORAGE.md), [Containerization and Sandbox Deployment](docs-for-dev/CONTAINERIZATION.md), [Configuration Reference](https://docs.deeptutor.info/get-started/pypi/#config-files-under-datausersettings), and [Troubleshooting](https://docs.deeptutor.info/get-started/troubleshooting/).
 
@@ -353,7 +368,8 @@ Start with a **workspace** for each subject or project. Home, Learning, and Reso
 
 </details>
 
-### 🏠 Home — Conversations, Tasks, Notes, and Calendar
+<details>
+<summary><b>🏠 Home — Conversations, Tasks, Notes, and Calendar</b></summary>
 
 Home is where daily work begins: talk to the tutor, organize next actions, and develop your own notes in the current workspace. Calendar provides an account-wide view while retaining the source workspace for study events.
 
@@ -408,7 +424,10 @@ Discuss a passage or block with **Dito**: ask for an explanation, example, rewri
 
 </details>
 
-### 🎓 Learning — Books, Paths, Reading, and Practice
+</details>
+
+<details>
+<summary><b>🎓 Learning — Books, Paths, Reading, and Practice</b></summary>
 
 Learning is the current workspace's study area. Create an activity from **Learning → New learning**, then reopen it from **All learning** with its progress, conversations, and source context intact.
 
@@ -444,7 +463,10 @@ Each chapter compiles into editable typed blocks — text, callouts, quizzes, fl
 
 </details>
 
-### 🗂️ Resources — Materials and Saved Learning Records
+</details>
+
+<details>
+<summary><b>🗂️ Resources — Materials and Saved Learning Records</b></summary>
 
 Resources is the current workspace's reusable library. Keep original material, saved results, and learning records here so they can be attached to new conversations and activities without mixing projects.
 
@@ -488,7 +510,10 @@ Native LightRAG queries and incremental indexing require the embedding configura
 
 </details>
 
-### 🤝 Partners — Persistent Companions Across Workspaces
+</details>
+
+<details>
+<summary><b>🤝 Partners — Persistent Companions Across Workspaces</b></summary>
 
 Partners belong to the account rather than one subject workspace. Each companion keeps its own identity, instructions, model policy, relationships, and channels while using either a private library or an existing workspace's resources.
 
@@ -515,7 +540,10 @@ Schema-driven channels connect companions to Feishu, Telegram, Slack, Discord, D
 
 </details>
 
-### 🧭 Personalization — Reusable Behavior and Connections
+</details>
+
+<details>
+<summary><b>🧭 Personalization — Reusable Behavior and Connections</b></summary>
 
 Personalization follows the account across workspaces. Choose how the tutor should behave and which agents, skills, services, applications, and memories it may reuse; workspace and conversation selections can narrow that access further.
 
@@ -615,6 +643,8 @@ Run only the one command that matches the actual callback port; never run both. 
 The CLI prints the tunnel command and then immediately tries to open the browser. On a remote deployment, keep the authorization page open without completing it, establish the printed tunnel in another terminal, and only then continue authorization.
 
 Remote-topology detection has a localhost boundary. If Web itself is reached through an SSH or IDE localhost forward, the browser cannot tell that the server is remote. For the current Web operation, leave its authorization page unfinished, read `redirect_uri` in that operation's authorize URL to identify callback port `1455` or `1457`, and create the second tunnel from that local port to the actual Web port. Alternatively, cancel that Web operation and start a new one with the CLI; the CLI output belongs to the new operation and must not be used for the existing Web operation. Quota errors and catalog failures are reported as-is and never fall back to a paid provider. This compatibility path is experimental: the upstream interface may change.
+
+</details>
 
 </details>
 
