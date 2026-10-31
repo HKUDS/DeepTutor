@@ -913,8 +913,9 @@ def test_ingestion_uses_active_parse_service_for_parser_files(tmp_path, monkeypa
 
 
 def test_ingestion_parses_parser_files_off_the_event_loop(tmp_path, monkeypatch) -> None:
-    from deeptutor.services import parsing
     import threading
+
+    from deeptutor.services import parsing
 
     root = tmp_path / "root"
     pdf = tmp_path / "paper.pdf"
