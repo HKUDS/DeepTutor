@@ -27,7 +27,10 @@ import { ChatMessageList } from "@/features/chat/messages";
 import { ChatViewerBridges } from "@/components/chat/home/ChatViewerBridges";
 import { buildSessionActivity } from "@/lib/session-activity";
 import { TurnNavigator } from "@/components/chat/home/TurnNavigator";
-import ScrollToLatestButton from "@/components/chat/ScrollToLatestButton";
+const ScrollToLatestButton = dynamic(
+  () => import("@/components/chat/ScrollToLatestButton"),
+  { ssr: false },
+);
 import SessionViewerPanel, {
   type SessionViewerPanelHandle,
 } from "@/components/chat/home/LazySessionViewerPanel";
