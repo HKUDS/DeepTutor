@@ -16,6 +16,19 @@ from pydantic import BaseModel, ConfigDict, Field
 SOURCE_SCHEMA_VERSION = 1
 CATALOG_FILENAME = "source_pages.json"
 
+# MinerU block types that are page furniture rather than content. Each carries
+# its visible text in `text` (a bare "11" for a running page number), so keeping
+# them turns them into standalone chunks that compete for retrieval slots.
+#
+# Mirrors FILTERED_LAYOUT_TYPES in
+# ``deeptutor/services/rag/pipelines/lightrag/block_policy.py`` (POLICY_ID
+# "mineru-legacy-content-list-v1"), including MinerU v2's ``page_*`` aliases,
+# but deliberately not imported: the llama-index path must not depend on
+# another pipeline's module.
+_PAGE_FURNITURE_BLOCK_TYPES: frozenset[str] = frozenset(
+    {"footer", "header", "page_footer", "page_header", "page_number"}
+)
+
 
 class SourcePageError(ValueError):
     """A safe, user-facing source resolution failure."""
@@ -119,8 +132,14 @@ def build_pdf_documents(path: Path, parsed: Any, kb_dir: Path) -> list[Any]:
     for block in parsed.blocks or []:
         if not isinstance(block, dict):
             continue
+        if str(block.get("type") or "") in _PAGE_FURNITURE_BLOCK_TYPES:
+            continue
         pieces = [str(block.get(k) or "") for k in ("text", "content", "table_body")]
-        for name in ("image_caption", "table_caption", "table_footnote"):
+        # `list_items` carries MinerU's bibliography (type=list,
+        # sub_type=ref_text) and its bullet lists. Without it every reference
+        # entry was dropped before indexing, even though the parser had read
+        # them and they were present in the parsed Markdown.
+        for name in ("image_caption", "table_caption", "table_footnote", "list_items"):
             value = block.get(name) or []
             if isinstance(value, list):
                 pieces.extend(str(v) for v in value)
