@@ -729,16 +729,6 @@ def _timed_media_id(value: Any) -> str:
     return candidate if _TIMED_MEDIA_ID_RE.fullmatch(candidate) else ""
 
 
-def _timed_media_viewport(value: Any) -> dict[str, float]:
-    if not isinstance(value, dict):
-        return {}
-    try:
-        seconds = float(value.get("time_seconds") or 0)
-    except (TypeError, ValueError):
-        return {}
-    return {"time_seconds": min(24 * 60 * 60, max(0.0, seconds))}
-
-
 def _reading_references(value: Any) -> list[dict[str, Any]]:
     """Normalize reading units explicitly attached to an ordinary chat turn."""
 

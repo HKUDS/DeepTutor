@@ -63,11 +63,6 @@ class TaskIDManager:
 
             return task_id
 
-    def get_task_id(self, task_key: str) -> str | None:
-        """Get task ID"""
-        with self._lock:
-            return self._task_ids.get(task_key)
-
     def update_task_status(self, task_id: str, status: str, **kwargs):
         """Update task status"""
         with self._lock:

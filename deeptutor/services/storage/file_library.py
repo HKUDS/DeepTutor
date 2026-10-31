@@ -48,34 +48,6 @@ def _sha256(data: bytes) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Schema migrations
-# ---------------------------------------------------------------------------
-
-_SCHEMA_VERSION = 1
-
-_MIGRATIONS: list[tuple[int, str]] = [
-    # (version, sql)
-]
-
-
-def _current_schema_version(conn) -> int:
-    try:
-        row = conn.execute("PRAGMA user_version").fetchone()
-        return row[0] if row else 0
-    except Exception:
-        return 0
-
-
-def _run_migrations(conn) -> None:
-    version = _current_schema_version(conn)
-    for target_version, sql in _MIGRATIONS:
-        if target_version <= version:
-            continue
-        conn.executescript(sql)
-    conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
-
-
-# ---------------------------------------------------------------------------
 # FileLibraryStore
 # ---------------------------------------------------------------------------
 

@@ -222,41 +222,6 @@ class TokenTracker:
             "litellm_available": LITELLM_AVAILABLE,
         }
 
-    def format_summary(self) -> str:
-        s = self.get_summary()
-        lines = [
-            "=" * 70,
-            "📊 [DeepResearch] LLM Usage Summary",
-            "=" * 70,
-            f"Total API Calls: {s['total_calls']}",
-            f"Total Tokens: {s['total_tokens']:,}",
-            f"  - Input: {s['total_prompt_tokens']:,}",
-            f"  - Output: {s['total_completion_tokens']:,}",
-            f"Total Cost: ${s['total_cost_usd']:.6f} USD",
-            "",
-            "By Agent:",
-            "-" * 70,
-        ]
-        for agent, stats in sorted(s["by_agent"].items()):
-            lines += [
-                f"  {agent}:",
-                f"    Calls: {stats['calls']}",
-                f"    Tokens: {stats['total_tokens']:,} (Input: {stats['prompt_tokens']:,}, Output: {stats['completion_tokens']:,})",
-                f"    Cost: ${stats['cost_usd']:.6f} USD",
-                "",
-            ]
-        lines += ["By Model:", "-" * 70]
-        for model, stats in sorted(s["by_model"].items()):
-            lines += [
-                f"  {model}:",
-                f"    Calls: {stats['calls']}",
-                f"    Tokens: {stats['total_tokens']:,} (Input: {stats['prompt_tokens']:,}, Output: {stats['completion_tokens']:,})",
-                f"    Cost: ${stats['cost_usd']:.6f} USD",
-                "",
-            ]
-        lines.append("=" * 70)
-        return "\n".join(lines)
-
     def reset(self):
         self.usage_records.clear()
         self.total_prompt_tokens = 0
