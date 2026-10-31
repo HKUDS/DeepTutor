@@ -51,6 +51,7 @@ import SessionViewerPanel, {
   type SessionViewerPanelHandle,
 } from '@/components/chat/home/SessionViewerPanel'
 import { ChatViewerBridges } from '@/components/chat/home/ChatViewerBridges'
+import ScrollToLatestButton from '@/components/chat/ScrollToLatestButton'
 import ModelSelector from '@/components/chat/home/ModelSelector'
 import { COMMAND_CONFIRMATION_FAILED } from '@/features/chat/transport/command-delivery'
 import { useChatAutoScroll } from '@/hooks/useChatAutoScroll'
@@ -321,7 +322,7 @@ function ThreadPanel({
 
   /* ── Transcript scrolling: /chat's pin-to-bottom ──────────────────── */
   const { ref: composerBoxRef, height: composerHeight } = useMeasuredHeight<HTMLDivElement>()
-  const { containerRef, endRef, shouldAutoScrollRef, handleScroll } = useChatAutoScroll({
+  const { containerRef, endRef, shouldAutoScrollRef, isFollowing, scrollToBottom, handleScroll } = useChatAutoScroll({
     hasMessages: messages.length > 0,
     isStreaming: streaming,
     composerHeight,
@@ -406,13 +407,7 @@ function ThreadPanel({
         ref={containerRef}
         data-chat-scroll-root="true"
         className="dt-note-companion-thread"
-        onScroll={() => {
-          const el = containerRef.current
-          if (!el) return
-          if (el.scrollHeight - el.scrollTop - el.clientHeight < 80)
-            shouldAutoScrollRef.current = true
-          else if (!streaming) handleScroll()
-        }}
+        onScroll={handleScroll}
         style={{ WebkitMaskImage: COMPOSER_FADE, maskImage: COMPOSER_FADE }}
       >
         {messages.length ? (
@@ -483,6 +478,11 @@ function ThreadPanel({
         )}
         <div ref={endRef} className="h-px" />
       </div>
+      <ScrollToLatestButton
+        visible={isFollowing === false && streaming}
+        onClick={() => scrollToBottom('instant')}
+        className="absolute bottom-20 right-3 z-20"
+      />
       <div ref={composerBoxRef} className="dt-note-companion-composer">
         <ThreadComposer
           key={thread.key}

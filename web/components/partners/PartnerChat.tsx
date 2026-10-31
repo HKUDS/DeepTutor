@@ -41,6 +41,7 @@ import {
 } from "@/components/common/InlineFileCard";
 import { shouldAppendEventContent } from "@/lib/stream";
 import { useChatAutoScroll } from "@/hooks/useChatAutoScroll";
+import ScrollToLatestButton from "@/components/chat/ScrollToLatestButton";
 import { AssistantActivity } from "@/features/chat/trace";
 import {
   PartnerComposer,
@@ -403,6 +404,7 @@ export default function PartnerChat({
   const {
     containerRef: scrollRef,
     shouldAutoScrollRef,
+    isFollowing,
     scrollToBottom,
     handleScroll,
   } = useChatAutoScroll({
@@ -1169,12 +1171,13 @@ export default function PartnerChat({
 
   return (
     <div className={`flex h-full min-h-0 flex-col ${embedded ? "px-4" : ""}`}>
-      <div
-        ref={scrollRef}
-        data-chat-scroll-root="true"
-        onScroll={handleScroll}
-        className="min-h-0 flex-1 overflow-y-auto px-1 py-4"
-      >
+      <div className="relative min-h-0 flex-1">
+        <div
+          ref={scrollRef}
+          data-chat-scroll-root="true"
+          onScroll={handleScroll}
+          className="h-full overflow-y-auto px-1 py-4"
+        >
         {historyLoadError ? (
           <div className="flex items-center justify-center gap-2 py-2 text-[12px] text-[var(--muted-foreground)]">
             {t("Load failed")}
@@ -1346,6 +1349,12 @@ export default function PartnerChat({
             ))}
           </div>
         )}
+        </div>
+        <ScrollToLatestButton
+          visible={isFollowing === false && (streaming || externalDrafts.length > 0)}
+          onClick={() => scrollToBottom("instant")}
+          className="absolute bottom-4 right-3 z-20"
+        />
       </div>
 
       <div className="mx-auto w-full max-w-2xl px-1 pb-4">
