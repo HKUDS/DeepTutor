@@ -188,7 +188,18 @@ def unit_timestamps(store: ReadingStore, manifest: MaterialManifest) -> dict[int
 def render_outline(store: ReadingStore, material_id: str) -> str:
     """A compact outline for the model: one line per row, locator first."""
     manifest = store.manifest(material_id)
-    entries = store.outline(material_id)
+    return format_outline(manifest, store.outline(material_id))
+
+
+def format_outline(manifest: MaterialManifest, entries: Sequence[OutlineEntry]) -> str:
+    """Render an already-loaded outline.
+
+    Callers that need both the rows and their rendered form (the material
+    detail endpoint does) load the outline once and pass it here. Reading it
+    again through :func:`render_outline` is not merely redundant for a cheap
+    format: for an EPUB whose outline still lacks publisher anchors, every read
+    can re-parse the spine of the whole book (#2054).
+    """
     label = manifest.unit
     header = (
         f"{manifest.filename} — {manifest.unit_count} {label}s"
@@ -242,6 +253,7 @@ __all__ = [
     "MAX_OUTLINE_ROWS",
     "QuoteCheck",
     "RenderedUnits",
+    "format_outline",
     "material_summary",
     "parse_locators",
     "render_outline",
