@@ -1167,19 +1167,31 @@ def _xlsx_shared_strings(zf: zipfile.ZipFile, filename: str) -> list[str]:
     return strings
 
 
-def _xlsx_sheet_names(zf: zipfile.ZipFile, filename: str) -> dict[str, str]:
+def _xlsx_sheet_names(zf: zipfile.ZipFile, filename: str) -> dict[str, str] | None:
+    """Resolve worksheet parts and titles in workbook order, when available."""
     root = _parse_xml_member(zf, "xl/workbook.xml", filename)
-    if root is None:
-        return {}
+    rels = _parse_xml_member(zf, "xl/_rels/workbook.xml.rels", filename)
+    if root is None or rels is None:
+        return None
+    targets = {
+        node.get("Id"): node.get("Target", "")
+        for node in rels
+        if _local_name(node.tag) == "Relationship" and node.get("TargetMode") != "External"
+    }
+    members = set(zf.namelist())
     out: dict[str, str] = {}
-    index = 1
     for node in root.iter():
         if _local_name(node.tag) != "sheet":
             continue
-        sheet_name = node.attrib.get("name") or f"sheet{index}"
-        sheet_id = node.attrib.get("sheetId") or str(index)
-        out[f"xl/worksheets/sheet{sheet_id}.xml"] = sheet_name
-        index += 1
+        rid = node.get("{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id")
+        target = targets.get(rid, "")
+        if not target:
+            continue
+        member = posixpath.normpath(
+            target.lstrip("/") if target.startswith("/") else f"xl/{target}"
+        )
+        if member in members:
+            out[member] = node.get("name") or f"sheet{len(out) + 1}"
     return out
 
 
@@ -1206,15 +1218,18 @@ def _extract_xlsx_ooxml(data: bytes, filename: str) -> str:
     with _open_ooxml(data, filename) as zf:
         shared_strings = _xlsx_shared_strings(zf, filename)
         sheet_names = _xlsx_sheet_names(zf, filename)
-        sheet_members = sorted(
-            (name for name in zf.namelist() if re.match(r"xl/worksheets/sheet\d+\.xml$", name)),
-            key=lambda name: [
-                int(part) if part.isdigit() else part for part in re.split(r"(\d+)", name)
-            ],
-        )
+        if sheet_names is None:
+            # Keep best-effort extraction for archives without workbook metadata.
+            sheet_members = sorted(
+                (name for name in zf.namelist() if re.match(r"xl/worksheets/sheet\d+\.xml$", name)),
+                key=lambda name: [
+                    int(part) if part.isdigit() else part for part in re.split(r"(\d+)", name)
+                ],
+            )
+            sheet_names = {member: f"sheet{index}" for index, member in enumerate(sheet_members, 1)}
 
         sheets: list[str] = []
-        for index, member in enumerate(sheet_members, 1):
+        for member, sheet_name in sheet_names.items():
             root = _parse_xml_member(zf, member, filename)
             if root is None:
                 continue
@@ -1243,7 +1258,6 @@ def _extract_xlsx_ooxml(data: bytes, filename: str) -> str:
                 if row_text.strip():
                     rows.append(row_text)
             if rows:
-                sheet_name = sheet_names.get(member, f"sheet{index}")
                 sheets.append(f"--- Sheet: {sheet_name} ---\n" + "\n".join(rows))
         return "\n\n".join(sheets)
 
