@@ -47,52 +47,50 @@
 
 ### 📰 最新消息
 
-- **2026-09-20** 🎉 9 個月內突破 4 萬顆 Star！我們將持續擴展 DeepTutor 的學習生態系。
+- **2026-10-28** 🚀 **DeepTutor v1.7.0** 正式推出！全新外觀、更流暢的導覽，以及能更緊密協作的學習工具。
 - **2026-05-22** 🌐 官方文件網站 [**deeptutor.info**](https://deeptutor.info/) 正式上線 — 指南、參考資料與能力導覽集中在同一處。
-- **2026-04-19** 🎉 111 天內突破 2 萬顆 Star！感謝大家對真正個人化智慧教學的支持。
 - **2026-04-10** 📄 論文已登上 arXiv — 閱讀[預印本](https://arxiv.org/abs/2604.26962)，了解 DeepTutor 背後的設計與理念。
-- **2026-02-06** 🚀 僅 39 天便突破 1 萬顆 Star！衷心感謝傑出的社群。
 - **2026-01-01** 🎊 新年快樂！加入我們的 [Discord](https://discord.gg/eRsjPgMU4t)、[WeChat](https://github.com/HKUDS/DeepTutor/issues/78) 或 [Discussions](https://github.com/HKUDS/DeepTutor/discussions) — 一起塑造 DeepTutor。
 - **2025-12-29** 🎓 DeepTutor 正式發布！
 
 ## ✨ 主要功能
 
-DeepTutor 是代理程式原生的學習工作區，在同一個可擴充系統中串聯教學、解題、測驗生成、研究、視覺化與精熟練習。
+DeepTutor 是代理程式原生的學習工作區，在同一個可擴充系統中串聯教學、研究、創作與練習。
 
-- **所有模式共用一套執行階段** — Chat、Ask Questions、Quiz、Research、Visualize、Solve、Mastery Path、Immersive Reading 與 Audio Overview 共用同一套能力執行階段與工作階段情境，同時保有針對各自用途設計的迴圈與管線。
-- **Task Board** — 以待辦、進行中與已完成追蹤學習任務，並可加入備註、透過拖放或支援鍵盤操作的移動按鈕調整狀態，也能從封存中還原任務。卡片會保留在目前的工作區，沿用既有的外觀與語言設定；無須設定模型。
-- **相互連結的學習情境** — 知識庫、書籍、學習筆記本頁面、Favorites、題庫、角色設定與 Memory 可在支援這些內容的工作流程中重複使用，但仍受帳號授權與學習政策限制。
-- **沉浸式影片學習** — 將 YouTube 或 Bilibili 連結加入 Reading，即可使用原生播放、逐字稿搜尋、以時間戳為依據的教學、已儲存的筆記與可續接的學習進度；YouTube 字幕與瀏覽功能可使用管理員設定的 Invidious 執行個體。
-- **子代理程式與 Partners** — 可從 Chat 諮詢即時代理程式執行框架（Claude Code、Codex、Grok CLI、Antigravity、Kimi、opencode、MiMo、Hermes、OpenClaw 或 DeepSeek）或 Partner、匯入過往對話，並讓持續運作的 IM 夥伴共用同一套核心。
-- **多引擎知識系統** — 透過 LlamaIndex、PageIndex、GraphRAG、LightRAG、遠端 LightRAG Server、自架 WeKnora 知識庫、Tencent IMA 或 MarginNote 4 知識庫、連接的 Kiwix ZIM 封存檔，或連結的 Obsidian vault 建立版本化 RAG 知識庫，並支援可插拔的文件解析。請參閱[原生 LightRAG 角色模型](../../deeptutor/services/rag/pipelines/lightrag/README.md)，了解獨立的擷取、查詢與視覺設定、僅預設建立，以及確認後的重建。
-- **可擴充的工具與技能** — 內建工具、MCP 伺服器、CLI 應用程式、影像／影片／語音生成模型，以及可從 EduHub 安裝的社群技能。
-- **可檢視的記憶** — L1 軌跡、L2 介面摘要與 L3 綜整讓個人化內容透明且可編輯；Memory Graph 會將 L2 事實連結至 L1 證據，並將 L3 綜整連結至其貢獻來源介面。
+- **一套執行階段，多種學習模式** — Chat、Quiz、Research、Visualize、Solve、Mastery Path、Reading 等模式共用工作階段情境，同時保有針對各自用途設計的工作流程。
+- **相互連結的學習工作區** — Home、Learning 與 Resources 串聯 Chat、Books、Reading、Practice、Task Board、Calendar 與 Learning notebook，共用素材、進度與學習情境。
+- **有依據的知識與閱讀** — 使用 LlamaIndex、PageIndex、GraphRAG 或 LightRAG 建立版本化知識庫、連接外部知識來源，並在文件、影片與音訊旁學習，取得連結至來源的引用。
+- **Partners 與子代理程式** — 諮詢 Claude Code、Codex 與 Grok CLI 等即時代理程式、匯入過往對話，或執行擁有各自記憶、資源與 IM 頻道的持續型 Partners。
+- **可檢視的記憶** — L1 軌跡、L2 事實與 L3 綜整讓個人化內容透明且可編輯，並可在 Memory Graph 中稽核證據連結。
+- **專為擴充而設計** — 透過同一套代理程式原生執行階段，加入角色設定、內建或社群技能、MCP 服務、CLI 應用程式與生成模型。
 
 ---
 
 ## 🚀 開始使用
 
-### 讓你的代理程式設定 DeepTutor
+選擇符合你使用 DeepTutor 方式的安裝路徑。透過終端機安裝的版本共用同一個執行環境目錄：私有設定會儲存在啟動目錄下的 `data/user/settings/`；若明確設定 `DEEPTUTOR_HOME` 或 `deeptutor start --home`，則改儲存在該位置。啟動應用程式後，請在 **Settings → Providers** 與 **Language models** 設定供應商與模型。
 
-將這段提示複製到可使用終端機的 AI 代理程式（例如 Codex 或 Claude Code）：
+<details>
+<summary><b>桌面版 — macOS 與 Windows（預覽）</b></summary>
 
-```text
-Help me install and configure the current dev version of DeepTutor from https://github.com/HKUDS/DeepTutor.
-Clone the dev branch, or inspect and reuse my existing checkout, and read SKILL.md and
-docs-for-dev/AGENT_SETUP.md first. Follow that guide to prepare the environment,
-configure my model provider, verify the setup, and start the Web app.
-Ask me for any missing provider, model, or credential-source information;
-do not print API keys. Preserve my existing files and settings, and finish
-with the access URL and the results of your checks.
-```
+**Open DeepTutor** 內含 Python、Node.js 與完整學習工作區，因此無須使用終端機或另外安裝執行環境。桌面預覽版可在 `dev` 取得；**v1.7.0 Release 不包含桌面安裝程式**。
 
-[代理程式設定指南](../../docs-for-dev/AGENT_SETUP.md)涵蓋完整流程，包括非互動式 CLI 設定。若要自行安裝，請選擇下列其中一種方式。
+開啟一次成功完成的 [Desktop Release 工作流程執行記錄](https://github.com/HKUDS/DeepTutor/actions/workflows/desktop-release.yml?query=branch%3Adev)，捲動至 **Artifacts**，下載符合你電腦的目標版本。需要登入 GitHub，且構建產物會在七天後過期。
 
-DeepTutor 提供四種安裝方式，皆共用同一套執行環境目錄配置：私有設定會儲存在啟動目錄下的 `data/user/settings/`（若明確設定 `DEEPTUTOR_HOME` 或 `deeptutor start --home`，則改儲存在該位置）。請參閱[本機資料持久化](../../docs-for-dev/DATA_STORAGE.md)，了解完整的儲存配置、資料庫支援與備份說明。完整應用程式的建議流程是：**選擇一個執行環境目錄 → 安裝 → `deeptutor init` → `deeptutor start`**。
+| 你的電腦 | 下載目標 | 安裝程式 |
+| --- | --- | --- |
+| **搭載 Apple Silicon 的 Mac** | `macos-arm64` | 開啟 DMG，將 **Open DeepTutor** 拖入 **Applications**。 |
+| **搭載 Intel 的 Mac** | `macos-x64` | 開啟 DMG，將 **Open DeepTutor** 拖入 **Applications**。 |
+| **Windows x64** | `windows-x64` | 執行 Setup `.exe`，或解壓縮可攜版 ZIP 並啟動 `Open DeepTutor.exe`。 |
 
-### 一行指令試用 Docker
+Windows 預覽構建未經簽署，可能會顯示 SmartScreen 警告。簽署、本機資料與原始碼構建方式請參閱[桌面版指南](../../apps/desktop/README.md)。
 
-若尚未安裝 Docker，請先[安裝 Docker](https://docs.docker.com/get-docker/)。接著無須設定 Python 或 Node.js，即可試用完整應用程式：
+</details>
+
+<details>
+<summary><b>Docker — 最快試用完整應用程式</b></summary>
+
+無須安裝 Python 或 Node.js，即可執行完整 Web 應用程式：
 
 ```bash
 docker run --rm --name deeptutor \
@@ -101,336 +99,82 @@ docker run --rm --name deeptutor \
   ghcr.io/hkuds/deeptutor:latest
 ```
 
-開啟 [http://127.0.0.1:3782](http://127.0.0.1:3782)，在 **Settings → Providers** 設定模型供應商，使用完畢後按下 `Ctrl+C`。具名的 `deeptutor-data` volume 會保留設定與本機資料，供下次執行使用。
-
-### 內容工作區
-
-**內容工作區（Content Workspace）**與 DeepTutor 的私有執行環境目錄是分開的。這是代理程式可以讀取的資料夾，生成的檔案會放在 `outputs/<capability>/<session>/<turn>/` 下。自訂工作區會將對話、學習素材、進度與快取隔離在私有的 `.deeptutor/data/` 目錄樹中，檔案工具無法瀏覽此目錄。設定、憑證與 Memory 則維持帳號層級共用。
-
-在未經設定的情況下，內容工作區位於 `<runtime-home>/data/user/workspace`。本機的 PyPI、CLI 與原始碼安裝可在 **Settings → Workspaces** 中選擇資料夾；以下列指令設定預設資料夾：
-
-```bash
-deeptutor workspace show
-deeptutor workspace set /absolute/path/to/my-folder
-deeptutor workspace reset
-```
-
-各項能力都能透過內建的 workspace 工具檢視所選工作區。模型只會收到 `outputs/...` 之類的相對路徑；當它使用 `workspace_present` 時，UI 會顯示一個已驗證身分、可開啟的快照。同一組相對路徑，在一般的 Markdown 連結或圖片中也同樣可用。日後變更來源檔案，並不會改變已呈現的快照。
-
-Learning Space 管理資源庫。在 **Settings → Workspaces** 中，可為各工作區指派 Skills、MCP 服務與知識庫，或保留原有的存取規則。既有工作區會維持目前的存取權，直到儲存選擇為止。指派會參照原始資源，不會複製憑證或知識索引；工作區專屬技能可以覆寫共用版本。請參閱[工作區資源指派](../../docs-for-dev/workspaces.md)。
-
-在 `outputs/` 之外，執行動作一律唯讀。若要將生成的檔案複製到內容工作區中的其他位置，必須針對該確切的來源與目的地，明確以 **Allow once** 確認。系統沙箱或 Docker runner（若可用）會強制執行此邊界；本機受限制的子處理程序備援方式，則會在 Workspace 設定中顯示為**盡力而為（best effort）**。
-
-<details>
-<summary><b>方式一 — 從 PyPI 安裝</b> · 完整本機 Web 應用程式＋CLI，無須 clone</summary>
-
-**1.7.0 模組化安裝：** 完整 Web 應用程式與 CLI 請使用 `deeptutor[full]`，核心聊天功能則使用 `deeptutor`。功能模組必須與核心版本一致；1.6.15 及更早版本使用舊的套件配置。若要針對目前的 `dev` 開發，請依下方原始碼指示操作，或建置[本機 wheel](../../docs-for-dev/MODULES.md)。需要 **Python 3.11–3.14**，且 PATH 中須有 **Node.js 20+** 執行階段（`deeptutor start` 會啟動套件內的 Next.js standalone 伺服器）。
-
-```bash
-mkdir -p my-deeptutor && cd my-deeptutor
-pip install -U "deeptutor[full]"
-deeptutor init     # prompts for ports + LLM provider + optional embedding/search
-deeptutor start    # starts backend + frontend; keep the terminal open
-```
-
-`deeptutor init` 會引導你設定後端連接埠（預設 `8001`）、前端連接埠（預設 `3782`）、LLM 供應商／Base URL／API key／模型、Knowledge Base／RAG 選用的 embedding 供應商，以及 Web Search 選用的搜尋供應商。
-
-**升級至 1.7.0：** 停止應用程式並備份執行環境目錄。使用 `python -m pip install --upgrade "deeptutor[full]==1.7.0"`，接著執行 `python -m pip check` 與 `deeptutor module list`。若已安裝舊版 `deeptutor-cli` 套件，請先執行 `python -m pip uninstall deeptutor-cli`，再執行升級指令（可選擇加上 `deeptutor-cli==1.7.0`）。舊 CLI 擁有共用的 Python 檔案，因此在同一次安裝作業中升級它，可能刪除新的核心。解除安裝套件會保留執行環境目錄中的資料。請沿用相同的 `DEEPTUTOR_HOME` 與既有設定。在 1.7.0 中，單獨使用 `pip install -U deeptutor` 只會選取核心；請使用 `[full]` 指定完整應用程式安裝組合。若使用本機建置的套件，請依照[本機 wheel 升級指示](../../docs-for-dev/MODULES.md#upgrade-from-1615)。
-
-執行 `deeptutor start` 後，開啟終端機顯示的前端 URL；預設為 [http://127.0.0.1:3782](http://127.0.0.1:3782)。在該終端機按下 `Ctrl+C`，即可同時停止後端與前端。若只是快速試用，也可以略過 `deeptutor init`；應用程式會以預設連接埠與空白模型設定啟動，之後再到 **Settings → Providers** 與 **Language models** 設定即可。
-
-**瀏覽器麥克風轉錄：** 相容 OpenAI 的 STT 介接器會將瀏覽器音訊直接傳送給供應商，無須在本機轉換。DashScope 與 Volcengine 的原生 STT 介接器會將瀏覽器 WebM/Opus 轉換為 16 kHz WAV，因此 DeepTutor 的 `PATH` 中必須有可執行的 `ffmpeg`。標準的 16 kHz 單聲道 PCM WAV 不需要此轉換。在 Windows 上透過 PyPI 安裝且使用任一原生介接器時，請安裝 FFmpeg、將其 `bin` 目錄加入服務的 `PATH`，然後重新啟動 DeepTutor。轉換失敗時，錯誤會顯示在聊天輸入框下方。
+開啟 [http://127.0.0.1:3782](http://127.0.0.1:3782)。具名 volume 會保留設定與本機資料；Web 應用程式只需要連接埠 `3782`。主機工作區、本機模型服務、反向代理與正式環境部署，請參閱 [Docker 指南](https://docs.deeptutor.info/get-started/docker/)。
 
 </details>
 
 <details>
-<summary><b>方式二 — 從原始碼安裝</b> · 針對 checkout 進行開發</summary>
+<summary><b>PyPI — 完整 Web 應用程式與 CLI</b></summary>
 
-適合針對原始碼 checkout 進行開發。請使用 **Python 3.11–3.14** 與 **Node.js 22 LTS**，以符合 CI 和 Docker 環境。
+請使用 **Python 3.11–3.14** 與 **Node.js 20.9+**。在模組化的 1.7.0 版本中，`deeptutor[full]` 會安裝 Web 應用程式與 CLI；單獨的 `deeptutor` 則安裝核心聊天功能與 SDK。
+
+```bash
+mkdir -p my-deeptutor && cd my-deeptutor
+python -m pip install -U "deeptutor[full]"
+deeptutor init     # ports + LLM provider + optional embedding/search
+deeptutor start    # starts backend + frontend
+```
+
+開啟終端機顯示的 URL，預設為 [http://127.0.0.1:3782](http://127.0.0.1:3782)。按下 `Ctrl+C` 即可同時停止兩項服務。
+
+**從 1.6.15 或更早版本升級：** 停止 DeepTutor、備份執行環境目錄，並在安裝新的套件系列前解除安裝舊版 `deeptutor-cli` 套件。沿用相同的 `DEEPTUTOR_HOME`，然後執行 `python -m pip check` 與 `deeptutor module list`。確切的升級指令請參閱 [PyPI 與遷移指南](https://docs.deeptutor.info/get-started/pypi/)。
+
+</details>
+
+<details>
+<summary><b>原始碼 — 目前 Dev 版本與貢獻者</b></summary>
+
+請使用 **Python 3.11–3.14** 與 **Node.js 22 LTS**，以符合 CI 和 Docker 環境。
 
 ```bash
 git clone --branch dev https://github.com/HKUDS/DeepTutor.git
 cd DeepTutor
-
-# Create a venv (macOS/Linux). Windows PowerShell:
-#   py -3.11 -m venv .venv ; .\.venv\Scripts\Activate.ps1
 python3 -m venv .venv && source .venv/bin/activate
 python -m pip install --upgrade pip
-
-# Install backend + frontend deps
 python -m pip install -r requirements/full.txt
 python -m pip install -e . --no-deps
 ( cd web && npm ci --legacy-peer-deps )
-
 deeptutor init
 deeptutor start --dev
 ```
 
-`deeptutor start` 會先為本機 `web/` 前端建立一次正式環境版本，之後重複使用；`--dev` 則會以 HMR 執行 Next.js。設定配置、連接埠與 `Ctrl+C` 停止方式皆與方式一相同。
-
-<details>
-<summary><b>Conda 環境</b>（取代 <code>venv</code>）</summary>
-
-```bash
-conda create -n deeptutor python=3.11
-conda activate deeptutor
-python -m pip install --upgrade pip
-```
+若要不使用 `--dev` 的正式環境構建，請執行 `deeptutor start`。選用的相依套件可從儲存庫根目錄安裝，例如 `python scripts/install_extras.py dev,partners,math-animator`。Conda、額外安裝項目與疑難排解請參閱[原始碼安裝指南](https://docs.deeptutor.info/get-started/from-source/)；若要讓可使用終端機的代理程式執行並驗證設定，請參閱[代理程式設定指南](../../docs-for-dev/AGENT_SETUP.md)。
 
 </details>
 
 <details>
-<summary><b>選用的額外安裝項目</b> — RAG 引擎／dev／partners／matrix／math-animator</summary>
+<summary><b>CLI — 終端機與代理程式用途</b></summary>
+
+若要進行最小化的終端機安裝，請使用核心 wheel；無須 Node.js 或 Web 前端：
 
 ```bash
-python scripts/install_extras.py rag-lightrag    # Built-in LightRAG engine (exact supported SDK)
-python scripts/install_extras.py graphrag        # Microsoft GraphRAG engine (Python 3.11–3.13)
-python scripts/install_extras.py dev             # tests/lint tools
-python scripts/install_extras.py partners        # Partner IM channel SDKs
-python scripts/install_extras.py video-learning  # captions for reading/video-learning
-python scripts/install_extras.py matrix          # Matrix channel without E2EE/libolm
-python scripts/install_extras.py matrix-e2e      # Matrix E2EE; requires libolm
-python scripts/install_extras.py math-animator   # Manim addon; requires LaTeX/ffmpeg/system libs
-python scripts/install_extras.py edge-tts        # Optional free speech provider and video-lesson narration
-```
-
-**Video Lesson：** 在聊天中選擇 Video Lesson，或執行 `deeptutor run video_lesson "Explain a concept"`。後端需要 Node.js 22+ 與 npm。首次使用會下載固定版本的 Remotion 套件與 WebAssembly JavaScript 直譯器；無須 Docker。影格檢查在直譯器內執行，無法存取主機檔案系統、憑證、網路或處理程序 API，並受到記憶體與執行限制。取消操作會停止建置處理程序。本機與容器部署使用相同的執行路徑，沒有不受沙箱保護的備援方式。生成的課程會在瀏覽器播放；選用的旁白無法使用時，仍會提供字幕。
-
-</details>
-
-<details>
-<summary><b>調整前端相依套件與開發伺服器疑難排解</b></summary>
-
-**變更前端相依套件：** 執行 `npm install --legacy-peer-deps` 以更新 `web/package-lock.json`，接著同時提交 `web/package.json` 與 `web/package-lock.json`。
-
-**開發伺服器卡住：** 若 `deeptutor start --dev` 回報已有前端處理程序但該處理程序沒有回應，請停止訊息中顯示的 PID。若實際上並無 Next.js 處理程序執行，代表 lock 檔已過期；移除後再試一次：
-
-```bash
-rm -f web/.next/dev/lock web/.next/lock
-deeptutor start --dev
-```
-
-</details>
-
-</details>
-
-<details>
-<summary><b>方式三 — Docker</b> · 單一自足式容器</summary>
-
-以單一容器執行完整 Web 應用程式。映像檔位於 GitHub Container Registry：
-
-- `ghcr.io/hkuds/deeptutor:latest` — 最新穩定版本
-- `ghcr.io/hkuds/deeptutor:<version>` — 不含開頭 `v` 的確切版本（例如 `:1.6.3`）；預先發行版本只會提供其版本標籤
-
-> 如需 podman／rootless／唯讀 rootfs 部署及各安裝方式的完整指南，請參閱 [CONTAINERIZATION.md](../../docs-for-dev/CONTAINERIZATION.md)。
-
-```bash
-docker run --rm --name deeptutor \
-  -p 127.0.0.1:3782:3782 \
-  -v deeptutor-data:/app/data \
-  ghcr.io/hkuds/deeptutor:latest
-```
-
-若要在容器啟動時選擇主機端的內容資料夾，請將它掛載到固定的容器路徑，並把 DeepTutor 鎖定到該路徑：
-
-```bash
-mkdir -p "$PWD/deeptutor-workspace/outputs"
-docker run --rm --name deeptutor \
-  -p 127.0.0.1:3782:3782 \
-  -v deeptutor-data:/app/data \
-  -v "$PWD/deeptutor-workspace:/workspace" \
-  -e DEEPTUTOR_WORKSPACE_ROOT=/workspace \
-  -e DEEPTUTOR_WORKSPACE_ALLOWED_ROOTS=/workspace \
-  ghcr.io/hkuds/deeptutor:latest
-```
-
-若使用 Compose，請在執行 `python scripts/docker_compose.py up -d` 前設定 `DEEPTUTOR_WORKSPACE_HOST=/absolute/host/folder`；未設定時預設為 `./data/user/workspace`。Docker 的路徑於啟動時即已選定，因此會在 Web 設定頁面中顯示為鎖定狀態。
-
-> **只需要發布 `3782`。** 瀏覽器只會與前端 origin 通訊；Next.js middleware（`web/proxy.ts`）會將 `/api/*` 與 `/ws/*` 轉送到容器**內部**的 FastAPI 後端。發布 `8001`（`-p 127.0.0.1:8001:8001`）並非必要；只有在你想直接以 curl 或指令碼呼叫 API 時才方便。
-
-開啟 [http://127.0.0.1:3782](http://127.0.0.1:3782)。容器會在首次啟動時建立 `/app/data/user/settings/*.json`；請從 Web 設定頁面設定模型供應商。設定、API key、記錄、預設的內容工作區、記憶與知識庫都會保留在 `deeptutor-data` volume 中；另行掛載的內容工作區則會保留在其主機路徑上。選用的額外套件應設定在部署層級，而不是在 shell 裡：設定 `DEEPTUTOR_EXTRAS`（系統函式庫則另設 `DEEPTUTOR_APT_PACKAGES`），由它啟動的每個容器都會重新套用；相較之下，`docker exec … pip install` 這類做法會在下一次 `compose down` 時消失。
-
-- **不同的主機連接埠：** 變更各 `-p host:container` 對應左側的值（例如 `-p 127.0.0.1:8088:3782`）。若你在 `/app/data/user/settings/system.json` 變更容器側連接埠，請重新啟動，並同步更新各對應右側的值。
-- **背景執行：** 加上 `-d`；接著以 `docker logs -f deeptutor` 查看記錄、`docker stop deeptutor` 停止，並在重複使用名稱前執行 `docker rm deeptutor`。`deeptutor-data` volume 會在重新啟動後保留私有的執行階段資料與預設的內容工作區；另行掛載的內容工作區則會保留在其主機路徑上。
-
-**遠端 Docker／反向代理：** 瀏覽器只會與前端 origin（`:3782`）通訊；容器內的 Next.js middleware 會在伺服器端將 `/api/*` 與 `/ws/*` 轉送到後端。在常見的單容器情境中，完全不必設定 API base，只要將反向代理／TLS terminator 指向 `:3782`。只有在**拆分部署**（後端位於其他容器／主機）時才需要 API base：將 `data/user/settings/system.json` 中的 `next_public_api_base` 設為前端伺服器用來連接後端的網路內位址（此值只在伺服器端讀取，不會傳送至瀏覽器）。
-
-```json
-{
-  "next_public_api_base": "http://backend:8001"
-}
-```
-
-`next_public_api_base_external`（及其別名 `public_api_base`）可作為優先順序較低的備援值。CORS 使用前端 **origin**，而不是 API URL。停用驗證時，DeepTutor 預設允許一般 HTTP／HTTPS 瀏覽器 origin；啟用驗證時，請加入精確的前端 origin：
-
-```json
-{
-  "cors_origins": ["https://deeptutor.example.com"]
-}
-```
-
-<details>
-<summary><b>連接主機上的 Ollama／LM Studio／llama.cpp／vLLM／Lemonade</b></summary>
-
-在 Docker 內，`localhost` 指的是容器本身，而不是主機。若要連接主機上執行的模型服務，請使用 host gateway（建議方式）：
-
-```bash
-docker run --rm --name deeptutor \
-  -p 127.0.0.1:3782:3782 -p 127.0.0.1:8001:8001 \
-  --add-host=host.docker.internal:host-gateway \
-  -v deeptutor-data:/app/data \
-  ghcr.io/hkuds/deeptutor:latest
-```
-
-接著在 **Settings → Providers** 中，將供應商 Base URL 指向 `host.docker.internal`：
-
-- Ollama LLM：`http://host.docker.internal:11434/v1`
-- Ollama embedding：`http://host.docker.internal:11434/api/embed`
-- LM Studio：`http://host.docker.internal:1234/v1`
-- llama.cpp：`http://host.docker.internal:8080/v1`
-- Lemonade：`http://host.docker.internal:13305/api/v1`
-
-Docker Desktop（macOS／Windows）通常不加 `--add-host` 也能解析 `host.docker.internal`。在 Linux 上，此旗標是在現代 Docker Engine 建立該主機名稱的可攜方式。
-
-**Linux 替代方案 — host networking：** 加上 `--network=host` 並移除 `-p` 旗標。容器會直接共用主機網路，因此請開啟 [http://127.0.0.1:3782](http://127.0.0.1:3782)（或 `system.json` 中的 `frontend_port`），並以一般 localhost URL（例如 `http://127.0.0.1:11434/v1`）連接主機服務。請注意，host networking 會直接在主機上公開容器連接埠，且可能與既有服務衝突；若要讓它們維持在 loopback，請設定 `BACKEND_HOST=127.0.0.1` 與 `FRONTEND_HOST=127.0.0.1`（參閱 [CONTAINERIZATION.md](../../docs-for-dev/CONTAINERIZATION.md)）。
-
-</details>
-
-</details>
-
-<details>
-<summary><b>方式四 — 僅使用 CLI</b> · 無 Web UI，從原始碼 checkout 安裝</summary>
-
-不需要 Web UI 時，可以從此 checkout 使用 CLI，並略過 Node/npm。原始碼會提供所有已納入版本控制的模組，因此需要安裝它們的 Python 相依套件。若要使用 1.7.0 模組化版本進行最小化安裝，請使用核心 `deeptutor` wheel，再個別加入功能模組。
-
-```bash
-git clone --branch dev https://github.com/HKUDS/DeepTutor.git
-cd DeepTutor
-
-# Create a venv (macOS/Linux). Windows PowerShell:
-#   py -3.11 -m venv .venv-cli ; .\.venv-cli\Scripts\Activate.ps1
-python3 -m venv .venv-cli && source .venv-cli/bin/activate
-python -m pip install --upgrade pip
-
-python -m pip install -r requirements/full.txt
-python -m pip install -e . --no-deps
+mkdir -p my-deeptutor && cd my-deeptutor
+python -m pip install -U deeptutor
 deeptutor init --cli
 deeptutor chat
 ```
 
-`deeptutor init --cli` 與完整應用程式共用相同的 `data/user/settings/` 配置，但會略過後端／前端連接埠提示。它仍會提供 Embedding 與 Search 選擇器（不需要時請選擇 **Skip**）、寫入主要的執行階段檔案（`system.json`、`auth.json`、`integrations.json`、`interface.json`、`model_catalog.json`、`main.yaml`、`agents.yaml`），並會詢問目前使用的 LLM 供應商與模型。
-
-<details>
-<summary><b>常用指令</b></summary>
-
-```bash
-deeptutor chat                                          # interactive REPL
-deeptutor chat --capability deep_solve --kb my-kb
-deeptutor run chat "Explain Fourier transform"
-deeptutor run deep_solve "Solve x^2 = 4" --kb my-kb
-deeptutor kb create my-kb --doc textbook.pdf
-deeptutor memory show
-deeptutor config show
-```
+核心包含 Chat、Ask Questions、CLI 與 SDK；其他能力與管理指令需要對應的功能模組。目前 `dev` 原始碼安裝與選用相依套件請參閱[僅使用 CLI 指南](https://docs.deeptutor.info/get-started/cli-only/)。下方的 [CLI 參考](#️-deeptutor-cli--代理程式原生介面)涵蓋單次執行與機器可讀輸出。
 
 </details>
 
-此原始碼安裝包含伺服器相依套件，但略過前端設定。請保留 checkout，因為 editable install 會指向該處。若日後要加入 Web UI，請安裝 Node.js 22 LTS，在 `web/` 執行 `npm ci --legacy-peer-deps`，再從專案根目錄執行 `deeptutor init` 與 `deeptutor start`。
-
-</details>
-
-<details>
-<summary><b>程式碼執行沙箱（office skills）</b> · 執行模型為 docx／pdf／pptx／xlsx 產生的程式碼</summary>
-
-內建的 office skills（**docx／pdf／pptx／xlsx**）會讓模型撰寫一段簡短的 Python 指令碼（`python-docx`、`reportlab`、`openpyxl` 等），透過唯一的 `exec` 工具執行，再呈現已儲存的工作區檔案。只要有啟用中的沙箱後端，這些工具就會掛載。DeepTutor 會依下列順序選用已設定的最強後端：
-
-- **Runner sidecar：** `DEEPTUTOR_SANDBOX_RUNNER_URL` 會將執行工作導向 `Dockerfile.runner` 所提供、經過強化且採最低權限的服務。
-- **Linux bubblewrap：** 若可使用 `bwrap`，它會隔離處理程序與檔案。
-- **受限制的子處理程序備援：** 本機與單一容器安裝只會在允許時採用此方式；在 Docker 下，容器本身仍是另一層隔離邊界。
-
-`data/user/settings/system.json` 中的 `sandbox_allow_subprocess` 設定（預設 `true`）只控制最後一種備援方式。將其設為 `false`（或匯出 `DEEPTUTOR_SANDBOX_ALLOW_SUBPROCESS=0`），即可在沒有 runner 或 `bwrap` 後端時拒絕子處理程序執行；這不會停用前述較強的後端。
-
-</details>
-
-<details>
-<summary><b>設定參考</b> — <code>data/user/settings/</code> 下的設定檔（JSON／YAML）</summary>
-
-`data/user/settings/` 下的內容都是純 JSON／YAML。建議使用 **Settings** 頁面進行編輯；工作區註冊資料另存於 `data/user/.runtime/workspaces.sqlite3`。
-
-| 檔案 | 用途 |
-|:---|:---|
-| `model_catalog.json` | 供應商連線，以及 LLM、任務、embedding、搜尋、TTS、STT、影像與影片設定檔、憑證和目前選用項目 |
-| `system.json` | 後端／前端連接埠、公開 API base、CORS、SSL 驗證、附件目錄與上傳／擷取限制 |
-| `auth.json` | 選用的驗證開關、使用者名稱、密碼雜湊、token／cookie 設定 |
-| `integrations.json` | 選用的 PocketBase 與 sidecar 整合設定 |
-| `interface.json` | UI 與模型輸出語言／主題／側邊欄偏好設定 |
-| `document_parsing.json` | 解析引擎與影像描述模型選擇、遠端端點及各引擎專屬選項 |
-| `video_learning.json` | YouTube 字幕供應商、Invidious 來源與帳號存取權，以及逐字稿設定 |
-| `main.yaml` | 執行階段行為預設值與路徑注入 |
-| `agents.yaml` | 能力／工具的 temperature 與 token 設定 |
-
-Web Search 參考來源預設會經過篩選：只會顯示未內嵌憑證、未使用異常連接埠的公開 `http`／`https` URL。部署環境可以在 `data/user/settings/system.json` 中加入以教育為導向的網域政策：
-
-```json
-{
-  "web_search_source_filtering": {
-    "enabled": true,
-    "blocked_domains": ["spam.example"],
-    "trusted_domains": ["edu.cn", "arxiv.org"]
-  }
-}
-```
-
-當 `trusted_domains` 非空時，參考來源只限於這些網域及其子網域；`blocked_domains` 一律優先。
-
-專案根目錄的 `.env` **不會**被讀取為應用程式設定檔。若只需最基本的模型設定，請在 **Settings → Providers** 儲存 Base URL 與 API key，再到 **Language models** 新增並選用 LLM。只有在打算使用 Knowledge Base／RAG 功能時才需要加入 embedding 設定檔。
-
-使用 API Route 時，請在 **Settings → Providers** 選擇 **API Route** 並輸入 API Route 金鑰。預設端點為 `https://global.api-route.com/v1`；接著在 **Language models** 使用 API Route 模型 ID 新增模型。金鑰與模型設定方式請參閱 [API Route 快速入門](https://www.api-route.com/docs/quickstart)。
-
-當供應商支援選擇時，LLM 與任務模型設定檔會提供 **API format** 設定。一般路由與備援請保留 `Auto`，也可以選擇 `OpenAI Chat Completions`、`OpenAI Responses` 或 `Anthropic Messages`；強制使用 Responses 時仍採用失敗即停止（fail-closed）策略。持久化欄位為 `api_format`（`auto`、`openai_chat`、`openai_responses` 或 `anthropic`）；`wire_api` 則是由此衍生出的相容性狀態。每個模型可個別以 `Auto`／`Supported`／`Not supported` 覆寫工具呼叫、影像輸入、JSON 輸出與推理控制等能力。
-
-</details>
-
-<details>
-<summary><b>解除安裝與清理</b></summary>
-
-DeepTutor 會將已安裝的程式碼、私有執行環境目錄與選用的內容工作區分開管理。預設情況下，執行環境目錄就是你執行 `deeptutor init`／`deeptutor start` 的目錄；`--home PATH` 或 `DEEPTUTOR_HOME` 可覆寫此位置。私有應用程式狀態位於該目錄內的 `data` 子目錄，因此啟動橫幅中以 `Workspace:` 開頭的那一行，指出的就是這個執行環境位置。若 **Settings → Workspace** 指向其他資料夾，請另行備份或移除該內容資料夾；解除安裝 DeepTutor 並不會清除它，這是刻意的設計。
-
-1. 停止應用程式。在執行 `deeptutor start` 的終端機按下 `Ctrl+C`；若 launcher 是以 `--detach` 啟動，請執行 `deeptutor stop [--home PATH]`。刪除資料前，也請停止所有執行中的 Partner 與 detached Docker 容器。
-2. 只有在你也想清除所有本機狀態時，才移除執行階段資料。這包括設定與 API key、聊天記錄、工作階段、Memory、Notebooks、Books、Reading 狀態、Skills、Partners 狀態、記錄、Knowledge Bases、解析快取、生成的產物，以及套件化前端的執行階段快取。
-
-   請先從啟動橫幅複製完整的 `Workspace:` 路徑，確認其 `data` 子目錄確實是預期的 DeepTutor 資料目錄。如日後可能需要其中任何內容，請先備份，再將該確切目錄移至作業系統的垃圾桶。切勿對相對路徑或尚未解析的環境變數執行遞迴刪除命令。
-
-3. 移除已安裝的套件。請使用與發行版相符的命令：
-
-   ```bash
-   python -m pip uninstall deeptutor
-   python -m pip uninstall deeptutor-cli
-   ```
-
-   如果虛擬環境只為 DeepTutor 建立，請透過環境管理工具移除。若是從原始碼安裝，請停用環境、離開原始碼目錄，並在該確切 checkout 中執行 `git status --short`。確認其中沒有不相關或尚未提交的工作後，才可將 checkout 移至垃圾桶。
-
-4. 若使用 Docker，移除前請檢查確切容器與具名 volume。移除 volume 會永久清除 Docker 管理的資料：
-
-   ```bash
-   docker ps -a --filter name=^/deeptutor$
-   docker volume inspect deeptutor-data
-   docker rm -f deeptutor
-   docker volume rm deeptutor-data
-   ```
-
-</details>
+**工作區與進階設定：** 請參閱[內容工作區](../../docs-for-dev/workspaces.md)、[本機資料持久化](../../docs-for-dev/DATA_STORAGE.md)、[容器化與沙箱部署](../../docs-for-dev/CONTAINERIZATION.md)、[設定參考](https://docs.deeptutor.info/get-started/pypi/#config-files-under-datausersettings)與[疑難排解](https://docs.deeptutor.info/get-started/troubleshooting/)。
 
 ## 📖 探索 DeepTutor
 
-先為科目或專案建立一個**工作區**。其中的 **Home**、**Learning** 與 **Resources** 分別容納對話、學習活動與素材。**Partners** 與 **Personalization** 隨帳號跨工作區共用。下方導覽會介紹這些介面如何相互連結，接著說明設定與多使用者部署。
+先為每個科目或專案建立一個**工作區**。Home、Learning 與 Resources 會隨目前的工作區切換；Partners 與 Personalization 則可跨工作區使用。
 
-如果回答遺漏先前限制、引用薄弱證據，或與所選素材不一致，請先將診斷資料收集到 [`REASONING_SAFETY_CHECKLIST.md`](../../docs-for-dev/REASONING_SAFETY_CHECKLIST.md)，再建立 issue。
+| 區域 | 範圍 | 包含內容 |
+| --- | --- | --- |
+| **Home** | 工作區 | Chat、Task Board、Calendar 與 Learning notebook |
+| **Learning** | 工作區 | Books、Mastery Path、Immersive Reading 與 Practice |
+| **Resources** | 工作區 | Chat History、Favorites、Learning journal、Question Bank 與 Knowledge Center |
+| **Partners** | 帳號 | 持續型夥伴、Partner Groups、資源存取權與 IM 頻道 |
+| **Personalization** | 帳號 | My Agents、Personas、Skills、MCP Services、CLI Apps、Memory 與 Settings |
 
 <div align="center">
 <img src="../../assets/figs/web-dev/overview.png" alt="DeepTutor 首頁與工作區導覽" width="900">
 </div>
-
 
 <details>
 <summary><b>🏗️ 系統架構</b></summary>
@@ -440,6 +184,11 @@ DeepTutor 會將已安裝的程式碼、私有執行環境目錄與選用的內�
 </div>
 
 </details>
+
+<details>
+<summary><b>🏠 Home — 對話、任務、筆記與行事曆</b></summary>
+
+Home 是每日工作的起點：在目前的工作區中與導師交談、整理後續行動，並撰寫自己的筆記。Calendar 提供帳號層級的檢視，同時保留學習活動所屬的來源工作區。
 
 <details>
 <summary><b>💬 Chat — 真正實用的代理程式迴圈</b></summary>
@@ -458,57 +207,18 @@ Chat 是預設能力，也是大多數工作的起點。單一對話可以進行
 
 使用者可切換的工具包括 `brainstorm`、`web_search`、`paper_search`、`zotero_search`、`reason` 與 `geogebra_analysis`；設定對應的生成模型後，還會有 `imagegen` 與 `videogen`。`rag`、`kb_files`、`knowledge_frontier`、`read_source`、`read_memory`、`write_memory`、`read_skill`、`load_tools`、`exec`、`web_fetch`、`ask_user`、`list_favorites`、`save_favorite`、`write_note`、`search_notes`、`question_bank`、`github`、`consult_subagent`、`workspace_list`、`workspace_read`、`workspace_search`、`workspace_present` 與 `workspace_export` 等情境式工具，會在回合具有相符情境時自動掛載。
 
-情境分成兩類：**固定的工作階段情境**（能力、工作區或課程、工具、知識庫、角色設定、模型，以及 Reading／Mastery 狀態）會延續到後續回合；**單次參照**（檔案、聊天記錄、書籍、閱讀章節、筆記本、選定的題庫題目、匯入的代理程式）則從 `+` 選單加入，只用於單一回合。語音按鈕只會轉錄目前的訊息。
+情境分成兩類：**固定的工作階段情境**（能力、工作區或課程、工具、知識庫、角色設定、模型，以及 Reading／Mastery 狀態）會延續到後續回合；**參照**（檔案、聊天記錄、書籍、閱讀章節、筆記本、選定的題庫題目、匯入的代理程式）則從 `+` 選單加入，預設只用於單一回合，固定後則用於每一回合。語音按鈕只會轉錄目前的訊息。
 
-在完整安裝組合中，Home 讓 **Chat**、**Ask Questions**、**Quiz**、**Visualize** 與 **Video Lesson** 一鍵可達；用於建立附引用報告的 **Research** 與提供完整推理解題的 **Solve**，則位於 *More Capabilities* 之下。All learning 上方的 **Learning → New learning** 會開啟專門頁面，提供 Books、**Mastery Path**、**Immersive Reading** 與 **Practice**。其中的 **Customize page** 可隱藏或還原學習方式，不會變更既有紀錄；無法使用的模組仍不會列出。Reading 整合文件、影片與音訊，提供經驗證的引用、已儲存的筆記、透過來源段落／學習指南／詞彙／測驗／翻譯動作進行自然朗讀，以及擷取至筆記本的功能。
-
-</details>
-
-<details>
-<summary><b>🤝 Partner — 共用同一套核心的持續型夥伴</b></summary>
-
-<div align="center">
-<img src="../../assets/figs/web-dev/partners.png" alt="DeepTutor Partners 工作區" width="900">
-</div>
-
-Partners 是持續運作的夥伴，各自擁有 soul、模型政策、知識庫、記憶與頻道。它們不是另一套 bot 引擎；每一則從 Web 或 IM 收到的訊息，都會在其私有或已繫結的內容工作區內成為一般的 `ChatOrchestrator` 回合。Partner 就像是「擁有個性與電話號碼的聊天」。
-
-<div align="center">
-<img src="../../assets/figs/system/partners-architecture.png" alt="DeepTutor Partners 架構" width="900">
-</div>
-
-每個 partner 都有 `SOUL.md`、模型選擇、頻道、工具政策與指派的資源庫。其資源庫可將知識庫、技能與 Favorites 集合複製到 `data/partners/<id>/workspace/`，或保持與既有工作區的檔案和資源連結；soul、對話與 Partner 記憶仍各自獨立。已驗證的非管理員使用者擁有私有的 Partner 工作階段與關係記憶，而 Partner 只能以唯讀方式讀取其個人記憶；管理員、群組與未繫結流量則使用共享的 Partner 範圍。
-
-<div align="center">
-<img src="../../assets/figs/web-dev/partners-channels.png" alt="各 Partner 的 IM 頻道設定" width="900">
-</div>
-
-頻道層由結構描述驅動；依已安裝的額外套件與設定的憑證，可連接飛書、Telegram、Slack、Discord、釘釘、QQ／NapCat、企業微信、WhatsApp、Zulip、Mattermost、Matrix、Mochat 與 Microsoft Teams 等 IM 平台。Partner 也可以連接成子代理程式，並從一般聊天回合中接受諮詢；請參閱下方的 **My Agents**。
-
-為了更快完成設定，Partner 頻道頁面可直接在瀏覽器中繪製 QR code（而非輸出到伺服器記錄），用來建立飛書／Lark 應用程式或企業微信 AI 機器人，或登入個人微信帳號。飛書／Lark 會偵測帳號網域，並將掃碼使用者存為初始允許發送者。企業微信會保留既有的允許清單，否則預設允許所有能觸及該機器人的使用者，並顯示明顯的開放存取警告；若供應商的掃碼協定有所變更，手動頻道表單仍可使用。
+在完整安裝組合中，Home 讓 **Chat**、**Ask Questions**、**Quiz**、**Visualize** 與 **Video Lesson** 一鍵可達；用於建立附引用報告的 **Research** 與提供完整推理解題的 **Solve**，則位於 *More Capabilities* 之下。選取回答中的文字即可開啟 **Little Tutor**，這個專注的側邊欄對話會保持巢狀依附於來源對話。至少傳送三則訊息後，空間允許時左側邊界會為每個問題顯示一個刻度；將游標懸停可預覽、點擊可跳回，或使用 **Alt/Option + ↑/↓** 在問題之間移動。
 
 </details>
 
 <details>
-<summary><b>🧑‍🚀 My Agents — 諮詢與匯入其他代理程式</b></summary>
+<summary><b>✅ Task Board 與 Calendar — 安排每日學習</b></summary>
 
-<div align="center">
-<img src="../../assets/figs/web-dev/agents.png" alt="DeepTutor My Agents 工作區" width="900">
-</div>
+**Task Board** 以待辦、進行中與已完成追蹤學習任務，並可加入備註、透過拖放或支援鍵盤操作的移動控制項調整狀態，也能從可還原的封存中取回任務。任務會保留在目前的工作區，且無須設定模型。
 
-My Agents 會將其他代理程式變成 DeepTutor 的情境，並提供兩項不同功能。**連接即時代理程式** — 連接你電腦上的 Claude Code、Codex、Grok CLI、Antigravity、Kimi、opencode、MiMo Code、Hermes Agent、OpenClaw 或 DeepSeek Harness、遠端 Hermes gateway，或你的一位 Partner，並從聊天回合內諮詢它。DeepTutor 會實際*執行*其他代理程式，再透過 `consult_subagent` 工具將其工作即時串流至 Activity 面板。使用 Agent chip 選取代理程式及其回合上限，或透過 `@` 篩選同一份已連接代理程式清單；這項選擇會保留在工作階段中。
-
-**連接 Grok CLI。** 在執行 DeepTutor 後端的機器上安裝 xAI 的 Grok CLI，於該處執行 `grok login`，並確認 `grok --help` 有列出 `--output-format streaming-json`。接著開啟 **My Agents → Connect**，選擇 **Grok CLI**，並選定工作目錄。偵測步驟只會檢查執行檔的協定支援，並不會驗證登入狀態或模型存取權。此連接器已在 Grok CLI 1.0.3 上驗證過；同名但不相關的第三方 `grok` 指令不受支援。
-
-在 **Settings → Partners & Agents → Grok CLI** 中，將模型與推理強度留空即可使用 CLI 預設值，或輸入你帳號的 `grok models` 輸出所支援的值。系統指示會透過 `--rules` 傳入。預設的權限模式是 `dontAsk`：Grok 會使用自己既有的規則與內建的唯讀處理方式，並拒絕需要核准的操作。這是一種 CLI 權限政策，而不是檔案系統沙箱。可在設定中明確選擇更寬鬆的模式；進階 CLI 旗標仍可透過子代理程式設定 API 中的 `backends.grok.extra_args` 使用。
-
-Grok 使用自己的驗證與工作階段儲存機制，DeepTutor 不會複製其憑證。後續諮詢會在同一個工作目錄中續接該連線的工作階段。文字與工具活動會即時串流；私密的思考內容則會被省略。跨工作階段的 Grok 記憶預設為停用。此連接器支援文字問答與 CLI 工具，不支援影像轉發或匯入過往的 Grok 對話。在 Docker 中，請於後端容器內安裝並驗證 Grok；只安裝在瀏覽器所在電腦上的 CLI 無法被存取。
-
-<div align="center">
-<img src="../../assets/figs/web-dev/personalization.png" alt="帳號個人化：代理程式、角色設定、技能與連線" width="900">
-</div>
-
-**匯入過往對話** — 將現有的 ChatGPT、Claude Code 與 Codex 記錄匯入為可搜尋、可繼續的對話。選取官方 ChatGPT 資料匯出中的 `conversations.json`，即可進行安全且具冪等性的快照匯入；Claude 記錄依專案／工作目錄選取，Codex 記錄則依日曆日期選取。以資料夾為基礎的代理程式仍可重新整理，讓其選定範圍拉取新對話。你可以在 Chat 回合中透過 `+` → My Agents 參照其中一段對話；DeepTutor 會將其讀作第三方逐字稿，保留為*對方*的對話，而不是 DeepTutor 自己的口吻。
+**Calendar** 集中管理個人學習時段、重複活動與提醒，並可匯出 `.ics` 供 Apple Calendar、Google Calendar、Outlook 與 Thunderbird 使用。任務到期日與複習等工作區疊加項目，仍會連結至其來源工作區。
 
 </details>
 
@@ -521,6 +231,8 @@ Grok 使用自己的驗證與工作階段儲存機制，DeepTutor 不會複製�
 
 學習筆記本（前身為 Co-Writer）會將你自己的寫作整理成目前工作區內的頁面、子頁面與區塊。你可以匯入 Word 文件、排列頁面樹，並將 Favorites 的原始紀錄插入作為證據。頁面會明確顯示儲存狀態，並可匯出為 Markdown 或 Word；互動內容在 Word 中會轉為靜態。
 
+**將單字卡匯出至 Anki。** 筆記本頁面可包含單字卡。在含有單字卡的頁面上，開啟頁面選單並選擇 **Export flashcards (Anki)**。若要從筆記本複習佇列匯出，請選擇 **Export all for Anki**。在 Anki 中，使用 **File → Import** 並選取下載的 `.txt` 檔案。卡片會加入名為 `DeepTutor::<note title>` 的牌組，保留正面／背面欄位、標籤與數學式。重新匯入相同檔案會更新既有卡片，而非重複建立。DeepTutor 自己的複習排程不包含在內。
+
 <div align="center">
 <img src="../../assets/figs/web-dev/notebook-detail.png" alt="學習筆記本區塊編輯器與 Dito" width="900">
 </div>
@@ -528,6 +240,24 @@ Grok 使用自己的驗證與工作階段儲存機制，DeepTutor 不會複製�
 與 **Dito** 討論段落或區塊：要求說明、範例、改寫或練習題。對話會附著於相關頁面與行。接受提議的修改前可先檢視，或將回答插入該行下方並繼續寫作。Favorites 保留來源紀錄；筆記本則是建立自己理解的地方。
 
 </details>
+
+</details>
+
+<details>
+<summary><b>🎓 Learning — 書籍、路徑、閱讀與練習</b></summary>
+
+Learning 是目前工作區的學習區域。從 **Learning → New learning** 建立活動，再從 **All learning** 重新開啟，其進度、對話與來源情境都會完整保留。
+
+<div align="center">
+<img src="../../assets/figs/web-dev/learning.png" alt="目前工作區中的學習活動" width="900">
+</div>
+
+| 活動 | 用途 | 保留內容 |
+| --- | --- | --- |
+| **Book** | 從選定來源建立結構化的互動書籍 | 可編輯章節、具型別區塊、閱讀進度與 Page Chat |
+| **Mastery Path** | 將學習目標拆分為主題與引導式學習 | 知識點地圖、主題對話與精熟證據 |
+| **Immersive Reading** | 在文件、網頁、影片或音訊來源旁學習 | 連結來源的對話、經驗證的引用、螢光標記、筆記與進度 |
+| **Practice** | 複習收集或匯入的題目 | 答案、錯題、記憶評分與下次複習日期 |
 
 <details>
 <summary><b>📖 Book — 從你的素材建立活書</b></summary>
@@ -546,9 +276,16 @@ Book 會將選定來源轉換成互動式**活書**；它不是靜態 PDF，而�
 <img src="../../assets/figs/web-dev/book-widget.png" alt="Book 互動式元件區塊" width="31%">
 </p>
 
-每章都會編譯成可編輯的具型別區塊：文字、提示框、測驗、單字卡、時間軸、程式碼、圖表、互動式 HTML、動畫、概念圖、深入探討與使用者筆記，並有自己的 Page Chat。你可以插入、移動、重新生成、重寫區塊或切換其型別；選取的段落會進入可供檢視的學習摘錄收件匣。即使管理員將書籍以唯讀或共同編輯方式共享，每位讀者的進度、書籤、測驗嘗試、學習摘錄與 Page Chat 仍為私有；共享書籍仍只能由管理員刪除。任何書籍皆可匯出為 Markdown，長時間的編譯可暫停並續行，`deeptutor book health`／`refresh-fingerprints` 會標記來源漂移。
+每章都會編譯成可編輯的具型別區塊：文字、提示框、測驗、單字卡、時間軸、程式碼、圖表、互動式 HTML、動畫、概念圖、深入探討與使用者筆記，並有自己的 Page Chat。你可以插入、移動、重新生成、重寫區塊或切換其型別；選取的段落會進入可供檢視的學習摘錄收件匣。即使管理員將書籍以唯讀或共同編輯方式共享，每位讀者的進度、書籤、測驗嘗試、學習摘錄與 Page Chat 仍為私有；共享書籍仍只能由管理員刪除。任何書籍皆可匯出為 Markdown，長時間的編譯可暫停並續行，`deeptutor book health` 會標記來源漂移，`deeptutor book refresh-fingerprints` 則會更新來源基準。
 
 </details>
+
+</details>
+
+<details>
+<summary><b>🗂️ Resources — 素材與已儲存的學習紀錄</b></summary>
+
+Resources 是目前工作區中可重複使用的資源庫。在這裡保留原始素材、已儲存的結果與學習紀錄，即可附加到新的對話與活動，而不會混用不同專案。
 
 <details>
 <summary><b>📚 Knowledge Center — 多引擎 RAG 知識庫</b></summary>
@@ -557,7 +294,7 @@ Book 會將選定來源轉換成互動式**活書**；它不是靜態 PDF，而�
 <img src="../../assets/figs/web-dev/knowledge.png" alt="DeepTutor Knowledge Center" width="900">
 </div>
 
-知識庫是 RAG 背後的文件集合，可為 Chat 回合、學習筆記本編輯、Book 生成與 Partner 對話提供依據。其特色在於可**選擇檢索引擎**：**LlamaIndex**（預設，混合 vector＋BM25，並可選用 cross-encoder reranking 與 exact-flat 或 HNSW FAISS 索引）、**PageIndex**（可推理的檢索並附頁面層級引用，支援託管式或自架 OSS）、**GraphRAG** 與 **LightRAG**（知識圖譜檢索）、**LightRAG Server**（透過 HTTP 連接的外部 LightRAG 執行個體負責檢索）、**WeKnora**（從自架部署中的知識庫檢索，無須建立本機索引或複製文件）、**Tencent IMA**（在 IMA 中整理的知識庫 — 透過其 OpenAPI 進行搜尋、瀏覽與寫回）、**MarginNote 4**（你的 MN4 學習資料 — 文件、摘錄、思維導圖卡片及彼此之間的連結 — 由該應用程式的 Add-on 推送匯入，並透過專用工具進行導覽）、**Kiwix**（透過 HTTP 提供的可搜尋 ZIM 封存檔，無須建立本機索引），或讓導師就地讀寫的已連結 **Obsidian** vault。每個知識庫都會繫結至單一引擎。
+知識庫是 RAG 背後的文件集合，可為 Chat 回合、學習筆記本編輯、Book 生成與 Partner 對話提供依據。其特色在於可**選擇檢索引擎**：**LlamaIndex**（預設，混合 vector＋BM25，並可選用 cross-encoder reranking 與 exact-flat 或 HNSW FAISS 索引）、**PageIndex**（可推理的檢索並附頁面層級引用，支援託管式或自架 OSS）、**GraphRAG** 與 **LightRAG**（知識圖譜檢索）、**LightRAG Server**（將檢索卸載至透過 HTTP 連接的外部 LightRAG 執行個體）、**WeKnora**（從自架部署中的知識庫檢索，無須建立本機索引或複製文件）、**Tencent IMA**（在 IMA 中整理的知識庫 — 透過其 OpenAPI 進行搜尋、瀏覽與寫回）、**MarginNote 4**（你的 MN4 學習資料 — 文件、摘錄、思維導圖卡片及彼此之間的連結 — 由該應用程式的 Add-on 推送匯入，並透過專用工具進行導覽）、**Kiwix**（透過 HTTP 提供的可搜尋 ZIM 封存檔，無須建立本機索引），或讓導師就地讀寫的已連結 **Obsidian** vault。每個知識庫都會繫結至單一引擎。
 
 <div align="center">
 <img src="../../assets/figs/web-dev/knowledge-create.png" alt="建立知識庫" width="900">
@@ -580,19 +317,80 @@ Book 會將選定來源轉換成互動式**活書**；它不是靜態 PDF，而�
 </details>
 
 <details>
-<summary><b>🌐 Resources 與 Personalization — 素材與可重複使用的輔助功能</b></summary>
+<summary><b>🗃️ 記錄、Favorites、學習日誌與題庫</b></summary>
 
 <div align="center">
 <img src="../../assets/figs/web-dev/resources.png" alt="目前工作區的資源" width="900">
 </div>
 
-**Resources** 集合 Chat History、支援搬移紀錄與匯出 Markdown 的 **Favorites**、**Learning journal**、Knowledge Center，以及含答案與解說的題庫。從選定的題庫題目或 **Learning → Practice** 啟動 **Practice**，即可進行複習工作階段、錯題追蹤與定期複習。獨立的 **Personalization** 頁面包含角色設定、技能（`SKILL.md` 操作手冊）、一鍵安裝的 **MCP Services**，以及來自 [CLI-Anything](https://github.com/HKUDS/CLI-Anything) 型錄的 **CLI Apps**，每個應用程式的使用指南會按需載入。**Learning** 集合書籍、精熟路徑、閱讀集合與其導師對話；每項資產只會出現在支援它的工作流程中。
+**Chat History** 會以原始學習情境重新開啟對話。**Favorites** 將有用的原始對話與結果保存在可搬移的集合中，並可匯出 Markdown，隨時插入學習筆記本。**Learning journal** 會記錄目前的任務、工作階段交接與已確認的學習紀錄。**Question Bank** 則整理題目、答案、解說與錯題；選取一組題目進入 **Learning → Practice**，即可複習薄弱領域並安排重複練習。
+
+</details>
+
+</details>
+
+<details>
+<summary><b>🤝 Partners — 跨工作區的持續型夥伴</b></summary>
+
+Partners 屬於帳號，而非單一科目工作區。每位夥伴都保有各自的身分、指示、模型政策、關係與頻道，同時可使用私有資源庫或既有工作區的資源。
+
+<div align="center">
+<img src="../../assets/figs/web-dev/partners.png" alt="DeepTutor Partners 工作區" width="900">
+</div>
+
+<details>
+<summary><b>身分、工作區資源、群組與頻道</b></summary>
+
+每一則從 Web 或 IM 收到的訊息，都會成為一般的 `ChatOrchestrator` 回合 — Partner 就像是「擁有個性與電話號碼的聊天」。其 `SOUL.md`、模型選擇、工具政策與資源庫在建立後仍可編輯。私有 Partner 工作區會複製指派的知識庫、技能與 Favorites 集合；繫結的工作區則改為共用其目前的檔案與資源。無論採用哪種模式，Soul、對話與關係記憶都會各自獨立。
+
+<div align="center">
+<img src="../../assets/figs/system/partners-architecture.png" alt="DeepTutor Partners 架構" width="900">
+</div>
+
+**Partner Groups** 讓兩位以上的 Partners 進入同一個共享對話，各自擁有獨立席位，並可選擇討論與共享記憶模式，且保留持久記錄。即使夥伴被共享，已驗證使用者仍保有私有的 Partner 工作階段與關係記憶。
+
+<div align="center">
+<img src="../../assets/figs/web-dev/partners-channels.png" alt="各 Partner 的 IM 頻道設定" width="900">
+</div>
+
+結構描述驅動的頻道可依已安裝的額外套件與憑證，將夥伴連接至飛書、Telegram、Slack、Discord、釘釘、QQ／NapCat、企業微信、WhatsApp、Zulip、Mattermost、Matrix、Mochat 與 Microsoft Teams。瀏覽器設定流程支援為特定頻道掃碼加入。Partner 也可以透過 **Personalization → My Agents** 連接，並從一般 Chat 回合中接受諮詢。
+
+</details>
+
+</details>
+
+<details>
+<summary><b>🧭 Personalization — 可重複使用的行為與連線</b></summary>
+
+Personalization 會隨帳號跨工作區沿用。你可以選擇導師應如何運作，以及它可重複使用哪些代理程式、技能、服務、應用程式與記憶；工作區與對話的選擇還能進一步限制這些存取權。
+
+<div align="center">
+<img src="../../assets/figs/web-dev/personalization.png" alt="帳號個人化：代理程式、角色設定、技能與連線" width="900">
+</div>
+
+<details>
+<summary><b>🧑‍🚀 My Agents — 諮詢即時代理程式與匯入記錄</b></summary>
+
+<div align="center">
+<img src="../../assets/figs/web-dev/agents.png" alt="DeepTutor My Agents 工作區" width="900">
+</div>
+
+**連接即時代理程式** — Claude Code、Codex、Grok CLI、Antigravity、Kimi、opencode、MiMo Code、Hermes Agent、OpenClaw、DeepSeek Harness 或一位 Partner — 並從 Chat 回合中諮詢它。DeepTutor 會執行選定的代理程式，透過 `consult_subagent` 將其工作即時串流至 Activity 面板；Agent chip 或 `@` 會讓此連線持續附著於工作階段。本機代理程式執行框架使用各自的驗證、工作目錄與工作階段儲存機制。
+
+**匯入過往對話** — 將 ChatGPT、Claude Code 與 Codex 的對話匯入為可搜尋、可繼續的參照。ChatGPT 使用官方的 `conversations.json` 匯出檔；Claude 記錄依專案或工作目錄選取，Codex 記錄則依日期選取。透過 `+` → My Agents 參照匯入的對話，而不會將其變成 DeepTutor 自己的口吻。
+
+</details>
+
+<details>
+<summary><b>🎭 Personas、Skills、MCP Services 與 CLI Apps</b></summary>
+
+**Personas** 可重複使用口吻、教學風格或回應政策，也能作為 Partner soul 的初始內容。**Skills** 將可重複執行的工作流程封裝成 `SKILL.md` 操作手冊，並提供帳號共用與工作區本機的程式庫。**Import from EduHub** 可瀏覽社群技能，並透過安全閘道安裝（參閱[生態系](#-生態系--eduhub-與技能社群)）。
 
 <div align="center">
 <img src="../../assets/figs/web-dev/skills.png" alt="個人化技能庫" width="900">
 </div>
 
-你不必自行撰寫每一項技能；**Import from EduHub** 可瀏覽社群型錄，並透過安全閘道將技能直接下載至技能庫（參閱[生態系](#-生態系--eduhub-與技能社群)）。
+**MCP Services** 可授權外部工具，**CLI Apps** 則透過執行沙箱提供 [CLI-Anything](https://github.com/HKUDS/CLI-Anything) 型錄中已安裝的程式。工作區指派與使用者授權會決定每個回合可使用哪些資源。
 
 </details>
 
@@ -620,7 +418,9 @@ Memory Graph 會呈現完整金字塔：L3 綜整位於中央、L2 位於中圈�
 <img src="../../assets/figs/web-dev/settings.png" alt="設定導覽" width="900">
 </div>
 
-Settings 是操作控制中心，開啟時會顯示用於設定介面與模型輸出語言的 **General** 頁面。可搜尋的導覽選單連結至各個獨立頁面：**Personal** 包含 Workspaces、Data migration、Appearance 與 Usage statistics；**Learning & conversation** 包含起始提示、附件、Video Learning、學習者與監護人控制、Learning progress，以及 Memory；**Models & services** 包含 Providers、Language models、Task models、Embedding、Search、Voice 與 Multimodal generation；**Features & integrations** 包含工具、能力參數、Partners & agents，以及 Knowledge & documents。**System** 包含 Network、Runtime status 與 About；**Archived chats** 可搜尋、還原或永久刪除已封存的對話。Runtime status 包含後端健康狀況、常駐記憶體，以及評估各項能力阻礙、警告與建議的 **Readiness** 矩陣。Workspaces 讓不同主題的檔案與學習狀態保持獨立，Data migration 則提供經驗證的遷移與匯出功能。**供應商（provider）**保存廠商位址與憑證，供其服務模型重複使用；模型頁面可選擇已儲存的供應商，並設定模型名稱與能力。**任務模型**可為命名對話、撰寫起始提示等背景工作指定小型快速模型；留空時則使用目前的預設模型。Voice 集合語音合成與轉錄；Multimodal generation 集合影像與影片模型。Partners & agents 可設定本機代理程式執行框架與遠端 Hermes gateway。
+Settings 是操作控制中心，開啟時會顯示用於設定介面與模型輸出語言的 **General** 頁面。可搜尋的導覽選單連結至各個獨立頁面：**Personal** 包含 Workspaces、Data migration、Appearance 與 Usage statistics；**Learning & conversation** 包含起始提示、附件、Video Learning、學習者與監護人控制、Learning progress，以及 Memory；**Models & services** 包含 Providers、Language models、Task models、Embedding、Search、Voice 與 Multimodal generation；**Features & integrations** 包含工具、能力參數、Partners & agents，以及 Knowledge & documents。**System** 包含 Network、Runtime status 與 About；**Archived chats** 可搜尋、還原或永久刪除已封存的對話。Runtime status 包含後端健康狀況、常駐記憶體，以及評估各項能力阻礙、警告與建議的 **Readiness** 矩陣。Workspaces 讓不同主題的檔案與學習狀態保持獨立，Data migration 則提供經驗證的遷移與匯出功能。**供應商（provider）**保存廠商位址與憑證，供其服務模型重複使用；模型頁面可選擇已儲存的供應商，並設定模型名稱與能力。**Task models** 可為自動工作指定小型快速模型，從命名對話、撰寫起始提示，到 Math Animator 與 Video Lesson 修復皆適用；留空時則解析為目前的預設模型。Voice 集合語音合成與轉錄；Multimodal generation 集合影像與影片模型。Partners & agents 可設定本機代理程式執行框架與遠端 Hermes gateway。
+
+**越南語：** 在 **Settings → General** 中，將 **Interface language** 設為 **Tiếng Việt**，然後選擇 **Apply changes**。**Model output language** 可獨立設定：若要取得越南語回答，請在該處選擇 **Tiếng Việt**；也可以在使用越南語介面的同時保留其他回答語言。回答品質取決於所選模型對越南語的支援。
 
 **Xiaomi MiMo 語音。** 新增 Xiaomi MiMo 供應商，輸入 `https://api.xiaomimimo.com/v1` 與其 API 金鑰，再到 Settings → Voice 新增 `mimo-v2.5-tts`。選擇 `mimo_default`、`冰糖` 或 `苏打` 等預設音色，使用 `wav` 或 `pcm16` 輸出，並在套用前試聽。語音指示可控制風格與語速。此介接器只支援預設音色的語音合成；音色設計與聲音複製需要獨立模型，目前不受支援。若舊的 MiMo 語音模型是透過通用的 OpenAI 相容介接器設定，請使用 Xiaomi MiMo 供應商重新建立語音項目，以採用 chat-completions 協定。請參閱 [MiMo 官方語音指南](https://mimo.mi.com/docs/zh-CN/quick-start/usage-guide/audio/speech-synthesis-v2.5)。
 
@@ -663,6 +463,12 @@ CLI 會顯示通道指令，接著立即嘗試開啟瀏覽器。在遠端部署�
 
 </details>
 
+</details>
+
+### 🛠️ 管理與共享部署
+
+上述五個區域說明面向學習者的工作區。以下部署控制項則供為多位使用者託管 DeepTutor 的管理員使用。
+
 <details>
 <summary><b>👥 Multi-User — 共享部署</b> · 選用驗證、相互隔離的每位使用者工作區</summary>
 
@@ -677,7 +483,7 @@ data/
 └── system/                  # auth · grants · audit · user-secrets/<owner> (OAuth tokens)
 ```
 
-**第一位註冊的使用者會成為管理員**，並擁有模型型錄、供應商憑證、共享知識庫、技能、作為主版本的共享書籍與每位使用者的授權。管理員建立的本機使用者可選擇 Standard、Learner 或 Custom。Learner 會鎖定學習能力與教材政策、加入可調適的個人檔案，並支援可撤銷、具到期時間與每日上限的裝置憑證；已授權的 Guardians 可檢視報告、核准教材及重設憑證。其他使用者會取得隔離的工作區，以及範圍受限的模型、知識庫、技能、Partners 與共享書籍存取權，而不會收到原始 API key。如果 `auth.json` 已包含 `username` + `password_hash`，該帳號就是管理員：`/register` 會維持關閉，從 `/admin/users` 建立的帳號在升級前一律為 `role=user`。
+**第一位註冊的使用者會成為管理員**，並擁有模型型錄、供應商憑證、共享知識庫、技能、作為主版本的共享書籍與每位使用者的授權。管理員建立的本機使用者可選擇 Standard、Learner 或 Custom。Learner 會鎖定學習能力與教材政策、加入可調適的個人檔案，並支援可撤銷、具到期時間與每日上限的裝置憑證；已授權的監護人可檢視報告、核准教材及重設憑證。其他使用者會取得隔離的工作區，以及範圍受限的模型、知識庫、技能、Partners 與共享書籍存取權，而不會收到原始 API key。如果 `auth.json` 已包含 `username` + `password_hash`，該帳號就是管理員：`/register` 會維持關閉，從 `/admin/users` 建立的帳號在提升權限前一律為 `role=user`。
 
 **啟用方式：** 在 `data/user/settings/auth.json` 開啟驗證、重新啟動 `deeptutor start`、到 `/register` 註冊第一位管理員，接著從 `/admin/users` 新增使用者，並透過授權指派模型、知識庫、技能、partners、工具／MCP／CLI app 政策與程式碼執行權限；再從每位使用者的 **Book access** 面板設定共享書籍。
 
@@ -689,7 +495,7 @@ data/
 
 ## ⌨️ DeepTutor CLI — 代理程式原生介面
 
-一個 `deeptutor` 執行檔，提供兩種入口：給終端機使用者的互動式 **REPL**，以及讓其他代理程式驅動 DeepTutor 的結構化 **JSON**。兩者使用相同的能力、工具與知識庫。
+一個 `deeptutor` 執行檔，提供兩種入口：給終端機使用者的互動式 **REPL**，以及讓其他代理程式將 DeepTutor 作為工具驅動的結構化 **JSON**。兩者使用相同的能力、工具與知識庫。
 
 <details>
 <summary><b>自行操作</b></summary>
@@ -725,7 +531,38 @@ SID=$(deeptutor run deep_research "Survey 2026 papers on RAG" \
 deeptutor run deep_question "Quiz me on that survey" --session "$SID" --format json
 ```
 
-repo 根目錄附有 [`SKILL.md`](../../SKILL.md)，這是一份精簡的 CLI 交接文件。請明確要求代理程式讀取它；其中的[代理程式設定指南](../../docs-for-dev/AGENT_SETUP.md)涵蓋安裝與設定。你也可以在 LangChain／AutoGen 迴圈中將 `deeptutor run` 包裝成工具。完整作法請參閱 [Agent Handoff](https://deeptutor.info/docs/cli/agent-handoff/)。
+儲存庫根目錄附有 [`SKILL.md`](../../SKILL.md)，這是一份精簡的 CLI 交接文件。請明確要求代理程式讀取它；[代理程式設定指南](../../docs-for-dev/AGENT_SETUP.md)涵蓋安裝與設定。你也可以在 LangChain／AutoGen 迴圈中將 `deeptutor run` 包裝成工具。完整作法請參閱 [Agent Handoff](https://deeptutor.info/docs/cli/agent-handoff/)。
+
+</details>
+
+<details>
+<summary><b>選用的 Manim 動畫視覺審查</b></summary>
+
+設定 `enable_visual_review=true`，即可檢查渲染影格是否重疊、是否易讀及構圖是否適當，
+再將偵測到的問題送回既有的程式碼修復迴圈：
+
+```bash
+deeptutor run math_animator "Animate a sine wave" --config enable_visual_review=true
+deeptutor run visualize "Animate a sine wave" \
+  --config render_mode=manim_video --config enable_visual_review=true
+```
+
+此選項預設為 `false`。它也適用於 `math_animator` 的 `output_mode=image`，
+以及 `visualize` 的 `render_mode=manim_image`。其他視覺化工具（包括一般 `auto` 迴圈）
+會忽略此選項。仍須安裝 Manim 的選用相依套件。
+
+對於 SDK 回合，請在傳送給 `DeepTutorApp.start_turn()` 的 `TurnRequest` 中
+傳入 `config={"enable_visual_review": True}`。API 用戶端使用相同的 `config` 物件，
+並採用 JSON `true`。對於書籍動畫區塊，請在動畫 `Block` 上設定
+`params={"enable_visual_review": True}`。
+
+審查會增加視覺模型呼叫，也可能增加修復呼叫與重新渲染，因而提高
+成本與延遲。它沿用既有四次重試的上限，審查逾時為 120 秒，
+修復逾時為 180 秒。若沒有可用的影格，或設定的審查模型無法檢查影像，
+系統會略過審查並提供摘要。所有重試後審查仍未成功時，會回傳最佳可用渲染
+及其失敗的審查結果；審查逾時則遵循既有的渲染錯誤／重試路徑。
+能力結果會公開 `render.visual_review`；書籍區塊則在 `metadata.visual_review`
+保留相同的審查資料（未執行審查時為 `null`）。
 
 </details>
 
@@ -737,7 +574,7 @@ repo 根目錄附有 [`SKILL.md`](../../SKILL.md)，這是一份精簡的 CLI �
 | 指令 | 說明 |
 |:---|:---|
 | `deeptutor init [--non-interactive] [--home PATH]` | 執行設定精靈，或不經提示建立缺少的預設設定 |
-| `deeptutor doctor [--online]` | 檢查此執行環境是否已就緒可開始工作階段；`--online` 也會探測目前設定的模型供應商，`--format json` 會輸出 JSON 格式報告 |
+| `deeptutor doctor [--online]` | 檢查此執行環境是否已就緒可開始工作階段；`--online` 也會探測目前設定的模型供應商，`--format json` 會輸出報告 |
 | `deeptutor start [--home PATH] [--dev] [--detach] [--no-browser]` | 同時啟動後端與前端；可選擇 detached 模式或不開啟瀏覽器 |
 | `deeptutor stop [--home PATH]` | 停止以 `--detach` 啟動的 launcher |
 | `deeptutor serve [--port PORT]` | 只啟動 FastAPI 後端 |
@@ -802,7 +639,7 @@ deeptutor chat                              # restart the CLI; use start for an 
 
 例如：`solve`、`research`、`questions`、`knowledge`、`parsing`、`reading`、`mastery`、`books`、`memory`、`notebook` 與 `partners`。若有其他模組依賴它，就無法移除；核心也不能透過模組指令移除。停用或解除安裝會保留設定、對話、知識庫與生成的檔案。共用的第三方相依套件也會保留。
 
-**在瀏覽器中：** **Settings → Runtime status → Modules** 顯示模組狀態與對應的終端機指令。變更套件需要先停止執行環境，並在 CLI 中操作。**Chat → Customize page** 與 **Learning → New learning → Customize page** 會立即變更個人頁面選項；隱藏項目不會解除安裝其模組或撤銷存取權。
+**在瀏覽器中：** **Settings → Runtime status → Modules** 顯示模組狀態與對應的終端機指令。變更套件需要先停止執行環境，並在 CLI 中操作。**Chat → Customize page** 與 **Learning → New learning activity → Customize page** 會立即變更個人頁面選項；隱藏項目不會解除安裝其模組或撤銷存取權。
 
 1.7.0 套件系列的核心與功能 wheel 採用相同版本。若要安裝本機 wheel，請在 `module install` 加上 `--wheelhouse /path/to/wheels`。建置 wheel 與部署的詳細資訊，請參閱[模組安裝與原始碼開發](../../docs-for-dev/MODULES.md)。
 
@@ -810,14 +647,14 @@ deeptutor chat                              # restart the CLI; use start for an 
 
 ## 🧩 生態系 — EduHub 與技能社群
 
-DeepTutor 技能採用開放的 **Agent-Skills** 格式，也就是包含 `SKILL.md` 操作手冊（YAML frontmatter＋Markdown）與選用參考檔案的資料夾。這個格式並非 DeepTutor 專屬，因此任何支援此格式的 registry 都能成為你的知識庫來源。DeepTutor 內建我們以教育為核心的技能 registry **[EduHub](https://eduhub.deeptutor.info/)**，並將其設為預設 hub。
+DeepTutor 技能採用開放的 **Agent-Skills** 格式，也就是包含 `SKILL.md` 操作手冊（YAML frontmatter＋Markdown）與選用參考檔案的資料夾。這個格式並非 DeepTutor 專屬，因此任何支援此格式的 registry 都能成為你的技能庫來源。DeepTutor 內建我們以教育為核心的技能 registry **[EduHub](https://eduhub.deeptutor.info/)**，並將其設為預設 hub。
 
 <details>
 <summary><b>EduHub — DeepTutor 的技能生態系</b></summary>
 
 [**EduHub**](https://eduhub.deeptutor.info/) 是 DeepTutor 推出的社群中心，用於分享教學導向的代理程式技能，包括蘇格拉底式導師、單字卡建立工具、文章回饋、考試藍圖、概念解說等。它已整合至 DeepTutor，無須任何設定；只輸入 slug 或加上 `eduhub:` 前置字串都會解析至此。
 
-**尋找並安裝** — 在瀏覽器中開啟 **Learning Space → Skills → Import from EduHub**，即可瀏覽型錄並將技能直接下載到知識庫。若從終端機操作：
+**尋找並安裝** — 在瀏覽器中開啟 **Personalization → Skills → Import from EduHub**，即可瀏覽型錄並將技能直接下載到技能庫。若從終端機操作：
 
 ```bash
 deeptutor skill search "socratic tutor"               # search EduHub (the default hub)
@@ -926,6 +763,8 @@ DeepTutor 也站在許多傑出開放原始碼專案的肩膀上；它們同時�
 <div align="center">
 
 我們希望 DeepTutor 成為送給社群的一份禮物。🎁
+
+近期整合的貢獻請參閱[開發分支貢獻者名單](../../CONTRIBUTORS.md)。
 
 <a href="https://github.com/HKUDS/DeepTutor/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=HKUDS/DeepTutor&max=999" alt="貢獻者" />
