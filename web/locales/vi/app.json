@@ -6406,5 +6406,6 @@
   "Reset learning text": "Đặt lại văn bản học tập",
   "language.portuguese": "Português",
   "language.japanese": "日本語",
-  "language.turkish": "Türkçe"
+  "language.turkish": "Türkçe",
+  "partners.invocationDeclined": "Đã từ chối"
 }

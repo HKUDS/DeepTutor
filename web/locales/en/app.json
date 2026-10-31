@@ -6406,5 +6406,6 @@
   "Reset learning text": "Reset learning text",
   "language.portuguese": "Portuguese",
   "language.japanese": "Japanese",
-  "language.turkish": "Türkçe"
+  "language.turkish": "Türkçe",
+  "partners.invocationDeclined": "Declined"
 }

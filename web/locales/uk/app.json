@@ -6428,5 +6428,6 @@
   "Availability refreshed. This parser is still unavailable; check the installation and startup logs, then retry.": "Доступність оновлено. Цей парсер досі недоступний; перевірте встановлення та журнали запуску й повторіть спробу.",
   "language.portuguese": "Португальська",
   "language.japanese": "Японська",
-  "language.turkish": "Türkçe"
+  "language.turkish": "Türkçe",
+  "partners.invocationDeclined": "Відхилено"
 }
