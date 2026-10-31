@@ -116,11 +116,13 @@ def build_bm25_retriever(index: Any, storage_dir: Path, *, top_k: int) -> Any | 
 
 
 def persist_bm25_retriever(index: Any, storage_dir: Path, *, top_k: int) -> bool:
-    """Persist BM25 sidecar index for faster hybrid retrieval.
+    """Persist the optional BM25 sidecar only when hybrid retrieval is configured.
 
     Missing optional dependencies are non-fatal because hybrid retrieval can
     still be enabled in deployments that install ``llama-index-retrievers-bm25``.
     """
+    if retrieval_config_from_settings().profile == VECTOR_PROFILE:
+        return False
     top_k = max(1, int(top_k))
     bm25_cls = _import_bm25_retriever()
     if bm25_cls is None:
