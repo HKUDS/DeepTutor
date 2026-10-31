@@ -16,11 +16,14 @@ def test_concurrent_writes_to_same_attachment_publish_complete_bytes(
     target = tmp_path / "session" / "attachment_notes.txt"
     payloads = (b"first upload" * 1000, b"second upload" * 1000)
     ready = threading.Barrier(2)
+    rename_lock = threading.Lock()
     replace = attachment_store.os.replace
 
     def replace_together(source: Path, destination: Path) -> None:
         ready.wait(timeout=5)
-        replace(source, destination)
+        # Prevent overlapping Windows source opens from hiding the old shared-path race.
+        with rename_lock:
+            replace(source, destination)
 
     monkeypatch.setattr(attachment_store.os, "replace", replace_together)
     with ThreadPoolExecutor(max_workers=2) as pool:
