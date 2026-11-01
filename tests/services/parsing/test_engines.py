@@ -999,7 +999,7 @@ def test_install_manager_spec_allowlist() -> None:
     assert ENGINE_PIP_SPECS["liteparse"] == ["liteparse>=2.14.2"]
     assert ENGINE_PIP_SPECS["docling"] == [
         "docling[xbrl]>=2.123.1",
-        "docling-slim[format-iwork,format-opendocument,format-video]>=2.123.1",
+        "docling-slim[format-iwork,format-opendocument]>=2.123.1",
     ]
     assert "text_only" not in ENGINE_PIP_SPECS
     assert "mineru" not in ENGINE_PIP_SPECS
