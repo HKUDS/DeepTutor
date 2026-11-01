@@ -781,15 +781,11 @@ async def test_cleared_knowledge_bases_are_not_resurrected_from_history(account)
         paths = get_path_service()
         rows = _sessions(paths)
 
-        selected, _ = dependency_closure(
-            paths, rows, ["chat"], session_ids={detached["id"]}
-        )
+        selected, _ = dependency_closure(paths, rows, ["chat"], session_ids={detached["id"]})
         assert "knowledge_bases" not in selected
         assert "parse_cache" not in selected
 
         # A session that never recorded the key still needs the historical
         # snapshot, otherwise old conversations lose their sources.
-        selected, _ = dependency_closure(
-            paths, rows, ["chat"], session_ids={legacy["id"]}
-        )
+        selected, _ = dependency_closure(paths, rows, ["chat"], session_ids={legacy["id"]})
         assert {"knowledge_bases", "parse_cache"} <= selected
