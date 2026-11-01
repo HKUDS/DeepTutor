@@ -235,11 +235,14 @@ class LearningTransaction:
     def pending_explanation(self, knowledge_point_id: str, *, session_id: str, turn_id: str) -> str:
         """The explanation still awaiting clarification in this session, if any.
 
-        A final qualitative assessment of the objective after the request, or
-        an expired request, means nothing is pending.
+        Nothing is pending once the request has expired, or once the path
+        moved on after it: a final assessment (of this or another objective),
+        a deferral, a question posed on another objective, or a reset or
+        revision of the path. Ordering uses event ids rather than timestamps,
+        so the final ``partial`` that recorded the request does not cancel it.
         """
         row = self._conn.execute(
-            """SELECT payload_json, turn_id, created_at FROM mastery_events
+            """SELECT id, payload_json, turn_id, created_at FROM mastery_events
                WHERE path_id = ? AND session_id = ?
                AND event_type = 'qualitative.clarification_requested'
                AND json_extract(payload_json, '$.knowledge_point_id') = ?
@@ -248,15 +251,19 @@ class LearningTransaction:
         ).fetchone()
         if row is None:
             return ""
-        requested_at = float(row["created_at"])
-        if time.time() - requested_at > PENDING_EXPLANATION_TTL_SECONDS:
+        if time.time() - float(row["created_at"]) > PENDING_EXPLANATION_TTL_SECONDS:
             return ""
-        if any(
-            item.knowledge_point_id == knowledge_point_id
-            and item.assessment_type == "qualitative"
-            and item.timestamp >= requested_at
-            for item in self.progress.learning_evidence
-        ):
+        moved_on = self._conn.execute(
+            """SELECT 1 FROM mastery_events
+               WHERE path_id = ? AND id > ?
+               AND (event_type IN ('mastery.assessed', 'objective.deferred', 'path.reset',
+                                   'path.modules_revision_committed')
+                    OR (event_type = 'interaction.registered'
+                        AND json_extract(payload_json, '$.knowledge_point_id') != ?))
+               LIMIT 1""",
+            (self.progress.book_id, int(row["id"]), knowledge_point_id),
+        ).fetchone()
+        if moved_on is not None:
             return ""
         payload = json.loads(row["payload_json"] or "{}")
         if turn_id and (row["turn_id"] or "") == turn_id:
