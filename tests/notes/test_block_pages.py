@@ -47,9 +47,9 @@ def test_legacy_migration_backs_up_exact_original_once(store):
     migrated = store.update_document(doc.id, blocks=[block()], expected_revision=0)
     assert migrated.content == "Hello" and migrated.revision == 1
     backup = store.doc_root(doc.id) / "legacy.md"
-    assert backup.read_text() == doc.content
+    assert backup.read_text(encoding="utf-8") == doc.content
     store.update_document(doc.id, blocks=[block(text="Changed")], expected_revision=1)
-    assert backup.read_text() == doc.content
+    assert backup.read_text(encoding="utf-8") == doc.content
     with pytest.raises(RevisionConflict):
         store.update_document(doc.id, content="Stale textarea")
 

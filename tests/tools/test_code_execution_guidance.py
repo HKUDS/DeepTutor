@@ -44,7 +44,7 @@ def test_chat_prompts_delegate_tool_syntax_to_tool_guidance() -> None:
     }
 
     for language in ("en", "zh"):
-        data = yaml.safe_load((root / language / "agentic_chat.yaml").read_text())
+        data = yaml.safe_load((root / language / "agentic_chat.yaml").read_text(encoding="utf-8"))
         prompt = data["loop"]["system"]
         assert "code_execution" not in prompt
         assert "language: python" not in prompt
@@ -60,7 +60,7 @@ def test_solve_prompts_delegate_tool_routing_to_shared_guidance() -> None:
     root = Path(__file__).parents[2] / "deeptutor" / "capabilities" / "solve" / "prompts"
 
     for language in ("en", "zh"):
-        prompt = (root / language / "system.md").read_text()
+        prompt = (root / language / "system.md").read_text(encoding="utf-8")
         assert "code_execution" not in prompt
         assert "language: python" not in prompt
         assert "language: shell" not in prompt
@@ -71,7 +71,7 @@ def test_office_skills_use_unified_exec_for_python_deliverables() -> None:
     root = Path(__file__).parents[2] / "deeptutor" / "skills" / "builtin"
 
     for skill in ("docx", "pdf", "pptx", "xlsx"):
-        document = (root / skill / "SKILL.md").read_text()
+        document = (root / skill / "SKILL.md").read_text(encoding="utf-8")
         assert "code_execution" not in document
         assert "`exec`" in document
         assert "language: python" in document
@@ -83,7 +83,7 @@ def test_office_skills_use_unified_exec_for_python_deliverables() -> None:
 
 def test_pdf_skill_preserves_requested_scope_and_requires_changed_retries() -> None:
     root = Path(__file__).parents[2] / "deeptutor" / "skills" / "builtin"
-    document = (root / "pdf" / "SKILL.md").read_text()
+    document = (root / "pdf" / "SKILL.md").read_text(encoding="utf-8")
 
     assert "such as 500 words" in document
     assert "verify the count in the output before finishing" in document
