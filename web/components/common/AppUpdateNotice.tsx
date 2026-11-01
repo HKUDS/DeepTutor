@@ -21,6 +21,7 @@ import {
   ArrowUpRight,
   Check,
   CircleAlert,
+  Copy,
   Download,
   RotateCw,
   Sparkles,
@@ -212,6 +213,17 @@ export default function AppUpdateNotice() {
     setSeenJobId(job.id);
   }, [job]);
 
+  const copyCommand = useCallback(async () => {
+    const command = status?.installation.command;
+    if (!command) return;
+    try {
+      await navigator.clipboard.writeText(command);
+      notify(t("Copied"), { tone: "success" });
+    } catch {
+      notify(t("Could not copy"), { tone: "error" });
+    }
+  }, [status?.installation.command, t]);
+
   const update = useCallback(async () => {
     setRequesting(true);
     setActionError("");
@@ -353,13 +365,25 @@ export default function AppUpdateNotice() {
                           {t("Update to {{version}}", { version })}
                         </Button>
                       ) : status?.is_admin ? (
-                        <Link
-                          href="/settings/about"
-                          className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[12px] font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--accent)]"
-                        >
-                          {t("Update instructions")}
-                          <ArrowUpRight className="h-3.5 w-3.5" />
-                        </Link>
+                        <>
+                          <Link
+                            href="/settings/about"
+                            className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[12px] font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--accent)]"
+                          >
+                            {t("Update instructions")}
+                            <ArrowUpRight className="h-3.5 w-3.5" />
+                          </Link>
+                          {status.installation.command && (
+                            <button
+                              type="button"
+                              onClick={() => void copyCommand()}
+                              className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-[12px] font-medium text-[var(--muted-foreground)] transition-colors hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
+                            >
+                              <Copy className="h-3.5 w-3.5" />
+                              {t("Copy")}
+                            </button>
+                          )}
+                        </>
                       ) : (
                         <span className="text-[11.5px] text-[var(--muted-foreground)]">
                           {t("Ask an administrator to update DeepTutor.")}
