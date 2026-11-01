@@ -11,6 +11,7 @@ export const PROVIDER_ICONS: Readonly<Record<string, ProviderIconSpec>> = {
   azure_openai: { file: "azure-color.svg" },
   baidu: { file: "baidu-color.svg" },
   bocha: { file: "bocha-color.svg" },
+  bowmark: { file: "bowmark.ico" },
   brave: { file: "brave.svg" },
   byteplus: { file: "byteplus.png" },
   byteplus_coding_plan: { file: "byteplus.png" },

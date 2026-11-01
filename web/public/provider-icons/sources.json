@@ -93,6 +93,11 @@
       "sha256": "bc108afac8491e981082ecbb84c1edc8a743c9da5d011bf50ccac677007b892e",
       "source": "Official website asset"
     },
+    "bowmark.ico": {
+      "url": "https://bowmark.ai/favicon.ico",
+      "sha256": "019444e066c70da2a607dc4ef9da8394f57e9e35642f04fb9260708dba21b21a",
+      "source": "Official website asset"
+    },
     "cheaperinference.svg": {
       "url": "https://www.cheaperinference.com/icon.svg?7b25e69112bc955e",
       "sha256": "4c0bf6572d9077fd66fe338b80c18e4d227adb6a44bc176bf5eb5ea1271bf9d0",

@@ -262,6 +262,13 @@ SEARCH_PROVIDERS: tuple[SearchProviderSpec, ...] = (
         hint="You.com Search API key",
     ),
     SearchProviderSpec(
+        name="bowmark",
+        label="Bowmark",
+        requires_api_key=True,
+        env_keys=("BOWMARK_API_KEY", "SEARCH_API_KEY"),
+        hint="typed functions for live web data",
+    ),
+    SearchProviderSpec(
         name="searxng",
         label="SearXNG",
         requires_api_key=False,

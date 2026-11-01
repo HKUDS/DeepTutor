@@ -1163,6 +1163,152 @@ def test_deepseek_surfaces_http_errors(monkeypatch, status) -> None:
         DeepSeekProvider(api_key="k").search("q")
 
 
+# Bowmark: authenticated run API, result rows nested under result.results.
+# --------------------------------------------------------------------------
+
+_BOWMARK_BODY: dict[str, Any] = {
+    "ok": True,
+    "result": {
+        "results": [
+            {
+                "url": "https://example.com/guide",
+                "title": "Example Guide",
+                "snippet": "A useful guide.",
+                "published": "2026-10-01T12:00:00Z",
+            },
+            {
+                "url": "https://example.org/second",
+                "title": "Second Guide",
+                "snippet": "Another result.",
+            },
+            {
+                "url": "mailto:nobody@example.com",
+                "title": "Not a web result",
+                "snippet": "Should be dropped.",
+            },
+        ]
+    },
+}
+
+
+@pytest.fixture
+def bowmark_calls(monkeypatch):
+    captured: list[dict[str, Any]] = []
+
+    def _post(url: str, **kwargs: Any) -> _FakeResponse:
+        captured.append({"method": "POST", "url": url, **kwargs})
+        return _FakeResponse(_BOWMARK_BODY)
+
+    class _FakeRequests:
+        post = staticmethod(_post)
+
+    monkeypatch.setattr("deeptutor.services.search.providers.bowmark.requests", _FakeRequests)
+    return captured
+
+
+def test_bowmark_rejects_missing_key_before_network(bowmark_calls, monkeypatch) -> None:
+    from deeptutor.services.search.providers.bowmark import BowmarkProvider
+
+    monkeypatch.setattr(BowmarkProvider, "_get_api_key", lambda self: "")
+    with pytest.raises(ValueError, match="requires an API key"):
+        BowmarkProvider(proxy=PROXY).search("attention")
+    assert bowmark_calls == []
+
+
+def test_bowmark_keyed_request_uses_run_endpoint_and_header(bowmark_calls) -> None:
+    from deeptutor.services.search.providers.bowmark import BowmarkProvider
+
+    BowmarkProvider(api_key="k").search("attention", max_results=3)
+
+    call = bowmark_calls[-1]
+    assert call["url"] == "https://api.bowmark.ai/v1/run"
+    assert call["headers"]["authorization"] == "Bearer k"
+    script = call["json"]["script"]
+    assert script == 'return await bowmark.search.web({"query": "attention", "limit": 3})'
+
+
+def test_bowmark_maps_rows_and_filters_non_http_urls(bowmark_calls) -> None:
+    from deeptutor.services.search.providers.bowmark import BowmarkProvider
+
+    response = BowmarkProvider(api_key="k").search("attention", max_results=5)
+
+    assert response.provider == "bowmark"
+    assert response.answer == ""
+    assert response.model == "bowmark-web-search"
+    assert len(response.search_results) == 2
+    row = response.search_results[0]
+    assert row.title == "Example Guide"
+    assert row.url == "https://example.com/guide"
+    assert row.snippet == "A useful guide."
+    assert row.source == "example.com"
+    assert row.date == "2026-10-01T12:00:00Z"
+    assert response.citations[0].reference == "[1]"
+
+
+def test_bowmark_clamps_max_results_between_one_and_twenty(bowmark_calls) -> None:
+    from deeptutor.services.search.providers.bowmark import BowmarkProvider
+
+    BowmarkProvider(api_key="k").search("attention", max_results=100)
+    assert '"limit": 20' in bowmark_calls[-1]["json"]["script"]
+
+    BowmarkProvider(api_key="k").search("attention", max_results=0)
+    assert '"limit": 1' in bowmark_calls[-1]["json"]["script"]
+
+
+def test_bowmark_metadata_comes_from_the_spec_table() -> None:
+    from deeptutor.services.config import SEARCH_PROVIDERS
+    from deeptutor.services.search.providers import list_providers
+    from deeptutor.services.search.providers.bowmark import BowmarkProvider
+
+    spec = SEARCH_PROVIDERS["bowmark"]
+    assert "bowmark" in list_providers()
+    assert BowmarkProvider.display_name == spec.label
+    assert BowmarkProvider.requires_api_key is True
+    assert BowmarkProvider.supports_answer is False
+
+
+def test_bowmark_surfaces_http_errors(monkeypatch) -> None:
+    class _ErrorResponse:
+        status_code = 429
+        text = "rate limit exceeded"
+
+        def json(self) -> dict[str, Any]:
+            return {}
+
+    class _FakeRequests:
+        @staticmethod
+        def post(url: str, **kwargs: Any) -> _ErrorResponse:
+            return _ErrorResponse()
+
+    monkeypatch.setattr("deeptutor.services.search.providers.bowmark.requests", _FakeRequests)
+
+    from deeptutor.services.search.providers.bowmark import BowmarkProvider
+
+    with pytest.raises(Exception, match="429 - rate limit exceeded"):
+        BowmarkProvider(api_key="k").search("q")
+
+
+def test_bowmark_surfaces_ok_false_as_an_error(monkeypatch) -> None:
+    class _NotOkResponse:
+        status_code = 200
+        text = ""
+
+        def json(self) -> dict[str, Any]:
+            return {"ok": False, "error": "script timed out"}
+
+    class _FakeRequests:
+        @staticmethod
+        def post(url: str, **kwargs: Any) -> _NotOkResponse:
+            return _NotOkResponse()
+
+    monkeypatch.setattr("deeptutor.services.search.providers.bowmark.requests", _FakeRequests)
+
+    from deeptutor.services.search.providers.bowmark import BowmarkProvider
+
+    with pytest.raises(Exception, match="script timed out"):
+        BowmarkProvider(api_key="k").search("q")
+
+
 def test_perplexity_client_sends_integration_header() -> None:
     from perplexity._models import FinalRequestOptions
 
