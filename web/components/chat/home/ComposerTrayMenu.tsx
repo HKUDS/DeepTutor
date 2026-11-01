@@ -6,12 +6,14 @@ import {
   useCallback,
   useEffect,
   useId,
+  useLayoutEffect,
   useRef,
   useState,
   type KeyboardEvent,
   type ReactNode,
 } from "react";
 import { useTranslation } from "react-i18next";
+import { createPortal } from "react-dom";
 import { useOutsideClick } from "@/hooks/use-outside-click";
 import { Tooltip } from "@/shared/ui/Tooltip";
 import { useResourceReuse } from "./ResourceReuse";
@@ -31,6 +33,9 @@ interface Room {
   side: TrayPlacement;
   /** Tallest the list may be on that side without leaving the window. */
   max: number;
+  left: number;
+  top?: number;
+  bottom?: number;
 }
 
 /**
@@ -38,12 +43,31 @@ interface Room {
  * for unless that side is cramped and the other has more room, and it is
  * never taller than the room it ends up with — the options scroll inside.
  */
-function roomFor(trigger: DOMRect, preferred: TrayPlacement): Room {
+function roomFor(
+  trigger: DOMRect,
+  preferred: TrayPlacement,
+  align: "start" | "end",
+): Room {
   const below = window.innerHeight - trigger.bottom - GAP - MARGIN;
   const above = trigger.top - GAP - MARGIN;
   const [mine, other] = preferred === "down" ? [below, above] : [above, below];
   const side = mine < ROOMY && other > mine ? (preferred === "down" ? "up" : "down") : preferred;
-  return { side, max: Math.max(160, Math.floor(side === "down" ? below : above)) };
+  const width = Math.min(328, window.innerWidth - 32);
+  const left = Math.max(
+    MARGIN,
+    Math.min(
+      align === "end" ? trigger.right - width : trigger.left,
+      window.innerWidth - width - MARGIN,
+    ),
+  );
+  return {
+    side,
+    max: Math.max(0, Math.floor(side === "down" ? below : above)),
+    left,
+    ...(side === "down"
+      ? { top: trigger.bottom + GAP }
+      : { bottom: window.innerHeight - trigger.top + GAP }),
+  };
 }
 
 /**
@@ -114,7 +138,30 @@ export function TrayMenu({
     setOpen(false);
     document.getElementById(triggerId)?.focus({ preventScroll: true });
   }, [setOpen, triggerId]);
-  useOutsideClick(rootRef, open, () => setOpen(false));
+  useOutsideClick(rootRef, open, () => setOpen(false), panelRef);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    let frame = 0;
+    let previous = "";
+    const place = () => {
+      const trigger = document.getElementById(triggerId)?.getBoundingClientRect();
+      if (trigger) {
+        const key = [
+          trigger.left, trigger.right, trigger.top, trigger.bottom,
+          window.innerWidth, window.innerHeight,
+        ].join(":");
+        if (key !== previous) {
+          previous = key;
+          setRoom(roomFor(trigger, placement, align));
+        }
+      }
+      // The tray can move while unfolding for a controlled /persona command.
+      frame = requestAnimationFrame(place);
+    };
+    place();
+    return () => cancelAnimationFrame(frame);
+  }, [open, placement, align, triggerId]);
 
   // Land where the next keystroke belongs: the search box when there is one,
   // else the current choice, else the first option.
@@ -160,8 +207,7 @@ export function TrayMenu({
   };
 
   // Grows from the edge it is attached to; on the way out it only drifts a
-  // little, so closing never reads as a second event. Opened from elsewhere
-  // (`/persona`) it has no measurement and keeps the side it was given.
+  // little, so closing never reads as a second event.
   const side = room?.side ?? placement;
   const lift = side === "down" ? -6 : 6;
   return (
@@ -186,11 +232,7 @@ export function TrayMenu({
         aria-expanded={open}
         aria-controls={open ? id : undefined}
         data-active={active || undefined}
-        onClick={(event) => {
-          // Measured on the way in, so the list opens on the side it fits.
-          if (!open) setRoom(roomFor(event.currentTarget.getBoundingClientRect(), placement));
-          setOpen(!open);
-        }}
+        onClick={() => setOpen(!open)}
         data-fold={fold || undefined}
         className="dt-tray-button"
       >
@@ -217,33 +259,46 @@ export function TrayMenu({
         )}
       </button>
       </Tooltip>
-      <AnimatePresence>
-        {open && (
-          <m.div
-            ref={panelRef}
-            id={id}
-            role="dialog"
-            aria-label={label}
-            className={`dt-tray-popover is-${side} is-${align}`}
-            style={room ? { maxHeight: room.max } : undefined}
-            initial={reduced ? { opacity: 0 } : { opacity: 0, y: lift, scale: 0.97 }}
-            animate={{
-              opacity: 1,
-              y: 0,
-              scale: 1,
-              transition: { duration: reduced ? 0 : 0.18, ease: EASE_OUT },
-            }}
-            exit={{
-              opacity: 0,
-              y: reduced ? 0 : lift / 2,
-              scale: reduced ? 1 : 0.985,
-              transition: { duration: reduced ? 0 : 0.1, ease: [0.4, 0, 1, 1] },
-            }}
-          >
-            {children(close)}
-          </m.div>
-        )}
-      </AnimatePresence>
+      {/* Escape the tray's container-query stacking context in older browsers. */}
+      {typeof document !== "undefined" && createPortal(
+        <AnimatePresence>
+          {open && (
+            <m.div
+              ref={panelRef}
+              id={id}
+              role="dialog"
+              aria-label={label}
+              className={`dt-tray-popover is-${side} is-${align}`}
+              style={{
+                position: "fixed",
+                left: room?.left,
+                right: "auto",
+                top: room?.top ?? "auto",
+                bottom: room?.bottom ?? "auto",
+                maxHeight: room?.max,
+                visibility: room ? undefined : "hidden",
+              }}
+              onPointerDown={(event) => event.stopPropagation()}
+              initial={reduced ? { opacity: 0 } : { opacity: 0, y: lift, scale: 0.97 }}
+              animate={{
+                opacity: 1,
+                y: 0,
+                scale: 1,
+                transition: { duration: reduced ? 0 : 0.18, ease: EASE_OUT },
+              }}
+              exit={{
+                opacity: 0,
+                y: reduced ? 0 : lift / 2,
+                scale: reduced ? 1 : 0.985,
+                transition: { duration: reduced ? 0 : 0.1, ease: [0.4, 0, 1, 1] },
+              }}
+            >
+              {children(close)}
+            </m.div>
+          )}
+        </AnimatePresence>,
+        document.body,
+      )}
     </div>
   );
 }
