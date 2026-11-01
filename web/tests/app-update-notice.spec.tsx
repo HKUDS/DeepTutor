@@ -52,6 +52,7 @@ function status(overrides: Partial<AppUpdateStatus> = {}): AppUpdateStatus {
 afterEach(() => {
   vi.clearAllMocks();
   localStorage.clear();
+  Reflect.deleteProperty(navigator, "clipboard");
 });
 
 it("checks on mount and offers the update action to an admin", async () => {
