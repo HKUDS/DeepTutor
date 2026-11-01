@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 import zipfile
 
 import pytest
 
+from deeptutor.plugins import lifecycle
 from deeptutor.plugins.lifecycle import (
     LifecycleResult,
     PluginLifecycleError,
@@ -150,3 +152,17 @@ def test_manifest_from_wheel_is_parsed_without_importing_plugin(tmp_path) -> Non
     record = manager.registry.get_plugin(result.plugin_id)
     assert record is not None and record.manifest is not None
     assert parse_manifest(record.manifest.to_dict()).id == "org.author.example"
+
+
+def test_install_env_keeps_windows_system_variables_only(monkeypatch, tmp_path) -> None:
+    # pip builds an SSL context before it reads a local wheel; on Windows that
+    # fails without SYSTEMROOT and the install exits 2.
+    windows = ("SYSTEMROOT", "WINDIR", "TEMP", "TMP", "USERPROFILE", "PATHEXT")
+    for key in windows:
+        monkeypatch.setenv(key, os.environ.get(key) or str(tmp_path))
+    monkeypatch.setenv("DEEPTUTOR_TEST_PROVIDER_KEY", "not-for-plugins")
+
+    env = lifecycle._clean_env()
+
+    assert {key: env.get(key) for key in windows} == {key: os.environ[key] for key in windows}
+    assert "DEEPTUTOR_TEST_PROVIDER_KEY" not in env
