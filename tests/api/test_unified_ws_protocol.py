@@ -13,7 +13,7 @@ class _Turns:
     def __init__(self) -> None:
         self.cancelled: list[tuple[str, str]] = []
 
-    async def cancel_turn(self, turn_id: str, *, command_id: str) -> bool:
+    async def cancel_turn_and_wait(self, turn_id: str, *, command_id: str) -> bool:
         self.cancelled.append((turn_id, command_id))
         return True
 

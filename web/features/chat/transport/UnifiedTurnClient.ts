@@ -133,6 +133,10 @@ export class UnifiedTurnClient {
     return this.runtime.sendAwaitingAck(command(message));
   }
 
+  cancelCurrentTurn(): Promise<boolean> {
+    return this.runtime.cancelCurrentTurn();
+  }
+
   disconnect(): void {
     this.runtime.stop();
     this.runtime.setResumeCursor(null, 0);
