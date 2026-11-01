@@ -135,6 +135,37 @@ async def test_update_l2_idempotent_when_no_new_entities(memory_dir, monkeypatch
 
 
 @pytest.mark.asyncio
+async def test_update_l2_rebuilds_a_missing_document(memory_dir, monkeypatch):
+    """Meta must not suppress the rebuild when the L2 document is gone."""
+    entities = [_entity("01ABC")]
+    monkeypatch.setattr(
+        "deeptutor.services.memory.consolidator.modes.update.snap.read_snapshot",
+        lambda surface: entities,
+    )
+
+    async def llm_returns_one(*, system_prompt, user_prompt, **kwargs):
+        return '{"facts": [{"text": "uses Anki", "section": "Topics", "refs": ["chat:01ABC"]}]}'
+
+    from deeptutor.services.memory.settings import DedupSettings, MemorySettings
+
+    settings = MemorySettings(dedup=DedupSettings(auto_after_update=False))
+    with (
+        patch(
+            "deeptutor.services.memory.consolidator.modes.update.call_llm",
+            side_effect=llm_returns_one,
+        ),
+        patch.object(update_mod, "load_memory_settings", return_value=settings),
+    ):
+        first = await update_mod.run_update("L2", "chat", language="en")
+        (memory_dir / "L2" / "chat.md").unlink()
+        rebuilt = await update_mod.run_update("L2", "chat", language="en")
+
+    assert first.facts_added >= 1
+    assert rebuilt.no_new_input is False
+    assert (memory_dir / "L2" / "chat.md").exists()
+
+
+@pytest.mark.asyncio
 async def test_update_l2_drops_facts_with_out_of_pool_refs(memory_dir, monkeypatch):
     entities = [_entity("01ABC")]
     monkeypatch.setattr(

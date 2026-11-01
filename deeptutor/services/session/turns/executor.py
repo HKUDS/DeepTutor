@@ -941,6 +941,39 @@ class TurnExecutor:
                     **parent_kwargs,
                 )
 
+            # The main chat surface is the learner's primary source of
+            # questions. Record it as an L1 trace so L2/chat, the memory
+            # backlog and ``recall.recent_queries`` have something to build
+            # from. Side chats stay isolated from global memory, regenerate
+            # turns do not persist a user row, and trace capture must never
+            # break the turn.
+            if new_user_message_id is not None and not side_chat_context:
+                trace_text = raw_user_content.strip()
+                if trace_text:
+                    try:
+                        from deeptutor.modules.catalog import module_enabled
+
+                        if module_enabled("memory"):
+                            from deeptutor.services.memory import get_memory_store
+                            from deeptutor.services.memory.trace import TraceEvent
+
+                            await get_memory_store().emit(
+                                TraceEvent.new(
+                                    "chat",
+                                    "query",
+                                    {
+                                        "query": trace_text[:2000],
+                                        "capability": capability_name,
+                                    },
+                                    session_id=session_id,
+                                    turn_id=turn_id,
+                                )
+                            )
+                    except Exception:
+                        logger.warning(
+                            "chat trace emit failed for turn %s", turn_id, exc_info=True
+                        )
+
             if not side_chat_context:
                 from deeptutor.services.task_board import get_task_board_store
                 from deeptutor.services.workspace.context import current_workspace_id
