@@ -753,4 +753,3 @@ async def test_book_manifest_with_cjk_title_survives_non_utf8_locale(account, mo
     assert "book" in features
     assert cited["id"] in ids
     assert not any("book_cjk_title" in message for message in warnings)
-
