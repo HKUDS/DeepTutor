@@ -142,6 +142,28 @@ def test_notebook_add_md_creates_record(monkeypatch, tmp_path: Path) -> None:
     assert stored["records"][0]["output"] == "# Hello\n\nThis is a test."
 
 
+def test_notebook_add_md_accepts_non_utf8_markdown(monkeypatch, tmp_path: Path) -> None:
+    """add-md should decode a non-UTF-8 markdown file instead of crashing."""
+    _patch_facade(monkeypatch)
+    _fake_manager.notebooks.clear()
+
+    notebook = _fake_manager.create_notebook("Test Notebook")
+
+    md_file = tmp_path / "latin1.md"
+    md_file.write_bytes(b"# Caf\xe9\n\nnote here")
+
+    result = runner.invoke(
+        app,
+        ["notebook", "add-md", notebook["id"], str(md_file)],
+    )
+
+    assert result.exit_code == 0, result.output
+    stored = _fake_manager.get_notebook(notebook["id"])
+    assert stored is not None
+    assert len(stored["records"]) == 1
+    assert stored["records"][0]["output"] == "# Caf\u00e9\n\nnote here"
+
+
 def test_notebook_add_md_custom_title_and_type(monkeypatch, tmp_path: Path) -> None:
     """add-md should respect --title and --type options."""
     _patch_facade(monkeypatch)
