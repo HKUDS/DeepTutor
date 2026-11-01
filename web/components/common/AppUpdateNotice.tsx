@@ -203,6 +203,7 @@ export default function AppUpdateNotice() {
     if (!version) return;
     browserStorage.writeRaw("local", DISMISSED_VERSION_KEY, version);
     setDismissedVersion(version);
+    setActionError("");
   }, [status?.release?.version]);
 
   const dismissFailedJob = useCallback(() => {
