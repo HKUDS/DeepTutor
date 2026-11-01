@@ -1547,18 +1547,26 @@ class PartnerManager:
             legacy_config = entry / "config.yaml"
             if not legacy_config.is_file():
                 continue
-            partner_id = entry.name
-            if (self._partner_dir(partner_id) / "config.yaml").exists():
+            legacy_name = entry.name
+            # Partner ids ride in ``/partners/<id>`` URLs and must be ASCII/URL-
+            # safe, like every other creation path (see ``slugify_partner_id``).
+            # Carrying the raw legacy directory name across left CJK-named bots
+            # unreachable ("Partner not found").
+            partner_id = slugify_partner_id(legacy_name)
+            if (self._partner_dir(partner_id) / "config.yaml").exists() or (
+                partner_id != legacy_name
+                and (self._partner_dir(legacy_name) / "config.yaml").exists()
+            ):
                 continue
             try:
                 data = yaml.safe_load(legacy_config.read_text(encoding="utf-8")) or {}
                 config = PartnerConfig(
-                    name=data.get("name", partner_id),
+                    name=data.get("name", legacy_name),
                     description=data.get("description", ""),
                     channels=data.get("channels", {}) or {},
                     llm_selection=data.get("llm_selection"),
                     model=data.get("model"),
-                    soul_origin={"type": "tutorbot", "id": partner_id},
+                    soul_origin={"type": "tutorbot", "id": legacy_name},
                 )
                 self._ensure_partner_dirs(partner_id)
                 persona = str(data.get("persona", "") or "").strip()
