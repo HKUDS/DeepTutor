@@ -82,6 +82,16 @@ it("checks on mount and offers the update action to an admin", async () => {
   expect(await screen.findByText("Updating DeepTutor…")).toBeTruthy();
 });
 
+it("ignores an incomplete status payload", async () => {
+  // Real deployments can return a cached/partial status while the backend is
+  // starting. The global notice must not take the whole app shell down.
+  lib.fetchAppUpdateStatus.mockResolvedValue({});
+  const { container } = render(<AppUpdateNotice />);
+
+  await waitFor(() => expect(lib.fetchAppUpdateStatus).toHaveBeenCalled());
+  expect(container).toBeEmptyDOMElement();
+});
+
 it("lets the learner dismiss one release without hiding the next", async () => {
   lib.fetchAppUpdateStatus.mockResolvedValue(status());
   render(<AppUpdateNotice />);
