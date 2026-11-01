@@ -580,7 +580,9 @@ async def test_send_media_failure_placeholder_hides_a_windows_server_path(monkey
     channel = _channel()
     media = r"C:\Users\alice\DeepTutor\data\user\workspace\outputs\chart.png"
 
-    await channel.send(OutboundMessage(channel="telegram", chat_id="777", content="", media=[media]))
+    await channel.send(
+        OutboundMessage(channel="telegram", chat_id="777", content="", media=[media])
+    )
 
     call = channel._app.bot.send_message.await_args
     assert call.kwargs["text"] == "[Failed to send: chart.png]"
