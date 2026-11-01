@@ -214,7 +214,7 @@ export default function AppUpdateNotice() {
   }, [job]);
 
   const copyCommand = useCallback(async () => {
-    const command = status?.installation.command;
+    const command = status?.installation?.command;
     if (!command) return;
     try {
       await navigator.clipboard.writeText(command);
@@ -222,7 +222,7 @@ export default function AppUpdateNotice() {
     } catch {
       notify(t("Could not copy"), { tone: "error" });
     }
-  }, [status?.installation.command, t]);
+  }, [status?.installation?.command, t]);
 
   const update = useCallback(async () => {
     setRequesting(true);
@@ -245,7 +245,7 @@ export default function AppUpdateNotice() {
   const version = status?.release?.version ?? "";
   const canUpdate = Boolean(
     status?.is_admin &&
-      status.installation.automatic_update &&
+      status?.installation?.automatic_update &&
       status.launcher_managed,
   );
   const showUpdate = Boolean(
@@ -373,7 +373,7 @@ export default function AppUpdateNotice() {
                             {t("Update instructions")}
                             <ArrowUpRight className="h-3.5 w-3.5" />
                           </Link>
-                          {status.installation.command && (
+                          {status.installation?.command && (
                             <button
                               type="button"
                               onClick={() => void copyCommand()}
