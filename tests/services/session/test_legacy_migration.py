@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -143,3 +144,34 @@ async def test_empty_and_dry_run_are_safe(tmp_path) -> None:
     applied = await migrator.migrate()
     assert applied.imported == 0
     assert not source.exists()
+
+
+@pytest.mark.asyncio
+async def test_migration_is_serialized_with_msvcrt_when_fcntl_is_missing(
+    tmp_path, monkeypatch
+) -> None:
+    # Every worker runs the migration at startup. Unserialized on Windows,
+    # they copied, imported and moved the same source at once.
+    import deeptutor.services.session.legacy_migration as module
+
+    calls: list[int] = []
+
+    def locking(_fileno: int, mode: int, length: int) -> None:
+        assert length == 1
+        calls.append(mode)
+
+    monkeypatch.setattr(module, "fcntl", None)
+    monkeypatch.setattr(
+        module,
+        "msvcrt",
+        SimpleNamespace(LK_LOCK=1, LK_UNLCK=0, locking=locking),
+        raising=False,
+    )
+    store = SQLiteSessionStore(tmp_path / "chat_history.db")
+    source = tmp_path / "sessions.json"
+    _write_legacy(source, [_session("s1")])
+
+    report = await LegacyChatSessionMigrator(store, source, tmp_path / "archive").migrate()
+
+    assert report.imported == 1
+    assert calls == [1, 0]
