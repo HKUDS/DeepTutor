@@ -942,9 +942,9 @@ class TurnExecutor:
                 )
 
             # The main chat surface is the learner's primary source of
-            # questions. Record it as an L1 trace so L2/chat, the memory
-            # backlog and ``recall.recent_queries`` have something to build
-            # from. Side chats stay isolated from global memory, regenerate
+            # questions. Record it as an L1 trace so the memory backlog and
+            # ``recall.recent_queries`` see ordinary conversation, not only KB
+            # searches. Side chats stay isolated from global memory, regenerate
             # turns do not persist a user row, and trace capture must never
             # break the turn.
             if new_user_message_id is not None and not side_chat_context:
