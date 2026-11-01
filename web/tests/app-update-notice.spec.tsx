@@ -118,6 +118,30 @@ it("points a Docker admin at the instructions instead of an impossible install",
   expect(screen.queryByRole("button", { name: "Update to 1.7.2" })).toBeNull();
 });
 
+it("copies the manual update command for a Docker admin", async () => {
+  const writeText = vi.fn(() => Promise.resolve());
+  Object.defineProperty(navigator, "clipboard", {
+    configurable: true,
+    value: { writeText },
+  });
+  lib.fetchAppUpdateStatus.mockResolvedValue(
+    status({
+      installation: {
+        mode: "docker",
+        automatic_update: false,
+        command: "docker pull ghcr.io/hkuds/deeptutor:latest",
+        reason: "Container images are updated and recreated by the Docker host.",
+      },
+    }),
+  );
+  render(<AppUpdateNotice />);
+
+  fireEvent.click(await screen.findByRole("button", { name: "Copy" }));
+  await waitFor(() =>
+    expect(writeText).toHaveBeenCalledWith("docker pull ghcr.io/hkuds/deeptutor:latest"),
+  );
+});
+
 it("shows what changed once after the version changes", async () => {
   localStorage.setItem("dt:app-update:seen-version", "1.7.1");
   lib.fetchAppUpdateStatus.mockResolvedValue(
