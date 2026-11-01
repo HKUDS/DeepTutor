@@ -77,7 +77,18 @@ async function openConversation(page: Page) {
     if (path === '/api/settings/llm-options') return json({ options: [], active: null })
     if (path.includes('partners') || path.includes('personas')) return json([])
     if (path.includes('tools')) return json({ tools: [] })
-    if (path.includes('capabilities')) return json({ capabilities: [] })
+    if (path === '/api/capabilities/registered')
+      return json({
+        capabilities: [
+          'chat',
+          'deep_solve',
+          'ask_questions',
+          'deep_question',
+          'deep_research',
+          'visualize',
+          'video_lesson',
+        ],
+      })
     if (path.includes('knowledge')) return json({ knowledge_bases: [] })
     if (path.includes('folders')) return json({ folders: [] })
     if (path.includes('tags')) return json({ tags: [] })
@@ -100,6 +111,7 @@ test('upward tray menus keep their final option reachable above the composer', a
   const trigger = page.locator('.dt-tray-button').filter({ hasText: 'Mode' })
   await trigger.click()
   const panel = page.getByRole('dialog', { name: 'Mode', exact: true })
+  await expect(panel.getByRole('option')).toHaveCount(6)
   const last = panel.getByRole('option').last()
   await last.scrollIntoViewIfNeeded()
   // A visible box alone does not prove it is above the composer: hit testing does.
