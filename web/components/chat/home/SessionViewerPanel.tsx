@@ -1055,6 +1055,29 @@ function SessionViewerPanelInner(
     [activeTabId],
   );
 
+  /** Remember the server thread id a fresh side chat received on its first
+   *  turn, so the tab can be restored after a reload. */
+  const bindSideChatThread = useCallback((tabId: string, threadSessionId: string) => {
+    setTabs((prev) => {
+      let changed = false;
+      const next = prev.map((tab) => {
+        if (
+          tab.id !== tabId ||
+          tab.kind !== "side-chat" ||
+          tab.context.followupSessionId
+        ) {
+          return tab;
+        }
+        changed = true;
+        return {
+          ...tab,
+          context: { ...tab.context, followupSessionId: threadSessionId },
+        };
+      });
+      return changed ? next : prev;
+    });
+  }, []);
+
   /** Close the tab showing a thread that no longer exists (e.g. it was
    *  deleted from its message-level entry point). It is not remembered as
    *  recently closed: reopening it would only 404. */
@@ -1397,6 +1420,9 @@ function SessionViewerPanelInner(
             agents={agents}
             onResponderChange={(responder) =>
               setSideChatResponder(activeTab.id, responder)
+            }
+            onThreadSessionBound={(threadSessionId) =>
+              bindSideChatThread(activeTab.id, threadSessionId)
             }
           />
         ) : activeTab?.kind === "geogebra" ? (
