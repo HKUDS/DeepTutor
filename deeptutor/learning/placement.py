@@ -267,7 +267,30 @@ def lecture_diff(before: str, after: str) -> list[dict[str, Any]]:
     return changes
 
 
-_LECTURE_ROLL_SYSTEM = """You maintain one learner's study lecture as a markdown document.
+_LECTURE_ROLL_SYSTEM = """You maintain one learner's revision card for a single knowledge point.
+
+The learner scans this before an interview or a discussion: they need to recall
+the point in seconds and say its first sentence out loud. So this is a task of
+selection and compression, not summarisation — write down what is worth
+remembering and leave the rest out.
+
+Shape:
+- The first heading names the knowledge point.
+- Open with the one line the learner would say first about this point.
+- An idea that needs a paragraph is an idea that is not yet thought through.
+  Prefer one line per idea, and a table whenever several things are compared.
+- Keep the tutor's analogies and concrete examples. They are what makes the
+  point stick.
+- Close with a short self-test: question, then a one-line answer.
+- Define a term the first time it appears.
+
+Never include:
+- The conversation itself ("earlier", "I showed you", "last round").
+- Feedback on an answer the learner gave ("you got that right", "you missed").
+  That belongs to the conversation, not the document.
+- The mechanics of quizzing, grading or confirming.
+- Instructions for the learner's next step.
+- The learner's own questions, quoted or paraphrased.
 
 Rules that matter more than fluency:
 - Keep every heading that already exists, in its existing order and wording.
@@ -316,10 +339,15 @@ async def write_lecture_draft(
 
     covered_before = int((existing or {}).get("covered_message_id") or 0)
     fresh = [row for row in bubbles if int(row["id"]) > covered_before and row["role"] != "user"]
-    if not fresh and existing and not force:
-        # Nothing new was actually taught. Returning the current draft is the
-        # honest answer, and it keeps a client polling this endpoint from
-        # paying for an LLM call that would produce the same document.
+    if not fresh and force:
+        # A forced re-roll means "write it again from what was taught", never
+        # "write it again from what was asked".
+        fresh = [row for row in bubbles if row["role"] != "user"]
+    if not fresh:
+        # Only the tutor's teaching is lecture material. A conversation that
+        # produced none — questions with no answers, or nothing new since the
+        # last roll — has nothing to write, and falling back to the whole
+        # transcript would put the learner's own questions in the document.
         return lecture_status(learning, path_id, knowledge_point_id, bubbles)
 
     previous_body = str((existing or {}).get("body") or "")
@@ -332,16 +360,18 @@ async def write_lecture_draft(
     if previous_body:
         instruction = (
             f"Knowledge point: {point_name}\n\n"
-            "Here is the lecture as it stands. Keep its structure and wording, "
-            "and merge in what was said since.\n\n"
+            "Here is the revision card as it stands. Keep its structure and "
+            "wording, and merge in what was taught since.\n\n"
             f"--- CURRENT LECTURE ---\n{previous_body}\n--- END LECTURE ---\n\n"
-            f"--- NEW CONVERSATION ---\n{_transcript(fresh)}\n--- END ---"
+            f"--- NEW TRANSCRIPT ---\n{_transcript(fresh)}\n--- END ---"
         )
     else:
         instruction = (
-            f"Knowledge point: {point_name}\n\n"
-            "Write a study lecture covering only what the transcript discusses.\n\n"
-            f"{_transcript(fresh if fresh else bubbles)}"
+            f"Knowledge point (use this verbatim as the first heading): {point_name}\n\n"
+            "Write this point's revision card from what the tutor taught in the "
+            "transcript below. The transcript is the tutor's own teaching; the "
+            "learner's questions are not in it and must not be reconstructed.\n\n"
+            f"{_transcript(fresh)}"
         )
 
     body = await complete(
