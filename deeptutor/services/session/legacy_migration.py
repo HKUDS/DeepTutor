@@ -7,6 +7,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
+import errno
 import hashlib
 import json
 from pathlib import Path
@@ -62,7 +63,16 @@ def _migration_lock(archive_root: Path) -> Iterator[None]:
                 handle.write(b"\0")
                 handle.flush()
             handle.seek(0)
-            msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
+            # LK_LOCK gives up with EDEADLK after about ten seconds, and
+            # importing a large legacy store takes longer than that. Keep
+            # waiting, as flock does on POSIX.
+            while True:
+                try:
+                    msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
+                    break
+                except OSError as exc:
+                    if exc.errno != errno.EDEADLK:
+                        raise
         try:
             yield
         finally:
