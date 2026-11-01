@@ -288,7 +288,12 @@ class RestrictedSubprocessBackend(SandboxBackend):
 
     level = IsolationLevel.APPLICATION
 
-    _SAFE_ENV_KEYS = ("PATH", "PATHEXT", "HOME", "LANG", "LC_ALL", "TMPDIR", "SYSTEMROOT")
+    # USERPROFILE/TEMP/TMP are the Windows HOME/TMPDIR: without them Path.home()
+    # raises, "~" stays unexpanded, and temp files land in C:\Windows\Temp.
+    _SAFE_ENV_KEYS = (
+        *("PATH", "PATHEXT", "HOME", "LANG", "LC_ALL", "TMPDIR", "SYSTEMROOT"),
+        *("USERPROFILE", "TEMP", "TMP"),
+    )
 
     def __init__(
         self,
