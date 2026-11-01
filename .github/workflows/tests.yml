@@ -199,7 +199,7 @@ jobs:
 
       - name: Install frontend dependencies
         working-directory: web
-        run: npm ci 
+        run: npm ci
 
       - name: Install Playwright Chromium
         working-directory: web
