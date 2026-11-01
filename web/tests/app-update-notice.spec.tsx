@@ -100,6 +100,24 @@ it("does not offer the install button to a non-admin", async () => {
   expect(screen.queryByRole("button", { name: "Update to 1.7.2" })).toBeNull();
 });
 
+it("points a Docker admin at the instructions instead of an impossible install", async () => {
+  lib.fetchAppUpdateStatus.mockResolvedValue(
+    status({
+      installation: {
+        mode: "docker",
+        automatic_update: false,
+        command: "docker compose pull && docker compose up -d",
+        reason: "Container images are updated and recreated by the Docker host.",
+      },
+    }),
+  );
+  render(<AppUpdateNotice />);
+
+  const link = await screen.findByRole("link", { name: /Update instructions/ });
+  expect(link.getAttribute("href")).toBe("/settings/about");
+  expect(screen.queryByRole("button", { name: "Update to 1.7.2" })).toBeNull();
+});
+
 it("shows what changed once after the version changes", async () => {
   localStorage.setItem("dt:app-update:seen-version", "1.7.1");
   lib.fetchAppUpdateStatus.mockResolvedValue(
