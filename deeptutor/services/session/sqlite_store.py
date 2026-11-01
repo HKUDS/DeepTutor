@@ -8,6 +8,7 @@ import asyncio
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
+import errno
 import json
 import os
 from pathlib import Path
@@ -77,7 +78,16 @@ def _migration_lock(db_path: Path) -> Iterator[None]:
                 lock_file.write(b"\0")
                 lock_file.flush()
             lock_file.seek(0)
-            msvcrt.locking(lock_file.fileno(), msvcrt.LK_LOCK, 1)
+            # LK_LOCK gives up with EDEADLK after about ten seconds, and a
+            # one-time upgrade of a large database can take longer than that.
+            # Keep waiting, as flock does on POSIX.
+            while True:
+                try:
+                    msvcrt.locking(lock_file.fileno(), msvcrt.LK_LOCK, 1)
+                    break
+                except OSError as exc:
+                    if exc.errno != errno.EDEADLK:
+                        raise
         try:
             yield
         finally:

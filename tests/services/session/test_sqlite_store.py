@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import errno
 import json
 from pathlib import Path
 import sqlite3
@@ -1284,3 +1285,42 @@ def test_schema_setup_takes_the_windows_lock_without_fcntl(tmp_path, monkeypatch
     SQLiteSessionStore(tmp_path / "chat_history.db")
 
     assert calls == [1, 0]
+
+
+def _msvcrt_failing_first_lock(calls: list[int], error: OSError) -> SimpleNamespace:
+    def locking(_fileno: int, mode: int, length: int) -> None:
+        calls.append(mode)
+        if calls == [1]:
+            raise error
+
+    return SimpleNamespace(LK_LOCK=1, LK_UNLCK=0, locking=locking)
+
+
+def test_windows_schema_lock_keeps_waiting_after_lk_lock_gives_up(tmp_path, monkeypatch) -> None:
+    # LK_LOCK raises EDEADLK after about ten seconds, but another worker's
+    # one-time upgrade of a large database can hold the lock for longer.
+    import deeptutor.services.session.sqlite_store as module
+
+    calls: list[int] = []
+    timeout = OSError(errno.EDEADLK, "Resource deadlock avoided")
+    monkeypatch.setattr(module, "fcntl", None)
+    monkeypatch.setattr(module, "msvcrt", _msvcrt_failing_first_lock(calls, timeout), raising=False)
+
+    SQLiteSessionStore(tmp_path / "chat_history.db")
+
+    assert calls == [1, 1, 0]
+
+
+def test_windows_schema_lock_raises_other_lock_errors(tmp_path, monkeypatch) -> None:
+    import deeptutor.services.session.sqlite_store as module
+
+    calls: list[int] = []
+    denied = OSError(errno.EACCES, "Permission denied")
+    monkeypatch.setattr(module, "fcntl", None)
+    monkeypatch.setattr(module, "msvcrt", _msvcrt_failing_first_lock(calls, denied), raising=False)
+
+    with pytest.raises(OSError) as exc_info:
+        SQLiteSessionStore(tmp_path / "chat_history.db")
+
+    assert exc_info.value.errno == errno.EACCES
+    assert calls == [1]
