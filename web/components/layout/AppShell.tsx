@@ -13,6 +13,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Menu } from "lucide-react";
 import { PageChromeProvider } from "./PageChrome";
+import AppUpdateNotice from "@/components/common/AppUpdateNotice";
 import { useTranslation } from "react-i18next";
 import { useDevice } from "@/hooks/useDevice";
 import type { ReactNode } from "react";
@@ -135,6 +136,7 @@ export default function AppShell({ sidebar, pageBar, children, homeHref = "/" }:
 
           {/* The bar and the page share slots: a page header hands its
               actions up into the bar (see PageChrome). */}
+          <AppUpdateNotice />
           <PageChromeProvider>
             {pageBar}
             <div className="min-h-0 flex-1 overflow-hidden">
