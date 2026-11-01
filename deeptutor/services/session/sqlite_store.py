@@ -17,10 +17,14 @@ import time
 from typing import Any
 import uuid
 
-try:  # POSIX is the supported production target; fallback keeps Windows dev usable.
+try:  # POSIX
     import fcntl
 except ImportError:  # pragma: no cover - exercised only on Windows
     fcntl = None  # type: ignore[assignment]
+try:  # Windows
+    import msvcrt
+except ImportError:  # pragma: no cover - exercised only off Windows
+    msvcrt = None  # type: ignore[assignment]
 
 from deeptutor.core.assessment import (
     ASSESSMENT_RESULTS,
@@ -65,11 +69,23 @@ def _migration_lock(db_path: Path) -> Iterator[None]:
     with lock_path.open("a+b") as lock_file:
         if fcntl is not None:
             fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        elif msvcrt is not None:
+            # Without a lock, workers starting together race the WAL switch
+            # ("database is locked") and CREATE TRIGGER ("already exists").
+            lock_file.seek(0, 2)
+            if lock_file.tell() == 0:
+                lock_file.write(b"\0")
+                lock_file.flush()
+            lock_file.seek(0)
+            msvcrt.locking(lock_file.fileno(), msvcrt.LK_LOCK, 1)
         try:
             yield
         finally:
             if fcntl is not None:
                 fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+            elif msvcrt is not None:
+                lock_file.seek(0)
+                msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
 
 
 # Sentinel so ``add_message`` can distinguish "caller wants the legacy

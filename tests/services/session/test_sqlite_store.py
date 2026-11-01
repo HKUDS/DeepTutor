@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import sqlite3
 import time
+from types import SimpleNamespace
 
 import pytest
 
@@ -1258,3 +1259,28 @@ def test_branch_context_messages_carry_private_metadata(store: SQLiteSessionStor
     messages = asyncio.run(store.get_messages_for_context(session["id"], leaf_message_id=leaf))
 
     assert messages[-1]["metadata"]["provider_response_state"] == state
+
+
+def test_schema_setup_takes_the_windows_lock_without_fcntl(tmp_path, monkeypatch) -> None:
+    # Workers opening the store together race the WAL switch ("database is
+    # locked") and CREATE TRIGGER ("already exists") unless setup is
+    # serialized across processes on Windows too.
+    import deeptutor.services.session.sqlite_store as module
+
+    calls: list[int] = []
+
+    def locking(_fileno: int, mode: int, length: int) -> None:
+        assert length == 1
+        calls.append(mode)
+
+    monkeypatch.setattr(module, "fcntl", None)
+    monkeypatch.setattr(
+        module,
+        "msvcrt",
+        SimpleNamespace(LK_LOCK=1, LK_UNLCK=0, locking=locking),
+        raising=False,
+    )
+
+    SQLiteSessionStore(tmp_path / "chat_history.db")
+
+    assert calls == [1, 0]
