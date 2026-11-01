@@ -225,9 +225,7 @@ def test_recent_queries_reads_chat_turns(memory_root: Path) -> None:
 
     hits = recall.recent_queries()
 
-    assert [(hit.surface, hit.label) for hit in hits] == [
-        ("chat", "what is an eigenvalue")
-    ]
+    assert [(hit.surface, hit.label) for hit in hits] == [("chat", "what is an eigenvalue")]
 
 
 def test_recent_queries_ignores_other_event_kinds(memory_root: Path) -> None:

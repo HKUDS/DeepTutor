@@ -718,8 +718,7 @@ class TestRegenerateLastTurn:
         chat_traces = [
             event
             for event in refresh_calls
-            if getattr(event, "surface", None) == "chat"
-            and getattr(event, "kind", None) == "query"
+            if getattr(event, "surface", None) == "chat" and getattr(event, "kind", None) == "query"
         ]
         assert len(chat_traces) == 1
         assert chat_traces[0].payload["query"] == "what is 2+2?"

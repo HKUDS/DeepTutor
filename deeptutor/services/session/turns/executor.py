@@ -970,9 +970,7 @@ class TurnExecutor:
                                 )
                             )
                     except Exception:
-                        logger.warning(
-                            "chat trace emit failed for turn %s", turn_id, exc_info=True
-                        )
+                        logger.warning("chat trace emit failed for turn %s", turn_id, exc_info=True)
 
             if not side_chat_context:
                 from deeptutor.services.task_board import get_task_board_store
