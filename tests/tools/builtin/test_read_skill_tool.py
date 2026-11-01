@@ -50,6 +50,24 @@ async def test_missing_file_names_the_existing_skill(
     assert "SKILL.md, references/outline.md" in result.content
 
 
+def test_skill_file_list_uses_forward_slashes_and_text_order(tmp_path: Path) -> None:
+    root = tmp_path / "skills"
+    _write_skill(root, "ncea-tutor")
+    for rel in ("references/Zeta.md", "references/alpha.md", "templates/deep/card.md"):
+        target = root / "ncea-tutor" / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(rel)
+
+    files = SkillService(root=root, builtin_root=None).list_skill_files("ncea-tutor")
+
+    assert files == [
+        "SKILL.md",
+        "references/Zeta.md",
+        "references/alpha.md",
+        "templates/deep/card.md",
+    ]
+
+
 @pytest.mark.asyncio
 async def test_missing_skill_lists_available_skills(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
