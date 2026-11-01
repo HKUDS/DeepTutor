@@ -254,7 +254,7 @@ export default function AppUpdateNotice() {
         <div
           role="status"
           aria-live="polite"
-          className="pointer-events-none fixed bottom-6 right-6 z-40 w-[360px] max-w-[calc(100vw-2rem)]"
+          className="pointer-events-none fixed bottom-6 right-6 z-40 w-[360px] max-w-[calc(100vw-2rem)] max-md:bottom-auto max-md:left-3 max-md:right-3 max-md:top-16 max-md:w-auto"
         >
           <div className="pointer-events-auto rounded-2xl border border-[var(--border)] bg-[var(--card)]/95 p-4 shadow-xl backdrop-blur-md">
             <div className="flex items-start gap-3">
