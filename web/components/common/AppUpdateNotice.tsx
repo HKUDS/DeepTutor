@@ -10,7 +10,7 @@
  * launcher replaces the package, and a "what's new" dialog on the first start
  * after an update.
  *
- * The check is intentionally lazy: the backend caches release metadata for
+ * The check is deliberately lazy: the backend caches release metadata for
  * 24 hours, and this component only asks on mount, every six hours while the
  * tab stays open, and when the tab becomes visible again.
  */
