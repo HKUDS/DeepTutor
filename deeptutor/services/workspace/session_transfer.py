@@ -70,7 +70,9 @@ def transfer_sessions(
             # references. Copying it verbatim collides with unrelated events
             # already in the destination; let the destination allocate a new
             # id while preserving the event's (turn_id, seq) identity.
-            insert_columns = [name for name in columns if not (table == "turn_events" and name == "id")]
+            insert_columns = [
+                name for name in columns if not (table == "turn_events" and name == "id")
+            ]
             # Preserve extension/legacy fields instead of silently discarding
             # them when the target was created by a newer schema version.
             target_columns = {

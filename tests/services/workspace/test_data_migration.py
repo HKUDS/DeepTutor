@@ -785,4 +785,3 @@ async def test_move_renumbers_turn_events_instead_of_colliding(account):
     with workspace_context(target):
         events = await get_sqlite_session_store().get_turn_events(turn["id"])
         assert [event["content"] for event in events] == ["first", "second"]
-
