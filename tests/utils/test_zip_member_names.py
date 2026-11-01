@@ -78,3 +78,38 @@ def test_flagged_utf8_names_are_left_alone(tmp_path) -> None:
 
     assert info.flag_bits & 0x800
     assert zip_member_name(info) == "第一章.md"
+
+
+def test_skill_package_keeps_the_reference_names_its_skill_md_links(tmp_path) -> None:
+    from deeptutor.services.skill.hub import _extract_skill_zip
+
+    src = _unflagged_zip(
+        tmp_path / "skill.zip",
+        [
+            ("数学辅导/SKILL.md".encode("gbk"), b"---\nname: math\n---\nRead references/"),
+            ("数学辅导/references/讲义.md".encode("gbk"), b"notes"),
+        ],
+    )
+    out = tmp_path / "out"
+
+    _extract_skill_zip(src, out)
+
+    assert (out / "数学辅导" / "references" / "讲义.md").read_bytes() == b"notes"
+
+
+def test_visualizer_package_keeps_its_asset_names(tmp_path) -> None:
+    from deeptutor.visualizers.store import VisualizerStore
+
+    src = _unflagged_zip(
+        tmp_path / "viz.zip",
+        [
+            ("函数图像/visualizer.json".encode("gbk"), b"{}"),
+            ("函数图像/坐标轴.svg".encode("gbk"), b"<svg/>"),
+        ],
+    )
+    out = tmp_path / "out"
+    out.mkdir()
+
+    VisualizerStore._extract_archive(src, out)
+
+    assert (out / "函数图像" / "坐标轴.svg").read_bytes() == b"<svg/>"
