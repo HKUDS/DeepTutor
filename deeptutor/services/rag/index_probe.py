@@ -256,7 +256,7 @@ def _inspect_lightrag(storage_dir: Path) -> ProviderIndexProbe:
         str(storage_dir),
         ready,
         failure_summary="" if ready else failure,
-        doc_count=_lightrag_doc_count(storage_dir),
+        doc_count=storage.doc_count(storage_dir),
     )
 
 
@@ -282,27 +282,6 @@ def _llamaindex_doc_count(docstore_path: Path) -> int | None:
     except OSError:
         return None
     return _llamaindex_doc_count_cached(str(docstore_path), stat.st_size, stat.st_mtime_ns)
-
-
-def _lightrag_doc_count(storage_dir: Path) -> int | None:
-    payload = _read_json(storage_dir / "kv_store_doc_status.json")
-    if not isinstance(payload, dict):
-        return None
-    count = 0
-    for item in payload.values():
-        if not isinstance(item, dict):
-            continue
-        chunks = item.get("chunks_list")
-        status = str(item.get("status") or "").lower()
-        if (isinstance(chunks, list) and chunks) or status in {
-            "processed",
-            "completed",
-            "done",
-            "success",
-            "indexed",
-        }:
-            count += 1
-    return count
 
 
 def _read_json(path: Path) -> dict[str, Any] | None:
