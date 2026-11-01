@@ -631,7 +631,12 @@ class AgenticLoopPipeline:
         """How many characters of one result this turn's model may see at once."""
         from deeptutor.agents.loop.stored_results import observation_char_budget_for_config
 
-        return observation_char_budget_for_config(self.llm_config, str(self.model or ""))
+        # ``llm_config`` is set in ``__init__``; a pipeline assembled without
+        # one (tests, and any caller that only exercises dispatch) still gets
+        # the default budget rather than an AttributeError.
+        return observation_char_budget_for_config(
+            getattr(self, "llm_config", None), str(getattr(self, "model", "") or "")
+        )
 
     def _tool_result_snip_marker(self) -> str:
         return self._t(

@@ -292,7 +292,6 @@ def test_next_objective_unmastered_due_task_is_unfinished_work_not_a_review():
 def test_due_reviews_order_by_forgetting_risk_before_priority():
     kp1, kp2 = _kp("kp_high", KnowledgeType.MEMORY), _kp("kp_low", KnowledgeType.MEMORY)
     progress = _progress(kp1, kp2)
-    progress.mastery_levels.update(kp_high=0.95, kp_low=0.95)
     now = time.time()
     progress.review_queue = [
         ReviewTask(
@@ -342,7 +341,10 @@ def test_unmastered_due_tasks_do_not_become_review_work():
         )
     ]
 
-    assert policy.due_reviews(progress, now=now) == []
+    # The due plan still lists it, but it is not review work: review re-tests
+    # what the learner has proven, and this objective has not cleared its gate.
+    assert [t.id for t in policy.due_reviews(progress, now=now)] == ["r1"]
+    assert policy.reviewable_reviews(progress, now=now) == []
     step = policy.next_objective(progress, now=now)
     assert step.action == "practice"
     assert step.knowledge_point_id == "kp1"

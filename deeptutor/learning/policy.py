@@ -192,12 +192,17 @@ def reviewable_tasks(progress: LearningProgress) -> list[ReviewTask]:
 
 
 def due_reviews(progress: LearningProgress, *, now: float | None = None) -> list[ReviewTask]:
-    """Mastered spaced-repetition tasks whose ``due_at`` has passed, highest forgetting
-    risk first. Pure read over ``progress.review_queue`` (built by the scheduler)."""
+    """Spaced-repetition tasks whose ``due_at`` has passed, highest forgetting
+    risk first. Pure read over ``progress.review_queue`` (built by the scheduler).
+
+    Every task is returned, mastered or not — the review *plan* shows the whole
+    queue, and a learner is allowed to look at a due item they have not yet
+    cleared. :func:`reviewable_reviews` applies the mastery filter itself.
+    """
     from deeptutor.learning.scheduler import review_sort_key
 
     moment = time.time() if now is None else now
-    due = [task for task in reviewable_tasks(progress) if task.due_at <= moment]
+    due = [task for task in progress.review_queue if task.due_at <= moment]
     due.sort(key=lambda task: review_sort_key(task, now=moment))
     return due
 

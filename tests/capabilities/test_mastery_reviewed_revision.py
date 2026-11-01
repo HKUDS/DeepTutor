@@ -587,10 +587,20 @@ async def test_reviewed_tool_scope_and_commit_cannot_replace_reviewed_payload(sy
     monkeypatch.setattr(tools, "_new_service", lambda: system[1])
     tool = MasteryReviseTool()
     bound = {"_mastery_path_id": "path", "_session_id": "session"}
+    # Study and review may propose a point (the learner adds it from the button
+    # under the reply), but they never write the map themselves.
     result = await tool.execute(
         action="preview", modules=revisions(), **bound, _mastery_session_mode="study"
     )
-    assert not result.success
+    assert result.success, result.content
+    study_preview_id = json.loads(result.content)["preview_id"]
+    blocked_commit = await tool.execute(
+        action="commit",
+        preview_id=study_preview_id,
+        **bound,
+        _mastery_session_mode="study",
+    )
+    assert not blocked_commit.success
     result = await tool.execute(
         action="preview", modules=revisions(), **bound, _mastery_session_mode="outline"
     )

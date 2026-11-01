@@ -1,5 +1,5 @@
 {
-  "fingerprint": "6d90ec2c45a1d9f3f152c7577772bcdd05ea8b8f2b22a7dcca57e0d09db0097b",
+  "fingerprint": "d9c88a9523b9d1240fa460e52c250b7522815e24de0c08a6276951f41d43eb54",
   "routers": {
     "deeptutor.api.routers.auth:router": [
       {
@@ -1305,6 +1305,86 @@
         "kind": "http",
         "methods": [
           "PUT"
+        ]
+      },
+      {
+        "path": "/topics/{path_id}/sessions/resolve",
+        "name": "resolve_topic_session",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/topics/{path_id}/outline-additions",
+        "name": "commit_outline_addition",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/topics/{path_id}/lectures/{kp_id}",
+        "name": "get_point_lecture",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/topics/{path_id}/lectures/{kp_id}/drafts",
+        "name": "roll_point_lecture_draft",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/topics/{path_id}/lectures/{kp_id}/drafts/commit",
+        "name": "confirm_point_lecture",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/topics/{path_id}/lectures/{kp_id}/drafts",
+        "name": "discard_point_lecture_draft",
+        "kind": "http",
+        "methods": [
+          "DELETE"
+        ]
+      },
+      {
+        "path": "/topics/{path_id}/lectures/{kp_id}/revisions",
+        "name": "propose_point_lecture_revision",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/topics/{path_id}/lectures/{kp_id}",
+        "name": "edit_point_lecture",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/topics/{path_id}/lectures/{kp_id}/revert",
+        "name": "revert_point_lecture",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/topics/{path_id}/lectures/{kp_id}",
+        "name": "refresh_point_lecture",
+        "kind": "http",
+        "methods": [
+          "POST"
         ]
       },
       {
