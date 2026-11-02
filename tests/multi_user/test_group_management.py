@@ -267,3 +267,52 @@ def test_report_carries_status_but_no_conversation_content(mu_isolated_root, mon
             "grant_summary",
             "last_active_at",
         }, "status only — never conversation content"
+
+
+def test_lead_sees_only_their_own_grantable_resources(mu_isolated_root, monkeypatch):
+    client, users = _client(mu_isolated_root, monkeypatch)
+    group_id = _group_with(client, users, members=(users["member"]["id"],))
+
+    body = client.get(
+        f"/api/multi-user/groups/{group_id}/grantable", headers=_auth("lead-token")
+    ).json()
+
+    assert body["models"] == [{"profile_id": "p1", "model_ids": ["m1"], "name": "p1"}]
+    assert body["knowledge_bases"] == [{"name": "kb1"}]
+    assert body["skills"] == [{"skill_id": "s1"}]
+
+
+def test_outsider_cannot_enumerate_the_group_catalog(mu_isolated_root, monkeypatch):
+    client, users = _client(mu_isolated_root, monkeypatch)
+    group_id = _group_with(client, users)
+
+    response = client.get(
+        f"/api/multi-user/groups/{group_id}/grantable", headers=_auth("outsider-token")
+    )
+
+    assert response.status_code == 403
+
+
+def test_lead_reads_a_member_grant_before_editing_it(mu_isolated_root, monkeypatch):
+    client, users = _client(mu_isolated_root, monkeypatch)
+    group_id = _group_with(client, users, members=(users["member"]["id"],))
+
+    client.put(
+        f"/api/multi-user/groups/{group_id}/members/member/grants",
+        headers=_auth("lead-token"),
+        json={"skills": [{"skill_id": "s1"}]},
+    )
+
+    body = client.get(
+        f"/api/multi-user/groups/{group_id}/members/member/grants",
+        headers=_auth("lead-token"),
+    ).json()
+
+    assert body["skills"] == [{"skill_id": "s1"}]
+    assert body["models"] == []
+
+    outsider = client.get(
+        f"/api/multi-user/groups/{group_id}/members/member/grants",
+        headers=_auth("outsider-token"),
+    )
+    assert outsider.status_code == 403

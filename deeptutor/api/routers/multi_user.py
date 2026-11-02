@@ -1418,3 +1418,66 @@ async def put_group_member_grants(
         },
     )
     return {"grant": saved}
+
+
+@router.get("/groups/{group_id}/grantable")
+async def group_grantable_resources(
+    group_id: str, current: object = Depends(require_auth)
+) -> dict[str, Any]:
+    """What this actor may hand out inside the group.
+
+    The admin catalog endpoint is admin-only, so without this a lead would have
+    no way to discover resource ids and the grant editor would be unusable. The
+    answer is the actor's own reach: a lead sees exactly their grant, normalised
+    to the same ``{profile_id, model_ids}`` shape the grant endpoint accepts.
+    """
+    group, is_admin = _require_group_access(current, group_id)
+    if is_admin:
+        catalog = _admin_catalog_summary()
+        models = [
+            {
+                "profile_id": str(entry.get("profile_id") or ""),
+                "name": str(entry.get("name") or ""),
+                "model_ids": [
+                    str(model.get("model_id") or "") for model in entry.get("models") or []
+                ],
+            }
+            for entry in catalog.get("llm") or []
+        ]
+        return {
+            "models": models,
+            "knowledge_bases": _admin_kb_summary(),
+            "skills": _admin_skill_summary(),
+        }
+
+    grant = load_grant(group["lead_user_id"])
+    return {
+        "models": [
+            {**dict(item), "name": str(item.get("name") or item.get("profile_id") or "")}
+            for item in (grant.get("models") or {}).get("llm") or []
+            if isinstance(item, dict)
+        ],
+        "knowledge_bases": [
+            dict(item) for item in grant.get("knowledge_bases") or [] if isinstance(item, dict)
+        ],
+        "skills": [dict(item) for item in grant.get("skills") or [] if isinstance(item, dict)],
+    }
+
+
+@router.get("/groups/{group_id}/members/{username}/grants")
+async def get_group_member_grants(
+    group_id: str,
+    username: str,
+    current: object = Depends(require_auth),
+) -> dict[str, Any]:
+    """The member's current assignable surface, for the group grant editor."""
+    group, _is_admin = _require_group_access(current, group_id)
+    member_user_id = _member_in_group(group, username, _users_by_id())
+    if member_user_id is None:
+        raise HTTPException(status_code=403, detail="Account is not a member of this group")
+    grant = load_grant(member_user_id)
+    return {
+        "models": [dict(item) for item in (grant.get("models") or {}).get("llm") or []],
+        "knowledge_bases": [dict(item) for item in grant.get("knowledge_bases") or []],
+        "skills": [dict(item) for item in grant.get("skills") or []],
+    }

@@ -4939,6 +4939,31 @@ export interface paths {
     readonly patch?: never;
     readonly trace?: never;
   };
+  readonly "/api/multi-user/groups/{group_id}/grantable": {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: never;
+      readonly path?: never;
+      readonly cookie?: never;
+    };
+    /**
+     * Group Grantable Resources
+     * @description What this actor may hand out inside the group.
+     *
+     *     The admin catalog endpoint is admin-only, so without this a lead would have
+     *     no way to discover resource ids and the grant editor would be unusable. The
+     *     answer is the actor's own reach: a lead sees exactly their grant, normalised
+     *     to the same ``{profile_id, model_ids}`` shape the grant endpoint accepts.
+     */
+    readonly get: operations["group_grantable_resources_api_multi_user_groups__group_id__grantable_get"];
+    readonly put?: never;
+    readonly post?: never;
+    readonly delete?: never;
+    readonly options?: never;
+    readonly head?: never;
+    readonly patch?: never;
+    readonly trace?: never;
+  };
   readonly "/api/multi-user/groups/{group_id}/members": {
     readonly parameters: {
       readonly query?: never;
@@ -4992,7 +5017,11 @@ export interface paths {
       readonly path?: never;
       readonly cookie?: never;
     };
-    readonly get?: never;
+    /**
+     * Get Group Member Grants
+     * @description The member's current assignable surface, for the group grant editor.
+     */
+    readonly get: operations["get_group_member_grants_api_multi_user_groups__group_id__members__username__grants_get"];
     /**
      * Put Group Member Grants
      * @description Hand a member the models, knowledge bases and skills this lead holds.
@@ -30080,6 +30109,43 @@ export interface operations {
       };
     };
   };
+  readonly group_grantable_resources_api_multi_user_groups__group_id__grantable_get: {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: {
+        readonly Authorization?: string | null;
+      };
+      readonly path: {
+        readonly group_id: string;
+      };
+      readonly cookie?: {
+        readonly dt_token?: string | null;
+      };
+    };
+    readonly requestBody?: never;
+    readonly responses: {
+      /** @description Successful Response */
+      readonly 200: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": {
+            readonly [key: string]: unknown;
+          };
+        };
+      };
+      /** @description Validation Error */
+      readonly 422: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
   readonly put_group_members_api_multi_user_groups__group_id__members_put: {
     readonly parameters: {
       readonly query?: never;
@@ -30163,6 +30229,44 @@ export interface operations {
     };
   };
   readonly remove_group_member_api_multi_user_groups__group_id__members__username__delete: {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: {
+        readonly Authorization?: string | null;
+      };
+      readonly path: {
+        readonly group_id: string;
+        readonly username: string;
+      };
+      readonly cookie?: {
+        readonly dt_token?: string | null;
+      };
+    };
+    readonly requestBody?: never;
+    readonly responses: {
+      /** @description Successful Response */
+      readonly 200: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": {
+            readonly [key: string]: unknown;
+          };
+        };
+      };
+      /** @description Validation Error */
+      readonly 422: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  readonly get_group_member_grants_api_multi_user_groups__group_id__members__username__grants_get: {
     readonly parameters: {
       readonly query?: never;
       readonly header?: {

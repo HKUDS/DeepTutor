@@ -37286,6 +37286,83 @@
         ]
       }
     },
+    "/api/multi-user/groups/{group_id}/grantable": {
+      "get": {
+        "description": "What this actor may hand out inside the group.\n\nThe admin catalog endpoint is admin-only, so without this a lead would have\nno way to discover resource ids and the grant editor would be unusable. The\nanswer is the actor's own reach: a lead sees exactly their grant, normalised\nto the same ``{profile_id, model_ids}`` shape the grant endpoint accepts.",
+        "operationId": "group_grantable_resources_api_multi_user_groups__group_id__grantable_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "group_id",
+            "required": true,
+            "schema": {
+              "title": "Group Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Group Grantable Resources Api Multi User Groups  Group Id  Grantable Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Group Grantable Resources",
+        "tags": [
+          "multi-user"
+        ]
+      }
+    },
     "/api/multi-user/groups/{group_id}/members": {
       "post": {
         "description": "Provision one account straight into the group.\n\n``RegisterRequest`` is reused on purpose: it already carries the username\ncharset rules (ASCII, email, and CJK names) and the password length floor.\n``role`` and ``preset`` are never taken from the request — a lead mints\nordinary members and nothing else.",
@@ -37544,6 +37621,90 @@
       }
     },
     "/api/multi-user/groups/{group_id}/members/{username}/grants": {
+      "get": {
+        "description": "The member's current assignable surface, for the group grant editor.",
+        "operationId": "get_group_member_grants_api_multi_user_groups__group_id__members__username__grants_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "group_id",
+            "required": true,
+            "schema": {
+              "title": "Group Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "username",
+            "required": true,
+            "schema": {
+              "title": "Username",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Group Member Grants Api Multi User Groups  Group Id  Members  Username  Grants Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Group Member Grants",
+        "tags": [
+          "multi-user"
+        ]
+      },
       "put": {
         "description": "Hand a member the models, knowledge bases and skills this lead holds.",
         "operationId": "put_group_member_grants_api_multi_user_groups__group_id__members__username__grants_put",
