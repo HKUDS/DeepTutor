@@ -122,3 +122,21 @@ def test_source_extras_install_dependencies_without_module_wheels():
     )
     assert "manim>=0.19.0" in extras["math-animator"]
     assert set(manifests()["partners"]["requirements"]) <= set(extras["partners"])
+
+
+@pytest.mark.parametrize("language", ["en", "zh"])
+def test_context_summary_prompts_are_core_package_data(language: str) -> None:
+    from setuptools import Distribution
+
+    from build_support import CoreBuildPy, owner
+
+    relative = f"deeptutor/agents/chat/prompts/{language}/context_summary_agent.yaml"
+    distribution = Distribution()
+    distribution.parse_config_files(filenames=[str(ROOT / "pyproject.toml")])
+    command = CoreBuildPy(distribution)
+    command.ensure_finalized()
+    # Exercise package-data globs independently of any cached egg-info manifest.
+    command.manifest_files = {}
+
+    assert owner(relative) == "core"
+    assert str(ROOT / relative) in command.find_data_files("deeptutor", str(ROOT / "deeptutor"))
