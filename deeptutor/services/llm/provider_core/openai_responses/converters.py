@@ -13,6 +13,20 @@ from deeptutor.services.session.provider_response_state import (
 _CHAT_TOKEN_LIMIT_ALIASES = ("max_completion_tokens", "max_tokens")
 
 
+def _replay_output_item(item: dict[str, Any]) -> dict[str, Any]:
+    """Copy a persisted output item for replay as an input item.
+
+    The SDK's ``model_dump()`` writes ``"status": None`` for an item that came
+    back without one, as a ``reasoning`` item usually does. The Responses API
+    rejects that null on input (``unknown_parameter`` on ``input[N].status``),
+    so an unset status is left out. A status the provider did send is kept.
+    """
+    replayed = dict(item)
+    if replayed.get("status") is None:
+        replayed.pop("status", None)
+    return replayed
+
+
 def convert_messages(messages: list[dict[str, Any]]) -> tuple[str, list[dict[str, Any]]]:
     """Convert Chat Completions messages to Responses API input items."""
     system_prompt = ""
@@ -41,7 +55,9 @@ def convert_messages(messages: list[dict[str, Any]]) -> tuple[str, list[dict[str
                     legacy_state.get("responses_output_items") if legacy_state is not None else None
                 )
             if isinstance(state_items, list) and state_items:
-                input_items.extend(dict(item) for item in state_items if isinstance(item, dict))
+                input_items.extend(
+                    _replay_output_item(item) for item in state_items if isinstance(item, dict)
+                )
                 continue
             if isinstance(content, str) and content:
                 input_items.append(
