@@ -814,3 +814,57 @@ it("imports embeddings using the existing service adapter and preserves task inh
   expect(mocks.settings.draft.services.task).toEqual(task);
   await waitFor(() => expect(screen.queryByText("Loading...")).toBeNull());
 });
+
+it("automatically lists models after key edits settle, using only the latest key", async () => {
+  vi.useFakeTimers();
+  const view = render(<Harness page="providers" />);
+  try {
+    mocks.fetch.mockResolvedValue({ ok: true, json: async () => ({ status: "connected", models: [{ id: "auto-model", services: ["llm"] }] }) });
+    fireEvent.click(screen.getByRole("button", { name: /My account/ }));
+    const key = screen.getByLabelText("API key");
+    fireEvent.change(key, { target: { value: "first-key" } });
+    await act(async () => { await vi.advanceTimersByTimeAsync(800); });
+    fireEvent.change(key, { target: { value: "latest-key" } });
+    await act(async () => { await vi.advanceTimersByTimeAsync(1199); });
+    expect(mocks.fetch).not.toHaveBeenCalled();
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    expect(mocks.fetch).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(mocks.fetch.mock.calls[0][1].body).api_key).toBe("latest-key");
+    expect(mocks.settings.draft.services.llm.profiles[0].discovery?.models).toEqual([{ id: "auto-model", services: ["llm"] }]);
+    expect(live.services.llm.profiles[0].api_key).toBe("***");
+  } finally { view.unmount(); vi.useRealTimers(); }
+});
+
+it("automatically lists on the add panel but reuses an existing provider catalog", async () => {
+  vi.useFakeTimers();
+  const view = render(<Harness page="llm" />);
+  try {
+    mocks.fetch.mockResolvedValue({ ok: true, json: async () => ({ status: "connected", models: [{ id: "auto-model" }] }) });
+    fireEvent.click(screen.getByRole("button", { name: "Add model" }));
+    fireEvent.change(screen.getByLabelText("Configured provider"), { target: { value: "llm:legacy" } });
+    await act(async () => { await vi.advanceTimersByTimeAsync(1200); });
+    expect(screen.getByRole("checkbox", { name: "auto-model" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add model" }));
+    fireEvent.change(screen.getByLabelText("Configured provider"), { target: { value: "llm:legacy" } });
+    await act(async () => { await vi.advanceTimersByTimeAsync(1200); });
+    expect(mocks.fetch).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("checkbox", { name: "auto-model" })).toBeTruthy();
+  } finally { view.unmount(); vi.useRealTimers(); }
+});
+
+it("does not automatically retry a failed discovery and retains manual retry", async () => {
+  vi.useFakeTimers();
+  const result = vi.fn();
+  mocks.fetch.mockResolvedValue({ ok: true, json: async () => ({ status: "auth_error", models: [] }) });
+  const view = render(<RegistryProbe automatic input={{ binding: "custom", base_url: "https://gateway.test/v1", api_key: "bad-key" }} onResult={result} />);
+  try {
+    await act(async () => { await vi.advanceTimersByTimeAsync(1200); });
+    expect(result).toHaveBeenCalledWith(expect.objectContaining({ status: "auth_error" }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(10000); });
+    expect(mocks.fetch).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "Test provider" }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(mocks.fetch).toHaveBeenCalledTimes(2);
+  } finally { view.unmount(); vi.useRealTimers(); }
+});

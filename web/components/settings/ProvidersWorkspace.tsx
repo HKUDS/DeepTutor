@@ -390,6 +390,7 @@ export function ProvidersWorkspace() {
                       <RegistryProbe
                         input={{ ...providerProbeInput(source, defaultBaseUrl), api_format: apiFormat }}
                         discovery={connection.discovery}
+                        automatic={Boolean(connection.api_key || (!option?.requires_api_key && (connection.base_url || defaultBaseUrl)))}
                         hints={hints}
                         showCapabilities={false}
                         onResult={(result) => change("discovery", result)}

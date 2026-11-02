@@ -55,6 +55,7 @@ function ImportForm({ source, service, existingModels, onImport, input }: Props 
         input={input}
         discovery={discovery}
         listing
+        automatic
         onResult={(result) => {
           setPicked([]);
           mutateCatalog((next) => updateProvider(next, source.ref, "discovery", result));
