@@ -288,7 +288,22 @@ class RestrictedSubprocessBackend(SandboxBackend):
 
     level = IsolationLevel.APPLICATION
 
-    _SAFE_ENV_KEYS = ("PATH", "PATHEXT", "HOME", "LANG", "LC_ALL", "TMPDIR", "SYSTEMROOT")
+    # Windows resolves the process temp directory from TEMP/TMP/USERPROFILE.
+    # A scrubbed env without them makes ``os.tmpdir()`` fall back to
+    # C:\Windows\temp, which a non-admin child cannot read: Node tooling such as
+    # esbuild then fails with "Cannot read directory ... Access is denied.".
+    _SAFE_ENV_KEYS = (
+        "PATH",
+        "PATHEXT",
+        "HOME",
+        "LANG",
+        "LC_ALL",
+        "TMPDIR",
+        "TEMP",
+        "TMP",
+        "USERPROFILE",
+        "SYSTEMROOT",
+    )
 
     def __init__(
         self,

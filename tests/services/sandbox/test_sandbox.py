@@ -216,6 +216,30 @@ def test_restricted_subprocess_request_path_keeps_virtualenv_first(
     assert env["PATH"].split(os.pathsep) == [str(bin_dir.resolve()), "turn-tools"]
 
 
+def test_restricted_subprocess_inherits_temp_directory(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Windows resolves its temp directory from TEMP/TMP/USERPROFILE.
+
+    Leaving those out of the scrubbed env makes ``os.tmpdir()`` fall back to
+    ``C:\\Windows\\temp``, which a non-admin child cannot read, so bundled
+    Node tooling such as esbuild fails with
+    ``Cannot read directory ...: Access is denied.``.
+    """
+    temp_dir = tmp_path / "temp"
+    temp_dir.mkdir()
+    monkeypatch.setenv("TEMP", str(temp_dir))
+    monkeypatch.setenv("TMP", str(temp_dir))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    monkeypatch.delenv("TMPDIR", raising=False)
+
+    env = RestrictedSubprocessBackend(venv_path=None)._build_env({})
+
+    assert env["TEMP"] == str(temp_dir)
+    assert env["TMP"] == str(temp_dir)
+    assert env["USERPROFILE"] == str(tmp_path)
+
+
 def test_backends_inherit_the_conda_environment_that_launched_deeptutor(
     tmp_path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
