@@ -150,8 +150,9 @@ def test_hybrid_retriever_uses_official_query_fusion_when_bm25_available(
 
     class _FakeBM25:
         @classmethod
-        def from_defaults(cls, index, similarity_top_k: int):
+        def from_defaults(cls, index, similarity_top_k: int, **kwargs):
             captured["bm25_top_k"] = similarity_top_k
+            captured["token_pattern"] = kwargs.get("token_pattern")
             return cls()
 
     class _FakeFusion:
@@ -172,6 +173,7 @@ def test_hybrid_retriever_uses_official_query_fusion_when_bm25_available(
     assert isinstance(retriever, _FakeFusion)
     assert captured["vector_top_k"] == 8
     assert captured["bm25_top_k"] == 8
+    assert captured["token_pattern"] == retriever_module.BM25_TOKEN_PATTERN
     assert captured["kwargs"]["similarity_top_k"] == 4
     assert captured["kwargs"]["num_queries"] == 1
 
@@ -237,7 +239,7 @@ def test_bm25_persistence_drops_stale_sidecar_on_rebuild_failure(
 
     class _FailingBM25:
         @classmethod
-        def from_defaults(cls, index, similarity_top_k: int):
+        def from_defaults(cls, index, similarity_top_k: int, **kwargs):
             raise RuntimeError("boom")
 
     monkeypatch.setattr(retriever_module, "_import_bm25_retriever", lambda: _FailingBM25)

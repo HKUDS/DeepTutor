@@ -23,7 +23,19 @@ from .rerank import rerank_nodes
 
 logger = logging.getLogger(__name__)
 
-BM25_PERSIST_DIRNAME = "bm25_retriever"
+# Keep dotted identifiers such as exercise numbers ("3.4.26") and version
+# strings ("v1.7.1") as whole tokens. The library default (`\b\w\w+\b`)
+# drops every one-character token, so "3.4.26" indexes as "26" and a query for
+# the exercise cannot tell it apart from any other chunk containing "26"
+# (#2331). One-character words are kept too, including CJK ones.
+BM25_TOKEN_PATTERN = r"(?u)\b\w+(?:\.\w+)*\b"
+
+# Persisted BM25 sidecars store the tokenized corpus but not the token pattern
+# the library used. Bump the directory suffix whenever the pattern changes so
+# an index built with the old pattern is rebuilt instead of being queried with
+# the new one and silently returning nothing.
+BM25_PERSIST_DIRNAME = "bm25_retriever_v2"
+LEGACY_BM25_PERSIST_DIRNAME = "bm25_retriever"
 
 
 class _MatchedOnlyRetriever(BaseRetriever):
@@ -120,12 +132,19 @@ def build_bm25_retriever(index: Any, storage_dir: Path, *, top_k: int) -> Any | 
     if persist_dir.exists():
         try:
             retriever = bm25_cls.from_persist_dir(str(persist_dir))
+            # The library does not persist the token pattern; without this the
+            # loaded corpus and the query would be tokenized differently.
+            retriever.token_pattern = BM25_TOKEN_PATTERN
             return _set_similarity_top_k(retriever, top_k)
         except Exception as exc:
             logger.warning("Failed to load persisted BM25 retriever from %s: %s", persist_dir, exc)
 
     try:
-        return bm25_cls.from_defaults(index=index, similarity_top_k=top_k)
+        return bm25_cls.from_defaults(
+            index=index,
+            similarity_top_k=top_k,
+            token_pattern=BM25_TOKEN_PATTERN,
+        )
     except Exception as exc:
         logger.warning("Failed to build BM25 retriever; falling back to vector retrieval: %s", exc)
         return None
@@ -147,7 +166,11 @@ def persist_bm25_retriever(index: Any, storage_dir: Path, *, top_k: int) -> bool
         shutil.rmtree(persist_dir, ignore_errors=True)
 
     try:
-        retriever = bm25_cls.from_defaults(index=index, similarity_top_k=top_k)
+        retriever = bm25_cls.from_defaults(
+            index=index,
+            similarity_top_k=top_k,
+            token_pattern=BM25_TOKEN_PATTERN,
+        )
     except Exception as exc:
         logger.warning("Failed to build BM25 retriever for persistence: %s", exc)
         return False
@@ -158,10 +181,13 @@ def persist_bm25_retriever(index: Any, storage_dir: Path, *, top_k: int) -> bool
     persist_dir.mkdir(parents=True, exist_ok=True)
     try:
         retriever.persist(str(persist_dir))
-        return True
     except Exception as exc:
         logger.warning("Failed to persist BM25 retriever to %s: %s", persist_dir, exc)
         return False
+    # The previous sidecar used the default tokenizer and can never answer the
+    # new identifiers, so reclaim it once the replacement is safely written.
+    shutil.rmtree(storage_dir / LEGACY_BM25_PERSIST_DIRNAME, ignore_errors=True)
+    return True
 
 
 def build_retriever(
@@ -295,7 +321,11 @@ def retrieve_scoped_nodes(
     vector = index.as_retriever(similarity_top_k=count)
     bm25_cls = _import_bm25_retriever()
     if bm25_cls is not None:
-        lexical = bm25_cls.from_defaults(nodes=nodes, similarity_top_k=count)
+        lexical = bm25_cls.from_defaults(
+            nodes=nodes,
+            similarity_top_k=count,
+            token_pattern=BM25_TOKEN_PATTERN,
+        )
         retriever = QueryFusionRetriever(
             [vector, _MatchedOnlyRetriever(lexical)],
             llm=MockLLM(),
@@ -330,7 +360,13 @@ class _UnstemmedPageRetriever:
     def _tokenize(text):
         import bm25s
 
-        return bm25s.tokenize(text, stopwords="en", stemmer=None, show_progress=False)
+        return bm25s.tokenize(
+            text,
+            stopwords="en",
+            stemmer=None,
+            token_pattern=BM25_TOKEN_PATTERN,
+            show_progress=False,
+        )
 
     def retrieve(self, query: str) -> list[Any]:
         from llama_index.core.schema import NodeWithScore
@@ -356,7 +392,11 @@ def _legacy_page_retriever(directory: Path) -> Any:
     cls = _import_bm25_retriever()
     if cls is None:
         return _UnstemmedPageRetriever(nodes)
-    return cls.from_defaults(nodes=nodes, similarity_top_k=min(8, len(nodes)))
+    return cls.from_defaults(
+        nodes=nodes,
+        similarity_top_k=min(8, len(nodes)),
+        token_pattern=BM25_TOKEN_PATTERN,
+    )
 
 
 def retrieve_legacy_pages(directory: Path, query: str, *, top_k: int = 8) -> list[Any]:
