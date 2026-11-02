@@ -4949,6 +4949,55 @@ export interface paths {
     readonly get?: never;
     /** Put Group Members */
     readonly put: operations["put_group_members_api_multi_user_groups__group_id__members_put"];
+    /**
+     * Create Group Member
+     * @description Provision one account straight into the group.
+     *
+     *     ``RegisterRequest`` is reused on purpose: it already carries the username
+     *     charset rules (ASCII, email, and CJK names) and the password length floor.
+     *     ``role`` and ``preset`` are never taken from the request — a lead mints
+     *     ordinary members and nothing else.
+     */
+    readonly post: operations["create_group_member_api_multi_user_groups__group_id__members_post"];
+    readonly delete?: never;
+    readonly options?: never;
+    readonly head?: never;
+    readonly patch?: never;
+    readonly trace?: never;
+  };
+  readonly "/api/multi-user/groups/{group_id}/members/{username}": {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: never;
+      readonly path?: never;
+      readonly cookie?: never;
+    };
+    readonly get?: never;
+    readonly put?: never;
+    readonly post?: never;
+    /**
+     * Remove Group Member
+     * @description Remove someone from the roster. The account and its data stay.
+     */
+    readonly delete: operations["remove_group_member_api_multi_user_groups__group_id__members__username__delete"];
+    readonly options?: never;
+    readonly head?: never;
+    readonly patch?: never;
+    readonly trace?: never;
+  };
+  readonly "/api/multi-user/groups/{group_id}/members/{username}/grants": {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: never;
+      readonly path?: never;
+      readonly cookie?: never;
+    };
+    readonly get?: never;
+    /**
+     * Put Group Member Grants
+     * @description Hand a member the models, knowledge bases and skills this lead holds.
+     */
+    readonly put: operations["put_group_member_grants_api_multi_user_groups__group_id__members__username__grants_put"];
     readonly post?: never;
     readonly delete?: never;
     readonly options?: never;
@@ -14322,6 +14371,28 @@ export interface components {
       /** Profile Id */
       readonly profile_id: string;
     };
+    /**
+     * GroupMemberGrantPayload
+     * @description Only the three assignable buckets.
+     *
+     *     Everything else on a grant — ``exec_enabled``, ``learning_policy``, partner
+     *     lending — stays a decision for an admin, so those keys are simply not part
+     *     of this payload.
+     */
+    readonly GroupMemberGrantPayload: {
+      /** Knowledge Bases */
+      readonly knowledge_bases?: readonly {
+        readonly [key: string]: unknown;
+      }[];
+      /** Models */
+      readonly models?: readonly {
+        readonly [key: string]: unknown;
+      }[];
+      /** Skills */
+      readonly skills?: readonly {
+        readonly [key: string]: unknown;
+      }[];
+    };
     /** GroupMembersPayload */
     readonly GroupMembersPayload: {
       /** Member User Ids */
@@ -19115,6 +19186,8 @@ export type SchemaGraphRagConfigUpdate =
   components["schemas"]["GraphRagConfigUpdate"];
 export type SchemaGraphRagModelCompatibilityRequest =
   components["schemas"]["GraphRagModelCompatibilityRequest"];
+export type SchemaGroupMemberGrantPayload =
+  components["schemas"]["GroupMemberGrantPayload"];
 export type SchemaGroupMembersPayload =
   components["schemas"]["GroupMembersPayload"];
 export type SchemaGroupPayload = components["schemas"]["GroupPayload"];
@@ -30023,6 +30096,127 @@ export interface operations {
     readonly requestBody: {
       readonly content: {
         readonly "application/json": components["schemas"]["GroupMembersPayload"];
+      };
+    };
+    readonly responses: {
+      /** @description Successful Response */
+      readonly 200: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": {
+            readonly [key: string]: unknown;
+          };
+        };
+      };
+      /** @description Validation Error */
+      readonly 422: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  readonly create_group_member_api_multi_user_groups__group_id__members_post: {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: {
+        readonly Authorization?: string | null;
+      };
+      readonly path: {
+        readonly group_id: string;
+      };
+      readonly cookie?: {
+        readonly dt_token?: string | null;
+      };
+    };
+    readonly requestBody: {
+      readonly content: {
+        readonly "application/json": components["schemas"]["RegisterRequest"];
+      };
+    };
+    readonly responses: {
+      /** @description Successful Response */
+      readonly 201: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": {
+            readonly [key: string]: unknown;
+          };
+        };
+      };
+      /** @description Validation Error */
+      readonly 422: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  readonly remove_group_member_api_multi_user_groups__group_id__members__username__delete: {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: {
+        readonly Authorization?: string | null;
+      };
+      readonly path: {
+        readonly group_id: string;
+        readonly username: string;
+      };
+      readonly cookie?: {
+        readonly dt_token?: string | null;
+      };
+    };
+    readonly requestBody?: never;
+    readonly responses: {
+      /** @description Successful Response */
+      readonly 200: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": {
+            readonly [key: string]: unknown;
+          };
+        };
+      };
+      /** @description Validation Error */
+      readonly 422: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  readonly put_group_member_grants_api_multi_user_groups__group_id__members__username__grants_put: {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: {
+        readonly Authorization?: string | null;
+      };
+      readonly path: {
+        readonly group_id: string;
+        readonly username: string;
+      };
+      readonly cookie?: {
+        readonly dt_token?: string | null;
+      };
+    };
+    readonly requestBody: {
+      readonly content: {
+        readonly "application/json": components["schemas"]["GroupMemberGrantPayload"];
       };
     };
     readonly responses: {

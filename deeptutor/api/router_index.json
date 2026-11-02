@@ -1,5 +1,5 @@
 {
-  "fingerprint": "7df35cbdffb9bf60ba41b352a4da7712d0985bfbd8520f24a01a6ae764306770",
+  "fingerprint": "2bcea7a05a850f644657fb4b6dbd411ab64b3bcefc06a36f9bca56596af4d22e",
   "routers": {
     "deeptutor.api.routers.auth:router": [
       {
@@ -476,6 +476,30 @@
         "kind": "http",
         "methods": [
           "DELETE"
+        ]
+      },
+      {
+        "path": "/groups/{group_id}/members",
+        "name": "create_group_member",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/groups/{group_id}/members/{username}",
+        "name": "remove_group_member",
+        "kind": "http",
+        "methods": [
+          "DELETE"
+        ]
+      },
+      {
+        "path": "/groups/{group_id}/members/{username}/grants",
+        "name": "put_group_member_grants",
+        "kind": "http",
+        "methods": [
+          "PUT"
         ]
       }
     ],

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from copy import deepcopy
+from datetime import datetime, timezone
 import os
 from pathlib import Path
 import shutil
@@ -13,7 +14,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, StrictBool, field_validator
 
-from deeptutor.api.routers.auth import require_admin, require_auth
+from deeptutor.api.routers.auth import RegisterRequest, require_admin, require_auth
 from deeptutor.modules.catalog import module_enabled, require_module
 from deeptutor.multi_user.audit import log_admin_action, log_group_action, log_guardian_action
 from deeptutor.multi_user.book_permission import (
@@ -35,11 +36,13 @@ from deeptutor.multi_user.grants import (
     validate_grant,
 )
 from deeptutor.multi_user.groups import (
+    add_member,
     create_group,
     delete_group,
     get_group,
     groups_led_by,
     list_groups,
+    remove_member,
     set_group_members,
 )
 from deeptutor.multi_user.guardians import (
@@ -51,9 +54,12 @@ from deeptutor.multi_user.guardians import (
     revoke_guardian,
 )
 from deeptutor.multi_user.identity import (
+    get_user,
     get_user_by_id,
     list_user_info,
+    save_user,
     set_book_permission,
+    set_must_change_password,
     set_password,
     set_preset,
 )
@@ -1161,6 +1167,7 @@ async def group_report(group_id: str, current: object = Depends(require_auth)) -
                 "preset": str(account.get("preset") or "standard"),
                 "disabled": bool(account.get("disabled", False)),
                 "must_change_password": bool(account.get("must_change_password", False)),
+                "last_active_at": _last_active_at(user_id),
                 "grant_summary": {
                     "model_count": len(grant.get("models", {}).get("llm", []) or []),
                     "knowledge_base_count": len(grant.get("knowledge_bases") or []),
@@ -1185,3 +1192,229 @@ async def delete_group_endpoint(
         raise HTTPException(status_code=404, detail="Group not found")
     _log_group_action("group_delete", group_id, is_admin=True)
     return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Group membership: provisioning and resource hand-out, scoped to the roster
+#
+# A lead may create accounts for their own group and hand out resources — but
+# only resources the lead already holds. Without that second rule, scoped
+# oversight would become a way around the admin's grant decisions: a lead could
+# grant a knowledge base they were never allowed to see, and read it through
+# the member.
+# ---------------------------------------------------------------------------
+
+
+def _member_in_group(
+    group: dict[str, Any], username: str, users: dict[str, dict[str, Any]]
+) -> str | None:
+    for user_id in group["member_user_ids"]:
+        if str((users.get(user_id) or {}).get("username") or "") == username:
+            return user_id
+    return None
+
+
+def _last_active_at(user_id: str) -> str | None:
+    """Newest file mtime under the account's own workspace.
+
+    Deliberately not derived from conversation data: when someone last did
+    something is a status signal a lead may have, what they said is not.
+    """
+    from deeptutor.multi_user import paths as multi_user_paths
+
+    root = multi_user_paths.USERS_ROOT / user_id
+    if not root.is_dir():
+        return None
+    newest = 0.0
+    for base, _dirs, files in os.walk(root):
+        for name in files:
+            try:
+                newest = max(newest, os.path.getmtime(os.path.join(base, name)))
+            except OSError:
+                continue
+    if not newest:
+        return None
+    return datetime.fromtimestamp(newest, tz=timezone.utc).isoformat()
+
+
+class GroupMemberGrantPayload(BaseModel):
+    """Only the three assignable buckets.
+
+    Everything else on a grant — ``exec_enabled``, ``learning_policy``, partner
+    lending — stays a decision for an admin, so those keys are simply not part
+    of this payload.
+    """
+
+    models: list[dict[str, Any]] = Field(default_factory=list)
+    knowledge_bases: list[dict[str, Any]] = Field(default_factory=list)
+    skills: list[dict[str, Any]] = Field(default_factory=list)
+
+
+def _model_allowlist(entries: list[dict[str, Any]]) -> tuple[set[tuple[str, str]], set[str]]:
+    pairs: set[tuple[str, str]] = set()
+    wildcard: set[str] = set()
+    for item in entries:
+        if not isinstance(item, dict):
+            continue
+        profile_id = str(item.get("profile_id") or item.get("id") or "")
+        if not profile_id:
+            continue
+        model_ids = [str(model) for model in (item.get("model_ids") or []) if str(model)]
+        if not model_ids:
+            # No explicit list means "every model of this profile".
+            wildcard.add(profile_id)
+            continue
+        pairs.update((profile_id, model_id) for model_id in model_ids)
+    return pairs, wildcard
+
+
+def _name_allowlist(entries: list[dict[str, Any]], primary: str, fallback: str) -> set[str]:
+    names: set[str] = set()
+    for item in entries:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get(primary) or item.get(fallback) or "").strip()
+        if name:
+            names.add(name)
+    return names
+
+
+def _assert_grantable(lead_grant: dict[str, Any], payload: GroupMemberGrantPayload) -> None:
+    allowed_pairs, allowed_wildcard = _model_allowlist(
+        (lead_grant.get("models") or {}).get("llm") or []
+    )
+    requested_pairs, requested_wildcard = _model_allowlist(payload.models)
+    for profile_id in requested_wildcard:
+        if profile_id not in allowed_wildcard:
+            raise HTTPException(
+                status_code=403, detail="Cannot assign a model profile you do not hold"
+            )
+    for profile_id, model_id in requested_pairs:
+        if profile_id in allowed_wildcard:
+            continue
+        if (profile_id, model_id) not in allowed_pairs:
+            raise HTTPException(status_code=403, detail="Cannot assign a model you do not hold")
+
+    allowed_kbs = _name_allowlist(lead_grant.get("knowledge_bases") or [], "name", "kb_name")
+    for name in _name_allowlist(payload.knowledge_bases, "name", "kb_name"):
+        if name not in allowed_kbs:
+            raise HTTPException(
+                status_code=403, detail="Cannot assign a knowledge base you do not hold"
+            )
+
+    allowed_skills = _name_allowlist(lead_grant.get("skills") or [], "skill_id", "id")
+    for skill_id in _name_allowlist(payload.skills, "skill_id", "id"):
+        if skill_id not in allowed_skills:
+            raise HTTPException(status_code=403, detail="Cannot assign a skill you do not hold")
+
+
+@router.post("/groups/{group_id}/members", status_code=201)
+async def create_group_member(
+    group_id: str,
+    payload: RegisterRequest,
+    current: object = Depends(require_auth),
+) -> dict[str, Any]:
+    """Provision one account straight into the group.
+
+    ``RegisterRequest`` is reused on purpose: it already carries the username
+    charset rules (ASCII, email, and CJK names) and the password length floor.
+    ``role`` and ``preset`` are never taken from the request — a lead mints
+    ordinary members and nothing else.
+    """
+    _group, is_admin = _require_group_access(current, group_id)
+    if POCKETBASE_ENABLED:
+        raise HTTPException(
+            status_code=400,
+            detail="Group account creation requires built-in local authentication.",
+        )
+    username = payload.username
+    if get_user(username) is not None:
+        raise HTTPException(status_code=409, detail="Username already exists")
+    record = save_user(
+        username,
+        hash_password(payload.password),
+        role="user",
+        preset="standard",
+    )
+    set_must_change_password(username, True)
+    updated = add_member(group_id, record["id"])
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Group not found")
+    _log_group_action(
+        "group_member_create",
+        group_id,
+        is_admin=is_admin,
+        target_user_id=record["id"],
+        summary={"username": username},
+    )
+    return {"group": _group_view(updated, _users_by_id())}
+
+
+@router.delete("/groups/{group_id}/members/{username}")
+async def remove_group_member(
+    group_id: str,
+    username: str,
+    current: object = Depends(require_auth),
+) -> dict[str, Any]:
+    """Remove someone from the roster. The account and its data stay."""
+    group, is_admin = _require_group_access(current, group_id)
+    member_user_id = _member_in_group(group, username, _users_by_id())
+    if member_user_id is None:
+        raise HTTPException(status_code=403, detail="Account is not a member of this group")
+    updated = remove_member(group_id, member_user_id)
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Group not found")
+    _log_group_action(
+        "group_member_remove",
+        group_id,
+        is_admin=is_admin,
+        target_user_id=member_user_id,
+        summary={"username": username},
+    )
+    return {"group": _group_view(updated, _users_by_id())}
+
+
+@router.put("/groups/{group_id}/members/{username}/grants")
+async def put_group_member_grants(
+    group_id: str,
+    username: str,
+    payload: GroupMemberGrantPayload,
+    current: object = Depends(require_auth),
+) -> dict[str, Any]:
+    """Hand a member the models, knowledge bases and skills this lead holds."""
+    group, is_admin = _require_group_access(current, group_id)
+    member_user_id = _member_in_group(group, username, _users_by_id())
+    if member_user_id is None:
+        raise HTTPException(status_code=403, detail="Account is not a member of this group")
+    if not is_admin:
+        _assert_grantable(load_grant(group["lead_user_id"]), payload)
+
+    existing = load_grant(member_user_id)
+    merged = {
+        **existing,
+        "models": {
+            **(existing.get("models") or {}),
+            "llm": [dict(item) for item in payload.models],
+        },
+        "knowledge_bases": [dict(item) for item in payload.knowledge_bases],
+        "skills": [dict(item) for item in payload.skills],
+    }
+    try:
+        grant = normalize_grant(member_user_id, merged)
+        validate_grant(grant)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    saved = save_grant(member_user_id, grant)
+    _log_group_action(
+        "group_member_grants",
+        group_id,
+        is_admin=is_admin,
+        target_user_id=member_user_id,
+        summary={
+            "model_count": len((saved.get("models") or {}).get("llm") or []),
+            "knowledge_base_count": len(saved.get("knowledge_bases") or []),
+            "skill_count": len(saved.get("skills") or []),
+        },
+    )
+    return {"grant": saved}

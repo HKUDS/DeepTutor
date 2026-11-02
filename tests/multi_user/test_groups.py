@@ -281,6 +281,7 @@ def test_group_report_reports_status_not_conversation_content(mu_isolated_root, 
             "preset",
             "disabled",
             "must_change_password",
+            "last_active_at",
             "grant_summary",
         }, "the report must describe accounts, never their conversation content"
 

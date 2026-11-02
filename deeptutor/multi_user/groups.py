@@ -182,6 +182,52 @@ def create_group(
     return deepcopy(record)
 
 
+def add_member(group_id: str, user_id: str) -> dict[str, Any] | None:
+    """Append one existing account to the roster.
+
+    Refuses admins for the same reason :func:`create_group` does: a roster that
+    could contain an admin would be a route back to the admin surface.
+    """
+    user_id = str(user_id or "").strip()
+    if not user_id:
+        raise ValueError("A member user id is required")
+    _require_assignable_user(user_id, "member")
+    with _GROUPS_WRITE_LOCK:
+        records = _load_records()
+        for record in records:
+            if record["id"] != group_id:
+                continue
+            if user_id == record["lead_user_id"]:
+                raise ValueError("The group lead is already part of the group")
+            if user_id in record["member_user_ids"]:
+                raise ValueError("This account is already in the group")
+            if len(record["member_user_ids"]) >= MAX_MEMBERS:
+                raise ValueError(f"A group cannot hold more than {MAX_MEMBERS} members")
+            record["member_user_ids"].append(user_id)
+            record["updated_at"] = _utc_now()
+            _write_records(records)
+            return deepcopy(record)
+    return None
+
+
+def remove_member(group_id: str, user_id: str) -> dict[str, Any] | None:
+    """Drop one account from the roster. The account itself is untouched."""
+    with _GROUPS_WRITE_LOCK:
+        records = _load_records()
+        for record in records:
+            if record["id"] != group_id:
+                continue
+            if user_id not in record["member_user_ids"]:
+                return None
+            record["member_user_ids"] = [
+                member for member in record["member_user_ids"] if member != user_id
+            ]
+            record["updated_at"] = _utc_now()
+            _write_records(records)
+            return deepcopy(record)
+    return None
+
+
 def set_group_members(
     group_id: str, member_user_ids: Iterable[Any] | None
 ) -> dict[str, Any] | None:
@@ -209,10 +255,12 @@ def delete_group(group_id: str) -> bool:
 
 __all__ = [
     "GROUPS_FILE",
+    "add_member",
     "create_group",
     "delete_group",
     "get_group",
     "groups_led_by",
     "list_groups",
+    "remove_member",
     "set_group_members",
 ]
