@@ -34,9 +34,21 @@ export default function InlineMarkdown({
   const rich = hasMarkdownMath(text) || INLINE_MARKUP_RE.test(text);
 
   if (!rich) {
-    return className ? <span className={className}>{text}</span> : <>{text}</>;
+    return className ? (
+      <span dir="auto" className={className}>
+        {text}
+      </span>
+    ) : (
+      <>{text}</>
+    );
   }
 
   const rendered = <RichInlineMarkdown content={text} />;
-  return className ? <span className={className}>{rendered}</span> : rendered;
+  return className ? (
+    <span dir="auto" className={className}>
+      {rendered}
+    </span>
+  ) : (
+    rendered
+  );
 }
