@@ -10,6 +10,7 @@ from .cohere import CohereEmbeddingAdapter
 from .dashscope_native import DashScopeMultiModalEmbeddingAdapter
 from .gemini import GeminiEmbeddingAdapter
 from .jina import JinaEmbeddingAdapter
+from .nvidia_nim import NvidiaNIMEmbeddingAdapter
 from .ollama import OllamaEmbeddingAdapter
 from .openai_compatible import OpenAICompatibleEmbeddingAdapter
 from .openai_sdk import OpenAISDKEmbeddingAdapter
@@ -22,6 +23,7 @@ ADAPTER_BACKENDS: dict[str, type[BaseEmbeddingAdapter]] = {
     "ollama": OllamaEmbeddingAdapter,
     "dashscope_native": DashScopeMultiModalEmbeddingAdapter,
     "gemini": GeminiEmbeddingAdapter,
+    "nvidia_nim": NvidiaNIMEmbeddingAdapter,
 }
 
 __all__ = [
@@ -34,6 +36,7 @@ __all__ = [
     "OpenAISDKEmbeddingAdapter",
     "DashScopeMultiModalEmbeddingAdapter",
     "GeminiEmbeddingAdapter",
+    "NvidiaNIMEmbeddingAdapter",
     "JinaEmbeddingAdapter",
     "CohereEmbeddingAdapter",
     "OllamaEmbeddingAdapter",
