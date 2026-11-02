@@ -19,13 +19,15 @@ from deeptutor.response_languages import SUPPORTED_RESPONSE_LANGUAGES
 from deeptutor.services.path_service import get_path_service
 from deeptutor.tools.builtin import USER_TOGGLEABLE_TOOL_NAMES
 
-UiLanguage = Literal["en", "zh", "fr", "de", "uk", "pl"]
+UiLanguage = Literal["en", "zh", "fr", "de", "uk", "pl", "pt", "vi", "ja", "tr"]
 
 DEFAULT_UI_SETTINGS: dict[str, Any] = {
-    # "snow" is the pure-white neutral theme, shown as "Default" in the UI.
-    "theme": "snow",
+    # "system" follows the OS. "snow" is the pure-white Default palette.
+    "theme": "system",
     "language": "en",
     "response_language": "en",
+    "content_font_scale": 100,
+    "content_line_spacing": "normal",
     # When true, TTS verbalizes LaTeX (fractions, powers, Greek). Dollar
     # delimiters are stripped either way so the voice never says "dollar".
     "voice_math_speak": True,
@@ -44,14 +46,22 @@ _RESPONSE_LANGUAGE_ALIASES: dict[str, str] = {
     "korean": "ko",
     "spanish": "es",
     "french": "fr",
+    "français": "fr",
+    "francais": "fr",
     "german": "de",
     "russian": "ru",
     "portuguese": "pt",
+    "português": "pt",
+    "turkish": "tr",
+    "türkçe": "tr",
     "italian": "it",
     "arabic": "ar",
     "polish": "pl",
     "malay": "ms",
     "bahasa melayu": "ms",
+    "vietnamese": "vi",
+    "tiếng việt": "vi",
+    "tieng viet": "vi",
 }
 
 
@@ -92,10 +102,12 @@ def _normalize_language(language: Any, default: str = "en") -> str:
     Normalize language codes:
     - en/english -> en
     - zh/chinese/cn -> zh
-    - fr/french -> fr
+    - fr/french/français -> fr
     - de/german/deutsch -> de
     - uk/ukrainian/ua -> uk
     - pl/polish/polski -> pl
+    - vi/vietnamese/tiếng việt -> vi
+    - ja/jp/japanese -> ja
 
     An unknown code falls back to ``default`` rather than raising, so this is
     also the gate that decides which languages exist at all: a locale shipped
@@ -111,7 +123,7 @@ def _normalize_language(language: Any, default: str = "en") -> str:
             return "en"
         if s == "chinese" or base in {"zh", "cn"}:
             return "zh"
-        if s == "french" or base == "fr":
+        if s in {"french", "français", "francais"} or base == "fr":
             return "fr"
         if s in {"german", "deutsch"} or base == "de":
             return "de"
@@ -119,6 +131,14 @@ def _normalize_language(language: Any, default: str = "en") -> str:
             return "uk"
         if s in {"polish", "polski"} or base == "pl":
             return "pl"
+        if s in {"portuguese", "português"} or base == "pt":
+            return "pt"
+        if s in {"vietnamese", "tiếng việt", "tieng viet"} or base == "vi":
+            return "vi"
+        if s in {"turkish", "türkçe"} or base == "tr":
+            return "tr"
+        if s == "japanese" or base in {"ja", "jp"}:
+            return "ja"
 
     # Fall back to default
     if isinstance(default, str):
@@ -174,6 +194,20 @@ def resolve_languages(saved: Mapping[str, Any]) -> dict[str, str]:
     }
 
 
+def resolve_display_settings(saved: Mapping[str, Any]) -> dict[str, Any]:
+    """Read bounded learning typography, including legacy or malformed files."""
+    scale = saved.get("content_font_scale")
+    spacing = saved.get("content_line_spacing")
+    return {
+        "content_font_scale": scale
+        if type(scale) is int and scale in (90, 100, 110, 125, 150)
+        else 100,
+        "content_line_spacing": spacing
+        if isinstance(spacing, str) and spacing in ("compact", "normal", "relaxed")
+        else "normal",
+    }
+
+
 def get_ui_settings() -> dict[str, Any]:
     """
     Read UI settings from interface.json with defaults.
@@ -187,7 +221,12 @@ def get_ui_settings() -> dict[str, Any]:
         try:
             with open(settings_file, encoding="utf-8") as f:
                 saved = json.load(f) or {}
-            return {**DEFAULT_UI_SETTINGS, **saved, **resolve_languages(saved)}
+            return {
+                **DEFAULT_UI_SETTINGS,
+                **saved,
+                **resolve_languages(saved),
+                **resolve_display_settings(saved),
+            }
         except Exception:
             # On any parse error, fall back to defaults (safe)
             return DEFAULT_UI_SETTINGS.copy()

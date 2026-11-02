@@ -1,81 +1,86 @@
-"use client";
+'use client'
 
-import React, { useEffect, useRef, useState } from "react";
-import { useTranslation } from "react-i18next";
+import React, { useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import { runGeoGebraCommand, type GeoGebraCommandAPI } from '@/lib/geogebra-commands'
 
 interface GeogebraProps {
-  script?: string;
-  payload?: GeogebraPayload;
-  title?: string;
-  className?: string;
-  width?: number;
-  height?: number;
+  script?: string
+  /** A board the learner works on: GeoGebra's toolbar and input bar shown,
+   *  labels draggable. Off for figures the tutor drew to be looked at. */
+  editable?: boolean
+  payload?: GeogebraPayload
+  title?: string
+  className?: string
+  width?: number
+  height?: number
+  perspective?: string
 }
 
 export interface GeogebraPayload {
-  app_name?: "geometry" | "graphing" | "3d" | "classic" | string;
-  commands: string[];
+  app_name?: 'geometry' | 'graphing' | '3d' | 'classic' | string
+  commands: string[]
+  show_axes?: boolean
+  show_grid?: boolean
   view?: {
-    x_min: number;
-    x_max: number;
-    y_min: number;
-    y_max: number;
-  };
+    x_min: number
+    x_max: number
+    y_min: number
+    y_max: number
+  }
 }
 
 declare global {
   interface Window {
     GGBApplet?: new (
       params: Record<string, unknown>,
-      html5: boolean,
+      html5: boolean
     ) => {
-      inject: (containerId: string) => void;
-    };
+      inject: (containerId: string) => void
+    }
   }
 }
 
-const GGB_SCRIPT_SRC = "https://www.geogebra.org/apps/deployggb.js";
+const GGB_SCRIPT_SRC = 'https://www.geogebra.org/apps/deployggb.js'
 
 // Single in-flight loader shared by every Geogebra instance on the page.
 // deployggb.js is ~MB and lives on geogebra.org's CDN; fetching it once and
 // reusing window.GGBApplet keeps subsequent applets snappy.
-let ggbLoader: Promise<void> | null = null;
+let ggbLoader: Promise<void> | null = null
 
 function loadGgbScript(): Promise<void> {
-  if (typeof window === "undefined") {
-    return Promise.reject(new Error("window unavailable"));
+  if (typeof window === 'undefined') {
+    return Promise.reject(new Error('window unavailable'))
   }
-  if (window.GGBApplet) return Promise.resolve();
-  if (ggbLoader) return ggbLoader;
+  if (window.GGBApplet) return Promise.resolve()
+  if (ggbLoader) return ggbLoader
 
   ggbLoader = new Promise((resolve, reject) => {
-    const existing = document.querySelector<HTMLScriptElement>(
-      `script[src="${GGB_SCRIPT_SRC}"]`,
-    );
+    const existing = document.querySelector<HTMLScriptElement>(`script[src="${GGB_SCRIPT_SRC}"]`)
     if (existing) {
       if (window.GGBApplet) {
-        resolve();
-        return;
+        resolve()
+        return
       }
-      existing.addEventListener("load", () => resolve());
-      existing.addEventListener("error", () => {
-        ggbLoader = null;
-        reject(new Error("GeoGebra script failed to load"));
-      });
-      return;
+      existing.addEventListener('load', () => resolve())
+      existing.addEventListener('error', () => {
+        ggbLoader = null
+        reject(new Error('GeoGebra script failed to load'))
+      })
+      return
     }
-    const script = document.createElement("script");
-    script.src = GGB_SCRIPT_SRC;
-    script.async = true;
-    script.onload = () => resolve();
+    const script = document.createElement('script')
+    script.src = GGB_SCRIPT_SRC
+    script.async = true
+    script.onload = () => resolve()
     script.onerror = () => {
-      ggbLoader = null;
-      reject(new Error("GeoGebra script failed to load"));
-    };
-    document.head.appendChild(script);
-  });
+      ggbLoader = null
+      reject(new Error('GeoGebra script failed to load'))
+    }
+    document.head.appendChild(script)
+  })
 
-  return ggbLoader;
+  return ggbLoader
 }
 
 // The agent emits one command per line and prefixes human-readable
@@ -84,126 +89,125 @@ function loadGgbScript(): Promise<void> {
 function parseGgbCommands(raw: string): string[] {
   return raw
     .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0 && !line.startsWith("#"));
+    .map(line => line.trim())
+    .filter(line => line.length > 0 && !line.startsWith('#'))
 }
 
-let containerCounter = 0;
+let containerCounter = 0
 
 const Geogebra: React.FC<GeogebraProps> = ({
-  script = "",
+  script = '',
+  editable = false,
   payload,
   title,
-  className = "",
+  className = '',
   width = 760,
   height = 480,
+  perspective,
 }) => {
-  const { t } = useTranslation();
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const containerIdRef = useRef<string>(
-    `ggb-${++containerCounter}-${Date.now().toString(36)}`,
-  );
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [commandErrors, setCommandErrors] = useState<string[]>([]);
+  const { t } = useTranslation()
+  const containerRef = useRef<HTMLDivElement | null>(null)
+  const containerIdRef = useRef<string>(`ggb-${++containerCounter}-${Date.now().toString(36)}`)
+  const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [commandErrors, setCommandErrors] = useState<string[]>([])
 
   useEffect(() => {
-    let cancelled = false;
+    let cancelled = false
     // Snapshot the ref now so the cleanup closure sees the same node React
     // mounted with, not whatever the ref points at after a later re-render.
-    const containerAtMount = containerRef.current;
-    setLoading(true);
-    setError(null);
+    const containerAtMount = containerRef.current
+    setLoading(true)
+    setError(null)
+    setCommandErrors([])
 
     async function mount() {
       try {
-        await loadGgbScript();
-        if (cancelled) return;
+        await loadGgbScript()
+        if (cancelled) return
         if (!window.GGBApplet) {
-          throw new Error("GGBApplet global missing after script load");
+          throw new Error('GGBApplet global missing after script load')
         }
 
         const commands = payload?.commands?.length
-          ? payload.commands.map(String).filter((command) => command.trim())
-          : parseGgbCommands(script);
-        const container = containerRef.current;
-        if (!container) return;
-        container.id = containerIdRef.current;
-        container.innerHTML = "";
+          ? payload.commands.map(String).filter(command => command.trim())
+          : parseGgbCommands(script)
+        const container = containerRef.current
+        if (!container) return
+        container.id = containerIdRef.current
+        container.innerHTML = ''
 
         const applet = new window.GGBApplet(
           {
-            appName: payload?.app_name || "geometry",
+            appName: payload?.app_name || 'geometry',
             width,
             height,
-            showToolBar: false,
-            showAlgebraInput: false,
+            perspective,
+            preventFocus: true,
+            showToolBar: editable,
+            showAlgebraInput: editable,
             showMenuBar: false,
-            showResetIcon: true,
-            enableLabelDrags: false,
+            showResetIcon: !editable,
+            enableLabelDrags: editable,
             enableShiftDragZoom: true,
             useBrowserForJS: false,
             // The api passed in here lets us drive the applet
             // imperatively without going through a global. We feed each
             // command separately so one bad line doesn't abort the rest.
-            appletOnLoad: (api: {
-              evalCommand: (cmd: string) => boolean;
-              setCoordSystem?: (
-                xMin: number,
-                xMax: number,
-                yMin: number,
-                yMax: number,
-              ) => void;
-            }) => {
-              if (cancelled) return;
-              const view = payload?.view;
-              if (view && api.setCoordSystem) {
-                api.setCoordSystem(
-                  view.x_min,
-                  view.x_max,
-                  view.y_min,
-                  view.y_max,
-                );
+            appletOnLoad: (
+              api: GeoGebraCommandAPI & {
+                setAxesVisible?: (x: boolean, y: boolean) => void
+                setGridVisible?: (visible: boolean) => void
+                setCoordSystem?: (xMin: number, xMax: number, yMin: number, yMax: number) => void
               }
-              const failures: string[] = [];
+            ) => {
+              if (cancelled) return
+              if (payload?.show_axes !== undefined)
+                api.setAxesVisible?.(payload.show_axes, payload.show_axes)
+              if (payload?.show_grid !== undefined) api.setGridVisible?.(payload.show_grid)
+              const view = payload?.view
+              if (view && api.setCoordSystem) {
+                api.setCoordSystem(view.x_min, view.x_max, view.y_min, view.y_max)
+              }
+              const failures: string[] = []
               for (const cmd of commands) {
                 try {
-                  if (!api.evalCommand(cmd)) {
-                    failures.push(cmd);
-                    console.warn("[ggb] evalCommand returned false", { cmd });
+                  if (!runGeoGebraCommand(api, cmd)) {
+                    failures.push(cmd)
+                    console.warn('[ggb] evalCommand returned false', { cmd })
                   }
                 } catch (err) {
-                  failures.push(cmd);
-                  console.warn("[ggb] evalCommand failed", { cmd, err });
+                  failures.push(cmd)
+                  console.warn('[ggb] evalCommand failed', { cmd, err })
                 }
               }
-              setLoading(false);
+              setLoading(false)
               if (!cancelled && failures.length > 0) {
-                setCommandErrors(failures);
+                setCommandErrors(failures)
               }
             },
           },
-          true,
-        );
+          true
+        )
 
-        applet.inject(containerIdRef.current);
+        applet.inject(containerIdRef.current)
       } catch (err) {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : String(err));
-          setLoading(false);
+          setError(err instanceof Error ? err.message : String(err))
+          setLoading(false)
         }
       }
     }
 
-    void mount();
+    void mount()
 
     return () => {
-      cancelled = true;
+      cancelled = true
       if (containerAtMount) {
-        containerAtMount.innerHTML = "";
+        containerAtMount.innerHTML = ''
       }
-    };
-  }, [script, payload, width, height]);
+    }
+  }, [script, payload, width, height, editable, perspective])
 
   return (
     <div
@@ -216,7 +220,7 @@ const Geogebra: React.FC<GeogebraProps> = ({
       ) : null}
       {error ? (
         <div className="p-4 text-sm text-[var(--destructive,#dc2626)]">
-          {t("Failed to load GeoGebra")}: {error}
+          {t('Failed to load GeoGebra')}: {error}
         </div>
       ) : (
         <>
@@ -226,13 +230,13 @@ const Geogebra: React.FC<GeogebraProps> = ({
               className="border-b border-[var(--border)] bg-[var(--destructive,#dc2626)]/5 px-3 py-2 text-[12px] leading-relaxed text-[var(--destructive,#dc2626)]"
             >
               <span className="font-medium">
-                {t("GeoGebra rejected {{count}} command(s)", {
+                {t('GeoGebra rejected {{count}} command(s)', {
                   count: commandErrors.length,
                 })}
                 :
               </span>
               <ul className="mt-1 list-inside list-disc">
-                {commandErrors.map((cmd) => (
+                {commandErrors.map(cmd => (
                   <li key={cmd} className="truncate font-mono text-[11px]">
                     {cmd}
                   </li>
@@ -243,7 +247,7 @@ const Geogebra: React.FC<GeogebraProps> = ({
           <div className="relative" style={{ minHeight: height }}>
             {loading ? (
               <div className="absolute inset-0 flex items-center justify-center text-sm text-[var(--muted-foreground)]">
-                {t("Loading GeoGebra...")}
+                {t('Loading GeoGebra...')}
               </div>
             ) : null}
             <div ref={containerRef} className="ggb-applet-container" />
@@ -251,7 +255,7 @@ const Geogebra: React.FC<GeogebraProps> = ({
         </>
       )}
     </div>
-  );
-};
+  )
+}
 
-export default Geogebra;
+export default Geogebra

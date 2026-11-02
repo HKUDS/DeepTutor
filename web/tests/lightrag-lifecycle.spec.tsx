@@ -356,3 +356,5 @@ it.each(["header", "documents"])(
     expect(retry).not.toHaveBeenCalled();
   },
 );
+
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));

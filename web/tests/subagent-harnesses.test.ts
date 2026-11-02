@@ -18,12 +18,14 @@ const HARNESSES = [
 ] as const;
 
 test("new harnesses are present in connected-agent labels and glyph dispatch", () => {
-  const connected = readWebFile("components", "agents", "ConnectedAgents.tsx");
   const icons = readWebFile("components", "agents", "agent-icons.tsx");
+  // The names and the glyphs live side by side, shared by the agents page and
+  // the composer's menus.
+  const labels = icons.slice(icons.indexOf("export function agentKindLabel"));
 
   for (const harness of HARNESSES) {
-    assert.match(connected, new RegExp(`kind === ["']${harness.kind}["']`));
-    assert.match(connected, new RegExp(harness.label));
+    assert.match(labels, new RegExp(`kind === ["']${harness.kind}["']`));
+    assert.match(labels, new RegExp(harness.label));
     assert.match(icons, new RegExp(`kind === ["']${harness.kind}["']`));
   }
 });

@@ -21,6 +21,7 @@ from .._turn_runtime_shared import (
     _LiveSubscriber,
     _TurnExecution,
 )
+from .inbox import TurnInbox
 
 if TYPE_CHECKING:
     from deeptutor.runtime.coordination import RuntimeCoordinator
@@ -66,6 +67,7 @@ class TurnLifecycle:
         # ``text`` is always present (flat fallback for legacy callers);
         # ``answers`` carries the structured per-question replies when the
         # frontend sends the v2 ``ask_user`` shape.
+        self._inboxes: dict[str, TurnInbox] = {}
         self._reply_queues: dict[str, asyncio.Queue[dict[str, Any] | None]] = {}
 
     async def close(self, *, drain_timeout_seconds: float = 0.0) -> None:
@@ -75,6 +77,7 @@ class TurnLifecycle:
             executions = list(self._executions.values())
             reply_queues = list(self._reply_queues.values())
             self._reply_queues.clear()
+            self._inboxes.clear()
 
         tasks: list[asyncio.Task[Any]] = []
         for execution in executions:
@@ -276,11 +279,12 @@ class TurnLifecycle:
                                     execution.task.cancel()
                                 return
                     elif command.kind == "user_input":
-                        from deeptutor.runtime.stream_bus import get_bus
-
-                        bus = get_bus(execution.turn_id)
-                        if bus is not None:
-                            bus.submit_input(str(command.payload.get("content") or ""))
+                        self.deliver_user_input(
+                            execution.turn_id,
+                            command.command_id,
+                            str(command.payload.get("content") or ""),
+                            withdraw=str(command.payload.get("withdraw") or "") or None,
+                        )
                 if time.monotonic() >= renew_at:
                     renewed = await self.coordinator.renew_turn(lease)
                     if renewed is None:
@@ -320,6 +324,28 @@ class TurnLifecycle:
             await execution.task
         except asyncio.CancelledError:
             pass
+        return True
+
+    def deliver_user_input(
+        self,
+        turn_id: str,
+        command_id: str,
+        content: str,
+        *,
+        withdraw: str | None = None,
+    ) -> bool:
+        """Put a message sent mid-turn in the turn's inbox, or take one back.
+
+        ``False`` when the turn has no inbox (it already ended); the client
+        still holds the message and sends it as the next turn.
+        """
+        inbox = self._inboxes.get(turn_id)
+        if inbox is None:
+            return False
+        if withdraw:
+            inbox.withdraw(withdraw)
+        else:
+            inbox.put(command_id, content)
         return True
 
     async def submit_user_reply(

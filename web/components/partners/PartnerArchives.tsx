@@ -12,6 +12,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { fromMarkdown } from "mdast-util-from-markdown";
 import {
   deletePartnerSession,
   getPartnerHistoryPage,
@@ -20,7 +21,11 @@ import {
   type PartnerSessionInfo,
 } from "@/lib/partners-api";
 import type { ExportableMessage } from "@/lib/chat-export";
+import { plainTextPreview } from "@/lib/chat-outline";
 import { displaySessionTitle } from "@/lib/session-title";
+import AssistantResponse from "@/components/common/AssistantResponse";
+import { InlineFileCardProvider } from "@/components/common/InlineFileCard";
+import type { MessageAttachment } from "@/features/chat/ChatStateAdapter";
 import Tooltip from "@/shared/ui/Tooltip";
 
 interface HistoryMessage {
@@ -28,6 +33,100 @@ interface HistoryMessage {
   content: string;
   timestamp?: string;
   channel?: string;
+  attachments?: Record<string, unknown>[];
+}
+
+function historyAttachments(attachments?: Record<string, unknown>[]): MessageAttachment[] {
+  return (attachments ?? []).flatMap((attachment): MessageAttachment[] => {
+    if (
+      typeof attachment.type !== "string" ||
+      typeof attachment.filename !== "string" ||
+      typeof attachment.url !== "string" ||
+      (attachment.generated !== true && attachment.origin !== "workspace")
+    ) return [];
+    return [{
+      type: attachment.type,
+      filename: attachment.filename,
+      url: attachment.url,
+      generated: attachment.generated === true,
+      origin: attachment.origin === "workspace" ? "workspace" : undefined,
+      relative_path: typeof attachment.relative_path === "string" ? attachment.relative_path : undefined,
+      title: typeof attachment.title === "string" ? attachment.title : undefined,
+    }];
+  });
+}
+
+function conversationPreview(content: string): string {
+  const tableCells = (line: string): string[] | null => {
+    const cells = [""];
+    let hasPipe = false;
+    for (let index = 0; index < line.length; index++) {
+      const character = line[index];
+      if (character === "\\" && index + 1 < line.length) {
+        cells[cells.length - 1] += character + line[++index];
+      } else if (character === "|") {
+        hasPipe = true;
+        cells.push("");
+      } else {
+        cells[cells.length - 1] += character;
+      }
+    }
+    if (!hasPipe) return null;
+    if (!cells[0].trim()) cells.shift();
+    if (!cells.at(-1)?.trim()) cells.pop();
+    return cells.map((cell) => cell.trim());
+  };
+  const lines = content.split("\n");
+  const rows = lines.map(tableCells);
+  let inTable = false;
+  let separatorIndex = -1;
+  let text = lines
+    .map((line, index) => {
+      if (index === separatorIndex) return "";
+      const cells = rows[index];
+      const next = rows[index + 1];
+      if (!inTable && cells?.length && next?.length === cells.length && next.every((cell) => /^:?-+:?$/.test(cell))) {
+        inTable = true;
+        separatorIndex = index + 1;
+      }
+      if (inTable && cells) {
+        return cells.map((cell) => cell.replace(/\\\|/g, "|")).join(" · ");
+      }
+      inTable = false;
+      return line;
+    })
+    .join("\n");
+
+  // Keep code literal through all Markdown cleanup, including multi-backtick spans.
+  const literals = new Map<string, string>();
+  const tree = fromMarkdown(text);
+  const pending: (typeof tree | (typeof tree.children)[number])[] = [tree];
+  let markerCode = 0xe000;
+  while (pending.length) {
+    const node = pending.pop()!;
+    if (node.type === "inlineCode") {
+      const start = node.position?.start.offset;
+      const end = node.position?.end.offset;
+      if (start === undefined || end === undefined) continue;
+      let marker = String.fromCharCode(markerCode++);
+      while (text.includes(marker)) marker = String.fromCharCode(markerCode++);
+      literals.set(marker, node.value.replace(/\r\n?|\n/g, " "));
+      text = text.slice(0, start) + marker + text.slice(end);
+    } else if ("children" in node) {
+      // Visit right to left so replacing a code span preserves earlier offsets.
+      pending.push(...node.children);
+    }
+  }
+  // The server may truncate the snippet before an emphasis delimiter closes.
+  const repaired = text.replace(
+    /(\*\*|__|~~).*?\1|(?<![\w\\])(?:\*\*|__|~~)(?=\S)/g,
+    (match, paired) => paired ? match : "",
+  );
+  const preview = plainTextPreview(repaired, Infinity).replace(
+    /[\ue000-\uf8ff]/g,
+    (marker) => literals.get(marker) ?? marker,
+  );
+  return preview.length > 160 ? `${preview.slice(0, 160).trimEnd()}…` : preview;
 }
 
 function formatTime(value?: string) {
@@ -70,6 +169,16 @@ export default function PartnerArchives({
   const messageScrollRef = useRef<HTMLDivElement>(null);
   const selectedKeyRef = useRef(selectedKey);
   selectedKeyRef.current = selectedKey;
+
+  const downloadGeneratedAttachment = useCallback((attachment: MessageAttachment) => {
+    if (!attachment.url) return;
+    const link = document.createElement("a");
+    link.href = attachment.url;
+    link.download = attachment.filename || "download";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  }, []);
 
   const selected = useMemo(
     () =>
@@ -262,7 +371,7 @@ export default function PartnerArchives({
               </div>
               {session.last_message ? (
                 <p className="mt-1 line-clamp-2 text-[11.5px] leading-snug text-[var(--muted-foreground)]">
-                  {session.last_message}
+                  {conversationPreview(session.last_message)}
                 </p>
               ) : null}
               <div className="mt-1 flex items-center gap-2 text-[10.5px] text-[var(--muted-foreground)]">
@@ -377,13 +486,21 @@ export default function PartnerArchives({
                       }
                     >
                       <div
-                        className={`max-w-[78%] whitespace-pre-wrap rounded-lg px-3 py-2 text-[13px] leading-relaxed ${
+                        className={`min-w-0 rounded-lg px-3 py-2 text-[13px] leading-relaxed ${
                           message.role === "user"
-                            ? "bg-[var(--secondary)] text-[var(--foreground)]"
-                            : "border border-[var(--border)] text-[var(--foreground)]"
+                            ? "max-w-[78%] whitespace-pre-wrap bg-[var(--secondary)] text-[var(--foreground)]"
+                            : "max-w-full border border-[var(--border)] text-[var(--foreground)]"
                         }`}
                       >
-                        {message.content}
+                        {message.role === "assistant" ? (
+                          <InlineFileCardProvider
+                            attachments={historyAttachments(message.attachments)}
+                            onOpen={downloadGeneratedAttachment}
+                            unresolvedRelativeLinksAsText
+                          >
+                            <AssistantResponse content={message.content} />
+                          </InlineFileCardProvider>
+                        ) : message.content}
                       </div>
                     </div>
                   ))

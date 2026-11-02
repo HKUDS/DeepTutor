@@ -206,6 +206,21 @@ def test_search_files_by_filename(store: FileLibraryStore) -> None:
     assert results[0]["filename"] == "project_proposal.pdf"
 
 
+def test_search_files_treats_like_wildcards_literally(store: FileLibraryStore) -> None:
+    """'_' and '%' in the query are literal characters, not SQL LIKE wildcards.
+
+    search_files promises case-insensitive *substring* matching, but the query
+    was interpolated into a LIKE pattern without escaping, so '_' matched any
+    single character.
+    """
+    asyncio.run(store.add_file(data=b"A", filename="report_v1.pdf", mime_type="application/pdf"))
+    asyncio.run(store.add_file(data=b"B", filename="reportXv1.pdf", mime_type="application/pdf"))
+
+    results = asyncio.run(store.search_files("report_v1"))
+
+    assert [r["filename"] for r in results] == ["report_v1.pdf"]
+
+
 def test_search_files_no_match_returns_empty(store: FileLibraryStore) -> None:
     """A query that matches nothing must return an empty list."""
     asyncio.run(store.add_file(data=b"Content", filename="other.txt", mime_type="text/plain"))
@@ -524,3 +539,23 @@ def test_reset_clears_singleton() -> None:
     reset_file_library_store()
     s2 = get_file_library_store()
     assert s1 is not s2
+
+
+def test_restore_does_not_hide_unrelated_database_failure(
+    rooted_store: FileLibraryStore,
+    tmp_db_path: Path,
+) -> None:
+    import sqlite3
+
+    first = asyncio.run(rooted_store.add_file(data=b"same", filename="first.txt"))
+    asyncio.run(rooted_store.delete_file(first["id"]))
+    second = asyncio.run(rooted_store.add_file(data=b"same", filename="second.txt"))
+    with sqlite3.connect(tmp_db_path) as connection:
+        connection.execute(
+            "CREATE TRIGGER fail_restore BEFORE UPDATE OF is_deleted ON library_files "
+            "WHEN NEW.is_deleted = 0 BEGIN SELECT RAISE(ABORT, 'unrelated failure'); END"
+        )
+    with pytest.raises(sqlite3.IntegrityError, match="unrelated failure"):
+        asyncio.run(rooted_store.restore_file(first["id"]))
+    assert asyncio.run(rooted_store.get_file(first["id"]))["is_deleted"] is True
+    assert asyncio.run(rooted_store.get_file(second["id"]))["is_deleted"] is False

@@ -128,6 +128,11 @@ KNOWN_CONTEXT_WINDOWS: dict[str, int] = {
     "minimax-m2.7": 204800,
     "minimax-m2.7-highspeed": 204800,
     "minimax-m3": 1000000,
+    # https://platform.minimax.io/docs/api-reference/text-openai-api (2026-10-20)
+    "minimax-m3.1-flash": 1000000,
+    # OpenRouter /api/v1/models (2026-10-20), not direct API capacities.
+    "minimax/minimax-m3.1-flash:free": 1000000,
+    "minimax/minimax-m3": 1048576,
     "o1": 200000,
     "o1-pro": 200000,
     "o3": 200000,

@@ -1,16 +1,23 @@
-"""Account-owned tasks, workspace projections and durable conversation links."""
+"""One account store of tasks, read as per-workspace boards, with conversation links."""
 
 from __future__ import annotations
 
 from contextlib import closing
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 import json
 from pathlib import Path
 import sqlite3
 from typing import Annotated, Literal
 from uuid import NAMESPACE_URL, uuid4, uuid5
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    field_validator,
+)
 
 from deeptutor.utils.secret_files import ensure_private_directory
 
@@ -18,6 +25,20 @@ TaskStatus = Literal["todo", "doing", "done"]
 TaskTitle = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=160)]
 TaskNote = Annotated[str, StringConstraints(max_length=2000)]
 TaskColor = Annotated[str, StringConstraints(pattern=r"^#[0-9a-fA-F]{6}$")]
+
+
+def _calendar_date(value: str) -> str:
+    date.fromisoformat(value)  # rejects 2026-02-30 after the shape check passes
+    return value
+
+
+# A plain local calendar day. It is never converted through UTC: a task due on
+# the 17th is due on the 17th wherever the learner opens the board.
+TaskDueDate = Annotated[
+    str,
+    StringConstraints(pattern=r"^\d{4}-\d{2}-\d{2}$"),
+    AfterValidator(_calendar_date),
+]
 
 
 class StatusColors(BaseModel):
@@ -31,6 +52,7 @@ class CreateCard(BaseModel):
     model_config = ConfigDict(extra="forbid")
     title: TaskTitle
     note: TaskNote = ""
+    due_date: TaskDueDate | None = None
 
 
 class UpdateCard(BaseModel):
@@ -41,6 +63,8 @@ class UpdateCard(BaseModel):
     archived: bool | None = None
     # None = unassigned; empty string = the default conversation workspace.
     workspace_id: str | None = Field(default=None, max_length=200)
+    # Explicit null clears the date, unlike the fields guarded below.
+    due_date: TaskDueDate | None = None
 
     @field_validator("title", "note", "status", "archived", mode="before")
     @classmethod
@@ -57,6 +81,7 @@ class TaskCard(CreateCard):
     created_at: str
     updated_at: str
     workspace_id: str | None = None
+    due_date: str | None = None
 
 
 class SessionTaskLinks(BaseModel):
@@ -109,7 +134,8 @@ class TaskBoardStore:
                 id TEXT PRIMARY KEY, title TEXT NOT NULL, note TEXT NOT NULL DEFAULT '',
                 status TEXT NOT NULL CHECK(status IN ('todo','doing','done')),
                 archived INTEGER NOT NULL DEFAULT 0 CHECK(archived IN (0,1)),
-                created_at TEXT NOT NULL, updated_at TEXT NOT NULL, workspace_id TEXT
+                created_at TEXT NOT NULL, updated_at TEXT NOT NULL, workspace_id TEXT,
+                due_date TEXT
             );
             CREATE TABLE IF NOT EXISTS board_state (
                 id INTEGER PRIMARY KEY CHECK(id=1), revision INTEGER NOT NULL,
@@ -131,13 +157,14 @@ class TaskBoardStore:
                 PRIMARY KEY(source, legacy_id)
             );
         """)
-        if "workspace_id" not in {row[1] for row in connection.execute("PRAGMA table_info(cards)")}:
+        for column in ("workspace_id", "due_date"):
+            if column in {row[1] for row in connection.execute("PRAGMA table_info(cards)")}:
+                continue
             try:
-                connection.execute("ALTER TABLE cards ADD COLUMN workspace_id TEXT")
+                connection.execute(f"ALTER TABLE cards ADD COLUMN {column} TEXT")
             except sqlite3.OperationalError:
-                if "workspace_id" not in {
-                    row[1] for row in connection.execute("PRAGMA table_info(cards)")
-                }:
+                # Another worker may have added it between the probe and here.
+                if column not in {row[1] for row in connection.execute("PRAGMA table_info(cards)")}:
                     connection.close()
                     raise
         connection.execute(
@@ -199,38 +226,52 @@ class TaskBoardStore:
                 return 0
             return row[0] if row else 0
 
-    def create(self, payload: CreateCard) -> TaskBoard:
+    def create(self, payload: CreateCard, workspace_id: str | None = None) -> TaskBoard:
         now = datetime.now(timezone.utc).isoformat()
         with closing(self._connect()) as connection, connection:
             connection.execute("BEGIN IMMEDIATE")
             connection.execute(
-                "INSERT INTO cards (id,title,note,status,archived,created_at,updated_at) VALUES (?,?,?,'todo',0,?,?)",
-                (uuid4().hex, payload.title, payload.note, now, now),
+                "INSERT INTO cards (id,title,note,status,archived,created_at,updated_at,workspace_id,due_date) VALUES (?,?,?,'todo',0,?,?,?,?)",
+                (
+                    uuid4().hex,
+                    payload.title,
+                    payload.note,
+                    now,
+                    now,
+                    workspace_id,
+                    payload.due_date,
+                ),
             )
             self._changed(connection)
             return self._snapshot(connection)
 
-    def update(self, card_id: str, payload: UpdateCard) -> TaskBoard:
+    def update(self, card_id: str, payload: UpdateCard, *, workspace_id: str = "") -> TaskBoard:
         if not self.path.exists():
             raise KeyError(card_id)
         changes = payload.model_dump(exclude_unset=True)
         with closing(self._connect()) as connection, connection:
             connection.execute("BEGIN IMMEDIATE")
             row = connection.execute("SELECT * FROM cards WHERE id=?", (card_id,)).fetchone()
-            if row is None:
+            if row is None or (row["workspace_id"] or "") != workspace_id:
                 raise KeyError(card_id)
             updated = TaskCard.model_validate({**dict(row), **changes})
             connection.execute(
-                "UPDATE cards SET title=?,note=?,status=?,archived=?,workspace_id=?,updated_at=? WHERE id=?",
+                "UPDATE cards SET title=?,note=?,status=?,archived=?,workspace_id=?,due_date=?,updated_at=? WHERE id=?",
                 (
                     updated.title,
                     updated.note,
                     updated.status,
                     updated.archived,
                     updated.workspace_id,
+                    updated.due_date,
                     datetime.now(timezone.utc).isoformat(),
                     card_id,
                 ),
+            )
+            # Moving a task never carries references from its former workspace.
+            connection.execute(
+                "DELETE FROM session_tasks WHERE task_id=? AND workspace_id!=?",
+                (card_id, updated.workspace_id or ""),
             )
             self._changed(connection)
             return self._snapshot(connection)
@@ -256,9 +297,13 @@ class TaskBoardStore:
             }
             for task_id in payload.task_ids:
                 row = connection.execute(
-                    "SELECT archived FROM cards WHERE id=?", (task_id,)
+                    "SELECT archived,workspace_id FROM cards WHERE id=?", (task_id,)
                 ).fetchone()
-                if row is None or (row["archived"] and task_id not in existing):
+                if (
+                    row is None
+                    or (row["workspace_id"] or "") != payload.workspace_id
+                    or (row["archived"] and task_id not in existing)
+                ):
                     raise KeyError(task_id)
             for task_id in existing - set(payload.task_ids):
                 connection.execute(
@@ -291,11 +336,17 @@ class TaskBoardStore:
             return self._snapshot(connection)
 
     def move_session_links(self, session_ids: list[str], source: str, target: str) -> None:
+        """Keep tasks in their workspace; detach references that cannot follow a chat."""
         if not session_ids or not self.path.exists() or source == target:
             return
         with closing(self._connect()) as connection, connection:
             connection.execute("BEGIN IMMEDIATE")
             for sid in session_ids:
+                connection.execute(
+                    "DELETE FROM session_tasks WHERE workspace_id=? AND session_id=? "
+                    "AND task_id NOT IN (SELECT id FROM cards WHERE COALESCE(workspace_id,'')=?)",
+                    (source, sid, target),
+                )
                 for statement in (
                     "UPDATE session_tasks SET workspace_id=? WHERE workspace_id=? AND session_id=?",
                     "UPDATE session_task_status SET workspace_id=? WHERE workspace_id=? AND session_id=?",
@@ -349,7 +400,7 @@ class TaskBoardStore:
                 if connection.execute("SELECT 1 FROM cards WHERE id=?", (task_id,)).fetchone():
                     task_id = uuid5(NAMESPACE_URL, f"{workspace_id}:{task_id}").hex
                 connection.execute(
-                    "INSERT INTO cards VALUES (?,?,?,?,?,?,?,?)",
+                    "INSERT INTO cards (id,title,note,status,archived,created_at,updated_at,workspace_id,due_date) VALUES (?,?,?,?,?,?,?,?,?)",
                     (
                         task_id,
                         card.title,
@@ -359,6 +410,7 @@ class TaskBoardStore:
                         card.created_at,
                         card.updated_at,
                         workspace_id,
+                        card.due_date,
                     ),
                 )
                 connection.execute(
@@ -370,7 +422,9 @@ class TaskBoardStore:
                 self._changed(connection)
 
     def context_text(self, workspace_id: str, session_id: str) -> str:
-        board = self.read()
+        # The model sees exactly the same workspace partition as the UI,
+        # including when old databases still contain cross-workspace links.
+        board = workspace_board(self.read(), workspace_id)
         linked = next(
             (
                 row.task_ids
@@ -379,11 +433,7 @@ class TaskBoardStore:
             ),
             [],
         )
-        cards = [
-            card
-            for card in board.cards
-            if not card.archived and (card.id in linked or card.workspace_id == workspace_id)
-        ]
+        cards = [card for card in board.cards if not card.archived]
         if not cards:
             return ""
         cards.sort(
@@ -399,6 +449,7 @@ class TaskBoardStore:
                 "title": card.title,
                 "status": card.status,
                 "note": card.note[:500],
+                **({"due_date": card.due_date} if card.due_date else {}),
                 "linked_to_conversation": card.id in linked,
             }
             for card in cards[:40]
@@ -408,6 +459,25 @@ class TaskBoardStore:
             + json.dumps(data, ensure_ascii=False)
             + "\n[/Task context]\n"
         )
+
+
+def workspace_board(board: TaskBoard, workspace_id: str) -> TaskBoard:
+    """The part of the account board that belongs to one workspace.
+
+    Cards filed nowhere predate per-workspace boards; General keeps them.
+    """
+    cards = [card for card in board.cards if (card.workspace_id or "") == workspace_id]
+    card_ids = {card.id for card in cards}
+    return board.model_copy(
+        update={
+            "cards": cards,
+            "session_links": [
+                link.model_copy(update={"task_ids": [id for id in link.task_ids if id in card_ids]})
+                for link in board.session_links
+                if link.workspace_id == workspace_id
+            ],
+        }
+    )
 
 
 def get_task_board_store(*, migrate_legacy: bool = True) -> TaskBoardStore:

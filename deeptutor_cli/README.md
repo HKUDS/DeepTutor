@@ -7,28 +7,35 @@ Agent-first 的命令行界面。两条核心路径：
 
 ## 安装
 
+以下描述即将发布的 1.7.0 模块化布局；拆分包发布前请使用源码或 [本地 wheels](../docs-for-dev/MODULES.md)。发布后，`pip install deeptutor` 安装最小聊天 CLI，`deeptutor-cli` 是它的兼容别名，RAG 等功能按模块添加。
+
 ```bash
-# 仅 CLI（本地源码安装，含 RAG / 文档解析 / 各家 LLM provider SDK）
-git clone https://github.com/HKUDS/DeepTutor.git
+# 从源码使用 CLI（包含各功能模块的 Python 依赖，不安装前端）
+git clone --branch dev https://github.com/HKUDS/DeepTutor.git
 cd DeepTutor
 python3 -m venv .venv-cli
 source .venv-cli/bin/activate
 python -m pip install --upgrade pip
-python -m pip install -e ./packaging/deeptutor-cli
+python -m pip install -r requirements/full.txt
+python -m pip install -e . --no-deps
 deeptutor init --cli
 
-# CLI + Web/API 服务
-pip install deeptutor
-deeptutor init
-
-# 源码开发
-pip install -e .
-deeptutor init
-
 # 可选附加组件
-pip install -e ".[partners]"       # Partners 渠道 SDK + MCP 客户端
-pip install -e ".[math-animator]"  # 数学动画（另需系统 LaTeX/ffmpeg）
-pip install -e ".[all]"            # 全部依赖（含开发工具）
+python scripts/install_extras.py partners       # Partners 渠道 SDK + MCP 客户端
+python scripts/install_extras.py math-animator  # 数学动画（另需系统 LaTeX/ffmpeg）
+python scripts/install_extras.py all            # 全部依赖（含开发工具）
+```
+
+源码 CLI 用户可跳过前端；需要 Web UI 时，安装 Node.js 22 LTS，在 `web/`
+执行 `npm ci --legacy-peer-deps`，回到项目根目录执行 `deeptutor init` 和
+`deeptutor start`。使用 Python 3.11–3.14；复用已有 checkout 时先检查分支和本地改动。
+
+1.7.0 发布后，也可在独立环境中直接安装 wheel，以下命令与上面的源码流程二选一：
+
+```bash
+python -m pip install "deeptutor[full]"  # 完整 Web 应用；最小 CLI 使用 deeptutor
+deeptutor init
+deeptutor start
 ```
 
 `deeptutor init --cli` 和普通 `deeptutor init` 使用同一套 `data/user/settings/` 配置目录；区别是 `--cli` 不询问 Web 后端/前端端口，仍会创建 `system.json`、`auth.json`、`integrations.json`、`model_catalog.json`、`main.yaml` 和 `agents.yaml`，并继续询问 LLM 配置。Embedding 配置默认跳过；如果要使用 `deeptutor kb ...` 或 RAG，请在向导里选择配置 embedding，或稍后编辑 `data/user/settings/model_catalog.json`。
@@ -39,11 +46,16 @@ Windows PowerShell 可使用：
 py -3.11 -m venv .venv-cli
 .\.venv-cli\Scripts\Activate.ps1
 python -m pip install --upgrade pip
-python -m pip install -e ./packaging/deeptutor-cli
+python -m pip install -r requirements/full.txt
+python -m pip install -e . --no-deps
 deeptutor init --cli
 ```
 
 ---
+
+## 从 1.6.15 CLI 升级
+
+1.7.0 发布后，停止程序并备份 runtime home，先运行 `python -m pip uninstall deeptutor-cli`，再安装 `deeptutor-cli==1.7.0`（完整 Web 应用安装 `deeptutor[full]==1.7.0`）。旧 CLI 包拥有共享代码，直接升级会在卸载旧包时删掉新核心；先卸载可避免这一冲突，且不会删除用户数据。保持原 `DEEPTUTOR_HOME`，安装后运行 `python -m pip check` 和 `deeptutor module list`。最小 core 不包含旧 CLI 的全部功能，需补装所需模块；拆分包发布前按 [本地 wheel 升级指南](../docs-for-dev/MODULES.md#upgrade-from-1615) 使用准确的候选版本。
 
 ## `run` — 执行 Capability
 
@@ -55,21 +67,28 @@ deeptutor run <capability> <message> [options]
 
 ### 内置 Capability
 
-| Capability | 说明 |
-|------------|------|
-| `chat` | 对话（默认，可挂载工具） |
-| `deep_solve` | 多阶段深度解题 |
-| `deep_question` | 智能出题 |
-| `deep_research` | 多 agent 深度研究 |
-| `visualize` | 生成图表、图解、Mermaid、HTML 或 Manim 可视化 |
-| `math_animator` | 数学动画生成 |
-| `mastery_path` | 掌握式学习路径与测评循环 |
+以下功能取决于对应模块是否安装、启用及就绪。用 `deeptutor module list` 查看状态，
+用 `deeptutor plugin list` 查看当前注册的 capability 和工具。
+
+| Capability | 模块 | 说明 |
+|------------|------|------|
+| `chat` | core | 对话（默认，可挂载工具） |
+| `ask_questions` | core | 通过提问澄清需求 |
+| `deep_solve` | solve | 解题与规划 |
+| `deep_question` | questions | 智能出题 |
+| `deep_research` | research | 多 agent 深度研究 |
+| `visualize` | visualize | 图表、图解、Mermaid、HTML；Manim 渲染另需 renderer-manim |
+| `math_animator` | renderer-manim | 数学动画生成 |
+| `mastery_path` | mastery | 掌握式学习路径与测评循环 |
+| `immersive_reading` | reading | 基于文档或媒体的阅读辅导 |
+| `video_lesson` | video-lesson | 带旁白的视频课程 |
+| `audio_overview` | audio-overview | 音频概览 |
 
 ### 选项
 
 | 选项 | 缩写 | 说明 |
 |------|------|------|
-| `--tool` | `-t` | 启用工具（可多次指定）：`web_search`, `reason`, `brainstorm`, `paper_search`, `geogebra_analysis`, `imagegen`, `videogen`；RAG 通过 `--kb` 挂载 |
+| `--tool` | `-t` | 启用用户开关工具（可多次指定）：`web_search`, `reason`, `brainstorm`, `paper_search`, `zotero_search`, `geogebra_analysis`, `imagegen`, `videogen`；RAG 通过 `--kb` 挂载 |
 | `--kb` | | 挂载知识库 |
 | `--language` | `-l` | 回复语言（默认 `en`） |
 | `--session` | | 继续已有会话 |
@@ -161,11 +180,15 @@ deeptutor chat [options]
 deeptutor serve [--host 0.0.0.0] [--port 8001] [--reload]
 ```
 
-`deeptutor serve` 需要完整 Web/API 依赖；如果你是通过本地 `./packaging/deeptutor-cli` 安装的 CLI-only 包，请先卸载本地 CLI 包并切换到 `pip install -U deeptutor`。
+`deeptutor serve` 需要 server 模块。wheel 安装可在停止服务后运行 `deeptutor module install server`；完整 Web 应用在 1.7.0 发布后使用 `pip install -U "deeptutor[full]"`。模块未发布时，`module install` 需加 `--wheelhouse /path/to/wheels`。源码安装使用 `requirements/full.txt`，支持 `module enable/disable`，不使用 `module install/uninstall`。
 
 ---
 
 ## 资源管理命令
+
+`kb`、`notebook`、`memory` 分别需要 knowledge、notebook、memory 模块；
+`session`、`plugin`、`config` 属于 core。知识库导入还需 parsing；Knowledge Frontier
+需要 knowledge 与 research，同时通过 `--kb` 提供上下文，不能靠 `--tool` 绕过挂载条件。
 
 ### `kb` — 知识库
 
@@ -225,7 +248,7 @@ deeptutor config apply setup.json [--home PATH]    # 无交互应用配置
 ```
 
 让外部 Agent 配置 DeepTutor 时，先阅读根目录的 [SKILL.md](../SKILL.md)，再按
-[Agent Setup 指南](../docs-for-user/AGENT_SETUP.md) 完成安装、配置、启动和验证。
+[Agent Setup 指南](../docs-for-dev/AGENT_SETUP.md) 完成安装、配置、启动和验证。
 `deeptutor init --non-interactive [--home PATH]` 只创建缺失的默认设置，不询问参数、
 不选择模型，也不会覆盖已有设置。CLI-only 可以同时加 `--cli`。
 
@@ -236,11 +259,16 @@ deeptutor config apply setup.json [--home PATH]    # 无交互应用配置
 所有步骤应使用同一个 `DEEPTUTOR_HOME`；根目录 `.env` 不会自动加载。
 
 ```bash
+python -m pip check                               # 检查当前环境的依赖一致性
+deeptutor module list                             # 确认所需模块 installed / enabled / ready
 deeptutor doctor --format json                     # 本地就绪检查
 deeptutor doctor --online --format json            # 发送一次小型 LLM 请求验证连接
+deeptutor run chat "请回复一句简短问候。" --format json  # 验证实际 turn 执行
 ```
 
-在线检查会产生提供方用量，只验证 LLM；需要 RAG 时还要验证 embedding 和小样本文档检索。
+在线检查和聊天验收会产生提供方用量；确认收到有效回复且 turn 成功结束，不能只看配置保存成功。
+需要 RAG 时还要验证 embedding 和小样本文档检索。Web 用户还需确认实际前端 URL
+可访问且后端 `/health/ready` 就绪；CLI-only 无需启动 Web。
 
 ### `provider` — 提供方认证 / 校验
 

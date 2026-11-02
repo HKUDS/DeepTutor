@@ -32,6 +32,17 @@ describe("Explicit Mastery source presentation", () => {
     expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:source-page");
   });
 
+  it("skips pages already drawn at their tool call", async () => {
+    const other = "/api/knowledge-bases/course/source-page?document=lecture.pdf&page=8&digest=abc";
+    render(<MasterySourcePresentation placed={new Set([preview])} events={[event([
+      { title: "Lecture page 7", preview_url: preview, presentation: "teaching" },
+      { title: "Lecture page 8", preview_url: other, presentation: "teaching" },
+    ])]} />);
+    expect(await screen.findByRole("img", { name: "Lecture page 8" })).toBeInTheDocument();
+    expect(screen.queryByRole("img", { name: "Lecture page 7" })).toBeNull();
+    expect(apiFetch).toHaveBeenCalledTimes(1);
+  });
+
   it("never fetches private, denied, legacy, external, or non-source rows", () => {
     const marked = { title: "Page", presentation: "teaching", preview_url: preview };
     const wrongType = { ...event([marked]), type: "tool_result" } as StreamEvent;

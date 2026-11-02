@@ -105,6 +105,9 @@ def _load_book_materials(source_id: str, label: str, budget: int) -> list[TopicM
     the reason — because "this chapter exists but has not been written" is
     something the tutor must be able to say instead of inventing its contents.
     """
+    from deeptutor.modules.catalog import require_module
+
+    require_module("books")
     from deeptutor.book.context import build_book_context
     from deeptutor.book.storage import get_book_storage
 
@@ -199,6 +202,9 @@ def _load_book_materials(source_id: str, label: str, budget: int) -> list[TopicM
 
 def _load_notebook_material(source_id: str, label: str, budget: int) -> TopicMaterial:
     """A notebook stays one material: its records are already record-sized."""
+    from deeptutor.modules.catalog import require_module
+
+    require_module("notebook")
     from deeptutor.services.notebook import get_notebook_manager
 
     records = get_notebook_manager().get_records_by_references(
@@ -345,6 +351,9 @@ def _load_question_bank_material(source_id: str, label: str, budget: int) -> Top
 
 def _load_cowriter_material(source_id: str, label: str, budget: int) -> TopicMaterial:
     """One Co-Writer draft, read as the learner's own writing on the subject."""
+    from deeptutor.modules.catalog import require_module
+
+    require_module("co-writer")
     from deeptutor.co_writer.storage import get_co_writer_storage
 
     document = get_co_writer_storage().load_document(source_id)

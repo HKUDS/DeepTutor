@@ -4,6 +4,8 @@ from datetime import datetime
 from pathlib import Path
 import re
 
+from deeptutor.utils.filenames import safe_filename as safe_filename
+
 
 def detect_image_mime(data: bytes) -> str | None:
     """Detect image MIME type from magic bytes, ignoring file extension."""
@@ -27,16 +29,6 @@ def ensure_dir(path: Path) -> Path:
 def timestamp() -> str:
     """Current ISO timestamp."""
     return datetime.now().isoformat()
-
-
-_UNSAFE_CHARS = re.compile(r'[<>:"/\\|?*]')
-_CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f]")
-
-
-def safe_filename(name: str) -> str:
-    """Replace unsafe path / control characters; ``.`` / ``..`` become empty."""
-    cleaned = _CONTROL_CHARS.sub("", _UNSAFE_CHARS.sub("_", name or "")).strip().strip(".")
-    return cleaned
 
 
 def split_message(content: str, max_len: int = 2000) -> list[str]:

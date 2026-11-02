@@ -1,6 +1,7 @@
 import { renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { useComposerResources } from "@/hooks/useComposerResources";
+import { notifyCreationSaved } from "@/lib/creations";
 import type { ChatWorkspaceRegistration } from "@/lib/workspaces-api";
 
 const api = vi.hoisted(() => ({ fetch: vi.fn() }));
@@ -43,5 +44,33 @@ describe("composer MCP workspace selection", () => {
     await waitFor(() => expect(result.current.mcp).toHaveLength(2));
     rerender({ mcp: [] });
     await waitFor(() => expect(result.current.mcp).toHaveLength(0));
+  });
+
+  it("refetches the catalog when a creation draft is saved", async () => {
+    catalog();
+    const { result } = renderHook(() => useComposerResources("workspace-a", [workspace(null)]));
+    await waitFor(() => expect(result.current.skills).toHaveLength(1));
+
+    api.fetch.mockImplementation(() => Promise.resolve(new Response(JSON.stringify({
+      skills: [{ id: "skill-a", name: "Skill A" }, { id: "skill-b", name: "Skill B" }],
+      mcp: [{ id: "server-a", name: "Server A" }, { id: "server-b", name: "Server B" }],
+      knowledge_bases: [],
+    }))));
+    notifyCreationSaved("skill");
+    await waitFor(() => expect(result.current.skills).toHaveLength(2));
+  });
+
+  it("keeps the existing catalog instead of blanking it when a post-save refetch fails", async () => {
+    catalog();
+    const { result } = renderHook(() => useComposerResources("workspace-a", [workspace(null)]));
+    await waitFor(() => expect(result.current.skills).toHaveLength(1));
+
+    api.fetch.mockImplementation(() => Promise.reject(new Error("network down")));
+    notifyCreationSaved("skill");
+    // A reset-then-refetch would have cleared the catalog to EMPTY while the
+    // failed request was in flight; it must still read the prior values.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(result.current.skills).toHaveLength(1);
+    expect(result.current.mcp).toHaveLength(2);
   });
 });

@@ -36,12 +36,17 @@ def scientific_context(message: str, capability: str = "", enabled_tools=()) -> 
 
 
 def _client() -> ResearchClient:
+    import os
+
     from deeptutor.multi_user.context import get_current_user_or_none
-    from deeptutor.services.github_source.client import _token
 
     user = get_current_user_or_none()
     # A deployment token is never borrowed by another account's research turn.
-    token = _token() if user is None or getattr(user, "role", "") == "admin" else None
+    token = (
+        (os.environ.get("GITHUB_TOKEN") or None)
+        if user is None or getattr(user, "role", "") == "admin"
+        else None
+    )
     return ResearchClient(
         cache_root=get_path_service().get_parse_cache_root() / "research", github_token=token
     )

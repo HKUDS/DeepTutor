@@ -18,11 +18,16 @@ export default function SettingsReturnTracker() {
       return;
     if (pathname.startsWith("/login") || pathname.startsWith("/register"))
       return;
+    // Without the workspace: returning from Settings stays in whichever
+    // workspace the tab is in by then, instead of switching back.
+    const query = new URLSearchParams(window.location.search);
+    query.delete("dt_workspace");
+    query.delete("workspace");
     try {
       browserStorage.writeRaw(
         "session",
         SETTINGS_RETURN_KEY,
-        pathname + window.location.search + window.location.hash,
+        pathname + (query.size ? `?${query}` : "") + window.location.hash,
       );
     } catch {
       /* Storage can be disabled. Returning home remains available. */

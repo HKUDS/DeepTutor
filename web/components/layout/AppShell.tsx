@@ -6,11 +6,13 @@ import {
   useContext,
   useEffect,
   useState,
+  Suspense,
 } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Menu } from "lucide-react";
+import { PageChromeProvider } from "./PageChrome";
 import { useTranslation } from "react-i18next";
 import { useDevice } from "@/hooks/useDevice";
 import type { ReactNode } from "react";
@@ -28,6 +30,9 @@ export function useSidebarDrawer() {
 interface AppShellProps {
   /** The route group's sidebar (workspace or utility). */
   sidebar: ReactNode;
+  /** Bar above the page (the layout variant decides what, if anything). */
+  pageBar?: ReactNode;
+  homeHref?: string;
   children: ReactNode;
 }
 
@@ -47,7 +52,7 @@ interface AppShellProps {
  * the very first server-rendered paint is already correct on a phone. JS only
  * owns the part that is stateful anyway: whether the drawer is open.
  */
-export default function AppShell({ sidebar, children }: AppShellProps) {
+export default function AppShell({ sidebar, pageBar, children, homeHref = "/" }: AppShellProps) {
   const { t } = useTranslation();
   const pathname = usePathname();
   const { isMobile } = useDevice();
@@ -110,25 +115,34 @@ export default function AppShell({ sidebar, children }: AppShellProps) {
             >
               <Menu size={18} strokeWidth={1.7} />
             </button>
-            <Link href="/" className="flex items-center gap-1.5">
+            <Link href={homeHref} className="flex items-center gap-1.5">
               <Image
-                src="/logo.png"
+                src="/brand/color-logo.png"
                 alt="DeepTutor"
                 width={20}
                 height={20}
                 className="h-5 w-5"
               />
               <Image
-                src="/banner.png"
+                src="/brand/color-word.png"
                 alt="DeepTutor"
-                width={897}
-                height={236}
+                width={1200}
+                height={310}
                 className="h-[18px] w-auto"
               />
             </Link>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-hidden">{children}</div>
+          {/* The bar and the page share slots: a page header hands its
+              actions up into the bar (see PageChrome). */}
+          <PageChromeProvider>
+            {pageBar}
+            <div className="min-h-0 flex-1 overflow-hidden">
+              <Suspense fallback={<div aria-busy="true" className="h-full bg-[var(--background)]" />}>
+                {children}
+              </Suspense>
+            </div>
+          </PageChromeProvider>
         </main>
       </div>
     </SidebarDrawerContext.Provider>

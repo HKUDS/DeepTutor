@@ -49,3 +49,23 @@ export function placeMenu(
 
   return { left, top, maxHeight, openUpward };
 }
+
+/**
+ * Placement for a menu dropped from a toolbar button: below it, right edges
+ * aligned, kept inside the window. A page header has the whole height of the
+ * window under it, so this one never flips.
+ */
+export function placeMenuBelow(
+  anchor: DOMRect,
+  menuWidth: number,
+): FloatingMenuPosition {
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+  const left = Math.max(
+    VIEWPORT_MARGIN,
+    Math.min(anchor.right - menuWidth, viewportWidth - menuWidth - VIEWPORT_MARGIN),
+  );
+  const top = anchor.bottom + 6;
+  const maxHeight = Math.max(140, viewportHeight - top - VIEWPORT_MARGIN);
+  return { left, top, maxHeight, openUpward: false };
+}

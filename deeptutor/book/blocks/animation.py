@@ -30,6 +30,9 @@ class AnimationGenerator(BlockGenerator):
     async def _generate(
         self, ctx: BlockContext
     ) -> tuple[dict[str, Any], list[SourceAnchor], dict[str, Any]]:
+        from deeptutor.modules.catalog import require_module
+
+        require_module("renderer-manim")
         if importlib.util.find_spec("manim") is None:
             raise GenerationFailure(
                 "AnimationGenerator requires the optional math-animator extras. "
@@ -80,12 +83,14 @@ class AnimationGenerator(BlockGenerator):
                 output_mode="video",
                 quality=quality if quality in ("low", "medium", "high") else "medium",
                 style_hint=style_hint,
+                enable_visual_review=params.get("enable_visual_review", False),
             )
             pipeline = MathAnimatorPipeline(
                 api_key=primary_api_key(llm_config.api_key),
                 base_url=llm_config.base_url,
                 api_version=llm_config.api_version,
                 language=ctx.language,
+                enable_visual_review=request_config.enable_visual_review,
             )
             turn_id = f"book-{ctx.book_id}-{ctx.block.id}"
             result = await pipeline.run(
@@ -102,6 +107,7 @@ class AnimationGenerator(BlockGenerator):
         render_result = result["render_result"]
         summary_payload = result["summary"]
         analysis = result["analysis"]
+        visual_review = render_result.visual_review
         artifacts = [artifact.model_dump() for artifact in render_result.artifacts]
         primary = next(
             (
@@ -126,6 +132,7 @@ class AnimationGenerator(BlockGenerator):
             {
                 "retry_attempts": render_result.retry_attempts,
                 "quality": request_config.quality,
+                "visual_review": visual_review.model_dump() if visual_review else None,
             },
         )
 

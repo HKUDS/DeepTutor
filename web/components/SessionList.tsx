@@ -57,8 +57,7 @@ export default function SessionList({
   const groupLabels = useMemo<Record<DayGroupKey, string>>(
     () => ({
       today: t("Today"),
-      yesterday: t("Yesterday"),
-      last_7_days: t("Last 7 days"),
+      this_week: t("Within a week"),
       earlier: t("Earlier"),
     }),
     [t],

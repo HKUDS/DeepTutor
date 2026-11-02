@@ -24,14 +24,19 @@ def test_single_capability_contract_serializes_availability() -> None:
 def test_capability_list_preserves_optional_install_hint(
     monkeypatch: pytest.MonkeyPatch, manim_available: bool
 ) -> None:
-    original_find_spec = importlib.util.find_spec
+    from deeptutor.modules import catalog
 
-    def find_spec(name: str, package: str | None = None) -> object | None:
-        if name == "manim":
-            return object() if manim_available else None
-        return original_find_spec(name, package)
+    original_statuses = catalog.module_statuses
 
-    monkeypatch.setattr(importlib.util, "find_spec", find_spec)
+    def statuses():
+        rows = original_statuses()
+        for row in rows:
+            if row["id"] == "renderer-manim":
+                row["ready"] = manim_available
+                row["issues"] = [] if manim_available else ["Install renderer-manim dependencies"]
+        return rows
+
+    monkeypatch.setattr(catalog, "module_statuses", statuses)
     contracts = DeepTutorApp().get_capability_contracts()
     by_name = {contract["name"]: contract for contract in json.loads(json.dumps(contracts))}
 
@@ -42,4 +47,4 @@ def test_capability_list_preserves_optional_install_hint(
     if manim_available:
         assert availability["install_hint"] == ""
     else:
-        assert "math-animator" in availability["install_hint"]
+        assert "renderer-manim" in availability["install_hint"]

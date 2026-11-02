@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="960" viewBox="0 0 1280 960" role="img" aria-labelledby="title desc"><title id="title">DeepTutor · chat capability loop</title><desc id="desc">The chat loop runs inside the durable turn application and streams typed events.</desc><defs><marker id="arrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 Z" fill="#64748b"/></marker></defs><style>text{font-family:Arial,Helvetica,sans-serif;fill:#1e293b}.title{font-size:29px;font-weight:700}.label{font-size:21px;font-weight:600}.body{font-size:18px;fill:#475569}.note{font-size:17px;fill:#64748b}.arrow{fill:none;stroke:#64748b;stroke-width:2;marker-end:url(#arrow)}</style><rect width="1280" height="960" fill="#fff"/>
+<text x="40" y="44" class="title">DeepTutor · chat capability loop</text>
+<text x="40" y="76" class="body">The chat loop runs inside the durable turn application and streams typed events.</text>
+<rect x="360" y="112" width="560" height="85" rx="13" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.5"/>
+<text x="380" y="144" class="label">TurnApplicationService → TurnEngine</text>
+<text x="380" y="174" class="body">ChatOrchestrator selects the chat capability</text>
+<path d="M640 197 V240" class="arrow"/>
+<rect x="40" y="240" width="270" height="245" rx="13" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="60" y="272" class="label">Assembled context</text>
+<text x="60" y="302" class="body">User message and history</text>
+<text x="60" y="329" class="body">Workspace and resources</text>
+<text x="60" y="356" class="body">Memory and persona</text>
+<text x="60" y="383" class="body">Skills and model policy</text>
+<text x="60" y="410" class="body">Mounted tool definitions</text>
+<rect x="365" y="240" width="500" height="90" rx="13" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.5"/>
+<text x="385" y="272" class="label">1  LLM round</text>
+<text x="385" y="302" class="body">Generate text and choose tools or finish</text>
+<path d="M310 300 H365" class="arrow"/>
+<rect x="365" y="400" width="500" height="100" rx="13" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="385" y="432" class="label">2  Invoke selected tools</text>
+<text x="385" y="462" class="body">ToolRegistry → execute → tool results</text>
+<text x="385" y="489" class="body">Tools may request user input.</text>
+<path d="M615 330 V400" class="arrow"/>
+<text x="635" y="375" class="note">tool calls</text>
+<rect x="365" y="560" width="500" height="80" rx="13" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="385" y="592" class="label">3  Observe results</text>
+<text x="385" y="622" class="body">Append observations to the conversation</text>
+<path d="M615 500 V560" class="arrow"/>
+<path d="M365 600 H335 V285 H365" class="arrow"/>
+<text x="225" y="535" class="note">next round</text>
+<rect x="365" y="710" width="500" height="150" rx="13" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.5"/>
+<text x="385" y="742" class="label">Finish · capability result</text>
+<text x="385" y="772" class="body">emit_capability_result() emits result</text>
+<text x="385" y="799" class="body">payload.response + metadata</text>
+<text x="385" y="826" class="body">cost_summary / usage_summary when available</text>
+<path d="M865 285 H900 V765 H865" class="arrow"/>
+<text x="745" y="690" class="note">final answer</text>
+<rect x="960" y="240" width="280" height="400" rx="13" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="980" y="272" class="label">Per-turn StreamBus</text>
+<text x="980" y="302" class="body">thinking · content</text>
+<text x="980" y="329" class="body">tool_call · tool_result</text>
+<text x="980" y="356" class="body">observation</text>
+<text x="980" y="383" class="body">wait_for_input</text>
+<text x="980" y="410" class="body">result · done</text>
+<text x="980" y="437" class="body"></text>
+<text x="980" y="464" class="body">Other protocol events:</text>
+<text x="980" y="491" class="body">stages, progress, sources,</text>
+<text x="980" y="518" class="body">session metadata, errors</text>
+<path d="M865 445 H960" class="arrow"/>
+<path d="M865 805 H925 V610 H960" class="arrow"/>
+<rect x="960" y="710" width="280" height="150" rx="13" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="980" y="742" class="label">Persist and replay</text>
+<text x="980" y="772" class="body">Turn event journal</text>
+<text x="980" y="799" class="body">Consumer cursor / sequence</text>
+<text x="980" y="826" class="body">Web UI · CLI · SDK</text>
+<path d="M1100 640 V710" class="arrow"/>
+<text x="40" y="915" class="note">Result data such as response and cost_summary are payload fields, not StreamEventType values.</text>
+<text x="40" y="942" class="note">The diagram groups event families; core/stream.py is the authoritative protocol enumeration.</text>
+</svg>

@@ -91,3 +91,18 @@ def test_logged_error_text_is_bounded() -> None:
     assert bounded.startswith("x" * 50)
     assert len(bounded) < _MAX_LOGGED_ERROR_CHARS + 40
     assert bounded.endswith("(+500 chars)")
+
+
+def test_glm_text_only_content_rejection_is_recognized() -> None:
+    for path in ("messages.content.type", "messages[0].content[1].type"):
+        assert is_image_input_unsupported(ValueError(f"{path} 参数非法，取值范围 ['text']"))
+
+
+def test_glm_unrelated_parameter_ranges_do_not_trigger_image_retry() -> None:
+    for message in (
+        "temperature 参数非法，取值范围 [0, 1]",
+        "content.type 参数非法，取值范围 ['text']",
+        "messages.content.type 参数非法，取值范围 ['text', 'audio']",
+        "messages.content.type is unavailable",
+    ):
+        assert not is_image_input_unsupported(ValueError(message))

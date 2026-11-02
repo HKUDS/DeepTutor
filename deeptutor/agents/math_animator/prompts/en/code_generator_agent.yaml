@@ -34,6 +34,20 @@ generate_system: |
   - If the user gives an explicit target duration (for example, 10 seconds), this requirement has highest priority: explicitly budget enough `run_time` and `self.wait(...)` in code so total runtime stays close to target (recommended >= 90% of target).
   - Assume local LaTeX may be unavailable. By default, do NOT use `Tex`, `MathTex`, `SingleStringMathTex`, `MarkupText`, or any LaTeX-dependent rendering path.
   - Prefer non-LaTeX math presentation with `Text`, `DecimalNumber`, tables, labels, and geometric visualization; avoid requiring a local `latex` executable.
+  - Layout (an automatic check measures every mobject after each play/wait and sends collisions back for repair):
+    - The frame is x -7.1..7.1, y -4..4. Keep everything inside x -6.6..6.6, y -3.6..3.6.
+    - No text may overlap other text, and no line, curve, axis or arrow may pass through a label or formula.
+    - Place labels with `next_to(target, direction, buff=0.25)` or more; group related items with `VGroup(...).arrange(DOWN, buff=0.3)`.
+    - Give the title its own row (`to_edge(UP)`) and keep the working area below it; never stack a new formula on top of an old one.
+    - Before adding a new beat, FadeOut or `Transform` what it replaces; do not let the screen accumulate.
+    - Scale long text or formulas down (`.scale_to_fit_width(12)` at most) instead of letting them run off the frame.
+  - Manim Community API (the renderer rejects the old names):
+    - Plot with `axes.plot(lambda x: ..., x_range=[a, b])`, place points with `axes.c2p(x, y)`; `get_graph`, `ShowCreation`, `TextMobject`, `TexMobject` do not exist.
+    - Draw shapes with `Create`, text with `Write` or `FadeIn`. `Transform(a, b)` keeps `a` on screen as the morphed object; use `ReplacementTransform` when the next steps refer to `b`.
+    - Live values: `t = ValueTracker(0)`, `always_redraw(lambda: ...)` or `num.add_updater(lambda m: m.set_value(t.get_value()))`, animate with `self.play(t.animate.set_value(3))`. Every name used inside an updater lambda must already exist when the lambda is created.
+    - Dashed lines: `DashedLine(a, b)` or `DashedVMobject(mob)`. Emphasis: `SurroundingRectangle`, `Indicate`, `Circumscribe`.
+    - Text size is `font_size=` (not `size=`).
+    - Clear the screen with `self.play(*[FadeOut(m) for m in self.mobjects])`; remove updaters (`m.clear_updaters()`) before fading objects that have them.
   - Do NOT use the `stroke_dash_pattern` parameter (not supported in Manim v0.20.1); use alternative approaches for dashed lines.
   - Do NOT use `self.save_state()` (not supported in MovingCameraScene); use alternative state management.
   - Camera movement rule: only use `self.camera.frame` when the scene class inherits `MovingCameraScene`. If the class is plain `Scene`, `self.camera.frame` must not appear.
@@ -67,6 +81,7 @@ retry_system: |
   If the original animation is obviously too short, you may also add the necessary waits, extra beats, or ending hold while repairing.
   If the user gave an explicit duration target, the repaired code should remain close to that target instead of becoming shorter.
   Also avoid introducing `Tex` / `MathTex` / `MarkupText` by default unless LaTeX is explicitly required and available.
+  If the error is a layout check, move, scale or fade the named mobjects; keep every beat and its timing.
   If the error mentions `stroke_dash_pattern`, remove that parameter immediately.
   If the error mentions `save_state`, remove that method call immediately.
   If the error mentions `self.camera.frame`, repair by either:

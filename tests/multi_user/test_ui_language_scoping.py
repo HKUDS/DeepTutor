@@ -77,6 +77,12 @@ def test_response_language_normalizes_supported_labels_and_variants():
     assert resolve_languages({"response_language": "zh-TW"})["response_language"] == "zh-tw"
     assert resolve_languages({"response_language": "ms-MY"})["response_language"] == "ms"
     assert resolve_languages({"response_language": "Malay"})["response_language"] == "ms"
+    assert resolve_languages({"response_language": "vi-VN"})["response_language"] == "vi"
+    assert resolve_languages({"response_language": "Vietnamese"})["response_language"] == "vi"
+    assert resolve_languages({"language": "vi", "response_language": "en"}) == {
+        "language": "vi",
+        "response_language": "en",
+    }
 
 
 def test_response_language_falls_back_when_unsupported():
@@ -84,3 +90,27 @@ def test_response_language_falls_back_when_unsupported():
         "language": "zh",
         "response_language": "zh",
     }
+
+
+def test_learning_display_uses_existing_user_and_shared_admin_scopes(mu_isolated_root, as_user):
+    """Normal users are isolated; admin identities retain the existing shared scope."""
+    from deeptutor.api.routers.settings import load_ui_settings
+    from deeptutor.services.settings.interface_settings import update_ui_settings
+
+    with as_user("u_alice"):
+        update_ui_settings({"content_font_scale": 150, "content_line_spacing": "relaxed"})
+    with as_user("u_bob"):
+        assert get_ui_settings()["content_font_scale"] == 100
+        update_ui_settings({"content_font_scale": 90, "content_line_spacing": "compact"})
+    with as_user("u_admin", role="admin"):
+        update_ui_settings({"content_font_scale": 125, "content_line_spacing": "normal"})
+    for uid, role, scale, spacing in [
+        ("u_alice", "user", 150, "relaxed"),
+        ("u_bob", "user", 90, "compact"),
+        ("u_admin", "admin", 125, "normal"),
+        ("u_other_admin", "admin", 125, "normal"),
+    ]:
+        with as_user(uid, role=role):
+            for settings in (get_ui_settings(), load_ui_settings()):
+                assert settings["content_font_scale"] == scale
+                assert settings["content_line_spacing"] == spacing

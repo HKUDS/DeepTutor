@@ -21,12 +21,14 @@ const fixtures = vi.hoisted(() => ({
   migrate: vi.fn(),
   snapshot: vi.fn(),
   navigateWorkspace: vi.fn(),
+  browse: vi.fn(),
 }))
 vi.mock('@/lib/workspace-scope', () => ({ selectWorkspace: fixtures.navigateWorkspace }))
 vi.mock('@/features/chat/ChatStateAdapter', () => ({
   useChatStateAdapter: () => ({ state: fixtures.state, configureSession: fixtures.configure }),
 }))
 vi.mock('@/lib/workspaces-api', () => ({
+  browseServerFolders: fixtures.browse,
   inheritedWorkspaceResources: () => ({ skills: null, mcp: null, knowledge_bases: null }),
   getWorkspaceResources: async () => ({ skills: [], mcp: [], knowledge_bases: [] }),
   listWorkspaces: fixtures.list,
@@ -69,6 +71,18 @@ beforeEach(() => {
   fixtures.move.mockResolvedValue({})
 })
 afterEach(cleanup)
+
+it('selects an existing server directory without renaming or rewriting its resources', async () => {
+  fixtures.browse.mockResolvedValue({ roots: [{ name: 'materials', path: '/materials' }],
+    path: workspace.path, name: 'algebra', parent: '/materials', folders: [], truncated: false })
+  render(<BindingHarness />)
+  openPicker()
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Choose a server folder' }))
+  await screen.findByText('No subfolders')
+  fireEvent.click(screen.getByRole('button', { name: 'Select this folder' }))
+  await waitFor(() => expect(fixtures.navigateWorkspace).toHaveBeenCalledWith('ws_a', '/chat', expect.anything()))
+  expect(fixtures.save).not.toHaveBeenCalled()
+})
 
 it('binds a draft and preserves omitted versus explicit null on the wire', async () => {
   render(<BindingHarness />)

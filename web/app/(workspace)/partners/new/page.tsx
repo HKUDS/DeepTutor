@@ -33,6 +33,7 @@ import PartnerAvatar from "@/components/partners/PartnerAvatar";
 import FaceEditor, { type FaceValue } from "@/components/partners/FaceEditor";
 import PartnerModelPicker from "@/components/partners/PartnerModelPicker";
 import PartnerModelSelect from "@/components/partners/PartnerModelSelect";
+import PartnerReplyLanguageSelect from "@/components/partners/PartnerReplyLanguageSelect";
 import SoulPicker from "@/components/partners/SoulPicker";
 import ToolPicker from "@/components/partners/ToolPicker";
 
@@ -337,16 +338,11 @@ export default function NewPartnerPage() {
                 <label className="mb-1.5 block text-[13px] font-medium">
                   {t("Reply language")}
                 </label>
-                <select
+                <PartnerReplyLanguageSelect
                   value={language}
-                  onChange={(e) => setLanguage(e.target.value)}
+                  onChange={setLanguage}
                   className="w-48 rounded-xl border border-[var(--border)] bg-transparent px-3 py-2 text-[14px] outline-none transition-colors focus:border-[var(--ring)]"
-                >
-                  <option value="">{t("Auto (English)")}</option>
-                  <option value="en">English</option>
-                  <option value="zh">中文</option>
-                  <option value="uk">Українська</option>
-                </select>
+                />
               </div>
             </div>
           )}

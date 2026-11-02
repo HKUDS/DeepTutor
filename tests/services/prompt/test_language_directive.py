@@ -65,7 +65,12 @@ def test_fixed_session_selector_disables_conversational_override() -> None:
 
 @pytest.mark.parametrize(
     ("language", "label"),
-    [("fr", "Français"), ("uk", "Українська"), ("ms", "Bahasa Melayu")],
+    [
+        ("fr", "Français"),
+        ("uk", "Українська"),
+        ("ms", "Bahasa Melayu"),
+        ("vi", "Tiếng Việt"),
+    ],
 )
 def test_loop_preserves_requested_output_language_with_english_prompt_assets(
     language: str, label: str

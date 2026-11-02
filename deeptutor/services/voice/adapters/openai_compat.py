@@ -14,6 +14,7 @@ import base64
 import binascii
 import json
 import logging
+import math
 from typing import Any
 
 import httpx
@@ -466,7 +467,9 @@ def _parse_cues(resp: httpx.Response) -> list[TranscriptCue]:
         try:
             start = float(row.get("start", 0.0))
             end = float(row.get("end", start))
-        except (TypeError, ValueError):
+        except (OverflowError, TypeError, ValueError):
+            continue
+        if not (math.isfinite(start) and math.isfinite(end)):
             continue
         if start < 0 or end < start:
             continue

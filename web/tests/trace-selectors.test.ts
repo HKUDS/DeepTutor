@@ -5,7 +5,6 @@ import {
   detectStreamingMode,
   groupTraceEvents,
   hasRenderableCallTrace,
-  isRetractedRound,
   isTracePending,
   selectTraceDisplayItems,
 } from "../features/chat/trace/selectors";
@@ -63,7 +62,7 @@ test("final answer and absorbed groups stay out of progressive trace disclosure"
   assert.equal(hasRenderableCallTrace(events), false);
 });
 
-test("only a retracted round's text becomes trace material", () => {
+test("published answer text never becomes trace material", () => {
   // Chat-loop text lives in the answer bubble, so showing it in the trace as
   // well would print the same sentence twice. The exception is a round whose
   // text was taken back out — the trace is then the only place left for it.
@@ -95,10 +94,8 @@ test("only a retracted round's text becomes trace material", () => {
       answer_visible: false,
     }),
   ];
-  assert.equal(isRetractedRound(commentary), false);
   assert.equal(hasRenderableCallTrace(commentary), false);
-  assert.equal(isRetractedRound(retracted), true);
-  assert.equal(hasRenderableCallTrace(retracted), true);
+  assert.equal(hasRenderableCallTrace(retracted), false);
 });
 
 test("adjacent react rounds and their trailing trace collapse into one display step", () => {

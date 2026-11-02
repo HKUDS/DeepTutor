@@ -28,6 +28,14 @@ from deeptutor.utils.document_images import (
     image_index_from_name,
     reading_image_budget,
 )
+from tests.docx_math_fixture import (
+    EXPECTED_CHAIN_PARAGRAPHS,
+    EXPECTED_EQUATION_PARAGRAPHS,
+    _fraction,
+    equation_chain_docx_bytes,
+    native_equation_docx_bytes,
+    unsupported_equation_docx_bytes,
+)
 
 
 def _png_bytes(size: tuple[int, int] = (400, 300)) -> bytes:
@@ -133,6 +141,46 @@ def test_docx_rich_repeats_marker_for_reused_target(png: bytes) -> None:
     assert len(rich.collection.images) == 1
     markers = find_markers("\n".join(rich.paragraphs))
     assert len(markers) == 2
+
+
+def test_docx_rich_preserves_native_word_equation_structure() -> None:
+    rich = extract_docx_rich(native_equation_docx_bytes())
+
+    assert rich.paragraphs == EXPECTED_EQUATION_PARAGRAPHS
+
+
+def test_docx_rich_marks_unsupported_word_equation_instead_of_flattening() -> None:
+    rich = extract_docx_rich(unsupported_equation_docx_bytes())
+
+    assert rich.paragraphs == ("Unsupported: [unsupported equation: 12]",)
+
+
+def test_docx_rich_preserves_inline_display_delimiter_and_table_math() -> None:
+    rich = extract_docx_rich(equation_chain_docx_bytes())
+
+    assert rich.paragraphs == EXPECTED_CHAIN_PARAGRAPHS
+
+
+def test_docx_rich_keeps_text_equation_and_image_marker_order(png: bytes) -> None:
+    from docx.oxml import OxmlElement
+
+    doc = DocxDocument()
+    doc.add_paragraph("Before")
+    equation_paragraph = doc.add_paragraph("Equation: ")
+    math = OxmlElement("m:oMath")
+    math.append(_fraction("1", "2"))
+    equation_paragraph._p.append(math)
+    doc.add_picture(io.BytesIO(png), width=Inches(2))
+    doc.add_paragraph("After")
+    buffer = io.BytesIO()
+    doc.save(buffer)
+
+    rich = extract_docx_rich(buffer.getvalue())
+    text = "\n".join(rich.paragraphs)
+    marker = build_marker(rich.collection.images[0])
+
+    assert text.index("Before") < text.index("Equation: 1/2")
+    assert text.index("Equation: 1/2") < text.index(marker) < text.index("After")
 
 
 # ---------------------------------------------------------------------------
@@ -359,3 +407,40 @@ def test_scanned_page_rides_bounded_but_reads_whole(tmp_path) -> None:
         assert max(fitted.size) <= MAX_INLINE_IMAGE_EDGE
     with PILImage.open(io.BytesIO(stored[0].data)) as whole:
         assert max(whole.size) > MAX_INLINE_IMAGE_EDGE
+
+
+def test_nested_math_scripts_preserve_grouping():
+    from xml.etree import ElementTree as ET
+
+    from deeptutor.utils.document_images import MATH_NS, render_docx_text
+
+    inner = "<sSup><e><r><t>x</t></r></e><sup><r><t>a</t></r></sup></sSup>"
+    root = ET.fromstring(f'<sSup xmlns="{MATH_NS}"><e>{inner}</e><sup><r><t>b</t></r></sup></sSup>')
+    assert render_docx_text(root) == "(x^a)^b"
+
+
+def test_empty_math_delimiter_is_not_replaced_with_a_default():
+    from xml.etree import ElementTree as ET
+
+    from deeptutor.utils.document_images import MATH_NS, render_docx_text
+
+    root = ET.fromstring(
+        f'<d xmlns="{MATH_NS}" xmlns:m="{MATH_NS}"><dPr><begChr m:val="["/><endChr m:val=""/></dPr><e><r><t>x</t></r></e></d>'
+    )
+    assert render_docx_text(root) == "[x"
+
+
+@pytest.mark.parametrize("operand", ["sqrt(x) + sqrt(y)", "[x] + [y]"])
+def test_math_compound_delimited_operands_remain_grouped(operand):
+    from xml.etree import ElementTree as ET
+
+    from deeptutor.utils.document_images import MATH_NS, render_docx_text
+
+    node = ET.fromstring(
+        f'<f xmlns="{MATH_NS}"><num><r><t>1</t></r></num><den><r><t>{operand}</t></r></den></f>'
+    )
+    assert render_docx_text(node) == f"1/({operand})"
+    node = ET.fromstring(
+        f'<sSup xmlns="{MATH_NS}"><e><r><t>z</t></r></e><sup><r><t>{operand}</t></r></sup></sSup>'
+    )
+    assert render_docx_text(node) == f"z^({operand})"

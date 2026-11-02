@@ -2,24 +2,22 @@
 
 from __future__ import annotations
 
+from importlib import import_module
 from pathlib import Path
 import sys
 
 import typer
 
 from deeptutor.logging import configure_logging
+from deeptutor.modules.catalog import manifests, module_enabled
 from deeptutor.runtime.mode import RunMode, set_mode
 
-from .book import register as register_book
 from .chat import register as register_chat
 from .common import build_turn_request, console, maybe_run
 from .config_cmd import register as register_config
 from .doctor import register as register_doctor
 from .init_cmd import register as register_init
-from .kb import register as register_kb
-from .memory import register as register_memory
-from .notebook import register as register_notebook
-from .partner import register as register_partner
+from .module import register as register_module
 from .plugin import register as register_plugin
 from .provider_cmd import register as register_provider
 from .session_cmd import register as register_session
@@ -36,47 +34,44 @@ app = typer.Typer(
     add_completion=False,
 )
 
-partner_app = typer.Typer(help="Manage partners (IM-connected companions).")
 chat_app = typer.Typer(help="Interactive chat REPL.")
-kb_app = typer.Typer(help="Manage knowledge bases.")
 skill_app = typer.Typer(help="Manage skills and install from hubs (ClawHub, …).")
-memory_app = typer.Typer(help="View and manage lightweight memory.")
 plugin_app = typer.Typer(help="List plugins.")
 config_app = typer.Typer(help="Inspect and apply configuration.")
 session_app = typer.Typer(help="Manage shared sessions.")
-notebook_app = typer.Typer(help="Manage notebooks and imported markdown records.")
 provider_app = typer.Typer(help="Manage provider OAuth login.")
-book_app = typer.Typer(help="Manage interactive Books (BookEngine).")
 workspace_app = typer.Typer(help="Manage the user content workspace.")
 
-app.add_typer(partner_app, name="partner")
 app.add_typer(chat_app, name="chat")
-app.add_typer(kb_app, name="kb")
 app.add_typer(skill_app, name="skill")
 app.add_typer(skill_app, name="skills")  # alias: `deeptutor skills …`
-app.add_typer(memory_app, name="memory")
 app.add_typer(plugin_app, name="plugin")
 app.add_typer(config_app, name="config")
 app.add_typer(session_app, name="session")
-app.add_typer(notebook_app, name="notebook")
 app.add_typer(provider_app, name="provider")
-app.add_typer(book_app, name="book")
 app.add_typer(workspace_app, name="workspace")
 
-register_partner(partner_app)
 register_chat(chat_app)
-register_kb(kb_app)
 register_skill(skill_app)
-register_memory(memory_app)
 register_plugin(plugin_app)
 register_config(config_app)
 register_session(session_app)
-register_notebook(notebook_app)
 register_provider(provider_app)
-register_book(book_app)
 register_workspace(workspace_app)
+for owner, module in manifests().items():
+    if not module_enabled(owner):
+        continue
+    for command in module["commands"]:
+        group = typer.Typer(help=command["help"])
+        module_path, attribute = command["register"].split(":", 1)
+        getattr(import_module(module_path), attribute)(group)
+        app.add_typer(group, name=command["name"])
+
 register_doctor(app)
 register_init(app)
+module_app = typer.Typer(help="Install, remove and inspect optional modules.")
+app.add_typer(module_app, name="module")
+register_module(module_app)
 
 
 @app.command("run")
@@ -145,6 +140,10 @@ def start(
     ),
 ) -> None:
     """Launch backend + frontend together. Source installs default to production."""
+    from deeptutor.modules.catalog import require_module
+
+    require_module("server")
+    require_module("web")
     from deeptutor.runtime.launcher import start as start_web
 
     start_web(home=home, dev=dev, detach=detach, open_browser=open_browser)
@@ -171,6 +170,9 @@ def serve(
     import asyncio
     import sys
 
+    from deeptutor.modules.catalog import require_module
+
+    require_module("server")
     set_mode(RunMode.SERVER)
     if port is None:
         from deeptutor.services.setup import get_backend_port
@@ -188,7 +190,7 @@ def serve(
     except ImportError:
         console.print(
             "[bold red]Error:[/] API server dependencies not installed.\n"
-            "Run: pip install -U deeptutor"
+            "Run: deeptutor module install server"
         )
         raise typer.Exit(code=1)
 
@@ -217,6 +219,7 @@ def serve(
         proxy_headers=False,
         ws_max_size=get_ws_max_size(),
         timeout_keep_alive=HTTP_KEEP_ALIVE_TIMEOUT,
+        timeout_graceful_shutdown=1,
     )
 
 

@@ -8,6 +8,8 @@ import re
 _ENTRY_START_RE = re.compile(r"@([A-Za-z][A-Za-z0-9_+.-]*)\s*([({])")
 _IDENTIFIER_RE = re.compile(r"[A-Za-z][A-Za-z0-9_.+:-]*")
 _WHITESPACE_RE = re.compile(r"\s+")
+_NAME_SEPARATOR_RE = re.compile(r"\s+and\s+", re.IGNORECASE)
+_NAME_PART_SEPARATOR_RE = re.compile(r",")
 
 _DELIMITERS = {"{": "}", "(": ")"}
 _METADATA_ENTRY_TYPES = {"comment", "string", "preamble"}
@@ -53,13 +55,39 @@ def _clean_value(value: str) -> str:
     return _WHITESPACE_RE.sub(" ", cleaned).strip()
 
 
+def _split_top_level(value: str, separator: re.Pattern[str]) -> list[str]:
+    """Split on separator matches outside braces; braces protect a group."""
+    parts: list[str] = []
+    depth = 0
+    start = index = 0
+    while index < len(value):
+        char = value[index]
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+        elif depth == 0:
+            match = separator.match(value, index)
+            if match is not None:
+                parts.append(value[start:index])
+                start = index = match.end()
+                continue
+        index += 1
+    parts.append(value[start:])
+    return parts
+
+
 def _format_authors(value: str) -> str:
     names: list[str] = []
-    for raw_name in _clean_value(value).split(" and "):
-        name = raw_name.strip()
-        if "," in name:
-            last, first = (part.strip() for part in name.split(",", 1))
-            name = f"{first} {last}".strip()
+    for raw_name in _split_top_level(value, _NAME_SEPARATOR_RE):
+        parts = [part.strip() for part in _split_top_level(raw_name, _NAME_PART_SEPARATOR_RE)]
+        if len(parts) == 2:
+            # "Last, First"
+            parts = [parts[1], parts[0]]
+        elif len(parts) > 2:
+            # "Last, Jr, First"
+            parts = [", ".join(parts[2:]), parts[0], parts[1]]
+        name = _clean_value(" ".join(parts))
         if name:
             names.append(name)
     return ", ".join(names)
@@ -79,17 +107,16 @@ def _format_entry(entry: _Entry, index: int) -> str:
     entry_type = _TYPE_LABELS.get(
         entry.entry_type, entry.entry_type.replace("_", " ").title() or "Reference"
     )
-    title = entry.fields.get("title") or "Untitled"
+    title = _clean_value(entry.fields.get("title", "")) or "Untitled"
     lines = [f"## {index}. {title}", "", f"**Type:** {entry_type}"]
     citation_key = entry.key.replace("`", "'") or "unknown"
     lines.append(f"**Citation key:** `{citation_key}`")
 
     for field in _DISPLAY_FIELDS:
         value = entry.fields.get(field, "")
+        value = _format_authors(value) if field == "author" else _clean_value(value)
         if not value:
             continue
-        if field == "author":
-            value = _format_authors(value)
         lines.append(f"**{_field_label(field)}:** {value}")
     lines.append("")
     return "\n".join(lines)
@@ -126,13 +153,19 @@ def _read_quoted(text: str, index: int) -> tuple[str, int]:
     start = index + 1
     index += 1
     escaped = False
+    # A quote inside braces is literal text, as in "The {"}Best{"} Paper".
+    depth = 0
     while index < len(text):
         char = text[index]
         if escaped:
             escaped = False
         elif char == "\\":
             escaped = True
-        elif char == '"':
+        elif char == "{":
+            depth += 1
+        elif char == "}" and depth > 0:
+            depth -= 1
+        elif char == '"' and depth == 0:
             return text[start:index], index + 1
         index += 1
     raise ValueError("unterminated quoted BibTeX value")
@@ -178,7 +211,8 @@ def _read_fields(body: str) -> dict[str, str]:
                 continue
             break
 
-        fields[name] = _clean_value("".join(parts))
+        # Braces are kept here: in author lists they protect "and" and commas.
+        fields[name] = "".join(parts)
         index = _skip_whitespace(body, index)
         if index < len(body) and body[index] == ",":
             index += 1
@@ -198,6 +232,7 @@ def _scan_entry(text: str, match: re.Match[str]) -> tuple[_Entry | None, int] | 
     # braces it is literal text, as in the umlaut accent ``{\"u}``.
     top_level_depth = brace_depth
     quoted = False
+    quoted_depth = 0
     escaped = False
 
     while index < len(text):
@@ -207,19 +242,24 @@ def _scan_entry(text: str, match: re.Match[str]) -> tuple[_Entry | None, int] | 
                 escaped = False
             elif char == "\\":
                 escaped = True
-            elif char == '"':
+            elif char == "{":
+                quoted_depth += 1
+            elif char == "}" and quoted_depth > 0:
+                quoted_depth -= 1
+            elif char == '"' and quoted_depth == 0:
                 quoted = False
             index += 1
             continue
         if char == '"' and brace_depth == top_level_depth:
             quoted = True
+            quoted_depth = 0
         elif char == "{":
             brace_depth += 1
         elif char == "}":
             brace_depth -= 1
-        elif char == "(":
+        elif opener == "(" and brace_depth == 0 and char == "(":
             paren_depth += 1
-        elif char == ")":
+        elif opener == "(" and brace_depth == 0 and char == ")":
             paren_depth -= 1
 
         if opener == "{" and brace_depth == 0:

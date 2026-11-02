@@ -24,7 +24,12 @@ vi.mock("next/dynamic", async () => {
       openWebTab: (url) => fixture.calls.push(url),
       openMarkdownNoteTab: () => fixture.calls.push("markdown"),
       openQuizFollowupTab: () => fixture.calls.push("quiz"),
-      openSelectionTutorTab: () => fixture.calls.push("selection"),
+      openSideChatTab: () => fixture.calls.push("side-chat"),
+      openSideChatThread: (thread) => fixture.calls.push(`thread:${thread.session_id}`),
+      closeSideChatThread: (threadSessionId) =>
+        fixture.calls.push(`close-thread:${threadSessionId}`),
+      clearSideChatSource: (threadSessionId, sourceMessageId) =>
+        fixture.calls.push(`clear-source:${threadSessionId}:${String(sourceMessageId)}`),
       openGeogebraTab: () => fixture.calls.push("geogebra"),
       openSubagentTab: () => fixture.calls.push("subagent"),
       focusActivityHome: () => fixture.calls.push("activity"),

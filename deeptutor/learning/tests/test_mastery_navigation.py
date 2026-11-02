@@ -166,6 +166,26 @@ def test_a_lesson_resolves_by_id_name_fragment_or_number(store, reference, expec
     assert module is not None and module["module_id"] == expected
 
 
+def test_a_lesson_number_resolves_against_zero_based_order() -> None:
+    # Production assigns ``order`` 0-based (topic_generation uses
+    # ``order=len(modules)``; service/outline_revision use ``enumerate`` from 0),
+    # while a learner's "lesson N" is 1-based. The order-equality lookup must
+    # account for that, or "lesson 1" lands on the second lesson. Uses a literal
+    # topic shaped like the stored one, with 0-based order.
+    topic = {
+        "modules": [
+            {"module_id": "m1", "name": "Descriptive statistics", "order": 0},
+            {"module_id": "m2", "name": "Sampling distributions", "order": 1},
+            {"module_id": "m3", "name": "Hypothesis testing", "order": 2},
+        ]
+    }
+
+    assert navigation.resolve_module(topic, "lesson 1")["module_id"] == "m1"
+    assert navigation.resolve_module(topic, "1")["module_id"] == "m1"
+    assert navigation.resolve_module(topic, "第一课")["module_id"] == "m1"
+    assert navigation.resolve_module(topic, "lesson 3")["module_id"] == "m3"
+
+
 def test_an_unknown_lesson_resolves_to_nothing(store):
     _create_topic()
     topic = navigation.find_topic("stats_101")

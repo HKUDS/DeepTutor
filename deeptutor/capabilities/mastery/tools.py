@@ -1263,6 +1263,10 @@ class MasteryQuizTool(BaseTool):
             return _no_built_path_result("mastery_quiz")
         pending_action = kwargs.get("pending_action", "retain")
         resume_id = kwargs.get("resume_question_id")
+        # Model adapters may include blank optional strings in tool arguments.
+        # A blank ID is absent; a real ID still requires the resume action.
+        if isinstance(resume_id, str) and not resume_id.strip():
+            resume_id = None
         if pending_action == "resume":
             contract_fields = {
                 "knowledge_point_id",
@@ -1304,6 +1308,9 @@ class MasteryQuizTool(BaseTool):
                     success=False,
                 )
         raw_questions = kwargs.get("questions")
+        # An empty optional group carries no contracts; use the single question.
+        if isinstance(raw_questions, list) and not raw_questions:
+            raw_questions = None
         if pending_action == "resume":
             pending, echoed_options = None, False
         elif raw_questions is None:
@@ -1650,7 +1657,7 @@ class MasteryGradeTool(BaseTool):
         path_id = _resolve_path_id(kwargs)
         if not path_id:
             return _no_path_result()
-        from deeptutor.learning.scheduler import SpacedRepetitionScheduler
+        from deeptutor.learning.review_strategy import scheduler_for_path
 
         answer = str(
             kwargs.get("_learner_message")
@@ -1658,7 +1665,8 @@ class MasteryGradeTool(BaseTool):
             else kwargs.get("answer") or ""
         )
         service = _new_service()
-        scheduler = SpacedRepetitionScheduler()
+        # Scheduling follows the path's bound review strategy (#1908).
+        scheduler = scheduler_for_path(service.store, path_id)
         submitted_question_id = str(kwargs.get("question_id") or "").strip()
         interaction = (
             service.store.get_interaction(path_id, submitted_question_id)
@@ -1985,7 +1993,6 @@ class MasteryAssessTool(BaseTool):
         path_id = _resolve_path_id(kwargs)
         if not path_id:
             return _no_path_result()
-        from deeptutor.learning.scheduler import SpacedRepetitionScheduler
 
         kp_id = str(kwargs.get("knowledge_point_id") or "").strip()
         if not kp_id:
@@ -2013,6 +2020,7 @@ class MasteryAssessTool(BaseTool):
                 ),
                 success=False,
             )
+        from deeptutor.learning.review_strategy import scheduler_for_path
         from deeptutor.learning.service import MasteryInteractionError
 
         try:
@@ -2020,7 +2028,7 @@ class MasteryAssessTool(BaseTool):
                 path_id,
                 kp_id,
                 learner_answer=learner_answer,
-                scheduler=SpacedRepetitionScheduler(),
+                scheduler=scheduler_for_path(service.store, path_id),
                 session_id=_resolve_session_id(kwargs),
                 turn_id=_resolve_turn_id(kwargs),
             )
@@ -2152,7 +2160,7 @@ class MasteryRepairQuestionTool(BaseTool):
         path_id = _resolve_path_id(kwargs)
         if not path_id:
             return _no_path_result()
-        from deeptutor.learning.scheduler import SpacedRepetitionScheduler
+        from deeptutor.learning.review_strategy import scheduler_for_path
         from deeptutor.learning.service import MasteryInteractionError
 
         service = _new_service()
@@ -2165,7 +2173,7 @@ class MasteryRepairQuestionTool(BaseTool):
                 action=str(kwargs.get("action") or ""),
                 expected_answer=str(kwargs.get("expected_answer") or ""),
                 reason=str(kwargs.get("reason") or ""),
-                scheduler=SpacedRepetitionScheduler(),
+                scheduler=scheduler_for_path(service.store, path_id),
                 session_id=_resolve_session_id(kwargs),
                 turn_id=_resolve_turn_id(kwargs),
             )
@@ -2851,6 +2859,8 @@ class MasteryReviseTool(BaseTool):
                     type="integer",
                     description="Commit only: the identifier returned by the reviewed preview.",
                     required=False,
+                    nullable=True,
+                    minimum=1,
                 ),
                 ToolParameter(
                     name="module_order",
@@ -2858,10 +2868,12 @@ class MasteryReviseTool(BaseTool):
                     items={"type": "string"},
                     description=(
                         "Preview only: complete requested sequence of existing module IDs. "
-                        "Omit to keep order unchanged; may be used without content edits. "
+                        "Leave it out or empty to keep the order unchanged; may be used "
+                        "without content edits. "
                         "Does not rename modules, waive prerequisites, or move the current objective."
                     ),
                     required=False,
+                    nullable=True,
                 ),
                 ToolParameter(
                     name="module_id",
@@ -2872,6 +2884,7 @@ class MasteryReviseTool(BaseTool):
                         "coordinated multi-module adjustment use 'modules'."
                     ),
                     required=False,
+                    nullable=True,
                 ),
                 ToolParameter(
                     name="rewrite",
@@ -2882,6 +2895,7 @@ class MasteryReviseTool(BaseTool):
                         "value when omitted."
                     ),
                     required=False,
+                    nullable=True,
                     items=revise_items,
                 ),
                 ToolParameter(
@@ -2889,6 +2903,7 @@ class MasteryReviseTool(BaseTool):
                     type="array",
                     description=("Knowledge points to append to this module: each {name, type}."),
                     required=False,
+                    nullable=True,
                     items=add_items,
                 ),
                 ToolParameter(
@@ -2896,6 +2911,7 @@ class MasteryReviseTool(BaseTool):
                     type="array",
                     description="Knowledge point ids to drop from this module.",
                     required=False,
+                    nullable=True,
                     items={"type": "string"},
                 ),
                 ToolParameter(
@@ -2910,6 +2926,7 @@ class MasteryReviseTool(BaseTool):
                         "the learner's request spans multiple modules."
                     ),
                     required=False,
+                    nullable=True,
                     items={
                         "type": "object",
                         "properties": {
@@ -2941,9 +2958,14 @@ class MasteryReviseTool(BaseTool):
         from deeptutor.learning.storage import LearningConflictError
 
         action = kwargs.get("action")
+        if isinstance(action, str) and not action.strip():
+            # A provider that has to fill every field sends "" for "no action";
+            # read it as the omitted action, which is the direct revision.
+            action = None
         if action not in (None, "preview", "commit"):
             return ToolResult(content="Use action preview or commit, or omit it.", success=False)
         service = _new_service()
+        kwargs = _omitting_idle_placeholders(kwargs, commit=action == "commit")
         if action == "commit":
             if any(
                 kwargs.get(key) is not None
@@ -3420,6 +3442,29 @@ def _plan_module_revision(
 
         applied = reorder_modules(applied, module_order)
     return applied, targets, revised_by_module, resets_by_module
+
+
+def _omitting_idle_placeholders(kwargs: dict[str, Any], *, commit: bool) -> dict[str, Any]:
+    """Read the fields the model filled only because it had to fill them.
+
+    Endpoints that normalise optional properties into required ones leave the
+    model no way to omit a field, so it sends ``0`` / ``""`` / ``[]`` for the
+    ones this call does not use (issue #2047). Left as-is, those read as a real
+    edit or a real preview id and the call is refused before it is planned.
+
+    Normalized one level deep only: a nested ``prerequisite_ids: []`` is how a
+    caller clears a relationship, not a placeholder. ``preview_id`` is idle
+    outside commit only — a commit names one preview or nothing.
+    """
+    cleaned = dict(kwargs)
+    # None of the revision arguments has a meaningful falsy value, so falsy is
+    # placeholder whatever shape it arrives in (0, "", [], False).
+    for key in ("module_order", "module_id", "modules", "rewrite", "add", "remove"):
+        if not cleaned.get(key):
+            cleaned.pop(key, None)
+    if not commit and not cleaned.get("preview_id"):
+        cleaned.pop("preview_id", None)
+    return cleaned
 
 
 def _revise_specs(kwargs: dict[str, Any]) -> tuple[dict[str, dict[str, Any]], str | None]:

@@ -443,7 +443,7 @@ export const SETTINGS_CATEGORIES: SettingsCategory[] = [
   {
     key: "appearance",
     label: { zh: "外观", en: "Appearance" },
-    blurb: { zh: "视觉主题与代码块", en: "Theme and code blocks" },
+    blurb: { zh: "视觉主题、学习文字与代码块", en: "Theme, learning text, and code blocks" },
     icon: Palette,
     href: "/settings#appearance",
   },

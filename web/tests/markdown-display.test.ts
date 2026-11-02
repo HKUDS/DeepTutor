@@ -12,7 +12,7 @@ import {
   safeDecodeURIComponent,
 } from "../lib/markdown-display";
 
-test("repairChineseEmphasis repairs punctuation boundaries only for Chinese", () => {
+test("repairChineseEmphasis repairs punctuation boundaries only for CJK replies", () => {
   assert.equal(repairChineseEmphasis("中文*，重点*", "zh-CN"), "中文 *，重点*");
   assert.equal(
     repairChineseEmphasis("中文**，重点**", "zh"),
@@ -20,6 +20,19 @@ test("repairChineseEmphasis repairs punctuation boundaries only for Chinese", ()
   );
   assert.equal(repairChineseEmphasis("中文*，重点*", "en"), "中文*，重点*");
   assert.equal(repairChineseEmphasis("中文*，重点*"), "中文*，重点*");
+});
+
+test("repairChineseEmphasis also repairs Japanese and Korean replies", () => {
+  // Both set a bracket flush against the next word, exactly as Chinese does.
+  assert.equal(
+    repairChineseEmphasis("つまり、**関連付けは「どの表を見るか」**です。", "ja"),
+    "つまり、**関連付けは「どの表を見るか」** です。",
+  );
+  assert.equal(repairChineseEmphasis("**“단어”**는", "ko"), "**“단어”** 는");
+  assert.equal(
+    appendWithEmphasisRepair("**「表」**です", "\n", "**「表」**です\n", "ja"),
+    "**「表」** です\n",
+  );
 });
 
 test("repairChineseEmphasis balances the opposite delimiter when exactly one boundary is repaired", () => {

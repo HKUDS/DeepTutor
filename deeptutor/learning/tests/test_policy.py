@@ -233,6 +233,7 @@ def test_next_objective_due_review_beats_new_ground():
 def test_due_reviews_order_by_forgetting_risk_before_priority():
     kp1, kp2 = _kp("kp_high", KnowledgeType.MEMORY), _kp("kp_low", KnowledgeType.MEMORY)
     progress = _progress(kp1, kp2)
+    progress.mastery_levels.update(kp_high=0.95, kp_low=0.95)
     now = time.time()
     progress.review_queue = [
         ReviewTask(
@@ -262,6 +263,30 @@ def test_due_reviews_order_by_forgetting_risk_before_priority():
     assert step.knowledge_point_id == "kp_high"
     assert step.forgetting_risk == 0.85
     assert "retrievability" in step.reason
+
+
+def test_unmastered_due_tasks_do_not_become_review_work():
+    kp = _kp("kp1", KnowledgeType.MEMORY)
+    progress = _progress(kp)
+    progress.quiz_attempts.append(
+        QuizAttempt(question_id="failed", knowledge_point_id="kp1", is_correct=False)
+    )
+    now = time.time()
+    progress.review_queue = [
+        ReviewTask(
+            id="r1",
+            knowledge_point_id="kp1",
+            knowledge_type=KnowledgeType.MEMORY,
+            due_at=now - 10,
+            priority=1,
+            state=RepetitionState(next_review_at=now - 10),
+        )
+    ]
+
+    assert policy.due_reviews(progress, now=now) == []
+    step = policy.next_objective(progress, now=now)
+    assert step.action == "practice"
+    assert step.knowledge_point_id == "kp1"
 
 
 def test_next_objective_complete_when_all_mastered():

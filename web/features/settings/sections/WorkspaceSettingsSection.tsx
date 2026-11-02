@@ -3,6 +3,7 @@
 import Tooltip from "@/shared/ui/Tooltip";
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
+import dynamic from 'next/dynamic'
 import { Archive, ArchiveRestore, FileText, Folder, FolderInput, Globe2, Pencil, Plus, Settings2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { SettingSection, SettingsPageHeader, inputClass, subPanelClass } from '@/components/settings/shared'
@@ -15,6 +16,7 @@ import {
 } from '@/lib/workspaces-api'
 
 type RunAction = (action: () => Promise<unknown>) => Promise<boolean>
+const ServerFolderPicker = dynamic(() => import('@/components/workspaces/ServerFolderPicker').then(module => module.ServerFolderPicker), { ssr: false })
 const actionClass = 'inline-flex items-center justify-center gap-1.5 rounded-lg px-2.5 py-2 text-xs text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)] disabled:opacity-50'
 const primaryClass = 'inline-flex items-center justify-center gap-1.5 rounded-lg bg-[var(--foreground)] px-3 py-2 text-sm text-[var(--background)] disabled:opacity-50'
 
@@ -101,6 +103,7 @@ export default function WorkspaceSettingsSection() {
   const [root, setRoot] = useState('')
   const [busy, setBusy] = useState(false)
   const [creating, setCreating] = useState(false)
+  const [browsing, setBrowsing] = useState(false)
   const [resources, setResources] = useState(inheritedWorkspaceResources)
   const [instructions, setInstructions] = useState('')
   const [name, setName] = useState('')
@@ -145,6 +148,7 @@ export default function WorkspaceSettingsSection() {
               }}>
                 <label className="block text-sm">{t('Workspace name')}<input autoFocus className={`${inputClass} mt-1`} value={name} onChange={event => setName(event.target.value)} required maxLength={100} placeholder={t('e.g. Probability')} /></label>
                 <label className="block text-sm">{t('Existing folder path (optional)')}<input className={`${inputClass} mt-1 font-mono`} value={path} onChange={event => setPath(event.target.value)} placeholder={t('Leave empty to create under root')} /></label>
+                <button type="button" className={actionClass} onClick={() => setBrowsing(true)}><Folder size={15} />{t('Choose a server folder')}</button>
                 <p className="text-xs leading-relaxed text-[var(--muted-foreground)]">{t('Place files in the folder for the agent to read. Generated files go into outputs/.')}</p>
                 <WorkspaceInstructionsField value={instructions} onChange={setInstructions} />
                 <WorkspaceResourcePicker value={resources} onChange={setResources} />
@@ -165,6 +169,10 @@ export default function WorkspaceSettingsSection() {
           </SettingSection>
         </fieldset>
       )}
+      {browsing && <ServerFolderPicker onClose={() => setBrowsing(false)} onSelect={folder => {
+        setPath(folder.path)
+        if (!name.trim()) setName(folder.name.slice(0, 100))
+      }} />}
     </div>
   )
 }

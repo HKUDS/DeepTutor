@@ -163,7 +163,10 @@ async def restore_library_file(
     _auth: TokenPayload = Depends(require_auth),
 ) -> dict:
     """Restore a soft-deleted library file."""
-    restored = await _get_store().restore_file(file_id)
+    try:
+        restored = await _get_store().restore_file(file_id)
+    except _fl.FileLibraryContentConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     if not restored:
         raise HTTPException(status_code=404, detail="File not found")
     return {"id": file_id, "restored": True}

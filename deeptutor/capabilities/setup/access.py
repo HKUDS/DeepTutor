@@ -45,8 +45,8 @@ class AccessDecision:
 
 def _is_partner_turn() -> bool:
     try:
+        from deeptutor.core.identities import is_partner_user_id
         from deeptutor.multi_user.context import get_current_user
-        from deeptutor.services.partners.scope import is_partner_user_id
 
         return bool(is_partner_user_id(get_current_user().id))
     except Exception:  # noqa: BLE001 - no multi-user layer configured

@@ -180,11 +180,23 @@ def _split_command_args(arg_string: str) -> list[str]:
     args: list[str] = []
     depth = 0
     in_string = False
+    escaped = False
     current: list[str] = []
     for char in arg_string:
-        if char == '"' and (not current or current[-1] != "\\"):
-            in_string = not in_string
         if in_string:
+            # Track escapes so a closing quote after an escaped backslash
+            # (``\\"``) is recognised: testing only the previous char treated an
+            # even run of backslashes as if it escaped the quote.
+            current.append(char)
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
             current.append(char)
             continue
         if char in "([":

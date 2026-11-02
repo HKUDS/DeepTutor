@@ -88,6 +88,11 @@
       "sha256": "0a787846df588d136932f3bb373d5d796b28f0a545ff603cb013136148525922",
       "source": "Official website asset"
     },
+    "youcom.ico": {
+      "url": "https://you.com/favicon.ico",
+      "sha256": "bc108afac8491e981082ecbb84c1edc8a743c9da5d011bf50ccac677007b892e",
+      "source": "Official website asset"
+    },
     "cheaperinference.svg": {
       "url": "https://www.cheaperinference.com/icon.svg?7b25e69112bc955e",
       "sha256": "4c0bf6572d9077fd66fe338b80c18e4d227adb6a44bc176bf5eb5ea1271bf9d0",
@@ -96,6 +101,21 @@
     "onomeo.svg": {
       "url": "https://onomeo.com/icon.svg",
       "sha256": "656d46b8e33103edfc859afc19ca6dbed78683eb506e5714a00eaa4a3a251f65",
+      "source": "Official website asset"
+    },
+    "runcrate.png": {
+      "url": "https://www.runcrate.ai/apple-touch-icon.png",
+      "sha256": "a5ab289455324590b5e0cb2836e92f7b16fee59ee0d4fe417cbbabdeb534d7fb",
+      "source": "Official website asset"
+    },
+    "llmtr.png": {
+      "url": "https://llmtr.com/apple-touch-icon.png",
+      "sha256": "f8968e617daf1589565237906f3d3e22373fb68bcad5309ed4850e18db21cd74",
+      "source": "Official website asset"
+    },
+    "cloudgpu.png": {
+      "url": "https://cloudgpu.app/apple-icon.png?c033c6c14af57cef",
+      "sha256": "8051137fee486b2a36a7f6744cf86fb48ac17520d5ee8dd712c659feb8adb912",
       "source": "Official website asset"
     },
     "api-route.png": {
@@ -136,6 +156,11 @@
       "url": "https://opper.ai/images/icon-light.png",
       "sha256": "c2b8011772dd1ca9299200a30dc915c5a2d636a1b4ba4a3c4c54234be438f70b",
       "source": "Official website asset"
+    },
+    "microsoft-color.svg": {
+      "url": "https://unpkg.com/@lobehub/icons-static-svg@1.95.1/icons/microsoft-color.svg",
+      "sha256": "5cfb0ffa3231313c2968b5e3fedfcce8e2e96c61bde4572384c3889a77a80350",
+      "source": "@lobehub/icons-static-svg 1.95.1 (MIT)"
     }
   },
   "chinese_names": {

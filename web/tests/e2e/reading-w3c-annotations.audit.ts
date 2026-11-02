@@ -1,3 +1,5 @@
+import { sourceModuleInventory } from "./fixtures/modules";
+import { emptyLearningIndex } from "./fixtures/learning-index";
 import { expect, test } from "@playwright/test";
 import { emptyTaskBoard } from "./fixtures/task-board";
 
@@ -80,9 +82,11 @@ const annotation = {
 test.beforeEach(async ({ page }) => {
   await page.route("**/api/**", async (route) => {
     const path = new URL(route.request().url()).pathname;
+    if (path === "/api/modules") return route.fulfill({ json: sourceModuleInventory });
     const json = (payload: unknown, status = 200) =>
       route.fulfill({ status, json: payload });
 
+    if (path === "/api/dashboard/learning-index") return json(emptyLearningIndex);
     if (path === "/api/partners" || path === "/api/partner-groups") return json([]);
     if (path === "/api/task-board") return json(emptyTaskBoard);
     if (path === "/api/auth/status") {
@@ -167,6 +171,10 @@ test("a rich text annotation reflows and activates its sidebar entry", async ({
   await expect(highlight).toBeVisible();
   await expect(highlight).toHaveAttribute("data-annotation", "annotation-1");
 
+  // At this width the companion is a sheet; dismiss it before using the reader.
+  await page.getByRole("button", { name: "Put the companion away", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Close panels" })).toBeHidden();
+
   // The v1.6.10 reader rework moved the annotation list out of the
   // companion into the contents navigator's "Annotations" tab.
   await page.getByRole("button", { name: "Expand contents", exact: true }).click();
@@ -175,12 +183,6 @@ test("a rich text annotation reflows and activates its sidebar entry", async ({
     .getByRole("button")
     .filter({ hasText: "Wave behavior" });
   await expect(sidebarEntry).toBeVisible();
-  const companionToggle = page.getByRole("button", {
-    name: "Reading companion",
-    exact: true,
-  });
-  await companionToggle.click();
-  await expect(companionToggle).toHaveAttribute("aria-expanded", "false");
   await expect(page.getByRole("button", { name: "Collapse contents", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Close panels" })).toBeHidden();
   const article = page.locator("article.r6o-annotatable");

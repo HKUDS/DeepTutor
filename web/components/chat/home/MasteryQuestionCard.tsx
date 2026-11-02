@@ -21,6 +21,7 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { LearningText } from "@/components/common/LearningText";
 import InlineMarkdown from "@/components/common/InlineMarkdown";
 import { useCardSubmission } from "@/hooks/use-card-submission";
 import { REPLY_NOT_DELIVERED } from "@/lib/ask-user-state";
@@ -87,7 +88,7 @@ function OptionRow({
       </span>
       {/* The body is the option. It is never printed beside its own letter. */}
       <span className={"min-w-0 flex-1 text-[13.5px] leading-relaxed " + body}>
-        <InlineMarkdown content={option.body} />
+        <LearningText size={13.5}><InlineMarkdown content={option.body} /></LearningText>
       </span>
     </button>
   );
@@ -214,7 +215,7 @@ const SingleMasteryQuestionCard = memo(function SingleMasteryQuestionCard({
       ) : null}
 
       <div className="mt-0.5 font-serif text-[15.5px] font-semibold leading-relaxed tracking-[-0.01em] text-[var(--foreground)]">
-        <InlineMarkdown content={question.prompt} />
+        <LearningText size={15.5}><InlineMarkdown content={question.prompt} /></LearningText>
       </div>
       {question.visual && <div className="mt-3 space-y-2 text-xs text-[var(--muted-foreground)]">
         <p>{grade?.independent === false || question.visual.hintsUsed || question.visual.answerCues !== "none" ? t("Guided visual practice — this does not demonstrate independent mastery.") : t("Visual practice with the original source.")}</p>
@@ -292,16 +293,16 @@ const SingleMasteryQuestionCard = memo(function SingleMasteryQuestionCard({
             {!ungraded && !grade.isCorrect && grade.correctLabel ? (
               <span className="text-[var(--foreground)]">
                 {" · "}
-                {t("Answer: {{label}}", { label: grade.correctLabel })}
+                <LearningText inline size={12.5}>{t("Answer: {{label}}", { label: grade.correctLabel })}</LearningText>
               </span>
             ) : null}
           </div>
           {grade.explanation ? (
             <div className="mt-1 text-[12.5px] leading-relaxed text-[var(--muted-foreground)]">
-              <InlineMarkdown content={grade.explanation} />
+              <LearningText size={12.5}><InlineMarkdown content={grade.explanation} /></LearningText>
             </div>
           ) : null}
-          {grade.feedback && grade.feedback !== grade.explanation && <div className="mt-1 text-[12.5px]"><InlineMarkdown content={grade.feedback} /></div>}
+          {grade.feedback && grade.feedback !== grade.explanation && <div className="mt-1 text-[12.5px]"><LearningText size={12.5}><InlineMarkdown content={grade.feedback} /></LearningText></div>}
           {onChallenge && <button type="button" className="mt-2 text-xs underline" onClick={() => onChallenge(question.questionId)}>{t("Review or challenge this assessment")}</button>}
         </div>
       ) : null}
@@ -405,7 +406,7 @@ function GroupedMasteryQuestionCard({
   };
 
   return <section className="my-4" aria-label={question.prompt}>
-    {question.prompt && <div className="font-serif font-semibold"><InlineMarkdown content={question.prompt} /></div>}
+    {question.prompt && <div className="font-serif font-semibold"><LearningText size={16}><InlineMarkdown content={question.prompt} /></LearningText></div>}
     {questions.map((part) => {
       const partGrade = grade?.results?.find((result) => result.questionId === part.questionId) ?? null;
       return <SingleMasteryQuestionCard key={part.questionId} question={part} grade={partGrade}

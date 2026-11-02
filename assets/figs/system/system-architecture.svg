@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="1000" viewBox="0 0 1280 1000" role="img" aria-labelledby="title desc"><title id="title">DeepTutor · turn architecture</title><desc id="desc">Current dev: durable application boundary, shared execution engine, two plugin levels.</desc><defs><marker id="arrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0 L9 4.5 L0 9 Z" fill="#64748b"/></marker></defs><style>text{font-family:Arial,Helvetica,sans-serif;fill:#1e293b}.title{font-size:29px;font-weight:700}.label{font-size:21px;font-weight:600}.body{font-size:18px;fill:#475569}.note{font-size:17px;fill:#64748b}.arrow{fill:none;stroke:#64748b;stroke-width:2;marker-end:url(#arrow)}</style><rect width="1280" height="1000" fill="#fff"/>
+<text x="40" y="44" class="title">DeepTutor · turn architecture</text>
+<text x="40" y="76" class="body">Current dev: durable application boundary, shared execution engine, two plugin levels.</text>
+<rect x="40" y="110" width="370" height="70" rx="13" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="60" y="142" class="label">CLI</text>
+<text x="60" y="172" class="body">Typer entry point</text>
+<rect x="455" y="110" width="370" height="70" rx="13" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="475" y="142" class="label">WebSocket API</text>
+<text x="475" y="172" class="body">/ws commands and event replay</text>
+<rect x="870" y="110" width="370" height="70" rx="13" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="890" y="142" class="label">Python SDK</text>
+<text x="890" y="172" class="body">DeepTutorApp facade</text>
+<path d="M225 180 V205 H640 V228" class="arrow"/>
+<path d="M640 180 V205 H640 V228" class="arrow"/>
+<path d="M1055 180 V205 H640 V228" class="arrow"/>
+<rect x="350" y="230" width="580" height="100" rx="13" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.5"/>
+<text x="370" y="262" class="label">TurnApplicationService</text>
+<text x="370" y="292" class="body">Start, cancel, regenerate and replay turns</text>
+<text x="370" y="319" class="body">Coordinates the per-turn durable runtime</text>
+<rect x="40" y="230" width="260" height="100" rx="13" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="60" y="262" class="label">Session store</text>
+<text x="60" y="292" class="body">Turn state and events</text>
+<text x="60" y="319" class="body">SQLite / PocketBase</text>
+<rect x="980" y="230" width="260" height="100" rx="13" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="1000" y="262" class="label">Runtime coordinator</text>
+<text x="1000" y="292" class="body">Worker ownership</text>
+<text x="1000" y="319" class="body">Local / Redis</text>
+<path d="M350 280 H300" class="arrow"/>
+<path d="M930 280 H980" class="arrow"/>
+<rect x="460" y="380" width="360" height="70" rx="13" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.5"/>
+<text x="480" y="412" class="label">TurnEngine</text>
+<text x="480" y="442" class="body">Execute the assembled context</text>
+<path d="M640 330 V380" class="arrow"/>
+<rect x="460" y="500" width="360" height="80" rx="13" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.5"/>
+<text x="480" y="532" class="label">ChatOrchestrator</text>
+<text x="480" y="562" class="body">Select capability; default: chat</text>
+<path d="M640 450 V500" class="arrow"/>
+<rect x="40" y="495" width="330" height="100" rx="13" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="60" y="527" class="label">UnifiedContext</text>
+<text x="60" y="557" class="body">Message, history, resources,</text>
+<text x="60" y="584" class="body">model policy and turn scope</text>
+<path d="M370 540 H460" class="arrow"/>
+<rect x="920" y="495" width="320" height="90" rx="13" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="940" y="527" class="label">CapabilityRegistry</text>
+<text x="940" y="557" class="body">Built-ins and installed plugins</text>
+<path d="M920 540 H820" class="arrow"/>
+<rect x="40" y="640" width="780" height="165" rx="13" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.5"/>
+<text x="60" y="672" class="label">Level 2 · selected capability</text>
+<text x="60" y="702" class="body">chat · ask_questions · deep_solve · deep_question</text>
+<text x="60" y="729" class="body">deep_research · visualize · math_animator</text>
+<text x="60" y="756" class="body">mastery_path · immersive_reading · video_lesson</text>
+<path d="M640 580 V610 H430 V640" class="arrow"/>
+<rect x="920" y="640" width="320" height="165" rx="13" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="940" y="672" class="label">Level 1 · ToolRegistry</text>
+<text x="940" y="702" class="body">Single-shot tool definitions</text>
+<text x="940" y="729" class="body">Context / capability gates</text>
+<text x="940" y="756" class="body">LLM-selected invocations</text>
+<path d="M820 720 H920" class="arrow"/>
+<rect x="40" y="865" width="780" height="100" rx="13" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="60" y="897" class="label">Per-turn StreamBus</text>
+<text x="60" y="927" class="body">Capabilities emit typed events and the final result envelope.</text>
+<path d="M430 805 V865" class="arrow"/>
+<rect x="920" y="865" width="320" height="100" rx="13" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="940" y="897" class="label">Durable consumers</text>
+<text x="940" y="927" class="body">Runtime persists events;</text>
+<text x="940" y="954" class="body">adapters subscribe / replay.</text>
+<path d="M820 910 H920" class="arrow"/>
+<text x="40" y="985" class="note">Runtime configuration: JSON settings under data/user/settings; workspace resources are scoped.</text>
+</svg>

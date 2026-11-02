@@ -421,3 +421,135 @@ def test_empty_bootstrap_does_not_replace_broken_existing_index(tmp_path, storag
     (kb_dir / storage).mkdir(parents=True)
     with pytest.raises(ValueError, match="reindex|not initialized"):
         DocumentAdder(kb_name="kb", base_dir=str(tmp_path), rag_provider="llamaindex")
+
+
+def _llamaindex_adder(tmp_path: Path, names: list[str]) -> tuple[DocumentAdder, list[Path]]:
+    kb_dir = tmp_path / "kb"
+    raw_dir = kb_dir / "raw"
+    raw_dir.mkdir(parents=True)
+    _write_provider_version(kb_dir, "llamaindex")
+    files = []
+    for name in names:
+        path = raw_dir / name
+        path.write_text(name, encoding="utf-8")
+        files.append(path)
+    return DocumentAdder(kb_name="kb", base_dir=str(tmp_path), rag_provider="llamaindex"), files
+
+
+def test_llamaindex_indexes_a_folder_batch_in_one_publish(monkeypatch, tmp_path: Path) -> None:
+    adder, files = _llamaindex_adder(tmp_path, ["a.txt", "b.txt"])
+    calls: list[list[str]] = []
+
+    class _BatchService:
+        def __init__(self, *_args, **_kwargs) -> None:
+            pass
+
+        async def add_documents(self, _kb_name, file_paths, **kwargs):
+            calls.append(list(file_paths))
+            kwargs["indexed_file_callback"](file_paths)
+            return True
+
+    monkeypatch.setattr("deeptutor.knowledge.add_documents.RAGService", _BatchService)
+
+    result = asyncio.run(adder.process_new_documents(files))
+
+    assert calls == [[str(path) for path in files]]
+    assert result.processed_files == files
+    assert result.failures == []
+    assert set(adder.get_ingested_hashes()) == {"a.txt", "b.txt"}
+
+
+def test_llamaindex_batch_reports_files_the_provider_skipped(monkeypatch, tmp_path: Path) -> None:
+    adder, files = _llamaindex_adder(tmp_path, ["kept.txt", "skipped.txt"])
+
+    class _PartialService:
+        def __init__(self, *_args, **_kwargs) -> None:
+            pass
+
+        async def add_documents(self, _kb_name, file_paths, **kwargs):
+            kwargs["indexed_file_callback"](file_paths[:1])
+            return True
+
+    monkeypatch.setattr("deeptutor.knowledge.add_documents.RAGService", _PartialService)
+
+    result = asyncio.run(adder.process_new_documents(files))
+
+    assert result.processed_files == [files[0]]
+    assert result.failed_count == 1
+    assert "skipped" in result.failure_summary()
+    assert set(adder.get_ingested_hashes()) == {"kept.txt"}
+
+
+def test_llamaindex_batch_failure_retries_one_file_at_a_time(monkeypatch, tmp_path: Path) -> None:
+    adder, files = _llamaindex_adder(tmp_path, ["a.txt", "b.txt"])
+    calls: list[list[str]] = []
+
+    class _FallbackService:
+        def __init__(self, *_args, **_kwargs) -> None:
+            pass
+
+        async def add_documents(self, _kb_name, file_paths, **_kwargs):
+            calls.append(list(file_paths))
+            if len(file_paths) > 1:
+                raise RuntimeError("batch exploded")
+            return True
+
+    monkeypatch.setattr("deeptutor.knowledge.add_documents.RAGService", _FallbackService)
+
+    result = asyncio.run(adder.process_new_documents(files))
+
+    assert calls == [[str(path) for path in files], [str(files[0])], [str(files[1])]]
+    assert result.processed_files == files
+    assert result.failures == []
+
+
+def test_llamaindex_batch_permission_error_is_not_retried(monkeypatch, tmp_path: Path) -> None:
+    from deeptutor.services.setup.data_volume import DataVolumePermissionError
+
+    adder, files = _llamaindex_adder(tmp_path, ["a.txt", "b.txt"])
+    calls: list[int] = []
+
+    class _DeniedService:
+        def __init__(self, *_args, **_kwargs) -> None:
+            pass
+
+        async def add_documents(self, *_args, **_kwargs):
+            calls.append(1)
+            raise PermissionError("denied")
+
+    monkeypatch.setattr("deeptutor.knowledge.add_documents.RAGService", _DeniedService)
+
+    with pytest.raises(DataVolumePermissionError):
+        asyncio.run(adder.process_new_documents(files))
+    assert calls == [1]
+
+
+def test_non_llamaindex_provider_still_indexes_one_file_per_call(
+    monkeypatch, tmp_path: Path
+) -> None:
+    kb_dir = tmp_path / "kb"
+    raw_dir = kb_dir / "raw"
+    raw_dir.mkdir(parents=True)
+    _write_provider_version(kb_dir, "pageindex")
+    files = []
+    for name in ("a.txt", "b.txt"):
+        path = raw_dir / name
+        path.write_text(name, encoding="utf-8")
+        files.append(path)
+    calls: list[list[str]] = []
+
+    class _PerFileService:
+        def __init__(self, *_args, **_kwargs) -> None:
+            pass
+
+        async def add_documents(self, _kb_name, file_paths, **_kwargs):
+            calls.append(list(file_paths))
+            return True
+
+    monkeypatch.setattr("deeptutor.knowledge.add_documents.RAGService", _PerFileService)
+    adder = DocumentAdder(kb_name="kb", base_dir=str(tmp_path), rag_provider="pageindex")
+
+    result = asyncio.run(adder.process_new_documents(files))
+
+    assert calls == [[str(files[0])], [str(files[1])]]
+    assert result.processed_files == files

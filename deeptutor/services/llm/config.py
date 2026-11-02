@@ -195,7 +195,7 @@ def _get_llm_config_from_resolver() -> LLMConfig:
     resolved = resolve_llm_runtime_config()
     if not resolved.model:
         raise LLMConfigError(
-            "No active LLM model is configured. Please set it in Settings > Catalog."
+            "No active LLM model is configured. Please set it in Settings > Language models."
         )
     if not resolved.effective_url and resolved.provider_mode != "oauth":
         raise LLMConfigError(
@@ -212,7 +212,7 @@ def _get_llm_config_from_resolver() -> LLMConfig:
         and is_placeholder_key
     ):
         raise LLMConfigError(
-            "OpenAI API key is not configured. Set it in Settings > Catalog, "
+            "OpenAI API key is not configured. Set it in Settings > Providers, "
             "or select a local provider such as Ollama."
         )
     return LLMConfig(

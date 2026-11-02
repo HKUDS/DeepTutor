@@ -242,12 +242,14 @@ def resolve_module(topic: dict[str, Any], module_ref: str) -> dict[str, Any] | N
         if folded in name or (len(folded) > 3 and name in folded):
             return module
     position = _position_in(ref)
-    if position is not None:
-        for module in modules:
-            if int(module["order"]) == position:
-                return module
-        if 1 <= position <= len(modules):
-            return modules[position - 1]
+    if position is not None and 1 <= position <= len(modules):
+        # "lesson N" is 1-based and names the Nth lesson in order. Take it by
+        # rank in the ``order`` sequence. Matching the ``order`` field value to
+        # ``position`` directly was wrong because ``order`` is stored 0-based
+        # (topic_generation/service/outline_revision all number from 0), so
+        # "lesson 1" landed on the module whose order is 1 — the second one.
+        ordered = sorted(modules, key=lambda module: int(module["order"]))
+        return ordered[position - 1]
     return None
 
 

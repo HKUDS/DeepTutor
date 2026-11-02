@@ -16,7 +16,6 @@ export {
   getTraceRole,
   groupTraceEvents,
   hasRenderableCallTrace,
-  isRetractedRound,
   isTracePending,
   selectTraceDisplayItems,
 } from "./selectors";

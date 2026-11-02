@@ -40,13 +40,6 @@ type DocumentParsingPayload = {
   docling?: { api_token_set: boolean };
 };
 
-const PIP_HINT: Record<string, string> = {
-  docling: "pip install deeptutor[parse-docling]",
-  markitdown: "pip install deeptutor[parse-markitdown]",
-  pymupdf4llm: "pip install deeptutor[parse-pymupdf4llm]",
-  liteparse: "pip install deeptutor[parse-liteparse]",
-};
-
 // Engine names and descriptions are returned by the backend so unknown or
 // future engines can still render. Known descriptions use locale keys to keep
 // the settings page translated without changing the API metadata contract.
@@ -93,8 +86,10 @@ export default function DocumentParsingSettingsPage() {
         );
       }
       setLiveData(payload as DocumentParsingPayload);
+      return true;
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+      return false;
     } finally {
       setLoading(false);
     }
@@ -103,6 +98,10 @@ export default function DocumentParsingSettingsPage() {
   useEffect(() => {
     void load();
   }, [load, draftRevision]);
+
+  // Availability is live metadata, even when the editable settings are a draft.
+  const availableEngines = liveData?.available_engines ?? data?.available_engines ?? [];
+  const readiness = liveData?.readiness ?? data?.readiness ?? {};
 
   const putDocumentParsing = async (body: Record<string, unknown>) => {
     setData((current) => {
@@ -133,7 +132,7 @@ export default function DocumentParsingSettingsPage() {
       )}
 
       {!loading && error && (
-        <div className="mb-5 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-[13px] text-red-600 dark:text-red-300">
+        <div role="alert" className="mb-5 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-[13px] text-red-600 dark:text-red-300">
           {error}
         </div>
       )}
@@ -157,7 +156,7 @@ export default function DocumentParsingSettingsPage() {
               </p>
             </header>
             <div className="flex flex-col gap-2">
-              {data.available_engines.map((engine) => {
+              {availableEngines.map((engine) => {
                 const active = engine.id === data.engine;
                 const nameKey = ENGINE_NAME_KEYS[engine.id];
                 const descriptionKey = ENGINE_DESCRIPTION_KEYS[engine.id];
@@ -210,9 +209,9 @@ export default function DocumentParsingSettingsPage() {
           {data.engine === "docling" && (
             <DoclingPanel
               slice={data.engines.docling || {}}
-              readiness={data.readiness.docling}
+              readiness={readiness.docling}
               available={
-                data.available_engines.find((e) => e.id === "docling")
+                availableEngines.find((e) => e.id === "docling")
                   ?.available ?? false
               }
               busy={busy}
@@ -228,7 +227,7 @@ export default function DocumentParsingSettingsPage() {
             <MarkItDownPanel
               slice={data.engines.markitdown || {}}
               available={
-                data.available_engines.find((e) => e.id === "markitdown")
+                availableEngines.find((e) => e.id === "markitdown")
                   ?.available ?? false
               }
               busy={busy}
@@ -243,7 +242,7 @@ export default function DocumentParsingSettingsPage() {
             <PyMuPDF4LLMPanel
               slice={data.engines.pymupdf4llm || {}}
               available={
-                data.available_engines.find((e) => e.id === "pymupdf4llm")
+                availableEngines.find((e) => e.id === "pymupdf4llm")
                   ?.available ?? false
               }
               busy={busy}
@@ -258,7 +257,7 @@ export default function DocumentParsingSettingsPage() {
             <LiteParsePanel
               slice={data.engines.liteparse || {}}
               available={
-                data.available_engines.find((e) => e.id === "liteparse")
+                availableEngines.find((e) => e.id === "liteparse")
                   ?.available ?? false
               }
               busy={busy}
@@ -272,7 +271,7 @@ export default function DocumentParsingSettingsPage() {
           {data.engine === "tika" && (
             <TikaPanel
               slice={data.engines.tika || {}}
-              readiness={data.readiness.tika}
+              readiness={readiness.tika}
               busy={busy}
               onSave={(patch) =>
                 putDocumentParsing({ engines: { tika: patch } })
@@ -370,7 +369,7 @@ function DoclingPanel({
   available: boolean;
   busy: boolean;
   tokenSet: boolean;
-  onInstalled: () => void;
+  onInstalled: () => Promise<boolean>;
   onSave: (patch: Record<string, unknown>) => Promise<boolean>;
 }) {
   const { t } = useTranslation();
@@ -807,7 +806,7 @@ function MarkItDownPanel({
   slice: Record<string, unknown>;
   available: boolean;
   busy: boolean;
-  onInstalled: () => void;
+  onInstalled: () => Promise<boolean>;
   onSave: (patch: Record<string, unknown>) => void;
 }) {
   const { t } = useTranslation();
@@ -859,7 +858,7 @@ function PyMuPDF4LLMPanel({
   slice: Record<string, unknown>;
   available: boolean;
   busy: boolean;
-  onInstalled: () => void;
+  onInstalled: () => Promise<boolean>;
   onSave: (patch: Record<string, unknown>) => void;
 }) {
   const { t } = useTranslation();
@@ -952,7 +951,7 @@ function LiteParsePanel({
   slice: Record<string, unknown>;
   available: boolean;
   busy: boolean;
-  onInstalled: () => void;
+  onInstalled: () => Promise<boolean>;
   onSave: (patch: Record<string, unknown>) => void;
 }) {
   const { t } = useTranslation();
@@ -1237,9 +1236,7 @@ function JobButton({
   );
 }
 
-// The active engine's panel when its optional package isn't installed: a clean
-// section with the pip hint and a one-click installer. Keeps install in ONE
-// place per engine; reloads on success so the engine flips to available.
+// Packages are installed offline by the operator; this action only reloads metadata.
 function NotInstalledSection({
   engineId,
   title,
@@ -1247,41 +1244,65 @@ function NotInstalledSection({
 }: {
   engineId: string;
   title: string;
-  onInstalled: () => void;
+  onInstalled: () => Promise<boolean>;
 }) {
   const { t } = useTranslation();
-  const { job, starting, start, cancel } = useBackgroundJob(
-    "install",
-    "/api/settings/document-parsing/install",
-    engineId,
-    onInstalled,
-  );
+  const [checking, setChecking] = useState(false);
+  const [checked, setChecked] = useState(false);
+
+  async function recheck() {
+    setChecking(true);
+    setChecked(false);
+    try {
+      setChecked(await onInstalled());
+    } finally {
+      setChecking(false);
+    }
+  }
+
+  const commandClass = "mt-1 block whitespace-pre-wrap break-words rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 py-2 font-mono text-[11px] text-[var(--foreground)]";
 
   return (
     <SettingSection
       title={title}
-      description={t(
-        "Not installed yet. Install the package to use this engine — runs on the server, no terminal needed.",
-      )}
+      description={t("This local parser is not installed. Choose the instructions for your server deployment; packages cannot be installed while DeepTutor is running.")}
     >
+      <div className="space-y-4 px-1 pb-4 text-[12px] leading-relaxed text-[var(--muted-foreground)]">
+        <div>
+          <h3 className="font-medium text-[var(--foreground)]">{t("Docker")}</h3>
+          <p>{t("Add this extra to DEEPTUTOR_EXTRAS in your existing deployment configuration, preserving other extras. Recreate the same service with its existing configuration and mounts.")}</p>
+          <code className={commandClass}>parse-{engineId}</code>
+          <p className="mt-1">{t("Startup reapplies extras. Installation failures do not stop the server: inspect startup logs, then recheck availability. Data mounts preserve user data, not installed Python packages.")}</p>
+        </div>
+        <div>
+          <h3 className="font-medium text-[var(--foreground)]">{t("Source checkout")}</h3>
+          <p>{t("Stop DeepTutor. Run from the checkout in the server's Python environment, then restart the same instance.")}</p>
+          <code className={commandClass}>python scripts/install_extras.py parse-{engineId}</code>
+        </div>
+        <div>
+          <h3 className="font-medium text-[var(--foreground)]">{t("Wheel installation")}</h3>
+          <p>{t("Stop DeepTutor. Run in the server's Python environment, then restart with the same runtime home. Do not run this over a source checkout.")}</p>
+          <code className={commandClass}>deeptutor module install parser-{engineId}</code>
+        </div>
+      </div>
       <SettingRow
-        title={t("Install package")}
-        description={PIP_HINT[engineId]}
+        title={t("Recheck availability")}
+        description={t("After restarting, refresh parser availability here. This does not install packages or apply pending settings.")}
         control={
-          <JobButton
-            running={job?.state === "running"}
-            starting={starting}
-            label={t("Download & install")}
-            onStart={start}
-            onCancel={cancel}
-          />
+          <button
+            type="button"
+            onClick={() => void recheck()}
+            disabled={checking}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 py-1.5 text-[12px] font-medium text-[var(--foreground)] transition-opacity hover:opacity-80 disabled:opacity-40"
+          >
+            {checking && <Loader2 aria-hidden="true" className="h-3 w-3 animate-spin" />}
+            {checking ? t("Checking availability…") : t("Recheck availability")}
+          </button>
         }
       />
-      <JobLog
-        job={job}
-        runningLabel={t("Installing {{name}}…", { name: title })}
-        doneLabel={t("Installed. Reloading…")}
-      />
+      <p role="status" className="px-1 pb-2 text-[12px] text-[var(--muted-foreground)]">
+        {checking ? t("Checking availability…") : checked ? t("Availability refreshed. This parser is still unavailable; check the installation and startup logs, then retry.") : ""}
+      </p>
     </SettingSection>
   );
 }

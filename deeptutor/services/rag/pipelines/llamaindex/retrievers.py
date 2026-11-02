@@ -9,7 +9,7 @@ import shutil
 from typing import Any
 
 from llama_index.core.llms.mock import MockLLM
-from llama_index.core.retrievers import QueryFusionRetriever
+from llama_index.core.retrievers import BaseRetriever, QueryFusionRetriever
 from llama_index.core.retrievers.fusion_retriever import FUSION_MODES
 
 from .config import (
@@ -24,6 +24,22 @@ from .rerank import rerank_nodes
 logger = logging.getLogger(__name__)
 
 BM25_PERSIST_DIRNAME = "bm25_retriever"
+
+
+class _MatchedOnlyRetriever(BaseRetriever):
+    """Pass on only BM25 hits that matched a query term (score > 0).
+
+    When no query term matches (e.g. a Japanese or Chinese query, which the
+    whitespace tokenizer keeps as one long token) BM25 still returns top-k
+    nodes at score 0, and reciprocal-rank fusion ranks them like real hits.
+    """
+
+    def __init__(self, inner: Any) -> None:
+        super().__init__()
+        self._inner = inner
+
+    def _retrieve(self, query_bundle: Any) -> list[Any]:
+        return [hit for hit in self._inner.retrieve(query_bundle) if (hit.score or 0) > 0]
 
 
 def _import_bm25_retriever():
@@ -180,7 +196,7 @@ def build_retriever(
         )
         vector_retriever = index.as_retriever(similarity_top_k=vector_top_k)
         return QueryFusionRetriever(
-            [vector_retriever, bm25_retriever],
+            [vector_retriever, _MatchedOnlyRetriever(bm25_retriever)],
             llm=MockLLM(),
             mode=FUSION_MODES.RECIPROCAL_RANK,
             similarity_top_k=top_k,
@@ -281,7 +297,7 @@ def retrieve_scoped_nodes(
     if bm25_cls is not None:
         lexical = bm25_cls.from_defaults(nodes=nodes, similarity_top_k=count)
         retriever = QueryFusionRetriever(
-            [vector, lexical],
+            [vector, _MatchedOnlyRetriever(lexical)],
             llm=MockLLM(),
             mode=FUSION_MODES.RECIPROCAL_RANK,
             similarity_top_k=count,

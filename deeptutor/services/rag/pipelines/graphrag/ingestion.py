@@ -17,7 +17,7 @@ import logging
 from pathlib import Path
 from typing import Iterable
 
-from deeptutor.services.rag.file_routing import FileTypeRouter
+from deeptutor.utils.file_types import FileTypeRouter
 
 from . import storage
 

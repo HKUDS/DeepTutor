@@ -16,6 +16,7 @@ import {
   type ServiceName,
 } from "@/features/settings/store/SettingsStore";
 import {
+  defaultModelFor,
   flattenModels,
   modelProvider,
   providerAdapter,
@@ -74,29 +75,96 @@ export function ModelsWorkspace({
     connectionTargets,
     catalogEditable,
     mutateCatalog,
+    focusModel,
+    clearFocusModel,
   } = useSettings();
   const services = PAGE_SERVICES[page];
   const rows = flattenModels(draft, services);
   const editorRef = useRef<HTMLDivElement>(null);
+  const restoredPage = useRef<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [newService, setNewService] = useState<ServiceName>(
     initialService && services.includes(initialService) ? initialService : services[0],
   );
   const [newProvider, setNewProvider] = useState("");
+  const [newModelId, setNewModelId] = useState("");
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
-  useEffect(() => {
+  // The add panel and the selected row are what the URL says they are, so a
+  // refresh cannot silently swap one surface for the other.
+  const syncQuery = (updates: Record<string, string | null>) => {
+    restoredPage.current = page;
     const params = new URLSearchParams(window.location.search);
-    const profileId = params.get("profile");
-    if (profileId)
-      setSelected(
-        (current) =>
-          current || rows.find((r) => r.profile.id === profileId)?.key || null,
+    for (const [key, value] of Object.entries(updates)) {
+      if (value !== null) params.set(key, value);
+      else params.delete(key);
+    }
+    const query = params.toString();
+    window.history.replaceState(
+      null,
+      "",
+      `${window.location.pathname}${query ? `?${query}` : ""}`,
+    );
+  };
+  useEffect(() => {
+    if (restoredPage.current === page) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("add") === "1") {
+      setAdding(true);
+      const requested = params.get("service") as ServiceName | null;
+      const effective =
+        requested && services.includes(requested) ? requested : newService;
+      if (requested && services.includes(requested)) setNewService(requested);
+      const provider = params.get("provider");
+      const source = provider
+        ? selectable.find((p) => p.id === provider)
+        : undefined;
+      // A provider may arrive after the initial empty catalog. Retry hydration
+      // until it exists, but never overwrite user edits after that point.
+      if (provider && !source) return;
+      setNewProvider(source?.id ?? "");
+      setNewModelId(
+        params.get("model") ??
+          (source ? defaultModelFor(source, effective, connectionTargets, providers) : ""),
       );
+      restoredPage.current = page;
+    } else {
+      const profileId = params.get("profile");
+      if (!profileId) {
+        restoredPage.current = page;
+        return;
+      }
+      const modelId = params.get("model");
+      const match =
+        rows.find(
+          (r) =>
+            r.profile.id === profileId &&
+            (!modelId || r.model?.id === modelId),
+        ) || rows.find((r) => r.profile.id === profileId);
+      if (match) {
+        setSelected(match.key);
+        restoredPage.current = page;
+      }
+    }
     // Resolve old profile links after the settings payload arrives.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows.length]);
+  }, [page, draft, providers, connectionTargets]);
+  // Apply refused a blank model and named it here, so the owning page opens
+  // that row even when the URL stays on the same route.
+  useEffect(() => {
+    if (!focusModel) return;
+    const match = rows.find(
+      (r) =>
+        r.profile.id === focusModel.profileId &&
+        r.model?.id === focusModel.modelId,
+    );
+    if (!match) return;
+    setSelected(match.key);
+    setAdding(false);
+    clearFocusModel();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusModel, rows.length, clearFocusModel]);
   // Below xl the detail pane sits under the rail, so anything that changes what
   // it shows has to bring it into view.
   const revealDetail = () => {
@@ -108,6 +176,15 @@ export function ModelsWorkspace({
   const selectModel = (key: string) => {
     setSelected(key);
     setAdding(false);
+    const row = rows.find((r) => r.key === key);
+    if (row)
+      syncQuery({
+        add: null,
+        service: null,
+        provider: null,
+        profile: row.profile.id,
+        model: row.model?.id ?? null,
+      });
     revealDetail();
   };
   const selectedRow = rows.find((r) => r.key === selected);
@@ -119,18 +196,89 @@ export function ModelsWorkspace({
   const selectable = sources.filter(
     (source) => !("managed_by" in source.source && source.source.managed_by),
   );
+  const chooseNewProvider = (id: string) => {
+    const source = id ? selectable.find((p) => p.id === id) : undefined;
+    const model = source
+      ? defaultModelFor(source, newService, connectionTargets, providers)
+      : "";
+    setNewProvider(id);
+    setNewModelId(model);
+    syncQuery({ provider: id || null, model });
+  };
+  const addSource = selectable.find((p) => p.id === newProvider);
+  const addModelOptions = addSource
+    ? [
+        ...new Set(
+          [
+            defaultModelFor(
+              addSource,
+              newService,
+              connectionTargets,
+              providers,
+            ),
+            ...(addSource.source.discovery?.models ?? [])
+              .filter(
+                (item) =>
+                  !item.services?.length ||
+                  item.services.includes(
+                    newService === "task" ? "llm" : newService,
+                  ),
+              )
+              .map((item) => item.id),
+          ].filter(Boolean),
+        ),
+      ]
+    : [];
   const start = () => {
     setAdding(true);
     revealDetail();
     const preferred = new URLSearchParams(window.location.search).get(
       "provider",
     );
-    if (preferred && selectable.some((p) => p.id === preferred))
-      setNewProvider(preferred);
+    const source =
+      preferred && selectable.some((p) => p.id === preferred)
+        ? selectable.find((p) => p.id === preferred)
+        : undefined;
+    setNewProvider(source?.id ?? "");
+    setNewModelId(
+      source
+        ? defaultModelFor(source, newService, connectionTargets, providers)
+        : "",
+    );
+    syncQuery({
+      add: "1",
+      service: newService,
+      provider: source?.id ?? null,
+      profile: null,
+      model: null,
+    });
+  };
+  const cancelAdd = () => {
+    setAdding(false);
+    const row = rows.find((r) => r.key === selected);
+    syncQuery(
+      row
+        ? {
+            add: null,
+            service: null,
+            provider: null,
+            profile: row.profile.id,
+            model: row.model?.id ?? null,
+          }
+        : {
+            add: null,
+            service: null,
+            provider: null,
+            profile: null,
+            model: null,
+          },
+    );
   };
   const create = () => {
     const source = selectable.find((p) => p.id === newProvider);
     if (!source) return;
+    const modelValue = newService === "search" ? "" : newModelId.trim();
+    if (newService !== "search" && !modelValue) return;
     const profileId = `${newService}-profile-${randomUuid()}`;
     const modelId = `${newService}-model-${randomUuid()}`;
     const ref = providerAdapter(
@@ -140,7 +288,6 @@ export function ModelsWorkspace({
       providers,
     );
     const target = providers[newService]?.find((p) => p.value === ref.binding);
-    const model = target?.default_model || "";
     mutateCatalog((next) => {
       const profile: CatalogProfile = {
         id: profileId,
@@ -157,13 +304,17 @@ export function ModelsWorkspace({
             : [
                 {
                   id: modelId,
-                  model,
-                  name: model,
+                  model: modelValue,
+                  name: modelValue,
                   provider_ref: ref,
                   ...(newService === "tts"
                     ? {
                         voice: "",
-                        response_format: voiceModelOptions(target?.voice_options, target?.default_model || "")?.formats[0] || "mp3",
+                        response_format:
+                          voiceModelOptions(
+                            target?.voice_options,
+                            modelValue,
+                          )?.formats[0] || "mp3",
                       }
                     : {}),
                 },
@@ -178,8 +329,16 @@ export function ModelsWorkspace({
         : `${newService}:${profileId}:${modelId}`,
     );
     setAdding(false);
+    setNewModelId("");
     setQuery("");
     setFilter("all");
+    syncQuery({
+      add: null,
+      service: null,
+      provider: null,
+      profile: profileId,
+      model: newService === "search" ? null : modelId,
+    });
   };
   if (!catalogEditable)
     return (
@@ -338,13 +497,21 @@ export function ModelsWorkspace({
                 onService={(value) => {
                   setNewService(value);
                   setNewProvider("");
+                  setNewModelId("");
+                  syncQuery({ service: value, provider: null, model: null });
                 }}
                 provider={newProvider}
-                onProvider={setNewProvider}
+                onProvider={chooseNewProvider}
+                modelId={newModelId}
+                onModelId={(value) => {
+                  setNewModelId(value);
+                  syncQuery({ model: value });
+                }}
+                modelOptions={addModelOptions}
                 sources={selectable}
                 declared={(source) => declared(source, newService)}
                 onCreate={create}
-                onCancel={() => setAdding(false)}
+                onCancel={cancelAdd}
               />
             ) : selectedRow ? (
               <ModelEditor
@@ -352,7 +519,10 @@ export function ModelsWorkspace({
                 row={selectedRow}
                 sources={selectable}
                 declared={(source) => declared(source, selectedRow.service)}
-                onRemoved={() => setSelected(null)}
+                onRemoved={() => {
+                  setSelected(null);
+                  syncQuery({ profile: null, model: null });
+                }}
               />
             ) : (
               <WorkspaceDetailEmpty
@@ -413,6 +583,9 @@ function AddModelPanel({
   onService,
   provider,
   onProvider,
+  modelId,
+  onModelId,
+  modelOptions,
   sources,
   declared,
   onCreate,
@@ -423,6 +596,9 @@ function AddModelPanel({
   onService: (value: ServiceName) => void;
   provider: string;
   onProvider: (value: string) => void;
+  modelId: string;
+  onModelId: (value: string) => void;
+  modelOptions: string[];
   sources: ProviderSource[];
   declared: (source: ProviderSource) => boolean;
   onCreate: () => void;
@@ -479,13 +655,37 @@ function AddModelPanel({
         <input type="checkbox" checked={custom} onChange={e => { setCustom(e.target.checked); onProvider(""); }} />
         {t("settings.serviceConfig.custom")}
       </label>}
+      {/* A model row cannot be created without an ID, so the field lives here
+          rather than only in the editor: the empty row used to reach the draft
+          and blocked Apply from a page that could not show it. */}
+      {service !== "search" && (
+        <div className="mt-4 max-w-md">
+          <RegistryModelIdField
+            label={t("Model ID")}
+            value={modelId}
+            options={modelOptions}
+            onChange={onModelId}
+            placeholder={t("Choose a listed model or enter a model ID")}
+            required
+          />
+          {!modelId.trim() && (
+            <p className="mt-1.5 text-[13px] text-[var(--muted-foreground)]">
+              {t("Model ID is required.")}
+            </p>
+          )}
+        </div>
+      )}
       <p className="mt-3 text-[13px] leading-relaxed text-[var(--muted-foreground)]">
         {t(service === "search" ? "settings.serviceConfig.search" : service === "videogen" ? "settings.serviceConfig.video" : "settings.serviceConfig.providers")}
       </p>
       <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-[color-mix(in_srgb,var(--border)_70%,transparent)] pt-4">
         <button
           type="button"
-          disabled={!provider || !visible.some(source => source.id === provider)}
+          disabled={
+            !provider ||
+            !visible.some(source => source.id === provider) ||
+            (service !== "search" && !modelId.trim())
+          }
           onClick={onCreate}
           className={registryPrimary}
         >
@@ -541,6 +741,9 @@ function ModelEditor({
   const managed = Boolean(
     model?.managed_by || profile.read_only || profile.managed_by,
   );
+  // A blank ID cannot reach the provider; say so at the field instead of
+  // letting Apply fail from another page with no visible culprit.
+  const modelIdMissing = Boolean(model && !managed && !model.model.trim());
   const saved = draft.services[service].profiles.find(
     (p) => p.id === profile.id,
   );
@@ -702,6 +905,8 @@ function ModelEditor({
                 disabled={managed}
                 onChange={(value) => update("model", value)}
                 placeholder={t("Choose a listed model or enter a model ID")}
+                required={!managed}
+                invalid={modelIdMissing}
               />
               <p className="text-[13px] leading-relaxed text-[var(--muted-foreground)]">
                 {t(
@@ -765,7 +970,7 @@ function ModelEditor({
 
           <button
             type="button"
-            disabled={applying || !savedModel || Boolean(active)}
+            disabled={applying || !savedModel || Boolean(active) || modelIdMissing}
             onClick={() =>
               void stageRegistry({
                 kind: "default",

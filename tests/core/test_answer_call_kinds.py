@@ -16,6 +16,8 @@ from __future__ import annotations
 from pathlib import Path
 import re
 
+import pytest
+
 from deeptutor.core.trace import ANSWER_BEARING_CALL_KINDS
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -28,7 +30,7 @@ def _client_answer_call_kinds() -> set[str]:
     source = _CLIENT_STREAM_TS.read_text(encoding="utf-8")
     start = source.index("export function shouldAppendEventContent")
     end = source.index("\n}", start)
-    return set(re.findall(r'meta\.call_kind === "([a-z_]+)"', source[start:end]))
+    return set(re.findall(r'meta\.call_kind\s*===\s*[\'"]([a-z_]+)[\'"]', source[start:end]))
 
 
 def test_client_and_backend_agree_on_which_rounds_carry_the_answer() -> None:
@@ -46,3 +48,15 @@ def test_the_chat_loop_only_streams_answers_under_declared_kinds() -> None:
     used = set(re.findall(r'call_kind="([a-z_]+)"', source))
     assert used, "expected the chat loop to label its rounds"
     assert used <= set(ANSWER_BEARING_CALL_KINDS), sorted(used - ANSWER_BEARING_CALL_KINDS)
+
+
+@pytest.mark.parametrize("quote", ["'", '"'])
+def test_contract_check_detects_drift_with_either_quote_style(tmp_path, monkeypatch, quote):
+    source = _CLIENT_STREAM_TS.read_text(encoding="utf-8")
+    source = source.replace("'", quote).replace('"', quote)
+    source = source.replace("llm_final_response", "unexpected_answer_kind")
+    fixture = tmp_path / "stream.ts"
+    fixture.write_text(source, encoding="utf-8")
+    monkeypatch.setattr(f"{__name__}._CLIENT_STREAM_TS", fixture)
+    assert "unexpected_answer_kind" in _client_answer_call_kinds()
+    assert _client_answer_call_kinds() != set(ANSWER_BEARING_CALL_KINDS)

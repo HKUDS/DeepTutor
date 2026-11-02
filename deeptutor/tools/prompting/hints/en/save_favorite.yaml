@@ -1,0 +1,5 @@
+short_description: "Archive original conversation output in a favorites collection."
+when_to_use: "The user wants to keep a conversation or result unchanged. Use list_favorites to choose a real collection."
+input_format: '{"mode": "append", "notebook_id": "id", "title": "Title", "turns_to_include": "3"}'
+guideline: "Edit mode may change title or note only. Never rewrite the archived content."
+phase: "synthesis"

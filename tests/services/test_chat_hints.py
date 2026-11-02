@@ -7,12 +7,19 @@ import asyncio
 import pytest
 
 from deeptutor.services import chat_hints
+from deeptutor.services.settings import starter_settings
 
 
 @pytest.fixture(autouse=True)
 def clear_hint_state() -> None:
     chat_hints._cache.clear()
     chat_hints._inflight.clear()
+
+
+@pytest.fixture(autouse=True)
+def hint_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Keep the tests off whatever starters.json the machine running them has.
+    monkeypatch.setattr(starter_settings, "ask_hint_enabled", lambda: True)
 
 
 def _material() -> chat_hints._Material:
@@ -118,3 +125,36 @@ async def test_llm_failure_returns_empty_hint(
     result = await chat_hints.get_ask_hint("session-1")
 
     assert result["hint"] == ""
+
+
+@pytest.mark.asyncio
+async def test_turning_the_hint_off_skips_the_llm_and_the_cache(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Off means nothing is offered — not even a line cached while it was on."""
+    collected = 0
+    calls = 0
+
+    async def collect(_session_id: str) -> chat_hints._Material:
+        nonlocal collected
+        collected += 1
+        return _material()
+
+    async def call_llm(_material: chat_hints._Material, _language: str) -> str:
+        nonlocal calls
+        calls += 1
+        return "What happens after the third retry fails?"
+
+    monkeypatch.setattr(chat_hints, "_collect", collect)
+    monkeypatch.setattr(chat_hints, "_call_llm", call_llm)
+    monkeypatch.setattr(chat_hints, "_response_language", lambda: "en")
+
+    cached = await chat_hints.get_ask_hint("session-1")
+    assert cached["hint"]
+
+    monkeypatch.setattr(starter_settings, "ask_hint_enabled", lambda: False)
+    result = await chat_hints.get_ask_hint("session-1")
+
+    assert result["hint"] == ""
+    assert collected == 1
+    assert calls == 1

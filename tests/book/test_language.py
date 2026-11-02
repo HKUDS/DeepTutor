@@ -17,6 +17,8 @@ from deeptutor.book.language import resolve_book_language
         ("한국어로 정리해 주세요", "ko"),
         ("Сделай книгу по алгоритмам", "ru"),
         ("帮我整理机器学习入门内容", "zh"),
+        ("Hãy tạo một cuốn sách về giải thuật bằng tiếng Việt", "vi"),
+        ("Please write the book in Vietnamese", "vi"),
         ("Please create a book about Japanese history", "en"),
     ],
 )

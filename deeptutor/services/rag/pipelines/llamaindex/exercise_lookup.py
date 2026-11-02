@@ -130,6 +130,8 @@ class Exercise:
     parts: list[str] = field(default_factory=list)
     pages: set[int] = field(default_factory=set)
     images: bool = False
+    page_parts: dict[int, list[str]] = field(default_factory=dict)
+    unlocated: bool = False
 
 
 def collect_exercises(blocks: list[dict[str, Any]]) -> list[Exercise]:
@@ -185,8 +187,10 @@ def collect_exercises(blocks: list[dict[str, Any]]) -> list[Exercise]:
                         current = None
                     continue
                 current.images = True
-                if _page(block) is not None:
+                if _page(block) is not None and _page(block) > 0:
                     current.pages.add(_page(block))
+                else:
+                    current.unlocated = True
             # Captions are image metadata, never the start of another exercise.
             continue
         if toc:
@@ -214,8 +218,12 @@ def collect_exercises(blocks: list[dict[str, Any]]) -> list[Exercise]:
                     exercises.append(current)
             if current is not None:
                 current.parts.append(piece)
-                if _page(block) is not None:
-                    current.pages.add(_page(block))
+                page = _page(block)
+                if page is not None and page > 0:
+                    current.pages.add(page)
+                    current.page_parts.setdefault(page, []).append(piece)
+                else:
+                    current.unlocated = True
     return exercises
 
 
@@ -231,7 +239,9 @@ def _parsed(path: str, mtime: int, size: int) -> tuple[Exercise, ...]:
     return tuple(collect_exercises(blocks)) if isinstance(blocks, list) else ()
 
 
-def _parse_for(source: Path, cache_root: Path) -> Path | None:
+def _parse_for(
+    source: Path, cache_root: Path, *, parser_signature: str | None = None
+) -> Path | None:
     stat = source.stat()
     digest = _source_hash(str(source), stat.st_mtime_ns, stat.st_size)
     root = cache_root / digest[:2] / digest
@@ -246,6 +256,12 @@ def _parse_for(source: Path, cache_root: Path) -> Path | None:
         try:
             meta = json.loads(manifest.read_text(encoding="utf-8"))
             if not isinstance(meta, dict) or meta.get("source_hash") != digest:
+                continue
+            if parser_signature is not None and (
+                manifest.parent.name != parser_signature
+                or meta.get("signature") != parser_signature
+                or not meta.get("created_at")
+            ):
                 continue
             files = sorted(manifest.parent.rglob("*_content_list.json"))
             files = [
@@ -262,11 +278,53 @@ def _parse_for(source: Path, cache_root: Path) -> Path | None:
     return None
 
 
-def lookup_exercises(query: str, kb_dir: Path, cache_root: Path) -> dict[str, Any] | None:
+def _scoped_pages(source: Path, key: str, catalog: dict[str, Any]) -> dict[int, dict[str, Any]]:
+    """Use current indexed page identities; never guess provenance from a filename."""
+    import pymupdf
+
+    from deeptutor.services.rag.source_pages import SOURCE_SCHEMA_VERSION, source_digest
+
+    if catalog.get("schema_version") != SOURCE_SCHEMA_VERSION:
+        return {}
+    digest = source_digest(source)
+    with pymupdf.open(source) as pdf:
+        if pdf.needs_pass:
+            return {}
+        page_count = pdf.page_count
+    pages = {}
+    for row in catalog.get("pages", []):
+        if not isinstance(row, dict) or row.get("document_key") != key:
+            continue
+        index = row.get("page_index")
+        if (
+            type(index) is not int
+            or not 0 <= index < page_count
+            or row.get("source_digest") != digest
+            or row.get("source_schema_version") != SOURCE_SCHEMA_VERSION
+            or not row.get("parser_signature")
+        ):
+            return {}
+        pages[index + 1] = row
+    if len({row["parser_signature"] for row in pages.values()}) != 1:
+        return {}
+    return pages
+
+
+def lookup_exercises(
+    query: str,
+    kb_dir: Path,
+    cache_root: Path,
+    *,
+    document_keys: list[str] | None = None,
+    storage_dir: Path | None = None,
+) -> dict[str, Any] | None:
     """Return exact candidates from ready PDF parses, or allow normal retrieval.
 
     Sources must belong to the selected KB. Missing structured parses return
     ``None``; supported parses report each number as found, ambiguous or absent.
+    Scoped calls additionally require the active index's page catalog and a
+    matching completed parser signature. Missing or unlocated evidence falls
+    back to normal scoped retrieval; unscoped chat retains parse-only lookup.
     No parse, index, embedding or settings files are created or modified.
     """
     keys, kind = requested_exercises(query)
@@ -283,15 +341,48 @@ def lookup_exercises(query: str, kb_dir: Path, cache_root: Path) -> dict[str, An
             "retrieval_method": "exercise_exact",
             "exercise_status": [],
         }
+    scoped = document_keys is not None
+    catalog = {}
+    if scoped:
+        if not document_keys or storage_dir is None:
+            return None
+        try:
+            catalog = json.loads((storage_dir / "source_pages.json").read_text(encoding="utf-8"))
+            if not isinstance(catalog, dict):
+                return None
+        except (OSError, ValueError):
+            return None
     candidates = {key: [] for key in keys}
+    source_pages: dict[Path, dict[int, dict[str, Any]]] = {}
     supported = False
     raw = kb_dir / "raw"
-    for source in sorted(raw.glob("*.pdf")):
+    sources_in_scope = (
+        [raw / key for key in sorted(set(document_keys))] if scoped else sorted(raw.glob("*.pdf"))
+    )
+    for source in sources_in_scope:
+        if source.suffix.lower() != ".pdf" or not source.is_file():
+            if scoped:
+                return None
+            continue
         if not source.resolve().is_relative_to(raw.resolve()):
+            if scoped:
+                return None
             continue
         try:
-            parsed = _parse_for(source, cache_root)
+            pages = {}
+            if scoped:
+                pages = _scoped_pages(source, source.relative_to(raw).as_posix(), catalog)
+                if not pages:
+                    return None
+                source_pages[source] = pages
+            parsed = _parse_for(
+                source,
+                cache_root,
+                parser_signature=next(iter(pages.values()))["parser_signature"] if scoped else None,
+            )
             if parsed is None:
+                if scoped:
+                    return None
                 continue
             stat = parsed.stat()
             exercises = _parsed(str(parsed), stat.st_mtime_ns, stat.st_size)
@@ -301,10 +392,18 @@ def lookup_exercises(query: str, kb_dir: Path, cache_root: Path) -> dict[str, An
             for exercise in exercises:
                 key = (exercise.chapter, exercise.number)
                 if key in candidates and (kind is None or exercise.kind == kind):
+                    if scoped and (
+                        exercise.unlocated
+                        or not exercise.pages
+                        or not exercise.pages <= pages.keys()
+                    ):
+                        return None
                     candidates[key].append((source, exercise))
         except (OSError, ValueError, TypeError):
+            if scoped:
+                return None
             continue
-    if not supported:
+    if not supported or (scoped and any(not matches for matches in candidates.values())):
         return None
     parts = [
         "以下按题号定位现有解析原文；未定位到的题目不代表原书不存在，不能用图号、式号或相似题替代。"
@@ -348,6 +447,26 @@ def lookup_exercises(query: str, kb_dir: Path, cache_root: Path) -> dict[str, An
                     f"{source}:{key}:{exercise.kind}:{exercise.ordinal}".encode()
                 ).hexdigest()[:20]
             )
+            if scoped:
+                for page in pages:
+                    meta = source_pages[source][page]
+                    evidence = "\n\n".join(exercise.page_parts.get(page, []))
+                    sources.append(
+                        {
+                            **meta,
+                            "title": title,
+                            "source": str(source),
+                            "page": page,
+                            "chunk_id": f"{chunk_id}-page-{page}",
+                            "score": 1.0,
+                            "content": evidence[:200],
+                            "evidence_text": evidence[:6000],
+                            "question_number": label,
+                            "exercise_kind": exercise.kind,
+                            "requires_page_review": exercise.images,
+                        }
+                    )
+                continue
             sources.append(
                 {
                     "title": title,

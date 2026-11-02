@@ -346,7 +346,7 @@ def extract_questions_from_paper(paper_dir: str, output_dir: str | None = None) 
         llm_config = get_llm_config()
     except ValueError as e:
         print(f"✗ {e!s}")
-        print("Tip: Configure an active LLM profile in Settings > Catalog")
+        print("Tip: Configure an active LLM profile in Settings > Language models")
         return False
 
     questions = extract_questions_with_llm(

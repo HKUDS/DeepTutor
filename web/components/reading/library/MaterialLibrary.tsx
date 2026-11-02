@@ -7,8 +7,7 @@ import {
 } from "@/components/learning/LearningShell";
 
 import { learningLibrary, libraryItemKey } from "@/lib/learning-library";
-import { activeWorkspaceId, scopedUrl } from "@/lib/workspace-scope";
-import { useLearningCreation, requestedLearningCreation, useLibraryFilter } from "@/components/learning/LibraryWorkspace";
+import { useCreateRequest, requestedLearningCreation } from "@/components/learning/create-request";
 import { readingCollectionRoute, readingFolderRoute } from "@/lib/learning-routes";
 
 import Link from "next/link";
@@ -60,7 +59,7 @@ const GRID =
 
 export function MaterialLibraryPage() {
   const { t, i18n } = useTranslation();
-  const [allMaterials, setMaterials] = useState<ReadingLibraryMaterial[]>([]);
+  const [materials, setMaterials] = useState<ReadingLibraryMaterial[]>([]);
   const [counts, setCounts] = useState<ReadingLibraryCounts | null>(null);
   const [collections, setCollections] = useState<ReadingWorkspace[]>([]);
   const [filter, setFilter] = useState<ReadingLibraryFilter>("all");
@@ -69,8 +68,7 @@ export function MaterialLibraryPage() {
   const [error, setError] = useState("");
   const router = useRouter();
   const [showUpload, setShowUpload] = useState(requestedLearningCreation);
-  const creation = useLearningCreation(() => setShowUpload(true));
-  const { rows: materials, picker } = useLibraryFilter(allMaterials);
+  useCreateRequest(() => setShowUpload(true));
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [assignFor, setAssignFor] = useState<ReadingLibraryMaterial | null>(
     null
@@ -89,10 +87,9 @@ export function MaterialLibraryPage() {
       setMaterials(library.items);
       setCounts(null);
       setCollections(collectionRows.items);
-      if (library.unavailable_workspaces.length || collectionRows.unavailable_workspaces.length) setError(t("Some workspaces could not be loaded. Available content is shown."));
       const requested = new URLSearchParams(window.location.search).get('assign');
       if (requested) {
-        setAssignFor(library.items.find(row => row.material_id === requested && row.content_workspace_id === activeWorkspaceId()) ?? null);
+        setAssignFor(library.items.find(row => row.material_id === requested) ?? null);
         const next = new URLSearchParams(window.location.search);
         next.delete('assign');
         router.replace(`${window.location.pathname}${next.size ? `?${next}` : ''}`, { scroll: false });
@@ -140,9 +137,8 @@ export function MaterialLibraryPage() {
       materialCount={tally.all}
       collectionCount={collections.length}
       actionLabel={t("Upload material")}
-      onAction={creation.begin}
+      onAction={() => setShowUpload(true)}
     >
-      {creation.dialog}
       <div className="mt-5 flex flex-col gap-3 border-b border-[var(--border)] pb-3 sm:flex-row sm:items-center">
         <label className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-lg border border-[var(--border)] px-2.5 sm:max-w-[330px]">
           <Search
@@ -166,7 +162,6 @@ export function MaterialLibraryPage() {
           )}
         </label>
         <div className="flex items-center gap-2 sm:ml-auto">
-          {picker}
           <span className="text-[11px] text-[var(--muted-foreground)]">
             {t("{{count}} materials", { count: tally.all })}
           </span>
@@ -245,9 +240,7 @@ export function MaterialLibraryPage() {
               }
               onAssign={() => {
                 setMenuFor(null);
-                if ((material.content_workspace_id ?? '') !== activeWorkspaceId()) {
-                  router.push(scopedUrl(`/learning/reading/materials?assign=${encodeURIComponent(material.material_id)}`, material.content_workspace_id ?? ''));
-                } else setAssignFor(material);
+                setAssignFor(material);
               }}
               onDelete={() => {
                 setMenuFor(null);
@@ -273,7 +266,7 @@ export function MaterialLibraryPage() {
       {assignFor && (
         <AssignDialog
           material={assignFor}
-          collections={collections.filter(row => row.content_workspace_id === assignFor.content_workspace_id)}
+          collections={collections}
           onClose={() => setAssignFor(null)}
           onAssigned={async () => {
             setAssignFor(null);
@@ -369,7 +362,7 @@ function MaterialRow({
       : material.filename;
   // What the file is called (or where it came from), plus its size. The type
   // facts follow only on narrow screens, where the type column is hidden.
-  const secondary = [material.content_workspace_name || t("Default workspace"), identity, size, extent].filter(Boolean).join(" · ");
+  const secondary = [identity, size, extent].filter(Boolean).join(" · ");
   const typeTail = [tag, duration].filter(Boolean).join(" · ");
 
   const open = () => {

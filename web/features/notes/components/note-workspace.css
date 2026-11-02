@@ -1,0 +1,1041 @@
+/* Notebook page chrome: a full-bleed document between an optional page tree
+   and the Dito companion. Text columns share one measure so the title, the
+   blocks and the backlinks start on the same edge. */
+.dt-note-workspace {
+  --note-measure: 820px;
+  --note-gutter: 54px;
+  --dt-note-anchor-bg: color-mix(in srgb, var(--primary) 8%, transparent);
+  --dt-note-anchor-flash: color-mix(in srgb, var(--primary) 20%, transparent);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--background);
+  color: var(--foreground);
+}
+.dt-note-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+.dt-note-main {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+.dt-note-document {
+  width: 100%;
+  padding-bottom: 96px;
+}
+.dt-note-document > :not(.dt-note-head),
+.dt-note-head-body {
+  max-width: var(--note-measure);
+  margin-inline: auto;
+}
+.dt-note-editor-loading {
+  min-height: 50vh;
+}
+
+/* ---- Top bar ---------------------------------------------------------- */
+.dt-note-topbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 44px;
+  flex-shrink: 0;
+  padding: 0 10px;
+  color: var(--muted-foreground);
+}
+.dt-note-icon-button {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  color: var(--muted-foreground);
+  transition:
+    background-color 120ms,
+    color 120ms,
+    transform 120ms;
+}
+.dt-note-icon-button:hover,
+.dt-note-icon-button[aria-expanded='true'] {
+  background: var(--accent, var(--secondary));
+  color: var(--foreground);
+}
+.dt-note-icon-button:active {
+  transform: scale(0.92);
+}
+.dt-note-icon-button:disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+.dt-note-breadcrumb {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  gap: 1px;
+  margin-left: 2px;
+  font-size: 13px;
+}
+.dt-note-crumb {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 220px;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 8px;
+  border-radius: var(--dt-radius-sm, 6px);
+  font-size: 14px;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+}
+a.dt-note-crumb:hover {
+  background: var(--accent, var(--secondary));
+  color: var(--foreground);
+}
+.dt-note-feature {
+  display: flex;
+  flex-shrink: 0;
+}
+.dt-note-current {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 380px;
+  align-items: center;
+  gap: 4px;
+}
+.dt-note-crumb.is-gap {
+  padding: 0 2px;
+}
+.dt-note-crumb-sep {
+  flex-shrink: 0;
+  opacity: 0.45;
+}
+.dt-note-status {
+  flex-shrink: 0;
+  margin-right: 6px;
+  font-size: 12px;
+  color: var(--muted-foreground);
+  transition: opacity 400ms;
+}
+.dt-note-status.is-idle {
+  opacity: 0.6;
+}
+.dt-note-status.is-error {
+  color: #dc2626;
+}
+.dt-note-ask {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px 0 8px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--foreground);
+  transition:
+    background-color 120ms,
+    color 120ms,
+    transform 120ms;
+}
+.dt-note-ask > svg {
+  color: var(--primary);
+}
+.dt-note-ask:hover {
+  background: var(--accent, var(--secondary));
+}
+.dt-note-ask.is-active {
+  background: color-mix(in srgb, var(--primary) 9%, transparent);
+  color: var(--primary);
+}
+.dt-note-ask:active {
+  transform: scale(0.97);
+}
+
+/* ---- Popovers ---------------------------------------------------------- */
+.dt-note-page-menu {
+  left: auto;
+  right: 0;
+  width: 256px;
+  transform-origin: top right;
+}
+.dt-note-page-menu .dt-menu-item:disabled {
+  opacity: 0.45;
+}
+.dt-note-menu-glyph {
+  display: inline-flex;
+  width: 16px;
+  flex-shrink: 0;
+  justify-content: center;
+  font-size: 14px;
+  opacity: 0.85;
+}
+.dt-note-menu-search {
+  width: calc(100% - 8px);
+  height: 30px;
+  margin: 2px 4px 6px;
+  padding: 0 9px;
+  border-radius: 6px;
+  background: var(--secondary);
+  font-size: 13px;
+  outline: none;
+}
+.dt-note-menu-search:focus {
+  box-shadow: 0 0 0 1px var(--ring) inset;
+}
+.dt-note-move-list {
+  max-height: 280px;
+  overflow-y: auto;
+}
+.dt-note-menu-empty,
+.dt-note-menu-note {
+  padding: 6px 8px 4px;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--muted-foreground);
+}
+.dt-note-picker {
+  width: 300px;
+  z-index: 70;
+}
+.dt-note-icon-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 2px;
+  padding: 0 2px;
+}
+.dt-note-icon-grid button {
+  display: grid;
+  place-items: center;
+  height: 32px;
+  border-radius: 6px;
+  font-size: 19px;
+  line-height: 1;
+}
+.dt-note-icon-grid button:hover,
+.dt-note-icon-grid button:focus-visible,
+.dt-note-icon-grid button[aria-checked='true'] {
+  background: var(--accent, var(--secondary));
+  outline: none;
+}
+.dt-note-icon-custom input {
+  width: calc(100% - 8px);
+  height: 30px;
+  margin: 8px 4px 2px;
+  padding: 0 9px;
+  border-radius: 6px;
+  background: var(--secondary);
+  font-size: 13px;
+  outline: none;
+}
+.dt-note-cover-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 6px;
+  padding: 2px 4px 4px;
+}
+.dt-note-cover-grid button {
+  height: 34px;
+  border-radius: 6px;
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.05);
+  transition:
+    transform 120ms,
+    box-shadow 120ms;
+}
+.dt-note-cover-grid button:hover,
+.dt-note-cover-grid button:focus-visible {
+  transform: scale(1.04);
+  outline: none;
+}
+.dt-note-cover-grid button[aria-checked='true'] {
+  box-shadow:
+    0 0 0 2px var(--background),
+    0 0 0 3.5px var(--primary);
+}
+
+/* ---- Page head: cover, icon, title ------------------------------------ */
+.dt-note-head {
+  position: relative;
+}
+.dt-note-cover {
+  position: relative;
+  height: 168px;
+}
+.dt-note-cover-actions {
+  position: absolute;
+  right: max(16px, calc((100% - var(--note-measure)) / 2));
+  bottom: 10px;
+  opacity: 0;
+  transition: opacity 140ms;
+}
+.dt-note-cover:hover .dt-note-cover-actions,
+.dt-note-cover-actions:focus-within {
+  opacity: 1;
+}
+.dt-note-cover-actions .dt-note-ghost {
+  background: color-mix(in srgb, var(--background) 88%, transparent);
+  box-shadow: var(--dt-shadow-xs, 0 0 0 1px rgb(0 0 0 / 0.06));
+  color: var(--foreground);
+}
+.dt-note-cover-actions .dt-popover {
+  top: auto;
+  bottom: calc(100% + 6px);
+  left: auto;
+  right: 0;
+  transform-origin: bottom right;
+}
+.dt-note-head-body {
+  padding: 40px var(--note-gutter) 0;
+}
+.dt-note-head.has-cover .dt-note-head-body {
+  padding-top: 18px;
+}
+.dt-note-head.has-cover.has-icon .dt-note-head-body {
+  padding-top: 0;
+}
+.dt-note-page-icon-wrap {
+  width: max-content;
+}
+.dt-note-page-icon {
+  display: grid;
+  place-items: center;
+  width: 76px;
+  height: 76px;
+  margin-left: -6px;
+  border-radius: 10px;
+  font-size: 60px;
+  line-height: 1;
+  transition: background-color 120ms;
+}
+.dt-note-head.has-cover .dt-note-page-icon {
+  margin-top: -40px;
+}
+.dt-note-page-icon:hover {
+  background: var(--accent, var(--secondary));
+}
+.dt-note-head.has-cover .dt-note-page-icon:hover {
+  background: transparent;
+}
+.dt-note-head-tools {
+  display: flex;
+  gap: 2px;
+  height: 30px;
+  margin: 4px 0 2px -8px;
+  opacity: 0;
+  transition: opacity 140ms;
+}
+.dt-note-head-tools:empty {
+  height: 8px;
+}
+.dt-note-head:hover .dt-note-head-tools,
+.dt-note-head-tools:focus-within,
+.dt-note-head-tools:has([aria-expanded='true']) {
+  opacity: 1;
+}
+.dt-note-ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--muted-foreground);
+  transition:
+    background-color 120ms,
+    color 120ms;
+}
+.dt-note-ghost:hover,
+.dt-note-ghost[aria-expanded='true'] {
+  background: var(--accent, var(--secondary));
+  color: var(--foreground);
+}
+.dt-note-page-title {
+  display: block;
+  width: 100%;
+  resize: none;
+  overflow: hidden;
+  background: transparent;
+  outline: none;
+  font-family: var(--font-serif), Georgia, serif;
+  font-size: 38px;
+  font-weight: 600;
+  line-height: 1.22;
+  letter-spacing: -0.01em;
+  color: var(--foreground);
+  text-wrap: pretty;
+}
+.dt-note-page-title::placeholder {
+  color: var(--muted-foreground);
+  opacity: 0.45;
+}
+
+/* ---- Page tree --------------------------------------------------------- */
+.dt-note-page-tree {
+  display: flex;
+  flex-direction: column;
+  width: 248px;
+  flex-shrink: 0;
+  min-height: 0;
+  padding: 2px 8px 10px;
+  border-right: 1px solid var(--border);
+  font-size: 13.5px;
+}
+.dt-note-tree-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 36px;
+  padding: 0 2px 0 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted-foreground);
+}
+.dt-note-tree-heading a:hover {
+  color: var(--foreground);
+}
+.dt-note-tree-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+.dt-note-page-tree ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.dt-note-tree-row {
+  display: flex;
+  align-items: center;
+  height: 30px;
+  margin: 1px 0;
+  border-radius: 6px;
+  color: var(--foreground);
+  transition: background-color 100ms;
+}
+.dt-note-tree-row:hover {
+  background: var(--accent, var(--secondary));
+}
+.dt-note-tree-row.is-current {
+  background: color-mix(in srgb, var(--foreground) 7%, transparent);
+  font-weight: 500;
+}
+.dt-note-tree-row a {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+  height: 100%;
+  padding-right: 4px;
+}
+.dt-note-tree-toggle {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin-left: 2px;
+  border-radius: 4px;
+  color: var(--muted-foreground);
+}
+.dt-note-tree-toggle svg {
+  transition: transform 140ms;
+}
+button.dt-note-tree-toggle:hover {
+  background: color-mix(in srgb, var(--foreground) 8%, transparent);
+}
+.dt-note-tree-icon {
+  display: inline-flex;
+  width: 18px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  color: var(--muted-foreground);
+}
+.dt-note-tree-add {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin-right: 4px;
+  border-radius: 4px;
+  color: var(--muted-foreground);
+  opacity: 0;
+}
+.dt-note-tree-row:hover .dt-note-tree-add,
+.dt-note-tree-add:focus-visible {
+  opacity: 1;
+}
+.dt-note-tree-add:hover {
+  background: color-mix(in srgb, var(--foreground) 8%, transparent);
+  color: var(--foreground);
+}
+
+/* ---- Companion slot, banners, backlinks -------------------------------- */
+/* The panel exists only while a conversation is open: a card that slides
+   in beside the page and folds back into its orb when closed. */
+.dt-note-companion-slot {
+  width: 392px;
+  min-width: 0;
+  flex-shrink: 0;
+  padding: 4px 10px 10px 0;
+  animation: dt-note-panel-in 300ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.dt-note-companion-slot > .dt-note-companion {
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow:
+    0 18px 50px -28px rgb(0 0 0 / 0.35),
+    0 2px 6px -2px rgb(0 0 0 / 0.06);
+  /* clip, not hidden: a popover near the edge must not make the card scroll. */
+  overflow: clip;
+}
+@keyframes dt-note-panel-in {
+  from {
+    opacity: 0;
+    transform: translateX(18px) scale(0.985);
+  }
+}
+/* Closing folds the panel into its orb (model/fold-motion.ts). */
+.dt-note-fold-ghost {
+  position: fixed;
+  z-index: 80;
+  margin: 0;
+  pointer-events: none;
+  will-change: transform, opacity, filter;
+}
+.dt-note-fold-ghost,
+.dt-note-fold-ghost * {
+  animation: none !important;
+  transition: none !important;
+}
+.dt-note-fold-spark {
+  position: fixed;
+  z-index: 81;
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  pointer-events: none;
+  background: var(--primary);
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--background) 80%, transparent),
+    0 0 14px 3px color-mix(in srgb, var(--primary) 55%, transparent);
+  will-change: transform, opacity;
+}
+.dt-note-fold-ring {
+  position: fixed;
+  z-index: 79;
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  pointer-events: none;
+  border: 1.5px solid color-mix(in srgb, var(--primary) 70%, transparent);
+}
+.dt-note-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  width: calc(100% - 32px);
+  max-width: var(--note-measure);
+  margin: 0 auto 8px;
+  padding: 8px 8px 8px 14px;
+  border-radius: 8px;
+  background: var(--secondary);
+  font-size: 13px;
+}
+.dt-note-banner.is-error {
+  background: color-mix(in srgb, #ef4444 8%, var(--background));
+  color: #b91c1c;
+}
+.dt-note-backlinks {
+  margin-top: 40px;
+  padding: 16px var(--note-gutter) 0;
+}
+.dt-note-backlinks h2 {
+  margin-bottom: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted-foreground);
+}
+.dt-note-backlinks a {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  margin-left: -8px;
+  padding: 0 8px;
+  border-radius: 6px;
+  font-size: 13.5px;
+}
+.dt-note-backlinks a:hover {
+  background: var(--accent, var(--secondary));
+}
+
+@media (max-width: 900px) {
+  .dt-note-workspace {
+    --note-gutter: 32px;
+  }
+  .dt-note-companion-slot {
+    position: absolute;
+    inset: 44px 0 0 auto;
+    z-index: 40;
+    width: min(400px, 100%);
+    padding: 0 8px 8px;
+  }
+}
+@media (max-width: 767px) {
+  .dt-note-page-tree {
+    position: absolute;
+    inset: 44px auto 0 0;
+    z-index: 35;
+    background: var(--background);
+    box-shadow: var(--dt-shadow-md, 8px 0 30px rgb(0 0 0 / 0.12));
+  }
+  .dt-note-page-title {
+    font-size: 30px;
+  }
+  /* Phones drop the feature; the path starts at the first page. */
+  .dt-note-feature {
+    display: none;
+  }
+  .dt-note-feature + .contents > .dt-crumb-sep,
+  .dt-note-feature + .dt-note-current > .dt-crumb-sep {
+    display: none;
+  }
+}
+@media (max-width: 640px) {
+  .dt-note-workspace {
+    --note-gutter: 30px;
+  }
+}
+
+/* ---- Conversations folded onto their lines ----------------------------- */
+.dt-note-editor {
+  position: relative;
+}
+.dt-note-thread-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+}
+.dt-note-orbs,
+.dt-note-ask-orb {
+  position: absolute;
+  right: calc(var(--note-gutter, 46px) / 2);
+  transform: translate(50%, -50%);
+  pointer-events: auto;
+}
+.dt-note-orbs {
+  display: flex;
+  align-items: center;
+  padding: 4px;
+  animation: dt-note-orb-in 320ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.dt-note-orb {
+  position: relative;
+  flex-shrink: 0;
+  width: 15px;
+  height: 15px;
+  border-radius: 999px;
+  --orb: color-mix(in srgb, var(--foreground) 32%, var(--background));
+  transition:
+    margin 240ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    transform 160ms;
+}
+.dt-note-orb::before,
+.dt-note-orb::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 9px;
+  height: 9px;
+  margin: -4.5px 0 0 -4.5px;
+  border-radius: 999px;
+}
+.dt-note-orb::before {
+  background: var(--orb);
+  box-shadow: 0 0 0 2px var(--background);
+  transition:
+    background-color 200ms,
+    box-shadow 200ms;
+}
+.dt-note-orb + .dt-note-orb {
+  margin-left: -9px;
+}
+.dt-note-orbs[data-hover] .dt-note-orb + .dt-note-orb {
+  margin-left: -1px;
+}
+.dt-note-orb:hover {
+  transform: scale(1.3);
+}
+.dt-note-orb[data-state='unread'] {
+  --orb: var(--primary);
+}
+.dt-note-orb[data-state='failed'] {
+  --orb: #ef4444;
+}
+.dt-note-orb[data-state='failed']::after {
+  border: 1.5px solid #ef4444;
+  opacity: 0.35;
+  transform: scale(1.9);
+}
+.dt-note-orb[data-state='running'] {
+  --orb: var(--primary);
+}
+.dt-note-orb[data-state='running']::before {
+  animation: dt-note-orb-breathe 1.8s ease-in-out infinite;
+}
+.dt-note-orb[data-state='running']::after {
+  border: 1.5px solid var(--primary);
+  animation: dt-note-orb-ripple 1.8s cubic-bezier(0, 0.55, 0.45, 1) infinite;
+}
+.dt-note-orb[data-active]::before {
+  box-shadow:
+    0 0 0 2px var(--background),
+    0 0 0 3.5px color-mix(in srgb, var(--primary) 70%, transparent);
+}
+.dt-note-orb.is-static {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  pointer-events: none;
+}
+.dt-note-orb.is-static::before {
+  width: 8px;
+  height: 8px;
+  margin: -4px 0 0 -4px;
+  box-shadow: none;
+}
+.dt-note-orb.is-static::after {
+  width: 8px;
+  height: 8px;
+  margin: -4px 0 0 -4px;
+}
+.dt-note-orb-more {
+  margin-left: 3px;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted-foreground);
+}
+.dt-note-ask-orb {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  color: var(--muted-foreground);
+  opacity: 0.5;
+  animation: dt-note-ask-in 160ms ease-out;
+  transition:
+    opacity 120ms,
+    color 120ms,
+    background-color 120ms,
+    transform 120ms;
+}
+.dt-note-ask-orb:hover {
+  opacity: 1;
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+}
+.dt-note-ask-orb:active {
+  transform: translate(50%, -50%) scale(0.9);
+}
+@keyframes dt-note-orb-in {
+  from {
+    opacity: 0;
+    transform: translate(50%, -50%) scale(0.4);
+  }
+}
+@keyframes dt-note-ask-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes dt-note-orb-breathe {
+  50% {
+    opacity: 0.6;
+  }
+}
+@keyframes dt-note-orb-ripple {
+  from {
+    opacity: 0.7;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(3.1);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dt-note-orb[data-state='running']::before,
+  .dt-note-orb[data-state='running']::after,
+  .dt-note-orbs,
+  .dt-note-companion-slot {
+    animation: none;
+  }
+}
+
+/* Hover preview of a line's conversations. */
+.dt-note-thread-preview {
+  position: fixed;
+  z-index: 70;
+  max-height: 340px;
+  overflow-y: auto;
+  padding: 5px;
+  animation: dt-note-ask-in 120ms ease-out;
+}
+.dt-note-thread-row {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  border-radius: 9px;
+  transition: background-color 100ms;
+}
+.dt-note-thread-row:hover {
+  background: var(--secondary);
+}
+.dt-note-thread-row-main {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  text-align: left;
+}
+.dt-note-thread-row-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.dt-note-thread-row-head strong {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--foreground);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dt-note-thread-row-head time {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+.dt-note-thread-row[data-state='running'] time {
+  color: var(--primary);
+}
+.dt-note-thread-row[data-state='failed'] time {
+  color: #dc2626;
+}
+.dt-note-thread-row-body,
+.dt-note-thread-row-line {
+  display: -webkit-box;
+  overflow: hidden;
+  padding-left: 16px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted-foreground);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.dt-note-thread-delete {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  margin: 6px 6px 0 -4px;
+  border-radius: 7px;
+  color: var(--muted-foreground);
+  opacity: 0;
+  transition:
+    opacity 120ms,
+    background-color 120ms,
+    color 120ms;
+}
+.dt-note-thread-row:hover .dt-note-thread-delete,
+.dt-note-thread-delete:focus-visible {
+  opacity: 1;
+}
+.dt-note-thread-delete:hover {
+  background: color-mix(in srgb, #ef4444 12%, transparent);
+  color: #dc2626;
+}
+.dt-note-thread-confirm {
+  display: flex;
+  gap: 2px;
+  margin: 6px 6px 0 0;
+}
+.dt-note-thread-confirm button {
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 6px;
+  font-size: 11.5px;
+  color: var(--muted-foreground);
+}
+.dt-note-thread-confirm button:hover {
+  background: var(--background);
+  color: var(--foreground);
+}
+.dt-note-thread-confirm .is-danger {
+  background: #ef4444;
+  color: #fff;
+}
+.dt-note-thread-confirm .is-danger:hover {
+  background: #dc2626;
+  color: #fff;
+}
+
+/* ---- The page's outline ------------------------------------------------ */
+.dt-note-outline-anchor {
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  height: 0;
+}
+.dt-note-outline {
+  position: absolute;
+  top: 72px;
+  left: 14px;
+  width: 34px;
+  max-height: calc(100vh - 200px);
+  overflow: hidden;
+  padding: 6px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  transition:
+    width 260ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    background-color 200ms,
+    border-color 200ms,
+    box-shadow 200ms;
+}
+.dt-note-outline[data-expanded] {
+  width: 208px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+.dt-note-outline[data-expanded]:not([data-pinned]) {
+  border-color: var(--border);
+  background: var(--background);
+  box-shadow: 0 16px 40px -18px rgb(0 0 0 / 0.28);
+}
+.dt-note-outline-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 0;
+  overflow: hidden;
+  padding-left: 6px;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--muted-foreground);
+  opacity: 0;
+  transition:
+    height 200ms,
+    opacity 160ms;
+}
+.dt-note-outline[data-expanded] .dt-note-outline-head {
+  height: 30px;
+  margin-bottom: 2px;
+  opacity: 1;
+}
+.dt-note-outline ol {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.dt-note-outline li button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 12px;
+  padding: 0 4px;
+  border-radius: 6px;
+  text-align: left;
+  transition:
+    height 220ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    background-color 100ms;
+}
+.dt-note-outline[data-expanded] li button {
+  height: 28px;
+  padding-left: calc(6px + var(--indent, 0px));
+}
+.dt-note-outline[data-expanded] li button:hover {
+  background: var(--secondary);
+}
+.dt-note-outline li[data-level='2'] {
+  --indent: 12px;
+  --mark: 13px;
+}
+.dt-note-outline li[data-level='3'] {
+  --indent: 24px;
+  --mark: 10px;
+}
+.dt-note-outline li[data-level='4'] {
+  --indent: 36px;
+  --mark: 7px;
+}
+.dt-note-outline-mark {
+  flex-shrink: 0;
+  width: var(--mark, 18px);
+  height: 2px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--foreground) 22%, transparent);
+  transition:
+    width 200ms,
+    opacity 160ms,
+    background-color 160ms;
+}
+.dt-note-outline button[aria-current] .dt-note-outline-mark {
+  background: var(--foreground);
+}
+.dt-note-outline[data-expanded] .dt-note-outline-mark {
+  width: 0;
+  margin-right: -8px;
+  opacity: 0;
+}
+.dt-note-outline-text {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12.5px;
+  color: var(--muted-foreground);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 160ms;
+}
+.dt-note-outline[data-expanded] .dt-note-outline-text {
+  opacity: 1;
+}
+.dt-note-outline button[aria-current] .dt-note-outline-text {
+  color: var(--foreground);
+  font-weight: 500;
+}
+.dt-note-outline li[data-level='1'] .dt-note-outline-text {
+  color: var(--foreground);
+}

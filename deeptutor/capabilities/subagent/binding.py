@@ -46,8 +46,6 @@ def _resolve(context: UnifiedContext) -> dict[str, str] | None:
             "cwd": "",
         }
 
-    from deeptutor.multi_user.knowledge_access import resolve_kb_metadata
-
     partner_id = str(context.runtime.consult_partner_id or "").strip()
     if partner_id:
         from deeptutor.multi_user.partner_access import visible_partner_cards
@@ -59,6 +57,10 @@ def _resolve(context: UnifiedContext) -> dict[str, str] | None:
             "partner_id": partner_id,
             "cwd": "",
         }
+
+    if not context.knowledge_bases:
+        return None
+    from deeptutor.multi_user.knowledge_access import resolve_kb_metadata
 
     for ref in context.knowledge_bases or []:
         ref = str(ref).strip()

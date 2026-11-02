@@ -1,8 +1,5 @@
 import type { StreamEvent } from "@/features/chat/model/protocol";
-import {
-  collectRetractedCallIds,
-  shouldAppendEventContent,
-} from "@/lib/stream";
+import { shouldAppendEventContent } from "@/lib/stream";
 
 export const MAX_PREVIEW_EVENTS = 200;
 export const MAX_PREVIEW_BYTES = 128 * 1024;
@@ -46,9 +43,14 @@ function carriesCard(event: StreamEvent): boolean {
   );
 }
 
+/** What the learner sent mid-turn: conversation, not working-out. */
+function carriesLearnerWords(event: StreamEvent): boolean {
+  return metadata(event).trace_kind === "user_input";
+}
+
 function isSemantic(event: StreamEvent): boolean {
   if (SEMANTIC_TYPES.has(String(event.type ?? ""))) return true;
-  return carriesCard(event);
+  return carriesCard(event) || carriesLearnerWords(event);
 }
 
 function isCritical(event: StreamEvent): boolean {
@@ -58,7 +60,7 @@ function isCritical(event: StreamEvent): boolean {
   ) {
     return true;
   }
-  return carriesCard(event);
+  return carriesCard(event) || carriesLearnerWords(event);
 }
 
 function boundLegacyPayload(event: StreamEvent): StreamEvent {
@@ -173,16 +175,13 @@ export function settleMessageTrace(
   turnId: string | null,
   bounds?: MessageTraceMetadata,
 ): { events: StreamEvent[]; trace: MessageTraceMetadata } {
-  const retracted = collectRetractedCallIds(events);
   let answerLength = 0;
   let lastSeq = 0;
   const stamped = events.map((event) => {
     lastSeq = Math.max(lastSeq, event.seq ?? 0);
     const meta = metadata(event);
     if (shouldAppendEventContent(event)) {
-      const callId = typeof meta.call_id === "string" ? meta.call_id : "";
-      if (!callId || !retracted.has(callId))
-        answerLength += event.content.length;
+      answerLength += event.content.length;
       return event;
     }
     if (

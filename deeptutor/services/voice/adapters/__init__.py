@@ -12,15 +12,18 @@ from deeptutor.services.voice.adapters.dashscope import (
     DashScopeSTTAdapter,
     DashScopeTTSAdapter,
 )
+from deeptutor.services.voice.adapters.edge import EdgeTTSAdapter
 from deeptutor.services.voice.adapters.gemini import GeminiTTSAdapter
 from deeptutor.services.voice.adapters.mimo import MiMoTTSAdapter
 from deeptutor.services.voice.adapters.minimax import MiniMaxTTSAdapter
+from deeptutor.services.voice.adapters.mistral import MistralSTTAdapter, MistralTTSAdapter
 from deeptutor.services.voice.adapters.openai_compat import (
     OpenAICompatSTTAdapter,
     OpenAICompatTTSAdapter,
     OpenRouterTTSAdapter,
 )
 from deeptutor.services.voice.adapters.volcengine import VolcengineSTTAdapter, VolcengineTTSAdapter
+from deeptutor.services.voice.adapters.xai import XaiSTTAdapter, XaiTTSAdapter
 from deeptutor.services.voice.base import BaseSTTAdapter, BaseTTSAdapter, VoiceProviderError
 
 TTS_ADAPTERS: dict[str, BaseTTSAdapter] = {
@@ -31,12 +34,17 @@ TTS_ADAPTERS: dict[str, BaseTTSAdapter] = {
     "openrouter_tts": OpenRouterTTSAdapter(),
     "dashscope": DashScopeTTSAdapter(),
     "gemini": GeminiTTSAdapter(),
+    "edge": EdgeTTSAdapter(),
+    "mistral_tts": MistralTTSAdapter(),
+    "xai_tts": XaiTTSAdapter(),
 }
 
 STT_ADAPTERS: dict[str, BaseSTTAdapter] = {
     "volcengine": VolcengineSTTAdapter(),
     "openai_compat": OpenAICompatSTTAdapter(),
     "dashscope": DashScopeSTTAdapter(),
+    "mistral_stt": MistralSTTAdapter(),
+    "xai_stt": XaiSTTAdapter(),
 }
 
 

@@ -30,7 +30,7 @@ const STATUS_SCOPES: {
   },
   {
     kind: "bookmarked",
-    label: "Bookmarked",
+    label: "Marked",
     icon: Bookmark,
     count: s => s.bookmarked,
   },

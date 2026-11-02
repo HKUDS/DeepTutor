@@ -348,3 +348,28 @@ async def test_delete_removes_kb_directory_when_pipeline_lacks_delete(tmp_path) 
 
     assert await service.delete(kb_name="demo") is True
     assert not kb_dir.exists()
+
+
+@pytest.mark.asyncio
+async def test_generate_queries_strips_list_markers_not_leading_numbers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The LLM returns a numbered list; only the list marker should be removed.
+    # A query that itself begins with a number ("2024 ...", "5G ...") must keep
+    # it — lstrip("0123456789.-) ") ate those because it is a char set, not a
+    # prefix.
+    import deeptutor.services.llm as llm_module
+
+    async def _fake_complete(_prompt: str, *, system_prompt: str | None = None) -> str:
+        return "1. 2024 budget forecast\n2. 5G network rollout\n- climate policy"
+
+    monkeypatch.setattr(llm_module, "complete", _fake_complete, raising=True)
+
+    async def _unused_search(**_kwargs: object) -> dict:
+        return {}
+
+    retriever = SmartRetriever(search=_unused_search)
+
+    queries = await retriever._generate_queries("some context", 3)
+
+    assert queries == ["2024 budget forecast", "5G network rollout", "climate policy"]

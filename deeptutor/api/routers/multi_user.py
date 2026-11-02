@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, StrictBool, field_validator
 
 from deeptutor.api.routers.auth import require_admin, require_auth
-from deeptutor.knowledge.manager import KnowledgeBaseManager
+from deeptutor.modules.catalog import module_enabled, require_module
 from deeptutor.multi_user.audit import log_admin_action, log_guardian_action
 from deeptutor.multi_user.book_permission import (
     BookDefaultLevel,
@@ -56,8 +56,6 @@ from deeptutor.multi_user.paths import (
     get_path_service_for_scope,
     scope_for_user,
 )
-from deeptutor.reading import ReadingStore
-from deeptutor.reading.extensions import get_reading_extension_registry
 from deeptutor.services.auth import POCKETBASE_ENABLED, hash_password
 from deeptutor.services.config.model_catalog import ModelCatalogService
 
@@ -193,6 +191,10 @@ def _admin_catalog_summary() -> dict[str, list[dict[str, Any]]]:
 
 
 def _admin_kb_summary() -> list[dict[str, Any]]:
+    if not module_enabled("knowledge"):
+        return []
+    from deeptutor.knowledge.manager import KnowledgeBaseManager
+
     manager = KnowledgeBaseManager(base_dir=str(admin_kb_base_dir()))
     return [
         {
@@ -220,6 +222,8 @@ def _admin_partner_summary() -> list[dict[str, Any]]:
     soul, which people write personally) by a single click. Identity only: no
     channel wiring or model selection leaks into the assignable summary.
     """
+    if not module_enabled("partners"):
+        return []
     from deeptutor.services.partners import get_partner_manager
 
     admin_id = get_current_user().id
@@ -240,6 +244,10 @@ def _reading_root(service: Any) -> Path:
 
 
 def _admin_reading_summary() -> list[dict[str, Any]]:
+    if not module_enabled("reading"):
+        return []
+    from deeptutor.reading import ReadingStore
+
     store = ReadingStore(_reading_root(get_admin_path_service()))
     return [manifest.to_dict() for manifest in store.list_materials()]
 
@@ -254,6 +262,9 @@ def _stage_assigned_materials(user_id: str, grant: dict[str, Any]) -> None:
     material_ids.discard("*")
     if not material_ids:
         return
+
+    require_module("reading")
+    from deeptutor.reading import ReadingStore
 
     admin_root = _reading_root(get_admin_path_service())
     admin_store = ReadingStore(admin_root)
@@ -281,9 +292,7 @@ def _validate_reading_policy(grant: dict[str, Any]) -> None:
     reading = policy.get("reading") if isinstance(policy, dict) else None
     if not isinstance(reading, dict):
         return
-    allowed_extensions = {
-        extension.manifest.id for extension in get_reading_extension_registry().all()
-    }
+    allowed_extensions = {extension.manifest.id for extension in _reading_extensions()}
     unknown = sorted(set(reading.get("extensions") or []) - allowed_extensions)
     if unknown:
         raise ValueError(f"Unknown reading extensions: {', '.join(unknown)}")
@@ -365,7 +374,7 @@ async def admin_resources(_: object = Depends(require_admin)) -> dict[str, Any]:
         "partners": _admin_partner_summary(),
         "reading_materials": _admin_reading_summary(),
         "reading_extensions": [
-            extension.manifest.model_dump() for extension in get_reading_extension_registry().all()
+            extension.manifest.model_dump() for extension in _reading_extensions()
         ],
         "tools": tool_options["tools"],
         "mcp_tools": tool_options["mcp_tools"],
@@ -648,7 +657,7 @@ async def get_guardian_restrictions(
     return {
         "restrictions": restrictions,
         "available_extensions": [
-            extension.manifest.model_dump() for extension in get_reading_extension_registry().all()
+            extension.manifest.model_dump() for extension in _reading_extensions()
         ],
     }
 
@@ -662,9 +671,7 @@ async def put_guardian_restrictions(
     learner_username, learner_record, actor_user_id, is_admin = _require_guardian_access(
         current, learner_user_id, "manage_restrictions"
     )
-    available_extensions = {
-        extension.manifest.id for extension in get_reading_extension_registry().all()
-    }
+    available_extensions = {extension.manifest.id for extension in _reading_extensions()}
     unknown_extensions = sorted(set(payload.extensions) - available_extensions)
     if unknown_extensions:
         raise HTTPException(
@@ -926,3 +933,11 @@ async def admin_install_skill(
 @router.get("/users")
 async def multi_user_list_users(_: object = Depends(require_admin)) -> dict[str, Any]:
     return {"users": list_user_info()}
+
+
+def _reading_extensions():
+    if not module_enabled("reading"):
+        return ()
+    from deeptutor.reading.extensions import get_reading_extension_registry
+
+    return get_reading_extension_registry().all()

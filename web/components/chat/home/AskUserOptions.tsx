@@ -13,9 +13,10 @@ import {
   type MasteryQuestion,
 } from "@/lib/mastery-question";
 import {
-  collectRetractedCallIds,
-  shouldAppendEventContent,
-} from "@/lib/stream";
+  presentedPagesOfToolResult,
+  type PresentedPage,
+} from "@/lib/mastery-source-pages";
+import { shouldAppendEventContent } from "@/lib/stream";
 import { hasRenderableCallTrace } from "@/features/chat/trace/selectors";
 import type { StreamEvent } from "@/features/chat/model/protocol";
 
@@ -290,6 +291,18 @@ export type MessageSegment =
       key: string;
     }
   /**
+   * Source pages the tutor presented with a `rag` call, shown right under the
+   * text that was being written when it made that call. A card, not trace
+   * material: the page is part of the lesson and must not fold away with the
+   * working-out around it.
+   */
+  | {
+      kind: "source_view";
+      pages: PresentedPage[];
+      toolCallId: string | null;
+      key: string;
+    }
+  /**
    * One run of work — tool calls, their results, the reasoning around them —
    * rendered exactly where it happened, between the text that introduced it
    * and the text that followed. This is what makes the message read like a
@@ -298,7 +311,29 @@ export type MessageSegment =
    * A region opens as soon as trace events arrive after some answer text, and
    * closes when the next text run starts.
    */
-  | { kind: "trace"; events: StreamEvent[]; key: string };
+  | { kind: "trace"; events: StreamEvent[]; key: string }
+  /**
+   * What the learner sent while the turn was running, at the step where the
+   * turn read it. It splits the message there: the work above it was done
+   * without it, everything below it was done knowing it.
+   */
+  | { kind: "user_input"; messages: string[]; key: string };
+
+/** The messages a ``user_input`` row says the turn read, if it is one. */
+function readUserInputs(event: StreamEvent): string[] | null {
+  const meta = (event.metadata ?? {}) as Record<string, unknown>;
+  if (event.type !== "progress" || meta.trace_kind !== "user_input") {
+    return null;
+  }
+  const inputs = Array.isArray(meta.user_inputs) ? meta.user_inputs : [];
+  return inputs
+    .map((item) =>
+      item && typeof item === "object"
+        ? String((item as Record<string, unknown>).content ?? "").trim()
+        : "",
+    )
+    .filter(Boolean);
+}
 
 /** Every id this event answers to, for matching a row against its call. */
 function callIdsOf(event: StreamEvent): string[] {
@@ -344,9 +379,6 @@ export function extractMessageSegments(
   let pendingTextIdx: number | null = null;
   let pendingTraceIdx: number | null = null;
   let seq = 0;
-  // A round a capability rejected was streamed and then taken back: its text
-  // is trace material, never answer text. Ordinary commentary stays.
-  const retractedCallIds = collectRetractedCallIds(events);
   // Calls the reader sees as a card. Their *payloads* are not trace material
   // — the card is what those say. The call itself is: stopping to ask is a
   // step the agent took, and a trace with no row for it claims the answers
@@ -419,10 +451,6 @@ export function extractMessageSegments(
   for (const event of events) {
     if (shouldAppendEventContent(event)) {
       const callId = ((event.metadata ?? {}) as { call_id?: string }).call_id;
-      if (callId && retractedCallIds.has(callId)) {
-        appendTraceEvent(event);
-        continue;
-      }
       // Keep the transition to answer text with the preceding reasoning
       // trace so it can fold before the whole model call finishes. Only the
       // first delta is needed; subsequent answer deltas stay in the text.
@@ -468,6 +496,31 @@ export function extractMessageSegments(
         if (typeof meta.assistant_content_offset === "number") {
           answerOffsets.set(masteryIdx, meta.assistant_content_offset);
         }
+        continue;
+      }
+      const presentedPages = presentedPagesOfToolResult(event);
+      if (presentedPages.length > 0) {
+        // The call stays a row of working-out; the page it showed is a card
+        // placed at the call's own position in the answer.
+        appendTraceEvent(event);
+        const callOffset =
+          typeof meta.assistant_content_offset === "number"
+            ? meta.assistant_content_offset
+            : pendingTraceIdx !== null
+              ? answerOffsets.get(pendingTraceIdx)
+              : undefined;
+        pendingTextIdx = null;
+        pendingTraceIdx = null;
+        const viewIdx = segments.length;
+        segments.push({
+          kind: "source_view",
+          pages: presentedPages,
+          toolCallId:
+            (event as { tool_call_id?: string }).tool_call_id ??
+            (typeof meta.tool_call_id === "string" ? meta.tool_call_id : null),
+          key: `s${seq++}`,
+        });
+        if (callOffset !== undefined) answerOffsets.set(viewIdx, callOffset);
         continue;
       }
       const toolMetadata = meta.tool_metadata;
@@ -634,6 +687,18 @@ export function extractMessageSegments(
       // The resolution belongs to the card, not to the trace below it.
       continue;
     }
+    const said = readUserInputs(event);
+    if (said) {
+      if (said.length === 0) continue;
+      // What the turn writes next answers this, so it starts fresh below it.
+      pendingTextIdx = null;
+      pendingTraceIdx = null;
+      if (typeof meta.assistant_content_offset === "number") {
+        answerOffsets.set(segments.length, meta.assistant_content_offset);
+      }
+      segments.push({ kind: "user_input", messages: said, key: `u${seq++}` });
+      continue;
+    }
     appendTraceEvent(event);
   }
 
@@ -691,8 +756,9 @@ export function extractMessageSegments(
  *
  * A row with no recorded offset is placed differently by kind. A card is a
  * question the reader was asked, so it belongs below everything written before
- * it. A run of tool work is not worth pushing the whole answer above, so it
- * simply keeps its position in the sequence.
+ * it. A run of tool work — or a message the learner sent mid-turn — is not
+ * worth pushing the whole answer above, so it keeps its position in the
+ * sequence.
  */
 function layOutAnswerContent(
   segments: MessageSegment[],
@@ -716,7 +782,7 @@ function layOutAnswerContent(
     const offset = answerOffsets.get(idx);
     if (offset !== undefined) {
       pushText(snapToLineStart(answerContent, Math.max(cursor, offset)));
-    } else if (segment.kind !== "trace") {
+    } else if (segment.kind !== "trace" && segment.kind !== "user_input") {
       pushText(answerContent.length);
     }
     laidOut.push(segment);

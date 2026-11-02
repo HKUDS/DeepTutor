@@ -289,7 +289,9 @@ def _partner_display_name(partner_dir, partner_id: str) -> str:
     return partner_id
 
 
-def _partner_session_entity(path, partner_id: str, partner_name: str) -> Entity | None:
+def _partner_session_entity(
+    path, partner_id: str, partner_name: str, *, archived: bool = False
+) -> Entity | None:
     """Build one Entity from a partner session JSONL file.
 
     The conversation is inlined as ``user / assistant`` blocks (mirroring
@@ -324,7 +326,7 @@ def _partner_session_entity(path, partner_id: str, partner_name: str) -> Entity 
         return None
 
     session_key = path.stem
-    archived = session_key.startswith("_archived_")
+    archived = archived or session_key.startswith("_archived_")
     last = records[-1]
     last_ts = last.get("timestamp", "")
     last_content = last.get("content", "")
@@ -340,8 +342,23 @@ def _partner_session_entity(path, partner_id: str, partner_name: str) -> Entity 
             "archived": archived,
             "message_count": len(blocks),
         },
-        fingerprint=_sha1(len(blocks), last_ts, last_content),
+        # Preserve existing active-session fingerprints; archive/restore must
+        # still count as a change when the JSONL history itself is unchanged.
+        fingerprint=_sha1(len(blocks), last_ts, last_content, True if archived else None),
     )
+
+
+def _partner_archived_sessions(sessions_dir: Path) -> set[str]:
+    """Read soft archive flags once per directory without creating any files."""
+    try:
+        index = json.loads((sessions_dir / "_index.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return set()
+    if not isinstance(index, dict):
+        return set()
+    return {
+        key for key, entry in index.items() if isinstance(entry, dict) and entry.get("archived")
+    }
 
 
 def read_partner_entities() -> list[Entity]:
@@ -390,8 +407,11 @@ def read_partner_entities() -> list[Entity]:
         if not sessions_dir.is_dir():
             continue
         partner_name = _partner_display_name(partner_dir, partner_id)
+        archived_sessions = _partner_archived_sessions(sessions_dir)
         for sess_file in sorted(sessions_dir.glob("*.jsonl")):
-            entity = _partner_session_entity(sess_file, partner_id, partner_name)
+            entity = _partner_session_entity(
+                sess_file, partner_id, partner_name, archived=sess_file.stem in archived_sessions
+            )
             if entity is not None:
                 out.append(entity)
     return out

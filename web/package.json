@@ -30,13 +30,17 @@
     "audit:report": "playwright show-report",
     "test:e2e:critical": "playwright test --project=critical-turns",
     "test:e2e:multi-worker": "playwright test --project=multi-worker-turns-desktop --project=multi-worker-turns-mobile",
-    "build:brand-icons": "tsx ./scripts/build-brand-icons.mts"
+    "build:brand-icons": "tsx ./scripts/build-brand-icons.mts",
+    "sync:logo": "node ./scripts/sync-logo-assets.mjs"
   },
   "dependencies": {
+    "@blocknote/core": "0.56.0",
+    "@blocknote/react": "0.56.0",
     "@recogito/text-annotator": "4.2.5",
     "chart.js": "^4.5.1",
     "clsx": "^2.1.1",
     "cytoscape": "^3.33.1",
+    "date-fns": "^4.4.0",
     "docx-preview": "^0.3.7",
     "epubjs": "^0.3.93",
     "exceljs": "^4.4.0",
@@ -44,6 +48,7 @@
     "html2canvas": "^1.4.1",
     "i18next": "^25.8.0",
     "jspdf": "^4.2.0",
+    "katex": "0.16.27",
     "lucide-react": "^0.562.0",
     "mdast-util-from-markdown": "^2.0.2",
     "mermaid": "^11.14.0",

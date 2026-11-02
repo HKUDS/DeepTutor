@@ -103,6 +103,15 @@ PROVIDER_CAPABILITIES: dict[str, dict[str, object]] = {
         "system_in_messages": True,
         "has_thinking_tags": False,
     },
+    "claude_code": {
+        "supports_response_format": False,
+        "supports_streaming": True,
+        "supports_tools": True,
+        "supports_vision": True,
+        "vision_url_supported": False,
+        "system_in_messages": True,
+        "has_thinking_tags": False,
+    },
     # DeepSeek
     "deepseek": {
         "supports_response_format": False,  # DeepSeek doesn't support strict JSON schema yet
@@ -184,6 +193,16 @@ PROVIDER_CAPABILITIES: dict[str, dict[str, object]] = {
         "supports_tools": True,
         "supports_vision": True,
         "system_in_messages": True,
+    },
+    # xAI Grok: the OpenAI-compatible endpoint supports tools, structured
+    # output and image input across the current Grok families.
+    "xai": {
+        "supports_response_format": True,
+        "supports_streaming": True,
+        "supports_tools": True,
+        "supports_vision": True,
+        "system_in_messages": True,
+        "has_thinking_tags": False,
     },
     # DashScope / Alibaba Cloud (Qwen family)
     # Uses OpenAI-compatible API with native function calling support.
@@ -630,6 +649,22 @@ def supports_vision(binding: str, model: str | None = None) -> bool:
     return bool(value)
 
 
+def supports_vision_declared(
+    declared: object, binding: str | None, model: str | None = None
+) -> bool:
+    """Vision support, with a model's own declaration winning over the tables.
+
+    Catalog capability overrides register against the provider the runtime may
+    detect from ``base_url``, which is not always the profile's declared
+    binding, so the declaration has to be honoured before the lookup. The
+    settings picker and the save-time gate both use this rule, otherwise they
+    disagree about the same model (#2037 follow-up).
+    """
+    if type(declared) is bool:
+        return declared
+    return supports_vision(binding, model)
+
+
 def supports_vision_url(binding: str, model: str | None = None) -> bool:
     """Whether the provider accepts remote URL image references.
 
@@ -686,7 +721,7 @@ def get_effective_temperature(
 #: supplies, so each request carries the turn's own session id. Stated here
 #: rather than tested inline: the chat loop and the explore capability both
 #: need it, and neither should have to name a provider to run a turn.
-SESSION_SCOPED_BINDINGS: frozenset[str] = frozenset({"codebuddy"})
+SESSION_SCOPED_BINDINGS: frozenset[str] = frozenset({"codebuddy", "openai_codex", "claude_code"})
 
 
 def threads_session_id(binding: str | None) -> bool:
