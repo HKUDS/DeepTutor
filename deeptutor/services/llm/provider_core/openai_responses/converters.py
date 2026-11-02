@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 import json
+import re
 from typing import Any
 
 from deeptutor.services.session.provider_response_state import (
@@ -77,6 +78,72 @@ def convert_messages(messages: list[dict[str, Any]]) -> tuple[str, list[dict[str
             )
 
     return system_prompt, input_items
+
+
+# GPT-5.6 introduced explicit cache breakpoints in the Responses API.
+_EXPLICIT_CACHE_MODEL = re.compile(r"^gpt-(\d+)(?:\.(\d+))?")
+
+
+def supports_explicit_prompt_cache(model: str | None) -> bool:
+    """Whether *model* accepts ``prompt_cache_options``/breakpoints."""
+    name = str(model or "").strip().lower().rsplit("/", 1)[-1]
+    match = _EXPLICIT_CACHE_MODEL.match(name)
+    if match is None:
+        return False
+    major = int(match.group(1))
+    minor = int(match.group(2) or 0)
+    return (major, minor) >= (5, 6)
+
+
+# Responses allows four cache writes per request. A sliding window of the
+# last four durable user messages keeps the previous turn's newest breakpoint
+# present in the next request, so the lookup can match the cache entry it just
+# wrote instead of only the newest (still uncached) boundary.
+_EXPLICIT_CACHE_BREAKPOINTS = 4
+
+
+def mark_stable_history_breakpoint(input_items: list[dict[str, Any]]) -> bool:
+    """Place explicit cache breakpoints before the trailing user block.
+
+    The answer loop appends the current runtime snapshot and the learner's
+    message as consecutive ``user`` items. Everything before them is durable,
+    but the last durable item is usually the assistant reply, whose
+    ``output_text`` block cannot carry ``prompt_cache_breakpoint``. Step back
+    to durable user messages: their ``input_text`` blocks are supported
+    breakpoints and the next turn's prefix still matches.
+
+    Marking a sliding window (not just the newest message) is what makes the
+    previous turn's cache entry discoverable: the new request must still
+    contain the breakpoint boundary that the old request wrote.
+    """
+
+    last_user = None
+    for index, item in enumerate(input_items):
+        if item.get("role") == "user":
+            last_user = index
+    if last_user is None:
+        return False
+
+    start = last_user
+    while start > 0 and input_items[start - 1].get("role") == "user":
+        start -= 1
+
+    marked = 0
+    for index in range(start - 1, -1, -1):
+        if marked >= _EXPLICIT_CACHE_BREAKPOINTS:
+            break
+        item = input_items[index]
+        if item.get("role") != "user":
+            continue
+        content = item.get("content")
+        if not isinstance(content, list):
+            continue
+        for block in reversed(content):
+            if block.get("type") == "input_text" and block.get("text"):
+                block["prompt_cache_breakpoint"] = {"mode": "explicit"}
+                marked += 1
+                break
+    return marked > 0
 
 
 def convert_user_message(content: Any) -> dict[str, Any]:
