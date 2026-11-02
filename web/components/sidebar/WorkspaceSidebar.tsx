@@ -10,6 +10,7 @@ import { LayoutSidebarShell } from "@/features/ui-layout/slots";
 import { reconcileUnread } from "@/lib/session-unread";
 import { LogoutButton } from "@/components/auth/LogoutButton";
 import { AdminLink } from "@/components/auth/AdminLink";
+import { GroupLink } from "@/components/auth/GroupLink";
 import { ProfileLink } from "@/components/auth/ProfileLink";
 import { useChatStateAdapter } from "@/features/chat/ChatStateAdapter";
 import {
@@ -245,6 +246,7 @@ export default function WorkspaceSidebar() {
         <>
           <ProfileLink collapsed={collapsed} />
           <AdminLink collapsed={collapsed} />
+          <GroupLink collapsed={collapsed} />
           <LogoutButton collapsed={collapsed} />
         </>
       )}
