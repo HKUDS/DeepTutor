@@ -197,3 +197,24 @@ async def test_source_only_scope_keeps_knowledge_base_access_check(kb, rag_calls
     assert "not accessible" in result.content
     assert result.sources == []
     assert rag_calls["rag_search"] == []
+
+
+@pytest.mark.parametrize("query", ["Inspect page 1", "检查第1页", "Inspect p. 1"])
+@pytest.mark.asyncio
+async def test_source_with_query_page_keeps_visual_inspection(kb, rag_calls, query):
+    result = await RAGTool().execute(
+        query=query,
+        kb_name=kb.name,
+        source_path="manual.pdf",
+        _vision_supported=True,
+    )
+    assert result.success
+    assert result.metadata["evidence_kind"] == "exact_source_visual"
+    assert result.model_message["content"][1]["type"] == "image_url"
+    assert "pump seal" in result.content
+    assert rag_calls["rag_search"] == []
+
+    unscoped = await RAGTool().execute(query=query, kb_name=kb.name)
+    assert unscoped.success
+    assert unscoped.content == "semantic answer"
+    assert len(rag_calls["rag_search"]) == 1

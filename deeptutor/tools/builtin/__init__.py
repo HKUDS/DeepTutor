@@ -301,7 +301,11 @@ class RAGTool(_PromptHintsMixin, BaseTool):
             raise ValueError("RAG requires an explicit kb_name.")
         event_sink = None if kwargs.get("_mastery_source_context") else kwargs.get("event_sink")
         vision_supported = bool(kwargs.get("_vision_supported", False))
-        from deeptutor.services.rag.source_visuals import figure_labels, retrieve_visual
+        from deeptutor.services.rag.source_visuals import (
+            figure_labels,
+            page_reference,
+            retrieve_visual,
+        )
 
         exact_keys = ("source_path", "asset_id", "figure", "page", "region", "source_hash")
         selectors = _normalize_rag_selectors(kwargs)
@@ -323,7 +327,11 @@ class RAGTool(_PromptHintsMixin, BaseTool):
                 return ToolResult(
                     content=f"Knowledge base '{kb_name}' is not accessible.", success=False
                 )
-            if selectors.get("source_path") and not visual_requested:
+            if (
+                selectors.get("source_path")
+                and not visual_requested
+                and page_reference(query) is None
+            ):
                 return ToolResult(
                     content=(
                         "RAG does not support scoped text retrieval by source_path. "
