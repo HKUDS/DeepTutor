@@ -7311,5 +7311,6 @@
   "Availability refreshed. This parser is still unavailable; check the installation and startup logs, then retry.": "Disponibilité actualisée. Ce parseur reste indisponible ; vérifiez l’installation et les journaux de démarrage, puis réessayez.",
   "language.portuguese": "Portugais",
   "language.japanese": "Japonais",
-  "language.turkish": "Türkçe"
+  "language.turkish": "Türkçe",
+  "language.spanish": "Espagnol"
 }

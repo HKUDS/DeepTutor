@@ -12,6 +12,9 @@ test("the locale registry accepts every supported language", () => {
   assert.equal(isAppLanguage("xx"), false);
   assert.equal(normalizeLanguage("uk-UA"), "uk");
   assert.equal(normalizeLanguage("fr-FR"), "fr");
+  assert.equal(normalizeLanguage("es-ES"), "es");
+  assert.equal(normalizeLanguage("español"), "es");
+  assert.equal(getLocale("es"), "es-ES");
   assert.equal(normalizeLanguage("de-AT"), "de");
   assert.equal(normalizeLanguage("pl-PL"), "pl");
   assert.equal(normalizeLanguage("Polish"), "pl");
@@ -78,6 +81,16 @@ test("Portuguese dates and times use Brazilian conventions", () => {
     year: "numeric", month: "long", day: "numeric", timeZone: "UTC",
   }), "5 de março de 2026");
   assert.equal(formatTime(date, "pt", {
+    hour: "2-digit", minute: "2-digit", timeZone: "UTC",
+  }), "14:05");
+});
+
+test("Spanish dates and times use Spain conventions", () => {
+  const date = new Date("2026-03-05T14:05:00Z");
+  assert.equal(formatDate(date, "es", {
+    year: "numeric", month: "long", day: "numeric", timeZone: "UTC",
+  }), "5 de marzo de 2026");
+  assert.equal(formatTime(date, "es", {
     hour: "2-digit", minute: "2-digit", timeZone: "UTC",
   }), "14:05");
 });

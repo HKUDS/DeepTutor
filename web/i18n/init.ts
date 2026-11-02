@@ -46,6 +46,11 @@ export async function ensureLanguage(language: AppLanguage) {
     i18n.addResourceBundle("zh", "app", zhApp, true, true);
   }
 
+  if (language === "es") {
+    const esApp = (await import("@/locales/es/app.json")).default;
+    i18n.addResourceBundle("es", "app", esApp, true, true);
+  }
+
   if (language === "fr") {
     const frApp = (await import("@/locales/fr/app.json")).default;
     i18n.addResourceBundle("fr", "app", frApp, true, true);
