@@ -2833,6 +2833,7 @@ class LearningService:
                     f"Objective {kp.name!r} must be graded with mastery_quiz + mastery_grade"
                 )
             from deeptutor.learning.lesson_evidence import (
+                COVERED_SOURCES,
                 LessonUnavailable,
                 assessment_evidence,
                 validate_evidence,
@@ -2840,7 +2841,18 @@ class LearningService:
 
             try:
                 packet = assessment_evidence(tx.progress, kp_id)
-                validate_evidence(self._store, tx.progress, kp_id, packet)
+                validate_evidence(
+                    self._store,
+                    tx.progress,
+                    kp_id,
+                    packet,
+                    # Only a verdict already limited to the covered facets may
+                    # use an incomplete objective packet (#2363).
+                    allow_covered=bool(
+                        _assessment
+                        and _assessment["receipt"].get("assessment_scope") == COVERED_SOURCES
+                    ),
+                )
                 if _assessment:
                     from deeptutor.learning.lesson_evidence import objective_fingerprint
                     from deeptutor.learning.semantic_assessment import fingerprint
@@ -2933,6 +2945,7 @@ class LearningService:
             confidence=verdict.get("confidence") if verdict else None,
             learner_answer=evidence,
             feedback=verdict.get("feedback", "") if verdict else "",
+            assessment_scope=verdict.get("assessment_scope", "") if verdict else "",
             attempt_count=1,
             session_id=session_id,
             turn_id=turn_id,
@@ -3047,8 +3060,10 @@ class LearningService:
     ):
         from deeptutor.learning import semantic_assessment as semantic
         from deeptutor.learning.lesson_evidence import (
+            COVERED_SOURCES,
             LessonUnavailable,
             assessment_evidence,
+            covered_scope,
             objective_fingerprint,
             validate_evidence,
         )
@@ -3073,22 +3088,51 @@ class LearningService:
                 None,
             )
             if existing:
-                return progress, semantic.Verdict(
+                receipt = semantic.Verdict(
                     result=existing.result,
                     confidence=existing.confidence if existing.confidence is not None else 1.0,
                     feedback=existing.feedback or "Previously saved assessment.",
                 ).receipt()
+                if existing.assessment_scope:
+                    receipt["assessment_scope"] = existing.assessment_scope
+                return progress, receipt
         evidence = assessment_evidence(progress, kp_id)
         try:
-            validate_evidence(self._store, progress, kp_id, evidence)
+            # An incomplete objective packet can still grade what its sources
+            # cover; refusing it blocked the objective forever (#2363). The
+            # verdict is limited to those facets and recorded as such.
+            validate_evidence(self._store, progress, kp_id, evidence, allow_covered=True)
+            covered = covered_scope(evidence)
+            expected = "A complete, accurate explanation of the objective and its relationships; do not infer mastery from acknowledgements or requests."
+            if covered:
+                expected = (
+                    "An accurate explanation of the parts of this objective that the selected sources cover: "
+                    + "; ".join(covered)
+                    + ". The sources do not cover: "
+                    + str(evidence["coverage"].get("missing") or "some other facets")
+                    + ". Grade only the covered parts: do not penalize omitting the uncovered part and "
+                    "do not treat claims about it as source-verified. Do not infer mastery from "
+                    "acknowledgements or requests."
+                )
             objective = objective_fingerprint(progress, kp_id)
+            # Sibling objectives are graded on their own; a shared packet or a
+            # broad rubric must not demand their content here (#2364).
+            out_of_scope = [
+                other.name
+                for module in progress.modules
+                if module.id == module_id
+                for other in module.knowledge_points
+                if other.id != kp_id
+            ][:12]
             decisions = await semantic.judge_answers(
                 config,
                 [
                     {
                         "question_id": kp_id,
                         "prompt": "Explain this objective in your own words: " + kp.name,
-                        "expected_answer": "A complete, accurate explanation of the objective and its relationships; do not infer mastery from acknowledgements or requests.",
+                        "expected_answer": expected
+                        + " Require only what this objective itself states.",
+                        "out_of_scope": out_of_scope,
                         "objective": kp.model_dump(),
                         "module_id": module_id,
                         "answer": answer,
@@ -3099,6 +3143,9 @@ class LearningService:
         except (semantic.AssessmentUnavailable, LessonUnavailable) as exc:
             raise MasteryInteractionError(str(exc)) from exc
         receipt = decisions[kp_id].receipt()
+        if covered:
+            receipt["assessment_scope"] = COVERED_SOURCES
+            receipt["coverage_missing"] = str(evidence["coverage"].get("missing") or "")[:500]
         if not receipt["final"]:
             return progress, receipt
         progress = self.record_qualitative_for_path(

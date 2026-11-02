@@ -198,6 +198,25 @@ class MasteryLoopCapability:
 
                 updated["_profile_recorded"] = profile_recorded
 
+            if tool_name == "mastery_assess":
+                selection = int(state.get("assessment_selection", 0)) + 1
+                state["assessment_selection"] = selection
+
+                def assessment_outcome(outcome):
+                    # Only the latest assessment of this turn and path decides
+                    # whether the learner sees an "answer not recorded" notice.
+                    if (
+                        state.get("assessment_selection") != selection
+                        or context.metadata.get("mastery_path_id") != path_id
+                    ):
+                        return
+                    if outcome == "recorded":
+                        state.pop("assessment_notice", None)
+                    else:
+                        state["assessment_notice"] = outcome
+
+                updated["_assessment_outcome"] = assessment_outcome
+
             if tool_name == "mastery_note_explained":
                 session_id = str(context.session_id or "").strip()
                 turn_id = str(context.metadata.get("turn_id") or "").strip()
@@ -379,23 +398,30 @@ class MasteryLoopCapability:
         if not self.is_active(context):
             return None
         state = context.extension("mastery")
-        notice = ""
-        if state.get("profile_write_pending"):
+        notices = []
+        if state.get("profile_write_pending") or state.get("assessment_notice"):
             if not final_text.strip() and not state.get("card_posted"):
                 # This hook also runs after every tool batch. An optional
                 # storage notice cannot end work still in progress; append it
                 # only to a real final answer or an accepted question card.
                 return None
-            # Optional memory failure must not deadlock otherwise valid tutoring.
-            # The native status corrects any unsupported persistence promise;
-            # it does not classify or discard the learner-facing explanation.
-            state["profile_write_pending"] = False
-            state["profile_receipt"] = {"status": "not_saved"}
             from deeptutor.services.prompt import get_prompt_manager
             from deeptutor.services.prompt.lookup import prompt_text
 
             pack = get_prompt_manager().load_prompts("mastery", "mastery_loop", context.language)
-            notice = prompt_text(pack, ("notices", "profile_not_saved"))
+            if state.get("profile_write_pending"):
+                # Optional memory failure must not deadlock otherwise valid tutoring.
+                # The native status corrects any unsupported persistence promise;
+                # it does not classify or discard the learner-facing explanation.
+                state["profile_write_pending"] = False
+                state["profile_receipt"] = {"status": "not_saved"}
+                notices.append(prompt_text(pack, ("notices", "profile_not_saved")))
+            assessment = state.pop("assessment_notice", None)
+            if assessment:
+                # An answer that was not graded must not look graded (#2363);
+                # the tutor's prose alone is not a reliable carrier for that.
+                notices.append(prompt_text(pack, ("notices", "assessment_" + assessment)))
+        notice = "\n\n".join(n for n in notices if n)
 
         def with_notice(override):
             if not notice:

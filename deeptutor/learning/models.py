@@ -193,6 +193,9 @@ class LearningEvidence(BaseModel):
     confidence: float | None = None
     learner_answer: str = ""
     feedback: str = ""
+    # "covered_sources": a qualitative verdict limited to the facets an
+    # incomplete objective-scoped source packet covers (#2363).
+    assessment_scope: str = ""
     response_time: float | None = None
     session_id: str = ""
     turn_id: str = ""

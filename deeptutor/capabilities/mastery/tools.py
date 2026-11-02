@@ -2020,9 +2020,12 @@ class MasteryAssessTool(BaseTool):
                 ),
                 success=False,
             )
+        from deeptutor.learning.lesson_evidence import COVERED_SOURCES, CoverageGap
         from deeptutor.learning.review_strategy import scheduler_for_path
         from deeptutor.learning.service import MasteryInteractionError
 
+        report = kwargs.get("_assessment_outcome")
+        report = report if callable(report) else (lambda _outcome: None)
         try:
             progress, receipt = await service.assess_qualitative_semantic(
                 path_id,
@@ -2033,9 +2036,39 @@ class MasteryAssessTool(BaseTool):
                 turn_id=_resolve_turn_id(kwargs),
             )
         except MasteryInteractionError as exc:
-            return ToolResult(content=str(exc), success=False)
+            gap = exc.__cause__
+            if not isinstance(gap, CoverageGap):
+                report("not_recorded")
+                return ToolResult(content=str(exc), success=False)
+            report("coverage_gap")
+            # A structured stop, not an invitation to rebuild the same packet:
+            # unchanged objective preparation returns the same gap (#2363).
+            instruction = (
+                "Only a focus-scoped teaching packet exists. Call mastery_prepare_lesson once for "
+                "this objective without a focus, then call mastery_assess again. Do not repeat "
+                "that preparation if it reports incomplete coverage."
+                if gap.retry_prepare
+                else "Do not call mastery_prepare_lesson again for this objective: unchanged "
+                "objective preparation returns the same gap."
+            )
+            return _json_result(
+                {
+                    "knowledge_point_id": kp_id,
+                    "status": "coverage_gap",
+                    "recorded": False,
+                    "missing": gap.missing,
+                    "retry_prepare": gap.retry_prepare,
+                    "instruction": instruction
+                    + " Tell the learner in the reply language that this answer was not recorded "
+                    "as an assessment and why; continue teaching the covered material.",
+                },
+                meta_key="mastery_assess",
+                success=False,
+            )
         if not receipt["final"]:
+            report("not_recorded")
             return _json_result({"knowledge_point_id": kp_id, **receipt}, meta_key="mastery_assess")
+        report("covered_only" if receipt.get("assessment_scope") == COVERED_SOURCES else "recorded")
         passed = receipt["result"] == "correct"
         feedback = receipt["feedback"]
         kp, _, _ = find_knowledge_point(progress, kp_id)
@@ -2061,6 +2094,15 @@ class MasteryAssessTool(BaseTool):
             "mastery": round(display_mastery(progress, kp), 3),
             "next": next_objective(progress).to_dict(),
         }
+        if not passed and receipt.get("missing"):
+            # Follow-ups that circle around the gap earn "correct!" in chat and
+            # the same partial at the gate (#2364): target the named element.
+            payload["next_step"] = (
+                "Ask the learner one question for exactly this missing element: "
+                + receipt["missing"]
+                + ". If it was not taught yet in this conversation, briefly explain it from the "
+                "sources first, then ask for it. Do not ask other sub-questions before it."
+            )
         return _json_result(payload, meta_key="mastery_assess")
 
 

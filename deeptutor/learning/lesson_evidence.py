@@ -38,6 +38,32 @@ class LessonUnavailable(CapabilityPrerequisiteError):
     """Stop source-grounded tutoring, rather than silently fall back to guesses."""
 
 
+COVERED_SOURCES = "covered_sources"
+
+
+class CoverageGap(LessonUnavailable):
+    """The packet is current, but its coverage cannot authorize this assessment.
+
+    ``retry_prepare`` is true only when no objective-scoped preparation exists
+    yet (a focus-only packet). An incomplete objective packet under unchanged
+    fingerprints is a stable result: preparing it again repeats the same
+    retrieval and inspection and returns the same gap (#2363).
+    """
+
+    def __init__(self, message: str, *, missing: str = "", retry_prepare: bool = False):
+        super().__init__(message)
+        self.missing = missing
+        self.retry_prepare = retry_prepare
+
+
+def covered_scope(evidence: dict[str, Any]) -> list[str]:
+    """Covered facets of an incomplete objective-scoped packet, else ``[]``."""
+    coverage = evidence.get("coverage", {}) if isinstance(evidence, dict) else {}
+    if coverage.get("scope") != "objective" or coverage.get("complete", True) is True:
+        return []
+    return [str(c).strip() for c in coverage.get("covered", []) if str(c).strip()]
+
+
 def _selection_excerpt(text: str, chosen: dict[str, Any]) -> str:
     """Selection uses source IDs, not model-authored quotations as evidence."""
     if "quote" not in chosen:
@@ -166,6 +192,11 @@ def cached_lesson(
 ) -> dict[str, Any] | None:
     """A cache hit is current, authorized evidence, never just a ready flag."""
     cached = progress.lesson_evidence.get(kp_id, {})
+    if focus == "" and cached.get("coverage", {}).get("focus", ""):
+        # A later focus preparation replaced the live slot. The preserved
+        # objective-scoped packet is still the cache for an objective request;
+        # missing it here rebuilt the whole objective on every turn (#2363).
+        cached = progress.assessment_evidence.get(kp_id) or cached
     model_key = _fingerprint(
         {
             "model": config.model,
@@ -349,8 +380,20 @@ def scope_snapshot(
 
 
 def validate_evidence(
-    store: Any, progress: Any, kp_id: str, evidence: dict[str, Any], *, allow_partial: bool = False
+    store: Any,
+    progress: Any,
+    kp_id: str,
+    evidence: dict[str, Any],
+    *,
+    allow_partial: bool = False,
+    allow_covered: bool = False,
 ) -> None:
+    """Raise unless ``evidence`` is current and authorizes the requested use.
+
+    ``allow_covered`` admits an incomplete *objective-scoped* packet for an
+    assessment that is explicitly limited to its covered facets. Focus-only
+    packets never qualify: they were not prepared for the objective.
+    """
     topic = store.get_topic(progress.book_id, progress=progress)
     scope = selected_scope(topic, progress, kp_id)
     if not scope:
@@ -392,12 +435,18 @@ def validate_evidence(
     # Legacy packets were published only after the complete-objective gate.
     # New partial packets permit supported explanation, not an arbitrary quiz.
     coverage = evidence.get("coverage", {})
-    if not allow_partial and (
-        coverage.get("complete", True) is not True or coverage.get("scope") == "focus"
-    ):
-        raise LessonUnavailable(
-            "This packet supports a teaching slice, not an arbitrary assessment. Prepare assessment-bound source evidence before grading."
-        )
+    if allow_partial:
+        return
+    focus_only = coverage.get("scope") == "focus"
+    if not focus_only and coverage.get("complete", True) is True:
+        return
+    if not focus_only and allow_covered and covered_scope(evidence):
+        return
+    raise CoverageGap(
+        "This packet supports a teaching slice, not an arbitrary assessment. Prepare assessment-bound source evidence before grading.",
+        missing=str(coverage.get("missing", ""))[:500],
+        retry_prepare=focus_only,
+    )
 
 
 def assessment_evidence(progress: Any, kp_id: str) -> dict[str, Any]:
@@ -655,16 +704,15 @@ async def prepare_lesson(
         }
     )
     try:
-        cached = (
-            None
-            if refresh
-            else await asyncio.to_thread(cached_lesson, store, progress, kp_id, config, focus=focus)
-        )
+        cached = await asyncio.to_thread(cached_lesson, store, progress, kp_id, config, focus=focus)
     except LessonUnavailable:
         # An explicit preparation can replace stale evidence. The fresh scope
         # above and all newly selected sources below still require authorization.
         cached = None
-    if cached is not None:
+    # A refresh retries a focus. An incomplete objective packet whose objective,
+    # sources, model and course intent are unchanged is a stable judgement:
+    # rebuilding it costs minutes and returns the same gap (#2363).
+    if cached is not None and (not refresh or (not focus and covered_scope(cached))):
         return cached
     if not supports_vision(config.binding, config.model):
         raise LessonUnavailable(
@@ -1097,8 +1145,18 @@ async def prepare_lesson(
 
 
 def lesson_context(evidence: dict[str, Any]) -> str:
+    gap_note = ""
+    if covered_scope(evidence):
+        gap_note = (
+            "OBJECTIVE COVERAGE GAP: this objective-scoped packet is current but incomplete. "
+            "Preparing this objective again without a focus returns this same packet; do not repeat it. "
+            "mastery_assess grades a concept/design explanation against the covered facets only and "
+            "records that limit. Teach the covered material; tell the learner which part the selected "
+            "materials do not cover.\n"
+        )
     return (
-        "VERIFIED ACTIVE LESSON SOURCE PACKET (not a mastery result, and not evidence that an explanation was delivered). "
+        gap_note
+        + "VERIFIED ACTIVE LESSON SOURCE PACKET (not a mastery result, and not evidence that an explanation was delivered). "
         "Use the learner's current request and teaching_guidance for pacing and explanatory depth; "
         "this packet supplies source evidence, not an assessment schedule. Teach in the configured reply language. "
         "This current ready packet supersedes earlier unavailable diagnostics for this objective. "

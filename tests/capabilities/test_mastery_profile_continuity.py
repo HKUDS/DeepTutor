@@ -172,6 +172,42 @@ async def test_profile_failure_has_one_repair_round_then_teaching_with_unsaved_n
     assert context.extension("mastery")["profile_receipt"]["status"] == "not_saved"
 
 
+@pytest.mark.parametrize(
+    "outcome, notice",
+    [
+        ("coverage_gap", "not recorded, because the selected materials"),
+        ("not_recorded", "not recorded as an assessment"),
+        ("covered_only", "graded only against the parts"),
+    ],
+)
+def test_assessment_outcome_is_shown_to_the_learner(outcome, notice):
+    """#2363: an answer that was not graded must not look graded."""
+    from deeptutor.capabilities.mastery.loop import MasteryLoopCapability
+    from deeptutor.core.context import UnifiedContext
+
+    cap = MasteryLoopCapability()
+    context = UnifiedContext(metadata={"mastery_mode": True, "mastery_path_id": "path"})
+    first = cap.augment_kwargs("mastery_assess", {"knowledge_point_id": "p"}, context)
+    first["_assessment_outcome"](outcome)
+    assert cap.final_text_override(context, "") is None  # tool round still running
+    visible = cap.final_text_override(context, "Let us continue.")
+    assert visible is not None and notice in visible and visible.endswith("Let us continue.")
+    assert cap.final_text_override(context, "Next reply.") is None  # shown once
+
+
+def test_later_recorded_assessment_clears_the_not_recorded_notice():
+    from deeptutor.capabilities.mastery.loop import MasteryLoopCapability
+    from deeptutor.core.context import UnifiedContext
+
+    cap = MasteryLoopCapability()
+    context = UnifiedContext(metadata={"mastery_mode": True, "mastery_path_id": "path"})
+    failed = cap.augment_kwargs("mastery_assess", {}, context)["_assessment_outcome"]
+    retried = cap.augment_kwargs("mastery_assess", {}, context)["_assessment_outcome"]
+    failed("not_recorded")  # a stale callback cannot overwrite the newer attempt
+    retried("recorded")
+    assert cap.final_text_override(context, "Well done.") is None
+
+
 @pytest.mark.parametrize("language, notice", [("en", "not saved"), ("zh", "未能保存")])
 def test_unsaved_notice_preserves_card_finish_postcondition(language, notice):
     from deeptutor.capabilities.mastery.loop import MasteryLoopCapability
