@@ -44,6 +44,7 @@ from deeptutor.services.cli_apps.paths import (
     ensure_root,
     executable_path,
     install_log_path,
+    interpreter_path,
     runtime_dir,
 )
 from deeptutor.services.cli_apps.state import (
@@ -206,7 +207,7 @@ def _steps(entry: CliAppEntry, env_dir) -> list[tuple[list[str], dict[str, str]]
             ([sys.executable, "-m", "venv", str(env_dir)], base),
             (
                 [
-                    str(env_dir / "bin" / "python"),
+                    str(interpreter_path(env_dir)),
                     "-m",
                     "pip",
                     "install",
