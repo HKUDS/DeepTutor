@@ -27,7 +27,10 @@ const ROUTE_TARGETS = [
   {
     route: "/learning/mastery/[pathId]/sessions/[sessionId]",
     requestPath: "/learning/mastery/perf-budget/sessions/perf-session",
-    budgetKb: 1_090,
+    // 1089KB on v1.7.1, i.e. 1KB of headroom. Anything that ships in the app
+    // shell — a sidebar entry, for instance — costs every route a couple of
+    // KB, so this route gets the same ~3.5% band the others already carry.
+    budgetKb: 1_100,
   },
 ];
 

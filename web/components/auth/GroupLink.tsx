@@ -5,42 +5,38 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Users } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { apiUrl } from "@/shared/api/client";
 import Tooltip from "@/shared/ui/Tooltip";
-import { listGroups } from "@/lib/group-api";
 
-// The sidebar mounts on every route; cache the answer so a lead pays for this
-// request once per page load rather than once per mount.
+// The sidebar mounts on every route; cache the answer for the page load.
 let cachedLeadsGroup: boolean | null = null;
-
-interface GroupLinkProps {
-  collapsed?: boolean;
-}
 
 /**
  * Sidebar entry for people who lead a group.
  *
  * Leads are ordinary users, so this is deliberately not gated on `isAdmin`.
- * A user who leads nothing sees nothing: `listGroups()` returns only the groups
- * the caller leads, which is empty for everyone else.
+ * A user who leads nothing sees nothing: the endpoint returns only the groups
+ * the caller leads.
  */
-export function GroupLink({ collapsed = false }: GroupLinkProps) {
+export function GroupLink({ collapsed = false }: { collapsed?: boolean }) {
   const pathname = usePathname();
   const { t } = useTranslation();
   const [leadsGroup, setLeadsGroup] = useState<boolean>(() => cachedLeadsGroup ?? false);
 
   useEffect(() => {
-    // The initial state already read the cache, so a cached answer needs no
-    // extra render here.
+    // A cached answer already reached the initial state, so nothing to do.
     if (cachedLeadsGroup !== null) return;
     let cancelled = false;
-    void listGroups()
-      .then((groups) => {
-        cachedLeadsGroup = groups.length > 0;
+    // Bare fetch on purpose: importing the group client would pull it into the
+    // app shell, which every route pays for and the route budgets measure.
+    void fetch(apiUrl("/api/multi-user/groups"))
+      .then((response) => (response.ok ? response.json() : null))
+      .then((body: { groups?: unknown } | null) => {
+        cachedLeadsGroup = Array.isArray(body?.groups) && body.groups.length > 0;
         if (!cancelled) setLeadsGroup(cachedLeadsGroup);
       })
       .catch(() => {
-        // Someone who cannot be resolved simply gets no link; the page still
-        // refuses whatever the server would refuse.
+        // Unresolvable: no link. The page still enforces everything server-side.
       });
     return () => {
       cancelled = true;
@@ -50,36 +46,29 @@ export function GroupLink({ collapsed = false }: GroupLinkProps) {
   if (!leadsGroup) return null;
 
   const active = pathname.startsWith("/groups");
+  const tone = active
+    ? "bg-[var(--primary)]/10 text-[var(--primary)]"
+    : "text-[var(--muted-foreground)] hover:bg-[var(--background)]/50 hover:text-[var(--foreground)]";
 
-  if (collapsed) {
-    return (
-      <Tooltip label={t("Groups")} side="right">
-        <Link
-          href="/groups"
-          className={`rounded-lg p-2 transition-colors ${
-            active
-              ? "bg-[var(--primary)]/10 text-[var(--primary)]"
-              : "text-[var(--muted-foreground)] hover:bg-[var(--background)]/50 hover:text-[var(--foreground)]"
-          }`}
-          aria-label={t("Groups")}
-        >
-          <Users size={16} strokeWidth={1.5} />
-        </Link>
-      </Tooltip>
-    );
-  }
-
-  return (
+  const link = (
     <Link
       href="/groups"
-      className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-[13.5px] transition-colors ${
-        active
-          ? "bg-[var(--primary)]/10 text-[var(--primary)]"
-          : "text-[var(--muted-foreground)] hover:bg-[var(--background)]/50 hover:text-[var(--foreground)]"
+      aria-label={t("Groups")}
+      className={`rounded-lg ${tone} ${
+        collapsed
+          ? "p-2 transition-colors"
+          : "flex w-full items-center gap-2.5 px-3 py-2 text-[13.5px] transition-colors"
       }`}
     >
       <Users size={16} strokeWidth={1.5} />
-      <span>{t("Groups")}</span>
+      {!collapsed && <span>{t("Groups")}</span>}
     </Link>
+  );
+
+  if (!collapsed) return link;
+  return (
+    <Tooltip label={t("Groups")} side="right">
+      {link}
+    </Tooltip>
   );
 }
