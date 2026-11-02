@@ -25,8 +25,9 @@ logger = logging.getLogger(__name__)
 
 BM25_PERSIST_DIRNAME = "bm25_retriever"
 _BM25_TOKEN_PATTERN_FILENAME = "token_pattern.txt"
-# Keep exercise/section identifiers intact and retain single-character terms.
-BM25_TOKEN_PATTERN = r"(?u)\b(?:\d+(?:\.\d+)+|\w+)\b"
+# Split word runs before adjacent dotted numbers, retaining single-character terms.
+# Check for an identifier only at the start of a digit run to avoid quadratic scans.
+BM25_TOKEN_PATTERN = r"(?u)\d+(?:\.\d+)+|(?:(?!(?<!\d)\d+\.\d)\w)+"
 
 
 class _MatchedOnlyRetriever(BaseRetriever):
@@ -96,6 +97,14 @@ def effective_retrieval_profile(profile: str | None) -> str:
     return normalized
 
 
+@lru_cache(maxsize=4)
+def _rebuilt_bm25_retriever(bm25_cls: Any, index: Any, top_k: int) -> Any:
+    """Reuse a rebuild for this loaded index; published versions load new identities."""
+    return bm25_cls.from_defaults(
+        index=index, similarity_top_k=top_k, token_pattern=BM25_TOKEN_PATTERN
+    )
+
+
 def build_bm25_retriever(index: Any, storage_dir: Path, *, top_k: int) -> Any | None:
     """Build or load LlamaIndex's official BM25 retriever if available."""
     top_k = max(1, int(top_k))
@@ -131,14 +140,12 @@ def build_bm25_retriever(index: Any, storage_dir: Path, *, top_k: int) -> Any | 
                 # The upstream adapter does not persist its token_pattern.
                 retriever.token_pattern = BM25_TOKEN_PATTERN
                 return _set_similarity_top_k(retriever, top_k)
-            logger.info("Rebuilding BM25 retriever with updated tokenization")
+            logger.info("Using document-based BM25 for outdated persisted tokenization")
         except Exception as exc:
             logger.warning("Failed to load persisted BM25 retriever from %s: %s", persist_dir, exc)
 
     try:
-        return bm25_cls.from_defaults(
-            index=index, similarity_top_k=top_k, token_pattern=BM25_TOKEN_PATTERN
-        )
+        return _rebuilt_bm25_retriever(bm25_cls, index, top_k)
     except Exception as exc:
         logger.warning("Failed to build BM25 retriever; falling back to vector retrieval: %s", exc)
         return None

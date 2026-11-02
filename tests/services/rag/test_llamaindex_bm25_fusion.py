@@ -129,3 +129,65 @@ def test_legacy_page_lookup_keeps_dotted_identifiers_and_short_terms(
     for query, expected_id in [("2.6.8", "exercise"), ("x", "variable")]:
         hits = retriever_module.retrieve_legacy_pages(tmp_path, query)
         assert [hit.node.node_id for hit in hits if (hit.score or 0) > 0] == [expected_id]
+
+
+@pytest.mark.parametrize("heading", ["习题2.6.8", "2.6.8解答", "§2.6.8"])
+def test_bm25_matches_identifiers_adjacent_to_text(
+    tmp_path: Path, identifier_index: VectorStoreIndex, heading: str
+) -> None:
+    node = identifier_index.docstore.get_node("exercise")
+    node.text = heading
+    identifier_index.docstore.add_documents([node], allow_update=True)
+
+    retriever = retriever_module.build_bm25_retriever(identifier_index, tmp_path, top_k=4)
+
+    assert retriever is not None
+    assert [hit.node.node_id for hit in retriever.retrieve("2.6.8") if (hit.score or 0) > 0] == [
+        "exercise"
+    ]
+
+
+def test_old_bm25_rebuild_is_reused_until_the_index_changes(
+    tmp_path: Path, identifier_index: VectorStoreIndex, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bm25_cls = retriever_module._import_bm25_retriever()
+    old = bm25_cls.from_defaults(index=identifier_index, similarity_top_k=4)
+    old.persist(str(tmp_path / retriever_module.BM25_PERSIST_DIRNAME))
+    original = bm25_cls.from_defaults
+    builds = []
+
+    def build(**kwargs):
+        builds.append(kwargs["index"])
+        return original(**kwargs)
+
+    monkeypatch.setattr(bm25_cls, "from_defaults", build)
+    for _ in range(2):
+        retriever = retriever_module.build_bm25_retriever(identifier_index, tmp_path, top_k=4)
+        assert retriever is not None
+        assert retriever.retrieve("2.6.8")[0].node.node_id == "exercise"
+    assert len(builds) == 1
+
+    updated = VectorStoreIndex(
+        [TextNode(text="Exercise 2.6.7", id_="updated")],
+        embed_model=MockEmbedding(embed_dim=8),
+    )
+    retriever = retriever_module.build_bm25_retriever(updated, tmp_path, top_k=4)
+    assert retriever is not None
+    assert retriever.retrieve("2.6.7")[0].node.node_id == "updated"
+    assert len(builds) == 2
+
+
+def test_bm25_keeps_short_cjk_terms_and_existing_english_stopwords(
+    tmp_path: Path, identifier_index: VectorStoreIndex
+) -> None:
+    node = identifier_index.docstore.get_node("exercise")
+    node.text = "第3.4節 a"
+    identifier_index.docstore.add_documents([node], allow_update=True)
+    retriever = retriever_module.build_bm25_retriever(identifier_index, tmp_path, top_k=4)
+
+    assert retriever is not None
+    for query in ["§3.4", "第", "節"]:
+        assert [hit.node.node_id for hit in retriever.retrieve(query) if (hit.score or 0) > 0] == [
+            "exercise"
+        ]
+    assert all(not hit.score for hit in retriever.retrieve("a"))
