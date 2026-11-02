@@ -11,7 +11,6 @@ import math
 import os
 from pathlib import Path
 import shutil
-import subprocess
 import sys
 import tempfile
 import time
@@ -21,6 +20,7 @@ from deeptutor.services.file_io import atomic_write_json
 from deeptutor.services.parsing.cache import load_ir
 
 from ._process import cli_process
+from .cli_contract import build_parse_command, import_v4_bundle, read_cli_version
 from .formats import MINERU_SUPPORTED_FORMATS
 
 # Minimum seconds between on_output callbacks. MinerU's CLI emits tqdm-style
@@ -58,6 +58,7 @@ class LocalParseReason(StrEnum):
     INPUT_MISSING = "input_missing"
     UNSUPPORTED_INPUT = "unsupported_input"
     LEGACY_CLI_INPUT = "legacy_cli_input"
+    UNSUPPORTED_CLI = "unsupported_cli"
     TIMEOUT = "timeout"
     CANCELLED = "cancelled"
     NONZERO_EXIT = "nonzero_exit"
@@ -89,37 +90,11 @@ class LocalParseResult:
 
 
 def check_mineru_installed():
-    """Check if MinerU is installed"""
-    try:
-        # Security: Using partial path is intentional here - we need to find
-        # the command in user's PATH. These are trusted CLI tools, not user input.
-        result = subprocess.run(
-            ["mineru", "--version"],  # nosec B607
-            check=False,
-            capture_output=True,
-            text=True,
-            shell=False,
-        )
-        if result.returncode == 0:
-            return "mineru"
-    except FileNotFoundError:
-        pass
+    """Find a CLI using the same priority as the settings probe."""
+    from .backend import local_cli_probe
 
-    try:
-        # Security: Same as above - intentionally using PATH lookup for CLI tool.
-        result = subprocess.run(
-            ["magic-pdf", "--version"],  # nosec B607
-            check=False,
-            capture_output=True,
-            text=True,
-            shell=False,
-        )
-        if result.returncode == 0:
-            return "magic-pdf"
-    except FileNotFoundError:
-        pass
-
-    return None
+    probe = local_cli_probe()
+    return probe["path"] if probe["found"] else None
 
 
 def parse_document_with_mineru_result(
@@ -165,7 +140,7 @@ def parse_document_with_mineru_result(
             print("or visit: https://github.com/opendatalab/MinerU")
             return LocalParseResult.failure(
                 LocalParseReason.CLI_MISSING,
-                "neither `mineru` nor `magic-pdf` was found on PATH",
+                "no `mineru-kit`, `mineru` or `magic-pdf` was found on PATH",
             )
         print(f"✓ Detected MinerU command: {mineru_cmd}")
 
@@ -182,13 +157,22 @@ def parse_document_with_mineru_result(
             suffix or "(no file extension)",
         )
 
-    if Path(mineru_cmd).name == "magic-pdf" and suffix != ".pdf":
+    if Path(mineru_cmd).stem == "magic-pdf" and suffix != ".pdf":
         print("✗ Error: The legacy magic-pdf CLI only accepts PDF files.")
         print("Install the current CLI with `pip install mineru` for images and Office files.")
         return LocalParseResult.failure(
             LocalParseReason.LEGACY_CLI_INPUT,
             f"magic-pdf cannot parse {suffix or '(no file extension)'}",
         )
+
+    try:
+        version = read_cli_version(mineru_cmd)
+        # Validate the configured executable before creating an attempt.
+        build_parse_command(mineru_cmd, version, source_file, Path("."))
+    except TimeoutError as exc:
+        return LocalParseResult.failure(LocalParseReason.TIMEOUT, str(exc))
+    except (OSError, ValueError) as exc:
+        return LocalParseResult.failure(LocalParseReason.UNSUPPORTED_CLI, str(exc))
 
     # Project root is 3 levels up from deeptutor/tools/question/
     project_root = Path(__file__).parent.parent.parent.parent
@@ -217,7 +201,7 @@ def parse_document_with_mineru_result(
     interruption_detail = ""
     result = LocalParseResult.failure(LocalParseReason.EXCEPTION, "parse interrupted")
     try:
-        cmd = [mineru_cmd, "-p", str(source_file), "-o", str(temp_output)]
+        cmd = build_parse_command(mineru_cmd, version, source_file, temp_output)
 
         print(f"🔧 Executing command: {' '.join(cmd)}")
 
@@ -331,6 +315,9 @@ def parse_document_with_mineru_result(
             return result
 
         print("✓ MinerU parsing completed!")
+
+        if version.startswith("4."):
+            import_v4_bundle(temp_output / "result.zip", temp_output)
 
         generated_folders = sorted(temp_output.iterdir())
 

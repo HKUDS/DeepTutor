@@ -11,7 +11,6 @@ from typing import Callable, Optional
 
 from ...base import ReadinessReport
 from ...signature import ParserSignature
-from .._versions import package_version
 from .config import MinerUConfig, resolve_mineru_config
 from .formats import MINERU_SUPPORTED_FORMATS
 from .readiness import mineru_readiness
@@ -39,7 +38,17 @@ class MinerUParser:
     def signature(self, config: MinerUConfig) -> ParserSignature:
         from .normalization import POLICY
 
-        version = f"cloud:{config.api_base_url}" if config.is_cloud else package_version("mineru")
+        if config.is_cloud:
+            version = f"cloud:{config.api_base_url}"
+        else:
+            from .backend import local_cli_probe
+            from .cli_contract import read_cli_version
+
+            probe = local_cli_probe(config.local_cli_path)
+            try:
+                version = read_cli_version(probe["path"]) if probe["found"] else "unavailable"
+            except (OSError, ValueError, TimeoutError):
+                version = "unavailable"
         return ParserSignature.build(
             "mineru",
             version,
@@ -50,6 +59,7 @@ class MinerUParser:
                 "enable_formula": config.enable_formula,
                 "enable_table": config.enable_table,
                 "is_ocr": config.is_ocr,
+                **({"local_contract": "versioned-cli-v1"} if not config.is_cloud else {}),
                 **(
                     {
                         "segmentation": "source-pages-v1",
