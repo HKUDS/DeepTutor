@@ -144,7 +144,7 @@ export default function NotebookRecordActions({
               <button
                 type="button"
                 onClick={() => setPanel("root")}
-                className="mb-0.5 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[11px] font-medium uppercase tracking-wide text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)]/60 hover:text-[var(--foreground)]"
+                className="mb-0.5 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-start text-[11px] font-medium uppercase tracking-wide text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)]/60 hover:text-[var(--foreground)]"
               >
                 <ArrowLeft size={12} />
                 {panel === "move" ? t("Move to") : t("Copy to")}
@@ -162,7 +162,7 @@ export default function NotebookRecordActions({
                         panel === "move" ? "move" : "copy",
                       );
                     }}
-                    className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[12.5px] text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]/70"
+                    className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-start text-[12.5px] text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]/70"
                   >
                     <span
                       aria-hidden
@@ -204,7 +204,7 @@ function MenuItem({
       type="button"
       role="menuitem"
       onClick={onClick}
-      className={`flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-[12.5px] transition-colors ${
+      className={`flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-start text-[12.5px] transition-colors ${
         tone === "danger"
           ? "text-[var(--destructive)] hover:bg-[var(--destructive)]/10"
           : "text-[var(--foreground)] hover:bg-[var(--muted)]/70"

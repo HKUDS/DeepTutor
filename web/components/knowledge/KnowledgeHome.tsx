@@ -177,7 +177,7 @@ export default function KnowledgeHome({
         key={provider.id}
         type="button"
         onClick={() => onOpenEngine(provider.id)}
-        className="group flex min-w-0 flex-col gap-2 rounded-2xl border border-[var(--border)] p-3.5 text-left transition-colors hover:border-[var(--ring)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+        className="group flex min-w-0 flex-col gap-2 rounded-2xl border border-[var(--border)] p-3.5 text-start transition-colors hover:border-[var(--ring)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
       >
         <div className="flex items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-2">
@@ -211,7 +211,7 @@ export default function KnowledgeHome({
       key={source.id}
       type="button"
       onClick={() => onOpenSource(source.id)}
-      className="group flex min-w-0 flex-col gap-2 rounded-2xl border border-[var(--border)] p-3.5 text-left transition-colors hover:border-[var(--ring)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+      className="group flex min-w-0 flex-col gap-2 rounded-2xl border border-[var(--border)] p-3.5 text-start transition-colors hover:border-[var(--ring)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
     >
       <div className="flex min-w-0 items-center gap-2.5">
         <KnowledgeEngineIcon engine={source.id} size={26} />
@@ -280,7 +280,7 @@ export default function KnowledgeHome({
                 aria-selected={active}
                 aria-controls={`${item.id}-panel`}
                 onClick={() => onSectionChange(item.id)}
-                className={`relative min-w-0 px-4 py-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--ring)] ${
+                className={`relative min-w-0 px-4 py-2.5 text-start transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--ring)] ${
                   active
                     ? "text-[var(--primary)]"
                     : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
@@ -365,7 +365,7 @@ export default function KnowledgeHome({
                       key={knowledgeBaseRef(kb)}
                       type="button"
                       onClick={() => onOpenKb(knowledgeBaseRef(kb))}
-                      className="group flex flex-col gap-2 rounded-2xl border border-[var(--border)] p-4 text-left transition-colors hover:border-[var(--ring)]"
+                      className="group flex flex-col gap-2 rounded-2xl border border-[var(--border)] p-4 text-start transition-colors hover:border-[var(--ring)]"
                     >
                       <div className="flex items-start gap-3">
                         <KnowledgeEngineIcon

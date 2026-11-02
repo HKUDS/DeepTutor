@@ -154,7 +154,7 @@ export default function KnowledgeSelector({
                       type="button"
                       aria-pressed={active}
                       onClick={() => onToggle(knowledgeBaseRef(kb))}
-                      className={`flex w-full items-center gap-2.5 px-3 py-2.5 text-left transition-colors active:bg-[var(--muted)]/70 ${
+                      className={`flex w-full items-center gap-2.5 px-3 py-2.5 text-start transition-colors active:bg-[var(--muted)]/70 ${
                         active
                           ? "bg-[var(--primary)]/[0.06]"
                           : "hover:bg-[var(--muted)]/45"

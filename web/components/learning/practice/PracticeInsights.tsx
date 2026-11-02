@@ -139,7 +139,7 @@ export function PracticeInsights({ revision }: { revision: number }) {
             type="button"
             aria-pressed={metric.key === item.key}
             onClick={() => setView("stats_metric", item.key)}
-            className={`relative min-w-0 px-2 pb-4 pt-2 text-left sm:px-3 ${metric.key === item.key ? "text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+            className={`relative min-w-0 px-2 pb-4 pt-2 text-start sm:px-3 ${metric.key === item.key ? "text-foreground" : "text-muted-foreground hover:text-foreground"}`}
           >
             <span className="flex items-center gap-1.5 text-[11px] sm:text-xs">
               <span
@@ -252,7 +252,7 @@ export function PracticeInsights({ revision }: { revision: number }) {
                 <caption className="sr-only">{t("Daily practice data")}</caption>
                 <thead className="sticky top-0 bg-card">
                   <tr>
-                    <th scope="col" className="py-2 text-left">
+                    <th scope="col" className="py-2 text-start">
                       {t("Date")}
                     </th>
                     {METRICS.map(item => (
@@ -265,7 +265,7 @@ export function PracticeInsights({ revision }: { revision: number }) {
                 <tbody>
                   {data.daily.map(row => (
                     <tr key={row.date} className="border-t border-border/60">
-                      <th scope="row" className="py-2 text-left font-normal">
+                      <th scope="row" className="py-2 text-start font-normal">
                         {row.date}
                       </th>
                       {METRICS.map(item => (

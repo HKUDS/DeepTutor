@@ -68,7 +68,7 @@ export function LearningWays() {
                     aria-haspopup="dialog"
                     aria-expanded={opened}
                     aria-controls={opened ? `${id}-panel` : undefined}
-                    className="relative flex h-full min-h-[196px] w-full flex-col items-start rounded-[20px] p-5 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
+                    className="relative flex h-full min-h-[196px] w-full flex-col items-start rounded-[20px] p-5 text-start focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
                   >
                     <span className="mb-5 flex w-full items-center justify-between">
                       <motion.span

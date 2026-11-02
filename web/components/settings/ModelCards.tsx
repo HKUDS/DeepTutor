@@ -218,7 +218,7 @@ function NameRow({
             event.stopPropagation();
             onToggleExpand();
           }}
-          className="-mr-1 -mt-0.5 shrink-0 rounded-md p-1 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
+          className="-me-1 -mt-0.5 shrink-0 rounded-md p-1 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
         >
           <ChevronDown
             className={`h-3.5 w-3.5 transition-transform ${expanded ? "rotate-180" : ""}`}
@@ -312,7 +312,7 @@ export function ProfileCard({
         type="button"
         onClick={onOpen}
         aria-expanded={open}
-        className="flex min-w-0 flex-1 items-center gap-3 text-left"
+        className="flex min-w-0 flex-1 items-center gap-3 text-start"
       >
         <ChevronRight
           size={15}

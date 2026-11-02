@@ -159,7 +159,7 @@
 .dt-notes-card-menu {
   position: absolute;
   top: 10px;
-  right: 10px;
+  inset-inline-end: 10px;
   opacity: 0;
   transition: opacity 120ms;
 }

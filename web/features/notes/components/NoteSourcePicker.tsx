@@ -93,7 +93,7 @@ export default function NoteSourcePicker({
               <button
                 key={row.key}
                 disabled={busy}
-                className="block w-full rounded px-2 py-2 text-left text-sm hover:bg-[var(--secondary)]"
+                className="block w-full rounded px-2 py-2 text-start text-sm hover:bg-[var(--secondary)]"
                 onClick={() => void select(row)}
               >
                 <span>{row.label}</span>

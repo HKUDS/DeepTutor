@@ -130,7 +130,7 @@ export default function ScopePicker({
                 <button
                   type="button"
                   onClick={() => toggleExpand(group.key)}
-                  className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                  className="flex min-w-0 flex-1 items-center gap-2 text-start"
                 >
                   {isOpen ? (
                     <ChevronDown

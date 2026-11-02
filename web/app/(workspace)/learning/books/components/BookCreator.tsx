@@ -172,7 +172,7 @@ export default function BookCreator({
         <button
           type="button"
           onClick={() => setFormCollapsed(v => !v)}
-          className="flex w-full items-center justify-between gap-3 rounded-t-[18px] px-5 py-3.5 text-left transition-colors hover:bg-[rgb(var(--dt-ink,55_53_47)/0.025)]"
+          className="flex w-full items-center justify-between gap-3 rounded-t-[18px] px-5 py-3.5 text-start transition-colors hover:bg-[rgb(var(--dt-ink,55_53_47)/0.025)]"
         >
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">

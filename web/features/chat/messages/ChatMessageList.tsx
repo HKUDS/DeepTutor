@@ -383,7 +383,7 @@ function ProcessFold({
         type="button"
         onClick={() => setUserOpen(!open)}
         aria-expanded={open}
-        className="group/act flex items-center gap-2 text-left text-[12px] font-medium text-[var(--muted-foreground)]/55 transition-colors hover:text-[var(--foreground)]"
+        className="group/act flex items-center gap-2 text-start text-[12px] font-medium text-[var(--muted-foreground)]/55 transition-colors hover:text-[var(--foreground)]"
       >
         {toolCalls > 0
           ? t("{{count}} tool calls", { count: toolCalls })
@@ -623,7 +623,7 @@ export function GeneratedFileCards({
               <button
                 type="button"
                 onClick={onOpen ? () => onOpen(a) : undefined}
-                className="group block w-full overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)] text-left shadow-sm transition hover:border-[var(--border)]"
+                className="group block w-full overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)] text-start shadow-sm transition hover:border-[var(--border)]"
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
@@ -670,7 +670,7 @@ export function GeneratedFileCards({
               <button
                 type="button"
                 onClick={onOpen ? () => onOpen(a) : undefined}
-                className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left transition hover:bg-[var(--muted)]/30"
+                className="flex w-full items-center justify-between gap-2 px-3 py-2 text-start transition hover:bg-[var(--muted)]/30"
               >
                 <span className="min-w-0">
                   <span className="block truncate text-[12.5px] font-medium text-[var(--foreground)]">
@@ -701,7 +701,7 @@ export function GeneratedFileCards({
             <button
               type="button"
               onClick={onOpen ? () => onOpen(a) : undefined}
-              className="group flex w-full items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 py-2.5 text-left shadow-sm transition hover:border-[var(--border)] hover:bg-[var(--muted)]/30"
+              className="group flex w-full items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 py-2.5 text-start shadow-sm transition hover:border-[var(--border)] hover:bg-[var(--muted)]/30"
             >
               <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--background)]">
                 <Icon className={`h-[18px] w-[18px] ${spec.tint}`} />

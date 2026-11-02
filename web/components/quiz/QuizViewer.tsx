@@ -1002,7 +1002,7 @@ export default function QuizViewer({
                   key={key}
                   disabled={ans.submitted}
                   onClick={() => updateAnswer({ selected: key })}
-                  className={`flex w-full items-start gap-2.5 rounded-lg border px-3 py-2 text-left text-[13px] transition-all ${optionClass}`}
+                  className={`flex w-full items-start gap-2.5 rounded-lg border px-3 py-2 text-start text-[13px] transition-all ${optionClass}`}
                 >
                   <span
                     className={`mt-[1px] flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[11px] font-bold ${
@@ -1328,7 +1328,7 @@ export default function QuizViewer({
                   <button
                     type="button"
                     onClick={toggleCollapsed}
-                    className="flex w-full items-center gap-1 pb-1.5 text-left"
+                    className="flex w-full items-center gap-1 pb-1.5 text-start"
                   >
                     <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">
                       {hasJudgment ? t("AI Judgment") : t("Reference Answer")}

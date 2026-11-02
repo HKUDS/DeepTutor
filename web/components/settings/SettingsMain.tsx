@@ -61,7 +61,7 @@ export default function SettingsMain({ children }: { children: React.ReactNode }
       className="fixed inset-0 flex h-dvh overflow-hidden bg-[var(--background)]"
       data-settings-shell
     >
-      <aside className="hidden w-[248px] shrink-0 flex-col border-r border-border/60 bg-[color-mix(in_srgb,var(--muted)_25%,var(--background))] md:flex">
+      <aside className="hidden w-[248px] shrink-0 flex-col border-e border-border/60 bg-[color-mix(in_srgb,var(--muted)_25%,var(--background))] md:flex">
         <div className="px-2.5 pb-1.5 pt-4">{returnButton}</div>
         <SettingsNav />
       </aside>

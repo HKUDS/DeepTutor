@@ -142,7 +142,7 @@ export default function UserNoteBlock({
             type="button"
             onClick={() => editable && setEditing(true)}
             disabled={!editable}
-            className="text-left text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)] disabled:cursor-default disabled:hover:text-[var(--muted-foreground)]"
+            className="text-start text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)] disabled:cursor-default disabled:hover:text-[var(--muted-foreground)]"
           >
             {editable
               ? t("Empty note — click to start writing your own annotation.")

@@ -92,7 +92,7 @@ export default function PersonaPicker({
           <button
             type="button"
             onClick={() => setSelected(null)}
-            className={`mb-3 flex w-full items-start gap-3 rounded-2xl border px-4 py-3 text-left transition-colors ${
+            className={`mb-3 flex w-full items-start gap-3 rounded-2xl border px-4 py-3 text-start transition-colors ${
               selected === null
                 ? "border-[var(--primary)]/40 bg-[var(--primary)]/8"
                 : "border-[var(--border)] bg-[var(--card)] hover:bg-[var(--muted)]/40"
@@ -142,7 +142,7 @@ export default function PersonaPicker({
                     <button
                       key={persona.name}
                       onClick={() => setSelected(persona.name)}
-                      className={`flex w-full items-start gap-3 px-4 py-3 text-left transition-colors ${
+                      className={`flex w-full items-start gap-3 px-4 py-3 text-start transition-colors ${
                         active
                           ? "bg-[var(--primary)]/8"
                           : "hover:bg-[var(--muted)]/40"

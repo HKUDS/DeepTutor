@@ -1330,7 +1330,7 @@ function DocList({ title, rows, selected, onSelect }: DocListProps) {
             >
               <button
                 onClick={() => onSelect(row.layer, row.key)}
-                className="flex-1 text-left"
+                className="flex-1 text-start"
               >
                 <span className="font-medium text-[var(--foreground)]">
                   {labelFor(row)}

@@ -68,7 +68,7 @@ export default function TooltipLayer({
           ? { left: position.left, top: position.top }
           : { left: 0, top: 0 }
       }
-      className={`pointer-events-none fixed z-[1000] max-w-72 rounded-lg bg-[var(--foreground)] px-2.5 py-1.5 text-left text-[11px] font-medium leading-snug text-[var(--background)] shadow-lg [overflow-wrap:anywhere] ${position ? "opacity-100" : "opacity-0"}`}
+      className={`pointer-events-none fixed z-[1000] max-w-72 rounded-lg bg-[var(--foreground)] px-2.5 py-1.5 text-start text-[11px] font-medium leading-snug text-[var(--background)] shadow-lg [overflow-wrap:anywhere] ${position ? "opacity-100" : "opacity-0"}`}
     >
       {shortcut ? (
         <span className="flex items-center gap-2">

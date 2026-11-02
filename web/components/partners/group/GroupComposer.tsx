@@ -129,7 +129,7 @@ export default function GroupComposer({
                 onMouseDown={(event) => event.preventDefault()}
                 onMouseEnter={() => setHighlight(index)}
                 onClick={() => pick(member)}
-                className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left ${
+                className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-start ${
                   index === highlight ? "bg-[var(--muted)]" : ""
                 }`}
               >

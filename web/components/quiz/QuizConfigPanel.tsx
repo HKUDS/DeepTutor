@@ -565,7 +565,7 @@ function TypeMultiSelect({ value, onChange }: TypeMultiSelectProps) {
             aria-expanded={open}
             className={`${INPUT_CLS} flex w-full items-center justify-between gap-1`}
           >
-            <span className="min-w-0 truncate text-left">{summary}</span>
+            <span className="min-w-0 truncate text-start">{summary}</span>
             <ChevronDown
               size={12}
               className={`shrink-0 text-[var(--muted-foreground)]/60 transition-transform ${
@@ -595,7 +595,7 @@ function DropdownRow({
     <button
       type="button"
       onClick={onClick}
-      className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[12px] text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]"
+      className="flex w-full items-center gap-2 px-2.5 py-1.5 text-start text-[12px] text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]"
     >
       <span
         className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-sm border ${

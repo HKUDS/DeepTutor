@@ -146,7 +146,7 @@ export function AddProviderPanel({
         {visible.map(option => (
           <label
             key={option.value}
-            className={`relative flex min-h-24 min-w-0 flex-col rounded-xl border p-4 text-left cursor-pointer outline-none has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-[var(--ring)] ${vendor === option.value ? 'border-[var(--primary)] bg-[var(--accent)]' : 'border-[var(--border)] bg-[var(--background)] hover:bg-[var(--accent)]'}`}
+            className={`relative flex min-h-24 min-w-0 flex-col rounded-xl border p-4 text-start cursor-pointer outline-none has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-[var(--ring)] ${vendor === option.value ? 'border-[var(--primary)] bg-[var(--accent)]' : 'border-[var(--border)] bg-[var(--background)] hover:bg-[var(--accent)]'}`}
           >
             {/* Anchor the hidden radio to its card so focus cannot scroll the settings shell. */}
             <input type="radio" className="sr-only" name={radioName} value={option.value} aria-label={option.value === 'custom' ? t('Custom') : option.label} checked={vendor === option.value} onChange={() => onVendor(option.value)} />

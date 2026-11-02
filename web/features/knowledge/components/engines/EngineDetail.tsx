@@ -366,7 +366,7 @@ function ModeSelector({
             key={mode}
             type="button"
             onClick={() => void pick(mode)}
-            className={`flex flex-col gap-1 rounded-xl border p-3 text-left transition-colors ${
+            className={`flex flex-col gap-1 rounded-xl border p-3 text-start transition-colors ${
               active
                 ? "border-[var(--primary)] bg-[var(--primary)]/5"
                 : "border-[var(--border)] hover:border-[var(--ring)]"
@@ -518,7 +518,7 @@ export function LlamaIndexForm({
                 key={p.id}
                 type="button"
                 onClick={() => set({ retrieval_profile: p.id })}
-                className={`flex flex-col gap-1 rounded-xl border p-3 text-left transition-colors ${
+                className={`flex flex-col gap-1 rounded-xl border p-3 text-start transition-colors ${
                   active
                     ? "border-[var(--primary)] bg-[var(--primary)]/5"
                     : "border-[var(--border)] hover:border-[var(--ring)]"
@@ -618,7 +618,7 @@ export function LlamaIndexForm({
                 key={indexType.id}
                 type="button"
                 onClick={() => set({ vector_index_type: indexType.id })}
-                className={`flex flex-col gap-1 rounded-xl border p-3 text-left transition-colors ${
+                className={`flex flex-col gap-1 rounded-xl border p-3 text-start transition-colors ${
                   active
                     ? "border-[var(--primary)] bg-[var(--primary)]/5"
                     : "border-[var(--border)] hover:border-[var(--ring)]"
@@ -1783,7 +1783,7 @@ function EnvRequirements({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center justify-between rounded-lg py-1 text-left"
+        className="flex w-full items-center justify-between rounded-lg py-1 text-start"
         aria-expanded={open}
       >
         <span className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-wide text-[var(--muted-foreground)]">
@@ -1990,7 +1990,7 @@ export default function EngineDetail({
                     key={kb.name}
                     type="button"
                     onClick={() => onOpenKb(kb.name)}
-                    className={`flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left transition-colors hover:bg-[var(--muted)]/40 ${
+                    className={`flex w-full items-center justify-between gap-3 px-4 py-2.5 text-start transition-colors hover:bg-[var(--muted)]/40 ${
                       i > 0 ? "border-t border-[var(--border)]" : ""
                     }`}
                   >

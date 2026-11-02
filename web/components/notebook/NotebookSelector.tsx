@@ -102,7 +102,7 @@ export default function NotebookSelector({
                   {/* Notebook Header */}
                   <button
                     type="button"
-                    className="flex w-full cursor-pointer items-center gap-2 px-3 py-2.5 text-left transition-colors hover:bg-[var(--muted)]/50"
+                    className="flex w-full cursor-pointer items-center gap-2 px-3 py-2.5 text-start transition-colors hover:bg-[var(--muted)]/50"
                     onClick={() => onToggleExpanded(notebook.id)}
                   >
                     {isExpanded ? (

@@ -53,7 +53,7 @@ export function MenuItem({
       disabled={disabled}
       role={active === undefined ? undefined : "menuitemcheckbox"}
       aria-checked={active}
-      className={`${mobileOnly ? "md:hidden " : ""}flex w-full items-start gap-2 rounded-md px-2.5 py-2 text-left text-[var(--foreground)] transition hover:bg-[var(--muted)] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent`}
+      className={`${mobileOnly ? "md:hidden " : ""}flex w-full items-start gap-2 rounded-md px-2.5 py-2 text-start text-[var(--foreground)] transition hover:bg-[var(--muted)] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent`}
     >
       <Icon
         size={13}

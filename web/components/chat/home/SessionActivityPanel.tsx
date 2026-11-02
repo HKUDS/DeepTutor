@@ -541,7 +541,7 @@ function AttachmentRow({
         <button
           type="button"
           onClick={onOpen}
-          className={`group flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors ${ACTIVITY_ROW_HOVER} focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--ring)]`}
+          className={`group flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-start transition-colors ${ACTIVITY_ROW_HOVER} focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--ring)]`}
         >
         <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--card)]">
           <Icon

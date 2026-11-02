@@ -1490,7 +1490,7 @@ const QuestionBody = memo(function QuestionBody({
                 disabled={locked}
                 aria-pressed={isPicked}
                 className={
-                  "group -mx-1.5 flex w-[calc(100%+0.75rem)] items-start gap-2.5 rounded-lg px-1.5 py-1 text-left transition-colors " +
+                  "group -mx-1.5 flex w-[calc(100%+0.75rem)] items-start gap-2.5 rounded-lg px-1.5 py-1 text-start transition-colors " +
                   (isPicked
                     ? "bg-[color-mix(in_srgb,var(--foreground)_6%,transparent)]"
                     : locked
@@ -1550,7 +1550,7 @@ const QuestionBody = memo(function QuestionBody({
               type="button"
               onClick={() => !locked && onSelectCustom()}
               disabled={locked}
-              className="group -mx-1.5 flex w-[calc(100%+0.75rem)] items-center gap-2.5 rounded-lg px-1.5 py-1 text-left transition-colors hover:bg-[color-mix(in_srgb,var(--foreground)_3.5%,transparent)] disabled:cursor-not-allowed disabled:opacity-60"
+              className="group -mx-1.5 flex w-[calc(100%+0.75rem)] items-center gap-2.5 rounded-lg px-1.5 py-1 text-start transition-colors hover:bg-[color-mix(in_srgb,var(--foreground)_3.5%,transparent)] disabled:cursor-not-allowed disabled:opacity-60"
             >
               <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[color-mix(in_srgb,var(--foreground)_6%,transparent)] text-[var(--muted-foreground)] group-hover:text-[var(--foreground)]">
                 <Pencil size={13} strokeWidth={2} />
@@ -1621,7 +1621,7 @@ const ResolvedAskUserCard = memo(function ResolvedAskUserCard({
           type="button"
           onClick={toggleCollapsed}
           aria-expanded={!collapsed}
-          className={`-mx-1.5 flex w-[calc(100%+0.75rem)] items-center gap-1.5 rounded-lg px-1.5 py-1 text-left transition-colors hover:bg-[color-mix(in_srgb,var(--foreground)_3.5%,transparent)] ${
+          className={`-mx-1.5 flex w-[calc(100%+0.75rem)] items-center gap-1.5 rounded-lg px-1.5 py-1 text-start transition-colors hover:bg-[color-mix(in_srgb,var(--foreground)_3.5%,transparent)] ${
             collapsed ? "" : "mb-2"
           }`}
         >

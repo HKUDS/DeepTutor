@@ -38,7 +38,7 @@ function Row({
     <button
       type="button"
       onClick={onClick}
-      className={`flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-left transition-colors ${
+      className={`flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-start transition-colors ${
         selected
           ? "border-[var(--primary)] bg-[var(--secondary)]"
           : "border-[var(--border)] hover:border-[var(--ring)]"

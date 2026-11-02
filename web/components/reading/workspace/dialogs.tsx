@@ -94,7 +94,7 @@ export function ConversationLinkDialog({
                       : [...values, row.session_id],
                   )
                 }
-                className="flex w-full items-center gap-3 rounded-xl border border-[var(--border)] px-3 py-3 text-left hover:bg-[var(--card)] dark:border-[var(--border)]"
+                className="flex w-full items-center gap-3 rounded-xl border border-[var(--border)] px-3 py-3 text-start hover:bg-[var(--card)] dark:border-[var(--border)]"
               >
                 <span
                   className={`flex size-4 items-center justify-center rounded border ${
@@ -195,7 +195,7 @@ export function NotebookCaptureDialog({
                       : [...current, notebook.id],
                   )
                 }
-                className="flex w-full items-center gap-3 rounded-xl border border-[var(--border)] px-3 py-3 text-left hover:bg-[var(--card)] dark:border-[var(--border)]"
+                className="flex w-full items-center gap-3 rounded-xl border border-[var(--border)] px-3 py-3 text-start hover:bg-[var(--card)] dark:border-[var(--border)]"
               >
                 <span
                   className={`flex size-4 items-center justify-center rounded border ${checked ? "border-[var(--border)] bg-[var(--primary)] text-[var(--primary-foreground)]" : "border-[var(--border)]"}`}

@@ -273,7 +273,7 @@ export function TurnNavigator({
         // Negative margins turn the padding into an invisible grab area:
         // the ticks are hairlines, so the pointer must be able to claim
         // the rail from a few px away in the empty gutter around them.
-        className="relative -my-2 -ml-2 py-2 pl-2 pr-4 transition-transform duration-300 ease-out motion-reduce:transition-none"
+        className="relative -my-2 -ms-2 py-2 ps-2 pe-4 transition-transform duration-300 ease-out motion-reduce:transition-none"
         style={{
           transform: `translateX(${hot ? 0 : -IDLE_RETREAT_PX}px)`,
         }}

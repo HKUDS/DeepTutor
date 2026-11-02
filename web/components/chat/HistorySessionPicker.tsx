@@ -245,7 +245,7 @@ export default function HistorySessionPicker({
 
         <div className="flex min-h-0 flex-1">
           {/* ── Left: searchable, selectable session list ── */}
-          <div className="flex w-full min-w-0 flex-col border-r border-[var(--border)] md:w-[42%] md:max-w-[380px]">
+          <div className="flex w-full min-w-0 flex-col border-e border-[var(--border)] md:w-[42%] md:max-w-[380px]">
             <div className="flex items-center gap-2 px-4 pb-3 pt-4">
               <div className="relative flex-1">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted-foreground)]" />
@@ -293,7 +293,7 @@ export default function HistorySessionPicker({
                         }}
                         onMouseEnter={() => setActiveId(id)}
                         onFocus={() => setActiveId(id)}
-                        className={`group relative flex w-full items-start gap-2.5 rounded-xl px-2.5 py-2.5 text-left transition-colors ${
+                        className={`group relative flex w-full items-start gap-2.5 rounded-xl px-2.5 py-2.5 text-start transition-colors ${
                           active
                             ? "bg-[var(--muted)]/60"
                             : selected

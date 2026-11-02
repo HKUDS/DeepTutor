@@ -708,7 +708,7 @@ export default function PageReader({
                             setInserting(false);
                           }
                         }}
-                        className="rounded px-2 py-1 text-left text-xs text-[var(--foreground)] hover:bg-[var(--background)]"
+                        className="rounded px-2 py-1 text-start text-xs text-[var(--foreground)] hover:bg-[var(--background)]"
                       >
                         {t(blockType)}
                       </button>
@@ -810,7 +810,7 @@ function NavButton({
           type="button"
           onClick={() => onNavigate(page.id)}
           className={`group inline-flex w-full min-w-0 items-center gap-1.5 rounded-md px-2 py-1 text-xs text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)]/40 hover:text-[var(--foreground)] ${
-            isNext ? "justify-end text-right" : "justify-start text-left"
+            isNext ? "justify-end text-right" : "justify-start text-start"
           }`}
         >
           {!isNext && <ChevronLeft className="h-3.5 w-3.5 shrink-0" />}

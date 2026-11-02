@@ -419,7 +419,7 @@ export default function MyAgentsPicker({
                         <button
                           type="button"
                           onClick={() => toggleExpand(group.key)}
-                          className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                          className="flex min-w-0 flex-1 items-center gap-2 text-start"
                         >
                           {isOpen ? (
                             <ChevronDown
@@ -463,7 +463,7 @@ export default function MyAgentsPicker({
                                 <button
                                   type="button"
                                   onClick={() => toggleSession(row.id)}
-                                  className="flex min-w-0 flex-1 items-start gap-3 py-3 pl-10 pr-2 text-left"
+                                  className="flex min-w-0 flex-1 items-start gap-3 py-3 pl-10 pr-2 text-start"
                                 >
                                   <div
                                     className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-all ${

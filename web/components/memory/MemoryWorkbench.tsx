@@ -359,7 +359,7 @@ export default function MemoryWorkbench({
                     type="button"
                     onClick={() => selectDoc(key)}
                     className={
-                      "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-[12.5px] text-left transition " +
+                      "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-[12.5px] text-start transition " +
                       (active
                         ? "bg-[var(--muted)] text-[var(--foreground)]"
                         : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]/60 hover:text-[var(--foreground)]")

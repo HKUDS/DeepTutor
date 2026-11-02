@@ -66,7 +66,7 @@ export default function MemoryArchivedBanner({
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
-        className="flex w-full items-center justify-between gap-2 px-4 py-2 text-left"
+        className="flex w-full items-center justify-between gap-2 px-4 py-2 text-start"
       >
         <span className="flex items-center gap-2 text-[var(--muted-foreground)]">
           <Archive className="h-3.5 w-3.5" />

@@ -348,7 +348,7 @@ function FolderTile({
             <Link
               role="menuitem"
               href={readingCollectionRoute(collection.workspace_id, contentWorkspace)}
-              className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left hover:bg-[var(--muted)]"
+              className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-start hover:bg-[var(--muted)]"
             >
               <BookOpen size={12} />
               {t("Start reading")}
@@ -357,7 +357,7 @@ function FolderTile({
               type="button"
               role="menuitem"
               onClick={onEdit}
-              className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left hover:bg-[var(--muted)]"
+              className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-start hover:bg-[var(--muted)]"
             >
               <Palette size={12} />
               {t("Rename or recolor")}
@@ -366,7 +366,7 @@ function FolderTile({
               type="button"
               role="menuitem"
               onClick={onDelete}
-              className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-[var(--destructive)] hover:bg-[var(--muted)]"
+              className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-start text-[var(--destructive)] hover:bg-[var(--muted)]"
             >
               <Trash2 size={12} />
               {t("Delete collection")}

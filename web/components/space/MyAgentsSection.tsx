@@ -444,7 +444,7 @@ function AgentCard({
           onSelect();
         }
       }}
-      className={`group relative flex items-center gap-3 rounded-2xl border px-4 py-3 text-left transition-all ${
+      className={`group relative flex items-center gap-3 rounded-2xl border px-4 py-3 text-start transition-all ${
         active
           ? "border-[var(--foreground)]/25 bg-[var(--card)] shadow-sm"
           : "border-[var(--border)] bg-[var(--card)]/50 hover:border-[var(--border)] hover:bg-[var(--card)]"
@@ -597,7 +597,7 @@ function MenuItem({
       type="button"
       role="menuitem"
       onClick={onClick}
-      className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-[12.5px] transition-colors ${
+      className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-start text-[12.5px] transition-colors ${
         destructive
           ? "text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30"
           : "text-[var(--foreground)] hover:bg-[var(--muted)]/60"
@@ -635,7 +635,7 @@ function UngroupedCard({
           onSelect();
         }
       }}
-      className={`group flex items-center gap-3 rounded-2xl border border-dashed px-4 py-3 text-left transition-all ${
+      className={`group flex items-center gap-3 rounded-2xl border border-dashed px-4 py-3 text-start transition-all ${
         active
           ? "border-[var(--foreground)]/25 bg-[var(--card)] shadow-sm"
           : "border-[var(--border)] bg-[var(--card)]/40 hover:bg-[var(--card)]"

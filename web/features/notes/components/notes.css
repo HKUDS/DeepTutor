@@ -129,7 +129,7 @@
 }
 .dt-note-handle .dt-note-menu {
   position: absolute;
-  left: 0;
+  inset-inline-start: 0;
   top: calc(100% + 2px);
 }
 .dt-note-clip {
@@ -1428,7 +1428,7 @@
 .dt-note-kind-menu.is-up {
   top: auto;
   bottom: calc(100% + 6px);
-  left: 0;
+  inset-inline-start: 0;
 }
 .dt-note-kind-menu-title {
   padding: 6px 8px 4px;
@@ -1858,8 +1858,8 @@
   animation: dt-pop-in 140ms var(--dt-ease, ease-out);
 }
 .dt-note-toolbar-panel.is-colors {
-  left: auto;
-  right: 0;
+  inset-inline-start: auto;
+  inset-inline-end: 0;
   min-width: 160px;
 }
 .dt-note-toolbar-panel button {

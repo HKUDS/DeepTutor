@@ -163,7 +163,7 @@ export default memo(function ContextReferenceTree({
               <button
                 type="button"
                 onClick={item.onClick}
-                className={`flex min-w-0 items-center gap-1.5 rounded-md text-left transition-colors hover:text-[var(--foreground)] [&>span]:hover:text-[var(--foreground)] ${rowDirClass}`}
+                className={`flex min-w-0 items-center gap-1.5 rounded-md text-start transition-colors hover:text-[var(--foreground)] [&>span]:hover:text-[var(--foreground)] ${rowDirClass}`}
               >
                 {Inner}
               </button>

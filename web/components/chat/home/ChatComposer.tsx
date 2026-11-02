@@ -135,7 +135,7 @@ function CapMenuItem({
     <button
       type="button"
       onClick={() => onSelect(cap.value)}
-      className={`flex w-full items-center gap-2.5 px-3 py-1.5 text-left transition-colors active:bg-[var(--muted)]/70 ${
+      className={`flex w-full items-center gap-2.5 px-3 py-1.5 text-start transition-colors active:bg-[var(--muted)]/70 ${
         selected ? "bg-[var(--primary)]/[0.06]" : "hover:bg-[var(--muted)]/45"
       }`}
     >
@@ -1491,7 +1491,7 @@ export default memo(function ChatComposer({
                                 aria-haspopup="menu"
                                 aria-expanded={moreCapsOpen}
                                 onClick={() => setMoreCapsOpen((open) => !open)}
-                                className={`flex w-full items-center gap-2.5 px-3 py-1.5 text-left transition-colors ${
+                                className={`flex w-full items-center gap-2.5 px-3 py-1.5 text-start transition-colors ${
                                   moreCapsOpen
                                     ? "bg-[var(--muted)]/45"
                                     : "group-hover/more:bg-[var(--muted)]/45"

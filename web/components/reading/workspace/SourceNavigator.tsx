@@ -296,7 +296,7 @@ export function SourceNavigator({
                     <button
                       type="button"
                       onClick={() => onNavigate(row.locator)}
-                      className="flex min-w-0 flex-1 items-baseline gap-2 px-2 py-1.5 text-left"
+                      className="flex min-w-0 flex-1 items-baseline gap-2 px-2 py-1.5 text-start"
                     >
                       <span className="w-7 shrink-0 text-right text-[11px] tabular-nums text-[var(--muted-foreground)]">
                         {row.locator}
@@ -371,7 +371,7 @@ export function SourceNavigator({
                           type="button"
                           onClick={() => selectMaterial(candidate)}
                           aria-current={active ? "true" : undefined}
-                          className="flex min-w-0 flex-1 items-center gap-2 px-2 py-2 text-left"
+                          className="flex min-w-0 flex-1 items-center gap-2 px-2 py-2 text-start"
                         >
                           {busy ? (
                             <Loader2 size={12} className="shrink-0 animate-spin" />
@@ -436,7 +436,7 @@ export function SourceNavigator({
                                       : undefined,
                                   )
                                 }
-                                className={`mb-0.5 flex w-full gap-2 rounded-lg px-2 py-2 text-left transition ${
+                                className={`mb-0.5 flex w-full gap-2 rounded-lg px-2 py-2 text-start transition ${
                                   activeLocator === row.locator
                                     ? "bg-[var(--muted)] text-[var(--primary)]"
                                     : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
@@ -483,7 +483,7 @@ export function SourceNavigator({
                                         10 + (Math.min(heading.level, 4) - 1) * 10
                                       }px`,
                                     }}
-                                    className={`mb-0.5 block w-full truncate rounded-lg py-1.5 pr-2 text-left text-[12px] leading-[1.4] transition ${
+                                    className={`mb-0.5 block w-full truncate rounded-lg py-1.5 pr-2 text-start text-[12px] leading-[1.4] transition ${
                                       activeHeadingId === heading.id
                                         ? "bg-[var(--muted)] font-medium text-[var(--primary)]"
                                         : "text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
@@ -616,7 +616,7 @@ export function WorkspaceOutlineBranch({
               }
               onNavigate(node.row.locator);
             }}
-            className="flex min-w-0 flex-1 items-baseline gap-2 px-2 py-1.5 text-left"
+            className="flex min-w-0 flex-1 items-baseline gap-2 px-2 py-1.5 text-start"
           >
             {showLocator && (
               <span className="w-7 shrink-0 text-right text-[11px] tabular-nums text-[var(--muted-foreground)]">

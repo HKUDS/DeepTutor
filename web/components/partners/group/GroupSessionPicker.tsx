@@ -107,7 +107,7 @@ export default function GroupSessionPicker({
               onCreate();
               setOpen(false);
             }}
-            className="flex w-full items-center gap-2 px-3 py-2 text-left text-[12px] text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]"
+            className="flex w-full items-center gap-2 px-3 py-2 text-start text-[12px] text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]"
           >
             <Plus
               size={13}
@@ -133,7 +133,7 @@ export default function GroupSessionPicker({
                           onSelect(item.session_key);
                           setOpen(false);
                         }}
-                        className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-2 text-left transition-colors hover:bg-[var(--muted)]"
+                        className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-2 text-start transition-colors hover:bg-[var(--muted)]"
                       >
                         <span className="w-3 shrink-0">
                           {active ? (

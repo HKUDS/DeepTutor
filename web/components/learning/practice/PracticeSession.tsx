@@ -404,7 +404,7 @@ function PracticeTurn({
                           (!!submission.current && submission.current.rating !== rating.value)
                         }
                         onClick={() => void rate(rating.value)}
-                        className="rounded-xl border border-border p-3 text-left transition hover:border-primary hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-35"
+                        className="rounded-xl border border-border p-3 text-start transition hover:border-primary hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-35"
                       >
                         <span className="block text-sm font-semibold">{t(rating.label)}</span>
                         <span className="mt-1 block text-xs text-muted-foreground">

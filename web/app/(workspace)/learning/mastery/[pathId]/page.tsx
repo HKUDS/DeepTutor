@@ -465,7 +465,7 @@ export default function MasteryTopicPage() {
                   onClick={(event) =>
                     openConfirmation("reset", event.currentTarget)
                   }
-                  className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left hover:bg-[var(--accent)]"
+                  className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-start hover:bg-[var(--accent)]"
                 >
                   <RotateCcw className="h-3.5 w-3.5" /> {t("Reset progress")}
                 </button>
@@ -474,7 +474,7 @@ export default function MasteryTopicPage() {
                   onClick={(event) =>
                     openConfirmation("delete", event.currentTarget)
                   }
-                  className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-red-600 hover:bg-red-500/10"
+                  className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-start text-red-600 hover:bg-red-500/10"
                 >
                   <Trash2 className="h-3.5 w-3.5" /> {t("Delete topic")}
                 </button>

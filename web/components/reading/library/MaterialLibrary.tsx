@@ -387,7 +387,7 @@ function MaterialRow({
           )}
         </button>
 
-        <button type="button" onClick={open} className="min-w-0 text-left">
+        <button type="button" onClick={open} className="min-w-0 text-start">
           <span className="flex min-w-0 items-center gap-1.5">
             <span className="min-w-0 truncate text-[12.5px] font-medium">
               {material.title}
@@ -511,7 +511,7 @@ function MaterialRow({
           <button
             type="button"
             onClick={onAssign}
-            className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left hover:bg-[var(--muted)]"
+            className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-start hover:bg-[var(--muted)]"
           >
             <FolderPlus size={12} />
             {t("Add to a collection")}
@@ -519,7 +519,7 @@ function MaterialRow({
           <button
             type="button"
             onClick={onDelete}
-            className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-[var(--destructive)] hover:bg-[var(--muted)]"
+            className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-start text-[var(--destructive)] hover:bg-[var(--muted)]"
           >
             <Trash2 size={12} />
             {t("Delete material")}
@@ -613,7 +613,7 @@ function AssignDialog({
                     )
                     .finally(() => setWorking(""));
                 }}
-                className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left hover:bg-[var(--muted)] disabled:opacity-60"
+                className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-start hover:bg-[var(--muted)] disabled:opacity-60"
               >
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-serif text-[13px] font-semibold">

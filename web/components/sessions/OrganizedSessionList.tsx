@@ -629,7 +629,7 @@ export default function OrganizedSessionList({
           // had it a hair smaller than a caption and uppercase, which shouted
           // in a list of 12.5px rows and did nothing whatsoever to the CJK
           // titles most of these groups actually carry.
-          className="group/heading flex w-full min-w-0 items-center gap-1.5 rounded-lg px-1.5 py-1 text-left text-[12.5px] font-medium text-[var(--foreground)] transition-colors hover:bg-background/40 hover:text-[var(--foreground)]"
+          className="group/heading flex w-full min-w-0 items-center gap-1.5 rounded-lg px-1.5 py-1 text-start text-[12.5px] font-medium text-[var(--foreground)] transition-colors hover:bg-background/40 hover:text-[var(--foreground)]"
         >
           {!recent && <GroupMark />}
           <span className="min-w-0 truncate">{recent ? t("Recent") : entry.label}</span>

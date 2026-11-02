@@ -779,7 +779,7 @@ export function MasteryStudy({
                             type="button"
                             onClick={() => startFromPrompt(label)}
                             disabled={state.isStreaming || sessionLoading}
-                            className="group rounded-[14px] bg-[rgb(var(--dt-ink,55_53_47)/0.03)] p-4 text-left transition hover:-translate-y-0.5 hover:bg-[rgb(var(--dt-ink,55_53_47)/0.055)] disabled:opacity-50"
+                            className="group rounded-[14px] bg-[rgb(var(--dt-ink,55_53_47)/0.03)] p-4 text-start transition hover:-translate-y-0.5 hover:bg-[rgb(var(--dt-ink,55_53_47)/0.055)] disabled:opacity-50"
                           >
                             <Icon className="h-4 w-4 text-[var(--primary)]" />
                             <span className="mt-3 block text-xs font-medium leading-5 text-[var(--foreground)]">

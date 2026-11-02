@@ -165,7 +165,7 @@ export default function UsageSettingsSection() {
                         <th
                           key={label}
                           scope="col"
-                          className={`px-3 py-3 font-medium ${index ? 'text-right' : 'text-left'}`}
+                          className={`px-3 py-3 font-medium ${index ? 'text-right' : 'text-start'}`}
                         >
                           {label}
                         </th>
@@ -180,7 +180,7 @@ export default function UsageSettingsSection() {
                       >
                         <th
                           scope="row"
-                          className="max-w-[220px] break-words px-3 py-3 text-left font-medium"
+                          className="max-w-[220px] break-words px-3 py-3 text-start font-medium"
                         >
                           <span className="block">{model.model}</span>
                           {model.provider && (

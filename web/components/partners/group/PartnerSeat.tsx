@@ -184,7 +184,7 @@ export default function PartnerSeat({
                           setAskOpen(false);
                           onAskPeer(peer.partner_id);
                         }}
-                        className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left transition-colors hover:bg-[var(--muted)]"
+                        className="flex w-full items-center gap-2 px-2.5 py-1.5 text-start transition-colors hover:bg-[var(--muted)]"
                       >
                         <PartnerAvatar
                           name={peer.name}

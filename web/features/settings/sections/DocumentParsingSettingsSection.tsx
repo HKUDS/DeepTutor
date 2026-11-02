@@ -168,7 +168,7 @@ export default function DocumentParsingSettingsPage() {
                     onClick={() =>
                       !active && putDocumentParsing({ engine: engine.id })
                     }
-                    className={`flex items-start justify-between gap-4 rounded-xl border px-4 py-3 text-left transition-colors disabled:opacity-60 ${
+                    className={`flex items-start justify-between gap-4 rounded-xl border px-4 py-3 text-start transition-colors disabled:opacity-60 ${
                       active
                         ? "border-[var(--foreground)] bg-[var(--card)]"
                         : "border-[var(--border)] hover:border-[var(--foreground)]/40"

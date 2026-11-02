@@ -378,7 +378,7 @@ button.dt-cal-rail-link {
 }
 .dt-cal-calendar-menu {
   position: absolute;
-  right: 0;
+  inset-inline-end: 0;
   top: 0;
 }
 .dt-cal-rail-notify {
@@ -785,7 +785,7 @@ button.dt-cal-rail-link {
 }
 .dt-cal-more {
   position: absolute;
-  left: 7px;
+  inset-inline-start: 7px;
   font-size: 11px;
   color: var(--muted-foreground);
   z-index: 3;
@@ -1131,7 +1131,7 @@ button.dt-cal-rail-link {
 }
 .dt-cal-calendar-more {
   position: absolute;
-  right: 0;
+  inset-inline-end: 0;
   top: 3px;
   padding: 4px;
   background: var(--background);

@@ -1330,7 +1330,7 @@ function TabBar({
                 onClick={() => onSelect(tab.id)}
                 aria-pressed={active}
                 aria-label={tab.label}
-                className={`inline-flex h-full min-w-0 flex-1 items-center gap-1.5 rounded-lg pl-2.5 pr-1 text-left ${TAB_FOCUS}`}
+                className={`inline-flex h-full min-w-0 flex-1 items-center gap-1.5 rounded-lg pl-2.5 pr-1 text-start ${TAB_FOCUS}`}
               >
                 {/* A side chat wears the face of whoever answers it. */}
                 {tab.kind === "side-chat" && tab.context.sideChat ? (

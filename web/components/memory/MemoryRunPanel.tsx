@@ -887,7 +887,7 @@ function ModelPill({
           }
         >
           <Bot className="h-3 w-3 shrink-0 text-[var(--muted-foreground)]" />
-          <span className="flex-1 truncate text-left">{label}</span>
+          <span className="flex-1 truncate text-start">{label}</span>
           <ChevronDown className="h-3 w-3 shrink-0 text-[var(--muted-foreground)]" />
         </button>
       </Tooltip>
@@ -908,7 +908,7 @@ function ModelPill({
                   setOpen(false);
                 }}
                 className={
-                  "flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left text-[11.5px] transition hover:bg-[var(--muted)] " +
+                  "flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-start text-[11.5px] transition hover:bg-[var(--muted)] " +
                   (active
                     ? "bg-[var(--muted)] text-[var(--foreground)]"
                     : "text-[var(--muted-foreground)]")

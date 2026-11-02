@@ -1183,7 +1183,7 @@ export function ReaderPane({
                     index === locationHistory.index ? "location" : undefined
                   }
                   onClick={() => selectHistoryEntry(index)}
-                  className={`flex w-full items-start gap-2 rounded-lg px-2.5 py-2 text-left transition hover:bg-[var(--muted)] ${
+                  className={`flex w-full items-start gap-2 rounded-lg px-2.5 py-2 text-start transition hover:bg-[var(--muted)] ${
                     index === locationHistory.index
                       ? "bg-[color-mix(in_srgb,var(--primary)_10%,transparent)] text-[var(--primary)]"
                       : "text-[var(--foreground)]"
@@ -1424,7 +1424,7 @@ function MenuToolButton({
       aria-checked={active}
       disabled={spinning || disabled}
       onClick={onClick}
-      className={`${className} flex w-full items-center gap-2 rounded-lg px-2.5 text-left text-[12px] transition disabled:cursor-default ${hint ? "py-1.5" : "h-9"} ${
+      className={`${className} flex w-full items-center gap-2 rounded-lg px-2.5 text-start text-[12px] transition disabled:cursor-default ${hint ? "py-1.5" : "h-9"} ${
         active
           ? "bg-[color-mix(in_srgb,var(--primary)_12%,transparent)] text-[var(--primary)]"
           : "text-[var(--foreground)] hover:bg-[var(--muted)] disabled:opacity-35 disabled:hover:bg-transparent"

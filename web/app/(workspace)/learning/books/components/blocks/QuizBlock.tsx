@@ -232,7 +232,7 @@ function QuizQuestionCard({
               <button
                 key={key}
                 onClick={() => setSelected(upperKey)}
-                className={`flex w-full items-start gap-2 rounded-lg border px-3 py-2 text-left text-sm transition-colors ${
+                className={`flex w-full items-start gap-2 rounded-lg border px-3 py-2 text-start text-sm transition-colors ${
                   isCorrect
                     ? "border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-100"
                     : isWrongPick

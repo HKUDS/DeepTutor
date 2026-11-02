@@ -436,7 +436,7 @@ export function SidebarNav({
                 className={`${EASE_CLASS} transition-transform ${moreExpanded ? "" : "-rotate-90"}`}
               />
             </span>
-            <span className="min-w-0 flex-1 truncate text-left">
+            <span className="min-w-0 flex-1 truncate text-start">
               {t("More")}
             </span>
             {/* Fades and shrinks away rather than vanishing — the count answers
@@ -715,7 +715,7 @@ function MenuRow({
       type="button"
       role="menuitem"
       onClick={onClick}
-      className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]"
+      className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-start text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]"
     >
       <Icon size={13} strokeWidth={1.7} className="shrink-0" />
       <span className="min-w-0 flex-1 truncate">{label}</span>

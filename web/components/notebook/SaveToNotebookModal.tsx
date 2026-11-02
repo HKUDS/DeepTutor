@@ -561,7 +561,7 @@ export default function SaveToNotebookModal({
                       key={idx}
                       type="button"
                       onClick={() => toggleMessage(idx)}
-                      className={`flex w-full items-start gap-3 rounded-lg border px-3 py-2 text-left transition ${
+                      className={`flex w-full items-start gap-3 rounded-lg border px-3 py-2 text-start transition ${
                         selected
                           ? "border-[var(--primary)]/40 bg-[var(--primary)]/8"
                           : "border-transparent hover:border-[var(--border)] hover:bg-[var(--muted)]/40"
@@ -631,7 +631,7 @@ export default function SaveToNotebookModal({
                       key={notebook.id}
                       aria-pressed={selected}
                       onClick={() => toggleNotebook(notebook.id)}
-                      className={`flex w-full items-start gap-3 rounded-lg border px-3 py-2.5 text-left transition ${
+                      className={`flex w-full items-start gap-3 rounded-lg border px-3 py-2.5 text-start transition ${
                         selected
                           ? "border-[var(--primary)]/40 bg-[var(--primary)]/8"
                           : "border-transparent hover:border-[var(--border)] hover:bg-[var(--muted)]/40"

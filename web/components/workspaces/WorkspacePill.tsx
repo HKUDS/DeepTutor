@@ -193,7 +193,7 @@ export function WorkspacePill({
                       onSelect(row.workspace_id);
                       setOpen(false);
                     }}
-                    className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12.5px] text-[var(--foreground)] transition-colors hover:bg-[color-mix(in_srgb,var(--muted)_60%,transparent)] disabled:opacity-50"
+                    className="flex w-full items-center gap-2 px-3 py-1.5 text-start text-[12.5px] text-[var(--foreground)] transition-colors hover:bg-[color-mix(in_srgb,var(--muted)_60%,transparent)] disabled:opacity-50"
                   >
                     <Folder
                       size={13}
@@ -219,14 +219,14 @@ export function WorkspacePill({
                 onSelect("");
                 setOpen(false);
               }}
-              className="mt-1 flex w-full items-center gap-2 border-t border-[color-mix(in_srgb,var(--border)_70%,transparent)] px-3 py-1.5 pt-2 text-left text-[12px] text-[var(--muted-foreground)] transition-colors hover:bg-[color-mix(in_srgb,var(--muted)_60%,transparent)] hover:text-[var(--foreground)]"
+              className="mt-1 flex w-full items-center gap-2 border-t border-[color-mix(in_srgb,var(--border)_70%,transparent)] px-3 py-1.5 pt-2 text-start text-[12px] text-[var(--muted-foreground)] transition-colors hover:bg-[color-mix(in_srgb,var(--muted)_60%,transparent)] hover:text-[var(--foreground)]"
             >
               {t("Default workspace")}
             </button>
           ) : null}
 
           <button type="button" role="menuitem" onClick={() => { setOpen(false); setBrowsing(true); }}
-            className="flex w-full items-center gap-2 border-t border-[var(--border)] px-3 py-2 text-left text-xs hover:bg-[var(--muted)]">
+            className="flex w-full items-center gap-2 border-t border-[var(--border)] px-3 py-2 text-start text-xs hover:bg-[var(--muted)]">
             <FolderOpen size={15} />{t("Choose a server folder")}
           </button>
           {creating ? (
