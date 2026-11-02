@@ -1426,8 +1426,53 @@ class ListFavoritesTool(ListNotebookTool):
     def get_definition(self) -> ToolDefinition:
         definition = super().get_definition()
         definition.name = "list_favorites"
-        definition.description = "List favorites collections and archived original records. Use notebook_id to open a collection. These are saved sources; authored pages are found with search_notes."
+        definition.description = (
+            "List favorites collections and archived original records. Use notebook_id "
+            "to open a collection; specify record_id with notebook_id to read one "
+            "saved source body in 8,000-character pages, continuing with offset. "
+            "Calls without record_id list metadata only. Authored pages are found "
+            "with search_notes."
+        )
+        definition.parameters.extend(
+            [
+                ToolParameter(
+                    name="record_id",
+                    type="string",
+                    description=(
+                        "Optional saved record ID from the collection listing. "
+                        "Requires notebook_id; when omitted, no body is read."
+                    ),
+                    required=False,
+                ),
+                ToolParameter(
+                    name="offset",
+                    type="integer",
+                    description=(
+                        "Optional zero-based character offset for record_id reads. "
+                        "Defaults to 0; use next_offset from the prior result to continue."
+                    ),
+                    required=False,
+                    default=0,
+                    minimum=0,
+                ),
+            ]
+        )
         return definition
+
+    async def execute(self, **kwargs: Any) -> ToolResult:
+        if not kwargs.get("record_id"):
+            return await super().execute(**kwargs)
+
+        from deeptutor.tools.list_notebook import read_favorite_record
+
+        outcome = read_favorite_record(
+            notebook_id=str(kwargs.get("notebook_id") or ""),
+            record_id=str(kwargs["record_id"]),
+            offset=kwargs.get("offset", 0),
+        )
+        if not outcome.ok:
+            return ToolResult(content=outcome.error, success=False)
+        return ToolResult(content=outcome.text, metadata=outcome.summary or {})
 
 
 class QuestionBankTool(_PromptHintsMixin, BaseTool):
