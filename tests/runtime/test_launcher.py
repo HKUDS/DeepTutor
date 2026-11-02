@@ -246,6 +246,44 @@ def test_launcher_completes_update_only_after_restart(tmp_path: Path) -> None:
     assert store.load().status == "succeeded"
 
 
+def test_launcher_fails_update_when_the_restart_never_finishes(tmp_path: Path) -> None:
+    store = UpdateJobStore(update_store_root(tmp_path))
+    pending = store.create(current_version="1.6.1", target_version="1.7.0")
+    store.prepare_handoff(
+        pending.id,
+        home=tmp_path,
+        restart_argv=["start", "--home", str(tmp_path.resolve())],
+    )
+    store.mark_running(pending.id)
+    store.mark_restarting(pending.id)
+
+    assert launcher._fail_restarted_update(tmp_path, "backend exited with code 1") is True
+    job = store.load()
+    assert job.status == "failed"
+    assert job.error == "backend exited with code 1"
+
+
+def test_launcher_failure_hook_ignores_other_homes_and_states(tmp_path: Path) -> None:
+    other = tmp_path / "other"
+    store = UpdateJobStore(update_store_root(tmp_path))
+    pending = store.create(current_version="1.6.1", target_version="1.7.0")
+    store.prepare_handoff(
+        pending.id,
+        home=tmp_path,
+        restart_argv=["start", "--home", str(tmp_path.resolve())],
+    )
+
+    # Still pending: the handoff has not reached the restart phase.
+    assert launcher._fail_restarted_update(tmp_path, "too early") is False
+    assert store.load().status == "handoff"
+
+    store.mark_running(pending.id)
+    store.mark_restarting(pending.id)
+    # A different runtime home must not touch this job.
+    assert launcher._fail_restarted_update(other, "wrong home") is False
+    assert store.load().status == "restarting"
+
+
 def test_packaged_web_cache_refreshes_when_public_settings_change(tmp_path: Path) -> None:
     packaged = tmp_path / "pkg"
     (packaged / ".next").mkdir(parents=True)

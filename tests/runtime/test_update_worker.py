@@ -92,6 +92,57 @@ def test_worker_recovery_reports_and_skips_on_corrupt_state(tmp_path: Path) -> N
     assert "pip exited with status 7" in log
 
 
+def test_worker_marks_failed_when_the_launcher_exits_early(tmp_path: Path) -> None:
+    store, _job = _handoff_job(tmp_path)
+    launches: list[UpdateJob] = []
+
+    class ExitedProcess:
+        def wait(self, timeout: float | None = None) -> int:
+            return 23
+
+    def restart(value: UpdateJob, _log_path: Path) -> ExitedProcess:
+        launches.append(value)
+        return ExitedProcess()
+
+    result = run_update_worker(
+        store_root=store.root,
+        parent_pid=123,
+        wait_for_parent=lambda _pid: None,
+        command_runner=lambda _command, _cwd, _log: 0,
+        restart_launcher=restart,
+    )
+
+    assert result == 1
+    assert len(launches) == 1, "a launcher that just failed must not be spawned again"
+    job = store.load()
+    assert job.status == "failed"
+    assert job.error is not None and "exited with status 23" in job.error
+
+
+def test_worker_leaves_a_live_launcher_in_restarting(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store, _job = _handoff_job(tmp_path)
+    monkeypatch.setattr("deeptutor.runtime.update_worker.RESTART_STARTUP_GRACE_SECONDS", 0.0)
+
+    class LiveProcess:
+        def wait(self, timeout: float | None = None) -> int:
+            import subprocess
+
+            raise subprocess.TimeoutExpired("launcher", timeout or 0)
+
+    result = run_update_worker(
+        store_root=store.root,
+        parent_pid=123,
+        wait_for_parent=lambda _pid: None,
+        command_runner=lambda _command, _cwd, _log: 0,
+        restart_launcher=lambda _job, _log: LiveProcess(),
+    )
+
+    assert result == 0
+    assert store.load().status == "restarting"
+
+
 def test_update_command_upgrades_every_installed_module(monkeypatch: pytest.MonkeyPatch) -> None:
     from deeptutor.modules import catalog
 
