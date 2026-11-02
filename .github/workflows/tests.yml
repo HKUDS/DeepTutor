@@ -153,7 +153,7 @@ jobs:
 
       - name: Install frontend dependencies
         working-directory: web
-        run: npm ci
+        run: npm ci --legacy-peer-deps
 
       - name: Run complete deterministic frontend gate
         working-directory: web
@@ -199,7 +199,7 @@ jobs:
 
       - name: Install frontend dependencies
         working-directory: web
-        run: npm ci
+        run: npm ci --legacy-peer-deps
 
       - name: Install Playwright Chromium
         working-directory: web
