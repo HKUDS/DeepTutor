@@ -150,6 +150,7 @@ RUN sed -i 's|http://deb.debian.org|https://deb.debian.org|g' /etc/apt/sources.l
     libsm6 \
     libxext6 \
     libxrender1 \
+    ffmpeg \
     libreoffice-writer \
     libreoffice-calc \
     libreoffice-impress \
