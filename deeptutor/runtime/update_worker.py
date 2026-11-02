@@ -28,6 +28,13 @@ def build_update_command(target_version: str) -> list[str]:
             "created_at": "validation",
         }
     ).target_version
+    from deeptutor.modules.catalog import installed_distributions
+
+    # 1.7 split features into separately versioned distributions. Upgrading
+    # core alone leaves every installed module pinned to the old version, so
+    # the restarted app cannot import its own server/web modules (#2330).
+    specs = [f"deeptutor=={validated}"]
+    specs.extend(f"{name}=={validated}" for name in installed_distributions())
     return [
         sys.executable,
         "-m",
@@ -36,7 +43,7 @@ def build_update_command(target_version: str) -> list[str]:
         "--no-input",
         "--disable-pip-version-check",
         "--upgrade",
-        f"deeptutor=={validated}",
+        *specs,
     ]
 
 

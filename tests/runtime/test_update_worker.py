@@ -92,6 +92,36 @@ def test_worker_recovery_reports_and_skips_on_corrupt_state(tmp_path: Path) -> N
     assert "pip exited with status 7" in log
 
 
+def test_update_command_upgrades_every_installed_module(monkeypatch: pytest.MonkeyPatch) -> None:
+    from deeptutor.modules import catalog
+
+    monkeypatch.setattr(
+        catalog,
+        "installed_distributions",
+        lambda: ["deeptutor-server", "deeptutor-web", "deeptutor-parsing"],
+    )
+
+    command = build_update_command("1.7.2")
+
+    assert command[-4:] == [
+        "deeptutor==1.7.2",
+        "deeptutor-server==1.7.2",
+        "deeptutor-web==1.7.2",
+        "deeptutor-parsing==1.7.2",
+    ]
+
+
+def test_update_command_keeps_core_only_installs_light(monkeypatch: pytest.MonkeyPatch) -> None:
+    from deeptutor.modules import catalog
+
+    monkeypatch.setattr(catalog, "installed_distributions", lambda: [])
+
+    command = build_update_command("1.7.2")
+
+    assert command[-1] == "deeptutor==1.7.2"
+    assert all("deeptutor-" not in part for part in command)
+
+
 def test_update_command_rejects_non_stable_or_injected_versions() -> None:
     with pytest.raises(ValueError):
         build_update_command("1.7.0rc1")
