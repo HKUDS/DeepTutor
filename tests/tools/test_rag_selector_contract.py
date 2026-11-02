@@ -157,3 +157,43 @@ async def test_malformed_selectors_fail_visibly_without_substitution(
     assert result.metadata["error_type"] == "invalid_selector"
     assert rag_calls["rag_search"] == []
     assert rag_calls["resolve_for_rag"] == []
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        {},
+        {"region": [], "page": None, "asset_id": None, "figure": None},
+        {"source_hash": "a" * 64, "_vision_supported": True},
+    ],
+)
+@pytest.mark.asyncio
+async def test_source_only_text_query_reports_unsupported_scope(kb, rag_calls, extra):
+    (kb / "raw" / "notes.txt").write_text("Keep this source private.", encoding="utf-8")
+    result = await RAGTool().execute(
+        query="What does this document say?",
+        kb_name=kb.name,
+        source_path="notes.txt",
+        **extra,
+    )
+    assert not result.success
+    assert result.metadata["error_type"] == "source_scope_unsupported"
+    assert "scoped text retrieval" in result.content
+    assert result.sources == []
+    assert result.model_message is None
+    assert rag_calls["rag_search"] == []
+    assert rag_calls["resolve_for_rag"] == [kb.name]
+
+
+@pytest.mark.asyncio
+async def test_source_only_scope_keeps_knowledge_base_access_check(kb, rag_calls, monkeypatch):
+    monkeypatch.setattr("deeptutor.multi_user.knowledge_access.resolve_for_rag", lambda _name: None)
+    result = await RAGTool().execute(
+        query="What does this document say?",
+        kb_name=kb.name,
+        source_path="notes.txt",
+    )
+    assert not result.success
+    assert "not accessible" in result.content
+    assert result.sources == []
+    assert rag_calls["rag_search"] == []
