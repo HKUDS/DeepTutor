@@ -85,6 +85,27 @@ requires assets produced by `scripts/prepare_web_package.py` for `deeptutor star
 a source development server uses the checkout's `web/` directory. Build and
 release automation prepares Web assets before building the wheel family.
 
+## Managed PyPI upgrades
+
+The in-app updater snapshots installed module distributions before stopping the
+launcher. Core, installed feature wheels, optional parser wheels and the modern
+CLI compatibility alias are pinned to the same target version in one pip
+operation. Disabled modules remain installed and retain their enabled-state
+settings. Core-only installations keep their smaller package set. The manual
+update command uses the same installed set.
+
+For a pre-1.7 monolithic update job, the migration plan restores the standard
+application module set corresponding to `full`, without adding optional parser
+engines or Manim. Legacy `deeptutor-cli` wheels require the manual uninstall
+described below because they overlap the new core's files. An older updater
+that already installed only core still needs that manual migration procedure.
+
+An update succeeds only after the restarted launcher reports both services
+ready. Early exit, startup exceptions and a missing readiness receipt after
+five minutes produce a failed job with diagnostics in `data/user/update/worker.log`.
+The updater preserves runtime-home data; a pip or restart failure does not
+promise rollback of package changes.
+
 ## Upgrade from 1.6.15
 
 Stop the old process and back up its runtime home. Build the candidate wheels

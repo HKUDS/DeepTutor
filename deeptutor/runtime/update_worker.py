@@ -11,10 +11,16 @@ import time
 from typing import Callable
 
 from deeptutor.runtime.process import is_process_alive
-from deeptutor.services.app_update import UpdateJob, UpdateJobStore
+from deeptutor.services.app_update import (
+    UpdateJob,
+    UpdateJobStore,
+    installed_update_packages,
+    legacy_cli_migration_required,
+    validate_update_packages,
+)
 
 
-def build_update_command(target_version: str) -> list[str]:
+def build_update_command(target_version: str, packages: tuple[str, ...] = ()) -> list[str]:
     """Return the only package mutation the worker is allowed to execute."""
 
     # Round-trip through the job validator instead of accepting arbitrary text.
@@ -37,6 +43,7 @@ def build_update_command(target_version: str) -> list[str]:
         "--disable-pip-version-check",
         "--upgrade",
         f"deeptutor=={validated}",
+        *(f"{name}=={validated}" for name in validate_update_packages(packages) or ()),
     ]
 
 
@@ -78,7 +85,7 @@ def _run_logged(command: list[str], *, cwd: Path, log_path: Path) -> int:
     return completed.returncode
 
 
-def _launch_restart(job: UpdateJob, *, log_path: Path) -> None:
+def _launch_restart(job: UpdateJob, *, log_path: Path) -> subprocess.Popen:
     command, home = build_restart_command(job)
     kwargs: dict[str, object] = {
         "cwd": str(home),
@@ -95,9 +102,45 @@ def _launch_restart(job: UpdateJob, *, log_path: Path) -> None:
     else:
         kwargs["start_new_session"] = True
     with log_path.open("a", encoding="utf-8") as log:
-        subprocess.Popen(  # type: ignore[arg-type,call-overload] # nosec B603
+        return subprocess.Popen(  # type: ignore[arg-type,call-overload] # nosec B603
             command, stdout=log, **kwargs
         )
+
+
+def wait_for_restart(
+    store: UpdateJobStore,
+    job: UpdateJob,
+    process: subprocess.Popen,
+    *,
+    timeout: float = 300.0,
+) -> None:
+    """Wait for the existing launcher's readiness receipt or bounded failure."""
+    deadline = time.monotonic() + timeout
+    while True:
+        current = store.load()
+        if current.id != job.id:
+            raise RuntimeError("Update job ownership changed during restart")
+        if current.status == "succeeded":
+            return
+        if current.status == "failed":
+            raise RuntimeError(current.error or "Restart failed")
+        code = process.poll()
+        if code is not None:
+            try:
+                with store.log_path.open("rb") as log:
+                    log.seek(0, os.SEEK_END)
+                    log.seek(max(0, log.tell() - 2048))
+                    tail = log.read().decode("utf-8", errors="replace")[-700:].strip()
+            except OSError:
+                tail = ""
+            raise RuntimeError(
+                f"Restart launcher exited with status {code}" + (f": {tail}" if tail else "")
+            )
+        if time.monotonic() >= deadline:
+            raise TimeoutError(
+                f"Restart launcher did not report readiness within {timeout:g} seconds"
+            )
+        time.sleep(0.1)
 
 
 def _log_aborted_recovery(
@@ -126,30 +169,46 @@ def run_update_worker(
     parent_pid: int,
     wait_for_parent: Callable[[int], None] = wait_for_process_exit,
     command_runner: Callable[[list[str], Path, Path], int] | None = None,
-    restart_launcher: Callable[[UpdateJob, Path], None] | None = None,
+    restart_launcher: Callable[[UpdateJob, Path], subprocess.Popen | None] | None = None,
+    restart_timeout: float = 300.0,
 ) -> int:
     """Install the target, then restore the application on either outcome."""
 
     store = UpdateJobStore(store_root)
+    installed = False
+    job: UpdateJob | None = None
     try:
         job = store.load()
         if job.status != "handoff":
             raise RuntimeError("Update job is not awaiting the worker")
+        if legacy_cli_migration_required():
+            raise RuntimeError(
+                "Uninstall legacy deeptutor-cli before upgrading and keep the same runtime home."
+            )
         wait_for_parent(parent_pid)
         job = store.mark_running(job.id)
+        packages = job.packages
+        if packages is None:
+            # Older queued jobs have no snapshot; this still runs before pip.
+            packages = installed_update_packages(job.current_version)
         runner = command_runner or (
             lambda command, cwd, log_path: _run_logged(command, cwd=cwd, log_path=log_path)
         )
         exit_code = runner(
-            build_update_command(job.target_version), Path(job.restart_home or "."), store.log_path
+            build_update_command(job.target_version, packages),
+            Path(job.restart_home or "."),
+            store.log_path,
         )
         if exit_code != 0:
             raise RuntimeError(f"pip exited with status {exit_code}")
+        installed = True
         job = store.mark_restarting(job.id)
-        (restart_launcher or (lambda value, path: _launch_restart(value, log_path=path)))(
+        process = (restart_launcher or (lambda value, path: _launch_restart(value, log_path=path)))(
             job,
             store.log_path,
         )
+        if process is not None:
+            wait_for_restart(store, job, process, timeout=restart_timeout)
         return 0
     except Exception as exc:
         try:
@@ -160,10 +219,16 @@ def run_update_worker(
             # instead of exiting silently.
             _log_aborted_recovery(store, original=exc, load_error=load_error)
             return 1
+        if job is not None and current.id != job.id:
+            print(
+                f"Update {job.id} lost ownership; preserving job {current.id}. Original failure: {exc}",
+                file=sys.stderr,
+            )
+            return 1
         try:
             if current.status not in {"succeeded", "failed"}:
                 current = store.mark_failed(current.id, str(exc) or type(exc).__name__)
-            if current.restart_home and current.restart_argv:
+            if not installed and current.restart_home and current.restart_argv:
                 (restart_launcher or (lambda value, path: _launch_restart(value, log_path=path)))(
                     current,
                     store.log_path,

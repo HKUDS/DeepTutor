@@ -42,7 +42,7 @@ def test_worker_updates_then_restarts(tmp_path: Path) -> None:
 
     assert result == 0
     assert captured["parent_pid"] == 123
-    assert captured["command"] == build_update_command("1.7.0")
+    assert captured["command"] == build_update_command("1.7.0", job.packages or ())
     assert isinstance(captured["restart"], UpdateJob)
     assert store.load().status == "restarting"
     assert store.load().restart_count == 1

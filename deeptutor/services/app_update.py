@@ -40,6 +40,81 @@ JobStatus = Literal["pending", "handoff", "running", "restarting", "succeeded", 
 _STABLE_VERSION = re.compile(r"^v?(\d+)\.(\d+)\.(\d+)$")
 _CURRENT_VERSION = re.compile(r"^v?(\d+)\.(\d+)\.(\d+)")
 
+# The regular application that shipped in the pre-1.7 monolithic wheel.
+# Optional parser engines and the native Manim renderer remain opt-in.
+_LEGACY_APP_MODULES = (
+    "audio-overview",
+    "solve",
+    "server",
+    "reading",
+    "partners",
+    "memory",
+    "providers",
+    "questions",
+    "notebook",
+    "web",
+    "video-lesson",
+    "parsing",
+    "books",
+    "research",
+    "visualize",
+    "calendar",
+    "knowledge",
+    "co-writer",
+    "mastery",
+)
+
+
+def _trusted_update_packages() -> set[str]:
+    from deeptutor.modules.catalog import manifests
+
+    return {row["distribution"] for row in manifests().values()} | {"deeptutor-cli"}
+
+
+def validate_update_packages(value: object) -> tuple[str, ...] | None:
+    """Validate a persisted package snapshot against the bundled module registry."""
+    if value is None:
+        return None
+    if not isinstance(value, (list, tuple)) or any(type(item) is not str for item in value):
+        raise ValueError("Invalid update package snapshot")
+    if len(value) != len(set(value)) or not set(value) <= _trusted_update_packages():
+        raise ValueError("Unknown or duplicate update package")
+    return tuple(sorted(item for item in value if item != "deeptutor"))
+
+
+def installed_update_packages(current_version: str) -> tuple[str, ...]:
+    """Capture installed modules, including disabled ones, before replacing core."""
+    from deeptutor.modules.catalog import manifests
+
+    packages: set[str] = set()
+    if _version_tuple(current_version) < (1, 7, 0):
+        packages.update(manifests()[name]["distribution"] for name in _LEGACY_APP_MODULES)
+    for package in _trusted_update_packages() - {"deeptutor"}:
+        try:
+            importlib.metadata.version(package)
+        except importlib.metadata.PackageNotFoundError:
+            continue
+        packages.add(package)
+    return tuple(sorted(packages))
+
+
+def manual_update_command() -> str:
+    """Show the same package set used by the managed updater."""
+    packages = installed_update_packages(__version__)
+    command = "python -m pip install --upgrade " + " ".join(("deeptutor", *packages))
+    if legacy_cli_migration_required():
+        return "python -m pip uninstall deeptutor-cli\n" + command
+    return command
+
+
+def legacy_cli_migration_required() -> bool:
+    """The old CLI wheel must be removed before installing disjoint core files."""
+    try:
+        version = importlib.metadata.version("deeptutor-cli")
+    except importlib.metadata.PackageNotFoundError:
+        return False
+    return _version_tuple(version) < (1, 7, 0)
+
 
 class VersionCheckError(RuntimeError):
     """Raised when official release metadata cannot be validated."""
@@ -98,6 +173,7 @@ class UpdateJob:
     restart_argv: tuple[str, ...] = ()
     restart_count: int = 0
     schema_version: int = 1
+    packages: tuple[str, ...] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -123,6 +199,7 @@ class UpdateJob:
             restart_home=restart_home,
             restart_argv=restart_argv,
             restart_count=int(payload.get("restart_count") or 0),
+            packages=validate_update_packages(payload.get("packages")),
         )
 
 
@@ -243,7 +320,7 @@ def detect_installation() -> Installation:
             mode="unknown",
             current_version=__version__,
             automatic_update=False,
-            command="pip install -U deeptutor",
+            command=manual_update_command(),
             reason="The running DeepTutor distribution could not be identified.",
         )
     if bool((direct_url.get("dir_info") or {}).get("editable")):
@@ -262,21 +339,26 @@ def detect_installation() -> Installation:
                 mode="pypi",
                 current_version=__version__,
                 automatic_update=False,
-                command=f"{sys.executable} -m pip install -U deeptutor",
+                command=manual_update_command(),
                 reason=SYSTEMD_UPDATE_REASON,
             )
         return Installation(
             mode="pypi",
             current_version=__version__,
-            automatic_update=True,
-            command="pip install -U deeptutor",
-            reason="",
+            automatic_update=not legacy_cli_migration_required(),
+            command=manual_update_command(),
+            reason=(
+                "Uninstall the legacy deeptutor-cli package before upgrading; "
+                "it owns files now provided by core. Keep the same runtime home."
+                if legacy_cli_migration_required()
+                else ""
+            ),
         )
     return Installation(
         mode="unknown",
         current_version=__version__,
         automatic_update=False,
-        command="pip install -U deeptutor",
+        command=manual_update_command(),
         reason=(
             "Automatic updates require a regular PyPI installation in an active virtual environment."
             if not direct_url
@@ -531,6 +613,7 @@ class UpdateJobStore:
             status="handoff",
             restart_home=resolved_home,
             restart_argv=_validate_restart_argv(tuple(restart_argv), home=resolved_home),
+            packages=installed_update_packages(current.current_version),
         )
         self._write(updated)
         return updated
