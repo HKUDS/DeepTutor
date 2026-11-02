@@ -106,3 +106,31 @@ def log_guardian_action(
     if summary:
         payload["summary"] = summary
     _write(payload)
+
+
+def log_group_action(
+    action: str,
+    group_id: str,
+    target_user_id: str | None = None,
+    summary: dict[str, Any] | None = None,
+) -> None:
+    """Record an action a group lead performed over their own roster.
+
+    Group leads are ordinary users, so their writes need their own record shape:
+    ``actor_*`` says who acted, ``group_id`` says under what authority, and
+    ``target_user_id`` names the account that was changed.
+    """
+    user = get_current_user()
+    payload: dict[str, Any] = {
+        "time": datetime.now(timezone.utc).isoformat(),
+        "actor_id": user.id,
+        "actor_username": user.username,
+        "actor_role": user.role,
+        "action": action,
+        "group_id": group_id,
+    }
+    if target_user_id:
+        payload["target_user_id"] = target_user_id
+    if summary:
+        payload["summary"] = summary
+    _write(payload)

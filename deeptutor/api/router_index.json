@@ -1,5 +1,5 @@
 {
-  "fingerprint": "b3ff4a2963d642a226ba3b8fd034f616c878ec27cdb071e720e82674dabd3b75",
+  "fingerprint": "7df35cbdffb9bf60ba41b352a4da7712d0985bfbd8520f24a01a6ae764306770",
   "routers": {
     "deeptutor.api.routers.auth:router": [
       {
@@ -420,6 +420,62 @@
         "kind": "http",
         "methods": [
           "GET"
+        ]
+      },
+      {
+        "path": "/groups",
+        "name": "list_groups_endpoint",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/groups",
+        "name": "create_group_endpoint",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/groups/{group_id}",
+        "name": "get_group_endpoint",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/groups/{group_id}/members",
+        "name": "put_group_members",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/groups/{group_id}/members/{username}/password",
+        "name": "reset_group_member_password",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/groups/{group_id}/report",
+        "name": "group_report",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/groups/{group_id}",
+        "name": "delete_group_endpoint",
+        "kind": "http",
+        "methods": [
+          "DELETE"
         ]
       }
     ],

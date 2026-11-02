@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field, StrictBool, field_validator
 
 from deeptutor.api.routers.auth import require_admin, require_auth
 from deeptutor.modules.catalog import module_enabled, require_module
-from deeptutor.multi_user.audit import log_admin_action, log_guardian_action
+from deeptutor.multi_user.audit import log_admin_action, log_group_action, log_guardian_action
 from deeptutor.multi_user.book_permission import (
     BookDefaultLevel,
     BookPermission,
@@ -33,6 +33,14 @@ from deeptutor.multi_user.grants import (
     save_grant,
     save_grant_with_receipt,
     validate_grant,
+)
+from deeptutor.multi_user.groups import (
+    create_group,
+    delete_group,
+    get_group,
+    groups_led_by,
+    list_groups,
+    set_group_members,
 )
 from deeptutor.multi_user.guardians import (
     GUARDIAN_PERMISSIONS,
@@ -941,3 +949,239 @@ def _reading_extensions():
     from deeptutor.reading.extensions import get_reading_extension_registry
 
     return get_reading_extension_registry().all()
+
+
+# ---------------------------------------------------------------------------
+# Groups — scoped oversight without a scoped role
+#
+# A group's lead is an ordinary user. Everything below authorizes by "is this
+# actor the lead of *this* group", never by role, so a logic error widens one
+# roster instead of promoting an account. Admins pass too — they already hold
+# the same powers everywhere else.
+# ---------------------------------------------------------------------------
+
+
+class GroupPayload(BaseModel):
+    name: str = Field(min_length=1, max_length=64)
+    lead_user_id: str = Field(min_length=1, max_length=64)
+    member_user_ids: list[str] = Field(default_factory=list)
+
+
+class GroupMembersPayload(BaseModel):
+    member_user_ids: list[str] = Field(default_factory=list)
+
+
+def _account_summary(user: dict[str, Any] | None) -> dict[str, Any]:
+    if not user:
+        return {"username": "", "role": "user", "preset": "standard", "disabled": True}
+    return {
+        "username": str(user.get("username") or ""),
+        "role": str(user.get("role") or "user"),
+        "preset": str(user.get("preset") or "standard"),
+        "disabled": bool(user.get("disabled", False)),
+    }
+
+
+def _group_view(group: dict[str, Any], users: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    members: list[dict[str, Any]] = []
+    for user_id in group["member_user_ids"]:
+        account = users.get(user_id)
+        if account is None:
+            # The account was deleted after being placed in the group. Keep the
+            # reference visible instead of silently shrinking the roster.
+            members.append({"id": user_id, "username": "", "missing": True})
+            continue
+        members.append({"id": user_id, **_account_summary(account)})
+    return {
+        **group,
+        "lead": {"id": group["lead_user_id"], **_account_summary(users.get(group["lead_user_id"]))},
+        "members": members,
+    }
+
+
+def _require_group_access(current: object, group_id: str) -> tuple[dict[str, Any], bool]:
+    """Return ``(group, is_admin)``; a non-admin must lead this exact group."""
+    group = get_group(group_id)
+    if group is None:
+        raise HTTPException(status_code=404, detail="Group not found")
+    if str(getattr(current, "role", "") or "") == "admin":
+        return group, True
+    actor_user_id = str(getattr(current, "user_id", "") or "")
+    if group["lead_user_id"] != actor_user_id:
+        raise HTTPException(status_code=403, detail="Group lead authorization required")
+    return group, False
+
+
+def _log_group_action(
+    action: str,
+    group_id: str,
+    *,
+    is_admin: bool,
+    target_user_id: str | None = None,
+    summary: dict[str, Any] | None = None,
+) -> None:
+    if is_admin:
+        log_admin_action(
+            action,
+            target_user_id=target_user_id,
+            summary={"group_id": group_id, **(summary or {})},
+        )
+        return
+    log_group_action(action, group_id=group_id, target_user_id=target_user_id, summary=summary)
+
+
+@router.get("/groups")
+async def list_groups_endpoint(current: object = Depends(require_auth)) -> dict[str, Any]:
+    """Admins see every group; everyone else sees only the groups they lead."""
+    actor_user_id = str(getattr(current, "user_id", "") or "")
+    is_admin = str(getattr(current, "role", "") or "") == "admin"
+    groups = list_groups() if is_admin else groups_led_by(actor_user_id)
+    users = _users_by_id()
+    return {"groups": [_group_view(group, users) for group in groups]}
+
+
+@router.post("/groups", status_code=201)
+async def create_group_endpoint(
+    payload: GroupPayload, current: object = Depends(require_admin)
+) -> dict[str, Any]:
+    actor_user_id = str(getattr(current, "user_id", "") or "")
+    try:
+        group = create_group(
+            payload.name,
+            lead_user_id=payload.lead_user_id,
+            member_user_ids=payload.member_user_ids,
+            created_by=actor_user_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    _log_group_action(
+        "group_create",
+        group["id"],
+        is_admin=True,
+        target_user_id=group["lead_user_id"],
+        summary={"member_count": len(group["member_user_ids"])},
+    )
+    return {"group": _group_view(group, _users_by_id())}
+
+
+@router.get("/groups/{group_id}")
+async def get_group_endpoint(
+    group_id: str, current: object = Depends(require_auth)
+) -> dict[str, Any]:
+    group, _is_admin = _require_group_access(current, group_id)
+    return {"group": _group_view(group, _users_by_id())}
+
+
+@router.put("/groups/{group_id}/members")
+async def put_group_members(
+    group_id: str,
+    payload: GroupMembersPayload,
+    current: object = Depends(require_auth),
+) -> dict[str, Any]:
+    _group, is_admin = _require_group_access(current, group_id)
+    try:
+        updated = set_group_members(group_id, payload.member_user_ids)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Group not found")
+    _log_group_action(
+        "group_members_update",
+        group_id,
+        is_admin=is_admin,
+        summary={"member_count": len(updated["member_user_ids"])},
+    )
+    return {"group": _group_view(updated, _users_by_id())}
+
+
+@router.put("/groups/{group_id}/members/{username}/password")
+async def reset_group_member_password(
+    group_id: str,
+    username: str,
+    payload: GuardianCredentialResetPayload,
+    current: object = Depends(require_auth),
+) -> dict[str, Any]:
+    group, is_admin = _require_group_access(current, group_id)
+    users = _users_by_id()
+    member_user_id = next(
+        (
+            user_id
+            for user_id in [group["lead_user_id"], *group["member_user_ids"]]
+            if str((users.get(user_id) or {}).get("username") or "") == username
+        ),
+        None,
+    )
+    if member_user_id is None:
+        # 403 rather than 404: a lead must not be able to probe the instance for
+        # account names by watching status codes.
+        raise HTTPException(status_code=403, detail="Account is not a member of this group")
+    if POCKETBASE_ENABLED:
+        raise HTTPException(
+            status_code=400,
+            detail="Group credential reset requires built-in local authentication.",
+        )
+    actor_user_id = str(getattr(current, "user_id", "") or "")
+    revoked_devices = revoke_device_credentials_for_user(
+        member_user_id,
+        revoked_by=actor_user_id,
+    )
+    if set_password(username, hash_password(payload.new_password)) is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    _log_group_action(
+        "group_member_password_reset",
+        group_id,
+        is_admin=is_admin,
+        target_user_id=member_user_id,
+        summary={"device_credentials_revoked": revoked_devices},
+    )
+    return {"ok": True, "device_credentials_revoked": revoked_devices}
+
+
+@router.get("/groups/{group_id}/report")
+async def group_report(group_id: str, current: object = Depends(require_auth)) -> dict[str, Any]:
+    """Per-member account and grant status.
+
+    Deliberately excludes conversation content: a lead needs to see who is
+    blocked, not what anybody said, or the workspace stops being somewhere
+    people are willing to think out loud.
+    """
+    group, is_admin = _require_group_access(current, group_id)
+    users = _users_by_id()
+    entries: list[dict[str, Any]] = []
+    for user_id in [group["lead_user_id"], *group["member_user_ids"]]:
+        account = users.get(user_id)
+        if account is None:
+            continue
+        grant = load_grant(user_id)
+        entries.append(
+            {
+                "user_id": user_id,
+                "username": str(account.get("username") or ""),
+                "role": str(account.get("role") or "user"),
+                "preset": str(account.get("preset") or "standard"),
+                "disabled": bool(account.get("disabled", False)),
+                "must_change_password": bool(account.get("must_change_password", False)),
+                "grant_summary": {
+                    "model_count": len(grant.get("models", {}).get("llm", []) or []),
+                    "knowledge_base_count": len(grant.get("knowledge_bases") or []),
+                    "skill_count": len(grant.get("skills") or []),
+                },
+            }
+        )
+    _log_group_action(
+        "group_report_view",
+        group_id,
+        is_admin=is_admin,
+        summary={"member_count": len(entries)},
+    )
+    return {"group": _group_view(group, users), "members": entries}
+
+
+@router.delete("/groups/{group_id}")
+async def delete_group_endpoint(
+    group_id: str, _: object = Depends(require_admin)
+) -> dict[str, Any]:
+    if not delete_group(group_id):
+        raise HTTPException(status_code=404, detail="Group not found")
+    _log_group_action("group_delete", group_id, is_admin=True)
+    return {"ok": True}
