@@ -39,7 +39,8 @@ The durable journal is scoped to the active user/workspace knowledge base;
 linked/read-only knowledge bases cannot be cancelled through mutation routes.
 
 LlamaIndex hybrid retrieval keeps dotted identifiers such as `2.6.8` intact
-and retains single-character terms, subject to the existing English stopword\nfilter, during BM25 indexing and queries. Persisted
+and retains single-character terms, subject to the existing English stopword
+filter, during BM25 indexing and queries. Persisted
 BM25 sidecars record their token pattern. Older sidecars without that pattern
 are rebuilt in memory from the stored documents, without new embedding calls.
 A bounded cache reuses these rebuilds for the loaded index and requested result
