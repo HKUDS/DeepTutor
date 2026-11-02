@@ -14,6 +14,7 @@ export const PROVIDER_ICONS: Readonly<Record<string, ProviderIconSpec>> = {
   brave: { file: "brave.svg" },
   byteplus: { file: "byteplus.png" },
   byteplus_coding_plan: { file: "byteplus.png" },
+  cheapaimodel: { file: "cheapaimodel.png" },
   cheaperinference: { file: "cheaperinference.svg" },
   claude_code: { file: "anthropic.svg", mono: true },
   cloudgpu: { file: "cloudgpu.png" },

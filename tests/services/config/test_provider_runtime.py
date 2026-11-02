@@ -1344,3 +1344,60 @@ def test_llm_cloudgpu_base_url_detection_preserves_openai_binding_compatibility(
     assert resolved.provider_name == "cloudgpu"
     assert resolved.provider_mode == "gateway"
     assert resolved.effective_url == "https://cloudgpu.app/v1"
+
+
+def test_llm_cheapaimodel_binding_uses_default_openai_compatible_endpoint() -> None:
+    catalog = _build_catalog(
+        llm_profile={
+            "id": "llm-p",
+            "name": "cheapaimodel",
+            "binding": "cheapaimodel",
+            "base_url": "",
+            "api_key": "cheapaimodel-key",
+            "api_version": "",
+            "extra_headers": {},
+            "models": [
+                {
+                    "id": "llm-m",
+                    "name": "DeepSeek-V4.1-Flash",
+                    "model": "deepseek-v4-1-flash",
+                }
+            ],
+        }
+    )
+
+    resolved = resolve_llm_runtime_config(catalog=catalog)
+
+    assert resolved.provider_name == "cheapaimodel"
+    assert resolved.provider_mode == "gateway"
+    assert resolved.binding == "cheapaimodel"
+    assert resolved.model == "deepseek-v4-1-flash"
+    assert resolved.api_key == "cheapaimodel-key"
+    assert resolved.effective_url == "https://api.cheapaimodel.ai/v1"
+
+
+def test_llm_cheapaimodel_base_url_detection_preserves_openai_binding_compatibility() -> None:
+    catalog = _build_catalog(
+        llm_profile={
+            "id": "llm-p",
+            "name": "OpenAI Compatible",
+            "binding": "openai",
+            "base_url": "https://api.cheapaimodel.ai/v1",
+            "api_key": "cheapaimodel-key",
+            "api_version": "",
+            "extra_headers": {},
+            "models": [
+                {
+                    "id": "llm-m",
+                    "name": "DeepSeek-V4.1-Flash",
+                    "model": "deepseek-v4-1-flash",
+                }
+            ],
+        }
+    )
+
+    resolved = resolve_llm_runtime_config(catalog=catalog)
+
+    assert resolved.provider_name == "cheapaimodel"
+    assert resolved.provider_mode == "gateway"
+    assert resolved.effective_url == "https://api.cheapaimodel.ai/v1"
