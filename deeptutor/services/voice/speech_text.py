@@ -683,12 +683,20 @@ def _drop_braces(text: str) -> str:
     return text.replace("{", " ").replace("}", " ")
 
 
+#: ``\circ`` as a superscript is the degree sign (``90^\circ``); everywhere
+#: else it is function composition. The superscript form is rewritten here,
+#: before ``\circ`` is mapped to "compose" by ``_replace_named_commands``, so a
+#: composition operand (``f \circ g``) still speaks as "compose".
+_DEGREE_SUPERSCRIPT = re.compile(r"\^\s*(?:\{\s*\\circ\s*\}|\\circ(?![a-zA-Z]))")
+
+
 def _verbalize_math(text: str) -> str:
     """Turn one math island's inner TeX into speakable words."""
     if not text:
         return ""
     out = text.replace("&", " ")
     out = out.replace(r"\\", ", ")
+    out = _DEGREE_SUPERSCRIPT.sub(" degrees ", out)
     out = _replace_blackboard_sets(out)
     out = _until_stable(_unwrap_style_once, out)
     out = _until_stable(_replace_frac_once, out)
