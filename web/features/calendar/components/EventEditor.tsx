@@ -17,6 +17,7 @@ import {
 } from '../model/recurrence'
 import type { CalendarEntry, EditScope } from '../transport/api'
 import { calendarName, CALENDAR_COLORS } from './CalendarRail'
+import FaDateInput from '@/components/common/FaDateInput'
 
 function dateValue(date: Date, allDay: boolean) {
   if (allDay) return dateKey(date)
@@ -249,14 +250,11 @@ export function EventEditor({
                     />
                   )}
                   {rule.end.kind === 'until' && (
-                    <input
-                      aria-label={t('Repeat until')}
-                      type="date"
+                    <FaDateInput
+                      ariaLabel={t('Repeat until')}
                       min={dateKey(draft.start)}
                       value={rule.end.date}
-                      onChange={e =>
-                        applyRule({ ...rule, end: { kind: 'until', date: e.target.value } })
-                      }
+                      onChange={date => applyRule({ ...rule, end: { kind: 'until', date } })}
                     />
                   )}
                 </div>

@@ -3,6 +3,7 @@
 import { X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { errorCopy } from "@/lib/error-copy";
 import { subscribeNotifications, type Notification } from "@/lib/notifications";
 
 /**
@@ -52,7 +53,10 @@ export default function ToastViewport() {
           )}`}
         >
           <span className="flex-1 text-[13px] leading-relaxed">
-            {toast.message}
+            {/* Catalogued copy renders in the reader's language; anything
+                uncatalogued (a provider's own error body, say) shows exactly
+                as it arrived. See error-copy.ts. */}
+            {errorCopy(toast.message, t)}
           </span>
           <button
             type="button"

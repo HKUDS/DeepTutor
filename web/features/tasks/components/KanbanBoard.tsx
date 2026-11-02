@@ -35,6 +35,7 @@ import {
 } from '@/lib/task-board-api'
 
 import { useTaskBoard, refreshTaskBoard } from '@/lib/task-board-store'
+import FaDateInput from '@/components/common/FaDateInput'
 
 const columns = [
   { id: 'todo', title: 'kanban.todo', hint: 'kanban.todoHint', icon: CircleDashed },
@@ -294,11 +295,10 @@ export default function KanbanBoard() {
                           />
                           <label className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
                             {t('Due date')}
-                            <input
-                              type="date"
-                              aria-label={t('Due date')}
+                            <FaDateInput
+                              ariaLabel={t('Due date')}
                               value={dueDate}
-                              onChange={e => setDueDate(e.target.value)}
+                              onChange={setDueDate}
                               className="rounded border border-border bg-background px-2 py-1"
                             />
                           </label>
