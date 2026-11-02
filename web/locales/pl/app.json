@@ -6428,5 +6428,11 @@
   "Availability refreshed. This parser is still unavailable; check the installation and startup logs, then retry.": "Dostępność odświeżona. Ten parser nadal jest niedostępny; sprawdź instalację i dzienniki uruchamiania, a następnie ponów próbę.",
   "language.portuguese": "Portugalski",
   "language.japanese": "Japoński",
-  "language.turkish": "Türkçe"
+  "language.turkish": "Türkçe",
+  "settings.modelImport.title": "Importuj modele dla tej usługi",
+  "settings.modelImport.selectFiltered": "Zaznacz wszystkie wyniki",
+  "settings.modelImport.clear": "Wyczyść zaznaczenie",
+  "settings.modelImport.unverified": "Niektóre modele nie określają typu. Przetestuj je przed użyciem w tej usłudze.",
+  "settings.modelImport.draftHint": "Modele są dodawane do wersji roboczej. Zastosuj zmiany, aby je zapisać; model domyślny pozostaje bez zmian.",
+  "settings.modelImport.selected": "Wybrano: {{count}}"
 }

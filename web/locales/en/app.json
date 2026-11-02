@@ -6406,5 +6406,11 @@
   "Reset learning text": "Reset learning text",
   "language.portuguese": "Portuguese",
   "language.japanese": "Japanese",
-  "language.turkish": "Türkçe"
+  "language.turkish": "Türkçe",
+  "settings.modelImport.title": "Import models for this service",
+  "settings.modelImport.selectFiltered": "Select all matching models",
+  "settings.modelImport.clear": "Clear selection",
+  "settings.modelImport.unverified": "Some models do not declare their type. Test them before using them for this service.",
+  "settings.modelImport.draftHint": "Models are added to your draft. Apply changes to save them; the default model stays the same.",
+  "settings.modelImport.selected": "Selected: {{count}}"
 }

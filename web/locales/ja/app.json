@@ -6406,5 +6406,11 @@
   "Learning text preview": "学習テキストのプレビュー",
   "Reset learning text": "学習テキストをリセット",
   "language.portuguese": "Português",
-  "language.turkish": "Türkçe"
+  "language.turkish": "Türkçe",
+  "settings.modelImport.title": "このサービスのモデルをインポート",
+  "settings.modelImport.selectFiltered": "検索結果をすべて選択",
+  "settings.modelImport.clear": "選択を解除",
+  "settings.modelImport.unverified": "種類が未指定のモデルがあります。このサービスで使用する前にテストしてください。",
+  "settings.modelImport.draftHint": "モデルは下書きに追加されます。変更を適用すると保存されます。既定のモデルは変わりません。",
+  "settings.modelImport.selected": "選択済み：{{count}}"
 }

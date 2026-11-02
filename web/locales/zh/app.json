@@ -6406,5 +6406,11 @@
   "Reset learning text": "重置学习文字",
   "language.portuguese": "葡萄牙语",
   "language.japanese": "日语",
-  "language.turkish": "Türkçe"
+  "language.turkish": "Türkçe",
+  "settings.modelImport.title": "为当前服务导入模型",
+  "settings.modelImport.selectFiltered": "全选筛选结果",
+  "settings.modelImport.clear": "清空选择",
+  "settings.modelImport.unverified": "部分模型未声明类型，请先测试是否适用于当前服务。",
+  "settings.modelImport.draftHint": "模型将添加到草稿，点击应用更改后保存；默认模型保持不变。",
+  "settings.modelImport.selected": "已选择：{{count}}"
 }

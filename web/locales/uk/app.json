@@ -6428,5 +6428,11 @@
   "Availability refreshed. This parser is still unavailable; check the installation and startup logs, then retry.": "Доступність оновлено. Цей парсер досі недоступний; перевірте встановлення та журнали запуску й повторіть спробу.",
   "language.portuguese": "Португальська",
   "language.japanese": "Японська",
-  "language.turkish": "Türkçe"
+  "language.turkish": "Türkçe",
+  "settings.modelImport.title": "Імпорт моделей для цієї служби",
+  "settings.modelImport.selectFiltered": "Вибрати всі результати",
+  "settings.modelImport.clear": "Очистити вибір",
+  "settings.modelImport.unverified": "Деякі моделі не вказують тип. Перевірте їх перед використанням для цієї служби.",
+  "settings.modelImport.draftHint": "Моделі додаються до чернетки. Застосуйте зміни, щоб зберегти їх; типова модель залишається незмінною.",
+  "settings.modelImport.selected": "Вибрано: {{count}}"
 }

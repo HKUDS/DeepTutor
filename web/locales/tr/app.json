@@ -6406,5 +6406,11 @@
   "Learning text preview": "Öğrenme metni önizlemesi",
   "Reset learning text": "Öğrenme metnini sıfırla",
   "language.portuguese": "Português",
-  "language.japanese": "日本語"
+  "language.japanese": "日本語",
+  "settings.modelImport.title": "Bu hizmet için modelleri içe aktar",
+  "settings.modelImport.selectFiltered": "Eşleşen tüm modelleri seç",
+  "settings.modelImport.clear": "Seçimi temizle",
+  "settings.modelImport.unverified": "Bazı modeller türlerini belirtmez. Bu hizmette kullanmadan önce test edin.",
+  "settings.modelImport.draftHint": "Modeller taslağa eklenir. Kaydetmek için değişiklikleri uygulayın; varsayılan model aynı kalır.",
+  "settings.modelImport.selected": "Seçilen: {{count}}"
 }

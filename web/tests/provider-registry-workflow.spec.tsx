@@ -703,3 +703,114 @@ it("restores a model draft before a provider has been selected", () => {
   expect((screen.getByLabelText("Configured provider") as HTMLSelectElement).value).toBe("");
   expect((screen.getByLabelText("Model ID") as HTMLInputElement).value).toBe("custom-unsaved");
 });
+
+it("imports filtered models once into the draft while preserving existing models and defaults", () => {
+  live.services.llm.profiles[0].discovery = { status: "connected", models: [
+    { id: "model-one", services: ["llm"] },
+    { id: "chat-a", services: ["llm"] },
+    { id: "chat-a", services: ["llm"] },
+    { id: "chat-b", services: ["llm"] },
+    { id: "unknown" },
+    { id: "embed-only", services: ["embedding"] },
+  ] };
+  const before = structuredClone(live);
+  render(<Harness page="llm" />);
+  fireEvent.click(screen.getByRole("button", { name: "Add model" }));
+  fireEvent.change(screen.getByLabelText("Configured provider"), { target: { value: "llm:legacy" } });
+  expect(screen.getByRole("checkbox", { name: /model-one/ })).toBeDisabled();
+  expect(screen.queryByRole("checkbox", { name: "embed-only" })).toBeNull();
+  fireEvent.click(screen.getByRole("checkbox", { name: "unknown" }));
+  fireEvent.change(screen.getByRole("searchbox", { name: "Search models…" }), { target: { value: "CHAT-" } });
+  fireEvent.click(screen.getByRole("button", { name: "settings.modelImport.selectFiltered" }));
+  fireEvent.click(screen.getByRole("button", { name: "Add selected models" }));
+  const bucket = mocks.settings.draft.services.llm;
+  expect(bucket.profiles.flatMap(p => p.models).map(m => m.model)).toEqual(["model-one", "model-two", "unknown", "chat-a", "chat-b"]);
+  expect(bucket.active_profile_id).toBe("legacy");
+  expect(bucket.active_model_id).toBe("one");
+  expect(bucket.profiles[0]).toEqual(before.services.llm.profiles[0]);
+  expect(bucket.profiles.slice(1).every(p => p.models[0].provider_ref?.profile_id === "legacy")).toBe(true);
+  expect(live).toEqual(before);
+  expect(mocks.save).not.toHaveBeenCalled();
+});
+
+it("lists with the provider's protocol-specific endpoint and keeps manual entry available on failure", async () => {
+  live.connections = [{ id: "minimax", name: "MiniMax", provider: "minimax", source_service: "llm", api_key: "***", base_url: "", api_version: "", api_format: "anthropic" }];
+  mocks.fetch.mockResolvedValue({ ok: true, json: async () => ({ status: "unavailable", models: [] }) });
+  render(<Harness page="llm" providerOptions={minimaxProviders} />);
+  fireEvent.click(screen.getByRole("button", { name: "Add model" }));
+  fireEvent.change(screen.getByLabelText("Configured provider"), { target: { value: "connection:minimax" } });
+  fireEvent.click(screen.getByRole("button", { name: "Get model list" }));
+  await waitFor(() => expect(mocks.fetch).toHaveBeenCalled());
+  expect(JSON.parse(mocks.fetch.mock.calls[0][1].body)).toMatchObject({ api_format: "anthropic", base_url: "https://api.minimax.io/anthropic", connection_id: "minimax" });
+  await waitFor(() => expect(screen.getByRole("button", { name: "Get model list" })).not.toBeDisabled());
+  fireEvent.change(screen.getByLabelText("Model ID"), { target: { value: "manual-model" } });
+  fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+  expect(mocks.settings.draft.services.llm.profiles.at(-1)?.models[0].model).toBe("manual-model");
+});
+
+it("discards a pending model list when switching providers", async () => {
+  let finish!: (v: unknown) => void;
+  mocks.fetch.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  live.services.llm.profiles.push({ ...structuredClone(live.services.llm.profiles[0]), id: "other", name: "Other", models: [] });
+  render(<Harness page="llm" />);
+  fireEvent.click(screen.getByRole("button", { name: "Add model" }));
+  fireEvent.change(screen.getByLabelText("Configured provider"), { target: { value: "llm:legacy" } });
+  fireEvent.click(screen.getByRole("button", { name: "Get model list" }));
+  fireEvent.change(screen.getByLabelText("Configured provider"), { target: { value: "llm:other" } });
+  await act(async () => finish({ ok: true, json: async () => ({ status: "connected", models: [{ id: "stale" }] }) }));
+  expect(mocks.fetch.mock.calls[0][1].signal.aborted).toBe(true);
+  expect(screen.queryByRole("checkbox", { name: "stale" })).toBeNull();
+  expect(mocks.settings.draft.services.llm.profiles[0].discovery).toBeUndefined();
+});
+
+it.each([
+  ["voice", "tts", "stt"],
+  ["multimodal", "imagegen", "videogen"],
+] as const)("resets bulk selection when switching %s service types", (page, first, second) => {
+  live.connections = [{ ...xai(), service_overrides: { [first]: { enabled: true }, [second]: { enabled: true } }, discovery: { status: "connected", models: [{ id: "shared" }, { id: "first-only", services: [first] }] } }];
+  render(<Harness page={page} />);
+  fireEvent.click(screen.getByRole("button", { name: "Add model" }));
+  fireEvent.change(screen.getByLabelText("Configured provider"), { target: { value: "connection:x" } });
+  fireEvent.click(screen.getByRole("checkbox", { name: "shared" }));
+  fireEvent.change(screen.getByLabelText("Model type"), { target: { value: second } });
+  fireEvent.change(screen.getByLabelText("Configured provider"), { target: { value: "connection:x" } });
+  expect(screen.getByRole("checkbox", { name: "shared" })).not.toBeChecked();
+  expect(screen.queryByRole("checkbox", { name: "first-only" })).toBeNull();
+  expect(screen.getByRole("button", { name: "Add selected models" })).toBeDisabled();
+});
+
+it("fetches models, clears selection and prevents duplicates after reopening import", async () => {
+  mocks.fetch.mockResolvedValue({ ok: true, json: async () => ({ status: "connected", models: [{ id: "new-a", services: ["llm"] }, { id: "new-b", services: ["llm"] }] }) });
+  render(<Harness page="llm" />);
+  const open = () => {
+    fireEvent.click(screen.getByRole("button", { name: "Add model" }));
+    fireEvent.change(screen.getByLabelText("Configured provider"), { target: { value: "llm:legacy" } });
+  };
+  open();
+  fireEvent.click(screen.getByRole("button", { name: "Get model list" }));
+  await screen.findByRole("checkbox", { name: "new-a" });
+  fireEvent.click(screen.getByRole("button", { name: "settings.modelImport.selectFiltered" }));
+  fireEvent.click(screen.getByRole("button", { name: "settings.modelImport.clear" }));
+  expect(screen.getByRole("button", { name: "Add selected models" })).toBeDisabled();
+  fireEvent.click(screen.getByRole("button", { name: "settings.modelImport.selectFiltered" }));
+  fireEvent.click(screen.getByRole("button", { name: "Add selected models" }));
+  open();
+  expect(screen.getByRole("checkbox", { name: /new-a/ })).toBeDisabled();
+  expect(screen.getByRole("checkbox", { name: /new-b/ })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Add selected models" })).toBeDisabled();
+});
+
+it("imports embeddings using the existing service adapter and preserves task inheritance", async () => {
+  live.services.task.mode = "inherit";
+  live.connections = [{ ...xai(), service_overrides: { embedding: { enabled: true, binding: "custom" } }, discovery: { status: "connected", models: [{ id: "embed-a", services: ["embedding"] }, { id: "chat-only", services: ["llm"] }] } }];
+  const task = structuredClone(live.services.task);
+  render(<Harness page="embedding" />);
+  fireEvent.click(screen.getByRole("button", { name: "Add model" }));
+  fireEvent.change(screen.getByLabelText("Configured provider"), { target: { value: "connection:x" } });
+  expect(screen.queryByRole("checkbox", { name: "chat-only" })).toBeNull();
+  fireEvent.click(screen.getByRole("checkbox", { name: "embed-a" }));
+  fireEvent.click(screen.getByRole("button", { name: "Add selected models" }));
+  expect(mocks.settings.draft.services.embedding.profiles[0].models[0]).toMatchObject({ model: "embed-a", provider_ref: { connection_id: "x", binding: "custom" } });
+  expect(mocks.settings.draft.services.task).toEqual(task);
+  await waitFor(() => expect(screen.queryByText("Loading...")).toBeNull());
+});
