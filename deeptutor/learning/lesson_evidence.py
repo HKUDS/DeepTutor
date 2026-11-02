@@ -13,6 +13,7 @@ import hashlib
 import json
 import math
 from pathlib import Path
+import re
 import time
 from typing import Any
 import unicodedata
@@ -420,32 +421,85 @@ def question_snapshot(store: Any, progress: Any, kp_id: str) -> dict[str, Any]:
     return json.loads(json.dumps(evidence))
 
 
-def _json_response(text: str) -> dict[str, Any]:
-    text = text.strip()
-    if text.startswith("```"):
-        text = text.split("\n", 1)[1].rsplit("```", 1)[0]
+_NO_JSON = object()
+# Reasoning models can put drafts, often with JSON in them, inside <think> or
+# <thinking> blocks before the answer, and add prose or a fence around it
+# (#2367). A complete reply is parsed first, so tags inside its strings stay.
+_REASONING_BLOCK_RE = re.compile(
+    r"<\s*think(?:ing)?\b[^>]*>.*?<\s*/\s*think(?:ing)?\s*>", re.DOTALL | re.IGNORECASE
+)
+# A reply that still opens with reasoning was cut off before its answer.
+_OPEN_REASONING_RE = re.compile(r"\s*<\s*think(?:ing)?\b", re.IGNORECASE)
+_JSON_START_RE = re.compile(r"[\[{]")
+
+
+def _first_json_value(text: str) -> Any:
+    """The reply's JSON value: the first object, else the first array."""
     try:
-        result = json.loads(text)
-    except (ValueError, TypeError) as exc:
+        return json.loads(text)
+    except ValueError:
+        pass
+    text = _REASONING_BLOCK_RE.sub("", text)
+    if _OPEN_REASONING_RE.match(text):
+        return _NO_JSON
+    decoder = json.JSONDecoder()
+    found: Any = _NO_JSON
+    index = 0
+    while (start := _JSON_START_RE.search(text, index)) is not None:
+        try:
+            value, end = decoder.raw_decode(text, start.start())
+        except json.JSONDecodeError as exc:
+            # Resume past the failure: an opener inside a truncated value
+            # would only yield a fragment of it, never the reply.
+            index = max(start.start() + 1, exc.pos)
+            continue
+        except RecursionError:
+            break
+        if isinstance(value, dict):
+            return value
+        if found is _NO_JSON:
+            found = value
+        index = end
+    return found
+
+
+def _json_response(text: str) -> dict[str, Any]:
+    result = _first_json_value((text or "").strip())
+    if result is _NO_JSON:
         raise LessonUnavailable(
             "The model returned an invalid source-selection response. Please retry."
-        ) from exc
+        )
     if not isinstance(result, dict):
         raise LessonUnavailable("The source-selection response is not an object.")
     return result
 
 
+async def _complete_json(config: Any, **request: Any) -> dict[str, Any]:
+    """Request one JSON object, retrying once with reasoning turned down.
+
+    A reasoning model pays for hidden tokens out of ``max_tokens``. At a high
+    effort it can spend the budget before the JSON is complete (#2367). The
+    retry follows the project rule in ``services.llm.structured_retry``.
+    """
+    from deeptutor.services.llm.factory import complete_with_config
+    from deeptutor.services.llm.reasoning_params import RETRY_REASONING_EFFORT
+
+    response = await complete_with_config(config=config, prompt="", **request)
+    try:
+        return _json_response(response)
+    except LessonUnavailable:
+        retry = config.model_copy(update={"reasoning_effort": RETRY_REASONING_EFFORT})
+        return _json_response(await complete_with_config(config=retry, prompt="", **request))
+
+
 async def _ask(
     config: Any, instruction: str, payload: Any, images: list[dict[str, Any]] | None = None
 ) -> dict[str, Any]:
-    from deeptutor.services.llm.factory import complete_with_config
-
     content = [{"type": "text", "text": json.dumps(payload, ensure_ascii=False)}]
     content.extend(images or [])
     try:
-        response = await complete_with_config(
-            config=config,
-            prompt="",
+        return await _complete_json(
+            config,
             messages=[
                 {"role": "system", "content": instruction},
                 {"role": "user", "content": content},
@@ -453,11 +507,12 @@ async def _ask(
             max_tokens=1800,
             allow_image_fallback=False,
         )
+    except LessonUnavailable:
+        raise
     except Exception as exc:
         raise LessonUnavailable(
             "The configured model could not complete source preparation. Check the model connection and retry."
         ) from exc
-    return _json_response(response)
 
 
 def image_message(sources: list[dict[str, Any]]) -> dict[str, Any]:
