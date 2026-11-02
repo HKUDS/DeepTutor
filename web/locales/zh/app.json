@@ -6406,5 +6406,12 @@
   "Reset learning text": "重置学习文字",
   "language.portuguese": "葡萄牙语",
   "language.japanese": "日语",
-  "language.turkish": "Türkçe"
+  "language.turkish": "Türkçe",
+  "Clean up old index versions": "清理旧索引版本",
+  "Keep the two newest published indexes for each embedding configuration. Original documents, unfinished indexes and versions referenced by saved learning history are preserved.": "为每个嵌入配置保留最新的两个已发布索引。原始文档、未完成的索引以及已保存学习记录引用的版本将被保留。",
+  "Old index versions cleaned up.": "旧索引版本已清理。",
+  "Delete {{count}} old index versions and free {{size}} MB?": "删除 {{count}} 个旧索引版本，释放 {{size}} MB？",
+  "No old index versions can be safely removed.": "没有可以安全删除的旧索引版本。",
+  "Preview again": "重新预览",
+  "Delete old indexes": "删除旧索引"
 }

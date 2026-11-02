@@ -232,7 +232,7 @@ def list_visible_knowledge_bases() -> list[dict[str, Any]]:
 
     if library_request.get():
         viewer = library_viewer.get()
-        catalog_rows = knowledge_catalog()
+        catalog_rows = knowledge_catalog(workspace_ids={viewer} if viewer is not None else None)
         if viewer is None:
             return catalog_rows
         return [item for item in catalog_rows if item["workspace_id"] == viewer]
@@ -247,18 +247,17 @@ def list_visible_knowledge_bases() -> list[dict[str, Any]]:
         }
         if not moved_refs:
             return _with_account_subagents(own, origin=origin)
-        catalog = {item["id"]: item for item in knowledge_catalog()}
+        scopes = {(parse_kb_id(ref) or ("", ""))[0] for ref in moved_refs}
+        catalog = {item["id"]: item for item in knowledge_catalog(workspace_ids=scopes)}
         existing = {item["id"] for item in own}
         return _with_account_subagents(
             own + [catalog[rid] for rid in sorted(moved_refs - existing) if rid in catalog],
             origin=origin,
         )
-    catalog = {item["id"]: item for item in knowledge_catalog()}
-    return [
-        catalog[rid]
-        for rid in dict.fromkeys(canonical_kb_id(ref) for ref in selected)
-        if rid in catalog
-    ]
+    selected_refs = list(dict.fromkeys(canonical_kb_id(ref) for ref in selected))
+    scopes = {(parse_kb_id(ref) or ("", ""))[0] for ref in selected_refs}
+    catalog = {item["id"]: item for item in knowledge_catalog(workspace_ids=scopes)}
+    return [catalog[rid] for rid in selected_refs if rid in catalog]
 
 
 def _with_account_subagents(items: list[dict[str, Any]], *, origin: str) -> list[dict[str, Any]]:

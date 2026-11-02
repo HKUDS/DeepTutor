@@ -1896,3 +1896,37 @@ export async function syncWebSources(kbName: string): Promise<WebSyncResult> {
   }
   return (await res.json()) as WebSyncResult;
 }
+
+
+export interface IndexCleanupPreview {
+  versions: string[]
+  bytes: number
+  fingerprint: string
+}
+
+export async function previewIndexCleanup(kbName: string): Promise<IndexCleanupPreview> {
+  const response = await apiFetch(
+    apiUrl(`/api/knowledge-bases/${encodeURIComponent(kbName)}/index-versions/cleanup`)
+  )
+  if (!response.ok)
+    throw new Error(await readErrorDetail(response, 'Could not preview index cleanup'))
+  return response.json()
+}
+
+export async function cleanIndexVersions(
+  kbName: string,
+  fingerprint: string
+): Promise<IndexCleanupPreview> {
+  const response = await apiFetch(
+    apiUrl(`/api/knowledge-bases/${encodeURIComponent(kbName)}/index-versions/cleanup`),
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fingerprint }),
+    }
+  )
+  if (!response.ok)
+    throw new Error(await readErrorDetail(response, 'Could not clean up index versions'))
+  invalidateKnowledgeCaches()
+  return response.json()
+}

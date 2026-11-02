@@ -3378,6 +3378,73 @@ async def delete_knowledge_base_by_name(payload: DeleteKnowledgeBaseRequest):
     return _delete_kb(payload.name)
 
 
+class IndexCleanupRequest(BaseModel):
+    fingerprint: str = Field(min_length=64, max_length=64)
+
+
+def _index_cleanup_databases() -> list[Path]:
+    from deeptutor.multi_user.paths import get_account_path_service
+    from deeptutor.services.workspace import get_content_workspace_service
+
+    account = get_account_path_service()
+    roots = [account.get_chat_history_db().parent]
+    roots.extend(
+        Path(row["path"]) / ".deeptutor" / "data" / "user"
+        for row in get_content_workspace_service()._catalog()
+        if row.get("kind") == "workspace"
+    )
+    databases = []
+    for root in roots:
+        databases.append(root / "chat_history.db")
+        for feature in ("reading", "learning"):
+            directory = root / "workspace" / feature
+            if directory.exists():
+                databases.extend(directory.rglob("*.sqlite3"))
+    return databases
+
+
+def _index_cleanup(kb_name: str, fingerprint: str | None = None) -> dict:
+    from deeptutor.services.rag.version_lease import version_lease
+    from deeptutor.services.rag.version_retention import (
+        apply_cleanup,
+        cleanup_preview,
+        referenced_versions,
+    )
+
+    manager, name, base_dir = _writable_kb(kb_name)
+    entry = _load_kb_entry_or_404(manager, name)
+    _assert_not_connected_kb(name, entry)
+    if entry.get("rag_provider", DEFAULT_PROVIDER) != DEFAULT_PROVIDER:
+        raise HTTPException(
+            status_code=400, detail="Cleanup currently supports LlamaIndex indexes."
+        )
+    if entry.get("status") in {"initializing", "processing"}:
+        raise HTTPException(status_code=409, detail="Wait for indexing to finish before cleanup.")
+    kb_dir = Path(base_dir) / name
+    try:
+        with version_lease(kb_dir, cleanup=True):
+            protected = referenced_versions(_index_cleanup_databases())
+            if fingerprint is None:
+                return cleanup_preview(kb_dir, protected=protected)
+            result = apply_cleanup(kb_dir, fingerprint, protected=protected)
+            with manager._catalog_lock:
+                manager._info_cache.clear()
+                manager._config_cache = None
+            return result
+    except (ValueError, OSError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.get("/knowledge-bases/{kb_name}/index-versions/cleanup")
+async def preview_index_cleanup(kb_name: str):
+    return await asyncio.to_thread(_index_cleanup, kb_name)
+
+
+@router.post("/knowledge-bases/{kb_name}/index-versions/cleanup")
+async def clean_index_versions(kb_name: str, payload: IndexCleanupRequest):
+    return await asyncio.to_thread(_index_cleanup, kb_name, payload.fingerprint)
+
+
 @router.delete("/knowledge-bases/{kb_name}")
 async def delete_knowledge_base(kb_name: str):
     """Delete a knowledge base."""

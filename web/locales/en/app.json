@@ -6406,5 +6406,12 @@
   "Reset learning text": "Reset learning text",
   "language.portuguese": "Portuguese",
   "language.japanese": "Japanese",
-  "language.turkish": "Türkçe"
+  "language.turkish": "Türkçe",
+  "Clean up old index versions": "Clean up old index versions",
+  "Keep the two newest published indexes for each embedding configuration. Original documents, unfinished indexes and versions referenced by saved learning history are preserved.": "Keep the two newest published indexes for each embedding configuration. Original documents, unfinished indexes and versions referenced by saved learning history are preserved.",
+  "Old index versions cleaned up.": "Old index versions cleaned up.",
+  "Delete {{count}} old index versions and free {{size}} MB?": "Delete {{count}} old index versions and free {{size}} MB?",
+  "No old index versions can be safely removed.": "No old index versions can be safely removed.",
+  "Preview again": "Preview again",
+  "Delete old indexes": "Delete old indexes"
 }

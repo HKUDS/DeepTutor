@@ -350,6 +350,7 @@ export default function KnowledgeBaseDetail({
               )}
               {activeSection === "versions" && (
                 <KbIndexVersionsSection
+                  key={knowledgeBaseRef(kb)}
                   kb={kb}
                   task={task}
                   onReindex={(configFingerprint, embeddingModel) =>

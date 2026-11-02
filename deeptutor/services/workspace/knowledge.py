@@ -109,7 +109,8 @@ def resolve_qualified(kb_ref: str, *, require_write=False):
     return replace(resource, id=kb_ref)
 
 
-def knowledge_catalog() -> list[dict]:
+def knowledge_catalog(*, workspace_ids: set[str] | None = None) -> list[dict]:
+    """List accessible KBs, opening only requested storage scopes when known."""
     from deeptutor.multi_user.knowledge_access import _list_visible_knowledge_bases
     from deeptutor.services.workspace import get_content_workspace_service
     from deeptutor.services.workspace.context import workspace_context
@@ -120,6 +121,8 @@ def knowledge_catalog() -> list[dict]:
         for r in get_content_workspace_service()._catalog()
         if r["kind"] == "workspace" and not r.get("archived")
     ]
+    if workspace_ids is not None:
+        rows = [row for row in rows if row["workspace_id"] in workspace_ids]
     items, seen = [], set()
     token = library_request.set(False)
     try:

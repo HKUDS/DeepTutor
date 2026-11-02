@@ -86,7 +86,7 @@ def test_knowledge_library_lists_only_the_viewing_workspace(account, monkeypatch
         {"id": "account:kb:general", "name": "general", "workspace_id": ""},
         {"id": "workspace:ws_a:kb:physics", "name": "physics", "workspace_id": "ws_a"},
     ]
-    monkeypatch.setattr(knowledge, "knowledge_catalog", lambda: catalog)
+    monkeypatch.setattr(knowledge, "knowledge_catalog", lambda **kwargs: catalog)
     request = knowledge.library_request.set(True)
     try:
         for viewer, expected in (

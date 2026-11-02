@@ -2308,6 +2308,24 @@ export interface paths {
     readonly patch?: never;
     readonly trace?: never;
   };
+  readonly "/api/knowledge-bases/{kb_name}/index-versions/cleanup": {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: never;
+      readonly path?: never;
+      readonly cookie?: never;
+    };
+    /** Preview Index Cleanup */
+    readonly get: operations["preview_index_cleanup_api_knowledge_bases__kb_name__index_versions_cleanup_get"];
+    readonly put?: never;
+    /** Clean Index Versions */
+    readonly post: operations["clean_index_versions_api_knowledge_bases__kb_name__index_versions_cleanup_post"];
+    readonly delete?: never;
+    readonly options?: never;
+    readonly head?: never;
+    readonly patch?: never;
+    readonly trace?: never;
+  };
   readonly "/api/knowledge-bases/{kb_name}/indexing-policy": {
     readonly parameters: {
       readonly query?: never;
@@ -14328,6 +14346,11 @@ export interface components {
       /** Chapters */
       readonly chapters: readonly components["schemas"]["ChapterImport"][];
     };
+    /** IndexCleanupRequest */
+    readonly IndexCleanupRequest: {
+      /** Fingerprint */
+      readonly fingerprint: string;
+    };
     /**
      * IndexingLLMSelectionRequest
      * @description Secret-free catalog identity for an empty LightRAG knowledge base.
@@ -19023,6 +19046,8 @@ export type SchemaImportedMessage = components["schemas"]["ImportedMessage"];
 export type SchemaImportedSession = components["schemas"]["ImportedSession"];
 export type SchemaImportFromBookRequest =
   components["schemas"]["ImportFromBookRequest"];
+export type SchemaIndexCleanupRequest =
+  components["schemas"]["IndexCleanupRequest"];
 export type SchemaIndexingLlmSelectionRequest =
   components["schemas"]["IndexingLLMSelectionRequest"];
 export type SchemaInitModulesRequest =
@@ -24549,6 +24574,80 @@ export interface operations {
         };
         content: {
           readonly "application/json": readonly components["schemas"]["GitHubSourceInfo"][];
+        };
+      };
+      /** @description Validation Error */
+      readonly 422: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  readonly preview_index_cleanup_api_knowledge_bases__kb_name__index_versions_cleanup_get: {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: {
+        readonly Authorization?: string | null;
+      };
+      readonly path: {
+        readonly kb_name: string;
+      };
+      readonly cookie?: {
+        readonly dt_token?: string | null;
+      };
+    };
+    readonly requestBody?: never;
+    readonly responses: {
+      /** @description Successful Response */
+      readonly 200: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": unknown;
+        };
+      };
+      /** @description Validation Error */
+      readonly 422: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  readonly clean_index_versions_api_knowledge_bases__kb_name__index_versions_cleanup_post: {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: {
+        readonly Authorization?: string | null;
+      };
+      readonly path: {
+        readonly kb_name: string;
+      };
+      readonly cookie?: {
+        readonly dt_token?: string | null;
+      };
+    };
+    readonly requestBody: {
+      readonly content: {
+        readonly "application/json": components["schemas"]["IndexCleanupRequest"];
+      };
+    };
+    readonly responses: {
+      /** @description Successful Response */
+      readonly 200: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": unknown;
         };
       };
       /** @description Validation Error */
