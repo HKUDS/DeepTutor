@@ -250,7 +250,8 @@ class OpenAICompatProvider(LLMProvider):
                 "prompt_cache_options"
                 in inspect.signature(self._client.responses.create).parameters
             )
-        except (TypeError, ValueError):
+        except (AttributeError, TypeError, ValueError):
+            # Test stubs and older SDK facades may expose no Responses client.
             self._prompt_cache_options_supported = False
         self._responses_failures: dict[str, int] = {}
         self._responses_tripped_at: dict[str, float] = {}
