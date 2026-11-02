@@ -65,6 +65,11 @@ SUPPORTED_LANGUAGE_PAIRS = frozenset(
     }
 )
 
+#: Every individual language that appears in a supported pairing. Used to
+#: recognize a language-tagged URL segment whose regional variant is not listed
+#: in _CANONICAL_LANGUAGES (e.g. "fr-be" normalizes to "fr").
+_SUPPORTED_LANGUAGES = frozenset().union(*SUPPORTED_LANGUAGE_PAIRS)
+
 
 def normalize_language(code: str | None) -> str:
     """Normalize a language tag to its canonical primary language code.
@@ -113,13 +118,13 @@ def extract_url_language_and_stem(url: str) -> tuple[str, str]:
         return "", "/"
 
     first_norm = normalize_language(segments[0])
-    if segments[0].lower() in _KNOWN_LANG_CODES or first_norm in SUPPORTED_LANGUAGE_PAIRS:
+    if segments[0].lower() in _KNOWN_LANG_CODES or first_norm in _SUPPORTED_LANGUAGES:
         stem = "/" + "/".join(segments[1:])
         return first_norm, stem or "/"
 
     if len(segments) >= 2:
         second_norm = normalize_language(segments[1])
-        if segments[1].lower() in _KNOWN_LANG_CODES or second_norm in SUPPORTED_LANGUAGE_PAIRS:
+        if segments[1].lower() in _KNOWN_LANG_CODES or second_norm in _SUPPORTED_LANGUAGES:
             stem = f"/{segments[0]}" + ("/" + "/".join(segments[2:]) if len(segments) > 2 else "")
             return second_norm, stem or "/"
 

@@ -67,6 +67,30 @@ def test_extract_url_language_and_stem() -> None:
     assert extract_url_language_and_stem("https://example.com/") == ("", "/")
 
 
+def test_extract_url_language_handles_unlisted_regional_variant() -> None:
+    # A regional locale that is not enumerated in _CANONICAL_LANGUAGES still
+    # normalizes to a supported primary language, so it must be recognized as a
+    # language segment and stripped from the stem.
+    assert extract_url_language_and_stem("https://example.com/fr-be/docs/intro") == (
+        "fr",
+        "/docs/intro",
+    )
+    assert extract_url_language_and_stem("https://example.com/en_US/docs/intro") == (
+        "en",
+        "/docs/intro",
+    )
+    # Nested position too.
+    assert extract_url_language_and_stem("https://example.com/docs/es-ar/intro") == (
+        "es",
+        "/docs/intro",
+    )
+    # A non-language first segment is still left in the stem.
+    assert extract_url_language_and_stem("https://example.com/docs/intro") == (
+        "",
+        "/docs/intro",
+    )
+
+
 def test_extract_page_language_and_alternates() -> None:
     html = """<!DOCTYPE html>
     <html lang="en">
