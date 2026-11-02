@@ -4,15 +4,19 @@ on:
   push:
     paths:
       - 'deeptutor/services/memory/evaluation.py'
+      - 'deeptutor/services/memory/evaluation_rag.py'
       - 'examples/memory_evaluation/**'
       - 'tests/services/memory/test_evaluation.py'
+      - 'tests/services/memory/test_evaluation_rag.py'
       - 'tests/fixtures/memory_evaluation/**'
       - '.github/workflows/memory-evaluation.yml'
   pull_request:
     paths:
       - 'deeptutor/services/memory/evaluation.py'
+      - 'deeptutor/services/memory/evaluation_rag.py'
       - 'examples/memory_evaluation/**'
       - 'tests/services/memory/test_evaluation.py'
+      - 'tests/services/memory/test_evaluation_rag.py'
       - 'tests/fixtures/memory_evaluation/**'
       - '.github/workflows/memory-evaluation.yml'
   workflow_dispatch:
@@ -38,7 +42,7 @@ jobs:
       - name: Install source and test dependencies
         run: python -m pip install -e . pytest pytest-asyncio
       - name: Run evaluator regressions
-        run: python -m pytest tests/services/memory/test_evaluation.py -q
+        run: python -m pytest tests/services/memory/test_evaluation.py tests/services/memory/test_evaluation_rag.py -q
       - name: Run neighboring memory tests on Linux
         if: runner.os == 'Linux'
         run: python -m pytest tests/services/memory -q
