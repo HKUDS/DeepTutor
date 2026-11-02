@@ -1472,6 +1472,13 @@ class AgenticLoopPipeline:
                     "workspace_id": current_workspace_id(),
                     "language": context.language or "en",
                 }
+        elif tool_name in {"tasks", "calendar"}:
+            # Planning data is always scoped by the server. The model may
+            # select an item id, but it cannot select another workspace.
+            from deeptutor.services.workspace.context import current_workspace_id
+
+            kwargs["_workspace_id"] = current_workspace_id()
+            kwargs["_session_id"] = context.session_id
         elif tool_name in {"reason", "brainstorm"}:
             kwargs.setdefault("context", context.user_message)
         elif tool_name == "paper_search":

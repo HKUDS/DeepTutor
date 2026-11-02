@@ -2255,6 +2255,8 @@ CONFIGURABLE_BUILTIN_TOOL_NAMES: tuple[str, ...] = (
     "exec",
     "load_tools",
     "cron",
+    "tasks",
+    "calendar",
     "ask_user",
     "mastery_topics",
     "mastery_sessions",
