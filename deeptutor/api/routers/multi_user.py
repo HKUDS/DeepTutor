@@ -1121,6 +1121,7 @@ async def reset_group_member_password(
         # 403 rather than 404: a lead must not be able to probe the instance for
         # account names by watching status codes.
         raise HTTPException(status_code=403, detail="Account is not a member of this group")
+    _require_live_member(member_user_id)
     if POCKETBASE_ENABLED:
         raise HTTPException(
             status_code=400,
@@ -1308,6 +1309,27 @@ def _assert_grantable(lead_grant: dict[str, Any], payload: GroupMemberGrantPaylo
             raise HTTPException(status_code=403, detail="Cannot assign a skill you do not hold")
 
 
+def _require_live_member(member_user_id: str) -> None:
+    """Re-read the account's *current* role before acting on it.
+
+    Membership is decided once, when the account is added. An admin can promote
+    that account afterwards, and nothing removes it from the roster — so a
+    lead's authority over "a member" must be re-derived from the account as it
+    is now, never from the roster snapshot taken earlier.
+    """
+    found = get_user_by_id(member_user_id)
+    if found is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    _username, record = found
+    if str(record.get("role") or "user") == "admin":
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "This account is an administrator now and is no longer managed through a group."
+            ),
+        )
+
+
 @router.post("/groups/{group_id}/members", status_code=201)
 async def create_group_member(
     group_id: str,
@@ -1386,6 +1408,7 @@ async def put_group_member_grants(
     member_user_id = _member_in_group(group, username, _users_by_id())
     if member_user_id is None:
         raise HTTPException(status_code=403, detail="Account is not a member of this group")
+    _require_live_member(member_user_id)
     if not is_admin:
         _assert_grantable(load_grant(group["lead_user_id"]), payload)
 
@@ -1475,6 +1498,7 @@ async def get_group_member_grants(
     member_user_id = _member_in_group(group, username, _users_by_id())
     if member_user_id is None:
         raise HTTPException(status_code=403, detail="Account is not a member of this group")
+    _require_live_member(member_user_id)
     grant = load_grant(member_user_id)
     return {
         "models": [dict(item) for item in (grant.get("models") or {}).get("llm") or []],

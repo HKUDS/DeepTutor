@@ -316,3 +316,46 @@ def test_lead_reads_a_member_grant_before_editing_it(mu_isolated_root, monkeypat
         headers=_auth("outsider-token"),
     )
     assert outsider.status_code == 403
+
+
+def test_lead_cannot_reset_a_promoted_admin(mu_isolated_root, monkeypatch):
+    """A member promoted after joining stays in the roster — the roster must not
+    outrank the account's current role, or a lead takes over an admin account."""
+    from deeptutor.multi_user.identity import get_user, set_role
+
+    client, users = _client(mu_isolated_root, monkeypatch)
+    group_id = _group_with(client, users, members=(users["member"]["id"],))
+    before = get_user("member")["hash"]
+
+    assert set_role("member", "admin") is True
+
+    reset = client.put(
+        f"/api/multi-user/groups/{group_id}/members/member/password",
+        headers=_auth("lead-token"),
+        json={"new_password": "brand-new-pass"},
+    )
+    assert reset.status_code == 403
+    assert get_user("member")["hash"] == before, "the admin password must be untouched"
+
+    grants = client.put(
+        f"/api/multi-user/groups/{group_id}/members/member/grants",
+        headers=_auth("lead-token"),
+        json={"skills": [{"skill_id": "s1"}]},
+    )
+    assert grants.status_code == 403
+
+
+def test_lead_can_still_detach_a_promoted_admin(mu_isolated_root, monkeypatch):
+    """Detaching is the cleanup path for a stale roster entry, so it keeps working."""
+    from deeptutor.multi_user.identity import set_role
+
+    client, users = _client(mu_isolated_root, monkeypatch)
+    group_id = _group_with(client, users, members=(users["member"]["id"],))
+    assert set_role("member", "admin") is True
+
+    removed = client.delete(
+        f"/api/multi-user/groups/{group_id}/members/member",
+        headers=_auth("lead-token"),
+    )
+    assert removed.status_code == 200
+    assert removed.json()["group"]["member_user_ids"] == []
