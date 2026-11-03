@@ -37,7 +37,7 @@ function LanguageSelect({
   return (
     <select
       aria-label={label}
-      className={`${selectClass} min-w-[200px]`}
+      className={`${selectClass} min-w-[200px] pr-8`}
       value={value}
       onChange={(event) => {
         const next = event.currentTarget.value;

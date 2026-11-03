@@ -4,7 +4,9 @@ import assert from "node:assert/strict";
 import {
   addJalaliMonths,
   dateKey,
+  formatJalaliFullDate,
   formatJalaliMonthTitle,
+  formatJalaliWeekTitle,
   isPersian,
   jalaliMonthBounds,
   monthWeeks,
@@ -86,4 +88,25 @@ test("formatJalaliMonthTitle is month first, then the year in Persian digits", (
   assert.equal(formatJalaliMonthTitle(new Date(2026, 9, 26)), "آبان ۱۴۰۵");
   assert.equal(formatJalaliMonthTitle(new Date(2026, 10, 5)), "آبان ۱۴۰۵");
   assert.equal(formatJalaliMonthTitle(new Date(2026, 2, 5)), "اسفند ۱۴۰۴");
+});
+
+// The heading sits above a Jalali grid, so a Gregorian string there contradicts
+// every cell under it. Day and week headings must carry Jalali dates too.
+test("formatJalaliFullDate names the day, month and year", () => {
+  // 3 November 2026 is 12 Aban 1405.
+  assert.equal(formatJalaliFullDate(new Date(2026, 10, 3)), "۱۲ آبان ۱۴۰۵");
+  assert.equal(formatJalaliFullDate(new Date(2026, 9, 23)), "۱ آبان ۱۴۰۵");
+});
+
+test("formatJalaliWeekTitle spans a week, and names both months when it crosses", () => {
+  // 12–18 Aban 1405 = 2026-11-03 .. 2026-11-09.
+  assert.equal(
+    formatJalaliWeekTitle(new Date(2026, 10, 3), new Date(2026, 10, 9)),
+    "۱۲ – ۱۸ آبان ۱۴۰۵",
+  );
+  // A week that straddles the month end: 30 Mehr – 6 Aban 1405.
+  assert.equal(
+    formatJalaliWeekTitle(new Date(2026, 9, 22), new Date(2026, 9, 28)),
+    "۳۰ مهر – ۶ آبان ۱۴۰۵",
+  );
 });

@@ -28,7 +28,9 @@ import {
   browserTimeZone,
   dateKey,
   formatDate,
+  formatJalaliFullDate,
   formatJalaliMonthTitle,
+  formatJalaliWeekTitle,
   fromDateKey,
   isPersian,
   jalaliMonthBounds,
@@ -354,14 +356,21 @@ export default function CalendarPage() {
     onReschedule: move,
     onDropTask: drop,
   }
-  const heading =
-    view === 'month' && persian
-      ? formatJalaliMonthTitle(cursor)
-      : formatDate(cursor, i18n.language, {
-          year: 'numeric',
-          month: 'long',
-          ...(view === 'day' ? { day: 'numeric' } : {}),
-        })
+  // The heading follows the calendar in force for every view: Persian gets a
+  // Jalali heading in month ("آبان ۱۴۰۵"), day ("۱۲ آبان ۱۴۰۵"), and week
+  // ("۱۲ – ۱۸ آبان ۱۴۰۵"), so the top bar never falls back to a Gregorian
+  // string beside a Jalali grid.
+  const heading = persian
+    ? view === 'day'
+      ? formatJalaliFullDate(cursor)
+      : view === 'week'
+        ? formatJalaliWeekTitle(first, addDays(first, 6))
+        : formatJalaliMonthTitle(cursor)
+    : formatDate(cursor, i18n.language, {
+        year: 'numeric',
+        month: 'long',
+        ...(view === 'day' ? { day: 'numeric' } : {}),
+      })
   // Where the layout has a page bar, the toolbar moves up into it — the
   // navigation beside the feature crumb, the view tools on the right — so the
   // calendar itself starts one row higher.

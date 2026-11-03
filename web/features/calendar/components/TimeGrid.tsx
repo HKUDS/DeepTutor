@@ -13,6 +13,7 @@ import {
 } from 'react'
 import Tooltip from '@/shared/ui/Tooltip'
 import { useTranslation } from 'react-i18next'
+import { isoToJalali, persianDigits } from '@/lib/jalali'
 import {
   addDays,
   atMinutes,
@@ -65,6 +66,13 @@ function snapDate(date: Date): Date {
   const minutes = minutesIntoDay(date)
   const snapped = Math.round(minutes / SNAP) * SNAP
   return atMinutes(fromDateKey(dateKey(date)), snapped)
+}
+
+/** The day-of-month shown on a column badge, in the calendar in force. */
+function dayNumber(date: Date, locale: string): string {
+  if ((locale || '').split('-')[0] !== 'fa') return String(date.getDate())
+  const j = isoToJalali(dateKey(date))
+  return j ? persianDigits(j.jd) : String(date.getDate())
 }
 
 export function TimeGrid({
@@ -517,7 +525,10 @@ export function TimeGrid({
               <div key={key} className="dt-cal-day-head" data-today={key === todayKey || undefined}>
                 <button type="button" className="dt-cal-day-label" onClick={() => onOpenDay(day)}>
                   <span className="dt-cal-weekday">{formatWeekday(day, locale)}</span>
-                  <span className="dt-cal-daynum">{day.getDate()}</span>
+                  {/* The column badge is the day of the column, so it follows
+                      the calendar in force: a Jalali number in Persian, the
+                      Gregorian one everywhere else. */}
+                  <span className="dt-cal-daynum">{dayNumber(day, locale)}</span>
                 </button>
                 {footprint && <FootprintButton day={footprint} onOpen={onOpenFootprint} />}
               </div>

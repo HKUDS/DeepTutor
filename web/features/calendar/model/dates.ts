@@ -159,6 +159,29 @@ export function formatJalaliMonthTitle(cursor: Date): string {
   return `${JALALI_MONTHS[j.jm - 1]} ${persianDigits(j.jy)}`
 }
 
+/** A full Jalali date, e.g. «۱۲ آبان ۱۴۰۵» — for the calendar heading. */
+export function formatJalaliFullDate(cursor: Date): string {
+  const j = toJalali(cursor.getFullYear(), cursor.getMonth() + 1, cursor.getDate())
+  return `${persianDigits(j.jd)} ${JALALI_MONTHS[j.jm - 1]} ${persianDigits(j.jy)}`
+}
+
+/**
+ * A Jalali week span, e.g. «۱۲ – ۱۸ آبان ۱۴۰۵». When the week crosses a month
+ * boundary both months are named ("۳۰ مهر – ۶ آبان ۱۴۰۵") so the heading never
+ * implies a seven-day run inside one month that does not exist.
+ */
+export function formatJalaliWeekTitle(from: Date, to: Date): string {
+  const a = toJalali(from.getFullYear(), from.getMonth() + 1, from.getDate())
+  const b = toJalali(to.getFullYear(), to.getMonth() + 1, to.getDate())
+  const ys = persianDigits(a.jy)
+  if (a.jm === b.jm) {
+    return `${persianDigits(a.jd)} – ${persianDigits(b.jd)} ${JALALI_MONTHS[a.jm - 1]} ${ys}`
+  }
+  return `${persianDigits(a.jd)} ${JALALI_MONTHS[a.jm - 1]} – ${persianDigits(b.jd)} ${
+    JALALI_MONTHS[b.jm - 1]
+  } ${ys}`
+}
+
 /**
  * The weeks a month spans, each seven days long, starting on `weekStart`.
  * In Persian the month is a Jalali month, so the grid covers 1..29/30/31 of
