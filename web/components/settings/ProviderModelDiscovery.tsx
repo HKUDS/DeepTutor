@@ -109,7 +109,7 @@ function DiscoveryForm({
       <div className="flex flex-wrap items-center gap-3">
         <button
           type="button"
-          disabled={running || !input.base_url.trim()}
+          disabled={running || (input.binding !== "antigravity" && !input.base_url.trim())}
           onClick={() => void testConnection()}
           className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-[var(--border)] px-3 text-sm hover:bg-[var(--muted)] disabled:opacity-50"
         >

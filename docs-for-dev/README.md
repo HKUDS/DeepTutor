@@ -44,6 +44,8 @@ installation before deciding to reinstall it.
   model history and prompt-cache observability.
 - [Claude model synchronization](CLAUDE_MODEL_SYNC.md): SDK discovery, model
   catalogs and isolated provider sessions.
+- [Antigravity model provider](ANTIGRAVITY_PROVIDER.md): local CLI login,
+  default conversation models and DeepTutor-owned tool execution.
 - [Languages](I18N.md): interface versus reply languages, catalog rules and
   every seam a new locale must pass through.
 - [Remote Hermes backend](remote-hermes-backend.md): gateway protocol and

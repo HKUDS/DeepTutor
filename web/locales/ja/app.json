@@ -6406,5 +6406,17 @@
   "Learning text preview": "学習テキストのプレビュー",
   "Reset learning text": "学習テキストをリセット",
   "language.portuguese": "Português",
-  "language.turkish": "Türkçe"
+  "language.turkish": "Türkçe",
+  "antigravity.auth.description": "Uses the Antigravity CLI login on this computer. No API key or URL is needed. Sign in with agy, then sync models.",
+  "antigravity.models.title": "Antigravity models",
+  "antigravity.models.refresh": "Refresh models",
+  "antigravity.models.refreshing": "Refreshing models…",
+  "antigravity.models.choose": "Conversation model",
+  "antigravity.models.useDefault": "Use as default conversation model",
+  "antigravity.models.current": "Current default conversation model.",
+  "antigravity.models.pending": "Default model selected in draft. Apply settings to use it.",
+  "antigravity.models.empty": "Refresh to load the models available to your Antigravity account.",
+  "antigravity.models.refreshed": "Loaded {{count}} models. Existing models and drafts are preserved.",
+  "antigravity.models.failed": "Could not refresh models. Check the backend's agy installation, login, and connection, then retry.",
+  "antigravity.models.applyHint": "Refresh and selection update your draft. Apply settings to make these models available in the chat model picker."
 }

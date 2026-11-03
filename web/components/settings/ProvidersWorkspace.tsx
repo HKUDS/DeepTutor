@@ -37,6 +37,7 @@ import { ProviderServices } from "./ProviderServices";
 import { AddProviderPanel, ProviderProtocol, type CustomProviderInput } from "./AddProviderPanel";
 import { CodexOAuthCard } from "./CodexOAuthCard";
 import { CodeBuddyAuthCard } from "./CodeBuddyAuthCard";
+import { AntigravityModelsCard } from "./AntigravityModelsCard";
 import { stringifyExtraHeaders, subPanelClass } from "./shared";
 import {
   WorkspaceDetailEmpty,
@@ -294,10 +295,11 @@ export function ProvidersWorkspace() {
                   ) : (
                     <>
                       {source.provider === "codebuddy" && <CodeBuddyAuthCard />}
+                      {source.provider === "antigravity" && <AntigravityModelsCard key={`antigravity:${source.id}`} source={source} />}
                       {/* Address and credential belong on one line: they are the
                           two halves of one connection, and stacking them full
                           width was most of what made this pane feel cramped. */}
-                      <div className="grid gap-x-5 gap-y-4 lg:grid-cols-2">
+                      {source.provider !== "antigravity" && <div className="grid gap-x-5 gap-y-4 lg:grid-cols-2">
                         <div className="space-y-2">
                           <RegistryField
                             label={t("Provider URL")}
@@ -343,7 +345,7 @@ export function ProvidersWorkspace() {
                             )}
                           </div>
                         )}
-                      </div>
+                      </div>}
                       {source.provider === "volcengine_speech" && (
                         <div className="space-y-2">
                           <RegistryField label={t("Speech App ID (legacy console only)")}
@@ -357,7 +359,7 @@ export function ProvidersWorkspace() {
                         <ProviderProtocol value={apiFormat} formats={option?.api_formats} onChange={value => change("api_format", value)} />
                       )}
                       <ProviderServices key={source.id} source={source} onChange={value => change("service_overrides", value)} />
-                      <details className={`p-3.5 ${subPanelClass}`}>
+                      {source.provider !== "antigravity" && <details className={`p-3.5 ${subPanelClass}`}>
                         <summary className="cursor-pointer select-none rounded text-[13px] font-medium marker:text-[var(--muted-foreground)]">
                           {t("Advanced connection settings")}
                         </summary>
@@ -386,14 +388,14 @@ export function ProvidersWorkspace() {
                             />
                           )}
                         </div>
-                      </details>
-                      <RegistryProbe
+                      </details>}
+                      {source.provider !== "antigravity" && <RegistryProbe
                         input={{ ...providerProbeInput(source, defaultBaseUrl), api_format: apiFormat }}
                         discovery={connection.discovery}
                         hints={hints}
                         showCapabilities={false}
                         onResult={(result) => change("discovery", result)}
-                      />
+                      />}
                     </>
                   )}
                   <div className="flex flex-wrap items-center gap-2 border-t border-[var(--border)] pt-4">

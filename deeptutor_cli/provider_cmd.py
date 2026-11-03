@@ -20,7 +20,8 @@ def register(app: typer.Typer) -> None:
             ...,
             help=(
                 "Provider: openai-codex (OAuth login) | github-copilot "
-                "(GitHub device login) | codebuddy (validate CodeBuddy SDK auth)"
+                "(GitHub device login) | codebuddy (validate CodeBuddy SDK auth) | "
+                "antigravity (validate local agy login)"
             ),
         ),
     ) -> None:
@@ -35,9 +36,23 @@ def register(app: typer.Typer) -> None:
         if key in {"codebuddy", "codebuddy_code", "workbuddy"}:
             maybe_run(_login_codebuddy())
             return
+        if key in {"antigravity", "antigravity_cli", "agy"}:
+            maybe_run(_login_antigravity())
+            return
         raise typer.BadParameter(
-            f"Unknown provider `{provider}`. Supported: openai-codex, github-copilot, codebuddy"
+            f"Unknown provider `{provider}`. Supported: openai-codex, github-copilot, codebuddy, antigravity"
         )
+
+
+async def _login_antigravity() -> None:
+    from deeptutor.services.llm.provider_core.antigravity_provider import fetch_antigravity_models
+
+    try:
+        models = await fetch_antigravity_models()
+    except RuntimeError as exc:
+        typer.echo(str(exc))
+        raise typer.Exit(code=1) from None
+    typer.echo(f"Antigravity local login verified. Models available: {len(models)}.")
 
 
 async def _login_openai_codex() -> None:

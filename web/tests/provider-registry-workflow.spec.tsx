@@ -55,6 +55,84 @@ vi.mock("@/components/settings/CodexOAuthCard", () => ({
 vi.mock("@/components/settings/CodeBuddyAuthCard", () => ({
   CodeBuddyAuthCard: () => <div>CodeBuddy sign-in</div>,
 }));
+it("Antigravity uses local login without URL or API-key fields", () => {
+  live.connections = [{ id: "agy", name: "Antigravity account", provider: "antigravity", source_service: "llm", api_key: "", base_url: "", api_version: "" }];
+  render(<Harness page="providers" providerOptions={{ llm: [{ value: "antigravity", label: "Antigravity CLI", base_url: "", requires_api_key: false, api_formats: [] }] }} />);
+  fireEvent.click(screen.getByRole("button", { name: /Antigravity account/ }));
+  expect(screen.getByText("antigravity.auth.description")).toBeTruthy();
+  expect(screen.queryByLabelText("Provider URL")).toBeNull();
+  expect(screen.queryByLabelText("API key")).toBeNull();
+  expect(screen.getByRole("button", { name: "antigravity.models.refresh" })).toBeEnabled();
+});
+
+it("refreshes Antigravity models and stages a default directly on the provider page", async () => {
+  live.connections = [{ id: "agy", name: "Antigravity account", provider: "antigravity", api_key: "", base_url: "", api_version: "" }];
+  const original = structuredClone(live);
+  let resolve!: (value: unknown) => void;
+  mocks.fetch.mockReturnValue(new Promise((done) => { resolve = done; }));
+  render(<Harness page="providers" />);
+  fireEvent.click(screen.getByRole("button", { name: /Antigravity account/ }));
+  fireEvent.click(screen.getByRole("button", { name: "antigravity.models.refresh" }));
+  act(() => mocks.settings.mutateCatalog((next) => { next.services.search.profiles[0].name = "Unsaved search draft"; }));
+  await act(async () => resolve({ ok: true, json: async () => ({ models: [{ id: "gemini-a" }, { id: "gemini-b" }, { id: "gemini-a" }] }) }));
+  expect(mocks.fetch.mock.calls[0][0]).toBe("/api/settings/fetch-models");
+  expect(JSON.parse(mocks.fetch.mock.calls[0][1].body)).toMatchObject({ binding: "antigravity", base_url: "" });
+  expect(mocks.settings.draft.services.llm.active_model_id).toBe("one");
+  const picker = screen.getByRole("combobox", { name: "antigravity.models.choose" });
+  expect(within(picker).getAllByRole("option")).toHaveLength(2);
+  const option = within(picker).getByRole("option", { name: "gemini-b" }) as HTMLOptionElement;
+  fireEvent.change(picker, { target: { value: option.value } });
+  fireEvent.click(screen.getByRole("button", { name: "antigravity.models.useDefault" }));
+  const bucket = mocks.settings.draft.services.llm;
+  const profile = bucket.profiles.find((item) => item.id === bucket.active_profile_id)!;
+  expect(profile.models.find((model) => model.id === bucket.active_model_id)?.model).toBe("gemini-b");
+  expect(profile.provider_ref).toEqual({ connection_id: "agy", binding: "antigravity" });
+  expect(screen.getByText("antigravity.models.pending")).toBeTruthy();
+  expect(mocks.settings.draft.services.search.profiles[0].name).toBe("Unsaved search draft");
+  expect(mocks.settings.draft.services.task).toEqual(original.services.task);
+  expect(live).toEqual(original);
+  expect(mocks.save).not.toHaveBeenCalled();
+});
+
+it("preserves Antigravity model IDs, overrides, and defaults when refreshing a legacy profile", async () => {
+  live.services.llm.profiles[0].binding = "antigravity";
+  live.services.llm.profiles[0].models[0].reasoning_effort = "high";
+  const before = structuredClone(live);
+  mocks.fetch.mockResolvedValue({ ok: true, json: async () => ({ models: [{ id: "model-one" }, { id: "gemini-new" }] }) });
+  render(<Harness page="providers" />);
+  fireEvent.click(screen.getByRole("button", { name: /My account/ }));
+  fireEvent.click(screen.getByRole("button", { name: "antigravity.models.refresh" }));
+  await waitFor(() => expect(mocks.settings.draft.services.llm.profiles[0].models).toHaveLength(3));
+  expect(mocks.settings.draft.services.llm.profiles[0].models.slice(0, 2)).toEqual(before.services.llm.profiles[0].models);
+  expect(mocks.settings.draft.services.llm.active_model_id).toBe("one");
+  expect(mocks.settings.draft.services.llm.active_profile_id).toBe("legacy");
+});
+
+it("keeps the draft intact on Antigravity refresh failure", async () => {
+  live.connections = [{ id: "agy", name: "Antigravity account", provider: "antigravity", api_key: "", base_url: "", api_version: "" }];
+  mocks.fetch.mockResolvedValue({ ok: false, json: async () => ({ detail: "private diagnostics" }) });
+  render(<Harness page="providers" />);
+  fireEvent.click(screen.getByRole("button", { name: /Antigravity account/ }));
+  fireEvent.click(screen.getByRole("button", { name: "antigravity.models.refresh" }));
+  await waitFor(() => expect(screen.getByText("antigravity.models.failed")).toBeTruthy());
+  expect(screen.queryByText("private diagnostics")).toBeNull();
+  expect(mocks.settings.draft).toEqual(live);
+});
+
+it("ignores an Antigravity refresh after selecting a different provider", async () => {
+  live.connections = [{ id: "agy", name: "Antigravity account", provider: "antigravity", api_key: "", base_url: "", api_version: "" }];
+  let resolve!: (value: unknown) => void;
+  mocks.fetch.mockReturnValue(new Promise((done) => { resolve = done; }));
+  render(<Harness page="providers" />);
+  fireEvent.click(screen.getByRole("button", { name: /Antigravity account/ }));
+  fireEvent.click(screen.getByRole("button", { name: "antigravity.models.refresh" }));
+  fireEvent.click(screen.getByRole("button", { name: /My account/ }));
+  expect(screen.queryByRole("button", { name: "antigravity.models.refreshing" })).toBeNull();
+  await act(async () => resolve({ ok: true, json: async () => ({ models: [{ id: "too-late" }] }) }));
+  expect(mocks.fetch.mock.calls[0][1].signal.aborted).toBe(true);
+  expect(mocks.settings.draft).toEqual(live);
+});
+
 function fixture(): Catalog {
   const services = Object.fromEntries(
     [

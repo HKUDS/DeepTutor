@@ -111,6 +111,10 @@ def _build_runtime_provider(
             default_model=llm_config.model,
             configure_env=configure_env,
         )
+    elif backend == "antigravity":
+        from deeptutor.services.llm.provider_core.antigravity_provider import AntigravityProvider
+
+        provider = AntigravityProvider(default_model=llm_config.model)
     elif backend == "claude_code":
         from deeptutor.services.llm.provider_core.claude_code_provider import ClaudeCodeProvider
 

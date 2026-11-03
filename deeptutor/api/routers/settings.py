@@ -2052,7 +2052,11 @@ async def fetch_models_from_provider(payload: FetchModelsPayload):
     binding = (payload.binding or "").strip().lower() or "openai"
     canonical = canonical_provider_name(binding)
     is_copilot = canonical == "github_copilot"
-    if not base_url and canonical not in {"codebuddy", "claude_code"} and not is_copilot:
+    if (
+        not base_url
+        and canonical not in {"codebuddy", "claude_code", "antigravity"}
+        and not is_copilot
+    ):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="base_url is required for this provider.",
@@ -2083,6 +2087,11 @@ async def fetch_models_from_provider(payload: FetchModelsPayload):
     try:
         model_ids = await fetch_llm_models(binding, base_url, api_key, api_format or "auto")
     except Exception as exc:  # noqa: BLE001 — surface any provider error as 502
+        if canonical == "antigravity":
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Could not list Antigravity models. Sign in with agy on the server and retry.",
+            ) from None
         if is_copilot:
             # OAuth exceptions can contain credential-bearing URLs or responses.
             # Never echo or log their raw text at this public HTTP boundary.
