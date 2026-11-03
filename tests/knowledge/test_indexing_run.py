@@ -45,6 +45,54 @@ def test_retry_retains_source_identity_and_verified_parse_receipt(tmp_path):
     assert current_run() is None
 
 
+@pytest.mark.parametrize("state", ["failed", "interrupted", "cancelled"])
+def test_preflight_failures_preserve_unpublished_checkpoint_pointer(tmp_path, state):
+    source = tmp_path / "raw" / "book.txt"
+    source.parent.mkdir()
+    source.write_text("stable source", encoding="utf-8")
+    candidate = tmp_path / "version-1"
+    with IndexingRun(tmp_path, [str(source)], provider="llamaindex") as run:
+        run.set_candidate_storage(candidate)
+        run.finish(state)
+
+    for attempt in range(2):
+        with pytest.raises(IndexingBusyError, match="previous worker"):
+            with IndexingRun(
+                tmp_path, [str(source)], provider="llamaindex", task_id=f"blocked-{attempt}"
+            ):
+                raise IndexingBusyError("A previous worker is still running.")
+        assert load_run(tmp_path)["candidate_storage"] == str(candidate)
+
+    with IndexingRun(tmp_path, [str(source)], provider="llamaindex") as run:
+        assert run.previous_run["candidate_storage"] == str(candidate)
+        assert run.data["candidate_storage"] == str(candidate)
+        replacement = tmp_path / "version-2"
+        run.set_candidate_storage(replacement)
+        run.finish("failed")
+    assert load_run(tmp_path)["candidate_storage"] == str(replacement)
+
+
+@pytest.mark.parametrize(
+    ("provider", "action", "state", "version"),
+    [
+        ("lightrag", "rebuild", "failed", None),
+        ("llamaindex", "upload", "failed", None),
+        ("llamaindex", "rebuild", "completed", "version-1"),
+        ("llamaindex", "rebuild", "partial", "version-1"),
+        ("llamaindex", "rebuild", "failed", "version-1"),
+    ],
+)
+def test_checkpoint_pointer_is_not_carried_from_unrelated_or_published_run(
+    tmp_path, provider, action, state, version
+):
+    with IndexingRun(tmp_path, [], provider=provider, action=action) as run:
+        run.set_candidate_storage(tmp_path / "version-1")
+        run.finish(state, version=version)
+    with IndexingRun(tmp_path, [], provider="llamaindex") as run:
+        assert run.data["candidate_storage"] is None
+        run.finish("failed")
+
+
 def test_cancel_is_owned_by_task_and_preserves_newer_worker(tmp_path):
     with IndexingRun(tmp_path, [], task_id="one") as run:
         assert not request_cancel(tmp_path, "other")
