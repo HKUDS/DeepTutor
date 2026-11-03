@@ -13,6 +13,7 @@ import asyncio
 import base64
 import binascii
 from collections.abc import Awaitable, Callable
+import io
 import json
 import os
 from pathlib import Path
@@ -23,6 +24,7 @@ import tempfile
 from typing import Any
 from urllib.request import getproxies
 import uuid
+import warnings
 
 from jsonschema import Draft202012Validator
 
@@ -33,6 +35,7 @@ DEFAULT_ANTIGRAVITY_MODEL = "gemini-3.8-flash-high"
 _MAX_OUTPUT_BYTES = 16 * 1024 * 1024
 _MAX_IMAGE_BYTES = 20 * 1024 * 1024
 _MAX_MEDIA_BYTES = 64 * 1024 * 1024
+_MAX_IMAGE_PIXELS = 32_000_000
 _IMAGE_EXTENSIONS = {
     "image/png": ".png",
     "image/jpeg": ".jpg",
@@ -168,17 +171,52 @@ async def _run_cli(
         await _stop(process)
 
 
-def _failed(code: int, diagnostics: str = "") -> RuntimeError:
+class AntigravityCLIError(RuntimeError):
+    """A classified CLI failure with safe text and a machine-readable status."""
+
+    def __init__(self, message: str, status_code: int | None = None) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+
+
+def _failed(code: int, diagnostics: str = "", terminal_error: Any = None) -> AntigravityCLIError:
+    # The final result is authoritative. Startup logs may briefly say "not
+    # logged in" before the local keyring restores the session successfully.
+    reason = str(terminal_error).lower() if terminal_error else diagnostics.lower()
     if any(
-        marker in diagnostics.lower()
-        for marker in ("not logged", "sign in", "authentication required")
+        marker in reason
+        for marker in ("invalid_argument", "invalid argument", "code 400", "http 400")
     ):
-        return RuntimeError(
-            "Antigravity is not signed in. Run agy interactively to sign in, then sync models."
+        return AntigravityCLIError(
+            "Antigravity rejected the model request (HTTP 400). Check its input and output format.",
+            400,
         )
-    return RuntimeError(
-        f"Antigravity CLI did not complete the request (exit {code}). Check its local login and quota."
-    )
+    if any(
+        marker in reason
+        for marker in (
+            "not logged",
+            "not signed in",
+            "sign in",
+            "authentication required",
+            "unauthenticated",
+        )
+    ):
+        return AntigravityCLIError(
+            "Antigravity is not signed in. Run agy interactively to sign in, then sync models.", 401
+        )
+    if any(
+        marker in reason
+        for marker in (
+            "resource_exhausted",
+            "rate limit",
+            "quota exceeded",
+            "quota exhausted",
+            "code 429",
+            "http 429",
+        )
+    ):
+        return AntigravityCLIError("Antigravity rate limit reached. Try again later.", 429)
+    return AntigravityCLIError(f"Antigravity CLI did not complete the request (exit {code}).")
 
 
 async def fetch_antigravity_models() -> list[str]:
@@ -199,11 +237,50 @@ async def fetch_antigravity_models() -> list[str]:
     return models
 
 
+def _normalize_image(data: bytes) -> bytes:
+    """Emit bounded RGB PNG pixels without source metadata or JPEG color modes."""
+    try:
+        from PIL import Image, ImageOps, UnidentifiedImageError
+    except ImportError:
+        raise ValueError(
+            "Antigravity image input requires Pillow; install DeepTutor's parsing dependencies."
+        ) from None
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", Image.DecompressionBombWarning)
+            with Image.open(io.BytesIO(data)) as image:
+                if image.format not in {"PNG", "JPEG", "WEBP", "GIF"}:
+                    raise ValueError("Unsupported Antigravity image format.")
+                if image.width * image.height > _MAX_IMAGE_PIXELS:
+                    raise ValueError("Antigravity image exceeds the 32-megapixel limit.")
+                image.load()
+                oriented = ImageOps.exif_transpose(image)
+                # Compositing also removes palette/transparency and source
+                # metadata. White keeps transparent paper figures readable.
+                rgba = oriented.convert("RGBA")
+                pixels = Image.new("RGB", rgba.size, "white")
+                pixels.paste(rgba, mask=rgba.getchannel("A"))
+                output = io.BytesIO()
+                pixels.save(output, format="PNG")
+                result = output.getvalue()
+                if len(result) > _MAX_IMAGE_BYTES:
+                    raise ValueError("Normalized Antigravity image exceeds the 20 MiB limit.")
+                return result
+    except (
+        UnidentifiedImageError,
+        OSError,
+        Image.DecompressionBombError,
+        Image.DecompressionBombWarning,
+    ):
+        raise ValueError("Antigravity could not decode the supplied image safely.") from None
+
+
 def _history(messages: list[dict[str, Any]], media_dir: Path) -> tuple[str, set[Path]]:
     """Keep message boundaries and replace inline images with private file references."""
     normalized = []
     images: set[Path] = set()
     total_bytes = 0
+    raw_bytes = 0
     for message in messages:
         content = message.get("content")
         clean = {
@@ -239,20 +316,22 @@ def _history(messages: list[dict[str, Any]], media_dir: Path) -> tuple[str, set[
                     data = base64.b64decode(match[2], validate=True)
                 except binascii.Error:
                     raise ValueError("Invalid Antigravity image encoding.") from None
-                total_bytes += len(data)
+                raw_bytes += len(data)
                 if (
                     not data
                     or len(data) > _MAX_IMAGE_BYTES
-                    or total_bytes > _MAX_MEDIA_BYTES
+                    or raw_bytes > _MAX_MEDIA_BYTES
                     or len(images) >= 64
                 ):
                     raise ValueError(
                         "Antigravity image input exceeds the 20 MiB per-image, 64 MiB total, or 64-image limit."
                     )
+                data = _normalize_image(data)
+                total_bytes += len(data)
+                if total_bytes > _MAX_MEDIA_BYTES:
+                    raise ValueError("Normalized Antigravity images exceed the 64 MiB total limit.")
                 media_dir.mkdir(exist_ok=True)
-                path = (
-                    media_dir / f"image-{len(images) + 1:04d}{_IMAGE_EXTENSIONS[match[1].lower()]}"
-                ).resolve()
+                path = (media_dir / f"image-{len(images) + 1:04d}.png").resolve()
                 path.write_bytes(data)
                 images.add(path)
                 parts.append({"type": "text", "text": "[Input image: " + path.as_posix() + "]"})
@@ -512,7 +591,7 @@ class AntigravityProvider(LLMProvider):
                 timeout=self.timeout,
             )
         if code or final is None or final.get("status") != "SUCCESS":
-            raise _failed(code, diagnostics)
+            raise _failed(code, diagnostics, final.get("error") if final else None)
         if image_files != read_images:
             raise RuntimeError(
                 "Antigravity did not read every supplied image; the image request was not completed."

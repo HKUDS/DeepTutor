@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import base64
 from copy import deepcopy
+import io
 import json
 from pathlib import Path
 import sys
@@ -268,7 +269,16 @@ async def test_external_image_is_rejected_before_launch(monkeypatch):
     assert calls == []
 
 
-def image_part(data=b"\x89PNG\r\n\x1a\nfixture"):
+def fixture_image(*, mode="RGB", color="white", fmt="PNG"):
+    image = pytest.importorskip("PIL.Image")
+    output = io.BytesIO()
+    image.new(mode, (12, 8), color).save(output, format=fmt)
+    return output.getvalue()
+
+
+def image_part(data=None):
+    if data is None:
+        data = fixture_image()
     return {
         "type": "image_url",
         "image_url": {"url": "data:image/png;base64," + base64.b64encode(data).decode()},
@@ -291,7 +301,11 @@ async def test_image_history_is_private_and_read_before_return(monkeypatch, with
             "content": "Fetching another figure",
             "tool_calls": [{"id": "call1"}],
         },
-        {"role": "tool", "tool_call_id": "call1", "content": [image_part(b"other figure")]},
+        {
+            "role": "tool",
+            "tool_call_id": "call1",
+            "content": [image_part(fixture_image(color="red"))],
+        },
     ]
     before = deepcopy(messages)
     roots = []
@@ -300,9 +314,10 @@ async def test_image_history_is_private_and_read_before_return(monkeypatch, with
         root = Path(kwargs["cwd"])
         roots.append(root)
         images = sorted((root / "media").iterdir())
-        assert [image.read_bytes() for image in images] == [
-            b"\x89PNG\r\n\x1a\nfixture",
-            b"other figure",
+        image_module = pytest.importorskip("PIL.Image")
+        assert [image_module.open(image).getpixel((0, 0)) for image in images] == [
+            (255, 255, 255),
+            (255, 0, 0),
         ]
         prompt = kwargs["prompt"]
         assert "base64," not in prompt and "\\u0040private.txt" in prompt
@@ -413,6 +428,79 @@ async def test_image_size_and_other_media_are_rejected_before_launch(monkeypatch
             [{"role": "user", "content": [{"type": "input_audio"}]}]
         )
     assert calls == []
+
+
+@pytest.mark.parametrize(
+    "mode,fmt", [("L", "JPEG"), ("CMYK", "JPEG"), ("RGBA", "PNG"), ("P", "GIF"), ("RGB", "WEBP")]
+)
+def test_images_are_normalized_to_metadata_free_rgb_png(mode, fmt):
+    image_module = pytest.importorskip("PIL.Image")
+    normalized = agy._normalize_image(fixture_image(mode=mode, color=0, fmt=fmt))
+    with image_module.open(io.BytesIO(normalized)) as image:
+        assert image.format == "PNG" and image.mode == "RGB" and image.size == (12, 8)
+        assert not image.info
+        assert image.getpixel((0, 0)) == (
+            (255, 255, 255) if mode in {"RGBA", "CMYK"} else (0, 0, 0)
+        )
+
+
+def test_adobe_grayscale_jpeg_preserves_pixels_as_rgb_png():
+    image_module = pytest.importorskip("PIL.Image")
+    original = fixture_image(mode="L", color=96, fmt="JPEG")
+    adobe = b"\xff\xee\x00\x0eAdobe\x00\x64\x00\x00\x00\x00\x00"
+    data = original[:2] + adobe + original[2:]
+    with image_module.open(io.BytesIO(agy._normalize_image(data))) as image:
+        assert image.mode == "RGB" and image.format == "PNG"
+        assert image.getpixel((0, 0)) == (96, 96, 96)
+        assert "adobe" not in image.info
+
+
+def test_invalid_and_oversized_image_pixels_are_rejected(monkeypatch):
+    with pytest.raises(ValueError, match="decode"):
+        agy._normalize_image(b"not an image")
+    monkeypatch.setattr(agy, "_MAX_IMAGE_PIXELS", 10)
+    with pytest.raises(ValueError, match="megapixel"):
+        agy._normalize_image(fixture_image())
+
+
+@pytest.mark.parametrize(
+    "error,status",
+    [
+        ("INVALID_ARGUMENT (code 400): invalid argument", 400),
+        ("authentication required", 401),
+        ("RESOURCE_EXHAUSTED: limit reached", 429),
+    ],
+)
+def test_terminal_cli_error_is_classified_without_disclosing_diagnostics(error, status):
+    from deeptutor.services.llm.error_mapping import map_error
+
+    failure = agy._failed(3, "startup: not logged in; private diagnostics", error)
+    assert failure.status_code == status
+    assert map_error(failure, "antigravity").status_code == status
+    assert "private diagnostics" not in str(failure)
+
+
+def test_unclassified_exit_is_not_misreported_as_rate_limiting():
+    from deeptutor.services.llm.error_mapping import map_error
+    from deeptutor.services.llm.exceptions import LLMRateLimitError
+
+    failure = agy._failed(3, "quota_manager refreshed local quota metadata")
+    assert failure.status_code is None
+    assert not isinstance(map_error(failure, "antigravity"), LLMRateLimitError)
+    assert "quota" not in str(failure)
+
+
+@pytest.mark.asyncio
+async def test_failed_result_preserves_terminal_http_400(monkeypatch):
+    fake_cli(
+        monkeypatch,
+        {"status": "ERROR", "error": "INVALID_ARGUMENT (code 400): private server payload"},
+        code=3,
+    )
+    with pytest.raises(agy.AntigravityCLIError) as error:
+        await agy.AntigravityProvider().chat([])
+    assert error.value.status_code == 400
+    assert "private server payload" not in str(error.value)
 
 
 @pytest.mark.asyncio

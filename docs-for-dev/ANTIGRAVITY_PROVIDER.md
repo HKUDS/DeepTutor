@@ -72,12 +72,21 @@ catalog. The default model constant is only a fallback for direct SDK calls.
 - Failure, malformed output, missing terminal results, empty answers, timeout,
   and cancellation are errors. Exit status alone is insufficient. Owned child
   process trees are cleaned up on timeout, cancellation, and provider shutdown.
+- Terminal CLI errors retain their safe HTTP classification (400 invalid input,
+  401 authentication, 429 rate limiting). A generic exit is not evidence of
+  exhausted quota; startup credential-cache messages do not override a final
+  request error.
 
 Text and inline PNG, JPEG, WebP, and GIF images are supported, including images
 in earlier messages and tool results. Remote image URLs and local paths are not
 fetched by the adapter; DeepTutor's shared attachment preparation can resolve
 its own attachment URLs into inline data first. Image inputs are bounded to
-20 MiB per image, 64 MiB total, and 64 images per request. They use structured
+20 MiB per image, 64 MiB total, 32 megapixels per image, and 64 images per request.
+Pillow is required for image input (included in full/parsing installs). Images
+are decoded, oriented, composited on white, and emitted as metadata-free RGB PNG
+before the CLI reads them. This avoids upstream 400 responses reproduced with
+grayscale JPEGs carrying Adobe metadata. GIF input uses its first frame.
+They use structured
 output and are buffered until image-read and output validation finish. Audio
 and video content is rejected explicitly. PDFs continue through DeepTutor's
 existing parsing and page-image pipeline; the CLI is not given arbitrary PDF
