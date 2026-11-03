@@ -15,7 +15,7 @@ def _parse_language(language: str | None) -> str:
         return "fr"
     if raw.replace("_", "-").split("-", 1)[0] == "tr" or raw in {"turkish", "türkçe"}:
         return "tr"
-    if raw.split("-", 1)[0] == "es" or raw in {"spanish", "español"}:
+    if raw.split("-", 1)[0] == "es" or raw in {"spanish", "español", "espanol"}:
         return "es"
     return "en"
 

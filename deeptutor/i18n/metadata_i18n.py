@@ -31,6 +31,7 @@ _CAPABILITY_DESCRIPTIONS: dict[str, dict[str, str]] = {
     "video_lesson": {
         "en": "Generate an animated video lesson (Remotion) that plays in the browser.",
         "zh": "生成可在浏览器中播放的讲解动画视频（Remotion）。",
+        "es": "Genera una lección de vídeo animada (Remotion) que se reproduce en el navegador.",
     },
     "mastery_path": {
         "en": "Structured mastery-based learning with spaced repetition.",
@@ -73,6 +74,7 @@ _TOOL_DESCRIPTIONS: dict[str, dict[str, str]] = {
     "zotero_search": {
         "en": "Search a user-supplied Zotero library for references.",
         "zh": "搜索用户提供的 Zotero 文献库。",
+        "es": "Busca referencias en una biblioteca de Zotero proporcionada por el usuario.",
     },
     "reason": {
         "en": "Use a dedicated reasoning model call for hard reasoning tasks.",
@@ -112,7 +114,7 @@ def tool_description_i18n(name: str, fallback: str = "") -> dict[str, str]:
 
 
 def localized_description(values: dict[str, str], language: str) -> str:
-    lang = (language or "en").lower().split("-", 1)[0]
+    lang = (language or "en").lower().replace("_", "-").split("-", 1)[0]
     return values.get(lang) or values.get("en") or values.get("zh") or ""
 
 
