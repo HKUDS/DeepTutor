@@ -2,7 +2,7 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { CalendarDays } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
 
 import {
   JALALI_MONTHS,
@@ -188,13 +188,16 @@ export default function FaDateInput({
           style={{ top: pos.top, left: pos.left }}
         >
           <div className="mb-1 flex items-center justify-between gap-1">
+            {/* Drawn as icons rather than "‹"/"›" glyphs: those are mirrored
+                characters, so an RTL paragraph flips them and each arrow
+                renders opposite to the direction its button moves. */}
             <button
               type="button"
               aria-label={t("Previous month")}
-              className="rounded-md px-2 py-1 hover:bg-accent"
+              className="flex items-center rounded-md px-2 py-1 hover:bg-accent"
               onClick={() => moveMonth(-1)}
             >
-              &rsaquo;
+              <ChevronRight aria-hidden size={16} />
             </button>
             <span className="font-medium">
               {JALALI_MONTHS[view.jm - 1]} {persianDigits(view.jy)}
@@ -202,10 +205,10 @@ export default function FaDateInput({
             <button
               type="button"
               aria-label={t("Next month")}
-              className="rounded-md px-2 py-1 hover:bg-accent"
+              className="flex items-center rounded-md px-2 py-1 hover:bg-accent"
               onClick={() => moveMonth(1)}
             >
-              &lsaquo;
+              <ChevronLeft aria-hidden size={16} />
             </button>
           </div>
           <div className="grid grid-cols-7 text-center text-[11px] text-muted-foreground">
