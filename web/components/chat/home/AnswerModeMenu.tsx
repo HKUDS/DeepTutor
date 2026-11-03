@@ -7,6 +7,7 @@ import { useTranslation } from "react-i18next";
 import { agentGlyph, agentKindLabel } from "@/components/agents/agent-icons";
 import PartnerAvatar from "@/components/partners/PartnerAvatar";
 import { listPersonas, type PersonaInfo } from "@/lib/personas-api";
+import { personaDisplayDescription, personaDisplayName } from "@/lib/persona-labels";
 import type { PartnerInfo } from "@/lib/partners-api";
 import type { PartnerGroup } from "@/lib/partner-groups-api";
 import type { ResourceKind } from "@/lib/resource-reuse";
@@ -109,7 +110,7 @@ export default function AnswerModeMenu({
   const agent = kind === "subagent" ? answerers?.agents.find((item) => item.name === id) : undefined;
   // The trigger names whoever answers; a voice only when DeepTutor does.
   let icon: ReactNode = <UserRound size={14} strokeWidth={1.7} className="shrink-0" />;
-  let value = persona?.value || t("Default");
+  let value = (persona?.value ? personaDisplayName(t, persona.value) : "") || t("Default");
   if (partner || kind === "partner") {
     icon = partner ? <PartnerFace partner={partner} size={16} /> : icon;
     value = partner?.name ?? id;
@@ -158,7 +159,9 @@ function AnswerList({
   const needle = query.trim().toLocaleLowerCase();
   const matches = (...text: (string | undefined)[]) =>
     !needle || text.join(" ").toLocaleLowerCase().includes(needle);
-  const styleRows = personas.filter((item) => matches(item.name, item.description));
+  const styleRows = personas.filter((item) =>
+    matches(item.name, item.description, personaDisplayName(t, item.name), personaDisplayDescription(t, item)),
+  );
   const partnerRows = answerers?.partners.filter((item) => matches(item.name)) ?? [];
   const agentRows = answerers?.agents.filter((item) => matches(item.name)) ?? [];
   const total = personas.length + (answerers?.partners.length ?? 0) + (answerers?.agents.length ?? 0);
@@ -197,8 +200,8 @@ function AnswerList({
                   close();
                 }}
                 leading={<UserRound size={14} strokeWidth={1.7} />}
-                title={item.name}
-                meta={item.description}
+                title={personaDisplayName(t, item.name)}
+                meta={personaDisplayDescription(t, item)}
               />
             ))}
           </TraySection>
