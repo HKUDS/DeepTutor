@@ -150,3 +150,57 @@ def test_persisting_replaces_the_default_tokenizer_sidecar(tmp_path) -> None:
     assert retriever_module.persist_bm25_retriever(_Index(), tmp_path, top_k=3) is True
     assert not legacy.exists()
     assert (tmp_path / retriever_module.BM25_PERSIST_DIRNAME).exists()
+
+
+def test_neighbouring_identifiers_do_not_share_the_exact_match() -> None:
+    """`3.4.27` and `3.5.26` must not tie with `3.4.26` on an exact query."""
+
+    bm25_cls = retriever_module._import_bm25_retriever()
+    if bm25_cls is None:
+        pytest.skip("llama-index-retrievers-bm25 is not installed")
+
+    nodes = [
+        TextNode(text="## Exercise 3.4.26 Reduce the order.", id_="exact"),
+        TextNode(text="## Exercise 3.4.27 A neighbouring exercise.", id_="neighbour"),
+        TextNode(text="## Exercise 3.5.26 Another section.", id_="cousin"),
+    ]
+    retriever = bm25_cls.from_defaults(
+        nodes=nodes,
+        similarity_top_k=3,
+        token_pattern=retriever_module.BM25_TOKEN_PATTERN,
+    )
+
+    hits = retriever.retrieve("3.4.26")
+
+    assert hits[0].node.node_id == "exact"
+    assert hits[0].score > 0
+    assert all(hit.score == 0 for hit in hits[1:])
+
+
+def test_section_queries_keep_the_numeric_identifier() -> None:
+    """`§3.4` and `第 3.4 節` must keep `3.4`, not drop the only numeric part."""
+
+    bm25s = pytest.importorskip("bm25s")
+
+    for query in ("§3.4", "第 3.4 節"):
+        tokenized = bm25s.tokenize(
+            query,
+            stopwords="en",
+            stemmer=None,
+            token_pattern=retriever_module.BM25_TOKEN_PATTERN,
+            show_progress=False,
+        )
+        assert "3.4" in tokenized.vocab
+
+
+def test_legacy_page_retriever_uses_the_identifier_pattern() -> None:
+    """The fallback retriever used on Python 3.14 must not regress either."""
+
+    pytest.importorskip("bm25s")
+
+    retriever = retriever_module._UnstemmedPageRetriever(_exercise_nodes())
+
+    hits = retriever.retrieve("3.4.26")
+
+    assert hits and hits[0].node.node_id == "e3426"
+    assert hits[0].score > 0
