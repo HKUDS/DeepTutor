@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Users } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { apiUrl } from "@/shared/api/client";
+import { apiFetch, apiUrl } from "@/shared/api/client";
 import Tooltip from "@/shared/ui/Tooltip";
 
 // The sidebar mounts on every route; cache the answer for the page load.
@@ -27,9 +27,10 @@ export function GroupLink({ collapsed = false }: { collapsed?: boolean }) {
     // A cached answer already reached the initial state, so nothing to do.
     if (cachedLeadsGroup !== null) return;
     let cancelled = false;
-    // Bare fetch on purpose: importing the group client would pull it into the
-    // app shell, which every route pays for and the route budgets measure.
-    void fetch(apiUrl("/api/multi-user/groups"))
+    // Only "is the list non-empty" matters here, so this goes through the
+    // shared client rather than the group module: importing the group client
+    // would pull it into the app shell, which every route pays for.
+    void apiFetch(apiUrl("/api/multi-user/groups"))
       .then((response) => (response.ok ? response.json() : null))
       .then((body: { groups?: unknown } | null) => {
         cachedLeadsGroup = Array.isArray(body?.groups) && body.groups.length > 0;
