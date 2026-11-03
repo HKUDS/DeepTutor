@@ -184,15 +184,28 @@ def adapt_chat_kwargs_to_responses(extra_kwargs: Mapping[str, Any]) -> dict[str,
     ``TypeError`` from ``responses.create`` before any HTTP request leaves the
     client. See DeepTutor#437.
 
+    Output formats use ``text.format`` instead of ``response_format``;
+    JSON Schema options live directly in that format, without the chat
+    endpoint's ``json_schema`` wrapper. Preserve other ``text`` options.
+
     Drops keys with ``None`` values to match the existing merge filter, and
-    only applies the alias when the caller did not already set the Responses
-    name explicitly.
+    preserves explicitly supplied Responses format and token-limit values.
     """
     result = {
         key: value
         for key, value in extra_kwargs.items()
         if value is not None and key not in _CHAT_TOKEN_LIMIT_ALIASES
     }
+    response_format = result.pop("response_format", None)
+    if response_format is not None:
+        text = dict(result.get("text") or {})
+        if "format" not in text:
+            if response_format.get("type") == "json_schema":
+                text["format"] = {"type": "json_schema", **response_format["json_schema"]}
+            else:
+                text["format"] = response_format
+        result["text"] = text
+
     if "max_output_tokens" in result:
         return result
 
