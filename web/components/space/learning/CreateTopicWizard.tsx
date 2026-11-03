@@ -12,6 +12,9 @@ import {
   X,
 } from "lucide-react";
 
+import ModelSelector from "@/components/chat/home/ModelSelector";
+import type { LLMSelection } from "@/features/chat/model/protocol";
+import { useLLMOptions } from "@/hooks/useLLMOptions";
 import { useModalDialog } from "@/hooks/useModalDialog";
 import {
   hydrateTopicSource,
@@ -48,7 +51,10 @@ export function CreateTopicWizard({
   returnFocusRef,
 }: {
   onClose: () => void;
-  onCreated: (topic: MasteryTopic) => void;
+  onCreated: (
+    topic: MasteryTopic,
+    selection: LLMSelection | null,
+  ) => void;
   returnFocusRef: RefObject<HTMLElement | null>;
 }) {
   const { t } = useTranslation();
@@ -65,6 +71,14 @@ export function CreateTopicWizard({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [llm, setLlm] = useState<LLMSelection | null>(null);
+  const {
+    options,
+    activeDefault,
+    loading: llmLoading,
+    error: llmError,
+    refresh,
+  } = useLLMOptions();
   const dialogRef = useModalDialog(onClose, busy, returnFocusRef);
 
   const toggleSource = (key: string) => {
@@ -94,7 +108,7 @@ export function CreateTopicWizard({
         // No outline yet: the first session designs it with the tutor.
         modules: [],
       };
-      onCreated(await createMasteryTopic(payload));
+      onCreated(await createMasteryTopic(payload), llm);
     } catch (reason) {
       setError(
         reason instanceof Error
@@ -199,6 +213,20 @@ export function CreateTopicWizard({
               onExpand={loadChildren}
             />
           )}
+          <fieldset disabled={busy} className="mt-5 border-0 p-0">
+            <ModelSelector
+              options={options}
+              activeDefault={activeDefault}
+              value={llm}
+              loading={llmLoading}
+              error={llmError}
+              onChange={setLlm}
+              onRefresh={() => void refresh({ force: true })}
+              allowSystemDefault
+              pinned
+              placement="top"
+            />
+          </fieldset>
           {error && (
             <div className="mt-5 flex items-start gap-2 rounded-xl border border-red-500/20 bg-red-500/[0.06] p-3 text-xs leading-5 text-red-700 dark:text-red-300">
               <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />

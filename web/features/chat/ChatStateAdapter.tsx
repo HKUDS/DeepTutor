@@ -264,6 +264,7 @@ export interface ChatState {
 }
 
 export interface SessionConfiguration {
+  llmSelection?: LLMSelection | null;
   capability?: string | null;
   workspaceMode?: WorkspaceMode | null;
   knowledgeBases?: string[];
@@ -687,6 +688,10 @@ function applySessionConfiguration(
   if (!configuration) return session;
   return {
     ...session,
+    llmSelection:
+      configuration.llmSelection !== undefined
+        ? configuration.llmSelection
+        : session.llmSelection,
     activeCapability:
       configuration.capability !== undefined
         ? configuration.capability
