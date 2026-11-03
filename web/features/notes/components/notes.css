@@ -662,6 +662,13 @@
   border-radius: 4px;
   padding: 0 3px;
 }
+/* The inline date reads as a chip on its own, so the field inside drops the
+   inherited chip padding and keeps only its icon + label. */
+.dt-note-date .dt-note-date-field {
+  padding: 0 2px;
+  background: transparent;
+  color: inherit;
+}
 .dt-note-data-view {
   font-size: 13px;
 }

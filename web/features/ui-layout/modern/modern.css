@@ -111,12 +111,17 @@
    sidebar's own colour, the second peeking out from behind it. */
 .dt-account-tabs.is-tucked [role="tab"] { min-width: 0; padding: 0 6px; }
 .dt-account-tabs.is-tucked > :first-child { position: relative; z-index: 2; }
-.dt-account-tabs.is-tucked > :first-child [role="tab"] > svg { filter: drop-shadow(1.5px 0 0 var(--secondary)) drop-shadow(1.5px 1px 0 var(--secondary)); }
-.dt-account-tabs.is-tucked > :last-child [role="tab"] { margin-left: -23px; padding-left: 0; opacity: .5; }
-.dt-account-tabs.is-tucked > :last-child [role="tab"] > svg { transform: translateX(10px) scale(.86); }
+/* The tucked pair overlaps the two account tabs. Every offset here is on the
+   inline start edge, so under RTL the second tab tucks under the first toward
+   the content instead of being pushed past the sidebar edge. */
+.dt-account-tabs.is-tucked > :first-child [role="tab"] > svg { filter: drop-shadow(-1.5px 0 0 var(--secondary)) drop-shadow(-1.5px 1px 0 var(--secondary)); }
+.dt-account-tabs.is-tucked > :last-child [role="tab"] { margin-inline-start: -23px; padding-inline-start: 0; opacity: .5; }
+.dt-account-tabs.is-tucked > :last-child [role="tab"] > svg { transform: translateX(-10px) scale(.86); }
 .dt-account-tabs.is-tucked:hover [role="tab"] { opacity: 1; }
-/* The account's half sits at the far end of the bar. */
-.dt-category-bar:not(.is-collapsed) .dt-category-divider { margin-left: auto; }
+/* The account's half sits at the far end of the bar. Logical margin: in RTL
+   the divider must push the account tabs toward the inline end (left), not the
+   physical left, or the last tab overflows the sidebar edge. */
+.dt-category-bar:not(.is-collapsed) .dt-category-divider { margin-inline-start: auto; }
 @media (prefers-reduced-motion: reduce) { .dt-account-tabs [role="tab"], .dt-account-tabs [role="tab"] > svg { transition: none; } }
 .dt-category-bar [role="tab"]:not(.is-active):hover, .dt-nav-icon:hover { background: var(--accent); color: var(--foreground); }
 .dt-nav-icon { display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: var(--dt-nav-radius); color: var(--muted-foreground); transition: background-color 140ms, color 140ms; }
@@ -143,9 +148,9 @@
 .dt-partner-navigation .dt-navigation-heading { flex-shrink: 0; }
 .dt-navigation-heading h2 { display: flex; align-items: center; min-width: 0; gap: 7px; font: inherit; }
 .dt-navigation-count { font-size: 11px; font-weight: 400; font-variant-numeric: tabular-nums; opacity: .6; }
-.dt-navigation-actions { display: flex; align-items: center; gap: 2px; margin-right: -6px; }
+.dt-navigation-actions { display: flex; align-items: center; gap: 2px; margin-inline-end: -6px; }
 .dt-navigation-actions .dt-nav-icon { width: 24px; height: 24px; border-radius: 6px; }
-.dt-navigation-view-all { display: inline-flex; align-items: center; gap: 1px; height: 24px; padding: 0 4px 0 6px; border-radius: 6px; font-size: 11.5px; font-weight: 400; white-space: nowrap; transition: background-color 140ms, color 140ms; }
+.dt-navigation-view-all { display: inline-flex; align-items: center; gap: 1px; height: 24px; padding: 0; padding-inline: 6px 4px; border-radius: 6px; font-size: 11.5px; font-weight: 400; white-space: nowrap; transition: background-color 140ms, color 140ms; }
 .dt-navigation-view-all:hover { background: var(--accent); color: var(--foreground); }
 /* Roster: one compact strip that slides sideways; PartnerRoster packs what
    continues past an edge. The selected partner is marked on its avatar. */

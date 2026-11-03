@@ -73,7 +73,13 @@ export default function TooltipLayer({
       {shortcut ? (
         <span className="flex items-center gap-2">
           <span>{label}</span>
-          <kbd className="inline-flex items-center gap-0.5 font-sans text-[11px] font-normal tracking-wide opacity-60">
+          {/* Shortcut keys are Latin ("Ctrl", "Alt", "5") and their order
+              matters, so the group is pinned left-to-right: under an RTL
+              document the row would else run the keys backwards. */}
+          <kbd
+            dir="ltr"
+            className="inline-flex items-center gap-0.5 font-sans text-[11px] font-normal tracking-wide opacity-60"
+          >
             {shortcutKeys(shortcut).map((key) => (
               <span key={key}>{key}</span>
             ))}

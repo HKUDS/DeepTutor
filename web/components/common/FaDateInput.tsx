@@ -2,6 +2,7 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { CalendarDays } from "lucide-react";
 
 import {
   JALALI_MONTHS,
@@ -164,14 +165,19 @@ export default function FaDateInput({
         aria-haspopup="dialog"
         aria-expanded={open}
         disabled={disabled}
-        className={className}
+        className={`inline-flex items-center gap-1.5 text-start ${className ?? ""}`}
         onClick={toggle}
       >
-        {value
-          ? withTime
-            ? `${formatJalali(dateHalf(value))} ${persianDigits(timeHalf(value))}`
-            : formatJalali(dateHalf(value))
-          : t("Pick a date")}
+        {/* The calendar mark is the affordance learners look for: clicking it
+            (or the label) opens the Jalali month grid. */}
+        <CalendarDays aria-hidden className="shrink-0 opacity-70" size={14} />
+        <span>
+          {value
+            ? withTime
+              ? `${formatJalali(dateHalf(value))} ${persianDigits(timeHalf(value))}`
+              : formatJalali(dateHalf(value))
+            : t("Pick a date")}
+        </span>
       </button>
       {open && pos && (
         <div
