@@ -11,12 +11,12 @@ import {
 import { useTranslation } from "react-i18next";
 
 import ProviderIcon from "@/components/common/ProviderIcon";
+import type { AppLanguage } from "@/i18n/languages";
 import type {
   CatalogModel,
   CatalogProfile,
   ServiceName,
 } from "@/features/settings/store/SettingsStore";
-import type { AppLanguage } from "@/i18n/init";
 
 /** Provider disclosure rows contain connection fields and their model cards.
  * Opening an editor and selecting a runtime model are separate actions;
@@ -403,7 +403,7 @@ export function ModelCard({
   const { t } = useTranslation();
   const name =
     (model.name || "").trim() ||
-    (language === "zh" ? `模型 ${index + 1}` : `Model ${index + 1}`);
+    `${t("Model")} ${index + 1}`;
   const detail =
     service === "llm"
       ? model.context_window

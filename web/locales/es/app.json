@@ -5489,7 +5489,7 @@
   "Phase progress is indeterminate.": "El progreso de la fase es indeterminado.",
   "Phase completion does not mean the whole index is ready.": "Que la fase haya finalizado no significa que todo el índice esté listo.",
   "Verified index version": "Versión verificada del índice",
-  "Retry reuses validated parser outputs. Interrupted embedding stages restart.": "Al volver a intentarlo, se reutilizan las salidas validadas del analizador. Las etapas de incrustación interrumpidas se reinician.",
+  "Retry reuses validated parser outputs. Interrupted embedding stages restart.": "Al volver a intentarlo, se reutilizan las salidas validadas del analizador. Las etapas de generación de embeddings interrumpidas se reinician.",
   "Parse cache reused": "Caché de análisis reutilizada",
   "Cancellation pending at a safe boundary": "Cancelación pendiente en un punto seguro",
   "Cancel indexing": "Cancelar la indexación",
