@@ -169,8 +169,10 @@ def test_update_command_keeps_core_only_installs_light(monkeypatch: pytest.Monke
 
     command = build_update_command("1.7.2")
 
-    assert command[-1] == "deeptutor==1.7.2"
-    assert all("deeptutor-" not in part for part in command)
+    # Compare package arguments only: the interpreter path itself can contain
+    # "deeptutor-" when the venv is named "deeptutor-dev-venv".
+    specs = command[command.index("--upgrade") + 1 :]
+    assert specs == ["deeptutor==1.7.2"]
 
 
 def test_update_command_rejects_non_stable_or_injected_versions() -> None:
