@@ -4,6 +4,8 @@ import {
   startOfDay as calendarDayStart,
 } from 'date-fns'
 
+import { JALALI_MONTHS, jalaliMonthLength, jalaliToIso, persianDigits, toJalali } from '@/lib/jalali'
+
 /**
  * Calendar date arithmetic on native `Date` in the browser's own zone.
  *
@@ -91,6 +93,9 @@ export function browserTimeZone(): string {
 
 /** First day of the week for a locale: Sunday in the US, Monday by default. */
 export function weekStartsOn(locale: string): number {
+  // Persian readers expect Saturday first, which Intl reports as day 6
+  // (Monday 1 … Sunday 7) → Date 6 % 7 = 6.
+  if (isPersian(locale)) return 6
   try {
     const info = new Intl.Locale(locale) as Intl.Locale & {
       getWeekInfo?: () => { firstDay: number }
@@ -105,12 +110,78 @@ export function weekStartsOn(locale: string): number {
   return /^en(-US)?$/i.test(locale) ? 0 : 1
 }
 
-/** The weeks a month spans, each seven days long, starting on `weekStart`. */
-export function monthWeeks(cursor: Date, weekStart: number): Date[][] {
+/** Whether the interface language is Persian, so dates render Jalali. */
+export function isPersian(locale: string): boolean {
+  return (locale || '').split('-')[0] === 'fa'
+}
+
+/**
+ * Whether a month cursor moves by Jalali (not Gregorian) months for this
+ * locale. The calendar grid, its title and its navigation must all agree.
+ */
+export function monthsAreJalali(locale: string): boolean {
+  return isPersian(locale)
+}
+
+/**
+ * The same wall-clock time, `months` Jalali months later. Jalali months are
+ * 29–31 days and their lengths differ from Gregorian ones, so the target is
+ * reached through the Jalali calendar and then mapped back onto the Gregorian
+ * day whose local midnight represents it.
+ */
+export function addJalaliMonths(date: Date, months: number): Date {
+  const j = toJalali(date.getFullYear(), date.getMonth() + 1, date.getDate())
+  const total = (j.jy * 12 + (j.jm - 1)) + months
+  const year = Math.floor(total / 12)
+  const month = (total % 12 + 12) % 12 + 1
+  const day = Math.min(j.jd, jalaliMonthLength(year, month))
+  const iso = jalaliToIso(year, month, day)
+  const [gy, gm, gd] = iso.split('-').map(Number)
+  return new Date(gy, gm - 1, gd, date.getHours(), date.getMinutes())
+}
+
+/** The Jalali month the cursor falls in, as `[firstDay, lastDay]` ISO keys. */
+export function jalaliMonthBounds(cursor: Date): [DateKey, DateKey] {
+  const j = toJalali(cursor.getFullYear(), cursor.getMonth() + 1, cursor.getDate())
+  const len = jalaliMonthLength(j.jy, j.jm)
+  return [jalaliToIso(j.jy, j.jm, 1), jalaliToIso(j.jy, j.jm, len)]
+}
+
+/** First day of the Jalali month the cursor falls in, at local midnight. */
+export function startOfJalaliMonth(cursor: Date): Date {
+  const [first] = jalaliMonthBounds(cursor)
+  return fromDateKey(first)
+}
+
+/** The Jalali month title, e.g. "آبان ۱۴۰۵" — month first, then the year. */
+export function formatJalaliMonthTitle(cursor: Date): string {
+  const j = toJalali(cursor.getFullYear(), cursor.getMonth() + 1, cursor.getDate())
+  return `${JALALI_MONTHS[j.jm - 1]} ${persianDigits(j.jy)}`
+}
+
+/**
+ * The weeks a month spans, each seven days long, starting on `weekStart`.
+ * In Persian the month is a Jalali month, so the grid covers 1..29/30/31 of
+ * that month with the neighbouring days borrowed from the Jalali neighbours.
+ */
+export function monthWeeks(cursor: Date, weekStart: number, locale?: string): Date[][] {
+  if (locale && isPersian(locale)) return jalaliMonthWeeks(cursor, weekStart)
   const first = startOfWeek(startOfMonth(cursor), weekStart)
   const nextMonth = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1)
   const weeks: Date[][] = []
   for (let start = first; start < nextMonth; start = addDays(start, 7)) {
+    weeks.push(Array.from({ length: 7 }, (_, index) => addDays(start, index)))
+  }
+  return weeks
+}
+
+/** Weeks of a Jalali month: leading/trailing days come from its neighbours. */
+function jalaliMonthWeeks(cursor: Date, weekStart: number): Date[][] {
+  const [firstIso, lastIso] = jalaliMonthBounds(cursor)
+  const gridStart = startOfWeek(fromDateKey(firstIso), weekStart)
+  const gridEnd = addDays(startOfWeek(fromDateKey(lastIso), weekStart), 6)
+  const weeks: Date[][] = []
+  for (let start = gridStart; start <= gridEnd; start = addDays(start, 7)) {
     weeks.push(Array.from({ length: 7 }, (_, index) => addDays(start, index)))
   }
   return weeks

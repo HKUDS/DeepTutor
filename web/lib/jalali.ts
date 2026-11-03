@@ -230,9 +230,20 @@ export function jalaliWeekday(jy: number, jm: number, jd: number): number {
   return (utcDate(g.gy, g.gm, g.gd).getUTCDay() + 1) % 7;
 }
 
-/** The compact human label used by the fa date field, e.g. "14 \u0627\u0633\u0641\u0646\u062f 1404". */
+/** Latin digits in a number/string turned into Persian ones (۰۱۲۳۴۵۶۷۸۹). */
+export function persianDigits(value: number | string): string {
+  const FA = "\u06f0\u06f1\u06f2\u06f3\u06f4\u06f5\u06f6\u06f7\u06f8\u06f9";
+  return String(value).replace(/[0-9]/g, (d) => FA[Number(d)]);
+}
+
+/**
+ * The compact human label used by the fa date field, e.g. "۱۴ آبان ۱۴۰۵".
+ * Display only — the field's value stays ISO so the onChange contract is
+ * byte-for-byte the same as a native `<input type="date">` — so the digits
+ * are Persian, the way a Persian reader writes a date.
+ */
 export function formatJalali(iso: string): string {
   const j = isoToJalali(iso);
   if (!j) return "";
-  return `${j.jd} ${JALALI_MONTHS[j.jm - 1]} ${j.jy}`;
+  return `${persianDigits(j.jd)} ${JALALI_MONTHS[j.jm - 1]} ${persianDigits(j.jy)}`;
 }

@@ -81,7 +81,9 @@ test("weekday anchors: 1 Farvardin 1404 and today's grid alignment", () => {
 test("ISO helpers format and parse", () => {
   assert.deepEqual(isoToJalali("2026-03-05"), { jy: 1404, jm: 12, jd: 14 });
   assert.equal(jalaliToIso(1404, 12, 14), "2026-03-05");
-  assert.equal(formatJalali("2026-03-05"), "۱۴ اسفند ۱۴۰۴".replace("۱۴", "14").replace("۱۴۰۴", "1404"));
+  // Display label: Persian digits, month before year.
+  assert.equal(formatJalali("2026-03-05"), "\u06f1\u06f4 \u0627\u0633\u0641\u0646\u062f \u06f1\u06f4\u06f0\u06f4");
+  assert.equal(formatJalali("2026-10-23"), "\u06f1 \u0622\u0628\u0627\u0646 \u06f1\u06f4\u06f0\u06f5");
   assert.equal(isoToJalali(""), null);
   assert.equal(isoToJalali("not-a-date"), null);
 });

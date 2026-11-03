@@ -5,6 +5,7 @@ import { useTaskBlocks } from '@/features/calendar/store/calendar-store'
 import { activeWorkspaceId } from '@/lib/workspace-scope'
 import Link from 'next/link'
 import { addDays, dateKey, startOfWeek } from '@/features/calendar/model/dates'
+import { formatJalali } from '@/lib/jalali'
 import { useRef, useState } from 'react'
 import {
   Archive,
@@ -44,7 +45,8 @@ const columns = [
 ] as const
 
 export default function KanbanBoard() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const persian = (i18n.language || '').split('-')[0] === 'fa'
   const { board, error: loadError } = useTaskBoard()
   const blocks = useTaskBlocks(activeWorkspaceId())
   const [title, setTitle] = useState('')
@@ -335,7 +337,9 @@ export default function KanbanBoard() {
                               <span
                                 className={`mt-1 inline-block text-[11px] ${card.status !== 'done' && card.due_date < today ? 'text-destructive' : card.due_date === today ? 'text-primary' : 'text-muted-foreground'}`}
                               >
-                                {t('Due {{date}}', { date: card.due_date })}
+                                {t('Due {{date}}', {
+                                  date: persian ? formatJalali(card.due_date) : card.due_date,
+                                })}
                               </span>
                             )}
                             {blocks[card.id] > 0 && (

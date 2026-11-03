@@ -63,6 +63,12 @@
 .dt-cal-step {
   display: flex;
 }
+/* A right-to-left calendar reads forward to the left, so the prev/next chevrons
+   must point the other way to keep "next" on the side the reader expects. */
+[dir='rtl'] .dt-cal-step svg,
+[dir='rtl'] .dt-cal-mini-head button svg {
+  transform: scaleX(-1);
+}
 .dt-cal-views {
   display: flex;
   gap: 2px;
@@ -1347,6 +1353,32 @@ button.dt-cal-rail-link {
 }
 .dt-cal-when input {
   color: var(--foreground);
+}
+/* The date/time trigger replaces the native input; keep it on the same
+   baseline as the arrow between the two fields instead of letting the row
+   push it under the neighbouring icon. */
+.dt-cal-when .dt-cal-when-input {
+  display: inline-flex;
+  align-items: center;
+  height: 30px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--foreground);
+  font-size: 13px;
+  font-style: normal;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 120ms;
+}
+.dt-cal-when .dt-cal-when-input:hover {
+  background: var(--secondary);
+}
+[dir='rtl'] .dt-cal-when {
+  margin-left: 0;
+  margin-right: -8px;
 }
 .dt-cal-when-options {
   display: flex;

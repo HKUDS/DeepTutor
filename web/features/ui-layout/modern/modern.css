@@ -431,8 +431,8 @@ button.dt-record-toggle:focus-visible { outline: 2px solid var(--ring); outline-
 .dt-tray-grip:focus-visible::before { box-shadow: 0 0 0 2px var(--ring); }
 .dt-tray-popover { -webkit-user-select: text; user-select: text; cursor: auto; }
 .dt-tray-menu { position: relative; display: flex; min-width: 0; }
-.dt-tray-menu.is-end { margin-left: auto; }
-.dt-tray-menu.is-end ~ .dt-tray-menu.is-end { margin-left: 0; }
+.dt-tray-menu.is-end { margin-inline-start: auto; }
+.dt-tray-menu.is-end ~ .dt-tray-menu.is-end { margin-inline-start: 0; }
 .dt-tray-button {
   display: inline-flex; align-items: center; gap: 6px; min-width: 0; height: 26px; padding: 0 8px;
   border-radius: 8px; font-size: 12.5px; white-space: nowrap; color: rgb(var(--dt-ink, 55 53 47) / 0.72);
@@ -484,12 +484,16 @@ button.dt-record-toggle:focus-visible { outline: 2px solid var(--ring); outline-
 }
 .dt-tray-popover.is-down { top: calc(100% + 8px); }
 .dt-tray-popover.is-up { bottom: calc(100% + 8px); }
-.dt-tray-popover.is-start { left: 0; }
-.dt-tray-popover.is-end { right: 0; }
+.dt-tray-popover.is-start { inset-inline-start: 0; }
+.dt-tray-popover.is-end { inset-inline-end: 0; }
 .dt-tray-popover.is-down.is-start { transform-origin: 24px 0; }
 .dt-tray-popover.is-down.is-end { transform-origin: calc(100% - 24px) 0; }
 .dt-tray-popover.is-up.is-start { transform-origin: 24px 100%; }
 .dt-tray-popover.is-up.is-end { transform-origin: calc(100% - 24px) 100%; }
+/* An `is-start` tray popover hangs from the inline start edge; under RTL that
+   edge is the right one, so its pop-in must grow from the right too. */
+[dir="rtl"] .dt-tray-popover.is-up.is-start { transform-origin: calc(100% - 24px) 100%; }
+[dir="rtl"] .dt-tray-popover.is-down.is-start { transform-origin: calc(100% - 24px) 0; }
 .dt-tray-search { display: flex; align-items: center; gap: 7px; height: 32px; margin-bottom: 6px; padding: 0 10px; border-radius: 9px; background: rgb(var(--dt-ink, 55 53 47) / 0.045); color: var(--muted-foreground); }
 .dt-tray-search:focus-within { background: rgb(var(--dt-ink, 55 53 47) / 0.06); }
 .dt-tray-search input { flex: 1; min-width: 0; background: transparent; outline: none; font-size: 12.5px; color: var(--foreground); }
@@ -501,7 +505,7 @@ button.dt-record-toggle:focus-visible { outline: 2px solid var(--ring); outline-
 .dt-tray-section { padding: 6px 8px 4px; font-size: 11px; font-weight: 500; color: var(--muted-foreground); }
 .dt-tray-row {
   display: flex; align-items: center; gap: 10px; width: 100%; min-height: 42px; padding: 5px 8px;
-  border-radius: 9px; text-align: left; outline: none; transition: background-color 100ms;
+  border-radius: 9px; text-align: start; outline: none; transition: background-color 100ms;
 }
 .dt-tray-row:hover, .dt-tray-row:focus-visible { background: var(--accent); }
 .dt-tray-row:disabled { opacity: 0.5; cursor: default; }

@@ -1558,6 +1558,7 @@
   "Chat response timeout": "Тайм-аут відповіді чату",
   "How long chat waits for a reply before showing a timeout error. Increase it for slow tools like image or video generation.": "Скільки чат чекає на відповідь, перш ніж показати помилку тайм-ауту. Збільште це значення для повільних інструментів, як-от генерація зображень чи відео.",
   "Timeout (seconds)": "Тайм-аут (секунди)",
+  "Time": "Час",
   "LLM timeout (seconds)": "Тайм-аут LLM (секунди)",
   "Maximum time per LightRAG LLM call": "Максимальний час на один виклик LLM у LightRAG",
   "Between {{min}} and {{max}} seconds. Takes effect immediately — no restart.": "Від {{min}} до {{max}} секунд. Застосовується одразу — без перезапуску.",

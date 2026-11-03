@@ -11,13 +11,19 @@ import {
   jalaliMonthLength,
   jalaliToIso,
   jalaliWeekday,
+  persianDigits,
 } from "@/lib/jalali";
 
 type Props = {
-  /** ISO `yyyy-mm-dd` (Gregorian), possibly empty. */
+  /**
+   * ISO `yyyy-mm-dd` (Gregorian), or `yyyy-mm-ddTHH:mm` when `withTime`.
+   * Possibly empty.
+   */
   value: string;
-  /** Receives an ISO `yyyy-mm-dd`, or "" when the learner clears the field. */
+  /** Receives the same shape as `value`, or "" when the field is cleared. */
   onChange: (value: string) => void;
+  /** Show an hour/minute row and emit `yyyy-mm-ddTHH:mm` values. */
+  withTime?: boolean;
   ariaLabel?: string;
   min?: string;
   disabled?: boolean;
@@ -30,6 +36,19 @@ function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+/** The date half of a field value, tolerant of an empty or timed value. */
+function dateHalf(value: string): string {
+  return (value || "").slice(0, 10);
+}
+
+/** The time half as `HH:mm`, defaulting to the current minute. */
+function timeHalf(value: string): string {
+  const t = (value || "").slice(11, 16);
+  if (/^\d{2}:\d{2}$/.test(t)) return t;
+  const now = new Date();
+  return `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+}
+
 /**
  * The Persian date field. Persian learners read and write dates in the Solar
  * Hijri calendar, and the native `<input type="date">` popup is always
@@ -40,6 +59,7 @@ function todayIso(): string {
 export default function FaDateInput({
   value,
   onChange,
+  withTime,
   ariaLabel,
   min,
   disabled,
@@ -47,12 +67,15 @@ export default function FaDateInput({
 }: Props) {
   const { t, i18n } = useTranslation();
   const enabled = (i18n.language || "").split("-")[0] === "fa";
+  // Time values are emitted through the same ISO shape the native input uses.
+  const emitDate = (iso: string) =>
+    onChange(withTime && iso ? `${iso}T${timeHalf(value)}` : iso);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const popRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
   const [view, setView] = useState(() => {
-    const j = isoToJalali(value) ?? isoToJalali(todayIso());
+    const j = isoToJalali(dateHalf(value)) ?? isoToJalali(todayIso());
     return j ? { jy: j.jy, jm: j.jm } : { jy: 1404, jm: 1 };
   });
 
@@ -61,7 +84,7 @@ export default function FaDateInput({
       setOpen(false);
       return;
     }
-    const j = isoToJalali(value) ?? isoToJalali(todayIso());
+    const j = isoToJalali(dateHalf(value)) ?? isoToJalali(todayIso());
     if (j) setView({ jy: j.jy, jm: j.jm });
     setOpen(true);
   };
@@ -112,7 +135,7 @@ export default function FaDateInput({
   if (!enabled) {
     return (
       <input
-        type="date"
+        type={withTime ? "datetime-local" : "date"}
         aria-label={ariaLabel}
         value={value}
         min={min}
@@ -144,7 +167,11 @@ export default function FaDateInput({
         className={className}
         onClick={toggle}
       >
-        {value ? formatJalali(value) : t("Pick a date")}
+        {value
+          ? withTime
+            ? `${formatJalali(dateHalf(value))} ${persianDigits(timeHalf(value))}`
+            : formatJalali(dateHalf(value))
+          : t("Pick a date")}
       </button>
       {open && pos && (
         <div
@@ -164,7 +191,7 @@ export default function FaDateInput({
               &rsaquo;
             </button>
             <span className="font-medium">
-              {JALALI_MONTHS[view.jm - 1]} {view.jy}
+              {JALALI_MONTHS[view.jm - 1]} {persianDigits(view.jy)}
             </span>
             <button
               type="button"
@@ -190,30 +217,47 @@ export default function FaDateInput({
                   type="button"
                   disabled={isDisabled(cell.iso)}
                   onClick={() => {
-                    onChange(cell.iso);
+                    emitDate(cell.iso);
                     setOpen(false);
                   }}
                   className={
                     "mx-auto flex h-7 w-7 items-center justify-center rounded-md " +
-                    (cell.iso === value
+                    (cell.iso === dateHalf(value)
                       ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
                       : "hover:bg-accent") +
                     (isDisabled(cell.iso) ? " opacity-40" : "")
                   }
                 >
-                  {cell.jd}
+                  {persianDigits(cell.jd)}
                 </button>
               ) : (
                 <span key={`pad-${idx}`} />
               ),
             )}
           </div>
+          {withTime && (
+            <div className="mt-1 flex items-center justify-center gap-1 border-t border-[var(--border)] pt-2">
+              <label className="flex items-center gap-1 text-[12px] text-muted-foreground">
+                {t("Time")}
+                <input
+                  type="time"
+                  aria-label={t("Time")}
+                  value={timeHalf(value)}
+                  onChange={(e) => {
+                    const iso = dateHalf(value) || todayIso();
+                    onChange(`${iso}T${e.target.value || "00:00"}`);
+                  }}
+                  className="rounded-md border border-[var(--border)] bg-[var(--popover)] px-1.5 py-0.5 text-[13px] text-[var(--popover-foreground)]"
+                />
+              </label>
+            </div>
+          )}
           <div className="mt-1 flex items-center justify-between border-t border-[var(--border)] pt-1">
             <button
               type="button"
               className="rounded-md px-2 py-1 text-[12px] text-muted-foreground hover:bg-accent"
               onClick={() => {
-                onChange(todayIso());
+                emitDate(todayIso());
                 setOpen(false);
               }}
             >

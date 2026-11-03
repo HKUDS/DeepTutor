@@ -1579,6 +1579,7 @@
   "Chat response timeout": "Sohbet cevabı zaman aşımı",
   "How long chat waits for a reply before showing a timeout error. Increase it for slow tools like image or video generation.": "Sohbetin, zaman aşımı hatası göstermeden önce cevap için ne kadar bekleyeceği. Görsel veya video oluşturma gibi yavaş araçlar için artırın.",
   "Timeout (seconds)": "Zaman aşımı (saniye)",
+  "Time": "Saat",
   "LLM timeout (seconds)": "LLM zaman aşımı (saniye)",
   "Maximum time per LightRAG LLM call": "LightRAG LLM çağrısı başına en uzun süre",
   "Between {{min}} and {{max}} seconds. Takes effect immediately — no restart.": "{{min}} ile {{max}} saniye arasında. Hemen geçerli olur, yeniden başlatma gerekmez.",

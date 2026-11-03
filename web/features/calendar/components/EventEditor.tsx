@@ -87,14 +87,14 @@ export function EventEditor({
           <Clock aria-hidden size={15} />
           <div className="dt-cal-field-body">
             <div className="dt-cal-when">
-              <input
-                required
-                aria-label={t('Starts')}
-                type={draft.allDay ? 'date' : 'datetime-local'}
+              <FaDateInput
+                withTime={!draft.allDay}
+                className="dt-cal-when-input"
+                ariaLabel={t('Starts')}
                 value={dateValue(draft.start, draft.allDay)}
-                onChange={e => {
-                  if (!e.target.value) return
-                  const start = draft.allDay ? fromDateKey(e.target.value) : new Date(e.target.value)
+                onChange={next => {
+                  if (!next) return
+                  const start = draft.allDay ? fromDateKey(next) : new Date(next)
                   change({
                     start,
                     end:
@@ -105,17 +105,15 @@ export function EventEditor({
                 }}
               />
               <span aria-hidden>→</span>
-              <input
-                required
-                aria-label={t('Ends')}
-                type={draft.allDay ? 'date' : 'datetime-local'}
+              <FaDateInput
+                withTime={!draft.allDay}
+                className="dt-cal-when-input"
+                ariaLabel={t('Ends')}
                 value={dateValue(lastDay(draft), draft.allDay)}
-                onChange={e => {
-                  if (e.target.value)
+                onChange={next => {
+                  if (next)
                     change({
-                      end: draft.allDay
-                        ? addDays(fromDateKey(e.target.value), 1)
-                        : new Date(e.target.value),
+                      end: draft.allDay ? addDays(fromDateKey(next), 1) : new Date(next),
                     })
                 }}
               />

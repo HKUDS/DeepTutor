@@ -1578,6 +1578,7 @@
   "Chat response timeout": "チャット応答のタイムアウト",
   "How long chat waits for a reply before showing a timeout error. Increase it for slow tools like image or video generation.": "タイムアウトエラーを表示するまでチャットが返信を待つ時間です。画像や動画の生成など、時間のかかるツールを使う場合は長めに設定してください。",
   "Timeout (seconds)": "タイムアウト（秒）",
+  "Time": "時刻",
   "LLM timeout (seconds)": "LLM タイムアウト（秒）",
   "Maximum time per LightRAG LLM call": "LightRAG の LLM 呼び出し 1 回あたりの最大時間",
   "Between {{min}} and {{max}} seconds. Takes effect immediately — no restart.": "{{min}} 秒から {{max}} 秒の間で指定します。再起動なしですぐに反映されます。",
