@@ -99,4 +99,23 @@ describe("MasteryQuestionCard", () => {
       ],
     });
   });
+
+  it("gives every Persian prompt its own base direction", () => {
+    // A Persian stem mixed with a Latin formula (or a one-word option) must
+    // carry dir="auto" itself; the container cannot decide it for them, and
+    // the multilingual build relies on this to keep the RTL page readable.
+    const prompt = "تفاوت precision و recall چیست؟";
+    render(
+      <MasteryQuestionCard
+        question={question({ prompt })}
+        grade={null}
+        answered={false}
+        submittedAnswer=""
+        onSubmit={() => true}
+      />,
+    );
+
+    const stem = screen.getByText(prompt);
+    expect(stem.closest('[dir="auto"]')).not.toBeNull();
+  });
 });
