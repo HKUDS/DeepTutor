@@ -164,7 +164,18 @@ export class TurnRuntimeClient {
     if (this.socket && this.socket.readyState <= SOCKET_OPEN) return;
     this.clearReconnect();
     this.setState(this.turnId ? "recovering" : "connecting");
-    const socket = this.options.socketFactory(this.options.url);
+    let socket: TurnSocket;
+    try {
+      socket = this.options.socketFactory(this.options.url);
+    } catch {
+      this.socket = null;
+      this.clearReplayProbe();
+      this.options.onDiagnostic?.(
+        "turn socket factory failed; scheduling reconnect",
+      );
+      this.scheduleReconnect();
+      return;
+    }
     this.socket = socket;
 
     socket.addEventListener("open", () => this.handleOpen(socket));
