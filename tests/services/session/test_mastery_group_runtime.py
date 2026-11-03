@@ -207,3 +207,160 @@ async def test_rejected_group_answer_emits_card_recovery_event(monkeypatch, grou
     assert metadata["tool_metadata"]["mastery_answer_rejected"]["question_id"] == "group"
     assert "turn" in metadata["call_id"]
     assert "mastery_grade" not in metadata["tool_metadata"]
+
+
+@pytest.fixture
+def replay_runtime(tmp_path, monkeypatch):
+    """Keep a real terminal attempt and an unrelated open question in SQLite."""
+    from deeptutor.learning.models import (
+        InteractionStatus,
+        LearningProgress,
+        MasteryInteraction,
+        PendingQuestion,
+    )
+    from deeptutor.learning.service import LearningService
+    from deeptutor.learning.storage import LearningStore
+
+    store = LearningStore(root=tmp_path)
+    store.save(LearningProgress(book_id="path"))
+    question = PendingQuestion(
+        question_id="old",
+        knowledge_point_id="kp",
+        prompt="Pick B",
+        question_type="choice",
+        expected_answer="B",
+        options=["A: first option", "B: second option", "C: third option", "D: fourth option"],
+    )
+    old = MasteryInteraction(
+        interaction_id="old",
+        path_id="path",
+        question=question,
+        status=InteractionStatus.GRADED,
+        session_id="study",
+        turn_id="original",
+        user_answer="D",
+        result={
+            "learner_answer": "D",
+            "correct_label": "B",
+            "is_correct": False,
+            "final": True,
+            "result": "incorrect",
+        },
+    )
+    new = MasteryInteraction(
+        interaction_id="new",
+        path_id="path",
+        question=question.model_copy(update={"question_id": "new"}),
+        status=InteractionStatus.AWAITING_INPUT,
+    )
+    store.mutate("path", lambda tx: (tx.put_interaction(old), tx.put_interaction(new)))
+    service = LearningService(store=store)
+    monkeypatch.setattr("deeptutor.learning.storage.LearningStore", lambda: store)
+
+    async def grade(self, **kwargs):
+        _, row, replayed = service.grade_interaction(
+            "path",
+            question_id=kwargs["question_id"],
+            answer=kwargs.get("answer", ""),
+            session_id="review",
+            turn_id="reply",
+        )
+        return SimpleNamespace(
+            success=True,
+            content="saved receipt",
+            metadata={
+                "mastery_grade": {
+                    "question_id": row.interaction_id,
+                    "replayed": replayed,
+                    "result": row.result,
+                }
+            },
+        )
+
+    monkeypatch.setattr("deeptutor.capabilities.mastery.tools.MasteryGradeTool.execute", grade)
+    published = []
+
+    async def publish(execution, event):
+        published.append(event)
+        return {}
+
+    adapter = LearningTurnAdapter()
+    adapter._publish_live_event = publish
+    return store, adapter, published
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mapped", [False, True])
+@pytest.mark.parametrize(
+    "text,stale",
+    [
+        ("B", True),
+        ("D", False),
+        (" d ", False),
+        ("fourth option", False),
+        ("Why is D wrong?", True),
+    ],
+)
+async def test_old_card_replay_checks_actual_submission_without_changing_history(
+    replay_runtime,
+    mapped,
+    text,
+    stale,
+):
+    store, adapter, published = replay_runtime
+    before = store.get_interaction("path", "old").model_dump()
+    active_before = store.get_active_interaction("path").model_dump()
+    revision = store.load("path").version
+    result = await adapter._grade_submitted_card_answer(
+        SimpleNamespace(session_id="review", turn_id="reply"),
+        path_id="path",
+        answer={
+            "question_id": "old",
+            "text": text,
+            **({"answers": {"old": text}} if mapped else {}),
+        },
+    )
+    event = published[0].metadata["tool_metadata"]
+    if stale:
+        assert result == {"question_id": "old", "reason": "stale_card"}
+        assert event["mastery_answer_rejected"]["reason"] == "stale_card"
+        assert "mastery_grade" not in event
+        assert "not graded" in published[0].content
+    else:
+        assert result["replayed"] is True
+        assert event["mastery_grade"]["result"]["learner_answer"] == "D"
+    assert store.get_interaction("path", "old").model_dump() == before
+    assert store.get_active_interaction("path").model_dump() == active_before
+    assert store.load("path").version == revision
+
+
+@pytest.mark.asyncio
+async def test_only_final_single_replays_need_comparison():
+    adapter = LearningTurnAdapter()
+    for receipt in [
+        {"replayed": False, "result": {"learner_answer": "D"}},
+        {"replayed": True, "result": {"learner_answer": "D", "final": False}},
+        {"replayed": True, "result": {"results": [], "question_type": "group"}},
+    ]:
+        assert not await adapter._is_mismatched_card_replay(
+            path_id="unused",
+            submission={"question_id": "q", "text": "B"},
+            receipt=receipt,
+        )
+
+
+def test_stale_rejection_seed_takes_priority_over_historical_grade():
+    capability = MasteryLoopCapability()
+    context = UnifiedContext(
+        metadata={
+            "mastery_mode": True,
+            "mastery_card_rejection": {"question_id": "old", "reason": "stale_card"},
+            "mastery_card_grade": {"result": {"is_correct": False, "learner_answer": "D"}},
+        }
+    )
+    seed = capability.pre_loop_seed(context)
+    assert "NOT graded" in seed
+    assert "another pending question" in seed
+    assert "do not call mastery_grade" in seed.lower()
+    assert 'they answered "D"' not in seed
+    assert capability._stale_card_seed(UnifiedContext()) == ""
