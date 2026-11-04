@@ -21,6 +21,7 @@ export default function TooltipLayer({
   description,
   shortcut,
   side,
+  dir,
   onMount,
 }: {
   anchorRef: RefObject<HTMLElement | null>;
@@ -29,6 +30,7 @@ export default function TooltipLayer({
   description?: string;
   shortcut?: Shortcut;
   side: TooltipSide;
+  dir?: "ltr" | "rtl" | "auto";
   onMount: () => void;
 }) {
   const tooltipRef = useRef<HTMLSpanElement>(null);
@@ -63,6 +65,7 @@ export default function TooltipLayer({
       id={id}
       role="tooltip"
       data-side={position?.side ?? side}
+      dir={dir}
       style={
         position
           ? { left: position.left, top: position.top }

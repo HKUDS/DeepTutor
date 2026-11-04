@@ -216,7 +216,7 @@ export default function StarterSuggestions({
       // One strip, one hover: the label, the suggestion and another-please
       // read as a single offer rather than three things side by side.
       <div className="dt-starter-advice-chip">
-        <Tooltip label={suggestion.prompt} delay={500} className="min-w-0">
+        <Tooltip label={suggestion.prompt} dir="auto" delay={500} className="min-w-0">
           <button
             type="button"
             disabled={disabled}
@@ -225,7 +225,7 @@ export default function StarterSuggestions({
           >
             <ExploreNextMark className="shrink-0" />
             <span className="dt-starter-advice-label">{t("navigation.ideasForYou")}</span>
-            <span className="dt-starter-advice-text">{suggestion.label}</span>
+            <span className="dt-starter-advice-text" dir="auto">{suggestion.label}</span>
           </button>
         </Tooltip>
         <Tooltip label={t("Suggest something else")}>
