@@ -253,9 +253,37 @@ def delete_group(group_id: str) -> bool:
     return True
 
 
+def drop_member_everywhere(user_id: str) -> list[str]:
+    """Remove an account from every roster; returns the group ids that changed.
+
+    Promotion to admin is the case this exists for. Membership is a snapshot
+    taken when the account joined, so a lead would otherwise keep authority over
+    an account that is now an administrator. Refusing the action at the point of
+    use (``_require_live_member``) stops the escalation; this stops the stale
+    entry from existing at all.
+    """
+    if not user_id:
+        return []
+    with _GROUPS_WRITE_LOCK:
+        records = _load_records()
+        touched: list[str] = []
+        for record in records:
+            if user_id not in record["member_user_ids"]:
+                continue
+            record["member_user_ids"] = [
+                member for member in record["member_user_ids"] if member != user_id
+            ]
+            record["updated_at"] = _utc_now()
+            touched.append(str(record["id"]))
+        if touched:
+            _write_records(records)
+        return touched
+
+
 __all__ = [
     "GROUPS_FILE",
     "add_member",
+    "drop_member_everywhere",
     "create_group",
     "delete_group",
     "get_group",
