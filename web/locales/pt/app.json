@@ -6618,5 +6618,10 @@
   "Reset password": "Redefinir senha",
   "Save access": "Salvar acesso",
   "You do not lead any group.": "Você não lidera nenhum grupo.",
-  "{{models}} models · {{kbs}} knowledge bases · {{skills}} skills": "{{models}} modelos · {{kbs}} bases de conhecimento · {{skills}} habilidades"
+  "{{models}} models · {{kbs}} knowledge bases · {{skills}} skills": "{{models}} modelos · {{kbs}} bases de conhecimento · {{skills}} habilidades",
+  "Teams": "Equipas",
+  "Team": "Equipa",
+  "Team members": "Membros da equipa",
+  "Removing someone detaches them from the team. The account is kept.": "Remover alguém desvincula-o da equipa. A conta é mantida.",
+  "You do not lead any team.": "Não lidera nenhuma equipa."
 }

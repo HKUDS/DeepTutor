@@ -6600,5 +6600,10 @@
   "Reset password": "Passwort zurücksetzen",
   "Save access": "Zugriff speichern",
   "You do not lead any group.": "Sie leiten keine Gruppe.",
-  "{{models}} models · {{kbs}} knowledge bases · {{skills}} skills": "{{models}} Modelle · {{kbs}} Wissensbasen · {{skills}} Skills"
+  "{{models}} models · {{kbs}} knowledge bases · {{skills}} skills": "{{models}} Modelle · {{kbs}} Wissensbasen · {{skills}} Skills",
+  "Teams": "Teams",
+  "Team": "Team",
+  "Team members": "Teammitglieder",
+  "Removing someone detaches them from the team. The account is kept.": "Entfernen löst die Verknüpfung zum Team, das Konto bleibt erhalten.",
+  "You do not lead any team.": "Sie leiten noch kein Team."
 }

@@ -6600,5 +6600,10 @@
   "Reset password": "Parolayı sıfırla",
   "Save access": "Erişimi kaydet",
   "You do not lead any group.": "Hiçbir gruba liderlik etmiyorsunuz.",
-  "{{models}} models · {{kbs}} knowledge bases · {{skills}} skills": "{{models}} model · {{kbs}} bilgi bankası · {{skills}} beceri"
+  "{{models}} models · {{kbs}} knowledge bases · {{skills}} skills": "{{models}} model · {{kbs}} bilgi bankası · {{skills}} beceri",
+  "Teams": "Takımlar",
+  "Team": "Takım",
+  "Team members": "Takım üyeleri",
+  "Removing someone detaches them from the team. The account is kept.": "Birini kaldırmak onu takımdan ayırır. Hesap korunur.",
+  "You do not lead any team.": "Yönettiğiniz bir takım yok."
 }

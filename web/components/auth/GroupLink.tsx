@@ -54,7 +54,7 @@ export function GroupLink({ collapsed = false }: { collapsed?: boolean }) {
   const link = (
     <Link
       href="/groups"
-      aria-label={t("Groups")}
+      aria-label={t("Teams")}
       className={`rounded-lg ${tone} ${
         collapsed
           ? "p-2 transition-colors"
@@ -62,13 +62,13 @@ export function GroupLink({ collapsed = false }: { collapsed?: boolean }) {
       }`}
     >
       <Users size={16} strokeWidth={1.5} />
-      {!collapsed && <span>{t("Groups")}</span>}
+      {!collapsed && <span>{t("Teams")}</span>}
     </Link>
   );
 
   if (!collapsed) return link;
   return (
-    <Tooltip label={t("Groups")} side="right">
+    <Tooltip label={t("Teams")} side="right">
       {link}
     </Tooltip>
   );

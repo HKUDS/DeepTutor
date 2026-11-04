@@ -7505,5 +7505,10 @@
   "Reset password": "Réinitialiser le mot de passe",
   "Save access": "Enregistrer l'accès",
   "You do not lead any group.": "Vous ne dirigez aucun groupe.",
-  "{{models}} models · {{kbs}} knowledge bases · {{skills}} skills": "{{models}} modèles · {{kbs}} bases de connaissances · {{skills}} compétences"
+  "{{models}} models · {{kbs}} knowledge bases · {{skills}} skills": "{{models}} modèles · {{kbs}} bases de connaissances · {{skills}} compétences",
+  "Teams": "Équipes",
+  "Team": "Équipe",
+  "Team members": "Membres de l'équipe",
+  "Removing someone detaches them from the team. The account is kept.": "Retirer quelqu'un le détache de l'équipe. Le compte est conservé.",
+  "You do not lead any team.": "Vous ne dirigez aucune équipe."
 }

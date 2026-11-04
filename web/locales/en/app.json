@@ -6600,5 +6600,10 @@
   "Reset password": "Reset password",
   "Save access": "Save access",
   "You do not lead any group.": "You do not lead any group.",
-  "{{models}} models · {{kbs}} knowledge bases · {{skills}} skills": "{{models}} models · {{kbs}} knowledge bases · {{skills}} skills"
+  "{{models}} models · {{kbs}} knowledge bases · {{skills}} skills": "{{models}} models · {{kbs}} knowledge bases · {{skills}} skills",
+  "Teams": "Teams",
+  "Team": "Team",
+  "Team members": "Team members",
+  "Removing someone detaches them from the team. The account is kept.": "Removing someone detaches them from the team. The account is kept.",
+  "You do not lead any team.": "You do not lead any team."
 }

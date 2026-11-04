@@ -6622,5 +6622,10 @@
   "Reset password": "Zresetuj hasło",
   "Save access": "Zapisz dostęp",
   "You do not lead any group.": "Nie prowadzisz żadnej grupy.",
-  "{{models}} models · {{kbs}} knowledge bases · {{skills}} skills": "{{models}} modeli · {{kbs}} baz wiedzy · {{skills}} umiejętności"
+  "{{models}} models · {{kbs}} knowledge bases · {{skills}} skills": "{{models}} modeli · {{kbs}} baz wiedzy · {{skills}} umiejętności",
+  "Teams": "Zespoły",
+  "Team": "Zespół",
+  "Team members": "Członkowie zespołu",
+  "Removing someone detaches them from the team. The account is kept.": "Usunięcie odłącza osobę od zespołu. Konto pozostaje.",
+  "You do not lead any team.": "Nie prowadzisz żadnego zespołu."
 }

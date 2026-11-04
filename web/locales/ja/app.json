@@ -6600,5 +6600,10 @@
   "Reset password": "パスワードをリセット",
   "Save access": "アクセス権を保存",
   "You do not lead any group.": "担当しているグループはありません。",
-  "{{models}} models · {{kbs}} knowledge bases · {{skills}} skills": "{{models}} モデル · {{kbs}} ナレッジベース · {{skills}} スキル"
+  "{{models}} models · {{kbs}} knowledge bases · {{skills}} skills": "{{models}} モデル · {{kbs}} ナレッジベース · {{skills}} スキル",
+  "Teams": "チーム",
+  "Team": "チーム",
+  "Team members": "チームメンバー",
+  "Removing someone detaches them from the team. The account is kept.": "削除するとチームから外れますが、アカウントは残ります。",
+  "You do not lead any team.": "あなたが率いるチームはありません。"
 }

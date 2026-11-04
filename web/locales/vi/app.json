@@ -6600,5 +6600,10 @@
   "Reset password": "Đặt lại mật khẩu",
   "Save access": "Lưu quyền truy cập",
   "You do not lead any group.": "Bạn không phụ trách nhóm nào.",
-  "{{models}} models · {{kbs}} knowledge bases · {{skills}} skills": "{{models}} mô hình · {{kbs}} cơ sở tri thức · {{skills}} kỹ năng"
+  "{{models}} models · {{kbs}} knowledge bases · {{skills}} skills": "{{models}} mô hình · {{kbs}} cơ sở tri thức · {{skills}} kỹ năng",
+  "Teams": "Nhóm",
+  "Team": "Nhóm",
+  "Team members": "Thành viên nhóm",
+  "Removing someone detaches them from the team. The account is kept.": "Xoá ai đó sẽ gỡ họ khỏi nhóm. Tài khoản vẫn được giữ.",
+  "You do not lead any team.": "Bạn chưa phụ trách nhóm nào."
 }

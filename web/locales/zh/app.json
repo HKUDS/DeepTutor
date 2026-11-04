@@ -6600,5 +6600,10 @@
   "Reset password": "重置密码",
   "Save access": "保存权限",
   "You do not lead any group.": "你还没有负责任何小组。",
-  "{{models}} models · {{kbs}} knowledge bases · {{skills}} skills": "{{models}} 个模型 · {{kbs}} 个知识库 · {{skills}} 个技能"
+  "{{models}} models · {{kbs}} knowledge bases · {{skills}} skills": "{{models}} 个模型 · {{kbs}} 个知识库 · {{skills}} 个技能",
+  "Teams": "小组",
+  "Team": "小组",
+  "Team members": "小组成员",
+  "Removing someone detaches them from the team. The account is kept.": "移出只会把这个人从小组中移除，账号本身保留。",
+  "You do not lead any team.": "你还没有负责的小组。"
 }

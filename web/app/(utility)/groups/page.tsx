@@ -243,11 +243,11 @@ export default function GroupsPage() {
           <div className="flex items-center gap-2.5">
             <Users size={18} className="text-[var(--primary)]" />
             <h1 className="text-lg font-semibold text-[var(--foreground)]">
-              {t("Groups")}
+              {t("Teams")}
             </h1>
           </div>
           <p className="mt-3 text-sm text-[var(--muted-foreground)]">
-            {t("You do not lead any group.")}
+            {t("You do not lead any team.")}
           </p>
         </div>
       </div>
@@ -261,7 +261,7 @@ export default function GroupsPage() {
           <div className="flex items-center gap-2.5">
             <Users size={18} className="text-[var(--primary)]" />
             <h1 className="text-lg font-semibold text-[var(--foreground)]">
-              {t("Groups")}
+              {t("Teams")}
             </h1>
           </div>
           {groups.length > 1 && (
@@ -269,7 +269,7 @@ export default function GroupsPage() {
               value={activeId}
               onChange={(event) => void selectGroup(event.target.value)}
               className="rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 py-1.5 text-sm text-[var(--foreground)]"
-              aria-label={t("Group")}
+              aria-label={t("Team")}
             >
               {groups.map((item) => (
                 <option key={item.id} value={item.id}>
@@ -293,7 +293,7 @@ export default function GroupsPage() {
 
         <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-6 shadow-sm">
           <h2 className="text-sm font-medium text-[var(--foreground)]">
-            {group?.name} · {t("Members")}
+            {group?.name} · {t("Team members")}
           </h2>
           <div className="mt-4 overflow-x-auto">
             <table className="w-full text-left text-sm">
@@ -378,7 +378,7 @@ export default function GroupsPage() {
             </table>
           </div>
           <p className="mt-3 text-xs text-[var(--muted-foreground)]">
-            {t("Removing someone detaches them from the group. The account is kept.")}
+            {t("Removing someone detaches them from the team. The account is kept.")}
           </p>
         </div>
 

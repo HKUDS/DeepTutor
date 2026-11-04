@@ -6622,5 +6622,10 @@
   "Reset password": "Скинути пароль",
   "Save access": "Зберегти доступ",
   "You do not lead any group.": "Ви не керуєте жодною групою.",
-  "{{models}} models · {{kbs}} knowledge bases · {{skills}} skills": "{{models}} моделей · {{kbs}} баз знань · {{skills}} навичок"
+  "{{models}} models · {{kbs}} knowledge bases · {{skills}} skills": "{{models}} моделей · {{kbs}} баз знань · {{skills}} навичок",
+  "Teams": "Команди",
+  "Team": "Команда",
+  "Team members": "Учасники команди",
+  "Removing someone detaches them from the team. The account is kept.": "Видалення від'єднує людину від команди. Обліковий запис зберігається.",
+  "You do not lead any team.": "Ви не керуєте жодною командою."
 }
