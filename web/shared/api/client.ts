@@ -1,6 +1,6 @@
 import { ApiError, type AppError, type AppErrorScope } from "./errors";
 import { browserReturnPath, loginHref } from "../auth/return-url";
-import { scopedUrl } from "@/lib/workspace-scope";
+import { scopedSocketUrl, scopedUrl } from "@/lib/workspace-scope";
 
 export interface RequestOptions extends RequestInit {
   scope?: AppErrorScope;
@@ -14,7 +14,8 @@ export function apiUrl(path: string): string {
 }
 
 export function wsUrl(path: string): string {
-  return scopedUrl(path);
+  // Sockets need an absolute ws:/wss: URL; see `scopedSocketUrl`.
+  return scopedSocketUrl(path);
 }
 
 export function parseAuthEnabled(raw: string | undefined): boolean {
