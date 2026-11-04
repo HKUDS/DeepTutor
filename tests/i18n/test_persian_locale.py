@@ -76,21 +76,13 @@ def test_language_directive_names_persian() -> None:
     assert "فارسی" in language_directive("fa")
 
 
-def test_cli_banner_is_fully_translated() -> None:
-    assert set(LABELS["fa"]) == set(LABELS["en"])
-    assert labels_for("fa") is LABELS["fa"]
-    assert _pick_language("fa-IR") == "fa"
-    assert _pick_language("fa_IR") == "fa"
-
-
-def test_cli_banner_keeps_format_placeholders() -> None:
-    pattern = re.compile(r"\{[^{}]*\}")
-    mismatches = [
-        key
-        for key, text in LABELS["en"].items()
-        if Counter(pattern.findall(text)) != Counter(pattern.findall(LABELS["fa"][key]))
-    ]
-    assert mismatches == []
+def test_cli_output_stays_english_for_persian() -> None:
+    # RTL scripts garble in Windows consoles, so the console keeps English
+    # output even when the web UI itself is Persian.
+    assert "fa" not in LABELS
+    assert labels_for("fa") is LABELS["en"]
+    assert _pick_language("fa-IR") == "en"
+    assert _pick_language("fa_IR") == "en"
 
 
 def test_judge_speaks_persian() -> None:
