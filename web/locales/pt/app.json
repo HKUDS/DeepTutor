@@ -6425,6 +6425,6 @@
   "Reset learning text": "Redefinir texto de aprendizado",
   "language.japanese": "日本語",
   "language.turkish": "Türkçe",
-  "Use the dedicated Ark Agent Plan API key for language, embedding, image, video and speech models. Speech endpoints are selected separately from the language model URL.": "Use the dedicated Ark Agent Plan API key for language, embedding, image, video and speech models. Speech endpoints are selected separately from the language model URL.",
-  "Enter a speaker ID before previewing this speech model.": "Enter a speaker ID before previewing this speech model."
+  "Use the dedicated Ark Agent Plan API key for language, embedding, image, video and speech models. Speech endpoints are selected separately from the language model URL.": "Utilize a chave de API dedicada do Ark Agent Plan para modelos de linguagem, vetorização, imagem, vídeo e voz. Os endereços dos serviços de voz são selecionados separadamente do endereço do modelo de linguagem.",
+  "Enter a speaker ID before previewing this speech model.": "Introduza um ID de voz antes de testar este modelo de síntese de voz."
 }

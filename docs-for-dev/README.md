@@ -65,6 +65,8 @@ installation before deciding to reinstall it.
 - [Practice](PRACTICE.md): question imports, review records and scheduling.
 - [Video learning](watching-workspace.md) and [voice](VOICE_CONFIGURATION.md):
   Reading media migration, captions, speech adapters and verification.
+- [Ark Agent Plan](ARK_AGENT_PLAN.md): shared provider credentials, per-service
+  endpoints, model configuration and speech verification.
 - [Answer-quality diagnosis](REASONING_SAFETY_CHECKLIST.md): reproducible
   retrieval, citation, context and assessment failures.
 
