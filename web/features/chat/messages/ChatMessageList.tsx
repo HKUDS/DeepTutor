@@ -63,6 +63,8 @@ import {
   GeneratedOutputFileActions,
   supportsGeneratedOutputActions,
 } from "@/components/chat/GeneratedOutputFileActions";
+import { activeWorkspaceId } from "@/lib/workspace-scope";
+import { useVoicePlaybackRate, VOICE_PLAYBACK_RATES } from "@/hooks/useVoicePlaybackRate";
 import { useVoiceAutoplay } from "@/hooks/useVoiceAutoplay";
 import {
   SPEECH_PLAYBACK_FAILURE_MESSAGE,
@@ -1465,15 +1467,23 @@ export function PlayAudioButton({
   content,
   conversationKey,
   autoPlayFresh,
+  playbackRate = 1,
 }: {
   content: string;
   conversationKey?: string;
   autoPlayFresh: boolean;
+  playbackRate?: number;
 }) {
   const { t } = useTranslation();
   const { autoplayEnabled } = useVoiceAutoplay(conversationKey);
   const [state, setState] = useState<"idle" | "loading" | "playing">("idle");
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const rateRef = useRef(playbackRate);
+  useEffect(() => {
+    rateRef.current = playbackRate;
+    if (audioRef.current) audioRef.current.playbackRate = playbackRate;
+  }, [playbackRate]);
+
   const urlRef = useRef<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const genRef = useRef(0);
@@ -1546,6 +1556,7 @@ export function PlayAudioButton({
       urlRef.current = url;
       audio.src = url;
       audio.load();
+      audio.playbackRate = rateRef.current;
       audio.onended = () => {
         if (gen !== genRef.current) return;
         setState("idle");
@@ -2452,6 +2463,10 @@ export const ChatMessageList = memo(function ChatMessageList({
     }
   }
 
+  const { rate: voiceRate, setRate: setVoiceRate } = useVoicePlaybackRate(
+    sessionId ? JSON.stringify([activeWorkspaceId(), sessionId]) : undefined,
+  );
+
   return (
     <>
       {messageRows.map(({ msg, originalIndex, pairedUserMessage }, rowIndex) => {
@@ -2671,13 +2686,28 @@ export const ChatMessageList = memo(function ChatMessageList({
                       />
                     )}
                     {showActions && !compactActions && (
-                      <PlayAudioButton
-                        content={msg.content}
-                        conversationKey={sessionId ?? undefined}
-                        autoPlayFresh={
-                          isLastAssistant && freshlyCompletedIndex === i
-                        }
-                      />
+                      <>
+                        <PlayAudioButton
+                          playbackRate={voiceRate}
+                          content={msg.content}
+                          conversationKey={sessionId ?? undefined}
+                          autoPlayFresh={
+                            isLastAssistant && freshlyCompletedIndex === i
+                          }
+                        />
+                        {i === lastRenderedAssistantIndex && (
+                          <select
+                            aria-label={t("Playback speed")}
+                            className="rounded bg-transparent px-1 text-xs text-[var(--muted-foreground)]"
+                            value={voiceRate}
+                            onChange={(event) => setVoiceRate(Number(event.target.value))}
+                          >
+                            {VOICE_PLAYBACK_RATES.map((rate) => (
+                              <option key={rate} value={rate}>{rate}×</option>
+                            ))}
+                          </select>
+                        )}
+                      </>
                     )}
                     {/* One way to try a turn again. Where the surface can
                         take the turn back into its composer, Retry does that
