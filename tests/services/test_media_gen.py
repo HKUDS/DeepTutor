@@ -498,6 +498,21 @@ def test_dashscope_rejects_tiers_outside_wan27(model: str, configured: str) -> N
         DashScopeImagegenAdapter._size(model, configured)
 
 
+@pytest.mark.parametrize("configured", ["4K", "4k"])
+def test_dashscope_4k_is_pro_only(configured: str) -> None:
+    """4K text-to-image is wan2.7-image-pro only; the standard tier stops at 2K."""
+    with pytest.raises(GenerationProviderError, match="wan2.7-image-pro"):
+        DashScopeImagegenAdapter._size("wan2.7-image", configured)
+
+    assert DashScopeImagegenAdapter._size("wan2.7-image-pro", configured) == "4K"
+
+
+@pytest.mark.parametrize("configured", ["1K", "2K"])
+def test_dashscope_non_pro_wan27_still_takes_1k_and_2k(configured: str) -> None:
+    """The 4K guard must not narrow the tiers wan2.7-image does support."""
+    assert DashScopeImagegenAdapter._size("wan2.7-image", configured) == configured
+
+
 @pytest.mark.parametrize(
     ("model", "expected"),
     [

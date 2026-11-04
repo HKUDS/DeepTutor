@@ -53,6 +53,8 @@ _MULTIMODAL_MODEL_PREFIXES = ("wan2.6", "wan2.7", "qwen-image-3", "qwen-image-2.
 
 #: Only wan2.7 accepts resolution tiers; wan2.6 and qwen-image take pixels.
 _TIER_MODEL_PREFIX = "wan2.7"
+#: Within wan2.7, 4K text-to-image is Pro only — ``wan2.7-image`` stops at 2K.
+_PRO_4K_MODEL = "wan2.7-image-pro"
 _SIZE_TIERS = {"1k": "1K", "2k": "2K", "4k": "4K"}
 _SIZE_PATTERN = re.compile(r"^(\d+)\s*[x*×]\s*(\d+)$", re.IGNORECASE)
 
@@ -166,6 +168,11 @@ class DashScopeImagegenAdapter(BaseImagegenAdapter):
             raise GenerationProviderError(
                 f"DashScope model {model} needs an explicit width*height size such as "
                 f"1280*1280; the {tier} resolution tiers are wan2.7 only."
+            )
+        if tier == "4K" and not model.strip().lower().startswith(_PRO_4K_MODEL):
+            raise GenerationProviderError(
+                f"DashScope model {model} does not support 4K output; 4K text-to-image is "
+                "available only on wan2.7-image-pro. Use 1K or 2K, or a width*height size."
             )
         return tier
 
