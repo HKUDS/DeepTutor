@@ -106,6 +106,9 @@ def convert_tools(
 ) -> list[dict[str, Any]]:
     """Convert OpenAI function calling schemas to Responses API tools.
 
+    Function tools without an explicit boolean ``strict`` are sent as
+    ``strict: false`` so their optional parameters stay optional.
+
     With ``native_web_search=True`` (providers whose Responses API performs
     web searches server-side, e.g. DeepSeek), DeepTutor's ``web_search``
     function tool is declared as the provider's native ``{"type":
@@ -129,11 +132,12 @@ def convert_tools(
             "description": fn.get("description") or "",
             "parameters": params if isinstance(params, dict) else {},
         }
-        # Keep an explicit strict choice; leave it out when unset so the
-        # provider default applies, as before.
+        # Keep an explicit strict choice; default the rest to non-strict, as
+        # Chat Completions does. Left unset, Responses normalizes the schema
+        # into strict mode and makes every optional argument required, so the
+        # model has to fill arguments it means to omit (#2427).
         strict = fn.get("strict")
-        if isinstance(strict, bool):
-            item["strict"] = strict
+        item["strict"] = strict if isinstance(strict, bool) else False
         converted.append(item)
     return converted
 
