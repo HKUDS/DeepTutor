@@ -6442,5 +6442,9 @@
   "Session capabilities unavailable": "قابلیت‌های نشست در دسترس نیست",
   "Session was not deleted": "نشست حذف نشد",
   "Task board request failed": "درخواست برد کار ناموفق بود",
-  "There is nothing to copy.": "چیزی برای کپی کردن نیست."
+  "There is nothing to copy.": "چیزی برای کپی کردن نیست.",
+  "Microphone permission denied.": "دسترسی به میکروفون رد شد.",
+  "Recording is not supported in this browser.": "ضبط صدا در این مرورگر پشتیبانی نمی‌شود.",
+  "Transcription failed (HTTP {{status}}).": "رونویسی ناموفق بود (کد {{status}}).",
+  "Transcription failed.": "رونویسی ناموفق بود."
 }
