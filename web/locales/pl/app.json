@@ -6603,5 +6603,9 @@
   "settings.modelImport.unverified": "Niektóre modele nie określają typu. Przetestuj je przed użyciem w tej usłudze.",
   "settings.modelImport.draftHint": "Modele są dodawane do wersji roboczej. Zastosuj zmiany, aby je zapisać; model domyślny pozostaje bez zmian.",
   "settings.modelImport.selected": "Wybrano: {{count}}",
-  "language.korean": "한국어 (일부 번역)"
+  "language.korean": "한국어 (일부 번역)",
+  "Disable {{username}}": "Wyłącz {{username}}",
+  "Enable {{username}}": "Włącz {{username}}",
+  "Cannot disable your own account": "Nie możesz wyłączyć własnego konta",
+  "Failed to update account status": "Nie udało się zaktualizować statusu konta"
 }

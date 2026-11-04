@@ -6581,5 +6581,9 @@
   "settings.modelImport.unverified": "種類が未指定のモデルがあります。このサービスで使用する前にテストしてください。",
   "settings.modelImport.draftHint": "モデルは下書きに追加されます。変更を適用すると保存されます。既定のモデルは変わりません。",
   "settings.modelImport.selected": "選択済み：{{count}}",
-  "language.korean": "한국어 (일부 번역)"
+  "language.korean": "한국어 (일부 번역)",
+  "Disable {{username}}": "{{username}} を無効化",
+  "Enable {{username}}": "{{username}} を有効化",
+  "Cannot disable your own account": "自分のアカウントは無効化できません",
+  "Failed to update account status": "アカウント状態を更新できませんでした"
 }

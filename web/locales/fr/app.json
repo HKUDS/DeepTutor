@@ -7486,5 +7486,9 @@
   "settings.modelImport.unverified": "Certains modèles ne précisent pas leur type. Testez-les avant de les utiliser pour ce service.",
   "settings.modelImport.draftHint": "Les modèles sont ajoutés au brouillon. Appliquez les modifications pour les enregistrer ; le modèle par défaut reste identique.",
   "settings.modelImport.selected": "Sélectionnés : {{count}}",
-  "language.korean": "한국어 (일부 번역)"
+  "language.korean": "한국어 (일부 번역)",
+  "Disable {{username}}": "Désactiver {{username}}",
+  "Enable {{username}}": "Activer {{username}}",
+  "Cannot disable your own account": "Impossible de désactiver votre propre compte",
+  "Failed to update account status": "Impossible de mettre à jour le statut du compte"
 }

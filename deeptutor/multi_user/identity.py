@@ -492,6 +492,22 @@ def set_role(username: str, role: Role) -> bool:
     return True
 
 
+def set_disabled(username: str, disabled: bool) -> bool:
+    """Flip an account's ``disabled`` flag.
+
+    The record is kept rather than removed: re-enabling restores the same
+    account, its grants and its history instead of starting over.
+    """
+    if not USERS_FILE.exists():
+        return False
+    users = load_users()
+    if username not in users:
+        return False
+    users[username]["disabled"] = bool(disabled)
+    _write_users(users)
+    return True
+
+
 def set_preset(
     username: str, preset: AccountPreset, *, expected_user_id: str | None = None
 ) -> bool:

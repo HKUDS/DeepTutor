@@ -506,6 +506,30 @@ export interface paths {
     readonly patch?: never;
     readonly trace?: never;
   };
+  readonly "/api/auth/users/{username}/disabled": {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: never;
+      readonly path?: never;
+      readonly cookie?: never;
+    };
+    readonly get?: never;
+    /**
+     * Update User Disabled
+     * @description Disable or re-enable an account. Admins cannot disable themselves.
+     *
+     *     Disabling is the reversible counterpart to deletion: the account keeps its
+     *     grants, workspaces and history, but cannot sign in. Device credentials are
+     *     revoked at the same time so a paired device stops working immediately.
+     */
+    readonly put: operations["update_user_disabled_api_auth_users__username__disabled_put"];
+    readonly post?: never;
+    readonly delete?: never;
+    readonly options?: never;
+    readonly head?: never;
+    readonly patch?: never;
+    readonly trace?: never;
+  };
   readonly "/api/auth/users/{username}/learner-profile": {
     readonly parameters: {
       readonly query?: never;
@@ -17013,6 +17037,14 @@ export interface components {
       readonly workspace_id: string;
     };
     /**
+     * SetDisabledRequest
+     * @description Payload for the PUT /users/{username}/disabled endpoint.
+     */
+    readonly SetDisabledRequest: {
+      /** Disabled */
+      readonly disabled: boolean;
+    };
+    /**
      * SetRoleRequest
      * @description Payload for the PUT /users/{username}/role endpoint.
      */
@@ -19255,6 +19287,8 @@ export type SchemaSessionStoreCapabilities =
   components["schemas"]["SessionStoreCapabilities"];
 export type SchemaSessionSummary = components["schemas"]["SessionSummary"];
 export type SchemaSessionTaskLinks = components["schemas"]["SessionTaskLinks"];
+export type SchemaSetDisabledRequest =
+  components["schemas"]["SetDisabledRequest"];
 export type SchemaSetRoleRequest = components["schemas"]["SetRoleRequest"];
 export type SchemaSetSessionModeRequest =
   components["schemas"]["SetSessionModeRequest"];
@@ -20340,6 +20374,47 @@ export interface operations {
       };
     };
     readonly requestBody?: never;
+    readonly responses: {
+      /** @description Successful Response */
+      readonly 200: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": {
+            readonly [key: string]: unknown;
+          };
+        };
+      };
+      /** @description Validation Error */
+      readonly 422: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  readonly update_user_disabled_api_auth_users__username__disabled_put: {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: {
+        readonly Authorization?: string | null;
+      };
+      readonly path: {
+        readonly username: string;
+      };
+      readonly cookie?: {
+        readonly dt_token?: string | null;
+      };
+    };
+    readonly requestBody: {
+      readonly content: {
+        readonly "application/json": components["schemas"]["SetDisabledRequest"];
+      };
+    };
     readonly responses: {
       /** @description Successful Response */
       readonly 200: {

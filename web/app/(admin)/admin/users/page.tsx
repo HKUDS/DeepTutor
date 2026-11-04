@@ -10,6 +10,7 @@ import {
   listUsers,
   deleteUser,
   setUserRole,
+  setUserDisabled,
   createUser,
   importUsers,
   type UserRecord,
@@ -26,6 +27,7 @@ import { filterUsersByQuery } from "@/lib/admin-users";
 import { accountRoleLabelKey } from "@/lib/account-role";
 import {
   Search,
+  Ban,
   Shield,
   ShieldCheck,
   ShieldOff,
@@ -34,6 +36,7 @@ import {
   ArrowLeft,
   SlidersHorizontal,
   Upload,
+  UserCheck,
   UserPlus,
   Users,
   X,
@@ -62,6 +65,7 @@ export default function AdminUsersPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [actionError, setActionError] = useState("");
+  const [statusBusy, setStatusBusy] = useState("");
   const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [showImportDialog, setShowImportDialog] = useState(false);
@@ -162,6 +166,27 @@ export default function AdminUsersPage() {
       );
     } finally {
       setCreateSubmitting(false);
+    }
+  }
+
+  async function toggleDisabled(user: UserRecord) {
+    if (statusBusy) return;
+    setStatusBusy(user.username);
+    setActionError("");
+    try {
+      const next = !user.disabled;
+      await setUserDisabled(user.username, next);
+      setUsers((prev) =>
+        prev.map((u) =>
+          u.username === user.username ? { ...u, disabled: next } : u,
+        ),
+      );
+    } catch (e) {
+      setActionError(
+        e instanceof Error ? e.message : t("Failed to update account status"),
+      );
+    } finally {
+      setStatusBusy("");
     }
   }
 
@@ -566,6 +591,11 @@ export default function AdminUsersPage() {
                             )}
                             {t(accountRoleLabelKey(user.role))}
                           </span>
+                          {user.disabled && (
+                            <span className="ml-2 inline-flex items-center rounded-full bg-red-500/10 px-2 py-0.5 text-[11px] font-medium text-red-600 dark:text-red-400">
+                              {t("Disabled")}
+                            </span>
+                          )}
                           {!isAdmin && user.preset && (
                             <span className="mt-1 block text-[11px] text-[var(--muted-foreground)]">
                               {t("Preset: {{preset}}", {
@@ -632,6 +662,42 @@ export default function AdminUsersPage() {
                                   <ShieldOff size={15} />
                                 ) : (
                                   <Shield size={15} />
+                                )}
+                              </button>
+                            </Tooltip>
+<Tooltip label={
+                                isSelf
+                                  ? t("Cannot disable your own account")
+                                  : user.disabled
+                                    ? t("Enable {{username}}", {
+                                        username: user.username,
+                                      })
+                                    : t("Disable {{username}}", {
+                                        username: user.username,
+                                      })
+                              } side="top">
+                              <button
+                                onClick={() => void toggleDisabled(user)}
+                                disabled={isSelf || statusBusy === user.username}
+                                aria-label={
+                                  isSelf
+                                    ? t("Cannot disable your own account")
+                                    : user.disabled
+                                      ? t("Enable {{username}}", {
+                                          username: user.username,
+                                        })
+                                      : t("Disable {{username}}", {
+                                          username: user.username,
+                                        })
+                                }
+                                className="rounded-lg p-1.5 text-[var(--muted-foreground)]
+                                         hover:bg-[var(--background)] hover:text-[var(--foreground)]
+                                         disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                              >
+                                {user.disabled ? (
+                                  <UserCheck size={15} />
+                                ) : (
+                                  <Ban size={15} />
                                 )}
                               </button>
                             </Tooltip>
