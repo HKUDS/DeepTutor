@@ -37,7 +37,7 @@ afterEach(() => { vi.unstubAllGlobals(); instances.length = 0; });
 
 it("switches between reply buttons without overlapping speech or a first-click prompt", async () => {
   installAudio();
-  vi.mocked(apiFetch).mockResolvedValue({ ok: true, blob: async () => new Blob(["audio"]) } as Response);
+  vi.mocked(apiFetch).mockResolvedValue({ ok: true, headers: new Headers(), blob: async () => new Blob(["audio"]) } as Response);
   render(<><PlayAudioButton content="First" autoPlayFresh={false} /><PlayAudioButton content="Second" autoPlayFresh={false} /></>);
   const user = userEvent.setup();
   await user.click(screen.getAllByRole("button", { name: "Play aloud" })[0]);
@@ -69,7 +69,7 @@ it("unlocks the audio element during the click before speech synthesis resolves"
   expect(URL.createObjectURL).not.toHaveBeenCalled();
 
   await act(async () => {
-    resolveFetch({ ok: true, blob: async () => new Blob(["audio"]) } as Response);
+    resolveFetch({ ok: true, headers: new Headers(), blob: async () => new Blob(["audio"]) } as Response);
   });
 
   expect(await screen.findByRole("button", { name: "Stop" })).toBeVisible();
@@ -79,11 +79,56 @@ it("unlocks the audio element during the click before speech synthesis resolves"
   expect(instances[0].src).toBe("blob:test");
 });
 
+it.each(["finish", "stop"])("starts the opening clip before the continuation arrives (%s)", async (action) => {
+  installAudio();
+  let source!: ReadableStreamDefaultController<Uint8Array>;
+  const cancel = vi.fn();
+  const body = new ReadableStream<Uint8Array>({
+    start: (controller) => { source = controller; },
+    cancel,
+  });
+  vi.mocked(apiFetch).mockResolvedValueOnce(new Response(body, {
+    headers: { "Content-Type": "application/x-ndjson" },
+  }));
+  const pushClip = (audio: string, final: boolean) => {
+    source.enqueue(new TextEncoder().encode(
+      JSON.stringify({ audio: btoa(audio), content_type: "audio/mpeg", final }) + "\n",
+    ));
+  };
+  render(<PlayAudioButton content="A long answer." autoPlayFresh={false} />);
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("button", { name: "Play aloud" }));
+
+  try {
+    await act(async () => { pushClip("opening", false); });
+    expect(await screen.findByRole("button", { name: "Stop" })).toBeVisible();
+    expect(instances[0].play).toHaveBeenCalledTimes(2);
+
+    await act(async () => { pushClip("remaining", true); });
+    expect(instances[0].play).toHaveBeenCalledTimes(2);
+    if (action === "stop") {
+      await user.click(screen.getByRole("button", { name: "Stop" }));
+      expect(cancel).toHaveBeenCalled();
+      expect(instances[0].play).toHaveBeenCalledTimes(2);
+    } else {
+      await act(async () => { instances[0].onended?.(); });
+      expect(instances[0].play).toHaveBeenCalledTimes(3);
+      expect(instances).toHaveLength(1);
+      await act(async () => { instances[0].onended?.(); });
+    }
+    expect(screen.getByRole("button", { name: "Play aloud" })).toBeVisible();
+  } finally {
+    await act(async () => {
+      try { source.close(); } catch { /* The player already closed the stream. */ }
+    });
+  }
+});
+
 it("does not play a late response body after leaving the chat", async () => {
   installAudio();
   let resolve!: (blob: Blob) => void;
   const body = new Promise<Blob>((yes) => { resolve = yes; });
-  vi.mocked(apiFetch).mockResolvedValueOnce({ ok: true, blob: () => body } as Response);
+  vi.mocked(apiFetch).mockResolvedValueOnce({ ok: true, headers: new Headers(), blob: () => body } as Response);
   const { unmount } = render(<PlayAudioButton content="First" autoPlayFresh={false} />);
   await userEvent.setup().click(screen.getByRole("button", { name: "Play aloud" }));
   unmount();

@@ -17604,6 +17604,11 @@ export interface components {
     readonly TTSRequest: {
       /** Format */
       readonly format?: string | null;
+      /**
+       * Stream
+       * @description Stream independently playable speech clips as NDJSON.
+       */
+      readonly stream?: boolean;
       /** Text */
       readonly text: string;
       /** Voice */

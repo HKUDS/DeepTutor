@@ -8,6 +8,8 @@ Settings catalog UI.
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
+import re
 from typing import Any
 
 from deeptutor.services.voice.adapters import get_stt_adapter, get_tts_adapter
@@ -45,6 +47,73 @@ async def synthesize_speech(
     override the catalog defaults for this call. ``math_speak`` defaults to
     the Settings › Text-to-Speech preference (on).
     """
+    prepared, config = _prepare_speech(
+        text,
+        catalog=catalog,
+        voice=voice,
+        response_format=response_format,
+        strip_markdown=strip_markdown,
+        math_speak=math_speak,
+    )
+    adapter = get_tts_adapter(config.adapter)
+    return await synthesize_with_timeout(adapter, prepared, config)
+
+
+async def stream_speech(
+    text: str,
+    *,
+    voice: str | None = None,
+    response_format: str | None = None,
+) -> AsyncIterator[tuple[bytes, str, bool]]:
+    """Yield an opening clip and optional continuation from one prepared reply.
+
+    Each clip uses the same configured provider and format. The boolean marks
+    the last clip. Keep short replies in a single provider request.
+    """
+    prepared, config = _prepare_speech(
+        text,
+        catalog=None,
+        voice=voice,
+        response_format=response_format,
+        strip_markdown=True,
+        math_speak=None,
+    )
+    adapter = get_tts_adapter(config.adapter)
+    opening, remaining = _split_opening_clip(prepared)
+    audio, content_type = await synthesize_with_timeout(adapter, opening, config)
+    yield audio, content_type, not remaining
+    if remaining:
+        audio, content_type = await synthesize_with_timeout(adapter, remaining, config)
+        yield audio, content_type, True
+
+
+_OPENING_CLIP_CHARS = 240
+_SENTENCE_END = re.compile(r"[。！？]|[.!?](?=\s)")
+
+
+def _split_opening_clip(prepared: str) -> tuple[str, str]:
+    if len(prepared) <= _OPENING_CLIP_CHARS:
+        return prepared, ""
+    window = prepared[:_OPENING_CLIP_CHARS]
+    boundary = _SENTENCE_END.search(window)
+    if boundary:
+        cut = boundary.end()
+    else:
+        cut = max(window.rfind(" "), window.rfind("\n"))
+        if cut <= _OPENING_CLIP_CHARS // 2:
+            cut = _OPENING_CLIP_CHARS
+    return prepared[:cut].rstrip(), prepared[cut:].lstrip()
+
+
+def _prepare_speech(
+    text: str,
+    *,
+    catalog: dict[str, Any] | None,
+    voice: str | None,
+    response_format: str | None,
+    strip_markdown: bool,
+    math_speak: bool | None,
+) -> tuple[str, TTSConfig]:
     from deeptutor.services.config.provider_runtime import resolve_tts_runtime_config
 
     config = resolve_tts_runtime_config(catalog=catalog)
@@ -60,8 +129,7 @@ async def synthesize_speech(
     )
     if not prepared:
         raise VoiceProviderError("Nothing to speak after cleaning the text.")
-    adapter = get_tts_adapter(config.adapter)
-    return await synthesize_with_timeout(adapter, prepared, config)
+    return prepared, config
 
 
 async def transcribe_audio(
@@ -112,6 +180,7 @@ __all__ = [
     "TTSConfig",
     "STTConfig",
     "synthesize_speech",
+    "stream_speech",
     "transcribe_audio",
     "transcribe_audio_cues",
     "strip_markdown_for_speech",

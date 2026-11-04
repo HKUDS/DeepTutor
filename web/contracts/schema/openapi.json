@@ -12135,6 +12135,11 @@
             ],
             "title": "Format"
           },
+          "stream": {
+            "description": "Stream independently playable speech clips as NDJSON.",
+            "title": "Stream",
+            "type": "boolean"
+          },
           "text": {
             "minLength": 1,
             "title": "Text",
