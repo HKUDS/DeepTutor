@@ -113,6 +113,11 @@
       "sha256": "f8968e617daf1589565237906f3d3e22373fb68bcad5309ed4850e18db21cd74",
       "source": "Official website asset"
     },
+    "uberllm.svg": {
+      "url": "https://uberllm.dev/favicon.svg",
+      "sha256": "9ee24273c046387d69caebbaed022eada4901b7bf3e1ddd2d61978ca804bb7d2",
+      "source": "Official website asset"
+    },
     "cloudgpu.png": {
       "url": "https://cloudgpu.app/apple-icon.png?c033c6c14af57cef",
       "sha256": "8051137fee486b2a36a7f6744cf86fb48ac17520d5ee8dd712c659feb8adb912",

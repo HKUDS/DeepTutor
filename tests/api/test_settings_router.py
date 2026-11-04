@@ -2208,3 +2208,10 @@ def test_llm_provider_choices_include_cloudgpu() -> None:
 
     assert llm["cloudgpu"]["label"] == "CloudGPU"
     assert llm["cloudgpu"]["base_url"] == "https://cloudgpu.app/v1"
+
+
+def test_llm_provider_choices_include_uberllm() -> None:
+    llm = {item["value"]: item for item in settings_router._provider_choices()["llm"]}
+
+    assert llm["uberllm"]["label"] == "UberLLM"
+    assert llm["uberllm"]["base_url"] == "https://api.uberllm.dev/v1"
