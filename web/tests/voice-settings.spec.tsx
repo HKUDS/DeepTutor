@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, expect, it, vi } from 'vitest'
 import { VoicePreviewPanel } from '@/components/settings/VoicePreviewPanel'
 import { VoiceModelFields } from '@/components/settings/VoiceModelFields'
+import { VoiceDiscoveryField } from '@/components/settings/VoiceDiscoveryField'
 import { ModelsWorkspace } from '@/components/settings/ModelsWorkspace'
 import { PlayAudioButton } from '@/features/chat/messages/ChatMessageList'
 import { voiceModelOptions } from '@/lib/voice-settings'
@@ -145,6 +146,13 @@ it('selects model families without inventing voices for unknown models', () => {
   expect(voiceModelOptions(options, 'private-model')?.voices).toEqual([])
 })
 
+it('opens the required manual speaker field and explains a missing Agent Plan voice', () => {
+  mock.settings = { ...mock.settings, draft: fixture() } as SettingsContextValue
+  render(<VoiceDiscoveryField profileId="p" modelId="new" value="" update={vi.fn()} disabled={false} manualRequired />)
+  expect(screen.getByRole('textbox', { name: 'Voice ID' })).toBeRequired()
+  expect(screen.getByText('Enter a speaker ID before previewing this speech model.')).toHaveAttribute('role', 'status')
+})
+
 it('shows speech parameters without exposing bundled voice choices', () => {
   const update = vi.fn()
   render(
@@ -165,6 +173,25 @@ it('shows speech parameters without exposing bundled voice choices', () => {
     target: { value: '180' },
   })
   expect(update).toHaveBeenCalledWith('request_timeout', '180')
+})
+
+it('offers the Agent Plan ASR resource without legacy Speech credential guidance', () => {
+  const update = vi.fn()
+  render(
+    <VoiceModelFields
+      service="stt"
+      provider="volcengine_agent_plan"
+      model={{ id: 'asr', name: 'ASR', model: 'bigmodel' }}
+      options={options}
+      update={update}
+      disabled={false}
+    />
+  )
+  const resource = screen.getByRole('textbox', { name: 'Speech resource ID' })
+  expect(resource).toHaveAttribute('placeholder', 'volc.seedasr.sauc.duration')
+  fireEvent.change(resource, { target: { value: 'volc.seedasr.sauc.duration' } })
+  expect(update).toHaveBeenCalledWith('resource_id', 'volc.seedasr.sauc.duration')
+  expect(screen.queryByText(/not an Ark key/)).toBeNull()
 })
 
 it('shows the Qwen-Audio voice, regional guidance and documentation for the selected model', () => {

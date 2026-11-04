@@ -24,6 +24,7 @@ _PROVIDER_THINKING_STYLES = {
     "deepseek": "thinking_type",
     "volcengine": "thinking_type",
     "volcengine_coding_plan": "thinking_type",
+    "volcengine_agent_plan": "thinking_type",
     "byteplus": "thinking_type",
     "byteplus_coding_plan": "thinking_type",
     "dashscope": "enable_thinking",

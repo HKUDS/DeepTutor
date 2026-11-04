@@ -6406,5 +6406,7 @@
   "Reset learning text": "重置学习文字",
   "language.portuguese": "葡萄牙语",
   "language.japanese": "日语",
-  "language.turkish": "Türkçe"
+  "language.turkish": "Türkçe",
+  "Use the dedicated Ark Agent Plan API key for language, embedding, image, video and speech models. Speech endpoints are selected separately from the language model URL.": "语言、向量、图片、视频和语音模型均使用 Agent Plan 专属 API Key。语音接口地址与语言模型地址分开选择。",
+  "Enter a speaker ID before previewing this speech model.": "请先填写音色 ID，再试听此语音模型。"
 }

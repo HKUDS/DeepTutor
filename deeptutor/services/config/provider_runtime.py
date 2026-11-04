@@ -169,6 +169,14 @@ class EmbeddingProviderSpec:
 
 
 EMBEDDING_PROVIDERS: dict[str, EmbeddingProviderSpec] = {
+    "volcengine_agent_plan": EmbeddingProviderSpec(
+        label="Volcengine Ark Agent Plan",
+        default_api_base=EMBEDDING_PROVIDER_DEFAULT_ENDPOINTS["volcengine_agent_plan"],
+        keywords=("volcengine_agent_plan",),
+        is_local=False,
+        default_model="doubao-embedding-vision",
+        default_dim=2048,
+    ),
     "openai": EmbeddingProviderSpec(
         label="OpenAI",
         default_api_base=EMBEDDING_PROVIDER_DEFAULT_ENDPOINTS["openai"],
@@ -334,6 +342,12 @@ class VoiceProviderSpec:
 # Voice providers either use the shared OpenAI-compatible adapter or a native
 # protocol adapter registered by name (DashScope and Volcengine Speech TTS/STT).
 TTS_PROVIDERS: dict[str, VoiceProviderSpec] = {
+    "volcengine_agent_plan": VoiceProviderSpec(
+        label="Volcengine Ark Agent Plan",
+        default_api_base="https://openspeech.bytedance.com/api/v3/plan",
+        adapter="ark_agent_plan",
+        default_model="seed-tts-2.0",
+    ),
     "xiaomi_mimo": VoiceProviderSpec(
         label="Xiaomi MiMo",
         default_api_base="https://api.xiaomimimo.com/v1",
@@ -429,6 +443,12 @@ TTS_PROVIDERS: dict[str, VoiceProviderSpec] = {
 }
 
 STT_PROVIDERS: dict[str, VoiceProviderSpec] = {
+    "volcengine_agent_plan": VoiceProviderSpec(
+        label="Volcengine Ark Agent Plan",
+        default_api_base="https://openspeech.bytedance.com/api/v3/plan",
+        adapter="ark_agent_plan",
+        default_model="bigmodel",
+    ),
     "volcengine_speech": VoiceProviderSpec(
         label="Volcengine Speech (Doubao)",
         default_api_base="https://openspeech.bytedance.com/api/v3",
@@ -541,6 +561,11 @@ class GenerationProviderSpec:
 # Image-generation providers in the OpenAI-compatible cluster. A single adapter
 # covers all of these; ``default_model`` is only a Settings prefill hint.
 IMAGEGEN_PROVIDERS: dict[str, GenerationProviderSpec] = {
+    "volcengine_agent_plan": GenerationProviderSpec(
+        label="Volcengine Ark Agent Plan",
+        default_api_base="https://ark.cn-beijing.volces.com/api/plan/v3",
+        default_model="doubao-seedream-5.0-flash",
+    ),
     "dashscope": GenerationProviderSpec(
         label="Aliyun DashScope",
         default_api_base="https://dashscope.aliyuncs.com/api/v1",
@@ -598,6 +623,12 @@ IMAGEGEN_PROVIDERS: dict[str, GenerationProviderSpec] = {
 # Video-generation providers. Text-to-video has no synchronous standard; these
 # all use the async-task adapter (submit → poll → download).
 VIDEOGEN_PROVIDERS: dict[str, GenerationProviderSpec] = {
+    "volcengine_agent_plan": GenerationProviderSpec(
+        label="Volcengine Ark Agent Plan",
+        default_api_base="https://ark.cn-beijing.volces.com/api/plan/v3",
+        adapter="async_task",
+        default_model="doubao-seedance-2.0",
+    ),
     "dashscope": GenerationProviderSpec(
         label="Aliyun DashScope",
         default_api_base="https://dashscope.aliyuncs.com/api/v1",
@@ -1233,6 +1264,14 @@ def resolve_embedding_runtime_config(
         provider_pool=provider_pool,
     )
     spec = EMBEDDING_PROVIDERS[provider_name]
+    if (
+        provider_name == "volcengine_agent_plan"
+        and resolved_model.startswith("doubao-embedding-vision")
+        and send_dimensions is None
+    ):
+        # Agent Plan supports explicit 1024/2048 dimensions. Keep configured
+        # index dimensions aligned with the vectors returned by the service.
+        send_dimensions = True
     mapped = (
         None
         if (profile or {}).get("provider_ref") or (model or {}).get("provider_ref")

@@ -54,6 +54,8 @@ def provider_endpoint(
         "/tts/unidirectional/sse",
         "/tts/unidirectional",
         "/auc/bigmodel/recognize/flash",
+        "/sauc/bigmodel_nostream",
+        "/sauc/bigmodel_async",
         "/images/generations",
         "/videos/generations",
         "/chat/completions",

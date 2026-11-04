@@ -6406,5 +6406,7 @@
   "Learning text preview": "Öğrenme metni önizlemesi",
   "Reset learning text": "Öğrenme metnini sıfırla",
   "language.portuguese": "Português",
-  "language.japanese": "日本語"
+  "language.japanese": "日本語",
+  "Use the dedicated Ark Agent Plan API key for language, embedding, image, video and speech models. Speech endpoints are selected separately from the language model URL.": "Use the dedicated Ark Agent Plan API key for language, embedding, image, video and speech models. Speech endpoints are selected separately from the language model URL.",
+  "Enter a speaker ID before previewing this speech model.": "Enter a speaker ID before previewing this speech model."
 }

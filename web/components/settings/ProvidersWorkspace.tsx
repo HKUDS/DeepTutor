@@ -344,6 +344,11 @@ export function ProvidersWorkspace() {
                           </div>
                         )}
                       </div>
+                      {source.provider === "volcengine_agent_plan" && (
+                        <p className="text-[13px] leading-relaxed text-[var(--muted-foreground)]">
+                          {t("Use the dedicated Ark Agent Plan API key for language, embedding, image, video and speech models. Speech endpoints are selected separately from the language model URL.")}
+                        </p>
+                      )}
                       {source.provider === "volcengine_speech" && (
                         <div className="space-y-2">
                           <RegistryField label={t("Speech App ID (legacy console only)")}

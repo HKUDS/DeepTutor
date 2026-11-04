@@ -67,6 +67,7 @@ export const PROVIDER_ICONS: Readonly<Record<string, ProviderIconSpec>> = {
   volcengine: { file: "volcengine-color.svg" },
   volcengine_coding_plan: { file: "volcengine-color.svg" },
   volcengine_speech: { file: "volcengine-color.svg" },
+  volcengine_agent_plan: { file: "volcengine-color.svg" },
   xiaomi_mimo: { file: "xiaomimimo.svg", mono: true },
   zhipu: { file: "zhipu-color.svg" },
 };
@@ -105,6 +106,7 @@ const CHINESE_NAMES: Readonly<Record<string, { name: string; labels: string[] }>
   volcengine: {"name": "火山引擎", "labels": ["VolcEngine", "Volcengine Ark (Seedream)", "Volcengine Ark (Seedance)"]},
   volcengine_coding_plan: {"name": "火山引擎", "labels": ["VolcEngine Coding Plan"]},
   volcengine_speech: {"name": "火山引擎豆包语音", "labels": ["Volcengine Speech (Doubao)"]},
+  volcengine_agent_plan: {"name": "火山方舟 Agent Plan", "labels": ["Volcengine Ark Agent Plan"]},
   deepseek: {"name": "深度求索", "labels": ["DeepSeek"]},
   zhipu: {"name": "智谱", "labels": ["Zhipu AI", "Zhipu"]},
   dashscope: {"name": "阿里云百炼", "labels": ["DashScope", "Aliyun DashScope"]},

@@ -8,6 +8,10 @@ OpenRouter, Azure OpenAI and local vLLM/LM Studio; add bespoke providers
 
 from __future__ import annotations
 
+from deeptutor.services.voice.adapters.ark_agent_plan import (
+    ArkAgentPlanSTTAdapter,
+    ArkAgentPlanTTSAdapter,
+)
 from deeptutor.services.voice.adapters.dashscope import (
     DashScopeSTTAdapter,
     DashScopeTTSAdapter,
@@ -27,6 +31,7 @@ from deeptutor.services.voice.adapters.xai import XaiSTTAdapter, XaiTTSAdapter
 from deeptutor.services.voice.base import BaseSTTAdapter, BaseTTSAdapter, VoiceProviderError
 
 TTS_ADAPTERS: dict[str, BaseTTSAdapter] = {
+    "ark_agent_plan": ArkAgentPlanTTSAdapter(),
     "mimo_tts": MiMoTTSAdapter(),
     "minimax": MiniMaxTTSAdapter(),
     "volcengine": VolcengineTTSAdapter(),
@@ -40,6 +45,7 @@ TTS_ADAPTERS: dict[str, BaseTTSAdapter] = {
 }
 
 STT_ADAPTERS: dict[str, BaseSTTAdapter] = {
+    "ark_agent_plan": ArkAgentPlanSTTAdapter(),
     "volcengine": VolcengineSTTAdapter(),
     "openai_compat": OpenAICompatSTTAdapter(),
     "dashscope": DashScopeSTTAdapter(),

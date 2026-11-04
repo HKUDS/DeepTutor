@@ -98,6 +98,7 @@ EMBEDDING_PROVIDER_ALIASES = {
 }
 
 EMBEDDING_PROVIDER_LABELS = {
+    "volcengine_agent_plan": "Volcengine Ark Agent Plan",
     "openai": "OpenAI",
     "mistral": "Mistral",
     "gemini": "Gemini",
@@ -112,6 +113,7 @@ EMBEDDING_PROVIDER_LABELS = {
 }
 
 EMBEDDING_PROVIDER_DEFAULT_ENDPOINTS = {
+    "volcengine_agent_plan": "https://ark.cn-beijing.volces.com/api/plan/v3/embeddings",
     "openai": "https://api.openai.com/v1/embeddings",
     "mistral": "https://api.mistral.ai/v1/embeddings",
     "gemini": gemini_embedding_endpoint(GEMINI_DEFAULT_EMBEDDING_MODEL),
@@ -130,6 +132,7 @@ EMBEDDING_PROVIDER_DEFAULT_ENDPOINTS = {
 }
 
 EMBEDDING_PROVIDERS_REQUIRING_EMBEDDINGS_PATH = {
+    "volcengine_agent_plan",
     "openai",
     "mistral",
     "openrouter",
@@ -205,6 +208,10 @@ def normalize_embedding_endpoint_for_display(
         return EMBEDDING_PROVIDER_DEFAULT_ENDPOINTS.get(provider_name, "")
 
     trimmed = url.rstrip("/")
+    if provider_name == "volcengine_agent_plan":
+        parsed = urlparse(trimmed)
+        if parsed.path.endswith("/v3"):
+            return _append_endpoint_path(trimmed, parsed, "/embeddings")
     if provider_name == "gemini":
         parsed = urlparse(trimmed if "://" in trimmed else f"https://{trimmed}")
         path = parsed.path.rstrip("/")

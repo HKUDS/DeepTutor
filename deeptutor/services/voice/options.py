@@ -25,6 +25,9 @@ VOLC_LANGUAGES = choices(
     "zh-CN en-US ja-JP id-ID es-MX pt-BR de-DE fr-FR ko-KR fil-PH ms-MY th-TH ar-SA it-IT bn-BD el-GR nl-NL ru-RU tr-TR vi-VN pl-PL ro-RO ne-NP uk-UA yue-CN".split()
 )
 OPENAI_FORMATS = ["mp3", "wav", "opus", "aac", "flac", "pcm"]
+ARK_AGENT_PLAN_DOCS = (
+    "https://ark.volcengine.com/region:cn-beijing/docs/agent-plan-personal-voice-model"
+)
 
 
 def preset(model: str, *, languages=None, formats=None, **kwargs) -> dict:
@@ -97,7 +100,7 @@ def _tts_models(provider: str) -> tuple[list[dict], str]:
                 "google/gemini-3.1-flash-tts-preview",
             ]
         ], "https://openrouter.ai/docs/guides/overview/multimodal/audio"
-    if provider == "volcengine_speech":
+    if provider in {"volcengine_speech", "volcengine_agent_plan"}:
         return [
             preset(
                 m,
@@ -107,8 +110,16 @@ def _tts_models(provider: str) -> tuple[list[dict], str]:
                 speed={"min": 0.5, "max": 2, "step": 0.05},
                 instructions=m == "seed-tts-2.0",
             )
-            for m in ["seed-tts-2.0", "seed-tts-1.0", "seed-tts-1.0-concurr"]
-        ], "https://www.volcengine.com/docs/6561/1257544"
+            for m in (
+                ["seed-tts-2.0"]
+                if provider == "volcengine_agent_plan"
+                else ["seed-tts-2.0", "seed-tts-1.0", "seed-tts-1.0-concurr"]
+            )
+        ], (
+            ARK_AGENT_PLAN_DOCS
+            if provider == "volcengine_agent_plan"
+            else "https://www.volcengine.com/docs/6561/1257544"
+        )
     if provider == "dashscope":
         qwen_models = [
             preset(
@@ -223,7 +234,7 @@ def voice_options(provider: str, service: str) -> dict:
         )
         if provider == "minimax":
             fallback = {**deepcopy(models[0]), "id": "", "voices": []}
-        elif provider == "volcengine_speech":
+        elif provider in {"volcengine_speech", "volcengine_agent_plan"}:
             fallback = {**deepcopy(models[0]), "id": "", "voices": [], "instructions": False}
         elif provider == "dashscope":
             fallback = {**deepcopy(models[0]), "id": "", "voices": [], "instructions": False}
@@ -253,10 +264,15 @@ def voice_options(provider: str, service: str) -> dict:
             "siliconflow": ["FunAudioLLM/SenseVoiceSmall"],
             "dashscope": ["paraformer-realtime-v2"],
             "volcengine_speech": ["bigmodel"],
+            "volcengine_agent_plan": ["bigmodel"],
             "mistral": ["voxtral-mini-latest", "voxtral-small-latest"],
             "xai": ["grok-voice-transcribe-2.0"],
         }.get(provider, [])
-        languages = VOLC_LANGUAGES if provider == "volcengine_speech" else ISO_LANGUAGES
+        languages = (
+            VOLC_LANGUAGES
+            if provider in {"volcengine_speech", "volcengine_agent_plan"}
+            else ISO_LANGUAGES
+        )
         if provider == "siliconflow":
             languages = choices(["zh", "en", "ja", "ko", "yue"])
         if provider == "dashscope":
@@ -264,7 +280,9 @@ def voice_options(provider: str, service: str) -> dict:
         models = [preset(m, languages=languages) for m in ids]
         fallback = preset("", languages=languages)
         docs = (
-            "https://www.volcengine.com/docs/6561/2608628"
+            ARK_AGENT_PLAN_DOCS
+            if provider == "volcengine_agent_plan"
+            else "https://www.volcengine.com/docs/6561/2608628"
             if provider == "volcengine_speech"
             else ""
         )

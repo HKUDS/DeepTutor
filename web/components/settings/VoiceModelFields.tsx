@@ -115,12 +115,12 @@ export function VoiceModelFields({
             onChange={v => update('sample_rate', v)}
           />
         )}
-        {service === 'stt' && provider === 'volcengine_speech' && (
+        {service === 'stt' && ['volcengine_speech', 'volcengine_agent_plan'].includes(provider) && (
           <RegistryField
             label={t('Speech resource ID')}
             value={model.resource_id ?? ''}
             disabled={disabled}
-            placeholder="volc.bigasr.auc_turbo"
+            placeholder={provider === 'volcengine_agent_plan' ? 'volc.seedasr.sauc.duration' : 'volc.bigasr.auc_turbo'}
             onChange={v => update('resource_id', v)}
           />
         )}

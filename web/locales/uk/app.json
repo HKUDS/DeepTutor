@@ -6428,5 +6428,7 @@
   "Availability refreshed. This parser is still unavailable; check the installation and startup logs, then retry.": "Доступність оновлено. Цей парсер досі недоступний; перевірте встановлення та журнали запуску й повторіть спробу.",
   "language.portuguese": "Португальська",
   "language.japanese": "Японська",
-  "language.turkish": "Türkçe"
+  "language.turkish": "Türkçe",
+  "Use the dedicated Ark Agent Plan API key for language, embedding, image, video and speech models. Speech endpoints are selected separately from the language model URL.": "Use the dedicated Ark Agent Plan API key for language, embedding, image, video and speech models. Speech endpoints are selected separately from the language model URL.",
+  "Enter a speaker ID before previewing this speech model.": "Enter a speaker ID before previewing this speech model."
 }
