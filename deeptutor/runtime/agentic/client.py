@@ -551,6 +551,11 @@ class _ProviderOpenAIStream:
         self._emitted_content = False
         self._emitted_reasoning = False
 
+    @property
+    def idle_timeout(self) -> float | None:
+        """Allow providers with buffered output to declare a bounded wait."""
+        return getattr(self._provider, "stream_idle_timeout", None)
+
     def __aiter__(self) -> "_ProviderOpenAIStream":
         if self._queue is None:
             self._queue = asyncio.Queue()

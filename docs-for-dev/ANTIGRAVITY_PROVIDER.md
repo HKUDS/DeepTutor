@@ -94,6 +94,9 @@ file access. The CLI controls sampling and generation limits;
 DeepTutor's `temperature` and `max_tokens` are not forwarded as unsupported CLI
 flags. Fresh CLI startup and full-history replay add latency. The default
 request deadline is 180 seconds; the provider constructor accepts `timeout`.
+For buffered replies, the chat loop waits through that deadline and allows
+time for process cleanup. A CLI deadline failure reports a timeout without
+automatically replaying the same model request.
 Local CLI settings, hooks, and credentials remain owned by Antigravity.
 
 The implementation targets the headless/JSONL protocol documented in the

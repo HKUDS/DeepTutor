@@ -163,12 +163,15 @@ async def _run_cli(
             returncode = await process.wait()
         return returncode, "".join(output), diagnostics.decode("utf-8", "replace")
     except TimeoutError:
-        raise RuntimeError("Antigravity CLI request timed out.") from None
+        pass
     finally:
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
         await _stop(process)
+    # An exhausted CLI deadline is terminal for this round. Keep the asyncio
+    # timeout out of the exception chain so the loop doesn't replay the work.
+    raise AntigravityCLIError(f"Antigravity CLI did not finish within {timeout:g} seconds.")
 
 
 class AntigravityCLIError(RuntimeError):
@@ -393,6 +396,11 @@ class AntigravityProvider(LLMProvider):
     def get_default_model(self) -> str:
         """Return the configured CLI model slug."""
         return self.default_model
+
+    @property
+    def stream_idle_timeout(self) -> float:
+        """Let the CLI finish buffered replies and clean up after its deadline."""
+        return self.timeout + 15
 
     async def aclose(self) -> None:
         """Cancel outstanding requests and clean up their owned processes."""

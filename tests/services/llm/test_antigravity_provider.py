@@ -537,6 +537,7 @@ async def test_real_child_stdin_and_large_stderr_are_drained(monkeypatch, tmp_pa
 @pytest.mark.asyncio
 async def test_real_child_timeout_and_cancellation_reap_process_tree(monkeypatch, tmp_path):
     from deeptutor.runtime.process import is_process_alive
+    from deeptutor.services.llm.request_compat import is_transient_transport_error
 
     monkeypatch.setattr(agy, "_cli", lambda: sys.executable)
     pid_file = tmp_path / "pid.txt"
@@ -558,5 +559,54 @@ async def test_real_child_timeout_and_cancellation_reap_process_tree(monkeypatch
         await task
     assert not is_process_alive(int(pid_file.read_text()))
     assert not is_process_alive(int(child_file.read_text()))
-    with pytest.raises(RuntimeError, match="timed out"):
+    with pytest.raises(
+        agy.AntigravityCLIError, match="did not finish within 0.1 seconds"
+    ) as caught:
         await agy._run_cli(["-c", "import time; time.sleep(60)"], cwd=str(tmp_path), timeout=0.1)
+    assert not is_transient_transport_error(caught.value)
+
+
+@pytest.mark.asyncio
+async def test_buffered_reply_can_arrive_after_generic_stream_idle_limit(monkeypatch):
+    from deeptutor.agents.loop import agent_loop
+    from deeptutor.runtime.agentic.client import _ProviderOpenAIAdapter
+    from deeptutor.services.llm.exceptions import LLMProviderTransportError
+
+    async def buffered_cli(*args, on_event, **kwargs):
+        await asyncio.sleep(0.05)
+        await on_event(
+            {
+                "event": "result",
+                "result": {"status": "SUCCESS", "response": "Finished after the idle limit."},
+            }
+        )
+        return 0, "", ""
+
+    monkeypatch.setattr(agy, "_run_cli", buffered_cli)
+    monkeypatch.setattr(agent_loop, "_STREAM_IDLE_TIMEOUT_SECONDS", 0.01)
+    client = _ProviderOpenAIAdapter(agy.AntigravityProvider())
+
+    async def stream_reply():
+        return await client.chat.completions.create(
+            messages=[{"role": "user", "content": "Reply when finished."}], stream=True
+        )
+
+    stream = await stream_reply()
+    try:
+        chunks = [chunk async for chunk in agent_loop._bounded_stream_chunks(stream)]
+        assert chunks[0].choices[0].delta.content == "Finished after the idle limit."
+    finally:
+        await stream.close()
+
+    # The default bound still applies to a stream that does not opt in.
+    stream = await stream_reply()
+
+    async def unannotated_stream():
+        async for chunk in stream:
+            yield chunk
+
+    try:
+        with pytest.raises(LLMProviderTransportError, match="stream timed out"):
+            _ = [chunk async for chunk in agent_loop._bounded_stream_chunks(unannotated_stream())]
+    finally:
+        await stream.close()
