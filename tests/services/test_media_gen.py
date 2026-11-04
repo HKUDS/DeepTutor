@@ -55,7 +55,7 @@ def _patch_http(
         return resp
 
     async def fake_get(self: httpx.AsyncClient, url: str, **kwargs: Any) -> httpx.Response:
-        captured["gets"].append({"url": url})
+        captured["gets"].append({"url": url, "headers": kwargs.get("headers")})
         resp = get(url, kwargs) if callable(get) else get
         resp.request = httpx.Request("GET", url)
         return resp
@@ -286,6 +286,49 @@ async def test_dashscope_imagegen_http200_protocol_error_is_actionable(
         match=r"DashScope image task submission failed \(InvalidParameter\): unsupported size",
     ):
         await DashScopeImagegenAdapter().generate("x", config)
+
+
+@pytest.mark.asyncio
+async def test_dashscope_poll_does_not_replay_the_async_header(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``X-DashScope-Async`` belongs to the submit POST only.
+
+    Verified against a workspace-scoped Bailian key: the submit succeeds, but
+    re-sending the header on ``GET /tasks/{id}`` answers
+    ``403 AccessDenied: current user api does not support asynchronous calls``,
+    so a task that is running upstream looks like a hard failure.
+    """
+    submit = httpx.Response(200, json={"output": {"task_id": "hdr-task"}})
+
+    def get_router(url: str, _kwargs: Any) -> httpx.Response:
+        if url.endswith("/tasks/hdr-task"):
+            return httpx.Response(
+                200,
+                json={
+                    "output": {
+                        "task_status": "SUCCEEDED",
+                        "results": [{"url": "https://cdn.example.com/a.png"}],
+                    }
+                },
+            )
+        return httpx.Response(200, content=b"DATA", headers={"content-type": "image/png"})
+
+    captured = _patch_http(monkeypatch, post=submit, get=get_router)
+    config = ImagegenConfig(
+        model="wanx2.1-t2i-turbo",
+        adapter="dashscope",
+        base_url="https://dashscope.aliyuncs.com/api/v1",
+        api_key="dash-key",
+        poll_interval=0.0,
+    )
+
+    await DashScopeImagegenAdapter().generate("a cat", config)
+
+    assert captured["posts"][0]["headers"]["X-DashScope-Async"] == "enable"
+    assert "X-DashScope-Async" not in (captured["gets"][0]["headers"] or {})
+    # Auth still travels with the poll.
+    assert captured["gets"][0]["headers"]["Authorization"] == "Bearer dash-key"
 
 
 # ── videogen adapter ────────────────────────────────────────────────────────

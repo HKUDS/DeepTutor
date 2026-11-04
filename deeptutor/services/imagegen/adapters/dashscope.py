@@ -43,7 +43,7 @@ class DashScopeImagegenAdapter(BaseImagegenAdapter):
                 resp = await client.post(submit_url, headers=headers, json=payload)
                 raise_for_provider(resp, "DashScope image task submission")
                 task_id = self._task_id(resp)
-                results = await self._poll(client, config, headers, task_id)
+                results = await self._poll(client, config, self._poll_headers(config), task_id)
                 images = []
                 for result in results:
                     images.append(await self._materialize(client, result))
@@ -55,9 +55,27 @@ class DashScopeImagegenAdapter(BaseImagegenAdapter):
 
     @staticmethod
     def _headers(config: ImagegenConfig) -> dict[str, str]:
+        """Headers for the submit POST — the async switch is required here."""
         return {
             "Content-Type": "application/json",
             "X-DashScope-Async": "enable",
+            **build_auth_headers(config.auth_style, config.api_key),
+            **(config.extra_headers or {}),
+        }
+
+    @staticmethod
+    def _poll_headers(config: ImagegenConfig) -> dict[str, str]:
+        """Headers for the poll GET — never carry the async switch.
+
+        ``X-DashScope-Async`` selects the asynchronous submission mode, which
+        only the POST routes implement. Replaying it on ``GET /tasks/{id}``
+        makes the gateway look for an async capability the caller may not have:
+        workspace-scoped keys answer ``403 AccessDenied: current user api does
+        not support asynchronous calls`` for every poll, so a task that
+        succeeded upstream is reported as a failure.
+        """
+        return {
+            "Content-Type": "application/json",
             **build_auth_headers(config.auth_style, config.api_key),
             **(config.extra_headers or {}),
         }
