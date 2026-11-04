@@ -59,12 +59,12 @@ export function scopedUrl(path: string, workspaceId = activeWorkspaceId()): stri
 /**
  * The same scope, as an absolute `ws:`/`wss:` URL.
  *
- * `fetch()` resolves a relative path against the document, so `scopedUrl`
- * stays relative for it. `new WebSocket()` does not: the constructor parses
- * its argument as an absolute URL and throws `DOMException: The URL is
- * invalid` on `/ws?dt_workspace=…`, which left every socket-backed surface
- * hung instead of connecting (#2404). Sockets therefore take the scoped path
- * and turn it into the matching absolute URL.
+ * A relative path is resolved against the document before it is requested, so
+ * `scopedUrl` stays relative for that consumer. `new WebSocket()` does not
+ * resolve anything: the constructor parses its argument as an absolute URL and
+ * throws `DOMException: The URL is invalid` on `/ws?dt_workspace=…`, which left
+ * every socket-backed surface hung instead of connecting (#2404). Sockets
+ * therefore take the scoped path and turn it into the matching absolute URL.
  *
  * The scheme follows the target: a same-origin socket follows the page, so an
  * `https:` document yields `wss:` and never opens a cleartext socket on a TLS

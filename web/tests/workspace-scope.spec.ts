@@ -67,10 +67,10 @@ it("leaves an explicitly scoped https URL's origin intact and only swaps the sch
   expect(pinned).toBe("wss://media.example.org/ws?signature=abc");
 });
 
-it("keeps apiUrl relative so fetch() still resolves it against the document", () => {
+it("keeps apiUrl relative so the browser resolves it against the document", () => {
   window.history.replaceState(null, "", "/chat?dt_workspace=ws_a");
   // Only sockets need the absolute form; getting this wrong would break
-  // every proxied fetch.
+  // every proxied request.
   expect(apiUrl("/api/books")).toBe("/api/books?dt_workspace=ws_a");
 });
 
