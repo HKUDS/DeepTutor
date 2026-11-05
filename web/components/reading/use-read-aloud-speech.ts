@@ -49,6 +49,9 @@ export function useReadAloudSpeech() {
   const [timeline, setTimeline] = useState<SpokenWord[]>([]);
   const tokenRef = useRef(0);
   const playbackRef = useRef<Playback | null>(null);
+  // Held in a ref so `stop()` and a fresh `speak()` cannot revive a stale chain
+  // (the token check in `finished` is the guard; this only stores the callback).
+  const onEndRef = useRef<(() => void) | null>(null);
 
   const disposeAudio = useCallback((playback = playbackRef.current) => {
     if (!playback) return;
@@ -66,6 +69,7 @@ export function useReadAloudSpeech() {
 
   const stop = useCallback(() => {
     tokenRef.current += 1;
+    onEndRef.current = null;
     disposeAudio();
     window.speechSynthesis?.cancel();
     setSpeaking(false);
@@ -81,11 +85,18 @@ export function useReadAloudSpeech() {
 
   /** Resolve the timeline once metadata is known, then drive `activeWord`. */
   const attachTimeline = useCallback(
-    (audio: HTMLAudioElement, words: SpokenWord[], fallbackText: string, token: number) => {
+    (
+      audio: HTMLAudioElement,
+      words: SpokenWord[],
+      fallbackText: string,
+      token: number,
+      base: number,
+    ) => {
       const apply = (resolved: SpokenWord[]) => {
         if (tokenRef.current !== token || playbackRef.current?.audio !== audio) return;
         setTimeline(resolved);
-        setActiveWord(resolved.length ? 0 : -1);
+        // `base` shifts a mid-page start back onto the page's own numbering.
+        setActiveWord(resolved.length ? base : -1);
       };
 
       if (words.length) {
@@ -118,7 +129,7 @@ export function useReadAloudSpeech() {
         }
         if (found !== lastIndex) {
           lastIndex = found;
-          setActiveWord(found);
+          setActiveWord(found < 0 ? -1 : found + base);
         }
       };
     },
@@ -132,6 +143,9 @@ export function useReadAloudSpeech() {
       locale,
       fallbackText,
       timed = false,
+      base = 0,
+      onEnd,
+      text,
     }: {
       materialId: string;
       locator: number;
@@ -139,8 +153,22 @@ export function useReadAloudSpeech() {
       fallbackText: string;
       /** Request server word timings for read-along highlighting. */
       timed?: boolean;
+      /**
+       * Index of this passage's first word within the page's own word
+       * numbering. Read-along can start mid-page, and the server always times
+       * from zero, so highlights are shifted back by this much.
+       */
+      base?: number;
+      /** Fired once when playback ends — read-along uses it to turn the page. */
+      onEnd?: () => void;
+      /**
+       * Speak this exact passage instead of the whole unit. Selection reading
+       * and "read from here" both need a slice the server has never seen.
+       */
+      text?: string;
     }) => {
       const token = ++tokenRef.current;
+      onEndRef.current = onEnd ?? null;
       disposeAudio();
       window.speechSynthesis?.cancel();
       setSpeaking(false);
@@ -151,11 +179,23 @@ export function useReadAloudSpeech() {
         let blob: Blob;
         let words: SpokenWord[] = [];
         let wasTimed = false;
+        const passage = text?.trim();
         if (timed) {
-          const result = await readReadingAloudTimed(materialId, { locator });
+          const result = await readReadingAloudTimed(
+            materialId,
+            passage ? { locator, text: passage } : { locator },
+          );
           blob = result.audio;
           words = result.words;
           wasTimed = result.timed;
+        } else if (passage) {
+          // Loading a unit's whole audio would read the wrong passage, so an
+          // explicit slice always goes through the timed endpoint.
+          const result = await readReadingAloudTimed(materialId, {
+            locator,
+            text: passage,
+          });
+          blob = result.audio;
         } else {
           blob = await readReadingAloudAudio(materialId, { locator });
         }
@@ -165,15 +205,26 @@ export function useReadAloudSpeech() {
         playback = { audio, url, disposed: false };
         playbackRef.current = playback;
         const finished = () => {
+          const wasCurrent = tokenRef.current === token;
           disposeAudio(playback);
-          if (tokenRef.current === token) {
+          if (wasCurrent) {
             setSpeaking(false);
             setActiveWord(-1);
           }
+          // Only chain while this is still the live playback: a stop or a new
+          // utterance invalidates the token first.
+          if (wasCurrent) onEndRef.current?.();
         };
         audio.onended = finished;
         audio.onerror = finished;
-        if (timed) attachTimeline(audio, wasTimed ? words : [], fallbackText, token);
+        if (timed)
+          attachTimeline(
+            audio,
+            wasTimed ? words : [],
+            passage || fallbackText,
+            token,
+            base,
+          );
         await audio.play();
         if (tokenRef.current !== token) {
           disposeAudio(playback);
@@ -196,13 +247,15 @@ export function useReadAloudSpeech() {
         utterance.onboundary = (event) => {
           if (tokenRef.current !== token) return;
           if (typeof event.charIndex !== "number") return;
-          setActiveWord(indexAtChar(words, fallbackText, event.charIndex));
+          const hit = indexAtChar(words, fallbackText, event.charIndex);
+          setActiveWord(hit < 0 ? -1 : hit + base);
         };
       }
       utterance.onend = () => {
         if (tokenRef.current === token) {
           setSpeaking(false);
           setActiveWord(-1);
+          onEndRef.current?.();
         }
       };
       utterance.onerror = () => {

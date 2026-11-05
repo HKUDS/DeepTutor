@@ -9,7 +9,12 @@ import Tooltip from "@/shared/ui/Tooltip";
 const READ_ALOUD_KEY = "read_aloud:read";
 
 /**
- * Read-aloud as one header toggle: speaker to start, square to stop.
+ * Read-along as one header toggle: speaker to arm the cursor, square to stop.
+ *
+ * Arming the cursor is the NaturalReader model — press once and the voice walks
+ * the document, turning pages until the end; click or select text to redirect
+ * it. The button therefore reflects "is read-along on", not "is audio playing
+ * this instant", so it stays lit across the gap between two pages.
  *
  * It used to be a chip in the action strip that, once pressed, grew a second
  * "Reading aloud ■" band above the page — two rows of chrome for one on/off
@@ -23,28 +28,27 @@ export function ReadAloudButton({ disabled }: { disabled?: boolean }) {
   if (!shared || !entry || shared.ageMode !== "default") return null;
 
   const busy = shared.busyKey === READ_ALOUD_KEY;
-  const label = shared.speaking
-    ? t("Stop reading aloud")
-    : t("Read this page aloud");
+  // The cursor stays armed between pages, so the toggle follows that rather
+  // than the momentary transport state.
+  const active = shared.readAlongActive || shared.speaking;
+  const label = active ? t("Stop reading aloud") : t("Read aloud from here");
   return (
     <Tooltip label={label}>
       <button
         type="button"
         disabled={disabled || busy}
-        onClick={() =>
-          shared.speaking ? shared.stopSpeaking() : void shared.run(entry)
-        }
+        onClick={() => shared.toggleReadAlong()}
         aria-label={label}
-        aria-pressed={shared.speaking}
+        aria-pressed={active}
         className={`flex size-7 shrink-0 items-center justify-center rounded-md transition hover:bg-[var(--muted)] disabled:cursor-not-allowed disabled:opacity-40 ${
-          shared.speaking
+          active
             ? "text-[var(--primary)]"
             : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
         }`}
       >
         {busy ? (
           <Loader2 size={14} className="animate-spin" />
-        ) : shared.speaking ? (
+        ) : active ? (
           <Square size={11} fill="currentColor" />
         ) : (
           <Volume2 size={14} />

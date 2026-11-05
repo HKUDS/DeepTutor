@@ -50,6 +50,12 @@ import { toRecogitoTextAnnotation } from "@/lib/reading-w3c-annotations";
 import type { JumpRequest, SelectionPayload } from "./PdfDocumentView";
 import { PreferenceButton, ReaderDisplayControls } from "./ReaderDisplayControls";
 import { ReadAlongHighlighter } from "./ReadAlongHighlighter";
+import { useReadingActions } from "./reading-actions-context";
+import {
+  collectSpeakableText,
+  wordIndexFromPoint,
+  type SpeakableText,
+} from "@/lib/reading-speakable-text";
 
 const COLOR_INK: Record<string, string> = {
   yellow: "250 220 90",
@@ -105,6 +111,11 @@ export function TextUnitView({
   const readerRootRef = useRef<HTMLDivElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const articleRef = useRef<HTMLElement | null>(null);
+  // Read-along needs to ask "which word is under the page's own word N?" and
+  // "can I turn forward?", so the model and a next-page callback live in refs
+  // the provider can reach without re-rendering on every keystroke.
+  const speakableRef = useRef<SpeakableText | null>(null);
+  const sharedActions = useReadingActions();
   const textSelectorToolsRef = useRef<{
     rangeToSelector: (
       range: Range,
@@ -407,6 +418,63 @@ export function TextUnitView({
     );
   }, [pageHeadings]);
 
+  // -- read-along: page model, page turning, click and selection -----------
+
+  // Publish this page to the read-along session. `next` reuses the same
+  // navigation the Next Section button uses so a page turn behaves identically
+  // whether a person or the voice asked for it.
+  useEffect(() => {
+    if (!sharedActions) return;
+    sharedActions.registerReadAlongSource({
+      getPage: () => {
+        const model = speakableRef.current;
+        if (!model) return null;
+        return { text: model.text, wordCount: model.words.length };
+      },
+      hasNext: () => locator < unitCount,
+      next: () => setLocator((current) => Math.min(unitCount, current + 1)),
+    });
+    return () => sharedActions.registerReadAlongSource(null);
+  }, [locator, sharedActions, unitCount]);
+
+  // Rebuild the word model whenever the rendered text changes, then tell the
+  // provider the page is ready so an in-flight read-along can continue on it.
+  useEffect(() => {
+    const article = articleRef.current;
+    if (!article || loading || error) return;
+    speakableRef.current = collectSpeakableText(article);
+    if (sharedActions?.readAlongActive) sharedActions.continueReadAlong();
+  }, [error, loading, sharedActions, text]);
+
+  // Clicking text moves the cursor there: NaturalReader reads from the word
+  // under the pointer to the end of the document. Only a plain primary click
+  // counts — a click that produced a selection is handled by selection reading,
+  // and clicks on links, annotations, images or controls keep their own meaning.
+  const handleClickToRead = useCallback(
+    (event: React.MouseEvent<HTMLElement>) => {
+      if (!sharedActions || event.button !== 0) return;
+      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      const selection = window.getSelection();
+      if (selection && !selection.isCollapsed) return;
+      const target = event.target as HTMLElement | null;
+      if (!target) return;
+      if (target.closest("a,button,input,textarea,select,img,svg,[role=\"button\"]"))
+        return;
+      const article = articleRef.current;
+      if (!article?.contains(target)) return;
+      const model = speakableRef.current;
+      if (!model?.words.length) return;
+      // Map the click to a character offset in the text node under the caret.
+      const container = containerRef.current;
+      if (!container) return;
+      const offset = wordIndexFromPoint(model, event.clientX, event.clientY);
+      if (offset < 0) return;
+      selection?.removeAllRanges();
+      sharedActions.startReadAlong(offset);
+    },
+    [sharedActions],
+  );
+
   const handlePointerUp = useCallback(() => {
     const selection = window.getSelection();
     if (!selection || selection.isCollapsed) {
@@ -457,7 +525,11 @@ export function TextUnitView({
         ? { x: last.left + last.width / 2, y: last.top }
         : { x: 0, y: 0 },
     });
-  }, [locator, onSelection, text]);
+    // NaturalReader behaviour: a selection is read out immediately, on its own,
+    // and stops at its end rather than continuing into the page. Annotations and
+    // the companion still receive the selection as before.
+    sharedActions?.speakSelection(quote);
+  }, [locator, onSelection, sharedActions, text]);
 
   const canPrev = locator > 1;
   const canNext = locator < unitCount;
@@ -543,6 +615,7 @@ export function TextUnitView({
           <ReadAlongHighlighter containerRef={articleRef} />
           <article
             ref={articleRef}
+            onClick={handleClickToRead}
             // The sheet. Text used to run edge to edge on the same white as
             // everything around it, so the chosen line width was invisible and
             // the reading column had no boundary to sit inside — four white

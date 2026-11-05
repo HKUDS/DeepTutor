@@ -7,6 +7,16 @@ import type {
   ReadingExtensionResult,
 } from "@/lib/reading-api";
 
+/** How read-along reaches the page it is reading. */
+export interface ReadAlongSource {
+  /** Word model + plain text of the page currently rendered. */
+  getPage: () => { text: string; wordCount: number } | null;
+  /** True when the reader can advance (there is a next unit). */
+  hasNext: () => boolean;
+  /** Turn to the next unit, keeping read-along going. */
+  next: () => void;
+}
+
 /** One runnable extension action, with its label already resolved. */
 export interface ReadingActionEntry {
   key: string;
@@ -46,6 +56,20 @@ export interface ReadingActionsValue {
   actions: ReadingActionEntry[];
   cards: ReadingActionCard[];
   speaking: boolean;
+  /**
+   * Read-along is armed: the reader follows the voice with a cursor, and
+   * clicking or selecting text starts speech from that point
+   * (NaturalReader's interaction model, as opposed to a one-shot page play).
+   */
+  readAlongActive: boolean;
+  /** Start read-along at a word index, or resume from where it stopped. */
+  startReadAlong: (fromWord?: number) => void;
+  /** Speak a selection once and stop (no advancing past it). */
+  speakSelection: (text: string) => void;
+  /** Toggle the read-along cursor on/off. */
+  toggleReadAlong: () => void;
+  /** The reader calls this once a newly turned page has rendered. */
+  continueReadAlong: () => void;
   /** Key of the action currently running, or "". */
   busyKey: string;
   run: (
@@ -54,6 +78,12 @@ export interface ReadingActionsValue {
   ) => Promise<void>;
   stopSpeaking: () => void;
   dismiss: (cardId: string) => void;
+  /**
+   * The reader registers how to obtain its current page and turn to the next
+   * one. Held in the provider so read-along can walk a multi-unit document
+   * without the toolbar knowing how the reader paginates.
+   */
+  registerReadAlongSource: (source: ReadAlongSource | null) => void;
 }
 
 export const ReadingActionsContext = createContext<ReadingActionsValue | null>(

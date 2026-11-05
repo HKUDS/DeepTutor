@@ -3,6 +3,10 @@
 import { useEffect } from "react";
 
 import { useReadingActions } from "@/components/reading/reading-actions-context";
+import {
+  collectSpeakableText,
+  rangeForWordIndex,
+} from "@/lib/reading-speakable-text";
 
 const HIGHLIGHT_NAME = "reading-readalong";
 
@@ -37,7 +41,9 @@ export function ReadAlongHighlighter({
     }
 
     const HighlightCtor = getHighlightCtor();
-    const range = rangeForWord(root, activeWord);
+    // Same enumeration the click handler used to pick the start word, so
+    // index N means the same word in both directions.
+    const range = rangeForWordIndex(collectSpeakableText(root), activeWord);
     if (!HighlightCtor || !range) {
       registry.delete(HIGHLIGHT_NAME);
       return;
@@ -79,39 +85,4 @@ function getHighlightRegistry(): HighlightRegistry | null {
   const registry = (CSS as unknown as { highlights?: Map<string, unknown> }).highlights;
   if (!registry || typeof registry.set !== "function") return null;
   return registry as unknown as HighlightRegistry;
-}
-
-/**
- * Map the N-th speakable word inside `root` to a DOM `Range`.
- *
- * Mirrors the tokenisation used when the timeline was built (whitespace runs are
- * not words), so index N refers to the same word the voice is pronouncing.
- */
-function rangeForWord(root: HTMLElement, wordIndex: number): Range | null {
-  const doc = root.ownerDocument;
-  const walker = doc.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-  let seen = 0;
-
-  while (walker.nextNode()) {
-    const node = walker.currentNode as Text;
-    const parent = node.parentElement;
-    if (!parent) continue;
-    // Code is literal content, and the voice does not read it as prose.
-    if (parent.closest("script,style,noscript,textarea,pre,code")) continue;
-    const value = node.nodeValue;
-    if (!value) continue;
-
-    for (const match of value.matchAll(/\S+/g)) {
-      if (seen !== wordIndex) {
-        seen += 1;
-        continue;
-      }
-      const start = match.index ?? 0;
-      const range = doc.createRange();
-      range.setStart(node, start);
-      range.setEnd(node, start + match[0].length);
-      return range;
-    }
-  }
-  return null;
 }
