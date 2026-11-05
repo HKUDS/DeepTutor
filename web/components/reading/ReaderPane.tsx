@@ -50,6 +50,7 @@ import {
 } from "./PdfDocumentView";
 import { ReadingExtensionBar } from "./ReadingExtensionBar";
 import {
+  READER_ASK_EVENT,
   useReadingActions,
   type ReadingActionEntry,
 } from "./reading-actions-context";
@@ -86,7 +87,7 @@ const EpubDocumentView = dynamic(
 );
 
 /** Event the reader dispatches to prefill the composer from a selection. */
-export const READER_ASK_EVENT = "dt:reader-ask";
+export { READER_ASK_EVENT } from "./reading-actions-context";
 const AUTO_JUMP_KEY = "dt.reader.autoJump";
 
 function locationEntry(
