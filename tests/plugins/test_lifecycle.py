@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 import zipfile
 
 import pytest
 
+from deeptutor.plugins import lifecycle
 from deeptutor.plugins.lifecycle import (
     LifecycleResult,
     PluginLifecycleError,
@@ -58,11 +60,17 @@ def _manager(tmp_path: Path, *, fail_install: bool = False) -> PluginLifecycleMa
         if fail_install and argv[2:4] == ["pip", "install"]:
             return 3, "simulated dependency failure"
         if argv[1:3] == ["-m", "venv"]:
+            import sys
+
+            from deeptutor.plugins.lifecycle import _venv_python
+
+            # Lay the fake venv out the way this platform's venv does, since
+            # the installer looks for Scripts/ and Lib/ on Windows.
             root = Path(argv[-1])
-            (root / "bin").mkdir(parents=True, exist_ok=True)
-            package_root = root / "lib" / "python3.13" / "site-packages" / "example_plugin"
-            package_root.mkdir(parents=True, exist_ok=True)
-            python = root / "bin" / "python"
+            lib = root / "Lib" if sys.platform == "win32" else root / "lib" / "python3.13"
+            (lib / "site-packages" / "example_plugin").mkdir(parents=True, exist_ok=True)
+            python = _venv_python(root)
+            python.parent.mkdir(parents=True, exist_ok=True)
             python.write_text("#!python\n", encoding="utf-8")
             return 0, ""
         return 0, ""
@@ -150,3 +158,17 @@ def test_manifest_from_wheel_is_parsed_without_importing_plugin(tmp_path) -> Non
     record = manager.registry.get_plugin(result.plugin_id)
     assert record is not None and record.manifest is not None
     assert parse_manifest(record.manifest.to_dict()).id == "org.author.example"
+
+
+def test_install_env_keeps_windows_system_variables_only(monkeypatch, tmp_path) -> None:
+    # pip builds an SSL context before it reads a local wheel; on Windows that
+    # fails without SYSTEMROOT and the install exits 2.
+    windows = ("SYSTEMROOT", "WINDIR", "TEMP", "TMP", "USERPROFILE", "PATHEXT")
+    for key in windows:
+        monkeypatch.setenv(key, os.environ.get(key) or str(tmp_path))
+    monkeypatch.setenv("DEEPTUTOR_TEST_PROVIDER_KEY", "not-for-plugins")
+
+    env = lifecycle._clean_env()
+
+    assert {key: env.get(key) for key in windows} == {key: os.environ[key] for key in windows}
+    assert "DEEPTUTOR_TEST_PROVIDER_KEY" not in env

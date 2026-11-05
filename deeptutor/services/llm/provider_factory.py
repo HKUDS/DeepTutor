@@ -91,7 +91,9 @@ def _build_runtime_provider(
             OpenAICodexProvider,
         )
 
-        provider = OpenAICodexProvider(default_model=llm_config.model)
+        provider = OpenAICodexProvider(
+            default_model=llm_config.model, extra_headers=llm_config.extra_headers
+        )
     elif backend == "github_copilot":
         from deeptutor.services.llm.provider_core.github_copilot_provider import (
             GitHubCopilotProvider,

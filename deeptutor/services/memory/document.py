@@ -47,8 +47,12 @@ _SECTION_RE = re.compile(r"^##\s+(.+?)\s*$")
 # Markers are optional (an entry may cite no refs); commas + whitespace
 # between markers are tolerated so the rendered superscripts read
 # ``¹, ³`` instead of the visually-merged ``¹³``.
+# The label is matched as digits only, because ``serialize`` emits integer
+# labels exclusively. A looser ``[^...]`` would also swallow a footnote-like
+# token that is part of the entry text (e.g. prose ending in ``[^note]``),
+# dropping it on the round-trip.
 _NEW_BULLET_RE = re.compile(
-    rf"^\s*-\s+(?P<text>.*?)(?P<markers>(?:\s*,?\s*\[\^[^\]]+\])*)\s*<!--\s*(?P<id>{_ENTRY_ID_RE})\s*-->\s*$"
+    rf"^\s*-\s+(?P<text>.*?)(?P<markers>(?:\s*,?\s*\[\^\d+\])*)\s*<!--\s*(?P<id>{_ENTRY_ID_RE})\s*-->\s*$"
 )
 # Legacy bullet: "- text[^m_xxx]"
 _OLD_BULLET_RE = re.compile(rf"^\s*-\s+(?P<text>.*?)\[\^(?P<id>{_ENTRY_ID_RE})\]\s*$")

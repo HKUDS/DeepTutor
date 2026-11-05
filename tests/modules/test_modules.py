@@ -20,6 +20,25 @@ def isolated_state(tmp_path, monkeypatch):
     monkeypatch.setattr(lifecycle, "state_path", lambda: tmp_path / "modules.json")
 
 
+def test_installed_distributions_skip_core_and_absent_modules(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(catalog, "source_checkout", lambda: False)
+    monkeypatch.setattr(catalog, "installed", lambda name: name in {"server", "web"})
+
+    distributions = catalog.installed_distributions()
+
+    assert distributions == ["deeptutor-server", "deeptutor-web"]
+
+
+def test_installed_distributions_are_empty_in_a_source_checkout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(catalog, "source_checkout", lambda: True)
+
+    assert catalog.installed_distributions() == []
+
+
 def test_dependent_disable_requires_explicit_order():
     assert "reading" in lifecycle.plan("disable", "knowledge")["blocked_by"]
     with pytest.raises(lifecycle.ModuleLifecycleError, match="Required by"):

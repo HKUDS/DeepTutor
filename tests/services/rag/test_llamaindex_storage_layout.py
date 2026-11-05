@@ -150,7 +150,7 @@ def test_hybrid_retriever_uses_official_query_fusion_when_bm25_available(
 
     class _FakeBM25:
         @classmethod
-        def from_defaults(cls, index, similarity_top_k: int):
+        def from_defaults(cls, index, similarity_top_k: int, token_pattern: str):
             captured["bm25_top_k"] = similarity_top_k
             return cls()
 
@@ -209,6 +209,9 @@ def test_bm25_retriever_overrides_persisted_top_k(
 
     persist_dir = tmp_path / retriever_module.BM25_PERSIST_DIRNAME
     persist_dir.mkdir()
+    (persist_dir / "token_pattern.txt").write_text(
+        retriever_module.BM25_TOKEN_PATTERN, encoding="utf-8"
+    )
 
     class _FakeBM25:
         def __init__(self) -> None:
@@ -237,7 +240,7 @@ def test_bm25_persistence_drops_stale_sidecar_on_rebuild_failure(
 
     class _FailingBM25:
         @classmethod
-        def from_defaults(cls, index, similarity_top_k: int):
+        def from_defaults(cls, index, similarity_top_k: int, token_pattern: str):
             raise RuntimeError("boom")
 
     monkeypatch.setattr(retriever_module, "_import_bm25_retriever", lambda: _FailingBM25)

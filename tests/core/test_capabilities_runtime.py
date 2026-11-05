@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import os
+from pathlib import Path
 import sys
 import types
 from types import SimpleNamespace
@@ -310,6 +313,89 @@ async def test_deep_question_capability_uses_single_call_followup_agent(
     result_event = next(event for event in events if event.type == StreamEventType.RESULT)
     assert result_event.metadata["mode"] == "followup"
     assert result_event.metadata["question_id"] == "q_3"
+
+
+def _held_open_by_this_process(path: Path) -> bool:
+    """Whether a descriptor of this process still points at ``path`` (Linux only)."""
+    fd_dir = Path("/proc/self/fd")
+    if not fd_dir.is_dir():
+        return False
+    target = os.path.realpath(path)
+    return any(os.path.realpath(fd) == target for fd in fd_dir.iterdir())
+
+
+@pytest.mark.asyncio
+async def test_deep_question_mimic_parses_a_closed_copy_of_the_uploaded_pdf(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    # The parser reopens the paper by path. Windows refuses that while a
+    # delete-on-close NamedTemporaryFile still holds it (PermissionError);
+    # on Linux, /proc shows the same still-open handle.
+    import deeptutor.agents.question.history as question_history
+    import deeptutor.agents.question.mimic_source as mimic_source
+    import deeptutor.agents.question.pipeline as question_pipeline
+    import deeptutor.agents.question.request_config as request_config
+    import deeptutor.services.config as services_config
+
+    paper = b"%PDF-1.4\n% midterm\n"
+    captured: dict[str, Any] = {}
+
+    async def fake_parse(paper_path: str | Path, **kwargs: Any) -> tuple[list, dict]:
+        path = Path(paper_path)
+        captured["path"] = path
+        captured["held_open"] = _held_open_by_this_process(path)
+        captured["bytes"] = path.read_bytes()
+        captured["paper_mode"] = kwargs["paper_mode"]
+        return [], {}
+
+    class FakePipeline:
+        def __init__(self, **_kwargs: Any) -> None:
+            pass
+
+        async def run(self, **kwargs: Any) -> None:
+            captured["templates_override"] = kwargs["templates_override"]
+
+    async def no_history(_session_id: str) -> list:
+        return []
+
+    monkeypatch.setattr(mimic_source, "parse_exam_paper_to_templates", fake_parse)
+    monkeypatch.setattr(question_pipeline, "QuestionPipeline", FakePipeline)
+    monkeypatch.setattr(question_history, "load_session_quiz_history", no_history)
+    monkeypatch.setattr(request_config, "build_question_runtime_config", lambda **_kw: {})
+    monkeypatch.setattr(services_config, "load_config_with_main", lambda _name: {})
+
+    context = UnifiedContext(
+        user_message="Make questions like this paper",
+        language="en",
+        attachments=[
+            Attachment(
+                type="pdf",
+                filename="midterm.pdf",
+                mime_type="application/pdf",
+                base64=base64.b64encode(paper).decode(),
+            )
+        ],
+        config_overrides={"mode": "mimic"},
+    )
+    capability = DeepQuestionCapability()
+    await _collect_events(
+        lambda bus: capability._run_mimic_mode(
+            context=context,
+            stream=bus,
+            kb_name=None,
+            output_dir=tmp_path,
+            overrides={"mode": "mimic"},
+            history_context="",
+            num_questions=1,
+        )
+    )
+
+    assert captured["paper_mode"] == "upload"
+    assert captured["bytes"] == paper
+    assert captured["held_open"] is False
+    assert captured["templates_override"] == []
+    assert not captured["path"].exists()  # the temporary copy is cleaned up
 
 
 @pytest.mark.asyncio

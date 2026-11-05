@@ -307,6 +307,21 @@ class TestExtractEpub:
 
         assert "Hello world. Nice day." in text
 
+    def test_minified_table_cells_are_not_glued_together(self) -> None:
+        # Commercially produced EPUBs often ship whitespace-free XHTML. Without
+        # a separator after each cell, "Revenue" / "100" / "Q1" merge into one
+        # unreadable token.
+        data = _make_epub(
+            {"c.xhtml": "<table><tr><td>Revenue</td><td>100</td><td>Q1</td></tr></table>"}
+        )
+
+        text = extract_text_from_bytes("book.epub", data)
+
+        assert "Revenue100Q1" not in text
+        assert "Revenue" in text
+        assert "100" in text
+        assert "Q1" in text
+
     def test_scripts_and_styles_are_dropped(self) -> None:
         data = _make_epub(
             {

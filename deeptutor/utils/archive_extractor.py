@@ -97,7 +97,8 @@ def safe_extract_zip(
         target_dir: Directory that extracted files are written into (created
             if missing). Files are written flat — subdirectories in the
             archive are dropped, so two members with the same basename collide
-            and the later one is skipped as a duplicate.
+            and the later one is skipped as a duplicate. On a case-insensitive
+            filesystem, basenames that differ only in case collide the same way.
         allowed_extensions: Extensions a member may have to be extracted.
             ``.zip`` is always excluded to prevent nested-archive recursion.
         limits: Optional size/count bounds; sensible defaults are used.
@@ -179,6 +180,13 @@ def safe_extract_zip(
             destination = (target_root / safe_name).resolve()
             if not _is_within(destination, target_root):  # defense in depth
                 result.skipped.append((member, "path escapes target directory"))
+                continue
+
+            # On a case-insensitive filesystem (the Windows and macOS default)
+            # ``readme.md`` is the ``README.md`` this call already wrote: the
+            # same flattening collision, not a pre-existing file to refuse.
+            if destination.exists() and any(destination.samefile(p) for p in result.extracted):
+                result.skipped.append((member, "duplicate name after flattening"))
                 continue
 
             written = _extract_member(archive, info, destination, limits.max_entry_bytes)

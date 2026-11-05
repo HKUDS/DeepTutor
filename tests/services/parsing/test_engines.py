@@ -3,6 +3,8 @@ from __future__ import annotations
 import builtins
 from pathlib import Path
 import subprocess
+import sys
+import time
 import zipfile
 
 import httpx
@@ -999,7 +1001,7 @@ def test_install_manager_spec_allowlist() -> None:
     assert ENGINE_PIP_SPECS["liteparse"] == ["liteparse>=2.14.2"]
     assert ENGINE_PIP_SPECS["docling"] == [
         "docling[xbrl]>=2.123.1",
-        "docling-slim[format-iwork,format-opendocument,format-video]>=2.123.1",
+        "docling-slim[format-iwork,format-opendocument]>=2.123.1",
     ]
     assert "text_only" not in ENGINE_PIP_SPECS
     assert "mineru" not in ENGINE_PIP_SPECS
@@ -1039,6 +1041,38 @@ def test_install_manager_rejects_unknown_or_changed_specs(monkeypatch, engine, s
     )
     result = _install.BackgroundJobManager().start_install(engine=engine, specs=specs)
     assert result == {"ok": False, "message": "Unknown parser installation request."}
+
+
+def test_model_download_job_reads_utf8_progress_bars_under_any_locale(monkeypatch) -> None:
+    # ``deeptutor start`` gives the backend PYTHONIOENCODING=utf-8 but not
+    # UTF-8 mode, so docling-tools wrote UTF-8 while a cp936/cp932 server
+    # decoded the pipe with its ANSI code page and the pump died on the first
+    # tqdm bar. A single undecodable byte must not end the log either.
+    from deeptutor.services.parsing.engines import _install
+
+    child = (
+        "import sys\n"
+        "print('model.safetensors:  50%|\\u2588\\u2588\\u258d       | 1/2', flush=True)\n"
+        "sys.stdout.buffer.write(b'stray \\xff byte\\n')\n"
+        "sys.stdout.buffer.flush()\n"
+        "print('Models downloaded.', flush=True)\n"
+    )
+    monkeypatch.setenv("PYTHONIOENCODING", "utf-8:replace")
+    monkeypatch.setattr(_install, "_LINE_MIN_INTERVAL", 0.0)
+    manager = _install.BackgroundJobManager()
+
+    assert manager.start_model_download(engine="docling", cmd=[sys.executable, "-c", child])["ok"]
+    deadline = time.monotonic() + 30
+    while manager.status()["state"] == "running" and time.monotonic() < deadline:
+        time.sleep(0.01)
+
+    status = manager.status()
+    assert status["state"] == "done"
+    assert status["lines"] == [
+        "model.safetensors:  50%|██▍       | 1/2",
+        "stray � byte",
+        "Models downloaded.",
+    ]
 
 
 def test_model_download_allowlist() -> None:

@@ -525,6 +525,56 @@ async def test_fetch_codebuddy_models_uses_account_catalog(monkeypatch) -> None:
     assert captured["env"]["CODEBUDDY_API_KEY"] == "secret"
 
 
+@pytest.mark.asyncio
+async def test_fetch_codebuddy_models_runs_the_windows_shim_directly(monkeypatch) -> None:
+    # "cmd.exe /d /s /c <list2cmdline(...)>" quoted the line twice, so a CLI
+    # path with a space reached cmd.exe as \"...\" and was not found.
+    import subprocess
+
+    import deeptutor.services.llm.provider_core.codebuddy_provider as module
+
+    captured: dict[str, object] = {}
+
+    class FakeProcess:
+        async def communicate(self):
+            return (b"supported models for your account:\n  - hy3\n", b"")
+
+    async def fake_subprocess(*args, **kwargs):
+        captured["args"] = args
+        captured["kwargs"] = kwargs
+        return FakeProcess()
+
+    shim = r"C:\Users\John Smith\AppData\Roaming\npm\codebuddy.cmd"
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_subprocess)
+    monkeypatch.setattr(shutil, "which", lambda name: shim if name == "codebuddy" else None)
+    monkeypatch.setitem(sys.modules, "codebuddy_agent_sdk", SimpleNamespace(query=lambda: None))
+    monkeypatch.setattr(subprocess, "CREATE_NO_WINDOW", 0x08000000, raising=False)
+    monkeypatch.setattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200, raising=False)
+    monkeypatch.setattr(module.os, "name", "nt")
+
+    assert await fetch_codebuddy_models() == ["hy3"]
+    assert captured["args"][0] == shim
+    assert captured["kwargs"]["creationflags"] == 0x08000000 | 0x00000200
+
+
+@pytest.mark.asyncio
+@pytest.mark.skipif(os.name != "nt", reason="launches a real Windows .cmd shim")
+async def test_fetch_codebuddy_models_finds_a_shim_under_a_path_with_spaces(
+    tmp_path, monkeypatch
+) -> None:
+    shim_dir = tmp_path / "John Smith & Co" / "npm"
+    shim_dir.mkdir(parents=True)
+    shim = shim_dir / "codebuddy.cmd"
+    shim.write_text(
+        "@echo off\r\necho supported models for your account:\r\necho  - hy3\r\n",
+        encoding="ascii",
+    )
+    monkeypatch.setattr(shutil, "which", lambda name: str(shim) if name == "codebuddy" else None)
+    monkeypatch.setitem(sys.modules, "codebuddy_agent_sdk", SimpleNamespace(query=lambda: None))
+
+    assert await fetch_codebuddy_models() == ["hy3"]
+
+
 def test_codebuddy_registry_aliases_and_factory(monkeypatch) -> None:
     spec = find_by_name("workbuddy")
 

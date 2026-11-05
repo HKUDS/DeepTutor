@@ -279,8 +279,12 @@ class CoWriterStorage:
                 except ImportError:
                     import msvcrt
 
-                    handle.write(b"0")
-                    handle.flush()
+                    # msvcrt locks one byte, so the file needs one; an
+                    # unconditional append grew it by a byte on every save.
+                    handle.seek(0, 2)
+                    if handle.tell() == 0:
+                        handle.write(b"0")
+                        handle.flush()
                     handle.seek(0)
                     msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
                     try:

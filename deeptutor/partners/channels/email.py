@@ -457,7 +457,15 @@ class EmailChannel(BaseChannel):
 
     @staticmethod
     def _html_to_text(raw_html: str) -> str:
-        text = re.sub(r"<\s*br\s*/?>", "\n", raw_html, flags=re.IGNORECASE)
+        # Drop <style>/<script> blocks whole — stripping only their tags would
+        # leave the CSS/JS body as text in the message fed to the model.
+        text = re.sub(
+            r"<\s*(style|script)\b[^>]*>.*?<\s*/\s*\1\s*>",
+            " ",
+            raw_html,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+        text = re.sub(r"<\s*br\s*/?>", "\n", text, flags=re.IGNORECASE)
         text = re.sub(r"<\s*/\s*p\s*>", "\n", text, flags=re.IGNORECASE)
         text = re.sub(r"<[^>]+>", "", text)
         return html.unescape(text)

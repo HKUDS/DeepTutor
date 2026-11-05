@@ -289,10 +289,8 @@ class AgentLoop:
             "tool_steps": state.tool_steps,
         }
         if os.getenv("DEEPTUTOR_CHAT_ENGINE") == "typescript-native":
-            from deeptutor.runtime.ts_engine.config import compatibility_reason
-
             payload["execution_runtime"] = "python-effects"
-            payload["compatibility_reason"] = compatibility_reason(self.pipeline.llm_config)
+            payload["compatibility_reason"] = self.pipeline._native_compatibility_reason()
         if self._last_request is not None:
             budget = self.pipeline.measure_context_budget(self._last_request)
             if budget is not None:
@@ -415,7 +413,9 @@ class AgentLoop:
         reason: str = "budget",
         error: str = "",
         continued_answer_parts: list[str] | None = None,
+        max_tokens: int | None = None,
     ) -> LoopOutcome:
+        output_budget = max_tokens or self.pipeline.loop_max_tokens
         # A tool-free salvage reply cannot satisfy an outstanding interaction.
         # Empty text asks capabilities about state, without inventing prose to
         # validate or giving the model another chance to claim completion.
@@ -452,7 +452,7 @@ class AgentLoop:
                 label=self.pipeline._t("labels.final_response", default="Final response"),
                 call_kind="llm_final_response",
                 trace_role="response",
-                max_tokens=self.pipeline.loop_max_tokens,
+                max_tokens=output_budget,
                 tool_schemas=None,  # tools disabled so the model must finish
             )
         except LLMProviderTransportError:
@@ -481,7 +481,7 @@ class AgentLoop:
         # it. Everything else that reasoned without answering is a softer
         # miss: the turn still ends, but it says which kind of empty it was
         # rather than reporting an opaque model failure.
-        if _reasoning_budget_exhausted(result, self.pipeline.loop_max_tokens):
+        if _reasoning_budget_exhausted(result, output_budget):
             message = self.pipeline._t(
                 "notices.reasoning_budget_exhausted",
                 default=(
@@ -497,6 +497,7 @@ class AgentLoop:
                     "reasoning_chars": result.reasoning_chars,
                     "completion_tokens": result.usage.get("completion_tokens"),
                     "reasoning_tokens": result.usage.get("reasoning_tokens"),
+                    "requested_max_tokens": output_budget,
                 },
             )
         reasoning_without_answer = bool(result.reasoning_content) or bool(

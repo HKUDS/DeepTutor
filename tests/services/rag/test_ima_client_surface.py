@@ -178,6 +178,71 @@ class TestKnowledgeList:
         assert page.path == ("Library",)
         assert (page.next_cursor, page.is_end) == ("c2", False)
 
+    def test_search_folder_name_matches_are_folders_not_documents(self) -> None:
+        """``search_knowledge`` folder hits have no ``folder_id`` field (#2326).
+
+        They sit in ``info_list`` with a ``folder_`` media id and media_type 99.
+        Parsing them as documents makes retrieval hydrate ids that are not media.
+        """
+        page = parse_knowledge_page(
+            {
+                "info_list": [
+                    {
+                        "media_id": "folder_7359",
+                        "title": "Fourier",
+                        "parent_folder_id": "ima_kb_root",
+                        "highlight_content": "",
+                        "media_type": 99,
+                    },
+                    {
+                        "media_id": "folder_7359",
+                        "title": "Fourier again",
+                        "media_type": 99,
+                    },
+                    {
+                        "media_id": "media_doc",
+                        "title": "Fourier notes",
+                        "highlight_content": "a passage",
+                        "media_type": 1,
+                    },
+                ]
+            }
+        )
+
+        assert [document.media_id for document in page.documents] == ["media_doc"]
+        assert [
+            (folder.folder_id, folder.name, folder.parent_folder_id) for folder in page.folders
+        ] == [("folder_7359", "Fourier", "ima_kb_root")]
+        assert page.unverified_documents == 0
+
+    @pytest.mark.parametrize(
+        "entry",
+        [
+            {"media_id": "folder_1", "title": "Notes"},
+            {"media_id": "fld-9", "title": "Notes", "media_type": 99},
+            {"media_id": "fld-9", "title": "Notes", "media_type": "99"},
+            {"title": "Notes", "media_type": 99},
+        ],
+    )
+    def test_folder_prefix_or_media_type_99_is_not_a_document(self, entry: dict) -> None:
+        page = parse_knowledge_page({"info_list": [entry]})
+
+        assert page.documents == ()
+        assert page.unverified_documents == 0
+        if entry.get("media_id"):
+            assert page.folders[0].folder_id == entry["media_id"]
+            assert page.folders[0].name == "Notes"
+        else:
+            assert page.folders == ()
+
+    def test_media_id_folder_without_the_prefix_stays_a_document(self) -> None:
+        page = parse_knowledge_page(
+            {"info_list": [{"media_id": "folder", "title": "Not a folder", "media_type": 1}]}
+        )
+
+        assert [document.media_id for document in page.documents] == ["folder"]
+        assert page.folders == ()
+
     def test_entries_that_are_neither_are_discarded(self) -> None:
         page = parse_knowledge_page({"knowledge_list": [{"highlight_content": "orphan"}, {}]})
 
