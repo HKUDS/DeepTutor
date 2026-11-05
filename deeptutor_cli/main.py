@@ -224,6 +224,13 @@ def serve(
 
 
 def main() -> None:
+    # Piped or redirected output on Windows uses the ANSI code page, and a
+    # character outside it (an emoji in a model reply, CJK text on cp1252)
+    # raised UnicodeEncodeError and aborted the command with exit code 1.
+    # Replace such characters instead, as `deeptutor start` already does (#702).
+    from deeptutor.runtime.launcher import _relax_console_encoding
+
+    _relax_console_encoding()
     app()
 
 
