@@ -224,6 +224,33 @@ def test_session_list_command_uses_shared_store(monkeypatch) -> None:
     assert "Algebra" in result.output
 
 
+def test_session_show_json_prints_the_stored_session(monkeypatch) -> None:
+    session = {
+        "id": "session-1",
+        "title": "Fourier [draft]",
+        "messages": [
+            {"role": "user", "content": "Explain the Fourier transform"},
+            {
+                "role": "assistant",
+                "content": (
+                    "A signal can be written as a sum of sines and cosines; see "
+                    "[the lecture notes](https://example.org/ft) for the derivation. :tada:"
+                ),
+            },
+        ],
+    }
+
+    async def _get_session(self, session_id: str):  # noqa: ANN001
+        return session if session_id == "session-1" else None
+
+    monkeypatch.setattr("deeptutor.app.facade.DeepTutorApp.get_session", _get_session)
+
+    result = runner.invoke(app, ["session", "show", "session-1", "--format", "json"])
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == session
+
+
 def test_start_command_delegates_to_runtime_launcher(monkeypatch) -> None:
     calls: list[object] = []
 

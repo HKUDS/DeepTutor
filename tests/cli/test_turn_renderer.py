@@ -314,6 +314,19 @@ def test_ask_user_json_mode_sends_empty_reply_and_streams_events(monkeypatch) ->
     assert replies == [{"turn_id": "turn-1", "text": "", "answers": None}]
 
 
+def test_json_mode_prints_event_text_unchanged(monkeypatch) -> None:
+    events = [
+        {"type": "content", "content": "Done :tada: Every other item from index 1 is s[1:x:2]."},
+        {"type": "done"},
+    ]
+    _install_fake_runtime(monkeypatch, events)
+
+    result = runner.invoke(app, ["run", "chat", "hello", "--format", "json"])
+
+    assert result.exit_code == 0, result.output
+    assert [json.loads(line) for line in result.stdout.splitlines()] == events
+
+
 def test_terminator_llm_output_renders_after_buffered_chunks(monkeypatch) -> None:
     events = [
         {"type": "stage_start", "stage": "responding", "source": "chat"},

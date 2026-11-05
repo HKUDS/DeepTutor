@@ -28,7 +28,7 @@ def register(app: typer.Typer) -> None:
         """Create a notebook."""
         client = DeepTutorApp()
         notebook = client.create_notebook(name=name, description=description)
-        console.print(json.dumps(notebook, ensure_ascii=False, indent=2, default=str))
+        console.print_json(json.dumps(notebook, ensure_ascii=False, default=str))
 
     @app.command("show")
     def show_notebook(
@@ -47,7 +47,7 @@ def register(app: typer.Typer) -> None:
             console.print(f"[red]Notebook not found:[/] {notebook_id}")
             raise typer.Exit(code=1)
         if fmt == "json":
-            console.print(json.dumps(notebook, ensure_ascii=False, indent=2, default=str))
+            console.print_json(json.dumps(notebook, ensure_ascii=False, default=str))
             return
         console.print(f"[bold]{notebook.get('name', '')}[/] ({notebook.get('id', '')})")
         console.print(str(notebook.get("description", "") or ""))
