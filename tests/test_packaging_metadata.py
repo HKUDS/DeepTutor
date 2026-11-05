@@ -60,6 +60,7 @@ def test_docling_parser_avoids_source_only_build_dependencies():
         ("partners", "qrcode>=7.4.0,<9.0.0"),
         ("knowledge", "pageindex>=0.2.10,<0.3.0"),
         ("calendar", "croniter>=6.0.0,<7.0.0"),
+        ("video-lesson", "edge-tts>=7.0,<8.0"),
         ("parsing", "pdfplumber>=0.11.0"),
         ("parsing", "reportlab>=4.0.0"),
         ("parser-markitdown", "markitdown[all]>=0.1.7"),
