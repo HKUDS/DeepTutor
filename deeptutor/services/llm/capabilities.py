@@ -330,6 +330,9 @@ MODEL_OVERRIDES: dict[str, dict[str, object]] = {
     "gpt-5": {
         "forced_temperature": 1.0,
     },
+    "gpt-6": {
+        "forced_temperature": 1.0,
+    },
     "o1": {
         "forced_temperature": 1.0,
     },

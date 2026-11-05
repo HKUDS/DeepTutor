@@ -160,6 +160,7 @@ def is_tool_schema_unsupported(exc: Exception) -> bool:
             "tools is not supported",
             "tools are not supported",
             "does not support tools",
+            "function tools with reasoning_effort are not supported",
             "does not support function calling",
             "function calling is not supported",
             "tool use is not supported",

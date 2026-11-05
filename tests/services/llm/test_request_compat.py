@@ -29,6 +29,12 @@ def test_request_compatibility_classifiers_match_known_provider_errors() -> None
     assert is_stream_options_unsupported(ValueError("unknown parameter: stream_options"))
     assert is_tool_schema_unsupported(ValueError("function_declaration is unsupported"))
     assert is_tool_schema_unsupported(ValueError("unsupported parameter: tools"))
+    assert is_tool_schema_unsupported(
+        ValueError(
+            "400 Function tools with reasoning_effort are not supported for "
+            "gpt-6-luna in /v1/chat/completions."
+        )
+    )
     assert is_tool_schema_unsupported(ValueError("unknown parameter: tools"))
     assert is_tool_schema_unsupported(
         ValueError("404_NOT_FOUND: function schema endpoint is unavailable")
