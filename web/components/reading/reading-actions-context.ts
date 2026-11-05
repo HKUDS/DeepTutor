@@ -39,6 +39,10 @@ export interface ReadingActionCard {
 
 export interface ReadingActionsValue {
   ageMode: ReadingAgeMode;
+  /** Index into `readAlongWords` of the word being spoken, or -1. */
+  activeWord: number;
+  /** Word timeline for the passage currently being read aloud. */
+  readAlongWords: { word: string; start: number; duration: number }[];
   actions: ReadingActionEntry[];
   cards: ReadingActionCard[];
   speaking: boolean;

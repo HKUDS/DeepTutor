@@ -1,5 +1,5 @@
 {
-  "fingerprint": "285d95435b3172ac6f6e0be5f8b9eda1593a68f3368f5c1be3fea15748c1bbd3",
+  "fingerprint": "a5bda7654bcab7697fe026fe799a9566bb7f476d3180c37190cf5334833ee85b",
   "routers": {
     "deeptutor.api.routers.auth:router": [
       {
@@ -2810,6 +2810,14 @@
       {
         "path": "/materials/{material_id}/read-aloud",
         "name": "read_material_aloud",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/materials/{material_id}/read-aloud/timed",
+        "name": "read_material_aloud_timed",
         "kind": "http",
         "methods": [
           "POST"

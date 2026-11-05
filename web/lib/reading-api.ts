@@ -420,6 +420,75 @@ export async function readReadingAloudAudio(
   throw new Error(detail);
 }
 
+/** One spoken word and when it starts, relative to the audio's own clock. */
+export interface ReadingTimedWord {
+  word: string;
+  start: number;
+  duration: number;
+}
+
+/** Audio plus the per-word timeline used for read-along highlighting. */
+export interface ReadingTimedSpeech {
+  audio: Blob;
+  words: ReadingTimedWord[];
+  /** False when the active voice could not report boundaries (estimate needed). */
+  timed: boolean;
+}
+
+function base64ToBlob(base64: string, mime: string): Blob {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return new Blob([bytes], { type: mime || "audio/mpeg" });
+}
+
+/**
+ * Fetch natural speech for a reading unit **with per-word timings**.
+ *
+ * Returns `timed: false` (and no words) when the active voice cannot report
+ * boundaries; callers are expected to fall back to an estimated timeline rather
+ * than treating that as an error.
+ */
+export async function readReadingAloudTimed(
+  materialId: string,
+  context: { locator?: number; text?: string; voice?: string; speed?: number },
+): Promise<ReadingTimedSpeech> {
+  const response = await apiFetch(
+    apiUrl(`${BASE}/materials/${materialId}/read-aloud/timed`),
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(context),
+    },
+  );
+
+  if (!response.ok) {
+    let detail = `Request failed: ${response.status}`;
+    try {
+      const body = (await response.json()) as { detail?: unknown };
+      if (typeof body?.detail === "string" && body.detail) detail = body.detail;
+    } catch {
+      // Proxy error bodies are not always JSON.
+    }
+    throw new Error(detail);
+  }
+
+  const body = (await response.json()) as {
+    audio_base64?: string;
+    mime?: string;
+    words?: ReadingTimedWord[];
+    timed?: boolean;
+  };
+  if (!body?.audio_base64) throw new Error("The speech service returned no audio.");
+
+  const words = Array.isArray(body.words) ? body.words : [];
+  return {
+    audio: base64ToBlob(body.audio_base64, body.mime || "audio/mpeg"),
+    words,
+    timed: Boolean(body.timed) && words.length > 0,
+  };
+}
+
 export interface ReadingQuizAnswer {
   question_id: string;
   selected_index: number;

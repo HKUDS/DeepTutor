@@ -54,7 +54,13 @@ export function ReadingActionsProvider({
   const [ageMode, setAgeMode] = useState<ReadingAgeMode>("default");
   const [cards, setCards] = useState<ReadingActionCard[]>([]);
   const [busyKey, setBusyKey] = useState("");
-  const { speak, speaking, stop: stopSpeaking } = useReadAloudSpeech();
+  const {
+    speak,
+    speaking,
+    stop: stopSpeaking,
+    activeWord,
+    timeline: readAlongWords,
+  } = useReadAloudSpeech();
   const onStartRef = useRef(onStart);
   onStartRef.current = onStart;
 
@@ -183,11 +189,15 @@ export function ReadingActionsProvider({
         );
         if (next.type === "browser_speech") {
           const text = String(next.payload.text || "");
+          // `timed` asks for per-word boundaries so the page can highlight
+          // along with the voice; the hook falls back to an estimate when the
+          // active voice cannot report them.
           const played = await speak({
             materialId,
             locator: requestedLocator,
             locale: String(next.payload.locale || i18n.language),
             fallbackText: text,
+            timed: true,
           });
           if (!played) {
             settle({
@@ -220,12 +230,25 @@ export function ReadingActionsProvider({
       actions,
       cards,
       speaking,
+      activeWord,
+      readAlongWords,
       busyKey,
       run,
       stopSpeaking,
       dismiss,
     }),
-    [actions, ageMode, busyKey, cards, dismiss, run, speaking, stopSpeaking],
+    [
+      actions,
+      activeWord,
+      ageMode,
+      busyKey,
+      cards,
+      dismiss,
+      readAlongWords,
+      run,
+      speaking,
+      stopSpeaking,
+    ],
   );
 
   return (

@@ -61,6 +61,28 @@ class ReadAloudAudioPayload(BaseModel):
     locator: int = Field(ge=1)
 
 
+class WordTimedSpeechPayload(BaseModel):
+    """One unit (or an arbitrary excerpt) to narrate with per-word timings."""
+
+    locator: int | None = Field(default=None, ge=1)
+    text: str = Field(default="", max_length=20_000)
+    voice: str | None = Field(default=None, max_length=200)
+    speed: float | None = Field(default=None, ge=0.5, le=2.0)
+
+
+class TimedWordPayload(BaseModel):
+    word: str
+    start: float = Field(ge=0)
+    duration: float = Field(ge=0)
+
+
+class WordTimedSpeechResponse(BaseModel):
+    audio_base64: str
+    mime: str
+    words: list[TimedWordPayload] = Field(default_factory=list)
+    timed: bool = False
+
+
 class QuizAnswerItem(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
@@ -190,6 +212,62 @@ async def read_material_aloud(material_id: str, payload: ReadAloudAudioPayload) 
         audio = _pcm16_to_wav(audio, sample_rate=sample_rate, channels=channels)
         content_type = "audio/wav"
     return Response(content=audio, media_type=content_type, headers={"Cache-Control": "no-store"})
+
+
+@router.post(
+    "/materials/{material_id}/read-aloud/timed",
+    response_model=WordTimedSpeechResponse,
+)
+async def read_material_aloud_timed(
+    material_id: str, payload: WordTimedSpeechPayload
+) -> WordTimedSpeechResponse:
+    """Narrate a reading unit and return audio **with per-word timings**.
+
+    NaturalReader-style word highlighting needs to know when each word is
+    spoken. ``/read-aloud`` only returns audio, so this sibling endpoint adds the
+    timing map. When the active voice cannot report boundaries the response still
+    carries audio and an empty ``words`` list, and the client falls back to an
+    estimated timeline, so this endpoint never hard-fails on capability alone.
+    """
+    try:
+        assert_learning_material(material_id)
+    except PermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+
+    allowed = allowed_reading_extensions()
+    if allowed is not None and "read_aloud" not in allowed:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="This reading extension is not allowed."
+        )
+
+    text = payload.text.strip()
+    if not text:
+        if payload.locator is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Provide either a locator or non-empty text.",
+            )
+        try:
+            text = ReadingStore().unit_text(material_id, payload.locator)
+        except Exception as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    from deeptutor.reading.word_timing import synthesize_with_word_timings
+
+    try:
+        result = await synthesize_with_word_timings(
+            text, voice=payload.voice, speed=payload.speed
+        )
+    except VoiceProviderError as exc:
+        logger.warning("Timed TTS provider error for %s: %s", material_id, exc)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="The speech provider is unavailable.",
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    return WordTimedSpeechResponse(**result)
 
 
 @router.post("/materials/{material_id}/extensions/{extension_id}/actions/{action}")

@@ -1548,3 +1548,13 @@ a[href^="#dt-locator-"]:hover {
   font-size: 16px;
   line-height: 1.5;
 }
+
+/* ── Read-along highlight ───────────────────────────────────────────────
+   Painted through the CSS Custom Highlight API (`CSS.highlights`) so the
+   article's DOM is never mutated: the reader anchors annotations to quotes and
+   character offsets, and inserting spans mid-passage would invalidate them.
+   Browsers without the API simply show no highlight. */
+::highlight(reading-readalong) {
+  background-color: color-mix(in srgb, var(--primary) 28%, transparent);
+  color: inherit;
+}

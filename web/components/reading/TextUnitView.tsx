@@ -49,6 +49,7 @@ import {
 import { toRecogitoTextAnnotation } from "@/lib/reading-w3c-annotations";
 import type { JumpRequest, SelectionPayload } from "./PdfDocumentView";
 import { PreferenceButton, ReaderDisplayControls } from "./ReaderDisplayControls";
+import { ReadAlongHighlighter } from "./ReadAlongHighlighter";
 
 const COLOR_INK: Record<string, string> = {
   yellow: "250 220 90",
@@ -537,6 +538,9 @@ export function TextUnitView({
           <p className="text-[12px] text-[var(--muted-foreground)]">{error}</p>
         ) : (
           <>
+          {/* Paints the spoken word without mutating the article's DOM, which
+              the reader's quote-based annotations depend on. */}
+          <ReadAlongHighlighter containerRef={articleRef} />
           <article
             ref={articleRef}
             // The sheet. Text used to run edge to edge on the same white as
