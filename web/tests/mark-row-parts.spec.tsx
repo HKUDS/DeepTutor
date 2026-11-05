@@ -1,6 +1,7 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { MarkBadges } from "@/components/reading/MarkBadges";
+import { MarkRow } from "@/components/reading/MarkRow";
 import { MarkPalette } from "@/components/reading/MarkPalette";
 import type { AnnotationItem } from "@/lib/reading-api";
 
@@ -122,5 +123,95 @@ describe("MarkPalette", () => {
     expect(
       view.getByRole("button", { name: "Underline" }).hasAttribute("disabled"),
     ).toBe(true);
+  });
+});
+
+/**
+ * The row's own interactions. These had no test at all — the mutation run
+ * reported every site in the click and keydown handlers as uncovered, which is
+ * the definition of behaviour nothing would notice breaking.
+ */
+describe("MarkRow interactions", () => {
+  const onSelect = vi.fn();
+  const onToggle = vi.fn();
+  const onDelete = vi.fn();
+  const onStartEditing = vi.fn();
+
+  function row(overrides: { selecting?: boolean; canEdit?: boolean } = {}) {
+    return render(
+      <MarkRow
+        annotation={mark({ note: "a note" })}
+        active={false}
+        selecting={overrides.selecting ?? false}
+        selected={false}
+        editing={false}
+        savingNote={false}
+        noteError=""
+        busy={false}
+        canEdit={overrides.canEdit ?? true}
+        canChange
+        onSelect={onSelect}
+        onToggle={onToggle}
+        onDelete={onDelete}
+        onStartEditing={onStartEditing}
+        onCancelEditing={vi.fn()}
+        onSaveNote={async () => undefined}
+        onRecolour={vi.fn()}
+        onChangeKind={vi.fn()}
+      />,
+    );
+  }
+
+  it("jumps to the mark when the row is clicked", () => {
+    const view = row();
+    fireEvent.click(view.getByRole("button", { name: /a note|quote/ }));
+    expect(onSelect).toHaveBeenCalledTimes(1);
+  });
+
+  it("toggles selection instead of jumping while selecting", () => {
+    const view = row({ selecting: true });
+    fireEvent.click(view.getByRole("button", { name: /a note|quote/ }));
+    expect(onToggle).toHaveBeenCalledTimes(1);
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it("activates on Enter", () => {
+    const view = row();
+    fireEvent.keyDown(view.getByRole("button", { name: /a note|quote/ }), { key: "Enter" });
+    expect(onSelect).toHaveBeenCalledTimes(1);
+  });
+
+  it("activates on Space", () => {
+    const view = row();
+    fireEvent.keyDown(view.getByRole("button", { name: /a note|quote/ }), { key: " " });
+    expect(onSelect).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores other keys", () => {
+    const view = row();
+    fireEvent.keyDown(view.getByRole("button", { name: /a note|quote/ }), { key: "a" });
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it("deletes from the row action without also jumping", () => {
+    const view = row();
+    fireEvent.click(view.getByLabelText("Delete annotation"));
+    expect(onDelete).toHaveBeenCalledTimes(1);
+    // The click must not bubble into the row's own select handler.
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it("opens the editor from the row action without also jumping", () => {
+    const view = row();
+    fireEvent.click(view.getByLabelText("Edit note"));
+    expect(onStartEditing).toHaveBeenCalledTimes(1);
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it("hides the edit action where the host cannot edit", () => {
+    const view = row({ canEdit: false });
+    expect(view.queryByLabelText("Edit note")).toBeNull();
+    // Deleting is always available.
+    expect(view.getByLabelText("Delete annotation")).toBeTruthy();
   });
 });
