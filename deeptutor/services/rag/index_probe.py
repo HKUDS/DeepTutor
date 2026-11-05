@@ -76,9 +76,12 @@ def inspect_provider_version(entry: dict[str, Any], provider: str | None) -> Pro
 
 def inspect_kb_versions(kb_dir: str | Path, provider: str | None) -> list[dict[str, Any]]:
     """Return version entries annotated with provider-probe readiness."""
+    return list(_iter_probed_versions(kb_dir, provider))
+
+
+def _iter_probed_versions(kb_dir: str | Path, provider: str | None):
     from deeptutor.services.rag.index_versioning import list_kb_versions
 
-    versions: list[dict[str, Any]] = []
     for entry in list_kb_versions(Path(kb_dir)):
         adjusted = dict(entry)
         probe = inspect_provider_version(adjusted, provider)
@@ -89,15 +92,14 @@ def inspect_kb_versions(kb_dir: str | Path, provider: str | None) -> list[dict[s
             adjusted["doc_count"] = probe.doc_count
         if probe.diagnostics:
             adjusted["probe_diagnostics"] = probe.diagnostics
-        versions.append(adjusted)
-    return versions
+        yield adjusted
 
 
 def latest_ready_provider_version(
     kb_dir: str | Path, provider: str | None
 ) -> dict[str, Any] | None:
     """Return the newest provider-ready version, if any."""
-    for entry in inspect_kb_versions(kb_dir, provider):
+    for entry in _iter_probed_versions(kb_dir, provider):
         if entry.get("ready"):
             return entry
     return None
@@ -264,7 +266,11 @@ def _inspect_lightrag(storage_dir: Path) -> ProviderIndexProbe:
 # it is the dominant cost of a LlamaIndex readiness probe. The count only
 # changes when the file itself changes, so it is cached keyed on size +
 # mtime_ns (same freshness convention as storage._freshness_token).
-_DOCSTORE_COUNT_CACHE_SIZE = 128
+# A catalog can contain hundreds of immutable versions across workspaces. A
+# 128-entry LRU thrashes during sequential scans (including a single KB with
+# 133 versions), making even warm requests reparse every large JSON file. Only
+# integer counts are retained here, never the docstore payloads.
+_DOCSTORE_COUNT_CACHE_SIZE = 4096
 
 
 @lru_cache(maxsize=_DOCSTORE_COUNT_CACHE_SIZE)

@@ -1,5 +1,6 @@
 "use client";
 
+import KbVersionCleanup from "./KbVersionCleanup";
 import Tooltip from "@/shared/ui/Tooltip";
 import { useEffect, useState } from "react";
 import { useEmbeddingModels } from "@/hooks/useEmbeddingModels";
@@ -70,7 +71,10 @@ export default function KbIndexVersionsSection({
   );
   const pageIndexProvider = !providerUsesEmbeddingMetadata(provider);
   const modelInsensitiveProvider = pageIndexProvider || isLightRag;
-  const versions = kb.statistics?.index_versions ?? [];
+  const [removedVersions, setRemovedVersions] = useState<Set<string>>(new Set());
+  const versions = (kb.statistics?.index_versions ?? []).filter(
+    version => !removedVersions.has(version.version ?? ""),
+  );
   const isEmptyEmbeddingKb =
     needsEmbedding &&
     kb.statistics?.raw_documents === 0 &&
@@ -253,6 +257,14 @@ export default function KbIndexVersionsSection({
         )}
       </div>
 
+      {provider === "llamaindex" && !kb.read_only && (
+        <KbVersionCleanup
+          key={kbRef}
+          kbRef={kbRef}
+          disabled={submitting || Boolean(task?.executing) || kbHasLiveProgress(kb)}
+          onCleaned={names => setRemovedVersions(current => new Set([...current, ...names]))}
+        />
+      )}
       {isError && <KbIndexFailureBanner kb={kb} />}
       <LightRagEmbeddingWarning kb={kb} />
       {kb.metadata?.embedding_status === "missing" && (

@@ -22,6 +22,7 @@ from deeptutor.services.rag.index_versioning import (
     write_version_meta,
 )
 from deeptutor.services.rag.kb_paths import resolve_kb_dir
+from deeptutor.services.rag.version_lease import uses_index_versions
 from deeptutor.services.rag.visual_assets import VisualAssetStore
 
 from . import storage
@@ -219,6 +220,7 @@ class LlamaIndexPipeline:
             for key, (path, source_hash) in run.source_receipts().items()
         }
 
+    @uses_index_versions
     async def initialize(self, kb_name: str, file_paths: List[str], **kwargs) -> bool:
         from deeptutor.knowledge.indexing_run import current_run
 
@@ -311,6 +313,7 @@ class LlamaIndexPipeline:
         finally:
             set_progress_callback(None)
 
+    @uses_index_versions
     async def search(
         self,
         query: str,
@@ -481,6 +484,7 @@ class LlamaIndexPipeline:
             "provider": "llamaindex",
         }
 
+    @uses_index_versions
     async def add_documents(self, kb_name: str, file_paths: List[str], **kwargs) -> bool:
         progress_callback = kwargs.get("progress_callback")
         image_progress_callback = kwargs.get("image_progress_callback")

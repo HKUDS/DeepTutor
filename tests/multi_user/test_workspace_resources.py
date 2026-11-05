@@ -258,3 +258,22 @@ async def test_delete_kb_file_in_workspace(as_user):
         result = await delete_kb_file(qualified_ref, "chapter1.pdf")
         assert result["status"] == "ok"
         assert not doc_file.exists()
+
+
+def test_filtered_catalog_does_not_open_unrelated_managers(as_user, monkeypatch):
+    from deeptutor.multi_user import knowledge_access
+    from deeptutor.services.workspace.context import current_workspace_id
+
+    with as_user("alice"):
+        service = ContentWorkspaceService()
+        wanted = service.create_workspace("Wanted")["workspace_id"]
+        service.create_workspace("Unrelated")
+        scopes = []
+
+        def entries():
+            scopes.append(current_workspace_id())
+            return []
+
+        monkeypatch.setattr(knowledge_access, "_list_visible_knowledge_bases", entries)
+        assert knowledge_catalog(workspace_ids={wanted}) == []
+        assert scopes == [wanted]

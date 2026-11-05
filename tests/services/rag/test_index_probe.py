@@ -266,3 +266,52 @@ def test_provider_failure_summary_reuses_precomputed_versions(tmp_path: Path) ->
     assert provider_failure_summary(tmp_path, "llamaindex", versions=versions) == (
         "Missing LlamaIndex docstore.json."
     )
+
+
+def test_newest_ready_probe_does_not_read_historical_docstores(tmp_path, monkeypatch):
+    from deeptutor.services.rag import index_probe
+    from deeptutor.services.rag.index_probe import latest_ready_provider_version
+
+    for number in (1, 2, 3):
+        directory = tmp_path / f"version-{number}"
+        directory.mkdir()
+        _write_meta(directory, provider="llamaindex")
+        (directory / "docstore.json").write_text('{"docstore/data": {"node": {}}}')
+        if number != 3:
+            (directory / "index_store.json").write_text("{}")
+    called = []
+    original = index_probe._llamaindex_doc_count
+
+    def count(path):
+        called.append(path.parent.name)
+        return original(path)
+
+    monkeypatch.setattr(index_probe, "_llamaindex_doc_count", count)
+    assert latest_ready_provider_version(tmp_path, "llamaindex")["version"] == "version-2"
+    assert called == ["version-3", "version-2"]
+
+
+def test_catalog_larger_than_old_cache_stays_warm(tmp_path, monkeypatch):
+    from deeptutor.services.rag import index_probe
+
+    index_probe._llamaindex_doc_count_cached.cache_clear()
+    calls = []
+    original = index_probe._read_json
+
+    def read(path):
+        calls.append(path)
+        return original(path)
+
+    monkeypatch.setattr(index_probe, "_read_json", read)
+    paths = []
+    for number in range(160):
+        path = tmp_path / f"docstore-{number}.json"
+        path.write_text('{"docstore/data": {"node": {}}}')
+        paths.append(path)
+    try:
+        for _ in range(2):
+            for path in paths:
+                assert _llamaindex_doc_count(path) == 1
+        assert len(calls) == len(paths)
+    finally:
+        index_probe._llamaindex_doc_count_cached.cache_clear()
