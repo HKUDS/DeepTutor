@@ -1,5 +1,7 @@
 # Contributing to DeepTutor
 
+**English** | [简体中文](CONTRIBUTING_CN.md)
+
 Thanks for helping build DeepTutor! Code, docs, translations, bug reports and
 answering other people's questions all count as contributions.
 
@@ -8,10 +10,62 @@ Community: [Discord](https://discord.gg/eRsjPgMU4t) ·
 [Discussions](https://github.com/HKUDS/DeepTutor/discussions) ·
 [Roadmap](https://github.com/HKUDS/DeepTutor/issues/498)
 
+- [Join the team](#join-the-team)
 - [Where to start](#where-to-start)
 - [Pull requests](#pull-requests)
 - [Development setup](#development-setup)
-- [Triagers and maintainers](#triagers-and-maintainers)
+
+---
+
+## Join the team
+
+**We're actively recruiting triagers and maintainers.** Everyone who
+contributes is a contributor; people who help run the project take on one of
+two roles:
+
+| | Triager | Maintainer |
+| --- | --- | --- |
+| **GitHub permission** | Triage | Write |
+| **Responsibilities** | Label and route new issues, reproduce bugs, ask for missing details, close duplicates and stale items, give PRs a first response, request reviews | Everything a triager does, plus review, approve and merge PRs into `dev` in the areas they know, and look after bugs in those areas |
+| **Time** | A few hours a week | A few hours a week, with steady responses in their areas |
+
+Releases, `main`, repository settings and secrets stay with the project lead.
+
+### Rules for maintainers
+
+- Merge only when CI is green and the PR has an approving review.
+- Get another maintainer's approval for your own PRs. Typo and small docs
+  fixes are the exception.
+- Changes to authentication, code execution, release workflows or signing
+  need the project lead's review.
+- Be kind and specific in reviews, and follow the
+  [Code of Conduct](CODE_OF_CONDUCT.md).
+
+### How to join
+
+- **Triager:** you've been helping for a while, for example answering issues,
+  reproducing bugs, or getting a few PRs merged.
+- **Maintainer:** you've been a triager, or you've landed several substantial
+  PRs in one area.
+
+If that sounds like you, email
+[bingxizhao39@gmail.com](mailto:bingxizhao39@gmail.com) with:
+
+- Links to the PRs you've opened on DeepTutor
+- Open source projects you maintain or have maintained
+- How much time you can give DeepTutor
+
+Maintainers may also invite people they've seen doing good work.
+
+People who are inactive for three months move to emeritus and their
+permissions are removed. They keep their place in the list below and are
+welcome back any time.
+
+### Current team
+
+- **Project lead:** [@pancacake](https://github.com/pancacake)
+- **Maintainers:** looking for volunteers
+- **Triagers:** looking for volunteers
 
 ---
 
@@ -88,54 +142,3 @@ pre-commit install
 
 Then branch from `dev` (`git checkout -b fix/short-name`). Keep build outputs,
 runtime data and `node_modules` out of Git.
-
----
-
-## Triagers and maintainers
-
-Everyone who contributes is a contributor. People who help run the project
-take on one of two roles:
-
-| | Triager | Maintainer |
-| --- | --- | --- |
-| **GitHub permission** | Triage | Write |
-| **Responsibilities** | Label and route new issues, reproduce bugs, ask for missing details, close duplicates and stale items, give PRs a first response, request reviews | Everything a triager does, plus review, approve and merge PRs into `dev` in the areas they know, and look after bugs in those areas |
-| **Time** | A few hours a week | A few hours a week, with steady responses in their areas |
-
-Releases, `main`, repository settings and secrets stay with the project lead.
-
-### Rules for maintainers
-
-- Merge only when CI is green and the PR has an approving review.
-- Get another maintainer's approval for your own PRs. Typo and small docs
-  fixes are the exception.
-- Changes to authentication, code execution, release workflows or signing
-  need the project lead's review.
-- Be kind and specific in reviews, and follow the
-  [Code of Conduct](CODE_OF_CONDUCT.md).
-
-### How to join
-
-- **Triager:** you've been helping for a while, for example answering issues,
-  reproducing bugs, or getting a few PRs merged.
-- **Maintainer:** you've been a triager, or you've landed several substantial
-  PRs in one area.
-
-If that sounds like you, email
-[bingxizhao39@gmail.com](mailto:bingxizhao39@gmail.com) with:
-
-- Links to the PRs you've opened on DeepTutor
-- Open source projects you maintain or have maintained
-- How much time you can give DeepTutor
-
-Maintainers may also invite people they've seen doing good work.
-
-People who are inactive for three months move to emeritus and their
-permissions are removed. They keep their place in the list below and are
-welcome back any time.
-
-### Current team
-
-- **Project lead:** [@pancacake](https://github.com/pancacake)
-- **Maintainers:** looking for volunteers
-- **Triagers:** looking for volunteers
