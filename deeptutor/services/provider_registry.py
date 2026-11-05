@@ -401,6 +401,17 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         default_api_base="https://llmtr.com/v1",
     ),
     ProviderSpec(
+        name="llmbuzz",
+        keywords=("llmbuzz", "llm.buzz"),
+        env_key="LLM_BUZZ_API_KEY",
+        display_name="llm.buzz",
+        backend="openai_compat",
+        is_gateway=True,
+        detect_by_key_prefix="llmbuzz-",
+        detect_by_base_keyword="llmbuzz",
+        default_api_base="https://api.llm.buzz/api/v1",
+    ),
+    ProviderSpec(
         name="cloudgpu",
         keywords=("cloudgpu",),
         env_key="CLOUDGPU_API_KEY",
