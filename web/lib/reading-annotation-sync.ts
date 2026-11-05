@@ -58,6 +58,9 @@ export function subscribeToAnnotationsChange(
   if (typeof window === "undefined" || !materialId) return () => undefined;
   const onStorage = (event: StorageEvent) => {
     if (event.key !== ANNOTATIONS_REVISION_KEY || !event.newValue) return;
+    // The shared subscriber checks this too; without it a write to
+    // sessionStorage under the same key would look like a change here.
+    if (event.storageArea && event.storageArea !== window.localStorage) return;
     try {
       const payload = JSON.parse(event.newValue) as { materialId?: string };
       if (payload.materialId === materialId) listener();
