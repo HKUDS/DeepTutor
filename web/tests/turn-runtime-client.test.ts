@@ -434,3 +434,108 @@ test("acknowledged commands get a generated command_id when crypto.randomUUID is
     if (cryptoObject) cryptoObject.randomUUID = original;
   }
 });
+
+test("Stop after dispatch waits for admission and keeps terminal frames fenced until teardown ACK", async () => {
+  const { client, events, sockets } = harness();
+  client.connect();
+  sockets[0].open();
+  client.send({
+    type: "start_turn",
+    content: "first",
+    protocol_version: "2.0",
+  } as never);
+  const stopping = client.cancelCurrentTurn();
+  assert.equal(sockets[0].readyState, SOCKET_OPEN);
+  assert.equal(
+    sockets[0].sent.filter((x) => x.type === "cancel_turn").length,
+    0,
+  );
+  sockets[0].message(stream(1, "session"));
+  const cancel = sockets[0].sent.find((x) => x.type === "cancel_turn")!;
+  assert.equal(cancel.turn_id, "turn-1");
+  sockets[0].message({
+    ...stream(2, "error"),
+    metadata: { turn_terminal: true, status: "cancelled" },
+  });
+  sockets[0].message({
+    ...stream(3, "done"),
+    metadata: { status: "cancelled" },
+  });
+  assert.deepEqual(
+    events.map((x) => x.type),
+    ["session"],
+  );
+  sockets[0].message({
+    type: "command_ack",
+    protocol_version: "2.0",
+    command_id: cancel.command_id,
+    command_type: "cancel_turn",
+    turn_id: "turn-1",
+    accepted: true,
+    error_code: "",
+    message: "",
+  });
+  assert.equal(await stopping, true);
+  assert.deepEqual(
+    events.map((x) => x.type),
+    ["session", "command_ack", "error", "done"],
+  );
+  client.stop();
+});
+
+test("Stop of an undispatched start removes it without creating a backend turn", async () => {
+  const { client, sockets } = harness();
+  client.connect();
+  client.send({
+    type: "start_turn",
+    content: "never sent",
+    protocol_version: "2.0",
+  } as never);
+  assert.equal(await client.cancelCurrentTurn(), true);
+  sockets[0].open();
+  assert.equal(
+    sockets[0].sent.filter((x) => x.type === "start_turn").length,
+    0,
+  );
+  client.stop();
+});
+
+test("an unconfirmed Stop keeps terminal state fenced and can be retried", async () => {
+  const { client, events, scheduler, sockets } = harness();
+  client.setResumeCursor("turn-1", 0);
+  client.connect();
+  sockets[0].open();
+  const first = client.cancelCurrentTurn();
+  assert.equal(client.cancelCurrentTurn(), first);
+  const rejected = assert.rejects(first, CommandDeliveryError);
+  scheduler.runNext();
+  await rejected;
+  sockets[0].message({
+    ...stream(1, "done"),
+    metadata: { status: "cancelled" },
+  });
+  assert.equal(
+    events.some((x) => x.type === "done"),
+    false,
+  );
+  const retry = client.cancelCurrentTurn();
+  const cancel = sockets[0].sent
+    .filter((x) => x.type === "cancel_turn")
+    .at(-1)!;
+  sockets[0].message({
+    type: "command_ack",
+    protocol_version: "2.0",
+    command_id: cancel.command_id,
+    command_type: "cancel_turn",
+    turn_id: "turn-1",
+    accepted: true,
+    error_code: "",
+    message: "",
+  });
+  assert.equal(await retry, true);
+  assert.equal(
+    events.some((x) => x.type === "done"),
+    true,
+  );
+  client.stop();
+});
