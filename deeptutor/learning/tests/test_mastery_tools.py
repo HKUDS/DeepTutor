@@ -1297,10 +1297,103 @@ async def test_assess_passes_concept(path_id):
     )
     assert result["mastered"] is True
     assert result["next"]["action"] == "complete"
+    assert "path is complete" in result["instruction"]
     progress = LearningStore().load(path_id)
     assert progress is not None
     assert progress.repetition_states[concept_kp].review_count == 1
     assert [task.knowledge_point_id for task in progress.review_queue] == [mem_kp, concept_kp]
+
+
+async def _build_two_concepts(path_id):
+    await MasteryBuildTool().execute(
+        _mastery_path_id=path_id,
+        mode="replace",
+        modules=[
+            {
+                "name": "Module 1",
+                "knowledge_points": [
+                    {"name": "Why XOR matters", "type": "concept"},
+                    {"name": "Where XOR is used", "type": "concept"},
+                ],
+            }
+        ],
+    )
+    status = json.loads((await MasteryStatusTool().execute(_mastery_path_id=path_id)).content)
+    return status["next"]["knowledge_point_id"]
+
+
+@pytest.mark.asyncio
+async def test_assess_pass_tells_the_tutor_to_continue_with_next(path_id):
+    """A cleared concept gate says to go on, as mastery_grade does for cards (#2323)."""
+    first = await _build_two_concepts(path_id)
+    result = json.loads(
+        (
+            await MasteryAssessTool().execute(
+                _mastery_path_id=path_id,
+                knowledge_point_id=first,
+                _learner_message="XOR is exclusive or.",
+            )
+        ).content
+    )
+    assert result["mastered"] is True
+    assert result["next"]["knowledge_point_id"] != first
+    assert result["next"]["action"] != "complete"
+    assert "continue with `next` in this same reply" in result["instruction"]
+
+
+@pytest.mark.asyncio
+async def test_assess_partial_tells_the_tutor_to_teach_the_gap_and_ask_again(path_id, monkeypatch):
+    from deeptutor.learning import semantic_assessment
+
+    async def judge(_config, items):
+        return {
+            item["question_id"]: semantic_assessment.Verdict(
+                result="partial", confidence=0.95, feedback="The use case is missing."
+            )
+            for item in items
+        }
+
+    monkeypatch.setattr(semantic_assessment, "judge_answers", judge)
+    first = await _build_two_concepts(path_id)
+    result = json.loads(
+        (
+            await MasteryAssessTool().execute(
+                _mastery_path_id=path_id,
+                knowledge_point_id=first,
+                _learner_message="XOR is true when exactly one input is true.",
+            )
+        ).content
+    )
+    assert result["final"] is True and result["mastered"] is False
+    assert "not cleared" in result["instruction"]
+    assert "mastery_assess" in result["instruction"]
+
+
+@pytest.mark.asyncio
+async def test_assess_clarification_request_keeps_its_own_contract(path_id, monkeypatch):
+    from deeptutor.learning import semantic_assessment
+
+    async def judge(_config, items):
+        return {
+            item["question_id"]: semantic_assessment.Verdict(
+                result="ungraded", confidence=0.4, feedback="Which inputs do you mean?"
+            )
+            for item in items
+        }
+
+    monkeypatch.setattr(semantic_assessment, "judge_answers", judge)
+    first = await _build_two_concepts(path_id)
+    result = json.loads(
+        (
+            await MasteryAssessTool().execute(
+                _mastery_path_id=path_id,
+                knowledge_point_id=first,
+                _learner_message="It depends on the inputs.",
+            )
+        ).content
+    )
+    assert result["needs_clarification"] is True
+    assert "instruction" not in result
 
 
 @pytest.mark.asyncio

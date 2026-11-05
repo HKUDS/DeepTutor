@@ -2052,16 +2052,45 @@ class MasteryAssessTool(BaseTool):
             quality={"correct": 1.0, "partial": 0.5, "incorrect": 0.0}[receipt["result"]],
             material_title=progress.name,
         )
+        mastered = is_mastered(progress, kp)
+        next_step = next_objective(progress).to_dict()
         payload = {
             "knowledge_point_id": kp_id,
             "path_revision": progress.version,
             "passed": passed,
             **receipt,
-            "mastered": is_mastered(progress, kp),
+            "mastered": mastered,
             "mastery": round(display_mastery(progress, kp), 3),
-            "next": next_objective(progress).to_dict(),
+            "next": next_step,
+            "instruction": _assess_next_move(mastered, next_step),
         }
         return _json_result(payload, meta_key="mastery_assess")
+
+
+def _assess_next_move(mastered: bool, next_step: dict) -> str:
+    """What to do after a final qualitative verdict.
+
+    ``mastery_grade`` already says this for cards. Without it, a passing
+    explanation tends to end the turn on an announcement of the next topic,
+    which leaves the learner nothing to answer.
+    """
+    if not mastered:
+        return (
+            "The gate is not cleared. Explain the gap this explanation left "
+            "(for a partial result, name the missing part), then ask the "
+            "learner to explain it again and record that with mastery_assess."
+        )
+    if next_step.get("action") == "complete":
+        return (
+            "This cleared the objective's gate and the path is complete. "
+            "Say what the explanation showed and tell the learner the path is done."
+        )
+    return (
+        "This cleared the objective's gate. Say briefly what the explanation "
+        "showed, then continue with `next` in this same reply: start its "
+        "lesson or ask its first question. Do not end the turn on an "
+        "announcement of what comes next."
+    )
 
 
 class MasterySkipQuestionTool(BaseTool):
