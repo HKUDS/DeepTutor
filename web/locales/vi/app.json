@@ -5466,7 +5466,7 @@
   "settings.providerServices.customHint": "URL của bạn và giao thức API được hỗ trợ",
   "settings.providerServices.noMatch": "Không có nhà cung cấp phù hợp. Hãy thử danh mục khác hoặc dùng kết nối tùy chỉnh.",
   "settings.providerServices.name": "Tên nhà cung cấp",
-  "settings.providerServices.customDescription": "URL phải triển khai API đã chọn. Ở bước tiếp theo, hãy thêm thông tin xác thực và chọn các loại dịch vụ bổ sung cùng bộ điều hợp của chúng.",
+  "settings.providerServices.customDescription": "Giao thức API mặc định là Tự động. Ở bước tiếp theo, thêm thông tin xác thực, đổi giao thức nếu cần và chọn các loại dịch vụ cùng bộ điều hợp bổ sung.",
   "settings.providerServices.addHint": "Các thẻ cho biết tích hợp sẵn, không phải quyền của tài khoản. Một kết nối có thể phục vụ nhiều loại mô hình; các tài khoản và sản phẩm riêng biệt có thể có kết nối riêng.",
   "settings.providerServices.catalogListed": "Đã lấy danh sách mô hình. Hãy thử một mô hình cụ thể để xác minh quyền truy cập suy luận.",
   "settings.providerServices.partial": "Nhà cung cấp chỉ trả về một phần danh sách mô hình. Các loại còn thiếu vẫn chưa xác định và có thể thêm thủ công.",

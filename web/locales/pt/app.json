@@ -5466,7 +5466,7 @@
   "settings.providerServices.customHint": "Sua própria URL e um protocolo de API compatível",
   "settings.providerServices.noMatch": "Nenhum provedor correspondente. Tente outra categoria ou use uma conexão personalizada.",
   "settings.providerServices.name": "Nome do provedor",
-  "settings.providerServices.customDescription": "A URL deve implementar a API selecionada. Na próxima etapa, adicione credenciais e escolha os tipos de serviço adicionais e seus adaptadores.",
+  "settings.providerServices.customDescription": "O protocolo da API começa em Auto. Na próxima etapa, adicione as credenciais, altere o protocolo se necessário e escolha outros tipos de serviço e seus adaptadores.",
   "settings.providerServices.addHint": "As etiquetas mostram integrações nativas, não permissões da conta. Uma conexão pode atender a vários tipos de modelo; contas e produtos separados podem ter conexões separadas.",
   "settings.providerServices.catalogListed": "Lista de modelos obtida. Teste um modelo específico para verificar o acesso à inferência.",
   "settings.providerServices.partial": "O provedor retornou apenas parte da lista de modelos. Os tipos ausentes permanecem desconhecidos e podem ser adicionados manualmente.",

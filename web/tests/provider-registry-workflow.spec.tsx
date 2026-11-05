@@ -590,10 +590,9 @@ it("adds a provider over plain HTTP, where crypto.randomUUID does not exist", ()
     fireEvent.click(screen.getByRole("radio", { name: "Custom" }));
     fireEvent.change(screen.getByLabelText("settings.providerServices.name"), { target: { value: "My gateway" } });
     fireEvent.change(screen.getByLabelText("Provider URL"), { target: { value: "http://gateway.test/v1" } });
-    fireEvent.change(screen.getByLabelText("settings.providerServices.protocol"), { target: { value: "anthropic" } });
     fireEvent.click(screen.getByRole("button", { name: "Continue" }));
     const staged = (mocks.settings.draft.connections ?? []).at(-1)!;
-    expect(staged).toMatchObject({ provider: "custom", api_key: "", name: "My gateway", base_url: "http://gateway.test/v1", api_format: "anthropic" });
+    expect(staged).toMatchObject({ provider: "custom", api_key: "", name: "My gateway", base_url: "http://gateway.test/v1", api_format: "auto" });
     expect(staged.id).toMatch(/^conn-[0-9a-f-]{36}$/);
     expect(
       screen.getByRole("region", { name: "Provider settings" }),

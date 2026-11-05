@@ -153,9 +153,9 @@ export function ProvidersWorkspace() {
       api_version: "",
       ...(custom ? { service_overrides: { llm: { enabled: true, binding: "custom" } } } : {}),
       api_format:
-        custom?.api_format ||
-        (option.default_api_format as CatalogConnection["api_format"]) ||
-        "auto",
+        custom
+          ? "auto"
+          : (option.default_api_format as CatalogConnection["api_format"]) || "auto",
     };
     mutateCatalog((next) => {
       (next.connections ??= []).push(entry);

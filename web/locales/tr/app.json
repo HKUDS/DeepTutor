@@ -5467,7 +5467,7 @@
   "settings.providerServices.customHint": "Kendi URL'niz ve desteklenen API protokolü",
   "settings.providerServices.noMatch": "Eşleşen sağlayıcı yok. Başka bir kategori deneyin veya özel bir bağlantı kullanın.",
   "settings.providerServices.name": "Sağlayıcı adı",
-  "settings.providerServices.customDescription": "URL, seçilen API'yi uygulamalıdır. Sonraki adımda kimlik bilgilerini ekleyin ve varsa ek hizmet türlerini ve bunların adaptörlerini seçin.",
+  "settings.providerServices.customDescription": "API protokolü başlangıçta Otomatik olarak ayarlanır. Sonraki adımda kimlik bilgilerini ekleyin, gerekirse protokolü değiştirin ve ek hizmet türleri ile bağdaştırıcılarını seçin.",
   "settings.providerServices.addHint": "Etiketler yerleşik entegrasyonları gösterir, hesap izinlerini değil. Bir bağlantı birden çok model türüne hizmet edebilir; ayrı hesaplar ve ürünler için ayrı bağlantılar olabilir.",
   "settings.providerServices.catalogListed": "Model listesi alındı. Çıkarım erişimini doğrulamak için belirli bir modeli test edin.",
   "settings.providerServices.partial": "Sağlayıcı model listesinin yalnız bir kısmını döndürdü. Eksik türler bilinmiyor ve elle eklenebilir.",

@@ -5598,7 +5598,7 @@
   "settings.providerServices.customHint": "Your own URL and supported API protocol",
   "settings.providerServices.noMatch": "No matching providers. Try another category or use a custom connection.",
   "settings.providerServices.name": "Provider name",
-  "settings.providerServices.customDescription": "The URL must implement the selected API. On the next step, add credentials and choose any additional service types and their adapters.",
+  "settings.providerServices.customDescription": "The API protocol starts on Auto. On the next step, add credentials, change the protocol if needed, and choose additional service types and their adapters.",
   "settings.providerServices.addHint": "Tags show built-in integrations, not account permissions. One connection can serve several model types; separate accounts and products can have separate connections.",
   "settings.providerServices.catalogListed": "Model list retrieved. Test a specific model to verify inference access.",
   "settings.providerServices.partial": "The provider returned only part of the model list. Missing types remain unknown and can be added manually.",

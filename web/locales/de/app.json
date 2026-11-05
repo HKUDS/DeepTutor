@@ -5485,7 +5485,7 @@
   "settings.providerServices.customHint": "Eigene URL und unterstütztes API-Protokoll",
   "settings.providerServices.noMatch": "Keine passenden Anbieter. Wähle eine andere Kategorie oder eine eigene Verbindung.",
   "settings.providerServices.name": "Anbietername",
-  "settings.providerServices.customDescription": "Die URL muss die gewählte API implementieren. Ergänze danach Zugangsdaten und weitere Diensttypen mit ihren Adaptern.",
+  "settings.providerServices.customDescription": "Das API-Protokoll ist zunächst auf Auto eingestellt. Fügen Sie im nächsten Schritt Zugangsdaten hinzu, ändern Sie bei Bedarf das Protokoll und wählen Sie weitere Diensttypen und Adapter.",
   "settings.providerServices.addHint": "Tags zeigen Integrationen, keine Kontoberechtigungen. Eine Verbindung kann mehrere Modelltypen bedienen; Konten und Produkte können getrennte Verbindungen nutzen.",
   "settings.providerServices.catalogListed": "Modellliste geladen. Teste ein Modell, um den Zugriff auf die Inferenz zu prüfen.",
   "settings.providerServices.partial": "Nur ein Teil der Modellliste wurde geladen. Fehlende Typen bleiben unbekannt und können manuell ergänzt werden.",
