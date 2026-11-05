@@ -14,6 +14,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 from deeptutor.runtime.home import get_runtime_data_root
 from deeptutor.services.embedding import get_embedding_config
+from deeptutor.services.embedding.config import scoped_embedding_config
 from deeptutor.services.rag.embedding_signature import signature_from_embedding_config
 from deeptutor.services.rag.index_versioning import (
     EmbeddingSignature,
@@ -194,6 +195,20 @@ class LlamaIndexPipeline:
     def _configure_settings(self) -> None:
         configure_llamaindex_settings(self.logger)
 
+    async def _configure_settings_async(self) -> None:
+        """Configure LlamaIndex globals without blocking the event loop.
+
+        The first call builds the embedding adapter, which imports the provider
+        SDK and constructs the client; that takes seconds and used to run inside
+        the coroutine, stalling every other task on the loop. A scoped embedding
+        config keeps its adapter in a ContextVar, so that path has to stay in the
+        caller's context.
+        """
+        if scoped_embedding_config() is not None:
+            self._configure_settings()
+            return
+        await asyncio.to_thread(self._configure_settings)
+
     async def _verify_embedding_connectivity(self) -> None:
         await verify_embedding_connectivity(self.logger)
 
@@ -226,7 +241,7 @@ class LlamaIndexPipeline:
         image_progress_callback = kwargs.get("image_progress_callback")
         kb_dir = resolve_kb_dir(self.kb_base_dir, kb_name)
         _ensure_index_worker_available(str(kb_dir.resolve()))
-        self._configure_settings()
+        await self._configure_settings_async()
 
         self.logger.info(
             f"Initializing KB '{kb_name}' with {len(file_paths)} files using LlamaIndex"
@@ -339,7 +354,7 @@ class LlamaIndexPipeline:
             else:
                 if exact is not None:
                     return exact
-        self._configure_settings()
+        await self._configure_settings_async()
         self.logger.info(f"Searching KB '{kb_name}' with query: {query[:50]}...")
 
         kb_dir = resolve_kb_dir(self.kb_base_dir, kb_name)
@@ -486,7 +501,7 @@ class LlamaIndexPipeline:
         image_progress_callback = kwargs.get("image_progress_callback")
         kb_dir = resolve_kb_dir(self.kb_base_dir, kb_name)
         _ensure_index_worker_available(str(kb_dir.resolve()))
-        self._configure_settings()
+        await self._configure_settings_async()
 
         self.logger.info(f"Adding {len(file_paths)} documents to KB '{kb_name}' using LlamaIndex")
 
