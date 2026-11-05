@@ -6584,5 +6584,21 @@
   "settings.modelImport.selected": "Đã chọn: {{count}}",
   "language.korean": "한국어 (일부 번역)",
   "Zoom level": "Mức thu phóng",
-  "Reset zoom": "Đặt lại thu phóng"
+  "Reset zoom": "Đặt lại thu phóng",
+  "Search annotations…": "Tìm chú thích…",
+  "No matching annotations": "Không có chú thích phù hợp",
+  "Try a different word, or clear the search.": "Thử từ khác hoặc xóa tìm kiếm.",
+  "Download annotated PDF": "Tải PDF có chú thích",
+  "Download as Markdown": "Tải dưới dạng Markdown",
+  "Annotated original when available, otherwise the marks": "Bản gốc có chú thích nếu có, nếu không thì các đánh dấu",
+  "PDF with real annotations": "PDF với chú thích thật",
+  "The marks, ready to paste": "Các đánh dấu, sẵn sàng để dán",
+  "Change colour": "Đổi màu",
+  "Document order": "Thứ tự tài liệu",
+  "Resize annotations panel": "Đổi kích thước bảng chú thích",
+  "Select annotations": "Chọn chú thích",
+  "Filter by colour": "Lọc theo màu",
+  "All colours": "Tất cả màu",
+  "Could not copy to the clipboard.": "Không thể sao chép vào bộ nhớ tạm.",
+  "Some annotations could not be removed.": "Không thể xóa một số chú thích."
 }

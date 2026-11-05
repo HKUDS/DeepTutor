@@ -6584,5 +6584,21 @@
   "settings.modelImport.selected": "Selected: {{count}}",
   "language.korean": "한국어 (일부 번역)",
   "Zoom level": "Zoom level",
-  "Reset zoom": "Reset zoom"
+  "Reset zoom": "Reset zoom",
+  "Search annotations…": "Search annotations…",
+  "No matching annotations": "No matching annotations",
+  "Try a different word, or clear the search.": "Try a different word, or clear the search.",
+  "Download annotated PDF": "Download annotated PDF",
+  "Download as Markdown": "Download as Markdown",
+  "Annotated original when available, otherwise the marks": "Annotated original when available, otherwise the marks",
+  "PDF with real annotations": "PDF with real annotations",
+  "The marks, ready to paste": "The marks, ready to paste",
+  "Change colour": "Change colour",
+  "Document order": "Document order",
+  "Resize annotations panel": "Resize annotations panel",
+  "Select annotations": "Select annotations",
+  "Filter by colour": "Filter by colour",
+  "All colours": "All colours",
+  "Could not copy to the clipboard.": "Could not copy to the clipboard.",
+  "Some annotations could not be removed.": "Some annotations could not be removed."
 }
