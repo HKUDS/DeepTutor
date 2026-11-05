@@ -10,7 +10,7 @@ import { inputClass, selectClass, subPanelClass } from './shared'
 import { registryButton, registryPrimary } from './RegistryControls'
 
 export type ProviderCatalogOption = { value: string; label: string; services: ServiceName[] }
-export type CustomProviderInput = { name: string; base_url: string; api_format: ApiFormat }
+export type CustomProviderInput = { name: string; base_url: string }
 const FILTERS = [
   'all',
   'multi',
@@ -30,12 +30,10 @@ const PROTOCOLS = {
 export function ProviderProtocol({
   value,
   onChange,
-  allowAuto = true,
   formats,
 }: {
   value: ApiFormat
   onChange: (value: ApiFormat) => void
-  allowAuto?: boolean
   formats?: readonly string[]
 }) {
   const { t } = useTranslation()
@@ -47,7 +45,7 @@ export function ProviderProtocol({
         value={value}
         onChange={e => onChange(e.target.value as ApiFormat)}
       >
-        {allowAuto && (!formats || formats.includes('auto')) && <option value="auto">{t('Auto')}</option>}
+        {(!formats || formats.includes('auto')) && <option value="auto">{t('Auto')}</option>}
         {Object.entries(PROTOCOLS).filter(([key]) => !formats || formats.includes(key)).map(([key, label]) => (
           <option key={key} value={key}>
             {t(label)}
@@ -77,7 +75,6 @@ export function AddProviderPanel({
   const [query, setQuery] = useState('')
   const [name, setName] = useState('')
   const [url, setUrl] = useState('')
-  const [protocol, setProtocol] = useState<ApiFormat>('openai_chat')
   const custom = vendor === 'custom'
   const visible = options.map(option => ({
     ...option,
@@ -193,7 +190,6 @@ export function AddProviderPanel({
               {t('Enter a valid HTTP or HTTPS provider address.')}
             </p>
           )}
-          <ProviderProtocol value={protocol} onChange={setProtocol} allowAuto={false} />
           <p className="text-[13px] leading-relaxed text-[var(--muted-foreground)]">
             {t('settings.providerServices.customDescription')}
           </p>
@@ -213,7 +209,7 @@ export function AddProviderPanel({
           }
           onClick={() =>
             onCreate(
-              custom ? { name: name.trim(), base_url: url.trim(), api_format: protocol } : undefined
+              custom ? { name: name.trim(), base_url: url.trim() } : undefined
             )
           }
         >

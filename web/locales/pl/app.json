@@ -5372,7 +5372,7 @@
   "settings.providerServices.customHint": "Własny adres i obsługiwany protokół API",
   "settings.providerServices.noMatch": "Brak pasujących dostawców. Wybierz inną kategorię lub własne połączenie.",
   "settings.providerServices.name": "Nazwa dostawcy",
-  "settings.providerServices.customDescription": "Adres musi implementować wybrane API. Następnie dodaj dane dostępowe oraz dodatkowe typy usług i adaptery.",
+  "settings.providerServices.customDescription": "Protokół API jest domyślnie ustawiony na Auto. W następnym kroku dodaj dane uwierzytelniające, w razie potrzeby zmień protokół i wybierz dodatkowe typy usług oraz adaptery.",
   "settings.providerServices.addHint": "Etykiety oznaczają integracje, nie uprawnienia konta. Jedno połączenie może obsługiwać różne modele; konta i produkty mogą mieć osobne połączenia.",
   "settings.providerServices.catalogListed": "Pobrano listę modeli. Przetestuj model, aby sprawdzić dostęp do wnioskowania.",
   "settings.providerServices.partial": "Pobrano tylko część listy. Brakujące typy pozostają nieznane i można je dodać ręcznie.",

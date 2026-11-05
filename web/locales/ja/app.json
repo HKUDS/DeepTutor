@@ -5338,7 +5338,7 @@
   "settings.providerServices.customHint": "独自の URL と対応する API プロトコル",
   "settings.providerServices.noMatch": "一致するプロバイダーがありません。別のカテゴリを試すか、カスタム接続を使用してください。",
   "settings.providerServices.name": "プロバイダー名",
-  "settings.providerServices.customDescription": "URL は選択した API を実装している必要があります。次のステップで認証情報を追加し、追加のサービスタイプとそのアダプターを選択します。",
+  "settings.providerServices.customDescription": "API プロトコルの初期値は自動です。次のステップで認証情報を入力し、必要に応じてプロトコルを変更して、追加のサービスタイプとアダプターを選択します。",
   "settings.providerServices.addHint": "タグは組み込みの連携を示すもので、アカウントの権限ではありません。1つの接続で複数のモデルタイプに対応できます。別のアカウントや製品には、別々の接続を作成できます。",
   "settings.providerServices.catalogListed": "モデル一覧を取得しました。特定のモデルをテストして、推論へのアクセスを確認してください。",
   "settings.providerServices.partial": "プロバイダーはモデル一覧の一部のみを返しました。不足しているタイプは不明のままで、手動で追加できます。",

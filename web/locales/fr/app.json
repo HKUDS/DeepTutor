@@ -5806,7 +5806,7 @@
   "settings.providerServices.customHint": "Votre URL et un protocole API pris en charge",
   "settings.providerServices.noMatch": "Aucun fournisseur correspondant. Essayez une autre catégorie ou une connexion personnalisée.",
   "settings.providerServices.name": "Nom du fournisseur",
-  "settings.providerServices.customDescription": "L’URL doit implémenter l’API choisie. Ajoutez ensuite les identifiants et les autres types de services avec leurs adaptateurs.",
+  "settings.providerServices.customDescription": "Le protocole API est réglé sur Auto par défaut. À l’étape suivante, ajoutez les identifiants, modifiez le protocole si nécessaire et choisissez les autres types de services et leurs adaptateurs.",
   "settings.providerServices.addHint": "Les étiquettes indiquent les intégrations, pas les autorisations du compte. Une connexion peut servir plusieurs types de modèles ; les comptes et produits peuvent rester séparés.",
   "settings.providerServices.catalogListed": "Liste des modèles obtenue. Testez un modèle pour vérifier l’accès à l’inférence.",
   "settings.providerServices.partial": "Seule une partie de la liste a été obtenue. Les types manquants restent inconnus et peuvent être ajoutés manuellement.",

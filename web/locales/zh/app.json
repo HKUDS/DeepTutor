@@ -5430,7 +5430,7 @@
   "settings.providerServices.customHint": "自有地址与支持的接口协议",
   "settings.providerServices.noMatch": "没有匹配的提供方，请换个分类或使用自定义接入。",
   "settings.providerServices.name": "提供方名称",
-  "settings.providerServices.customDescription": "此地址需要实现所选协议。下一步填写凭据，并按需增加其他服务类型及其适配器。",
+  "settings.providerServices.customDescription": "接口协议默认为自动。下一步填写凭据，按需修改协议，并增加其他服务类型及其适配器。",
   "settings.providerServices.addHint": "标签表示已有内置适配器，不代表账号权限。同一连接可以用于多类模型，不同账号或独立产品也可以分别添加。",
   "settings.providerServices.catalogListed": "已获取模型列表。请测试具体模型，确认账号的实际调用权限。",
   "settings.providerServices.partial": "本次仅获取到部分模型列表。未返回的类型仍视为未知，可手动补充。",
