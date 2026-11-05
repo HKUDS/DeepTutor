@@ -162,18 +162,31 @@ test.beforeEach(async ({ page }) => {
   });
 });
 
-async function layerDrift(page: Page) {
+/**
+ * Where a run of text actually sits inside the page, as a fraction of the page
+ * box, next to where pdf.js's own text layer puts it.
+ *
+ * Comparing the canvas box with the text-layer box proves nothing: both are
+ * pinned to the same container (`h-full w-full` and `inset: 0`), so they agree
+ * at every zoom even if every glyph is in the wrong place. What has to line up
+ * is a span's position against the page — that is what makes a selection
+ * cover the words it looks like it covers.
+ */
+async function glyphGeometry(page: Page) {
   return page.locator('[data-reader-unit="1"]').evaluate((pageRoot) => {
-    const canvas = pageRoot.querySelector("canvas");
-    const layer = pageRoot.querySelector(".textLayer");
-    if (!canvas || !layer) throw new Error("page has no canvas or text layer");
-    const c = canvas.getBoundingClientRect();
-    const t = layer.getBoundingClientRect();
+    const pageBox = pageRoot.getBoundingClientRect();
+    const spans = [...pageRoot.querySelectorAll<HTMLElement>(".textLayer span")];
+    if (spans.length === 0) throw new Error("text layer has no spans");
+    // The first span is the start of the fixture's heading, which sits in the
+    // top-left area of the page.
+    const span = spans[0].getBoundingClientRect();
     return {
-      left: Math.abs(c.left - t.left),
-      top: Math.abs(c.top - t.top),
-      width: Math.abs(c.width - t.width),
-      height: Math.abs(c.height - t.height),
+      pageWidth: pageBox.width,
+      pageHeight: pageBox.height,
+      left: (span.left - pageBox.left) / pageBox.width,
+      top: (span.top - pageBox.top) / pageBox.height,
+      width: span.width / pageBox.width,
+      height: span.height / pageBox.height,
     };
   });
 }
@@ -194,14 +207,16 @@ test("a real document keeps its canvas and text layer registered at every zoom",
     { timeout: 20_000 },
   );
 
+  // The heading's first span sits near the page's top-left. Its position, as a
+  // fraction of the page, must not move when the page is zoomed: the glyph and
+  // the ink it labels are the same words at every scale.
+  const atFit = await glyphGeometry(page);
   const check = async (label: string) => {
-    const drift = await layerDrift(page);
-    // A couple of pixels for device-pixel rounding; more than that means a
-    // selection would land on the wrong word.
-    expect(drift.left, `${label}: left edge`).toBeLessThan(3);
-    expect(drift.top, `${label}: top edge`).toBeLessThan(3);
-    expect(drift.width, `${label}: width`).toBeLessThan(3);
-    expect(drift.height, `${label}: height`).toBeLessThan(3);
+    const geometry = await glyphGeometry(page);
+    // The span's *position* as a fraction of the page must not move: the words
+    // it covers are the same words at every scale.
+    expect(geometry.left, `${label}: span left`).toBeCloseTo(atFit.left, 2);
+    expect(geometry.top, `${label}: span top`).toBeCloseTo(atFit.top, 2);
   };
 
   await check("at fit");
@@ -233,6 +248,21 @@ test("a real document keeps its canvas and text layer registered at every zoom",
     )
     .toBe(fitWidth);
   await check("reset");
+
+  // The proof that the text layer sits on the ink is behavioural, not
+  // geometric: dragging across a span must select that span's own words. A
+  // layer that drifted would select the neighbouring text instead.
+  const span = root.locator('[data-reader-unit="1"] .textLayer span').first();
+  const box = await span.boundingBox();
+  if (!box) throw new Error("first span has no box");
+  await page.mouse.move(box.x + 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width - 2, box.y + box.height / 2, { steps: 6 });
+  await page.mouse.up();
+  const selected = await page.evaluate(() => window.getSelection()?.toString() ?? "");
+  expect(selected.trim().length).toBeGreaterThan(0);
+  // The selection must be text the document actually contains.
+  expect(selected).toMatch(/DeepTutor|LightRAG|Fixture/i);
 });
 
 /**

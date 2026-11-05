@@ -195,3 +195,104 @@ describe("announcing a change", () => {
     unsubscribe();
   });
 });
+
+/**
+ * A refresh that lands while one of our own writes is in flight.
+ *
+ * The refresh replaces the whole list with what the server returned, and the
+ * server has not acknowledged our row yet. For an edit that is a flicker; for
+ * a brand-new mark it is permanent, because the PUT that follows maps by an
+ * optimistic id the refresh just removed.
+ */
+describe("a remote refresh during a local write", () => {
+  it("keeps a brand-new mark that the server has not acknowledged yet", async () => {
+    const { result } = renderHook(useReading, { wrapper: ReadingProvider });
+    await open(result, "doc-a", [mark("existing")]);
+
+    // The reader draws a new mark: optimistic id, PUT in flight.
+    let settle!: (value: Response) => void;
+    api.fetch.mockImplementationOnce(
+      () => new Promise<Response>((resolve) => {
+        settle = resolve;
+      }),
+    );
+    let saving!: Promise<boolean>;
+    act(() => {
+      saving = result.current.saveMark(
+        {
+          locator: 1,
+          kind: "highlight",
+          color: "yellow",
+          quote: "new",
+          note: "",
+          rects: [],
+          source_anchor: "",
+          selectors: [],
+        },
+        mark("pending-new"),
+      );
+    });
+    expect(result.current.annotations.map((row) => row.annotation_id)).toContain(
+      "pending-new",
+    );
+
+    // Another tab broadcasts; this tab re-reads and the server does not know
+    // the pending row yet.
+    api.fetch.mockResolvedValueOnce(new Response(JSON.stringify([mark("existing")])));
+    await act(async () => {
+      broadcast("doc-a");
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    // Without the merge the optimistic row is gone here, and the PUT below
+    // cannot bring it back.
+    expect(result.current.annotations.map((row) => row.annotation_id)).toContain(
+      "pending-new",
+    );
+
+    await act(async () => {
+      settle(new Response(JSON.stringify(mark("server-real"))));
+      await saving;
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(result.current.annotations.map((row) => row.annotation_id)).toEqual(
+      expect.arrayContaining(["existing", "server-real"]),
+    );
+  });
+});
+
+describe("the marker's storage area", () => {
+  it("ignores a same-named key written to sessionStorage", () => {
+    // The shared subscriber guards on `storageArea`; this listener must too,
+    // or an unrelated sessionStorage write would look like a mark change.
+    const listener = vi.fn();
+    const unsubscribe = subscribeToAnnotationsChange("doc-a", listener);
+    // jsdom refuses a `storageArea` in the constructor, so build the event and
+    // attach the area afterwards.
+    const event = new StorageEvent("storage", {
+      key: "dt.reader.annotationsRevision",
+      newValue: JSON.stringify({ materialId: "doc-a", at: Date.now(), seq: 1 }),
+    });
+    Object.defineProperty(event, "storageArea", {
+      value: window.sessionStorage,
+      configurable: true,
+    });
+    window.dispatchEvent(event);
+    expect(listener).not.toHaveBeenCalled();
+    unsubscribe();
+  });
+});
+
+describe("the assistant's marks", () => {
+  it("announces a merged mark so the other tabs hear about it", async () => {
+    // The assistant's mark is already persisted by the tool that made it, so
+    // it is a real change and must broadcast like a reader-saved one.
+    const { result } = renderHook(useReading, { wrapper: ReadingProvider });
+    await open(result, "doc-a", []);
+    act(() => {
+      result.current.mergeMark(mark("from-assistant"));
+    });
+    const raw = localStorage.getItem("dt.reader.annotationsRevision");
+    expect(raw).toBeTruthy();
+    expect(JSON.parse(raw!)).toMatchObject({ materialId: "doc-a" });
+  });
+});

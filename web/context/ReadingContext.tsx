@@ -105,6 +105,9 @@ export function ReadingProvider({ children }: { children: ReactNode }) {
   // Guards against a slow open landing after the user opened something else.
   const openTokenRef = useRef(0);
   const annotationScopeRef = useRef(0);
+  // Ids whose write has been sent but not yet acknowledged. A refresh that
+  // lands while this is non-empty must merge, not replace.
+  const pendingWritesRef = useRef<Set<string>>(new Set());
   useEffect(() => () => {
     openTokenRef.current += 1;
     annotationScopeRef.current += 1;
@@ -169,6 +172,7 @@ export function ReadingProvider({ children }: { children: ReactNode }) {
       const materialId = material?.material_id;
       if (!materialId) return false;
       const token = openTokenRef.current;
+      pendingWritesRef.current.add(optimistic.annotation_id);
       const previous = annotations.find(row => row.annotation_id === optimistic.annotation_id);
       setAnnotations(current => previous
         ? current.map(row => row.annotation_id === optimistic.annotation_id ? optimistic : row)
@@ -176,9 +180,11 @@ export function ReadingProvider({ children }: { children: ReactNode }) {
       try {
         const saved = await saveAnnotation(materialId, draft);
         if (token === openTokenRef.current) setAnnotations(current => current.map(row => row.annotation_id === optimistic.annotation_id ? saved : row));
+        pendingWritesRef.current.delete(optimistic.annotation_id);
         publishAnnotationsChange(materialId);
         return true;
       } catch (caught) {
+        pendingWritesRef.current.delete(optimistic.annotation_id);
         if (token !== openTokenRef.current) return false;
         setAnnotations(current => previous
           ? current.map(row => row.annotation_id === optimistic.annotation_id ? previous : row)
@@ -223,7 +229,12 @@ export function ReadingProvider({ children }: { children: ReactNode }) {
       ),
       annotation,
     ]);
-  }, []);
+    // The assistant's mark is already persisted by the tool that made it, so
+    // this is a real change to the document's marks and the other tabs need
+    // to hear about it — exactly like a mark the reader saved.
+    const materialId = material?.material_id;
+    if (materialId) publishAnnotationsChange(materialId);
+  }, [material]);
 
   /**
    * Re-read the marks when another tab reports a change.
@@ -246,7 +257,17 @@ export function ReadingProvider({ children }: { children: ReactNode }) {
         .then((rows) => {
           // The document may have been closed or swapped while this was in
           // flight; a stale response must not repopulate the list.
-          if (token === annotationScopeRef.current) setAnnotations(rows);
+          if (token !== annotationScopeRef.current) return;
+          setAnnotations((current) => {
+            // A write of ours is still in flight: keep those rows. Replacing
+            // the list would drop a brand-new mark for good, because the PUT
+            // that follows maps by an optimistic id the refresh just removed.
+            if (pendingWritesRef.current.size === 0) return rows;
+            const keep = current.filter((row) =>
+              pendingWritesRef.current.has(row.annotation_id),
+            );
+            return [...rows.filter((row) => !keep.some((k) => k.annotation_id === row.annotation_id)), ...keep];
+          });
         })
         .catch(() => {
           // A failed refresh leaves the local list alone; the next write, or

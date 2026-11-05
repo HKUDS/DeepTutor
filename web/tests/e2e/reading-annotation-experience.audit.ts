@@ -282,6 +282,23 @@ test("the palette recolours a mark, and the filter narrows to it", async ({
   await filter.getByRole("button", { name: "Green" }).click();
   await expect(panel.getByText("second thought")).toBeVisible();
   await expect(panel.getByText("first thought")).toHaveCount(0);
+
+  // Recolour for real: the first mark is yellow, press Green on its own row
+  // and the PUT must carry the new colour. The filter above is cleared first
+  // so the row is on screen.
+  await filter.getByRole("button", { name: "All colours" }).click();
+  const row = panel.getByRole("listitem").filter({ hasText: "first thought" });
+  await expect(row).toBeVisible();
+  const put = page.waitForRequest(
+    (request) =>
+      request.method() === "PUT" &&
+      request.url().includes("/annotations") &&
+      (request.postData() ?? "").includes("green"),
+  );
+  await row.getByLabel("Green").click();
+  await put;
+  // The swatch reports the new colour as pressed, so the change landed in UI.
+  await expect(row.getByLabel("Green")).toHaveAttribute("aria-pressed", "true");
 });
 
 test("selection mode offers a batch bar and closes again", async ({ page }) => {
