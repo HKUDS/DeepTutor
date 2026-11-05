@@ -405,10 +405,13 @@ export default function MasteryTopicPage() {
     );
   }
 
-  const nextCopy = NEXT_LABELS[topic.next.action] ?? {
-    zh: topic.next.reason,
-    en: topic.next.reason,
-  };
+  const nextLabel = NEXT_LABELS[topic.next.action];
+  // The reason comes from the server as-is; only the known labels are catalog copy.
+  const nextCopy = nextLabel
+    ? zh
+      ? nextLabel.zh
+      : t(nextLabel.en)
+    : topic.next.reason;
   const progress = topic.map.counts.total
     ? Math.round((topic.map.counts.mastered / topic.map.counts.total) * 100)
     : 0;
@@ -547,9 +550,7 @@ export default function MasteryTopicPage() {
                   ? t(
                       "This goal has no outline yet. Open a session and the tutor will design one with you.",
                     )
-                  : zh
-                    ? nextCopy.zh
-                    : nextCopy.en}
+                  : nextCopy}
               </p>
             </div>
           </div>
@@ -589,7 +590,7 @@ export default function MasteryTopicPage() {
               {nextCta
                 ? zh
                   ? nextCta.zh
-                  : nextCta.en
+                  : t(nextCta.en)
                 : topic.session_count > 0
                   ? t("Continue learning")
                   : t("Begin first waypoint")}

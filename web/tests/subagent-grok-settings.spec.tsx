@@ -13,8 +13,9 @@ import {
   getSubagentSettings,
 } from "@/lib/subagents-api";
 
+const t = (key: string) => key;
 vi.mock("react-i18next", () => ({
-  useTranslation: () => ({ i18n: { language: "en" } }),
+  useTranslation: () => ({ t, i18n: { language: "en" } }),
 }));
 
 const staged = vi.hoisted(() => {

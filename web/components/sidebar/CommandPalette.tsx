@@ -98,7 +98,7 @@ export function CommandPalette({
             .filter(row => row.href !== '/agents' || navVisibleUnderPolicy(row.href, allowedSurfaces))
             .map(row => ({
               id: `resource:${row.key}`,
-              label: zh ? row.title.zh : row.title.en,
+              label: zh ? row.title.zh : t(row.title.en),
               detail,
               icon: glyph(row.icon),
               run: go(row.href),

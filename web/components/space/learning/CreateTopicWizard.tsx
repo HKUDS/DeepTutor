@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type RefObject } from "react";
+import { useMemo, useState, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import {
   AlertCircle,
@@ -14,6 +14,7 @@ import {
 
 import { useModalDialog } from "@/hooks/useModalDialog";
 import {
+  catalogTranslate,
   hydrateTopicSource,
   toggleSourceSelection,
   useTopicSourceLibrary,
@@ -25,7 +26,6 @@ import {
   type TopicSourceInput,
 } from "@/lib/learning-api";
 
-import type { Translate } from "./format";
 import { GoalStep, SourcesStep } from "./TopicWizardSteps";
 
 /**
@@ -51,7 +51,9 @@ export function CreateTopicWizard({
   onCreated: (topic: MasteryTopic) => void;
   returnFocusRef: RefObject<HTMLElement | null>;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const zh = i18n.language?.toLowerCase().startsWith("zh") ?? false;
+  const sourceTr = useMemo(() => catalogTranslate(t, zh), [t, zh]);
   const [step, setStep] = useState(1);
   const [goal, setGoal] = useState("");
   const [emoji, setEmoji] = useState("🧭");
@@ -61,7 +63,7 @@ export function CreateTopicWizard({
     candidates,
     childLists,
     loadChildren,
-  } = useTopicSourceLibrary(t as Translate);
+  } = useTopicSourceLibrary(sourceTr);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
