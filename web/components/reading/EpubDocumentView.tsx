@@ -29,6 +29,12 @@ import {
 import { cleanQuote } from "@/lib/reading-selection";
 import type { JumpRequest, SelectionPayload } from "./PdfDocumentView";
 import { ReaderDisplayControls } from "./ReaderDisplayControls";
+import dynamic from "next/dynamic";
+
+const ReaderImageLightbox = dynamic(
+  () => import("./ReaderImageLightbox").then((module) => module.ReaderImageLightbox),
+  { ssr: false },
+);
 
 type EpubLocation = {
   start?: { cfi?: string; href?: string; percentage?: number };
@@ -203,6 +209,18 @@ export function EpubDocumentView({
   );
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
+  const [lightbox, setLightbox] = useState<{ src: string; alt: string } | null>(
+    null,
+  );
+  // The click listener lives on the iframe's document and is installed once per
+  // section, so it reaches the current handler through a ref.
+  const imageClickRef = useRef<((src: string, alt: string) => void) | null>(
+    null,
+  );
+
+  useEffect(() => {
+    imageClickRef.current = (src, alt) => setLightbox({ src, alt });
+  });
 
   useEffect(() => {
     const saved = loadReaderDisplayPreferences();
@@ -406,6 +424,18 @@ export function EpubDocumentView({
         if (!/^https?:\/\//i.test(href)) return;
         event.preventDefault();
         window.open(href, "_blank", "noopener,noreferrer");
+      });
+      // The injected stylesheet keeps pictures inside the column, which is right
+      // for reading and useless for reading a diagram's labels. Hand the picture
+      // to the lightbox, which draws it outside the iframe at its own size.
+      doc.addEventListener("click", (event) => {
+        if ((doc.getSelection?.()?.toString() ?? "").trim()) return;
+        const image = (event.target as Element | null)?.closest?.(
+          "img",
+        ) as HTMLImageElement | null;
+        if (!image || image.closest("a[href]")) return;
+        event.preventDefault();
+        imageClickRef.current?.(image.currentSrc || image.src, image.alt);
       });
     };
 
@@ -699,6 +729,13 @@ export function EpubDocumentView({
           </>
         )}
       </div>
+      {lightbox && (
+        <ReaderImageLightbox
+          src={lightbox.src}
+          alt={lightbox.alt}
+          onClose={() => setLightbox(null)}
+        />
+      )}
     </div>
   );
 }
