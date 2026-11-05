@@ -58,11 +58,17 @@ def _manager(tmp_path: Path, *, fail_install: bool = False) -> PluginLifecycleMa
         if fail_install and argv[2:4] == ["pip", "install"]:
             return 3, "simulated dependency failure"
         if argv[1:3] == ["-m", "venv"]:
+            import sys
+
+            from deeptutor.plugins.lifecycle import _venv_python
+
+            # Lay the fake venv out the way this platform's venv does, since
+            # the installer looks for Scripts/ and Lib/ on Windows.
             root = Path(argv[-1])
-            (root / "bin").mkdir(parents=True, exist_ok=True)
-            package_root = root / "lib" / "python3.13" / "site-packages" / "example_plugin"
-            package_root.mkdir(parents=True, exist_ok=True)
-            python = root / "bin" / "python"
+            lib = root / "Lib" if sys.platform == "win32" else root / "lib" / "python3.13"
+            (lib / "site-packages" / "example_plugin").mkdir(parents=True, exist_ok=True)
+            python = _venv_python(root)
+            python.parent.mkdir(parents=True, exist_ok=True)
             python.write_text("#!python\n", encoding="utf-8")
             return 0, ""
         return 0, ""
