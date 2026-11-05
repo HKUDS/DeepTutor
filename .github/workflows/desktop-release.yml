@@ -206,7 +206,16 @@ jobs:
           shopt -s nullglob
           files=(out/*.dmg out/*-Setup.exe out/*-Portable.zip)
           [ ${#files[@]} -gt 0 ] || { echo "No downloads were produced." >&2; exit 1; }
-          gh release upload "$RELEASE_TAG" "${files[@]}" --clobber
+          # Also attach copies without the version in the name, so the README
+          # can link to releases/latest/download/<name> and always get the newest build.
+          mkdir -p out/latest
+          for f in "${files[@]}"; do
+            name="$(basename "$f")"
+            stable="${name/-$RELEASE_TAG/}"
+            [ "$stable" != "$name" ] || { echo "Expected $RELEASE_TAG in $name." >&2; exit 1; }
+            cp "$f" "out/latest/$stable"
+          done
+          gh release upload "$RELEASE_TAG" "${files[@]}" out/latest/* --clobber
 
       - name: Remove the temporary signing keychain
         if: always() && runner.os == 'macOS' && env.HAS_DEVELOPER_ID == 'true' && github.event_name != 'pull_request'

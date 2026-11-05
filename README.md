@@ -9,6 +9,12 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/HKUDS/DeepTutor/releases/latest/download/Open-DeepTutor-MacOS-Apple-Silicon.dmg"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/figs/badges/download-macos-dark.svg"><img alt="Download for macOS" src="assets/figs/badges/download-macos-light.svg" height="52"></picture></a>&nbsp;&nbsp;
+  <a href="https://github.com/HKUDS/DeepTutor/releases/latest/download/Open-DeepTutor-Windows-Setup.exe"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/figs/badges/download-windows-dark.svg"><img alt="Download for Windows" src="assets/figs/badges/download-windows-light.svg" height="52"></picture></a>
+</p>
+<p align="center"><sub>Apple Silicon Mac · Windows 10+ (x64) · <a href="https://github.com/HKUDS/DeepTutor/releases/latest">Intel Mac, portable Windows, and older versions</a></sub></p>
+
+<p align="center">
 <a href="https://www.star-history.com/hkuds/deeptutor"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending&amp;theme=dark" /><source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending" /><img alt="GitHub Trending Repository of the Day" src="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending" height="55" /></picture></a>&#32;<a href="https://trendshift.io/repositories/17099"><img src="https://trendshift.io/api/badge/trendshift/repositories/17099/daily" alt="HKUDS/DeepTutor | Trendshift" width="250" height="55"></a>&#32;<a href="https://www.star-history.com/hkuds/deeptutor"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;theme=dark"><source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor"><img alt="Star History Rank" src="https://api.star-history.com/badge?repo=HKUDS/DeepTutor" width="185" height="55"></picture></a>
 </p>
 
