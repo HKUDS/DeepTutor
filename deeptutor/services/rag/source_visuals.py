@@ -25,6 +25,12 @@ _FIGURE = re.compile(r"(?:fig(?:ure)?\.?|图|圖|table|表)\s*([0-9]+(?:[.\-][0-
 _PAGE = re.compile(r"(?:page|p\.|第)\s*(\d+)\s*(?:页|頁)?", re.I)
 
 
+def page_reference(text: str) -> int | None:
+    """Return the first page reference recognized by visual inspection."""
+    match = _PAGE.search(text)
+    return int(match.group(1)) if match else None
+
+
 def figure_labels(text: str) -> list[str]:
     return list(dict.fromkeys(m.group(1).casefold() for m in _FIGURE.finditer(text)))
 
@@ -232,8 +238,7 @@ def retrieve_visual(
                 error="multiple_references",
             )
         label = labels[0] if labels else ""
-        match = _PAGE.search(query)
-        page = int(match.group(1)) if match else None
+        page = page_reference(query)
     candidates = [
         r
         for key, r in records.items()

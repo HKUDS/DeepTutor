@@ -185,7 +185,7 @@ class RAGTool(_PromptHintsMixin, BaseTool):
                     type="string",
                     required=False,
                     nullable=True,
-                    description="Exact document path from kb_files for visual/page inspection; prevents substitution across sources.",
+                    description="Exact document path from kb_files for visual/page inspection with a page, figure, region or asset_id. Source-only scoped text retrieval is unsupported; it never falls back to a whole-KB search.",
                 ),
                 ToolParameter(
                     name="asset_id",
@@ -301,15 +301,24 @@ class RAGTool(_PromptHintsMixin, BaseTool):
             raise ValueError("RAG requires an explicit kb_name.")
         event_sink = None if kwargs.get("_mastery_source_context") else kwargs.get("event_sink")
         vision_supported = bool(kwargs.get("_vision_supported", False))
-        from deeptutor.services.rag.source_visuals import figure_labels, retrieve_visual
+        from deeptutor.services.rag.source_visuals import (
+            figure_labels,
+            page_reference,
+            retrieve_visual,
+        )
 
         exact_keys = ("source_path", "asset_id", "figure", "page", "region", "source_hash")
         selectors = _normalize_rag_selectors(kwargs)
         if isinstance(selectors, str):
             return _rag_selector_error(selectors)
-        if any(
-            selectors.get(key) is not None and selectors.get(key) != "" for key in exact_keys
-        ) or figure_labels(query):
+        visual_requested = any(
+            selectors.get(key) is not None and selectors.get(key) != ""
+            for key in ("asset_id", "figure", "page", "region")
+        ) or bool(figure_labels(query))
+        if (
+            any(selectors.get(key) is not None and selectors.get(key) != "" for key in exact_keys)
+            or visual_requested
+        ):
             from deeptutor.multi_user.knowledge_access import resolve_for_rag
             from deeptutor.services.rag.kb_paths import resolve_kb_dir
 
@@ -317,6 +326,20 @@ class RAGTool(_PromptHintsMixin, BaseTool):
             if resource is None:
                 return ToolResult(
                     content=f"Knowledge base '{kb_name}' is not accessible.", success=False
+                )
+            if (
+                selectors.get("source_path")
+                and not visual_requested
+                and page_reference(query) is None
+            ):
+                return ToolResult(
+                    content=(
+                        "RAG does not support scoped text retrieval by source_path. "
+                        "No search was run. For exact visual inspection, also select "
+                        "a page, figure, region or asset_id."
+                    ),
+                    success=False,
+                    metadata={"error_type": "source_scope_unsupported"},
                 )
             try:
                 evidence = await asyncio.to_thread(
