@@ -86,7 +86,7 @@ const API_FORMAT_HINTS: Record<string, string> = {
 const LLM_SHAPED = new Set<ServiceName>(["llm", "task"]);
 // LLM bindings that list their models from a local CLI login: no base URL,
 // no API key, and the model list comes from "Sync models".
-const CLI_LOGIN_BINDINGS = new Set(["codebuddy", "claude_code"]);
+const CLI_LOGIN_BINDINGS = new Set(["codebuddy", "claude_code", "antigravity"]);
 
 const SERVICE_LABEL: Record<ServiceName, string> = {
   llm: "LLM",
@@ -436,7 +436,7 @@ export function ServiceConfigEditor({
         });
         if (
           service === "llm" &&
-          ["minimax", "minimax_anthropic", "openrouter"].includes(binding)
+          ["minimax", "minimax_anthropic", "openrouter", "antigravity"].includes(binding)
         ) {
           // Discovery recommendations must not erase saved legacy/custom models.
           const discovered = new Set(fetched.map((item) => item.id));

@@ -739,6 +739,11 @@ async def fetch_models(
 
         return await fetch_codebuddy_models(api_key)
 
+    if canonical_provider_name(binding) == "antigravity":
+        from .provider_core.antigravity_provider import fetch_antigravity_models
+
+        return await fetch_antigravity_models()
+
     if canonical_provider_name(binding) == "claude_code":
         from .provider_core.claude_code_provider import fetch_claude_code_models
 

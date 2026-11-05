@@ -206,6 +206,21 @@ async def probe_provider(
     """
     if binding == "volcengine_speech":
         return {"status": "unavailable", "models": []}
+    from deeptutor.services.provider_registry import canonical_provider_name
+
+    if canonical_provider_name(binding) == "antigravity":
+        from deeptutor.services.llm.provider_core.antigravity_provider import (
+            fetch_antigravity_models,
+        )
+
+        try:
+            antigravity_models = await fetch_antigravity_models()
+        except RuntimeError:
+            return {"status": "unavailable", "models": []}
+        return {
+            "status": "connected",
+            "models": [{"id": model, "services": ["llm"]} for model in antigravity_models],
+        }
     base_url = base_url.strip().rstrip("/")
     try:
         parsed = urlsplit(base_url)

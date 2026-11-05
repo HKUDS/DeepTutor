@@ -103,6 +103,15 @@ PROVIDER_CAPABILITIES: dict[str, dict[str, object]] = {
         "system_in_messages": True,
         "has_thinking_tags": False,
     },
+    "antigravity": {
+        "supports_response_format": False,
+        "supports_streaming": True,
+        "supports_tools": True,
+        "supports_vision": True,
+        "vision_url_supported": False,
+        "system_in_messages": True,
+        "has_thinking_tags": False,
+    },
     "claude_code": {
         "supports_response_format": False,
         "supports_streaming": True,

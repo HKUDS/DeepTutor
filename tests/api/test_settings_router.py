@@ -1585,21 +1585,24 @@ async def test_fetch_models_requires_base_url() -> None:
 
 
 @pytest.mark.asyncio
-async def test_fetch_models_allows_codebuddy_without_base_url(
+@pytest.mark.parametrize("binding", ["codebuddy", "antigravity", "agy", "antigravity-cli"])
+async def test_fetch_models_allows_cli_provider_without_base_url(
     monkeypatch: pytest.MonkeyPatch,
+    binding: str,
 ) -> None:
     import deeptutor.services.llm.factory as factory_module
 
     async def _fake_fetch(
         binding: str, base_url: str, api_key: str | None = None, api_format: str = "auto"
     ):
-        assert (binding, base_url, api_key) == ("codebuddy", "", None)
+        assert base_url == ""
+        assert api_key is None
         return ["hy3", "glm-5.2"]
 
     monkeypatch.setattr(factory_module, "fetch_models", _fake_fetch)
 
     response = await settings_router.fetch_models_from_provider(
-        settings_router.FetchModelsPayload(binding="codebuddy")
+        settings_router.FetchModelsPayload(binding=binding)
     )
 
     assert response == {
@@ -1608,6 +1611,26 @@ async def test_fetch_models_allows_codebuddy_without_base_url(
             {"id": "glm-5.2", "name": "glm-5.2"},
         ]
     }
+
+
+@pytest.mark.asyncio
+async def test_antigravity_model_discovery_hides_private_diagnostics(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from fastapi import HTTPException
+
+    import deeptutor.services.llm.factory as factory_module
+
+    async def _fail(*args, **kwargs):
+        raise RuntimeError("private-token-bearing-diagnostic")
+
+    monkeypatch.setattr(factory_module, "fetch_models", _fail)
+    with pytest.raises(HTTPException) as error:
+        await settings_router.fetch_models_from_provider(
+            settings_router.FetchModelsPayload(binding="antigravity")
+        )
+    assert error.value.status_code == 502
+    assert "private-token" not in str(error.value.detail)
 
 
 @pytest.mark.asyncio

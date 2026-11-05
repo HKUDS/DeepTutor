@@ -251,6 +251,8 @@ DeepTutor is an agent-native learning workspace that connects tutoring, research
 
 Choose the installation path that fits how you want to use DeepTutor. Terminal-based installs share one runtime home: private settings live in `data/user/settings/` under the launch directory, or under `DEEPTUTOR_HOME` / `deeptutor start --home` when set explicitly. After starting the app, configure a provider and model in **Settings → Providers** and **Language models**.
 
+An existing **Antigravity CLI** login can also supply conversation models: add the provider, refresh its model list, choose a default, and apply settings. See the [Antigravity provider guide](docs-for-dev/ANTIGRAVITY_PROVIDER.md) for requirements and current limits.
+
 <details>
 <summary><b>Desktop — macOS and Windows (Preview)</b></summary>
 

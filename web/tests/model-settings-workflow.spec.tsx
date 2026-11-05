@@ -71,6 +71,15 @@ function fixture(): Catalog {
 }
 
 describe("provider/model settings", () => {
+  it("lets Antigravity discover models without an HTTP endpoint", async () => {
+    mocks.fetch.mockResolvedValue({ ok: true, json: async () => ({ status: "connected", models: [{ id: "gemini-test" }] }) });
+    render(<ProviderModelDiscovery input={{ binding: "antigravity", base_url: "" }} />);
+    const button = screen.getByRole("button", { name: "Test provider connection" });
+    expect(button).toBeEnabled();
+    fireEvent.click(button);
+    await act(async () => {});
+    expect(JSON.parse(mocks.fetch.mock.calls.at(-1)![1].body)).toMatchObject({ binding: "antigravity", base_url: "" });
+  });
   it("projects old providers without merging accounts or changing any persisted fields", () => {
     const catalog = fixture();
     const before = structuredClone(catalog);

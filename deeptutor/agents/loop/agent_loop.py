@@ -117,10 +117,16 @@ _STREAM_IDLE_TIMEOUT_SECONDS = 90.0
 
 async def _bounded_stream_chunks(stream: Any):
     """#1421: a connected provider that never produces a chunk must settle."""
+    idle_timeout = getattr(stream, "idle_timeout", None)
+    timeout = (
+        idle_timeout
+        if isinstance(idle_timeout, (int, float)) and idle_timeout > 0
+        else _STREAM_IDLE_TIMEOUT_SECONDS
+    )
     iterator = stream.__aiter__()
     while True:
         try:
-            yield await asyncio.wait_for(iterator.__anext__(), _STREAM_IDLE_TIMEOUT_SECONDS)
+            yield await asyncio.wait_for(iterator.__anext__(), timeout)
         except StopAsyncIteration:
             return
         except TimeoutError:

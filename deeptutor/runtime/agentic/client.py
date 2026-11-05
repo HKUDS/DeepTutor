@@ -59,7 +59,7 @@ _NATIVE_TOOL_BLOCKED_BINDINGS: frozenset[str] = frozenset(
 # AsyncOpenAI client pointed at a non-OpenAI wire format. github_copilot is
 # adapter-routed but deliberately excluded from this set.
 _NATIVE_TOOL_BACKENDS: frozenset[str] = frozenset(
-    {"anthropic", "openai_codex", "codebuddy", "claude_code"}
+    {"anthropic", "openai_codex", "codebuddy", "claude_code", "antigravity"}
 )
 _AGENTIC_CLIENT_POOL_MAXSIZE = 2
 _agentic_client_pool: "OrderedDict[tuple[Any, ...], Any]" = OrderedDict()
@@ -363,6 +363,12 @@ def _build_claude_code_adapter(config: LLMClientConfig, spec: Any) -> Any:
     return _ProviderOpenAIAdapter(ClaudeCodeProvider(default_model=config.model or None))
 
 
+def _build_antigravity_adapter(config: LLMClientConfig, spec: Any) -> Any:
+    from deeptutor.services.llm.provider_core import AntigravityProvider
+
+    return _ProviderOpenAIAdapter(AntigravityProvider(default_model=config.model or None))
+
+
 def _build_direct_openai_adapter(config: LLMClientConfig, spec: Any) -> Any:
     from deeptutor.services.llm.provider_core import OpenAICompatProvider
 
@@ -384,6 +390,7 @@ _NATIVE_ADAPTER_BUILDERS: dict[str, Callable[[LLMClientConfig, Any], Any]] = {
     "github_copilot": _build_copilot_adapter,
     "codebuddy": _build_codebuddy_adapter,
     "claude_code": _build_claude_code_adapter,
+    "antigravity": _build_antigravity_adapter,
 }
 
 
@@ -543,6 +550,11 @@ class _ProviderOpenAIStream:
         self._task: asyncio.Task[None] | None = None
         self._emitted_content = False
         self._emitted_reasoning = False
+
+    @property
+    def idle_timeout(self) -> float | None:
+        """Allow providers with buffered output to declare a bounded wait."""
+        return getattr(self._provider, "stream_idle_timeout", None)
 
     def __aiter__(self) -> "_ProviderOpenAIStream":
         if self._queue is None:
