@@ -11,6 +11,10 @@ import {
   type ReactNode,
 } from "react";
 import {
+  publishAnnotationsChange,
+  subscribeToAnnotationsChange,
+} from "@/lib/reading-annotation-sync";
+import {
   deleteAnnotation as deleteAnnotationApi,
   getMaterial,
   listAnnotations,
@@ -172,6 +176,7 @@ export function ReadingProvider({ children }: { children: ReactNode }) {
       try {
         const saved = await saveAnnotation(materialId, draft);
         if (token === openTokenRef.current) setAnnotations(current => current.map(row => row.annotation_id === optimistic.annotation_id ? saved : row));
+        publishAnnotationsChange(materialId);
         return true;
       } catch (caught) {
         if (token !== openTokenRef.current) return false;
@@ -194,6 +199,7 @@ export function ReadingProvider({ children }: { children: ReactNode }) {
       ));
       try {
         await deleteAnnotationApi(materialId, annotation.annotation_id);
+        publishAnnotationsChange(materialId);
         return true;
       } catch {
         if (scope !== annotationScopeRef.current) return false;
@@ -218,6 +224,36 @@ export function ReadingProvider({ children }: { children: ReactNode }) {
       annotation,
     ]);
   }, []);
+
+  /**
+   * Re-read the marks when another tab reports a change.
+   *
+   * Two tabs on one document each hold their own copy, so a mark saved in one
+   * is invisible in the other — and an edit made from the second tab writes
+   * over the first tab's stale view of the rest. Re-reading through the normal
+   * API (rather than trusting the broadcast payload) means the result is
+   * whatever the server actually holds.
+   *
+   * Deliberately not optimistic: another tab's change is not something this
+   * reader made, so it should arrive as a settled list, not a guess.
+   */
+  const materialId = material?.material_id ?? null;
+  useEffect(() => {
+    if (!materialId) return;
+    return subscribeToAnnotationsChange(materialId, () => {
+      const token = annotationScopeRef.current;
+      void listAnnotations(materialId)
+        .then((rows) => {
+          // The document may have been closed or swapped while this was in
+          // flight; a stale response must not repopulate the list.
+          if (token === annotationScopeRef.current) setAnnotations(rows);
+        })
+        .catch(() => {
+          // A failed refresh leaves the local list alone; the next write, or
+          // the next open, will resync.
+        });
+    });
+  }, [materialId]);
 
   const reportViewport = useCallback(
     (next: {

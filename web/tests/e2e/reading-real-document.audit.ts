@@ -1,0 +1,321 @@
+import { sourceModuleInventory } from "./fixtures/modules";
+import { emptyLearningIndex } from "./fixtures/learning-index";
+import { expect, test, type Page } from "@playwright/test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { emptyTaskBoard } from "./fixtures/task-board";
+
+const MATERIAL_ID = "eeeeeeeeeeeeeee4";
+const WORKSPACE_ID = "real-doc-workspace";
+const SESSION_ID = "real-doc-session";
+const PAGE_COUNT = 1;
+
+// The repository's own fixture, not a generated one: it has a heading, a
+// paragraph, an inline formula, a table and an image on one page, which is the
+// layout a reader actually meets.
+const pdfBytes = readFileSync(
+  join(__dirname, "../../../tests/fixtures/lightrag_bridge/original.pdf"),
+);
+const material = {
+  material_id: MATERIAL_ID,
+  content_id: MATERIAL_ID,
+  filename: "original.pdf",
+  title: "Real document fixture",
+  source_kind: "file",
+  source_url: "",
+  unit: "page",
+  unit_count: PAGE_COUNT,
+  mime: "application/pdf",
+  render_mode: "pdf",
+  has_raw_view: true,
+  status: "ready",
+  progress: 0,
+  cover_url: "",
+  error_code: "",
+  error_detail: "",
+  byte_size: pdfBytes.length,
+  size_bytes: pdfBytes.length,
+  char_count: 1000,
+  created_at: 1,
+  updated_at: 2,
+  last_opened_at: 2,
+  collections: [],
+  annotation_count: 0,
+  outline: [],
+  outline_text: "",
+  unit_refs: [],
+};
+
+test.beforeEach(async ({ page }) => {
+  await page.route("**/api/**", async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === "/api/modules") return route.fulfill({ json: sourceModuleInventory });
+    const json = (payload: unknown) => route.fulfill({ json: payload });
+    if (path === "/api/task-board") return json(emptyTaskBoard);
+    if (path === "/api/auth/status") {
+      return json({ enabled: false, authenticated: true });
+    }
+    if (path === "/api/settings/ui") return json({ language: "en" });
+    if (path === "/api/dashboard/suggestions") {
+      return json({ suggestions: [], stale: false });
+    }
+    if (path === "/api/settings/llm-options") {
+      return json({
+        active: { profile_id: "p", model_id: "m" },
+        options: [
+          {
+            profile_id: "p",
+            model_id: "m",
+            profile_name: "Profile",
+            model_name: "Model",
+            model: "model",
+            provider: "provider",
+            is_active_default: true,
+          },
+        ],
+      });
+    }
+    if (path === "/api/dashboard/learning-index") return json(emptyLearningIndex);
+    if (path === "/api/partners" || path === "/api/partner-groups")
+      return json([]);
+    if (path === "/api/sessions") return json({ sessions: [] });
+    if (path === `/api/sessions/${SESSION_ID}`) {
+      return json({
+        id: SESSION_ID,
+        session_id: SESSION_ID,
+        title: material.title,
+        created_at: 1,
+        updated_at: 2,
+        status: "idle",
+        preferences: { capability: "immersive_reading" },
+        active_turns: [],
+        messages: [],
+      });
+    }
+    if (path === `/api/reading/workspaces/${WORKSPACE_ID}`) {
+      return json({
+        workspace: {
+          workspace_id: WORKSPACE_ID,
+          title: material.title,
+          description: "",
+          active_material_id: MATERIAL_ID,
+          created_at: 1,
+          updated_at: 2,
+          tabs: [
+            {
+              material,
+              tab_order: 0,
+              pinned: false,
+              opened: true,
+              added_at: 1,
+            },
+          ],
+        },
+        sessions: [],
+      });
+    }
+    if (path === `/api/reading/workspaces/${WORKSPACE_ID}/sessions`) {
+      return json({ sessions: [] });
+    }
+    if (path === "/api/reading/supported-formats") {
+      return json({
+        extensions: [".pdf"],
+        max_bytes: 1024 * 1024,
+        raw_view_extensions: [".pdf"],
+      });
+    }
+    if (path === "/api/reading/extensions") return json([]);
+    if (path.endsWith("/annotations")) {
+      if (route.request().method() === "PUT") {
+        const body = JSON.parse(route.request().postData() ?? "{}");
+        return json({
+          ...body,
+          annotation_id: body.annotation_id ?? "mark-1",
+          material_revision: 1,
+          color: body.color ?? "yellow",
+          rects: body.rects ?? [],
+          selectors: body.selectors ?? [],
+          resolution: "resolved",
+          author: "user",
+          created_at: 1,
+          updated_at: 2,
+        });
+      }
+      return json([]);
+    }
+    if (path === "/api/reading/materials") return json([material]);
+    if (path === `/api/reading/materials/${MATERIAL_ID}`) return json(material);
+    if (path === `/api/reading/materials/${MATERIAL_ID}/raw`) {
+      return route.fulfill({ contentType: "application/pdf", body: pdfBytes });
+    }
+    if (path.endsWith("/position"))
+      return json({ locator: 1, source_anchor: "" });
+    const unit = /\/units\/(\d+)$/.exec(path);
+    if (unit) {
+      return json({
+        locator: Number(unit[1]),
+        unit: "page",
+        text: `Resize regression page ${unit[1]}`,
+      });
+    }
+    return json({});
+  });
+});
+
+async function layerDrift(page: Page) {
+  return page.locator('[data-reader-unit="1"]').evaluate((pageRoot) => {
+    const canvas = pageRoot.querySelector("canvas");
+    const layer = pageRoot.querySelector(".textLayer");
+    if (!canvas || !layer) throw new Error("page has no canvas or text layer");
+    const c = canvas.getBoundingClientRect();
+    const t = layer.getBoundingClientRect();
+    return {
+      left: Math.abs(c.left - t.left),
+      top: Math.abs(c.top - t.top),
+      width: Math.abs(c.width - t.width),
+      height: Math.abs(c.height - t.height),
+    };
+  });
+}
+
+test("a real document keeps its canvas and text layer registered at every zoom", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`/learning/reading/${WORKSPACE_ID}/sessions/${SESSION_ID}`, {
+    waitUntil: "domcontentloaded",
+  });
+  const root = page
+    .locator(".dt-reader-scroll")
+    .filter({ has: page.locator('[data-reader-unit="1"]') });
+  await expect(root).toBeVisible({ timeout: 20_000 });
+  await expect(root.locator('[data-reader-unit="1"] .textLayer')).toContainText(
+    "DeepTutor LightRAG Bridge Fixture",
+    { timeout: 20_000 },
+  );
+
+  const check = async (label: string) => {
+    const drift = await layerDrift(page);
+    // A couple of pixels for device-pixel rounding; more than that means a
+    // selection would land on the wrong word.
+    expect(drift.left, `${label}: left edge`).toBeLessThan(3);
+    expect(drift.top, `${label}: top edge`).toBeLessThan(3);
+    expect(drift.width, `${label}: width`).toBeLessThan(3);
+    expect(drift.height, `${label}: height`).toBeLessThan(3);
+  };
+
+  await check("at fit");
+
+  const firstPage = root.locator('[data-reader-unit="1"]');
+  const fitWidth = await firstPage.evaluate(
+    (element) => element.getBoundingClientRect().width,
+  );
+
+  await root.hover({ position: { x: 200, y: 400 } });
+  await page.mouse.move(700, 860);
+  const zoomIn = page.getByRole("button", { name: "Zoom in", exact: true });
+  await expect(zoomIn).toBeVisible();
+  await zoomIn.click();
+  await expect
+    .poll(() =>
+      firstPage.evaluate((element) => element.getBoundingClientRect().width),
+    )
+    .toBeGreaterThan(fitWidth);
+  await check("zoomed in");
+
+  await page.getByRole("button", { name: "Zoom out", exact: true }).click();
+  await check("zoomed out");
+
+  await page.getByRole("button", { name: "Reset zoom", exact: true }).click();
+  await expect
+    .poll(() =>
+      firstPage.evaluate((element) => element.getBoundingClientRect().width),
+    )
+    .toBe(fitWidth);
+  await check("reset");
+});
+
+/**
+ * A selection made through the real text layer has to produce a mark that
+ * lands on the words it was drawn over. The text layer and the annotation
+ * overlay are positioned independently — one by pdf.js's own transforms, the
+ * other by stored percentages of the page box — so "the mark is on the page"
+ * is not the same claim as "the mark is on the words".
+ */
+test("a real selection produces a mark on the words it covered", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`/learning/reading/${WORKSPACE_ID}/sessions/${SESSION_ID}`, {
+    waitUntil: "domcontentloaded",
+  });
+  const root = page
+    .locator(".dt-reader-scroll")
+    .filter({ has: page.locator('[data-reader-unit="1"]') });
+  await expect(root).toBeVisible({ timeout: 20_000 });
+  const firstPage = root.locator('[data-reader-unit="1"]');
+  const textLayer = firstPage.locator(".textLayer");
+  await expect(textLayer).toContainText("DeepTutor LightRAG Bridge Fixture", {
+    timeout: 20_000,
+  });
+
+  // Select the heading through the real text layer, the way a reader would.
+  const heading = textLayer.getByText("DeepTutor LightRAG Bridge Fixture", {
+    exact: false,
+  });
+  await expect(heading.first()).toBeVisible();
+  const box = await heading.first().boundingBox();
+  if (!box) throw new Error("heading has no box");
+  await page.mouse.move(box.x + 3, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width - 3, box.y + box.height / 2, {
+    steps: 10,
+  });
+  await page.mouse.up();
+
+  // The toolbar appears over the selection; save the mark from it.
+  const highlightButton = page.getByRole("button", {
+    name: "Highlight",
+    exact: true,
+  });
+  await expect(highlightButton).toBeVisible({ timeout: 10_000 });
+  await highlightButton.click();
+
+  // A mark is drawn and labelled with the text it covers, which is what
+  // assistive tech reads.
+  const mark = firstPage
+    .getByLabel("DeepTutor LightRAG Bridge Fixture", { exact: false })
+    .first();
+  await expect(mark).toBeVisible({ timeout: 10_000 });
+  // A mark is positioned as percentages of the page box, so until the page has
+  // been laid out that box is zero-sized and the mark has no measurable
+  // rectangle — which happens when the suite runs in parallel.
+  let markBox = await mark.boundingBox();
+  await expect
+    .poll(
+      async () => {
+        markBox = await mark.boundingBox();
+        return markBox !== null && markBox.width > 0 && markBox.height > 0;
+      },
+      { timeout: 10_000, message: "mark never gained a measurable box" },
+    )
+    .toBe(true);
+  if (!markBox) throw new Error("mark has no box");
+
+  // It sits on the heading: same row band, overlapping horizontally, and
+  // inside the page rather than off its edge.
+  expect(markBox.width).toBeGreaterThan(40);
+  const pageBox = await firstPage.boundingBox();
+  if (!pageBox) throw new Error("page has no box");
+  expect(markBox.x).toBeGreaterThanOrEqual(pageBox.x - 2);
+  expect(markBox.x + markBox.width).toBeLessThanOrEqual(
+    pageBox.x + pageBox.width + 2,
+  );
+  expect(markBox.y).toBeGreaterThanOrEqual(pageBox.y - 2);
+  expect(markBox.y + markBox.height).toBeLessThanOrEqual(
+    pageBox.y + pageBox.height + 2,
+  );
+  // The heading is in the top fifth of the page, so a mark on it must be too.
+  const relativeTop = (markBox.y - pageBox.y) / pageBox.height;
+  expect(relativeTop).toBeLessThan(0.25);
+});
