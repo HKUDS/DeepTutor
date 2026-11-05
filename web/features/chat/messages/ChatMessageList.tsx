@@ -64,6 +64,8 @@ import {
 } from "@/components/chat/GeneratedOutputFileActions";
 import { PlayAudioButton } from "@/components/voice/SpeechButton";
 export { PlayAudioButton } from "@/components/voice/SpeechButton";
+import { activeWorkspaceId } from "@/lib/workspace-scope";
+import { useVoicePlaybackRate, VOICE_PLAYBACK_RATES } from "@/hooks/useVoicePlaybackRate";
 import { extractMathAnimatorResult } from "@/lib/math-animator-types";
 import { extractVideoLessonResult } from "@/lib/video-lesson-types";
 import {
@@ -2261,6 +2263,10 @@ export const ChatMessageList = memo(function ChatMessageList({
     }
   }
 
+  const { rate: voiceRate, setRate: setVoiceRate } = useVoicePlaybackRate(
+    sessionId ? JSON.stringify([activeWorkspaceId(), sessionId]) : undefined,
+  );
+
   return (
     <>
       {messageRows.map(({ msg, originalIndex, pairedUserMessage }, rowIndex) => {
@@ -2480,13 +2486,28 @@ export const ChatMessageList = memo(function ChatMessageList({
                       />
                     )}
                     {showActions && !compactActions && (
-                      <PlayAudioButton
-                        content={msg.content}
-                        conversationKey={sessionId ?? undefined}
-                        autoPlayFresh={
-                          isLastAssistant && freshlyCompletedIndex === i
-                        }
-                      />
+                      <>
+                        <PlayAudioButton
+                          playbackRate={voiceRate}
+                          content={msg.content}
+                          conversationKey={sessionId ?? undefined}
+                          autoPlayFresh={
+                            isLastAssistant && freshlyCompletedIndex === i
+                          }
+                        />
+                        {i === lastRenderedAssistantIndex && (
+                          <select
+                            aria-label={t("Playback speed")}
+                            className="rounded bg-transparent px-1 text-xs text-[var(--muted-foreground)]"
+                            value={voiceRate}
+                            onChange={(event) => setVoiceRate(Number(event.target.value))}
+                          >
+                            {VOICE_PLAYBACK_RATES.map((rate) => (
+                              <option key={rate} value={rate}>{rate}×</option>
+                            ))}
+                          </select>
+                        )}
+                      </>
                     )}
                     {/* One way to try a turn again. Where the surface can
                         take the turn back into its composer, Retry does that
