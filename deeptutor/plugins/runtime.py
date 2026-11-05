@@ -513,7 +513,12 @@ def _stream_event(raw: Any, *, source: str) -> StreamEvent:
 
 
 def _clean_env() -> dict[str, str]:
-    keep = ("PATH", "HOME", "LANG", "LC_ALL", "TMPDIR", "SSL_CERT_FILE", "SSL_CERT_DIR")
+    keep = (
+        *("PATH", "HOME", "LANG", "LC_ALL", "TMPDIR", "SSL_CERT_FILE", "SSL_CERT_DIR"),
+        # Windows counterparts: without SYSTEMROOT a worker cannot open a
+        # socket (WinError 10106), so asyncio and HTTP clients fail at start-up.
+        *("SYSTEMROOT", "WINDIR", "TEMP", "TMP", "USERPROFILE", "PATHEXT"),
+    )
     return {key: os.environ[key] for key in keep if key in os.environ}
 
 
