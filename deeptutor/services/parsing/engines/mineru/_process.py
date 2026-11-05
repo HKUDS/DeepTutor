@@ -80,3 +80,34 @@ def cli_process(cmd: list[str], log_path: Path, env: dict[str, str]):
                         break
             if process is not None:
                 process.wait(timeout=5)
+            # Reaping the direct child says nothing about the group: ``killpg``
+            # only queues the signal, and a CLI that exits on its own is reaped
+            # before the signal even lands on what it spawned. Publishing the
+            # parse at that point leaves those descendants running (#2426), so
+            # the group is polled until it is empty — the same "settle or fail
+            # loudly" contract the Windows branch above enforces on its job
+            # object, with the same deadline.
+            if sys.platform != "win32" and process is not None:
+                deadline = time.monotonic() + 5
+                while _process_group_alive(process.pid):
+                    if time.monotonic() >= deadline:
+                        raise RuntimeError("MinerU process-tree cleanup did not settle")
+                    time.sleep(0.05)
+
+
+def _process_group_alive(pgid: int) -> bool:
+    """Whether the process group still has a signalable member.
+
+    Signal 0 performs the permission and existence checks without delivering
+    anything. The group disappears once its last member is gone, so
+    ``ProcessLookupError`` is the settled state. A member that was reparented
+    and left unreaped does not keep the group alive, verified on Linux, so this
+    cannot spin forever on a zombie.
+    """
+    try:
+        os.killpg(pgid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return False
+    return True
