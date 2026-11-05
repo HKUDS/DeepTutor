@@ -232,3 +232,53 @@ export function detachProfileConnection(
   }
   delete profile.connection_id;
 }
+
+/** Where each model service is edited, so a failed Apply can point at it. */
+export const MODEL_SERVICE_PAGES: Record<
+  ServiceName,
+  { path: string; labelKey: string }
+> = {
+  llm: { path: "/settings/llm", labelKey: "Language models" },
+  task: { path: "/settings/llm", labelKey: "Language models" },
+  embedding: { path: "/settings/embedding", labelKey: "Embedding models" },
+  search: { path: "/settings/search", labelKey: "Search" },
+  tts: { path: "/settings/voice", labelKey: "Voice" },
+  stt: { path: "/settings/voice", labelKey: "Voice" },
+  imagegen: { path: "/settings/multimodal", labelKey: "Multimodal generation" },
+  videogen: { path: "/settings/multimodal", labelKey: "Multimodal generation" },
+};
+
+export type IncompleteModel = {
+  service: ServiceName;
+  profileId: string;
+  modelId: string;
+  name: string;
+  page: { path: string; labelKey: string };
+};
+
+/**
+ * The first model whose ID is still blank, if any.
+ *
+ * A model without an ID cannot be called, yet the catalog happily stores one:
+ * the add flow creates the row before an ID exists, and older drafts may still
+ * carry such rows. Apply has to name one, so it can open the editor that can
+ * fix it instead of failing with a message nobody can act on.
+ */
+export function firstIncompleteModel(catalog: Catalog): IncompleteModel | null {
+  for (const service of MODEL_SERVICES) {
+    for (const profile of catalog.services[service]?.profiles ?? []) {
+      if (profile.provider_only || profile.read_only || profile.managed_by) continue;
+      for (const model of profile.models ?? []) {
+        if (model.managed_by || String(model.model ?? "").trim()) continue;
+        return {
+          service,
+          profileId: profile.id,
+          modelId: model.id,
+          name: (model.name || profile.name || "").trim(),
+          page: MODEL_SERVICE_PAGES[service],
+        };
+      }
+    }
+  }
+  return null;
+}

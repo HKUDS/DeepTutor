@@ -23,6 +23,7 @@ CLOUD_DOMAINS = [
     ".googleapis.com",
     ".cohere.ai",
     ".mistral.ai",
+    ".x.ai",
     ".together.ai",
     ".fireworks.ai",
     ".groq.com",

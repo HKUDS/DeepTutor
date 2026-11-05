@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Check,
@@ -20,13 +21,13 @@ import {
   type NotebookSummary as RealNotebookSummary,
 } from "@/lib/notebook-api";
 
+const AddToNote = dynamic(
+  () => import("@/features/notes/components/AddToNote"),
+  { ssr: false },
+);
+
 type RecordType =
-  | "solve"
-  | "question"
-  | "research"
-  | "chat"
-  | "co_writer"
-  | "tutorbot";
+  "solve" | "question" | "research" | "chat" | "co_writer" | "tutorbot";
 
 export interface NotebookSavePayload {
   recordType: RecordType;
@@ -468,6 +469,22 @@ export default function SaveToNotebookModal({
           onClose={onClose}
         />
 
+        <AddToNote
+          title={title}
+          markdown={effectiveOutput}
+          sourceId={String(
+            payload?.metadata?.session_id ||
+              payload?.metadata?.material_id ||
+              "",
+          )}
+          sourceUrl={String(
+            payload?.metadata?.source_url ||
+              (payload?.metadata?.session_id
+                ? `/chat/${encodeURIComponent(String(payload.metadata.session_id))}`
+                : ""),
+          )}
+        />
+
         <div className="flex-1 space-y-5 overflow-y-auto bg-[var(--background)]/40 px-5 py-5">
           <div>
             <label className="mb-2 block text-sm font-medium text-[var(--foreground)]">
@@ -605,32 +622,6 @@ export default function SaveToNotebookModal({
                 <div className="flex flex-col items-center gap-2.5 px-3 py-6 text-center text-sm text-[var(--muted-foreground)]">
                   <NotebookPen className="h-5 w-5 text-[var(--muted-foreground)]/60" />
                   <span>{t("No notebooks yet.")}</span>
-                  <div className="flex w-full max-w-xs items-center gap-1.5">
-                    <input
-                      value={newNotebookName}
-                      onChange={(event) =>
-                        setNewNotebookName(event.target.value)
-                      }
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") void handleCreateNotebook();
-                      }}
-                      placeholder={t("Name your first notebook")}
-                      className="flex-1 rounded-lg border border-[var(--border)] bg-[var(--background)] px-2.5 py-1.5 text-[12.5px] text-[var(--foreground)] outline-none focus:border-[var(--primary)]/50"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => void handleCreateNotebook()}
-                      disabled={!newNotebookName.trim() || isCreatingNotebook}
-                      className="inline-flex items-center gap-1 rounded-lg bg-[var(--primary)] px-2.5 py-1.5 text-[12.5px] font-medium text-[var(--primary-foreground)] disabled:opacity-40"
-                    >
-                      {isCreatingNotebook ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <Plus className="h-3.5 w-3.5" />
-                      )}
-                      {t("Create")}
-                    </button>
-                  </div>
                 </div>
               ) : (
                 notebooks.map((notebook) => {
@@ -638,6 +629,7 @@ export default function SaveToNotebookModal({
                   return (
                     <button
                       key={notebook.id}
+                      aria-pressed={selected}
                       onClick={() => toggleNotebook(notebook.id)}
                       className={`flex w-full items-start gap-3 rounded-lg border px-3 py-2.5 text-left transition ${
                         selected
@@ -681,6 +673,33 @@ export default function SaveToNotebookModal({
                 })
               )}
             </div>
+            {!isLoadingNotebooks && (
+              <div className="mt-2 flex items-center gap-2">
+                <input
+                  value={newNotebookName}
+                  onChange={(event) => setNewNotebookName(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") void handleCreateNotebook();
+                  }}
+                  placeholder={t("New notebook")}
+                  aria-label={t("New notebook")}
+                  className="flex-1 rounded-lg border border-[var(--border)] bg-[var(--background)] px-2.5 py-1.5 text-[12.5px] text-[var(--foreground)] outline-none focus:border-[var(--primary)]/50"
+                />
+                <button
+                  type="button"
+                  onClick={() => void handleCreateNotebook()}
+                  disabled={!newNotebookName.trim() || isCreatingNotebook}
+                  className="inline-flex items-center gap-1 rounded-lg bg-[var(--primary)] px-2.5 py-1.5 text-[12.5px] font-medium text-[var(--primary-foreground)] disabled:opacity-40"
+                >
+                  {isCreatingNotebook ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Plus className="h-3.5 w-3.5" />
+                  )}
+                  {t("Create")}
+                </button>
+              </div>
+            )}
           </div>
 
           <div>

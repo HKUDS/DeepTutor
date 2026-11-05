@@ -605,7 +605,7 @@ class TestJudgeLanguage:
 
     def test_supported_languages_mirror_available_prompts(self):
         assert SUPPORTED_JUDGE_LANGUAGES == frozenset(_JUDGE_SYSTEM_PROMPTS)
-        assert {"zh", "en", "de", "uk"} <= SUPPORTED_JUDGE_LANGUAGES
+        assert {"zh", "en", "de", "uk", "vi"} <= SUPPORTED_JUDGE_LANGUAGES
 
 
 class TestJudgeImages:

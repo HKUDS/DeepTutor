@@ -1045,8 +1045,8 @@ def get_admin_skill_service() -> SkillService:
 
 
 def get_skill_service() -> SkillService:
+    from deeptutor.core.identities import is_partner_user_id
     from deeptutor.multi_user.context import get_current_user
-    from deeptutor.services.partners.scope import is_partner_user_id
     from deeptutor.services.workspace import get_content_workspace_service
 
     root = (

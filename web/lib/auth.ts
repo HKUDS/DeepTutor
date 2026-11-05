@@ -1,3 +1,4 @@
+import { invalidateClientCache } from "./client-cache";
 import { browserStorage } from "@/shared/storage";
 import { apiFetch, apiUrl, setRuntimeAuthEnabled } from "@/lib/api";
 import { updateRecoveryPrincipal } from "@/lib/recovery-principal";
@@ -43,6 +44,7 @@ let cachedAuthStatus: { value: AuthStatus | null; expiresAt: number } | null =
   null;
 
 export function invalidateAuthStatusCache(): void {
+  invalidateClientCache("navigation:");
   authGeneration += 1;
   authStatusRequest = null;
   cachedAuthStatus = null;
@@ -116,7 +118,7 @@ export function fetchAuthStatus(): Promise<AuthStatus | null> {
 export async function login(
   username: string,
   password: string,
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<{ ok: boolean; error?: string; mustChangePassword?: boolean }> {
   try {
     const res = await apiFetch(apiUrl("/api/auth/login"), {
       method: "POST",
@@ -128,9 +130,12 @@ export async function login(
     });
 
     if (res.ok) {
+      const data = (await res.json().catch(() => ({}))) as {
+        must_change_password?: boolean;
+      };
       invalidateAuthStatusCache();
       broadcastAuthBoundary();
-      return { ok: true };
+      return { ok: true, mustChangePassword: Boolean(data.must_change_password) };
     }
 
     const data = await res.json().catch(() => ({}));

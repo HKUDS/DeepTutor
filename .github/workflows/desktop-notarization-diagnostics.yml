@@ -1,0 +1,71 @@
+name: Desktop Notarization Diagnostics
+
+# Read the latest Apple result for each Mac edition without rebuilding or
+# publishing. Only DeepTutor submissions are included in the saved reports.
+on:
+  workflow_dispatch:
+  push:
+    branches: [dev]
+    paths:
+      - .github/workflows/desktop-notarization-diagnostics.yml
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: macos-15
+    timeout-minutes: 10
+    steps:
+      - name: Fetch the latest DeepTutor notarization reports
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        shell: python
+        run: |
+          import collections
+          import json
+          import os
+          from pathlib import Path
+          import subprocess
+
+          auth = ["--apple-id", os.environ["APPLE_ID"], "--team-id", os.environ["APPLE_TEAM_ID"], "--password", os.environ["APPLE_APP_PASSWORD"]]
+          if not all(os.environ[name] for name in ("APPLE_ID", "APPLE_TEAM_ID", "APPLE_APP_PASSWORD")):
+              raise SystemExit("Apple notarization credentials are incomplete.")
+
+          def notary(*args):
+              result = subprocess.run(["xcrun", "notarytool", *args, *auth], capture_output=True, text=True)
+              if result.returncode:
+                  print(result.stderr)
+                  raise SystemExit(result.returncode)
+              return result.stdout
+
+          history = json.loads(notary("history", "--output-format", "json"))["history"]
+          reports = Path(os.environ["RUNNER_TEMP"]) / "notarization-reports"
+          reports.mkdir()
+          for edition in ("Apple-Silicon", "Intel"):
+              prefix = f"Open-DeepTutor-MacOS-{edition}-v"
+              matches = [item for item in history if item["name"].startswith(prefix)]
+              if not matches:
+                  print(f"No submission found for {edition}.")
+                  continue
+              latest = max(matches, key=lambda item: item["createdDate"])
+              print(json.dumps({key: latest[key] for key in ("id", "name", "status", "createdDate")}))
+              if latest["status"] not in ("Accepted", "Invalid", "Rejected"):
+                  continue
+              destination = reports / f"{edition}.json"
+              notary("log", latest["id"], str(destination))
+              report = json.loads(destination.read_text())
+              issues = report.get("issues") or []
+              print(json.dumps({"edition": edition, "status": report.get("status"), "issueCounts": dict(collections.Counter(item.get("message", "") for item in issues))}))
+              for issue in issues[:10]:
+                  print(json.dumps(issue))
+
+      - name: Save Apple reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-notarization-reports
+          path: ${{ runner.temp }}/notarization-reports/*.json
+          retention-days: 7

@@ -7,6 +7,7 @@ import time
 from typing import Any, Callable
 
 from deeptutor.core.context import Attachment
+from deeptutor.services.model_selection.task_agent import task_model_agent
 
 from .agents import (
     CodeGeneratorAgent,
@@ -17,10 +18,13 @@ from .agents import (
 )
 from .duration_utils import parse_target_duration_seconds
 from .models import RenderResult, VisualReviewResult
-from .renderer import ManimRenderService
+from .renderer import ManimRenderError, ManimRenderService
 from .request_config import MathAnimatorRequestConfig
 from .retry_manager import CodeRetryManager
 from .visual_review import VisualReviewService
+
+# Layout repair rounds checked before rendering (a dry run, seconds each).
+MAX_LAYOUT_ROUNDS = 3
 
 
 class MathAnimatorPipeline:
@@ -61,6 +65,12 @@ class MathAnimatorPipeline:
             api_version=api_version,
             language=language,
         )
+        # Repairs are targeted edits to a working script; the task model does them in
+        # seconds where a reasoning chat model can take several minutes.
+        self.repair_agent = (
+            task_model_agent(lambda **kw: CodeGeneratorAgent(language=language, **kw))
+            or self.code_agent
+        )
         self.summary_agent = SummaryAgent(
             api_key=api_key,
             base_url=base_url,
@@ -84,6 +94,7 @@ class MathAnimatorPipeline:
             self.analysis_agent,
             self.design_agent,
             self.code_agent,
+            self.repair_agent,
             self.summary_agent,
             self.visual_review_agent,
         ):
@@ -188,6 +199,42 @@ class MathAnimatorPipeline:
                 )
 
             review_callback = _review_callback
+        elif request_config.output_mode == "video":
+            # No vision model: measure the scene's geometry instead. The dry-run check takes
+            # seconds, so it gates each render: a failing layout goes back for repair before
+            # any frame is drawn. After the rounds run out the scene renders as it stands.
+            from .layout_probe import geometry_review
+
+            layout_rounds = {"left": MAX_LAYOUT_ROUNDS}
+            render_scene = renderer.render
+
+            async def _checked_render(*, code: str, output_mode: str, quality: str) -> RenderResult:
+                if layout_rounds["left"] > 0:
+                    review = await geometry_review(code)
+                    if review is not None and not review.passed:
+                        layout_rounds["left"] -= 1
+                        raise ManimRenderError(
+                            "Layout check (before rendering) failed. "
+                            + review.summary
+                            + " Suggested fix: "
+                            + review.suggested_fix
+                        )
+                return await render_scene(code=code, output_mode=output_mode, quality=quality)
+
+            renderer.render = _checked_render  # type: ignore[method-assign]
+
+            async def _geometry_callback(
+                current_code: str, render_result: RenderResult
+            ) -> VisualReviewResult | None:
+                # Record-only: what the rendered scene still has, for the result payload.
+                review = await geometry_review(current_code)
+                if review is None:
+                    return None
+                if not review.passed:
+                    review.summary = "Layout issues remain after repair rounds: " + review.summary
+                return review
+
+            review_callback = _geometry_callback
 
         retry_manager = CodeRetryManager(
             renderer=renderer,
@@ -195,7 +242,7 @@ class MathAnimatorPipeline:
             on_retry=on_retry,
             on_status=on_retry_status,
             review_callback=review_callback,
-            repair_callback=lambda current_code, error_message, attempt: self.code_agent.repair(
+            repair_callback=lambda current_code, error_message, attempt: self.repair_agent.repair(
                 user_input=user_input,
                 output_mode=request_config.output_mode,
                 current_code=current_code,

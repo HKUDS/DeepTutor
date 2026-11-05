@@ -183,3 +183,174 @@ async def test_retry_manager_returns_best_effort_result_when_visual_review_still
     assert status_messages[-1] == (
         "Visual review still found issues after all retries. Returning the best available result with a warning."
     )
+
+
+@pytest.mark.asyncio
+async def test_visual_review_timeout_respects_retry_limit() -> None:
+    class Renderer:
+        async def render(self, *, code, output_mode, quality):
+            return RenderResult(output_mode=output_mode, quality=quality)
+
+    review_calls = 0
+    repair_calls = 0
+
+    async def slow_review(code, result):
+        nonlocal review_calls
+        review_calls += 1
+        await asyncio.sleep(1)
+
+    async def repair(code, error, attempt):
+        nonlocal repair_calls
+        repair_calls += 1
+        assert "Visual quality review timed out" in error
+        return GeneratedCode(code=code)
+
+    manager = CodeRetryManager(
+        renderer=Renderer(),
+        repair_callback=repair,
+        review_callback=slow_review,
+        review_timeout_seconds=0.01,
+        max_retries=1,
+    )
+    with pytest.raises(ManimRenderError, match="Visual quality review timed out"):
+        await manager.render_with_retries(
+            initial_code="pass", output_mode="video", quality="medium"
+        )
+    assert review_calls == 2
+    assert repair_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_unavailable_review_is_not_recorded_as_passed():
+    class Renderer:
+        async def render(self, **kwargs):
+            return RenderResult(output_mode="video", quality="low")
+
+    async def repair(*args):
+        raise AssertionError("unavailable review is not a layout failure")
+
+    async def review(*args):
+        return None
+
+    manager = CodeRetryManager(renderer=Renderer(), repair_callback=repair, review_callback=review)
+    _, result = await manager.render_with_retries(
+        initial_code="scene", output_mode="video", quality="low"
+    )
+    assert result.visual_review is None
+
+
+@pytest.mark.asyncio
+async def test_geometry_probe_reaps_cancelled_process(monkeypatch):
+    from deeptutor.agents.math_animator import layout_probe
+
+    class Process:
+        returncode = None
+        killed = waited = False
+
+        async def communicate(self):
+            raise asyncio.CancelledError
+
+        def kill(self):
+            self.killed = True
+
+        async def wait(self):
+            self.waited = True
+
+    proc = Process()
+
+    async def create(*args, **kwargs):
+        return proc
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", create)
+    with pytest.raises(asyncio.CancelledError):
+        await layout_probe.geometry_review("class Demo(Scene): pass")
+    assert proc.killed and proc.waited
+
+
+@pytest.mark.asyncio
+async def test_geometry_probe_unsupported_subprocess_transport_is_unavailable(monkeypatch):
+    from deeptutor.agents.math_animator import layout_probe
+
+    async def unsupported(*args, **kwargs):
+        raise NotImplementedError("SelectorEventLoop subprocess transport")
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", unsupported)
+    assert await layout_probe.geometry_review("class Demo(Scene): pass") is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("cancel", [False, True])
+async def test_geometry_probe_reaps_real_process_on_timeout_or_cancel(monkeypatch, cancel):
+    import sys
+
+    from deeptutor.agents.math_animator import layout_probe
+
+    if sys.platform == "win32":
+        pytest.skip("Asyncio subprocess transport is loop-dependent on Windows")
+    create_subprocess = asyncio.create_subprocess_exec
+    started = asyncio.Event()
+    processes = []
+
+    async def create(*args, **kwargs):
+        process = await create_subprocess(
+            sys.executable, "-c", "import time; time.sleep(30)", **kwargs
+        )
+        processes.append(process)
+        started.set()
+        return process
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", create)
+    monkeypatch.setattr(layout_probe, "PROBE_TIMEOUT_S", 30 if cancel else 0.05)
+    task = asyncio.create_task(layout_probe.geometry_review("class Demo(Scene): pass"))
+    await asyncio.wait_for(started.wait(), timeout=5)
+    if cancel:
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(task, timeout=5)
+    else:
+        assert await asyncio.wait_for(task, timeout=5) is None
+    assert processes[0].returncode is not None
+
+
+@pytest.mark.asyncio
+async def test_geometry_probe_timeout_preserves_rendered_video(monkeypatch):
+    from deeptutor.agents.math_animator import layout_probe
+
+    class Renderer:
+        async def render(self, **kwargs):
+            return RenderResult(output_mode="video", quality="low")
+
+    async def repair(*args):
+        raise AssertionError("An unavailable advisory check must not repair a valid render")
+
+    async def review(code, result):
+        return await layout_probe.geometry_review(code)
+
+    class Process:
+        returncode = None
+
+        async def communicate(self):
+            await asyncio.sleep(30)
+
+        def kill(self):
+            self.returncode = -9
+
+        async def wait(self):
+            return self.returncode
+
+    async def create(*args, **kwargs):
+        return Process()
+
+    manager = CodeRetryManager(
+        renderer=Renderer(), repair_callback=repair, review_callback=review, max_retries=0
+    )
+    # Keep the real production timeout ordering, at a faster test scale.
+    assert layout_probe.PROBE_TIMEOUT_S < manager.review_timeout_seconds
+    manager.review_timeout_seconds /= 1000
+    monkeypatch.setattr(layout_probe, "PROBE_TIMEOUT_S", layout_probe.PROBE_TIMEOUT_S / 1000)
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", create)
+    _, result = await manager.render_with_retries(
+        initial_code="class Demo(Scene): pass", output_mode="video", quality="low"
+    )
+    assert result.visual_review is None
+    assert result.retry_attempts == 0

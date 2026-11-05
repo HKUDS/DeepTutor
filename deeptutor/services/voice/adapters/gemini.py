@@ -10,8 +10,10 @@ from __future__ import annotations
 
 import base64
 import binascii
+import io
 from typing import Any
 from urllib.parse import urlsplit
+import wave
 
 import httpx
 
@@ -20,7 +22,7 @@ from deeptutor.services.voice.audio import pcm_to_wav
 from deeptutor.services.voice.base import BaseTTSAdapter, VoiceProviderError
 from deeptutor.services.voice.config import TTSConfig
 
-# Gemini always answers with mono PCM16 at this rate, whatever format was asked.
+# Gemini speech uses mono PCM16 at this rate, either raw or WAV-contained.
 GEMINI_TTS_SAMPLE_RATE = 24000
 _GEMINI_API_HOST = "generativelanguage.googleapis.com"
 
@@ -51,7 +53,7 @@ class GeminiTTSAdapter(BaseTTSAdapter):
     """Synthesize Google prebuilt voices through native ``generateContent``."""
 
     async def synthesize(self, text: str, config: TTSConfig) -> tuple[bytes, str]:
-        """Return WAV-wrapped (or raw) PCM16 24 kHz audio from the audio modality."""
+        """Return WAV or raw PCM16 24 kHz audio from the audio modality."""
         model_id = _model_id(config.model)
         voice = (config.voice or "").strip()
         if not voice:
@@ -92,16 +94,39 @@ class GeminiTTSAdapter(BaseTTSAdapter):
         _raise_for_provider(response, "Gemini TTS synthesis")
         try:
             candidate = response.json()["candidates"][0]
-            encoded_parts = [
-                part["inlineData"]["data"]
+            inline_parts = [
+                part["inlineData"]
                 for part in candidate["content"]["parts"]
                 if isinstance(part.get("inlineData"), dict)
                 and isinstance(part["inlineData"].get("data"), str)
             ]
-            # Each inlineData value is independently padded base64; decode parts
-            # separately instead of concatenating the padded strings.
-            audio = b"".join(base64.b64decode(part, validate=True) for part in encoded_parts)
-        except (ValueError, KeyError, IndexError, TypeError, binascii.Error) as exc:
+            decoded_parts = []
+            for part in inline_parts:
+                # Base64 padding belongs to each part, not to the joined audio.
+                data = base64.b64decode(part["data"], validate=True)
+                mime_type = str(part.get("mimeType", "")).split(";", 1)[0].strip().lower()
+                if mime_type == "audio/wav":
+                    # Newer unary Gemini responses already contain a WAV header.
+                    # Decode each container before concatenating separate turns.
+                    with wave.open(io.BytesIO(data), "rb") as wav:
+                        if wav.getparams()[:3] != (1, 2, GEMINI_TTS_SAMPLE_RATE):
+                            raise ValueError("Unsupported Gemini WAV audio parameters")
+                        frames = wav.readframes(wav.getnframes())
+                        if len(frames) != wav.getnframes() * 2:
+                            raise ValueError("Truncated Gemini WAV audio")
+                    decoded_parts.append(frames)
+                else:
+                    decoded_parts.append(data)
+            audio = b"".join(decoded_parts)
+        except (
+            ValueError,
+            KeyError,
+            IndexError,
+            TypeError,
+            binascii.Error,
+            wave.Error,
+            EOFError,
+        ) as exc:
             # Provider bodies can echo the prompt; never surface them raw.
             raise VoiceProviderError(
                 "Gemini TTS returned no audio; check the model, voice and API key."

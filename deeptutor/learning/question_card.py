@@ -112,6 +112,7 @@ def build_grade_result(
     it is graded — which is exactly when they are worth reading.
     """
     label = str(correct_label or "").strip()
+    picked = str(learner_answer or "").strip()
     payload = {
         "question_id": str(question_id or ""),
         "is_correct": is_correct,
@@ -120,6 +121,10 @@ def build_grade_result(
         "feedback": feedback,
         "confidence": confidence,
         "learner_answer": str(learner_answer or ""),
+        # The option text behind the picked letter: the card may show the
+        # options in a different order than the tutor registered them, so the
+        # letter alone does not say what the learner chose.
+        "learner_body": str(choice_options.get(picked) or "") if picked else "",
         "correct_label": label,
         "correct_body": str(choice_options.get(label) or "") if label else "",
         "explanation": str(explanation or ""),

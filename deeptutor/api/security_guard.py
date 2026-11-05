@@ -2,7 +2,7 @@
 
 Disabled by default. When ``system.json`` -> ``security_guard.enabled`` is false
 (or ``DEEPTUTOR_GUARD_ENABLED`` is unset), nothing here imports ``guard`` and the
-middleware stack is unchanged. See ``docs-for-user/SECURITY_GUARD.md``.
+middleware stack is unchanged. See ``docs-for-dev/SECURITY_GUARD.md``.
 
 The guard runs inside the application, in front of the routers. It screens HTTP
 requests by client address (rate limit, IP allow/deny lists, ban list) and scans

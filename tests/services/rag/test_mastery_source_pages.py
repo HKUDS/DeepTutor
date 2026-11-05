@@ -954,6 +954,70 @@ def test_focused_teaching_packet_cannot_authorize_unrelated_quiz(material, monke
         lessons.question_snapshot(material.store, material.store.load("path"), "kp")
 
 
+def test_focus_preparation_does_not_invalidate_objective_assessment_packet(material, monkeypatch):
+    """A teaching focus must not erase the objective-scoped assessment packet.
+
+    Both packets share the single ``lesson_evidence[kp_id]`` slot, so a later
+    focus/teaching preparation used to overwrite the objective-scoped packet
+    that CONCEPT/DESIGN assessment needs. ``mastery_assess`` then refused every
+    call as an unqualified "teaching slice", and the tutor re-quizzed forever.
+    """
+    _install_preparation(material, monkeypatch)
+    objective = asyncio.run(lessons.prepare_lesson(material.store, "path", "kp", material.config))
+    assert objective["coverage"]["scope"] == "objective"
+    lessons.question_snapshot(material.store, material.store.load("path"), "kp")
+
+    focused = asyncio.run(
+        lessons.prepare_lesson(
+            material.store, "path", "kp", material.config, focus="Explain bilayer structure"
+        )
+    )
+    assert focused["coverage"]["scope"] == "focus"
+    progress = material.store.load("path")
+    assert progress.lesson_evidence["kp"]["coverage"]["scope"] == "focus"
+
+    snapshot = lessons.question_snapshot(material.store, progress, "kp")
+    assert snapshot["coverage"]["scope"] == "objective"
+    assert snapshot["id"] == objective["id"]
+    lessons.validate_evidence(material.store, progress, "kp", snapshot)
+
+
+def test_mastery_assess_succeeds_after_focus_replaces_the_teaching_packet(material, monkeypatch):
+    """The exact #2070 loop: an objective-scoped packet survives a focus prep,
+    so ``mastery_assess`` (``assess_qualitative_semantic``) still grades it."""
+    from deeptutor.learning import semantic_assessment as semantic
+
+    progress = material.store.load("path")
+    progress.modules[0].knowledge_points[0].type = "concept"
+    material.store.save(progress)
+
+    _install_preparation(material, monkeypatch)
+    asyncio.run(lessons.prepare_lesson(material.store, "path", "kp", material.config))
+    focused = asyncio.run(
+        lessons.prepare_lesson(
+            material.store, "path", "kp", material.config, focus="Explain bilayer structure"
+        )
+    )
+    assert focused["coverage"]["scope"] == "focus"
+    assert material.store.load("path").lesson_evidence["kp"]["coverage"]["scope"] == "focus"
+
+    async def judge(_config, items):
+        return {
+            items[0]["question_id"]: semantic.Verdict(
+                result="correct", confidence=0.99, feedback="Clear explanation."
+            )
+        }
+
+    monkeypatch.setattr(semantic, "judge_answers", judge)
+    graded, receipt = asyncio.run(
+        LearningService(material.store).assess_qualitative_semantic(
+            "path", "kp", learner_answer="Lipids form the bilayer.", config=material.config
+        )
+    )
+    assert receipt["result"] == "correct"
+    assert graded.qualitative_mastery["kp"] is True
+
+
 @pytest.mark.parametrize(
     "repair",
     [

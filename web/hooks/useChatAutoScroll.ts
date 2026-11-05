@@ -49,17 +49,18 @@ export function useChatAutoScroll({
     const container = containerRef.current;
     if (!container) return;
     const previous = positionRef.current;
-    const sameLayout = previous.height === container.scrollHeight &&
-      previous.viewport === container.clientHeight;
     // The browser clamps scrollTop when content shrinks. That is not a user
-    // gesture. Neither clamping nor delayed growth may release/re-arm follow.
-    if (sameLayout) {
-      const remaining = container.scrollHeight - container.scrollTop - container.clientHeight;
-      if (remaining < 80 && (shouldAutoScrollRef.current || container.scrollTop > previous.top + 4)) {
-        shouldAutoScrollRef.current = true;
-      }
-      else if (container.scrollTop < previous.top - 4) shouldAutoScrollRef.current = false;
+    // gesture. Growth never moves it (overflow-anchor: none), so whatever the
+    // layout did, the position without the reader is at most the new maximum.
+    // Comparing against that keeps a scrollbar drag during streaming, when the
+    // reply grows between the drag and its scroll event, a gesture (#2072).
+    const max = Math.max(0, container.scrollHeight - container.clientHeight);
+    const expected = Math.min(previous.top, max);
+    const remaining = container.scrollHeight - container.scrollTop - container.clientHeight;
+    if (remaining < 80 && (shouldAutoScrollRef.current || container.scrollTop > expected + 4)) {
+      shouldAutoScrollRef.current = true;
     }
+    else if (container.scrollTop < expected - 4) shouldAutoScrollRef.current = false;
     rememberPosition(container);
   }, [rememberPosition]);
 

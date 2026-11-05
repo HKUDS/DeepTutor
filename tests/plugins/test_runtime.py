@@ -111,7 +111,7 @@ async def test_example_worker_tool_and_capability(tmp_path, monkeypatch) -> None
     monkeypatch.setattr(runtime, "get_plugin_registry", lambda: registry)
     manifest = parse_manifest(_raw_manifest())
     installation = _installation(tmp_path)
-    example_root = Path(__file__).parents[2] / "examples" / "plugins" / "learning_echo"
+    example_root = Path(__file__).parents[2] / "docs-for-dev" / "examples" / "learning_echo"
     monkeypatch.setattr(
         "deeptutor.plugins.runtime._clean_env",
         lambda: {
@@ -146,7 +146,7 @@ def test_example_worker_http_route(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(runtime, "get_plugin_registry", lambda: registry)
     manifest = parse_manifest(_raw_manifest())
     installation = _installation(tmp_path)
-    example_root = Path(__file__).parents[2] / "examples" / "plugins" / "learning_echo"
+    example_root = Path(__file__).parents[2] / "docs-for-dev" / "examples" / "learning_echo"
     monkeypatch.setattr(
         "deeptutor.plugins.runtime._clean_env",
         lambda: {**dict(os.environ), "PYTHONPATH": str(example_root)},

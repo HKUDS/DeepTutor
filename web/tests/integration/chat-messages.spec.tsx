@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { ChatMessageList } from '@/features/chat/messages'
 import type { StreamEvent } from '@/features/chat/model/protocol'
+import type { SessionSummary } from '@/lib/session-api'
 import { initI18n } from '@/i18n/init'
 
 initI18n('en')
@@ -35,6 +36,31 @@ describe('chat message feature', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('Worker lost during this turn')
     await userEvent.setup().click(screen.getByRole('button', { name: 'Retry' }))
     expect(retry).toHaveBeenCalledOnce()
+  })
+
+  // Regenerate and Resend used to sit side by side as two identical icons on a
+  // turn that had failed. A surface that can take the turn back offers one
+  // Retry instead, and hands over the learner's message to edit.
+  it('offers one Retry that hands the turn back instead of two identical icons', async () => {
+    const retry = vi.fn()
+    const user = { id: 7, role: 'user' as const, content: 'Explain DFT', parentMessageId: 3,
+      requestSnapshot: { content: 'Explain DFT', enabledTools: [], knowledgeBases: [], language: 'en' } }
+    render(
+      <ChatMessageList
+        messages={[user, { id: 8, role: 'assistant', content: 'The DFT is…', parentMessageId: 7 }]}
+        isStreaming={false}
+        canResendLastTurn
+        onResendLastTurn={vi.fn()}
+        onRetryTurn={retry}
+        onCopyAssistantMessage={vi.fn()}
+        onRegenerateMessage={vi.fn()}
+      />,
+    )
+
+    expect(screen.queryByRole('button', { name: 'Regenerate' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Resend' })).toBeNull()
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Retry' }))
+    expect(retry).toHaveBeenCalledWith(expect.objectContaining({ id: 7, content: 'Explain DFT' }))
   })
 
   // The snapshot stores the qualified KB ref, but the reference chip under a
@@ -289,5 +315,48 @@ describe('unsent message recovery actions', () => {
       onRetryFailedSubmission={vi.fn()} onDiscardFailedSubmission={vi.fn()} />);
     expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Discard unsent draft' })).toBeEnabled();
+  });
+
+  it('puts the Little Tutor entry under the message its thread was opened from', async () => {
+    const onOpen = vi.fn();
+    const thread: SessionSummary = {
+      id: 't1',
+      session_id: 't1',
+      title: 'Why twice?',
+      created_at: 1,
+      updated_at: 0,
+      message_count: 2,
+      last_message: '',
+      status: 'idle',
+      preferences: {
+        session_kind: 'selection_tutor',
+        tutor_source_message_id: 2,
+      },
+    };
+    const { container } = render(
+      <ChatMessageList
+        messages={[
+          { id: 1, role: 'user', content: 'Question', parentMessageId: null },
+          { id: 2, role: 'assistant', content: 'Answer', parentMessageId: 1 },
+        ]}
+        isStreaming={false}
+        onCopyAssistantMessage={vi.fn()}
+        onRegenerateMessage={vi.fn()}
+        threadsByMessageId={new Map([['2', [thread]]])}
+        onOpenThread={onOpen}
+        onDeleteThread={vi.fn(async () => {})}
+      />,
+    );
+
+    const markers = container.querySelectorAll('[data-message-thread-marker]');
+    expect(markers).toHaveLength(1);
+    expect(
+      markers[0].closest('[data-chat-message-id]')?.getAttribute('data-chat-message-id'),
+    ).toBe('2');
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Tutor threads on this message' }));
+    await user.click(screen.getByRole('button', { name: 'Open tutor thread: Why twice?' }));
+    expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ session_id: 't1' }));
   });
 });

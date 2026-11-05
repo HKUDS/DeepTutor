@@ -42,7 +42,7 @@ import time
 from typing import Any, Iterator, Literal, Mapping, Sequence
 import uuid
 
-from deeptutor.reading.extract import extract_material, synthesise_outline
+from deeptutor.reading.extract import MARKDOWN_SUFFIXES, extract_material, synthesise_outline
 from deeptutor.reading.models import (
     MAX_TEXT_SELECTOR_CHARS,
     Annotation,
@@ -379,6 +379,11 @@ class ReadingStore:
                 has_raw_view=extraction.render_mode == "pdf",
                 render_mode=extraction.render_mode,
                 media_count=len(media_rows),
+                # Markdown files are written to be rendered; showing their
+                # source leaves every formula as raw ``$...$``.
+                content_format=(
+                    "web_markdown" if path.suffix.lower() in MARKDOWN_SUFFIXES else "plain_text"
+                ),
             )
             # Manifest last: its presence is the "this material is usable"
             # signal, so it must not appear before the units it describes.
@@ -1537,6 +1542,9 @@ def _carry_dir(source: Path, target: Path) -> None:
             shutil.copy2(entry, destination)
 
 
+_MAX_FILENAME_CHARS = 180
+
+
 def _safe_filename(name: str, *, fallback: str) -> str:
     """A filesystem-safe basename for the stored original.
 
@@ -1549,7 +1557,15 @@ def _safe_filename(name: str, *, fallback: str) -> str:
     if os.altsep:
         base = base.replace(os.altsep, "_")
     base = base.strip(". ") or Path(fallback).name or "material"
-    return base[:180]
+    if len(base) <= _MAX_FILENAME_CHARS:
+        return base
+    # Cut the stem, not the extension: the stored original is found again by
+    # its suffix (a PDF is only re-extracted when the raw file ends in .pdf).
+    suffix = Path(base).suffix
+    if len(suffix) > 16:
+        suffix = ""
+    stem = base[: len(base) - len(suffix)][: _MAX_FILENAME_CHARS - len(suffix)]
+    return stem.rstrip(". ") + suffix
 
 
 def _guess_mime(filename: str) -> str:

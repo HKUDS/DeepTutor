@@ -1,5 +1,7 @@
 export interface MarkdownRendererProps {
   content: string;
+  /** Opt-in learning content boundary, with its existing unscaled pixel size. */
+  learningTextSize?: number;
   className?: string;
   variant?: "default" | "compact" | "prose" | "trace";
   enableMath?: boolean;

@@ -601,3 +601,129 @@ def test_learner_proxy_list_obeys_reading_policy_over_http(
     if expected == 200:
         assert response.json() == []
     assert client.get("/api/knowledge-bases/health", headers=headers).status_code == 403
+
+
+@pytest.fixture
+def display_settings_http(monkeypatch, mu_isolated_root, as_user):
+    """Real JWT auth, persisted learner policies, and isolated account preferences."""
+    import secrets
+
+    from deeptutor.api.routers import auth, settings
+    from deeptutor.multi_user.grants import learner_grant, save_grant
+    from deeptutor.multi_user.identity import save_user
+    from deeptutor.services import auth as auth_service
+    from deeptutor.services.settings.interface_settings import update_ui_settings
+
+    save_user("display-admin", "unused-fixture-password-hash", role="admin")
+    monkeypatch.setattr(auth, "AUTH_ENABLED", True)
+    monkeypatch.setattr(auth_service, "AUTH_SECRET", secrets.token_hex(32))
+    monkeypatch.setattr(auth_service, "POCKETBASE_ENABLED", False)
+    headers = {}
+    expected = {}
+    for name, surfaces, scale, spacing in [
+        ("alice", ["chat"], 150, "relaxed"),
+        ("bob", ["reading"], 90, "compact"),
+    ]:
+        record = save_user(name, "unused-fixture-password-hash", preset="learner")
+        grant = learner_grant(record["id"])
+        grant["learning_policy"]["allowed_surfaces"] = surfaces
+        save_grant(record["id"], grant)
+        with as_user(record["id"], username=name):
+            update_ui_settings(
+                {
+                    "content_font_scale": scale,
+                    "content_line_spacing": spacing,
+                    "sidebar_description": f"private-{name}",
+                    "theme": "dark",
+                }
+            )
+        headers[name] = {
+            "Authorization": "Bearer " + auth_service.create_token(name, "user", record["id"])
+        }
+        expected[name] = {"content_font_scale": scale, "content_line_spacing": spacing}
+
+    app = FastAPI()
+    app.include_router(
+        settings.router,
+        prefix="/api/settings",
+        dependencies=[Depends(auth.require_learning_surface)],
+    )
+    return TestClient(app), headers, expected
+
+
+def test_display_presentation_read_allows_chat_and_reading_learners_without_cross_account_leak(
+    display_settings_http,
+):
+    """A → B → A reads use each authenticated identity's persisted path scope."""
+    client, headers, expected = display_settings_http
+    for name in ("alice", "bob", "alice"):
+        response = client.get("/api/settings/display", headers=headers[name])
+        assert response.status_code == 200, response.text
+        assert response.json() == expected[name]
+        for method, path in [
+            ("GET", "/api/settings"),
+            ("GET", "/api/settings/network"),
+            ("POST", "/api/settings/apply"),
+        ]:
+            assert client.request(method, path, headers=headers[name]).status_code == 403
+
+
+def test_display_presentation_read_keeps_real_auth_and_method_boundary(display_settings_http):
+    client, headers, _expected = display_settings_http
+    assert client.get("/api/settings/display").status_code == 401
+    assert (
+        client.get(
+            "/api/settings/display", headers={"Authorization": "Bearer invalid-display-token"}
+        ).status_code
+        == 401
+    )
+    # These methods have no real endpoint. FastAPI returns 405 before a handler
+    # dependency runs; the separate guard matrix tests their policy exclusion.
+    for method in ("PUT", "POST", "PATCH", "DELETE", "HEAD", "OPTIONS"):
+        assert (
+            client.request(method, "/api/settings/display", headers=headers["bob"]).status_code
+            == 405
+        )
+
+
+@pytest.mark.parametrize(
+    "method,path,route_path",
+    [
+        *[
+            (method, "/api/settings/display", "/api/settings/display")
+            for method in ("PUT", "POST", "PATCH", "DELETE", "HEAD", "OPTIONS")
+        ],
+        ("GET", "/api/settings/display-extra", "/api/settings/display-extra"),
+        ("GET", "/api/settings/display/extra", "/api/settings/display/extra"),
+        ("GET", "/api/settings/display", "/api/settings/{setting}"),
+        ("GET", "/api/settings/display", None),
+    ],
+)
+def test_display_personal_exception_requires_exact_method_and_resolved_route(
+    monkeypatch, method, path, route_path
+):
+    import asyncio
+    from types import SimpleNamespace
+
+    from fastapi import HTTPException
+
+    from deeptutor.api.routers import auth
+    from deeptutor.multi_user import learning_access
+
+    def deny_ungranted(surface):
+        assert surface == ""
+        raise PermissionError("Not a granted learning surface")
+
+    monkeypatch.setattr(learning_access, "assert_learning_surface", deny_ungranted)
+    request = Request(
+        {
+            "type": "http",
+            "method": method,
+            "path": path,
+            "headers": [],
+            "route": SimpleNamespace(path=route_path),
+        }
+    )
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(auth.require_learning_surface(request, None))
+    assert error.value.status_code == 403

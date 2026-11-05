@@ -170,8 +170,114 @@ def test_compression_ratio_guard_raises(tmp_path: Path) -> None:
         )
 
 
+def test_rejected_archive_removes_members_already_extracted(tmp_path: Path) -> None:
+    # The ratio guard trips on the second member, after the first was written.
+    src = _make_zip(
+        tmp_path / "a.zip", [("notes.txt", b"hello"), ("bomb.txt", b"A" * 50_000)], deflate=True
+    )
+    out = tmp_path / "out"
+
+    with pytest.raises(ArchiveTooLargeError):
+        safe_extract_zip(
+            src,
+            out,
+            allowed_extensions=DOC_EXTS,
+            limits=ZipExtractionLimits(max_compression_ratio=10.0),
+        )
+
+    assert list(out.iterdir()) == []
+
+
+def test_corrupt_member_leaves_nothing_behind(tmp_path: Path) -> None:
+    src = _make_zip(tmp_path / "a.zip", [("one.txt", b"first"), ("two.txt", b"second")])
+    data = bytearray(src.read_bytes())
+    # Members are stored, so this flips a payload byte and two.txt fails its CRC
+    # check, which zipfile only reports after the bytes were written out.
+    data[data.rindex(b"second")] ^= 0xFF
+    src.write_bytes(bytes(data))
+    out = tmp_path / "out"
+
+    with pytest.raises(zipfile.BadZipFile):
+        safe_extract_zip(src, out, allowed_extensions=DOC_EXTS)
+
+    assert list(out.iterdir()) == []
+
+
 def test_bad_zip_raises(tmp_path: Path) -> None:
     bogus = tmp_path / "not.zip"
     bogus.write_bytes(b"this is not a zip")
     with pytest.raises(zipfile.BadZipFile):
         safe_extract_zip(bogus, tmp_path / "out", allowed_extensions=DOC_EXTS)
+
+
+@pytest.mark.parametrize("readonly", [False, True])
+def test_existing_file_is_never_overwritten_or_cleaned_up(tmp_path, readonly):
+    src = _make_zip(tmp_path / "a.zip", [("new.txt", b"new"), ("existing.txt", b"replacement")])
+    out = tmp_path / "out"
+    out.mkdir()
+    existing = out / "existing.txt"
+    existing.write_bytes(b"original")
+    if readonly:
+        existing.chmod(0o444)
+    try:
+        with pytest.raises((FileExistsError, PermissionError)):
+            safe_extract_zip(src, out, allowed_extensions=DOC_EXTS)
+        assert existing.read_bytes() == b"original"
+        assert not (out / "new.txt").exists()
+    finally:
+        existing.chmod(0o644)
+
+
+@pytest.mark.parametrize("failure", ["read", "close"])
+def test_failed_member_closes_before_cleanup(tmp_path, monkeypatch, failure):
+    """Simulate Windows deny-delete sharing and buffered flush/close failure."""
+    import io
+
+    import deeptutor.utils.archive_extractor as extractor
+
+    destination = tmp_path / "partial.txt"
+    real_open = open
+    real_unlink = Path.unlink
+    sinks = []
+
+    class Sink:
+        def __init__(self, handle):
+            self.handle = handle
+
+        def __enter__(self):
+            return self
+
+        def write(self, data):
+            return self.handle.write(data)
+
+        def __exit__(self, *args):
+            self.handle.close()
+            if failure == "close":
+                raise OSError("flush failed")
+
+    class Source(io.BytesIO):
+        def read(self, size=-1):
+            if failure == "read" and self.tell():
+                raise zipfile.BadZipFile("CRC mismatch")
+            return super().read(size)
+
+    class Archive:
+        def open(self, _info):
+            return Source(b"partial contents")
+
+    def tracked_open(*args, **kwargs):
+        sink = Sink(real_open(*args, **kwargs))
+        sinks.append(sink)
+        return sink
+
+    def windows_unlink(path, *args, **kwargs):
+        if path == destination and any(not sink.handle.closed for sink in sinks):
+            raise PermissionError("cannot delete an open file")
+        return real_unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(extractor, "open", tracked_open, raising=False)
+    monkeypatch.setattr(Path, "unlink", windows_unlink)
+    with pytest.raises((zipfile.BadZipFile, OSError)):
+        extractor._extract_member(Archive(), object(), destination, 100)
+    assert sinks and all(sink.handle.closed for sink in sinks)
+    assert not destination.exists()

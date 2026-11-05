@@ -12,7 +12,7 @@ Thank you for your interest in contributing to DeepTutor! We welcome developers 
 
 ## Table of Contents
 
-- [Maintainers](#maintainers)
+- [Maintainer](#maintainer)
 - [Branching Strategy](#branching-strategy)
 - [Quick Start for Contributors](#quick-start-for-contributors)
 - [Development Setup](#development-setup)
@@ -92,6 +92,11 @@ pre-commit run --all-files
 
 ## Development Setup
 
+Start with the [developer and agent handbook](docs-for-dev/README.md).
+[Agent setup](docs-for-dev/AGENT_SETUP.md) owns installation and configuration;
+[Development](docs-for-dev/DEVELOPMENT.md) and [Testing](docs-for-dev/TESTING.md)
+describe the source workflow and verification gates.
+
 <details>
 <summary><b>Setting Up Your Environment</b></summary>
 
@@ -105,7 +110,12 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 **Step 2: Install dependencies**
 
 ```bash
-pip install -e ".[all]"
+python -m pip install -r requirements/full.txt
+python -m pip install -e . --no-deps
+python scripts/install_extras.py dev
+cd web
+npm ci --legacy-peer-deps
+cd ..
 ```
 
 </details>

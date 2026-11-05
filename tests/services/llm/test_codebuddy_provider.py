@@ -465,7 +465,7 @@ async def test_codebuddy_interrupt_failure_after_tool_calls_logs_warning(
 
     with caplog.at_level(
         logging.WARNING,
-        logger="deeptutor.services.llm.provider_core.codebuddy_provider",
+        logger="deeptutor.services.llm.provider_core.sdk_bridge",
     ):
         response = await provider.chat(
             [{"role": "user", "content": "Search"}],
@@ -479,7 +479,7 @@ async def test_codebuddy_interrupt_failure_after_tool_calls_logs_warning(
         r
         for r in caplog.records
         if r.levelno >= logging.WARNING
-        and r.name == "deeptutor.services.llm.provider_core.codebuddy_provider"
+        and r.name == "deeptutor.services.llm.provider_core.sdk_bridge"
     ]
     assert any(
         "interrupt" in r.getMessage().lower() and "RuntimeError" in r.getMessage() for r in warnings
@@ -561,7 +561,7 @@ async def _append_async(items: list[str], text: str) -> None:
 
 @pytest.mark.asyncio
 async def test_interrupted_drain_logs_error_type_without_exception_body(caplog):
-    from deeptutor.services.llm.provider_core.codebuddy_provider import _drain_interrupted_response
+    from deeptutor.services.llm.provider_core.sdk_bridge import _drain_interrupted_response
 
     async def broken_stream():
         yield {"type": "intermediate"}

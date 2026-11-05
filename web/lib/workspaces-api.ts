@@ -46,6 +46,22 @@ export interface ChatWorkspaceRegistration {
 
 const endpoint = '/api/settings/workspace/registrations'
 
+export interface ServerFolder {
+  name: string
+  path: string
+}
+
+export interface ServerFolderListing extends ServerFolder {
+  roots: ServerFolder[]
+  parent: string | null
+  folders: ServerFolder[]
+  truncated: boolean
+}
+
+export function browseServerFolders(path = ''): Promise<ServerFolderListing> {
+  return request(`/api/settings/workspace/folders?path=${encodeURIComponent(path)}`)
+}
+
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await apiFetch(apiUrl(url), init)
   const payload = await response.json()

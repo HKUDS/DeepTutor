@@ -315,9 +315,8 @@ def _apply_linked_retention(
 
     from deeptutor.learning.models import LearningEvidence
     from deeptutor.learning.policy import find_knowledge_point
-    from deeptutor.learning.scheduler import SpacedRepetitionScheduler
+    from deeptutor.learning.review_strategy import scheduler_for_progress
 
-    scheduler = SpacedRepetitionScheduler()
     event_result = result if result in {"correct", "incorrect", "partial"} else "incorrect"
     evidence = LearningEvidence(
         evidence_id=attempt_id,
@@ -338,6 +337,8 @@ def _apply_linked_retention(
 
     def apply(tx) -> bool:
         progress = tx.progress
+        # Linked evidence schedules with the path's bound strategy, if any.
+        scheduler = scheduler_for_progress(progress)
         if any(item.evidence_id == attempt_id for item in progress.learning_evidence):
             return False
         kp, _, _ = find_knowledge_point(progress, record.knowledge_point_id)

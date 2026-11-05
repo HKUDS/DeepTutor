@@ -7,21 +7,31 @@ import { type RefObject, useEffect, useRef } from "react";
  * same lint suppression for leaving its close handler out of the deps. The
  * handler is held in a ref here instead, so the listener is attached exactly
  * once per open — which is what those suppressions were preserving.
+ *
+ * *also* is an extra node that counts as inside, for a menu portaled to
+ * document.body so it is no longer a descendant of *ref*.
  */
 export function useOutsideClick(
   ref: RefObject<HTMLElement | null>,
   enabled: boolean,
   onOutside: () => void,
+  also?: RefObject<HTMLElement | null>,
 ): void {
   const handlerRef = useRef(onOutside);
+  const alsoRef = useRef(also);
   useEffect(() => {
     handlerRef.current = onOutside;
+    alsoRef.current = also;
   });
   useEffect(() => {
     if (!enabled) return;
     const handler = (event: MouseEvent) => {
       const target = event.target as Node;
-      if (ref.current && !ref.current.contains(target)) handlerRef.current();
+      if (ref.current?.contains(target)) return;
+      if (alsoRef.current?.current?.contains(target)) return;
+      // No anchor yet: nothing to treat as inside, so stay quiet.
+      if (!ref.current && !alsoRef.current?.current) return;
+      handlerRef.current();
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);

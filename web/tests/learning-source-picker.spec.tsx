@@ -44,22 +44,19 @@ function Picker() {
     />
   )
 }
-it('shows all origins and preserves chosen sources while filtering and searching', () => {
+it('preserves chosen sources while searching', () => {
   window.history.replaceState({}, '', '/learning/books?dt_workspace=destination')
   render(<Picker />)
-  expect(screen.getByLabelText('Filter by workspace')).toHaveValue('*')
+  expect(screen.queryByLabelText('Filter by workspace')).toBeNull()
   fireEvent.click(screen.getByRole('tab', { name: /Books/ }))
   fireEvent.click(screen.getByRole('button', { name: /Original book/ }))
-  fireEvent.change(screen.getByLabelText('Filter by workspace'), { target: { value: 'Research' } })
-  expect(screen.queryByRole('button', { name: /Original book/ })).not.toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: /Research book/ }))
   expect(screen.getByText('2 selected')).toBeInTheDocument()
-  fireEvent.change(screen.getByLabelText('Filter by workspace'), { target: { value: '*' } })
+  fireEvent.change(screen.getByLabelText('Search materials'), { target: { value: 'Original' } })
+  expect(screen.queryByRole('button', { name: /Research book/ })).not.toBeInTheDocument()
   expect(screen.getByRole('button', { name: /Original book/ })).toHaveAttribute(
     'aria-pressed',
     'true'
   )
-  fireEvent.change(screen.getByLabelText('Search materials'), { target: { value: 'Original' } })
-  expect(screen.queryByRole('button', { name: /Research book/ })).not.toBeInTheDocument()
   expect(window.location.search).toBe('?dt_workspace=destination')
 })

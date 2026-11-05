@@ -20,9 +20,6 @@ const kinds: Record<string, ResourceKind> = {
   mem: "memory",
   kb: "knowledge",
   persona: "persona",
-  collaborator: "agent",
-  skill: "skills",
-  mcp: "mcp",
 };
 export default function SelectedResources({
   items,

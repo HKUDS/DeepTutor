@@ -125,6 +125,7 @@ class ContextExplorer:
         self.language = "zh" if str(language or "en").lower().startswith("zh") else "en"
         self._prompts = prompts or {}
         cfg = get_llm_config()
+        self._llm_config = cfg
         self.model = getattr(cfg, "model", None)
         self.api_key = getattr(cfg, "api_key", None)
         self.base_url = getattr(cfg, "base_url", None)
@@ -161,6 +162,18 @@ class ContextExplorer:
         if not source_index:
             return ""
 
+        # Choose before model effects; a native failure never replays through Python.
+        import os
+
+        if os.getenv("DEEPTUTOR_CHAT_ENGINE") == "typescript-native":
+            from deeptutor.runtime.ts_engine.config import compatibility_reason
+
+            tool = self.registry.get("read_source")
+            if not compatibility_reason(self._llm_config) and (
+                tool is not None and type(tool).__module__ == "deeptutor.tools.builtin"
+            ):
+                return await self._investigate_native(context, stream, source_index, usage)
+
         investigation = ""
         if can_use_native_tool_calling(binding=self.binding, model=self.model):
             try:
@@ -181,6 +194,27 @@ class ContextExplorer:
         if not investigation:
             return ""
         return f"{self._briefing_header()}\n\n{investigation}".strip()
+
+    async def _investigate_native(self, context, stream, sources, usage) -> str:
+        from .native import investigate_native
+
+        investigation = ""
+        if can_use_native_tool_calling(binding=self.binding, model=self.model):
+            try:
+                investigation = await investigate_native(self, context, stream, sources, usage)
+            except Exception:
+                logger.warning(
+                    "native source investigation failed; trying read-only briefing", exc_info=True
+                )
+        if not investigation.strip():
+            try:
+                investigation = await investigate_native(
+                    self, context, stream, sources, usage, single_pass=True
+                )
+            except Exception:
+                logger.warning("native source briefing failed", exc_info=True)
+        investigation = clean_thinking_tags(investigation, self.binding, self.model).strip()
+        return f"{self._briefing_header()}\n\n{investigation}" if investigation else ""
 
     # ---- agentic loop ----------------------------------------------------
 

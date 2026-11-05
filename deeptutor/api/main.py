@@ -3,12 +3,13 @@ from contextlib import asynccontextmanager
 import logging
 import sys
 
-from fastapi import Depends, FastAPI, Request
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 
 from deeptutor.api.security_guard import install_security_guard
 from deeptutor.logging import configure_logging
+from deeptutor.modules.catalog import module_enabled
 from deeptutor.services.config import (
     ensure_runtime_settings_files,
     export_runtime_settings_to_env,
@@ -54,7 +55,9 @@ def validate_tool_consistency():
 
         capability_registry = get_capability_registry()
         tool_registry = get_tool_registry()
-        available_tools = set(tool_registry.list_tools())
+        from deeptutor.tools.builtin_specs import BUILTIN_TOOL_NAMES
+
+        available_tools = set(tool_registry.list_tools()) | set(BUILTIN_TOOL_NAMES)
 
         referenced_tools = set()
         for manifest in capability_registry.get_manifests():
@@ -125,14 +128,15 @@ async def lifespan(app: FastAPI):
         application_container = get_application_container()
         app.state.application_container = application_container
     await application_container.start()
-    from deeptutor.api.utils.progress_broadcaster import ProgressBroadcaster
-    from deeptutor.api.utils.task_log_stream import get_task_stream_manager
-    from deeptutor.knowledge.progress_events import install_progress_ports
+    if module_enabled("knowledge"):
+        from deeptutor.api.utils.progress_broadcaster import ProgressBroadcaster
+        from deeptutor.api.utils.task_log_stream import get_task_stream_manager
+        from deeptutor.knowledge.progress_events import install_progress_ports
 
-    install_progress_ports(
-        broadcast=ProgressBroadcaster.get_instance().broadcast,
-        emit_task_event=get_task_stream_manager().emit,
-    )
+        install_progress_ports(
+            broadcast=ProgressBroadcaster.get_instance().broadcast,
+            emit_task_event=get_task_stream_manager().emit,
+        )
     migration_reports = await application_container.run_startup_data_migrations()
     legacy_reports = migration_reports["legacy_chat"]
     migrated_reports = [report for report in legacy_reports if report.get("source_hash")]
@@ -154,11 +158,12 @@ async def lifespan(app: FastAPI):
         )
 
     try:
-        from deeptutor.learning.assessment import reconcile_linked_assessments
+        if module_enabled("mastery"):
+            from deeptutor.learning.assessment import reconcile_linked_assessments
 
-        recovered, failed = await reconcile_linked_assessments()
-        if recovered or failed:
-            logger.info("Linked assessment recovery: recovered=%s failed=%s", recovered, failed)
+            recovered, failed = await reconcile_linked_assessments()
+            if recovered or failed:
+                logger.info("Linked assessment recovery: recovered=%s failed=%s", recovered, failed)
     except Exception:
         logger.exception("Failed to reconcile linked assessments at startup")
 
@@ -181,62 +186,22 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Failed to start EventBus: {e}")
 
-    async def _start_partners() -> None:
-        from deeptutor.services.partners import get_partner_manager
-
-        manager = get_partner_manager()
-        manager.configure_runtime_owner(application_container.worker_id)
-        await manager.auto_start_partners()
-
-    async def _stop_partners() -> None:
-        from deeptutor.services.partners import get_partner_manager
-
-        await get_partner_manager().stop_all(preserve_auto_start=True)
-
-    async def _start_cron() -> None:
-        from deeptutor.services.cron import get_cron_service
-
-        await get_cron_service().start()
-
-    async def _stop_cron() -> None:
-        from deeptutor.services.cron import get_cron_service
-
-        await get_cron_service().stop()
-
-    async def _start_github_sync() -> None:
-        from deeptutor.services.github_source.sync_service import get_sync_service
-
-        await get_sync_service().start()
-
-    async def _stop_github_sync() -> None:
-        from deeptutor.services.github_source.sync_service import get_sync_service
-
-        await get_sync_service().stop()
-
-    async def _start_web_source_sync() -> None:
-        from deeptutor.services.web_source.scheduler import (
-            start_web_source_sync_scheduler,
-        )
-
-        await start_web_source_sync_scheduler()
-
-    async def _stop_web_source_sync() -> None:
-        from deeptutor.services.web_source.scheduler import (
-            stop_web_source_sync_scheduler,
-        )
-
-        await stop_web_source_sync_scheduler()
-
     from deeptutor.runtime.coordination import BackgroundCommandKind
 
     async def _handle_background_command(command) -> None:
         kind = str(command.kind)
         if kind == BackgroundCommandKind.CRON_RELOAD:
+            from deeptutor.modules.catalog import require_module
+
+            require_module("calendar")
             from deeptutor.services.cron import get_cron_service
 
             get_cron_service().reload()
             return
 
+        from deeptutor.modules.catalog import require_module
+
+        require_module("partners")
         from deeptutor.services.partners import get_partner_manager
 
         manager = get_partner_manager()
@@ -268,42 +233,34 @@ async def lifespan(app: FastAPI):
 
     cron_service = None
     try:
-        from deeptutor.services.cron import get_cron_service
+        if module_enabled("calendar"):
+            from deeptutor.services.cron import get_cron_service
 
-        cron_service = get_cron_service()
-        loop = asyncio.get_running_loop()
+            cron_service = get_cron_service()
+            loop = asyncio.get_running_loop()
 
-        def _notify_cron_change() -> None:
-            task = loop.create_task(
-                application_container.coordinator.submit_background_command(
-                    BackgroundCommandKind.CRON_RELOAD
+            def _notify_cron_change() -> None:
+                task = loop.create_task(
+                    application_container.coordinator.submit_background_command(
+                        BackgroundCommandKind.CRON_RELOAD
+                    )
                 )
-            )
-            task.add_done_callback(
-                lambda completed: completed.exception() if not completed.cancelled() else None
-            )
+                task.add_done_callback(
+                    lambda completed: completed.exception() if not completed.cancelled() else None
+                )
 
-        cron_service.change_notifier = _notify_cron_change
+            cron_service.change_notifier = _notify_cron_change
     except Exception:
         logger.exception("Failed to configure cron change notifications")
 
+    from deeptutor.modules.services import module_service_callbacks
     from deeptutor.runtime.background_leader import BackgroundLeaderSupervisor
 
     background_supervisor = BackgroundLeaderSupervisor(
         application_container.coordinator,
         application_container.worker_id,
-        start_callbacks=[
-            _start_partners,
-            _start_cron,
-            _start_github_sync,
-            _start_web_source_sync,
-        ],
-        stop_callbacks=[
-            _stop_partners,
-            _stop_cron,
-            _stop_github_sync,
-            _stop_web_source_sync,
-        ],
+        start_callbacks=module_service_callbacks("start", application_container),
+        stop_callbacks=module_service_callbacks("stop", application_container),
         recovery_callback=application_container.recover_once,
         control_callback=_handle_background_command,
         renew_interval_seconds=application_container.settings.renew_interval_seconds,
@@ -323,19 +280,20 @@ async def lifespan(app: FastAPI):
     # Migrate any v1 memory files (PROFILE.md / SOUL.md / SUMMARY.md) into a
     # backup folder so the v2 three-layer subsystem starts clean.
     try:
-        from deeptutor.services.memory import (
-            migrate_partner_surface_if_needed,
-            migrate_v1_if_needed,
-        )
-        from deeptutor.services.path_service import get_path_service
+        if module_enabled("memory"):
+            from deeptutor.services.memory import (
+                migrate_partner_surface_if_needed,
+                migrate_v1_if_needed,
+            )
+            from deeptutor.services.path_service import get_path_service
 
-        get_path_service().migrate_legacy_memory_markdown()
-        backup = migrate_v1_if_needed()
-        if backup is not None:
-            logger.info("v1 memory archived to %s", backup)
-        # Rename the legacy ``tutorbot`` memory surface (footnote refs, L2
-        # doc, snapshot/trace dirs, L3 meta keys) to ``partner``.
-        migrate_partner_surface_if_needed()
+            get_path_service().migrate_legacy_memory_markdown()
+            backup = migrate_v1_if_needed()
+            if backup is not None:
+                logger.info("v1 memory archived to %s", backup)
+            # Rename the legacy ``tutorbot`` memory surface (footnote refs, L2
+            # doc, snapshot/trace dirs, L3 meta keys) to ``partner``.
+            migrate_partner_surface_if_needed()
     except Exception as e:
         logger.warning(f"v1 memory migration failed: {e}")
 
@@ -346,7 +304,8 @@ async def lifespan(app: FastAPI):
     app.state.ready = False
     logger.info("Application shutdown")
 
-    install_progress_ports(broadcast=None, emit_task_event=None)
+    if module_enabled("knowledge"):
+        install_progress_ports(broadcast=None, emit_task_event=None)
 
     try:
         await background_supervisor.close()
@@ -412,6 +371,21 @@ app = FastAPI(
     # See: https://github.com/HKUDS/DeepTutor/issues/112
     redirect_slashes=False,
 )
+
+from deeptutor.core.errors import AccessError
+from deeptutor.modules.catalog import ModuleUnavailable
+
+
+@app.exception_handler(AccessError)
+async def access_error_handler(request: Request, exc: AccessError):
+    return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+
+
+@app.exception_handler(ModuleUnavailable)
+async def module_unavailable_handler(request: Request, exc: ModuleUnavailable):
+    return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+
 app.add_middleware(WorkspaceActivityMiddleware)
 
 
@@ -528,280 +502,19 @@ except Exception:
     if not user_dir.exists():
         user_dir.mkdir(parents=True)
 
-# Import routers only after runtime settings are initialized.
-# Some router modules load YAML settings at import time.
-from deeptutor.api.routers import (
-    agent_config,
-    attachments,
-    auth,
-    book,
-    capabilities,
-    capabilities_settings,
-    co_writer,
-    courses,
-    dashboard,
-    file_preview,
-    imports,
-    knowledge,
-    learning_journal,
-    marginnote4,
-    mastery_path,
-    mcp_settings,
-    memory,
-    notebook,
-    outputs,
-    partner_groups,
-    partners,
-    personas,
-    plugins,
-    practice,
-    question,
-    question_notebook,
-    quiz_judge,
-    reading,
-    reading_extensions,
-    sessions,
-    settings,
-    skills,
-    space_cli_apps,
-    space_mcp,
-    subagents,
-    system,
-    task_board,
-    unified_ws,
-    video_learning,
-    visualizers,
-    voice,
-    workspace,
-)
-from deeptutor.api.routers import (
-    tools as tools_router,
-)
-from deeptutor.api.routers.file_library import router as file_library_router  # noqa: E402
-from deeptutor.api.routers.multi_user import router as multi_user_router  # noqa: E402
+# Runtime settings must be initialized before a router module is imported.
+# The native profile defers unrelated feature schemas until their first request.
+import os  # noqa: E402
 
-# Auth router is public — login/logout/register/status require no token
-app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
-app.include_router(outputs.router, prefix="/files/outputs", tags=["outputs"])
-app.include_router(
-    workspace.files_router,
-    prefix="/files/workspace-items",
-    tags=["workspace"],
+from deeptutor.api.router_loader import RouterLoader  # noqa: E402
+
+_router_loader = RouterLoader(
+    app, lazy=os.environ.get("DEEPTUTOR_CHAT_ENGINE") == "typescript-native"
 )
 
-# All other routers require a valid session when AUTH_ENABLED=true.
-# require_auth is a no-op when AUTH_ENABLED=false, so this is safe for local use.
-from deeptutor.api.routers.auth import (  # noqa: E402
-    require_admin,
-    require_auth,
-    require_learning_surface,
-)
+from deeptutor.api.module_routes import mount_module_routes
 
-_auth = [Depends(require_learning_surface)]
-# Partner data is anchored at the admin workspace (data/partners) and shared
-# process-wide, so management is admin-gated in multi-user deployments
-# (single-user local runs are implicitly admin — no behaviour change there).
-_admin = [Depends(require_admin)]
-
-app.include_router(
-    multi_user_router,
-    prefix="/api/multi-user",
-    tags=["multi-user"],
-    dependencies=_auth,
-)
-app.include_router(question.router, prefix="/api/question", tags=["question"], dependencies=_auth)
-app.include_router(knowledge.router, prefix="/api", tags=["knowledge-bases"], dependencies=_auth)
-app.include_router(
-    file_preview.router,
-    prefix="/api/file-preview",
-    tags=["file-preview"],
-    dependencies=[Depends(require_auth)],
-)
-app.include_router(imports.router, prefix="/api/imports", tags=["imports"], dependencies=_auth)
-app.include_router(
-    dashboard.router, prefix="/api/dashboard", tags=["dashboard"], dependencies=_auth
-)
-app.include_router(
-    mastery_path.router,
-    prefix="/api/mastery-paths",
-    tags=["mastery-path"],
-    dependencies=_auth,
-)
-app.include_router(
-    file_library_router,
-    prefix="/files/library",
-    tags=["library"],
-    dependencies=_auth,
-)
-# WebSocket handlers authenticate inside the connection before ``accept``.
-# Keep them off HTTP router dependencies: ``require_learning_surface`` takes a
-# Request, which FastAPI cannot construct for a WebSocket scope.
-app.include_router(question.ws_router, prefix="/ws/questions", tags=["question"])
-app.include_router(knowledge.ws_router, prefix="/ws", tags=["knowledge-bases"])
-app.include_router(
-    mastery_path.ws_router,
-    prefix="/ws",
-    tags=["mastery-path"],
-)
-app.include_router(co_writer.router, prefix="/api", tags=["documents"], dependencies=_auth)
-app.include_router(notebook.router, prefix="/api", tags=["notebooks"], dependencies=_auth)
-app.include_router(
-    task_board.router, prefix="/api/task-board", tags=["task-board"], dependencies=_auth
-)
-app.include_router(book.router, prefix="/api", tags=["books"], dependencies=_auth)
-app.include_router(book.ws_router, prefix="/ws", tags=["books"])
-app.include_router(reading.router, prefix="/api/reading", tags=["reading"], dependencies=_auth)
-app.include_router(
-    reading_extensions.router,
-    prefix="/api/reading",
-    tags=["reading-extensions"],
-    dependencies=_auth,
-)
-app.include_router(memory.router, prefix="/api/memory", tags=["memory"], dependencies=_auth)
-app.include_router(
-    learning_journal.router,
-    prefix="/api/learning-journal",
-    tags=["learning-journal"],
-    dependencies=_auth,
-)
-app.include_router(
-    capabilities_settings.router,
-    prefix="/api/capabilities",
-    tags=["capabilities"],
-    dependencies=_auth,
-)
-app.include_router(
-    capabilities.router,
-    prefix="/api/capabilities",
-    tags=["capabilities"],
-    dependencies=_auth,
-)
-app.include_router(sessions.router, prefix="/api/sessions", tags=["sessions"], dependencies=_auth)
-app.include_router(courses.router, prefix="/api/courses", tags=["courses"], dependencies=_auth)
-app.include_router(
-    question_notebook.router,
-    prefix="/api/question-notebook",
-    tags=["question-notebook"],
-    dependencies=_auth,
-)
-app.include_router(
-    practice.router,
-    prefix="/api/question-notebook/practice",
-    tags=["practice"],
-    dependencies=_auth,
-)
-# Public UI-settings read (auth pages bootstrap the interface language
-# before a session exists, so GET /api/settings/ui must not be gated
-# by _auth). Mounted first so the path resolves here, not on the gated
-# settings router below.
-app.include_router(
-    settings.public_router,
-    prefix="/api/settings",
-    tags=["settings"],
-)
-app.include_router(settings.router, prefix="/api/settings", tags=["settings"], dependencies=_auth)
-app.include_router(
-    workspace.settings_router,
-    prefix="/api/settings/workspace",
-    tags=["workspace-settings"],
-    dependencies=_auth,
-)
-app.include_router(
-    video_learning.settings_router,
-    prefix="/api/settings/video-learning",
-    tags=["video-learning-settings"],
-    dependencies=_admin,
-)
-app.include_router(
-    mcp_settings.router,
-    prefix="/api/settings/mcp",
-    tags=["mcp-settings"],
-    dependencies=_auth,
-)
-# Per-user MCP servers. Deliberately only ``_auth``: the router's own routes
-# resolve the owner server-side, and everything a non-admin can reach through it
-# is remote-transport-only (see the module docstring). The admin registry above
-# keeps its own ``require_admin``.
-app.include_router(
-    space_mcp.router,
-    prefix="/api/space/mcp",
-    tags=["space-mcp"],
-    dependencies=_auth,
-)
-# CLI apps. Only ``_auth`` here as well, but for a different reason: the two
-# routes that install or remove an app carry their own ``require_admin``, and
-# what is left for an ordinary account is reading the catalog and toggling its
-# own preference among apps an administrator already granted it.
-app.include_router(
-    space_cli_apps.router,
-    prefix="/api/space/cli-apps",
-    tags=["space-cli-apps"],
-    dependencies=_auth,
-)
-app.include_router(skills.router, prefix="/api/skills", tags=["skills"], dependencies=_auth)
-app.include_router(
-    subagents.router, prefix="/api/subagents", tags=["subagents"], dependencies=_auth
-)
-app.include_router(personas.router, prefix="/api", tags=["personas"], dependencies=_auth)
-app.include_router(plugins.router, prefix="/api/plugins", tags=["plugins"])
-app.include_router(tools_router.router, prefix="/api/tools", tags=["tools"], dependencies=_auth)
-app.include_router(system.router, prefix="/api/system", tags=["system"], dependencies=_auth)
-app.include_router(voice.router, prefix="/api/voice", tags=["voice"], dependencies=_auth)
-app.include_router(
-    video_learning.router,
-    prefix="/api/video-learning",
-    tags=["video-learning"],
-    dependencies=_auth,
-)
-app.include_router(
-    visualizers.router,
-    prefix="/api/visualizers",
-    tags=["visualizers"],
-    dependencies=_auth,
-)
-app.include_router(
-    agent_config.router, prefix="/api/agent-config", tags=["agent-config"], dependencies=_auth
-)
-# Partners are per-user resources now: anyone may build their own, and an admin
-# may assign theirs to others. Only ``_auth`` here — every route in the router
-# declares whether it needs *use* or *manage* rights on the partner it names
-# (see ``multi_user.partner_access``), which a blanket admin gate could not
-# express.
-app.include_router(partners.router, prefix="/api/partners", tags=["partners"], dependencies=_auth)
-app.include_router(
-    partner_groups.router,
-    prefix="/api/partner-groups",
-    tags=["partner-groups"],
-    dependencies=_auth,
-)
-app.include_router(partners.ws_router, prefix="/ws/partners", tags=["partners"])
-app.include_router(
-    partner_groups.ws_router,
-    prefix="/ws/partner-groups",
-    tags=["partner-groups"],
-)
-app.include_router(
-    attachments.router,
-    prefix="/files/attachments",
-    tags=["attachments"],
-    dependencies=_auth,
-)
-
-# MarginNote 4 device bridge — pairing/management routes carry _auth in-router;
-# sync/heartbeat use device-token auth (the Add-on has no session).
-app.include_router(
-    marginnote4.router,
-    prefix="/api/marginnote4",
-    tags=["marginnote4"],
-)
-
-# Unified WebSocket endpoint — auth is checked inside the handler (WebSockets
-# cannot use FastAPI dependencies in the standard way)
-app.include_router(unified_ws.router, tags=["unified-ws"])
-
-# Quiz AI-judge WebSocket — same caveat as unified_ws above; auth is checked
-# inside the handler so the WS upgrade isn't rejected by an HTTP-style dep.
-app.include_router(quiz_judge.router, prefix="/ws", tags=["quiz-judge"])
+mount_module_routes(app, _router_loader)
 
 
 @app.get("/")
@@ -814,6 +527,7 @@ async def health_live():
     return {"status": "alive"}
 
 
+@app.get("/health", include_in_schema=False)
 @app.get("/health/ready")
 async def health_ready(request: Request):
     if not bool(getattr(request.app.state, "ready", False)):

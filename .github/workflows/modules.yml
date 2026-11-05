@@ -1,0 +1,28 @@
+name: Modular installation
+on:
+  pull_request:
+    paths:
+      - 'deeptutor/**'
+      - 'deeptutor_cli/**'
+      - 'pyproject.toml'
+      - 'build_support.py'
+      - 'setup.py'
+      - 'scripts/*module*'
+      - 'scripts/check_minimal_install.py'
+      - '.github/workflows/modules.yml'
+  workflow_dispatch:
+jobs:
+  wheel-lifecycle:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ['3.11', '3.13']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: python -m pip install --upgrade pip setuptools wheel
+      - run: python scripts/sync_module_requirements.py --check
+      - run: python scripts/build_modules.py --output dist/modules --module core --module solve --module parsing --module research --module calendar
+      - run: python scripts/check_module_install.py --wheelhouse dist/modules --extended

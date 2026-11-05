@@ -7,6 +7,8 @@ import { apiFetch } from "@/lib/api";
 const fetcher = vi.hoisted(() => vi.fn());
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
+// The header's workspace chip has its own tests; it reads the workspace list.
+vi.mock("@/components/sidebar/PageBar", () => ({ ScopeChip: () => null }));
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key, i18n: { language: "en" } }),
 }));

@@ -3,8 +3,7 @@
 Covers the tree-termination path (``_terminate`` / ``_send_tree_signal``),
 port-listener cleanup (``_kill_port_listeners``) and marker-file corruption
 tolerance for the packaged-web cache, the source production build and the
-detached-runtime state. Every child process is mocked — no real service is
-started and no product code is changed.
+detached-runtime state. Process shutdown integration tests live in test_launcher_shutdown.py.
 """
 
 from __future__ import annotations
@@ -143,70 +142,6 @@ def test_send_tree_signal_windows_uses_taskkill_with_force_only_on_kill(
 
     assert commands[0] == ["taskkill", "/PID", "4242", "/T"]
     assert commands[1] == ["taskkill", "/PID", "4242", "/T", "/F"]
-
-
-# --------------------------------------------------------------------------
-# _terminate — SIGTERM, wait, then escalate to KILL
-# --------------------------------------------------------------------------
-
-
-def test_terminate_skips_none_and_already_finished_processes(monkeypatch) -> None:
-    signals = _SignalRecorder()
-    monkeypatch.setattr(launcher, "_send_tree_signal", signals)
-    monkeypatch.setattr(launcher, "_log", lambda _message: None)
-
-    launcher._terminate(None)
-    launcher._terminate(_managed(4242, returncode=0))
-
-    assert signals.calls == []
-
-
-def test_terminate_sends_sigterm_to_the_process_group(monkeypatch) -> None:
-    signals = _SignalRecorder()
-    monkeypatch.setattr(launcher, "_send_tree_signal", signals)
-    monkeypatch.setattr(launcher, "_log", lambda _message: None)
-
-    launcher._terminate(_managed(4242))
-
-    assert signals.calls == [(4242, 4242, signal.SIGTERM)]
-
-
-def test_terminate_escalates_to_kill_when_sigterm_times_out(monkeypatch) -> None:
-    signals = _SignalRecorder()
-    monkeypatch.setattr(launcher, "_send_tree_signal", signals)
-    monkeypatch.setattr(launcher, "_log", lambda _message: None)
-    proc = _managed(4242, wait_error=subprocess.TimeoutExpired(cmd="uvicorn", timeout=8))
-
-    launcher._terminate(proc)
-
-    assert signals.calls == [
-        (4242, 4242, signal.SIGTERM),
-        (4242, 4242, launcher.KILL_SIGNAL),
-    ]
-
-
-def test_terminate_swallows_signal_errors_and_still_reaps(monkeypatch) -> None:
-    waited: list[float] = []
-
-    def failing_signal(_pid, _pgid, _sig) -> None:
-        raise OSError("signal delivery failed")
-
-    class _ReapingProcess(_FakeProcess):
-        def wait(self, timeout: float | None = None) -> int:
-            waited.append(timeout or 0.0)
-            return 0
-
-    proc = launcher.ManagedProcess(
-        name="backend",
-        process=_ReapingProcess(4242),
-        pgid=4242,
-    )
-    monkeypatch.setattr(launcher, "_send_tree_signal", failing_signal)
-    monkeypatch.setattr(launcher, "_log", lambda _message: None)
-
-    launcher._terminate(proc)
-
-    assert waited == [8]
 
 
 # --------------------------------------------------------------------------

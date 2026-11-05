@@ -114,8 +114,10 @@ repos:
     hooks:
       - id: mypy
         args: [--ignore-missing-imports, --no-error-summary, --no-strict-optional]
-        exclude: ^(tests/|scripts/|deeptutor/agents/|deeptutor/services/rag/|deeptutor/api/routers/)
+        # Separate distribution build roots each have their own setup module.
+        exclude: ^(tests/|scripts/|packaging/[^/]+/setup\.py$|deeptutor/agents/|deeptutor/services/rag/|deeptutor/api/routers/)
         additional_dependencies:
           - types-PyYAML
           - types-requests
           - types-croniter
+          - types-python-dateutil

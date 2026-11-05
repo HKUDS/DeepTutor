@@ -28,6 +28,19 @@ _SAFE_FILENAME = re.compile(r"[^\w.-]+")
 # with English scaffolding. Keyed by the same language codes the prompt layer
 # uses (deeptutor/services/prompt/language.py), falling back to English.
 _LABELS: dict[str, dict[str, str]] = {
+    "pt": {
+        "takeaway": "Ideia principal",
+        "answer": "Resposta",
+        "front": "Frente",
+        "back": "Verso",
+        "sources": "Fontes",
+        "chapters": "Capítulos",
+        "note": "Nota",
+        "untitled_book": "Livro sem título",
+        "untitled_chapter": "Capítulo sem título",
+        "not_generated": "(Este capítulo ainda não foi gerado.)",
+        "omitted": "({kind} omitido — não possui representação em texto.)",
+    },
     "en": {
         "takeaway": "Key takeaway",
         "answer": "Answer",
@@ -53,6 +66,32 @@ _LABELS: dict[str, dict[str, str]] = {
         "untitled_chapter": "未命名章节",
         "not_generated": "（本章尚未生成。）",
         "omitted": "（{kind} 无法用文本表示，已省略。）",
+    },
+    "fr": {
+        "takeaway": "À retenir",
+        "answer": "Réponse",
+        "front": "Recto",
+        "back": "Verso",
+        "sources": "Sources",
+        "chapters": "Chapitres",
+        "note": "Remarque",
+        "untitled_book": "Livre sans titre",
+        "untitled_chapter": "Chapitre sans titre",
+        "not_generated": "(Ce chapitre n’a pas encore été généré.)",
+        "omitted": "({kind} omis — aucune représentation textuelle.)",
+    },
+    "tr": {
+        "takeaway": "Ana çıkarım",
+        "answer": "Cevap",
+        "front": "Ön yüz",
+        "back": "Arka yüz",
+        "sources": "Kaynaklar",
+        "chapters": "Bölümler",
+        "note": "Not",
+        "untitled_book": "Adsız kitap",
+        "untitled_chapter": "Adsız bölüm",
+        "not_generated": "(Bu bölüm henüz oluşturulmadı.)",
+        "omitted": "({kind} atlandı: metin karşılığı yok.)",
     },
 }
 

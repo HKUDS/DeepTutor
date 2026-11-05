@@ -3,12 +3,15 @@
 import Tooltip from "@/shared/ui/Tooltip";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { Check, ChevronDown, Folder, FolderOpen, Plus } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { useLingerExpand } from "@/hooks/use-linger-expand";
 import ToolbarLabel from "@/components/chat/home/ToolbarLabel";
 import { saveWorkspace, type ChatWorkspaceRegistration } from "@/lib/workspaces-api";
+
+const ServerFolderPicker = dynamic(() => import("./ServerFolderPicker").then(module => module.ServerFolderPicker), { ssr: false });
 
 /**
  * Which workspace this conversation belongs to.
@@ -44,6 +47,7 @@ export function WorkspacePill({
 }) {
   const { t } = useTranslation();
   const [creating, setCreating] = useState(false);
+  const [browsing, setBrowsing] = useState(false);
   const [name, setName] = useState("");
   const [saving, setSaving] = useState(false);
   const [createError, setCreateError] = useState("");
@@ -221,6 +225,10 @@ export function WorkspacePill({
             </button>
           ) : null}
 
+          <button type="button" role="menuitem" onClick={() => { setOpen(false); setBrowsing(true); }}
+            className="flex w-full items-center gap-2 border-t border-[var(--border)] px-3 py-2 text-left text-xs hover:bg-[var(--muted)]">
+            <FolderOpen size={15} />{t("Choose a server folder")}
+          </button>
           {creating ? (
             <form className="space-y-2 border-t border-[var(--border)] p-3" onSubmit={async event => {
               event.preventDefault();
@@ -273,6 +281,14 @@ export function WorkspacePill({
           </div>
         </div>
       )}
+      {browsing && <ServerFolderPicker onClose={() => setBrowsing(false)} onSelect={async folder => {
+        const existing = choices.find(item => item.kind === "workspace" && item.path === folder.path);
+        const row = existing
+          ? existing.archived ? await saveWorkspace({ archived: false }, existing.workspace_id) : existing
+          : await saveWorkspace({ name: folder.name.slice(0, 100), path: folder.path });
+        setCreated(items => [...items.filter(item => item.workspace_id !== row.workspace_id), row]);
+        onSelect(row.workspace_id);
+      }} />}
     </div>
   );
 }

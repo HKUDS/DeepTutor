@@ -5,6 +5,7 @@ from pathlib import Path
 from fastapi import HTTPException
 import pytest
 
+from deeptutor.core.errors import AccessError
 from deeptutor.multi_user.knowledge_access import (
     current_kb_manager,
     list_visible_knowledge_bases,
@@ -78,21 +79,21 @@ def test_knowledge_origins_selection_and_grants(as_user):
             assert [r["id"] for r in list_visible_knowledge_bases()] == [local_id]
             assert resolve_kb("same").base_dir == legacy_root
             assert resolve_kb(local_id).base_dir == legacy_root
-            with pytest.raises(HTTPException, match="403"):
+            with pytest.raises(AccessError, match="not assigned"):
                 resolve_kb(global_id)
-            with pytest.raises(HTTPException):
+            with pytest.raises(AccessError):
                 resolve_kb("admin:kb:same")
         service.update_workspace(
             b["workspace_id"], resources={"knowledge_bases": [global_id, local_id]}
         )
         with workspace_context(b["workspace_id"]):
-            with pytest.raises(HTTPException):
+            with pytest.raises(AccessError):
                 resolve_kb("same")
             assert resolve_kb(global_id).base_dir != resolve_kb(local_id).base_dir
         service.update_workspace(b["workspace_id"], resources={"knowledge_bases": []})
         with workspace_context(b["workspace_id"]):
             assert list_visible_knowledge_bases() == []
-            with pytest.raises(HTTPException):
+            with pytest.raises(AccessError):
                 resolve_kb(local_id)
             token = library_request.set(True)
             try:
@@ -101,7 +102,7 @@ def test_knowledge_origins_selection_and_grants(as_user):
             finally:
                 library_request.reset(token)
     with as_user("bob"):
-        with pytest.raises(HTTPException):
+        with pytest.raises(AccessError):
             resolve_kb(local_id)
         with pytest.raises(WorkspaceError):
             ContentWorkspaceService().create_workspace(
@@ -129,7 +130,7 @@ def test_inherited_workspace_keeps_account_subagents_without_sharing_kbs(as_user
         )
         with workspace_context(workspace["workspace_id"]):
             assert list_visible_knowledge_bases() == []
-            with pytest.raises(HTTPException):
+            with pytest.raises(AccessError):
                 resolve_kb("account:kb:my-agent")
 
 
@@ -147,17 +148,17 @@ def test_explicit_learning_sources_allow_reads_without_changing_workspace_or_wri
             "workspace_id"
         ]
         with workspace_context(target):
-            with pytest.raises(HTTPException):
+            with pytest.raises(AccessError):
                 resolve_kb(source)
             with learning_source_access([source]):
                 assert resolve_kb(source).name == "notes"
                 assert current_workspace_id() == target
-                with pytest.raises(HTTPException):
+                with pytest.raises(AccessError):
                     resolve_kb(source, require_write=True)
-            with pytest.raises(HTTPException):
+            with pytest.raises(AccessError):
                 resolve_kb(source)
     with as_user("bob"), learning_source_access([f"workspace:{target}:kb:notes"]):
-        with pytest.raises(HTTPException):
+        with pytest.raises(AccessError):
             resolve_kb(f"workspace:{target}:kb:notes")
 
 

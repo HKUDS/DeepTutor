@@ -12,11 +12,12 @@ import {
   SettingsPageHeader,
   inputClass,
 } from "@/components/settings/shared";
+import { Toggle } from "@/components/settings/Toggle";
 import { useSettings } from "@/features/settings/store/SettingsStore";
 import { apiFetch, apiUrl } from "@/lib/api";
 import { EXTENSION_ENDPOINTS } from "@/lib/settings-extensions";
 
-type StarterSettings = { trace_count: number };
+type StarterSettings = { trace_count: number; ask_hint_enabled: boolean };
 
 type StarterSettingsPayload = {
   settings: StarterSettings;
@@ -55,10 +56,11 @@ export default function StarterSettingsPage() {
         setPayload(next);
         // An edit left behind earlier in this session (or parked in a saved
         // draft) wins over the server value — leaving the page is not a way
-        // to discard changes.
+        // to discard changes. Spread over the server value because a draft
+        // parked before a field existed does not carry it.
         const pending = pendingExtensionPayload("chat-starters") as
-          StarterSettings | undefined;
-        setDraft(pending ? { ...pending } : { ...next.settings });
+          Partial<StarterSettings> | undefined;
+        setDraft({ ...next.settings, ...pending });
       } catch (err) {
         if (!cancelled)
           setError(err instanceof Error ? err.message : String(err));
@@ -75,7 +77,10 @@ export default function StarterSettingsPage() {
   const dirty = useMemo(
     () =>
       Boolean(
-        payload && draft && payload.settings.trace_count !== draft.trace_count,
+        payload &&
+          draft &&
+          (payload.settings.trace_count !== draft.trace_count ||
+            payload.settings.ask_hint_enabled !== draft.ask_hint_enabled),
       ),
     [draft, payload],
   );
@@ -169,6 +174,27 @@ export default function StarterSettingsPage() {
                     current
                       ? { ...current, trace_count: Number(event.target.value) }
                       : current,
+                  )
+                }
+              />
+            }
+          />
+        </SettingSection>
+      )}
+
+      {!loading && payload && draft && (
+        <SettingSection title={t("Composer")}>
+          <SettingRow
+            title={t("Suggest my next message")}
+            description={t(
+              "After each reply, the input box shows a guess at what you might type next; Tab accepts it. Turn this off when practicing in chat — the likeliest next message to a question is its answer.",
+            )}
+            control={
+              <Toggle
+                checked={draft.ask_hint_enabled}
+                onChange={(next) =>
+                  setDraft((current) =>
+                    current ? { ...current, ask_hint_enabled: next } : current,
                   )
                 }
               />

@@ -3,15 +3,13 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTranslation } from "react-i18next";
-import { ArrowRight, CalendarCheck, Check, ClipboardList, FileUp, Loader2, X } from "lucide-react";
+import { ArrowRight, CalendarCheck, Check, ClipboardList, FileUp, Loader2 } from "lucide-react";
 import { QuestionBankSection } from "@/components/space/question-bank";
 import SpaceSectionHeader from "@/components/space/SpaceSectionHeader";
 import { practiceRoute, questionBankRoute } from "@/lib/learning-routes";
 import { getPracticeQueue, getPracticeSummary, type PracticeSummary } from "@/lib/practice-api";
 import { LearningErrorState, LearningShell } from "../LearningShell";
 import { ReviewHome } from "./ReviewHome";
-import { WorkspaceLabel } from "../LibraryWorkspace";
-import { activeWorkspaceId } from "@/lib/workspace-scope";
 import { PracticeImport } from "./PracticeImport";
 import { PracticeSession } from "./PracticeSession";
 import { PracticeInsights } from "./PracticeInsights";
@@ -19,17 +17,16 @@ import { PracticeInsights } from "./PracticeInsights";
 /** Shared collections and imports; both surfaces can start a manual practice session. */
 export function PracticePage({ mode = "practice" }: { mode?: "practice" | "library" }) {
   const search = useSearchParams();
-  if (mode === "practice" && !search.has("course") && !search.has("question")) return <ReviewHome />;
-  return <ScopedPracticePage mode={mode} initialImport={search.get("create") === "1"} />;
+  if (mode === "practice" && !search.has("question")) return <ReviewHome />;
+  return <PracticeCollectionPage mode={mode} initialImport={search.get("create") === "1"} />;
 }
 
-function ScopedPracticePage({ mode, initialImport }: { mode: "practice" | "library"; initialImport: boolean }) {
+function PracticeCollectionPage({ mode, initialImport }: { mode: "practice" | "library"; initialImport: boolean }) {
   const { t } = useTranslation();
   const libraryOnly = mode === "library";
   const pageRoute = libraryOnly ? questionBankRoute : practiceRoute;
   const router = useRouter();
   const search = useSearchParams();
-  const courseId = search.get("course")?.trim() || "";
   const tab = search.get("view") === "mistakes" ? "mistakes" : "bank";
   const [summary, setSummary] = useState<PracticeSummary | null>(null);
   const [error, setError] = useState("");
@@ -46,7 +43,7 @@ function ScopedPracticePage({ mode, initialImport }: { mode: "practice" | "libra
   const refresh = useCallback(async () => {
     const sequence = ++summarySequence.current;
     try {
-      const result = await getPracticeSummary(courseId);
+      const result = await getPracticeSummary();
       if (sequence === summarySequence.current) {
         setSummary(result);
         setError("");
@@ -55,7 +52,7 @@ function ScopedPracticePage({ mode, initialImport }: { mode: "practice" | "libra
       if (sequence === summarySequence.current)
         setError(err instanceof Error ? err.message : String(err));
     }
-  }, [courseId]);
+  }, []);
   useEffect(() => {
     void refresh();
     const onFocus = () => {
@@ -82,7 +79,7 @@ function ScopedPracticePage({ mode, initialImport }: { mode: "practice" | "libra
     setStarting(true);
     setNotice("");
     try {
-      const queue = await getPracticeQueue(courseId);
+      const queue = await getPracticeQueue();
       if (queue.length) setSession(queue.map(item => item.entry.id));
       else {
         setNotice(t("You are caught up. Come back when your next reviews are due."));
@@ -116,26 +113,7 @@ function ScopedPracticePage({ mode, initialImport }: { mode: "practice" | "libra
           </button>
         )
       }
-      scopeChip={
-        courseId && (
-          <span className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 text-xs text-muted-foreground">
-            {t("This course")}
-            <button
-              type="button"
-              aria-label={t("Show every course")}
-              onClick={() => {
-                const next = new URLSearchParams(search.toString());
-                next.delete("course");
-                router.replace(pageRoute(next));
-              }}
-            >
-              <X size={13} />
-            </button>
-          </span>
-        )
-      }
     >
-      {!libraryOnly && <div className="mb-4 flex items-center gap-3 text-xs"><a href="/learning/practice" className="underline">{t("All workspaces")}</a><WorkspaceLabel row={{ content_workspace_id: activeWorkspaceId() }} /></div>}
       {session ? (
         <PracticeSession ids={session} onClose={closeSession} backLabel={libraryOnly ? t("Back to library") : undefined} />
       ) : (
@@ -153,7 +131,6 @@ function ScopedPracticePage({ mode, initialImport }: { mode: "practice" | "libra
             <PracticeImport
               key={tab}
               initialTarget={tab}
-              courseId={courseId}
               onClose={() => setImportOpen(false)}
               onImported={message => {
                 setNotice(message);
@@ -164,7 +141,7 @@ function ScopedPracticePage({ mode, initialImport }: { mode: "practice" | "libra
             />
           )}
           {error && <LearningErrorState message={error} onRetry={() => void refresh()} />}
-          {!libraryOnly && <PracticeInsights courseId={courseId} revision={revision} />}
+          {!libraryOnly && <PracticeInsights revision={revision} />}
           {!libraryOnly && (
             <section
               aria-labelledby="practice-today"
@@ -260,7 +237,7 @@ function ScopedPracticePage({ mode, initialImport }: { mode: "practice" | "libra
           </div>
           <div id="practice-collection" role="tabpanel" aria-labelledby={`practice-tab-${tab}`}>
             <QuestionBankSection
-              key={`${tab}:${courseId}:${revision}`}
+              key={`${tab}:${revision}`}
               embedded
               onChanged={refresh}
               mistakesOnly={tab === "mistakes"}
@@ -279,12 +256,10 @@ function ScopedPracticePage({ mode, initialImport }: { mode: "practice" | "libra
 function PracticePageShell({
   libraryOnly,
   action,
-  scopeChip,
   children,
 }: {
   libraryOnly: boolean;
   action: ReactNode;
-  scopeChip: ReactNode;
   children: ReactNode;
 }) {
   const { t } = useTranslation();
@@ -296,7 +271,6 @@ function PracticePageShell({
           title={t("Question Bank")}
           description={t("Questions from every source, together with your own imports.")}
           action={action}
-          meta={scopeChip}
         />
         {children}
       </>
@@ -307,7 +281,6 @@ function PracticePageShell({
       title={t("Practice")}
       subtitle={t("Collect what you learn. Practice what matters. Remember it for longer.")}
       action={action}
-      scopeChip={scopeChip}
     >
       {children}
     </LearningShell>

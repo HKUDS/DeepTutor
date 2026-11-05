@@ -331,3 +331,37 @@ def test_coverage_and_page_http_routes_retain_source_guard_and_hash(textbook, mo
         ).status_code
         == 403
     )
+
+
+def test_coverage_report_is_read_as_utf8_regardless_of_locale(tmp_path, monkeypatch):
+    from hashlib import sha256
+
+    from deeptutor.services.rag.visual_assets import _sha256_file
+
+    real = Path.read_text
+
+    def read_text(self, encoding=None, errors=None, *args, **kwargs):
+        return real(self, encoding=encoding or "cp1252", errors=errors, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", read_text)
+    kb = tmp_path / "kb"
+    raw = kb / "raw"
+    raw.mkdir(parents=True)
+    source = raw / "\u00c1LGEBRA \u6570\u5b66.pdf"
+    source.write_bytes(b"%PDF-1.4")
+    report = {
+        "source_path": source.name,
+        "source_document_id": _sha256_file(source),
+        "validated_count": 3,
+        "issues": [],
+        "whole_document_verified": True,
+        "page_fallback": True,
+    }
+    report_file = (
+        kb / "visual_assets" / "coverage" / (sha256(source.name.encode()).hexdigest() + ".json")
+    )
+    report_file.parent.mkdir(parents=True)
+    report_file.write_text(json.dumps(report, ensure_ascii=False), encoding="utf-8")
+
+    documents = coverage_overview(kb, source_path=source.name)["documents"]
+    assert documents[0]["whole_document_verified"] is True

@@ -312,3 +312,66 @@ def test_every_notebook_endpoint_reports_damage_as_409(manager: NotebookManager)
             assert resp.json()["detail"]["code"] == "notebook_unreadable", (
                 f"{method} {url} lost the structured reason"
             )
+
+
+def test_favorite_source_survives_move_and_reopen(manager: NotebookManager) -> None:
+    source = manager.create_notebook("Inbox")["id"]
+    target = manager.create_notebook("Physics")["id"]
+    record = manager.add_record(
+        notebook_ids=[source],
+        record_type="chat",
+        title="Water",
+        user_query="q",
+        output="**Original**",
+    )["record"]
+    with TestClient(_build_app(manager)) as client:
+        moved = client.post(
+            f"/api/notebooks/{source}/records/{record['id']}/actions/move",
+            json={"target_notebook_id": target},
+        )
+        assert moved.json()["record"]["id"] == record["id"]
+        location = client.get(
+            f"/api/notebooks/records/{record['id']}/location", params={"notebook_id": source}
+        )
+        assert location.json()["notebook_id"] == target
+        assert (
+            client.put(
+                f"/api/notebooks/{target}/records/{record['id']}", json={"output": "changed"}
+            ).status_code
+            == 400
+        )
+        assert (
+            client.put(
+                f"/api/notebooks/{target}/records/{record['id']}",
+                json={"title": "Renamed", "summary": "My annotation"},
+            ).status_code
+            == 200
+        )
+        assert client.get("/api/notebooks/records/missing/location").status_code == 404
+    reopened = NotebookManager(base_dir=str(manager.base_dir))
+    assert reopened.locate_record(record["id"], source) == target
+    saved = reopened.get_record(target, record["id"])
+    assert saved["output"] == "**Original**"
+    assert saved["title"] == "Renamed"
+    assert saved["summary"] == "My annotation"
+
+
+def test_move_duplicate_never_overwrites_favorite(manager: NotebookManager) -> None:
+    source = manager.create_notebook("Inbox")["id"]
+    target = manager.create_notebook("Archive")["id"]
+    record = manager.add_record(
+        notebook_ids=[source, target],
+        record_type="chat",
+        title="Original",
+        user_query="q",
+        output="body",
+    )["record"]
+    manager.update_record(target, record["id"], title="My title")
+    with TestClient(_build_app(manager)) as client:
+        result = client.post(
+            f"/api/notebooks/{source}/records/{record['id']}/actions/move",
+            json={"target_notebook_id": target},
+        )
+        assert result.status_code == 409
+    assert manager.get_record(source, record["id"])["title"] == "Original"
+    assert manager.get_record(target, record["id"])["title"] == "My title"

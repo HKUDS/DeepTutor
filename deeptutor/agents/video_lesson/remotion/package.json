@@ -1,0 +1,15 @@
+{
+  "name": "deeptutor-video-lesson-runtime",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@remotion/player": "4.0.537",
+    "esbuild": "0.28.2",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "remotion": "4.0.537",
+    "quickjs-emscripten": "0.32.0",
+    "web-streams-polyfill": "4.3.0",
+    "fast-text-encoding": "1.0.6"
+  }
+}

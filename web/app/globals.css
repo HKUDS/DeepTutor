@@ -8,8 +8,15 @@
   container: feature-page / inline-size;
 }
 
+.dt-page-icon {
+  /* Revealed per UI layout; see features/ui-layout/modern/modern.css. */
+  display: none;
+}
+
 .dt-page-title {
   font-size: 27px;
+  /* A UI layout token: see features/ui-layout/{classic,modern}. */
+  font-family: var(--dt-page-title-font, theme("fontFamily.sans"));
 }
 
 .dt-page-action,
@@ -819,6 +826,51 @@
   animation: dt-breathing 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
+/* Whoever a turn was handed to, in the orb's place. A partner's face or an
+   agent's mark on a soft tile; while they work a hairline ring breathes out
+   from it — the orb's "still going" in their shape. */
+.dt-answerer-mark {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+}
+.dt-answerer-mark[data-kind="subagent"] { border-radius: 6px; }
+.dt-answerer-tile {
+  display: inline-flex;
+  width: 100%;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  border-radius: inherit;
+  color: var(--foreground);
+  background: color-mix(in srgb, var(--foreground) 7%, transparent);
+}
+.dt-answerer-mark.is-working::after {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: inherit;
+  border: 1.5px solid color-mix(in srgb, var(--primary) 55%, transparent);
+  animation: dt-answerer-ring 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  pointer-events: none;
+}
+.dt-answerer-mark[data-kind="subagent"].is-working::after { border-radius: 8px; }
+@keyframes dt-answerer-ring {
+  0%, 100% { opacity: 0.25; transform: scale(0.94); }
+  50% { opacity: 1; transform: scale(1.04); }
+}
+.dt-answerer-name {
+  margin-right: -4px;
+  color: var(--foreground);
+  font-weight: 600;
+}
+@media (prefers-reduced-motion: reduce) {
+  .dt-answerer-mark.is-working::after { animation: none; opacity: 0.7; }
+}
+
 /* Trace detail, opening.
    Entry only, deliberately. A height transition would need the body mounted
    while collapsed, and a long transcript has dozens of collapsed rows — that
@@ -1453,4 +1505,46 @@ a[href^="#dt-locator-"]:hover {
 .watching-surface[data-browsing] .watching-mobile-tabs {
   visibility: hidden;
   pointer-events: none;
+}
+
+/* Learning typography is opt-in. Absolute baseline sizes avoid compounded scaling
+   in nested content. No preferences are attached to the document font size. */
+.learning-text {
+  font-size: calc(var(--learning-text-base, 16px) * var(--learning-font-scale, 1)) !important;
+  line-height: var(--learning-line-height, 1.75) !important;
+}
+.learning-text p,
+.learning-text li,
+.learning-text blockquote,
+.learning-text table {
+  line-height: var(--learning-line-height, 1.75);
+}
+.learning-text table {
+  font-size: calc(14px * var(--learning-font-scale, 1));
+}
+.learning-text h1 {
+  font-size: calc(24px * var(--learning-font-scale, 1));
+  line-height: calc(32px * var(--learning-font-scale, 1) * var(--learning-line-height, 1.75) / 1.75);
+}
+.learning-text h2 {
+  font-size: calc(20px * var(--learning-font-scale, 1));
+  line-height: calc(28px * var(--learning-font-scale, 1) * var(--learning-line-height, 1.75) / 1.75);
+}
+.learning-text h3 {
+  font-size: calc(18px * var(--learning-font-scale, 1));
+  line-height: calc(28px * var(--learning-font-scale, 1) * var(--learning-line-height, 1.75) / 1.75);
+}
+.learning-text h4 {
+  font-size: calc(16px * var(--learning-font-scale, 1));
+  line-height: calc(24px * var(--learning-font-scale, 1) * var(--learning-line-height, 1.75) / 1.75);
+}
+.learning-text h5,
+.learning-text h6 {
+  font-size: calc(14px * var(--learning-font-scale, 1));
+  line-height: calc(20px * var(--learning-font-scale, 1) * var(--learning-line-height, 1.75) / 1.75);
+}
+.learning-text .md-code-block,
+.learning-text .learning-text-excluded {
+  font-size: 16px;
+  line-height: 1.5;
 }

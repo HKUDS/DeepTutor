@@ -319,6 +319,44 @@ def test_short_k3_override_does_not_match_unrelated_models(model: str) -> None:
     assert kwargs["temperature"] == pytest.approx(0.2)
 
 
+@pytest.mark.parametrize(
+    ("binding", "model"),
+    [
+        ("azure_openai", "gpt-5-mini"),
+        ("azure_openai", "o3-mini"),
+        ("azure_openai", "o4-mini"),
+        ("openai", "gpt-5"),
+        ("custom", "gpt-5-mini"),
+        ("custom", "o3-mini"),
+        ("custom", "o4-mini"),
+    ],
+)
+def test_agentic_kwargs_drop_temperature_for_openai_reasoning_models(
+    binding: str, model: str
+) -> None:
+    """These models reject a non-default temperature with HTTP 400 (#2181)."""
+    kwargs = build_completion_kwargs(
+        temperature=0.2,
+        model=model,
+        max_tokens=256,
+        binding=binding,
+    )
+
+    assert "temperature" not in kwargs
+
+
+@pytest.mark.parametrize("binding", ["azure_openai", "openai", "custom"])
+def test_agentic_kwargs_keep_temperature_for_gpt_4o(binding: str) -> None:
+    kwargs = build_completion_kwargs(
+        temperature=0.2,
+        model="gpt-4o",
+        max_tokens=256,
+        binding=binding,
+    )
+
+    assert kwargs["temperature"] == pytest.approx(0.2)
+
+
 def test_native_tool_backends_all_have_adapter_builders() -> None:
     # Every tool-gated backend must be adapter-routed, or tool schemas would be
     # attached to a plain AsyncOpenAI client speaking a non-OpenAI wire format.
@@ -600,6 +638,9 @@ def test_registered_cloud_openai_compat_providers_enable_native_tools() -> None:
         "opper",
         "y_api",
         "onomeo",
+        "runcrate",
+        "llmtr",
+        "cloudgpu",
         "edenai",
         "novita",
         "volcengine_coding_plan",

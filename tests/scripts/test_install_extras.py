@@ -157,3 +157,18 @@ def test_every_extra_the_project_declares_resolves() -> None:
     _, unknown = install_extras.resolve(extras, ["math-animator", "partners"])
 
     assert unknown == []
+
+
+@pytest.mark.parametrize("engine", ["docling", "markitdown", "pymupdf4llm", "liteparse"])
+def test_parser_extra_resolves_source_requirements_without_feature_wheels(engine) -> None:
+    from deeptutor.modules.catalog import manifests
+    from deeptutor.services.parsing.engines._install import ENGINE_PIP_SPECS
+
+    root = Path(__file__).resolve().parents[2]
+    extras = install_extras.load_extras(root / "pyproject.toml")
+    requirements, unknown = install_extras.resolve(extras, [f"parse-{engine}"])
+
+    assert unknown == []
+    assert set(ENGINE_PIP_SPECS[engine]).issubset(requirements)
+    assert set(manifests()["parsing"]["requirements"]).issubset(requirements)
+    assert not any(requirement.startswith("deeptutor") for requirement in requirements)

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import logging
 import time
 from typing import TYPE_CHECKING, Any
 import uuid
@@ -17,6 +18,10 @@ from deeptutor.services.session.protocol import (
     SUBMISSION_REPLAY_FIELD,
     SUBMISSION_USER_FIELD,
 )
+from deeptutor.services.session.thread_attribution import (
+    BACKFILL_ATTEMPTED_KEY,
+    parent_message_role,
+)
 from deeptutor.services.session.workspace_preferences import (
     WORKSPACE_MODE_MASTERY,
     WORKSPACE_MODE_READING,
@@ -24,19 +29,18 @@ from deeptutor.services.session.workspace_preferences import (
 from deeptutor.services.workspace.activity import workspace_writer
 
 from .._turn_runtime_shared import (
-    _apply_course_defaults,
     _coerce_bool,
-    _course_conventions_block,
-    _extract_selection_tutor_context,
+    _extract_side_chat_context,
     _llm_selection_dict,
     _mastery_loop_managed,
     _mastery_path_id,
+    _note_generation,
     _partner_group_references,
     _reading_material_id,
     _reading_material_revision,
     _reading_references,
     _reading_workspace_id,
-    _resolve_selection_tutor_context,
+    _resolve_side_chat_context,
     _timed_media_id,
     _TurnExecution,
     _workspace_mode,
@@ -45,6 +49,8 @@ from .._turn_runtime_shared import (
 if TYPE_CHECKING:
     from deeptutor.runtime.coordination import RuntimeCoordinator
     from deeptutor.services.session.protocol import SessionStoreProtocol
+
+logger = logging.getLogger(__name__)
 
 
 # Request snapshots use the browser's display keys. Only these saved turn
@@ -66,10 +72,12 @@ _REPLAY_SNAPSHOT_FIELDS: dict[str, str] = {
     "skills": "skills",
     "mcp": "mcp",
     "persona": "persona",
+    "create_target": "createTarget",
     "llm_selection": "llmSelection",
     "workspace_mode": "workspaceMode",
     "workspace_id": "workspaceId",
-    "course_id": "courseId",
+    "note_document_id": "noteDocumentId",
+    "note_generation": "noteGeneration",
     "mastery_path_id": "masteryPathId",
     "mastery_session_mode": "masterySessionMode",
     "mastery_answer": "masteryAnswer",
@@ -80,8 +88,41 @@ _REPLAY_SNAPSHOT_FIELDS: dict[str, str] = {
     "timed_media_id": "timedMediaId",
     "consult_partner_id": "consultPartnerId",
     "partner_discussion_group_id": "partnerDiscussionGroupId",
+    "answer_by": "answerBy",
     "auto_route": "autoRoute",
 }
+
+
+def _tutor_thread_preferences(context: dict[str, Any]) -> dict[str, Any]:
+    preferences: dict[str, Any] = {}
+    if context.get("selected_text"):
+        preferences.update(
+            {
+                "tutor_scope": "selection",
+                "tutor_selected_text": str(context["selected_text"])[:2000],
+            }
+        )
+    else:
+        preferences["tutor_scope"] = "conversation"
+    # Which message this thread is filed under, restated by the client on every
+    # turn. The key's presence is authoritative, like ``create_target``: a
+    # value moves the thread, an explicit null clears it, and omitting the key
+    # (what older clients do) leaves the stored anchor untouched.
+    if "quoted_message_id" in context:
+        quoted_message_id = context.get("quoted_message_id")
+        if quoted_message_id is None:
+            preferences["tutor_source_message_id"] = ""
+            # A deliberate detach must survive the legacy-thread backfill.
+            preferences[BACKFILL_ATTEMPTED_KEY] = True
+        else:
+            preferences["tutor_source_message_id"] = quoted_message_id
+    elif context.get("selected_text"):
+        # ``source_message_id`` is the branch tip the transcript is read up to;
+        # for a legacy selection thread it is also the selected message.
+        source_message_id = context.get("source_message_id")
+        if source_message_id is not None:
+            preferences["tutor_source_message_id"] = source_message_id
+    return preferences
 
 
 class TurnRequestPreparer:
@@ -141,6 +182,7 @@ class TurnRequestPreparer:
         payload: dict[str, Any],
         *,
         replace_assistant_message_id: int | str | None = None,
+        persist_llm_selection_only: bool = False,
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         await self._ensure_accepting_turns()
         from deeptutor.services.workspace.context import get_workspace_scope
@@ -194,8 +236,8 @@ class TurnRequestPreparer:
         # Freeze the content binding at admission, before scheduling the turn.
         # Existing conversations are moved through the organization endpoint;
         # a stale tab must never move one by sending its cached preference.
+        from deeptutor.core.identities import is_partner_user_id
         from deeptutor.multi_user.context import get_current_user
-        from deeptutor.services.partners.scope import is_partner_user_id
         from deeptutor.services.workspace import get_content_workspace_service
         from deeptutor.services.workspace.context import get_workspace_scope
 
@@ -296,31 +338,6 @@ class TurnRequestPreparer:
             payload.pop("timed_media_id", None)
             payload.pop("timed_media_viewport", None)
 
-        course_id_explicit = "course_id" in payload
-        requested_course_id = str(
-            (payload.get("course_id") if course_id_explicit else preferences.get("course_id")) or ""
-        ).strip()
-        bound_course = None
-        if requested_course_id:
-            from deeptutor.services.courses import (
-                CourseNotFoundError,
-                get_course_service,
-            )
-
-            try:
-                bound_course = await asyncio.to_thread(
-                    get_course_service().get,
-                    requested_course_id,
-                )
-            except CourseNotFoundError:
-                requested_course_id = ""
-        if bound_course is not None:
-            payload = _apply_course_defaults(
-                payload,
-                bound_course,
-                preferences=preferences,
-            )
-
         requested_capability = str(payload.get("capability") or "chat")
         # Resolved before routing, and from the *requested* action: the
         # workspace is what decides whether this turn may be re-routed at all,
@@ -366,16 +383,6 @@ class TurnRequestPreparer:
             **payload,
             "capability": capability,
             "workspace_mode": workspace_mode,
-            "course_id": requested_course_id,
-            # Rendered here, where the course is already loaded and validated,
-            # and carried on the payload so the run phase needs no second read.
-            # Session preferences are assembled key by key below, so this rides
-            # along without being persisted.
-            "course_conventions": (
-                _course_conventions_block(bound_course, str(payload.get("language") or "en"))
-                if bound_course is not None
-                else ""
-            ),
             "requested_capability": requested_capability,
             "capability_route": (
                 capability_route.as_metadata() if capability_route is not None else None
@@ -460,7 +467,6 @@ class TurnRequestPreparer:
         # the tutor may change it mid-turn with ``mastery_mode`` and the
         # learner may change it from the header, so the value a turn starts
         # with is only where it starts.
-        from deeptutor.capabilities.mastery.mode import enforced_mode
 
         # ``or``, not "is the key present": the client writes this key on every
         # turn and leaves it null whenever it does not happen to hold the mode
@@ -476,7 +482,14 @@ class TurnRequestPreparer:
         # ``enforced_mode`` rather than ``normalize_mode``: a conversation that
         # never recorded a mode must stay unrecorded all the way down to the
         # tools, which read the absence as "enforce nothing".
-        mastery_session_mode = enforced_mode(raw_mastery_mode)
+        mastery_session_mode = None
+        if raw_mastery_mode:
+            from deeptutor.modules.catalog import require_module
+
+            require_module("mastery")
+            from deeptutor.capabilities.mastery.mode import enforced_mode
+
+            mastery_session_mode = enforced_mode(raw_mastery_mode)
         payload = {
             **payload,
             "mastery_path_id": mastery_path_id,
@@ -622,6 +635,9 @@ class TurnRequestPreparer:
             "tools": list(payload.get("tools") or []),
             "knowledge_bases": list(payload.get("knowledge_bases") or []),
             "language": str(payload.get("language") or "en"),
+            # Who this conversation is handed to; "" when DeepTutor answers.
+            # The client restates it every turn, so the last one is current.
+            "answer_by": str(payload.get("answer_by") or ""),
         }
         if payload.get("capability_once"):
             # One turn in another mode; the conversation keeps its own.
@@ -635,28 +651,68 @@ class TurnRequestPreparer:
         # non-empty legacy capability is persisted as part of migration.
         if workspace_mode_explicit or workspace_mode:
             preference_update["workspace_mode"] = workspace_mode
-        if course_id_explicit:
-            preference_update["course_id"] = requested_course_id
+
+        if payload.get("note_document_id"):
+            preference_update["note_document_id"] = payload["note_document_id"]
 
         raw_selection_context = payload.get("selection_tutor_context")
         if isinstance(raw_selection_context, dict):
-            selection_tutor_context = _extract_selection_tutor_context(
+            selection_tutor_context = _extract_side_chat_context(
                 {"selection_tutor_context": dict(raw_selection_context)}
             )
             if selection_tutor_context is None:
-                raise RuntimeError("Selection tutor context requires selected text")
+                raise RuntimeError(
+                    "A Little Tutor thread needs selected text or the conversation it is about"
+                )
             try:
-                selection_tutor_context = await _resolve_selection_tutor_context(
+                resolved_selection_context = await _resolve_side_chat_context(
                     self.store,
                     selection_tutor_context,
                 )
             except ValueError as exc:
                 raise RuntimeError(str(exc)) from exc
+            # The executor resolves again when the turn runs; a side chat's
+            # transcript is that resolution's output, not part of the request.
+            selection_tutor_context = {
+                key: value
+                for key, value in resolved_selection_context.items()
+                if key != "conversation_messages"
+            }
             payload["selection_tutor_context"] = selection_tutor_context
             parent_session_id = str(selection_tutor_context.get("parent_session_id") or "").strip()
             if parent_session_id == session["id"]:
                 raise RuntimeError("A selection tutor session cannot parent itself")
             if parent_session_id:
+                quoted_message_id = selection_tutor_context.get("quoted_message_id")
+                if quoted_message_id is not None:
+                    source_role = await parent_message_role(
+                        self.store, parent_session_id, quoted_message_id
+                    )
+                    if source_role is None:
+                        # A deleted or foreign message must not become an
+                        # invisible anchor; treat it as an explicit detach.
+                        logger.warning(
+                            "side chat quoted message %s is not in parent %s",
+                            quoted_message_id,
+                            parent_session_id,
+                        )
+                        selection_tutor_context["quoted_message_id"] = None
+                        selection_tutor_context.pop("source_message_role", None)
+                    else:
+                        selection_tutor_context["source_message_role"] = source_role
+                elif (
+                    "quoted_message_id" not in selection_tutor_context
+                    and selection_tutor_context.get("selected_text")
+                ):
+                    # Legacy selection clients persisted the branch tip as an
+                    # anchor; keep it only when it is really a parent message.
+                    legacy_source = selection_tutor_context.get("source_message_id")
+                    if (
+                        legacy_source is not None
+                        and await parent_message_role(self.store, parent_session_id, legacy_source)
+                        is None
+                    ):
+                        selection_tutor_context.pop("source_message_id", None)
                 from deeptutor.services.session.organization import (
                     validate_parent_assignment,
                 )
@@ -687,7 +743,8 @@ class TurnRequestPreparer:
                     {
                         "parent_session_id": parent_session_id,
                         "session_kind": "selection_tutor",
-                        "course_id": str(parent_preferences.get("course_id") or ""),
+                        "side_chat_group_id": str(payload.get("partner_discussion_group_id") or ""),
+                        **_tutor_thread_preferences(selection_tutor_context),
                     }
                 )
         if llm_selection:
@@ -695,6 +752,11 @@ class TurnRequestPreparer:
         if persona_explicit:
             # Persist explicit set AND explicit clear ("" = back to Default).
             preference_update["persona"] = persona_pref
+        if "create_target" in payload:
+            # Same explicit-set-and-explicit-clear shape as persona: the web
+            # client sends create_target on every turn, so its presence alone
+            # (including an empty/null clear) is what makes it durable.
+            preference_update["create_target"] = payload.get("create_target") or ""
         if skills_explicit:
             preference_update["skills"] = selected_skills
         if mcp_explicit:
@@ -743,6 +805,15 @@ class TurnRequestPreparer:
         try:
             if not payload.get("preserve_session_preferences"):
                 await self.store.update_session_preferences(session["id"], preference_update)
+            elif persist_llm_selection_only and preference_update.get("llm_selection"):
+                # A recovered turn keeps the failed turn's context, but the model
+                # it ran with is the one the user selected now. Persist just
+                # that, so the choice survives a reload, and leave the failed
+                # turn's other preferences where they are (#2105).
+                await self.store.update_session_preferences(
+                    session["id"],
+                    {"llm_selection": preference_update["llm_selection"]},
+                )
             submission_kwargs = {}
             if (
                 payload.get("client_submission_id")
@@ -1014,6 +1085,7 @@ class TurnRequestPreparer:
         for field, snapshot_key in (
             ("consult_partner_id", "consultPartnerId"),
             ("partner_discussion_group_id", "partnerDiscussionGroupId"),
+            ("answer_by", "answerBy"),
         ):
             consultation_fields[field] = (
                 overrides[field]
@@ -1103,10 +1175,32 @@ class TurnRequestPreparer:
                 if "mastery_session_mode" in overrides
                 else preferences.get("mastery_session_mode")
             ),
+            # The create-mode chip is a durable session preference like
+            # persona, but — unlike persona — ordinary chat turns always send
+            # it explicitly, so an un-set key here would read as "leave it to
+            # start_turn's own fallback" and silently drop it. Restore it
+            # explicitly so a plain Regenerate keeps authoring the same draft.
+            "create_target": (
+                overrides.get("create_target")
+                if "create_target" in overrides
+                else snapshot.get("createTarget") or preferences.get("create_target")
+            )
+            or None,
             # Recovered from the original turn's snapshot so the regenerate runs
             # against the same document. An explicit override wins (the reader
             # may have moved on), and the viewport is deliberately not restored —
             # "where the user was looking" is stale by definition on a retry.
+            "note_document_id": (
+                overrides.get("note_document_id")
+                if "note_document_id" in overrides
+                else snapshot.get("noteDocumentId") or preferences.get("note_document_id")
+            )
+            or None,
+            "note_generation": _note_generation(
+                overrides.get("note_generation")
+                if "note_generation" in overrides
+                else snapshot.get("noteGeneration")
+            ),
             "reading_material_id": _reading_material_id(
                 overrides.get("reading_material_id")
                 if "reading_material_id" in overrides
@@ -1160,8 +1254,13 @@ class TurnRequestPreparer:
             if last_message is not None and last_message.get("role") == "assistant"
             else None
         )
+        # A Resend runs with the model the user has selected now, so that one
+        # choice is written back to the conversation. The failed turn's other
+        # preferences are not (#2105).
         if replace_assistant_message_id is None:
-            return await self.start_turn(payload)
+            return await self.start_turn(payload, persist_llm_selection_only=replay_snapshot)
         return await self.start_turn(
-            payload, replace_assistant_message_id=replace_assistant_message_id
+            payload,
+            replace_assistant_message_id=replace_assistant_message_id,
+            persist_llm_selection_only=replay_snapshot,
         )

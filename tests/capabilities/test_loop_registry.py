@@ -220,6 +220,9 @@ def test_duplicate_external_name_first_wins(monkeypatch) -> None:
 def test_active_loop_capabilities_includes_external(monkeypatch) -> None:
     from deeptutor.capabilities import registry
 
+    # External activation is independent of the install's first-run setup gaps.
+    monkeypatch.setattr("deeptutor.capabilities.setup.binding.setup_gaps", lambda: ())
+
     def fake_entry_points(*, group: str):
         return [_ep("demo_loop", lambda: _DemoLoop)]
 

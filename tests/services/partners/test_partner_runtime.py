@@ -43,6 +43,20 @@ def _muted_progress_config() -> PartnerConfig:
 
 class TestTurnExecution:
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("language", ["pt", "pt-BR", "pt_PT", "Português"])
+    async def test_feishu_turn_announces_thinking_in_portuguese(
+        self, partners_root, fake_orchestrator, language
+    ):
+        fake_orchestrator.script = finish("Pronto")
+        runner = _runner(partners_root, PartnerConfig(name="Ada", language=language))
+
+        await runner.process_message(_msg(channel="feishu"))
+
+        notice = await runner.bus.outbound.get()
+        assert notice.content == "🤔 Pensando…"
+        assert notice.metadata["_thinking_notice"] is True
+
+    @pytest.mark.asyncio
     async def test_feishu_turn_announces_thinking_before_any_output(
         self, partners_root, fake_orchestrator
     ):
@@ -56,6 +70,63 @@ class TestTurnExecution:
         assert notice.content == "🤔 正在思考…"
         assert notice.metadata["_thinking_notice"] is True
         assert notice.metadata["_progress"] is True
+
+    @pytest.mark.asyncio
+    async def test_feishu_thinking_notice_uses_the_partner_language(
+        self, partners_root, fake_orchestrator
+    ):
+        fake_orchestrator.script = finish("done")
+        runner = _runner(partners_root, PartnerConfig(name="Ada", language="fr"))
+
+        await runner.process_message(_msg(channel="feishu"))
+
+        notice = await runner.bus.outbound.get()
+        assert notice.content == "🤔 Réflexion…"
+
+    def test_auto_reply_language_follows_the_account_response_language(
+        self, partners_root, monkeypatch
+    ):
+        from deeptutor.services.settings import interface_settings
+
+        monkeypatch.setattr(
+            interface_settings,
+            "get_response_language",
+            lambda default="en": "fr",
+        )
+        runner = _runner(partners_root, PartnerConfig(name="Ada"))
+
+        assert runner._language() == "fr"
+
+    def test_explicit_reply_language_wins_over_the_account_default(
+        self, partners_root, monkeypatch
+    ):
+        from deeptutor.services.settings import interface_settings
+
+        monkeypatch.setattr(
+            interface_settings,
+            "get_response_language",
+            lambda default="en": "fr",
+        )
+        runner = _runner(partners_root, PartnerConfig(name="Ada", language="uk"))
+
+        assert runner._language() == "uk"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("language", ["tr", "tr-TR", "tr_TR", "turkish", "Türkçe", ""])
+    async def test_turkish_thinking_notice_follows_explicit_or_account_language(
+        self, partners_root, monkeypatch, language
+    ):
+        from deeptutor.services.settings import interface_settings
+
+        monkeypatch.setattr(
+            interface_settings, "get_response_language", lambda default="en": "tr_TR"
+        )
+        runner = _runner(partners_root, PartnerConfig(name="Ada", language=language))
+        assert runner._language() == "tr"
+        await runner._publish_thinking_notice(_msg(channel="feishu"))
+        notice = await runner.bus.outbound.get()
+        assert notice.content == "🤔 Düşünüyorum…"
+        assert notice.metadata["_thinking_notice"] is True
 
     @pytest.mark.asyncio
     async def test_web_turn_never_announces_thinking(self, partners_root, fake_orchestrator):
@@ -1446,3 +1517,56 @@ class TestPartnerCommands:
 
         assert "Started a new conversation" in reply
         assert len(fake_orchestrator.seen_contexts) == 1
+
+
+def test_a_finished_activity_keeps_its_question_and_answer_not_every_delta() -> None:
+    from deeptutor.services.partners.manager import PartnerActivityFeed
+
+    feed = PartnerActivityFeed()
+    live = feed.subscribe("ada")
+    frames = [
+        {"type": "user_echo", "content": "hi", "activity_id": "a1"},
+        *(
+            {"type": "stream_event", "event": {"content": str(i)}, "activity_id": "a1"}
+            for i in range(50)
+        ),
+        {"type": "content", "content": "hello", "activity_id": "a1"},
+        {"type": "done", "activity_id": "a1"},
+    ]
+    for frame in frames:
+        feed.publish("ada", frame)
+
+    # Whoever was watching saw it all.
+    assert live.qsize() == len(frames)
+    # A late subscriber gets the gap, not the replay of every delta.
+    late = feed.subscribe("ada")
+    replayed = [late.get_nowait()["type"] for _ in range(late.qsize())]
+    assert replayed == ["user_echo", "content", "done"]
+
+
+def test_a_finished_web_turn_is_not_kept() -> None:
+    import asyncio
+
+    from deeptutor.services.partners.manager import LiveTurn, PartnerManager
+
+    async def run() -> None:
+        manager = object.__new__(PartnerManager)
+        instance = type("Instance", (), {"live_turns": {}})()
+        manager._partners = {"ada": instance}
+
+        async def send_message(*_args, on_event=None, **_kwargs):
+            await on_event(type("E", (), {"to_dict": lambda self: {"type": "content"}})())
+            return "done"
+
+        manager.send_message = send_message
+        turn = LiveTurn(user_content="hi")
+        instance.live_turns["s1"] = turn
+        queue = turn.subscribe()
+        await manager._drive_web_turn("ada", "s1", "hi", [], turn)
+        assert "s1" not in instance.live_turns
+        assert turn.events == []
+        # The subscriber still received the whole turn.
+        kinds = [queue.get_nowait()["type"] for _ in range(queue.qsize())]
+        assert kinds == ["stream_event", "content", "done"]
+
+    asyncio.run(run())

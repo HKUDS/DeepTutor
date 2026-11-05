@@ -5,10 +5,12 @@ on:
     branches:
       - main
       - dev
+      - preview
   pull_request:
     branches:
       - main
       - dev
+      - preview
 
 jobs:
   hygiene:

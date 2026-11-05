@@ -2020,3 +2020,56 @@ async def test_an_empty_profile_call_is_refused_with_the_fields_it_wanted(path_i
     result = await MasteryProfileTool().execute(_mastery_path_id=path_id)
     assert result.success is False
     assert "time_budget" in result.content
+
+
+@pytest.mark.asyncio
+async def test_quiz_refuses_a_restatement_of_a_correctly_answered_question(path_id, monkeypatch):
+    """The tutor falls back on the one source-verifiable item; that fallback
+    must not re-pose a question the learner already answered correctly (issue
+    #2073). The refusal reaches the tutor as a failed, explanatory tool result.
+    """
+    from deeptutor.learning import lesson_evidence, semantic_assessment
+
+    await _build_basic(path_id)
+    status = json.loads((await MasteryStatusTool().execute(_mastery_path_id=path_id)).content)
+    kp_id = status["next"]["knowledge_point_id"]
+
+    store = LearningStore()
+    progress = store.load(path_id)
+    progress.lesson_evidence[kp_id] = {
+        "sources": [{"ref": {}, "text": "alpha is the first letter"}]
+    }
+    store.save(progress)
+    monkeypatch.setattr(lesson_evidence, "validate_evidence", lambda *args, **kwargs: None)
+
+    async def support(*args, **kwargs):
+        return {
+            "supported": True,
+            "citations": [{"index": 0, "quote": "alpha is the first letter"}],
+        }
+
+    monkeypatch.setattr(semantic_assessment, "_request", support)
+    first = tool_payload(
+        (
+            await MasteryQuizTool().execute(
+                _mastery_path_id=path_id,
+                knowledge_point_id=kp_id,
+                question="Name this.",
+                expected_answer="alpha",
+            )
+        )
+    )
+    await MasteryGradeTool().execute(
+        _mastery_path_id=path_id, question_id=first["question_id"], answer="alpha"
+    )
+    assert store.load(path_id).quiz_attempts[0].is_correct is True
+
+    refused = await MasteryQuizTool().execute(
+        _mastery_path_id=path_id,
+        knowledge_point_id=kp_id,
+        question="Name this.",
+        expected_answer="alpha",
+    )
+    assert refused.success is False
+    assert "already answered correctly" in refused.content
+    assert store.load(path_id).pending_question is None

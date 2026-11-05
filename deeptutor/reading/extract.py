@@ -66,6 +66,9 @@ _MD_FENCE = re.compile(r"^\s{0,3}(?P<marker>`{3,}|~{3,})(?P<info>.*)$")
 # render it, not changing this engine.
 RAW_VIEW_EXTENSIONS = frozenset({".pdf"})
 
+# Uploads cut on Markdown headings and rendered as Markdown by the reader.
+MARKDOWN_SUFFIXES = frozenset({".md", ".markdown"})
+
 
 @dataclass(frozen=True, slots=True)
 class MediaItem:
@@ -153,7 +156,7 @@ def extract_material(path: str | Path, *, data: bytes | None = None) -> Extracti
         extraction = _extract_epub(data, source.name)
     elif suffix == ".pptx":
         extraction = _extract_slides(source)
-    elif suffix in {".md", ".markdown"}:
+    elif suffix in MARKDOWN_SUFFIXES:
         units, outline = split_markdown_by_headings(_shared_extract(source))
         extraction = Extraction(units=units, unit="section", extractor="text", outline=outline)
     else:

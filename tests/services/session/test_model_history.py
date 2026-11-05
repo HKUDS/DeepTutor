@@ -296,7 +296,7 @@ async def test_budget_uses_the_replayed_route_and_preserves_stored_signed_state(
         session_id="s",
         llm_config=SimpleNamespace(binding="openai", model="gpt-test", context_window=16000),
     )
-    builder._summarize.assert_awaited_once()
+    builder._summarize.assert_not_awaited()
     assert records == before
 
 
@@ -371,3 +371,67 @@ async def test_recompaction_retains_prior_summary_when_history_replay_has_no_sum
     assert request["messages"][-1]["content"] == "[Conversation summary]\nEarlier stable preference"
     assert all("_context_snapshot" not in message for message in request["messages"])
     assert "already condensed" not in str(request["messages"])
+
+
+@pytest.mark.parametrize("representation", ["direct", "private", "content"])
+def test_completed_turn_replay_drops_thinking_before_a_new_question(representation):
+    from deeptutor.services.llm.provider_core.anthropic_provider import AnthropicProvider
+
+    record = turn_record()
+    # A completed stored turn may end with a tool result. The following user
+    # question must not be confused with another tool-loop continuation.
+    record["messages"].pop()
+    thought = {"type": "thinking", "thinking": "old thought", "signature": "old-signature"}
+    assistant = record["messages"][1]
+    encrypted = {"type": "reasoning", "id": "r", "encrypted_content": "opaque"}
+    assistant["_provider_response_state"] = {"responses_output_items": [encrypted]}
+    if representation == "direct":
+        assistant["thinking_blocks"] = [thought]
+    elif representation == "private":
+        assistant["_provider_response_state"]["thinking_blocks"] = [thought]
+    else:
+        assistant["content"] = [thought, {"type": "redacted_thinking", "data": "opaque"}]
+    source = rows(record)
+    before = deepcopy(source)
+    history = replay_history(source)
+    assert history[1]["_provider_response_state"] == {"responses_output_items": [encrypted]}
+    provider = object.__new__(AnthropicProvider)
+    _, converted = provider._convert_messages([*history, {"role": "user", "content": "next"}])
+    assert all(
+        block.get("type") not in {"thinking", "redacted_thinking"}
+        for message in converted
+        for block in message["content"]
+        if isinstance(block, dict)
+    )
+    assert history[2]["content"] == "tool evidence"
+    assert source == before
+
+    # A live tool round bypasses durable replay, including internal user nudges.
+    _, current = provider._convert_messages(
+        [
+            {"role": "user", "content": "current question"},
+            {"role": "assistant", "content": "working", "thinking_blocks": [thought]},
+            {"role": "user", "content": "finish the current turn"},
+        ]
+    )
+    assert current[1]["content"][0] == thought
+
+
+def test_legacy_display_history_drops_only_completed_thinking():
+    thought = {"type": "thinking", "thinking": "old", "signature": "signature"}
+    source = [
+        {
+            "role": "assistant",
+            "content": "answer",
+            "metadata": {
+                "provider_response_state": {
+                    "thinking_blocks": [thought],
+                    "reasoning_content": "portable",
+                }
+            },
+        }
+    ]
+    before = deepcopy(source)
+    replayed = replay_history(source)
+    assert replayed[0]["_provider_response_state"] == {"reasoning_content": "portable"}
+    assert source == before

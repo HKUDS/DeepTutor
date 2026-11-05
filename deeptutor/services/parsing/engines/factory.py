@@ -155,10 +155,39 @@ def get_parser(name: str) -> Parser:
     loader = _ENGINE_LOADERS.get(_normalize_name(name))
     if loader is None:
         raise ParserError(f"Unknown document-parsing engine: {name!r}")
-    return loader()()
+    parser = loader()()
+    from deeptutor.modules.catalog import manifests, module_enabled
+
+    owner = next(
+        (
+            key
+            for key, row in manifests().items()
+            if row.get("parser_engine") == _normalize_name(name)
+        ),
+        None,
+    )
+    if (
+        owner
+        and not module_enabled(owner)
+        and not getattr(parser.resolve_config(), "is_remote", False)
+    ):
+        raise ParserError(f"Install or enable the parser module: deeptutor module install {owner}")
+    return parser
 
 
 def is_engine_available(name: str) -> bool:
+    from deeptutor.modules.catalog import manifests, module_enabled
+
+    owner = next(
+        (
+            key
+            for key, row in manifests().items()
+            if row.get("parser_engine") == _normalize_name(name)
+        ),
+        None,
+    )
+    if owner and not module_enabled(owner):
+        return False
     loader = _ENGINE_LOADERS.get(_normalize_name(name))
     if loader is None:
         return False

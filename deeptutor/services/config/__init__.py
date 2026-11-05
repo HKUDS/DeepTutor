@@ -2,10 +2,6 @@
 
 import importlib
 
-from .knowledge_base_config import (
-    KnowledgeBaseConfigService,
-    get_kb_config_service,
-)
 from .launch_settings import LaunchSettings, load_launch_settings
 from .loader import (
     DEFAULT_CHAT_PARAMS,
@@ -140,6 +136,9 @@ def __getattr__(name: str):
         provider_runtime = importlib.import_module(f"{__name__}.provider_runtime")
 
         return getattr(provider_runtime, name)
+    if name in {"KnowledgeBaseConfigService", "get_kb_config_service"}:
+        module = importlib.import_module(f"{__name__}.knowledge_base_config")
+        return getattr(module, name)
     if name in {"ConfigTestRunner", "TestRun", "get_config_test_runner"}:
         test_runner = importlib.import_module(f"{__name__}.test_runner")
         return getattr(test_runner, name)

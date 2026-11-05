@@ -27,10 +27,10 @@ from deeptutor.services.embedding import get_embedding_client
 from deeptutor.services.llm.image_caption_batch import ImageCaptionBatcher
 from deeptutor.services.llm.image_caption_cache import complete_image_caption
 from deeptutor.services.llm.image_description import get_image_description_client
-from deeptutor.services.rag.file_routing import FileTypeRouter
 from deeptutor.services.rag.source_pages import SourcePageError
 from deeptutor.services.rag.visual_assets import VisualAssetCandidate, collect_visual_assets
 from deeptutor.utils.document_validator import DocumentValidator
+from deeptutor.utils.file_types import FileTypeRouter
 
 from .config import image_description_batch_size, image_description_limits
 
@@ -508,6 +508,16 @@ class LlamaIndexDocumentLoader:
                 except asyncio.TimeoutError:
                     self.logger.warning(
                         "Image caption batch exceeded its %ss deadline", timeout_seconds
+                    )
+                    return []
+                except Exception as exc:  # noqa: BLE001 - captions are best-effort
+                    # Every other image failure here skips and logs; a raising
+                    # group must not abort the whole document ingest.
+                    self.logger.warning(
+                        "Image caption group failed (%s: %s); skipping %s image(s)",
+                        type(exc).__name__,
+                        exc,
+                        len(group),
                     )
                     return []
                 finally:

@@ -133,6 +133,8 @@ PROVIDER_ALIASES = {
     "azureopenai": "azure_openai",
     "google": "gemini",
     "google_genai": "gemini",
+    "x_ai": "xai",
+    "grok": "xai",
     "claude": "anthropic",
     "openai_compatible": "custom",
     "openai-compatible": "custom",
@@ -147,6 +149,8 @@ PROVIDER_ALIASES = {
     "codebuddy-code": "codebuddy",
     "codebuddy_code": "codebuddy",
     "workbuddy": "codebuddy",
+    "claude-code": "claude_code",
+    "claudecode": "claude_code",
     "lm-studio": "lm_studio",
     "atlas": "atlascloud",
     "atlas_cloud": "atlascloud",
@@ -180,8 +184,20 @@ ANTHROPIC_EFFORT_BASED_FAMILIES: tuple[str, ...] = (
     "claude-opus-4-8",
     "claude-opus-5",
     "claude-sonnet-5",
+    "claude-haiku-5",
     "claude-fable-5",
     "claude-mythos-5",
+)
+
+# OpenAI reasoning models accept only their default temperature and answer
+# HTTP 400 to any other value, on Azure deployments as on OpenAI itself. The
+# services providers' ``_supports_temperature`` skips it for the same names;
+# the agentic Chat Completions path relies on these overrides (#2181).
+OPENAI_REASONING_FAMILIES: tuple[str, ...] = ("gpt-5", "o1", "o3", "o4")
+# ``find_by_model`` maps gpt-* names to OpenAI but not bare o-series ids such
+# as ``o3-mini``, so the bindings that serve them carry the rule themselves.
+_OPENAI_REASONING_OVERRIDES: tuple[tuple[str, dict[str, Any]], ...] = tuple(
+    (family, {"temperature": None}) for family in OPENAI_REASONING_FAMILIES
 )
 
 
@@ -198,6 +214,7 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         display_name="Custom",
         backend="openai_compat",
         is_direct=True,
+        model_overrides=_OPENAI_REASONING_OVERRIDES,
     ),
     ProviderSpec(
         name="custom_anthropic",
@@ -215,6 +232,7 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         display_name="Azure OpenAI",
         backend="azure_openai",
         is_direct=True,
+        model_overrides=_OPENAI_REASONING_OVERRIDES,
     ),
     # === Gateways (detected by api_key / api_base, route any model) ========
     ProviderSpec(
@@ -362,6 +380,37 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         default_api_base="https://onomeo.com/v1",
     ),
     ProviderSpec(
+        name="runcrate",
+        keywords=("runcrate",),
+        env_key="RUNCRATE_API_KEY",
+        display_name="Runcrate",
+        backend="openai_compat",
+        is_gateway=True,
+        detect_by_base_keyword="runcrate",
+        default_api_base="https://api.runcrate.ai/v1",
+    ),
+    ProviderSpec(
+        name="llmtr",
+        keywords=("llmtr",),
+        env_key="LLMTR_API_KEY",
+        display_name="LLMTR",
+        backend="openai_compat",
+        is_gateway=True,
+        detect_by_key_prefix="llmtr-",
+        detect_by_base_keyword="llmtr",
+        default_api_base="https://llmtr.com/v1",
+    ),
+    ProviderSpec(
+        name="cloudgpu",
+        keywords=("cloudgpu",),
+        env_key="CLOUDGPU_API_KEY",
+        display_name="CloudGPU",
+        backend="openai_compat",
+        is_gateway=True,
+        detect_by_base_keyword="cloudgpu",
+        default_api_base="https://cloudgpu.app/v1",
+    ),
+    ProviderSpec(
         name="volcengine",
         keywords=("volcengine", "volces", "ark"),
         env_key="OPENAI_API_KEY",
@@ -429,6 +478,9 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         backend="openai_compat",
         default_api_base="https://api.openai.com/v1",
         supports_max_completion_tokens=True,
+        # This model rule also applies when GPT-5 is reached through a
+        # generic OpenAI-compatible binding or gateway.
+        model_overrides=_OPENAI_REASONING_OVERRIDES,
     ),
     ProviderSpec(
         name="openai_codex",
@@ -456,6 +508,16 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         env_key="CODEBUDDY_API_KEY",
         display_name="CodeBuddy/WorkBuddy",
         backend="codebuddy",
+        is_oauth=True,
+        strip_model_prefix=True,
+        supports_stream_options=False,
+    ),
+    ProviderSpec(
+        name="claude_code",
+        keywords=("claude-code", "claude_code"),
+        env_key="",
+        display_name="Claude Code (subscription)",
+        backend="claude_code",
         is_oauth=True,
         strip_model_prefix=True,
         supports_stream_options=False,
@@ -552,6 +614,18 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         display_name="Mistral",
         backend="openai_compat",
         default_api_base="https://api.mistral.ai/v1",
+    ),
+    # xAI's OpenAI-compatible surface serves the full Grok language-model
+    # catalog from https://api.x.ai/v1; model ids are discovered from
+    # GET /v1/models, so new Grok releases appear without a catalog update.
+    ProviderSpec(
+        name="xai",
+        keywords=("xai", "grok"),
+        env_key="XAI_API_KEY",
+        display_name="xAI (Grok)",
+        backend="openai_compat",
+        default_api_base="https://api.x.ai/v1",
+        model_id_families=("grok",),
     ),
     ProviderSpec(
         name="stepfun",

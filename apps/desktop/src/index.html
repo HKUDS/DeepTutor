@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en" data-theme="light" data-phase="starting">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'">
+  <title>Open DeepTutor</title>
+  <link rel="stylesheet" href="shell.css">
+</head>
+<body>
+  <header class="titlebar"><span class="titlebar-name"><img src="../assets/mark.png" alt="">Open DeepTutor</span></header>
+  <main class="stage">
+    <section class="brand">
+      <img class="mark" src="../assets/mark.png" alt="">
+      <img class="wordmark" src="../assets/wordmark.png" alt="DeepTutor">
+      <p class="tagline" id="tagline">Your personal learning space</p>
+    </section>
+    <section class="loading" id="loading">
+      <div class="track"><span></span></div>
+      <p class="step" id="step"></p>
+    </section>
+    <section class="problem" id="problem" hidden>
+      <h1 id="problem-title"></h1>
+      <p id="problem-body"></p>
+      <pre id="problem-detail"></pre>
+      <div class="actions"><button id="retry" class="primary"></button><button id="logs" class="ghost"></button></div>
+    </section>
+  </main>
+  <footer class="foot" id="edition"></footer>
+  <script src="renderer.js"></script>
+</body>
+</html>

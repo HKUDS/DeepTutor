@@ -129,6 +129,55 @@ class GeminiTTSTests(unittest.IsolatedAsyncioTestCase):
         with wave.open(io.BytesIO(result[0]), "rb") as wav:
             self.assertEqual(wav.readframes(wav.getnframes()), b"".join(chunks))
 
+    async def test_complete_wav_responses_do_not_become_pcm_samples(self) -> None:
+        for output in ("wav", "pcm"):
+            for multipart in (False, True):
+                with self.subTest(output=output, multipart=multipart):
+                    chunks = [b"\x01\x02" * 8, b"\x03\x04" * 5] if multipart else [b"\x01\x02" * 8]
+                    containers = []
+                    for pcm in chunks:
+                        buffer = io.BytesIO()
+                        with wave.open(buffer, "wb") as wav:
+                            wav.setnchannels(1)
+                            wav.setsampwidth(2)
+                            wav.setframerate(24000)
+                            wav.writeframes(pcm)
+                        containers.append(buffer.getvalue())
+                    response = gemini_response(containers)
+                    for part in response["candidates"][0]["content"]["parts"]:
+                        part["inlineData"]["mimeType"] = "audio/wav"
+                    (audio, content_type), _ = await self.invoke(
+                        self.config(model="gemini-3.8-flash-tts", response_format=output), response
+                    )
+                    if output == "pcm":
+                        self.assertEqual(content_type, "audio/pcm;rate=24000;channels=1")
+                        self.assertEqual(audio, b"".join(chunks))
+                    else:
+                        self.assertEqual(content_type, "audio/wav")
+                        with wave.open(io.BytesIO(audio), "rb") as wav:
+                            self.assertEqual(wav.getparams()[:3], (1, 2, 24000))
+                            self.assertEqual(wav.readframes(wav.getnframes()), b"".join(chunks))
+
+    async def test_invalid_wav_response_is_a_provider_error(self) -> None:
+        invalid = [b"not a WAV container"]
+        for channels, width, rate in ((2, 2, 24000), (1, 1, 24000), (1, 2, 16000), (1, 2, 24000)):
+            buffer = io.BytesIO()
+            with wave.open(buffer, "wb") as wav:
+                wav.setnchannels(channels)
+                wav.setsampwidth(width)
+                wav.setframerate(rate)
+                wav.writeframes(b"\x00" * 16)
+            data = buffer.getvalue()
+            invalid.append(data[:-2] if (channels, width, rate) == (1, 2, 24000) else data)
+        for data in invalid:
+            with self.subTest(data=data):
+                response = gemini_response([data])
+                response["candidates"][0]["content"]["parts"][0]["inlineData"]["mimeType"] = (
+                    "audio/wav"
+                )
+                with self.assertRaises(VoiceProviderError):
+                    await self.invoke(self.config(), response)
+
     async def test_bad_audio_and_http_failure(self) -> None:
         for response in [
             {},

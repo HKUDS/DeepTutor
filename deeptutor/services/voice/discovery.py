@@ -62,6 +62,19 @@ def discovery_url(base: str, provider: str) -> str:
 async def discover_voices(catalog: dict, profile_id: str, model_id: str) -> dict:
     config = resolve_tts_runtime_config(selected_catalog(catalog, "tts", profile_id, model_id))
     provider = config.provider_name
+    if provider == "edge":
+        from deeptutor.services.voice.adapters.edge import list_edge_voices
+
+        try:
+            async with asyncio.timeout(25):
+                edge_voices = await list_edge_voices()
+        except ImportError as exc:
+            raise VoiceDiscoveryError("Install edge-tts before fetching voices.") from exc
+        except Exception as exc:
+            raise VoiceDiscoveryError(
+                "Could not fetch voices. Check the connection and try again."
+            ) from exc
+        return {"status": "ready", "scope": "public", "voices": edge_voices}
     # A vendor's speech API key is not permission to call its separately signed
     # control plane. Never fabricate a generic /voices API for compatible hosts.
     if provider not in {"minimax", "dashscope"}:

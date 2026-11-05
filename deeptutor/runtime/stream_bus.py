@@ -22,6 +22,7 @@ from __future__ import annotations
 import asyncio
 from contextlib import asynccontextmanager
 import json
+from threading import Lock
 from typing import Any, AsyncIterator
 
 from deeptutor.core.stream import StreamEvent, StreamEventType
@@ -46,7 +47,8 @@ class StreamBus:
         ] = []
         self._closed = False
         self._history: list[StreamEvent] = []
-        self._input_listeners: list[asyncio.Queue[str]] = []
+        self._input_listeners: list[tuple[asyncio.Queue[str], asyncio.AbstractEventLoop]] = []
+        self._input_lock = Lock()
         # ``None`` keeps the full history (turn-scoped buses live and die with
         # one turn). Long-lived buses pass a bound so replay stays useful
         # without growing without limit.
@@ -82,19 +84,6 @@ class StreamBus:
         Taking a snapshot never subscribes, waits for future output or emits an
         event. Sequence zero remains zero for direct callers without sequencing.
         """
-        visibility: dict[str, bool] = {}
-        for event in self._history:
-            if event.source != source or event.stage != stage:
-                continue
-            if event.type not in {StreamEventType.CONTENT, StreamEventType.PROGRESS}:
-                continue
-            call_id = event.metadata.get("call_id")
-            if not isinstance(call_id, str) or not call_id:
-                continue
-            if event.metadata.get("finish_rejected") is True:
-                visibility[call_id] = False
-            elif isinstance(event.metadata.get("answer_visible"), bool):
-                visibility[call_id] = event.metadata["answer_visible"]
         return tuple(
             (event.seq, event.timestamp, event.content)
             for event in self._history
@@ -102,12 +91,6 @@ class StreamBus:
             and event.source == source
             and event.stage == stage
             and event.content
-            and event.metadata.get("answer_visible") is not False
-            and event.metadata.get("finish_rejected") is not True
-            and (
-                not isinstance(event.metadata.get("call_id"), str)
-                or visibility.get(event.metadata["call_id"], True)
-            )
         )
 
     async def emit(self, event: StreamEvent) -> None:
@@ -374,29 +357,40 @@ class StreamBus:
         Pass ``timeout=None`` (the default) to wait indefinitely for interactive
         clients; pass a finite value for headless/CLI entry points.
         """
-        await self.emit(
-            StreamEvent(
-                type=StreamEventType.WAIT_FOR_INPUT,
-                source=source,
-                stage=stage,
-                content=prompt,
-            )
-        )
         input_queue: asyncio.Queue[str] = asyncio.Queue()
-        self._input_listeners.append(input_queue)
+        listener = (input_queue, asyncio.get_running_loop())
+        with self._input_lock:
+            self._input_listeners.append(listener)
         try:
+            await self.emit(
+                StreamEvent(
+                    type=StreamEventType.WAIT_FOR_INPUT,
+                    source=source,
+                    stage=stage,
+                    content=prompt,
+                )
+            )
             return await asyncio.wait_for(input_queue.get(), timeout=timeout)
         except asyncio.TimeoutError:
             return ""
         finally:
-            if input_queue in self._input_listeners:
-                self._input_listeners.remove(input_queue)
+            with self._input_lock:
+                if listener in self._input_listeners:
+                    self._input_listeners.remove(listener)
 
     def submit_input(self, content: str) -> None:
         """Receive user input from the frontend/WS and deliver to waiters."""
-        for q in self._input_listeners:
-            q.put_nowait(content)
-        self._input_listeners.clear()
+        with self._input_lock:
+            listeners = self._input_listeners[:]
+            self._input_listeners.clear()
+        for q, loop in listeners:
+            try:
+                if loop.is_running():
+                    loop.call_soon_threadsafe(q.put_nowait, content)
+                elif not loop.is_closed():
+                    q.put_nowait(content)
+            except RuntimeError:
+                continue
 
     # ---- consumer adapters ----
 

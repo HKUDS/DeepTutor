@@ -138,7 +138,7 @@ async def test_apply_personal_setting_persists(isolated_settings: Path) -> None:
 
     assert outcome.ok
     assert outcome.value == "dark"
-    assert outcome.previous == "snow"
+    assert outcome.previous == "system"
     assert get_ui_settings()["theme"] == "dark"
 
 
@@ -177,7 +177,7 @@ async def test_apply_can_be_reverted_with_the_returned_previous(
     back = await apply_setting("interface.theme", forward.previous)
 
     assert back.ok
-    assert get_ui_settings()["theme"] == "snow"
+    assert get_ui_settings()["theme"] == "system"
 
 
 @pytest.mark.asyncio

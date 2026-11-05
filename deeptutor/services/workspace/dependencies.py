@@ -7,6 +7,8 @@ import json
 import logging
 import sqlite3
 
+from deeptutor.services.file_io import read_text
+
 _LOGGER = logging.getLogger(__name__)
 
 MODES = {
@@ -130,7 +132,7 @@ def _forward_closure(
         if path.name not in {"manifest.json", "inputs.json"}:
             continue
         try:
-            book = json.loads(path.read_text())
+            book = json.loads(read_text(path))
         except (OSError, ValueError) as exc:
             _warn(warnings, f"Skipping unreadable book manifest {path}: {exc}")
             continue
@@ -240,7 +242,7 @@ def _forward_closure(
             scanned.add(feature)
             for path in (paths.get_workspace_dir() / feature).rglob("*.json"):
                 try:
-                    document = json.loads(path.read_text())
+                    document = json.loads(read_text(path))
                 except (OSError, ValueError) as exc:
                     _warn(warnings, f"Skipping unreadable {feature} document {path}: {exc}")
                     continue

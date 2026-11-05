@@ -99,8 +99,8 @@ const extraPages: SettingsLeaf[] = [
     key: 'general',
     label: { en: 'General', zh: '常规' },
     blurb: {
-      en: 'Interface language, response language, and setup help',
-      zh: '界面语言、回复语言与配置帮助',
+      en: 'Interface language, layout, response language, and setup help',
+      zh: '界面语言、布局、回复语言与配置帮助',
     },
     icon: Settings2,
     href: '/settings/general',

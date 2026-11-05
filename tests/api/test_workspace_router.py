@@ -48,6 +48,26 @@ def workspace_api(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     return TestClient(app), service
 
 
+def test_workspace_folder_picker_browses_only_configured_server_roots(
+    workspace_api, tmp_path: Path, monkeypatch
+) -> None:
+    client, _ = workspace_api
+    root = tmp_path / "server-projects"
+    (root / "oss" / "flashinfer").mkdir(parents=True)
+    monkeypatch.setenv("DEEPTUTOR_WORKSPACE_BROWSER_ROOTS", str(root))
+    response = client.get("/api/settings/workspace/folders")
+    assert response.status_code == 200
+    assert response.json()["folders"] == [{"name": "oss", "path": str(root / "oss")}]
+    nested = client.get("/api/settings/workspace/folders", params={"path": str(root / "oss")})
+    assert nested.json()["parent"] == str(root)
+    assert nested.json()["folders"][0]["name"] == "flashinfer"
+    assert (
+        client.get("/api/settings/workspace/folders", params={"path": str(root.parent)}).status_code
+        == 400
+    )
+    assert not (root / "outputs").exists()
+
+
 def test_workspace_settings_select_and_reset(workspace_api, tmp_path: Path) -> None:
     client, service = workspace_api
     custom = tmp_path / "learning-materials"

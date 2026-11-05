@@ -5,6 +5,11 @@ import { useSettings, type SettingsContextValue } from "./SettingsStore";
 
 type UiSettingsSlice = Pick<
   SettingsContextValue,
+  | "contentFontScale"
+  | "contentLineSpacing"
+  | "updateContentFontScale"
+  | "updateContentLineSpacing"
+  | "resetLearningText"
   | "theme"
   | "language"
   | "responseLanguage"
@@ -25,6 +30,11 @@ export function UiSettingsProvider({ children }: { children: ReactNode }) {
   const source = useSettings();
   const value = useMemo<UiSettingsSlice>(
     () => ({
+      contentFontScale: source.contentFontScale,
+      contentLineSpacing: source.contentLineSpacing,
+      updateContentFontScale: source.updateContentFontScale,
+      updateContentLineSpacing: source.updateContentLineSpacing,
+      resetLearningText: source.resetLearningText,
       theme: source.theme,
       language: source.language,
       responseLanguage: source.responseLanguage,
@@ -39,6 +49,11 @@ export function UiSettingsProvider({ children }: { children: ReactNode }) {
       updateCodeBlockWrapLongLines: source.updateCodeBlockWrapLongLines,
     }),
     [
+      source.contentFontScale,
+      source.contentLineSpacing,
+      source.updateContentFontScale,
+      source.updateContentLineSpacing,
+      source.resetLearningText,
       source.theme,
       source.language,
       source.responseLanguage,

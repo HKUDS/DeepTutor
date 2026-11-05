@@ -9,7 +9,7 @@ from types import SimpleNamespace
 import psutil
 import pytest
 
-from deeptutor.knowledge import indexing_run
+from deeptutor.services.parsing import progress
 from deeptutor.services.parsing.engines.mineru import local
 
 
@@ -23,9 +23,7 @@ def run_fixture(tmp_path, monkeypatch, code, run=None, idle=0.05, timeout=30, ex
         return popen([sys.executable, "-c", code, output], **kwargs)
 
     monkeypatch.setattr(local.subprocess, "Popen", spawn)
-    monkeypatch.setattr(
-        indexing_run, "current_run", lambda: run or SimpleNamespace(check=lambda: None)
-    )
+    monkeypatch.setattr(progress, "current_run", lambda: run or SimpleNamespace(check=lambda: None))
     monkeypatch.setattr(local, "_LOCAL_PARSE_IDLE_TIMEOUT_SECONDS", idle)
     monkeypatch.setattr(local, "_LOCAL_PARSE_TIMEOUT_SECONDS", timeout)
     monkeypatch.delenv("MINERU_TASK_RESULT_TIMEOUT_SECONDS", raising=False)
@@ -100,7 +98,7 @@ def test_deadline_and_cancellation_settle_the_owned_tree(tmp_path, monkeypatch, 
 
     def check():
         if cancelled and list((tmp_path / "out").glob(".mineru-attempt-*/output/child.pid")):
-            raise indexing_run.IndexingCancelled("controlled cancellation")
+            raise progress.IndexingCancelled("controlled cancellation")
 
     result, elapsed = run_fixture(
         tmp_path,

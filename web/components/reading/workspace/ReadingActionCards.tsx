@@ -92,7 +92,7 @@ function ActionCard({
     <article
       ref={ref}
       data-reading-action-card={card.status}
-      className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--background)]"
+      className="overflow-hidden rounded-2xl bg-[rgb(var(--dt-ink,55_53_47)/0.035)]"
     >
       <header className="flex items-center gap-2 px-3 pb-1 pt-2.5">
         <Sparkles size={12} className="shrink-0 text-[var(--primary)]" />
@@ -149,7 +149,7 @@ function ActionCard({
         ) : null}
       </div>
       {card.status !== "running" ? (
-        <footer className="flex items-center gap-1 border-t border-[var(--border)] px-2 py-1.5">
+        <footer className="flex items-center gap-1 px-2 pb-1.5 pt-0.5">
           {card.status === "error" ? (
             <CardButton icon={RotateCcw} label={t("Try again")} onClick={onRetry} />
           ) : null}

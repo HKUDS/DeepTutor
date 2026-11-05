@@ -23,9 +23,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from deeptutor.api.routers.auth import require_admin
-from deeptutor.knowledge.kb_types import SUBAGENT_KB_TYPE
 from deeptutor.multi_user.knowledge_access import account_kb_manager
-from deeptutor.services.rag.linked_kb import assert_path_allowed
 from deeptutor.services.subagent import (
     detect_all,
     list_backend_kinds,
@@ -91,6 +89,11 @@ async def sync_backend(kind: str):
 @router.get("/connections")
 async def list_connections():
     """List the current user's connected subagents."""
+    from deeptutor.modules.catalog import require_module
+
+    require_module("knowledge")
+    from deeptutor.knowledge.kb_types import SUBAGENT_KB_TYPE
+
     manager = account_kb_manager()
     connections = []
     for name in manager.list_knowledge_bases():
@@ -130,10 +133,15 @@ async def create_connection(payload: ConnectSubagentRequest):
     raw_cwd = (payload.cwd or "").strip()
     if raw_cwd and backend is not None and getattr(backend, "local_cli", True):
         try:
+            from deeptutor.services.rag.linked_kb import assert_path_allowed
+
             resolved_cwd = str(assert_path_allowed(raw_cwd))
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    from deeptutor.modules.catalog import require_module
+
+    require_module("knowledge")
     try:
         manager = account_kb_manager()
         entry = manager.register_subagent_connection(name, agent_kind, cwd=resolved_cwd)
@@ -155,6 +163,11 @@ async def create_connection(payload: ConnectSubagentRequest):
 @router.delete("/connections/{name}")
 async def delete_connection(name: str):
     """Disconnect a subagent (removes the pointer KB; touches no files)."""
+    from deeptutor.modules.catalog import require_module
+
+    require_module("knowledge")
+    from deeptutor.knowledge.kb_types import SUBAGENT_KB_TYPE
+
     manager = account_kb_manager()
     meta = manager.get_metadata(name)
     if not isinstance(meta, dict) or meta.get("type") != SUBAGENT_KB_TYPE:
@@ -188,6 +201,11 @@ async def message_connection(name: str, payload: SubagentMessageRequest):
     message = (payload.message or "").strip()
     if not message:
         raise HTTPException(status_code=400, detail="A non-empty 'message' is required.")
+
+    from deeptutor.modules.catalog import require_module
+
+    require_module("knowledge")
+    from deeptutor.knowledge.kb_types import SUBAGENT_KB_TYPE
 
     manager = account_kb_manager()
     meta = manager.get_metadata(name)

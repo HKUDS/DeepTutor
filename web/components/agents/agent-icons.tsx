@@ -240,3 +240,19 @@ export function agentGlyph(kind: string | undefined): AgentGlyph | null {
   if (kind === "partner") return PartnerGlyph;
   return null;
 }
+
+/** A connected agent's backend, as people call it. */
+export function agentKindLabel(kind: string | undefined): string {
+  if (kind === "claude_code") return "Claude Code";
+  if (kind === "codex") return "Codex";
+  if (kind === "grok") return "Grok CLI";
+  if (kind === "antigravity") return "Antigravity CLI";
+  if (kind === "kimi") return "Kimi CLI";
+  if (kind === "opencode") return "opencode";
+  if (kind === "mimo") return "MiMo Code";
+  if (kind === "hermes") return "Hermes Agent";
+  if (kind === "hermes_remote") return "Hermes Agent (remote)";
+  if (kind === "openclaw") return "OpenClaw";
+  if (kind === "deepseek_harness") return "DeepSeek Harness";
+  return kind ?? "";
+}

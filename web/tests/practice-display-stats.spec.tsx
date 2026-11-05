@@ -8,7 +8,7 @@ import type { NotebookEntry } from "@/lib/notebook-api";
 import * as api from "@/lib/practice-api";
 import { practiceMarkdown } from "@/lib/practice-content";
 
-let query = "course=course-a&view=mistakes";
+let query = "view=mistakes";
 const replace = vi.fn();
 vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(query),
@@ -42,7 +42,7 @@ const report: api.PracticeAnalytics = {
 };
 beforeEach(() => {
   vi.clearAllMocks();
-  query = "course=course-a&view=mistakes";
+  query = "view=mistakes";
   vi.stubGlobal(
     "ResizeObserver",
     class {
@@ -191,27 +191,27 @@ it("keeps legacy Partner notebook entries readable without a synthetic chat link
   expect(screen.getByText("Tutor (Partner)")).toBeVisible();
 });
 
-it("switches metrics and charts without losing course scope and exposes exact daily values", async () => {
-  const { rerender } = render(<PracticeInsights courseId="course-a" revision={0} />);
+it("switches metrics and charts without losing the selected view and exposes exact daily values", async () => {
+  const { rerender } = render(<PracticeInsights revision={0} />);
   await screen.findByText("Mastery Path");
   fireEvent.click(screen.getByRole("button", { name: /New mistakes/ }));
   expect(replace.mock.calls.at(-1)?.[0]).toContain(
-    "course=course-a&view=mistakes&stats_metric=mistakes"
+    "view=mistakes&stats_metric=mistakes"
   );
   query += "&stats_metric=mistakes";
-  rerender(<PracticeInsights courseId="course-a" revision={0} />);
+  rerender(<PracticeInsights revision={0} />);
   expect(screen.queryByText("Book")).not.toBeInTheDocument();
   expect(screen.getByText("100%")).toBeVisible();
   fireEvent.click(screen.getByRole("button", { name: "Bar chart" }));
   expect(replace.mock.calls.at(-1)?.[0]).toContain("stats_chart=bars");
   await userEvent.click(screen.getByText("View daily data"));
   expect(within(screen.getByRole("table")).getByText("2026-09-18")).toBeVisible();
-  expect(api.getPracticeAnalytics).toHaveBeenCalledWith("course-a", 30, undefined);
+  expect(api.getPracticeAnalytics).toHaveBeenCalledWith(30);
 });
 
 it("shows an error and permits retry instead of presenting failed data as zero", async () => {
   vi.mocked(api.getPracticeAnalytics).mockRejectedValueOnce(new Error("Offline"));
-  render(<PracticeInsights courseId="course-a" revision={0} />);
+  render(<PracticeInsights revision={0} />);
   expect(await screen.findByRole("alert")).toHaveTextContent("Offline");
   fireEvent.click(screen.getByRole("button", { name: "Retry" }));
   await screen.findByText("Mastery Path");

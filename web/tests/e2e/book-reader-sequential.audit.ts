@@ -1,3 +1,5 @@
+import { sourceModuleInventory } from "./fixtures/modules";
+import { emptyLearningIndex } from "./fixtures/learning-index";
 import { expect, test } from "@playwright/test";
 
 const BASE_URL =
@@ -99,6 +101,10 @@ test("book arrows read the current chapter before turning chapters", async ({
         ? new URL(requestUrl.pathname + requestUrl.search, BASE_URL)
         : requestUrl;
     const { pathname } = url;
+    if (pathname === "/api/modules") return route.fulfill({ json: sourceModuleInventory });
+    if (pathname === "/api/dashboard/learning-index") {
+      return route.fulfill(json(emptyLearningIndex));
+    }
     if (pathname === "/api/books/sequential-fixture/pages/page-1") {
       return route.fulfill(json({ page: fullPage(summaries[0]) }));
     }

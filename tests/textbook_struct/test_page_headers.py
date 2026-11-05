@@ -61,6 +61,15 @@ def test_normalize_rejects_book_title_and_prose() -> None:
     assert normalize_header_chapter("a" * 60) is None
 
 
+def test_normalize_two_char_unit_token_kept_intact() -> None:
+    # "单元" is a two-character chapter unit. The function docstring promises the
+    # canonical "第N单元 章名" shape, so the token must not be split: capturing
+    # only "单" leaks the orphaned "元" into the chapter name.
+    assert normalize_header_chapter("第1单元 导论") == "第1单元 导论"
+    assert normalize_header_chapter("第二单元 经济发展") == "第二单元 经济发展"
+    assert normalize_header_chapter("第3单元") == "第3单元"
+
+
 # ── page_facts: dual-channel collection ──────────────────────────────────
 
 

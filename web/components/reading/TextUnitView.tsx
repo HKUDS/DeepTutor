@@ -63,6 +63,7 @@ export interface TextUnitViewProps {
   unit: UnitKind;
   unitCount: number;
   contentFormat?: "plain_text" | "web_markdown";
+  sourceType?: string;
   annotations: AnnotationItem[];
   jump: JumpRequest | null;
   highlightedAnnotationId?: string | null;
@@ -88,6 +89,7 @@ export function TextUnitView({
   unit,
   unitCount,
   contentFormat = "plain_text",
+  sourceType,
   annotations,
   jump,
   highlightedAnnotationId,
@@ -492,7 +494,7 @@ export function TextUnitView({
           the new value on press, which the silent spans never did), and the
           position is the header's to state, since that is the one line that is
           there in every render mode. What is left here is what you can *do*. */}
-      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-[var(--border)] px-2 py-2 sm:px-3">
+      <div className="flex shrink-0 items-center justify-between gap-2 px-2 py-2 sm:px-3">
         {/* #1641: scroll display controls independently so a narrow reader
             never hides the only way to reach the next section. */}
         <div className="min-w-0 flex-1 overflow-x-auto">
@@ -551,7 +553,7 @@ export function TextUnitView({
             // the mastery cards draw themselves with.
             className={`mx-auto leading-[1.75] selection:bg-[color-mix(in_srgb,var(--primary)_20%,transparent)] ${
               paperSheet
-                ? "rounded-2xl border border-[var(--border)] bg-[var(--card)] px-6 py-8 shadow-[0_1px_3px_rgba(0,0,0,0.06),0_10px_30px_-16px_rgba(0,0,0,0.14)] sm:px-10 "
+                ? "rounded-2xl bg-[var(--card)] px-6 py-8 shadow-[0_0_0_1px_rgba(0,0,0,0.035),0_1px_3px_rgba(0,0,0,0.06),0_10px_30px_-16px_rgba(0,0,0,0.14)] sm:px-10 "
                 : ""
             }${isWebMarkdown ? "" : "whitespace-pre-wrap "}${
               serif ? "font-serif" : "font-sans"
@@ -577,7 +579,9 @@ export function TextUnitView({
                 enableMath
                 enableCode
                 enableMermaid={false}
-                enableImages
+                // Web snapshots store their images locally. An uploaded file's
+                // image links point anywhere, so they stay unrendered.
+                enableImages={sourceType !== "upload"}
                 variant="prose"
               />
             ) : (

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import OrderedDict
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -49,6 +50,17 @@ def _normalize_language(language: str) -> str:
     return normalized
 
 
+@lru_cache(maxsize=256)
+def _read_hint_data(path: Path, mtime_ns: int, size: int) -> dict[str, Any]:
+    """Bounded cache of static assets, invalidated by each file's revision.
+
+    Never expose this dictionary to callers: each load constructs fresh hint
+    objects, so one tool's mutations cannot change another turn's prompt.
+    """
+    with path.open(encoding="utf-8") as file:
+        return yaml.safe_load(file) or {}
+
+
 def load_prompt_hints(tool_name: str, language: str = "en") -> ToolPromptHints:
     """Load per-tool prompt hints from YAML with zh/en fallback."""
     normalized_language = _normalize_language(language)
@@ -60,8 +72,8 @@ def load_prompt_hints(tool_name: str, language: str = "en") -> ToolPromptHints:
     for path in candidates:
         if not path.is_file():
             continue
-        with open(path, encoding="utf-8") as file:
-            data = yaml.safe_load(file) or {}
+        revision = path.stat()
+        data = _read_hint_data(path, revision.st_mtime_ns, revision.st_size)
         aliases = [
             ToolAlias(
                 name=str(item.get("name", "")).strip(),
