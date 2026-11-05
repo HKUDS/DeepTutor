@@ -14,7 +14,6 @@ from typing import Any, Callable, Dict, List, Optional
 
 from deeptutor.runtime.home import get_runtime_data_root
 from deeptutor.services.embedding import get_embedding_config
-from deeptutor.services.embedding.config import scoped_embedding_config
 from deeptutor.services.rag.embedding_signature import signature_from_embedding_config
 from deeptutor.services.rag.index_versioning import (
     EmbeddingSignature,
@@ -29,6 +28,8 @@ from . import storage
 from .config import default_top_k, should_show_progress
 from .document_loader import LlamaIndexDocumentLoader
 from .embedding_adapter import (
+    CustomEmbedding,
+    bind_operation_embedding,
     configure_llamaindex_settings,
     set_progress_callback,
     verify_embedding_connectivity,
@@ -192,22 +193,14 @@ class LlamaIndexPipeline:
         self._signature_provider = signature_provider or signature_from_embedding_config
         self.document_loader = document_loader or LlamaIndexDocumentLoader(self.logger)
 
-    def _configure_settings(self) -> None:
-        configure_llamaindex_settings(self.logger)
+    def _configure_settings(self) -> CustomEmbedding | None:
+        return configure_llamaindex_settings(self.logger)
 
     async def _configure_settings_async(self) -> None:
-        """Configure LlamaIndex globals without blocking the event loop.
-
-        The first call builds the embedding adapter, which imports the provider
-        SDK and constructs the client; that takes seconds and used to run inside
-        the coroutine, stalling every other task on the loop. A scoped embedding
-        config keeps its adapter in a ContextVar, so that path has to stay in the
-        caller's context.
-        """
-        if scoped_embedding_config() is not None:
-            self._configure_settings()
-            return
-        await asyncio.to_thread(self._configure_settings)
+        """Build the provider in a worker; publish scoped state in the calling task."""
+        adapter = await asyncio.to_thread(self._configure_settings)
+        if adapter is not None:
+            bind_operation_embedding(adapter)
 
     async def _verify_embedding_connectivity(self) -> None:
         await verify_embedding_connectivity(self.logger)
