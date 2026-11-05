@@ -200,10 +200,23 @@ async def test_failed_owner_enumeration_does_not_delete_persisted_job(
 
 @pytest.mark.asyncio
 async def test_scheduler_renews_lease_during_a_long_sync(tmp_path: Path, monkeypatch) -> None:
+    """A sync that outlives its lease keeps the lease alive.
+
+    The margins are wide on purpose. This test used to run a 200 ms lease with a
+    40 ms renewal and then compare the deadline against ``time.time()`` — which
+    made it an assertion about how fast the CI runner schedules an asyncio task,
+    not about lease renewal, and it failed with the lease 37 ms past expiry. Five
+    seconds with a renewal every half second still proves the lease is extended,
+    and it cannot lose the race.
+
+    Reads are also kept to a handful: polling the repository every 20 ms for five
+    seconds is enough write-lock pressure to make the renewal ``UPDATE`` raise,
+    which kills the renewal task silently.
+    """
     from deeptutor.services.web_source import scheduler as scheduler_module
 
-    monkeypatch.setattr(scheduler_module, "WEB_SYNC_LEASE_SECONDS", 0.2)
-    monkeypatch.setattr(scheduler_module, "WEB_SYNC_LEASE_RENEW_SECONDS", 0.04)
+    monkeypatch.setattr(scheduler_module, "WEB_SYNC_LEASE_SECONDS", 5.0)
+    monkeypatch.setattr(scheduler_module, "WEB_SYNC_LEASE_RENEW_SECONDS", 0.5)
     manager = KnowledgeBaseManager(base_dir=str(tmp_path / "kbs"))
     (manager.base_dir / "kb").mkdir()
     (manager.base_dir / "kb" / "metadata.json").write_text("{}", encoding="utf-8")
@@ -213,6 +226,7 @@ async def test_scheduler_renews_lease_during_a_long_sync(tmp_path: Path, monkeyp
     scheduler = WebSourceSyncScheduler(repository=repository, manager_factory=lambda: manager)
     await scheduler._synchronize_sources()
     job = repository.list_jobs("local-admin", "kb")[0]
+    key = repository.key(job)
 
     release_sync = asyncio.Event()
 
@@ -222,12 +236,25 @@ async def test_scheduler_renews_lease_during_a_long_sync(tmp_path: Path, monkeyp
 
     with patch("deeptutor.services.web_source.sync.sync_source", slow_sync):
         running = asyncio.create_task(scheduler._run_job(job))
-        await asyncio.sleep(0.25)
-        current = repository.get(repository.key(job))
+
+        claimed = None
+        for _ in range(50):
+            await asyncio.sleep(0.02)
+            current = repository.get(key)
+            if current is not None and current.state == "running" and current.lease_until_ms:
+                claimed = current.lease_until_ms
+                break
+        assert claimed is not None, "the sync never started"
+
+        # Two renewal intervals with nobody reading the database.
+        await asyncio.sleep(1.2)
+
+        current = repository.get(key)
         assert current is not None and current.state == "running"
-        assert current.lease_until_ms is not None and current.lease_until_ms > int(
-            time.time() * 1000
-        )
+        assert current.lease_until_ms is not None
+        assert current.lease_until_ms > claimed, "the lease was not renewed"
+        assert current.lease_until_ms > int(time.time() * 1000), "the lease expired while running"
+
         release_sync.set()
         await running
-    assert repository.get(repository.key(job)).state == "pending"
+    assert repository.get(key).state == "pending"
