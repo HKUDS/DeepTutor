@@ -429,8 +429,13 @@ def _render_omml(node: Any) -> str:
     return f"[unsupported equation: {flattened}]"
 
 
-def render_docx_text(node: Any) -> str:
-    """Render text below one DOCX node without flattening OMML structure."""
+def render_docx_text(node: Any, *, nested_paragraphs: bool = True) -> str:
+    """Render text below one DOCX node without flattening OMML structure.
+
+    The subtrees in ``_DOCX_SKIPPED_SUBTREES`` are not read. With
+    ``nested_paragraphs=False`` a paragraph inside ``node``, such as a text
+    box's, is left out: the caller reads it as a paragraph of its own.
+    """
     name = _local_name(node.tag)
     namespace = _namespace(node.tag)
     if namespace == MATH_NS:
@@ -441,7 +446,12 @@ def render_docx_text(node: Any) -> str:
         return "\t"
     if name in {"br", "cr"}:
         return "\n"
-    return "".join(render_docx_text(child) for child in node)
+    return "".join(
+        render_docx_text(child, nested_paragraphs=nested_paragraphs)
+        for child in node
+        if _local_name(child.tag) not in _DOCX_SKIPPED_SUBTREES
+        and (nested_paragraphs or _local_name(child.tag) != "p")
+    )
 
 
 def fit_inline_image(ext: str, data: bytes, *, max_edge: int) -> tuple[str, bytes]:
@@ -554,7 +564,7 @@ def extract_docx_rich(data: bytes, *, budget: ImageBudget | None = None) -> Docx
                             by_target[target] = image
                     if image is not None:
                         markers.append(build_marker(image))
-            paragraph = render_docx_text(node).strip()
+            paragraph = render_docx_text(node, nested_paragraphs=False).strip()
             if markers:
                 paragraph = (paragraph + "\n" if paragraph else "") + "\n".join(markers)
             if paragraph:
