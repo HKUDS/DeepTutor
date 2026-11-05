@@ -21,10 +21,14 @@ wrapper that raises once on named ``<collection>.<op>`` calls.
 
 from __future__ import annotations
 
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 import json
 from pathlib import Path
 import re
+import threading
+import time
 
 import pytest
 
@@ -349,6 +353,59 @@ async def test_message_reads_degrade_to_empty_when_backend_fails(flaky_pb) -> No
     assert summary["last_message"] == ""
 
 
+@pytest.mark.parametrize("role", [None, "user", "system"])
+async def test_get_last_message_reads_only_one_row(fake_pb, monkeypatch, role) -> None:
+    store = PocketBaseSessionStore()
+    with as_user("alice"):
+        session = await store.create_session(session_id="s_latest")
+        await store.add_message(session["id"], "user", "older question")
+        user_id = await store.add_message(
+            session["id"], "user", "latest question", metadata={"saved": True}
+        )
+        assistant_id = await store.add_message(session["id"], "assistant", "latest answer")
+        other = await store.create_session(session_id="s_other")
+        await store.add_message(other["id"], "assistant", "another session")
+
+        messages = fake_pb.collection("messages")
+        original_get_list = messages.get_list
+        reads = []
+
+        def get_list(page, per_page, query_params=None):
+            reads.append((page, per_page, dict(query_params or {})))
+            return original_get_list(page, per_page, query_params)
+
+        monkeypatch.setattr(messages, "get_list", get_list)
+        last = await store.get_last_message(session["id"], role=role)
+
+    expected_filter = 'session_id="s_latest"'
+    if role:
+        expected_filter += f' && role="{role}"'
+    assert reads == [(1, 1, {"filter": expected_filter, "sort": "-msg_created_at"})]
+    if role == "system":
+        assert last is None
+    else:
+        assert last is not None
+        assert last["id"] == (user_id if role == "user" else assistant_id)
+        assert last["content"] == ("latest question" if role == "user" else "latest answer")
+        if role == "user":
+            assert last["metadata"] == {"saved": True}
+
+
+async def test_get_last_message_does_not_read_another_users_messages(fake_pb, monkeypatch) -> None:
+    store = PocketBaseSessionStore()
+    with as_user("alice"):
+        await store.create_session(session_id="s_private")
+        await store.add_message("s_private", "user", "private question")
+
+    def unexpected_read(*args, **kwargs):
+        pytest.fail("An inaccessible session must not query its messages")
+
+    monkeypatch.setattr(fake_pb.collection("messages"), "get_list", unexpected_read)
+    monkeypatch.setattr(fake_pb.collection("messages"), "get_full_list", unexpected_read)
+    with as_user("bob"):
+        assert await store.get_last_message("s_private") is None
+
+
 async def test_turn_event_reads_degrade_to_empty_when_backend_fails(fake_pb) -> None:
     store = PocketBaseSessionStore()
     with as_user("alice"):
@@ -547,3 +604,209 @@ async def test_search_sessions_offset_beyond_total_keeps_count(fake_pb) -> None:
         await store.create_session(title="Other topic", session_id="q-3")
         result = await store.search_sessions("riemann", limit=1, offset=5)
     assert result == {"sessions": [], "total": 2}
+
+
+def test_preference_lock_is_shared_across_event_loops(fake_pb) -> None:
+    store = PocketBaseSessionStore()
+
+    async def lock_for(session_id: str):
+        return store._prefs_lock(session_id, "alice")
+
+    with as_user("alice"):
+        first = asyncio.run(lock_for("s_shared"))
+        second = asyncio.run(lock_for("s_shared"))
+
+    assert first is second
+    assert isinstance(first, type(threading.Lock()))
+
+
+def test_two_event_loops_preserve_distinct_preference_keys(fake_pb) -> None:
+    store = PocketBaseSessionStore()
+    with as_user("alice"):
+        asyncio.run(store.create_session(title="race", session_id="s_race"))
+        asyncio.run(store.update_session_preferences("s_race", {"seed": 1}))
+
+    collection = fake_pb.collection("sessions")
+    original_update = collection.update
+
+    def slow_update(pb_id: str, data: dict):
+        # Window in which an unserialized read-modify-write would overwrite the
+        # other writer's whole preferences document.
+        time.sleep(0.05)
+        return original_update(pb_id, data)
+
+    collection.update = slow_update
+    barrier = threading.Barrier(2)
+
+    def write(marker: str) -> None:
+        with as_user("alice"):
+            barrier.wait(timeout=10)
+            asyncio.run(store.update_session_preferences("s_race", {marker: True}))
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        futures = [pool.submit(write, key) for key in ("from_a", "from_b")]
+        for future in futures:
+            future.result(timeout=30)
+
+    with as_user("alice"):
+        session = asyncio.run(store.get_session("s_race"))
+    assert session is not None
+    assert session["preferences"]["from_a"] is True
+    assert session["preferences"]["from_b"] is True
+
+
+async def _run_in_two_event_loops(first, second) -> None:
+    barrier = threading.Barrier(2)
+
+    def worker(coro_factory):
+        def run():
+            with as_user("alice"):
+                barrier.wait(timeout=10)
+                asyncio.run(coro_factory())
+
+        return run
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        futures = [pool.submit(worker(first)), pool.submit(worker(second))]
+        for future in futures:
+            future.result(timeout=30)
+
+
+async def test_cross_loop_detach_wins_over_a_backfill(fake_pb) -> None:
+    from deeptutor.services.session.thread_attribution import (
+        BACKFILL_ATTEMPTED_KEY,
+        TUTOR_SOURCE_KEY,
+    )
+
+    store = PocketBaseSessionStore()
+    with as_user("alice"):
+        await store.create_session(title="thread", session_id="s_race_detach")
+        await store.update_session_preferences("s_race_detach", {"seed": 1})
+
+    collection = fake_pb.collection("sessions")
+    original_update = collection.update
+
+    def slow_update(pb_id: str, data: dict):
+        time.sleep(0.05)
+        return original_update(pb_id, data)
+
+    collection.update = slow_update
+
+    async def backfill():
+        await store.update_session_preferences_if_unset(
+            "s_race_detach",
+            {TUTOR_SOURCE_KEY: 7, BACKFILL_ATTEMPTED_KEY: True},
+            unset=(TUTOR_SOURCE_KEY, BACKFILL_ATTEMPTED_KEY),
+            touch=False,
+        )
+
+    async def detach():
+        await store.update_session_preferences(
+            "s_race_detach",
+            {TUTOR_SOURCE_KEY: "", BACKFILL_ATTEMPTED_KEY: True},
+            touch=False,
+        )
+
+    await _run_in_two_event_loops(backfill, detach)
+    with as_user("alice"):
+        session = await store.get_session("s_race_detach")
+    assert session is not None
+    assert session["preferences"][TUTOR_SOURCE_KEY] == ""
+
+
+async def test_cross_loop_move_wins_over_a_backfill(fake_pb) -> None:
+    from deeptutor.services.session.thread_attribution import (
+        BACKFILL_ATTEMPTED_KEY,
+        TUTOR_SOURCE_KEY,
+    )
+
+    store = PocketBaseSessionStore()
+    with as_user("alice"):
+        await store.create_session(title="thread", session_id="s_race_move")
+        await store.update_session_preferences("s_race_move", {"seed": 1})
+
+    collection = fake_pb.collection("sessions")
+    original_update = collection.update
+
+    def slow_update(pb_id: str, data: dict):
+        time.sleep(0.05)
+        return original_update(pb_id, data)
+
+    collection.update = slow_update
+
+    async def backfill():
+        await store.update_session_preferences_if_unset(
+            "s_race_move",
+            {TUTOR_SOURCE_KEY: 7, BACKFILL_ATTEMPTED_KEY: True},
+            unset=(TUTOR_SOURCE_KEY, BACKFILL_ATTEMPTED_KEY),
+            touch=False,
+        )
+
+    async def move():
+        await store.update_session_preferences("s_race_move", {TUTOR_SOURCE_KEY: 9}, touch=False)
+
+    await _run_in_two_event_loops(backfill, move)
+    with as_user("alice"):
+        session = await store.get_session("s_race_move")
+    assert session is not None
+    assert session["preferences"][TUTOR_SOURCE_KEY] == 9
+
+
+async def test_regenerate_delete_detaches_only_owned_anchored_threads(fake_pb):
+    store = PocketBaseSessionStore()
+    with as_user("alice"):
+        await store.create_session(session_id="parent")
+        mid = await store.add_message("parent", "assistant", "answer")
+        for sid, anchor in [("thread", mid), ("unrelated", "other")]:
+            await store.create_session(session_id=sid)
+            await store.update_session_preferences(
+                sid,
+                {
+                    "parent_session_id": "parent",
+                    "tutor_source_message_id": anchor,
+                    "retained": "value",
+                },
+            )
+    with as_user("bob"):
+        await store.create_session(session_id="foreign")
+        await store.update_session_preferences(
+            "foreign",
+            {
+                "parent_session_id": "parent",
+                "tutor_source_message_id": mid,
+            },
+        )
+    with as_user("alice"):
+        assert await store.delete_message(mid)
+        prefs = (await store.get_session("thread"))["preferences"]
+        assert prefs["tutor_source_message_id"] == ""
+        assert prefs["tutor_source_backfill_attempted"] is True
+        assert prefs["retained"] == "value"
+        assert (await store.get_session("unrelated"))["preferences"][
+            "tutor_source_message_id"
+        ] == "other"
+    with as_user("bob"):
+        assert (await store.get_session("foreign"))["preferences"]["tutor_source_message_id"] == mid
+
+
+async def test_restored_tutor_thread_does_not_keep_a_deleted_source_message(fake_pb):
+    store = PocketBaseSessionStore()
+    with as_user("alice"):
+        await store.create_session(session_id="parent")
+        message_id = await store.add_message("parent", "assistant", "answer")
+        await store.create_session(session_id="thread")
+        await store.update_session_preferences(
+            "thread",
+            {
+                "parent_session_id": "parent",
+                "tutor_source_message_id": message_id,
+                "retained": "value",
+            },
+        )
+        assert await store.soft_delete_session("thread")
+        assert await store.delete_message(message_id)
+        assert await store.restore_session("thread")
+        preferences = (await store.get_session("thread"))["preferences"]
+        assert preferences["tutor_source_message_id"] == ""
+        assert preferences["tutor_source_backfill_attempted"] is True
+        assert preferences["retained"] == "value"

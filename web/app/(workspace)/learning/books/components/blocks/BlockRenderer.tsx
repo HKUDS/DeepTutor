@@ -116,7 +116,7 @@ export default function BlockRenderer({
 
   if (block.status === "pending" || block.status === "generating") {
     return (
-      <div className="flex items-center gap-2 rounded-2xl border border-dashed border-[var(--border)] bg-[var(--card)] px-4 py-3 text-sm text-[var(--muted-foreground)]">
+      <div className="flex items-center gap-2 rounded-2xl bg-[rgb(var(--dt-ink,55_53_47)/0.028)] px-4 py-3 text-sm text-[var(--muted-foreground)]">
         <Loader2 className="h-4 w-4 animate-spin" />
         <span>{t("Generating {{type}}…", { type: t(block.type) })}</span>
       </div>
@@ -269,7 +269,7 @@ export default function BlockRenderer({
         </div>
       )}
       {hasActions && (
-        <div className="pointer-events-none absolute -top-3 right-2 z-10 flex translate-y-1 items-center gap-1 rounded-md border border-[var(--border)] bg-[var(--card)] px-1 py-0.5 text-[var(--muted-foreground)] opacity-0 shadow-sm transition group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:translate-y-0 group-focus-within:opacity-100">
+        <div className="pointer-events-none absolute -top-3 right-2 z-10 flex translate-y-1 items-center gap-1 rounded-lg bg-[var(--card)] px-1 py-0.5 text-[var(--muted-foreground)] opacity-0 shadow-[var(--dt-shadow-sm,0_1px_3px_rgba(0,0,0,.12))] transition group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:translate-y-0 group-focus-within:opacity-100">
           {onMove && (
             <>
               <Tooltip label={t("Move up")}>

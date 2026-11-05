@@ -61,10 +61,10 @@ function ScopeOption({
       type="button"
       onClick={onClick}
       aria-pressed={active}
-      className={`px-2.5 py-1.5 font-medium transition-colors ${
+      className={`rounded-[7px] px-2.5 py-1 font-medium transition-colors ${
         active
-          ? "bg-[var(--primary)]/12 text-[var(--foreground)]"
-          : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]/40 hover:text-[var(--foreground)]"
+          ? "bg-[var(--background)] text-[var(--foreground)] shadow-[0_0_0_1px_rgb(15_15_15/0.04),0_1px_2px_rgb(15_15_15/0.08)]"
+          : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
       }`}
     >
       {label}
@@ -291,8 +291,8 @@ export default function SpineEditor({
 
   return (
     <div className="flex h-full flex-col">
-      <header className="border-b border-[var(--border)] bg-[var(--card)]/60 px-6 py-4">
-        <h2 className="text-lg font-semibold text-[var(--foreground)]">
+      <header className="mx-auto w-full max-w-3xl px-6 pb-2 pt-6">
+        <h2 className="text-[18px] font-semibold tracking-[-0.01em] text-[var(--foreground)]">
           {t("Review the chapter spine")}
         </h2>
         <p className="mt-1 text-sm text-[var(--muted-foreground)]">
@@ -305,43 +305,47 @@ export default function SpineEditor({
       <div className="flex-1 overflow-y-auto px-6 py-4">
         <div className="mx-auto flex w-full max-w-3xl flex-col gap-3">
           {chapters.map((chapter, idx) => (
-            <div
-              key={chapter.id}
-              className="rounded-2xl border border-[var(--border)] bg-[var(--card)] p-4 shadow-sm"
-            >
-              <div className="flex items-start justify-between gap-2">
+            <div key={chapter.id} className="dt-soft-card group/chapter">
+              <div className="flex items-center justify-between gap-2">
+                <span className="w-6 shrink-0 text-center text-[12px] font-medium tabular-nums text-[var(--muted-foreground)]">
+                  {idx + 1}
+                </span>
                 <input
                   value={chapter.title}
                   onChange={(e) =>
                     updateChapter(idx, { title: e.target.value })
                   }
-                  className="flex-1 rounded-lg border border-transparent bg-transparent px-2 py-1 text-base font-semibold text-[var(--foreground)] outline-none focus:border-[var(--border)]"
+                  aria-label={t("Chapter title")}
+                  className="min-w-0 flex-1 rounded-lg bg-transparent px-2 py-1 text-[15px] font-semibold text-[var(--foreground)] outline-none transition-colors hover:bg-[var(--background)] focus:bg-[var(--background)] focus:shadow-[0_0_0_1px_color-mix(in_srgb,var(--primary)_45%,transparent)]"
                 />
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-0.5 opacity-60 transition-opacity group-hover/chapter:opacity-100 group-focus-within/chapter:opacity-100">
                   <button
                     onClick={() => move(idx, -1)}
                     disabled={idx === 0}
-                    className="rounded-md border border-[var(--border)] p-1 text-[var(--muted-foreground)] disabled:opacity-30"
+                    aria-label={t("Move up")}
+                    className="dt-quiet-button is-icon !size-7 disabled:pointer-events-none disabled:opacity-30"
                   >
                     <ArrowUp className="h-3.5 w-3.5" />
                   </button>
                   <button
                     onClick={() => move(idx, 1)}
                     disabled={idx === chapters.length - 1}
-                    className="rounded-md border border-[var(--border)] p-1 text-[var(--muted-foreground)] disabled:opacity-30"
+                    aria-label={t("Move down")}
+                    className="dt-quiet-button is-icon !size-7 disabled:pointer-events-none disabled:opacity-30"
                   >
                     <ArrowDown className="h-3.5 w-3.5" />
                   </button>
                   <button
                     onClick={() => remove(idx)}
-                    className="rounded-md border border-rose-300/60 p-1 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10"
+                    aria-label={t("Remove chapter")}
+                    className="dt-quiet-button is-icon !size-7 hover:!bg-rose-500/10 hover:!text-rose-600"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
                 </div>
               </div>
 
-              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <div className="mt-3 grid gap-3 pl-8 sm:grid-cols-2">
                 <label className="text-xs text-[var(--muted-foreground)]">
                   <span className="flex items-center gap-1">
                     {t("Content type")}
@@ -366,7 +370,7 @@ export default function SpineEditor({
                         content_type: e.target.value as ContentType,
                       })
                     }
-                    className="mt-1 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1.5 text-sm text-[var(--foreground)]"
+                    className="dt-soft-input mt-1 w-full rounded-lg bg-[var(--background)] px-2.5 py-1.5 text-sm text-[var(--foreground)] outline-none"
                   >
                     {CONTENT_TYPE_OPTIONS.map((opt) => (
                       <option key={opt.value} value={opt.value}>
@@ -391,12 +395,12 @@ export default function SpineEditor({
                       updateChapter(idx, { summary: e.target.value })
                     }
                     placeholder={t("Optional one-line description")}
-                    className="mt-1 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1.5 text-sm text-[var(--foreground)]"
+                    className="dt-soft-input mt-1 w-full rounded-lg bg-[var(--background)] px-2.5 py-1.5 text-sm text-[var(--foreground)] outline-none"
                   />
                 </label>
               </div>
 
-              <label className="mt-3 block text-xs text-[var(--muted-foreground)]">
+              <label className="mt-3 block pl-8 text-xs text-[var(--muted-foreground)]">
                 {t("Learning objectives (one per line)")}
                 <textarea
                   value={chapter.learning_objectives.join("\n")}
@@ -409,7 +413,7 @@ export default function SpineEditor({
                     })
                   }
                   rows={3}
-                  className="mt-1 w-full resize-none rounded-md border border-[var(--border)] bg-[var(--background)] px-2 py-1.5 text-sm text-[var(--foreground)]"
+                  className="dt-soft-input mt-1 w-full resize-none rounded-lg bg-[var(--background)] px-2.5 py-1.5 text-sm text-[var(--foreground)] outline-none"
                 />
               </label>
             </div>
@@ -417,15 +421,15 @@ export default function SpineEditor({
 
           <button
             onClick={addChapter}
-            className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-dashed border-[var(--border)] bg-[var(--card)] px-3 py-2 text-sm font-medium text-[var(--muted-foreground)] hover:border-[var(--primary)]/40 hover:text-[var(--primary)]"
+            className="inline-flex items-center justify-center gap-1.5 rounded-[14px] px-3 py-2.5 text-sm font-medium text-[var(--muted-foreground)] transition-colors hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
           >
             <Plus className="h-4 w-4" /> {t("Add chapter")}
           </button>
         </div>
       </div>
 
-      <footer className="border-t border-[var(--border)] bg-[var(--card)]/60 px-6 py-3">
-        <div className="mx-auto flex w-full max-w-3xl flex-wrap items-center justify-between gap-3">
+      <footer className="px-6 pb-4 pt-2">
+        <div className="dt-floating-bar mx-auto flex w-full max-w-3xl flex-wrap items-center justify-between gap-3">
           {/* Confirming here starts dozens of model calls. Say so first. */}
           <div className="flex items-center gap-3 text-[11px] text-[var(--muted-foreground)]">
             <span className="inline-flex items-center gap-1">
@@ -461,7 +465,7 @@ export default function SpineEditor({
                   type="button"
                   onClick={() => setTypesOpen((current) => !current)}
                   aria-expanded={typesOpen}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-2.5 py-[7px] text-[11px] font-medium text-[var(--muted-foreground)] transition-colors hover:border-[var(--primary)]/40 hover:text-[var(--foreground)]"
+                  className="dt-quiet-button !h-8 !gap-1.5 !px-2.5 !text-[11.5px] font-medium"
                 >
                   <Blocks className="h-3 w-3" />
                   {blockTypes.length === typeCatalog.length
@@ -524,7 +528,7 @@ export default function SpineEditor({
                         );
                       })}
                     </ul>
-                    <div className="mt-1 flex items-center justify-between border-t border-[var(--border)] pt-1.5">
+                    <div className="mt-1 flex items-center justify-between pt-1">
                       <button
                         type="button"
                         onClick={() =>
@@ -554,7 +558,7 @@ export default function SpineEditor({
                 )}
               </div>
             )}
-            <div className="inline-flex overflow-hidden rounded-lg border border-[var(--border)] text-[11px]">
+            <div className="inline-flex rounded-[9px] bg-[rgb(var(--dt-ink,55_53_47)/0.06)] p-[3px] text-[11px]">
               <ScopeOption
                 active={autoCompile}
                 label={t("Generate all chapters")}
@@ -587,7 +591,7 @@ export default function SpineEditor({
         {/* Always rendered, one line high, so the scope control does not sit
             on a footer that grows and shrinks under it. Each scope says what
             it costs — that is the whole reason to offer the choice. */}
-        <p className="mx-auto mt-2 min-h-[1.25rem] w-full max-w-3xl text-[11px] leading-5 text-[var(--muted-foreground)]">
+        <p className="mx-auto mt-2 min-h-[1.25rem] w-full max-w-3xl px-4 text-[11px] leading-5 text-[var(--muted-foreground)]">
           {autoCompile
             ? t(
                 "Every chapter is written now, in order. You can read the first one while the rest are still coming.",

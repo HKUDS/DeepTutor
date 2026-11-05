@@ -33,7 +33,7 @@ def test_independent_task_board_is_not_part_of_workspace_data_migration(account)
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("interrupt_links", [False, True])
-async def test_conversation_move_preserves_task_links_and_recovers_cleanup(
+async def test_conversation_move_detaches_source_tasks_and_recovers_cleanup(
     account, monkeypatch, interrupt_links
 ):
     from deeptutor.services.task_board import (
@@ -42,17 +42,20 @@ async def test_conversation_move_preserves_task_links_and_recovers_cleanup(
         LinkTasks,
         TaskBoardStore,
         get_task_board_store,
+        workspace_board,
     )
     from deeptutor.services.workspace.data_migration import operations, recover_operation
     from deeptutor.services.workspace.session_move import move_chat
 
     target = account.create_workspace("Destination")["workspace_id"]
     session = await get_sqlite_session_store().create_session("Task conversation")
+    retained = await get_sqlite_session_store().create_session("Stays in General")
     board = get_task_board_store()
     first = board.create(CreateCard(title="First")).cards[-1]
     second = board.create(CreateCard(title="Latest")).cards[-1]
     board.link_tasks(session["id"], LinkTasks(task_ids=[first.id, second.id]))
     board.link_status(session["id"], LinkStatus(enabled=False))
+    board.link_tasks(retained["id"], LinkTasks(task_ids=[first.id]))
     original = TaskBoardStore.move_session_links
     if interrupt_links:
 
@@ -68,12 +71,23 @@ async def test_conversation_move_preserves_task_links_and_recovers_cleanup(
         assert recover_operation(operation["id"])["status"] == "completed"
     else:
         move_chat(session["id"], target)
-    links = board.read().session_links
+    links = workspace_board(board.read(), target).session_links
     assert len(links) == 1
     assert links[0].workspace_id == target
-    assert links[0].task_ids == [first.id, second.id]
+    assert links[0].task_ids == []
     assert not links[0].status_link_enabled
     assert all(card.workspace_id is None for card in board.read().cards)
+    assert workspace_board(board.read(), target).cards == []
+    assert board.context_text(target, session["id"]) == ""
+    source_board = workspace_board(board.read(), "")
+    assert [card.id for card in source_board.cards] == [first.id, second.id]
+    assert source_board.session_links[0].session_id == retained["id"]
+    assert source_board.session_links[0].task_ids == [first.id]
+    # Cleanup is safe to replay after recovery.
+    board.move_session_links([session["id"]], "", target)
+    assert workspace_board(board.read(), "") == source_board.model_copy(
+        update={"revision": board.read().revision}
+    )
     with workspace_context(target):
         assert await get_sqlite_session_store().get_session(session["id"]) is not None
 
@@ -649,3 +663,93 @@ def test_structurally_invalid_journal_requires_manual_repair(account, payload):
     with pytest.raises(WorkspaceError, match="manual repair"):
         recover_operation(operation_id)
     assert journal.read_text() == content
+
+
+def _force_legacy_locale_reads(monkeypatch):
+    """Decode UTF-8 state files with cp1252, like a Windows locale default."""
+    real = Path.read_text
+
+    def read_text(self, encoding=None, errors=None, *args, **kwargs):
+        return real(self, encoding=encoding or "cp1252", errors=errors, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", read_text)
+
+
+def test_migration_journal_is_read_as_utf8_regardless_of_locale(tmp_path, monkeypatch):
+    from deeptutor.services.workspace.data_migration import _read_journal
+
+    _force_legacy_locale_reads(monkeypatch)
+    operation_id = "c" * 32
+    root = tmp_path / operation_id
+    root.mkdir()
+    journal = root / "operation.json"
+    payload = {
+        "id": operation_id,
+        "status": "completed",
+        "created_at": "2026-10-29T00:00:00Z",
+        "note": "\u00c1LGEBRA \u6570\u5b66.pdf",
+    }
+    journal.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+    assert _read_journal(journal)["note"] == payload["note"]
+
+
+def test_migration_journal_retries_a_transient_share_lock(tmp_path, monkeypatch):
+    from deeptutor.services import file_io
+    from deeptutor.services.workspace.data_migration import _read_journal
+
+    operation_id = "d" * 32
+    root = tmp_path / operation_id
+    root.mkdir()
+    journal = root / "operation.json"
+    payload = {"id": operation_id, "status": "completed"}
+    journal.write_text(json.dumps(payload), encoding="utf-8")
+    real = Path.read_text
+    attempts = []
+
+    def locked(self, encoding=None, errors=None, *args, **kwargs):
+        if self == journal and len(attempts) < 2:
+            attempts.append(self)
+            raise PermissionError(13, "Permission denied", str(self))
+        return real(self, encoding=encoding, errors=errors, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", locked)
+    monkeypatch.setattr(file_io.time, "sleep", lambda _seconds: None)
+
+    assert _read_journal(journal)["id"] == operation_id
+    assert len(attempts) == 2
+
+
+@pytest.mark.asyncio
+async def test_book_manifest_with_cjk_title_survives_non_utf8_locale(account, monkeypatch):
+    from deeptutor.services.workspace.data_migration import _sessions
+    from deeptutor.services.workspace.dependencies import dependency_closure
+
+    _force_legacy_locale_reads(monkeypatch)
+    with workspace_context():
+        store = get_sqlite_session_store()
+        cited = await store.create_session("Cited by CJK book")
+        books = get_path_service().get_book_dir()
+        book = books / "book_cjk_title"
+        book.mkdir(parents=True, exist_ok=True)
+        (book / "inputs.json").write_text(
+            json.dumps(
+                {
+                    "title": "\u00c1LGEBRA \u6570\u5b66",
+                    "chat_selections": [{"session_id": cited["id"]}],
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        warnings: list[str] = []
+        features, ids = dependency_closure(
+            get_path_service(),
+            _sessions(get_path_service()),
+            ["chat"],
+            session_ids={cited["id"]},
+            warnings=warnings,
+        )
+    assert "book" in features
+    assert cited["id"] in ids
+    assert not any("book_cjk_title" in message for message in warnings)

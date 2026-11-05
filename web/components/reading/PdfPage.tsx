@@ -15,6 +15,12 @@ export interface PdfPageProps {
   fallbackRatio: number;
   /** False while the page is far outside the viewport — keeps memory bounded. */
   active: boolean;
+  /**
+   * Keep pdf.js's parsed copy of the page while it is near, even off-canvas:
+   * scrolling back a page or two then repaints instead of parsing again.
+   * Further away it is handed back. Defaults to ``active``.
+   */
+  retain?: boolean;
   annotations: AnnotationItem[];
   highlightedAnnotationId?: string | null;
   /** Transient highlight from `reader_goto`, as normalised rects. */
@@ -33,12 +39,18 @@ export interface PdfPageProps {
  * The page keeps its measured height while inactive, so deactivating it does not
  * collapse the scroll container and yank the reader's position.
  */
+/** Let pdf.js drop a page's decoded images and operator list. */
+function releasePage(doc: PdfDocument, locator: number) {
+  void doc.getPage(locator).then((page) => page.cleanup()).catch(() => undefined);
+}
+
 export function PdfPage({
   doc,
   locator,
   width,
   fallbackRatio,
   active,
+  retain = active,
   annotations,
   highlightedAnnotationId,
   flashRects,
@@ -47,6 +59,8 @@ export function PdfPage({
   const { t } = useTranslation();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const textLayerRef = useRef<HTMLDivElement | null>(null);
+  // Whether this page was ever drawn, so only those are handed back.
+  const renderedRef = useRef(false);
   const [ratio, setRatio] = useState<number | null>(null);
   const [failed, setFailed] = useState(false);
 
@@ -62,6 +76,7 @@ export function PdfPage({
       try {
         const pdfjs = await loadPdfjs();
         const page = await doc.getPage(locator);
+        renderedRef.current = true;
         if (cancelled) return;
 
         const base = page.getViewport({ scale: 1 });
@@ -169,6 +184,22 @@ export function PdfPage({
     }
     textLayerRef.current?.replaceChildren();
   }, [active]);
+
+  // The bitmap is only half of it: pdf.js keeps each page's decoded images
+  // and operator list until told to let go — tens of MB a page for a scan.
+  useEffect(() => {
+    // `cleanup` waits for a cancelled render to settle before it frees.
+    // Only pages that were drawn: asking for the rest would load them.
+    if (retain || !renderedRef.current) return;
+    releasePage(doc, locator);
+  }, [retain, doc, locator]);
+
+  useEffect(
+    () => () => {
+      if (renderedRef.current) releasePage(doc, locator);
+    },
+    [doc, locator],
+  );
 
   const pageAnnotations = useMemo(
     () => annotations.filter((a) => a.locator === locator),

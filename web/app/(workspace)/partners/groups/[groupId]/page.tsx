@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
   Download,
@@ -23,6 +23,7 @@ import DiscussionModePicker, {
 import {
   deletePartnerGroup,
   getPartnerGroup,
+  listPartnerGroupSessions,
   updatePartnerGroup,
   createPartnerGroupSessionKey,
   partnerGroupSessionKey,
@@ -39,6 +40,8 @@ export default function PartnerGroupPage() {
   const params = useParams<{ groupId: string }>();
   const router = useRouter();
   const groupId = decodeURIComponent(params.groupId);
+  const requestedSession = useSearchParams().get("session") || "";
+  const [selectionError, setSelectionError] = useState("");
   const modeLabel = useDiscussionModeLabel();
 
   const [group, setGroup] = useState<PartnerGroup | null>(null);
@@ -81,6 +84,22 @@ export default function PartnerGroupPage() {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    if (loading || !group || !requestedSession) return;
+    let alive = true;
+    void listPartnerGroupSessions(groupId).then(rows => {
+      if (!alive) return;
+      const selected = rows.find(row => row.session_key === requestedSession);
+      if (!selected) { setSelectionError(t("navigation.sessionUnavailable")); return; }
+      setSelectionError("");
+      setGroupMessages([]);
+      setPartnerGroupSessionKey(groupId, selected.session_key);
+      setSessionKey(selected.session_key);
+      setSessionTitle(selected.title);
+    }).catch(() => { if (alive) setSelectionError(t("navigation.loadError")); });
+    return () => { alive = false; };
+  }, [groupId, group, loading, requestedSession, t]);
+
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center">
@@ -104,6 +123,7 @@ export default function PartnerGroupPage() {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
+      {selectionError && <div role="alert" className="border-b border-border px-6 py-2 text-xs text-destructive">{selectionError}</div>}
       <header className="flex shrink-0 items-center justify-between gap-4 border-b border-[var(--border)] px-4 py-3 sm:px-6">
         <div className="flex min-w-0 items-center gap-3">
           <Link
@@ -155,10 +175,12 @@ export default function PartnerGroupPage() {
                 setGroupMessages([]);
                 setPartnerGroupSessionKey(groupId, key);
                 setSessionKey(key);
+                router.replace(`/partners/groups/${encodeURIComponent(groupId)}?${new URLSearchParams({ session: key })}`, { scroll: false });
               }}
               onCreate={() => {
                 setGroupMessages([]);
                 setSessionKey(createPartnerGroupSessionKey(groupId));
+                router.replace(`/partners/groups/${encodeURIComponent(groupId)}`, { scroll: false });
               }}
               onTitleChange={setSessionTitle}
             />

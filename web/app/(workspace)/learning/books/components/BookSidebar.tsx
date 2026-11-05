@@ -89,7 +89,7 @@ export default function BookSidebar({
 
   if (collapsed) {
     return (
-      <aside className="flex h-full w-14 flex-col items-center gap-3 border-r border-[var(--border)] bg-[var(--card)]/40 px-2 py-4">
+      <aside className="flex h-full w-14 flex-col items-center gap-3 bg-[rgb(var(--dt-ink,55_53_47)/0.022)] px-2 py-4">
         <Tooltip label={t("All books")}>
           <button
             onClick={onBackToLibrary}
@@ -138,11 +138,11 @@ export default function BookSidebar({
   }
 
   return (
-    <aside className="flex h-full w-[232px] flex-col gap-3 border-r border-[var(--border)] bg-[var(--card)]/40 px-3 py-4">
+    <aside className="flex h-full w-[232px] flex-col gap-3 bg-[rgb(var(--dt-ink,55_53_47)/0.022)] px-3 py-4">
       <div className="flex items-center justify-between gap-2">
         <button
           onClick={onBackToLibrary}
-          className="inline-flex items-center gap-1.5 self-start rounded-md px-2 py-1 text-xs font-medium text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)]/40 hover:text-[var(--foreground)]"
+          className="dt-section-back inline-flex items-center gap-1.5 self-start rounded-md px-2 py-1 text-xs font-medium text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)]/40 hover:text-[var(--foreground)]"
         >
           <ArrowLeft className="h-3.5 w-3.5" /> {t("All books")}
         </button>
@@ -176,7 +176,7 @@ export default function BookSidebar({
         <a
           href={bookApi.exportUrl(book.id)}
           download
-          className="inline-flex items-center justify-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--card)] px-2 py-1.5 text-xs font-medium text-[var(--muted-foreground)] hover:border-[var(--primary)]/40 hover:text-[var(--primary)]"
+          className="dt-quiet-button h-8 justify-start text-xs font-medium"
         >
           <Download className="h-3.5 w-3.5" />
           {t("Export Markdown")}
@@ -229,7 +229,7 @@ export default function BookSidebar({
 
       <section className="flex-1 overflow-y-auto">
         {pages.length === 0 ? (
-          <div className="rounded-md border border-dashed border-[var(--border)] px-2 py-3 text-xs text-[var(--muted-foreground)]">
+          <div className="rounded-xl bg-[var(--background)] px-3 py-3 text-xs text-[var(--muted-foreground)]">
             {t("Pages will appear here once the spine is confirmed.")}
           </div>
         ) : (
@@ -260,10 +260,6 @@ export default function BookSidebar({
                         active
                           ? "bg-[var(--primary)]/15 text-[var(--foreground)]"
                           : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]/40 hover:text-[var(--foreground)]"
-                      } ${
-                        isOverview
-                          ? "border border-dashed border-[var(--border)]"
-                          : ""
                       }`}
                     >
                       <span className="flex min-w-0 items-start gap-1.5">

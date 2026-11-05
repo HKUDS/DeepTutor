@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from deeptutor.services.file_io import atomic_write_json
+from deeptutor.services.file_io import atomic_write_json, read_text
 from deeptutor.services.parsing.types import ParsedDocument
 from deeptutor.services.rag.visual_assets import (
     MAX_IMAGE_BYTES,
@@ -130,7 +130,7 @@ def coverage_overview(
                 or report_file.is_symlink()
             ):
                 raise ValueError("unsafe coverage path")
-            report = json.loads(report_file.read_text())
+            report = json.loads(read_text(report_file))
             if not isinstance(report, dict) or report.get("source_document_id") != digest:
                 raise ValueError("outdated coverage")
         except (OSError, ValueError):

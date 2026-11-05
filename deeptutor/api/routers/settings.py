@@ -18,7 +18,7 @@ from typing import Any, List, Literal, Optional
 
 from fastapi import APIRouter, HTTPException, Query, Request, status
 from fastapi.responses import Response, StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 logger = logging.getLogger(__name__)
 
@@ -72,11 +72,17 @@ from deeptutor.services.settings.interface_settings import (
 from deeptutor.services.settings.interface_settings import (
     UiLanguage,
     atomic_update,
+    resolve_display_settings,
     resolve_languages,
     sanitize_enabled_tools,
 )
 from deeptutor.services.settings.interface_settings import (
     get_enabled_optional_tools as _get_enabled_optional_tools,
+)
+from deeptutor.services.settings.page_customization import (
+    ChatPageCustomization,
+    LearningPageCustomization,
+    PageCustomization,
 )
 from deeptutor.services.settings.starter_settings import (
     TRACE_COUNT_RANGE as STARTER_TRACE_COUNT_RANGE,
@@ -111,6 +117,8 @@ ResponseLanguage = Literal[
     "pl",
     "uk",
     "ms",
+    "vi",
+    "tr",
 ]
 
 
@@ -171,8 +179,23 @@ class SidebarNavOrder(BaseModel):
     learnResearch: List[str]
 
 
-class UISettings(BaseModel):
-    theme: Literal["light", "dark", "glass", "snow"] = "snow"
+class DisplaySettings(BaseModel):
+    """Account-scoped learning text preferences; no interface chrome settings."""
+
+    content_font_scale: Literal[90, 100, 110, 125, 150] = 100
+    content_line_spacing: Literal["compact", "normal", "relaxed"] = "normal"
+
+    @field_validator("content_font_scale", mode="before")
+    @classmethod
+    def validate_font_scale(cls, value: Any) -> Any:
+        """Reject coerced strings, floats and booleans as preference values."""
+        if type(value) is not int:
+            raise ValueError("content_font_scale must be an integer percentage")
+        return value
+
+
+class UISettings(DisplaySettings):
+    theme: Literal["system", "light", "dark", "glass", "snow"] = "system"
     language: UiLanguage = "en"
     response_language: ResponseLanguage = "en"
     sidebar_description: Optional[str] = None
@@ -182,11 +205,11 @@ class UISettings(BaseModel):
     code_block_wrap_long_lines: Optional[bool] = None
 
 
-class UISettingsUpdate(BaseModel):
+class UISettingsUpdate(DisplaySettings):
     """Partial UI settings for user-initiated PATCH/PUT updates via /api/settings/ui.
 
-    All fields have None defaults so `model_dump(exclude_unset=True)` naturally
-    excludes fields not provided in the frontend payload, while explicitly provided
+    `model_dump(exclude_unset=True)` excludes fields not provided in the
+    frontend payload, while explicitly provided
     defaults (e.g., `theme: "snow"`) still update the backend. This separates
     the semantic contract: `/ui` endpoint only merges whatever explicitly arrives
     from the frontend.
@@ -195,7 +218,7 @@ class UISettingsUpdate(BaseModel):
     # Same Literal domains as UISettings — a None default keeps them optional
     # for exclude_unset partial merges, but an explicit value is still validated
     # so PUT /ui cannot persist a theme/language the app can't render.
-    theme: Literal["light", "dark", "glass", "snow"] | None = None
+    theme: Literal["system", "light", "dark", "glass", "snow"] | None = None
     language: UiLanguage | None = None
     response_language: ResponseLanguage | None = None
     sidebar_description: str | None = None
@@ -203,6 +226,9 @@ class UISettingsUpdate(BaseModel):
     code_block_theme: str | None = None
     code_block_show_line_numbers: bool | None = None
     code_block_wrap_long_lines: bool | None = None
+    # Optional by omission, never nullable: null is not a saved preference.
+    content_font_scale: Literal[90, 100, 110, 125, 150] = 100
+    content_line_spacing: Literal["compact", "normal", "relaxed"] = "normal"
 
 
 class VoiceAutoplayUpdate(BaseModel):
@@ -218,7 +244,7 @@ class ChatResponseTimeoutUpdate(BaseModel):
 
 
 class ThemeUpdate(BaseModel):
-    theme: Literal["light", "dark", "glass", "snow"]
+    theme: Literal["system", "light", "dark", "glass", "snow"]
 
 
 class LanguageUpdate(BaseModel):
@@ -387,13 +413,17 @@ class ChatAttachmentSettingsUpdate(BaseModel):
 
 
 class ChatStarterSettingsUpdate(BaseModel):
-    """How much recent activity shapes the home screen's starting points.
+    """How much recent activity shapes the home screen's starting points, and
+    whether the chat composer offers a predicted next line.
 
     Bounds mirror ``starter_settings.TRACE_COUNT_RANGE`` so the API rejects
-    loudly what the file layer would silently clamp.
+    loudly what the file layer would silently clamp. ``ask_hint_enabled`` left
+    out (``None``) keeps the stored value, so a client that only knows
+    ``trace_count`` cannot switch the hint back on by accident.
     """
 
     trace_count: int = Field(ge=STARTER_TRACE_COUNT_RANGE[0], le=STARTER_TRACE_COUNT_RANGE[1])
+    ask_hint_enabled: Optional[bool] = None
 
 
 class MinerUSettingsUpdate(BaseModel):
@@ -541,7 +571,12 @@ def load_ui_settings() -> dict[str, Any]:
                 saved = json.load(handle)
                 # resolve_languages owns the legacy migration (a file predating
                 # the UI/response split inherits its one language into both).
-                merged = {**DEFAULT_UI_SETTINGS, **saved, **resolve_languages(saved)}
+                merged = {
+                    **DEFAULT_UI_SETTINGS,
+                    **saved,
+                    **resolve_languages(saved),
+                    **resolve_display_settings(saved),
+                }
                 # Filter persisted enabled_optional_tools to current
                 # toggleable set so retired tool names can't leak into
                 # the per-turn payload.
@@ -600,7 +635,7 @@ def _require_codex_oauth_actor() -> None:
     including signing them out. Partners inherit the owner's login at call
     time and need no lifecycle of their own.
     """
-    from deeptutor.services.partners.scope import is_partner_user_id
+    from deeptutor.core.identities import is_partner_user_id
 
     if is_partner_user_id(get_current_user().id):
         raise HTTPException(
@@ -1122,11 +1157,12 @@ async def get_chat_attachment_settings():
 
 @router.get("/chat-starters")
 async def get_chat_starter_settings():
-    """How many recent activities shape the home screen's starting points.
+    """How many recent activities shape the home screen's starting points, and
+    whether the chat composer offers a predicted next line.
 
-    Per user and not admin-gated, unlike the attachment caps next door: this
-    changes the size of one prompt built from the caller's own memory, not any
-    resource other people share.
+    Per user and not admin-gated, unlike the attachment caps next door: these
+    change one prompt built from the caller's own memory, or skip one call, not
+    any resource other people share.
     """
     from deeptutor.services.settings.starter_settings import (
         TRACE_COUNT_RANGE,
@@ -1143,7 +1179,7 @@ async def update_chat_starter_settings(payload: ChatStarterSettingsUpdate):
         save_starter_settings,
     )
 
-    saved = save_starter_settings({"trace_count": payload.trace_count})
+    saved = save_starter_settings(payload.model_dump(exclude_none=True))
     return {"settings": saved, "bounds": {"trace_count": TRACE_COUNT_RANGE}}
 
 
@@ -1505,11 +1541,11 @@ def _normalize_engine_name(name: str) -> str:
 
 @router.post("/document-parsing/install")
 async def start_document_parsing_install(payload: DocumentParsingInstall):
-    """Kick off a one-click ``pip install`` of an optional engine's package(s).
+    """Return offline Docker/source/wheel guidance; never install into a live server.
 
-    Returns ``{ok, message}`` immediately; progress is polled via the shared job
-    status endpoint. Only one job runs at a time (process-wide singleton). The
-    engine must be in the install allow-list (``ENGINE_PIP_SPECS``)."""
+    Keeps the existing ``{ok, message}`` response and engine allow-list for
+    compatibility. Model downloads use their separate background-job endpoint.
+    """
     _require_settings_admin()
     from deeptutor.services.parsing.engines._install import (
         ENGINE_PIP_SPECS,
@@ -2014,8 +2050,9 @@ async def fetch_models_from_provider(payload: FetchModelsPayload):
 
     base_url = (payload.base_url or "").strip()
     binding = (payload.binding or "").strip().lower() or "openai"
-    is_copilot = canonical_provider_name(binding) == "github_copilot"
-    if not base_url and binding != "codebuddy" and not is_copilot:
+    canonical = canonical_provider_name(binding)
+    is_copilot = canonical == "github_copilot"
+    if not base_url and canonical not in {"codebuddy", "claude_code"} and not is_copilot:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="base_url is required for this provider.",
@@ -2035,6 +2072,13 @@ async def fetch_models_from_provider(payload: FetchModelsPayload):
             api_key = profile.get("api_key") if profile else None
         if not api_format and profile:
             api_format = str(profile.get("api_format") or "")
+
+    if canonical == "claude_code":
+        from deeptutor.services.llm.provider_core.claude_code_provider import (
+            fetch_claude_code_catalog,
+        )
+
+        return {"models": await fetch_claude_code_catalog()}
 
     try:
         model_ids = await fetch_llm_models(binding, base_url, api_key, api_format or "auto")
@@ -2150,6 +2194,42 @@ async def get_ui_settings():
     return {field: settings.get(field) for field in PRESESSION_UI_FIELDS}
 
 
+# Private: user-authored starting prompts must never enter the public /ui payload.
+def _page_customization() -> PageCustomization:
+    return PageCustomization.model_validate(load_ui_settings().get("page_customization") or {})
+
+
+@router.get("/page-customization")
+async def get_page_customization():
+    return _page_customization().model_dump()
+
+
+def _save_page_section(section: str, value: BaseModel) -> dict[str, Any]:
+    def update(stored):
+        current = PageCustomization.model_validate(stored.get("page_customization") or {})
+        setattr(current, section, value)
+        return {**stored, "page_customization": current.model_dump()}
+
+    atomic_update(_settings_file(), update)
+    return _page_customization().model_dump()
+
+
+@router.put("/page-customization/chat")
+async def update_chat_page_customization(update: ChatPageCustomization):
+    return _save_page_section("chat", update)
+
+
+@router.put("/page-customization/learning")
+async def update_learning_page_customization(update: LearningPageCustomization):
+    return _save_page_section("learning", update)
+
+
+@router.get("/display", response_model=DisplaySettings)
+async def get_display_settings() -> DisplaySettings:
+    """Read learning typography through the authenticated, request-scoped router."""
+    return DisplaySettings(**resolve_display_settings(load_ui_settings()))
+
+
 @router.put("/ui")
 async def update_ui_settings(update: UISettingsUpdate):
     """Merge frontend partial update into current UI settings.
@@ -2176,6 +2256,7 @@ async def reset_settings():
 async def get_themes():
     return {
         "themes": [
+            {"id": "system", "name": "System"},
             {"id": "snow", "name": "Default"},
             {"id": "light", "name": "Cream"},
             {"id": "dark", "name": "Dark"},

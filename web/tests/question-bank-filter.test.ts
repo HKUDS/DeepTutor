@@ -23,20 +23,17 @@ test("the unresolved view combines wrong answers with review state", () => {
     search: "equation",
     sort: "oldest",
     limit: 60,
-    course_id: undefined,
   });
 });
 
-test("review filters preserve the current course scope", () => {
+test("review filters preserve the selected source and material", () => {
   const filter = buildQuestionBankFilter(
     { kind: "all" },
     { source: "book", materialId: "book-1", scoreTrend: "" },
     "",
     "recent",
-    "course-1",
   );
 
   assert.equal(filter.source, "book");
   assert.equal(filter.material_id, "book-1");
-  assert.equal(filter.course_id, "course-1");
 });

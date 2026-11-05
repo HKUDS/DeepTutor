@@ -68,6 +68,41 @@ _THINKING_DISABLED_BY_DEFAULT_MODELS: tuple[str, ...] = ()
 _THINKING_DISABLED_BY_DEFAULT: tuple[tuple[str, str], ...] = ()
 
 
+def minimax_reasoning_kwargs(
+    model: str, effort: str, *, anthropic: bool = False
+) -> dict[str, Any] | None:
+    """Map current MiniMax models without changing saved legacy/custom requests.
+
+    See https://platform.minimax.io/docs/api-reference/text-openai-api and
+    https://platform.minimax.io/docs/api-reference/text-anthropic-api.
+    """
+    name = model.lower()
+    if name not in {"minimax-m3.1-flash", "minimax-m3"}:
+        return None
+    if name == "minimax-m3":
+        if not effort and not anthropic:
+            # Omission retains each protocol's own default, including when an
+            # agentic OpenAI facade forwards this request to Anthropic Messages.
+            return {}
+        enabled = effort not in {"none", "minimal", "minimum"} if effort else not anthropic
+        thinking = {"type": "adaptive" if enabled else "disabled"}
+        return {"thinking": thinking} if anthropic else {"extra_body": {"thinking": thinking}}
+    # Flash always uses adaptive reasoning. Saved off/binary values fall back
+    # to the vendor default effort rather than sending an unsupported mode.
+    thinking = {"type": "adaptive"}
+    result: dict[str, Any] = (
+        {"thinking": thinking}
+        if anthropic
+        else {"extra_body": {"thinking": thinking, "reasoning_split": True}}
+    )
+    if effort in {"low", "medium", "high", "xhigh", "max"}:
+        if anthropic:
+            result["output_config"] = {"effort": effort}
+        else:
+            result["reasoning_effort"] = effort
+    return result
+
+
 def _spec_name(spec: Any, binding: str | None) -> str:
     return str(getattr(spec, "name", None) or binding or "").strip().lower()
 
@@ -149,11 +184,20 @@ def build_openai_compatible_reasoning_kwargs(
     ``custom`` bindings need model-family inference because their endpoint is
     user supplied and therefore cannot be identified by provider name alone.
     """
-    if reasoning_effort == "":
-        return {}
-
     provider_name = _spec_name(spec, binding)
     model_name = model or ""
+    if provider_name == "minimax":
+        minimax = minimax_reasoning_kwargs(model_name, (reasoning_effort or "").strip().lower())
+        if minimax is not None:
+            return minimax
+    if (
+        provider_name == "openrouter"
+        and model_name.lower() == "minimax/minimax-m3.1-flash:free"
+        and reasoning_effort in {"none", "minimal", "minimum"}
+    ):
+        return {}
+    if reasoning_effort == "":
+        return {}
     thinking_style = str(getattr(spec, "thinking_style", "") or "")
     patterns = tuple(getattr(spec, "reasoning_model_patterns", ()) or ())
 

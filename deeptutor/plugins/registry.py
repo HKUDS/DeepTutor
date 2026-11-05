@@ -595,6 +595,16 @@ def _now() -> str:
 
 
 def _manifest_files(dist: Distribution) -> list[tuple[Path, Any, str]]:
+    # Most distributions contain no DeepTutor plugin. Materializing dist.files
+    # parses every RECORD row into a PackagePath/hash/size object (~176k files
+    # in a typical dev environment). A negative text check is sufficient to
+    # skip those packages without importing them or caching approval state.
+    # Positive matches and legacy distributions retain the authoritative path.
+    reader = getattr(dist, "read_text", None)
+    if callable(reader):
+        record = reader("RECORD")
+        if record is not None and MANIFEST_FILENAME not in record.lower():
+            return []
     files = dist.files or []
     results: list[tuple[Path, Any, str]] = []
     for item in files:

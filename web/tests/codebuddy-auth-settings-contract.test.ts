@@ -22,8 +22,12 @@ test("CodeBuddy renders a login card without changing other OAuth cards", () => 
   assert.match(editor, /providerValue === "codebuddy"/);
   assert.match(editor, /<CodeBuddyAuthCard/);
   assert.match(editor, /<CodexOAuthCard/);
-  assert.match(editor, /isCodexOAuth \|\| isCodeBuddyAuth/);
-  assert.match(editor, /!isCodexOAuth && !isCodeBuddyAuth/);
+  assert.match(
+    editor,
+    /CLI_LOGIN_BINDINGS = new Set\(\["codebuddy", "claude_code"\]\)/,
+  );
+  assert.match(editor, /isCodexOAuth \|\| isCliLogin/);
+  assert.match(editor, /!isCodexOAuth && !isCliLogin/);
   assert.match(readFileSync(CARD, "utf8"), /startCodeBuddyLogin/);
   assert.match(readFileSync(CARD, "utf8"), /logoutCodeBuddy/);
 });
@@ -32,7 +36,7 @@ test("CodeBuddy model sync cannot write into a profile after provider switch", (
   const editor = readFileSync(EDITOR, "utf8");
 
   assert.match(editor, /!profile \|\| profile\.binding !== binding/);
-  assert.match(editor, /previousProvider === "codebuddy"/);
+  assert.match(editor, /CLI_LOGIN_BINDINGS\.has\(previousProvider\)/);
   assert.match(editor, /profile\.models = \[\]/);
 });
 

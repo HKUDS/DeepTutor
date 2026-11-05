@@ -175,7 +175,7 @@ class BaseAgent(ABC):
 
         raise ValueError(
             f"Model not configured for agent {self.agent_name}. "
-            "Please activate a model in Settings > Catalog."
+            "Please activate a model in Settings > Language models."
         )
 
     def get_temperature(self) -> float:

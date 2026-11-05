@@ -146,6 +146,7 @@ function AssistantResponseImpl({
             key={`text-${index}`}
             content={repairedContent}
             variant="prose"
+            learningTextSize={16}
             className="text-[var(--foreground)]"
           />
         );

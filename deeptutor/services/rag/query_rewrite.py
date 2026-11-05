@@ -15,8 +15,11 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+import logging
 import time
 from typing import Any, Optional
+
+logger = logging.getLogger(__name__)
 
 #: Rewrite is disabled / was forced off.
 STRATEGY_OFF = "off"
@@ -77,20 +80,18 @@ async def rewrite_query(
 ) -> RewriteOutcome:
     """Rewrite ``query`` per ``settings``; always fail open to the original."""
     original = query if isinstance(query, str) else ""
-    cfg = settings or {}
-    strategy = str(cfg.get("strategy") or STRATEGY_STANDALONE)
-    if not bool(cfg.get("enabled", False)) or strategy == STRATEGY_OFF:
-        return RewriteOutcome(original=original, rewritten=original, strategy=STRATEGY_OFF)
-
-    min_chars = int(cfg.get("min_query_chars") or 0)
-    if len(original.strip()) < max(0, min_chars):
-        return RewriteOutcome(original=original, rewritten=original, strategy=strategy)
-
-    timeout = float(cfg.get("timeout_seconds") or 5.0)
-    model = str(cfg.get("model") or "").strip() or None
-
     started = time.monotonic()
+    strategy = STRATEGY_STANDALONE
     try:
+        cfg = settings or {}
+        strategy = str(cfg.get("strategy") or STRATEGY_STANDALONE)
+        if not bool(cfg.get("enabled", False)) or strategy == STRATEGY_OFF:
+            return RewriteOutcome(original=original, rewritten=original, strategy=STRATEGY_OFF)
+        min_chars = int(cfg.get("min_query_chars") or 0)
+        if len(original.strip()) < max(0, min_chars):
+            return RewriteOutcome(original=original, rewritten=original, strategy=strategy)
+        timeout = float(cfg.get("timeout_seconds") or 5.0)
+        model = str(cfg.get("model") or "").strip() or None
         complete = complete_fn
         if complete is None:
             from deeptutor.services.llm import complete as _default_complete
@@ -106,7 +107,9 @@ async def rewrite_query(
                 complete(query, system_prompt=_SYSTEM_PROMPT),
                 timeout=timeout,
             )
+        rewritten = _clean_rewritten(raw)
     except Exception as exc:
+        logger.warning("Query rewrite failed (%s); using the original query", type(exc).__name__)
         return RewriteOutcome(
             original=original,
             rewritten=original,
@@ -116,7 +119,6 @@ async def rewrite_query(
         )
 
     latency_ms = (time.monotonic() - started) * 1000.0
-    rewritten = _clean_rewritten(raw)
     if not rewritten:
         return RewriteOutcome(
             original=original,
@@ -146,14 +148,27 @@ async def maybe_rewrite(
     forces it off, None follows the runtime settings. Returns ``(query, None)``
     when the layer is off so callers only attach provenance when active.
     """
-    cfg = settings
-    if cfg is None:
-        from deeptutor.services.config import get_runtime_settings_service
+    if rewrite is False:
+        return query, None
+    try:
+        cfg = settings
+        if cfg is None:
+            from deeptutor.services.config import get_runtime_settings_service
 
-        cfg = get_runtime_settings_service().load_query_rewrite()
-    cfg = dict(cfg)
-    if rewrite is not None:
-        cfg["enabled"] = bool(rewrite)
+            cfg = get_runtime_settings_service().load_query_rewrite()
+        cfg = dict(cfg)
+        if rewrite is not None:
+            cfg["enabled"] = bool(rewrite)
+    except Exception as exc:
+        logger.warning(
+            "Query rewrite settings failed (%s); using the original query", type(exc).__name__
+        )
+        return query, RewriteOutcome(
+            original=query,
+            rewritten=query,
+            strategy=STRATEGY_OFF,
+            error=f"{type(exc).__name__}: {exc}",
+        )
 
     if not bool(cfg.get("enabled", False)):
         return query, None

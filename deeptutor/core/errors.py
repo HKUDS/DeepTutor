@@ -55,3 +55,12 @@ class EnvironmentConfigError(ConfigurationError):
     """Raised when there's an environment-related configuration error."""
 
     pass
+
+
+class AccessError(DeepTutorError):
+    """Transport-independent access failure, translated by HTTP adapters."""
+
+    def __init__(self, status_code: int, detail: str):
+        super().__init__(detail)
+        self.status_code = status_code
+        self.detail = detail

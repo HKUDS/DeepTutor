@@ -1,3 +1,4 @@
+import { sourceModuleInventory } from "./fixtures/modules";
 import { expect, test } from "@playwright/test";
 
 const BASE_URL = process.env.WEB_BASE_URL || "http://127.0.0.1:3300";
@@ -38,6 +39,7 @@ for (const theme of themes) {
           },
           { selectedTheme: theme, selectedLanguage: language },
         );
+        await context.route(url => url.pathname === "/api/modules", route => route.fulfill({ json: sourceModuleInventory }));
         const page = await context.newPage();
 
         for (const [surface, path] of surfaces) {

@@ -4,9 +4,9 @@ import { pageActionClass, pageGridClass } from '@/components/layout/FeaturePage'
 import Tooltip from "@/shared/ui/Tooltip";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Cpu, Loader2, Plug, Plus, Trash2, X } from "lucide-react";
+import { Cpu, Loader2, Plug, Plus, Trash2, X, Bot } from "lucide-react";
 
-import { agentGlyph } from "@/components/agents/agent-icons";
+import { agentGlyph, agentKindLabel } from "@/components/agents/agent-icons";
 import SpaceSectionHeader from "@/components/space/SpaceSectionHeader";
 import {
   connectSubagent,
@@ -23,20 +23,7 @@ const REMOTE_HERMES_KIND = "hermes_remote";
 
 type Lang = { zh: string; en: string };
 
-function backendLabel(kind: string): string {
-  if (kind === "claude_code") return "Claude Code";
-  if (kind === "codex") return "Codex";
-  if (kind === "grok") return "Grok CLI";
-  if (kind === "antigravity") return "Antigravity CLI";
-  if (kind === "kimi") return "Kimi CLI";
-  if (kind === "opencode") return "opencode";
-  if (kind === "mimo") return "MiMo Code";
-  if (kind === "hermes") return "Hermes Agent";
-  if (kind === REMOTE_HERMES_KIND) return "Hermes Agent (remote)";
-  if (kind === "openclaw") return "OpenClaw";
-  if (kind === "deepseek_harness") return "DeepSeek Harness";
-  return kind;
-}
+const backendLabel = agentKindLabel;
 
 export default function ConnectedAgents() {
   const { i18n } = useTranslation();
@@ -98,6 +85,7 @@ export default function ConnectedAgents() {
   return (
     <section className="space-y-4">
       <SpaceSectionHeader
+        icon={Bot}
         title={tr({ zh: "连接的智能体", en: "Connected agents" })}
         description={tr({
           zh: "把本机智能体或已配置的远程 Hermes 网关接进来，在对话中选中后直接向它提问——运行过程会实时展示。",

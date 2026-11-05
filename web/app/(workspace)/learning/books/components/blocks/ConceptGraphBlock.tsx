@@ -82,7 +82,7 @@ export default function ConceptGraphBlock({
 
   return (
     <section className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,260px)]">
-      <figure className="overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--card)] p-3 shadow-sm">
+      <figure className="overflow-hidden rounded-2xl bg-[rgb(var(--dt-ink,55_53_47)/0.028)] p-3">
         <header className="mb-2 flex items-center gap-2 text-xs text-[var(--muted-foreground)]">
           <Compass className="h-3.5 w-3.5" />
           <span>
@@ -108,7 +108,7 @@ export default function ConceptGraphBlock({
         </div>
       </figure>
 
-      <aside className="rounded-2xl border border-[var(--border)] bg-[var(--card)]/60 p-3 shadow-sm">
+      <aside className="rounded-2xl bg-[rgb(var(--dt-ink,55_53_47)/0.028)] p-3">
         <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">
           {t("Chapter index")}
         </h3>

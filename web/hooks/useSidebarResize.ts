@@ -2,6 +2,7 @@
 
 import {
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type KeyboardEvent,
@@ -18,8 +19,12 @@ function clampWidth(width: number, max: number) {
   return Math.round(Math.max(MIN_WIDTH, Math.min(max, width)));
 }
 
-export function useSidebarResize(disabled: boolean) {
-  const [preferredWidth, setPreferredWidth] = useState(DEFAULT_WIDTH);
+export function useSidebarResize(
+  disabled: boolean,
+  defaultWidth = DEFAULT_WIDTH,
+  storageKey = WIDTH_KEY,
+) {
+  const [preferredWidth, setPreferredWidth] = useState(defaultWidth);
   const [max, setMax] = useState(MAX_WIDTH);
   const [resizing, setResizing] = useState(false);
   const drag = useRef<{
@@ -29,8 +34,8 @@ export function useSidebarResize(disabled: boolean) {
   } | null>(null);
   const width = clampWidth(preferredWidth, max);
 
-  useEffect(() => {
-    const stored = Number(browserStorage.readRaw("local", WIDTH_KEY));
+  useLayoutEffect(() => {
+    const stored = Number(browserStorage.readRaw("local", storageKey));
     if (Number.isFinite(stored) && stored > 0) {
       // Hydrate after mount to keep the initial render consistent with SSR.
       // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -46,7 +51,7 @@ export function useSidebarResize(disabled: boolean) {
     updateBounds();
     window.addEventListener("resize", updateBounds);
     return () => window.removeEventListener("resize", updateBounds);
-  }, []);
+  }, [storageKey]);
 
   useEffect(() => {
     if (!resizing || disabled) return;
@@ -62,7 +67,7 @@ export function useSidebarResize(disabled: boolean) {
   const saveWidth = (next: number) => {
     const bounded = clampWidth(next, max);
     setPreferredWidth(bounded);
-    browserStorage.writeRaw("local", WIDTH_KEY, String(bounded));
+    browserStorage.writeRaw("local", storageKey, String(bounded));
   };
   const finishDrag = (event: PointerEvent<HTMLDivElement>) => {
     if (drag.current?.pointerId !== event.pointerId) return;
@@ -97,7 +102,7 @@ export function useSidebarResize(disabled: boolean) {
       onPointerUp: finishDrag,
       onPointerCancel: finishDrag,
       onLostPointerCapture: finishDrag,
-      onDoubleClick: () => saveWidth(DEFAULT_WIDTH),
+      onDoubleClick: () => saveWidth(defaultWidth),
       onKeyDown: (event: KeyboardEvent<HTMLDivElement>) => {
         if (disabled) return;
         const step = event.shiftKey ? 40 : 10;

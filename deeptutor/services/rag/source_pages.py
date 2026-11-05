@@ -15,6 +15,10 @@ from pydantic import BaseModel, ConfigDict, Field
 
 SOURCE_SCHEMA_VERSION = 1
 CATALOG_FILENAME = "source_pages.json"
+# MinerU content_list mixes body text with page chrome. These are the layout
+# helpers already dropped before LightRAG indexing and exercise lookup.
+# Margin notes (aside_text) and page footnotes stay, because they carry text.
+_PAGE_FURNITURE_TYPES = frozenset({"header", "footer", "page_header", "page_footer", "page_number"})
 
 
 class SourcePageError(ValueError):
@@ -103,8 +107,48 @@ def public_source(ref: SourceRef) -> dict[str, Any]:
     }
 
 
+def _is_page_furniture(block: dict[str, Any]) -> bool:
+    """True for MinerU page-chrome blocks that must not become chunks."""
+    return str(block.get("type") or "").strip().lower() in _PAGE_FURNITURE_TYPES
+
+
+def _list_item_pieces(value: Any) -> list[str]:
+    """Flatten MinerU ``list_items`` strings.
+
+    Reference lists are ``type="list"`` blocks, with ``sub_type="ref_text"`` for
+    a bibliography. Entries are an array of strings; other shapes are ignored
+    so a nested object is not indexed as its Python repr.
+    """
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, list):
+        pieces: list[str] = []
+        for item in value:
+            pieces.extend(_list_item_pieces(item))
+        return pieces
+    return []
+
+
+def _block_text(block: dict[str, Any]) -> str:
+    """Readable text of one content_list block, including list entries."""
+    pieces = [str(block.get(k) or "") for k in ("text", "content", "table_body")]
+    for name in ("image_caption", "table_caption", "table_footnote"):
+        value = block.get(name) or []
+        if isinstance(value, list):
+            pieces.extend(str(v) for v in value)
+        else:
+            pieces.append(str(value))
+    pieces.extend(_list_item_pieces(block.get("list_items")))
+    return "\n".join(piece for piece in pieces if piece.strip())
+
+
 def build_pdf_documents(path: Path, parsed: Any, kb_dir: Path) -> list[Any]:
-    """Prefer located IR; native PDF pages provide physical locators otherwise."""
+    """Prefer located IR; native PDF pages provide physical locators otherwise.
+
+    MinerU bibliographies are ``list`` blocks whose entries live in
+    ``list_items``. Page numbers, running headers, and footers are left out so
+    they are not embedded as their own chunks.
+    """
     from llama_index.core import Document
     import pymupdf
 
@@ -115,20 +159,21 @@ def build_pdf_documents(path: Path, parsed: Any, kb_dir: Path) -> list[Any]:
     key = resolved.relative_to(raw).as_posix()
     digest = source_digest(path)
     grouped: dict[int, list[str]] = {}
+    furniture_pages: set[int] = set()
+    content_pages: set[int] = set()
     unlocated: list[str] = []
     for block in parsed.blocks or []:
         if not isinstance(block, dict):
             continue
-        pieces = [str(block.get(k) or "") for k in ("text", "content", "table_body")]
-        for name in ("image_caption", "table_caption", "table_footnote"):
-            value = block.get(name) or []
-            if isinstance(value, list):
-                pieces.extend(str(v) for v in value)
-            else:
-                pieces.append(str(value))
-        text = "\n".join(p for p in pieces if p.strip())
         index = block.get("page_idx", block.get("page_index"))
-        if type(index) is int and index >= 0:
+        on_page = type(index) is int and index >= 0
+        if _is_page_furniture(block):
+            if on_page:
+                furniture_pages.add(index)
+            continue
+        text = _block_text(block)
+        if on_page:
+            content_pages.add(index)
             grouped.setdefault(index, []).append(text)
         elif text:
             unlocated.append(text)
@@ -138,8 +183,15 @@ def build_pdf_documents(path: Path, parsed: Any, kb_dir: Path) -> list[Any]:
             raise SourcePageError("Password protected PDFs cannot supply teaching evidence.")
         for index, page in enumerate(pdf):
             located = "\n\n".join(grouped.get(index, []))
-            native = page.get_text(sort=True).strip()
-            text = located.strip() or native
+            # Furniture-only pages must not fall back to the text layer, or the
+            # printed page number is indexed after its block was dropped.
+            # Pages with other blocks keep the previous native-text fallback.
+            if located.strip():
+                text = located.strip()
+            elif index in furniture_pages and index not in content_pages:
+                text = ""
+            else:
+                text = page.get_text(sort=True).strip()
             metadata = {
                 "file_name": path.name,
                 "file_path": str(path),

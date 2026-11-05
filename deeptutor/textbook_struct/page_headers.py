@@ -32,7 +32,7 @@ def _block_text(block: dict) -> str:
 #: dedupe see the same vocabulary the footer path produces.
 HEADER_CHAPTER_RE = re.compile(
     r"^(?P<pre>.{0,20}?)\s*第\s*(?P<num>[一二三四五六七八九十百\d]+)\s*"
-    r"(?P<unit>[课章节单元])\s*(?P<post>.{0,30}?)\s*$"
+    r"(?P<unit>单元|[课章节])\s*(?P<post>.{0,30}?)\s*$"
 )
 
 

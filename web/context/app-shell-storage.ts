@@ -1,5 +1,7 @@
 "use client";
 
+import type { ResponseLanguage } from "@/i18n/languages";
+
 import { browserStorage } from "@/shared/storage";
 import { activeWorkspaceId } from "@/lib/workspace-scope";
 import {
@@ -9,23 +11,7 @@ import {
 
 export type { AppLanguage } from "@/i18n/languages";
 
-/** Model output can use more languages than the app UI locale supports. */
-export type ResponseLanguage =
-  | "en"
-  | "zh"
-  | "zh-tw"
-  | "ja"
-  | "ko"
-  | "es"
-  | "fr"
-  | "de"
-  | "ru"
-  | "pt"
-  | "it"
-  | "ar"
-  | "pl"
-  | "uk"
-  | "ms";
+export type { ResponseLanguage } from "@/i18n/languages";
 
 const SUPPORTED_RESPONSE_LANGUAGE_CODES: readonly ResponseLanguage[] = [
   "en",
@@ -43,6 +29,8 @@ const SUPPORTED_RESPONSE_LANGUAGE_CODES: readonly ResponseLanguage[] = [
   "pl",
   "uk",
   "ms",
+  "vi",
+  "tr",
 ];
 
 export function isResponseLanguage(value: unknown): value is ResponseLanguage {
@@ -61,12 +49,17 @@ const RESPONSE_LANGUAGE_ALIASES: Record<string, ResponseLanguage> = {
   german: "de",
   russian: "ru",
   portuguese: "pt",
+  "português": "pt",
+  turkish: "tr",
+  "türkçe": "tr",
   italian: "it",
   arabic: "ar",
   polish: "pl",
   ukrainian: "uk",
   malay: "ms",
   "bahasa melayu": "ms",
+  vietnamese: "vi",
+  "tiếng việt": "vi",
   "zh-cn": "zh",
 };
 
@@ -143,7 +136,7 @@ export function resolveResponseLanguage(
   value: string | null | undefined,
   legacyLanguage: string | null | undefined = "en",
 ): ResponseLanguage {
-  const code = value?.trim().toLowerCase();
+  const code = value?.trim().toLowerCase().replaceAll("_", "-");
   if ((SUPPORTED_RESPONSE_LANGUAGE_CODES as readonly string[]).includes(code ?? "")) {
     return code as ResponseLanguage;
   }

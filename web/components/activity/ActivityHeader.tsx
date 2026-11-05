@@ -31,6 +31,8 @@ export function ActivityHeader({
   expanded = false,
   onToggle,
   showOrb = true,
+  mark,
+  lead,
   className = "",
 }: {
   /** Which orb animation names the current phase. */
@@ -54,6 +56,10 @@ export function ActivityHeader({
   onToggle?: () => void;
   /** Hide the orb where an avatar already signals who is working. */
   showOrb?: boolean;
+  /** Stands in for the orb: someone else's mark when someone else works. */
+  mark?: ReactNode;
+  /** Read before the label and held still while it breathes — a name. */
+  lead?: ReactNode;
   className?: string;
 }) {
   const breathing = settled ? "" : "dt-breathing-text";
@@ -63,7 +69,8 @@ export function ActivityHeader({
 
   const inner = (
     <>
-      {showOrb ? <ActivityOrb state={orb} speed={orbSpeed} /> : null}
+      {mark ?? (showOrb ? <ActivityOrb state={orb} speed={orbSpeed} /> : null)}
+      {lead}
       <span className={breathing}>{label}</span>
       {duration ? (
         <span className="text-[12px] font-medium tabular-nums text-[var(--muted-foreground)]/55">

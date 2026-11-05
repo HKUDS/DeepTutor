@@ -10,10 +10,10 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from deeptutor.api.routers.auth import require_auth
+from deeptutor.api.routers.render_storage import router as render_storage_router
 from deeptutor.multi_user.partner_access import visible_partners
 from deeptutor.multi_user.paths import user_context
 from deeptutor.services.auth import TokenPayload
-from deeptutor.services.partners.scope import partner_user
 from deeptutor.services.workspace import (
     WorkspaceError,
     WorkspaceItem,
@@ -24,6 +24,18 @@ from deeptutor.services.workspace.resources import WorkspaceResources
 
 settings_router = APIRouter()
 files_router = APIRouter()
+files_router.include_router(render_storage_router)
+
+
+@settings_router.get("/folders")
+async def list_server_folders(path: str = "") -> dict:
+    """Return folders available to the authenticated workspace picker."""
+    from deeptutor.services.workspace.folders import browse_folders
+
+    try:
+        return await asyncio.to_thread(browse_folders, get_content_workspace_service(), path)
+    except WorkspaceError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 class WorkspacePathPayload(BaseModel):
@@ -319,6 +331,8 @@ def _resolve_partner_item(
         partner_id = str(partner.get("partner_id") or "").strip()
         if not partner_id:
             continue
+        from deeptutor.services.partners.scope import partner_user
+
         with user_context(partner_user(partner_id)):
             try:
                 return get_content_workspace_service().resolve_published_item(

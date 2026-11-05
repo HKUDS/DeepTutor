@@ -11,6 +11,7 @@ vi.mock("react-i18next", () => ({
 }));
 
 vi.mock("@/lib/workspace-drafts", () => ({
+  currentWorkspaceDraftLocation: () => ({ workspaceId: "", pathname: "/chat" }),
   readWorkspaceDraft: vi.fn().mockResolvedValue(null),
   saveWorkspaceDraft: vi.fn().mockResolvedValue(undefined),
 }));

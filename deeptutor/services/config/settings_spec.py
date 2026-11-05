@@ -132,6 +132,10 @@ _LANGUAGE_CHOICES: tuple[tuple[str, str, str], ...] = (
     ("de", "Deutsch", "Interface and replies in German."),
     ("uk", "Українська", "Interface and replies in Ukrainian."),
     ("pl", "Polski", "Interface and replies in Polish."),
+    ("pt", "Português", "Interface and replies in Portuguese."),
+    ("vi", "Tiếng Việt", "Interface and replies in Vietnamese."),
+    ("ja", "日本語", "Interface and replies in Japanese."),
+    ("tr", "Türkçe", "Interface and replies in Turkish."),
 )
 
 _RESPONSE_LANGUAGE_CHOICES: tuple[tuple[str, str, str], ...] = (
@@ -149,9 +153,12 @@ _RESPONSE_LANGUAGE_CHOICES: tuple[tuple[str, str, str], ...] = (
     ("ar", "العربية", "Replies in Arabic."),
     ("pl", "Polski", "Replies in Polish."),
     ("ms", "Bahasa Melayu", "Replies in Malay."),
+    ("vi", "Tiếng Việt", "Replies in Vietnamese."),
+    ("tr", "Türkçe", "Replies in Turkish."),
 )
 
 _THEME_CHOICES: tuple[tuple[str, str, str], ...] = (
+    ("system", "System", "Follow the operating system appearance."),
     ("snow", "Default", "Pure-white neutral theme."),
     ("light", "Light", "Warm light theme."),
     ("dark", "Dark", "Dark theme."),
@@ -195,7 +202,7 @@ def _static_choices(
 def _interface_specs() -> list[SettingSpec]:
     language_read = _read_ui("language", "en")
     response_read = _read_ui("response_language", "en")
-    theme_read = _read_ui("theme", "snow")
+    theme_read = _read_ui("theme", "system")
     return [
         SettingSpec(
             key="interface.language",
@@ -263,6 +270,10 @@ def _parsing_engine_choices() -> tuple[SettingChoice, ...]:
     turns an unavailable choice into an install offer instead of pretending the
     engine does not exist.
     """
+    from deeptutor.modules.catalog import module_enabled
+
+    if not module_enabled("parsing"):
+        return ()
     from deeptutor.services.parsing.engines._install import installable_engines
     from deeptutor.services.parsing.engines.factory import list_engines
 
@@ -293,6 +304,10 @@ def _parsing_engine_choices() -> tuple[SettingChoice, ...]:
 
 
 def _validate_parsing_engine(value: str) -> str | None:
+    from deeptutor.modules.catalog import module_enabled
+
+    if not module_enabled("parsing"):
+        return "Install the parsing module first: deeptutor module install parsing"
     from deeptutor.services.parsing.engines.factory import is_engine_available
 
     if is_engine_available(value):

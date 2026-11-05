@@ -1,0 +1,139 @@
+{
+  "schema_version": 1,
+  "id": "partners",
+  "distribution": "deeptutor-partners",
+  "requires": [
+    "memory"
+  ],
+  "optional": [
+    "calendar",
+    "knowledge"
+  ],
+  "paths": [
+    "deeptutor/partners",
+    "deeptutor/services/partners",
+    "deeptutor/services/partner_groups",
+    "deeptutor/capabilities/partner_authoring",
+    "deeptutor/capabilities/partner_group",
+    "deeptutor/capabilities/handoff",
+    "deeptutor_cli/partner.py",
+    "deeptutor/api/routers/partner_groups.py",
+    "deeptutor/api/routers/partners.py",
+    "deeptutor/api/routers/_partners_channel_schema.py",
+    "deeptutor/tools/partner_memory.py"
+  ],
+  "capabilities": {},
+  "loops": {
+    "partner_authoring": {
+      "class_path": "deeptutor.capabilities.partner_authoring.capability:PartnerAuthoringCapability"
+    },
+    "partner_group": {
+      "class_path": "deeptutor.capabilities.partner_group.capability:PartnerGroupCapability"
+    }
+  },
+  "tools": {
+    "propose_partner": {
+      "class_path": "deeptutor.capabilities.partner_authoring.tools:ProposePartnerTool",
+      "order": 97
+    },
+    "invoke_other": {
+      "class_path": "deeptutor.capabilities.partner_group.tools:InvokeOtherTool",
+      "order": 98
+    },
+    "partner_read": {
+      "class_path": "deeptutor.tools.partner_memory:PartnerReadTool",
+      "order": 99
+    },
+    "partner_memorize": {
+      "class_path": "deeptutor.tools.partner_memory:PartnerMemorizeTool",
+      "order": 100
+    },
+    "partner_search": {
+      "class_path": "deeptutor.tools.partner_memory:PartnerSearchTool",
+      "order": 101
+    }
+  },
+  "routes": [
+    {
+      "reference": "deeptutor.api.routers.partners:router",
+      "options": {
+        "prefix": "/api/partners",
+        "tags": [
+          "partners"
+        ]
+      },
+      "auth": "learning",
+      "order": 801
+    },
+    {
+      "reference": "deeptutor.api.routers.partner_groups:router",
+      "options": {
+        "prefix": "/api/partner-groups",
+        "tags": [
+          "partner-groups"
+        ]
+      },
+      "auth": "learning",
+      "order": 807
+    },
+    {
+      "reference": "deeptutor.api.routers.partners:ws_router",
+      "options": {
+        "prefix": "/ws/partners",
+        "tags": [
+          "partners"
+        ]
+      },
+      "auth": "public",
+      "order": 813
+    },
+    {
+      "reference": "deeptutor.api.routers.partner_groups:ws_router",
+      "options": {
+        "prefix": "/ws/partner-groups",
+        "tags": [
+          "partner-groups"
+        ]
+      },
+      "auth": "public",
+      "order": 816
+    }
+  ],
+  "commands": [
+    {
+      "name": "partner",
+      "register": "deeptutor_cli.partner:register",
+      "help": "Manage partner."
+    }
+  ],
+  "navigation": [
+    "/partners"
+  ],
+  "services": [
+    {
+      "id": "partners",
+      "start": "deeptutor.services.partners.module_service:start_partners",
+      "stop": "deeptutor.services.partners.module_service:stop_partners"
+    }
+  ],
+  "requirements": [
+    "qrcode>=7.4.0,<9.0.0",
+    "python-telegram-bot[socks]>=22.6,<23.0",
+    "wecom-aibot-sdk>=1.0.8,<2.0.0",
+    "lark-oapi>=1.5.0,<2.0.0",
+    "dingtalk-stream>=0.24.0,<1.0.0",
+    "slack-sdk>=3.39.0,<4.0.0",
+    "slackify-markdown>=0.2.0,<1.0.0",
+    "qq-botpy>=1.2.0,<2.0.0",
+    "python-socketio>=5.16.0,<6.0.0",
+    "msgpack>=1.1.0,<2.0.0",
+    "python-socks[asyncio]>=2.8.0,<3.0.0",
+    "socksio>=1.0.0,<2.0.0",
+    "websocket-client>=1.9.0,<2.0.0",
+    "zulip>=0.8.0,<1.0.0",
+    "websockets>=12.0",
+    "aiohttp>=3.10.0,<4.0.0",
+    "PyJWT[crypto]>=2.8.0,<3.0.0"
+  ],
+  "executables": []
+}

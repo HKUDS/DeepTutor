@@ -1,14 +1,13 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
-import tomllib
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 import pytest
 
 from deeptutor.api.routers import reading_extensions
+from deeptutor.modules.catalog import manifests
 from deeptutor.reading import ReadingStore
 from deeptutor.reading.extensions import ReadingContext, ReadingExtensionRegistry
 from deeptutor.reading.quiz import ReadingQuizExtension
@@ -191,8 +190,7 @@ async def test_invalid_or_ungrounded_model_output_is_rejected(monkeypatch, respo
 
 
 def test_quiz_is_registered_as_a_packaged_extension():
-    project = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
-    group = project["project"]["entry-points"]["deeptutor.reading_extensions"]
+    group = manifests()["reading"]["entry_points"]["deeptutor.reading_extensions"]
 
     assert group["quiz"] == "deeptutor.reading.quiz:ReadingQuizExtension"
 

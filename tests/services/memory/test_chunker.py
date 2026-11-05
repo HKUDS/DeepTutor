@@ -19,7 +19,11 @@ def test_empty_input_returns_no_chunks() -> None:
     )
     assert (
         chunk_with_boundary(
-            "    \n\n", budget=5, overlap_ratio=0.1, min_chunk_chars=100, max_chunk_chars=1000
+            "    \n\n",
+            budget=5,
+            overlap_ratio=0.1,
+            min_chunk_chars=100,
+            max_chunk_chars=1000,
         )
         == []
     )
@@ -27,7 +31,11 @@ def test_empty_input_returns_no_chunks() -> None:
 
 def test_short_input_yields_one_chunk_covering_everything() -> None:
     chunks = chunk_with_boundary(
-        "Hello world.", budget=5, overlap_ratio=0.1, min_chunk_chars=100, max_chunk_chars=1000
+        "Hello world.",
+        budget=5,
+        overlap_ratio=0.1,
+        min_chunk_chars=100,
+        max_chunk_chars=1000,
     )
     assert len(chunks) == 1
     assert chunks[0].start == 0
@@ -66,12 +74,84 @@ def test_sentence_boundary_used_when_configured() -> None:
         assert chunk.text[-1].isspace() or chunk.text.rstrip()[-1] in ".!?"
 
 
+@pytest.mark.parametrize("punctuation", ["。", "！", "？"])
+@pytest.mark.parametrize("closing_quote", ["", "」", "』", '"'])
+def test_cjk_sentences_without_spaces_end_at_boundaries(
+    punctuation: str, closing_quote: str
+) -> None:
+    sentences = [
+        f"学习数学需要练习{punctuation}{closing_quote}",
+        f"理解概念也很重要{punctuation}{closing_quote}",
+        f"每天复习能够巩固知识{punctuation}{closing_quote}",
+    ]
+    text = "".join(sentences)
+    chunks = chunk_with_boundary(
+        text,
+        budget=4,
+        overlap_ratio=0.0,
+        min_chunk_chars=1,
+        max_chunk_chars=14,
+        boundary="sentence",
+    )
+    assert [chunk.text for chunk in chunks] == sentences
+    assert "".join(chunk.text for chunk in chunks) == text
+    assert all(chunk.end - chunk.start <= 14 for chunk in chunks)
+
+
+def test_cjk_sentence_boundaries_with_default_chunk_sizes() -> None:
+    text = "学习数学需要练习。理解概念也很重要。每天复习能够巩固知识。" * 5000
+    chunks = chunk_with_boundary(
+        text,
+        budget=20,
+        overlap_ratio=0.1,
+        min_chunk_chars=1000,
+        max_chunk_chars=64000,
+        boundary="sentence",
+    )
+    assert all(chunk.text.endswith("。") for chunk in chunks)
+    assert chunks[0].start == 0
+    assert chunks[-1].end == len(text)
+    assert all(chunk.end - chunk.start <= 64000 for chunk in chunks)
+    assert all(left.end >= right.start for left, right in zip(chunks, chunks[1:]))
+
+
+def test_ascii_period_inside_number_is_not_a_sentence_boundary() -> None:
+    text = "Value is 3.14. Next sentence."
+    chunks = chunk_with_boundary(
+        text,
+        budget=4,
+        overlap_ratio=0.0,
+        min_chunk_chars=1,
+        max_chunk_chars=20,
+        boundary="sentence",
+    )
+    assert chunks[0].text == "Value is 3.14."
+    assert "".join(chunk.text for chunk in chunks) == text
+
+
 def test_budget_caps_chunk_count() -> None:
     text = ("paragraph body. " * 20 + "\n\n") * 30  # ~ 10k chars
     chunks = chunk_with_boundary(
         text, budget=5, overlap_ratio=0.1, min_chunk_chars=200, max_chunk_chars=8000
     )
     assert len(chunks) <= 5
+
+
+@pytest.mark.parametrize("budget", [5, 10, 20])
+def test_budget_caps_chunk_count_when_overlap_shrinks_the_stride(budget: int) -> None:
+    # Every cut loses one ``overlap`` worth of stride, so a target sized off
+    # ``len(text) / budget`` only covers ``1 / (1 - overlap_ratio)`` of the
+    # text: the default 10% overlap needs one chunk more than the budget.
+    text = "".join(f"paragraph {i}. " + "x" * 120 + "\n\n" for i in range(200))
+    chunks = chunk_with_boundary(
+        text,
+        budget=budget,
+        overlap_ratio=0.10,
+        min_chunk_chars=1000,
+        max_chunk_chars=64000,
+    )
+    assert len(chunks) <= budget
+    assert chunks[-1].end == len(text)
 
 
 def test_overlap_visible_in_adjacent_chunks() -> None:
@@ -108,7 +188,11 @@ def test_max_chunk_chars_protects_against_huge_chunks() -> None:
 def test_no_data_loss_chunks_cover_full_text(budget: int) -> None:
     text = "\n\n".join(f"para {i}: " + "x" * 50 for i in range(50))
     chunks = chunk_with_boundary(
-        text, budget=budget, overlap_ratio=0.1, min_chunk_chars=100, max_chunk_chars=2000
+        text,
+        budget=budget,
+        overlap_ratio=0.1,
+        min_chunk_chars=100,
+        max_chunk_chars=2000,
     )
     assert chunks[0].start == 0
     assert chunks[-1].end == len(text)

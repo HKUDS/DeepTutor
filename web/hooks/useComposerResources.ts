@@ -7,6 +7,7 @@ import {
   type ChatWorkspaceRegistration,
   type WorkspaceResourceOption,
 } from "@/lib/workspaces-api";
+import { CREATIONS_SAVED_EVENT } from "@/lib/creations";
 
 export interface ComposerResourceCatalog {
   skills: WorkspaceResourceOption[];
@@ -44,26 +45,40 @@ export function useComposerResources(
 
   useEffect(() => {
     let alive = true;
-    void getWorkspaceResources(workspaceId ?? "")
-      .then((remote) => {
-        if (!alive) return;
-        const selected = JSON.parse(allowedKey) as string[] | null;
-        const allowed = selected === null ? null : new Set(selected);
-        setCatalog({
-          skills: remote.skills ?? [],
-          mcp: (remote.mcp ?? []).filter(
-            (option) => allowed === null || allowed.has(option.id),
-          ),
+
+    function load(resetOnError: boolean) {
+      void getWorkspaceResources(workspaceId ?? "")
+        .then((remote) => {
+          if (!alive) return;
+          const selected = JSON.parse(allowedKey) as string[] | null;
+          const allowed = selected === null ? null : new Set(selected);
+          setCatalog({
+            skills: remote.skills ?? [],
+            mcp: (remote.mcp ?? []).filter(
+              (option) => allowed === null || allowed.has(option.id),
+            ),
+          });
+        })
+        .catch(() => {
+          // The pickers simply report nothing to pick; a conversation with no
+          // selection inherits its workspace, so this degrades to the old
+          // behaviour rather than to an error the user must dismiss. A
+          // refetch prompted by a just-saved draft (resetOnError=false) keeps
+          // whatever the catalog already had instead of blanking it.
+          if (alive && resetOnError) setCatalog(EMPTY);
         });
-      })
-      .catch(() => {
-        // The pickers simply report nothing to pick; a conversation with no
-        // selection inherits its workspace, so this degrades to the old
-        // behaviour rather than to an error the user must dismiss.
-        if (alive) setCatalog(EMPTY);
-      });
+    }
+
+    load(true);
+
+    // A skill approved from a draft card in the composer's own transcript
+    // would otherwise sit outside this catalog until the page reloads.
+    const onSaved = () => load(false);
+    window.addEventListener(CREATIONS_SAVED_EVENT, onSaved);
+
     return () => {
       alive = false;
+      window.removeEventListener(CREATIONS_SAVED_EVENT, onSaved);
     };
   }, [workspaceId, allowedKey]);
 

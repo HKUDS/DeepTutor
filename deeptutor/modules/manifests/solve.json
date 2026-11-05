@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "id": "solve",
+  "distribution": "deeptutor-solve",
+  "requires": [],
+  "optional": [],
+  "paths": [
+    "deeptutor/capabilities/solve",
+    "deeptutor/tools/solve_tool.py"
+  ],
+  "capabilities": {
+    "deep_solve": {
+      "class_path": "deeptutor.capabilities.solve.capability:DeepSolveCapability",
+      "config_model": "deeptutor.runtime.request_contracts:DeepSolveRequestConfig",
+      "manifest": {
+        "name": "deep_solve",
+        "description": "Multi-step problem solving driven by the chat agent loop.",
+        "stages": [
+          "responding"
+        ],
+        "tools_used": [
+          "solve_plan",
+          "solve_finish_step",
+          "solve_replan",
+          "rag",
+          "exec",
+          "geogebra_analysis",
+          "reason"
+        ],
+        "cli_aliases": [
+          "solve"
+        ]
+      },
+      "order": 2
+    }
+  },
+  "loops": {
+    "solve": {
+      "class_path": "deeptutor.capabilities.solve.loop:SolveLoopCapability"
+    }
+  },
+  "tools": {
+    "solve_plan": {
+      "class_path": "deeptutor.capabilities.solve.tools:SolvePlanTool",
+      "order": 60
+    },
+    "solve_finish_step": {
+      "class_path": "deeptutor.capabilities.solve.tools:SolveFinishStepTool",
+      "order": 61
+    },
+    "solve_replan": {
+      "class_path": "deeptutor.capabilities.solve.tools:SolveReplanTool",
+      "order": 62
+    }
+  },
+  "routes": [],
+  "commands": [],
+  "navigation": [],
+  "services": [],
+  "requirements": [],
+  "executables": []
+}

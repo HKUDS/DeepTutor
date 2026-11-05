@@ -17,7 +17,6 @@ from __future__ import annotations
 from collections.abc import Callable
 import json
 import logging
-import re
 from typing import Any
 
 from deeptutor.capabilities.mastery.tools import MASTERY_TOOL_NAMES
@@ -39,166 +38,6 @@ _PATH_BINDING_TOOLS = frozenset({"mastery_switch", "mastery_leave"})
 #: its only reader, so the tutor loop can import one string without this
 #: module having to import the loop engine back.
 NATIVE_LOOP_FLAG = "mastery_native_loop"
-
-
-# Shapes that betray a question written into the reply as prose instead of
-# posed through ``mastery_quiz`` — see ``finish_instruction``.
-_PLAIN_CHOICE_OPTION_RE = re.compile(
-    r"^(?:[-*+]\s*)?(?:\*\*)?([A-D])(?:\*\*)?\s*[.、):：-]\s*(\S.*)$",
-    re.IGNORECASE,
-)
-_PLAIN_QUIZ_PROMPT_RE = re.compile(
-    r"\b(?:which|choose|select|answer)\b|选择|选哪个|请选择|请回答|答案",
-    re.IGNORECASE,
-)
-# Defense in depth for explicit numbered assessments. Merely asking questions
-# while explaining is valid; require both answer/assessment intent and multiple
-# numbered question stems. This fallback does not replace registered groups.
-_MULTIPART_INTENT_RE = re.compile(
-    r"\b(?:answer these|practice questions|will grade (?:both|your|the) answers)\b|"
-    r"\b(?:válaszolj|gyakorló kérdés|ellenőrző kérdés)\w*\b|"
-    r"请回答|回答下面|练习题|检查题",
-    re.IGNORECASE,
-)
-_NUMBERED_QUESTION_RE = re.compile(
-    r"^\s*(?:#{1,6}\s+)?(?:\*\*)?\d{1,2}[.)、](?:\*\*)?\s+", re.MULTILINE
-)
-# A reply that announces a question without posing one. Matched against the
-# tail of the reply only, where an announcement lands, so ordinary discussion
-# of "this question" while reviewing an attempt does not trip it.
-_QUESTION_PROMISE_RE = re.compile(
-    # A bare "这道题" is how a *review* of the attempt just graded reads too,
-    # so the Chinese branch needs a forward-looking verb alongside it.
-    r"(?:来|下面|接下来|先|试试|做|回答)[^。！？\n]{0,12}(?:这道|一道|下一?道)题|"
-    r"出一?道题|考考你|试试这|看看你(?:对|的|是否|能不能)|检验一下你|"
-    # …and the same announcement with the noun left out: "再试一道，把这套
-    # 判别规则用起来" never says 题 at all, which is exactly how two real
-    # turns slipped past this guard and left the learner staring at a colon.
-    r"再(?:试|来|做)一(?:道|个)|来实战|练一?练|上手试|"
-    r"\bhere(?:\u2019s| is|'s) (?:a|the|this) question\b|"
-    r"\btry (?:this|the following|a|another) (?:question|one)\b|"
-    r"\blet(?:\u2019s|'s) (?:see|test|check) (?:if|whether|how|what) you\b",
-    re.IGNORECASE,
-)
-_PROMISE_TAIL_CHARS = 160
-# A reply that stops on a colon promised whatever was meant to follow it. The
-# lead-in for a question is supposed to share its round with the
-# ``mastery_quiz`` call that fills the space underneath, so a colon with
-# nothing after it is the most reliable evidence that the call never happened —
-# more reliable than recognising the wording, which varies every turn.
-_DANGLING_LEAD_IN_CHARS = frozenset(":：")
-
-# A bare instruction to pick from unseen choices is also a promise of a card.
-# #1508 ended with "四个选项，选一个。" after describing the objective, but
-# never called mastery_quiz, so no choices were available to the learner.
-_UNPOSTED_CHOICE_LEAD_IN_RE = re.compile(
-    r"(?:[两三四五六七八九十]|\d+)个选项[，,、:\s]*(?:请|你)?(?:选|挑)(?:一|1)个[。！？.!?]?\s*$|"
-    r"\b(?:three|four|\d+) (?:choices|options)[,:;\s]+(?:choose|pick|select) one[.!?]?\s*$",
-    re.IGNORECASE,
-)
-
-# Delivery claims can precede a long explanation, unlike the vague question
-# announcements above. Check clauses across the reply, but require both a
-# concrete card/question and a delivery verb rather than the word "card" alone.
-_CARD_DELIVERY_RE = re.compile(
-    r"(?:卡片|题卡|(?:这|那|一|下一)道题|题目)[^。！？\n，,；;]{0,24}"
-    r"(?:重开|开出来|(?:放|挂|贴|发)(?:上来|上去|出来|上了|好了)|"
-    r"(?:生成|展示)(?:了|好|出来)|(?:就)?在(?:下面|下方))|"
-    r"先探一题|"
-    r"\bI(?:['’]ve| have)? (?:just |now )?(?:posted|reopened|displayed) "
-    r"(?:the|a|this) (?:(?:question|quiz|answer) )?card\b|"
-    r"\b(?:the|this) (?:(?:question|quiz|answer) )?card "
-    r"(?:is|has been) (?:ready|posted|displayed|reopened|below)\b",
-    re.IGNORECASE,
-)
-_NON_DELIVERY_CLAUSE_RE = re.compile(
-    r"没有|没能|未能|尚未|还没|不会|不再|不要|不能|并未|无法|失败|"
-    r"上次|上一轮|刚才|之前|如果|假如|是否|你说|[吗？?]|^\s*等|"
-    r"\b(?:not|never|if|earlier|previously|yesterday)\b",
-    re.IGNORECASE,
-)
-_QUOTED_CARD_TEXT_RE = re.compile(
-    r"```.*?```|~~~.*?~~~|`[^`\n]*`|“[^”]*”|「[^」]*」|\"[^\"\n]*\"|^\s*>[^\n]*",
-    re.DOTALL | re.MULTILINE,
-)
-_CONDITIONAL_DELIVERY_RE = re.compile(
-    r"^\s*(?:等|如果|假如|(?:学|讲|看)完.{0,12}(?:以后|之后)|稍后|下一轮|"
-    r"if\b|when\b|after\b)",
-    re.IGNORECASE,
-)
-
-
-def _claims_card_delivery(text: str) -> bool:
-    """Recognise current delivery claims without treating quoted reports as actions."""
-    prose = _QUOTED_CARD_TEXT_RE.sub(" ", text)
-    for sentence in re.split(r"[。！\n]|(?<=[.!?])\s+", prose):
-        if _CONDITIONAL_DELIVERY_RE.search(sentence):
-            continue
-        for clause in re.split(r"[，,；;]", sentence):
-            if _CARD_DELIVERY_RE.search(clause) and not _NON_DELIVERY_CLAUSE_RE.search(clause):
-                return True
-    return False
-
-
-def _looks_like_plain_choice_quiz(text: str) -> bool:
-    """Recognise a rendered A-D option list with high precision.
-
-    The model may discuss labelled options while teaching. Requiring both an
-    assessment prompt and at least three distinct labelled answer bodies keeps
-    ordinary prose, headings, and option-like vocabulary examples out of this
-    protocol guard.
-    """
-    labels: set[str] = set()
-    prompt_lines: list[str] = []
-    for raw_line in text.splitlines():
-        line = raw_line.strip()
-        match = _PLAIN_CHOICE_OPTION_RE.match(line)
-        if match:
-            labels.add(match.group(1).upper())
-        else:
-            prompt_lines.append(line)
-    return len(labels) >= 3 and any(_PLAIN_QUIZ_PROMPT_RE.search(line) for line in prompt_lines)
-
-
-def _looks_like_multipart_assessment(text: str) -> bool:
-    prose = _QUOTED_CARD_TEXT_RE.sub(" ", text)
-    if not _MULTIPART_INTENT_RE.search(prose):
-        return False
-    # Markdown frequently puts the title on the numbered line and the actual
-    # question in the following paragraph. Count question-bearing blocks, not
-    # only same-line stems; quoted/code examples were removed above.
-    starts = list(_NUMBERED_QUESTION_RE.finditer(prose))
-    questions = 0
-    for index, start in enumerate(starts):
-        end = starts[index + 1].start() if index + 1 < len(starts) else len(prose)
-        if re.search(r"[?？]", prose[start.end() : end]):
-            questions += 1
-    return questions >= 2
-
-
-def _turn_has_graded(context: UnifiedContext) -> bool:
-    """Whether a ruling was made this turn, by the model or by the runtime.
-
-    Two things can grade: the tutor calling ``mastery_grade``, and the runtime
-    ruling on a card answer before the turn starts. Only the first passes
-    through ``augment_kwargs``, so reading the extension alone made the
-    guard treat post-grade feedback — option-by-option prose, which is what
-    reviewing an attempt looks like — as a question written out in text, and
-    a rejected finish is discarded rather than shown.
-    """
-    if context.extension("mastery").get("quiz_graded"):
-        return True
-    return bool(context.metadata.get("mastery_card_grade"))
-
-
-def _announces_an_unposed_question(text: str) -> bool:
-    """Whether a reply promises a question it never put on a card."""
-    body = (text or "").strip()
-    if not body:
-        return False
-    if body[-1] in _DANGLING_LEAD_IN_CHARS:
-        return True
-    return bool(_QUESTION_PROMISE_RE.search(body[-_PROMISE_TAIL_CHARS:]))
 
 
 class MasteryLoopCapability:
@@ -487,31 +326,11 @@ class MasteryLoopCapability:
         )
 
     def finish_instruction(self, context: UnifiedContext, final_text: str) -> str | None:
-        """Catch a finish that leaves the learner with nothing to answer.
+        """Retry failed tool operations without classifying the learner-facing prose.
 
-        A quiz selected in this turn must reach its success callback before
-        the turn can finish, regardless of reply wording or later grading.
-        Text heuristics are only a fallback for replies that never selected
-        the tool. Two other states are not an outstanding delivery:
-
-        A pending question from an earlier turn does not mean it went
-        unasked — it was already posed on its own card — so a learner
-        who types a question instead of answering leaves the interaction open
-        on purpose, and the tutor answering them is the right reply, not a
-        skipped step.
-
-        And once ``mastery_grade`` has run, reviewing the options one by one —
-        "you picked C; A fails because…" — matches the plain-text-quiz
-        heuristic exactly while being the whole point of the turn. Blocking
-        that discarded the explanation and left the learner with a graded card
-        and no reason for the verdict.
-
-        That second exemption used to sit at the top of this method and so
-        waived *every* check on a grading turn — including the unposed-question
-        one. Grading turns are precisely where the tutor teaches the gap and
-        then reaches for the next question, so the one turn shape most likely
-        to end on an unkept promise was the one shape never examined. It now
-        guards only the heuristic it was written for.
+        Discussing options, questioning a grade or quoting a question is ordinary
+        tutoring. Only an actual failed operation can require follow-up work;
+        answer wording is never evidence that the model must pose another quiz.
         """
         if not self.is_active(context):
             return None
@@ -534,59 +353,7 @@ class MasteryLoopCapability:
                 "question delivery. If delivery remains unsuccessful, this turn must "
                 "fail rather than report successful completion."
             )
-        if not state.get("card_posted") and (
-            _announces_an_unposed_question(final_text)
-            or _claims_card_delivery(final_text)
-            or (
-                not state.get("quiz_awaiting_grade")
-                and _UNPOSTED_CHOICE_LEAD_IN_RE.search(final_text)
-            )
-        ):
-            # Argument binding sets quiz_awaiting_grade even when registration
-            # fails. Only the tool's success callback marks a card as posted.
-            # "Let us see what you already know:" and then nothing. The learner
-            # is left reading a promise with no card under it, and the turn is
-            # over — this reply announced the question instead of posing it.
-            return (
-                "That reply announced a question but never posed one, so the "
-                "learner is looking at a promise and an empty space. Write the "
-                "lead-in and call mastery_quiz in the SAME round — the call is "
-                "what puts the question on their card, and it ends the turn. If "
-                "you did not mean to quiz them yet, say what you meant to say "
-                "without announcing a question."
-            )
-        if not state.get("card_posted") and _looks_like_multipart_assessment(final_text):
-            return (
-                "That reply presented a numbered assessment as unregistered prose. "
-                "For practice across all objective types, call mastery_quiz with a questions group "
-                "so each answer has its own stored contract and result. CONCEPT / DESIGN cards "
-                "do not open their qualitative gate; use mastery_assess for the learner's own "
-                "explanation when assessing that gate. If an older question "
-                "is pending and you want to show it again, call mastery_quiz with "
-                "pending_action='resume' and its exact parent resume_question_id, without "
-                "new questions or answer keys. Preserve it unless the learner explicitly requested replacement; "
-                "then use its current question ID and a literal replacement_request quote. "
-                "Do not concatenate expected answers or claim that a prose list is a card. "
-                "If this is teaching rather than assessment, explain directly without "
-                "instructing the learner to answer an unregistered practice set."
-            )
-        if _turn_has_graded(context) or not _looks_like_plain_choice_quiz(final_text):
-            return None
-        if state.get("quiz_awaiting_grade"):
-            return (
-                "That question is already on the learner's answer card — do not "
-                "write it out again in prose. Either end the turn on what you "
-                "have taught and let their answer arrive as the next message, or "
-                "call mastery_grade with the answer they already gave you (the "
-                "engine grades the question it is holding open)."
-            )
-        return (
-            "The previous reply posed a mastery assessment as plain text. Do not "
-            "write the question or its choices in prose: call mastery_quiz "
-            "instead — that one call registers the expected answer and puts the "
-            "question on its own answer card, and the turn stops there for the "
-            "learner to answer."
-        )
+        return None
 
     def final_text_override(self, context: UnifiedContext, final_text: str) -> str | None:
         """End the turn on the card once a question has been posed.
@@ -807,11 +574,11 @@ class MasteryLoopCapability:
             {**result, "is_correct": result.get("is_correct", grade.get("is_correct"))}
         )
         learner_answer = str(result.get("learner_answer") or "").strip()
+        learner_body = str(result.get("learner_body") or "").strip()
+        picked = f"{learner_answer}: {learner_body}" if learner_body else learner_answer
         lines = [
             "[Mastery] The learner answered the open question on its card and the "
-            f"engine reports: {outcome}"
-            + (f' (they answered "{learner_answer}")' if learner_answer else "")
-            + ".",
+            f"engine reports: {outcome}" + (f' (they answered "{picked}")' if picked else "") + ".",
             str(result.get("feedback") or ""),
         ]
         if result.get("final") is False or outcome == "ungraded":

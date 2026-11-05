@@ -75,6 +75,13 @@ def test_mastery_explicit_presentation_uses_authorized_view_only(source_kb):
     assert result.success
     assert result.public_result["sources"][0]["presentation"] == "teaching"
     assert "Original source page" not in str(result.public_result)
+    assert result.public_result["metadata"]["presented_sources"] == [
+        {
+            "title": "Diagram",
+            "preview_url": result.public_result["sources"][0]["preview_url"],
+            "presentation": "teaching",
+        }
+    ]
 
 
 @pytest.mark.asyncio

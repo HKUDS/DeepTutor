@@ -132,6 +132,7 @@ class _FakeStartTurnRecorder:
         payload: dict[str, Any],
         *,
         replace_assistant_message_id: int | str | None = None,
+        persist_llm_selection_only: bool = False,
     ) -> tuple[dict, dict]:
         self.calls.append(payload)
         if replace_assistant_message_id is not None:
@@ -359,7 +360,7 @@ class TestRegenerateLastTurn:
         assert payload["persona"] == ""
         assert payload["llm_selection"] == snapshot["llmSelection"]
         assert payload["workspace_mode"] == ""
-        assert payload["course_id"] == ""
+        assert "course_id" not in payload  # Retired course metadata is not replayed.
         assert payload["mastery_path_id"] == ""
         assert payload["mastery_session_mode"] == "study"
         assert payload["auto_route"] is False
@@ -552,6 +553,44 @@ class TestRegenerateLastTurn:
 
         assert recorder.calls[0]["mastery_path_id"] == "path-1"
 
+    def test_replays_note_page_and_learning_block_from_request_snapshot(
+        self, store: SQLiteSessionStore
+    ) -> None:
+        sid, _, _ = _seed_session(
+            store,
+            user_metadata={
+                "request_snapshot": {
+                    "noteDocumentId": "0c2d24985c4f",
+                    "noteGeneration": {"block_id": "timeline-learning", "kind": "timeline"},
+                }
+            },
+        )
+        runtime = TurnRuntimeManager(store=store)
+        recorder = _FakeStartTurnRecorder(store)
+
+        with patch.object(runtime, "start_turn", new=recorder):
+            asyncio.run(runtime.regenerate_last_turn(sid))
+
+        assert recorder.calls[0]["note_document_id"] == "0c2d24985c4f"
+        assert recorder.calls[0]["note_generation"] == {
+            "block_id": "timeline-learning",
+            "kind": "timeline",
+        }
+
+    def test_note_companion_answer_without_snapshot_keeps_its_page(
+        self, store: SQLiteSessionStore
+    ) -> None:
+        sid, _, _ = _seed_session(store)
+        asyncio.run(store.update_session_preferences(sid, {"note_document_id": "0c2d24985c4f"}))
+        runtime = TurnRuntimeManager(store=store)
+        recorder = _FakeStartTurnRecorder(store)
+
+        with patch.object(runtime, "start_turn", new=recorder):
+            asyncio.run(runtime.regenerate_last_turn(sid))
+
+        assert recorder.calls[0]["note_document_id"] == "0c2d24985c4f"
+        assert recorder.calls[0]["note_generation"] is None
+
     def test_user_tail_is_kept_and_no_delete(self, store: SQLiteSessionStore) -> None:
         sid, user_id, _ = _seed_session(store, assistant_content=None)
         runtime = TurnRuntimeManager(store=store)
@@ -704,6 +743,100 @@ class TestRegenerateLastTurn:
             pass
         assert (await store.get_session(sid))["preferences"]["language"] == "zh"
         assert (await store.get_messages(sid))[-1]["content"] == "resent answer"
+
+    @pytest.mark.asyncio
+    async def test_resend_persists_the_recovered_model_only(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        """A Resend writes back the model it ran with, and nothing else.
+
+        The failed turn's context is replayed, but its settings are not: the
+        model the user selected now is the one the conversation keeps, while
+        the failed turn's other preferences stay where they are (#2105).
+        """
+        store = SQLiteSessionStore(tmp_path / "regen_model.db")
+        runtime = TurnRuntimeManager(store)
+
+        class FakeContextBuilder:
+            def __init__(self, *_args, **_kwargs) -> None:
+                pass
+
+            async def build(self, **_kwargs):
+                return SimpleNamespace(
+                    conversation_history=[],
+                    conversation_summary="",
+                    context_text="",
+                    token_count=0,
+                    budget=0,
+                )
+
+        class FakeOrchestrator:
+            async def handle(self, _context):
+                yield StreamEvent(
+                    type=StreamEventType.CONTENT,
+                    source="chat",
+                    stage="responding",
+                    content="answer",
+                    metadata={"call_kind": "llm_final_response"},
+                )
+                yield StreamEvent(type=StreamEventType.DONE, source="chat")
+
+        monkeypatch.setattr(
+            "deeptutor.services.llm.config.get_llm_config", lambda: SimpleNamespace()
+        )
+        monkeypatch.setattr(
+            "deeptutor.services.session.context_builder.ContextBuilder",
+            FakeContextBuilder,
+        )
+        monkeypatch.setattr("deeptutor.runtime.orchestrator.ChatOrchestrator", FakeOrchestrator)
+        monkeypatch.setattr(
+            "deeptutor.services.model_selection.apply_llm_selection_to_catalog",
+            lambda catalog, selection: catalog,
+        )
+        monkeypatch.setattr(
+            "deeptutor.services.config.provider_runtime.apply_llm_selection_to_catalog",
+            lambda loaded, selection: loaded,
+        )
+
+        session, first_turn = await runtime.start_turn(
+            {
+                "type": "start_turn",
+                "content": "what is 2+2?",
+                "session_id": None,
+                "capability": "chat",
+                "tools": [],
+                "knowledge_bases": [],
+                "attachments": [],
+                "language": "en",
+                "config": {},
+            }
+        )
+        async for _ in runtime.subscribe_turn(first_turn["id"], after_seq=0):
+            pass
+        sid = session["id"]
+        await store.update_session_preferences(sid, {"language": "zh", "tools": ["rag"]})
+
+        _, resend_turn = await runtime.regenerate_last_turn(
+            sid,
+            overrides={
+                "replay_snapshot": True,
+                "llm_selection": {"profile_id": "p-new", "model_id": "m-new"},
+            },
+        )
+        async for _ in runtime.subscribe_turn(resend_turn["id"], after_seq=0):
+            pass
+
+        preferences = (await store.get_session(sid))["preferences"]
+        # The model the recovery ran with survives a reload ...
+        assert preferences["llm_selection"] == {
+            "profile_id": "p-new",
+            "model_id": "m-new",
+        }
+        # ... and the failed turn's other preferences are left alone.
+        assert preferences["language"] == "zh"
+        assert preferences["tools"] == ["rag"]
 
     def test_overrides_take_precedence(self, store: SQLiteSessionStore) -> None:
         sid, _, _ = _seed_session(store)

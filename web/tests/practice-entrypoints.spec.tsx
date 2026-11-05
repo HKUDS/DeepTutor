@@ -7,7 +7,8 @@ import * as api from "@/lib/practice-api";
 
 const replace = vi.fn();
 vi.mock("next/navigation", () => ({
-  useSearchParams: () => new URLSearchParams("course=course-a&workspace=work-a&view=mistakes"),
+  usePathname: () => "/learning/practice",
+  useSearchParams: () => new URLSearchParams("workspace=work-a&view=mistakes"),
   useRouter: () => ({ replace }),
 }));
 vi.mock("@/components/space/question-bank", () => ({
@@ -62,7 +63,7 @@ beforeEach(() => {
   });
 });
 
-it("keeps Learning Space in its own collection route with scoped imports and no daily review panels", async () => {
+it("keeps Learning Space in its own collection route with imports and no daily review panels", async () => {
   render(<SpaceQuestionsPage />);
   expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Question Bank");
   expect(await screen.findByRole("tab", { name: "Mistakes42" })).toHaveAttribute(
@@ -74,36 +75,28 @@ it("keeps Learning Space in its own collection route with scoped imports and no 
   expect(screen.queryByRole("region", { name: "Today's review" })).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Practice this page" })).toBeVisible();
   expect(api.getPracticeAnalytics).not.toHaveBeenCalled();
-  expect(api.getPracticeSummary).toHaveBeenCalledWith("course-a");
+  expect(api.getPracticeSummary).toHaveBeenCalledWith();
 
   fireEvent.click(screen.getByRole("button", { name: "Import questions" }));
   expect(screen.getByRole("combobox", { name: "Import into" })).toHaveValue("mistakes");
   expect(screen.getByLabelText(/Choose a question file/)).toBeVisible();
   fireEvent.click(screen.getByRole("tab", { name: "Question Bank67" }));
   expect(replace).toHaveBeenLastCalledWith(
-    "/space/questions?course=course-a&workspace=work-a&view=bank",
+    "/space/questions?workspace=work-a&view=bank",
     { scroll: false }
   );
-  fireEvent.click(screen.getByRole("button", { name: "Show every course" }));
-  expect(replace).toHaveBeenLastCalledWith("/space/questions?workspace=work-a&view=mistakes");
 });
 
-it("retains analytics, daily review and collections in Personalized Learning", async () => {
+it("opens daily review in Personalized Learning", async () => {
   render(<PracticeRoutePage />);
-  expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Practice");
-  expect(await screen.findByRole("button", { name: /New questions\s*2/ })).toBeVisible();
-  expect(screen.getByRole("region", { name: "Today's review" })).toBeVisible();
+  expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent("Practice");
+  expect(await screen.findByRole("region", { name: "Today's review" })).toBeVisible();
   expect(screen.getByRole("button", { name: "Start today's review" })).toBeEnabled();
-  expect(screen.getByRole("button", { name: "Practice this page" })).toBeVisible();
-  fireEvent.click(screen.getByRole("tab", { name: "Question Bank67" }));
-  expect(replace).toHaveBeenLastCalledWith(
-    "/learning/practice?course=course-a&workspace=work-a&view=bank",
-    { scroll: false }
-  );
+  expect(api.getPracticeSummary).toHaveBeenCalledWith();
 });
 
 
-it("starts manual practice from the collection and returns to the same course and mistakes view", async () => {
+it("starts manual practice from the collection and returns to the same mistakes view", async () => {
   vi.mocked(api.getPracticeQuestion).mockResolvedValue({
     entry: {
       id: 1, session_id: "lesson", session_title: "Lesson", turn_id: "", question_id: "q1",
@@ -123,7 +116,6 @@ it("starts manual practice from the collection and returns to the same course an
   fireEvent.click(screen.getByRole("button", { name: "Back to library" }));
   expect(await screen.findByText("Stored mistakes")).toBeVisible();
   expect(screen.getByRole("tab", { name: "Mistakes42" })).toHaveAttribute("aria-selected", "true");
-  expect(screen.getByText("This course")).toBeVisible();
   expect(replace).not.toHaveBeenCalled();
-  expect(api.getPracticeSummary).toHaveBeenLastCalledWith("course-a");
+  expect(api.getPracticeSummary).toHaveBeenLastCalledWith();
 });

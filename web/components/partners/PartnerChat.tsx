@@ -39,11 +39,7 @@ import {
   mergeGeneratedFiles,
   unlinkedGeneratedFiles,
 } from "@/components/common/InlineFileCard";
-import {
-  isRetractionMarker,
-  recomputeAnswerContent,
-  shouldAppendEventContent,
-} from "@/lib/stream";
+import { shouldAppendEventContent } from "@/lib/stream";
 import { useChatAutoScroll } from "@/hooks/useChatAutoScroll";
 import { AssistantActivity } from "@/features/chat/trace";
 import {
@@ -659,8 +655,6 @@ export default function PartnerChat({
           current.events.push(data.event);
           if (shouldAppendEventContent(data.event)) {
             current.content += data.event.content;
-          } else if (isRetractionMarker(data.event)) {
-            current.content = recomputeAnswerContent(current.events);
           }
           externalLive.set(activityId, current);
           publishExternal();
@@ -790,10 +784,6 @@ export default function PartnerChat({
         live.events.push(event);
         if (shouldAppendEventContent(event)) {
           live.content += event.content;
-        } else if (isRetractionMarker(event)) {
-          // A capability took this round's text back out of the answer.
-          // Same retraction rule as product chat.
-          live.content = recomputeAnswerContent(live.events);
         }
         publish();
       } else if (data.type === "content") {

@@ -27,30 +27,15 @@ from deeptutor.agents.research.request_config import (
     build_research_runtime_config,
     validate_research_request_config,
 )
-from deeptutor.core.capability_protocol import CapabilityManifest, TurnCapability
+from deeptutor.core.capability_protocol import TurnCapability
 from deeptutor.core.context import UnifiedContext
-from deeptutor.runtime.request_contracts import get_capability_request_schema
+from deeptutor.runtime.bootstrap.builtin_capabilities import builtin_capability_manifest
 from deeptutor.runtime.stream_bus import StreamBus
 from deeptutor.services.config import load_config_with_main
 
 
 class DeepResearchCapability(TurnCapability):
-    manifest = CapabilityManifest(
-        name="deep_research",
-        description="Agentic-loop deep research with iterative report generation.",
-        stages=["rephrasing", "decomposing", "researching", "reporting"],
-        tools_used=[
-            "rag",
-            "web_search",
-            "paper_search",
-            "preprint",
-            "research_audit",
-            "research_lit",
-            "exec",
-        ],
-        cli_aliases=["research"],
-        request_schema=get_capability_request_schema("deep_research"),
-    )
+    manifest = builtin_capability_manifest("deep_research")
 
     async def run(self, context: UnifiedContext, stream: StreamBus) -> None:
         kb_name = context.knowledge_bases[0] if context.knowledge_bases else None

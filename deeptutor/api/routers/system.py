@@ -377,7 +377,7 @@ async def get_system_status():
                 result["search"]["status"] = "not_configured"
                 result["search"]["error"] = (
                     f"{search_config.requested_provider} requires api_key. "
-                    "Set profile.api_key in Settings > Catalog."
+                    "Set profile.api_key in Settings > Search."
                 )
             elif search_config.provider == "none":
                 result["search"]["status"] = "disabled"
@@ -591,7 +591,7 @@ async def test_search_connection():
             return TestResponse(
                 success=False,
                 message="Search is disabled",
-                error="Set a Search provider in Settings > Catalog.",
+                error="Set a Search provider in Settings > Search.",
             )
         if search_config.unsupported_provider:
             return TestResponse(
@@ -605,7 +605,7 @@ async def test_search_connection():
             return TestResponse(
                 success=False,
                 message=f"Search provider `{search_config.requested_provider}` missing credentials.",
-                error="Set profile.api_key in Settings > Catalog.",
+                error="Set profile.api_key in Settings > Search.",
             )
         result = web_search("DeepTutor health check", provider=search_config.provider)
         response_time = (time.time() - start_time) * 1000

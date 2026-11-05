@@ -331,7 +331,7 @@ def test_probe_embedding_detects_native_custom_url_with_query(monkeypatch) -> No
     assert "requests" in request["json"]
 
 
-def test_probe_llm_uses_max_completion_tokens_for_gpt5(monkeypatch) -> None:
+def test_probe_llm_gives_reasoning_models_a_safe_output_budget(monkeypatch) -> None:
     from deeptutor_cli import init_wizard
 
     _FakeClient.captured = []
@@ -341,13 +341,13 @@ def test_probe_llm_uses_max_completion_tokens_for_gpt5(monkeypatch) -> None:
         base_url="https://example.test/v1",
         api_key="sk-test",
         binding="openai",
-        model="gpt-5-mini",
+        model="gpt-5.6-terra",
     )
 
     assert ok is True
     assert error == ""
     body = _FakeClient.captured[0]["json"]
-    assert body["max_completion_tokens"] == 1
+    assert body["max_completion_tokens"] == 4096
     assert "max_tokens" not in body
 
 
@@ -365,7 +365,7 @@ def test_probe_llm_keeps_max_tokens_for_legacy_chat_models(monkeypatch) -> None:
     )
 
     body = _FakeClient.captured[0]["json"]
-    assert body["max_tokens"] == 1
+    assert body["max_tokens"] == 4096
     assert "max_completion_tokens" not in body
 
 
@@ -383,7 +383,7 @@ def test_probe_llm_keeps_anthropic_native_max_tokens(monkeypatch) -> None:
     )
 
     body = _FakeClient.captured[0]["json"]
-    assert body["max_tokens"] == 1
+    assert body["max_tokens"] == 4096
     assert "max_completion_tokens" not in body
 
 

@@ -1,11 +1,9 @@
 name: PyPI Release
 
 # Triggered when a GitHub Release is published.
-# Publishes the full app package with the version derived from the release tag:
-#   - deeptutor (Python backend/CLI + packaged Next.js standalone assets)
-#
-# The CLI-only package is intentionally not published to PyPI; install it from
-# a local checkout with `python -m pip install -e ./packaging/deeptutor-cli`.
+# Builds disjoint core, feature, server and Web wheels from one revision.
+# Each distribution needs this workflow configured as its trusted publisher.
+# The CLI compatibility distribution contains metadata only.
 #
 # Expected tag format: vMAJOR.MINOR.PATCH, with PEP 440-compatible suffixes allowed.
 # Example: GitHub release tag v1.3.10 -> PyPI version 1.3.10.
@@ -16,19 +14,36 @@ name: PyPI Release
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to publish
+        required: true
+        type: string
+      resume:
+        description: Skip files already uploaded by a partial release
+        default: false
+        type: boolean
+      bootstrap:
+        description: Wait for first-time module publishers to be registered in PyPI
+        default: false
+        type: boolean
+
+env:
+  RELEASE_TAG: ${{ inputs.tag || github.event.release.tag_name }}
 
 permissions:
   contents: read
   id-token: write
 
 concurrency:
-  group: pypi-release-${{ github.event.release.tag_name }}
+  group: pypi-release-${{ inputs.tag || github.event.release.tag_name }}
   cancel-in-progress: false
 
 jobs:
   validate-release-tag:
     name: Validate release tag
-    if: startsWith(github.event.release.tag_name, 'v')
+    if: startsWith(inputs.tag || github.event.release.tag_name, 'v')
     runs-on: ubuntu-latest
     steps:
       - name: Require a package version tag
@@ -50,8 +65,6 @@ jobs:
                   f"Release tag {tag!r} is not a package version tag "
                   "(expected vX.Y.Z with an optional suffix)."
               )
-        env:
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
 
   build-and-publish:
     name: Build and Publish PyPI Package
@@ -65,7 +78,7 @@ jobs:
       - name: Checkout release tag
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.release.tag_name }}
+          ref: ${{ inputs.tag || github.event.release.tag_name }}
           fetch-depth: 0
 
       - name: Verify release tag is on main
@@ -73,7 +86,7 @@ jobs:
         run: |
           set -euo pipefail
           git fetch origin main:refs/remotes/origin/main --no-tags
-          tag="${{ github.event.release.tag_name }}"
+          tag="$RELEASE_TAG"
           tag_commit="$(git rev-list -n 1 "$tag")"
           if ! git merge-base --is-ancestor "$tag_commit" origin/main; then
             echo "Release tag $tag ($tag_commit) is not on origin/main; refusing to publish to PyPI." >&2
@@ -95,7 +108,7 @@ jobs:
       - name: Install build tools
         run: |
           python -m pip install --upgrade pip
-          python -m pip install --upgrade build packaging twine
+          python -m pip install --upgrade build packaging twine setuptools wheel
 
       - name: Verify release tag matches deeptutor/__version__.py
         id: version
@@ -130,8 +143,6 @@ jobs:
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as handle:
               handle.write(f"version={code_version}\n")
           PY
-        env:
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
 
       - name: Install frontend dependencies
         working-directory: web
@@ -148,12 +159,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist/deeptutor
-          # Run from /tmp so any repository-local build/ directory cannot shadow
-          # PyPA's `build` module during repeated package builds.
-          # Wheels are the supported public install artifacts. The full app
-          # wheel contains packaged Next.js assets; source distributions would
-          # either duplicate those large assets or require a frontend build.
-          (cd /tmp && python -m build --wheel --outdir "$GITHUB_WORKSPACE/dist/deeptutor" "$GITHUB_WORKSPACE")
+          python scripts/build_modules.py --output dist/deeptutor
 
       - name: Verify package metadata
         run: |
@@ -175,8 +181,50 @@ jobs:
               raise SystemExit(f"Missing expected distributions: {missing}")
           PY
 
-      - name: Publish deeptutor to PyPI
+      - name: Publish module distributions to PyPI
+        if: ${{ !inputs.bootstrap }}
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: dist/deeptutor/
           print-hash: true
+          skip-existing: ${{ inputs.resume || false }}
+
+      - name: Bootstrap new module projects with Trusted Publishing
+        if: ${{ inputs.bootstrap }}
+        timeout-minutes: 35
+        env:
+          TWINE_NON_INTERACTIVE: "1"
+        run: |
+          python -m pip install --upgrade pypi-attestations "twine>=6.1"
+          python -m pypi_attestations sign dist/deeptutor/*.whl
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          import subprocess
+          import sys
+          import time
+
+          # PyPI permits one pending project per publisher configuration.
+          # Each new Twine process exchanges a fresh OIDC token, converting
+          # the next pending publisher without needing a long-lived API key.
+          files = sorted(str(path) for path in Path("dist/deeptutor").glob("*"))
+          deadline = time.monotonic() + 1800
+          while True:
+              result = subprocess.run(
+                  [sys.executable, "-m", "twine", "upload", "--non-interactive",
+                   "--verbose", "--skip-existing", "--attestations", *files],
+                  stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+              )
+              print(result.stdout, flush=True)
+              if result.returncode == 0:
+                  break
+              output = " ".join(re.sub(r"\x1b\[[0-9;]*m", "", result.stdout).split())
+              waiting_for_publisher = (
+                  "Non-user identities cannot create new projects" in output
+                  or "isn't allowed to upload to project" in output
+              )
+              if not waiting_for_publisher or time.monotonic() >= deadline:
+                  raise SystemExit(result.returncode)
+              print("Waiting for the next PyPI pending publisher; retrying in 10s.", flush=True)
+              time.sleep(10)
+          PY

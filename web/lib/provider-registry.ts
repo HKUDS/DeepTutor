@@ -210,6 +210,22 @@ export function providerAdapter(
     default_base_url: (override?.enabled && override.base_url) || target?.base_url || exact?.base_url || "",
   };
 }
+/** The model ID a brand-new entry should start with, if the provider names one. */
+export function defaultModelFor(
+  source: ProviderSource,
+  service: ServiceName,
+  targets: ConnectionTarget[],
+  providers: Record<ServiceName, ProviderOption[]>,
+): string {
+  const binding = providerAdapter(source, service, targets, providers).binding;
+  const kind = service === "task" ? "llm" : service;
+  const target = targets.find((t) => t.provider === source.provider)?.services[kind];
+  const option =
+    providers[service]?.find((p) => p.value === binding) ??
+    providers[service]?.find((p) => p.value === source.provider);
+  return String(option?.default_model || target?.default_model || "").trim();
+}
+
 export function providerProbeInput(source: ProviderSource, fallbackUrl = "") {
   const s = source.source;
   return {

@@ -6,7 +6,8 @@ import { downloadChatMarkdown } from "@/lib/chat-export";
 import type { PartnerGroupMessage } from "@/lib/partner-groups-api";
 import { initI18n } from "@/i18n/init";
 
-vi.mock("next/navigation", () => ({ useParams: () => ({ groupId: "group" }), useRouter: () => ({ push: vi.fn() }) }));
+vi.mock("next/navigation", () => ({
+  useSearchParams: () => new URLSearchParams(), useParams: () => ({ groupId: "group" }), useRouter: () => ({ replace: vi.fn(), push: vi.fn() }) }));
 vi.mock("@/components/partners/group/DiscussionModePicker", () => ({ default: () => null, useDiscussionModeLabel: () => () => "Panel" }));
 vi.mock("@/lib/chat-export", () => ({ downloadChatMarkdown: vi.fn() }));
 vi.mock("@/lib/partner-groups-api", () => ({

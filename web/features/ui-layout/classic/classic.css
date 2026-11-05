@@ -1,0 +1,4 @@
+/* Classic UI tokens: the values shared components had on dev (3cbecb2). */
+:root[data-ui-layout="classic"] {
+  --dt-page-title-font: theme("fontFamily.serif");
+}

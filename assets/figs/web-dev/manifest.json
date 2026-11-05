@@ -1,0 +1,627 @@
+{
+  "capture_complete": true,
+  "captured_date": "2026-10-28",
+  "source_commit": "a6389d7ee",
+  "application_version_label": "1.6.15 (current dev checkout version file)",
+  "viewport_css": {
+    "width": 1470,
+    "height": 900
+  },
+  "device_scale_factor": 2,
+  "browser": "Google Chrome 156 via repository Playwright",
+  "theme": "light",
+  "language": "en",
+  "provenance": "Disposable DEEPTUTOR_HOME. All study content, chat messages, Book blocks, reading material, notebook, journal mission and records, partner Sage and workspace are synthetic documentation demonstration fixtures persisted through actual application APIs/stores; they are not claims of live model output. No developer history, credentials or personal learning data was imported. No paid-provider generation or external messaging was performed. Forms show empty credentials. Only Next.js development indicator was hidden with capture CSS; product DOM and screenshot pixels were not fabricated or replaced. Exception: memory-graph.png is the original image supplied and approved by the user on 2026-10-28, copied without alteration; it is not from the isolated demo capture. Per-file metadata overrides the capture defaults.",
+  "omitted": [
+    "multi-user admin: auth disabled in isolated demo; route redirected to chat",
+    "profile: redirected to chat",
+    "settings-workspace: omitted to avoid showing machine filesystem paths"
+  ],
+  "files": [
+    {
+      "file": "agents.png",
+      "route": "/agents",
+      "state": "rendered route",
+      "width": 2940,
+      "height": 1800,
+      "sha256": "b8e3fb7ecef0fa3a526165b41939db696ad47debcf3660c910b836d5300c89cc",
+      "status": "final",
+      "ui": "real current-dev application rendered in Chrome; persisted synthetic demo content"
+    },
+    {
+      "file": "appearance.png",
+      "route": "/settings/appearance",
+      "state": "rendered route",
+      "width": 2940,
+      "height": 1800,
+      "sha256": "ad34d81a5885e2afae5a7c6583dd32394b11d62b997dff9443d42429bfc0e4ba",
+      "status": "final",
+      "ui": "real current-dev application rendered in Chrome; persisted synthetic demo content"
+    },
+    {
+      "file": "book-detail.png",
+      "route": "/learning/books/docs_fourier",
+      "state": "rendered route",
+      "width": 2940,
+      "height": 1800,
+      "sha256": "035ce1cc3bd083789b63c2e15f6dc1a3fb47a2d98937165f3472f528ce533cc7",
+      "status": "final",
+      "ui": "real current-dev application rendered in Chrome; persisted synthetic demo content"
+    },
+    {
+      "file": "book-quiz.png",
+      "route": "/learning/books/docs_fourier/pages/pg_foundations",
+      "state": "rendered route",
+      "width": 2940,
+      "height": 1800,
+      "sha256": "6ba99595a4fa1c8ddee3a991aea5993a4834702f33cc986bde700283e0b81058",
+      "status": "final",
+      "ui": "real current-dev application rendered in Chrome; persisted synthetic demo content"
+    },
+    {
+      "file": "book-widget.png",
+      "route": "/learning/books/docs_fourier/pages/pg_interactive",
+      "state": "rendered route",
+      "width": 2940,
+      "height": 1800,
+      "sha256": "727e87ca9a4d1ca213eda3e4e0dd873846b624d840cb99a83f051f2b79ff7fbb",
+      "status": "final",
+      "ui": "real current-dev application rendered in Chrome; persisted synthetic demo content"
+    },
+    {
+      "file": "books.png",
+      "route": "/learning/books",
+      "state": "rendered route",
+      "width": 2940,
+      "height": 1800,
+      "sha256": "addae30050e1e066a937fe8e9474ca92feb5e861de20e4eccdf7f5c57268c668",
+      "status": "final",
+      "ui": "real current-dev application rendered in Chrome; persisted synthetic demo content"
+    },
+    {
+      "file": "calendar.png",
+      "route": "/calendar",
+      "state": "rendered route",
+      "width": 2940,
+      "height": 1800,
+      "sha256": "bfd3c7974c4c8a7aa61175bc5a9dd7ac3d2b0ed97b85b1cb29f07e4db879563a",
+      "status": "final",
+      "ui": "real current-dev application rendered in Chrome; persisted synthetic demo content"
+    },
+    {
+      "file": "chat.png",
+      "route": "/chat/docs-demo-chat",
+      "state": "rendered route",
+      "width": 2940,
+      "height": 1800,
+      "sha256": "625e7688a7d8e5c19e51e768ba9fc96cc1a98d62271da80394a7260ef2ced9d1",
+      "status": "final",
+      "ui": "real current-dev application rendered in Chrome; persisted synthetic demo content"
+    },
+    {
+      "file": "cli-apps.png",
+      "route": "/space/cli-apps",
+      "state": "rendered route",
+      "width": 2940,
+      "height": 1800,
+      "sha256": "ea8807d85930dfdb3c4fb20a1b28f437d6023a545f0cc914e4ec261f0435a49d",
+      "status": "final",
+      "ui": "real current-dev application rendered in Chrome; persisted synthetic demo content"
+    },
+    {
+      "file": "co-writer.png",
+      "route": "/co-writer",
+      "state": "rendered route",
+      "width": 2940,
+      "height": 1800,
+      "sha256": "24764379c5cbf134444716d5f2316c3acac75cc3ed89573423a1c84f6f07d81e",
+      "status": "final",
+      "ui": "real current-dev application rendered in Chrome; persisted synthetic demo content"
+    },
+    {
+      "file": "favorites.png",
+      "route": "/notebooks",
+      "state": "rendered route",
+      "width": 2940,
+      "height": 1800,
+      "sha256": "727f863216d449cc18b1176523a7f902d9cf63852152cd9ca0f11f1347f7bbed",
+      "status": "final",
+      "ui": "real current-dev application rendered in Chrome; persisted synthetic demo content"
+    },
+    {
+      "file": "journal.png",
+      "route": "/space/journal",
+      "state": "rendered route",
+      "width": 2940,
+      "height": 1800,
+      "sha256": "f6a5bdfff58d8242a357d1271e3c182119cf21d7f294365f770427a413d3c67d",
+      "status": "final",
+      "ui": "real current-dev application rendered in Chrome; persisted synthetic demo content"
+    },
+    {
+      "file": "knowledge-create.png",
+      "route": "/knowledge-bases",
+      "state": "create modal open",
+      "width": 2940,
+      "height": 1800,
+      "sha256": "5bc2fe745bea9b4f9eaa073e05f7af601d03130b7fb07eeda13e14022e12095d",
+      "status": "final",
+      "ui": "real current-dev application rendered in Chrome; persisted synthetic demo content"
+    },
+    {
+      "file": "knowledge.png",
+      "route": "/knowledge-bases",
+      "state": "rendered route",
+      "width": 2940,
+      "height": 1800,
+      "sha256": "8b60ac48d50ef01a6bbd1ab3c64908d5e719de98052d0faeaf5f881428a6faf0",
+      "status": "final",
+      "ui": "real current-dev application rendered in Chrome; persisted synthetic demo content"
+    },
+    {
+      "file": "learning-new.png",
+      "route": "/learning/new",
+      "state": "rendered route",
+      "width": 2940,
+      "height": 1800,
+      "sha256": "7d783bbe83239fcdd5f1992d623da02ea6f70ee79dd1cf1d78b13a16f0ffefd9",
+      "status": "final",
+      "ui": "real current-dev application rendered in Chrome; persisted synthetic demo content"
+    },
+    {
+      "file": "learning.png",
+      "route": "/learning",
+      "state": "rendered route",
+      "width": 2940,
+      "height": 1800,
+      "sha256": "ea081a3ca3d2dde2a0c9f2f04c86f10c6e52bc7be8962f03c1a064337e79297f",
+      "status": "final",
+      "ui": "real current-dev application rendered in Chrome; persisted synthetic demo content"
+    },
+    {
+      "file": "mastery-detail.png",
+      "route": "/learning/mastery/topic_089c811e574748f3a566bd0bf6ba9262",
+      "state": "rendered route",
+      "width": 2940,
+      "height": 1800,
+      "sha256": "ef668e2eaa8c4a8ba5bba22c517019dedb5c9b5ea1e5afc20926179529492e2b",
+      "status": "final",
+      "ui": "real current-dev application rendered in Chrome; persisted synthetic demo content"
+    },
+    {
+      "file": "mastery.png",
+      "route": "/learning/mastery",
+      "state": "rendered route",
+      "width": 2940,
+      "height": 1800,
+      "sha256": "0186135ce1af4c4d0bfa6bbda3bf75b57c145450ce10fbdedeb1a85277342f27",
+      "status": "final",
+      "ui": "real current-dev application rendered in Chrome; persisted synthetic demo content"
+    },
+    {
+      "file": "mcp.png",
+      "route": "/space/mcp",
+      "state": "rendered route",
+      "width": 2940,
+      "height": 1800,
+      "sha256": "493b1077636ee3b40662dbcbe36f7cb5a3c0b9eab2b71abf5a04c8b223a47a60",
+      "status": "final",
+      "ui": "real current-dev application rendered in Chrome; persisted synthetic demo content"
+    },
+    {
+      "file": "memory-graph.png",
+      "route": "/memory/graph",
+      "state": "User-provided populated three-layer memory graph",
+      "width": 2506,
+      "height": 1606,
+      "sha256": "bb639f75889f6c2eb0d06e3d194dc682782d7bb1d174e466e1c4a9c814e54f42",
+      "status": "final",
+      "ui": "Original user-supplied screenshot, unmodified",
+      "source": "User attachment, 2026-10-28",
+      "source_commit": null,
+      "viewport_css": null,
+      "device_scale_factor": null,
+      "browser": null
+    },
+    {
+      "file": "memory.png",
+      "route": "/memory",
+      "state": "rendered route",
+      "width": 2940,
+      "height": 1800,
+      "sha256": "67f259f1903551f7d419ba131eec979a1484ed5df5d945f49ee3bd2a59d4916a",
+      "status": "final",
+      "ui": "real current-dev application rendered in Chrome; persisted synthetic demo content"
+    },
+    {
+      "file": "modules.png",
+      "route": "/settings/status",
+      "state": "rendered route",
+      "width": 2940,
+      "height": 1800,
+      "sha256": "6f2258f28441cf5d902f2652804706b872e16f5a27acec5ecc539413a1524271",
+      "status": "final",
+      "ui": "real current-dev application rendered in Chrome; persisted synthetic demo content"
+    },
+    {
+      "file": "notebook-detail.png",
+      "route": "/co-writer/e793037de012",
+      "state": "rendered route",
+      "width": 2940,
+      "height": 1800,
+      "sha256": "c0b5477efdcf232443a0a4de6a2fd6106e1ae4ddae4cd09897ffcb6adbe67e35",
+      "status": "final",
+      "ui": "real current-dev application rendered in Chrome; persisted synthetic demo content"
+    },
+    {
+      "file": "notebook-dito.png",
+      "route": "/co-writer/e793037de012",
+      "state": "rendered route",
+      "width": 2940,
+      "height": 1800,
+      "sha256": "48af2f71564d8182c4da2e6802fea8b25d2a525d685720b7d49a7bfeb08a9791",
+      "status": "final",
+      "ui": "real current-dev application rendered in Chrome; persisted synthetic demo content"
+    },
+    {
+      "file": "overview.png",
+      "route": "/chat",
+      "state": "rendered route",
+      "width": 2940,
+      "height": 1800,
+      "sha256": "5f9e5af8b948316b12651f4ee205f384c7dfd6cd78619046dde0505f734bd5bb",
+      "status": "final",
+      "ui": "real current-dev application rendered in Chrome; persisted synthetic demo content"
+    },
+    {
+      "file": "partners-channel-dingtalk.png",
+      "route": "/partners/sage",
+      "state": "channel form: dingtalk",
+      "width": 2940,
+      "height": 1800,
+      "sha256": "e47cd10536c0ce36f2bdb2947b4e44b7af3d0128ea63268577cd0408ba861f24",
+      "status": "final",
+      "ui": "real current-dev application rendered in Chrome; persisted synthetic demo content"
+    },
+    {
+      "file": "partners-channel-discord.png",
+      "route": "/partners/sage",
+      "state": "channel form: discord",
+      "width": 2940,
+      "height": 1800,
+      "sha256": "4538232d368f1a26f220a27723f7c923cdaea2cdbc68d31d62395da25a33b7ba",
+      "status": "final",
+      "ui": "real current-dev application rendered in Chrome; persisted synthetic demo content"
+    },
+    {
+      "file": "partners-channel-email.png",
+      "route": "/partners/sage",
+      "state": "channel form: email",
+      "width": 2940,
+      "height": 1800,
+      "sha256": "49a1141425f581e04fe5775ea40a29c0b2308c96fb5bcce9757a40597e71ab7e",
+      "status": "final",
+      "ui": "real current-dev application rendered in Chrome; persisted synthetic demo content"
+    },
+    {
+      "file": "partners-channel-feishu.png",
+      "route": "/partners/sage",
+      "state": "channel form: feishu",
+      "width": 2940,
+      "height": 1800,
+      "sha256": "89c545dfea9c8d0d5a65ead40e101efc04145956bf67a03bd32fdb13e61a8d7d",
+      "status": "final",
+      "ui": "real current-dev application rendered in Chrome; persisted synthetic demo content"
+    },
+    {
+      "file": "partners-channel-matrix.png",
+      "route": "/partners/sage",
+      "state": "channel form: matrix",
+      "width": 2940,
+      "height": 1800,
+      "sha256": "df1e3fdf5eedcb3d85d29e5c095d581efe85708db684252128ae63a271c829b0",
+      "status": "final",
+      "ui": "real current-dev application rendered in Chrome; persisted synthetic demo content"
+    },
+    {
+      "file": "partners-channel-mattermost.png",
+      "route": "/partners/sage",
+      "state": "channel form: mattermost",
+      "width": 2940,
+      "height": 1800,
+      "sha256": "0f467d3cb3b021b54013075c8ca66de41f5605b99f356d512108e4fa9bcaabf0",
+      "status": "final",
+      "ui": "real current-dev application rendered in Chrome; persisted synthetic demo content"
+    },
+    {
+      "file": "partners-channel-mochat.png",
+      "route": "/partners/sage",
+      "state": "channel form: mochat",
+      "width": 2940,
+      "height": 1800,
+      "sha256": "ac6b95dd844433823e506255973a2d449b2bfe7d319193a05ade8f9037dbc935",
+      "status": "final",
+      "ui": "real current-dev application rendered in Chrome; persisted synthetic demo content"
+    },
+    {
+      "file": "partners-channel-msteams.png",
+      "route": "/partners/sage",
+      "state": "channel form: msteams",
+      "width": 2940,
+      "height": 1800,
+      "sha256": "a277a64f7b5986f822a550a4023267f85a102af77544275fdeed56c16938cced",
+      "status": "final",
+      "ui": "real current-dev application rendered in Chrome; persisted synthetic demo content"
+    },
+    {
+      "file": "partners-channel-napcat.png",
+      "route": "/partners/sage",
+      "state": "channel form: napcat",
+      "width": 2940,
+      "height": 1800,
+      "sha256": "1dc2ac27f209c57d3b963fc09b907f6257f27df0ee31d3b79a9970648fd3b917",
+      "status": "final",
+      "ui": "real current-dev application rendered in Chrome; persisted synthetic demo content"
+    },
+    {
+      "file": "partners-channel-qq.png",
+      "route": "/partners/sage",
+      "state": "channel form: qq",
+      "width": 2940,
+      "height": 1800,
+      "sha256": "8ab2cd808db82cc754dad7141798410efc7f4869a13226ee3d099891a6f5509d",
+      "status": "final",
+      "ui": "real current-dev application rendered in Chrome; persisted synthetic demo content"
+    },
+    {
+      "file": "partners-channel-slack.png",
+      "route": "/partners/sage",
+      "state": "channel form: slack",
+      "width": 2940,
+      "height": 1800,
+      "sha256": "97746392be3f681add2fbebb6cb3c4c8f46b757266076191f18447e58bd65587",
+      "status": "final",
+      "ui": "real current-dev application rendered in Chrome; persisted synthetic demo content"
+    },
+    {
+      "file": "partners-channel-telegram.png",
+      "route": "/partners/sage",
+      "state": "channel form: telegram",
+      "width": 2940,
+      "height": 1800,
+      "sha256": "c2de927a5f16ce93da72e21bd750fa9bba7bcda7b757ced13ce89d9e225db707",
+      "status": "final",
+      "ui": "real current-dev application rendered in Chrome; persisted synthetic demo content"
+    },
+    {
+      "file": "partners-channel-wecom.png",
+      "route": "/partners/sage",
+      "state": "channel form: wecom",
+      "width": 2940,
+      "height": 1800,
+      "sha256": "92ad0dde30830fd40ef337c0e4f08685e81dc90e8ad87eab26d90caa226ed2b3",
+      "status": "final",
+      "ui": "real current-dev application rendered in Chrome; persisted synthetic demo content"
+    },
+    {
+      "file": "partners-channel-weixin.png",
+      "route": "/partners/sage",
+      "state": "channel form: weixin",
+      "width": 2940,
+      "height": 1800,
+      "sha256": "430a19efbdb5742e31f6c4a8952f403b471e7ac658efd2af45ae615451c8d030",
+      "status": "final",
+      "ui": "real current-dev application rendered in Chrome; persisted synthetic demo content"
+    },
+    {
+      "file": "partners-channel-whatsapp.png",
+      "route": "/partners/sage",
+      "state": "channel form: whatsapp",
+      "width": 2940,
+      "height": 1800,
+      "sha256": "f4ed65bb10bbd2adb1bf160fac372f5db5edc931035a344dfb669f462326145a",
+      "status": "final",
+      "ui": "real current-dev application rendered in Chrome; persisted synthetic demo content"
+    },
+    {
+      "file": "partners-channel-zulip.png",
+      "route": "/partners/sage",
+      "state": "channel form: zulip",
+      "width": 2940,
+      "height": 1800,
+      "sha256": "f6f9722abbc0f90cf34a629969eca6f45bc264a4e5516a426c95128814131df9",
+      "status": "final",
+      "ui": "real current-dev application rendered in Chrome; persisted synthetic demo content"
+    },
+    {
+      "file": "partners-channels.png",
+      "route": "/partners/sage",
+      "state": "rendered route",
+      "width": 2940,
+      "height": 1800,
+      "sha256": "e47cd10536c0ce36f2bdb2947b4e44b7af3d0128ea63268577cd0408ba861f24",
+      "status": "final",
+      "ui": "real current-dev application rendered in Chrome; persisted synthetic demo content"
+    },
+    {
+      "file": "partners-configure.png",
+      "route": "/partners/sage",
+      "state": "rendered route",
+      "width": 2940,
+      "height": 1800,
+      "sha256": "7ae442765356f6a7fec3b2c094bca0f60104c018d0fc5713269cbabbe502d1a5",
+      "status": "final",
+      "ui": "real current-dev application rendered in Chrome; persisted synthetic demo content"
+    },
+    {
+      "file": "partners-new.png",
+      "route": "/partners/new",
+      "state": "rendered route",
+      "width": 2940,
+      "height": 1800,
+      "sha256": "28987bbac481c97b3c31585bfbd8d0dc6f8ae551cddb9a8ccce0d3c32e2f0f51",
+      "status": "final",
+      "ui": "real current-dev application rendered in Chrome; persisted synthetic demo content"
+    },
+    {
+      "file": "partners.png",
+      "route": "/partners",
+      "state": "rendered route",
+      "width": 2940,
+      "height": 1800,
+      "sha256": "ba240324ecff6fe600612c0806dde1c57574da749773796253e7f74a63af8920",
+      "status": "final",
+      "ui": "real current-dev application rendered in Chrome; persisted synthetic demo content"
+    },
+    {
+      "file": "personalization.png",
+      "route": "/personalization",
+      "state": "rendered route",
+      "width": 2940,
+      "height": 1800,
+      "sha256": "e97847907859b54fba77d12ea0e847562ac033e0d836351d1622995f3fdc9495",
+      "status": "final",
+      "ui": "real current-dev application rendered in Chrome; persisted synthetic demo content"
+    },
+    {
+      "file": "personas.png",
+      "route": "/space/personas",
+      "state": "rendered route",
+      "width": 2940,
+      "height": 1800,
+      "sha256": "280dc9b41ea34f3e6ab3311727da8153b17057f4fc7e87ac33ea2f658cbe17f8",
+      "status": "final",
+      "ui": "real current-dev application rendered in Chrome; persisted synthetic demo content"
+    },
+    {
+      "file": "practice.png",
+      "route": "/learning/practice",
+      "state": "rendered route",
+      "width": 2940,
+      "height": 1800,
+      "sha256": "395dacebdc8b3699fc28fc87446daba8db3cc82e859b06b56ac3867fc7461591",
+      "status": "final",
+      "ui": "real current-dev application rendered in Chrome; persisted synthetic demo content"
+    },
+    {
+      "file": "providers.png",
+      "route": "/settings/connections",
+      "state": "rendered route",
+      "width": 2940,
+      "height": 1800,
+      "sha256": "ee6a871428fb77ffcbf78eece86ada59ce140357770866ab7d3630e72e78aafa",
+      "status": "final",
+      "ui": "real current-dev application rendered in Chrome; persisted synthetic demo content"
+    },
+    {
+      "file": "reading-detail.png",
+      "route": "/learning/reading/rw_c748d65bfd3a4d6ea8114e65d1f1fbd8",
+      "state": "rendered route",
+      "width": 2940,
+      "height": 1800,
+      "sha256": "a04a0caa3c6c6f376d0f437f8cb5ad7352ef49dbe7bd53569d96995dc97a76b5",
+      "status": "final",
+      "ui": "real current-dev application rendered in Chrome; persisted synthetic demo content"
+    },
+    {
+      "file": "reading.png",
+      "route": "/learning/reading",
+      "state": "rendered route",
+      "width": 2940,
+      "height": 1800,
+      "sha256": "709597af3ea059c77f8f3b112f17ce3c44d176ef54f2faba7182b5e1bb4d18e5",
+      "status": "final",
+      "ui": "real current-dev application rendered in Chrome; persisted synthetic demo content"
+    },
+    {
+      "file": "resources.png",
+      "route": "/space",
+      "state": "rendered route",
+      "width": 2940,
+      "height": 1800,
+      "sha256": "12c1fdcafed6b2b39d0605b1438b0dd2a15974855f6f974541aae1690432194a",
+      "status": "final",
+      "ui": "real current-dev application rendered in Chrome; persisted synthetic demo content"
+    },
+    {
+      "file": "settings-about.png",
+      "route": "/settings/about",
+      "state": "rendered route",
+      "width": 2940,
+      "height": 1800,
+      "sha256": "18a673713338e5cbc93b57bb7a5c994991637175d7fb0b3c36647a3239d62531",
+      "status": "final",
+      "ui": "real current-dev application rendered in Chrome; persisted synthetic demo content"
+    },
+    {
+      "file": "settings-agents.png",
+      "route": "/settings/agent-claude-code",
+      "state": "rendered route",
+      "width": 2940,
+      "height": 1800,
+      "sha256": "1dd94f446716b4d6d1d7a869704e82fab3817fbefea36a02aaa0c16f3ff95a6f",
+      "status": "final",
+      "ui": "real current-dev application rendered in Chrome; persisted synthetic demo content"
+    },
+    {
+      "file": "settings-parsing.png",
+      "route": "/settings/knowledge",
+      "state": "rendered route",
+      "width": 2940,
+      "height": 1800,
+      "sha256": "37b43165e9b7667c4c511cf0d95f0d8e63ef28d3fd99589a4295ad71e3cbb617",
+      "status": "final",
+      "ui": "real current-dev application rendered in Chrome; persisted synthetic demo content"
+    },
+    {
+      "file": "settings-video.png",
+      "route": "/settings/video-learning",
+      "state": "rendered route",
+      "width": 2940,
+      "height": 1800,
+      "sha256": "93f4be64de463b63b61b3cc953f8d22e8b51d9bac465e89a98d2597f51fa5e11",
+      "status": "final",
+      "ui": "real current-dev application rendered in Chrome; persisted synthetic demo content"
+    },
+    {
+      "file": "settings.png",
+      "route": "/settings/general",
+      "state": "rendered route",
+      "width": 2940,
+      "height": 1800,
+      "sha256": "0965c5ca268457adaca7ab0c52fc1887726c12ee72a733837b0ceb743d99e730",
+      "status": "final",
+      "ui": "real current-dev application rendered in Chrome; persisted synthetic demo content"
+    },
+    {
+      "file": "skills.png",
+      "route": "/space/skills",
+      "state": "rendered route",
+      "width": 2940,
+      "height": 1800,
+      "sha256": "018600940eaaa5a572b517622dbf87cdeb96f12a3747a3945db47ea21158f7ae",
+      "status": "final",
+      "ui": "real current-dev application rendered in Chrome; persisted synthetic demo content"
+    },
+    {
+      "file": "task-board.png",
+      "route": "/kanban",
+      "state": "rendered route",
+      "width": 2940,
+      "height": 1800,
+      "sha256": "133b86539c29301fb87adb49afa038cd2e5b4dfa68fffa44c63b930d471738d5",
+      "status": "final",
+      "ui": "real current-dev application rendered in Chrome; persisted synthetic demo content"
+    },
+    {
+      "file": "workspace-switcher.png",
+      "route": "/chat",
+      "state": "rendered route",
+      "width": 2940,
+      "height": 1800,
+      "sha256": "cf345906779ad4686ffb769b5ee7aef63e2ead94d0c7b19089e1845ff09bcb7e",
+      "status": "final",
+      "ui": "real current-dev application rendered in Chrome; persisted synthetic demo content"
+    }
+  ]
+}

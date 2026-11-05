@@ -193,6 +193,80 @@ def test_search_empty_query_returns_nothing(tmp_path: Path) -> None:
     assert store.search("") == []
 
 
+def test_search_treats_like_wildcards_as_text(tmp_path: Path) -> None:
+    store = MarginNoteStore(tmp_path / "test.db")
+    store.ingest(SyncBatch(device_id="dev1", objects=_seed_objects()))
+    # "Photosynthesis" and "The process by which green plants use sunlight..."
+    # contain no "%" or "_", so a wildcard query must not match them.
+    assert store.search("%") == []
+    assert store.search("_") == []
+
+
+def test_search_finds_a_literal_wildcard_character(tmp_path: Path) -> None:
+    store = MarginNoteStore(tmp_path / "test.db")
+    store.ingest(
+        SyncBatch(
+            device_id="dev1",
+            objects=[
+                MarginNoteObject(
+                    object_id="note-percent",
+                    object_type=NOTE,
+                    title="Grading rubric",
+                    content="80% attendance, 20% final exam",
+                    device_id="dev1",
+                ),
+                MarginNoteObject(
+                    object_id="note-underscore",
+                    object_type=NOTE,
+                    title="Variable naming",
+                    content="snake_case for functions",
+                    device_id="dev1",
+                ),
+            ],
+        )
+    )
+    percent = store.search("80%")
+    assert [hit["object_id"] for hit in percent] == ["note-percent"]
+    underscore = store.search("snake_case")
+    assert [hit["object_id"] for hit in underscore] == ["note-underscore"]
+    # A bare underscore is a literal character, not the single-char wildcard.
+    assert [hit["object_id"] for hit in store.search("_")] == ["note-underscore"]
+
+
+def test_linked_objects_treats_wildcards_in_the_object_id_as_text(tmp_path: Path) -> None:
+    store = MarginNoteStore(tmp_path / "test.db")
+    store.ingest(
+        SyncBatch(
+            device_id="dev1",
+            objects=[
+                MarginNoteObject(
+                    object_id="note-a",
+                    object_type=NOTE,
+                    title="References 100%",
+                    links=["100%"],
+                    device_id="dev1",
+                ),
+                MarginNoteObject(
+                    object_id="note-b",
+                    object_type=NOTE,
+                    title="References 1000",
+                    links=["1000"],
+                    device_id="dev1",
+                ),
+                MarginNoteObject(
+                    object_id="100%",
+                    object_type=CARD,
+                    title="Exact target",
+                    device_id="dev1",
+                ),
+            ],
+        )
+    )
+    # Without escaping, the "%" in the id behaves as a wildcard and the pattern
+    # also matches the unrelated "1000" link on note-b.
+    assert [obj["object_id"] for obj in store.linked_objects("100%")] == ["note-a"]
+
+
 # ---- list / documents / tags ----------------------------------------------
 
 

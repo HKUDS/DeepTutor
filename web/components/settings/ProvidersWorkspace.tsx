@@ -81,8 +81,25 @@ export function ProvidersWorkspace() {
   const [vendor, setVendor] = useState("");
   const [query, setQuery] = useState("");
   const [auth, setAuth] = useState("");
+  // The add panel and the selected provider live in the URL so a refresh
+  // lands on the same surface instead of the bare list.
+  const syncQuery = (updates: Record<string, string | null>) => {
+    const params = new URLSearchParams(window.location.search);
+    for (const [key, value] of Object.entries(updates)) {
+      if (value) params.set(key, value);
+      else params.delete(key);
+    }
+    const query = params.toString();
+    window.history.replaceState(
+      null,
+      "",
+      `${window.location.pathname}${query ? `?${query}` : ""}`,
+    );
+  };
   useEffect(() => {
-    const id = new URLSearchParams(window.location.search).get("provider");
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("add") === "1") setAdding(true);
+    const id = params.get("provider");
     if (id && sources.some((p) => p.id === id))
       setSelected((current) => current || id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -122,6 +139,7 @@ export function ProvidersWorkspace() {
     if (option.value === "openai_codex") {
       setAuth("openai_codex");
       setAdding(false);
+      syncQuery({ add: null });
       return;
     }
     const id = `conn-${randomUuid()}`;
@@ -145,6 +163,7 @@ export function ProvidersWorkspace() {
     setSelected(`connection:${id}`);
     setAdding(false);
     setAuth("");
+    syncQuery({ add: null, provider: `connection:${id}` });
   };
   if (!catalogEditable)
     return (
@@ -167,7 +186,10 @@ export function ProvidersWorkspace() {
           vendor={vendor}
           onVendor={setVendor}
           onCreate={create}
-          onCancel={() => setAdding(false)}
+          onCancel={() => {
+            setAdding(false);
+            syncQuery({ add: null });
+          }}
         />
       </div>
     );
@@ -183,6 +205,7 @@ export function ProvidersWorkspace() {
                 type="button"
                 onClick={() => {
                   setAdding(true);
+                  syncQuery({ add: "1", provider: selected });
                 }}
                 className={`${registryButton} w-full py-2`}
               >
@@ -215,6 +238,7 @@ export function ProvidersWorkspace() {
                     setSelected(p.id);
                     setAdding(false);
                     setAuth("");
+                    syncQuery({ add: null, provider: p.id });
                   }}
                   className={workspaceCardClass(editing)}
                 >
@@ -388,6 +412,7 @@ export function ProvidersWorkspace() {
                         onClick={async () => {
                           await stageRegistry({ kind: "provider", ref: source.ref, delete: true });
                           setSelected(null);
+                          syncQuery({ provider: null });
                         }}
                         className={`${registryDanger} ml-auto`}
                       >

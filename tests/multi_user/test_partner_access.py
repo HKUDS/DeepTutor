@@ -5,6 +5,7 @@ from __future__ import annotations
 from fastapi import HTTPException
 import pytest
 
+from deeptutor.core.errors import AccessError
 from deeptutor.multi_user import partner_access
 from deeptutor.multi_user.grants import empty_grant, normalize_grant
 
@@ -82,7 +83,7 @@ def test_non_admin_allowed_only_for_assigned(as_user, monkeypatch):
     )
     with as_user("u_alice", role="user"):
         partner_access.assert_partner_allowed("p1")  # assigned → ok
-        with pytest.raises(HTTPException) as exc:
+        with pytest.raises(AccessError) as exc:
             partner_access.assert_partner_allowed("p2")
         assert exc.value.status_code == 403
 
@@ -143,7 +144,7 @@ def test_a_partner_someone_else_owns_is_not_manageable(as_user, monkeypatch):
     monkeypatch.setattr(partner_access, "load_grant", lambda uid: empty_grant(uid))
     with as_user("u_alice", role="user"):
         assert not partner_access.can_manage_partner("p1")
-        with pytest.raises(HTTPException) as exc:
+        with pytest.raises(AccessError) as exc:
             partner_access.assert_partner_manageable("p1")
         assert exc.value.status_code == 403
 

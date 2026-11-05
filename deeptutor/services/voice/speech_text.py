@@ -561,13 +561,24 @@ def _replace_limits_once(text: str) -> str:
         out.append(text[i : match.start()])
         i = match.end()
         i = _skip_ws(text, i)
+        placement = _COMMAND.match(text, i)
+        while placement and placement.group(0) in {r"\limits", r"\nolimits", r"\displaylimits"}:
+            i = _skip_ws(text, placement.end())
+            placement = _COMMAND.match(text, i)
         sub = None
         sup = None
-        if i < n and text[i] == "_":
-            sub, i = _read_tex_token(text, i + 1)
+        for _ in range(2):
+            if i >= n or text[i] not in "_^":
+                break
+            kind = text[i]
+            if (kind == "_" and sub is not None) or (kind == "^" and sup is not None):
+                break
+            value, i = _read_tex_token(text, i + 1)
+            if kind == "_":
+                sub = value
+            else:
+                sup = value
             i = _skip_ws(text, i)
-        if i < n and text[i] == "^":
-            sup, i = _read_tex_token(text, i + 1)
         head = _LIMIT_HEAD[match.group(1)]
         parts = [head]
         if match.group(1) == "lim":

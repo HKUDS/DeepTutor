@@ -114,16 +114,15 @@ describe("Mastery teaching visibility", () => {
     expect(await screen.findByText(question.prompt)).toBeVisible();
   });
 
-  it("does not restore a rejected answer as visible teaching", async () => {
-    const rejected = "A rejected explanation that must not become lesson text.";
+  it("preserves an explanation despite a legacy rejection marker", async () => {
+    const rejected = "An explanation addressing the learner’s objection.";
     const events = [
       event("content", rejected, { call_id: "rejected-round", call_kind: "agent_loop_round" }),
       event("progress", "", { trace_kind: "call_status", call_state: "complete", answer_visible: false, call_id: "rejected-round" }),
       ...lessonEvents(false),
     ];
-    render(<AssistantMessage msg={{ content: lesson + transition, capability: "mastery_path", events }} />);
-    const rejectedText = screen.queryByText(rejected);
-    if (rejectedText) expect(rejectedText).not.toBeVisible();
+    render(<AssistantMessage msg={{ content: rejected + lesson + transition, capability: "mastery_path", events }} />);
+    expect(screen.getByText((text) => text.includes(rejected))).toBeVisible();
     expect(screen.getByText(lesson)).toBeVisible();
     expect(await screen.findByText(question.prompt)).toBeVisible();
   });

@@ -182,7 +182,7 @@ describe('reading fullscreen learning', () => {
 
     await user.click(screen.getByRole('button', { name: 'Collapse contents' }))
     expect(screen.getByTestId('reading-navigator')).toHaveAttribute('data-open', 'false')
-    expect(screen.getByRole('button', { name: 'Reading companion' })).toHaveAttribute(
+    expect(screen.getByRole('button', { name: 'Open the companion' })).toHaveAttribute(
       'aria-expanded',
       'false'
     )

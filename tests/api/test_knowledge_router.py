@@ -3345,3 +3345,38 @@ async def test_health_counts_registry_without_constructing_index_manager(tmp_pat
     result = await knowledge_router_module.health_check()
     assert result["status"] == "ok"
     assert result["knowledge_bases_count"] == 2
+
+
+@pytest.mark.parametrize(
+    ("method", "path"),
+    [
+        ("GET", "/api/knowledge-bases/missing-kb"),
+        ("DELETE", "/api/knowledge-bases/missing-kb"),
+        ("PUT", "/api/knowledge-bases/default/missing-kb"),
+        ("GET", "/api/knowledge-bases/missing-kb/progress"),
+        ("POST", "/api/knowledge-bases/missing-kb/progress/clear"),
+        ("POST", "/api/knowledge-bases/missing-kb/reindex"),
+        ("POST", "/api/knowledge-bases/missing-kb/retry"),
+        ("GET", "/api/knowledge-bases/missing-kb/linked-folders"),
+        ("DELETE", "/api/knowledge-bases/missing-kb/linked-folders/x"),
+        ("POST", "/api/knowledge-bases/missing-kb/sync-folder/x"),
+        ("GET", "/api/knowledge-bases/missing-kb/github-sources"),
+        ("DELETE", "/api/knowledge-bases/missing-kb/github-source/x"),
+        ("POST", "/api/knowledge-bases/missing-kb/sync-github"),
+        ("GET", "/api/knowledge-bases/missing-kb/web-sources"),
+        ("GET", "/api/knowledge-bases/missing-kb/web-source-sync"),
+        ("DELETE", "/api/knowledge-bases/missing-kb/web-source/x"),
+        ("POST", "/api/knowledge-bases/missing-kb/web-source/x/cancel"),
+        ("GET", "/api/knowledge-bases/missing-kb/web-source/x/pairings"),
+        ("POST", "/api/knowledge-bases/missing-kb/web-source/x/retry"),
+        ("POST", "/api/knowledge-bases/missing-kb/sync-web"),
+    ],
+)
+def test_missing_kb_returns_404_instead_of_500(method: str, path: str) -> None:
+    """The resolver raises ``AccessError``; the routes' re-raise guards must let it
+    reach the app handler instead of their ``except Exception`` turning it into 500."""
+    from deeptutor.api.main import app
+
+    response = TestClient(app, raise_server_exceptions=False).request(method, path, json={})
+
+    assert response.status_code == 404, response.text

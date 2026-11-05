@@ -19,8 +19,12 @@ describe('provider branding', () => {
       ...Array.from(llm.matchAll(/name="([a-z_]+)"/g), m => m[1]),
       ...Array.from(services.matchAll(/^    "([a-z_]+)": \w+ProviderSpec\(/gm), m => m[1]),
     ])
-    // Y-API has no verified official brand asset; retain the generic fallback.
-    const generic = new Set(['none', 'custom', 'custom_anthropic', 'custom_openai_sdk', 'custom_chat', 'y_api'])
+    // Y-API and google-browser-scraper have no verified official brand asset;
+    // retain the generic fallback.
+    const generic = new Set([
+      'none', 'custom', 'custom_anthropic', 'custom_openai_sdk', 'custom_chat', 'y_api',
+      'google_browser_scraper', 'xai', // No bundled verified xAI brand asset yet.
+    ])
     expect(ids.size).toBeGreaterThan(50)
     for (const id of ids) {
       if (generic.has(id)) expect(providerIconSpec(id), id).toBeUndefined()
@@ -61,7 +65,7 @@ describe('provider branding', () => {
   })
 
   it('omits Chinese branding in every non-Chinese UI locale without altering custom names', () => {
-    for (const language of ['en', 'fr', 'de', 'uk', 'pl']) {
+    for (const language of ['en', 'fr', 'de', 'uk', 'pl', 'vi', 'pt', 'ja', 'tr']) {
       expect(formatProviderLabel('deepseek', 'DeepSeek', language)).toBe('DeepSeek')
       expect(formatProviderLabel('deepseek', 'DeepSeek（深度求索）', language)).toBe('DeepSeek')
       expect(formatConfiguredProviderName('moonshot', 'Moonshot（月之暗面）', language)).toBe('Moonshot')

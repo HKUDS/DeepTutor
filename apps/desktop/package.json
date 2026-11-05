@@ -1,0 +1,23 @@
+{
+  "name": "open-deeptutor",
+  "productName": "Open DeepTutor",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Open DeepTutor for MacOS and Windows: DeepTutor's local runtime in a native window",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "src/main.mjs",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test test/*.test.mjs",
+    "check": "node scripts/check.mjs",
+    "icon": "swift scripts/make-icon.swift assets/mark.png assets/icon.icns && node scripts/make-ico.mjs assets/icon.icns assets/icon.ico",
+    "build:runtime": "node scripts/build-runtime.mjs",
+    "smoke": "node scripts/smoke.mjs",
+    "package": "node scripts/package.mjs"
+  },
+  "devDependencies": {
+    "@electron/packager": "20.3.0",
+    "electron": "45.1.0"
+  }
+}

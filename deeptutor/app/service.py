@@ -306,7 +306,7 @@ class TurnApplicationService:
                 if now - first_done_at >= self._POST_DONE_MAX_SECONDS:
                     return
                 if not emitted:
-                    await asyncio.sleep(0.1)
+                    await self._wait_for_turn_events(turn_id, last_seq)
                 continue
             turn = await store.get_turn(turn_id)
             if turn is None:
@@ -321,13 +321,29 @@ class TurnApplicationService:
                 # Ownership/cleanup can change between the reads above.
                 if await store.get_events(turn_id, last_seq):
                     continue
-                # Only legacy terminal rows with no journal need synthesis.
+                # Recovery can commit FAILED before its terminal journal is
+                # written. A client may also have seen volatile events beyond
+                # the durable cursor. In either case preserve the failure
+                # envelope: DONE alone hides errors on partial responses.
                 metadata = {
                     "status": status,
                     "synthesized": True,
                     "error_code": str(turn.get("failure_code") or ""),
                     "retryable": bool(turn.get("retryable")),
                 }
+                if status == "failed":
+                    last_seq += 1
+                    yield {
+                        "type": "error",
+                        "source": "turn_application",
+                        "stage": "",
+                        "content": str(turn.get("error") or "Turn failed; retry to continue"),
+                        "metadata": {**metadata, "turn_terminal": True},
+                        "session_id": turn.get("session_id", ""),
+                        "turn_id": turn_id,
+                        "seq": last_seq,
+                        "timestamp": time.time(),
+                    }
                 yield {
                     "type": "done",
                     "source": "turn_application",
@@ -341,7 +357,17 @@ class TurnApplicationService:
                 }
                 return
             if not emitted:
-                await asyncio.sleep(0.1)
+                await self._wait_for_turn_events(turn_id, last_seq)
+
+    async def _wait_for_turn_events(self, turn_id: str, after_seq: int) -> None:
+        # Notifications accelerate the live path; they never replace durable
+        # replay or the periodic terminal-state checks. Older/distributed
+        # coordinator adapters can keep their existing polling behavior.
+        wait = getattr(self.coordinator, "wait_for_events", None)
+        if wait is None:
+            await asyncio.sleep(0.1)
+        else:
+            await wait(turn_id, after_seq, timeout=0.5)
 
     async def subscribe_session(
         self,
@@ -472,10 +498,10 @@ class TurnApplicationService:
         seconds whether or not it is producing output, so "no lease" is the one
         signal that separates a zombie from a slow human.
 
-        Doing it here rather than on a timer is what makes it safe: the only
-        rows ever considered are ones already blocking a real request, so
-        there is no window in which a just-inserted turn can be swept before
-        its first renewal — the hazard that kept the periodic version out.
+        This synchronous path avoids waiting for the background recovery
+        pass when a new request is already blocked. Admission acquires its
+        lease before inserting a turn, so a live new row is protected even
+        before its first renewal.
 
         Returns ``True`` when something was reaped and the caller should retry.
         """
@@ -574,6 +600,7 @@ class TurnApplicationService:
         content: str,
         *,
         command_id: str | None = None,
+        withdraw: str | None = None,
     ) -> bool:
         store, _runtime = self._resolve()
         if (
@@ -584,7 +611,7 @@ class TurnApplicationService:
         await self.coordinator.submit_command(
             turn_id,
             "user_input",
-            {"content": content},
+            {"content": content, "withdraw": withdraw},
             command_id=command_id,
         )
         return True

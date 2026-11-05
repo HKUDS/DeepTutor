@@ -40,18 +40,6 @@ def store(tmp_path: Path, monkeypatch) -> SQLiteSessionStore:
     return instance
 
 
-@pytest.fixture
-def course_service(tmp_path: Path, monkeypatch):
-    from deeptutor.services.courses import CourseService
-
-    service = CourseService(root=tmp_path / "courses")
-    monkeypatch.setattr(
-        "deeptutor.services.courses.get_course_service",
-        lambda: service,
-    )
-    return service
-
-
 def _quiz_answers():
     return [
         {
@@ -77,26 +65,19 @@ def _quiz_answers():
     ]
 
 
-def _seed_course_session(
+def _seed_session(
     store: SQLiteSessionStore,
-    course_id: str,
     session_id: str,
     *questions: tuple[str, str, bool],
 ) -> str:
     session = asyncio.run(
-        store.create_session(title=f"Course session {session_id}", session_id=session_id)
+        store.create_session(title=f"Session {session_id}", session_id=session_id)
     )
-    asyncio.run(
-        store.update_session_preferences(
-            session["id"],
-            {"course_id": course_id},
-        )
-    )
-    asyncio.run(store.upsert_notebook_entries(session["id"], _make_course_items(*questions)))
+    asyncio.run(store.upsert_notebook_entries(session["id"], _make_items(*questions)))
     return session["id"]
 
 
-def _make_course_items(*questions: tuple[str, str, bool]) -> list[dict]:
+def _make_items(*questions: tuple[str, str, bool]) -> list[dict]:
     return [
         {"question_id": question_id, "question": question, "is_correct": is_correct}
         for question_id, question, is_correct in questions
@@ -206,70 +187,14 @@ def test_independent_entry_uses_stable_answer_image_owner_and_cleans_up(
     assert not stored_path.exists()
 
 
-def test_list_entries_filters_by_course_and_total(
-    store: SQLiteSessionStore, course_service
-) -> None:
-    course_a = course_service.create(name="Course A")
-    course_b = course_service.create(name="Course B")
-    session_a = _seed_course_session(
+def test_list_entries_includes_all_sessions(store: SQLiteSessionStore) -> None:
+    _seed_session(
         store,
-        course_a.id,
-        "session-a",
-        ("a1", "A one?", False),
-        ("a2", "A two?", True),
-    )
-    _seed_course_session(
-        store,
-        course_b.id,
-        "session-b",
-        ("b1", "B one?", False),
-    )
-
-    with TestClient(_build_app(store)) as client:
-        response = client.get(
-            "/api/question-notebook/entries",
-            params={"course_id": course_a.id},
-        )
-
-    assert response.status_code == 200
-    body = response.json()
-    assert body["total"] == 2
-    assert {item["question_id"] for item in body["items"]} == {"a1", "a2"}
-    assert {item["session_id"] for item in body["items"]} == {session_a}
-
-
-def test_list_entries_for_course_without_sessions_is_empty(
-    store: SQLiteSessionStore, course_service
-) -> None:
-    empty_course = course_service.create(name="Empty course")
-    other_course = course_service.create(name="Other course")
-    _seed_course_session(
-        store,
-        other_course.id,
-        "other-session",
-        ("other", "Other course question?", False),
-    )
-
-    with TestClient(_build_app(store)) as client:
-        response = client.get(
-            "/api/question-notebook/entries",
-            params={"course_id": empty_course.id},
-        )
-
-    assert response.status_code == 200
-    assert response.json() == {"items": [], "total": 0}
-
-
-def test_list_entries_without_course_id_remains_unfiltered(store: SQLiteSessionStore) -> None:
-    _seed_course_session(
-        store,
-        "course-a",
         "session-a",
         ("a1", "A one?", False),
     )
-    _seed_course_session(
+    _seed_session(
         store,
-        "course-b",
         "session-b",
         ("b1", "B one?", True),
     )
@@ -281,17 +206,6 @@ def test_list_entries_without_course_id_remains_unfiltered(store: SQLiteSessionS
     body = response.json()
     assert body["total"] == 2
     assert {item["question_id"] for item in body["items"]} == {"a1", "b1"}
-
-
-def test_list_entries_missing_course_returns_404(store: SQLiteSessionStore, course_service) -> None:
-    with TestClient(_build_app(store)) as client:
-        response = client.get(
-            "/api/question-notebook/entries",
-            params={"course_id": "course-missing"},
-        )
-
-    assert response.status_code == 404
-    assert response.json()["detail"] == "Course not found"
 
 
 def test_quiz_results_populates_notebook(store: SQLiteSessionStore) -> None:

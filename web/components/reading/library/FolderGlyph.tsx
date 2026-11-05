@@ -31,16 +31,19 @@ export function folderTone(color: string | undefined): string {
  */
 export function FolderGlyph({
   color,
+  tone: toneOverride,
   files,
   size = 56,
   className,
 }: {
   color?: string;
+  /** A raw CSS colour instead of a palette key — favorites store hex. */
+  tone?: string;
   files: number;
   size?: number;
   className?: string;
 }) {
-  const tone = folderTone(color);
+  const tone = toneOverride || folderTone(color);
   const sheets = Math.min(Math.max(files, 0), 3);
   return (
     <svg

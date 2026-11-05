@@ -334,6 +334,8 @@ export function RegistryModelIdField({
   onChange,
   placeholder,
   disabled = false,
+  required = false,
+  invalid = false,
 }: {
   label: string;
   value: string;
@@ -341,6 +343,8 @@ export function RegistryModelIdField({
   onChange: (value: string) => void;
   placeholder?: string;
   disabled?: boolean;
+  required?: boolean;
+  invalid?: boolean;
 }) {
   const { t } = useTranslation();
   const id = useId();
@@ -411,6 +415,11 @@ export function RegistryModelIdField({
     <div ref={box} className="space-y-1.5">
       <label htmlFor={id} className="block text-[13px] font-medium">
         {label}
+        {required && (
+          <span aria-hidden className="ml-0.5 text-[var(--muted-foreground)]">
+            *
+          </span>
+        )}
       </label>
       <div className="relative">
         <input
@@ -423,6 +432,9 @@ export function RegistryModelIdField({
           aria-activedescendant={
             visible && active >= 0 ? `${id}-option-${active}` : undefined
           }
+          aria-invalid={invalid || undefined}
+          aria-describedby={invalid ? `${id}-error` : undefined}
+          required={required}
           disabled={disabled}
           className={`${inputClass} pr-9 font-mono placeholder:font-sans`}
           value={value}
@@ -494,6 +506,11 @@ export function RegistryModelIdField({
           </div>
         )}
       </div>
+      {invalid && (
+        <p id={`${id}-error`} role="alert" className="text-[13px] text-red-600">
+          {t("Model ID is required.")}
+        </p>
+      )}
     </div>
   );
 }

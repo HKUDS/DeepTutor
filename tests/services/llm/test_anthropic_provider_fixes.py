@@ -52,6 +52,7 @@ def test_temperature_omitted_for_effort_based_models() -> None:
         "claude-opus-4-8",
         "claude-opus-5",
         "claude-sonnet-5",
+        "claude-haiku-5",
         "claude-opus-4-7",
         "claude-fable-5",
         "claude-mythos-5",
@@ -146,13 +147,14 @@ def _kwargs_with_effort(provider: AnthropicProvider, model: str, effort: str) ->
 
 
 def test_effort_based_families_map_real_effort_to_adaptive_thinking() -> None:
-    """Opus 4.7+/Opus 5/Sonnet 5/Fable 5 reject enabled+budget_tokens with a
+    """Opus 4.7+/Opus 5/Sonnet 5/Haiku 5/Fable 5 reject enabled+budget_tokens with a
     400 — a configured effort level must become adaptive thinking there."""
     provider = _provider()
     for model in (
         "claude-opus-4-8",
         "claude-opus-5",
         "claude-sonnet-5",
+        "claude-haiku-5",
         "claude-opus-4-7",
         "claude-fable-5",
         "claude-mythos-5",
@@ -170,6 +172,7 @@ def test_effort_based_families_map_real_effort_to_adaptive_thinking() -> None:
         "claude-opus-4-8",
         "claude-opus-5",
         "claude-sonnet-5",
+        "claude-haiku-5",
         "claude-fable-5",
         "claude-mythos-5",
     ],

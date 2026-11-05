@@ -913,12 +913,12 @@ export default function QuizViewer({
 
           {ans.submitted && (
             <div className="relative flex items-center gap-1">
-              <Tooltip label={currentBookmarked ? t("Remove Bookmark") : t("Bookmark")}>
+              <Tooltip label={currentBookmarked ? t("Unmark question") : t("Mark question")}>
                 <button
                   type="button"
                   onClick={handleToggleBookmark}
                   disabled={!currentEntryId}
-                  aria-label={currentBookmarked ? t("Remove Bookmark") : t("Bookmark")}
+                  aria-label={currentBookmarked ? t("Unmark question") : t("Mark question")}
                   className={`rounded-lg p-1.5 transition-all disabled:opacity-30 ${
                     currentBookmarked
                       ? "scale-110 text-amber-500 dark:text-amber-400"

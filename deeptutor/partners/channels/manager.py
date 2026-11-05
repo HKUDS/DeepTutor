@@ -21,6 +21,8 @@ def _logger():
 
 # Retry delays for message sending (exponential backoff: 1s, 2s, 4s)
 _SEND_RETRY_DELAYS = (1, 2, 4)
+# Recent outbound replies remembered to drop a channel's duplicate sends.
+_REPLY_FINGERPRINT_LIMIT = 2048
 
 _BOOL_CAMEL_ALIASES: dict[str, str] = {
     "send_progress": "sendProgress",
@@ -404,6 +406,10 @@ class ChannelManager:
             key = (msg.channel, msg.chat_id, message_id)
             self._origin_reply_fingerprints[key] = fingerprint
 
+        # Duplicates arrive within moments of the original; without a bound
+        # the map kept one entry per reply for the partner's whole life.
+        while len(self._origin_reply_fingerprints) > _REPLY_FINGERPRINT_LIMIT:
+            self._origin_reply_fingerprints.pop(next(iter(self._origin_reply_fingerprints)))
         return False
 
     async def _dispatch_outbound(self) -> None:

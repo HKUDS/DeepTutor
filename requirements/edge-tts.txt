@@ -1,0 +1,2 @@
+# Optional free TTS provider: Microsoft Edge read-aloud voices, no API key.
+edge-tts>=7.0,<8.0

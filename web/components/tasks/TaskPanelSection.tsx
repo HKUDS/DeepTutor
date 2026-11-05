@@ -34,7 +34,8 @@ export default function TaskPanelSection({
   const linked = [...ids].reverse().flatMap(id => board?.cards.find(card => card.id === id) ?? [])
   const assigned =
     board?.cards.filter(
-      card => !card.archived && card.workspace_id === workspaceId && !ids.includes(card.id)
+      // The board is already scoped by the server, including legacy General tasks.
+      card => !card.archived && !ids.includes(card.id)
     ) ?? []
   if (!linked.length && !assigned.length) return null
 
