@@ -2,7 +2,7 @@
   <title>Download for Windows (x64)</title>
   <clipPath id="r"><rect width="214" height="40" rx="4"/></clipPath>
   <g clip-path="url(#r)">
-    <rect width="214" height="40" fill="#0A0A0A"/>
+    <rect width="214" height="40" fill="#0078D4"/>
     <rect width="133" height="40" fill="#F5F5F4"/>
   </g>
   <path transform="translate(16 11.50) scale(0.7083)" fill="#27272A" d="M1 1h10.6v10.6H1zM12.4 1H23v10.6H12.4zM1 12.4h10.6V23H1zM12.4 12.4H23V23H12.4z"/>
