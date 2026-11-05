@@ -40,6 +40,7 @@ export function useMcpServers(surface: McpSurface) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [authorizingName, setAuthorizingName] = useState<string | null>(null);
 
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   // Editing key: a server name for edit, "" for the "add new" form, or null
@@ -59,8 +60,10 @@ export function useMcpServers(surface: McpSurface) {
 
   const load = useCallback(async () => {
     try {
-      applyState(await loadMcpSurface(surface));
+      const state = await loadMcpSurface(surface);
+      applyState(state);
       setLoadError(null);
+      return state;
     } catch (err) {
       setLoadError(describeMcpError(err, t));
     }
@@ -69,6 +72,41 @@ export function useMcpServers(surface: McpSurface) {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    const refresh = () => void load();
+    window.addEventListener("focus", refresh);
+    return () => window.removeEventListener("focus", refresh);
+  }, [load]);
+
+  useEffect(() => {
+    if (!authorizingName) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const deadline = Date.now() + 10 * 60_000;
+    const refresh = async () => {
+      const state = await load();
+      if (cancelled) return;
+      const status = state?.status.find((row) => row.name === authorizingName);
+      const authorized = state?.user?.oauth[authorizingName]?.authorized;
+      if (
+        Date.now() >= deadline ||
+        (state && !state.servers[authorizingName]?.enabled) ||
+        (authorized &&
+          status?.status !== "needs_auth" &&
+          status?.status !== "connecting")
+      ) {
+        setAuthorizingName(null);
+        return;
+      }
+      timer = setTimeout(() => void refresh(), 1500);
+    };
+    timer = setTimeout(() => void refresh(), 1500);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [authorizingName, load]);
 
   const statusByName = useMemo(() => {
     const map = new Map<string, McpStatusRow>();
@@ -176,8 +214,7 @@ export function useMcpServers(surface: McpSurface) {
    *
    * The consent screen belongs to the provider, so it opens in a new tab; when it
    * redirects back the app's callback route completes the exchange server-side.
-   * We reload after a beat rather than polling: the person is in the other tab,
-   * and the state they come back to has to be the real one.
+   * Poll while consent is pending and refresh on focus when the person returns.
    */
   const authorize = useCallback(
     async (name: string) => {
@@ -187,6 +224,7 @@ export function useMcpServers(surface: McpSurface) {
       try {
         const url = await authorizeSpaceMcpServer(surface.basePath, name);
         if (!url) throw new Error("no authorization URL");
+        setAuthorizingName(name);
         if (typeof window !== "undefined")
           window.open(url, "_blank", "noopener");
       } catch (err) {

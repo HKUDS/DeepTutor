@@ -575,7 +575,7 @@ class MCPConnectionManager:
     # ── connection internals ───────────────────────────────────────────
 
     @classmethod
-    def _signature(cls, cfg: MCPServerConfig, owner: str) -> str:
+    def _signature(cls, cfg: MCPServerConfig, owner: str, server_name: str = "") -> str:
         """``cfg``'s connection fingerprint, sensitive to its resolved secrets.
 
         :meth:`MCPServerConfig.connection_signature` fingerprints the *stored*
@@ -592,6 +592,10 @@ class MCPConnectionManager:
         does not invalidate — and drop — every live session.
         """
         base = cfg.connection_signature()
+        if cfg.auth == "oauth":
+            from deeptutor.services.mcp.oauth import authorization_revision
+
+            base = f"{base}#oauth:{authorization_revision(owner, server_name)}"
         if _SECRET_REFERENCE_MARKER not in base:
             # Nothing to resolve, so nothing can change behind the diff. Worth
             # checking first: this runs for every live connection on every
@@ -616,7 +620,10 @@ class MCPConnectionManager:
             if key[0] != owner:
                 continue
             cfg = desired.get(key[1])
-            if cfg is None or self._signature(cfg, owner) != self._connections[key].signature:
+            if (
+                cfg is None
+                or self._signature(cfg, owner, key[1]) != self._connections[key].signature
+            ):
                 await self._disconnect(self._connections.pop(key))
         # Connect new/changed servers concurrently.
         pending = [
@@ -638,7 +645,7 @@ class MCPConnectionManager:
         conn = _ServerConnection(
             name=name,
             config=cfg,
-            signature=self._signature(cfg, owner),
+            signature=self._signature(cfg, owner, name),
             owner=owner,
             retry_delay=retry_delay,
         )

@@ -107,7 +107,9 @@ async def list_servers() -> dict[str, Any]:
     # row's status, not the page.
     for warm in (manager.ensure_started(), manager.ensure_scope(owner)):
         try:
-            await asyncio.wait_for(warm, timeout=_STATUS_WARM_TIMEOUT_S)
+            # A status request may finish before the connection handshake does.
+            # Keep that handshake alive so it can publish its final status.
+            await asyncio.wait_for(asyncio.shield(warm), timeout=_STATUS_WARM_TIMEOUT_S)
         except Exception:
             logger.debug("MCP status warm-up did not finish for owner %s", owner, exc_info=True)
     return {
