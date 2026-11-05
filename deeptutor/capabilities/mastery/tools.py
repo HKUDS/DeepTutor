@@ -2040,6 +2040,16 @@ class MasteryAssessTool(BaseTool):
         feedback = receipt["feedback"]
         kp, _, _ = find_knowledge_point(progress, kp_id)
         assert kp is not None
+        # The graded explanation may include an earlier turn the learner was
+        # asked to clarify, so record what was assessed, not only this message.
+        assessed_answer = next(
+            (
+                item.learner_answer
+                for item in reversed(progress.learning_evidence)
+                if item.knowledge_point_id == kp_id and item.assessment_type == "qualitative"
+            ),
+            learner_answer,
+        )
         await _sync_qualitative_to_question_bank(
             path_id=path_id,
             session_id=_resolve_session_id(kwargs),
@@ -2047,7 +2057,7 @@ class MasteryAssessTool(BaseTool):
             knowledge_point_id=kp_id,
             knowledge_point_name=kp.name,
             passed=passed,
-            evidence=learner_answer,
+            evidence=assessed_answer,
             result=receipt["result"],
             quality={"correct": 1.0, "partial": 0.5, "incorrect": 0.0}[receipt["result"]],
             material_title=progress.name,
