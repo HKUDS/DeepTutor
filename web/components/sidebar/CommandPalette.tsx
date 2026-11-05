@@ -123,6 +123,7 @@ export function CommandPalette({
     // Little Tutor threads live under their parent conversation in the
     // sidebar, so without this group they are only discoverable from inside
     // that conversation. The palette is the one cross-conversation index.
+    const parentsById = new Map(sessions.map(session => [session.session_id, session]))
     const sideChats: PaletteItem[] = sessions
       .filter(
         session =>
@@ -131,9 +132,7 @@ export function CommandPalette({
           !isNoteSession(session)
       )
       .map(session => {
-        const parent = sessions.find(
-          row => row.session_id === session.preferences?.parent_session_id
-        )
+        const parent = parentsById.get(session.preferences?.parent_session_id ?? '')
         return {
           id: `side-chat:${session.session_id}`,
           label: session.title || t('Little Tutor'),

@@ -7,7 +7,6 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
-import errno
 import hashlib
 import json
 from pathlib import Path
@@ -15,17 +14,9 @@ import shutil
 from typing import Any
 import uuid
 
-try:  # POSIX
-    import fcntl
-except ImportError:  # pragma: no cover - exercised only on Windows
-    fcntl = None  # type: ignore[assignment]
-try:  # Windows
-    import msvcrt
-except ImportError:  # pragma: no cover - exercised only off Windows
-    msvcrt = None  # type: ignore[assignment]
-
 from deeptutor.services.file_io import atomic_write_json
 
+from .migration_lock import exclusive_lock
 from .protocol import SessionRepository
 
 
@@ -51,36 +42,8 @@ class LegacyMigrationReport:
 @contextmanager
 def _migration_lock(archive_root: Path) -> Iterator[None]:
     archive_root.mkdir(parents=True, exist_ok=True)
-    with (archive_root / ".migration.lock").open("a+b") as handle:
-        if fcntl is not None:
-            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
-        elif msvcrt is not None:
-            # Unserialized, workers copy, import and move the same source at
-            # once: WinError 32 on the backup, duplicate imports, and a second
-            # archive move that finds the source gone.
-            handle.seek(0, 2)
-            if handle.tell() == 0:
-                handle.write(b"\0")
-                handle.flush()
-            handle.seek(0)
-            # LK_LOCK gives up with EDEADLK after about ten seconds, and
-            # importing a large legacy store takes longer than that. Keep
-            # waiting, as flock does on POSIX.
-            while True:
-                try:
-                    msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
-                    break
-                except OSError as exc:
-                    if exc.errno != errno.EDEADLK:
-                        raise
-        try:
-            yield
-        finally:
-            if fcntl is not None:
-                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
-            elif msvcrt is not None:
-                handle.seek(0)
-                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+    with exclusive_lock(archive_root / ".migration.lock"):
+        yield
 
 
 def _timestamp() -> str:

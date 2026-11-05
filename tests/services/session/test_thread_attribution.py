@@ -375,3 +375,11 @@ async def test_structured_metadata_cannot_point_outside_the_parent(tmp_path) -> 
     assert TUTOR_SOURCE_KEY not in rows[0]["preferences"]
     assert BACKFILL_ATTEMPTED_KEY not in rows[0]["preferences"]
     assert rows[0]["preferences"][BACKFILL_FAILED_AT_KEY]
+
+
+def test_failure_cooldown_evicts_oldest_at_capacity(monkeypatch):
+    monkeypatch.setattr(thread_attribution, "_FAILED_UNTIL", {})
+    for index in range(1001):
+        thread_attribution._remember_failure(str(index))
+    assert len(thread_attribution._FAILED_UNTIL) == 1000
+    assert "0" not in thread_attribution._FAILED_UNTIL

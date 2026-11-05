@@ -254,3 +254,10 @@ def test_non_web_kb_isolation(tmp_path: Path) -> None:
     # Deleting non-existent returns 0
     deleted = repo.delete_pairings(owner_id, "marginnote-kb", "src-nonexistent")
     assert deleted == 0
+
+
+def test_content_slug_with_language_prefix_is_preserved():
+    assert extract_url_language_and_stem("https://example.com/en-guide/intro") == (
+        "",
+        "/en-guide/intro",
+    )

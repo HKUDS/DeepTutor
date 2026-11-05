@@ -666,7 +666,9 @@ class TestJudgeImages:
         client = _judge_client(monkeypatch, stream)
         payload = _judge_payload(
             user_answer="",
-            user_answer_images=[{"base64": "data:image/jpeg;base64,QUJD", "filename": "answer.png"}],
+            user_answer_images=[
+                {"base64": "data:image/jpeg;base64,QUJD", "filename": "answer.png"}
+            ],
         )
 
         with client.websocket_connect("/ws/questions/judge") as ws:

@@ -8,7 +8,6 @@ import asyncio
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
-import errno
 import json
 import os
 from pathlib import Path
@@ -17,15 +16,6 @@ import sqlite3
 import time
 from typing import Any
 import uuid
-
-try:  # POSIX
-    import fcntl
-except ImportError:  # pragma: no cover - exercised only on Windows
-    fcntl = None  # type: ignore[assignment]
-try:  # Windows
-    import msvcrt
-except ImportError:  # pragma: no cover - exercised only off Windows
-    msvcrt = None  # type: ignore[assignment]
 
 from deeptutor.core.assessment import (
     ASSESSMENT_RESULTS,
@@ -45,6 +35,7 @@ from deeptutor.utils.secret_files import ensure_private_directory, ensure_privat
 
 from .ask_user_trace import select_ask_user_events
 from .event_preview import MAX_TRACE_PREVIEW_EVENTS, compact_trace_preview
+from .migration_lock import exclusive_lock
 from .provider_response_state import redact_private_message_metadata
 from .search import bounded_search_excerpt, normalize_search_query
 from .thread_attribution import BACKFILL_ATTEMPTED_KEY, TUTOR_SOURCE_KEY
@@ -67,35 +58,8 @@ def _escape_like(value: str) -> str:
 def _migration_lock(db_path: Path) -> Iterator[None]:
     """Serialize idempotent schema upgrades across worker processes."""
     lock_path = db_path.with_name(f"{db_path.name}.migrate.lock")
-    with lock_path.open("a+b") as lock_file:
-        if fcntl is not None:
-            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
-        elif msvcrt is not None:
-            # Without a lock, workers starting together race the WAL switch
-            # ("database is locked") and CREATE TRIGGER ("already exists").
-            lock_file.seek(0, 2)
-            if lock_file.tell() == 0:
-                lock_file.write(b"\0")
-                lock_file.flush()
-            lock_file.seek(0)
-            # LK_LOCK gives up with EDEADLK after about ten seconds, and a
-            # one-time upgrade of a large database can take longer than that.
-            # Keep waiting, as flock does on POSIX.
-            while True:
-                try:
-                    msvcrt.locking(lock_file.fileno(), msvcrt.LK_LOCK, 1)
-                    break
-                except OSError as exc:
-                    if exc.errno != errno.EDEADLK:
-                        raise
-        try:
-            yield
-        finally:
-            if fcntl is not None:
-                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
-            elif msvcrt is not None:
-                lock_file.seek(0)
-                msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
+    with exclusive_lock(lock_path):
+        yield
 
 
 # Sentinel so ``add_message`` can distinguish "caller wants the legacy

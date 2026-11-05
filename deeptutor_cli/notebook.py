@@ -9,7 +9,7 @@ import typer
 
 from deeptutor.app import DeepTutorApp
 from deeptutor.services.notebook.service import NotebookCorruptedError
-from deeptutor.services.rag.file_routing import FileTypeRouter
+from deeptutor.utils.file_types import FileTypeRouter
 
 from .common import console, print_notebook_table
 

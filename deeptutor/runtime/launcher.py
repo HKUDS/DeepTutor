@@ -32,6 +32,7 @@ from deeptutor.runtime.home import (
 from deeptutor.runtime.memory_probe import SUPERVISOR_PID_ENV
 from deeptutor.runtime.process import is_process_alive
 from deeptutor.services.app_update import LAUNCHER_PID_ENV
+from deeptutor.utils.console_encoding import relax_console_encoding as _relax_console_encoding
 
 BACKEND_READY_TIMEOUT_ENV = "DEEPTUTOR_BACKEND_READY_TIMEOUT"
 FRONTEND_READY_TIMEOUT_ENV = "DEEPTUTOR_FRONTEND_READY_TIMEOUT"
@@ -402,28 +403,6 @@ def _terminate_all(
 def _terminate(proc: ManagedProcess | None) -> None:
     if proc is not None:
         _terminate_all([proc])
-
-
-def _relax_console_encoding(streams: tuple[object, ...] | None = None) -> None:
-    """Make the launcher's own console output lossy instead of fatal.
-
-    Child pipes are already decoded with ``errors="replace"`` (see ``_spawn``)
-    and the children themselves get ``PYTHONIOENCODING=utf-8:replace``, but the
-    parent process re-encodes every relayed line with the console's own codec.
-    On a legacy Windows code page (cp950/cp936/cp932) an ordinary Next.js
-    banner character like ``✓`` then raises ``UnicodeEncodeError`` inside
-    ``_stream_output``, killing the relay thread — the app keeps running but
-    goes silent for the rest of the session (issue #702).
-    """
-    for stream in streams if streams is not None else (sys.stdout, sys.stderr):
-        reconfigure = getattr(stream, "reconfigure", None)
-        if reconfigure is None:
-            continue
-        try:
-            reconfigure(errors="replace")
-        except (ValueError, OSError):
-            # Already-detached or non-reconfigurable stream: nothing to relax.
-            continue
 
 
 def _stream_output(prefix: str, process: subprocess.Popen[str]) -> None:

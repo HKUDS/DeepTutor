@@ -153,8 +153,9 @@ async def test_migration_is_serialized_with_msvcrt_when_fcntl_is_missing(
 ) -> None:
     # Every worker runs the migration at startup. Unserialized on Windows,
     # they copied, imported and moved the same source at once.
-    import deeptutor.services.session.legacy_migration as module
+    import deeptutor.services.session.migration_lock as module
 
+    store = SQLiteSessionStore(tmp_path / "chat_history.db")
     calls: list[int] = []
 
     def locking(_fileno: int, mode: int, length: int) -> None:
@@ -168,7 +169,6 @@ async def test_migration_is_serialized_with_msvcrt_when_fcntl_is_missing(
         SimpleNamespace(LK_LOCK=1, LK_UNLCK=0, locking=locking),
         raising=False,
     )
-    store = SQLiteSessionStore(tmp_path / "chat_history.db")
     source = tmp_path / "sessions.json"
     _write_legacy(source, [_session("s1")])
 
@@ -193,13 +193,13 @@ async def test_windows_migration_lock_keeps_waiting_after_lk_lock_gives_up(
 ) -> None:
     # LK_LOCK raises EDEADLK after about ten seconds, but another worker's
     # import of a large legacy store can hold the lock for longer.
-    import deeptutor.services.session.legacy_migration as module
+    import deeptutor.services.session.migration_lock as module
 
+    store = SQLiteSessionStore(tmp_path / "chat_history.db")
     calls: list[int] = []
     timeout = OSError(errno.EDEADLK, "Resource deadlock avoided")
     monkeypatch.setattr(module, "fcntl", None)
     monkeypatch.setattr(module, "msvcrt", _msvcrt_failing_first_lock(calls, timeout), raising=False)
-    store = SQLiteSessionStore(tmp_path / "chat_history.db")
     source = tmp_path / "sessions.json"
     _write_legacy(source, [_session("s1")])
 
@@ -211,13 +211,13 @@ async def test_windows_migration_lock_keeps_waiting_after_lk_lock_gives_up(
 
 @pytest.mark.asyncio
 async def test_windows_migration_lock_raises_other_lock_errors(tmp_path, monkeypatch) -> None:
-    import deeptutor.services.session.legacy_migration as module
+    import deeptutor.services.session.migration_lock as module
 
+    store = SQLiteSessionStore(tmp_path / "chat_history.db")
     calls: list[int] = []
     denied = OSError(errno.EACCES, "Permission denied")
     monkeypatch.setattr(module, "fcntl", None)
     monkeypatch.setattr(module, "msvcrt", _msvcrt_failing_first_lock(calls, denied), raising=False)
-    store = SQLiteSessionStore(tmp_path / "chat_history.db")
     source = tmp_path / "sessions.json"
     _write_legacy(source, [_session("s1")])
 

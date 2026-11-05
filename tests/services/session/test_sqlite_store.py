@@ -1266,7 +1266,7 @@ def test_schema_setup_takes_the_windows_lock_without_fcntl(tmp_path, monkeypatch
     # Workers opening the store together race the WAL switch ("database is
     # locked") and CREATE TRIGGER ("already exists") unless setup is
     # serialized across processes on Windows too.
-    import deeptutor.services.session.sqlite_store as module
+    import deeptutor.services.session.migration_lock as module
 
     calls: list[int] = []
 
@@ -1299,7 +1299,7 @@ def _msvcrt_failing_first_lock(calls: list[int], error: OSError) -> SimpleNamesp
 def test_windows_schema_lock_keeps_waiting_after_lk_lock_gives_up(tmp_path, monkeypatch) -> None:
     # LK_LOCK raises EDEADLK after about ten seconds, but another worker's
     # one-time upgrade of a large database can hold the lock for longer.
-    import deeptutor.services.session.sqlite_store as module
+    import deeptutor.services.session.migration_lock as module
 
     calls: list[int] = []
     timeout = OSError(errno.EDEADLK, "Resource deadlock avoided")
@@ -1312,7 +1312,7 @@ def test_windows_schema_lock_keeps_waiting_after_lk_lock_gives_up(tmp_path, monk
 
 
 def test_windows_schema_lock_raises_other_lock_errors(tmp_path, monkeypatch) -> None:
-    import deeptutor.services.session.sqlite_store as module
+    import deeptutor.services.session.migration_lock as module
 
     calls: list[int] = []
     denied = OSError(errno.EACCES, "Permission denied")

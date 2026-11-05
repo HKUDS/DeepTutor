@@ -79,7 +79,9 @@ def test_non_text_warning_identifies_location_without_message_body(
     partner_root: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
     path = _history(partner_root)
-    _append(path, {"role": "assistant", "content": {"private": "do-not-log-this-payload"}})
+    _append(
+        path, {"role": "assistant", "content": {"sensitive-key-canary": "do-not-log-this-payload"}}
+    )
 
     with caplog.at_level(logging.WARNING, logger=adapters.__name__):
         adapters.read_entities("partner")
@@ -87,7 +89,7 @@ def test_non_text_warning_identifies_location_without_message_body(
     warnings = [row.getMessage() for row in caplog.records if row.name == adapters.__name__]
     assert any(str(path) in warning and "2" in warning for warning in warnings)
     assert "do-not-log-this-payload" not in caplog.text
-    assert "private" not in caplog.text
+    assert "sensitive-key-canary" not in caplog.text
 
 
 def test_valid_blank_content_and_archive_state_keep_existing_behavior(partner_root: Path) -> None:

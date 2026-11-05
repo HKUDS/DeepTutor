@@ -412,10 +412,9 @@ def _locate_for_thread(
 
 def _remember_failure(thread_session_id: str) -> None:
     now = time.monotonic()
-    if len(_FAILED_UNTIL) > 1000:
-        for key, until in list(_FAILED_UNTIL.items()):
-            if until <= now:
-                _FAILED_UNTIL.pop(key, None)
+    _FAILED_UNTIL.pop(thread_session_id, None)
+    if len(_FAILED_UNTIL) >= 1000:
+        _FAILED_UNTIL.pop(next(iter(_FAILED_UNTIL)))
     _FAILED_UNTIL[thread_session_id] = now + BACKFILL_RETRY_SECONDS
 
 

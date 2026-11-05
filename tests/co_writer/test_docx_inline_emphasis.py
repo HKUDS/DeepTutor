@@ -34,9 +34,9 @@ class _FakeParagraph:
 def test_intraword_underscores_are_literal() -> None:
     paragraph = _FakeParagraph()
 
-    _add_inline_runs(paragraph, "use snake_case_word please")
+    _add_inline_runs(paragraph, "use snake_case_word and 中_英_文 please")
 
-    assert "".join(run.text for run in paragraph.runs) == "use snake_case_word please"
+    assert "".join(run.text for run in paragraph.runs) == "use snake_case_word and 中_英_文 please"
     assert not any(run.italic for run in paragraph.runs)
 
 

@@ -30,13 +30,22 @@ _MESSAGES: list[dict[str, Any]] = [
 
 
 def _provider(spec_name: str, base_url: str, model: str) -> OpenAICompatProvider:
-    return OpenAICompatProvider(
+    provider = OpenAICompatProvider(
         api_key="test-key",
         api_base=base_url,
         default_model=model,
         spec=find_by_name(spec_name),
         provider_name=spec_name,
     )
+
+    provider._prompt_cache_options_supported = True
+    return provider
+
+
+def test_sdk_without_explicit_cache_support_omits_breakpoints():
+    provider = _provider("openai", "https://api.openai.com/v1", "gpt-6")
+    provider._prompt_cache_options_supported = False
+    assert "prompt_cache_options" not in _body(provider, "gpt-6")
 
 
 def _body(provider: OpenAICompatProvider, model: str) -> dict[str, Any]:

@@ -76,7 +76,7 @@ _INLINE_RE = re.compile(
     r"|\*(?P<i1>[^\n]+?)\*"
     # ``_`` emphasis only at a word boundary (CommonMark): ``snake_case_word``
     # is literal, not italic ``case``. ``*`` above may still emphasise intra-word.
-    r"|(?<![A-Za-z0-9_])_(?!_)(?P<i2>[^\n]+?)(?<!_)_(?![A-Za-z0-9_])"
+    r"|(?<!\w)_(?!_)(?P<i2>[^\n]+?)(?<!_)_(?!\w)"
 )
 # Characters we escape when emitting markdown, and honour when parsing it.
 _ESCAPABLE = set("\\`*_[]~|<>#+-.!()")

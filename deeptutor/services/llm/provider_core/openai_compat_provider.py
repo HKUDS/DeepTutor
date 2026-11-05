@@ -493,7 +493,10 @@ class OpenAICompatProvider(LLMProvider):
         if reasoning_effort and reasoning_effort.lower() != "none":
             return False
         name = model_name.lower()
-        return not any(token in name for token in ("gpt-5", "gpt-6", "o1", "o3", "o4"))
+        family = name.removeprefix("openai/")
+        if family == "gpt-6" or family.startswith(("gpt-6-", "gpt-6.")):
+            return False
+        return not any(token in name for token in ("gpt-5", "o1", "o3", "o4"))
 
     def _build_kwargs(
         self,
@@ -870,7 +873,7 @@ class OpenAICompatProvider(LLMProvider):
         """
         if not supports_explicit_prompt_cache(model_name):
             return False
-        if not self._prompt_cache_options_supported:
+        if not getattr(self, "_prompt_cache_options_supported", False):
             return False
         if str(model_name or "").strip().lower() in self._responses_without_prompt_cache_models:
             return False
