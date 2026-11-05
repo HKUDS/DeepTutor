@@ -110,9 +110,8 @@ def exact_verdict(question, answer):
 
 
 async def _request(config, instruction, payload, sources=None, native_images=None):
-    from deeptutor.learning.lesson_evidence import _json_response
+    from deeptutor.learning.lesson_evidence import _complete_json
     from deeptutor.services.llm.config import get_llm_config
-    from deeptutor.services.llm.factory import complete_with_config
     from deeptutor.services.llm.image_replay import deduplicate_user_images
 
     try:
@@ -152,14 +151,12 @@ async def _request(config, instruction, payload, sources=None, native_images=Non
             )
         # The configured provider owns its request deadline and cancellation.
         # Do not impose a shorter assessment timeout on a reasoning provider.
-        response = await complete_with_config(
-            config=config or get_llm_config(),
-            prompt="",
+        return await _complete_json(
+            config or get_llm_config(),
             max_tokens=2200,
             messages=messages,
             allow_image_fallback=False,
         )
-        return _json_response(response)
     except AssessmentUnavailable:
         raise
     except Exception as exc:
