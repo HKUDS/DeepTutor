@@ -44,7 +44,6 @@ import {
   type ReadingBookmark,
 } from "@/lib/reading-api";
 import { AnnotationList } from "./AnnotationList";
-import { useAnnotationPanelWidth } from "./useAnnotationPanelWidth";
 import { ReadingPanelSeparator } from "./workspace/ReadingPanelSeparator";
 import { AnnotationPopover, type PopoverAiAction } from "./AnnotationPopover";
 import { passagePrompts } from "@/lib/reading-passage-prompts";
@@ -252,7 +251,6 @@ export function ReaderPane({
   // The phone-sized annotation sheet is a modal: it has to take focus on open
   // and hand it back on close, or a keyboard user is left behind it.
   const annotationSheetRef = useRef<HTMLDivElement | null>(null);
-  const annotationPanelWidth = useAnnotationPanelWidth();
   const [autoJump, setAutoJump] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [currentLocator, setCurrentLocator] = useState(1);
@@ -1402,20 +1400,13 @@ export function ReaderPane({
           // panel is drawn as the overlay further down, so the "Annotations"
           // toggle in the ⋯ menu does something on a phone instead of flipping
           // a panel that `hidden lg:block` keeps invisible.
-          <>
-          <ReadingPanelSeparator
-            label={t("Resize annotations panel")}
-            width={annotationPanelWidth.width}
-            min={annotationPanelWidth.min}
-            max={annotationPanelWidth.max}
-            direction={-1}
-            onResize={annotationPanelWidth.resize}
-            className="hidden lg:block"
-          />
-          <aside
-            className="hidden shrink-0 bg-[var(--background)] lg:block"
-            style={{ width: annotationPanelWidth.width }}
-          >
+          //
+          // The column is a fixed width here. A resizable one lived here too,
+          // with its own width store, but the workspace — the only route that
+          // mounts this pane — passes `ownAnnotationList={false}` and resizes
+          // its navigator through `useReadingPanelLayout` instead, so that store
+          // was a second implementation nothing could reach.
+          <aside className="hidden w-[248px] shrink-0 bg-[var(--background)] lg:block">
             <AnnotationList
               annotations={annotations}
               unit={material.unit}
@@ -1429,7 +1420,6 @@ export function ReaderPane({
               onChangeMark={updateMark}
             />
           </aside>
-          </>
         )}
       </div>
 
