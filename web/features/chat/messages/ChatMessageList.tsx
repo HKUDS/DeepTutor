@@ -1461,6 +1461,33 @@ async function ttsErrorMessage(resp: Response): Promise<string> {
   return "";
 }
 
+type SpeechFrame =
+  | { audio: string; content_type: string; final: boolean }
+  | { detail: string };
+
+async function* readSpeechFrames(response: Response): AsyncGenerator<SpeechFrame> {
+  if (!response.body) throw new Error("Missing speech stream.");
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let pending = "";
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) throw new Error("Incomplete speech stream.");
+      pending += decoder.decode(value, { stream: true });
+      for (let newline = pending.indexOf("\n"); newline !== -1; newline = pending.indexOf("\n")) {
+        const frame = JSON.parse(pending.slice(0, newline)) as SpeechFrame;
+        pending = pending.slice(newline + 1);
+        yield frame;
+        if ("detail" in frame || frame.final) return;
+      }
+    }
+  } finally {
+    await reader.cancel().catch(() => {});
+    reader.releaseLock();
+  }
+}
+
 export function PlayAudioButton({
   content,
   conversationKey,
@@ -1522,7 +1549,7 @@ export function PlayAudioButton({
       const resp = await apiFetch(apiUrl("/api/voice/tts"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: content }),
+        body: JSON.stringify({ text: content, stream: true }),
         signal: ac.signal,
       });
       if (gen !== genRef.current) return;
@@ -1536,35 +1563,53 @@ export function PlayAudioButton({
         stop();
         return;
       }
-      const blob = await resp.blob();
-      if (gen !== genRef.current) return;
-      if (urlRef.current) {
-        URL.revokeObjectURL(urlRef.current);
-        urlRef.current = null;
-      }
-      const url = URL.createObjectURL(blob);
-      urlRef.current = url;
-      audio.src = url;
-      audio.load();
-      audio.onended = () => {
+      const playClip = async (blob: Blob) => {
         if (gen !== genRef.current) return;
-        setState("idle");
-        cleanup();
-        if (activePlayback?.owner === playbackOwnerRef.current) activePlayback = null;
-      };
-      audio.onerror = () => {
-        if (gen !== genRef.current) return;
-        notify(t(SPEECH_PLAYBACK_FAILURE_MESSAGE), {
-          tone: "error",
+        if (urlRef.current) URL.revokeObjectURL(urlRef.current);
+        const url = URL.createObjectURL(blob);
+        urlRef.current = url;
+        audio.src = url;
+        audio.load();
+        const finished = new Promise<void>((resolve) => {
+          const finish = () => {
+            ac.signal.removeEventListener("abort", finish);
+            audio.onended = null;
+            audio.onerror = null;
+            resolve();
+          };
+          audio.onended = finish;
+          audio.onerror = () => {
+            if (gen === genRef.current) {
+              notify(t(SPEECH_PLAYBACK_FAILURE_MESSAGE), { tone: "error" });
+              stop();
+            }
+            finish();
+          };
+          ac.signal.addEventListener("abort", finish, { once: true });
         });
-        stop();
+        await audio.play();
+        if (gen !== genRef.current) {
+          audio.pause();
+          return;
+        }
+        setState("playing");
+        await finished;
       };
-      await audio.play();
-      if (gen !== genRef.current) {
-        audio.pause();
-        return;
+
+      if (resp.headers.get("content-type") === "application/x-ndjson") {
+        for await (const frame of readSpeechFrames(resp)) {
+          if (gen !== genRef.current) return;
+          if ("detail" in frame) {
+            notify(t(frame.detail || SPEECH_PLAYBACK_FAILURE_MESSAGE), { tone: "error" });
+            break;
+          }
+          const bytes = Uint8Array.from(atob(frame.audio), (char) => char.charCodeAt(0));
+          await playClip(new Blob([bytes], { type: frame.content_type }));
+        }
+      } else {
+        await playClip(await resp.blob());
       }
-      setState("playing");
+      if (gen === genRef.current) stop();
     } catch (err) {
       if (gen !== genRef.current) return;
       if (err instanceof Error && err.name === "AbortError") return;
@@ -1573,7 +1618,7 @@ export function PlayAudioButton({
       });
       stop();
     }
-  }, [cleanup, content, stop, t]);
+  }, [content, stop, t]);
 
   const handleClick = useCallback(() => {
     if (state === "playing" || state === "loading") {

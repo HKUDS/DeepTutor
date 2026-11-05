@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import base64
 import io
+import json
+from types import SimpleNamespace
 from typing import Any
 import wave
 
@@ -11,6 +14,8 @@ from fastapi.testclient import TestClient
 import pytest
 
 from deeptutor.api.routers import voice as voice_router
+from deeptutor.services import voice
+from deeptutor.services.config import provider_runtime
 from deeptutor.services.voice import VoiceProviderError
 from deeptutor.services.voice.base import VoiceProviderTimeout
 
@@ -37,6 +42,39 @@ def test_tts_returns_audio_bytes(client: TestClient, monkeypatch: pytest.MonkeyP
     assert resp.content == b"audio-bytes"
     assert resp.headers["content-type"] == "audio/mpeg"
     assert captured == {"text": "hello", "voice": "nova", "format": None}
+
+
+def test_tts_stream_speaks_an_opening_clip_and_the_remainder(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    captured = []
+    opening = "Here is the first sentence."
+    remainder = ("The rest of this explanation should stay together. " * 8).strip()
+
+    async def synthesize(text: str, _config: voice.TTSConfig) -> tuple[bytes, str]:
+        captured.append(text)
+        return text.encode(), "audio/mpeg"
+
+    monkeypatch.setattr(
+        provider_runtime,
+        "resolve_tts_runtime_config",
+        lambda **_: voice.TTSConfig(model="test-model", adapter="test", max_input_chars=2000),
+    )
+    monkeypatch.setattr(
+        voice,
+        "get_tts_adapter",
+        lambda _: SimpleNamespace(synthesize=synthesize),
+    )
+    response = client.post(
+        "/api/voice/tts",
+        json={"text": f"**{opening}** {remainder}", "stream": True},
+    )
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/x-ndjson"
+    frames = [json.loads(line) for line in response.text.splitlines()]
+    assert captured == [opening, remainder.strip()]
+    assert [base64.b64decode(frame["audio"]).decode() for frame in frames] == captured
+    assert [frame["final"] for frame in frames] == [False, True]
 
 
 def test_tts_wraps_pcm_bytes_as_browser_playable_wav(
