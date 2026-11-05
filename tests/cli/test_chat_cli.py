@@ -260,3 +260,16 @@ def test_stop_command_delegates_to_detached_launcher(monkeypatch) -> None:
 
     assert result.exit_code == 0, result.output
     assert calls == [None]
+
+
+def test_malformed_notebook_ref_in_repl_does_not_crash_the_session() -> None:
+    from deeptutor_cli.chat import ChatState, _apply_command
+
+    state = ChatState()
+    # A bad `/notebook add` ref must be reported in-loop (like every other
+    # command), not raise and tear down the whole interactive session.
+    assert _apply_command("/notebook add :", state) is True
+    assert state.notebook_references == []
+
+    assert _apply_command("/notebook add nb1:rec1", state) is True
+    assert state.notebook_references == [{"notebook_id": "nb1", "record_ids": ["rec1"]}]
