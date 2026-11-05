@@ -113,3 +113,38 @@ def test_deadline_and_cancellation_settle_the_owned_tree(tmp_path, monkeypatch, 
     assert elapsed < 2
     (child_file,) = (tmp_path / "out").glob(".mineru-attempt-*/output/child.pid")
     assert not psutil.pid_exists(int(child_file.read_text()))
+
+
+def test_unsettled_tree_is_reported_as_cleanup_failed(tmp_path, monkeypatch):
+    """An unsettled tree gets its own reason instead of the generic bucket (#2426).
+
+    ``SIGKILL`` normally empties the group, so this outcome is hard to reach
+    with a real child; the point of the test is the classification, which is
+    what a caller keys on. Injecting the exception pins the mapping without
+    depending on an unkillable process.
+    """
+    from deeptutor.services.parsing.engines.mineru import _process
+
+    def raise_unsettled(*_args, **_kwargs):
+        raise _process.ProcessTreeNotSettled("MinerU process-tree cleanup did not settle")
+
+    monkeypatch.setattr(local, "cli_process", raise_unsettled)
+
+    result, _ = run_fixture(tmp_path, monkeypatch, "import time; time.sleep(0.1)")
+
+    assert not result.ok
+    assert result.reason is local.LocalParseReason.CLEANUP_FAILED, result.reason
+    assert "ProcessTreeNotSettled" in result.detail
+
+
+def test_superseded_exception_still_reports_exception(tmp_path, monkeypatch):
+    """Other failures keep reporting ``EXCEPTION``, so the split is narrow."""
+    def raise_other(*_args, **_kwargs):
+        raise ValueError("something else broke")
+
+    monkeypatch.setattr(local, "cli_process", raise_other)
+
+    result, _ = run_fixture(tmp_path, monkeypatch, "import time; time.sleep(0.1)")
+
+    assert not result.ok
+    assert result.reason is local.LocalParseReason.EXCEPTION, result.reason

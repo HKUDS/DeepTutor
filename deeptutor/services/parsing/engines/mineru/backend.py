@@ -66,6 +66,12 @@ _LOCAL_FAILURE_MESSAGES: dict[LocalParseReason, str] = {
         "switch to cloud mode in Settings → MinerU."
     ),
     LocalParseReason.EXCEPTION: "Local MinerU parsing was interrupted: {detail}",
+    LocalParseReason.CLEANUP_FAILED: (
+        "MinerU finished but its process tree did not exit within the settle "
+        "deadline ({detail}). Output from this attempt was not published. This "
+        "usually means another MinerU run is still active or a child process is "
+        "stuck; retry once it has exited."
+    ),
 }
 
 
