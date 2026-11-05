@@ -52,7 +52,7 @@ jobs:
       fail-fast: false
       matrix:
         # Windows exercises taskkill-based shutdown; the others process groups.
-        os: [ubuntu-24.04, windows-latest]
+        os: [ubuntu-24.04, windows-2025, macos-15, macos-15-intel]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -67,6 +67,11 @@ jobs:
         env:
           ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
         run: npm ci && npm run check && npm test
+
+      - name: Audit desktop dependencies
+        if: runner.os == 'Linux'
+        working-directory: apps/desktop
+        run: npm audit --audit-level=moderate
 
   chat-engine:
     name: Experimental TypeScript Chat Engine
