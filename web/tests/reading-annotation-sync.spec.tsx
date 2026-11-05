@@ -164,6 +164,22 @@ describe("announcing a change", () => {
     expect(JSON.parse(second!).seq).toBeGreaterThan(JSON.parse(first!).seq);
   });
 
+  it("carries a per-tab identity so two tabs never write the same payload", () => {
+    // `seq` alone is a per-tab counter: two tabs both start at 1, and in the
+    // same millisecond the payloads would be byte-identical — `setItem` sees no
+    // change, no event fires, and the second tab's write is lost silently.
+    publishAnnotationsChange("doc-a");
+    const payload = JSON.parse(
+      localStorage.getItem("dt.reader.annotationsRevision")!,
+    );
+    expect(payload.tab).toBeTruthy();
+    expect(typeof payload.tab).toBe("string");
+    // The counter and the timestamp are both in play; the tab id is the part
+    // that makes two independent tabs differ.
+    expect(payload.seq).toBeGreaterThan(0);
+    expect(payload.at).toBeGreaterThan(0);
+  });
+
   it("subscribes only while a document is open", () => {
     const listener = vi.fn();
     const unsubscribe = subscribeToAnnotationsChange(null, listener);
@@ -294,5 +310,38 @@ describe("the assistant's marks", () => {
     const raw = localStorage.getItem("dt.reader.annotationsRevision");
     expect(raw).toBeTruthy();
     expect(JSON.parse(raw!)).toMatchObject({ materialId: "doc-a" });
+  });
+});
+
+describe("the other write paths", () => {
+  it("announces a removal", async () => {
+    // saveMark and mergeMark both broadcast; a removal is just as much a change
+    // to the document's marks.
+    const { result } = renderHook(useReading, { wrapper: ReadingProvider });
+    await open(result, "doc-a", [mark("a1")]);
+    api.fetch.mockResolvedValueOnce(new Response(JSON.stringify({ ok: true })));
+    await act(async () => {
+      await result.current.removeMark(result.current.annotations[0]);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    const raw = localStorage.getItem("dt.reader.annotationsRevision");
+    expect(raw).toBeTruthy();
+    expect(JSON.parse(raw!)).toMatchObject({ materialId: "doc-a" });
+  });
+
+  it("does not announce a removal that failed", async () => {
+    const { result } = renderHook(useReading, { wrapper: ReadingProvider });
+    await open(result, "doc-a", [mark("a1")]);
+    api.fetch.mockImplementationOnce(async () => {
+      throw new Error("offline");
+    });
+    await act(async () => {
+      await result.current.removeMark(result.current.annotations[0]);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    // A failed delete rolls the row back; telling other tabs would make them
+    // drop a mark that is still there.
+    expect(localStorage.getItem("dt.reader.annotationsRevision")).toBeNull();
+    expect(result.current.annotations.map((row) => row.annotation_id)).toEqual(["a1"]);
   });
 });

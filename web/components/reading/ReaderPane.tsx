@@ -199,7 +199,7 @@ export function ReaderPane({
   const { t, i18n } = useTranslation();
   // Below `lg` the annotation column does not fit beside the page, so it
   // becomes an overlay instead of a column - see the aside below.
-  const { isMobile } = useDevice();
+  const { isMobile, isCompact } = useDevice();
   // Document + annotations live in the provider (workspace layout), so they
   // survive the remount that sending the first message causes.
   const {
@@ -953,7 +953,7 @@ export function ReaderPane({
 
   // Modal behaviour for the phone sheet: Escape closes it, focus starts inside
   // it, and closing returns focus to whatever the reader was on.
-  const sheetOpen = Boolean(material) && ownAnnotationList && showAnnotations && isMobile;
+  const sheetOpen = Boolean(material) && ownAnnotationList && showAnnotations && isCompact;
   useEffect(() => {
     if (!sheetOpen) return;
     const previous = document.activeElement as HTMLElement | null;
@@ -1397,7 +1397,7 @@ export function ReaderPane({
           )}
         </div>
 
-        {material && ownAnnotationList && showAnnotations && !isMobile && (
+        {material && ownAnnotationList && showAnnotations && !isCompact && (
           // A docked column needs the width a desktop has. Below `lg` the same
           // panel is drawn as the overlay further down, so the "Annotations"
           // toggle in the ⋯ menu does something on a phone instead of flipping
@@ -1433,7 +1433,7 @@ export function ReaderPane({
         )}
       </div>
 
-      {material && ownAnnotationList && showAnnotations && isMobile && (
+      {material && ownAnnotationList && showAnnotations && isCompact && (
         <div
           ref={annotationSheetRef}
           role="dialog"

@@ -12,15 +12,16 @@ initI18n("en");
  * consumed, so on a phone the control did nothing at all.
  */
 
-const device = vi.hoisted(() => ({ isMobile: true }));
+const device = vi.hoisted(() => ({ isMobile: true, isTablet: false }));
 
 vi.mock("@/hooks/useDevice", () => ({
   useDevice: () => ({
-    device: device.isMobile ? "mobile" : "desktop",
+    device: device.isTablet ? "tablet" : device.isMobile ? "mobile" : "desktop",
     isMobile: device.isMobile,
-    isTablet: false,
-    isDesktop: !device.isMobile,
-    isCompact: device.isMobile,
+    isTablet: device.isTablet,
+    isDesktop: !device.isMobile && !device.isTablet,
+    // mobile || tablet — the "no room for a second column" test.
+    isCompact: device.isMobile || device.isTablet,
   }),
 }));
 
@@ -185,5 +186,24 @@ describe("annotations on a phone", () => {
     // dialog is involved.
     await waitFor(() => expect(screen.queryByTestId("annotation-list")).not.toBeNull());
     expect(screen.queryByRole("dialog", { name: "Annotations" })).toBeNull();
+  });
+});
+
+
+/**
+ * Between 768 and 1023px the docked column does not fit and the phone sheet
+ * used to be gated on `isMobile` (<768), so neither mounted and the reader's
+ * marks were unreachable on a tablet in portrait. The sheet keys on
+ * `isCompact` now.
+ */
+describe("annotations on a tablet", () => {
+  it("draws the sheet rather than nothing at 768-1023px", async () => {
+    device.isMobile = false;
+    device.isTablet = true;
+    render(<ReaderPane onClose={() => undefined} onToggleBookmark={() => undefined} />);
+    const sheet = await screen.findByRole("dialog", { name: "Annotations" });
+    expect(sheet).toBeTruthy();
+    expect(screen.getByTestId("annotation-list")).toBeTruthy();
+    device.isTablet = false;
   });
 });

@@ -29,6 +29,19 @@ const ANNOTATIONS_REVISION_KEY = "dt.reader.annotationsRevision";
  */
 let revisionSeq = 0;
 
+/**
+ * Per-tab identity, so two tabs can never write the same payload.
+ *
+ * `seq` alone is a per-tab counter: two tabs both start at 1, and if they write
+ * in the same millisecond the serialised payloads are byte-identical —
+ * `setItem` sees an unchanged value, no `storage` event fires, and the second
+ * tab's change is lost without a trace.
+ */
+const TAB_ID =
+  typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID().slice(0, 8)
+    : Math.random().toString(36).slice(2, 10);
+
 /** Announce that this tab changed the marks on `materialId`. */
 export function publishAnnotationsChange(materialId: string): void {
   if (typeof window === "undefined") return;
@@ -37,7 +50,7 @@ export function publishAnnotationsChange(materialId: string): void {
     browserStorage.writeRaw(
       "local",
       ANNOTATIONS_REVISION_KEY,
-      JSON.stringify({ materialId, at: Date.now(), seq: revisionSeq }),
+      JSON.stringify({ materialId, at: Date.now(), seq: revisionSeq, tab: TAB_ID }),
     );
   } catch {
     // Storage can be denied (private mode, a restricted iframe). Cross-tab
