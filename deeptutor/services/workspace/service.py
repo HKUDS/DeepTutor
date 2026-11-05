@@ -6,6 +6,7 @@ from collections import deque
 from datetime import datetime, timezone
 import hashlib
 import json
+import logging
 import mimetypes
 import os
 from pathlib import Path, PurePosixPath
@@ -23,6 +24,8 @@ from deeptutor.services.settings.interface_settings import atomic_update
 from deeptutor.services.workspace.catalog import WorkspaceCatalogMixin
 from deeptutor.services.workspace.models import WorkspaceBinding, WorkspaceError, WorkspaceItem
 from deeptutor.utils.secret_files import ensure_private_directory
+
+logger = logging.getLogger(__name__)
 
 _SETTINGS_VERSION = 1
 _SETTINGS_NAME = "content_workspace"
@@ -218,11 +221,17 @@ class ContentWorkspaceService(WorkspaceCatalogMixin):
             resolved_output.relative_to(root)
             probe = output / f".deeptutor-write-probe-{uuid.uuid4().hex}"
             probe.touch(exist_ok=False)
-            probe.unlink()
         except ValueError as exc:
             raise WorkspaceError("The workspace outputs folder leaves the workspace.") from exc
         except OSError as exc:
             raise WorkspaceError("The workspace outputs folder is not writable.") from exc
+        # The touch above already proved the folder is writable. Removing the
+        # probe is cleanup, so a failure here (including a non-OSError raised
+        # by a delete guard wrapping ``unlink``) must not fail the turn.
+        try:
+            probe.unlink(missing_ok=True)
+        except Exception:
+            logger.warning("Could not remove workspace write probe %s", probe, exc_info=True)
 
     def validate(self, path: str | Path | None) -> dict[str, Any]:
         if path is not None and not str(path).strip():

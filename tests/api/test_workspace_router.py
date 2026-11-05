@@ -275,3 +275,27 @@ def test_workspace_migration_api_blocks_active_turns_and_keeps_bindings(
     assert result.status_code == 200
     assert service.validate_chat_binding(row["workspace_id"]).root == individual
     assert client.post("/api/settings/workspace/registrations/system-snapshot").status_code == 200
+
+
+def test_a_failing_probe_cleanup_does_not_fail_the_workspace(
+    workspace_api, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _client, service = workspace_api
+    root = tmp_path / "project"
+    root.mkdir()
+    real_unlink = Path.unlink
+
+    class _DeleteGuardError(RuntimeError):
+        """Stand in for a delete guard that refuses a bulk delete."""
+
+    def guarded_unlink(self: Path, *args, **kwargs) -> None:
+        if self.name.startswith(".deeptutor-write-probe"):
+            raise _DeleteGuardError("SAFE_DELETE_BULK_CONFIRM_REQUIRED")
+        real_unlink(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", guarded_unlink)
+
+    binding = service.set_workspace(root)
+
+    assert binding.root == root.resolve()
+    assert (root / "outputs").is_dir()
