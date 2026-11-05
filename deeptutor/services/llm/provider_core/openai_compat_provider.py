@@ -1031,13 +1031,11 @@ class OpenAICompatProvider(LLMProvider):
         well-formed response.
         """
         text = str(getattr(e, "body", None) or getattr(e, "message", None) or e).lower()
-        return any(
-            kw in text
-            for kw in (
-                "function.arguments",
-                "must be in json format",
-                "invalid.*parameter.*function",
-            )
+        return (
+            any(kw in text for kw in ("function.arguments", "must be in json format"))
+            # Regex marker — must be searched, not membership-tested, or the
+            # ``.*`` is taken literally and the marker never matches.
+            or re.search(r"invalid.*parameter.*function", text) is not None
         )
 
     async def chat(
