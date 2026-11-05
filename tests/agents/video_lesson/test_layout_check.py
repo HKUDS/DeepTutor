@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import html
+import json
 from pathlib import Path
+import subprocess
 
 import pytest
 
+from deeptutor.agents.video_lesson import layout_check
 from deeptutor.agents.video_lesson.layout_check import (
     CAPTION_TOP,
     check_layout,
@@ -52,6 +56,37 @@ def test_overlapping_text_is_reported(tmp_path: Path) -> None:
     )
     issues = check_layout(page, [0])
     assert issues and any("overlaps text" in i for i in issues)
+
+
+@needs_chrome
+def test_overlapping_non_ascii_text_is_reported(tmp_path: Path) -> None:
+    page = _page(
+        tmp_path,
+        '<div class="t" style="left:200px;top:100px">导数的定义</div>'
+        '<div class="t" style="left:230px;top:110px">切线的斜率</div>',
+    )
+    issues = check_layout(page, [0])
+    assert issues and any('"导数的定义" overlaps text "切线的斜率"' in i for i in issues)
+
+
+def test_browser_output_is_decoded_as_utf8_whatever_the_locale(monkeypatch, tmp_path):
+    # A Windows server whose ANSI code page is cp936 decodes ``text=True``
+    # output with that code page unless an encoding is given; Chrome writes
+    # --dump-dom as UTF-8, and the report quotes the lesson's text.
+    issue = 'text "导数的定义" overlaps text "切线的斜率" near x=230, y=110'
+    report = html.escape(json.dumps({"0": {"issues": [issue]}}, ensure_ascii=False))
+    dom = f'<html><body><pre id="out">{report}</pre></body></html>\n'.encode()
+
+    def cp936_server_run(argv, **kwargs):
+        stdout = dom.decode(kwargs.get("encoding") or "cp936", kwargs.get("errors") or "strict")
+        return subprocess.CompletedProcess(argv, 0, stdout=stdout, stderr="")
+
+    browser = tmp_path / "chrome"
+    browser.write_text("browser", encoding="utf-8")
+    monkeypatch.setenv("DEEPTUTOR_CHROME_EXECUTABLE", str(browser))
+    monkeypatch.setattr(layout_check.subprocess, "run", cp936_server_run)
+
+    assert check_layout(_page(tmp_path, ""), [0]) == [f"at 0s: {issue}"]
 
 
 @needs_chrome
