@@ -394,7 +394,9 @@ def extract_docx_rich(data: bytes, *, budget: ImageBudget | None = None) -> Docx
 # A text box's ``mc:Fallback`` is a VML copy of the ``mc:Choice`` drawing
 # beside it, and ``w:moveFrom`` is the old place of tracked moved text whose
 # new place is in ``w:moveTo``. Reading them repeats text the document shows
-# once.
+# once. Skipping the fallback assumes the choice holds the same text, as Word
+# writes it: a legacy file whose choice has no text but whose VML fallback has
+# some would lose that text.
 _DOCX_SKIPPED_SUBTREES = frozenset({"Fallback", "moveFrom"})
 
 
