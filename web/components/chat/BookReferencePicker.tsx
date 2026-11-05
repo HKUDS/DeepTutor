@@ -236,7 +236,7 @@ export default function BookReferencePicker({
         />
 
         <div className="grid min-h-0 flex-1 grid-cols-[300px_minmax(0,1fr)]">
-          <aside className="flex min-h-0 flex-col border-r border-[var(--border)] bg-[var(--background)]/40 p-4">
+          <aside className="flex min-h-0 flex-col border-e border-[var(--border)] bg-[var(--background)]/40 p-4">
             <div className="relative mb-3">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted-foreground)]" />
               <input
@@ -262,7 +262,7 @@ export default function BookReferencePicker({
                       <button
                         key={book.id}
                         onClick={() => setActiveBookId(book.id)}
-                        className={`flex w-full items-center gap-3 px-3 py-3 text-left transition-colors ${
+                        className={`flex w-full items-center gap-3 px-3 py-3 text-start transition-colors ${
                           active
                             ? "bg-[var(--primary)]/8"
                             : "hover:bg-[var(--muted)]/40"
@@ -331,7 +331,7 @@ export default function BookReferencePicker({
                         onClick={() =>
                           toggleChapter(activeBook, chapter, pages)
                         }
-                        className={`flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-[var(--muted)]/35 ${
+                        className={`flex w-full items-start gap-3 px-4 py-3 text-start transition-colors hover:bg-[var(--muted)]/35 ${
                           showPageRows ? "border-b border-[var(--border)]" : ""
                         }`}
                       >
@@ -374,7 +374,7 @@ export default function BookReferencePicker({
                                 onClick={() =>
                                   togglePage(activeBook, page, chapter)
                                 }
-                                className={`flex w-full items-start gap-3 px-5 py-3 text-left transition-colors ${
+                                className={`flex w-full items-start gap-3 px-5 py-3 text-start transition-colors ${
                                   checked
                                     ? "bg-[var(--primary)]/8"
                                     : "hover:bg-[var(--muted)]/30"

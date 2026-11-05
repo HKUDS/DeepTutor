@@ -388,7 +388,7 @@ export function ReadingCompanion({
                     closeTurns();
                     jumpToTurn(entry.key);
                   }}
-                  className="flex w-full items-start gap-2 rounded-md px-2.5 py-2 text-left transition hover:bg-[var(--muted)]"
+                  className="flex w-full items-start gap-2 rounded-md px-2.5 py-2 text-start transition hover:bg-[var(--muted)]"
                 >
                   <span className="mt-[1px] shrink-0 text-[9px] tabular-nums text-[var(--muted-foreground)]">
                     {entry.ordinal}

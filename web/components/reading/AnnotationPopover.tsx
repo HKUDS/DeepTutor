@@ -250,7 +250,7 @@ export function AnnotationPopover({
               key={action.key}
               type="button"
               onClick={action.onClick}
-              className="rounded-lg px-2 py-1.5 text-left text-[12px] text-[var(--foreground)] transition hover:bg-[var(--muted)]"
+              className="rounded-lg px-2 py-1.5 text-start text-[12px] text-[var(--foreground)] transition hover:bg-[var(--muted)]"
             >
               {action.title}
             </button>

@@ -121,7 +121,7 @@ export function AnnotationList({
                           onSelect(annotation);
                         }
                       }}
-                      className={`group/anno relative w-full cursor-pointer rounded-lg border px-2.5 py-2 text-left transition ${
+                      className={`group/anno relative w-full cursor-pointer rounded-lg border px-2.5 py-2 text-start transition ${
                         annotation.annotation_id === activeId
                           ? "border-[var(--ring)] bg-[color-mix(in_srgb,var(--muted)_60%,transparent)]"
                           : "border-transparent hover:border-[var(--border)] hover:bg-[color-mix(in_srgb,var(--muted)_40%,transparent)]"

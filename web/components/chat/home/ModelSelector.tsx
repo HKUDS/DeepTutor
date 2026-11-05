@@ -58,7 +58,7 @@ function ModelOptionRow({
         setRevealFull(!!el && el.scrollWidth > el.clientWidth + 1);
       }}
       onMouseLeave={() => setRevealFull(false)}
-      className={`relative flex w-full items-center gap-2 px-3 py-1.5 text-left transition-colors active:bg-[var(--muted)]/70 ${
+      className={`relative flex w-full items-center gap-2 px-3 py-1.5 text-start transition-colors active:bg-[var(--muted)]/70 ${
         selected ? "bg-[var(--primary)]/[0.06]" : "hover:bg-[var(--muted)]/45"
       }`}
     >
@@ -240,7 +240,7 @@ export default function ModelSelector({
                   setOpen(false);
                   linger();
                 }}
-                className={`flex w-full items-center gap-2 px-3 py-1.5 text-left transition-colors active:bg-[var(--muted)]/70 ${
+                className={`flex w-full items-center gap-2 px-3 py-1.5 text-start transition-colors active:bg-[var(--muted)]/70 ${
                   selectedKey === ""
                     ? "bg-[var(--primary)]/[0.06]"
                     : "hover:bg-[var(--muted)]/45"

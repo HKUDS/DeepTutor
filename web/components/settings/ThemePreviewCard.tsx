@@ -258,7 +258,7 @@ export function ThemePreviewCard({
       type="button"
       onClick={() => onSelect(theme)}
       aria-pressed={selected}
-      className={`group relative flex flex-col items-stretch gap-2 rounded-xl border p-1.5 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] ${
+      className={`group relative flex flex-col items-stretch gap-2 rounded-xl border p-1.5 text-start transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] ${
         selected
           ? "border-[var(--foreground)] bg-[var(--card)] shadow-sm"
           : "border-[var(--border)]/60 bg-transparent hover:border-[var(--border)] hover:bg-[var(--muted)]/25"

@@ -22,12 +22,18 @@ import {
 } from '../store/calendar-store'
 import {
   addDays,
+  addJalaliMonths,
   addMonths,
   atMinutes,
   browserTimeZone,
   dateKey,
   formatDate,
+  formatJalaliFullDate,
+  formatJalaliMonthTitle,
+  formatJalaliWeekTitle,
   fromDateKey,
+  isPersian,
+  jalaliMonthBounds,
   monthWeeks,
   startOfDay,
   startOfWeek,
@@ -103,7 +109,17 @@ export default function CalendarPage() {
     'unsupported'
   )
   const weekStart = weekStartsOn(i18n.language)
-  const weeks = useMemo(() => monthWeeks(cursor, weekStart), [cursor, weekStart])
+  const persian = isPersian(i18n.language)
+  const weeks = useMemo(
+    () => monthWeeks(cursor, weekStart, i18n.language),
+    [cursor, weekStart, i18n.language]
+  )
+  // The Jalali month the grid shows; the title and the "outside day" test both
+  // read from it so a Persian calendar never claims a Gregorian month.
+  const monthBounds = useMemo(
+    () => (persian ? jalaliMonthBounds(cursor) : null),
+    [persian, cursor]
+  )
   const first =
     view === 'month'
       ? weeks[0][0]
@@ -207,7 +223,9 @@ export default function CalendarPage() {
     setPanel(null)
     setCursor(
       view === 'month'
-        ? addMonths(cursor, direction)
+        ? persian
+          ? addJalaliMonths(cursor, direction)
+          : addMonths(cursor, direction)
         : addDays(cursor, direction * (view === 'week' ? 7 : view === 'agenda' ? 30 : 1))
     )
   }
@@ -338,11 +356,21 @@ export default function CalendarPage() {
     onReschedule: move,
     onDropTask: drop,
   }
-  const heading = formatDate(cursor, i18n.language, {
-    year: 'numeric',
-    month: 'long',
-    ...(view === 'day' ? { day: 'numeric' } : {}),
-  })
+  // The heading follows the calendar in force for every view: Persian gets a
+  // Jalali heading in month ("آبان ۱۴۰۵"), day ("۱۲ آبان ۱۴۰۵"), and week
+  // ("۱۲ – ۱۸ آبان ۱۴۰۵"), so the top bar never falls back to a Gregorian
+  // string beside a Jalali grid.
+  const heading = persian
+    ? view === 'day'
+      ? formatJalaliFullDate(cursor)
+      : view === 'week'
+        ? formatJalaliWeekTitle(first, addDays(first, 6))
+        : formatJalaliMonthTitle(cursor)
+    : formatDate(cursor, i18n.language, {
+        year: 'numeric',
+        month: 'long',
+        ...(view === 'day' ? { day: 'numeric' } : {}),
+      })
   // Where the layout has a page bar, the toolbar moves up into it — the
   // navigation beside the feature crumb, the view tools on the right — so the
   // calendar itself starts one row higher.
@@ -543,7 +571,8 @@ export default function CalendarPage() {
             <MonthView
               {...gridProps}
               weeks={weeks}
-              month={cursor.getMonth()}
+              month={persian ? undefined : cursor.getMonth()}
+              monthBounds={monthBounds}
               onShowMore={openDay}
             />
           ) : view === 'agenda' ? (

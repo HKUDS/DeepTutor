@@ -21,6 +21,7 @@ export default function TooltipLayer({
   description,
   shortcut,
   side,
+  dir,
   onMount,
 }: {
   anchorRef: RefObject<HTMLElement | null>;
@@ -29,6 +30,7 @@ export default function TooltipLayer({
   description?: string;
   shortcut?: Shortcut;
   side: TooltipSide;
+  dir?: "ltr" | "rtl" | "auto";
   onMount: () => void;
 }) {
   const tooltipRef = useRef<HTMLSpanElement>(null);
@@ -63,17 +65,24 @@ export default function TooltipLayer({
       id={id}
       role="tooltip"
       data-side={position?.side ?? side}
+      dir={dir}
       style={
         position
           ? { left: position.left, top: position.top }
           : { left: 0, top: 0 }
       }
-      className={`pointer-events-none fixed z-[1000] max-w-72 rounded-lg bg-[var(--foreground)] px-2.5 py-1.5 text-left text-[11px] font-medium leading-snug text-[var(--background)] shadow-lg [overflow-wrap:anywhere] ${position ? "opacity-100" : "opacity-0"}`}
+      className={`pointer-events-none fixed z-[1000] max-w-72 rounded-lg bg-[var(--foreground)] px-2.5 py-1.5 text-start text-[11px] font-medium leading-snug text-[var(--background)] shadow-lg [overflow-wrap:anywhere] ${position ? "opacity-100" : "opacity-0"}`}
     >
       {shortcut ? (
         <span className="flex items-center gap-2">
           <span>{label}</span>
-          <kbd className="inline-flex items-center gap-0.5 font-sans text-[11px] font-normal tracking-wide opacity-60">
+          {/* Shortcut keys are Latin ("Ctrl", "Alt", "5") and their order
+              matters, so the group is pinned left-to-right: under an RTL
+              document the row would else run the keys backwards. */}
+          <kbd
+            dir="ltr"
+            className="inline-flex items-center gap-0.5 font-sans text-[11px] font-normal tracking-wide opacity-60"
+          >
             {shortcutKeys(shortcut).map((key) => (
               <span key={key}>{key}</span>
             ))}

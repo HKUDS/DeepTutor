@@ -1548,3 +1548,16 @@ a[href^="#dt-locator-"]:hover {
   font-size: 16px;
   line-height: 1.5;
 }
+
+/* ─── Persian face ────────────────────────────────────────────────────────
+   Geist ships a fallback face that claims Arabic glyphs, so listing it ahead
+   of Vazirmatn in the family stack means Persian text always renders in that
+   fallback and the Persian face is never reached. `--font-fa` (set by
+   next/font in the root layout) carries Vazirmatn; pointing the shared
+   font variables at it under `lang="fa"` puts it first for Persian while
+   every other language keeps Geist. Scoped to the language attribute, so an
+   English UI in the same build is untouched. */
+html[lang="fa"] {
+  --font-sans: var(--font-fa);
+  --font-serif: var(--font-fa);
+}

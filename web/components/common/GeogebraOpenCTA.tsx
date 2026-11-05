@@ -58,7 +58,7 @@ export default function GeogebraOpenCTA({
         type="button"
         onClick={onClick}
         disabled={disabled}
-        className={`group flex w-full items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--card)] px-4 py-3 text-left transition-colors ${
+        className={`group flex w-full items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--card)] px-4 py-3 text-start transition-colors ${
           disabled
             ? "cursor-not-allowed opacity-60"
             : "hover:border-[var(--primary)]/60 hover:bg-[var(--muted)]/30"

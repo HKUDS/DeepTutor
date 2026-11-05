@@ -449,7 +449,7 @@ export default function ComposerResources({
                                   setSelectedKey(item.key);
                                 }}
                                 aria-pressed={item.count > 0}
-                                className={`flex min-h-9 w-full items-center gap-2 px-3 py-1.5 text-left transition-colors active:scale-[0.99] ${item.count > 0 ? "bg-[var(--primary)]/[0.07] text-[var(--primary)]" : "hover:bg-[var(--muted)]/60"}`}
+                                className={`flex min-h-9 w-full items-center gap-2 px-3 py-1.5 text-start transition-colors active:scale-[0.99] ${item.count > 0 ? "bg-[var(--primary)]/[0.07] text-[var(--primary)]" : "hover:bg-[var(--muted)]/60"}`}
                               >
                                 <item.icon
                                   size={15}

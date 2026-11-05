@@ -69,6 +69,7 @@ _TOOL_HINT_MAX_CHARS = 120
 _THINKING_NOTICE_CHANNELS = frozenset({"feishu"})
 _THINKING_NOTICES = {
     "tr": "🤔 Düşünüyorum…",
+    "fa": "🤔 دارم فکر می‌کنم…",
     "ar": "🤔 أفكر…",
     "de": "🤔 Denke nach…",
     "en": "🤔 Thinking…",

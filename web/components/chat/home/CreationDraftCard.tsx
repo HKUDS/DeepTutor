@@ -242,7 +242,7 @@ export const CreationDraftCard = memo(function CreationDraftCard({
                           current === reference.path ? null : reference.path,
                         )
                       }
-                      className="inline-flex w-full items-center gap-1.5 rounded-lg px-1.5 py-1 text-left text-[11.5px] text-[var(--muted-foreground)] transition hover:bg-[color-mix(in_srgb,var(--foreground)_5%,transparent)]"
+                      className="inline-flex w-full items-center gap-1.5 rounded-lg px-1.5 py-1 text-start text-[11.5px] text-[var(--muted-foreground)] transition hover:bg-[color-mix(in_srgb,var(--foreground)_5%,transparent)]"
                     >
                       <FileText size={12} className="shrink-0" />
                       <span className="min-w-0 flex-1 truncate font-mono">{reference.path}</span>

@@ -111,12 +111,17 @@
    sidebar's own colour, the second peeking out from behind it. */
 .dt-account-tabs.is-tucked [role="tab"] { min-width: 0; padding: 0 6px; }
 .dt-account-tabs.is-tucked > :first-child { position: relative; z-index: 2; }
-.dt-account-tabs.is-tucked > :first-child [role="tab"] > svg { filter: drop-shadow(1.5px 0 0 var(--secondary)) drop-shadow(1.5px 1px 0 var(--secondary)); }
-.dt-account-tabs.is-tucked > :last-child [role="tab"] { margin-left: -23px; padding-left: 0; opacity: .5; }
-.dt-account-tabs.is-tucked > :last-child [role="tab"] > svg { transform: translateX(10px) scale(.86); }
+/* The tucked pair overlaps the two account tabs. Every offset here is on the
+   inline start edge, so under RTL the second tab tucks under the first toward
+   the content instead of being pushed past the sidebar edge. */
+.dt-account-tabs.is-tucked > :first-child [role="tab"] > svg { filter: drop-shadow(-1.5px 0 0 var(--secondary)) drop-shadow(-1.5px 1px 0 var(--secondary)); }
+.dt-account-tabs.is-tucked > :last-child [role="tab"] { margin-inline-start: -23px; padding-inline-start: 0; opacity: .5; }
+.dt-account-tabs.is-tucked > :last-child [role="tab"] > svg { transform: translateX(-10px) scale(.86); }
 .dt-account-tabs.is-tucked:hover [role="tab"] { opacity: 1; }
-/* The account's half sits at the far end of the bar. */
-.dt-category-bar:not(.is-collapsed) .dt-category-divider { margin-left: auto; }
+/* The account's half sits at the far end of the bar. Logical margin: in RTL
+   the divider must push the account tabs toward the inline end (left), not the
+   physical left, or the last tab overflows the sidebar edge. */
+.dt-category-bar:not(.is-collapsed) .dt-category-divider { margin-inline-start: auto; }
 @media (prefers-reduced-motion: reduce) { .dt-account-tabs [role="tab"], .dt-account-tabs [role="tab"] > svg { transition: none; } }
 .dt-category-bar [role="tab"]:not(.is-active):hover, .dt-nav-icon:hover { background: var(--accent); color: var(--foreground); }
 .dt-nav-icon { display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: var(--dt-nav-radius); color: var(--muted-foreground); transition: background-color 140ms, color 140ms; }
@@ -128,7 +133,7 @@
 .dt-category-content { padding: 0 8px 16px; }
 .dt-navigation-section { margin-top: 14px; }
 .dt-navigation-heading { display: flex; justify-content: space-between; align-items: center; min-height: 26px; margin-bottom: 2px; padding: 0 var(--dt-nav-pad-x); font-size: var(--dt-nav-label); font-weight: 500; color: var(--muted-foreground); }
-.dt-navigation-row { display: flex; align-items: center; gap: var(--dt-nav-gap); min-height: var(--dt-nav-row); padding: 6px var(--dt-nav-pad-x); border-radius: var(--dt-nav-radius); text-align: left; color: var(--dt-nav-ink); font-size: var(--dt-nav-text); transition: background-color 130ms, color 130ms; }
+.dt-navigation-row { display: flex; align-items: center; gap: var(--dt-nav-gap); min-height: var(--dt-nav-row); padding: 6px var(--dt-nav-pad-x); border-radius: var(--dt-nav-radius); text-align: start; color: var(--dt-nav-ink); font-size: var(--dt-nav-text); transition: background-color 130ms, color 130ms; }
 /* OrganizedSessionList insets its rows 6px; 4px more lands its icons in the
    same column as the navigation rows above (8 + 4 + 6 = row padding 10 + 8). */
 .dt-session-section { padding: 0 4px; }
@@ -143,9 +148,9 @@
 .dt-partner-navigation .dt-navigation-heading { flex-shrink: 0; }
 .dt-navigation-heading h2 { display: flex; align-items: center; min-width: 0; gap: 7px; font: inherit; }
 .dt-navigation-count { font-size: 11px; font-weight: 400; font-variant-numeric: tabular-nums; opacity: .6; }
-.dt-navigation-actions { display: flex; align-items: center; gap: 2px; margin-right: -6px; }
+.dt-navigation-actions { display: flex; align-items: center; gap: 2px; margin-inline-end: -6px; }
 .dt-navigation-actions .dt-nav-icon { width: 24px; height: 24px; border-radius: 6px; }
-.dt-navigation-view-all { display: inline-flex; align-items: center; gap: 1px; height: 24px; padding: 0 4px 0 6px; border-radius: 6px; font-size: 11.5px; font-weight: 400; white-space: nowrap; transition: background-color 140ms, color 140ms; }
+.dt-navigation-view-all { display: inline-flex; align-items: center; gap: 1px; height: 24px; padding: 0; padding-inline: 6px 4px; border-radius: 6px; font-size: 11.5px; font-weight: 400; white-space: nowrap; transition: background-color 140ms, color 140ms; }
 .dt-navigation-view-all:hover { background: var(--accent); color: var(--foreground); }
 /* Roster: one compact strip that slides sideways; PartnerRoster packs what
    continues past an edge. The selected partner is marked on its avatar. */
@@ -206,7 +211,8 @@
 /* A conversation row wraps its time with the actions that replace it. */
 .dt-session-section .dt-record-time, .dt-record-children .dt-record-time, .dt-record-loose .dt-record-time { max-width: none; }
 .dt-record-header .dt-nav-icon.is-active, .dt-record-header .dt-nav-icon[aria-expanded="true"] { background: var(--accent); color: var(--foreground); }
-.dt-popover.dt-record-sort-menu { left: auto; right: 0; width: 172px; transform-origin: top right; }
+.dt-popover.dt-record-sort-menu { inset-inline-start: auto; inset-inline-end: 0; width: 172px; transform-origin: top right; }
+[dir="rtl"] .dt-popover.dt-record-sort-menu { transform-origin: top left; }
 .dt-record-sort-menu .dt-menu-item { min-height: 30px; font-size: 12.5px; }
 .dt-record-search {
   display: flex; align-items: center; gap: 6px; height: 30px; margin: 4px 0 6px; padding: 0 4px 0 9px;
@@ -241,9 +247,9 @@ button.dt-record-toggle:focus-visible { outline: 2px solid var(--ring); outline-
 .dt-record-node-link:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
 .dt-record-chat-count { display: inline-flex; flex: none; align-items: center; gap: 3px; font-size: 10.5px; font-variant-numeric: tabular-nums; color: var(--muted-foreground); opacity: .7; }
 /* Conversations hang off their record's icon column. */
-.dt-record-children { margin: 1px 0 3px calc(var(--dt-nav-pad-x) + 7px); padding-left: 3px; border-left: 1px solid color-mix(in srgb, var(--border) 75%, transparent); }
+.dt-record-children { margin-block: 1px 3px; margin-inline: calc(var(--dt-nav-pad-x) + 7px) 0; padding-inline-start: 3px; border-inline-start: 1px solid color-mix(in srgb, var(--border) 75%, transparent); }
 .dt-record-children > div { padding-block: 0; }
-.dt-record-loose { padding: 0 0 0 4px; }
+.dt-record-loose { padding-block: 0; padding-inline-start: 4px; }
 /* Their times line up with the records' own. */
 .dt-record-children [role="button"], .dt-record-loose [role="button"] { padding-right: var(--dt-nav-pad-x); }
 
@@ -264,22 +270,23 @@ button.dt-record-toggle:focus-visible { outline: 2px solid var(--ring); outline-
 .dt-rail-foot { display: flex; flex-direction: column; align-items: center; gap: 4px; flex-shrink: 0; padding-top: 6px; }
 .dt-workspace-menu.is-rail { flex: none; margin-bottom: 2px; }
 .dt-workspace-menu.is-rail .dt-workspace-trigger { justify-content: center; width: 36px; height: 36px; padding: 0; }
-.dt-workspace-menu.is-rail .dt-workspace-panel { top: 0; left: calc(100% + 10px); width: 264px; }
+.dt-workspace-menu.is-rail .dt-workspace-panel { top: 0; inset-inline-start: calc(100% + 10px); width: 264px; }
 .dt-workspace-trigger { display: flex; align-items: center; gap: 8px; width: 100%; height: 34px; padding: 0 8px; border-radius: var(--dt-radius-md); font-size: 13.5px; font-weight: 600; color: var(--foreground); transition: background-color 140ms; }
 .dt-workspace-trigger:hover, .dt-workspace-trigger[aria-expanded="true"] { background: var(--accent); }
 .dt-workspace-trigger:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
 .dt-workspace-glyph { display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; border-radius: 6px; color: #fff; font-weight: 600; line-height: 1; }
 .dt-workspace-glyph.is-general { padding: 1px; background: transparent; }
 .dt-popover {
-  position: absolute; z-index: 60; top: calc(100% + 4px); left: 0;
+  position: absolute; z-index: 60; top: calc(100% + 4px); inset-inline-start: 0;
   padding: 6px; border-radius: var(--dt-radius-lg); background: var(--popover); color: var(--popover-foreground);
   box-shadow: var(--dt-shadow-md); transform-origin: top left; animation: dt-pop-in 140ms var(--dt-ease);
 }
+[dir="rtl"] .dt-popover { transform-origin: top right; }
 .dt-workspace-panel { width: max(100%, 260px); }
 .dt-menu-label { padding: 6px 8px 4px; font-size: 11.5px; font-weight: 500; color: var(--muted-foreground); }
 .dt-menu-item, .dt-menu-slot :is(a, button) {
   display: flex; align-items: center; gap: 9px; width: 100%; min-height: 32px; padding: 5px 8px;
-  border-radius: var(--dt-radius-sm); font-size: 13px; color: var(--foreground); text-align: left; transition: background-color 120ms;
+  border-radius: var(--dt-radius-sm); font-size: 13px; color: var(--foreground); text-align: start; transition: background-color 120ms;
 }
 .dt-menu-item:hover, .dt-menu-item:focus-visible, .dt-menu-slot :is(a, button):hover { background: var(--accent); outline: none; }
 .dt-menu-item.is-quiet { color: var(--muted-foreground); }
@@ -429,8 +436,8 @@ button.dt-record-toggle:focus-visible { outline: 2px solid var(--ring); outline-
 .dt-tray-grip:focus-visible::before { box-shadow: 0 0 0 2px var(--ring); }
 .dt-tray-popover { -webkit-user-select: text; user-select: text; cursor: auto; }
 .dt-tray-menu { position: relative; display: flex; min-width: 0; }
-.dt-tray-menu.is-end { margin-left: auto; }
-.dt-tray-menu.is-end ~ .dt-tray-menu.is-end { margin-left: 0; }
+.dt-tray-menu.is-end { margin-inline-start: auto; }
+.dt-tray-menu.is-end ~ .dt-tray-menu.is-end { margin-inline-start: 0; }
 .dt-tray-button {
   display: inline-flex; align-items: center; gap: 6px; min-width: 0; height: 26px; padding: 0 8px;
   border-radius: 8px; font-size: 12.5px; white-space: nowrap; color: rgb(var(--dt-ink, 55 53 47) / 0.72);
@@ -482,12 +489,16 @@ button.dt-record-toggle:focus-visible { outline: 2px solid var(--ring); outline-
 }
 .dt-tray-popover.is-down { top: calc(100% + 8px); }
 .dt-tray-popover.is-up { bottom: calc(100% + 8px); }
-.dt-tray-popover.is-start { left: 0; }
-.dt-tray-popover.is-end { right: 0; }
+.dt-tray-popover.is-start { inset-inline-start: 0; }
+.dt-tray-popover.is-end { inset-inline-end: 0; }
 .dt-tray-popover.is-down.is-start { transform-origin: 24px 0; }
 .dt-tray-popover.is-down.is-end { transform-origin: calc(100% - 24px) 0; }
 .dt-tray-popover.is-up.is-start { transform-origin: 24px 100%; }
 .dt-tray-popover.is-up.is-end { transform-origin: calc(100% - 24px) 100%; }
+/* An `is-start` tray popover hangs from the inline start edge; under RTL that
+   edge is the right one, so its pop-in must grow from the right too. */
+[dir="rtl"] .dt-tray-popover.is-up.is-start { transform-origin: calc(100% - 24px) 100%; }
+[dir="rtl"] .dt-tray-popover.is-down.is-start { transform-origin: calc(100% - 24px) 0; }
 .dt-tray-search { display: flex; align-items: center; gap: 7px; height: 32px; margin-bottom: 6px; padding: 0 10px; border-radius: 9px; background: rgb(var(--dt-ink, 55 53 47) / 0.045); color: var(--muted-foreground); }
 .dt-tray-search:focus-within { background: rgb(var(--dt-ink, 55 53 47) / 0.06); }
 .dt-tray-search input { flex: 1; min-width: 0; background: transparent; outline: none; font-size: 12.5px; color: var(--foreground); }
@@ -499,7 +510,7 @@ button.dt-record-toggle:focus-visible { outline: 2px solid var(--ring); outline-
 .dt-tray-section { padding: 6px 8px 4px; font-size: 11px; font-weight: 500; color: var(--muted-foreground); }
 .dt-tray-row {
   display: flex; align-items: center; gap: 10px; width: 100%; min-height: 42px; padding: 5px 8px;
-  border-radius: 9px; text-align: left; outline: none; transition: background-color 100ms;
+  border-radius: 9px; text-align: start; outline: none; transition: background-color 100ms;
 }
 .dt-tray-row:hover, .dt-tray-row:focus-visible { background: var(--accent); }
 .dt-tray-row:disabled { opacity: 0.5; cursor: default; }

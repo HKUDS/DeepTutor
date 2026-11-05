@@ -284,7 +284,7 @@ export default memo(function ChatSpaceMenu({
                   setPickerOrigin(e.currentTarget.getBoundingClientRect());
                   onSelectItem(key as SelectableSpaceKey);
                 }}
-                className={`${variant === "resources" && key === "attach" ? "col-span-2" : ""} flex w-full items-center gap-2.5 text-left transition-[background-color,transform] active:scale-[0.98] active:bg-[var(--muted)]/70 ${
+                className={`${variant === "resources" && key === "attach" ? "col-span-2" : ""} flex w-full items-center gap-2.5 text-start transition-[background-color,transform] active:scale-[0.98] active:bg-[var(--muted)]/70 ${
                   isActive || count > 0
                     ? "bg-[var(--primary)]/[0.07]"
                     : "hover:bg-[var(--muted)]/40"

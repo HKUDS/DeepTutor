@@ -291,7 +291,7 @@ function SourceRow({
       onClick={onToggle}
       aria-pressed={selectable ? active : undefined}
       disabled={disabled || !item.available}
-      className={`flex min-h-16 w-full items-center gap-3 border p-3 text-left transition disabled:cursor-not-allowed disabled:opacity-55 ${
+      className={`flex min-h-16 w-full items-center gap-3 border p-3 text-start transition disabled:cursor-not-allowed disabled:opacity-55 ${
         bare ? 'border-transparent' : 'rounded-xl'
       } ${
         active

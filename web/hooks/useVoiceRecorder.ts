@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { apiFetch, apiUrl } from "@/lib/api";
 import { stripAudioMimeParameters } from "@/lib/voice-mime";
@@ -13,6 +14,7 @@ export type RecorderState = "idle" | "recording" | "transcribing";
  * provider), and hands the transcript back through ``onTranscript``.
  */
 export function useVoiceRecorder(onTranscript: (text: string) => void) {
+  const { t } = useTranslation();
   const [state, setState] = useState<RecorderState>("idle");
   const [error, setError] = useState<string | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
@@ -34,14 +36,14 @@ export function useVoiceRecorder(onTranscript: (text: string) => void) {
       !navigator.mediaDevices?.getUserMedia ||
       typeof MediaRecorder === "undefined"
     ) {
-      setError("Recording is not supported in this browser.");
+      setError(t("Recording is not supported in this browser."));
       return;
     }
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch {
-      setError("Microphone permission denied.");
+      setError(t("Microphone permission denied."));
       return;
     }
     streamRef.current = stream;
@@ -77,14 +79,15 @@ export function useVoiceRecorder(onTranscript: (text: string) => void) {
             detail?: string;
           } | null;
           throw new Error(
-            detail?.detail || `Transcription failed (HTTP ${resp.status}).`,
+            detail?.detail ||
+              t("Transcription failed (HTTP {{status}}).", { status: resp.status }),
           );
         }
         const data = (await resp.json()) as { text?: string };
         const text = (data.text || "").trim();
         if (text) onTranscriptRef.current(text);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Transcription failed.");
+        setError(err instanceof Error ? err.message : t("Transcription failed."));
       } finally {
         setState("idle");
       }
@@ -92,7 +95,7 @@ export function useVoiceRecorder(onTranscript: (text: string) => void) {
     recorder.start();
     recorderRef.current = recorder;
     setState("recording");
-  }, [releaseStream, state]);
+  }, [releaseStream, state, t]);
 
   const stop = useCallback(() => {
     const recorder = recorderRef.current;

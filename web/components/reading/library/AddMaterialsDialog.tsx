@@ -675,7 +675,7 @@ function DecisionChip({
     <button
       type="button"
       onClick={onClick}
-      className={`min-w-0 flex-1 rounded-lg border px-2.5 py-1.5 text-left transition ${
+      className={`min-w-0 flex-1 rounded-lg border px-2.5 py-1.5 text-start transition ${
         active
           ? "border-[var(--primary)] text-[var(--foreground)]"
           : "border-[var(--border)] text-[var(--muted-foreground)]"
@@ -755,7 +755,7 @@ function LibraryPicker({
               key={material.material_id}
               type="button"
               onClick={() => onPick(material)}
-              className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-[var(--muted)]"
+              className="flex w-full items-center gap-2 px-3 py-2 text-start hover:bg-[var(--muted)]"
             >
               <MaterialGlyph
                 material={material}

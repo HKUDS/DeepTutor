@@ -35,6 +35,7 @@ module.exports = {
         // pairs a Latin serif with a proper 宋体 rather than a stray fallback.
         sans: [
           'var(--font-sans)',
+          'var(--font-fa)',
           'PingFang SC',
           'Hiragino Sans GB',
           'Microsoft YaHei',
@@ -44,6 +45,7 @@ module.exports = {
         ],
         serif: [
           'var(--font-serif)',
+          'var(--font-fa)',
           'Songti SC',
           'STSong',
           'Noto Serif SC',

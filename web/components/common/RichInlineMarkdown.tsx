@@ -4,6 +4,7 @@ import "katex/dist/katex.min.css";
 import React, { useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { rehypeDirAuto } from "@/lib/rehype-dir-auto";
 import { processLatexContent } from "@/lib/latex";
 
 type Plugins = {
@@ -70,6 +71,9 @@ export default function RichInlineMarkdown({ content }: { content: string }) {
   const remarkPlugins: any[] = [remarkGfm];
   if (plugins.remarkMath) remarkPlugins.push(plugins.remarkMath);
   const rehypePlugins: any[] = plugins.rehypeKatex ? [plugins.rehypeKatex] : [];
+  // Persian (and any future RTL locale) needs per-block bidi isolation here
+  // too: question stems mix RTL prose with LTR math and code.
+  rehypePlugins.push(rehypeDirAuto);
 
   return (
     <ReactMarkdown

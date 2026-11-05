@@ -54,7 +54,7 @@ export default function RoundSummaryAction({
                 setOpen(false);
                 onSummarize(member.partner_id);
               }}
-              className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left transition-colors hover:bg-[var(--muted)]"
+              className="flex w-full items-center gap-2 px-2.5 py-1.5 text-start transition-colors hover:bg-[var(--muted)]"
             >
               <PartnerAvatar
                 name={member.name}

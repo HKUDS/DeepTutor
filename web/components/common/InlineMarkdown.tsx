@@ -33,10 +33,20 @@ export default function InlineMarkdown({
   const text = decodeEscapedUnicodeForDisplay(content ?? "");
   const rich = hasMarkdownMath(text) || INLINE_MARKUP_RE.test(text);
 
+  // Always wrap in `dir="auto"`: a question stem, an option or a grade
+  // explanation is a short mixed string (Persian prose, a Latin formula), and
+  // each needs its own base direction even when the caller passes no class.
   if (!rich) {
-    return className ? <span className={className}>{text}</span> : <>{text}</>;
+    return (
+      <span dir="auto" className={className}>
+        {text}
+      </span>
+    );
   }
 
-  const rendered = <RichInlineMarkdown content={text} />;
-  return className ? <span className={className}>{rendered}</span> : rendered;
+  return (
+    <span dir="auto" className={className}>
+      <RichInlineMarkdown content={text} />
+    </span>
+  );
 }

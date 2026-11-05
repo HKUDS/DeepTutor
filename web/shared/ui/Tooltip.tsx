@@ -36,6 +36,9 @@ export interface TooltipProps {
   suppressed?: boolean;
   /** Keys that trigger the same action, printed after the label. */
   shortcut?: Shortcut;
+  /** Direction for the floating content; "auto" suits mixed-direction text
+      (a suggestion quoting user material) that an RTL page would scramble. */
+  dir?: "ltr" | "rtl" | "auto";
 }
 
 export function Tooltip({
@@ -48,6 +51,7 @@ export function Tooltip({
   delay = 180,
   suppressed = false,
   shortcut,
+  dir,
 }: TooltipProps) {
   const id = useId();
   const wrapperRef = useRef<HTMLElement>(null);
@@ -185,6 +189,7 @@ export function Tooltip({
                 description={description}
                 shortcut={shortcut}
                 side={side}
+                dir={dir}
                 onMount={markLayerMounted}
               />
             </Suspense>

@@ -675,7 +675,7 @@ export function MediaReadingStage({
                     type="button"
                     data-testid={`media-caption-${index === 0 ? "current" : "next"}`}
                     onClick={() => selectCue(row)}
-                    className={`flex min-w-0 items-baseline gap-2 rounded-md px-1 py-0.5 text-left ${
+                    className={`flex min-w-0 items-baseline gap-2 rounded-md px-1 py-0.5 text-start ${
                       index === 0
                         ? "font-medium text-[var(--foreground)]"
                         : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
@@ -871,7 +871,7 @@ export function MediaReadingStage({
                   type="button"
                   onClick={startNote}
                   disabled={!activeCue}
-                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-[11px] text-[var(--muted-foreground)] hover:text-[var(--foreground)] disabled:opacity-40"
+                  className="flex w-full items-center gap-2 px-3 py-2 text-start text-[11px] text-[var(--muted-foreground)] hover:text-[var(--foreground)] disabled:opacity-40"
                 >
                   <StickyNote size={12} />
                   {t("Add a note for this segment")}
@@ -1012,7 +1012,7 @@ export function MediaReadingStage({
                           setFollowTranscript(false);
                           selectCue(row);
                         }}
-                        className={`flex w-full items-baseline gap-2 rounded-md px-2 py-1 text-left text-[10.5px] ${
+                        className={`flex w-full items-baseline gap-2 rounded-md px-2 py-1 text-start text-[10.5px] ${
                           active
                             ? "bg-[color-mix(in_srgb,var(--primary)_10%,transparent)] text-[var(--primary)]"
                             : selectedMatch

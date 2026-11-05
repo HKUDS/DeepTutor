@@ -9,6 +9,7 @@ import {
   type TaskCard,
 } from '@/lib/task-board-api'
 import { useActiveWorkspaceId } from '@/hooks/useActiveWorkspaceId'
+import FaDateInput from '@/components/common/FaDateInput'
 export default function NoteTaskBlock({
   data,
   prompt,
@@ -78,13 +79,12 @@ export default function NoteTaskBlock({
             }
           />
           <span>{card.title}</span>
-          <input
-            type="date"
-            aria-label={t('Due date')}
+          <FaDateInput
+            ariaLabel={t('Due date')}
             value={card.due_date || ''}
             className="bg-transparent text-xs"
-            onChange={e =>
-              void updateTaskCard(card.id, { due_date: e.target.value || null }).catch(e =>
+            onChange={v =>
+              void updateTaskCard(card.id, { due_date: v || null }).catch(e =>
                 setError(String(e))
               )
             }

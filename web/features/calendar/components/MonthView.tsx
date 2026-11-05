@@ -27,6 +27,7 @@ import {
   type EventItem,
 } from '../model/items'
 import { packLanes } from '../model/layout'
+import { JALALI_MONTHS, isoToJalali, persianDigits } from '@/lib/jalali'
 import type { FootprintDay } from '../transport/api'
 import { anchorOf, type Anchor } from './AnchoredPopover'
 import { dayAtPoint, startGesture } from './gesture'
@@ -49,6 +50,7 @@ type Drag =
 export function MonthView({
   weeks,
   month,
+  monthBounds,
   items,
   footprints,
   now,
@@ -63,7 +65,10 @@ export function MonthView({
   onDropTask,
 }: {
   weeks: Date[][]
-  month: number
+  /** Gregorian month index; omitted when the grid is a Jalali month. */
+  month?: number
+  /** `[firstIso, lastIso]` of a Jalali month, when the interface is Persian. */
+  monthBounds: [DateKey, DateKey] | null
   items: CalendarItem[]
   footprints: Map<DateKey, FootprintDay>
   now: Date
@@ -215,6 +220,7 @@ export function MonthView({
             key={dateKey(week[0])}
             week={week}
             month={month}
+            monthBounds={monthBounds}
             items={shown}
             lanes={lanes}
             footprints={footprints}
@@ -244,6 +250,7 @@ export function MonthView({
 function MonthWeek({
   week,
   month,
+  monthBounds,
   items,
   lanes,
   footprints,
@@ -265,7 +272,10 @@ function MonthWeek({
   moreLabel,
 }: {
   week: Date[]
-  month: number
+  /** Gregorian month index; omitted when the grid is a Jalali month. */
+  month?: number
+  /** `[firstIso, lastIso]` of a Jalali month, when the interface is Persian. */
+  monthBounds: [DateKey, DateKey] | null
   items: CalendarItem[]
   lanes: number
   footprints: Map<DateKey, FootprintDay>
@@ -343,7 +353,7 @@ function MonthWeek({
             key={key}
             data-cal-day={key}
             className="dt-cal-cell"
-            data-outside={day.getMonth() !== month || undefined}
+            data-outside={isOutside(day, key, month, monthBounds) || undefined}
             data-today={key === todayKey || undefined}
             data-drop={dropDay === key || undefined}
             onPointerDown={event => {
@@ -358,12 +368,7 @@ function MonthWeek({
           >
             <div className="dt-cal-cell-head">
               <button type="button" className="dt-cal-cell-date" onClick={() => onOpenDay(day)}>
-                {day.getDate() === 1
-                  ? formatDate(day, weekLocale, {
-                      month: 'short',
-                      day: 'numeric',
-                    })
-                  : day.getDate()}
+                {dayLabel(day, weekLocale, key, monthBounds)}
               </button>
               {footprint && <FootprintButton day={footprint} onOpen={onOpenFootprint} />}
             </div>
@@ -423,6 +428,42 @@ function MonthWeek({
       })}
     </div>
   )
+}
+
+/**
+ * Whether a cell belongs to a neighbouring month. In a Jalali grid that is a
+ * different month from the Gregorian one, so the ISO bounds decide it; the
+ * Gregorian test only runs when there is no Jalali month.
+ */
+function isOutside(
+  day: Date,
+  key: DateKey,
+  month: number | undefined,
+  monthBounds: [DateKey, DateKey] | null
+): boolean {
+  if (monthBounds) return key < monthBounds[0] || key > monthBounds[1]
+  return month === undefined || day.getMonth() !== month
+}
+
+/**
+ * The day number in the cell: Jalali in Persian, Gregorian otherwise, with
+ * the first of a month spelled out ("۱ آبان") so month starts stay visible.
+ */
+function dayLabel(
+  day: Date,
+  locale: string,
+  key: DateKey,
+  monthBounds: [DateKey, DateKey] | null
+): string {
+  if (monthBounds) {
+    const j = isoToJalali(key)
+    if (!j) return ''
+    if (j.jd === 1) return `${persianDigits(j.jd)} ${JALALI_MONTHS[j.jm - 1]}`
+    return persianDigits(j.jd)
+  }
+  return day.getDate() === 1
+    ? formatDate(day, locale, { month: 'short', day: 'numeric' })
+    : String(day.getDate())
 }
 
 function laneStyle(first: number, last: number, lane: number): CSSProperties {

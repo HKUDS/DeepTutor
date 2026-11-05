@@ -11,6 +11,7 @@ import {
   type TaskCard,
   type TaskStatus,
 } from '@/lib/task-board-api'
+import FaDateInput from '@/components/common/FaDateInput'
 const statuses: TaskStatus[] = ['todo', 'doing', 'done']
 const labels = { todo: 'To do', doing: 'In progress', done: 'Done' }
 export default function NoteTaskView({
@@ -154,12 +155,11 @@ export default function NoteTaskView({
                   <td>{c.title}</td>
                   <td>{status(c)}</td>
                   <td>
-                    <input
-                      type="date"
-                      disabled={busy}
-                      aria-label={`${t('Due date')}: ${c.title}`}
+                    <FaDateInput
+                      ariaLabel={`${t('Due date')}: ${c.title}`}
                       value={c.due_date || ''}
-                      onChange={e => void update(c, { due_date: e.target.value || null })}
+                      disabled={busy}
+                      onChange={v => void update(c, { due_date: v || null })}
                     />
                   </td>
                 </tr>

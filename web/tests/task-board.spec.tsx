@@ -8,6 +8,7 @@ import translations from '@/locales/en/app.json'
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string) => (translations as Record<string, string>)[key] ?? key,
+    i18n: { language: 'en' },
   }),
 }))
 

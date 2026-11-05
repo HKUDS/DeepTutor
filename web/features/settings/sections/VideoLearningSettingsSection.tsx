@@ -97,7 +97,7 @@ export default function VideoLearningSettingsPage() {
                     default_provider: provider,
                   }))
                 }
-                className={`rounded-xl border p-4 text-left ${settings.default_provider === provider ? "border-[var(--primary)] ring-1 ring-[var(--primary)]" : "border-[var(--border)]"}`}
+                className={`rounded-xl border p-4 text-start ${settings.default_provider === provider ? "border-[var(--primary)] ring-1 ring-[var(--primary)]" : "border-[var(--border)]"}`}
               >
                 <div className="flex items-center gap-2 font-medium">
                   <Icon className="h-5 w-5" />

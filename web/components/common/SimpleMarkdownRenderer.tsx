@@ -111,7 +111,7 @@ export default function SimpleMarkdownRenderer({
     ),
     th: ({ node, ...props }: any) => (
       <th
-        className="border-b border-[var(--border)]/50 px-1.5 py-0.5 text-left font-medium"
+        className="border-b border-[var(--border)]/50 px-1.5 py-0.5 text-start font-medium"
         {...props}
       />
     ),

@@ -207,7 +207,7 @@ export default function GuardianSettingsPage() {
               key={relationship.id}
               type="button"
               onClick={() => void selectLearner(relationship)}
-              className={`rounded-lg border p-4 text-left transition-colors hover:bg-[var(--muted)] ${
+              className={`rounded-lg border p-4 text-start transition-colors hover:bg-[var(--muted)] ${
                 selectedRelationship?.id === relationship.id
                   ? "border-[var(--primary)] bg-[var(--muted)]"
                   : "border-[var(--border)]"

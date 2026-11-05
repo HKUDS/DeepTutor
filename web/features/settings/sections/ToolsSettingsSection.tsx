@@ -353,7 +353,7 @@ export default function ToolsSettingsPage() {
                           <button
                             type="button"
                             onClick={() => toggleExpanded(tool.name)}
-                            className="flex min-w-0 flex-1 items-start gap-3 text-left"
+                            className="flex min-w-0 flex-1 items-start gap-3 text-start"
                             aria-expanded={isOpen}
                           >
                             <div className="min-w-0 flex-1">

@@ -15,7 +15,7 @@ export default function ModulesPanel() {
       {error && <button onClick={reload}>{t("Retry")}</button>}
       {!modules && !error && <p aria-busy="true">{t("Loading...")}</p>}
       <div className="overflow-x-auto">
-        <table className="w-full text-left text-sm">
+        <table className="w-full text-start text-sm">
           <thead><tr>
             <th className="py-2">{t("Module")}</th><th>{t("Installed")}</th>
             <th>{t("Enabled")}</th><th>{t("Ready")}</th><th>{t("Command")}</th>

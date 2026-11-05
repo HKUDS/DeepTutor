@@ -5355,6 +5355,7 @@
   "Tika": "Tika",
   "Time available": "Temps disponible",
   "Timeout (seconds)": "Délai d'expiration (secondes)",
+  "Time": "Heure",
   "Today's review": "Révision du jour",
   "Token usage and performance": "Utilisation des tokens et performance",
   "Total tokens": "Total des tokens",
@@ -7311,5 +7312,7 @@
   "Availability refreshed. This parser is still unavailable; check the installation and startup logs, then retry.": "Disponibilité actualisée. Ce parseur reste indisponible ; vérifiez l’installation et les journaux de démarrage, puis réessayez.",
   "language.portuguese": "Portugais",
   "language.japanese": "Japonais",
-  "language.turkish": "Türkçe"
+  "language.turkish": "Türkçe",
+  "language.persian": "فارسی",
+  "Pick a date": "Choisir une date"
 }

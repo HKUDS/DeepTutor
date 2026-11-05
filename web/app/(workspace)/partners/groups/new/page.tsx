@@ -221,7 +221,7 @@ export default function NewPartnerGroupPage() {
                     key={partner.partner_id}
                     type="button"
                     onClick={() => toggle(partner.partner_id)}
-                    className={`flex items-center gap-3 rounded-xl border p-3 text-left transition-colors ${
+                    className={`flex items-center gap-3 rounded-xl border p-3 text-start transition-colors ${
                       active
                         ? "border-[var(--primary)] bg-[var(--primary)]/[0.05]"
                         : "border-[var(--border)] hover:border-[var(--ring)]"

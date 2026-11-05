@@ -480,7 +480,7 @@ export default function AdminUsersPage() {
           ) : (
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-[var(--border)] text-left text-xs text-[var(--muted-foreground)] uppercase tracking-wider">
+                <tr className="border-b border-[var(--border)] text-start text-xs text-[var(--muted-foreground)] uppercase tracking-wider">
                   <th className="w-12 px-5 py-3">
                     <input
                       type="checkbox"

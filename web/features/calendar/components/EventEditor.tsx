@@ -17,6 +17,7 @@ import {
 } from '../model/recurrence'
 import type { CalendarEntry, EditScope } from '../transport/api'
 import { calendarName, CALENDAR_COLORS } from './CalendarRail'
+import FaDateInput from '@/components/common/FaDateInput'
 
 function dateValue(date: Date, allDay: boolean) {
   if (allDay) return dateKey(date)
@@ -86,14 +87,14 @@ export function EventEditor({
           <Clock aria-hidden size={15} />
           <div className="dt-cal-field-body">
             <div className="dt-cal-when">
-              <input
-                required
-                aria-label={t('Starts')}
-                type={draft.allDay ? 'date' : 'datetime-local'}
+              <FaDateInput
+                withTime={!draft.allDay}
+                className="dt-cal-when-input"
+                ariaLabel={t('Starts')}
                 value={dateValue(draft.start, draft.allDay)}
-                onChange={e => {
-                  if (!e.target.value) return
-                  const start = draft.allDay ? fromDateKey(e.target.value) : new Date(e.target.value)
+                onChange={next => {
+                  if (!next) return
+                  const start = draft.allDay ? fromDateKey(next) : new Date(next)
                   change({
                     start,
                     end:
@@ -104,17 +105,15 @@ export function EventEditor({
                 }}
               />
               <span aria-hidden>→</span>
-              <input
-                required
-                aria-label={t('Ends')}
-                type={draft.allDay ? 'date' : 'datetime-local'}
+              <FaDateInput
+                withTime={!draft.allDay}
+                className="dt-cal-when-input"
+                ariaLabel={t('Ends')}
                 value={dateValue(lastDay(draft), draft.allDay)}
-                onChange={e => {
-                  if (e.target.value)
+                onChange={next => {
+                  if (next)
                     change({
-                      end: draft.allDay
-                        ? addDays(fromDateKey(e.target.value), 1)
-                        : new Date(e.target.value),
+                      end: draft.allDay ? addDays(fromDateKey(next), 1) : new Date(next),
                     })
                 }}
               />
@@ -249,14 +248,11 @@ export function EventEditor({
                     />
                   )}
                   {rule.end.kind === 'until' && (
-                    <input
-                      aria-label={t('Repeat until')}
-                      type="date"
+                    <FaDateInput
+                      ariaLabel={t('Repeat until')}
                       min={dateKey(draft.start)}
                       value={rule.end.date}
-                      onChange={e =>
-                        applyRule({ ...rule, end: { kind: 'until', date: e.target.value } })
-                      }
+                      onChange={date => applyRule({ ...rule, end: { kind: 'until', date } })}
                     />
                   )}
                 </div>

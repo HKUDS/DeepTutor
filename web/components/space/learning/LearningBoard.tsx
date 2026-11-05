@@ -104,7 +104,7 @@ export function LearningBoard({
                   type="button"
                   onClick={() => toggle(card.id)}
                   aria-expanded={open}
-                  className={`w-full rounded-lg border bg-[var(--card)] p-3 text-left transition hover:bg-[var(--muted)]/60 ${STATUS_BORDER[card.status]}`}
+                  className={`w-full rounded-lg border bg-[var(--card)] p-3 text-start transition hover:bg-[var(--muted)]/60 ${STATUS_BORDER[card.status]}`}
                 >
                   <div className="flex items-start justify-between gap-2">
                     <span className="text-[13px] leading-snug text-[var(--foreground)]">

@@ -156,7 +156,7 @@ export default function CategoryMenu({
                       if (ok) setOpen(false);
                     })
                   }
-                  className="flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-left text-[12.5px] text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]/70 disabled:opacity-50"
+                  className="flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-start text-[12.5px] text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]/70 disabled:opacity-50"
                 >
                   <span className="min-w-0 flex-1 truncate">
                     {category.name}

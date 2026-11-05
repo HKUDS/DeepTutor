@@ -102,7 +102,7 @@ export default function MemoryPicker({
                   <button
                     key={option.key}
                     onClick={() => toggle(option.key)}
-                    className={`flex w-full items-start gap-3 px-4 py-3 text-left transition-colors ${
+                    className={`flex w-full items-start gap-3 px-4 py-3 text-start transition-colors ${
                       active
                         ? "bg-[var(--primary)]/8"
                         : "hover:bg-[var(--muted)]/40"

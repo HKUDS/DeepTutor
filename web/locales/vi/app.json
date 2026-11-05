@@ -1577,6 +1577,7 @@
   "Chat response timeout": "Thời gian chờ phản hồi của chat",
   "How long chat waits for a reply before showing a timeout error. Increase it for slow tools like image or video generation.": "Thời gian chat chờ phản hồi trước khi hiển thị lỗi hết thời gian chờ. Hãy tăng giá trị này cho các công cụ chậm như tạo ảnh hoặc video.",
   "Timeout (seconds)": "Thời gian chờ (giây)",
+  "Time": "Giờ",
   "LLM timeout (seconds)": "Thời gian chờ LLM (giây)",
   "Maximum time per LightRAG LLM call": "Thời gian tối đa cho mỗi lệnh gọi LLM của LightRAG",
   "Between {{min}} and {{max}} seconds. Takes effect immediately — no restart.": "Từ {{min}} đến {{max}} giây. Có hiệu lực ngay — không cần khởi động lại.",
@@ -6406,5 +6407,7 @@
   "Reset learning text": "Đặt lại văn bản học tập",
   "language.portuguese": "Português",
   "language.japanese": "日本語",
-  "language.turkish": "Türkçe"
+  "language.turkish": "Türkçe",
+  "language.persian": "فارسی",
+  "Pick a date": "Chọn ngày"
 }

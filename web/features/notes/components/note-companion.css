@@ -168,8 +168,8 @@
 .dt-note-thread-list {
   position: absolute;
   top: calc(100% - 4px);
-  right: 10px;
-  left: 10px;
+  inset-inline-end: 10px;
+  inset-inline-start: 10px;
   z-index: 50;
   display: flex;
   flex-direction: column;

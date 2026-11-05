@@ -26,7 +26,7 @@ import { Search } from "lucide-react";
  */
 
 const CARD_BASE =
-  "group relative w-full rounded-xl border px-4 py-3.5 text-left outline-none transition-[background-color,border-color,box-shadow,transform] duration-150 active:scale-[0.99] focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]";
+  "group relative w-full rounded-xl border px-4 py-3.5 text-start outline-none transition-[background-color,border-color,box-shadow,transform] duration-150 active:scale-[0.99] focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]";
 
 /** Row in a workspace rail. `active` is the row being edited, not the runtime default. */
 export function workspaceCardClass(active: boolean): string {

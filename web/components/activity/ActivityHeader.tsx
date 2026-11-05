@@ -95,7 +95,7 @@ export function ActivityHeader({
         onClick={onToggle}
         aria-expanded={expanded}
         aria-live="polite"
-        className={`group/act w-full text-left transition-colors hover:text-[var(--foreground)] ${shared}`}
+        className={`group/act w-full text-start transition-colors hover:text-[var(--foreground)] ${shared}`}
       >
         {inner}
       </button>

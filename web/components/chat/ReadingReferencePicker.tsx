@@ -367,7 +367,7 @@ export default function ReadingReferencePicker({
                         onClick={() =>
                           setActiveMaterialId(material.material_id)
                         }
-                        className={`flex w-full items-center gap-3 px-3 py-3 text-left transition-colors ${
+                        className={`flex w-full items-center gap-3 px-3 py-3 text-start transition-colors ${
                           active
                             ? "bg-[var(--primary)]/8"
                             : "hover:bg-[var(--muted)]/40"
@@ -442,7 +442,7 @@ export default function ReadingReferencePicker({
                         type="button"
                         key={unit.locator}
                         onClick={() => toggleUnit(unit)}
-                        className={`flex w-full items-start gap-3 px-4 py-3 text-left transition-colors ${
+                        className={`flex w-full items-start gap-3 px-4 py-3 text-start transition-colors ${
                           checked
                             ? "bg-[var(--primary)]/8"
                             : "hover:bg-[var(--muted)]/30"

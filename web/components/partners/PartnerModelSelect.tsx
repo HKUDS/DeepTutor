@@ -107,7 +107,7 @@ export default function PartnerModelSelect({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className={`flex w-full items-center gap-3 rounded-xl border px-3.5 py-2.5 text-left transition-colors ${
+        className={`flex w-full items-center gap-3 rounded-xl border px-3.5 py-2.5 text-start transition-colors ${
           open
             ? "border-[var(--ring)]"
             : "border-[var(--border)] hover:border-[var(--ring)]"
@@ -181,7 +181,7 @@ function DropdownRow({
     <button
       type="button"
       onClick={onClick}
-      className={`flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left transition-colors ${
+      className={`flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-start transition-colors ${
         selected ? "bg-[var(--secondary)]" : "hover:bg-[var(--muted)]"
       }`}
     >

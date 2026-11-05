@@ -314,7 +314,7 @@ export default function BlockRenderer({
                           setShowTypeMenu(false);
                           onChangeType(block, type);
                         }}
-                        className="block w-full rounded px-2 py-1 text-left text-xs hover:bg-[var(--background)] hover:text-[var(--foreground)]"
+                        className="block w-full rounded px-2 py-1 text-start text-xs hover:bg-[var(--background)] hover:text-[var(--foreground)]"
                       >
                         {t(type)}
                       </button>

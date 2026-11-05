@@ -826,6 +826,11 @@ def _pick_language(language: str | None) -> str:
         return "pt"
     if code in {"tr", "tr-tr", "turkish", "türkçe"}:
         return "tr"
+    # RTL scripts garble in Windows consoles (legacy codepages render them
+    # as mojibake, and rich cannot bidi-reorder), so console output stays
+    # English even when the web UI itself is Persian.
+    if code in {"fa", "fa-ir", "farsi", "persian", "فارسی"}:
+        return "en"
     if code in {"fr", "fr-fr", "fr-be", "fr-ca", "fr-ch", "french", "francais", "français"}:
         return "fr"
     return "en"

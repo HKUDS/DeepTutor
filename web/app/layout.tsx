@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Lora } from "next/font/google";
+import { Geist, Lora, Vazirmatn } from "next/font/google";
 import "./globals.css";
 import "@/features/ui-layout/classic/classic.css";
 import "@/features/ui-layout/modern/modern.css";
@@ -23,6 +23,15 @@ const fontSerif = Lora({
   subsets: ["latin"],
   display: "swap",
   variable: "--font-serif",
+});
+
+// Vazirmatn covers the Persian glyphs Geist/Lora lack. It sits after the
+// Latin faces in the family stacks (see tailwind.config), so English UIs
+// never load a Persian glyph and Persian UIs get a proper Persian face.
+const fontFa = Vazirmatn({
+  subsets: ["arabic", "latin"],
+  display: "swap",
+  variable: "--font-fa",
 });
 
 export const viewport: Viewport = { interactiveWidget: "resizes-content" };
@@ -49,7 +58,7 @@ export default function RootLayout({
       lang="en"
       suppressHydrationWarning
       data-scroll-behavior="smooth"
-      className={`${fontSans.variable} ${fontSerif.variable}`}
+      className={`${fontSans.variable} ${fontSerif.variable} ${fontFa.variable}`}
     >
       <head>
         <ThemeScript />

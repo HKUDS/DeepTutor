@@ -493,7 +493,7 @@ export function RegistryModelIdField({
                 // list of names reads better in it than a column of typewriter
                 // text. The field stays monospaced, where an ID is edited a
                 // character at a time.
-                className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] leading-5 transition-colors ${
+                className={`flex w-full items-center gap-2 px-3 py-1.5 text-start text-[13px] leading-5 transition-colors ${
                   index === active
                     ? "bg-[var(--accent)]"
                     : "hover:bg-[var(--accent)]"

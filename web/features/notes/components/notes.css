@@ -129,7 +129,7 @@
 }
 .dt-note-handle .dt-note-menu {
   position: absolute;
-  left: 0;
+  inset-inline-start: 0;
   top: calc(100% + 2px);
 }
 .dt-note-clip {
@@ -661,6 +661,13 @@
   background: var(--secondary);
   border-radius: 4px;
   padding: 0 3px;
+}
+/* The inline date reads as a chip on its own, so the field inside drops the
+   inherited chip padding and keeps only its icon + label. */
+.dt-note-date .dt-note-date-field {
+  padding: 0 2px;
+  background: transparent;
+  color: inherit;
 }
 .dt-note-data-view {
   font-size: 13px;
@@ -1428,7 +1435,7 @@
 .dt-note-kind-menu.is-up {
   top: auto;
   bottom: calc(100% + 6px);
-  left: 0;
+  inset-inline-start: 0;
 }
 .dt-note-kind-menu-title {
   padding: 6px 8px 4px;
@@ -1858,8 +1865,8 @@
   animation: dt-pop-in 140ms var(--dt-ease, ease-out);
 }
 .dt-note-toolbar-panel.is-colors {
-  left: auto;
-  right: 0;
+  inset-inline-start: auto;
+  inset-inline-end: 0;
   min-width: 160px;
 }
 .dt-note-toolbar-panel button {

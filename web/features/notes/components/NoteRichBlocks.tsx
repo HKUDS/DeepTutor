@@ -16,6 +16,7 @@ import {
 } from 'lucide-react'
 import dynamic from 'next/dynamic'
 import type { NoteBlock } from '@/lib/notes-api'
+import FaDateInput from '@/components/common/FaDateInput'
 import { safeNoteUrl } from '../model/urls'
 
 const TaskView = dynamic(() => import('./NoteTaskView'), { ssr: false })
@@ -319,14 +320,14 @@ export const noteDate = createReactInlineContentSpec(
     render: function DateInline({ inlineContent, updateInlineContent }) {
       const { t } = useTranslation()
       return (
-        <input
-          className="dt-note-date"
-          contentEditable={false}
-          aria-label={t('Date')}
-          type="date"
-          value={inlineContent.props.date}
-          onChange={e => updateInlineContent({ type: 'noteDate', props: { date: e.target.value } })}
-        />
+        <span className="dt-note-date" contentEditable={false}>
+          <FaDateInput
+            ariaLabel={t('Date')}
+            className="dt-note-date-field"
+            value={inlineContent.props.date}
+            onChange={date => updateInlineContent({ type: 'noteDate', props: { date } })}
+          />
+        </span>
       )
     },
   }

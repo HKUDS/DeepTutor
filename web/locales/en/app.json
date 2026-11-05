@@ -1662,6 +1662,7 @@
   "Chat response timeout": "Chat response timeout",
   "How long chat waits for a reply before showing a timeout error. Increase it for slow tools like image or video generation.": "How long chat waits for a reply before showing a timeout error. Increase it for slow tools like image or video generation.",
   "Timeout (seconds)": "Timeout (seconds)",
+  "Time": "Time",
   "LLM timeout (seconds)": "LLM timeout (seconds)",
   "Maximum time per LightRAG LLM call": "Maximum time per LightRAG LLM call",
   "Between {{min}} and {{max}} seconds. Takes effect immediately — no restart.": "Between {{min}} and {{max}} seconds. Takes effect immediately — no restart.",
@@ -6406,5 +6407,7 @@
   "Reset learning text": "Reset learning text",
   "language.portuguese": "Portuguese",
   "language.japanese": "Japanese",
-  "language.turkish": "Türkçe"
+  "language.turkish": "Türkçe",
+  "language.persian": "فارسی",
+  "Pick a date": "Pick a date"
 }

@@ -160,7 +160,7 @@ export default function ViewerLauncher({
                 <button
                   type="button"
                   onClick={() => onOpenThread(thread.id)}
-                  className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors ${ACTIVITY_ROW_HOVER} ${ROW_FOCUS}`}
+                  className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-start transition-colors ${ACTIVITY_ROW_HOVER} ${ROW_FOCUS}`}
                 >
                   <thread.icon
                     size={15}
@@ -188,7 +188,7 @@ export default function ViewerLauncher({
                 <button
                   type="button"
                   onClick={() => onReopenTab(tab.id)}
-                  className={`flex min-h-10 w-full items-center gap-2.5 rounded-lg px-2.5 text-left transition-colors ${ACTIVITY_ROW_HOVER} ${ROW_FOCUS}`}
+                  className={`flex min-h-10 w-full items-center gap-2.5 rounded-lg px-2.5 text-start transition-colors ${ACTIVITY_ROW_HOVER} ${ROW_FOCUS}`}
                 >
                   <tab.icon
                     size={15}
@@ -299,7 +299,7 @@ function ToolTile({
         type="button"
         onClick={onClick}
         aria-disabled={!onClick}
-        className={`group flex min-h-11 w-full min-w-0 items-center gap-2.5 rounded-xl px-3 text-left text-[12.5px] font-medium text-[var(--foreground)] transition-colors ${ACTIVITY_TILE} ${
+        className={`group flex min-h-11 w-full min-w-0 items-center gap-2.5 rounded-xl px-3 text-start text-[12.5px] font-medium text-[var(--foreground)] transition-colors ${ACTIVITY_TILE} ${
           onClick
             ? ACTIVITY_ROW_HOVER
             : "cursor-default text-[var(--muted-foreground)] opacity-60"
@@ -369,7 +369,7 @@ function SideChatTile({
           <button
             type="button"
             onClick={() => onOpen(DITO)}
-            className={`flex w-full min-w-0 items-center gap-2.5 rounded-l-xl pl-3 pr-1 text-left text-[12.5px] font-medium text-[var(--foreground)] transition-colors ${ACTIVITY_ROW_HOVER} ${ROW_FOCUS}`}
+            className={`flex w-full min-w-0 items-center gap-2.5 rounded-l-xl pl-3 pr-1 text-start text-[12.5px] font-medium text-[var(--foreground)] transition-colors ${ACTIVITY_ROW_HOVER} ${ROW_FOCUS}`}
           >
             <MessagesSquare
               size={15}

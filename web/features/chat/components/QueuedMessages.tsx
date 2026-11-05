@@ -55,7 +55,7 @@ export default function QueuedMessages({
               type="button"
               aria-label={t("Remove from queue")}
               onClick={() => onWithdraw(message.id)}
-              className="-mr-1 inline-flex size-5 shrink-0 items-center justify-center rounded-md text-[var(--muted-foreground)] opacity-60 transition hover:bg-[var(--muted)] hover:text-[var(--foreground)] hover:opacity-100 group-hover:opacity-100"
+              className="-me-1 inline-flex size-5 shrink-0 items-center justify-center rounded-md text-[var(--muted-foreground)] opacity-60 transition hover:bg-[var(--muted)] hover:text-[var(--foreground)] hover:opacity-100 group-hover:opacity-100"
             >
               <X size={12} />
             </button>

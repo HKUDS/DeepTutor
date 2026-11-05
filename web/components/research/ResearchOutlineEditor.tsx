@@ -106,7 +106,7 @@ export default function ResearchOutlineEditor({
         type="button"
         disabled={!headerClickable}
         onClick={headerClickable ? toggleCollapsed : undefined}
-        className={`block w-full text-left ${displayCollapsed ? "" : "border-b border-[var(--border)]/20"} px-4 py-2 ${
+        className={`block w-full text-start ${displayCollapsed ? "" : "border-b border-[var(--border)]/20"} px-4 py-2 ${
           headerClickable
             ? "cursor-pointer transition-colors hover:bg-[var(--muted-foreground)]/[0.025]"
             : "cursor-default"

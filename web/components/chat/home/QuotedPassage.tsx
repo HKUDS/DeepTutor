@@ -34,7 +34,7 @@ export function QuotedPassage({
           type="button"
           aria-label={t("Remove quoted passage")}
           onClick={onRemove}
-          className="-mr-1 inline-flex size-6 shrink-0 items-center justify-center rounded-md text-[var(--muted-foreground)] transition hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+          className="-me-1 inline-flex size-6 shrink-0 items-center justify-center rounded-md text-[var(--muted-foreground)] transition hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
         >
           <X size={12} />
         </button>

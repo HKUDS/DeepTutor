@@ -76,7 +76,7 @@ export default function LearningCapturePanel({
           type="button"
           onClick={() => setOpen((current) => !current)}
           aria-expanded={open}
-          className="group/inbox inline-flex min-w-0 items-center gap-2 text-left text-[13px] font-semibold text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
+          className="group/inbox inline-flex min-w-0 items-center gap-2 text-start text-[13px] font-semibold text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
         >
           <ChevronDown
             className={`h-3.5 w-3.5 shrink-0 text-[var(--muted-foreground)] opacity-50 transition-transform ${

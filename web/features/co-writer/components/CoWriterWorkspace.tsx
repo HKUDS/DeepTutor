@@ -2137,7 +2137,7 @@ export default function CoWriterWorkspace({ docId, onBack }: CoWriterWorkspacePr
                       <button
                         key={tool.name}
                         onClick={() => toggleSelectionTool(tool.name)}
-                        className="flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-[12.5px] text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]/45"
+                        className="flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-start text-[12.5px] text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]/45"
                       >
                         <span>{t(tool.label)}</span>
                         {active ? (
@@ -2180,7 +2180,7 @@ export default function CoWriterWorkspace({ docId, onBack }: CoWriterWorkspacePr
                         setSelectionMode(mode.value);
                         setIsModeMenuOpen(false);
                       }}
-                      className="flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left text-[12px] text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]"
+                      className="flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-start text-[12px] text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]"
                     >
                       <span>{t(mode.label)}</span>
                       {selectionMode === mode.value ? (

@@ -1078,6 +1078,7 @@
   "Chat response timeout": "聊天响应超时",
   "How long chat waits for a reply before showing a timeout error. Increase it for slow tools like image or video generation.": "聊天等待回复的时长，超时后显示错误。对于图片或视频生成等较慢的工具，可以适当调高。",
   "Timeout (seconds)": "超时时间（秒）",
+  "Time": "时间",
   "LLM timeout (seconds)": "LLM 超时时间（秒）",
   "Maximum time per LightRAG LLM call": "每次 LightRAG LLM 调用的最长耗时",
   "Between {{min}} and {{max}} seconds. Takes effect immediately — no restart.": "{{min}} 到 {{max}} 秒之间。立即生效，无需重启。",
@@ -6406,5 +6407,7 @@
   "Reset learning text": "重置学习文字",
   "language.portuguese": "葡萄牙语",
   "language.japanese": "日语",
-  "language.turkish": "Türkçe"
+  "language.turkish": "Türkçe",
+  "language.persian": "فارسی",
+  "Pick a date": "选择日期"
 }

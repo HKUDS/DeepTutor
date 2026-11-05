@@ -31,6 +31,11 @@ test("the locale registry accepts every supported language", () => {
     assert.equal(resolveResponseLanguage(raw, "en"), "tr");
   }
   assert.equal(getLocale("tr"), "tr-TR");
+  for (const raw of ["fa", "fa-IR", "fa_IR", "Farsi", "فارسی"]) {
+    assert.equal(normalizeLanguage(raw), "fa");
+    assert.equal(resolveResponseLanguage(raw, "en"), "fa");
+  }
+  assert.equal(getLocale("fa"), "fa-IR");
 });
 
 test("response language remains independent from the interface language", () => {
@@ -80,4 +85,16 @@ test("Portuguese dates and times use Brazilian conventions", () => {
   assert.equal(formatTime(date, "pt", {
     hour: "2-digit", minute: "2-digit", timeZone: "UTC",
   }), "14:05");
+});
+
+test("Persian dates and times use Iranian conventions", () => {
+  const date = new Date("2026-03-05T14:05:00Z");
+  assert.equal(getLocale("fa"), "fa-IR");
+  // fa-IR defaults to the Solar Hijri calendar with Persian digits.
+  assert.equal(formatDate(date, "fa", {
+    year: "numeric", month: "long", day: "numeric", timeZone: "UTC",
+  }), "۱۴ اسفند ۱۴۰۴");
+  assert.equal(formatTime(date, "fa", {
+    hour: "2-digit", minute: "2-digit", timeZone: "UTC",
+  }), "۱۴:۰۵");
 });

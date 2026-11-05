@@ -152,7 +152,7 @@ export default function ImaConnectionFields({
                       type="button"
                       onClick={() => connection.select(item)}
                       disabled={submitting}
-                      className={`flex w-full items-start justify-between gap-3 rounded-lg border px-3 py-2 text-left transition-colors ${
+                      className={`flex w-full items-start justify-between gap-3 rounded-lg border px-3 py-2 text-start transition-colors ${
                         selected
                           ? "border-[var(--primary)] bg-[var(--primary)]/5"
                           : "border-transparent hover:bg-[var(--muted)]/50"

@@ -1596,6 +1596,7 @@
   "Chat response timeout": "Chat-Antwort-Timeout",
   "How long chat waits for a reply before showing a timeout error. Increase it for slow tools like image or video generation.": "Wie lange der Chat auf eine Antwort wartet, bevor ein Timeout-Fehler angezeigt wird. Für langsame Tools wie Bild- oder Videogenerierung erhöhen.",
   "Timeout (seconds)": "Timeout (Sekunden)",
+  "Time": "Uhrzeit",
   "LLM timeout (seconds)": "LLM-Timeout (Sekunden)",
   "Maximum time per LightRAG LLM call": "Maximale Zeit pro LightRAG-LLM-Aufruf",
   "Between {{min}} and {{max}} seconds. Takes effect immediately — no restart.": "Zwischen {{min}} und {{max}} Sekunden. Gilt sofort, kein Neustart nötig.",
@@ -6406,5 +6407,7 @@
   "Availability refreshed. This parser is still unavailable; check the installation and startup logs, then retry.": "Verfügbarkeit aktualisiert. Dieser Parser ist weiterhin nicht verfügbar; prüfe Installation und Startprotokolle und versuche es erneut.",
   "language.portuguese": "Portugiesisch",
   "language.japanese": "Japanisch",
-  "language.turkish": "Türkçe"
+  "language.turkish": "Türkçe",
+  "language.persian": "فارسی",
+  "Pick a date": "Datum wählen"
 }

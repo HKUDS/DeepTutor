@@ -97,7 +97,7 @@ export default function DiscussionModePicker({
               type="button"
               disabled={disabled}
               onClick={() => onChange(mode.name)}
-              className={`flex w-full items-start gap-2.5 rounded-xl border p-3 text-left transition-colors disabled:opacity-50 ${
+              className={`flex w-full items-start gap-2.5 rounded-xl border p-3 text-start transition-colors disabled:opacity-50 ${
                 active
                   ? "border-[var(--primary)] bg-[var(--primary)]/[0.05]"
                   : "border-[var(--border)] hover:border-[var(--ring)]"

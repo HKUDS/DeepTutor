@@ -343,7 +343,7 @@ export function WatchingBrowser({
                           </span>
                         )}
                       </div>
-                      <div className="mt-3 flex items-center gap-3 text-left">
+                      <div className="mt-3 flex items-center gap-3 text-start">
                         <LearningCardContent
                           title={item.title}
                           icon={isPlaylist ? <ListVideo size={18} /> : <Play size={18} />}

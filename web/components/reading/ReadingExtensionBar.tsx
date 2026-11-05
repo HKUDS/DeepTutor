@@ -543,7 +543,7 @@ function QuizQuestions({
                   onClick={() => {
                     void persistAnswer(question, index, choiceIndex);
                   }}
-                  className="rounded-md bg-[var(--muted)]/50 px-2 py-1.5 text-left text-[var(--muted-foreground)] transition hover:bg-[var(--muted)] aria-pressed:bg-[color-mix(in_srgb,var(--primary)_10%,transparent)] aria-pressed:text-[var(--foreground)]"
+                  className="rounded-md bg-[var(--muted)]/50 px-2 py-1.5 text-start text-[var(--muted-foreground)] transition hover:bg-[var(--muted)] aria-pressed:bg-[color-mix(in_srgb,var(--primary)_10%,transparent)] aria-pressed:text-[var(--foreground)]"
                 >
                   {String.fromCharCode(65 + choiceIndex)}. {choice}
                 </button>

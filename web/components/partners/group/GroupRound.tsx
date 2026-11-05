@@ -137,7 +137,7 @@ function FollowupRound(props: RoundProps) {
         type="button"
         onClick={() => setOpen((value) => !value)}
         data-turn-bubble
-        className="group/head flex w-full items-center gap-1.5 rounded py-1 text-left text-[10.5px] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
+        className="group/head flex w-full items-center gap-1.5 rounded py-1 text-start text-[10.5px] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
       >
         <ChevronDown
           size={12}

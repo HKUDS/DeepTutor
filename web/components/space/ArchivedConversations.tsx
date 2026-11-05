@@ -76,7 +76,7 @@ export default function ArchivedConversations({
           type="button"
           disabled={disabled}
           onClick={() => onOpen(session.session_id)}
-          className="min-w-0 flex-1 px-1 text-left"
+          className="min-w-0 flex-1 px-1 text-start"
 
         >
           <div

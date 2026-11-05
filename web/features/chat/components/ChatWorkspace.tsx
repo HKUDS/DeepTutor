@@ -2632,7 +2632,7 @@ export default function ChatWorkspace() {
                           type="button"
                           onClick={startSessionTitleEdit}
                           disabled={!canRenameSession}
-                          className="dt-chat-title inline-flex min-w-0 max-w-full items-center gap-2 rounded-xl px-2 py-1 text-left font-serif text-[17px] font-semibold tracking-[-0.01em] text-[var(--foreground)] transition hover:bg-[var(--muted)]/55 disabled:cursor-default disabled:hover:bg-transparent"
+                          className="dt-chat-title inline-flex min-w-0 max-w-full items-center gap-2 rounded-xl px-2 py-1 text-start font-serif text-[17px] font-semibold tracking-[-0.01em] text-[var(--foreground)] transition hover:bg-[var(--muted)]/55 disabled:cursor-default disabled:hover:bg-transparent"
                         >
                           <span className="truncate">{displaySessionTitle}</span>
                           {canRenameSession ? (
@@ -3013,7 +3013,7 @@ export default function ChatWorkspace() {
                         type="button"
                         aria-label={t("Cancel retry")}
                         onClick={() => setRetryingTurn(null)}
-                        className="-mr-1 inline-flex size-5 shrink-0 items-center justify-center rounded-md text-[var(--muted-foreground)] transition hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+                        className="-me-1 inline-flex size-5 shrink-0 items-center justify-center rounded-md text-[var(--muted-foreground)] transition hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
                       >
                         <X size={12} />
                       </button>

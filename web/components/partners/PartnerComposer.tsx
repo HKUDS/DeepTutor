@@ -442,7 +442,7 @@ export const PartnerComposer = memo(function PartnerComposer({
                 acceptCommand(command);
               }}
               onMouseEnter={() => setSlashIndex(index)}
-              className={`flex w-full items-baseline gap-2 px-3 py-2 text-left transition-colors ${
+              className={`flex w-full items-baseline gap-2 px-3 py-2 text-start transition-colors ${
                 index === boundedSlashIndex
                   ? "bg-[var(--muted)]"
                   : "hover:bg-[var(--muted)]/60"
@@ -520,7 +520,7 @@ export const PartnerComposer = memo(function PartnerComposer({
                 key={`${attachment.filename}-${index}`}
                 className="group relative"
               >
-                <div className="flex h-14 w-[150px] items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--card)] px-2 text-left">
+                <div className="flex h-14 w-[150px] items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--card)] px-2 text-start">
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-[var(--muted)]/60">
                     <Icon size={19} strokeWidth={1.5} className={spec.tint} />
                   </div>

@@ -1577,6 +1577,7 @@
   "Chat response timeout": "Tempo limite de resposta da conversa",
   "How long chat waits for a reply before showing a timeout error. Increase it for slow tools like image or video generation.": "Por quanto tempo a conversa aguarda uma resposta antes de exibir um erro de tempo limite. Aumente esse valor para ferramentas lentas, como geração de imagens ou vídeos.",
   "Timeout (seconds)": "Tempo limite (segundos)",
+  "Time": "Hora",
   "LLM timeout (seconds)": "Tempo limite do LLM (segundos)",
   "Maximum time per LightRAG LLM call": "Tempo máximo por chamada de LLM do LightRAG",
   "Between {{min}} and {{max}} seconds. Takes effect immediately — no restart.": "Entre {{min}} e {{max}} segundos. Entra em vigor imediatamente, sem reinicialização.",
@@ -6424,5 +6425,7 @@
   "Learning text preview": "Prévia do texto de aprendizado",
   "Reset learning text": "Redefinir texto de aprendizado",
   "language.japanese": "日本語",
-  "language.turkish": "Türkçe"
+  "language.turkish": "Türkçe",
+  "language.persian": "فارسی",
+  "Pick a date": "Escolher uma data"
 }

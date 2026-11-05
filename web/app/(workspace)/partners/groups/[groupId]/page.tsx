@@ -373,7 +373,7 @@ function ManageGroupDialog({
                 key={partner.partner_id}
                 type="button"
                 onClick={() => toggle(partner.partner_id)}
-                className={`flex items-center gap-2 rounded-xl border p-2.5 text-left transition-colors ${
+                className={`flex items-center gap-2 rounded-xl border p-2.5 text-start transition-colors ${
                   active
                     ? "border-[var(--primary)] bg-[var(--primary)]/[0.04]"
                     : "border-[var(--border)] hover:border-[var(--ring)]"

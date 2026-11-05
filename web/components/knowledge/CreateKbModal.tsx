@@ -839,7 +839,7 @@ function ModeToggle({
             type="button"
             disabled={disabled}
             onClick={() => onChange(opt.id)}
-            className={`flex flex-col gap-1 rounded-2xl border p-3 text-left transition-colors disabled:opacity-50 ${
+            className={`flex flex-col gap-1 rounded-2xl border p-3 text-start transition-colors disabled:opacity-50 ${
               selected
                 ? "border-[var(--primary)] bg-[var(--primary)]/5"
                 : "border-[var(--border)] hover:border-[var(--ring)]"
@@ -930,7 +930,7 @@ function NewModeFields({
                     setProvider(p.id);
                     setRetrievalMode("");
                   }}
-                  className={`group flex w-full flex-1 flex-col gap-1 rounded-2xl border p-3 text-left transition-colors disabled:opacity-50 ${
+                  className={`group flex w-full flex-1 flex-col gap-1 rounded-2xl border p-3 text-start transition-colors disabled:opacity-50 ${
                     selected
                       ? "border-[var(--primary)] bg-[var(--primary)]/5"
                       : "border-[var(--border)] hover:border-[var(--ring)]"
@@ -1455,7 +1455,7 @@ function LinkModeFields({
                   disabled={disabled}
                   onClick={() => setLinkSource(p.id)}
                   aria-label={p.name}
-                  className={`group flex h-full w-full flex-col gap-1 rounded-2xl border p-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                  className={`group flex h-full w-full flex-col gap-1 rounded-2xl border p-3 text-start transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
                     selected
                       ? "border-[var(--primary)] bg-[var(--primary)]/5"
                       : "border-[var(--border)] hover:border-[var(--ring)]"
@@ -1491,7 +1491,7 @@ function LinkModeFields({
             type="button"
             disabled={submitting}
             onClick={() => setLinkSource(OBSIDIAN_SOURCE)}
-            className={`group flex flex-col gap-1 rounded-2xl border p-3 text-left transition-colors disabled:opacity-50 ${
+            className={`group flex flex-col gap-1 rounded-2xl border p-3 text-start transition-colors disabled:opacity-50 ${
               linkIsObsidian
                 ? "border-[var(--primary)] bg-[var(--primary)]/5"
                 : "border-[var(--border)] hover:border-[var(--ring)]"
@@ -1518,7 +1518,7 @@ function LinkModeFields({
             type="button"
             disabled={submitting}
             onClick={() => setLinkSource(MARGINNOTE4_SOURCE)}
-            className={`group flex flex-col gap-1 rounded-2xl border p-3 text-left transition-colors disabled:opacity-50 ${
+            className={`group flex flex-col gap-1 rounded-2xl border p-3 text-start transition-colors disabled:opacity-50 ${
               linkIsMarginNote
                 ? "border-[var(--primary)] bg-[var(--primary)]/5"
                 : "border-[var(--border)] hover:border-[var(--ring)]"

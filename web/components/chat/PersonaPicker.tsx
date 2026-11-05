@@ -6,6 +6,7 @@ import { useTranslation } from "react-i18next";
 import PickerShell from "@/components/common/PickerShell";
 import PickerHeader from "@/components/common/PickerHeader";
 import { listPersonas, type PersonaInfo } from "@/lib/personas-api";
+import { personaDisplayDescription, personaDisplayName } from "@/lib/persona-labels";
 
 interface PersonaPickerProps {
   open: boolean;
@@ -59,9 +60,11 @@ export default function PersonaPicker({
     return personas.filter((persona) => {
       const name = persona.name.toLowerCase();
       const desc = (persona.description || "").toLowerCase();
-      return name.includes(keyword) || desc.includes(keyword);
+      const localName = personaDisplayName(t, persona.name).toLowerCase();
+      const localDesc = personaDisplayDescription(t, persona).toLowerCase();
+      return name.includes(keyword) || desc.includes(keyword) || localName.includes(keyword) || localDesc.includes(keyword);
     });
-  }, [personas, query]);
+  }, [personas, query, t]);
 
   const handleApply = () => {
     onApply(selected);
@@ -92,7 +95,7 @@ export default function PersonaPicker({
           <button
             type="button"
             onClick={() => setSelected(null)}
-            className={`mb-3 flex w-full items-start gap-3 rounded-2xl border px-4 py-3 text-left transition-colors ${
+            className={`mb-3 flex w-full items-start gap-3 rounded-2xl border px-4 py-3 text-start transition-colors ${
               selected === null
                 ? "border-[var(--primary)]/40 bg-[var(--primary)]/8"
                 : "border-[var(--border)] bg-[var(--card)] hover:bg-[var(--muted)]/40"
@@ -142,7 +145,7 @@ export default function PersonaPicker({
                     <button
                       key={persona.name}
                       onClick={() => setSelected(persona.name)}
-                      className={`flex w-full items-start gap-3 px-4 py-3 text-left transition-colors ${
+                      className={`flex w-full items-start gap-3 px-4 py-3 text-start transition-colors ${
                         active
                           ? "bg-[var(--primary)]/8"
                           : "hover:bg-[var(--muted)]/40"
@@ -160,7 +163,7 @@ export default function PersonaPicker({
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
                           <span className="truncate text-[14px] font-medium text-[var(--foreground)]">
-                            {persona.name}
+                            {personaDisplayName(t, persona.name)}
                           </span>
                           {persona.source === "admin" ? (
                             <span className="rounded-md bg-[var(--muted)] px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-[var(--muted-foreground)]">
@@ -170,7 +173,7 @@ export default function PersonaPicker({
                         </div>
                         {persona.description ? (
                           <p className="mt-1 line-clamp-2 text-[12px] leading-5 text-[var(--muted-foreground)]">
-                            {persona.description}
+                            {personaDisplayDescription(t, persona)}
                           </p>
                         ) : null}
                       </div>
@@ -190,7 +193,7 @@ export default function PersonaPicker({
           <div className="mt-4 flex items-center justify-between gap-3">
             <div className="text-[12px] text-[var(--muted-foreground)]">
               {selected
-                ? t("Persona: {{name}}", { name: selected })
+                ? t("Persona: {{name}}", { name: personaDisplayName(t, selected) })
                 : t("No persona selected")}
             </div>
             <button

@@ -5,6 +5,7 @@ import { useTaskBlocks } from '@/features/calendar/store/calendar-store'
 import { activeWorkspaceId } from '@/lib/workspace-scope'
 import Link from 'next/link'
 import { addDays, dateKey, startOfWeek } from '@/features/calendar/model/dates'
+import { formatJalali } from '@/lib/jalali'
 import { useRef, useState } from 'react'
 import {
   Archive,
@@ -35,6 +36,7 @@ import {
 } from '@/lib/task-board-api'
 
 import { useTaskBoard, refreshTaskBoard } from '@/lib/task-board-store'
+import FaDateInput from '@/components/common/FaDateInput'
 
 const columns = [
   { id: 'todo', title: 'kanban.todo', hint: 'kanban.todoHint', icon: CircleDashed },
@@ -43,7 +45,8 @@ const columns = [
 ] as const
 
 export default function KanbanBoard() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const persian = (i18n.language || '').split('-')[0] === 'fa'
   const { board, error: loadError } = useTaskBoard()
   const blocks = useTaskBlocks(activeWorkspaceId())
   const [title, setTitle] = useState('')
@@ -294,11 +297,10 @@ export default function KanbanBoard() {
                           />
                           <label className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
                             {t('Due date')}
-                            <input
-                              type="date"
-                              aria-label={t('Due date')}
+                            <FaDateInput
+                              ariaLabel={t('Due date')}
                               value={dueDate}
-                              onChange={e => setDueDate(e.target.value)}
+                              onChange={setDueDate}
                               className="rounded border border-border bg-background px-2 py-1"
                             />
                           </label>
@@ -325,7 +327,7 @@ export default function KanbanBoard() {
                             type="button"
                             aria-label={card.title}
                             disabled={busy}
-                            className="block w-full text-left"
+                            className="block w-full text-start"
                             onClick={() => startEdit(card)}
                           >
                             <strong className="block break-words text-[13px] font-medium leading-6">
@@ -335,7 +337,9 @@ export default function KanbanBoard() {
                               <span
                                 className={`mt-1 inline-block text-[11px] ${card.status !== 'done' && card.due_date < today ? 'text-destructive' : card.due_date === today ? 'text-primary' : 'text-muted-foreground'}`}
                               >
-                                {t('Due {{date}}', { date: card.due_date })}
+                                {t('Due {{date}}', {
+                                  date: persian ? formatJalali(card.due_date) : card.due_date,
+                                })}
                               </span>
                             )}
                             {blocks[card.id] > 0 && (
@@ -349,7 +353,7 @@ export default function KanbanBoard() {
                               </p>
                             )}
                           </button>
-                          <div className="pointer-events-none absolute -right-0.5 -top-0.5 flex items-center gap-0.5 rounded-r-md bg-gradient-to-l from-popover from-80% to-transparent pl-4 opacity-0 transition-opacity duration-150 group-hover/kanban-card:pointer-events-auto group-hover/kanban-card:opacity-100 group-has-[:focus-visible]/kanban-card:pointer-events-auto group-has-[:focus-visible]/kanban-card:opacity-100 [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100">
+                          <div className="pointer-events-none absolute -end-0.5 -top-0.5 flex items-center gap-0.5 rounded-r-md bg-gradient-to-l from-popover from-80% to-transparent pl-4 opacity-0 transition-opacity duration-150 group-hover/kanban-card:pointer-events-auto group-hover/kanban-card:opacity-100 group-has-[:focus-visible]/kanban-card:pointer-events-auto group-has-[:focus-visible]/kanban-card:opacity-100 [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100">
                             {!showArchived && index > 0 && (
                               <Tooltip label={t('kanban.back')}>
                                 <button

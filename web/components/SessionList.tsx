@@ -261,14 +261,14 @@ export default function SessionList({
                   }}
                   role="button"
                   tabIndex={0}
-                  className={`group relative w-full px-3 py-2.5 text-left transition-colors duration-150 ${
+                  className={`group relative w-full px-3 py-2.5 text-start transition-colors duration-150 ${
                     active
                       ? "bg-background/70 text-[var(--foreground)]"
                       : "text-[var(--foreground)] hover:bg-background/50"
                   }`}
                 >
                   {active && (
-                    <span className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full bg-[var(--primary)]" />
+                    <span className="absolute start-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-e-full bg-[var(--primary)]" />
                   )}
                   <div className="flex items-start gap-1.5">
                     <div className="min-w-0 flex-1">

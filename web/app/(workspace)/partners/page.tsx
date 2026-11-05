@@ -127,7 +127,7 @@ export default function PartnersPage() {
               <Link
                 key={partner.partner_id}
                 href={`/partners/${encodeURIComponent(partner.partner_id)}`}
-                className="group flex items-start gap-3 rounded-2xl border border-[var(--border)] p-4 text-left transition-colors hover:border-[var(--ring)]"
+                className="group flex items-start gap-3 rounded-2xl border border-[var(--border)] p-4 text-start transition-colors hover:border-[var(--ring)]"
               >
                 <PartnerAvatar
                   name={partner.name}
@@ -222,7 +222,7 @@ export default function PartnersPage() {
                 <Link
                   key={group.group_id}
                   href={`/partners/groups/${encodeURIComponent(group.group_id)}`}
-                  className="group flex items-start gap-3 rounded-2xl border border-[var(--border)] p-4 text-left transition-colors hover:border-[var(--ring)]"
+                  className="group flex items-start gap-3 rounded-2xl border border-[var(--border)] p-4 text-start transition-colors hover:border-[var(--ring)]"
                 >
                   <div
                     className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-2xl text-xl"
