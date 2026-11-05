@@ -20,6 +20,7 @@ Thank you to everyone who contributes code, fixes, tests, translations, document
 - [@iSanae233](https://github.com/iSanae233) — [#2306](https://github.com/HKUDS/DeepTutor/pull/2306), [#2445](https://github.com/HKUDS/DeepTutor/pull/2445).
 - [@jingmaowang](https://github.com/jingmaowang) — [#2434](https://github.com/HKUDS/DeepTutor/pull/2434).
 - [@KKandLL-Forever](https://github.com/KKandLL-Forever) — [#2368](https://github.com/HKUDS/DeepTutor/pull/2368), [#2402](https://github.com/HKUDS/DeepTutor/pull/2402), [#2420](https://github.com/HKUDS/DeepTutor/pull/2420).
+- [@LucianVane](https://github.com/LucianVane) — [#2261](https://github.com/HKUDS/DeepTutor/pull/2261), integrated through [#2325](https://github.com/HKUDS/DeepTutor/pull/2325).
 - [@Mahdi-Hasan](https://github.com/Mahdi-Hasan) — [#2375](https://github.com/HKUDS/DeepTutor/pull/2375), [#2454](https://github.com/HKUDS/DeepTutor/pull/2454), [#2456](https://github.com/HKUDS/DeepTutor/pull/2456).
 - [@markjoin123](https://github.com/markjoin123) — [#2332](https://github.com/HKUDS/DeepTutor/pull/2332).
 - [@mathewgeejo](https://github.com/mathewgeejo) — [#2435](https://github.com/HKUDS/DeepTutor/pull/2435).
