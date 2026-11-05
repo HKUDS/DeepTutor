@@ -448,3 +448,144 @@ async def test_codex_preserves_optional_tool_parameters(monkeypatch, strict):
     assert outgoing["parameters"]["required"] == ["question"]
     assert outgoing["parameters"] == function["parameters"]
     assert tools == before
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("streaming", [False, True])
+async def test_custom_headers_reach_codex_http_without_replacing_oauth_identity(
+    monkeypatch: pytest.MonkeyPatch, streaming: bool
+) -> None:
+    service = FakeCodexService()
+    captured: list[httpx.Request] = []
+    actual_client = httpx.AsyncClient
+
+    def upstream(request: httpx.Request) -> httpx.Response:
+        captured.append(request)
+        return httpx.Response(
+            200,
+            headers={"content-type": "text/event-stream"},
+            text='data: {"type":"response.output_text.delta","delta":"ok"}\n\n'
+            'data: {"type":"response.completed","response":{"output":[]}}\n\n',
+        )
+
+    monkeypatch.setattr(module, "get_codex_oauth_service", lambda: service)
+    monkeypatch.setattr(
+        module.httpx,
+        "AsyncClient",
+        lambda **kwargs: actual_client(transport=httpx.MockTransport(upstream), **kwargs),
+    )
+    configured = {
+        "User-Agent": "fixture-client",
+        "X-Trace": "profile",
+        "ORIGINATOR": "fixture-origin",
+    }
+    provider = OpenAICodexProvider(extra_headers=configured)
+    call = provider.chat_stream if streaming else provider.chat
+    result = await call(
+        [{"role": "user", "content": "hello"}],
+        deeptutor_session_id="conversation-one",
+        extra_headers={
+            "x-trace": "call",
+            "x-codex-turn-metadata": "fixture-metadata",
+            "authorization": "Bearer wrong",
+            "CHATGPT-ACCOUNT-ID": "wrong",
+            "Cookie": "wrong",
+            "Host": "wrong",
+            "Content-Type": "text/plain",
+            "session-id": "wrong",
+            "Content-Length": "0",
+        },
+    )
+    assert result.content == "ok"
+    headers = captured[0].headers
+    assert headers["user-agent"] == "fixture-client"
+    assert headers["originator"] == "fixture-origin"
+    assert headers["x-trace"] == "call"
+    assert headers.get_list("x-trace") == ["call"]
+    assert headers["x-codex-turn-metadata"] == "fixture-metadata"
+    assert headers["authorization"] == "Bearer test-access-token"
+    assert headers["chatgpt-account-id"] == "account-123"
+    assert "cookie" not in headers
+    assert headers["host"] == "chatgpt.com"
+    assert headers["content-type"] == "application/json"
+    assert headers["session-id"] == module._prompt_cache_key([], "conversation-one")
+    assert configured == {
+        "User-Agent": "fixture-client",
+        "X-Trace": "profile",
+        "ORIGINATOR": "fixture-origin",
+    }
+
+
+def test_services_factory_preserves_codex_headers() -> None:
+    from deeptutor.services.llm.config import LLMConfig
+    from deeptutor.services.llm.provider_factory import _build_runtime_provider
+
+    config = LLMConfig(
+        binding="openai_codex",
+        api_key="unused",
+        provider_name="openai_codex",
+        model="gpt-test",
+        extra_headers={"X-Trace": "factory"},
+    )
+    provider = _build_runtime_provider(config, native_enabled=False)
+    assert isinstance(provider, OpenAICodexProvider)
+    assert provider.extra_headers == {"X-Trace": "factory"}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("streaming", [False, True])
+async def test_responses_gateway_preserves_configured_and_call_headers(streaming: bool) -> None:
+    import json
+
+    from openai import AsyncOpenAI
+
+    from deeptutor.services.llm.provider_core.openai_compat_provider import OpenAICompatProvider
+
+    captured: list[httpx.Request] = []
+
+    def upstream(request: httpx.Request) -> httpx.Response:
+        captured.append(request)
+        response = {"id": "resp-fixture", "object": "response", "status": "completed", "output": []}
+        if json.loads(request.content).get("stream"):
+            return httpx.Response(
+                200,
+                headers={"content-type": "text/event-stream"},
+                text="data: "
+                + json.dumps({"type": "response.completed", "response": response})
+                + "\n\n",
+            )
+        return httpx.Response(200, json=response)
+
+    configured = {
+        "User-Agent": "fixture-client",
+        "originator": "fixture-origin",
+        "X-Trace": "profile",
+    }
+    provider = OpenAICompatProvider(
+        api_key="gateway-test-key",
+        api_base="https://gateway.test/v1",
+        wire_api="responses",
+        extra_headers=configured,
+    )
+    await provider._client.close()
+    provider._client = AsyncOpenAI(
+        api_key="gateway-test-key",
+        base_url="https://gateway.test/v1",
+        default_headers=configured,
+        http_client=httpx.AsyncClient(transport=httpx.MockTransport(upstream)),
+    )
+    try:
+        await (provider.chat_stream if streaming else provider.chat)(
+            [{"role": "user", "content": "hello"}],
+            extra_headers={"X-Trace": "call", "x-codex-turn-metadata": "fixture-metadata"},
+        )
+        assert len(captured) == 1
+        assert captured[0].url.path == "/v1/responses"
+        assert captured[0].headers["user-agent"] == "fixture-client"
+        assert captured[0].headers["originator"] == "fixture-origin"
+        assert captured[0].headers["x-trace"] == "call"
+        assert captured[0].headers["x-codex-turn-metadata"] == "fixture-metadata"
+        assert captured[0].headers["authorization"] == "Bearer gateway-test-key"
+        assert "extra_headers" not in json.loads(captured[0].content)
+    finally:
+        await provider.aclose()
