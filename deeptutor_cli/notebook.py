@@ -9,6 +9,7 @@ import typer
 
 from deeptutor.app import DeepTutorApp
 from deeptutor.services.notebook.service import NotebookCorruptedError
+from deeptutor.services.rag.file_routing import FileTypeRouter
 
 from .common import console, print_notebook_table
 
@@ -92,7 +93,7 @@ def register(app: typer.Typer) -> None:
             console.print(f"[red]File not found:[/] {file_path}")
             raise typer.Exit(code=1)
 
-        content = path.read_text(encoding="utf-8")
+        content = FileTypeRouter.decode_bytes(path.read_bytes())
         record_title = title or path.stem
 
         client = DeepTutorApp()
@@ -121,7 +122,7 @@ def register(app: typer.Typer) -> None:
             console.print(f"[red]File not found:[/] {file_path}")
             raise typer.Exit(code=1)
 
-        content = path.read_text(encoding="utf-8")
+        content = FileTypeRouter.decode_bytes(path.read_bytes())
 
         client = DeepTutorApp()
         updated = client.update_record(notebook_id, record_id, output=content)
