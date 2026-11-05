@@ -1510,6 +1510,26 @@ def _complete_restarted_update(runtime_home: Path) -> bool:
     return True
 
 
+def _fail_restarted_update(runtime_home: Path, error: str) -> bool:
+    """Record a restart that will not reach readiness, so clients stop waiting.
+
+    Without this, a launcher that exits before ``_complete_restarted_update``
+    leaves the job in ``restarting`` while nothing listens (see #2330).
+    """
+
+    from deeptutor.services.app_update import UpdateJobStore, update_store_root
+
+    store = UpdateJobStore(update_store_root(runtime_home))
+    try:
+        job = store.load()
+    except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError):
+        return False
+    if job.status != "restarting" or job.restart_home != str(runtime_home.resolve()):
+        return False
+    store.mark_failed(job.id, error)
+    return True
+
+
 def start(
     home: str | Path | None = None,
     *,
@@ -1823,8 +1843,17 @@ def start(
             shutdown_wake.wait(1)
     except KeyboardInterrupt:
         request_shutdown("SIGINT")
+    except Exception as exc:
+        _fail_restarted_update(runtime_home, f"Restart failed: {exc}")
+        raise
     finally:
         cleanup()
+        # A clean stop before readiness is still an incomplete update; leave a
+        # durable failure instead of a job that polls forever.
+        _fail_restarted_update(
+            runtime_home,
+            "DeepTutor stopped before the update restart completed.",
+        )
 
     if exit_code:
         raise SystemExit(exit_code)
