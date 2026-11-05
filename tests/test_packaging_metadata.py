@@ -36,6 +36,17 @@ def test_generated_source_dependency_files_are_current():
         assert (ROOT / "requirements" / filename).read_text(encoding="utf-8") == content
 
 
+def test_docling_parser_avoids_source_only_build_dependencies():
+    """The official image has no compiler.
+
+    ``format-video`` pulls ``resemblyzer`` -> ``webrtcvad``, which ships only an
+    sdist. The document parser does not use Docling's video extras, so keep the
+    one-click install runnable in the published image (#2327).
+    """
+    requirements = manifests()["parser-docling"]["requirements"]
+    assert all("format-video" not in requirement for requirement in requirements)
+
+
 @pytest.mark.parametrize(
     "module,requirement",
     [
@@ -55,7 +66,7 @@ def test_generated_source_dependency_files_are_current():
         ("parser-pymupdf4llm", "pymupdf4llm>=1.28.2"),
         ("parser-liteparse", "liteparse>=2.14.2"),
         ("parser-docling", "docling[xbrl]>=2.123.1"),
-        ("parser-docling", "docling-slim[format-iwork,format-opendocument,format-video]>=2.123.1"),
+        ("parser-docling", "docling-slim[format-iwork,format-opendocument]>=2.123.1"),
     ],
 )
 def test_dependency_floor_belongs_to_its_module(module, requirement):
