@@ -23,7 +23,7 @@ from deeptutor.agents.question.pipeline import (
     QuizPlan,
     QuizTemplate,
 )
-from deeptutor.runtime.agentic import LabeledStepResult
+from deeptutor.runtime.agentic import LabeledStepResult, LoopOutcome
 from deeptutor.services.llm.config import LLMConfig
 from deeptutor.services.llm.reasoning_params import RETRY_REASONING_EFFORT
 
@@ -1130,6 +1130,97 @@ def test_parse_quiz_payload_tolerates_trailing_brace_prose() -> None:
     assert parsed["question"] == "What is 2+2?"
     assert parsed["correct_answer"] == "4"
     assert parsed["explanation"] == "basic arithmetic"
+
+
+_CODING_QUIZ = {
+    "question_type": "coding",
+    "question": (
+        "Complete `total` so it returns the sum of `xs`:\n\n```python\ndef total(xs):\n    ...\n```"
+    ),
+    "options": None,
+    "correct_answer": "```python\ndef total(xs):\n    return sum(xs)\n```",
+    "explanation": "`sum()` adds up every element of the list.",
+}
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        pytest.param(json.dumps(_CODING_QUIZ), id="bare-object"),
+        pytest.param(
+            "```json\n" + json.dumps(_CODING_QUIZ, indent=2) + "\n```", id="json-fenced-object"
+        ),
+    ],
+)
+def test_parse_quiz_payload_keeps_code_fences_inside_fields(raw: str) -> None:
+    """``question`` is Markdown and a coding answer is code, so fields carry fences.
+
+    The parser took the first fence in the reply for a wrapper around the
+    JSON and parsed the code sample inside it instead, so the whole question
+    came back as ``{}``.
+    """
+    assert QuestionPipeline._parse_quiz_payload(raw) == _CODING_QUIZ
+
+
+def test_parse_quiz_payload_still_unwraps_a_fence_after_brace_prose() -> None:
+    """The fence still wins over a JSON object in the prose ahead of it."""
+    raw = (
+        'Following the {"question_id": "q1"} template:\n'
+        '```json\n{"question": "What is 2+2?", "correct_answer": "4", '
+        '"explanation": "basic arithmetic"}\n```'
+    )
+    assert QuestionPipeline._parse_quiz_payload(raw) == {
+        "question": "What is 2+2?",
+        "correct_answer": "4",
+        "explanation": "basic arithmetic",
+    }
+
+
+def test_coding_question_with_a_code_block_is_kept_without_a_repair_round() -> None:
+    """The learner got ``[Generation failed] <topic>`` for every such question.
+
+    The FINISH body was a valid question, but the parser returned ``{}`` for
+    it, so the pipeline spent a repair round whose reply the same parser
+    rejected again, then shipped the placeholder with ``N/A`` as the answer
+    and the explanation.
+    """
+    from deeptutor.core.context import UnifiedContext
+
+    pipeline = _make_pipeline()
+    template = QuizTemplate(
+        question_id="q1", topic="Python lists", question_type="coding", difficulty="easy"
+    )
+    body = json.dumps(_CODING_QUIZ)
+    repair_calls: list[dict[str, Any]] = []
+
+    async def _fake_repair_step(**kwargs: Any) -> LabeledStepResult:
+        repair_calls.append(kwargs)
+        return LabeledStepResult(label="FINISH", text=body)
+
+    loop = AsyncMock(return_value=LoopOutcome(final_label="FINISH", final_text=body, iterations=1))
+    with (
+        patch("deeptutor.agents.question.pipeline.run_agentic_loop", loop),
+        patch.object(QuestionPipeline, "_run_labeled_step", side_effect=_fake_repair_step),
+    ):
+        qa = asyncio.run(
+            pipeline._quiz_one(
+                template=template,
+                question_number=1,
+                total_questions=1,
+                exploration_trace="",
+                plan=QuizPlan(analysis="", templates=[template]),
+                previous_pairs=[],
+                image_attachments=[],
+                context=UnifiedContext(user_message="quiz me"),
+                stream=_StubStreamBus(),
+                client=object(),
+            )
+        )
+
+    assert repair_calls == []
+    assert qa.question == _CODING_QUIZ["question"]
+    assert qa.correct_answer == _CODING_QUIZ["correct_answer"]
+    assert qa.metadata == {}
 
 
 # ---------------------------------------------------------------------------
