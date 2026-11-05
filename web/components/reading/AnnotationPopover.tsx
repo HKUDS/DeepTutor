@@ -14,7 +14,12 @@ import {
 import { useTranslation } from 'react-i18next'
 import Tooltip from '@/shared/ui/Tooltip'
 import { useDevice } from '@/hooks/useDevice'
-import { ANNOTATION_COLORS, ANNOTATION_SWATCH, type AnnotationColor } from '@/lib/reading-api'
+import {
+  ANNOTATION_COLORS,
+  ANNOTATION_SWATCH,
+  annotationColorLabel,
+  type AnnotationColor,
+} from '@/lib/reading-api'
 import { PlayAudioButton } from '@/components/voice/SpeechButton'
 
 const AddToNote = dynamic(() => import('@/features/notes/components/AddToNote'), { ssr: false })
@@ -183,10 +188,10 @@ export function AnnotationPopover({
         </div>
         <div className="flex items-center gap-0.5 pr-1">
           {ANNOTATION_COLORS.map(swatch => (
-            <Tooltip key={swatch} label={t(swatchLabel(swatch))} side="top">
+            <Tooltip key={swatch} label={t(annotationColorLabel(swatch))} side="top">
               <button
                 type="button"
-                aria-label={t(swatchLabel(swatch))}
+                aria-label={t(annotationColorLabel(swatch))}
                 aria-pressed={color === swatch}
                 onClick={() => setColor(swatch)}
                 className={`h-5 w-5 rounded-full border transition ${
@@ -395,17 +400,3 @@ function AiChip({ action }: { action: PopoverAiAction }) {
   )
 }
 
-function swatchLabel(color: AnnotationColor): string {
-  switch (color) {
-    case 'green':
-      return 'Green'
-    case 'blue':
-      return 'Blue'
-    case 'pink':
-      return 'Pink'
-    case 'purple':
-      return 'Purple'
-    default:
-      return 'Yellow'
-  }
-}

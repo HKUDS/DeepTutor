@@ -6606,5 +6606,21 @@
   "settings.modelImport.selected": "Вибрано: {{count}}",
   "language.korean": "한국어 (일부 번역)",
   "Zoom level": "Рівень масштабу",
-  "Reset zoom": "Скинути масштаб"
+  "Reset zoom": "Скинути масштаб",
+  "Search annotations…": "Пошук анотацій…",
+  "No matching annotations": "Немає відповідних анотацій",
+  "Try a different word, or clear the search.": "Спробуйте інше слово або очистіть пошук.",
+  "Download annotated PDF": "Завантажити анотований PDF",
+  "Download as Markdown": "Завантажити як Markdown",
+  "Annotated original when available, otherwise the marks": "Оригінал з анотаціями, якщо доступний, інакше самі позначки",
+  "PDF with real annotations": "PDF зі справжніми анотаціями",
+  "The marks, ready to paste": "Позначки, готові до вставлення",
+  "Change colour": "Змінити колір",
+  "Document order": "Порядок документа",
+  "Resize annotations panel": "Змінити ширину панелі анотацій",
+  "Select annotations": "Вибрати анотації",
+  "Filter by colour": "Фільтр за кольором",
+  "All colours": "Усі кольори",
+  "Could not copy to the clipboard.": "Не вдалося копіювати до буфера обміну.",
+  "Some annotations could not be removed.": "Деякі анотації не вдалося видалити."
 }

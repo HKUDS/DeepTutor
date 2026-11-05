@@ -6584,5 +6584,21 @@
   "settings.modelImport.selected": "已选择：{{count}}",
   "language.korean": "한국어 (일부 번역)",
   "Zoom level": "缩放比例",
-  "Reset zoom": "重置缩放"
+  "Reset zoom": "重置缩放",
+  "Search annotations…": "搜索标注…",
+  "No matching annotations": "没有匹配的标注",
+  "Try a different word, or clear the search.": "换个关键词，或清除搜索。",
+  "Download annotated PDF": "下载带标注的 PDF",
+  "Download as Markdown": "下载为 Markdown",
+  "Annotated original when available, otherwise the marks": "有原件时导出带标注的原件，否则导出标注本身",
+  "PDF with real annotations": "带真实标注的 PDF",
+  "The marks, ready to paste": "标注文本，可直接粘贴",
+  "Change colour": "更改颜色",
+  "Document order": "按文档顺序",
+  "Resize annotations panel": "调整标注面板宽度",
+  "Select annotations": "选择标注",
+  "Filter by colour": "按颜色筛选",
+  "All colours": "全部颜色",
+  "Could not copy to the clipboard.": "无法复制到剪贴板。",
+  "Some annotations could not be removed.": "部分标注未能删除。"
 }

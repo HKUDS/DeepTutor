@@ -7489,5 +7489,21 @@
   "settings.modelImport.selected": "Sélectionnés : {{count}}",
   "language.korean": "한국어 (일부 번역)",
   "Zoom level": "Niveau de zoom",
-  "Reset zoom": "Réinitialiser le zoom"
+  "Reset zoom": "Réinitialiser le zoom",
+  "Search annotations…": "Rechercher des annotations…",
+  "No matching annotations": "Aucune annotation correspondante",
+  "Try a different word, or clear the search.": "Essayez un autre mot ou effacez la recherche.",
+  "Download annotated PDF": "Télécharger le PDF annoté",
+  "Download as Markdown": "Télécharger en Markdown",
+  "Annotated original when available, otherwise the marks": "L'original annoté si disponible, sinon les annotations",
+  "PDF with real annotations": "PDF avec de vraies annotations",
+  "The marks, ready to paste": "Les annotations, prêtes à coller",
+  "Change colour": "Changer la couleur",
+  "Document order": "Ordre du document",
+  "Resize annotations panel": "Redimensionner le panneau d'annotations",
+  "Select annotations": "Sélectionner des annotations",
+  "Filter by colour": "Filtrer par couleur",
+  "All colours": "Toutes les couleurs",
+  "Could not copy to the clipboard.": "Impossible de copier dans le presse-papiers.",
+  "Some annotations could not be removed.": "Certaines annotations n'ont pas pu être supprimées."
 }
