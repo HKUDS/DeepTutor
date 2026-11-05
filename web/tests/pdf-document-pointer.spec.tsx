@@ -101,6 +101,70 @@ describe("the reading surface", () => {
     });
   });
 
+  it("keeps the bar up while the pointer is over it, even away from the edge", async () => {
+    const { root, ...view } = await openReader();
+    const trigger = await controlsBar(view);
+    const wrapper = trigger.parentElement!.parentElement!;
+    // Entering the bar pins it: without this a reader who moved the pointer
+    // onto the controls would find them fading out from under them.
+    act(() => {
+      fireEvent.pointerEnter(wrapper);
+    });
+    await waitFor(() => expect(wrapper.className).toContain("opacity-100"));
+    // Then move the pointer to the top of the pane. `pointerNearBottom` is
+    // false here, so only `overControls` can keep the hide timer unarmed.
+    act(() => {
+      fireEvent.pointerMove(root, { clientY: -200 });
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 600));
+    });
+    expect(wrapper.className).toContain("opacity-100");
+  });
+
+  it("hides the bar once the pointer leaves it", async () => {
+    const { root, ...view } = await openReader();
+    const trigger = await controlsBar(view);
+    const wrapper = trigger.parentElement!.parentElement!;
+    act(() => {
+      fireEvent.pointerEnter(wrapper);
+    });
+    await waitFor(() => expect(wrapper.className).toContain("opacity-100"));
+    act(() => {
+      fireEvent.pointerMove(root, { clientY: -200 });
+    });
+    act(() => {
+      fireEvent.pointerLeave(wrapper);
+    });
+    // Leaving the bar un-pins it, so the hide the move armed can now land.
+    await waitFor(() => expect(wrapper.className).not.toContain("opacity-100"), {
+      timeout: 1500,
+    });
+  });
+
+  it("reveals the bar only inside the bottom strip, not anywhere near it", async () => {
+    const { root, ...view } = await openReader();
+    const trigger = await controlsBar(view);
+    const wrapper = trigger.parentElement!.parentElement!;
+    // jsdom has no layout, so the handler's own rect is stubbed: a 500px tall
+    // root whose bottom edge is at 580 leaves the reveal strip starting at 508.
+    // A pointer 100px above that edge is well outside it.
+    root.getBoundingClientRect = () =>
+      new DOMRect(120, 80, 600, 500);
+    act(() => {
+      fireEvent.pointerMove(root, { clientY: 480 });
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 600));
+    });
+    expect(wrapper.className).not.toContain("opacity-100");
+    act(() => {
+      fireEvent.pointerMove(root, { clientY: 540 });
+    });
+    // 40px above the bottom edge: inside the strip, so the bar comes up.
+    await waitFor(() => expect(wrapper.className).toContain("opacity-100"));
+  });
+
   it("survives a pointer move without a usable coordinate", async () => {
     const { root } = await openReader();
     act(() => {
