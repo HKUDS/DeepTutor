@@ -656,17 +656,13 @@ class OpenAICompatProvider(LLMProvider):
             if item_index >= len(input_items):
                 return None
             rejected_item = input_items[item_index]
-            if (
-                not isinstance(rejected_item, dict)
-                or rejected_item.get("type") != "message"
-                or "status" not in rejected_item
-            ):
+            if not isinstance(rejected_item, dict) or "status" not in rejected_item:
                 return None
 
         sanitized_items: list[Any] = []
         has_status = False
         for item in input_items:
-            if isinstance(item, dict) and item.get("type") == "message" and "status" in item:
+            if isinstance(item, dict) and "status" in item:
                 sanitized_items.append(
                     {key: value for key, value in item.items() if key != "status"}
                 )
