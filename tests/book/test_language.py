@@ -20,6 +20,9 @@ from deeptutor.book.language import resolve_book_language
         ("Hãy tạo một cuốn sách về giải thuật bằng tiếng Việt", "vi"),
         ("Please write the book in Vietnamese", "vi"),
         ("Please create a book about Japanese history", "en"),
+        ("Please write the book in Traditional Chinese", "zh-tw"),
+        ("Write the book in Mandarin, please", "zh"),
+        ("Hazlo en español", "es"),
     ],
 )
 def test_auto_uses_high_confidence_language_signals(intent: str, expected: str) -> None:
@@ -30,6 +33,26 @@ def test_auto_uses_high_confidence_language_signals(intent: str, expected: str) 
             fallback_language="en",
         )
         == expected
+    )
+
+
+@pytest.mark.parametrize(
+    "intent",
+    [
+        "Create a book about renewable energy policy in Germany",
+        "Explain the dialects of Berlin German",
+        "Write a book about Traditional Chinese Medicine",
+        "A guide to the main English Premier League clubs",
+    ],
+)
+def test_a_cue_inside_another_word_or_a_topic_is_not_a_language_request(intent: str) -> None:
+    assert (
+        resolve_book_language(
+            user_intent=intent,
+            requested_language="auto",
+            fallback_language="zh",
+        )
+        == "zh"
     )
 
 
