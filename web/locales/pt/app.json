@@ -6598,5 +6598,6 @@
   "settings.modelImport.clear": "Limpar seleção",
   "settings.modelImport.unverified": "Alguns modelos não declaram o tipo. Teste-os antes de usar neste serviço.",
   "settings.modelImport.draftHint": "Os modelos são adicionados ao rascunho. Aplique as alterações para salvar; o modelo padrão permanece igual.",
-  "settings.modelImport.selected": "Selecionados: {{count}}"
+  "settings.modelImport.selected": "Selecionados: {{count}}",
+  "language.korean": "한국어 (일부 번역)"
 }
