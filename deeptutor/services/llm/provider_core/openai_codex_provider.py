@@ -91,6 +91,9 @@ class OpenAICodexProvider(LLMProvider):
             try:
                 token = await self._load_token()
                 service.validate_runtime_profile(token, model_slug, reasoning_effort)
+                resolved_effort = _runtime_reasoning_effort(model_slug, reasoning_effort)
+                if resolved_effort:
+                    body["reasoning"] = {"effort": resolved_effort}
                 headers = _build_headers(
                     token.account_id,
                     token.access_token,
@@ -203,6 +206,37 @@ class OpenAICodexProvider(LLMProvider):
 
     def get_default_model(self) -> str:
         return self.default_model
+
+
+def _normalize_reasoning_effort(requested: str | None, supported_levels: object) -> str | None:
+    """Honor low-reasoning callers without sending an unsupported off switch."""
+    if requested not in {"none", "minimal"} or not isinstance(supported_levels, (list, tuple)):
+        return requested
+    if requested in supported_levels:
+        return requested
+    for effort in ("none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"):
+        if effort in supported_levels:
+            return effort
+    return requested
+
+
+def _runtime_reasoning_effort(model_slug: str, requested: str | None) -> str | None:
+    # Book blocks request "none" to favor visible output. Codex model support
+    # varies; use the owner's advertised capabilities after account validation.
+    if requested not in {"none", "minimal"}:
+        return requested
+    from deeptutor.multi_user.personal_models import owner_catalog_service
+
+    catalog = owner_catalog_service().load()
+    for profile in catalog.get("services", {}).get("llm", {}).get("profiles", []):
+        if profile.get("managed_by") != "openai_codex_oauth":
+            continue
+        for model in profile.get("models", []):
+            if model.get("model") == model_slug:
+                return _normalize_reasoning_effort(
+                    requested, model.get("codex_supported_reasoning_levels")
+                )
+    return requested
 
 
 def _strip_model_prefix(model: str) -> str:
