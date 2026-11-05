@@ -254,3 +254,26 @@ def test_long_timezone_span_fails_instead_of_silently_truncating(store):
     create(store, tzid="America/New_York", rrule="FREQ=YEARLY;COUNT=50")
     with pytest.raises(ValueError, match="40 years"):
         ics(store)
+
+
+def test_all_day_events_do_not_widen_the_timezone_window(store):
+    # All-day events carry the browser's zone but are exported as floating
+    # dates, so a yearly birthday from 1980 must not drag the zone's
+    # VTIMEZONE back decades (or past the 40-year limit).
+    create(store, tzid="Europe/Berlin")
+    create(
+        store,
+        title="Birthday",
+        all_day=True,
+        start="1980-05-01",
+        end="1980-05-02",
+        tzid="Europe/Berlin",
+        rrule="FREQ=YEARLY",
+    )
+    text = ics(store)
+    assert [block["SUMMARY"] for block in vevents(text)] == [["Birthday"], ["Study"]]
+    lines = unfold(text)
+    zone_lines = lines[lines.index("BEGIN:VTIMEZONE") : lines.index("END:VTIMEZONE")]
+    onsets = [line.split(":", 1)[1] for line in zone_lines if line.startswith("DTSTART:")]
+    assert min(onsets) >= "2025"
+    assert "20260329T020000" in onsets
