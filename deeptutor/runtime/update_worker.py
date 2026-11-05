@@ -87,8 +87,11 @@ def _run_logged(command: list[str], *, cwd: Path, log_path: Path) -> int:
 
 def _launch_restart(job: UpdateJob, *, log_path: Path) -> subprocess.Popen[bytes]:
     command, home = build_restart_command(job)
+    env = os.environ.copy()
+    env["PYTHONSAFEPATH"] = "1"
     kwargs: dict[str, object] = {
         "cwd": str(home),
+        "env": env,
         "stdin": subprocess.DEVNULL,
         "stderr": subprocess.STDOUT,
         "close_fds": True,
