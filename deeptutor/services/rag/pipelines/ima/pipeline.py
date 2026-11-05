@@ -151,18 +151,10 @@ class ImaPipeline:
         Each fetch is independent, so they run together — a search that needs
         four documents costs one round-trip's latency, not four. A document that
         cannot be loaded keeps its snippet (or stays a title-only reference):
-        one unavailable file must never discard the other matches. Items whose
-        title names a format the text extractor cannot decode never fetch at
-        all and are reported as ``unsupported_format`` (#2338).
+        one unavailable file must never discard the other matches.
         """
         targets = source_policy.hydration_targets(sources)
-        # #2338: an item whose title names a format the text extractor cannot
-        # decode (legacy Office, images, …) can never hydrate, so say so
-        # instead of surfacing as an unexplained content_unavailable.
-        failures = [
-            {"source_id": sources[index]["chunk_id"], "error_type": "unsupported_format"}
-            for index in source_policy.unhydratable_format_ids(sources)
-        ]
+        failures = []
         if not targets:
             return failures
         results = await asyncio.gather(
@@ -170,7 +162,11 @@ class ImaPipeline:
             return_exceptions=True,
         )
         for index, result in zip(targets, results):
-            if isinstance(result, BaseException):
+            if isinstance(result, media_ops.UnsupportedMediaFormat):
+                failures.append(
+                    {"source_id": sources[index]["chunk_id"], "error_type": "unsupported_format"}
+                )
+            elif isinstance(result, BaseException):
                 # HTTP errors may embed a signed COS URL; log only the error
                 # class so short-lived download credentials never reach logs.
                 self.logger.warning(

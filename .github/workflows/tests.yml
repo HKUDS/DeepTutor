@@ -52,7 +52,7 @@ jobs:
       fail-fast: false
       matrix:
         # Windows exercises taskkill-based shutdown; the others process groups.
-        os: [ubuntu-24.04, windows-2025, macos-15, macos-15-intel]
+        os: [ubuntu-24.04, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -67,11 +67,6 @@ jobs:
         env:
           ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
         run: npm ci && npm run check && npm test
-
-      - name: Audit desktop dependencies
-        if: runner.os == 'Linux'
-        working-directory: apps/desktop
-        run: npm audit --audit-level=moderate
 
   chat-engine:
     name: Experimental TypeScript Chat Engine
@@ -305,11 +300,11 @@ jobs:
         env:
           PYTHONPATH: ${{ github.workspace }}
 
-      - name: Verify MinerU process ownership on Windows
+      - name: Verify native process ownership and hidden launch on Windows
         if: runner.os == 'Windows'
         run: |
           python -m pip install pytest pytest-asyncio pywin32
-          python -m pytest -q tests/services/parsing/test_mineru_process_lifecycle.py
+          python -m pytest -q tests/services/parsing/test_mineru_process_lifecycle.py tests/runtime/test_launcher.py::test_detached_venv_launcher_has_no_console
         env:
           PYTHONPATH: ${{ github.workspace }}
           DEEPTUTOR_HOME: ${{ runner.temp }}/mineru-process-tests

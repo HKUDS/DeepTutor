@@ -1393,3 +1393,34 @@ def test_kill_port_listeners_reports_kill_round_failures_per_target(
     assert (123, launcher.KILL_SIGNAL) in sent
     assert (456, launcher.KILL_SIGNAL) in sent
     assert any("SIGKILL" in record.getMessage() for record in caplog.records)
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows venv console inheritance")
+def test_detached_venv_launcher_has_no_console(tmp_path, monkeypatch):
+    import venv
+
+    env_dir = tmp_path / "venv"
+    venv.EnvBuilder(with_pip=False).create(env_dir)
+    modules = tmp_path / "modules"
+    cli = modules / "deeptutor_cli"
+    cli.mkdir(parents=True)
+    (cli / "__init__.py").touch()
+    (cli / "main.py").write_text(
+        "import ctypes\nfrom pathlib import Path\n"
+        "Path('console.txt').write_text(str(bool(ctypes.windll.kernel32.GetConsoleWindow())))\n",
+        encoding="utf-8",
+    )
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / "deeptutor_cli").mkdir()
+    (home / "deeptutor_cli" / "__init__.py").write_text("raise RuntimeError('stale source')")
+    monkeypatch.setenv("PYTHONPATH", str(modules))
+    monkeypatch.setattr(launcher.sys, "executable", str(env_dir / "Scripts" / "python.exe"))
+    launcher._launch_detached(home, dev=False, open_browser=False)
+    marker = home / "console.txt"
+    deadline = time.monotonic() + 15
+    while time.monotonic() < deadline:
+        if marker.exists() and marker.stat().st_size:
+            break
+        time.sleep(0.05)
+    assert marker.read_text() == "False"

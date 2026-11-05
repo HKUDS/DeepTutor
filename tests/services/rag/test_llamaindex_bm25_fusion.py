@@ -191,3 +191,15 @@ def test_bm25_keeps_short_cjk_terms_and_existing_english_stopwords(
             "exercise"
         ]
     assert all(not hit.score for hit in retriever.retrieve("a"))
+
+
+def test_version_prefix_and_sentence_boundaries():
+    import re
+
+    assert re.findall(retriever_module.BM25_TOKEN_PATTERN, "v1.7.1 习题2.6.8 End.Next") == [
+        "v1.7.1",
+        "习题",
+        "2.6.8",
+        "End",
+        "Next",
+    ]

@@ -90,50 +90,27 @@ def hydration_targets(
 
     Snippet-less matches come first (they carry no evidence at all), then thin
     snippets in rank order. Sources without an item id cannot be fetched and are
-    never returned, and items whose title names a format the extractor cannot
-    decode are skipped so they do not spend budget ahead of extractable ones
+    never returned, and titles suggesting an unsupported format are tried last
+    so they do not spend budget ahead of likely extractable items
     (#2338).
     """
     if budget <= 0:
         return []
     empty: list[int] = []
     thin: list[int] = []
+    unlikely: list[int] = []
     for index, source in enumerate(sources):
         if not source.get("chunk_id"):
             continue
-        if _title_names_unextractable_format(source):
-            # Never spend a download on a format that cannot yield text (#2338).
-            continue
         content = str(source.get("content") or "").strip()
+        if len(content) < min_chars and _title_names_unextractable_format(source):
+            unlikely.append(index)
+            continue
         if not content:
             empty.append(index)
         elif len(content) < min_chars:
             thin.append(index)
-    return (empty + thin)[:budget]
-
-
-def unhydratable_format_ids(
-    sources: Sequence[dict[str, Any]],
-    *,
-    min_chars: int = MIN_USEFUL_SNIPPET_CHARS,
-) -> list[int]:
-    """Indices of snippet-less or thin sources whose format cannot yield text.
-
-    The same rule :func:`hydration_targets` uses to protect the fetch budget:
-    these sources would otherwise hydrate to nothing and surface as an
-    unexplained ``content_unavailable`` (#2338). Reported separately by the
-    pipeline as ``unsupported_format``.
-    """
-    skipped: list[int] = []
-    for index, source in enumerate(sources):
-        if not source.get("chunk_id"):
-            continue
-        content = str(source.get("content") or "").strip()
-        if content and len(content) >= min_chars:
-            continue
-        if _title_names_unextractable_format(source):
-            skipped.append(index)
-    return skipped
+    return (empty + thin + unlikely)[:budget]
 
 
 def render_context(sources: Sequence[dict[str, Any]]) -> str:
@@ -152,5 +129,4 @@ __all__ = [
     "documents_to_sources",
     "hydration_targets",
     "render_context",
-    "unhydratable_format_ids",
 ]

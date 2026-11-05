@@ -27,7 +27,7 @@ BM25_PERSIST_DIRNAME = "bm25_retriever"
 _BM25_TOKEN_PATTERN_FILENAME = "token_pattern.txt"
 # Split word runs before adjacent dotted numbers, retaining single-character terms.
 # Check for an identifier only at the start of a digit run to avoid quadratic scans.
-BM25_TOKEN_PATTERN = r"(?u)\d+(?:\.\d+)+|(?:(?!(?<!\d)\d+\.\d)\w)+"
+BM25_TOKEN_PATTERN = r"(?u)\b[vV]\d+(?:\.\d+)+|\d+(?:\.\d+)+|(?:(?!(?<!\d)\d+\.\d)\w)+"
 
 
 class _MatchedOnlyRetriever(BaseRetriever):

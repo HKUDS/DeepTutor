@@ -180,3 +180,26 @@ def test_update_command_rejects_non_stable_or_injected_versions() -> None:
         build_update_command("1.7.0rc1")
     with pytest.raises(ValueError):
         build_update_command("1.7.0; touch /tmp/nope")
+
+
+def test_restart_ignores_stale_package_under_runtime_home(tmp_path, monkeypatch):
+    import os
+    import sys
+
+    from deeptutor.runtime import update_worker
+
+    _, job = _handoff_job(tmp_path)
+    home = Path(job.restart_home)
+    (home / "dt_probe.py").write_text("raise RuntimeError('stale source')", encoding="utf-8")
+    installed = tmp_path / "installed"
+    installed.mkdir()
+    (installed / "dt_probe.py").write_text("print('installed package')", encoding="utf-8")
+    monkeypatch.setenv("PYTHONPATH", str(installed))
+    monkeypatch.delenv("PYTHONSAFEPATH", raising=False)
+    monkeypatch.setattr(
+        update_worker, "build_restart_command", lambda _: ([sys.executable, "-m", "dt_probe"], home)
+    )
+    log = tmp_path / "restart.log"
+    process = update_worker._launch_restart(job, log_path=log)
+    assert process.wait(timeout=15) == 0
+    assert "installed package" in log.read_text()

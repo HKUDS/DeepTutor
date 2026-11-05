@@ -228,6 +228,15 @@ class TestLegacyTutorBotMigration:
         assert cfg.name == "Old Bot"
         assert cfg.channels["telegram"]["token"] == "tok"
 
+    def test_different_legacy_names_with_same_slug_survive_restart(self, partners_root):
+        self._seed_legacy_bot(partners_root.parent, bot_id="old bot")
+        self._seed_legacy_bot(partners_root.parent, bot_id="old-bot")
+        for _ in range(2):
+            mgr = _mgr()
+            ids = mgr._discover_partner_ids()
+            assert {mgr.load_config(pid).soul_origin["id"] for pid in ids} == {"old bot", "old-bot"}
+            assert len(ids) == 2
+
     def test_migration_is_idempotent_and_non_destructive(self, partners_root):
         admin_root = partners_root.parent
         legacy = self._seed_legacy_bot(admin_root)
