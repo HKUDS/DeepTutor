@@ -78,15 +78,12 @@ def cli_process(cmd: list[str], log_path: Path, env: dict[str, str]):
                         os.killpg(process.pid, sig)
                     except ProcessLookupError:
                         break
+                    except PermissionError:
+                        if _process_group_alive(process.pid):
+                            raise
+                        break
             if process is not None:
                 process.wait(timeout=5)
-            # Reaping the direct child says nothing about the group: ``killpg``
-            # only queues the signal, and a CLI that exits on its own is reaped
-            # before the signal even lands on what it spawned. Publishing the
-            # parse at that point leaves those descendants running (#2426), so
-            # the group is polled until it is empty — the same "settle or fail
-            # loudly" contract the Windows branch above enforces on its job
-            # object, with the same deadline.
             if sys.platform != "win32" and process is not None:
                 deadline = time.monotonic() + 5
                 while _process_group_alive(process.pid):
@@ -96,18 +93,41 @@ def cli_process(cmd: list[str], log_path: Path, env: dict[str, str]):
 
 
 def _process_group_alive(pgid: int) -> bool:
-    """Whether the process group still has a signalable member.
-
-    Signal 0 performs the permission and existence checks without delivering
-    anything. The group disappears once its last member is gone, so
-    ``ProcessLookupError`` is the settled state. A member that was reparented
-    and left unreaped does not keep the group alive, verified on Linux, so this
-    cannot spin forever on a zombie.
-    """
+    """A killed group may remain visible while init reaps its zombies."""
     try:
         os.killpg(pgid, 0)
     except ProcessLookupError:
         return False
     except PermissionError:
-        return False
-    return True
+        # Darwin also reports EPERM on a group containing only zombies.
+        pass
+
+    if sys.platform != "darwin":
+        import psutil
+
+        saw_member = False
+        for proc in psutil.process_iter():
+            try:
+                if os.getpgid(proc.pid) != pgid:
+                    continue
+                saw_member = True
+                if proc.status() not in {psutil.STATUS_ZOMBIE, psutil.STATUS_DEAD}:
+                    return True
+            except (ProcessLookupError, psutil.NoSuchProcess):
+                continue
+            except psutil.AccessDenied:
+                return True
+        return not saw_member
+
+    # On Darwin getpgid(pid) can no longer resolve an unreaped zombie;
+    # ps exposes the kernel group and state together on both POSIX targets.
+    rows = subprocess.check_output(  # nosec B603 B607 -- fixed POSIX utility, no shell
+        ["/bin/ps", "-Ao", "pgid=,stat="], text=True, timeout=2
+    )
+    states = [
+        state
+        for group, state in (line.split() for line in rows.splitlines() if line.strip())
+        if group == str(pgid)
+    ]
+    # An existing group hidden from inspection must not be declared settled.
+    return not states or any(not state.startswith("Z") for state in states)

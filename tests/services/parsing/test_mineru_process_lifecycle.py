@@ -45,6 +45,8 @@ def run_fixture(tmp_path, monkeypatch, code, run=None, idle=0.05, timeout=30, ex
     popen = subprocess.Popen
 
     def spawn(cmd, **kwargs):
+        if cmd[0] != sys.executable:
+            return popen(cmd, **kwargs)
         output = cmd[cmd.index("-o") + 1]
         return popen([sys.executable, "-c", code, output], **kwargs)
 
@@ -157,3 +159,34 @@ def test_settled_rejects_a_running_child() -> None:
     finally:
         child.kill()
         child.wait(timeout=5)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX process groups")
+def test_group_probe_distinguishes_live_and_unreaped_members():
+    from deeptutor.services.parsing.engines.mineru._process import _process_group_alive
+
+    process = subprocess.Popen(
+        [sys.executable, "-c", "import time; time.sleep(30)"], start_new_session=True
+    )
+    try:
+        assert _process_group_alive(process.pid)
+        process.kill()
+        deadline = time.monotonic() + 2
+        while psutil.Process(process.pid).status() != psutil.STATUS_ZOMBIE:
+            assert time.monotonic() < deadline
+            time.sleep(0.01)
+        assert not _process_group_alive(process.pid)
+    finally:
+        process.kill()
+        process.wait(timeout=5)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX process groups")
+def test_permission_error_never_confirms_group_cleanup(monkeypatch):
+    from deeptutor.services.parsing.engines.mineru import _process
+
+    def denied(*_args):
+        raise PermissionError
+
+    monkeypatch.setattr(_process.os, "killpg", denied)
+    assert _process._process_group_alive(12345)

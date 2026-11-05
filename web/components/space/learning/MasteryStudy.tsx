@@ -23,7 +23,6 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { ChatMessageList } from "@/features/chat/messages";
 import { SelectionSpeechToolbar } from "@/components/voice/SelectionSpeechToolbar";
 import { ChatViewerBridges } from "@/components/chat/home/ChatViewerBridges";
 import { buildSessionActivity } from "@/lib/session-activity";
@@ -111,6 +110,10 @@ const MODE_PRESENTATION: Record<
       "Review re-tests what you have already mastered. Due items come first, but you can revisit anything.",
   },
 };
+
+const ChatMessageList = dynamic(
+  () => import("@/features/chat/messages").then(module => module.ChatMessageList),
+);
 
 const SaveToNotebookModal = dynamic(
   () => import("@/components/notebook/SaveToNotebookModal"),

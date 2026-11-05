@@ -67,10 +67,11 @@ export function LearningBoard({
       setScrollRange(Math.max(0, viewport.scrollWidth - viewport.clientWidth));
       setScrollPosition(Math.max(0, viewport.scrollLeft));
     };
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(measure);
     observer.observe(viewport);
     observer.observe(content);
-    measure();
     return () => observer.disconnect();
   }, []);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -195,7 +196,7 @@ export function LearningBoard({
           min={0}
           max={scrollRange}
           value={Math.min(scrollPosition, scrollRange)}
-          aria-label={zh ? "看板横向滚动" : "Scroll board horizontally"}
+          aria-label={t("Board")}
           className="w-full shrink-0 cursor-ew-resize accent-[var(--primary)]"
           onChange={(event) => {
             const viewport = scrollport.current;
