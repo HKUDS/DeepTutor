@@ -285,8 +285,8 @@ class TestExtractPptx:
             )
         prs = Presentation()
         slide = prs.slides.add_slide(prs.slide_layouts[6])
-        rows = [["Name", "Score", "Grade"], ["Ada", "", "A"], ["", "71", "B"], ["", "", ""]]
-        table = slide.shapes.add_table(4, 3, Inches(1), Inches(1), Inches(6), Inches(2)).table
+        rows = [["Name", "Score", "Grade"], ["Ada", "", "A"], ["Bob", "", ""], ["", "71", "B"], ["", "", ""]]
+        table = slide.shapes.add_table(5, 3, Inches(1), Inches(1), Inches(6), Inches(2)).table
         for r, row in enumerate(rows):
             for c, value in enumerate(row):
                 table.cell(r, c).text = value
@@ -295,7 +295,7 @@ class TestExtractPptx:
 
         text = extract_text_from_bytes("deck.pptx", buf.getvalue())
 
-        assert text == "--- Slide 1 ---\nName\tScore\tGrade\nAda\t\tA\n\t71\tB"
+        assert text == "--- Slide 1 ---\nName\tScore\tGrade\nAda\t\tA\nBob\n\t71\tB"
 
     def test_ooxml_fallback_without_python_pptx(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(document_extractor_module, "PptxPresentation", None)
