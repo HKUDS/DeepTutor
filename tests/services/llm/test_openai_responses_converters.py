@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import pytest
+
 from deeptutor.services.llm.provider_core.openai_responses import (
     adapt_chat_kwargs_to_responses,
     convert_messages,
     convert_tool_choice,
+    parse_response_output,
 )
 
 
@@ -84,6 +87,107 @@ class TestConvertMessages:
         )
 
         assert input_items == native_items
+
+    def test_replay_leaves_out_a_null_status(self) -> None:
+        # The SDK dumps an item that arrived without a status as
+        # ``"status": None``; the Responses API rejects that null on input
+        # ("Unknown parameter: 'input[N].status'").
+        native_items = [
+            {
+                "type": "reasoning",
+                "id": "rs_1",
+                "summary": [],
+                "content": None,
+                "encrypted_content": "enc",
+                "status": None,
+            },
+            {
+                "type": "function_call",
+                "id": "fc_1",
+                "call_id": "call_1",
+                "name": "rag",
+                "arguments": "{}",
+                "status": None,
+            },
+        ]
+
+        _instructions, input_items = convert_messages(
+            [
+                {
+                    "role": "assistant",
+                    "content": None,
+                    "_provider_response_state": {"responses_output_items": native_items},
+                }
+            ]
+        )
+
+        assert all("status" not in item for item in input_items)
+        # Nothing else is touched: the encrypted reasoning and call linkage stay.
+        assert input_items[0] == {
+            "type": "reasoning",
+            "id": "rs_1",
+            "summary": [],
+            "content": None,
+            "encrypted_content": "enc",
+        }
+        assert input_items[1]["call_id"] == "call_1"
+
+    def test_replay_keeps_a_status_the_provider_sent(self) -> None:
+        native_items = [
+            {
+                "type": "message",
+                "id": "msg_1",
+                "role": "assistant",
+                "content": [{"type": "output_text", "text": "previous answer"}],
+                "status": "completed",
+            },
+            {
+                "type": "reasoning",
+                "id": "rs_1",
+                "summary": [],
+                "status": "incomplete",
+            },
+        ]
+
+        _instructions, input_items = convert_messages(
+            [
+                {
+                    "role": "assistant",
+                    "content": "previous answer",
+                    "_provider_response_state": {"responses_output_items": native_items},
+                }
+            ]
+        )
+
+        assert input_items == native_items
+
+    def test_replays_a_reasoning_item_as_the_sdk_dumps_it(self) -> None:
+        # Regression for DeepTutor#2373: the dump of a real SDK reasoning item
+        # carries ``status: None``, which used to be replayed on the next
+        # round after a tool call.
+        responses = pytest.importorskip("openai.types.responses")
+
+        reasoning = responses.ResponseReasoningItem(
+            id="rs_1", summary=[], type="reasoning", encrypted_content="enc"
+        )
+        parsed = parse_response_output({"status": "completed", "output": [reasoning]})
+        native_items = parsed.provider_specific_fields["native_output_items"]
+
+        _instructions, input_items = convert_messages(
+            [
+                {
+                    "role": "assistant",
+                    "content": None,
+                    "_provider_response_state": {"responses_output_items": native_items},
+                }
+            ]
+        )
+
+        assert len(input_items) == 1
+        assert input_items[0]["type"] == "reasoning"
+        assert input_items[0]["id"] == "rs_1"
+        assert input_items[0]["encrypted_content"] == "enc"
+        assert "status" not in input_items[0]
 
 
 class TestConvertToolChoice:
