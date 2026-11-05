@@ -14,12 +14,15 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import suppress
 from copy import deepcopy
 from dataclasses import dataclass, field
+import hashlib
 import json
 import logging
+from pathlib import Path
 import re
 import tempfile
 from types import ModuleType
 from typing import Any
+import uuid
 
 from deeptutor.services.llm.provider_core.base import LLMProvider, LLMResponse
 from deeptutor.services.llm.provider_core.sdk_bridge import (
@@ -36,6 +39,11 @@ DEFAULT_CLAUDE_CODE_MODEL = "claude-code/default"
 CLAUDE_CODE_MODELS = ("default", "sonnet", "opus", "haiku")
 _SESSION_POOL_MAXSIZE = 4
 _LABEL = "Claude Code"
+# The SDK passes an inline system prompt as ``--system-prompt <text>``. Windows
+# caps the whole command line at 32,767 characters, and a spawn over that fails
+# with WinError 206, which the SDK reports as "Claude Code not found". Longer
+# prompts go through a file instead.
+_INLINE_SYSTEM_PROMPT_LIMIT = 8_000
 
 logger = logging.getLogger(__name__)
 
@@ -495,6 +503,19 @@ def _sdk_prompt(prompt: _Prompt) -> str | AsyncIterator[dict[str, Any]]:
     return stream()
 
 
+def _system_prompt_option(system_prompt: str, cwd: str) -> str | dict[str, str]:
+    """Return the prompt inline, or as a file option when it is too long for argv."""
+    if len(system_prompt) <= _INLINE_SYSTEM_PROMPT_LIMIT:
+        return system_prompt
+    digest = hashlib.sha256(system_prompt.encode("utf-8")).hexdigest()[:16]
+    path = Path(cwd) / f"system-prompt-{digest}.md"
+    if not path.exists():
+        staging = path.with_suffix(f".{uuid.uuid4().hex}.tmp")
+        staging.write_text(system_prompt, encoding="utf-8")
+        staging.replace(path)
+    return {"type": "file", "path": str(path)}
+
+
 def _build_options(
     sdk: ModuleType,
     model: str | None,
@@ -507,7 +528,7 @@ def _build_options(
     stripped_model = _strip_model_prefix(model)
     return sdk.ClaudeAgentOptions(
         **({"model": stripped_model} if stripped_model else {}),
-        system_prompt=system_prompt,
+        system_prompt=_system_prompt_option(system_prompt, cwd),
         # No built-in Claude Code tools and none of the operator's settings,
         # CLAUDE.md files, hooks or plugins: this is a plain model endpoint.
         cwd=cwd,

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 import sys
 from types import SimpleNamespace
 
@@ -8,6 +9,9 @@ import pytest
 
 from deeptutor.services.llm.config import LLMConfig
 from deeptutor.services.llm.provider_core import ClaudeCodeProvider
+from deeptutor.services.llm.provider_core.claude_code_provider import (
+    _INLINE_SYSTEM_PROMPT_LIMIT,
+)
 from deeptutor.services.llm.provider_factory import get_runtime_provider
 from deeptutor.services.provider_registry import find_by_name
 
@@ -113,6 +117,53 @@ WEATHER_TOOL = {
         "parameters": {"type": "object", "properties": {"city": {"type": "string"}}},
     },
 }
+
+
+@pytest.mark.asyncio
+async def test_long_system_prompt_goes_to_a_file_not_the_command_line(monkeypatch) -> None:
+    """Windows rejects a spawn over 32,767 characters, so long prompts use a file."""
+    captured: dict[str, object] = {}
+
+    async def fake_query(**kwargs):
+        captured.update(kwargs)
+        yield FakeResultMessage("ok")
+
+    _install_fake_sdk(monkeypatch, query=fake_query)
+    long_prompt = "Plan the outline. " * 3_000
+
+    provider = ClaudeCodeProvider(default_model="claude-code/sonnet")
+    await provider.chat(
+        messages=[
+            {"role": "system", "content": long_prompt},
+            {"role": "user", "content": "Go"},
+        ]
+    )
+
+    option = captured["options"].kwargs["system_prompt"]
+    assert option["type"] == "file"
+    path = Path(option["path"])
+    assert path.read_text(encoding="utf-8") == long_prompt
+    assert path.parent == Path(provider._workspace.name)
+    assert not list(path.parent.glob("*.tmp"))
+
+
+@pytest.mark.asyncio
+async def test_system_prompt_at_the_inline_limit_stays_inline(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    async def fake_query(**kwargs):
+        captured.update(kwargs)
+        yield FakeResultMessage("ok")
+
+    _install_fake_sdk(monkeypatch, query=fake_query)
+    prompt = "x" * _INLINE_SYSTEM_PROMPT_LIMIT
+
+    provider = ClaudeCodeProvider(default_model="claude-code/sonnet")
+    await provider.chat(
+        messages=[{"role": "system", "content": prompt}, {"role": "user", "content": "Go"}]
+    )
+
+    assert captured["options"].kwargs["system_prompt"] == prompt
 
 
 @pytest.mark.asyncio
