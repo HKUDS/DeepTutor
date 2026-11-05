@@ -55,6 +55,7 @@ import {
 import { recordQuizResults } from "@/lib/session-api";
 import { apiUrl } from "@/lib/api";
 import Tooltip from "@/shared/ui/Tooltip";
+import { normalizeLanguage } from "@/i18n/languages";
 
 import { randomUuid } from "@/lib/random-uuid";
 
@@ -643,7 +644,7 @@ export default function QuizViewer({
     // Pass the UI language through; the backend falls back to English for
     // any language it has no judge prompt for. Collapsing to "en" here
     // meant a Ukrainian quiz was always graded in English.
-    const judgeLanguage = language;
+    const judgeLanguage = normalizeLanguage(language);
 
     const handle = startQuizJudge(
       {

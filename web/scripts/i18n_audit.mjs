@@ -91,7 +91,7 @@ function translationKeys(file, content) {
   return keys;
 }
 
-const REQUIRED_LOCALES = ["en", "zh", "fr", "de", "uk", "vi", "tr"];
+const REQUIRED_LOCALES = ["en", "zh", "es", "fr", "de", "uk", "vi", "tr"];
 // French and Ukrainian are deliberately partial. i18next falls back to the
 // English resource per key; these floors make a coverage regression visible.
 const MIN_USED_COVERAGE = new Map([
