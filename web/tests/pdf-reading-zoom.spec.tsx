@@ -1,0 +1,375 @@
+import { act, fireEvent, render, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  PdfDocumentView,
+  type PdfDocumentViewProps,
+} from "@/components/reading/PdfDocumentView";
+import { PDF_ZOOM_KEY } from "@/lib/reading-zoom";
+
+/**
+ * Zoom is derived from the same page width the resize spec drives, so this file
+ * reuses that harness: a mocked pdf.js whose page 1 is 600pt wide, a mocked
+ * ResizeObserver, and a stubbed `getBoundingClientRect` that gives jsdom the
+ * page stacking it does not compute.
+ *
+ * With `outputScale() = 1` and a 648px pane the numbers are:
+ *   fit width   = 648 - 48 = 600px
+ *   100% width  = 600 * 96/72 = 800px
+ *   fit ratio   = 600 / 800 = 0.75
+ */
+
+const pdf = vi.hoisted(() => ({
+  ratios: new Map<number, number>(),
+  dpr: 1,
+}));
+
+vi.mock("@/lib/pdfjs-loader", () => ({
+  outputScale: () => pdf.dpr,
+  pdfjsWasmUrl: () => "/pdfjs/wasm/",
+  pdfjsCMapUrl: () => "/pdfjs/cmaps/",
+  loadPdfjs: async () => ({
+    getDocument: () => ({
+      destroy: async () => undefined,
+      promise: Promise.resolve({
+        getPage: async (locator: number) => ({
+          getViewport: ({ scale }: { scale: number }) => ({
+            width: 600 * scale,
+            height: 600 * (pdf.ratios.get(locator) ?? 1.414) * scale,
+          }),
+          render: () => ({
+            promise: Promise.resolve(),
+            cancel: () => undefined,
+          }),
+          getTextContent: async () => ({ items: [] }),
+        }),
+      }),
+    }),
+    TextLayer: class {
+      async render() {}
+      cancel() {}
+    },
+  }),
+}));
+
+vi.mock("react-i18next", () => {
+  const t = (key: string) => key;
+  return { useTranslation: () => ({ t }) };
+});
+
+const GAP = 16;
+const ROOT_TOP = 80;
+let containerWidth: number;
+let viewportHeight: number;
+let resizeCallbacks: Set<() => void>;
+
+function pageTop(page: HTMLElement): number {
+  let top = GAP;
+  for (
+    let sibling = page.previousElementSibling;
+    sibling;
+    sibling = sibling.previousElementSibling
+  ) {
+    top += Number.parseFloat((sibling as HTMLElement).style.height) + GAP;
+  }
+  return top;
+}
+
+function pageAt(root: HTMLElement, locator: number): HTMLElement {
+  const page = root.querySelector<HTMLElement>(
+    `[data-reader-unit="${locator}"]`,
+  );
+  if (!page) throw new Error(`Page ${locator} is missing`);
+  return page;
+}
+
+function widthOf(root: HTMLElement): number {
+  return Number.parseFloat(pageAt(root, 1).style.width);
+}
+
+function positionWithin(root: HTMLElement, locator: number): number {
+  const page = pageAt(root, locator);
+  return (
+    (root.scrollTop - pageTop(page)) / Number.parseFloat(page.style.height)
+  );
+}
+
+async function openReader(
+  overrides: Partial<PdfDocumentViewProps> = {},
+  { expectFitWidth = true }: { expectFitWidth?: boolean } = {},
+) {
+  const onVisibleLocatorChange = vi.fn();
+  const props: PdfDocumentViewProps = {
+    materialId: "zoom-pdf",
+    unitCount: 160,
+    annotations: [],
+    jump: null,
+    onSelection: vi.fn(),
+    onVisibleLocatorChange,
+    ...overrides,
+  };
+  const view = render(<PdfDocumentView {...props} />);
+  const root = view.container.querySelector<HTMLElement>(".dt-reader-scroll")!;
+  let scrollTop = 0;
+  // jsdom has no layout: model the browser's stacking and scroll clamp from the
+  // real page elements so an anchor can be observed at all.
+  Object.defineProperty(root, "scrollTop", {
+    configurable: true,
+    get: () => scrollTop,
+    set: (value: number) => {
+      const pages = root.querySelectorAll<HTMLElement>("[data-reader-unit]");
+      const last = pages[pages.length - 1];
+      const contentHeight = last
+        ? pageTop(last) + Number.parseFloat(last.style.height) + GAP
+        : viewportHeight;
+      scrollTop = Math.max(0, Math.min(value, contentHeight - viewportHeight));
+    },
+  });
+  if (expectFitWidth) {
+    await waitFor(() => expect(pageAt(root, 1).style.width).toBe("600px"));
+  } else {
+    // A stored zoom is applied on mount, so wait for any committed width.
+    await waitFor(() =>
+      expect(Number.parseFloat(pageAt(root, 1).style.width)).toBeGreaterThan(0),
+    );
+  }
+  await act(async () => {});
+  return { ...view, root, props };
+}
+
+async function scrollTo(root: HTMLElement, locator: number, fraction = 0.3) {
+  const page = pageAt(root, locator);
+  root.scrollTop =
+    pageTop(page) + Number.parseFloat(page.style.height) * fraction;
+  await act(async () => {
+    fireEvent.scroll(root);
+    await new Promise<void>((resolve) =>
+      window.requestAnimationFrame(() => resolve()),
+    );
+  });
+}
+
+async function resize(width: number): Promise<void> {
+  await act(async () => {
+    containerWidth = width;
+    for (const notify of resizeCallbacks) notify();
+  });
+}
+
+/** The toolbar's zoom-in / zoom-out buttons, by their accessible labels. */
+function zoomButton(view: ReturnType<typeof render>, label: string) {
+  const button = view.container.querySelector<HTMLButtonElement>(
+    `button[aria-label="${label}"]`,
+  );
+  if (!button) throw new Error(`No "${label}" button`);
+  return button;
+}
+
+beforeEach(() => {
+  containerWidth = 648;
+  viewportHeight = 500;
+  pdf.dpr = 1;
+  pdf.ratios.clear();
+  resizeCallbacks = new Set();
+  // A previous test's debounced preference write must not survive into this
+  // one: it would restore a zoom the test never asked for.
+  localStorage.clear();
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      constructor(private readonly callback: () => void) {}
+      observe() {
+        resizeCallbacks.add(this.callback);
+      }
+      disconnect() {
+        resizeCallbacks.delete(this.callback);
+      }
+    },
+  );
+  vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(
+    function (this: HTMLElement) {
+      return this.classList.contains("dt-reader-scroll") ? containerWidth : 0;
+    },
+  );
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
+    function (this: HTMLElement) {
+      if (this.classList.contains("dt-reader-scroll")) {
+        return new DOMRect(120, ROOT_TOP, containerWidth, viewportHeight);
+      }
+      if (this.dataset.readerUnit) {
+        const root = this.closest<HTMLElement>(".dt-reader-scroll")!;
+        return new DOMRect(
+          144,
+          ROOT_TOP + pageTop(this) - root.scrollTop,
+          Number.parseFloat(this.style.width),
+          Number.parseFloat(this.style.height),
+        );
+      }
+      return new DOMRect();
+    },
+  );
+});
+
+afterEach(() => {
+  // A debounced preference write outlives its test otherwise, and lands in the
+  // next one's storage.
+  vi.unstubAllGlobals();
+  localStorage.clear();
+});
+
+describe("PDF reader zoom", () => {
+  it("opens at fit, so the default layout is unchanged", async () => {
+    const view = await openReader();
+    expect(widthOf(view.root)).toBe(600);
+    const control = await waitFor(() => {
+      const element = view.container.querySelector('[aria-haspopup="menu"]');
+      if (!element) throw new Error("zoom bar has not mounted yet");
+      return element;
+    });
+    expect(control.textContent).toBe("Fit");
+  });
+
+  it("steps up the ladder from the ratio actually on screen", async () => {
+    const view = await openReader();
+    // Fitted at 75%, so one press goes to 100% = 800px, not to 25%.
+    await act(async () => {
+      fireEvent.click(zoomButton(view, "Zoom in"));
+    });
+    await waitFor(() => expect(widthOf(view.root)).toBe(800));
+    await act(async () => {
+      fireEvent.click(zoomButton(view, "Zoom in"));
+    });
+    await waitFor(() => expect(widthOf(view.root)).toBe(1000));
+    await act(async () => {
+      fireEvent.click(zoomButton(view, "Zoom out"));
+    });
+    await waitFor(() => expect(widthOf(view.root)).toBe(800));
+  });
+
+  it("holds the page still when the pane resizes in fixed mode", async () => {
+    const view = await openReader();
+    await act(async () => {
+      fireEvent.click(zoomButton(view, "Zoom in"));
+    });
+    await waitFor(() => expect(widthOf(view.root)).toBe(800));
+    // Fixed is a share of the page's real size, so a wider pane must not
+    // stretch it - unlike fit, which tracks the pane.
+    await resize(1098);
+    expect(widthOf(view.root)).toBe(800);
+    // Reset returns to fit, which does track the pane: 1098 - 48 = 1050.
+    await act(async () => {
+      fireEvent.click(zoomButton(view, "Reset zoom"));
+    });
+    await waitFor(() => expect(widthOf(view.root)).toBe(1050));
+    await resize(648);
+    await waitFor(() => expect(widthOf(view.root)).toBe(600));
+  });
+
+  it("keeps the pointer's line in place while zooming with ctrl+wheel", async () => {
+    const view = await openReader();
+    await scrollTo(view.root, 99, 0.3);
+    const page = pageAt(view.root, 99);
+    const pageRect = page.getBoundingClientRect();
+    // Aim at 30% down page 99, which is what the anchor must hold.
+    const pointerY = pageRect.top + pageRect.height * 0.3;
+    await act(async () => {
+      fireEvent.wheel(view.root, {
+        ctrlKey: true,
+        deltaY: -120,
+        clientY: pointerY,
+      });
+    });
+    await waitFor(() => expect(widthOf(view.root)).toBeGreaterThan(600));
+    expect(positionWithin(view.root, 99)).toBeCloseTo(0.3, 1);
+  });
+
+  it("ignores a wheel that is not a zoom gesture", async () => {
+    const view = await openReader();
+    await act(async () => {
+      fireEvent.wheel(view.root, { deltaY: -120 });
+    });
+    expect(widthOf(view.root)).toBe(600);
+  });
+
+  it("reports the width it could deliver when the canvas budget clamps", async () => {
+    pdf.dpr = 2;
+    const view = await openReader();
+    // A menu stop of 400% would be 3200px, past the budget at 2x DPR; the
+    // toolbar must show what landed rather than the number that was asked for.
+    await act(async () => {
+      fireEvent.click(
+        view.container.querySelector<HTMLButtonElement>(
+          'button[aria-haspopup="menu"]',
+        )!,
+      );
+    });
+    await act(async () => {
+      fireEvent.click(
+        view.container.querySelector<HTMLButtonElement>(
+          '[role="menuitem"]:last-of-type',
+        )!,
+      );
+    });
+    await waitFor(() => expect(widthOf(view.root)).toBe(1722));
+    expect(
+      view.container.querySelector('[aria-haspopup="menu"]')?.textContent,
+    ).toBe("215%");
+  });
+
+  it("writes a settled zoom once, and the next document opens at it", async () => {
+    const first = await openReader();
+    await act(async () => {
+      fireEvent.click(zoomButton(first, "Zoom in"));
+    });
+    await waitFor(() => expect(widthOf(first.root)).toBe(800));
+    // The write is debounced, so a drag or pinch does not hit localStorage on
+    // every frame; it lands once the gesture settles.
+    await waitFor(() =>
+      expect(localStorage.getItem(PDF_ZOOM_KEY)).toBe(
+        JSON.stringify({ mode: "fixed", scale: 1 }),
+      ),
+    );
+    first.unmount();
+
+    // The stored preference is read on mount, so a different document opens at
+    // the remembered size rather than at fit.
+    const second = await openReader(
+      { materialId: "another-pdf" },
+      { expectFitWidth: false },
+    );
+    expect(widthOf(second.root)).toBe(800);
+  });
+
+  it("restores fit from the toolbar's reset control", async () => {
+    const view = await openReader();
+    await act(async () => {
+      fireEvent.click(zoomButton(view, "Zoom in"));
+    });
+    await waitFor(() => expect(widthOf(view.root)).toBe(800));
+    await act(async () => {
+      fireEvent.click(zoomButton(view, "Reset zoom"));
+    });
+    await waitFor(() => expect(widthOf(view.root)).toBe(600));
+    expect(
+      view.container.querySelector('[aria-haspopup="menu"]')?.textContent,
+    ).toBe("Fit");
+  });
+
+  it("zooms with the keyboard only while the reader is in focus", async () => {
+    const view = await openReader();
+    // Without focus the chord belongs to the browser, not the reader.
+    await act(async () => {
+      fireEvent.keyDown(window, { key: "+", ctrlKey: true });
+    });
+    expect(widthOf(view.root)).toBe(600);
+
+    view.root.focus();
+    await act(async () => {
+      fireEvent.keyDown(window, { key: "+", ctrlKey: true });
+    });
+    await waitFor(() => expect(widthOf(view.root)).toBe(800));
+    await act(async () => {
+      fireEvent.keyDown(window, { key: "0", ctrlKey: true });
+    });
+    await waitFor(() => expect(widthOf(view.root)).toBe(600));
+  });
+});
