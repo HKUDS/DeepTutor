@@ -1002,7 +1002,7 @@ def test_open_frontend_in_browser_is_best_effort(monkeypatch) -> None:
     launcher._open_frontend_in_browser("http://localhost:3782")
 
 
-def test_launch_detached_uses_a_separate_windows_process_group(
+def test_launch_detached_uses_a_hidden_console_and_separate_windows_process_group(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
@@ -1020,7 +1020,7 @@ def test_launch_detached_uses_a_separate_windows_process_group(
     monkeypatch.setattr(launcher, "_is_pid_alive", lambda _pid: False)
     monkeypatch.setattr(launcher.sys, "platform", "win32")
     monkeypatch.setattr(launcher.subprocess, "CREATE_NEW_PROCESS_GROUP", 0x200, raising=False)
-    monkeypatch.setattr(launcher.subprocess, "DETACHED_PROCESS", 0x8, raising=False)
+    monkeypatch.setattr(launcher.subprocess, "CREATE_NO_WINDOW", 0x08000000, raising=False)
     monkeypatch.setattr(launcher.subprocess, "Popen", fake_popen)
     monkeypatch.setattr(launcher, "_log", lambda _message: None)
 
@@ -1035,7 +1035,7 @@ def test_launch_detached_uses_a_separate_windows_process_group(
     assert captured["command"][-2:] == ["--dev", "--no-browser"]
     kwargs = captured["kwargs"]
     assert isinstance(kwargs, dict)
-    assert kwargs["creationflags"] == 0x208
+    assert kwargs["creationflags"] == 0x200 | 0x08000000
     assert kwargs["env"][launcher.DETACHED_WORKER_ENV] == "1"
     assert kwargs["env"][launcher.DETACHED_TOKEN_ENV] == state["token"]
     assert captured["log_name"] == str(paths.log)

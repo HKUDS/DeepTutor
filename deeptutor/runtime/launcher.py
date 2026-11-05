@@ -1334,9 +1334,11 @@ def _launch_detached(
         "shell": False,
     }
     if sys.platform == "win32":
+        # A venv redirector's interpreter child must inherit a hidden console;
+        # DETACHED_PROCESS lets that child allocate a visible console (#2421).
         kwargs["creationflags"] = (
             subprocess.CREATE_NEW_PROCESS_GROUP  # type: ignore[attr-defined]
-            | subprocess.DETACHED_PROCESS  # type: ignore[attr-defined]
+            | subprocess.CREATE_NO_WINDOW  # type: ignore[attr-defined]
         )
     else:
         kwargs["start_new_session"] = True
