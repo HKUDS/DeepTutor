@@ -661,6 +661,13 @@ def _drop_unknown_commands(text: str) -> str:
                         out.append(inner)
                 continue
             nxt = text[i + 1]
+            if nxt == "%":
+                # ``\%`` is the escaped literal percent (a bare ``%`` starts a
+                # TeX comment), so it carries numeric meaning and must be read,
+                # not dropped like the structural escapes below.
+                out.append(" percent ")
+                i += 2
+                continue
             if nxt in "{}":
                 i += 2
                 continue
