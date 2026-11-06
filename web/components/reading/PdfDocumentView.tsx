@@ -34,18 +34,20 @@ import {
   DEFAULT_PDF_ZOOM,
   READER_WIDTH_INSET,
   clampPdfZoom,
+  cropsPageMargins,
   effectiveZoomPercent,
   fitZoomRatio,
   fittedPageWidth,
   loadPdfZoom,
   pdfZoomShortcut,
   savePdfZoom,
-  steppedPdfZoom,
   steppedPdfZoomByWidth,
   canStepPdfZoom,
+  zoomedBy,
   zoomedPageWidth,
   type PdfZoomPreference,
 } from "@/lib/reading-zoom";
+import type { NormalisedBox } from "@/lib/pdf-page-geometry";
 import { PdfPage } from "./PdfPage";
 import dynamic from "next/dynamic";
 
@@ -159,6 +161,10 @@ export function PdfDocumentView({
   const pointerNearBottom = useRef(false);
   const overControls = useRef(false);
   const committedWidthRef = useRef(0);
+  // Where the reader was looking when the page changed shape (fitting the text
+  // vs fitting the page), so the line they were reading stays put while the
+  // page heights change under them.
+  const modeAnchorRef = useRef<{ locator: number; fraction: number } | null>(null);
   const resizeAnchorRef = useRef<{
     doc: PdfDocument;
     locator: string;
@@ -204,19 +210,20 @@ export function PdfDocumentView({
   const error = loadError?.materialId === materialId ? loadError.message : null;
   const intrinsicWidth =
     loaded?.materialId === materialId ? loaded.intrinsicWidth : 0;
-  // `fit` fills the pane at the pre-zoom width; `fixed` is a share of the
-  // page's real size, so it holds still when the pane changes width.
+  // Both fit modes fill the pane at the pre-zoom width — the difference is
+  // what fills it, the page or its text block. `fixed` is a share of the page's
+  // real size, so it holds still when the pane changes width.
   const pageWidth =
     measuredWidth <= 0
       ? 0
-      : zoom.mode === "fit"
-        ? fittedPageWidth(measuredWidth)
-        : zoomedPageWidth(
+      : zoom.mode === "fixed"
+        ? zoomedPageWidth(
             intrinsicWidth,
             zoom.scale,
             fallbackRatio,
             outputScale(),
-          );
+          )
+        : fittedPageWidth(measuredWidth);
   const zoomPercent = effectiveZoomPercent(pageWidth, intrinsicWidth);
   // The ratio the page is drawn at, derived from committed state rather than the
   // gesture ref: render must not read a ref, and this is the value the toolbar's
@@ -224,11 +231,63 @@ export function PdfDocumentView({
   // derivation that depends on the same values the surrounding callbacks do.
   const renderedZoomRatio = useMemo(
     () =>
-      zoom.mode === "fit"
-        ? fitZoomRatio(pageWidth, intrinsicWidth)
-        : zoom.scale,
+      zoom.mode === "fixed"
+        ? zoom.scale
+        : fitZoomRatio(pageWidth, intrinsicWidth),
     [zoom, pageWidth, intrinsicWidth],
   );
+
+  // -- page size mode ------------------------------------------------------
+
+  // How much of the page the reader actually sees: 1 when the page is drawn
+  // whole, `visible / full` when its own margins are trimmed. The active page
+  // reports it, and it is the base for "one zoom stop" — without it, stepping
+  // away from a trimmed page would land below the size already on screen.
+  const [cropRatio, setCropRatio] = useState(1);
+  const reportCropRatio = useCallback((ratio: number) => {
+    setCropRatio(Number.isFinite(ratio) && ratio > 0 ? ratio : 1);
+  }, []);
+
+  /**
+   * Where the reader is looking, captured before the page changes shape.
+   *
+   * Fitting the text and fitting the page give every page a different height,
+   * so without this the line under the reader's eyes jumps when they switch.
+   */
+  const captureModeAnchor = useCallback(() => {
+    const root = scrollRef.current;
+    if (!root) return;
+    const rootRect = root.getBoundingClientRect();
+    for (const page of root.querySelectorAll<HTMLElement>("[data-reader-unit]")) {
+      const rect = page.getBoundingClientRect();
+      if (rect.height <= 0 || rect.bottom <= rootRect.top) continue;
+      if (rect.top >= rootRect.bottom) break;
+      modeAnchorRef.current = {
+        locator: Number(page.dataset.readerUnit ?? "0"),
+        fraction: Math.max(0, (rootRect.top - rect.top) / rect.height),
+      };
+      return;
+    }
+  }, []);
+
+  // Restore the anchored line once the new page heights have committed.
+  useLayoutEffect(() => {
+    const anchor = modeAnchorRef.current;
+    if (!anchor) return;
+    modeAnchorRef.current = null;
+    const root = scrollRef.current;
+    if (!root) return;
+    const page = root.querySelector<HTMLElement>(
+      `[data-reader-unit="${anchor.locator}"]`,
+    );
+    if (!page) return;
+    const pageRect = page.getBoundingClientRect();
+    const rootRect = root.getBoundingClientRect();
+    root.scrollTop = Math.max(
+      0,
+      pageRect.top - rootRect.top + root.scrollTop + anchor.fraction * pageRect.height,
+    );
+  }, [zoom.mode]);
 
   // -- document ------------------------------------------------------------
 
@@ -418,23 +477,29 @@ export function PdfDocumentView({
 
   const applyZoom = useCallback(
     (next: PdfZoomPreference, clientY?: number, clientX?: number) => {
-      captureAnchor(clientY, clientX);
-      // A zoom that lands on the width already committed draws nothing new, so
-      // the anchor captured above would never be consumed: the layout effect
-      // only restores when `pageWidth` changes. Left behind, it would hijack
-      // the next real pane resize and pull the reader back to the old page and
-      // offset. Drop it instead — that is what "nothing moved" means.
-      const nextWidth =
-        next.mode === "fit"
-          ? fittedPageWidth(measuredWidth)
-          : zoomedPageWidth(
-              intrinsicWidth,
-              next.scale,
-              fallbackRatio,
-              outputScale(),
-            );
-      if (nextWidth === committedWidthRef.current) {
-        resizeAnchorRef.current = null;
+      if (cropsPageMargins(next) !== cropsPageMargins(zoomRef.current)) {
+        // The pages change height rather than width, so the width-based
+        // restore below would not run: anchor the line here instead.
+        captureModeAnchor();
+      } else {
+        captureAnchor(clientY, clientX);
+        // A zoom that lands on the width already committed draws nothing new,
+        // so the anchor captured above would never be consumed: the layout
+        // effect only restores when `pageWidth` changes. Left behind, it would
+        // hijack the next real pane resize and pull the reader back to the old
+        // page and offset. Drop it instead — "nothing moved" means exactly that.
+        const nextWidth =
+          next.mode === "fixed"
+            ? zoomedPageWidth(
+                intrinsicWidth,
+                next.scale,
+                fallbackRatio,
+                outputScale(),
+              )
+            : fittedPageWidth(measuredWidth);
+        if (nextWidth === committedWidthRef.current) {
+          resizeAnchorRef.current = null;
+        }
       }
       setZoom(next);
       zoomRef.current = next;
@@ -445,23 +510,33 @@ export function PdfDocumentView({
         savePdfZoom(next);
       }, 150);
     },
-    [captureAnchor, measuredWidth, intrinsicWidth, fallbackRatio],
+    [
+      captureAnchor,
+      captureModeAnchor,
+      measuredWidth,
+      intrinsicWidth,
+      fallbackRatio,
+    ],
   );
 
   /** What the page is drawn at right now, used as the base for one step. */
-  const currentZoomRatio = useCallback(
-    () =>
-      zoomRef.current.mode === "fit"
-        ? fitZoomRatio(pageWidth, intrinsicWidth)
-        : zoomRef.current.scale,
-    [pageWidth, intrinsicWidth],
-  );
+  const currentZoomRatio = useCallback(() => {
+    const current = zoomRef.current;
+    if (current.mode === "fixed") return current.scale;
+    // A trimmed page is drawn larger than the strip it fills: the strip is
+    // `cropRatio` of the page, so the drawn size is fit / cropRatio.
+    const fit = fitZoomRatio(pageWidth, intrinsicWidth);
+    return cropRatio > 0 ? fit / cropRatio : fit;
+  }, [pageWidth, intrinsicWidth, cropRatio]);
 
   const zoomBy = useCallback(
     (direction: 1 | -1, clientY?: number, clientX?: number) => {
       applyZoom(
         {
           mode: "fixed",
+          // The step is a continuous factor here, but the canvas budget still
+          // decides what lands: without walking past the factors it collapses,
+          // a press can draw the same width it started from.
           scale: steppedPdfZoomByWidth(
             currentZoomRatio(),
             direction,
@@ -882,12 +957,16 @@ export function PdfDocumentView({
                       : undefined
                   }
                   onAnnotationClick={onAnnotationClick}
+                  cropMargins={cropsPageMargins(zoom)}
+                  onCropRatio={reportCropRatio}
+                  inkKey={`${materialId}:${locator}`}
                 />
               ),
             )}
           </div>
         )}
       </div>
+
 
       {doc && (
         <PdfZoomControls

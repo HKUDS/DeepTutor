@@ -6575,7 +6575,6 @@
   "language.portuguese": "葡萄牙语",
   "language.japanese": "日语",
   "language.turkish": "Türkçe",
-
   "settings.modelImport.title": "为当前服务导入模型",
   "settings.modelImport.selectFiltered": "全选筛选结果",
   "settings.modelImport.clear": "清空选择",
@@ -6584,5 +6583,7 @@
   "settings.modelImport.selected": "已选择：{{count}}",
   "language.korean": "한국어 (일부 번역)",
   "Zoom level": "缩放比例",
-  "Reset zoom": "重置缩放"
+  "Reset zoom": "重置缩放",
+  "Fit text": "适应文字",
+  "Fit page": "适应页面"
 }

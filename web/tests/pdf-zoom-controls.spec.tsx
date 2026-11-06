@@ -53,11 +53,25 @@ describe("zoom level menu", () => {
     await act(async () => {
       fireEvent.click(view.getByRole("button", { name: "Zoom level" }));
     });
-    const fit = view.getByRole("menuitemradio", { name: "Fit" });
+    const fit = view.getByRole("menuitemradio", { name: "Fit text" });
     await act(async () => {
       fireEvent.click(fit);
     });
     expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(view.queryByRole("menu")).toBeNull();
+  });
+
+  it("offers both fit modes, and reports which one was picked", async () => {
+    const onSelect = vi.fn();
+    const view = controls({ onSelect });
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Zoom level" }));
+    });
+    expect(view.getByRole("menuitemradio", { name: "Fit text" })).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(view.getByRole("menuitemradio", { name: "Fit page" }));
+    });
+    expect(onSelect).toHaveBeenCalledWith({ mode: "fit" });
     expect(view.queryByRole("menu")).toBeNull();
   });
 

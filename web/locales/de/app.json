@@ -6575,7 +6575,6 @@
   "language.portuguese": "Portugiesisch",
   "language.japanese": "Japanisch",
   "language.turkish": "Türkçe",
-
   "settings.modelImport.title": "Modelle für diesen Dienst importieren",
   "settings.modelImport.selectFiltered": "Alle Treffer auswählen",
   "settings.modelImport.clear": "Auswahl aufheben",
@@ -6584,5 +6583,7 @@
   "settings.modelImport.selected": "Ausgewählt: {{count}}",
   "language.korean": "한국어 (일부 번역)",
   "Zoom level": "Zoomstufe",
-  "Reset zoom": "Zoom zurücksetzen"
+  "Reset zoom": "Zoom zurücksetzen",
+  "Fit text": "An Text anpassen",
+  "Fit page": "An Seite anpassen"
 }

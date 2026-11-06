@@ -6597,7 +6597,6 @@
   "language.portuguese": "Португальська",
   "language.japanese": "Японська",
   "language.turkish": "Türkçe",
-
   "settings.modelImport.title": "Імпорт моделей для цієї служби",
   "settings.modelImport.selectFiltered": "Вибрати всі результати",
   "settings.modelImport.clear": "Очистити вибір",
@@ -6606,5 +6605,7 @@
   "settings.modelImport.selected": "Вибрано: {{count}}",
   "language.korean": "한국어 (일부 번역)",
   "Zoom level": "Рівень масштабу",
-  "Reset zoom": "Скинути масштаб"
+  "Reset zoom": "Скинути масштаб",
+  "Fit text": "За розміром тексту",
+  "Fit page": "За розміром сторінки"
 }

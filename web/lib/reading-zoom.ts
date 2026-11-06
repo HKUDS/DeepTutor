@@ -3,8 +3,21 @@ import { browserStorage } from "@/shared/storage";
 /**
  * How big the PDF reader draws a page.
  *
- * `fit` is the reader's historical behaviour — the page fills the pane's
- * width — and `fixed` is an absolute percentage of the page's real size.
+ * Three answers to the same question — what does "fit" fit?
+ *
+ * - `text` fills the pane with the page's **text block**: the page's own white
+ *   side margins are trimmed, so the type gets bigger without the page ever
+ *   going wider than the pane (no horizontal scrolling while reading).
+ * - `fit` fills the pane with the **page**, margins and all — the faithful
+ *   view, for scans, forms, and figures that need their edges.
+ * - `fixed` is an absolute percentage of the page's real size, and never
+ *   trims anything: a number the reader picks must mean exactly that number.
+ *
+ * `text` is the default because this is a reader, not a document inspector:
+ * paper margins exist for binding and thumbs, and on screen they only shrink
+ * the type. It used to be a separate "crop margins" toggle, which meant two
+ * controls on one axis — a page at "200%" could really be drawn at 250%, and
+ * the toolbar had no way to say so.
  *
  * Kept apart from `reading-display-preferences` on purpose: those describe
  * typography shared by the text and EPUB readers, which have no page bitmap to
@@ -12,10 +25,17 @@ import { browserStorage } from "@/shared/storage";
  * honour, and would break the exact-shape assertion that test pins.
  */
 export type PdfZoomPreference =
-  { mode: "fit" } | { mode: "fixed"; scale: number };
+  | { mode: "text" }
+  | { mode: "fit" }
+  | { mode: "fixed"; scale: number };
 
 export const PDF_ZOOM_KEY = "dt.reader.pdfZoom";
-export const DEFAULT_PDF_ZOOM: PdfZoomPreference = { mode: "fit" };
+export const DEFAULT_PDF_ZOOM: PdfZoomPreference = { mode: "text" };
+
+/** True when the page's own side margins are trimmed away. */
+export function cropsPageMargins(preference: PdfZoomPreference): boolean {
+  return preference.mode === "text";
+}
 export const MIN_PDF_ZOOM = 0.25;
 export const MAX_PDF_ZOOM = 4;
 
@@ -52,24 +72,22 @@ export function clampPdfZoom(scale: number): number {
 }
 
 /**
- * Step one stop along the menu's ladder.
+ * One press of the zoom buttons or the ⌘+/⌘− shortcut, as a relative step.
  *
- * A ladder rather than "current ±25%": a pinch settles wherever the gesture
- * ends — 1.37, say — and only discrete stops keep the displayed percentage,
- * the checked menu row and what the next press produces all describing the
- * same size.
+ * Continuous, not snapped to the menu's stops: a pinch already settles anywhere
+ * (137%, say), and snapping the buttons meant the next press disagreed with the
+ * size on screen — a press from 137% went *down* to 125%. The menu keeps the
+ * named stops for "jump to exactly 100%", which is what stops are good for.
  */
-export function steppedPdfZoom(scale: number, direction: 1 | -1): number {
+export const PDF_ZOOM_STEP = 1.25;
+
+export function zoomedBy(scale: number, direction: 1 | -1): number {
   const current = clampPdfZoom(scale);
-  if (direction === 1) {
-    return (
-      PDF_ZOOM_OPTIONS.find((value) => value > current + 1e-6) ?? MAX_PDF_ZOOM
-    );
-  }
-  return (
-    [...PDF_ZOOM_OPTIONS].reverse().find((value) => value < current - 1e-6) ??
-    MIN_PDF_ZOOM
-  );
+  const next =
+    direction === 1 ? current * PDF_ZOOM_STEP : current / PDF_ZOOM_STEP;
+  // Three decimals of a ratio is finer than the toolbar's whole percent, and it
+  // keeps float noise from accumulating across a run of presses.
+  return clampPdfZoom(Math.round(next * 1000) / 1000);
 }
 
 /** Width in `fit` mode: word for word the pre-zoom formula. */
@@ -107,14 +125,17 @@ export function steppedPdfZoomByWidth(
   const landed = (value: number) => landedWidth(intrinsicWidth, value, ratio, dpr);
   const current = landed(scale);
   const end = direction === 1 ? MAX_PDF_ZOOM : MIN_PDF_ZOOM;
-  let next = steppedPdfZoom(scale, direction);
-  // Walk while this stop draws the width already on screen. `next !== end`
-  // stops at the ladder's edge, and the `following === next` guard keeps a
-  // clamped step from looping forever.
-  while (Math.abs(landed(next) - current) < 0.5 && next !== end) {
-    const following = steppedPdfZoom(next, direction);
+  let next = zoomedBy(scale, direction);
+  // Walk while this step draws the width already on screen. The step is a
+  // continuous factor here rather than a ladder, so the loop is bounded by the
+  // clamp at each end: `next !== end` stops at the edge, and a factor that can
+  // no longer move the scale breaks out instead of spinning.
+  let guard = 0;
+  while (Math.abs(landed(next) - current) < 0.5 && next !== end && guard < 64) {
+    const following = zoomedBy(next, direction);
     if (following === next) break;
     next = following;
+    guard += 1;
   }
   return next;
 }
@@ -240,6 +261,8 @@ export function normalisePdfZoom(value: unknown): PdfZoomPreference {
     value && typeof value === "object"
       ? (value as Record<string, unknown>)
       : {};
+  if (row.mode === "text") return { mode: "text" };
+  if (row.mode === "fit") return { mode: "fit" };
   if (
     row.mode === "fixed" &&
     typeof row.scale === "number" &&
