@@ -1,5 +1,5 @@
 {
-  "fingerprint": "b3ff4a2963d642a226ba3b8fd034f616c878ec27cdb071e720e82674dabd3b75",
+  "fingerprint": "6559329dbe44d520d74426ff5a70acbc40759b75ac104c70cf0885e8a31940e4",
   "routers": {
     "deeptutor.api.routers.auth:router": [
       {
@@ -237,6 +237,14 @@
       {
         "path": "/users/{username}/role",
         "name": "update_user_role",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/users/{username}/disabled",
+        "name": "update_user_disabled",
         "kind": "http",
         "methods": [
           "PUT"

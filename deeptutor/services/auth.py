@@ -434,6 +434,13 @@ def authenticate(username: str, password: str) -> TokenPayload | None:
     if not record:
         return None
 
+    # A disabled account keeps its record so it can be re-enabled, but it must
+    # not be able to sign in while the flag is set. The device-credential path
+    # already refuses these accounts; password login used to skip the check.
+    if isinstance(record, dict) and bool(record.get("disabled")):
+        logger.info("Refused login for disabled account %s", username)
+        return None
+
     hashed = record.get("hash", "") if isinstance(record, dict) else record
     if not verify_password(password, hashed):
         return None

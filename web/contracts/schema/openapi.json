@@ -11367,6 +11367,20 @@
         "title": "SessionTaskLinks",
         "type": "object"
       },
+      "SetDisabledRequest": {
+        "description": "Payload for the PUT /users/{username}/disabled endpoint.",
+        "properties": {
+          "disabled": {
+            "title": "Disabled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "disabled"
+        ],
+        "title": "SetDisabledRequest",
+        "type": "object"
+      },
       "SetRoleRequest": {
         "description": "Payload for the PUT /users/{username}/role endpoint.",
         "properties": {
@@ -17433,6 +17447,93 @@
           }
         },
         "summary": "Remove User",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/users/{username}/disabled": {
+      "put": {
+        "description": "Disable or re-enable an account. Admins cannot disable themselves.\n\nDisabling is the reversible counterpart to deletion: the account keeps its\ngrants, workspaces and history, but cannot sign in. Device credentials are\nrevoked at the same time so a paired device stops working immediately.",
+        "operationId": "update_user_disabled_api_auth_users__username__disabled_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "username",
+            "required": true,
+            "schema": {
+              "title": "Username",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetDisabledRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Update User Disabled Api Auth Users  Username  Disabled Put",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update User Disabled",
         "tags": [
           "auth"
         ]

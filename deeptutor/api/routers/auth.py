@@ -308,6 +308,12 @@ class SetRoleRequest(BaseModel):
         return v
 
 
+class SetDisabledRequest(BaseModel):
+    """Payload for the PUT /users/{username}/disabled endpoint."""
+
+    disabled: bool
+
+
 class AdminCreateUserRequest(RegisterRequest):
     """Admin user-creation payload.
 
@@ -2030,6 +2036,52 @@ async def update_user_role(
         f"Admin '{current.username if current else 'local'}' set '{username}' role to {body.role!r}"
     )
     return {"ok": True, "username": username, "role": body.role}
+
+
+@router.put("/users/{username}/disabled", status_code=status.HTTP_200_OK)
+async def update_user_disabled(
+    username: str,
+    body: SetDisabledRequest,
+    current: TokenPayload = Depends(require_admin),
+) -> dict:
+    """Disable or re-enable an account. Admins cannot disable themselves.
+
+    Disabling is the reversible counterpart to deletion: the account keeps its
+    grants, workspaces and history, but cannot sign in. Device credentials are
+    revoked at the same time so a paired device stops working immediately.
+    """
+    if current and username == current.username:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You cannot disable your own account",
+        )
+
+    from deeptutor.multi_user.identity import get_user, set_disabled
+
+    record = get_user(username)
+    if record is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    if not set_disabled(username, body.disabled):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    revoked = 0
+    if body.disabled:
+        from deeptutor.multi_user.device_credentials import revoke_device_credentials_for_user
+
+        actor = str(current.user_id) if current else "local-admin"
+        revoked = revoke_device_credentials_for_user(str(record.get("id") or ""), revoked_by=actor)
+
+    logger.info(
+        f"Admin '{current.username if current else 'local'}' set '{username}' "
+        f"disabled={body.disabled} (device credentials revoked: {revoked})"
+    )
+    return {
+        "ok": True,
+        "username": username,
+        "disabled": body.disabled,
+        "device_credentials_revoked": revoked,
+    }
 
 
 @router.put("/users/{username}/password", status_code=status.HTTP_200_OK)

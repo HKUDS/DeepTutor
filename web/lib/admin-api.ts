@@ -141,6 +141,25 @@ export async function deleteUsers(
   return (await res.json()) as UserBatchDeleteResult;
 }
 
+export async function setUserDisabled(
+  username: string,
+  disabled: boolean,
+): Promise<void> {
+  const res = await apiFetch(
+    apiUrl(`/api/auth/users/${encodeURIComponent(username)}/disabled`),
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ disabled }),
+    },
+  );
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail ?? "Failed to update account status");
+  }
+}
+
+
 export async function setUserRole(
   username: string,
   role: AccountRole,
