@@ -67,7 +67,7 @@ function renderPanel(props: Partial<SessionViewerPanelProps> = {}) {
         <SessionViewerPanel ref={ref} {...base} {...next} />
       </QuizFollowupProvider>,
     );
-  return { ref, rerender };
+  return { ref, rerender, unmount: view.unmount };
 }
 
 /** The panel slides in over two frames and is aria-hidden until it has. */
@@ -223,6 +223,53 @@ it("brings an earlier side chat back with its history and who answered it", asyn
   fireEvent.click(screen.getByRole("button", { name: "New tab" }));
   await waitFor(() => expect(api.listSessionThreads).toHaveBeenCalledTimes(2));
   expect(screen.queryByRole("button", { name: /Why fork returns twice/ })).toBeNull();
+});
+
+it("restores an open side chat after a reload", async () => {
+  api.getSession.mockResolvedValue({
+    messages: [
+      { role: "user", content: "Why twice?", events: [] },
+      { role: "assistant", content: "Once in each process.", events: [] },
+    ],
+  });
+  const thread = {
+    id: "thread-1",
+    session_id: "thread-1",
+    title: "Why fork returns twice",
+    created_at: 1,
+    updated_at: 1_700_000_000,
+    message_count: 2,
+    last_message: "",
+    preferences: {
+      parent_session_id: "session-a",
+      session_kind: "selection_tutor" as const,
+      answer_by: "partner:ada",
+    },
+  };
+  const first = renderPanel({ conversation });
+  await entered();
+
+  act(() => first.ref.current!.openSideChatThread(thread));
+  expect(await within(tabBar()).findByRole("button", { name: "Ada" })).toBeVisible();
+  await waitFor(() =>
+    expect(localStorage.getItem("dt:chat:viewer-tabs:session-a")).toContain("thread-1"),
+  );
+
+  first.unmount();
+  renderPanel({ conversation });
+  await entered();
+
+  expect(await within(tabBar()).findByRole("button", { name: "Ada" })).toBeVisible();
+  await waitFor(() => expect(api.getSession).toHaveBeenCalledWith("thread-1"));
+  expect(screen.getByText("Once in each process.")).toBeVisible();
+});
+
+it("ignores corrupt persisted side-chat state", async () => {
+  localStorage.setItem("dt:chat:viewer-tabs:session-a", "{not json");
+  renderPanel({ conversation });
+  await entered();
+
+  expect(screen.queryByRole("button", { name: "Ada" })).toBeNull();
 });
 
 it("reuses the page's thread list instead of reading it again", async () => {

@@ -312,6 +312,119 @@ function sideChatTabIdFor(questionKey: string): string {
   return `side-chat:${questionKey}`;
 }
 
+/** Side-chat tabs survive a reload; other kinds hold live/object state. */
+const VIEWER_TABS_STORAGE_PREFIX = "dt:chat:viewer-tabs:";
+
+function viewerTabsStorageKey(tabsKey: string): string {
+  return `${VIEWER_TABS_STORAGE_PREFIX}${encodeURIComponent(tabsKey)}`;
+}
+
+interface PersistedSideChatTab {
+  id: string;
+  label: string;
+  questionKey: string;
+  followupSessionId: string;
+  language: string;
+  sideChat: {
+    parentSessionId: string | null;
+    leafMessageId: number | null;
+    sourceMessageId: number | string | null;
+    parentTitle?: string;
+    responder: SideChatResponder;
+  };
+}
+
+interface PersistedViewerTabs {
+  version: 1;
+  tabs: PersistedSideChatTab[];
+  activeTabId: string | null;
+}
+
+function sideChatTabFromPersisted(tab: PersistedSideChatTab): ViewerTab {
+  return {
+    kind: "side-chat",
+    id: tab.id,
+    label: tab.label,
+    context: {
+      questionKey: tab.questionKey,
+      question: {
+        question_id: tab.questionKey,
+        question: "",
+        question_type: "concept",
+        correct_answer: "",
+        explanation: "",
+      },
+      userAnswer: "",
+      isCorrect: null,
+      answerImages: [],
+      aiJudgment: "",
+      parentQuizSessionId: null,
+      notebookEntryId: null,
+      followupSessionId: tab.followupSessionId,
+      language: tab.language,
+      tabLabel: tab.label,
+      sideChat: tab.sideChat,
+    },
+  };
+}
+
+function parsePersistedViewerTabs(
+  raw: string,
+  parentSessionId: string | null,
+): { tabs: ViewerTab[]; activeTabId: string | null } | null {
+  let value: unknown;
+  try {
+    value = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (!value || typeof value !== "object") return null;
+  const parsed = value as Partial<PersistedViewerTabs>;
+  if (parsed.version !== 1 || !Array.isArray(parsed.tabs)) return null;
+
+  const seen = new Set<string>();
+  const tabs: ViewerTab[] = [];
+  for (const item of parsed.tabs) {
+    if (!item || typeof item !== "object") continue;
+    const tab = item as Partial<PersistedSideChatTab>;
+    const side = tab.sideChat;
+    if (
+      typeof tab.id !== "string" ||
+      typeof tab.label !== "string" ||
+      typeof tab.questionKey !== "string" ||
+      typeof tab.followupSessionId !== "string" ||
+      typeof tab.language !== "string" ||
+      !side ||
+      typeof side !== "object" ||
+      seen.has(tab.followupSessionId)
+    ) {
+      continue;
+    }
+    // A side chat belongs to the conversation that opened it. Do not leak it
+    // into another session when the storage key was copied or the route moved.
+    if ((side.parentSessionId ?? null) !== (parentSessionId ?? null)) continue;
+    const responder = side.responder;
+    if (
+      !responder ||
+      typeof responder !== "object" ||
+      !["dito", "partner", "partner_group", "subagent"].includes(responder.kind)
+    ) {
+      continue;
+    }
+    seen.add(tab.followupSessionId);
+    tabs.push(sideChatTabFromPersisted(tab as PersistedSideChatTab));
+  }
+  if (tabs.length === 0) return null;
+  return {
+    tabs,
+    activeTabId:
+      typeof parsed.activeTabId === "string" &&
+      tabs.some((tab) => tab.id === parsed.activeTabId)
+        ? parsed.activeTabId
+        : null,
+  };
+}
+
 const RESPONDER_ICONS: Record<SideChatResponder["kind"], LucideIcon> = {
   dito: MessagesSquare,
   partner: UserRound,
@@ -409,6 +522,7 @@ function SessionViewerPanelInner(
   const [tabs, setTabs] = useState<ViewerTab[]>([]);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
   const [closedTabs, setClosedTabs] = useState<ViewerTab[]>([]);
+  const [hydratedTabsKey, setHydratedTabsKey] = useState<string | null>(null);
 
   // Drag-to-resize width. The width is NOT React state — the panel reads it
   // from the ``--viewer-width`` CSS var (so does the chat shell's squeeze),
@@ -498,6 +612,31 @@ function SessionViewerPanelInner(
       setClosedTabs(restored?.closedTabs ?? []);
     }
   }
+
+  // Restore the side-chat tabs that were open before a reload. Kept out of
+  // the initial state so the server render and the first client render agree;
+  // an in-memory stash from this page takes precedence over storage.
+  useEffect(() => {
+    if (hydratedTabsKey === tabsKey) return;
+    // Restoring from localStorage is a post-mount hydration step; React's
+    // "no setState in an effect" rule does not apply to external storage.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setHydratedTabsKey(tabsKey);
+    if (tabs.length > 0 || activeTabId !== null) return;
+    const raw = browserStorage.readRaw("local", viewerTabsStorageKey(tabsKey));
+    if (!raw) return;
+    const restored = parsePersistedViewerTabs(raw, sessionId ?? null);
+    if (!restored) return;
+    setTabs(restored.tabs);
+    setActiveTabId(restored.activeTabId);
+  }, [activeTabId, hydratedTabsKey, sessionId, tabs.length, tabsKey]);
+
+  // A draft becomes a session: its tabs now live under the new key.
+  useEffect(() => {
+    if (reboundFromKey && reboundFromKey !== tabsKey) {
+      browserStorage.removeRaw("local", viewerTabsStorageKey(reboundFromKey));
+    }
+  }, [reboundFromKey, tabsKey]);
 
   const openFileTab = useCallback(
     (a: MessageAttachment) => {
@@ -678,7 +817,13 @@ function SessionViewerPanelInner(
       };
       setTabs((prev) => {
         const tab: ViewerTab = { kind: "side-chat", id, label, context };
-        const existingIdx = prev.findIndex((open) => open.id === id);
+        const existingIdx = prev.findIndex(
+          (open) =>
+            open.id === id ||
+            (followupSessionId !== null &&
+              open.kind === "side-chat" &&
+              open.context.followupSessionId === followupSessionId),
+        );
         if (existingIdx < 0) return [...prev, tab];
         const next = [...prev];
         next[existingIdx] = tab;
@@ -910,6 +1055,29 @@ function SessionViewerPanelInner(
     [activeTabId],
   );
 
+  /** Remember the server thread id a fresh side chat received on its first
+   *  turn, so the tab can be restored after a reload. */
+  const bindSideChatThread = useCallback((tabId: string, threadSessionId: string) => {
+    setTabs((prev) => {
+      let changed = false;
+      const next = prev.map((tab) => {
+        if (
+          tab.id !== tabId ||
+          tab.kind !== "side-chat" ||
+          tab.context.followupSessionId
+        ) {
+          return tab;
+        }
+        changed = true;
+        return {
+          ...tab,
+          context: { ...tab.context, followupSessionId: threadSessionId },
+        };
+      });
+      return changed ? next : prev;
+    });
+  }, []);
+
   /** Close the tab showing a thread that no longer exists (e.g. it was
    *  deleted from its message-level entry point). It is not remembered as
    *  recently closed: reopening it would only 404. */
@@ -1031,6 +1199,56 @@ function SessionViewerPanelInner(
   });
   const [threadsRevision, setThreadsRevision] = useState(0);
   useEffect(() => subscribeSessionChanges(() => setThreadsRevision((n) => n + 1)), []);
+
+  // Persist only side chats, and only once they have a server thread id: a
+  // bare tab with no history has nothing to restore. ``threadsRevision``
+  // changes when a first turn binds the thread, so the id is written then.
+  useEffect(() => {
+    if (hydratedTabsKey !== tabsKey) return;
+    const persistable: PersistedSideChatTab[] = [];
+    for (const tab of tabs) {
+      if (tab.kind !== "side-chat" || !tab.context.sideChat) continue;
+      const followupSessionId =
+        tab.context.followupSessionId ||
+        followups?.getThread(tab.context.questionKey).sessionId ||
+        null;
+      if (!followupSessionId) continue;
+      persistable.push({
+        id: tab.id,
+        label: tab.label,
+        questionKey: tab.context.questionKey,
+        followupSessionId,
+        language: tab.context.language,
+        sideChat: {
+          parentSessionId: tab.context.sideChat.parentSessionId,
+          leafMessageId: tab.context.sideChat.leafMessageId,
+          sourceMessageId: tab.context.sideChat.sourceMessageId ?? null,
+          parentTitle: tab.context.sideChat.parentTitle,
+          responder: tab.context.sideChat.responder,
+        },
+      });
+    }
+    const key = viewerTabsStorageKey(tabsKey);
+    if (persistable.length === 0) {
+      browserStorage.removeRaw("local", key);
+      return;
+    }
+    const payload: PersistedViewerTabs = {
+      version: 1,
+      tabs: persistable,
+      activeTabId: persistable.some((tab) => tab.id === activeTabId)
+        ? activeTabId
+        : null,
+    };
+    browserStorage.writeRaw("local", key, JSON.stringify(payload));
+  }, [
+    activeTabId,
+    followups,
+    hydratedTabsKey,
+    tabs,
+    tabsKey,
+    threadsRevision,
+  ]);
   useEffect(() => {
     if (providedThreads !== undefined || !launcherOpen || !sessionId) return;
     const controller = new AbortController();
@@ -1202,6 +1420,9 @@ function SessionViewerPanelInner(
             agents={agents}
             onResponderChange={(responder) =>
               setSideChatResponder(activeTab.id, responder)
+            }
+            onThreadSessionBound={(threadSessionId) =>
+              bindSideChatThread(activeTab.id, threadSessionId)
             }
           />
         ) : activeTab?.kind === "geogebra" ? (
