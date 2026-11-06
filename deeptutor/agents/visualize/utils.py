@@ -37,6 +37,7 @@ def extract_code_block(text: str, language: str = "") -> str:
 
     If *language* is given the block must start with that tag;
     otherwise any triple-backtick fence is accepted.
+    A language miss returns ``""`` so callers can fall back with ``or``.
     """
     # Closing fence may sit on the same line as the last content line.
     if language:
@@ -46,6 +47,9 @@ def extract_code_block(text: str, language: str = "") -> str:
     match = re.search(pattern, text or "", re.IGNORECASE)
     if match:
         return match.group(1).strip()
+    # Language miss must be falsy so `hint or any-fence` can fall through.
+    if language:
+        return ""
     return (text or "").strip()
 
 
