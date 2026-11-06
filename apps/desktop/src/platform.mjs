@@ -1,9 +1,21 @@
 import path from 'node:path';
+import { homedir } from 'node:os';
 
 // Everything that differs between macOS and Windows at run time lives here;
 // build-time differences live in platforms/<target>/.
 
 export const WINDOWS = process.platform === 'win32';
+
+/** Keep bundled runtimes first, then discover host CLIs when launched from Finder. */
+export function runtimePath(nodePath, pythonPath) {
+  const hostPaths = process.platform === 'darwin'
+    ? ['/opt/homebrew/bin', '/usr/local/bin', path.join(homedir(), '.local', 'bin')]
+    : [];
+  return [...new Set([
+    path.dirname(nodePath), path.dirname(pythonPath),
+    ...(process.env.PATH ?? '').split(path.delimiter), ...hostPaths,
+  ].filter(Boolean))].join(path.delimiter);
+}
 
 /** Build target folder name for a platform and architecture, e.g. macos-arm64. */
 export function targetId(platform = process.platform, arch = process.arch) {
