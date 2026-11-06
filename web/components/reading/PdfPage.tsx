@@ -102,6 +102,11 @@ export function PdfPage({
     : inkState?.key === inkKey
       ? inkState.box
       : undefined;
+  // "Not measured yet" is a state of its own, not the same thing as "measured,
+  // nothing to crop": both used to resolve to the uncropped layout, so the
+  // paint effect ran once before the measurement and again after it — every
+  // page drawn twice, at two different widths when the crop landed.
+  const awaitingInk = cropMargins && inkBox === undefined;
 
   const layout = useMemo(
     () =>
@@ -192,6 +197,13 @@ export function PdfPage({
         // paint the page but never settle it, which produced a document that
         // looked perfect and could not be selected at all.
         const paintCanvas = async () => {
+          // The crop decides the bitmap's width and its horizontal shift, so
+          // painting before the measurement lands draws the page at the wrong
+          // size and then repaints it at the right one. Wait for the answer;
+          // the text layer below is still built, so the page can be selected
+          // while the measurement runs, and the page's own box keeps its
+          // place.
+          if (awaitingInk) return;
           const canvas = canvasRef.current;
           if (!canvas) return;
           // The bitmap holds only the visible strip, and the page is drawn
@@ -284,7 +296,7 @@ export function PdfPage({
         // Already settled.
       }
     };
-  }, [doc, locator, width, active, layout]);
+  }, [doc, locator, width, active, layout, awaitingInk]);
 
   // Free the canvas bitmap when the page scrolls far away. Without this a
   // 600-page document accumulates every page it ever showed.

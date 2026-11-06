@@ -196,6 +196,30 @@ function zoomButton(view: ReturnType<typeof render>, label: string) {
   return button;
 }
 
+/** Pick a named mode from the zoom bar's level menu. */
+async function selectZoomMode(
+  view: ReturnType<typeof render>,
+  label: string,
+) {
+  const trigger = await waitFor(() => {
+    const element = view.container.querySelector<HTMLButtonElement>(
+      'button[aria-haspopup="menu"]',
+    );
+    if (!element) throw new Error("the zoom bar has not mounted yet");
+    return element;
+  });
+  await act(async () => {
+    fireEvent.click(trigger);
+  });
+  const item = [
+    ...view.container.querySelectorAll<HTMLElement>('[role="menuitem"]'),
+  ].find((node) => node.textContent === label);
+  if (!item) throw new Error(`No "${label}" zoom mode`);
+  await act(async () => {
+    fireEvent.click(item);
+  });
+}
+
 beforeEach(() => {
   containerWidth = 648;
   viewportHeight = 500;
@@ -479,7 +503,7 @@ describe("PDF reader zoom", () => {
     await act(async () => {
       fireEvent.keyDown(window, { key: "+", metaKey: true });
     });
-    await waitFor(() => expect(widthOf(view.root)).toBe(800));
+    await waitFor(() => expect(widthOf(view.root)).toBeCloseTo(750, 0));
     await act(async () => {
       fireEvent.keyDown(window, { key: "-", metaKey: true });
     });
@@ -497,7 +521,7 @@ describe("PDF reader zoom", () => {
       await act(async () => {
         fireEvent.click(zoomIn);
       });
-      expect(widthOf(view.root)).toBe(800);
+      expect(widthOf(view.root)).toBeCloseTo(750, 0);
       // Moving into the bottom band reveals the bar; moving out schedules its
       // hide (420 ms).
       await act(async () => {
@@ -520,6 +544,62 @@ describe("PDF reader zoom", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("does not keep a stale anchor when a zoom commits the same width", async () => {
+    // Open at the MIN_PAGE_WIDTH floor: 25% of an 800px page is 200px, which
+    // the reader raises to 240px.
+    localStorage.setItem(
+      PDF_ZOOM_KEY,
+      JSON.stringify({ mode: "fixed", scale: 0.25 }),
+    );
+    const view = await openReader({}, { expectFitWidth: false });
+    await waitFor(() => expect(widthOf(view.root)).toBe(240));
+
+    await scrollTo(view.root, 99, 0.3);
+    // Another zoom-out asks for the width already committed: nothing re-lays
+    // out, so the width restore never runs. Before the fix this captured an
+    // anchor and left it behind.
+    await act(async () => {
+      fireEvent.click(zoomButton(view, "Zoom out"));
+    });
+    expect(widthOf(view.root)).toBe(240);
+
+    // The reader moves on, and then changes mode. That commits a new width
+    // (240 -> 600), which used to apply the stale page-99 anchor and yank the
+    // reader back dozens of pages.
+    await scrollTo(view.root, 120, 0.4);
+    await selectZoomMode(view, "Fit text");
+    await waitFor(() => expect(widthOf(view.root)).toBe(600));
+    expect(positionWithin(view.root, 120)).toBeCloseTo(0.4, 2);
+  });
+
+  it("does not keep a stale anchor at the 400% ceiling either", async () => {
+    localStorage.setItem(
+      PDF_ZOOM_KEY,
+      JSON.stringify({ mode: "fixed", scale: 4 }),
+    );
+    const view = await openReader({}, { expectFitWidth: false });
+    await waitFor(() => expect(widthOf(view.root)).toBe(3200));
+
+    await scrollTo(view.root, 99, 0.3);
+    // The zoom-in button is disabled at the ceiling, but a pinch or ctrl+wheel
+    // still asks for a scale the clamp refuses: same width, no relayout.
+    const page = pageAt(view.root, 99);
+    const rect = page.getBoundingClientRect();
+    await act(async () => {
+      fireEvent.wheel(view.root, {
+        ctrlKey: true,
+        deltaY: -120,
+        clientY: rect.top + rect.height * 0.3,
+      });
+    });
+    expect(widthOf(view.root)).toBe(3200);
+
+    await scrollTo(view.root, 120, 0.4);
+    await selectZoomMode(view, "Fit text");
+    await waitFor(() => expect(widthOf(view.root)).toBe(600));
+    expect(positionWithin(view.root, 120)).toBeCloseTo(0.4, 2);
   });
 
   it("zooms with the keyboard only while the reader is in focus", async () => {

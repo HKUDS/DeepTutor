@@ -87,11 +87,19 @@ interface Calls {
   /** The page's own canvas. */
   visible: number;
   cleanup: number;
+  /** Viewport width of every page-canvas paint, in order. */
+  widths: number[];
 }
 
-/** A page 600pt wide whose text block covers 20%–80% of it. */
-function pageDocument() {
-  const calls: Calls = { getPage: 0, scratch: 0, visible: 0, cleanup: 0 };
+/** A page 600pt wide whose text block covers `inkLeft`–`inkLeft+inkWidth`. */
+function pageDocument({ inkLeft = 0.2, inkWidth = 0.6 } = {}) {
+  const calls: Calls = {
+    getPage: 0,
+    scratch: 0,
+    visible: 0,
+    cleanup: 0,
+    widths: [],
+  };
   const page = {
     render(
       this: unknown,
@@ -107,13 +115,17 @@ function pageDocument() {
       context.fillRect(0, 0, canvas.width, canvas.height);
       context.fillStyle = "#000000";
       context.fillRect(
-        Math.round(canvas.width * 0.2),
+        Math.round(canvas.width * inkLeft),
         0,
-        Math.round(canvas.width * 0.6),
+        Math.round(canvas.width * inkWidth),
         canvas.height,
       );
-      if (viewport.width <= 200.5) calls.scratch += 1;
-      else calls.visible += 1;
+      if (viewport.width <= 200.5) {
+        calls.scratch += 1;
+      } else {
+        calls.visible += 1;
+        calls.widths.push(viewport.width);
+      }
       return { promise: Promise.resolve(), cancel: () => undefined };
     },
     getViewport({ scale }: { scale: number }) {
@@ -181,16 +193,50 @@ describe("PDF page ink measurement window", () => {
 
     await waitFor(() => expect(calls.scratch).toBe(1));
     // The sample is the 200px scratch render; the page's own canvas is painted
-    // at the committed width.
-    expect(calls.visible).toBeGreaterThanOrEqual(1);
+    // at the committed width — and only once, after the crop is known.
+    await waitFor(() => expect(calls.visible).toBe(1));
 
     // Ink covers 60% of the page plus the 2% of paper kept either side, so the
     // full page is 600 / 0.64 = 938px wide and the strip starts at 18% of it.
     await waitFor(() => expect(Number(page.dataset.pageWidth)).toBe(938));
     expect(Number(page.dataset.pageOffsetX)).toBe(169);
+    // Exactly one paint, and at the cropped viewport — not the old
+    // `[600, 938]` pair of an uncropped draw followed by the real one.
+    await settle();
+    expect(calls.visible).toBe(1);
+    expect(calls.widths).toHaveLength(1);
+    expect(calls.widths[0]).toBeCloseTo(938, 6);
     // The strip itself is still the pane's width: measuring must not change
     // what the reader sees.
     expect(page.style.width).toBe("600px");
+  });
+
+  it("paints a page with nothing to crop exactly once", async () => {
+    stubCanvas();
+    // Ink covers 98% of the page — past MAX_CONTENT_WIDTH, so the measurement
+    // answers "nothing to crop". The layout is then the same before and after
+    // measuring, which is exactly the case where an unmeasured page and a
+    // measured one used to be indistinguishable: the page was painted once
+    // while waiting and once when the answer arrived.
+    const { doc, calls } = pageDocument({ inkLeft: 0.01, inkWidth: 0.98 });
+    const view = render(
+      <PdfPage
+        {...base}
+        doc={doc}
+        active
+        retain
+        inkKey="ink-window:no-crop"
+      />,
+    );
+    const page = view.container.querySelector<HTMLElement>("[data-reader-unit]")!;
+
+    await waitFor(() => expect(calls.scratch).toBe(1));
+    await waitFor(() => expect(calls.visible).toBe(1));
+    // And nothing repaints once the measurement has settled.
+    await settle();
+    expect(calls.visible).toBe(1);
+    expect(Number(page.dataset.pageWidth)).toBe(600);
+    expect(Number(page.dataset.pageOffsetX)).toBe(0);
   });
 
   it("hands back a page that was measured but never painted", async () => {
