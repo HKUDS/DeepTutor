@@ -411,6 +411,16 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         default_api_base="https://cloudgpu.app/v1",
     ),
     ProviderSpec(
+        name="cheapaimodel",
+        keywords=("cheapaimodel",),
+        env_key="CHEAPAIMODEL_API_KEY",
+        display_name="cheapaimodel",
+        backend="openai_compat",
+        is_gateway=True,
+        detect_by_base_keyword="cheapaimodel",
+        default_api_base="https://api.cheapaimodel.ai/v1",
+    ),
+    ProviderSpec(
         name="volcengine",
         keywords=("volcengine", "volces", "ark"),
         env_key="OPENAI_API_KEY",
