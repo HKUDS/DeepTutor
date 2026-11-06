@@ -82,6 +82,10 @@ export function PdfPage({
   const textLayerRef = useRef<HTMLDivElement | null>(null);
   // Whether this page was ever drawn, so only those are handed back.
   const renderedRef = useRef(false);
+  // Whether this page's ink was ever measured. Measuring parses the page, so a
+  // page measured but never painted holds pdf.js's decoded copy just like a
+  // rendered one and has to be handed back too.
+  const measuredRef = useRef(false);
   const [ratio, setRatio] = useState<number | null>(null);
   const [failed, setFailed] = useState(false);
   // `undefined` means "not measured yet"; `null` means "measured, nothing to
@@ -110,16 +114,31 @@ export function PdfPage({
   // How much of the page this strip shows. Reported only for the page the
   // reader is on: every page measures its own margins, and the zoom step must
   // start from what is under their eyes.
+  //
+  // Reported in every mode, not only while cropping: a page drawn whole is
+  // showing all of itself, so the share is 1. Leaving the last text-mode ratio
+  // behind made one press of "+" after switching to Fit page divide the fit
+  // ratio by a crop that is no longer on screen — 1250px instead of 750px.
   useEffect(() => {
-    if (!cropMargins || !active || !onCropRatio) return;
+    if (!active || !onCropRatio) return;
     onCropRatio(layout.visibleWidth / layout.fullWidth);
-  }, [cropMargins, active, layout.visibleWidth, layout.fullWidth, onCropRatio]);
+  }, [active, layout.visibleWidth, layout.fullWidth, onCropRatio]);
 
   // -- ink box -------------------------------------------------------------
 
+  // Measured only inside the render window. `PdfDocumentView` mounts a page for
+  // every locator, so measuring on mount would start a scratch render for a
+  // 600-page document as soon as it opened with Fit text — the expensive work
+  // belongs to the pages that can be seen, or are about to be.
+  const shouldMeasureInk = cropMargins && (active || retain);
+
   useEffect(() => {
-    if (!cropMargins) return;
+    if (!shouldMeasureInk) return;
     let cancelled = false;
+    // Marked before the await: the page is parsed for its ink as soon as
+    // `getPage` is called, and the cleanup below has to hand back one that was
+    // measured but never painted.
+    measuredRef.current = true;
     (async () => {
       const page = await doc.getPage(locator);
       if (cancelled) return;
@@ -131,7 +150,7 @@ export function PdfPage({
     return () => {
       cancelled = true;
     };
-  }, [doc, locator, inkKey, cropMargins]);
+  }, [doc, locator, inkKey, shouldMeasureInk]);
 
   // -- pictures ------------------------------------------------------------
 
@@ -278,14 +297,15 @@ export function PdfPage({
   // and operator list until told to let go — tens of MB a page for a scan.
   useEffect(() => {
     // `cleanup` waits for a cancelled render to settle before it frees.
-    // Only pages that were drawn: asking for the rest would load them.
-    if (retain || !renderedRef.current) return;
+    // Only pages that were drawn or measured: asking for the rest would load
+    // them.
+    if (retain || !(renderedRef.current || measuredRef.current)) return;
     releasePage(doc, locator);
   }, [retain, doc, locator]);
 
   useEffect(
     () => () => {
-      if (renderedRef.current) releasePage(doc, locator);
+      if (renderedRef.current || measuredRef.current) releasePage(doc, locator);
     },
     [doc, locator],
   );
