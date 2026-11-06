@@ -1332,9 +1332,7 @@ def test_editing_a_mark_keeps_the_author_it_was_written_with(
     assert [row.author for row in stored] == ["assistant"]
 
 
-def test_editing_a_mark_keeps_its_revision_resolution(
-    store: ReadingStore, pdf_path: Path
-) -> None:
+def test_editing_a_mark_keeps_its_revision_resolution(store: ReadingStore, pdf_path: Path) -> None:
     """An edit must not silently clear a revision-migration warning.
 
     Revision migration marks a row ``unresolved`` or ``ambiguous`` when its
