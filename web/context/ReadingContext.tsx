@@ -108,6 +108,18 @@ export function ReadingProvider({ children }: { children: ReactNode }) {
   // Ids whose write has been sent but not yet acknowledged. A refresh that
   // lands while this is non-empty must merge, not replace.
   const pendingWritesRef = useRef<Set<string>>(new Set());
+  // Ids this tab has deleted but the server has not confirmed yet. A refresh
+  // that lands while the DELETE is in flight still lists them; without this
+  // tombstone the row would come back and stay back.
+  const deletedIdsRef = useRef<Set<string>>(new Set());
+  // Newest refresh wins. Every GET takes a number; only the response to the
+  // highest one issued may apply, or an older list can land last and overwrite
+  // a newer one.
+  const refreshSeqRef = useRef(0);
+  // Bumped whenever this tab changes its own list. A GET that started before a
+  // local write carries a snapshot that predates it, so applying it would drop
+  // a mark the reader can see was saved.
+  const localMutationSeqRef = useRef(0);
   useEffect(() => () => {
     openTokenRef.current += 1;
     annotationScopeRef.current += 1;
@@ -139,6 +151,10 @@ export function ReadingProvider({ children }: { children: ReactNode }) {
         const marks = await listAnnotations(detail.material_id);
         if (token !== openTokenRef.current) return false;
         annotationScopeRef.current += 1;
+        // Tombstones and pending ids belong to the document that was open;
+        // carrying them into the next one would hide unrelated rows.
+        deletedIdsRef.current.clear();
+        pendingWritesRef.current.clear();
         setMaterial(detail);
         setAnnotations(marks);
         return true;
@@ -161,6 +177,8 @@ export function ReadingProvider({ children }: { children: ReactNode }) {
     // Bump the token so an open still in flight cannot resurrect the document.
     openTokenRef.current += 1;
     annotationScopeRef.current += 1;
+    deletedIdsRef.current.clear();
+    pendingWritesRef.current.clear();
     setMaterial(null);
     setAnnotations([]);
     setErrorState(null);
@@ -172,6 +190,8 @@ export function ReadingProvider({ children }: { children: ReactNode }) {
       const materialId = material?.material_id;
       if (!materialId) return false;
       const token = openTokenRef.current;
+      // From here on this tab's list differs from any GET already in flight.
+      localMutationSeqRef.current += 1;
       pendingWritesRef.current.add(optimistic.annotation_id);
       const previous = annotations.find(row => row.annotation_id === optimistic.annotation_id);
       setAnnotations(current => previous
@@ -181,10 +201,14 @@ export function ReadingProvider({ children }: { children: ReactNode }) {
         const saved = await saveAnnotation(materialId, draft);
         if (token === openTokenRef.current) setAnnotations(current => current.map(row => row.annotation_id === optimistic.annotation_id ? saved : row));
         pendingWritesRef.current.delete(optimistic.annotation_id);
+        // The acknowledged row is now part of this tab's list; a GET that
+        // started before the PUT returned may not contain it.
+        localMutationSeqRef.current += 1;
         publishAnnotationsChange(materialId);
         return true;
       } catch (caught) {
         pendingWritesRef.current.delete(optimistic.annotation_id);
+        localMutationSeqRef.current += 1;
         if (token !== openTokenRef.current) return false;
         setAnnotations(current => previous
           ? current.map(row => row.annotation_id === optimistic.annotation_id ? previous : row)
@@ -200,19 +224,29 @@ export function ReadingProvider({ children }: { children: ReactNode }) {
       const materialId = material?.material_id;
       if (!materialId) return false;
       const scope = annotationScopeRef.current;
+      const id = annotation.annotation_id;
+      // The row is gone from this tab's list before the request even leaves;
+      // any GET that overlaps must be told, or it will bring the row back.
+      deletedIdsRef.current.add(id);
+      localMutationSeqRef.current += 1;
       setAnnotations((current) => current.filter(
-        (row) => row.annotation_id !== annotation.annotation_id,
+        (row) => row.annotation_id !== id,
       ));
       try {
-        await deleteAnnotationApi(materialId, annotation.annotation_id);
+        await deleteAnnotationApi(materialId, id);
+        // The server has it gone now, so the tombstone has done its job.
+        deletedIdsRef.current.delete(id);
+        localMutationSeqRef.current += 1;
         publishAnnotationsChange(materialId);
         return true;
       } catch {
+        deletedIdsRef.current.delete(id);
+        localMutationSeqRef.current += 1;
         if (scope !== annotationScopeRef.current) return false;
         // Put it back: pretending a failed delete succeeded would lose the mark
         // on the next reload.
         setAnnotations((current) => current.some(
-          (row) => row.annotation_id === annotation.annotation_id,
+          (row) => row.annotation_id === id,
         ) ? current : [...current, annotation]);
         setErrorState("That annotation could not be removed.");
         return false;
@@ -223,6 +257,9 @@ export function ReadingProvider({ children }: { children: ReactNode }) {
 
   const mergeMark = useCallback((annotation: AnnotationItem) => {
     if (!annotation?.annotation_id) return;
+    // The assistant's mark is a local change too: a GET already in flight may
+    // not know it yet.
+    localMutationSeqRef.current += 1;
     setAnnotations((current) => [
       ...current.filter(
         (row) => row.annotation_id !== annotation.annotation_id,
@@ -251,29 +288,46 @@ export function ReadingProvider({ children }: { children: ReactNode }) {
   const materialId = material?.material_id ?? null;
   useEffect(() => {
     if (!materialId) return;
-    return subscribeToAnnotationsChange(materialId, () => {
-      const token = annotationScopeRef.current;
+    const read = () => {
+      const seq = ++refreshSeqRef.current;
+      const scope = annotationScopeRef.current;
+      const mutation = localMutationSeqRef.current;
       void listAnnotations(materialId)
         .then((rows) => {
           // The document may have been closed or swapped while this was in
           // flight; a stale response must not repopulate the list.
-          if (token !== annotationScopeRef.current) return;
+          if (scope !== annotationScopeRef.current) return;
+          // A newer refresh is already on its way, and its answer is the newer
+          // one. Letting this older list land would overwrite it.
+          if (seq !== refreshSeqRef.current) return;
+          // Our own list changed after this GET started. The snapshot predates
+          // that change — a create it does not know about, a delete it still
+          // lists — so discard it and read again from the settled state.
+          if (mutation !== localMutationSeqRef.current) {
+            read();
+            return;
+          }
+          // Snapshot the local effects this response must respect, so the
+          // decision is made against the state the response actually raced.
+          const deleted = new Set(deletedIdsRef.current);
+          const pending = new Set(pendingWritesRef.current);
           setAnnotations((current) => {
             // A write of ours is still in flight: keep those rows. Replacing
             // the list would drop a brand-new mark for good, because the PUT
             // that follows maps by an optimistic id the refresh just removed.
-            if (pendingWritesRef.current.size === 0) return rows;
-            const keep = current.filter((row) =>
-              pendingWritesRef.current.has(row.annotation_id),
-            );
-            return [...rows.filter((row) => !keep.some((k) => k.annotation_id === row.annotation_id)), ...keep];
+            const keep = current.filter((row) => pending.has(row.annotation_id));
+            return [
+              ...rows.filter((row) => !deleted.has(row.annotation_id) && !keep.some((k) => k.annotation_id === row.annotation_id)),
+              ...keep.filter((row) => !deleted.has(row.annotation_id)),
+            ];
           });
         })
         .catch(() => {
           // A failed refresh leaves the local list alone; the next write, or
           // the next open, will resync.
         });
-    });
+    };
+    return subscribeToAnnotationsChange(materialId, read);
   }, [materialId]);
 
   const reportViewport = useCallback(
