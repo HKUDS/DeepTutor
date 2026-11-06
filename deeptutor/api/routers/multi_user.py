@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from copy import deepcopy
+from datetime import datetime, timezone
 import os
 from pathlib import Path
 import shutil
@@ -13,9 +14,9 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, StrictBool, field_validator
 
-from deeptutor.api.routers.auth import require_admin, require_auth
+from deeptutor.api.routers.auth import RegisterRequest, require_admin, require_auth
 from deeptutor.modules.catalog import module_enabled, require_module
-from deeptutor.multi_user.audit import log_admin_action, log_guardian_action
+from deeptutor.multi_user.audit import log_admin_action, log_group_action, log_guardian_action
 from deeptutor.multi_user.book_permission import (
     BookDefaultLevel,
     BookPermission,
@@ -34,6 +35,16 @@ from deeptutor.multi_user.grants import (
     save_grant_with_receipt,
     validate_grant,
 )
+from deeptutor.multi_user.groups import (
+    add_member,
+    create_group,
+    delete_group,
+    get_group,
+    groups_led_by,
+    list_groups,
+    remove_member,
+    set_group_members,
+)
 from deeptutor.multi_user.guardians import (
     GUARDIAN_PERMISSIONS,
     authorize_guardian,
@@ -43,9 +54,12 @@ from deeptutor.multi_user.guardians import (
     revoke_guardian,
 )
 from deeptutor.multi_user.identity import (
+    get_user,
     get_user_by_id,
     list_user_info,
+    save_user,
     set_book_permission,
+    set_must_change_password,
     set_password,
     set_preset,
 )
@@ -941,3 +955,553 @@ def _reading_extensions():
     from deeptutor.reading.extensions import get_reading_extension_registry
 
     return get_reading_extension_registry().all()
+
+
+# ---------------------------------------------------------------------------
+# Groups — scoped oversight without a scoped role
+#
+# A group's lead is an ordinary user. Everything below authorizes by "is this
+# actor the lead of *this* group", never by role, so a logic error widens one
+# roster instead of promoting an account. Admins pass too — they already hold
+# the same powers everywhere else.
+# ---------------------------------------------------------------------------
+
+
+class GroupPayload(BaseModel):
+    name: str = Field(min_length=1, max_length=64)
+    lead_user_id: str = Field(min_length=1, max_length=64)
+    member_user_ids: list[str] = Field(default_factory=list)
+
+
+class GroupMembersPayload(BaseModel):
+    member_user_ids: list[str] = Field(default_factory=list)
+
+
+def _account_summary(user: dict[str, Any] | None) -> dict[str, Any]:
+    if not user:
+        return {"username": "", "role": "user", "preset": "standard", "disabled": True}
+    return {
+        "username": str(user.get("username") or ""),
+        "role": str(user.get("role") or "user"),
+        "preset": str(user.get("preset") or "standard"),
+        "disabled": bool(user.get("disabled", False)),
+    }
+
+
+def _group_view(group: dict[str, Any], users: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    members: list[dict[str, Any]] = []
+    for user_id in group["member_user_ids"]:
+        account = users.get(user_id)
+        if account is None:
+            # The account was deleted after being placed in the group. Keep the
+            # reference visible instead of silently shrinking the roster.
+            members.append({"id": user_id, "username": "", "missing": True})
+            continue
+        members.append({"id": user_id, **_account_summary(account)})
+    return {
+        **group,
+        "lead": {"id": group["lead_user_id"], **_account_summary(users.get(group["lead_user_id"]))},
+        "members": members,
+    }
+
+
+def _require_group_access(current: object, group_id: str) -> tuple[dict[str, Any], bool]:
+    """Return ``(group, is_admin)``; a non-admin must lead this exact group."""
+    group = get_group(group_id)
+    if group is None:
+        raise HTTPException(status_code=404, detail="Group not found")
+    if str(getattr(current, "role", "") or "") == "admin":
+        return group, True
+    actor_user_id = str(getattr(current, "user_id", "") or "")
+    if group["lead_user_id"] != actor_user_id:
+        raise HTTPException(status_code=403, detail="Group lead authorization required")
+    return group, False
+
+
+def _log_group_action(
+    action: str,
+    group_id: str,
+    *,
+    is_admin: bool,
+    target_user_id: str | None = None,
+    summary: dict[str, Any] | None = None,
+) -> None:
+    if is_admin:
+        log_admin_action(
+            action,
+            target_user_id=target_user_id,
+            summary={"group_id": group_id, **(summary or {})},
+        )
+        return
+    log_group_action(action, group_id=group_id, target_user_id=target_user_id, summary=summary)
+
+
+@router.get("/groups")
+async def list_groups_endpoint(current: object = Depends(require_auth)) -> dict[str, Any]:
+    """Admins see every group; everyone else sees only the groups they lead."""
+    actor_user_id = str(getattr(current, "user_id", "") or "")
+    is_admin = str(getattr(current, "role", "") or "") == "admin"
+    groups = list_groups() if is_admin else groups_led_by(actor_user_id)
+    users = _users_by_id()
+    return {"groups": [_group_view(group, users) for group in groups]}
+
+
+@router.post("/groups", status_code=201)
+async def create_group_endpoint(
+    payload: GroupPayload, current: object = Depends(require_admin)
+) -> dict[str, Any]:
+    actor_user_id = str(getattr(current, "user_id", "") or "")
+    try:
+        group = create_group(
+            payload.name,
+            lead_user_id=payload.lead_user_id,
+            member_user_ids=payload.member_user_ids,
+            created_by=actor_user_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    _log_group_action(
+        "group_create",
+        group["id"],
+        is_admin=True,
+        target_user_id=group["lead_user_id"],
+        summary={"member_count": len(group["member_user_ids"])},
+    )
+    return {"group": _group_view(group, _users_by_id())}
+
+
+@router.get("/groups/{group_id}")
+async def get_group_endpoint(
+    group_id: str, current: object = Depends(require_auth)
+) -> dict[str, Any]:
+    group, _is_admin = _require_group_access(current, group_id)
+    return {"group": _group_view(group, _users_by_id())}
+
+
+@router.put("/groups/{group_id}/members")
+async def put_group_members(
+    group_id: str,
+    payload: GroupMembersPayload,
+    current: object = Depends(require_auth),
+) -> dict[str, Any]:
+    _group, is_admin = _require_group_access(current, group_id)
+    try:
+        updated = set_group_members(group_id, payload.member_user_ids)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Group not found")
+    _log_group_action(
+        "group_members_update",
+        group_id,
+        is_admin=is_admin,
+        summary={"member_count": len(updated["member_user_ids"])},
+    )
+    return {"group": _group_view(updated, _users_by_id())}
+
+
+@router.put("/groups/{group_id}/members/{username}/password")
+async def reset_group_member_password(
+    group_id: str,
+    username: str,
+    payload: GuardianCredentialResetPayload,
+    current: object = Depends(require_auth),
+) -> dict[str, Any]:
+    group, is_admin = _require_group_access(current, group_id)
+    users = _users_by_id()
+    member_user_id = next(
+        (
+            user_id
+            for user_id in [group["lead_user_id"], *group["member_user_ids"]]
+            if str((users.get(user_id) or {}).get("username") or "") == username
+        ),
+        None,
+    )
+    if member_user_id is None:
+        # 403 rather than 404: a lead must not be able to probe the instance for
+        # account names by watching status codes.
+        raise HTTPException(status_code=403, detail="Account is not a member of this group")
+    _require_live_member(member_user_id)
+    if POCKETBASE_ENABLED:
+        raise HTTPException(
+            status_code=400,
+            detail="Group credential reset requires built-in local authentication.",
+        )
+    actor_user_id = str(getattr(current, "user_id", "") or "")
+    revoked_devices = revoke_device_credentials_for_user(
+        member_user_id,
+        revoked_by=actor_user_id,
+    )
+    if set_password(username, hash_password(payload.new_password)) is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    _log_group_action(
+        "group_member_password_reset",
+        group_id,
+        is_admin=is_admin,
+        target_user_id=member_user_id,
+        summary={"device_credentials_revoked": revoked_devices},
+    )
+    return {"ok": True, "device_credentials_revoked": revoked_devices}
+
+
+@router.get("/groups/{group_id}/report")
+async def group_report(group_id: str, current: object = Depends(require_auth)) -> dict[str, Any]:
+    """Per-member account and grant status.
+
+    Deliberately excludes conversation content: a lead needs to see who is
+    blocked, not what anybody said, or the workspace stops being somewhere
+    people are willing to think out loud.
+    """
+    group, is_admin = _require_group_access(current, group_id)
+    users = _users_by_id()
+    entries: list[dict[str, Any]] = []
+    for user_id in [group["lead_user_id"], *group["member_user_ids"]]:
+        account = users.get(user_id)
+        if account is None:
+            continue
+        grant = load_grant(user_id)
+        entries.append(
+            {
+                "user_id": user_id,
+                "username": str(account.get("username") or ""),
+                "role": str(account.get("role") or "user"),
+                "preset": str(account.get("preset") or "standard"),
+                "disabled": bool(account.get("disabled", False)),
+                "must_change_password": bool(account.get("must_change_password", False)),
+                "last_active_at": _last_active_at(user_id),
+                "grant_summary": {
+                    "model_count": len(grant.get("models", {}).get("llm", []) or []),
+                    "knowledge_base_count": len(grant.get("knowledge_bases") or []),
+                    "skill_count": len(grant.get("skills") or []),
+                },
+            }
+        )
+    _log_group_action(
+        "group_report_view",
+        group_id,
+        is_admin=is_admin,
+        summary={"member_count": len(entries)},
+    )
+    return {"group": _group_view(group, users), "members": entries}
+
+
+@router.delete("/groups/{group_id}")
+async def delete_group_endpoint(
+    group_id: str, _: object = Depends(require_admin)
+) -> dict[str, Any]:
+    if not delete_group(group_id):
+        raise HTTPException(status_code=404, detail="Group not found")
+    _log_group_action("group_delete", group_id, is_admin=True)
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Group membership: provisioning and resource hand-out, scoped to the roster
+#
+# A lead may create accounts for their own group and hand out resources — but
+# only resources the lead already holds. Without that second rule, scoped
+# oversight would become a way around the admin's grant decisions: a lead could
+# grant a knowledge base they were never allowed to see, and read it through
+# the member.
+# ---------------------------------------------------------------------------
+
+
+def _member_in_group(
+    group: dict[str, Any], username: str, users: dict[str, dict[str, Any]]
+) -> str | None:
+    for user_id in group["member_user_ids"]:
+        if str((users.get(user_id) or {}).get("username") or "") == username:
+            return user_id
+    return None
+
+
+def _last_active_at(user_id: str) -> str | None:
+    """Newest file mtime under the account's own workspace.
+
+    Deliberately not derived from conversation data: when someone last did
+    something is a status signal a lead may have, what they said is not.
+    """
+    from deeptutor.multi_user import paths as multi_user_paths
+
+    root = multi_user_paths.USERS_ROOT / user_id
+    if not root.is_dir():
+        return None
+    newest = 0.0
+    for base, _dirs, files in os.walk(root):
+        for name in files:
+            try:
+                newest = max(newest, os.path.getmtime(os.path.join(base, name)))
+            except OSError:
+                continue
+    if not newest:
+        return None
+    return datetime.fromtimestamp(newest, tz=timezone.utc).isoformat()
+
+
+class GroupMemberGrantPayload(BaseModel):
+    """Only the three assignable buckets.
+
+    Everything else on a grant — ``exec_enabled``, ``learning_policy``, partner
+    lending — stays a decision for an admin, so those keys are simply not part
+    of this payload.
+    """
+
+    models: list[dict[str, Any]] = Field(default_factory=list)
+    knowledge_bases: list[dict[str, Any]] = Field(default_factory=list)
+    skills: list[dict[str, Any]] = Field(default_factory=list)
+
+
+def _model_allowlist(entries: list[dict[str, Any]]) -> tuple[set[tuple[str, str]], set[str]]:
+    pairs: set[tuple[str, str]] = set()
+    wildcard: set[str] = set()
+    for item in entries:
+        if not isinstance(item, dict):
+            continue
+        profile_id = str(item.get("profile_id") or item.get("id") or "")
+        if not profile_id:
+            continue
+        model_ids = [str(model) for model in (item.get("model_ids") or []) if str(model)]
+        if not model_ids:
+            # No explicit list means "every model of this profile".
+            wildcard.add(profile_id)
+            continue
+        pairs.update((profile_id, model_id) for model_id in model_ids)
+    return pairs, wildcard
+
+
+def _name_allowlist(entries: list[dict[str, Any]], primary: str, fallback: str) -> set[str]:
+    names: set[str] = set()
+    for item in entries:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get(primary) or item.get(fallback) or "").strip()
+        if name:
+            names.add(name)
+    return names
+
+
+def _assert_grantable(lead_grant: dict[str, Any], payload: GroupMemberGrantPayload) -> None:
+    allowed_pairs, allowed_wildcard = _model_allowlist(
+        (lead_grant.get("models") or {}).get("llm") or []
+    )
+    requested_pairs, requested_wildcard = _model_allowlist(payload.models)
+    for profile_id in requested_wildcard:
+        if profile_id not in allowed_wildcard:
+            raise HTTPException(
+                status_code=403, detail="Cannot assign a model profile you do not hold"
+            )
+    for profile_id, model_id in requested_pairs:
+        if profile_id in allowed_wildcard:
+            continue
+        if (profile_id, model_id) not in allowed_pairs:
+            raise HTTPException(status_code=403, detail="Cannot assign a model you do not hold")
+
+    allowed_kbs = _name_allowlist(lead_grant.get("knowledge_bases") or [], "name", "kb_name")
+    for name in _name_allowlist(payload.knowledge_bases, "name", "kb_name"):
+        if name not in allowed_kbs:
+            raise HTTPException(
+                status_code=403, detail="Cannot assign a knowledge base you do not hold"
+            )
+
+    allowed_skills = _name_allowlist(lead_grant.get("skills") or [], "skill_id", "id")
+    for skill_id in _name_allowlist(payload.skills, "skill_id", "id"):
+        if skill_id not in allowed_skills:
+            raise HTTPException(status_code=403, detail="Cannot assign a skill you do not hold")
+
+
+def _require_live_member(member_user_id: str) -> None:
+    """Re-read the account's *current* role before acting on it.
+
+    Membership is decided once, when the account is added. An admin can promote
+    that account afterwards, and nothing removes it from the roster — so a
+    lead's authority over "a member" must be re-derived from the account as it
+    is now, never from the roster snapshot taken earlier.
+    """
+    found = get_user_by_id(member_user_id)
+    if found is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    _username, record = found
+    if str(record.get("role") or "user") == "admin":
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "This account is an administrator now and is no longer managed through a group."
+            ),
+        )
+
+
+@router.post("/groups/{group_id}/members", status_code=201)
+async def create_group_member(
+    group_id: str,
+    payload: RegisterRequest,
+    current: object = Depends(require_auth),
+) -> dict[str, Any]:
+    """Provision one account straight into the group.
+
+    ``RegisterRequest`` is reused on purpose: it already carries the username
+    charset rules (ASCII, email, and CJK names) and the password length floor.
+    ``role`` and ``preset`` are never taken from the request — a lead mints
+    ordinary members and nothing else.
+    """
+    _group, is_admin = _require_group_access(current, group_id)
+    if POCKETBASE_ENABLED:
+        raise HTTPException(
+            status_code=400,
+            detail="Group account creation requires built-in local authentication.",
+        )
+    username = payload.username
+    if get_user(username) is not None:
+        raise HTTPException(status_code=409, detail="Username already exists")
+    record = save_user(
+        username,
+        hash_password(payload.password),
+        role="user",
+        preset="standard",
+    )
+    set_must_change_password(username, True)
+    updated = add_member(group_id, record["id"])
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Group not found")
+    _log_group_action(
+        "group_member_create",
+        group_id,
+        is_admin=is_admin,
+        target_user_id=record["id"],
+        summary={"username": username},
+    )
+    return {"group": _group_view(updated, _users_by_id())}
+
+
+@router.delete("/groups/{group_id}/members/{username}")
+async def remove_group_member(
+    group_id: str,
+    username: str,
+    current: object = Depends(require_auth),
+) -> dict[str, Any]:
+    """Remove someone from the roster. The account and its data stay."""
+    group, is_admin = _require_group_access(current, group_id)
+    member_user_id = _member_in_group(group, username, _users_by_id())
+    if member_user_id is None:
+        raise HTTPException(status_code=403, detail="Account is not a member of this group")
+    updated = remove_member(group_id, member_user_id)
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Group not found")
+    _log_group_action(
+        "group_member_remove",
+        group_id,
+        is_admin=is_admin,
+        target_user_id=member_user_id,
+        summary={"username": username},
+    )
+    return {"group": _group_view(updated, _users_by_id())}
+
+
+@router.put("/groups/{group_id}/members/{username}/grants")
+async def put_group_member_grants(
+    group_id: str,
+    username: str,
+    payload: GroupMemberGrantPayload,
+    current: object = Depends(require_auth),
+) -> dict[str, Any]:
+    """Hand a member the models, knowledge bases and skills this lead holds."""
+    group, is_admin = _require_group_access(current, group_id)
+    member_user_id = _member_in_group(group, username, _users_by_id())
+    if member_user_id is None:
+        raise HTTPException(status_code=403, detail="Account is not a member of this group")
+    _require_live_member(member_user_id)
+    if not is_admin:
+        _assert_grantable(load_grant(group["lead_user_id"]), payload)
+
+    existing = load_grant(member_user_id)
+    merged = {
+        **existing,
+        "models": {
+            **(existing.get("models") or {}),
+            "llm": [dict(item) for item in payload.models],
+        },
+        "knowledge_bases": [dict(item) for item in payload.knowledge_bases],
+        "skills": [dict(item) for item in payload.skills],
+    }
+    try:
+        grant = normalize_grant(member_user_id, merged)
+        validate_grant(grant)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    saved = save_grant(member_user_id, grant)
+    _log_group_action(
+        "group_member_grants",
+        group_id,
+        is_admin=is_admin,
+        target_user_id=member_user_id,
+        summary={
+            "model_count": len((saved.get("models") or {}).get("llm") or []),
+            "knowledge_base_count": len(saved.get("knowledge_bases") or []),
+            "skill_count": len(saved.get("skills") or []),
+        },
+    )
+    return {"grant": saved}
+
+
+@router.get("/groups/{group_id}/grantable")
+async def group_grantable_resources(
+    group_id: str, current: object = Depends(require_auth)
+) -> dict[str, Any]:
+    """What this actor may hand out inside the group.
+
+    The admin catalog endpoint is admin-only, so without this a lead would have
+    no way to discover resource ids and the grant editor would be unusable. The
+    answer is the actor's own reach: a lead sees exactly their grant, normalised
+    to the same ``{profile_id, model_ids}`` shape the grant endpoint accepts.
+    """
+    group, is_admin = _require_group_access(current, group_id)
+    if is_admin:
+        catalog = _admin_catalog_summary()
+        models = [
+            {
+                "profile_id": str(entry.get("profile_id") or ""),
+                "name": str(entry.get("name") or ""),
+                "model_ids": [
+                    str(model.get("model_id") or "") for model in entry.get("models") or []
+                ],
+            }
+            for entry in catalog.get("llm") or []
+        ]
+        return {
+            "models": models,
+            "knowledge_bases": _admin_kb_summary(),
+            "skills": _admin_skill_summary(),
+        }
+
+    grant = load_grant(group["lead_user_id"])
+    return {
+        "models": [
+            {**dict(item), "name": str(item.get("name") or item.get("profile_id") or "")}
+            for item in (grant.get("models") or {}).get("llm") or []
+            if isinstance(item, dict)
+        ],
+        "knowledge_bases": [
+            dict(item) for item in grant.get("knowledge_bases") or [] if isinstance(item, dict)
+        ],
+        "skills": [dict(item) for item in grant.get("skills") or [] if isinstance(item, dict)],
+    }
+
+
+@router.get("/groups/{group_id}/members/{username}/grants")
+async def get_group_member_grants(
+    group_id: str,
+    username: str,
+    current: object = Depends(require_auth),
+) -> dict[str, Any]:
+    """The member's current assignable surface, for the group grant editor."""
+    group, _is_admin = _require_group_access(current, group_id)
+    member_user_id = _member_in_group(group, username, _users_by_id())
+    if member_user_id is None:
+        raise HTTPException(status_code=403, detail="Account is not a member of this group")
+    _require_live_member(member_user_id)
+    grant = load_grant(member_user_id)
+    return {
+        "models": [dict(item) for item in (grant.get("models") or {}).get("llm") or []],
+        "knowledge_bases": [dict(item) for item in grant.get("knowledge_bases") or []],
+        "skills": [dict(item) for item in grant.get("skills") or []],
+    }

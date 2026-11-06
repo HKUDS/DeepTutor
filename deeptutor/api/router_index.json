@@ -1,5 +1,5 @@
 {
-  "fingerprint": "b3ff4a2963d642a226ba3b8fd034f616c878ec27cdb071e720e82674dabd3b75",
+  "fingerprint": "a27a5e8b18ba94f62d35dddce72a7ec7ee32a97220074b1b03b512d6fc6c7c3b",
   "routers": {
     "deeptutor.api.routers.auth:router": [
       {
@@ -417,6 +417,102 @@
       {
         "path": "/users",
         "name": "multi_user_list_users",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/groups",
+        "name": "list_groups_endpoint",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/groups",
+        "name": "create_group_endpoint",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/groups/{group_id}",
+        "name": "get_group_endpoint",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/groups/{group_id}/members",
+        "name": "put_group_members",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/groups/{group_id}/members/{username}/password",
+        "name": "reset_group_member_password",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/groups/{group_id}/report",
+        "name": "group_report",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/groups/{group_id}",
+        "name": "delete_group_endpoint",
+        "kind": "http",
+        "methods": [
+          "DELETE"
+        ]
+      },
+      {
+        "path": "/groups/{group_id}/members",
+        "name": "create_group_member",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/groups/{group_id}/members/{username}",
+        "name": "remove_group_member",
+        "kind": "http",
+        "methods": [
+          "DELETE"
+        ]
+      },
+      {
+        "path": "/groups/{group_id}/members/{username}/grants",
+        "name": "put_group_member_grants",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/groups/{group_id}/grantable",
+        "name": "group_grantable_resources",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/groups/{group_id}/members/{username}/grants",
+        "name": "get_group_member_grants",
         "kind": "http",
         "methods": [
           "GET"

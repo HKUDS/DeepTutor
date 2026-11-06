@@ -2026,8 +2026,20 @@ async def update_user_role(
     if not updated:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
+    pruned = 0
+    if body.role == "admin":
+        # The other half of the guard in `_require_live_member`: an account that
+        # becomes an admin must not stay on a roster a lead still manages.
+        from deeptutor.multi_user.groups import drop_member_everywhere
+        from deeptutor.multi_user.identity import get_user
+
+        record = get_user(username)
+        if record is not None:
+            pruned = len(drop_member_everywhere(str(record.get("id") or "")))
+
     logger.info(
         f"Admin '{current.username if current else 'local'}' set '{username}' role to {body.role!r}"
+        + (f" (removed from {pruned} group roster(s))" if pruned else "")
     )
     return {"ok": True, "username": username, "role": body.role}
 

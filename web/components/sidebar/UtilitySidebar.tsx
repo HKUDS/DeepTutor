@@ -8,6 +8,7 @@ import { useTranslation } from "react-i18next";
 import { LayoutSidebarShell } from "@/features/ui-layout/slots";
 import { LogoutButton } from "@/components/auth/LogoutButton";
 import { AdminLink } from "@/components/auth/AdminLink";
+import { GroupLink } from "@/components/auth/GroupLink";
 import { ProfileLink } from "@/components/auth/ProfileLink";
 import { useAppShell } from "@/context/AppShellContext";
 import {
@@ -155,6 +156,7 @@ export default function UtilitySidebar() {
         <>
           <ProfileLink collapsed={collapsed} />
           <AdminLink collapsed={collapsed} />
+          <GroupLink collapsed={collapsed} />
           <LogoutButton collapsed={collapsed} />
         </>
       )}
