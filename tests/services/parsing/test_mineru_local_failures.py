@@ -375,6 +375,39 @@ def test_backend_runtime_failure_does_not_claim_missing_install(
     assert "exit code 9" in str(exc.value)
 
 
+def test_cleanup_failure_keeps_the_retry_hint(
+    pdf: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A cleanup failure is retained for diagnosis, so it needs the same hint.
+
+    The attempt directory is kept on failure, which is exactly what the hint
+    describes; omitting ``CLEANUP_FAILED`` from the set would make the one
+    reason whose artifacts are most likely still on disk the only one that does
+    not say so (#2426).
+    """
+    monkeypatch.setattr(
+        mineru_backend,
+        "parse_document_with_mineru_result",
+        lambda *_args, **_kwargs: LocalParseResult(
+            ok=False,
+            reason=LocalParseReason.CLEANUP_FAILED,
+            detail="ProcessTreeNotSettled: did not settle",
+        ),
+    )
+
+    with pytest.raises(MinerUError) as exc:
+        mineru_backend.parse_document_to_workdir(
+            pdf, tmp_path / "out", config=MinerUConfig(mode="local")
+        )
+
+    message = str(exc.value)
+    assert exc.value.code == "cleanup_failed"
+    assert "Incomplete output is retained for diagnosis" in message
+    # It must not be reported as a parser crash or a missing install.
+    assert "Ensure MinerU is installed" not in message
+    assert "interrupted" not in message
+
+
 def test_legacy_bool_helpers_keep_their_contract(
     pdf: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
