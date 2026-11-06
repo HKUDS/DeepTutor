@@ -314,6 +314,10 @@ class AnnotationInfo(BaseModel):
     source_anchor: str = ""
     selectors: list[dict[str, Any]] = Field(default_factory=list)
     author: str
+    # Server-owned: the revision migration marks a mark unresolved or
+    # ambiguous, and the client draws a badge from it. Without this field the
+    # response silently dropped it, so the badge could never arrive.
+    resolution: str = "resolved"
     created_at: float
     updated_at: float
 

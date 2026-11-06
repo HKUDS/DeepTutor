@@ -1373,3 +1373,24 @@ def test_editing_a_mark_keeps_its_revision_resolution(
     assert edited.resolution == "unresolved"
     stored = store.annotations(manifest.material_id)
     assert [(row.note, row.resolution) for row in stored] == [("v2", "unresolved")]
+
+
+def test_annotation_response_carries_its_resolution():
+    """The reader draws a badge from `resolution`; the response must carry it."""
+    from deeptutor.api.routers.reading import AnnotationInfo
+
+    info = AnnotationInfo(
+        annotation_id="a1",
+        locator=1,
+        kind="highlight",
+        color="yellow",
+        quote="Intro",
+        note="",
+        rects=[],
+        author="user",
+        created_at=1.0,
+        updated_at=2.0,
+        resolution="unresolved",
+    )
+
+    assert info.model_dump()["resolution"] == "unresolved"
