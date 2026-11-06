@@ -466,6 +466,62 @@ describe("PDF reader zoom", () => {
     ).toBe("Fit");
   });
 
+  it("keeps the keyboard shortcut alive while focus is in the zoom bar", async () => {
+    const view = await openReader();
+    // The bar is a sibling of the scroll root, so neither `:hover` on the root
+    // nor `root.contains(activeElement)` covers it. Clicking Zoom must not make
+    // ⌘+/⌘− go dead.
+    const zoomIn = await waitFor(() => zoomButton(view, "Zoom in"));
+    act(() => {
+      zoomIn.focus();
+    });
+    expect(document.activeElement).toBe(zoomIn);
+    await act(async () => {
+      fireEvent.keyDown(window, { key: "+", metaKey: true });
+    });
+    await waitFor(() => expect(widthOf(view.root)).toBe(800));
+    await act(async () => {
+      fireEvent.keyDown(window, { key: "-", metaKey: true });
+    });
+    await waitFor(() => expect(widthOf(view.root)).toBe(600));
+  });
+
+  it("clears its pending save and hide timers when it unmounts", async () => {
+    const view = await openReader();
+    const zoomIn = await waitFor(() => zoomButton(view, "Zoom in"));
+    // Fake timers keep the debounce from firing while the two-pointer-move
+    // sequence below re-renders 160 pages, and make the pending count exact.
+    vi.useFakeTimers();
+    try {
+      // A zoom gesture schedules the debounced preference write (150 ms).
+      await act(async () => {
+        fireEvent.click(zoomIn);
+      });
+      expect(widthOf(view.root)).toBe(800);
+      // Moving into the bottom band reveals the bar; moving out schedules its
+      // hide (420 ms).
+      await act(async () => {
+        fireEvent.pointerMove(view.root, {
+          clientY: ROOT_TOP + viewportHeight - 8,
+        });
+      });
+      await act(async () => {
+        fireEvent.pointerMove(view.root, { clientY: ROOT_TOP + 8 });
+      });
+      expect(vi.getTimerCount()).toBe(2);
+
+      view.unmount();
+      expect(vi.getTimerCount()).toBe(0);
+      // Nothing lands in storage after the reader is gone.
+      act(() => {
+        vi.runAllTimers();
+      });
+      expect(localStorage.getItem(PDF_ZOOM_KEY)).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("zooms with the keyboard only while the reader is in focus", async () => {
     const view = await openReader();
     // Without focus the chord belongs to the browser, not the reader.

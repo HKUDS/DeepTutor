@@ -71,15 +71,26 @@ export function PdfZoomControls({
 
   return (
     <div
-      ref={rootRef}
-      onPointerEnter={() => onActiveChange(true)}
-      onPointerLeave={() => onActiveChange(false)}
-      className={`absolute inset-x-0 bottom-3 z-20 flex justify-center transition-opacity duration-150 ${
-        visible ? "opacity-100" : "pointer-events-none opacity-0"
+      // The wrapper spans the pane's whole width so the toolbar can centre in
+      // it, but it must never be a hit target: it is an absolutely positioned
+      // sibling of the scroll container, so a pointer-opaque wrapper would
+      // swallow wheel/ctrl+wheel, selection and annotation clicks across the
+      // bottom band of every page. Only the toolbar itself opts back in.
+      className={`pointer-events-none absolute inset-x-0 bottom-3 z-20 flex justify-center transition-opacity duration-150 ${
+        visible ? "opacity-100" : "opacity-0"
       }`}
     >
       <div
+        ref={rootRef}
         role="toolbar"
+        // The pointer handlers live on the toolbar, not the wrapper: with the
+        // wrapper transparent they would never fire, and the bar would hide
+        // while it is being used.
+        onPointerEnter={() => onActiveChange(true)}
+        onPointerLeave={() => onActiveChange(false)}
+        // Marks the bar as part of the reader for the keyboard shortcuts, which
+        // otherwise only look at the scroll root (a sibling of this element).
+        data-pdf-zoom-controls=""
         aria-label={t("Zoom level")}
         className="pointer-events-auto relative flex items-center gap-0.5 rounded-xl border border-[var(--border)] bg-[var(--background)] px-1.5 py-1 text-[var(--foreground)] shadow-[0_8px_24px_rgba(0,0,0,0.12)]"
       >

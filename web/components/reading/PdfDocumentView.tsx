@@ -175,6 +175,20 @@ export function PdfDocumentView({
     rects: NormalisedRect[];
   } | null>(null);
 
+  // Timers that outlive the component would fire into a torn-down reader: the
+  // save debounce would write a preference nobody is looking at, and the hide
+  // timer would set state on an unmounted tree. Clear both on unmount.
+  useEffect(() => {
+    return () => {
+      if (settleRef.current !== null) clearTimeout(settleRef.current);
+      if (controlsHideRef.current !== null) {
+        clearTimeout(controlsHideRef.current);
+      }
+      settleRef.current = null;
+      controlsHideRef.current = null;
+    };
+  }, []);
+
   const doc = loaded?.materialId === materialId ? loaded.doc : null;
   const fallbackRatio =
     loaded?.materialId === materialId ? loaded.ratio : 1.414; // A4 until measured
@@ -495,11 +509,23 @@ export function PdfDocumentView({
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const root = scrollRef.current;
+      // The zoom bar is a sibling of the scroll root, so neither `:hover` on
+      // the root nor `activeElement` inside the root covers it: after clicking
+      // Zoom the shortcut went dead until the pointer moved back over a page.
+      // The bar is part of the reader — the pointer on it already reports
+      // through `overControls`, and focus inside it is matched here.
+      const controls = document.querySelector<HTMLElement>(
+        "[data-pdf-zoom-controls]",
+      );
+      const focused = document.activeElement;
       const action = pdfZoomShortcut({
         key: event.key,
         modifier: event.metaKey || event.ctrlKey,
-        readerHovered: root?.matches(":hover") ?? false,
-        readerFocused: Boolean(root && root.contains(document.activeElement)),
+        readerHovered:
+          (root?.matches(":hover") ?? false) || overControls.current,
+        readerFocused:
+          Boolean(root && root.contains(focused)) ||
+          Boolean(controls && focused && controls.contains(focused)),
       });
       if (!action) return;
       event.preventDefault();

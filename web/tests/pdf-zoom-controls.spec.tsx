@@ -97,14 +97,39 @@ describe("zoom level menu", () => {
   it("reports pointer presence so hovering the bar does not hide it", async () => {
     const onActiveChange = vi.fn();
     const view = controls({ onActiveChange });
+    const toolbar = view.getByRole("toolbar");
     await act(async () => {
-      fireEvent.pointerEnter(view.container.firstElementChild!);
+      fireEvent.pointerEnter(toolbar);
     });
     expect(onActiveChange).toHaveBeenCalledWith(true);
     await act(async () => {
-      fireEvent.pointerLeave(view.container.firstElementChild!);
+      fireEvent.pointerLeave(toolbar);
     });
     expect(onActiveChange).toHaveBeenCalledWith(false);
+  });
+
+  it("keeps the full-width wrapper transparent to pointers", () => {
+    const view = controls();
+    const wrapper = view.container.firstElementChild as HTMLElement;
+    const toolbar = view.getByRole("toolbar");
+    // jsdom does no hit-testing, so this asserts the contract the browser
+    // applies: the wrapper spans the whole pane and must let wheel, click and
+    // selection events through to the page beneath it, while the toolbar
+    // itself stays interactive.
+    expect(wrapper.className).toContain("pointer-events-none");
+    expect(wrapper.className).not.toContain("pointer-events-auto");
+    expect(toolbar.className).toContain("pointer-events-auto");
+  });
+
+  it("does not claim pointer presence from the wrapper's empty area", async () => {
+    const onActiveChange = vi.fn();
+    const view = controls({ onActiveChange });
+    // The wrapper covers the pane's bottom band; entering its empty part is
+    // not entering the bar, and must not keep the bar alive.
+    await act(async () => {
+      fireEvent.pointerEnter(view.container.firstElementChild!);
+    });
+    expect(onActiveChange).not.toHaveBeenCalled();
   });
 
   it("disables the ends of the range instead of wrapping", () => {
