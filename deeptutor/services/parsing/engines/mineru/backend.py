@@ -29,12 +29,13 @@ logger = logging.getLogger(__name__)
 
 # PATH-lookup order matches ``check_mineru_installed`` in local.py so the
 # probe reports the same command the parse subprocess will actually use.
-_LOCAL_CLI_COMMANDS = ("mineru", "magic-pdf")
+_LOCAL_CLI_COMMANDS = ("mineru-kit", "mineru", "magic-pdf")
 
 #: One actionable message per local-parse failure reason. The install/cloud
 #: hint is deliberately limited to ``CLI_MISSING``: a runtime failure must not
 #: be reported as a missing installation (issue #1612, outcome 4).
 _LOCAL_FAILURE_MESSAGES: dict[LocalParseReason, str] = {
+    LocalParseReason.UNSUPPORTED_CLI: "Local MinerU CLI is incompatible: {detail}",
     LocalParseReason.TIMEOUT: "Local MinerU parsing timed out: {detail}",
     LocalParseReason.CANCELLED: "Local MinerU parsing was cancelled: {detail}",
     LocalParseReason.CLI_MISSING: (
@@ -213,7 +214,7 @@ def _parse_local(
 
     if (
         cli_command
-        and Path(cli_command).name == "magic-pdf"
+        and Path(cli_command).stem == "magic-pdf"
         and source_path.suffix.lower() != ".pdf"
     ):
         raise MinerUError(

@@ -269,6 +269,7 @@ def test_pdf_parser_streams_output_lines(tmp_path: Path, monkeypatch: pytest.Mon
         yield SimpleNamespace(poll=lambda: 0)
 
     monkeypatch.setattr(pdf_parser, "check_mineru_installed", lambda: "mineru")
+    monkeypatch.setattr(pdf_parser, "read_cli_version", lambda command: "3.4.5")
     monkeypatch.setattr(pdf_parser, "cli_process", fake_cli_process)
 
     seen: list[str] = []
@@ -300,6 +301,7 @@ def test_document_parser_passes_docx_to_current_mineru_cli(
         yield SimpleNamespace(poll=lambda: 0)
 
     monkeypatch.setattr(local_parser, "cli_process", fake_cli_process)
+    monkeypatch.setattr(local_parser, "read_cli_version", lambda command: "3.4.5")
 
     assert local_parser.parse_document_with_mineru(str(source), str(out), cli_command="mineru")
     assert captured["cmd"][:3] == ["mineru", "-p", str(source.resolve())]
@@ -314,8 +316,8 @@ def test_document_parser_rejects_legacy_magic_pdf_for_office(
     source = tmp_path / "lesson.docx"
     source.write_bytes(b"office")
     monkeypatch.setattr(
-        local_parser.subprocess,
-        "Popen",
+        local_parser,
+        "read_cli_version",
         lambda *_args, **_kwargs: pytest.fail("legacy CLI must not be invoked"),
     )
 

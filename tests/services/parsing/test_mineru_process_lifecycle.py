@@ -50,7 +50,8 @@ def run_fixture(tmp_path, monkeypatch, code, run=None, idle=0.05, timeout=30, ex
         output = cmd[cmd.index("-o") + 1]
         return popen([sys.executable, "-c", code, output], **kwargs)
 
-    monkeypatch.setattr(local.subprocess, "Popen", spawn)
+    monkeypatch.setattr(subprocess, "Popen", spawn)
+    monkeypatch.setattr(local, "read_cli_version", lambda command: "3.4.5")
     monkeypatch.setattr(progress, "current_run", lambda: run or SimpleNamespace(check=lambda: None))
     monkeypatch.setattr(local, "_LOCAL_PARSE_IDLE_TIMEOUT_SECONDS", idle)
     monkeypatch.setattr(local, "_LOCAL_PARSE_TIMEOUT_SECONDS", timeout)
