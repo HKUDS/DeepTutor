@@ -10,7 +10,7 @@ import {
   newCommandId,
 } from "@/contracts/parse/turn-command";
 import { parseTurnEvent } from "@/contracts/parse/turn-event";
-import { scopedUrl } from "@/lib/workspace-scope";
+import { scopedSocketUrl } from "@/lib/workspace-scope";
 
 import {
   browserSocketFactory,
@@ -140,7 +140,9 @@ export class TurnRuntimeClient {
 
   constructor(options: TurnRuntimeClientOptions) {
     this.options = {
-      url: scopedUrl("/ws"),
+      // A relative path here reaches `new WebSocket()` unchanged, which
+      // rejects it; the default has to be the absolute URL (#2404).
+      url: scopedSocketUrl("/ws"),
       socketFactory: browserSocketFactory,
       scheduler: defaultScheduler,
       random: Math.random,

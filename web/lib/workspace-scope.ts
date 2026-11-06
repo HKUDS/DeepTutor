@@ -56,6 +56,43 @@ export function scopedUrl(path: string, workspaceId = activeWorkspaceId()): stri
   return absolute ? url.toString() : `${url.pathname}${url.search}${url.hash}`
 }
 
+/**
+ * The same scope, as an absolute `ws:`/`wss:` URL.
+ *
+ * A relative path is resolved against the document before it is requested, so
+ * `scopedUrl` stays relative for that consumer. `new WebSocket()` does not
+ * resolve anything: the constructor parses its argument as an absolute URL and
+ * throws `DOMException: The URL is invalid` on `/ws?dt_workspace=…`, which left
+ * every socket-backed surface hung instead of connecting (#2404). Sockets
+ * therefore take the scoped path and turn it into the matching absolute URL.
+ *
+ * The scheme follows the target: a same-origin socket follows the page, so an
+ * `https:` document yields `wss:` and never opens a cleartext socket on a TLS
+ * page, while an `https:` URL that already names another origin keeps that
+ * origin and takes `wss:` from its own scheme. A URL that is already
+ * `ws:`/`wss:` is returned untouched. Anything that is not a URL at all (a
+ * bare word, a `data:` URI) is returned unchanged, since the socket layer is
+ * not the right place to reject it.
+ */
+export function scopedSocketUrl(path: string, workspaceId = activeWorkspaceId()): string {
+  if (typeof window === 'undefined') return scopedUrl(path, workspaceId)
+  const scoped = scopedUrl(path, workspaceId)
+  if (/^wss?:\/\//i.test(scoped)) return scoped
+  const absolute = /^https?:\/\//i.test(scoped)
+  // Only a relative socket path is ours to complete; a bare word or a
+  // non-http scheme is left to the caller.
+  if (!absolute && !scoped.startsWith('/')) return scoped
+  const url = new URL(scoped, window.location.origin)
+  // A cross-origin target decides its own security from its own scheme; a
+  // same-origin one inherits the page's, so a TLS page stays on `wss:`.
+  const secure =
+    url.origin === window.location.origin
+      ? window.location.protocol === 'https:'
+      : url.protocol === 'https:'
+  url.protocol = secure ? 'wss:' : 'ws:'
+  return url.toString()
+}
+
 let navigate: ((path: string) => void) | undefined
 let navigationVersion = 0
 
