@@ -11,7 +11,8 @@
     "deeptutor/services/calendar",
     "deeptutor/services/cron",
     "deeptutor/api/routers/calendar.py",
-    "deeptutor/tools/cron_tool.py"
+    "deeptutor/tools/cron_tool.py",
+    "deeptutor/tools/planning_tools.py"
   ],
   "capabilities": {},
   "loops": {},
@@ -19,6 +20,14 @@
     "cron": {
       "class_path": "deeptutor.tools.builtin:CronTool",
       "order": 24
+    },
+    "tasks": {
+      "class_path": "deeptutor.tools.planning_tools:TasksTool",
+      "order": 103
+    },
+    "calendar": {
+      "class_path": "deeptutor.tools.planning_tools:CalendarTool",
+      "order": 104
     }
   },
   "routes": [
