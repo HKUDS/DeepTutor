@@ -18,7 +18,7 @@ not have these boundaries. Local wheel builds are also supported.
 ```sh
 python -m pip install -r requirements/full.txt
 python -m pip install -e . --no-deps
-(cd web && npm ci --legacy-peer-deps)
+(cd web && npm ci)
 deeptutor module list
 deeptutor module disable solve
 deeptutor module enable solve
