@@ -219,9 +219,67 @@ export function ReadingProvider({ children }: { children: ReactNode }) {
     }, [material, annotations],
   );
 
+  const materialId = material?.material_id ?? null;
+
+  /**
+   * Re-read the marks and merge the server's answer into the list.
+   *
+   * Two tabs on one document each hold their own copy, so a mark saved in one
+   * is invisible in the other — and an edit made from the second tab writes
+   * over the first tab's stale view of the rest. Re-reading through the normal
+   * API (rather than trusting the broadcast payload) means the result is
+   * whatever the server actually holds.
+   *
+   * Deliberately not optimistic: another tab's change is not something this
+   * reader made, so it should arrive as a settled list, not a guess.
+   *
+   * Resolves `true` only when the response was applied. A superseded read, a
+   * read that raced a local change, and a failed request all resolve `false`;
+   * the delete rollback needs that answer to decide whether it must fall back
+   * to its own captured row.
+   */
+  const refreshMarks = useCallback((): Promise<boolean> => {
+    if (!materialId) return Promise.resolve(false);
+    const seq = ++refreshSeqRef.current;
+    const scope = annotationScopeRef.current;
+    const mutation = localMutationSeqRef.current;
+    return listAnnotations(materialId)
+      .then((rows) => {
+        // The document may have been closed or swapped while this was in
+        // flight; a stale response must not repopulate the list.
+        if (scope !== annotationScopeRef.current) return false;
+        // A newer refresh is already on its way, and its answer is the newer
+        // one. Letting this older list land would overwrite it.
+        if (seq !== refreshSeqRef.current) return false;
+        // Our own list changed after this GET started. The snapshot predates
+        // that change — a create it does not know about, a delete it still
+        // lists — so discard it and read again from the settled state.
+        if (mutation !== localMutationSeqRef.current) return refreshMarks();
+        // Snapshot the local effects this response must respect, so the
+        // decision is made against the state the response actually raced.
+        const deleted = new Set(deletedIdsRef.current);
+        const pending = new Set(pendingWritesRef.current);
+        setAnnotations((current) => {
+          // A write of ours is still in flight: keep those rows. Replacing
+          // the list would drop a brand-new mark for good, because the PUT
+          // that follows maps by an optimistic id the refresh just removed.
+          const keep = current.filter((row) => pending.has(row.annotation_id));
+          return [
+            ...rows.filter((row) => !deleted.has(row.annotation_id) && !keep.some((k) => k.annotation_id === row.annotation_id)),
+            ...keep.filter((row) => !deleted.has(row.annotation_id)),
+          ];
+        });
+        return true;
+      })
+      .catch(() => {
+        // A failed refresh leaves the local list alone; the next write, or
+        // the next open, will resync.
+        return false;
+      });
+  }, [materialId]);
+
   const removeMark = useCallback(
     async (annotation: AnnotationItem): Promise<boolean> => {
-      const materialId = material?.material_id;
       if (!materialId) return false;
       const scope = annotationScopeRef.current;
       const id = annotation.annotation_id;
@@ -240,19 +298,32 @@ export function ReadingProvider({ children }: { children: ReactNode }) {
         publishAnnotationsChange(materialId);
         return true;
       } catch {
+        // Clear the tombstone first: the re-read below is exactly the request
+        // that must be allowed to see this row again.
         deletedIdsRef.current.delete(id);
         localMutationSeqRef.current += 1;
         if (scope !== annotationScopeRef.current) return false;
-        // Put it back: pretending a failed delete succeeded would lose the mark
-        // on the next reload.
-        setAnnotations((current) => current.some(
-          (row) => row.annotation_id === id,
-        ) ? current : [...current, annotation]);
         setErrorState("That annotation could not be removed.");
+        // The captured row may be stale: another tab can have edited this mark
+        // while the DELETE was in flight, and a refresh may already have
+        // brought the newer copy. Re-reading asks the server what it holds now
+        // and lets the normal merge put that back, so the rollback cannot
+        // resurrect an old note over a newer one.
+        const reconciled = await refreshMarks();
+        if (scope !== annotationScopeRef.current) return false;
+        if (!reconciled) {
+          // The re-read failed (or was superseded): restore the row we took
+          // away, because leaving it missing would hide a mark the server
+          // still holds. This is the pre-reconcile behaviour, kept as the
+          // fallback so a flaky GET never costs the reader their mark.
+          setAnnotations((current) => current.some(
+            (row) => row.annotation_id === id,
+          ) ? current : [...current, annotation]);
+        }
         return false;
       }
     },
-    [material],
+    [materialId, refreshMarks],
   );
 
   const mergeMark = useCallback((annotation: AnnotationItem) => {
@@ -269,66 +340,21 @@ export function ReadingProvider({ children }: { children: ReactNode }) {
     // The assistant's mark is already persisted by the tool that made it, so
     // this is a real change to the document's marks and the other tabs need
     // to hear about it — exactly like a mark the reader saved.
-    const materialId = material?.material_id;
     if (materialId) publishAnnotationsChange(materialId);
-  }, [material]);
+  }, [materialId]);
 
   /**
    * Re-read the marks when another tab reports a change.
    *
-   * Two tabs on one document each hold their own copy, so a mark saved in one
-   * is invisible in the other — and an edit made from the second tab writes
-   * over the first tab's stale view of the rest. Re-reading through the normal
-   * API (rather than trusting the broadcast payload) means the result is
-   * whatever the server actually holds.
-   *
-   * Deliberately not optimistic: another tab's change is not something this
-   * reader made, so it should arrive as a settled list, not a guess.
+   * The read itself lives in `refreshMarks`, which the delete rollback also
+   * uses: both need the same "ask the server, then merge" answer.
    */
-  const materialId = material?.material_id ?? null;
   useEffect(() => {
     if (!materialId) return;
-    const read = () => {
-      const seq = ++refreshSeqRef.current;
-      const scope = annotationScopeRef.current;
-      const mutation = localMutationSeqRef.current;
-      void listAnnotations(materialId)
-        .then((rows) => {
-          // The document may have been closed or swapped while this was in
-          // flight; a stale response must not repopulate the list.
-          if (scope !== annotationScopeRef.current) return;
-          // A newer refresh is already on its way, and its answer is the newer
-          // one. Letting this older list land would overwrite it.
-          if (seq !== refreshSeqRef.current) return;
-          // Our own list changed after this GET started. The snapshot predates
-          // that change — a create it does not know about, a delete it still
-          // lists — so discard it and read again from the settled state.
-          if (mutation !== localMutationSeqRef.current) {
-            read();
-            return;
-          }
-          // Snapshot the local effects this response must respect, so the
-          // decision is made against the state the response actually raced.
-          const deleted = new Set(deletedIdsRef.current);
-          const pending = new Set(pendingWritesRef.current);
-          setAnnotations((current) => {
-            // A write of ours is still in flight: keep those rows. Replacing
-            // the list would drop a brand-new mark for good, because the PUT
-            // that follows maps by an optimistic id the refresh just removed.
-            const keep = current.filter((row) => pending.has(row.annotation_id));
-            return [
-              ...rows.filter((row) => !deleted.has(row.annotation_id) && !keep.some((k) => k.annotation_id === row.annotation_id)),
-              ...keep.filter((row) => !deleted.has(row.annotation_id)),
-            ];
-          });
-        })
-        .catch(() => {
-          // A failed refresh leaves the local list alone; the next write, or
-          // the next open, will resync.
-        });
-    };
-    return subscribeToAnnotationsChange(materialId, read);
-  }, [materialId]);
+    return subscribeToAnnotationsChange(materialId, () => {
+      void refreshMarks();
+    });
+  }, [materialId, refreshMarks]);
 
   const reportViewport = useCallback(
     (next: {
