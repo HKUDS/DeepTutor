@@ -650,10 +650,21 @@ class LearningService:
                 evidence.feedback = verdict.get("feedback", "")
                 if evidence.hints_used and is_correct:
                     evidence.quality = min(evidence.quality, 0.6)
+            prior_level = progress.mastery_levels.get(knowledge_point_id)
             self.update_mastery(
                 progress, knowledge_point_id, self.calculate_mastery(progress, knowledge_point_id)
             )
             kp_type = progress.knowledge_types.get(knowledge_point_id)
+            if not is_correct and prior_level is not None and kp_type is not None:
+                from deeptutor.learning.policy import gate_threshold
+
+                if prior_level >= gate_threshold(kp_type):
+                    # A failed review repairs the spaced-repetition decay
+                    # model (the scheduler still shortens the next interval
+                    # below); it must not demote an objective the learner
+                    # already passed — review exists to refresh memory, not
+                    # to re-run the mastery gate (#2458).
+                    self.update_mastery(progress, knowledge_point_id, prior_level)
             if kp_type is not None and scheduler is not None:
                 state = progress.repetition_states.get(
                     knowledge_point_id
@@ -2914,10 +2925,18 @@ class LearningService:
             ).hex
             if any(item.evidence_id == evidence_id for item in progress.learning_evidence):
                 return False
-        progress.qualitative_mastery[kp_id] = bool(passed)
+        was_passed = bool(progress.qualitative_mastery.get(kp_id, False))
+        if passed or not was_passed:
+            # A failed re-assessment keeps a passed objective passed (the
+            # spaced-repetition decay still moves the next review closer);
+            # review repairs memory decay, it does not re-run the gate.
+            progress.qualitative_mastery[kp_id] = bool(passed)
         progress.deferred_objectives.pop(kp_id, None)
         current = progress.mastery_levels.get(kp_id, 0.0)
-        progress.mastery_levels[kp_id] = max(current, 1.0) if passed else min(current, 0.4)
+        if passed:
+            progress.mastery_levels[kp_id] = max(current, 1.0)
+        elif not was_passed:
+            progress.mastery_levels[kp_id] = min(current, 0.4)
         if evidence:
             progress.feynman_explanations[kp_id] = evidence
         moment = time.time()
