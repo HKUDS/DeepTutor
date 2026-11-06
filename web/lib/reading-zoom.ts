@@ -92,6 +92,33 @@ export function maxPageWidth(ratio: number, dpr: number): number {
 }
 
 /**
+ * The device-pixel ratio one page's canvas may actually be drawn at.
+ *
+ * `maxPageWidth` keeps the *shared* CSS width inside the budget using page
+ * one's aspect ratio, but every page inherits that width and a page with a
+ * taller aspect asks for a taller bitmap: two pages of ratio 0.75 and 2 at
+ * 400% both get 3200 CSS px, and the second one asks for 3200x6400 device
+ * pixels — over the budget, which the browser answers with a blank page.
+ *
+ * The CSS width cannot give per page: the pages share one layout width and the
+ * column must not change size as you scroll. So the bitmap is what gives. The
+ * ratio steps down — below 1 when it has to — and the canvas is stretched back
+ * over the same CSS box, which costs sharpness on that one page instead of
+ * losing it.
+ */
+export function canvasPixelRatio(
+  cssWidth: number,
+  cssHeight: number,
+  requested: number,
+): number {
+  const dpr = Number.isFinite(requested) && requested > 0 ? requested : 1;
+  const area = cssWidth * cssHeight;
+  if (!(area > 0)) return dpr;
+  if (area * dpr * dpr <= MAX_PAGE_CANVAS_PIXELS) return dpr;
+  return Math.sqrt(MAX_PAGE_CANVAS_PIXELS / area);
+}
+
+/**
  * Width in `fixed` mode: 100% is the page's real CSS size, clamped to the
  * canvas budget so a tall page never asks for a bitmap the browser drops.
  */

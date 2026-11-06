@@ -93,6 +93,16 @@ function positionWithin(root: HTMLElement, locator: number): number {
   );
 }
 
+/** Viewport x of the point `fraction` of the way across a page. */
+function columnWithin(
+  root: HTMLElement,
+  locator: number,
+  fraction: number,
+): number {
+  const rect = pageAt(root, locator).getBoundingClientRect();
+  return rect.left + rect.width * fraction;
+}
+
 async function openReader(
   overrides: Partial<PdfDocumentViewProps> = {},
   { expectFitWidth = true }: { expectFitWidth?: boolean } = {},
@@ -122,6 +132,28 @@ async function openReader(
         ? pageTop(last) + Number.parseFloat(last.style.height) + GAP
         : viewportHeight;
       scrollTop = Math.max(0, Math.min(value, contentHeight - viewportHeight));
+    },
+  });
+  // jsdom computes no scrollable overflow in either direction, so the sideways
+  // clamp is modelled from the widths the component commits, the same way.
+  let scrollLeft = 0;
+  Object.defineProperty(root, "scrollLeft", {
+    configurable: true,
+    get: () => scrollLeft,
+    set: (value: number) => {
+      const pages = root.querySelectorAll<HTMLElement>("[data-reader-unit]");
+      let contentWidth = 0;
+      for (const page of pages) {
+        contentWidth = Math.max(
+          contentWidth,
+          Number.parseFloat(page.style.width) || 0,
+        );
+      }
+      // The scroll container's own `px-6`, both sides.
+      scrollLeft = Math.max(
+        0,
+        Math.min(value, contentWidth + 48 - containerWidth),
+      );
     },
   });
   if (expectFitWidth) {
@@ -197,8 +229,10 @@ beforeEach(() => {
       }
       if (this.dataset.readerUnit) {
         const root = this.closest<HTMLElement>(".dt-reader-scroll")!;
+        // The page's column moves with the pane's horizontal scroll, exactly
+        // as its row moves with `scrollTop`.
         return new DOMRect(
-          144,
+          144 - root.scrollLeft,
           ROOT_TOP + pageTop(this) - root.scrollTop,
           Number.parseFloat(this.style.width),
           Number.parseFloat(this.style.height),
@@ -280,6 +314,84 @@ describe("PDF reader zoom", () => {
     });
     await waitFor(() => expect(widthOf(view.root)).toBeGreaterThan(600));
     expect(positionWithin(view.root, 99)).toBeCloseTo(0.3, 1);
+  });
+
+  it("keeps the pointer's column in place while zooming sideways", async () => {
+    // 200% makes the page 1600px in a 648px pane, so the pane really does
+    // scroll sideways — the case where zooming used to snap back to the left
+    // edge, because only the vertical axis was restored.
+    localStorage.setItem(
+      PDF_ZOOM_KEY,
+      JSON.stringify({ mode: "fixed", scale: 2 }),
+    );
+    const view = await openReader({}, { expectFitWidth: false });
+    await waitFor(() => expect(widthOf(view.root)).toBe(1600));
+    await act(async () => {
+      view.root.scrollLeft = 500;
+    });
+    expect(view.root.scrollLeft).toBe(500);
+
+    const page = pageAt(view.root, 1);
+    const rect = page.getBoundingClientRect();
+    // Aim at 40% across and 20% down page 1.
+    const pointerX = rect.left + rect.width * 0.4;
+    const pointerY = rect.top + rect.height * 0.2;
+    await act(async () => {
+      fireEvent.wheel(view.root, {
+        ctrlKey: true,
+        deltaY: -120,
+        clientX: pointerX,
+        clientY: pointerY,
+      });
+    });
+    await waitFor(() => expect(widthOf(view.root)).toBeGreaterThan(1600));
+    // The same point of the same page must still sit under the pointer, which
+    // needs `scrollLeft` restored along with `scrollTop`.
+    expect(columnWithin(view.root, 1, 0.4)).toBeCloseTo(pointerX, 0);
+  });
+
+  it("holds the canvas budget per page, not only for page one", async () => {
+    // Page one is landscape (ratio 0.75), page two is tall (ratio 2). Both
+    // inherit the same 3200px CSS width at 400%, so page two's bitmap would be
+    // 3200x6400 = 20,480,000 device pixels — past the 16.7M ceiling, which the
+    // browser answers with a blank page.
+    pdf.ratios.set(1, 0.75);
+    pdf.ratios.set(2, 2);
+    const view = await openReader();
+    await act(async () => {
+      fireEvent.click(
+        view.container.querySelector<HTMLButtonElement>(
+          'button[aria-haspopup="menu"]',
+        )!,
+      );
+    });
+    await act(async () => {
+      fireEvent.click(
+        view.container.querySelector<HTMLButtonElement>(
+          '[role="menuitem"]:last-of-type',
+        )!,
+      );
+    });
+    await waitFor(() => expect(widthOf(view.root)).toBe(3200));
+
+    const painted = (locator: number) => {
+      const canvas = pageAt(view.root, locator).querySelector("canvas");
+      if (!canvas) throw new Error(`page ${locator} has no canvas`);
+      if (canvas.style.width !== "3200px") {
+        throw new Error(`page ${locator} has not repainted at 400%`);
+      }
+      return canvas;
+    };
+    const tall = await waitFor(() => painted(2));
+    expect(tall.width * tall.height).toBeLessThanOrEqual(16_777_216);
+    // The bitmap gives, never the layout: the CSS box stays the shared width,
+    // so the column does not change size from page to page.
+    expect(Number.parseFloat(tall.style.width)).toBe(3200);
+    expect(Number.parseFloat(tall.style.height)).toBe(6400);
+    // A page that does fit the budget keeps its full resolution.
+    const first = painted(1);
+    expect(first.width * first.height).toBeLessThanOrEqual(16_777_216);
+    expect(first.width).toBe(3200);
   });
 
   it("ignores a wheel that is not a zoom gesture", async () => {

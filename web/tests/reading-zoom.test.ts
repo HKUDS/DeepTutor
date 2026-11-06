@@ -182,7 +182,9 @@ test("the reader wires the zoom bar, gestures and the canvas guard", () => {
   assert.match(pdfView, /overflow-auto/);
   assert.doesNotMatch(pdfView, /flex flex-col items-center/);
 
-  assert.match(pdfPage, /MAX_PAGE_CANVAS_PIXELS/);
+  // The page clamps its own bitmap, not just the shared CSS width: page one's
+  // aspect ratio cannot speak for every page in the document.
+  assert.match(pdfPage, /canvasPixelRatio\(/);
 });
 
 test("new copy is translated in every shipped locale", () => {

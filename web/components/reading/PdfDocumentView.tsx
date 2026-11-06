@@ -158,8 +158,13 @@ export function PdfDocumentView({
   const resizeAnchorRef = useRef<{
     doc: PdfDocument;
     locator: string;
+    /** Where the anchored point sits inside the page, vertically. */
     fraction: number;
+    /** The same share, across the page's width. */
+    xFraction: number;
+    /** How far that point sits from the pane's top and left edges. */
     viewportOffset: number;
+    horizontalOffset: number;
   } | null>(null);
   const [visibleLocator, setVisibleLocator] = useState(1);
   // Tagged with the jump's nonce for the same reason: a stale flash cannot
@@ -268,15 +273,29 @@ export function PdfDocumentView({
     );
     if (!page) return;
     const rect = page.getBoundingClientRect();
+    const rootRect = root.getBoundingClientRect();
     // Restore after the new page heights commit, before paint or the visible
     // locator effect can report the page at the old pixel scroll position.
     root.scrollTop = Math.max(
       0,
       root.scrollTop +
         rect.top -
-        root.getBoundingClientRect().top +
+        rootRect.top +
         anchor.fraction * rect.height -
         anchor.viewportOffset,
+    );
+    // The same maths across, because a page zoomed past the pane's width also
+    // scrolls sideways — that is the point of zoom — and restoring only the
+    // vertical axis snapped the column back to its left edge on every zoom.
+    // The page's CSS width is shared between pages, but it still changes with
+    // the zoom, so the horizontal offset has to be re-derived, not left alone.
+    root.scrollLeft = Math.max(
+      0,
+      root.scrollLeft +
+        rect.left -
+        rootRect.left +
+        anchor.xFraction * rect.width -
+        anchor.horizontalOffset,
     );
   }, [doc, pageWidth]);
 
@@ -286,14 +305,17 @@ export function PdfDocumentView({
    * Without a `clientY` the anchor is the viewport's top edge — what a pane
    * resize has always used. With one it is the pointer — what a zoom gesture
    * needs, so the page grows away from the reader's cursor instead of jumping
-   * to a different part of the document.
+   * to a different part of the document. `clientX` is the same idea across:
+   * a zoomed page overflows the pane sideways, and without an x anchor the
+   * column snaps back to its left edge on every gesture.
    */
   const captureAnchor = useCallback(
-    (clientY?: number) => {
+    (clientY?: number, clientX?: number) => {
       const root = scrollRef.current;
       if (!root || !doc) return;
       const rootRect = root.getBoundingClientRect();
       const y = clientY ?? rootRect.top;
+      const x = clientX ?? rootRect.left;
       const pages = root.querySelectorAll<HTMLElement>("[data-reader-unit]");
       for (const page of pages) {
         const rect = page.getBoundingClientRect();
@@ -307,11 +329,22 @@ export function PdfDocumentView({
         // edge, not a point inside it. `Math.max` expresses both cases: the
         // anchor never floats above the page it belongs to.
         const anchorY = Math.max(y, rect.top);
+        // Across, the same clamp, plus one the vertical axis does not need: a
+        // page narrower than the pane leaves the pointer over the desk on
+        // either side of it, so the share is pinned to the page's own edges.
+        // Anchoring the nearest edge is what "the page grows away from here"
+        // means when the pointer is not over the paper at all.
+        const anchorX = Math.max(x, rect.left);
         resizeAnchorRef.current = {
           doc,
           locator: page.dataset.readerUnit!,
           fraction: Math.max(0, (anchorY - rect.top) / rect.height),
+          xFraction:
+            rect.width > 0
+              ? Math.min(1, Math.max(0, (anchorX - rect.left) / rect.width))
+              : 0,
           viewportOffset: Math.max(0, anchorY - rootRect.top),
+          horizontalOffset: Math.max(0, anchorX - rootRect.left),
         };
         return;
       }
@@ -350,8 +383,8 @@ export function PdfDocumentView({
   }, [zoom]);
 
   const applyZoom = useCallback(
-    (next: PdfZoomPreference, clientY?: number) => {
-      captureAnchor(clientY);
+    (next: PdfZoomPreference, clientY?: number, clientX?: number) => {
+      captureAnchor(clientY, clientX);
       setZoom(next);
       zoomRef.current = next;
       if (settleRef.current !== null) clearTimeout(settleRef.current);
@@ -373,10 +406,11 @@ export function PdfDocumentView({
   );
 
   const zoomBy = useCallback(
-    (direction: 1 | -1, clientY?: number) => {
+    (direction: 1 | -1, clientY?: number, clientX?: number) => {
       applyZoom(
         { mode: "fixed", scale: steppedPdfZoom(currentZoomRatio(), direction) },
         clientY,
+        clientX,
       );
     },
     [applyZoom, currentZoomRatio],
@@ -447,6 +481,7 @@ export function PdfDocumentView({
           scale: clampPdfZoom(currentZoomRatio() * Math.exp(-delta * 0.01)),
         },
         event.clientY,
+        event.clientX,
       );
     };
     node.addEventListener("wheel", onWheel, { passive: false });

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { loadPdfjs, outputScale, type PdfDocument } from "@/lib/pdfjs-loader";
 import type { AnnotationItem } from "@/lib/reading-api";
-import { MAX_PAGE_CANVAS_PIXELS } from "@/lib/reading-zoom";
+import { canvasPixelRatio } from "@/lib/reading-zoom";
 import { AnnotationLayer } from "./AnnotationLayer";
 
 export interface PdfPageProps {
@@ -97,19 +97,18 @@ export function PdfPage({
         const paintCanvas = async () => {
           const canvas = canvasRef.current;
           if (!canvas) return;
-          // The caller already clamps the page's width, but a page whose own
-          // aspect ratio is unusual — or a browser whose own zoom pushed the
-          // device pixel ratio up — can still ask for a bitmap past the budget,
-          // which the browser drops as a blank page rather than an error. Step
-          // the DPR down instead of letting that happen.
-          let dpr = outputScale();
-          while (
-            dpr > 1 &&
-            Math.floor(viewport.width * dpr) * Math.floor(viewport.height * dpr) >
-              MAX_PAGE_CANVAS_PIXELS
-          ) {
-            dpr = Math.max(1, dpr - 0.25);
-          }
+          // The caller clamps the page's *shared* width against page one's
+          // aspect ratio, so a page whose own ratio is taller — or a browser
+          // whose zoom pushed the device pixel ratio up — can still ask for a
+          // bitmap past the budget, which the browser drops as a blank page
+          // rather than an error. Clamp this page's bitmap against its own
+          // aspect: the ratio gives, the CSS box does not, so the layout width
+          // stays identical from page to page.
+          const dpr = canvasPixelRatio(
+            viewport.width,
+            viewport.height,
+            outputScale(),
+          );
           canvas.width = Math.floor(viewport.width * dpr);
           canvas.height = Math.floor(viewport.height * dpr);
           canvas.style.width = `${Math.floor(viewport.width)}px`;
