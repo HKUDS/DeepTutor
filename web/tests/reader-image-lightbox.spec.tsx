@@ -222,6 +222,158 @@ describe("reader image lightbox", () => {
   });
 });
 
+describe("a tap on the picture is not a click on the stage", () => {
+  // jsdom does not retarget events, but Chromium does once the stage has
+  // pointer capture: pointerdown IMG -> pointerup DIV(stage) -> click
+  // DIV(stage). These cases dispatch that sequence by hand, because
+  // `fireEvent.click(img)` alone would leave the target on the picture and
+  // would never exercise the guard.
+  function pictureAndStage() {
+    const img = dialog()!.querySelector("img") as HTMLImageElement;
+    return { img, stage: img.parentElement as HTMLElement };
+  }
+
+  it("does not dismiss a zoomed picture when capture retargets its click", async () => {
+    const onClose = vi.fn();
+    render(
+      <ReaderImageLightbox src="/img.png" alt="diagram" onClose={onClose} />,
+    );
+    await clickToolbar("Zoom in");
+    const { img, stage } = pictureAndStage();
+
+    await act(async () => {
+      // The native sequence the review reproduced: the gesture starts on the
+      // picture, capture makes the browser report the release and the click on
+      // the stage, and the stage is the dialog's "empty space" otherwise.
+      fireEvent.pointerDown(img, { pointerId: 12, clientX: 100, clientY: 100 });
+      fireEvent.pointerUp(stage, { pointerId: 12, clientX: 100, clientY: 100 });
+      fireEvent.click(stage);
+    });
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("toggles the zoom on a double-click on the picture instead of closing", async () => {
+    const onClose = vi.fn();
+    render(
+      <ReaderImageLightbox src="/img.png" alt="diagram" onClose={onClose} />,
+    );
+    const { img, stage } = pictureAndStage();
+
+    // The first click of a double-click must not close the viewer, or there is
+    // no second click to toggle with.
+    await act(async () => {
+      fireEvent.pointerDown(img, { pointerId: 21, clientX: 100, clientY: 100 });
+      fireEvent.pointerUp(stage, { pointerId: 21, clientX: 100, clientY: 100 });
+      fireEvent.click(stage);
+      fireEvent.doubleClick(img);
+    });
+    expect(onClose).not.toHaveBeenCalled();
+    expect(toolbarPercent()).toBe("250%");
+
+    // And while zoomed, a double-click restores 1x rather than exiting.
+    await act(async () => {
+      fireEvent.pointerDown(img, { pointerId: 22, clientX: 100, clientY: 100 });
+      fireEvent.pointerUp(stage, { pointerId: 22, clientX: 100, clientY: 100 });
+      fireEvent.click(stage);
+      fireEvent.doubleClick(img);
+    });
+    expect(onClose).not.toHaveBeenCalled();
+    expect(toolbarPercent()).toBe("100%");
+  });
+
+  it("still dismisses on a click on genuinely empty stage space", async () => {
+    const onClose = vi.fn();
+    render(
+      <ReaderImageLightbox src="/img.png" alt="diagram" onClose={onClose} />,
+    );
+    const { stage } = pictureAndStage();
+    await act(async () => {
+      fireEvent.pointerDown(stage, { pointerId: 31, clientX: 4, clientY: 4 });
+      fireEvent.pointerUp(stage, { pointerId: 31, clientX: 4, clientY: 4 });
+      fireEvent.click(stage);
+    });
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not dismiss on the click that ends a pan", async () => {
+    const onClose = vi.fn();
+    render(
+      <ReaderImageLightbox src="/img.png" alt="diagram" onClose={onClose} />,
+    );
+    await clickToolbar("Zoom in");
+    const { img, stage } = pictureAndStage();
+    await act(async () => {
+      // A pan often starts on the picture, which at 2.5x fills most of the
+      // stage; capture then reports the release and the click on the stage.
+      fireEvent.pointerDown(img, { pointerId: 41, clientX: 10, clientY: 10 });
+      fireEvent.pointerMove(stage, { pointerId: 41, clientX: 60, clientY: 40 });
+      fireEvent.pointerUp(stage, { pointerId: 41, clientX: 60, clientY: 40 });
+      fireEvent.click(stage);
+    });
+    expect(onClose).not.toHaveBeenCalled();
+    expect(
+      (dialog()!.querySelector("img") as HTMLImageElement).style.transform,
+    ).toContain("translate(50px, 30px)");
+  });
+
+  it("takes pointer capture only once the drag has travelled", async () => {
+    const setPointerCapture = vi.fn();
+    const proto = HTMLElement.prototype as unknown as Record<string, unknown>;
+    const original = Object.getOwnPropertyDescriptor(
+      proto,
+      "setPointerCapture",
+    );
+    Object.defineProperty(proto, "setPointerCapture", {
+      configurable: true,
+      writable: true,
+      value: setPointerCapture,
+    });
+    try {
+      render(
+        <ReaderImageLightbox src="/img.png" alt="diagram" onClose={vi.fn()} />,
+      );
+      await clickToolbar("Zoom in");
+      const { img, stage } = pictureAndStage();
+
+      await act(async () => {
+        fireEvent.pointerDown(img, {
+          pointerId: 51,
+          clientX: 100,
+          clientY: 100,
+        });
+      });
+      // Capturing on pointerdown is what retargeted a tap on the picture.
+      expect(setPointerCapture).not.toHaveBeenCalled();
+
+      await act(async () => {
+        fireEvent.pointerMove(stage, {
+          pointerId: 51,
+          clientX: 102,
+          clientY: 101,
+        });
+      });
+      // Jitter is still a click, not a pan.
+      expect(setPointerCapture).not.toHaveBeenCalled();
+
+      await act(async () => {
+        fireEvent.pointerMove(stage, {
+          pointerId: 51,
+          clientX: 140,
+          clientY: 100,
+        });
+      });
+      expect(setPointerCapture).toHaveBeenCalledTimes(1);
+      expect(setPointerCapture).toHaveBeenCalledWith(51);
+    } finally {
+      if (original) {
+        Object.defineProperty(proto, "setPointerCapture", original);
+      } else {
+        delete proto.setPointerCapture;
+      }
+    }
+  });
+});
+
 describe("opening a picture from the text reader", () => {
   it("opens a picture that is clicked, but not one inside a link", async () => {
     const view = render(

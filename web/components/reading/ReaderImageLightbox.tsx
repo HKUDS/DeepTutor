@@ -50,10 +50,22 @@ export function ReaderImageLightbox({
     startY: number;
     originX: number;
     originY: number;
+    captured: boolean;
   } | null>(null);
   // A drag releases over the stage and the browser then reports a click there.
   // That click ended a pan, not a request to dismiss the view being panned.
   const dragMovedRef = useRef(false);
+  // What the gesture started on: `true` for the empty stage, `false` for the
+  // picture (or anything inside it), `null` when no pointerdown was seen (a
+  // keyboard activation, or a test that only dispatches the click).
+  //
+  // Needed because pointer capture makes the browser retarget pointerup and
+  // click to the capturing stage: a tap on the picture then arrives here with
+  // `event.target === event.currentTarget`, looking exactly like a click on
+  // empty space. Capture is deferred until a pan actually starts, but a
+  // gesture that began on the picture must never dismiss the viewer even if a
+  // browser reports the click on the stage.
+  const pressOnStageRef = useRef<boolean | null>(null);
   const [view, setView] = useState<ImageView>(FIT_VIEW);
 
   const zoomByFactor = useCallback((factor: number) => {
@@ -147,12 +159,15 @@ export function ReaderImageLightbox({
         onClick={(event) => {
           // The stage covers the backdrop now, so a click on the empty area
           // lands here rather than on the backdrop. It still dismisses, unless
-          // it is the click that ended a pan.
+          // it is the click that ended a pan, or a click on the picture that
+          // pointer capture retargeted to the stage.
           if (event.target !== event.currentTarget) return;
           if (dragMovedRef.current) return;
+          if (pressOnStageRef.current === false) return;
           onClose();
         }}
         onPointerDown={(event) => {
+          pressOnStageRef.current = event.target === event.currentTarget;
           dragMovedRef.current = false;
           if (view.scale <= MIN_IMAGE_ZOOM) return;
           dragRef.current = {
@@ -161,8 +176,11 @@ export function ReaderImageLightbox({
             startY: event.clientY,
             originX: view.x,
             originY: view.y,
+            captured: false,
           };
-          event.currentTarget.setPointerCapture?.(event.pointerId);
+          // Capture only once a drag is under way (`onPointerMove`). Capturing
+          // here retargeted the pointerup and click of a plain tap on the
+          // picture to the stage, so that tap dismissed the viewer.
         }}
         onPointerMove={(event) => {
           const drag = dragRef.current;
@@ -175,6 +193,12 @@ export function ReaderImageLightbox({
               Math.abs(event.clientY - drag.startY);
             // A few pixels of jitter still count as a click, not a pan.
             dragMovedRef.current = travelled > 3;
+            // The gesture is a pan now, so take the pointer: the picture must
+            // keep following it even when it leaves the stage's box.
+            if (dragMovedRef.current && !drag.captured) {
+              drag.captured = true;
+              event.currentTarget.setPointerCapture?.(event.pointerId);
+            }
           }
           setView((current) => ({ ...current, x, y }));
         }}
