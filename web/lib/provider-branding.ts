@@ -38,6 +38,7 @@ export const PROVIDER_ICONS: Readonly<Record<string, ProviderIconSpec>> = {
   llama_cpp: { file: "llama-cpp.svg", darkFile: "llama-cpp-dark.svg" },
   lm_studio: { file: "lmstudio.svg", mono: true },
   llmtr: { file: "llmtr.png" },
+  llmbuzz: { file: "llmbuzz.png" },
   minimax: { file: "minimax-color.svg" },
   minimax_anthropic: { file: "minimax-color.svg" },
   mistral: { file: "mistral-color.svg" },
