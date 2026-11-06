@@ -1330,3 +1330,46 @@ def test_editing_a_mark_keeps_the_author_it_was_written_with(
     assert edited.author == "assistant"
     stored = store.annotations(manifest.material_id)
     assert [row.author for row in stored] == ["assistant"]
+
+
+def test_editing_a_mark_keeps_its_revision_resolution(
+    store: ReadingStore, pdf_path: Path
+) -> None:
+    """An edit must not silently clear a revision-migration warning.
+
+    Revision migration marks a row ``unresolved`` or ``ambiguous`` when its
+    quote no longer identifies exactly one passage. The router's payload has
+    no way to say that, so a payload built from defaults claims ``resolved``;
+    an edit that trusted it would hide the review badge without re-checking
+    the quote against the new text.
+    """
+    manifest = store.ingest(pdf_path)
+
+    saved = store.save_annotation(
+        manifest.material_id,
+        Annotation(
+            annotation_id="",
+            locator=1,
+            quote="Introduction",
+            note="v1",
+            resolution="unresolved",
+        ),
+    )
+    assert saved.resolution == "unresolved"
+
+    # The reader edits the note. The router's payload has no resolution
+    # field, so the Annotation it builds carries the dataclass default.
+    edited = store.save_annotation(
+        manifest.material_id,
+        Annotation(
+            annotation_id=saved.annotation_id,
+            locator=1,
+            quote="Introduction",
+            note="v2",
+        ),
+    )
+
+    assert edited.note == "v2"
+    assert edited.resolution == "unresolved"
+    stored = store.annotations(manifest.material_id)
+    assert [(row.note, row.resolution) for row in stored] == [("v2", "unresolved")]

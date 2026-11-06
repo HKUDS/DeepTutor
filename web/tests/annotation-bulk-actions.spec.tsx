@@ -107,6 +107,44 @@ describe("removing several marks at once", () => {
     expect(view.queryByTestId("annotation-bulk-delete")).toBeNull();
   });
 
+  it("toggles a row from the keyboard instead of jumping to the mark", () => {
+    const onSelect = vi.fn();
+    const view = render(
+      <AnnotationList
+        annotations={rows}
+        unit="page"
+        activeId={null}
+        onSelect={onSelect}
+        onDelete={vi.fn()}
+        onEditNote={async () => true}
+      />,
+    );
+    act(() => {
+      fireEvent.click(view.getByTestId("annotation-select-toggle"));
+    });
+    const row = view.getByRole("button", { name: /first mark/ });
+    // The row exposes its selection state, not just the checkbox inside it.
+    expect(row.getAttribute("aria-pressed")).toBe("false");
+    row.focus();
+
+    act(() => {
+      fireEvent.keyDown(row, { key: " " });
+    });
+    expect(row.getAttribute("aria-pressed")).toBe("true");
+    expect(
+      (view.getByLabelText(/Select annotations: first mark/) as HTMLInputElement)
+        .checked,
+    ).toBe(true);
+
+    act(() => {
+      fireEvent.keyDown(row, { key: "Enter" });
+    });
+    expect(row.getAttribute("aria-pressed")).toBe("false");
+    // Keyboard selection must not also jump to the mark, exactly as the
+    // pointer path does not.
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
   it("selects every visible row, and only those", async () => {
     const onDelete = vi.fn();
     const view = render(
