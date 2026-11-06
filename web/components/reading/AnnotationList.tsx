@@ -54,7 +54,7 @@ export interface AnnotationListProps {
   unit: UnitKind;
   activeId: string | null;
   onSelect: (annotation: AnnotationItem) => void;
-  onDelete: (annotation: AnnotationItem) => void | Promise<void>;
+  onDelete: (annotation: AnnotationItem) => void | Promise<void | boolean>;
   /**
    * Rewrite the note on an existing mark. Absent means the host has no
    * update path, and the list then behaves as it always did.

@@ -57,8 +57,13 @@ export interface ReadingContextValue {
     draft: AnnotationDraft,
     optimistic: AnnotationItem,
   ) => Promise<boolean>;
-  /** Remove an annotation, optimistically. */
-  removeMark: (annotation: AnnotationItem) => Promise<void>;
+  /**
+   * Remove an annotation, optimistically.
+   *
+   * Resolves `false` when the delete failed, so a bulk caller can count it;
+   * the row is already rolled back and the error notice set by then.
+   */
+  removeMark: (annotation: AnnotationItem) => Promise<boolean>;
   /** Accept a mark the assistant just made (arrives via a tool result). */
   mergeMark: (annotation: AnnotationItem) => void;
   dismissError: () => void;
@@ -81,7 +86,7 @@ const ReadingContext = createContext<ReadingContextValue>({
   openMaterial: async () => false,
   closeMaterial: noop,
   saveMark: async () => false,
-  removeMark: async () => {},
+  removeMark: async () => false,
   mergeMark: noop,
   dismissError: noop,
   setError: noop,
@@ -180,23 +185,25 @@ export function ReadingProvider({ children }: { children: ReactNode }) {
   );
 
   const removeMark = useCallback(
-    async (annotation: AnnotationItem) => {
+    async (annotation: AnnotationItem): Promise<boolean> => {
       const materialId = material?.material_id;
-      if (!materialId) return;
+      if (!materialId) return false;
       const scope = annotationScopeRef.current;
       setAnnotations((current) => current.filter(
         (row) => row.annotation_id !== annotation.annotation_id,
       ));
       try {
         await deleteAnnotationApi(materialId, annotation.annotation_id);
+        return true;
       } catch {
-        if (scope !== annotationScopeRef.current) return;
+        if (scope !== annotationScopeRef.current) return false;
         // Put it back: pretending a failed delete succeeded would lose the mark
         // on the next reload.
         setAnnotations((current) => current.some(
           (row) => row.annotation_id === annotation.annotation_id,
         ) ? current : [...current, annotation]);
         setErrorState("That annotation could not be removed.");
+        return false;
       }
     },
     [material],

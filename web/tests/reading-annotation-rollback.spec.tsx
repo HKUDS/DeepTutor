@@ -24,7 +24,7 @@ describe("Reading annotation deletion rollback", () => {
     await open(context, "document-a", [original]);
     let fail!: (error: Error) => void;
     api.fetch.mockImplementationOnce(() => new Promise((_resolve, reject) => { fail = reject; }));
-    let pending!: Promise<void>;
+    let pending!: Promise<boolean>;
     act(() => { pending = context.current.removeMark(original); });
     act(() => { context.current.mergeMark(mark("new")); });
     await act(async () => { fail(new Error("Disconnected")); await pending; });
@@ -37,7 +37,7 @@ describe("Reading annotation deletion rollback", () => {
     await open(context, "document-a", [original]);
     let fail!: (error: Error) => void;
     api.fetch.mockImplementationOnce(() => new Promise((_resolve, reject) => { fail = reject; }));
-    let pending!: Promise<void>;
+    let pending!: Promise<boolean>;
     act(() => { pending = context.current.removeMark(original); });
     await open(context, "document-b", [mark("other-document")]);
     await act(async () => { fail(new Error("Disconnected")); await pending; });

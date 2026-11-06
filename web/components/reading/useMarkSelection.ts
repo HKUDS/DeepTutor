@@ -24,7 +24,7 @@ export function useMarkSelection({
 }: {
   /** The rows currently visible, i.e. what "select all" means. */
   rows: SelectableMark[];
-  onDelete: (annotation: AnnotationItem) => void | Promise<void>;
+  onDelete: (annotation: AnnotationItem) => void | Promise<void | boolean>;
   onCopy: (rows: AnnotationItem[]) => Promise<boolean>;
 }) {
   const [selecting, setSelecting] = useState(false);
@@ -63,9 +63,11 @@ export function useMarkSelection({
    * Remove every selected mark, one at a time.
    *
    * The API deletes one row per request, so this walks the selection and waits
-   * for each to settle before starting the next — the host's delete starts the
-   * request and returns, so a bare loop would fire them all at once and a
-   * failure in the middle would look identical to success.
+   * for each to settle before starting the next — a bare loop would fire them
+   * all at once and a failure in the middle would look identical to success.
+   *
+   * A host reports a failed delete by resolving `false` (the reader has
+   * already rolled the row back and shown the notice) or by rejecting.
    *
    * Returns how many failed, so the caller can say whether the batch failed
    * wholly or partly; `-1` means there was nothing to do.
@@ -80,7 +82,7 @@ export function useMarkSelection({
     try {
       for (const row of targets) {
         try {
-          await onDelete(row.mark);
+          if ((await onDelete(row.mark)) === false) failed += 1;
         } catch {
           failed += 1;
         }
