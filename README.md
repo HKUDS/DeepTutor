@@ -341,6 +341,10 @@ Core includes Chat, Ask Questions, the CLI, and the SDK; other capabilities and 
 
 **Workspaces and advanced setup:** see [Content Workspaces](docs-for-dev/workspaces.md), [Local Data Persistence](docs-for-dev/DATA_STORAGE.md), [Containerization and Sandbox Deployment](docs-for-dev/CONTAINERIZATION.md), [Configuration Reference](https://docs.deeptutor.info/get-started/pypi/#config-files-under-datausersettings), and [Troubleshooting](https://docs.deeptutor.info/get-started/troubleshooting/).
 
+## ☁️ One-Click Deploy
+
+[![Deploy on RepoCloud](https://d16t0pc4846x52.cloudfront.net/deploylobe.svg)](https://repocloud.io/details/DeepTutor/)
+
 ## 📖 Explore DeepTutor
 
 Start with a **workspace** for each subject or project. Home, Learning, and Resources change with the active workspace; Partners and Personalization remain available across workspaces.
