@@ -715,6 +715,16 @@ class TestRegenerateLastTurn:
         original_user_id = before[0]["id"]
         first_turn_refresh_count = len(refresh_calls)
 
+        chat_traces = [
+            event
+            for event in refresh_calls
+            if getattr(event, "surface", None) == "chat" and getattr(event, "kind", None) == "query"
+        ]
+        assert len(chat_traces) == 1
+        assert chat_traces[0].payload["query"] == "what is 2+2?"
+        assert chat_traces[0].session_id == sid
+        assert chat_traces[0].turn_id == first_turn["id"]
+
         # Regenerate — must not duplicate user, must replace assistant, must skip memory refresh.
         _, regen_turn = await runtime.regenerate_last_turn(sid)
         events = []
@@ -732,6 +742,17 @@ class TestRegenerateLastTurn:
         assert after[1]["content"] == "regenerated answer"
         # Memory refresh count must not increase on regenerate.
         assert len(refresh_calls) == first_turn_refresh_count
+        assert (
+            len(
+                [
+                    event
+                    for event in refresh_calls
+                    if getattr(event, "surface", None) == "chat"
+                    and getattr(event, "kind", None) == "query"
+                ]
+            )
+            == 1
+        )
 
         # Resend replays the saved request, but a setting changed since that
         # request must remain the conversation setting for later turns.
