@@ -6,7 +6,7 @@ import {
   SUBMIT_CONNECT_RETRY_LIMIT,
 } from "@/lib/send-retry";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type {
   ChangeEvent,
   ClipboardEvent,
@@ -37,6 +37,7 @@ import {
 } from "@/lib/file-attachments";
 import { shouldSubmitOnEnter } from "@/lib/composer-keyboard";
 import { useImeComposing } from "@/lib/use-ime-composing";
+import { useChatAutoScroll } from "@/hooks/useChatAutoScroll";
 import { shouldAppendEventContent } from "@/lib/stream";
 import type {
   StartTurnMessage,
@@ -120,7 +121,19 @@ export default function BookChatPanel({
   const sessionIdRef = useRef<string | null>(null);
   const clientRef = useRef<UnifiedTurnClient | null>(null);
   const retryTimersRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
-  const scrollerRef = useRef<HTMLDivElement | null>(null);
+  const lastMessage = messages.at(-1);
+  const {
+    containerRef: scrollerRef,
+    handleScroll,
+    shouldAutoScrollRef,
+  } = useChatAutoScroll({
+    hasMessages: open && messages.length > 0,
+    isStreaming: busy,
+    composerHeight: 0,
+    messageCount: messages.length,
+    lastMessageContent: lastMessage?.content,
+    lastEventCount: lastMessage?.events?.length,
+  });
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const dragRef = useRef<{ startX: number; startWidth: number } | null>(null);
   const { isComposingRef, onCompositionStart, onCompositionEnd } =
@@ -161,6 +174,7 @@ export default function BookChatPanel({
     clientRef.current?.disconnect();
     clientRef.current = null;
     sessionIdRef.current = initialSessionId || null;
+    shouldAutoScrollRef.current = true;
     // Reset local chat state when the backing page/session changes.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setMessages([]);
@@ -195,17 +209,7 @@ export default function BookChatPanel({
       // than mistake it for the session this panel's own turn created.
       if (!settled && sessionIdRef.current === initialSessionId) sessionIdRef.current = null;
     };
-  }, [book?.id, page?.id, initialSessionId, open]);
-
-  // Pin-to-bottom in layout phase (not in a post-paint effect): the
-  // assignment lands before the browser commits the frame so the
-  // viewer never sees the "new content at the old scrollTop" flash
-  // that an ordinary ``useEffect`` would produce during fast streams.
-  useLayoutEffect(() => {
-    if (scrollerRef.current) {
-      scrollerRef.current.scrollTop = scrollerRef.current.scrollHeight;
-    }
-  }, [messages]);
+  }, [book?.id, page?.id, initialSessionId, open, shouldAutoScrollRef]);
 
   function handleEvent(event: StreamEvent) {
     if (event.type === "session") {
@@ -391,6 +395,7 @@ export default function BookChatPanel({
           )
         : t("Please use the attached file(s) and this chapter as context."));
     const sentAttachments = attachments.map(messageAttachment);
+    shouldAutoScrollRef.current = true;
     setMessages((prev) => [
       ...prev,
       { role: "user", content: userContent, attachments: sentAttachments },
@@ -486,7 +491,9 @@ export default function BookChatPanel({
       <div
         ref={scrollerRef}
         data-chat-scroll-root="true"
+        onScroll={handleScroll}
         className="flex-1 overflow-y-auto px-4 py-3"
+        style={{ overflowAnchor: "none" }}
       >
         {messages.length === 0 ? (
           <div className="rounded-2xl bg-[var(--background)] p-4 text-xs leading-5 text-[var(--muted-foreground)]">
