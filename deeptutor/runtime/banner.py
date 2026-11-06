@@ -7,6 +7,9 @@ output matches the UI language the user has chosen.
 
 from __future__ import annotations
 
+from importlib import metadata
+from pathlib import Path
+
 from rich.align import Align
 from rich.console import Console
 from rich.panel import Panel
@@ -26,6 +29,13 @@ LABELS: dict[str, dict[str, str]] = {
     "en": {
         "tagline": "Agent-Native Personalized Tutoring",
         "lab": "Data Intelligence Lab @ HKU",
+        "version.mismatch": "installed {installed}",
+        "version.shadowed.warning": (
+            "Warning: running DeepTutor {loaded} from {origin}, but the installed "
+            "distribution is {installed}. A stale source tree in the runtime home "
+            "is shadowing the installed package, so the version above is the code "
+            "that is running, not the version that was installed."
+        ),
         # init
         "init.mode": "Workspace initializer",
         "init.workspace": "Workspace",
@@ -258,6 +268,12 @@ LABELS: dict[str, dict[str, str]] = {
     "zh": {
         "tagline": "智能体原生的个性化辅导",
         "lab": "香港大学数据智能实验室",
+        "version.mismatch": "已安装 {installed}",
+        "version.shadowed.warning": (
+            "警告：当前运行的 DeepTutor {loaded} 来自 {origin}，但已安装的发行版是 "
+            "{installed}。工作目录中的旧源码树遮蔽了已安装的包，因此上面显示的是"
+            "实际运行的代码版本，而非已安装的版本。"
+        ),
         # init
         "init.mode": "工作目录初始化",
         "init.workspace": "工作目录",
@@ -849,6 +865,46 @@ def labels_for(language: str | None) -> dict[str, str]:
     return LABELS[_pick_language(language)]
 
 
+def _translated(key: str, language: str | None) -> str:
+    """Read ``key`` for ``language``, falling back to English.
+
+    The version-warning strings are newer than most translations; a locale that
+    has not caught up must still render the banner rather than raise KeyError.
+    """
+
+    return LABELS[_pick_language(language)].get(key) or LABELS["en"][key]
+
+
+def _installed_version() -> str | None:
+    """Return the version recorded by the installed distribution, if any."""
+
+    try:
+        return metadata.version("deeptutor")
+    except metadata.PackageNotFoundError:
+        return None
+    except Exception:
+        # Unreadable metadata must never stop the CLI from starting.
+        return None
+
+
+def loaded_version_mismatch() -> tuple[str, str, str] | None:
+    """Return ``(loaded, installed, origin)`` when the two versions disagree.
+
+    The banner renders ``deeptutor.__version__`` from whichever module the import
+    system resolved. If a stale source tree in the runtime home shadows the
+    installed package, that value belongs to the old checkout while the
+    distribution metadata still reports the version pip installed (#2443).
+    Printing the shadowed value on its own makes a failed upgrade look clean,
+    so callers can surface the disagreement instead.
+    """
+
+    installed = _installed_version()
+    if installed is None or installed == __version__:
+        return None
+    origin = Path(__file__).resolve().parent.parent / "__init__.py"
+    return __version__, installed, str(origin)
+
+
 def render_banner(language: str | None, *, mode_key: str | None = None) -> Panel:
     """Build the branded banner panel.
 
@@ -866,6 +922,11 @@ def render_banner(language: str | None, *, mode_key: str | None = None) -> Panel
 
     logo = Text(_ASCII_LOGO, style="bold bright_cyan")
     tagline_line = f"{strings['tagline']}  ·  v{__version__}"
+    mismatch = loaded_version_mismatch()
+    if mismatch is not None:
+        tagline_line += (
+            "  (" + _translated("version.mismatch", language).format(installed=mismatch[1]) + ")"
+        )
 
     body = Text()
     body.append(logo)
@@ -895,11 +956,21 @@ def print_banner(
 
     target = console or Console()
     target.print(render_banner(language, mode_key=mode_key))
+    mismatch = loaded_version_mismatch()
+    if mismatch is not None:
+        loaded, installed, origin = mismatch
+        target.print(
+            _translated("version.shadowed.warning", language).format(
+                loaded=loaded, installed=installed, origin=origin
+            ),
+            style="bold yellow",
+        )
 
 
 __all__: tuple[str, ...] = (
     "LABELS",
     "labels_for",
+    "loaded_version_mismatch",
     "print_banner",
     "render_banner",
     "resolve_language",
