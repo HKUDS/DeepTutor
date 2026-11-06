@@ -92,15 +92,21 @@ def cli_process(cmd: list[str], log_path: Path, env: dict[str, str]):
                     time.sleep(0.05)
 
 
-def _process_group_alive(pgid: int) -> bool:
-    """A killed group may remain visible while init reaps its zombies."""
+def _process_group_exists(pgid: int) -> bool:
+    """Only ESRCH confirms absence; EPERM may hide members or just zombies."""
     try:
         os.killpg(pgid, 0)
     except ProcessLookupError:
         return False
     except PermissionError:
-        # Darwin also reports EPERM on a group containing only zombies.
         pass
+    return True
+
+
+def _process_group_alive(pgid: int) -> bool:
+    """A killed group may remain visible while init reaps its zombies."""
+    if not _process_group_exists(pgid):
+        return False
 
     if sys.platform != "darwin":
         import psutil
@@ -117,7 +123,8 @@ def _process_group_alive(pgid: int) -> bool:
                 continue
             except psutil.AccessDenied:
                 return True
-        return not saw_member
+        # A group can be reaped between signal 0 and member enumeration.
+        return not saw_member and _process_group_exists(pgid)
 
     # On Darwin getpgid(pid) can no longer resolve an unreaped zombie;
     # ps exposes the kernel group and state together on both POSIX targets.
@@ -129,5 +136,10 @@ def _process_group_alive(pgid: int) -> bool:
         for group, state in (line.split() for line in rows.splitlines() if line.strip())
         if group == str(pgid)
     ]
-    # An existing group hidden from inspection must not be declared settled.
-    return not states or any(not state.startswith("Z") for state in states)
+    # Recheck an empty snapshot: the group may have disappeared since signal 0.
+    # An existing group hidden from inspection must still not be declared settled.
+    return (
+        any(not state.startswith("Z") for state in states)
+        if states
+        else _process_group_exists(pgid)
+    )
