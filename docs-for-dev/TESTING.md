@@ -70,6 +70,22 @@ frontend at `WEB_BASE_URL`; critical and multi-worker projects have separate
 fixture requirements in [`playwright.config.ts`](../web/playwright.config.ts).
 Do not run browser mutations against a learner's only copy of data.
 
+### Existing-material picker
+
+In Immersive Reading, open a collection and choose **Add material**, then expand
+**Choose from material you already uploaded**:
+
+1. Search for materials and select two results consecutively. The picker must
+   stay expanded, preserve the search text and list scroll position, and show
+   both materials in the pending list.
+2. Selected results show a check mark and cannot be added twice. Remove one
+   from the pending list; its result becomes selectable again.
+3. Collapse and reopen the picker manually. Pending selections remain checked.
+4. Cancel the dialog; no collection or material membership should be saved.
+
+The picker is shared with **Upload material**. These selection checks can also
+be exercised there without submitting or changing stored learner data.
+
 ## Modules, engines and optional integration
 
 Follow [Modules → Validation](MODULES.md#validation) for disposable wheel
