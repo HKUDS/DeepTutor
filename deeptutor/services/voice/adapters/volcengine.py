@@ -59,6 +59,15 @@ def _failure(code: object, config: TTSConfig | STTConfig) -> VoiceProviderError:
 
 
 class VolcengineTTSAdapter(BaseTTSAdapter):
+    endpoint_path = "tts/unidirectional/sse"
+    event_prefix = "data:"
+
+    def request_headers(self, config: TTSConfig) -> dict[str, str]:
+        return _headers(config, config.resource_id or config.model)
+
+    def request_error(self, code: object, config: TTSConfig) -> VoiceProviderError:
+        return _failure(code, config)
+
     async def synthesize(self, text: str, config: TTSConfig) -> tuple[bytes, str]:
         if not config.voice:
             raise VoiceProviderError("Choose a Volcengine speaker ID for this model version.")
@@ -80,8 +89,8 @@ class VolcengineTTSAdapter(BaseTTSAdapter):
             additions["context_texts"] = [config.instructions]
         if additions:
             req["additions"] = json.dumps(additions, ensure_ascii=False)
-        headers = _headers(config, config.resource_id or config.model)
-        url = join_audio_path(config.base_url, "tts/unidirectional/sse")
+        headers = self.request_headers(config)
+        url = join_audio_path(config.base_url, self.endpoint_path)
         chunks: list[bytes] = []
         complete = False
         try:
@@ -94,16 +103,16 @@ class VolcengineTTSAdapter(BaseTTSAdapter):
                         json={"user": {"uid": "deeptutor"}, "req_params": req},
                     ) as response:
                         if response.status_code >= 400:
-                            raise _failure(response.status_code, config)
+                            raise self.request_error(response.status_code, config)
                         async for line in response.aiter_lines():
-                            if not line.startswith("data:"):
+                            if not line.strip() or not line.startswith(self.event_prefix):
                                 continue
-                            event = json.loads(line[5:].strip())
+                            event = json.loads(line[len(self.event_prefix) :].strip())
                             if not isinstance(event, dict):
                                 raise VoiceProviderError("Malformed Volcengine TTS event.")
                             code = event.get("code")
                             if code not in (0, 20000000):
-                                raise _failure(code, config)
+                                raise self.request_error(code, config)
                             if event.get("data"):
                                 chunks.append(base64.b64decode(event["data"], validate=True))
                             if code == 20000000:

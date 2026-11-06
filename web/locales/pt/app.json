@@ -6599,5 +6599,7 @@
   "settings.modelImport.unverified": "Alguns modelos não declaram o tipo. Teste-os antes de usar neste serviço.",
   "settings.modelImport.draftHint": "Os modelos são adicionados ao rascunho. Aplique as alterações para salvar; o modelo padrão permanece igual.",
   "settings.modelImport.selected": "Selecionados: {{count}}",
-  "language.korean": "한국어 (일부 번역)"
+  "language.korean": "한국어 (일부 번역)",
+  "Use the dedicated Ark Agent Plan API key for language, embedding, image, video and speech models. Speech endpoints are selected separately from the language model URL.": "Utilize a chave de API dedicada do Ark Agent Plan para modelos de linguagem, vetorização, imagem, vídeo e voz. Os endereços dos serviços de voz são selecionados separadamente do endereço do modelo de linguagem.",
+  "Enter a speaker ID before previewing this speech model.": "Introduza um ID de voz antes de testar este modelo de síntese de voz."
 }

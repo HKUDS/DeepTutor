@@ -22,12 +22,14 @@ export function VoiceDiscoveryField({
   value,
   update,
   disabled,
+  manualRequired = false,
 }: {
   profileId: string
   modelId: string
   value: string
   update: (value: string) => void
   disabled: boolean
+  manualRequired?: boolean
 }) {
   const { draft } = useSettings()
   // Changing a voice must not itself start another account lookup.
@@ -56,6 +58,7 @@ export function VoiceDiscoveryField({
       value={value}
       update={update}
       disabled={disabled}
+      manualRequired={manualRequired}
     />
   )
 }
@@ -66,12 +69,14 @@ function VoiceLookup({
   value,
   update,
   disabled,
+  manualRequired,
 }: {
   profileId: string
   modelId: string
   value: string
   update: (value: string) => void
   disabled: boolean
+  manualRequired: boolean
 }) {
   const { t } = useTranslation()
   const { draft } = useSettings()
@@ -86,7 +91,7 @@ function VoiceLookup({
   const [result, setResult] = useState<Result | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
-  const [manual, setManual] = useState(false)
+  const [manual, setManual] = useState(manualRequired)
   useEffect(() => {
     if (!hasModel) {
       setLoading(false)
@@ -205,10 +210,16 @@ function VoiceLookup({
           <input
             className={inputClass}
             value={value}
+            required={manualRequired}
             disabled={disabled}
             onChange={e => update(e.target.value)}
           />
         </label>
+      )}
+      {manualRequired && !value.trim() && (
+        <p role="status" className="text-xs text-[var(--muted-foreground)]">
+          {t('Enter a speaker ID before previewing this speech model.')}
+        </p>
       )}
     </section>
   )

@@ -139,6 +139,14 @@ PROVIDER_CAPABILITIES: dict[str, dict[str, object]] = {
     # marking these True means a transient failure never causes images to be
     # silently dropped. The Ark API expects inline base64 image data, so
     # url-only attachments are resolved to bytes before sending.
+    "volcengine_agent_plan": {
+        "supports_response_format": True,
+        "supports_streaming": True,
+        "supports_tools": True,
+        "supports_vision": True,
+        "vision_url_supported": False,
+        "system_in_messages": True,
+    },
     "volcengine": {
         "supports_response_format": True,
         "supports_streaming": True,

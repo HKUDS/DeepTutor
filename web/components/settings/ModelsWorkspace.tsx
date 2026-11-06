@@ -931,7 +931,7 @@ function ModelEditor({
           {model && (
             <div className="space-y-2">
               <RegistryModelIdField
-                label={t(speechProvider === "volcengine_speech" && service === "tts" ? "Model / resource ID" : "Model ID")}
+                label={t(["volcengine_speech", "volcengine_agent_plan"].includes(speechProvider) && service === "tts" ? "Model / resource ID" : "Model ID")}
                 value={model.model}
                 options={[...new Set([...(speechOptions?.models.map(m => m.id) ?? []), ...list.map((item) => item.id)])]}
                 disabled={managed}
@@ -988,7 +988,7 @@ function ModelEditor({
           />
           </details>
         )}
-        {service === "tts" && model && <VoiceDiscoveryField profileId={profile.id} modelId={model.id} value={model.voice || ""} update={value => update("voice", value)} disabled={managed} />}
+        {service === "tts" && model && <VoiceDiscoveryField profileId={profile.id} modelId={model.id} value={model.voice || ""} update={value => update("voice", value)} disabled={managed} manualRequired={speechProvider === "volcengine_agent_plan"} />}
         {model && (service === "tts" || service === "stt") ? (
           <VoiceModelFields service={service} provider={speechProvider} model={model}
             options={speechOptions} preset={speechPreset} update={update} disabled={managed} />

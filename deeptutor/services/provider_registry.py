@@ -433,6 +433,18 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         thinking_style="thinking_type",
     ),
     ProviderSpec(
+        name="volcengine_agent_plan",
+        keywords=("volcengine-agent-plan",),
+        env_key="OPENAI_API_KEY",
+        display_name="Volcengine Ark Agent Plan",
+        backend="openai_compat",
+        is_gateway=True,
+        default_api_base="https://ark.cn-beijing.volces.com/api/plan/v3",
+        api_base_by_format=(("anthropic", "https://ark.cn-beijing.volces.com/api/plan"),),
+        strip_model_prefix=True,
+        thinking_style="thinking_type",
+    ),
+    ProviderSpec(
         name="byteplus",
         keywords=("byteplus",),
         env_key="OPENAI_API_KEY",

@@ -39,6 +39,7 @@ const BINARY_THINKING_PROVIDERS = new Set([
   "deepseek",
   "volcengine",
   "volcengine_coding_plan",
+  "volcengine_agent_plan",
   "byteplus",
   "byteplus_coding_plan",
   "dashscope",
