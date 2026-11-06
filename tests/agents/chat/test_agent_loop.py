@@ -2558,7 +2558,8 @@ async def test_forced_tool_round_keeps_inline_reasoning_in_the_trace(
                         }
                     ]
                 ),
-            ]
+            ],
+            [_llm_chunk(content="问题已经准备好。", finish_reason="stop")],
         ]
     )
     pipeline = AgenticChatPipeline(language="zh")
@@ -4304,7 +4305,8 @@ async def test_ask_user_card_is_previewed_while_its_arguments_stream(
                     _llm_chunk(tool_calls=[{"id": "ask-1", "name": "ask_user", "arguments": chunk}])
                     for chunk in chunks
                 ),
-            ]
+            ],
+            [_llm_chunk(content="Preview complete.", finish_reason="stop")],
         ]
     )
     pipeline = AgenticChatPipeline(language="en")
@@ -4372,7 +4374,8 @@ async def test_native_adapter_tool_argument_previews_reach_the_card(
                         {"id": "ask-1|item-9", "name": "ask_user", "arguments": accumulated[-1]}
                     ]
                 ),
-            ]
+            ],
+            [_llm_chunk(content="Preview complete.", finish_reason="stop")],
         ]
     )
     pipeline = AgenticChatPipeline(language="en")
@@ -4620,3 +4623,213 @@ async def test_public_answer_with_capability_notice_is_preserved_once(monkeypatc
     assert answer.count(notice) == 1
     assert answer.startswith(explanation)
     assert _result(events).metadata["response"] == answer
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("with_feedback", [False, True])
+async def test_mastery_intake_answers_reach_profile_and_saved_outline(
+    monkeypatch, tmp_path, with_feedback
+):
+    from deeptutor.capabilities.mastery.tools import MasteryBuildTool, MasteryProfileTool
+    from deeptutor.learning.service import LearningService
+    from deeptutor.tools.builtin import AskUserTool
+
+    store = LearningStore(root=tmp_path / "learning")
+    store.save(LearningProgress(book_id="intake", modules=[]))
+    service = LearningService(store)
+    monkeypatch.setattr("deeptutor.capabilities.mastery.tools._new_service", lambda: service)
+    tools = {
+        tool.get_definition().name: tool
+        for tool in (AskUserTool(), MasteryProfileTool(), MasteryBuildTool())
+    }
+
+    class IntakeRegistry(_Registry):
+        def get(self, name):
+            return tools.get(name)
+
+        def build_openai_schemas(self, _enabled):
+            return [tool.get_definition().to_openai_schema() for tool in tools.values()]
+
+        async def execute(self, name, **kwargs):
+            self.executed.append({"name": name, "kwargs": kwargs})
+            result = await tools[name].execute(**kwargs)
+            assert result.success, result.content
+            return result
+
+    def call(name, args):
+        return [
+            _llm_chunk(
+                tool_calls=[{"id": name, "name": name, "arguments": json.dumps(args)}],
+                finish_reason="tool_calls",
+            )
+        ]
+
+    updates = (
+        [
+            {
+                "kind": "preference",
+                "op": "upsert",
+                "key": "style",
+                "text": "Projects",
+                "basis": "learner_report",
+                "evidence": "Project driven",
+            }
+        ]
+        if with_feedback
+        else []
+    )
+    client = _ScriptedChatClient(
+        [
+            call(
+                "ask_user", {"questions": [{"id": "style", "prompt": "How do you want to learn?"}]}
+            ),
+            call(
+                "mastery_profile",
+                {
+                    "preferences": "Project driven",
+                    "teaching_updates": updates,
+                    "expected_revision": store.load("intake").version,
+                },
+            ),
+            call(
+                "mastery_build",
+                {
+                    "path_name": "Agent basics",
+                    "modules": [
+                        {
+                            "name": "Tools",
+                            "knowledge_points": [{"name": "Tool calling", "type": "concept"}],
+                        }
+                    ],
+                },
+            ),
+            [_llm_chunk(content="The outline is saved.", finish_reason="stop")],
+        ]
+    )
+    pipeline = MasteryLoopPipeline(language="en")
+    pipeline.registry = IntakeRegistry()
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _: list(tools))
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+
+    async def answer():
+        return {"answers": [{"questionId": "style", "text": "Project driven"}]}
+
+    context = UnifiedContext(
+        session_id="intake-session",
+        user_message="Use my materials to build an outline.",
+        metadata={
+            "mastery_mode": True,
+            "mastery_path_id": "intake",
+            "mastery_session_mode": "outline",
+            "turn_id": "intake-turn",
+        },
+        runtime=TurnRuntimeContext(wait_for_user_reply=answer),
+    )
+    events = await _run(pipeline, context)
+    saved = store.load("intake")
+    assert saved.learner_profile.preferences == "Project driven"
+    assert saved.modules[0].name == "Tools"
+    assert _result(events).metadata["completed"] is True
+    assert context.extension("mastery")["outline_receipt"]["path_revision"] == saved.version
+    assert any(e.metadata.get("ask_user_resolved") for e in events)
+    assert client.call_count == 4
+
+
+@pytest.mark.asyncio
+async def test_model_error_cannot_be_hidden_by_a_pending_mastery_artifact(monkeypatch):
+    from deeptutor.capabilities.mastery.loop import MasteryLoopCapability
+
+    class FailedOutlineRegistry(_Registry):
+        async def execute(self, name, **kwargs):
+            return ToolResult(content="Invalid outline", success=False)
+
+    client = _ScriptedChatClient(
+        [
+            [
+                _llm_chunk(
+                    tool_calls=[{"id": "build", "name": "mastery_build", "arguments": "{}"}],
+                    finish_reason="tool_calls",
+                )
+            ],
+        ]
+    )
+    pipeline = AgenticChatPipeline(language="en")
+    pipeline.registry = FailedOutlineRegistry()
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _: ["mastery_build"])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+    context = UnifiedContext(
+        user_message="Build my outline", metadata={"mastery_mode": True, "mastery_path_id": "p"}
+    )
+    bus = StreamBus()
+    events, consumer = await _collect_bus_events(bus)
+    try:
+        with pytest.raises(RuntimeError, match="Scripted client exhausted"):
+            await pipeline.run(context, bus)
+    finally:
+        await bus.close()
+        await consumer
+    assert MasteryLoopCapability().finish_decision(context, "").blocking
+    errors = [e for e in events if e.metadata.get("error_type") == "RuntimeError"]
+    assert errors and "Scripted client exhausted" in errors[-1].content
+    assert not any(e.metadata.get("completed") is True for e in events)
+
+
+@pytest.mark.asyncio
+async def test_forced_finish_with_optional_profile_failure_keeps_answer_and_notice(monkeypatch):
+    class FailedProfileRegistry(_Registry):
+        async def execute(self, name, **kwargs):
+            return ToolResult(content="Profile storage unavailable", success=False)
+
+    client = _ScriptedChatClient(
+        [
+            [
+                _llm_chunk(
+                    tool_calls=[{"id": "profile", "name": "mastery_profile", "arguments": "{}"}],
+                    finish_reason="tool_calls",
+                )
+            ],
+            [_llm_chunk(content="We can still discuss the learning plan.", finish_reason="stop")],
+        ]
+    )
+    pipeline = AgenticChatPipeline(language="en", max_rounds=1)
+    pipeline.registry = FailedProfileRegistry()
+    monkeypatch.setattr(agent_loop_mod, "MAX_SETTLEMENT_ROUNDS", 0)
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _: ["mastery_profile"])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+    context = UnifiedContext(
+        user_message="Teach me", metadata={"mastery_mode": True, "mastery_path_id": "p"}
+    )
+    events = await _run(pipeline, context)
+    assert _result(events).metadata["completed"] is True
+    answer = _answer_text(events)
+    assert "not saved" in answer
+    assert answer.count("We can still discuss the learning plan.") == 1
+    assert "profile_repair_requested" not in context.extension("mastery")
+    assert client.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_model_failure_diagnostics_keep_cause_without_credentials(caplog):
+    from unittest.mock import AsyncMock
+
+    loop = object.__new__(agent_loop_mod.AgentLoop)
+    loop.context = UnifiedContext()
+    loop.context.extension("agent_loop")["model_call_id"] = "failed-model-call"
+    loop.pipeline = SimpleNamespace(
+        llm_config=SimpleNamespace(
+            api_key="unit-test-api-key",
+            extra_headers={"Authorization": "unit-test-auth-header"},
+        )
+    )
+    loop.stream = SimpleNamespace(progress=AsyncMock())
+    loop.source, loop.stage = "test", "responding"
+    await loop._report_model_failure(
+        ValueError("Rejected unit-test-api-key / unit-test-auth-header")
+    )
+    call = loop.stream.progress.call_args
+    message = call.args[0]
+    assert "unit-test-api-key" not in message + caplog.text
+    assert "unit-test-auth-header" not in message + caplog.text
+    assert "Rejected" in message
+    assert call.kwargs["metadata"]["error_type"] == "ValueError"
+    assert call.kwargs["metadata"]["call_id"] == "failed-model-call"

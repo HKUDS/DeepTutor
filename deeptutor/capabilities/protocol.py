@@ -35,6 +35,14 @@ class PromptBlock:
     content: str
 
 
+@dataclass(frozen=True, slots=True)
+class FinishDecision:
+    """Pure completion policy: repair advice is distinct from a required receipt."""
+
+    instruction: str = ""
+    blocking: bool = False
+
+
 class LoopExtension(Protocol):
     """Optional per-turn extension point for the chat agent loop.
 
@@ -89,6 +97,11 @@ class LoopExtension(Protocol):
     instruction when that round must not finalize the turn. The answer loop
     gives the model one additional round with tools still mounted; capability
     implementations are responsible for keeping the check narrow and bounded.
+
+    A capability MAY define pure ``finish_decision(context, final_text)`` instead,
+    returning ``FinishDecision``. Optional repair advice must not block a forced
+    finish. ``on_finish_redirect(context)`` records a repair only when the loop
+    actually schedules it; querying completion must not consume retry state.
 
     A capability MAY define ``settlement_recovery(context)`` returning
     ``(instruction, allowed_tool_names)`` when a successful preparation receipt
@@ -168,6 +181,7 @@ __all__ = [
     "AGENT_OUTPUT",
     "END_LOOP",
     "EVENT_METADATA",
+    "FinishDecision",
     "KnowledgeCapability",
     "LoopExtension",
     "PromptBlock",

@@ -76,6 +76,7 @@ class InteractionState:
     """Mutable state exchanged between the loop and interactive tools."""
 
     end_loop: bool = False
+    # Runtime-accepted inputs, with turn/scope and originating call/command IDs.
     user_answers: list[dict[str, Any]] = field(default_factory=list)
 
 
@@ -95,7 +96,7 @@ class UnifiedContext:
 
     Attributes:
         session_id: Persistent conversation identifier.
-        user_message: The current user input.
+        user_message: The original user request. Later inputs belong to interaction.
         conversation_history: Previous messages in OpenAI format.
         enabled_tools: Tool names the user has toggled on (Level 1).
             ``None`` means "not specified", while ``[]`` means
@@ -162,6 +163,45 @@ class UnifiedContext:
         if not normalized:
             raise ValueError("Extension namespace must not be empty")
         return self.extension_state.setdefault(normalized, {})
+
+    def record_user_input(self, text: str, *, source: str, input_id: str) -> None:
+        """Accept a runtime-delivered reply, never model or retrieved text."""
+        if not isinstance(text, str) or source not in {"ask_user", "inbox"} or not input_id:
+            raise ValueError("Invalid runtime user input")
+        if not text.strip():
+            return
+        record = {
+            "text": text,
+            "source": source,
+            "input_id": input_id,
+            "session_id": self.session_id,
+            "turn_id": str(self.metadata.get("turn_id") or self.runtime.turn_id),
+            "scope_id": str(self.metadata.get("mastery_path_id") or ""),
+        }
+        identity = ("source", "input_id", "session_id", "turn_id", "scope_id")
+        if record in self.interaction.user_answers:
+            return
+        self.interaction.user_answers[:] = [
+            entry
+            for entry in self.interaction.user_answers
+            if any(entry.get(key) != record[key] for key in identity)
+        ]
+        self.interaction.user_answers.append(record)
+
+    def user_evidence(self) -> tuple[str, ...]:
+        """Actual current-turn inputs in order; history is not fresh authority."""
+        turn_id = str(self.metadata.get("turn_id") or self.runtime.turn_id)
+        scope_id = str(self.metadata.get("mastery_path_id") or "")
+        return (
+            self.user_message,
+            *(
+                entry["text"]
+                for entry in self.interaction.user_answers
+                if entry.get("session_id") == self.session_id
+                and entry.get("turn_id") == turn_id
+                and entry.get("scope_id") == scope_id
+            ),
+        )
 
 
 __all__ = [

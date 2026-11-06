@@ -24,7 +24,14 @@ class NativeAdapter:
     async def invoke(self, operation: str, args: dict[str, Any], state: dict[str, Any]) -> Any:
         if operation == "read_user_inputs":
             drain = self.context.runtime.drain_user_inputs
-            return drain() if drain is not None else []
+            inputs = drain() if drain is not None else []
+            for item in inputs:
+                self.context.record_user_input(
+                    item["content"],
+                    source="inbox",
+                    input_id=item["command_id"],
+                )
+            return inputs
         if operation == "event":
             event = args["event"]
             kind = StreamEventType(event["type"])
@@ -62,17 +69,28 @@ class NativeAdapter:
             return await self.legacy_tool(args)
         if operation == "policy":
             text, tools = str(args.get("text") or ""), tuple(args.get("tools") or [])
+            decision = (
+                self.pipeline._capability_finish_decision(self.context, text) if not tools else None
+            )
+            redirect = (
+                decision.instruction
+                if decision is not None and (not args.get("forced") or decision.blocking)
+                else ""
+            )
             return {
-                "redirect": self.pipeline._capability_finish_instruction(self.context, text)
-                if not tools
-                else "",
-                "override": self.pipeline._capability_final_text_override(self.context, text),
+                "redirect": redirect,
+                "override": None
+                if redirect
+                else self.pipeline._capability_final_text_override(self.context, text),
                 "toolPolicy": self.pipeline._capability_tool_round_output_policy(
                     self.context, text, tools
                 )
                 if tools
                 else "",
             }
+        if operation == "finish_redirected":
+            self.pipeline._capability_finish_redirected(self.context)
+            return None
         if operation == "after_tools":
             from .native_tools import tool_runtime
 

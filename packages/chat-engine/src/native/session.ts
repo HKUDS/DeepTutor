@@ -140,10 +140,11 @@ export class NativeSession implements LoopHost {
   private async policy(
     text: string,
     tools: string[] = [],
+    forced = false,
   ): Promise<JsonRecord> {
     if (!this.input.policyHooks)
       return { redirect: "", override: null, toolPolicy: "keep" };
-    return record(await this.legacy("policy", { text, tools }));
+    return record(await this.legacy("policy", { text, tools, forced }));
   }
   private async finish(override: boolean): Promise<void> {
     if (!this.round) throw new Error("Missing model round");
@@ -268,6 +269,7 @@ export class NativeSession implements LoopHost {
         return { redirect: !!this.redirect, override: this.override !== null };
       }
       case "redirect_finish":
+        if (this.refreshHost) await this.legacy("finish_redirected", {});
         if (this.round) this.conversation.appendAssistant(this.round);
         this.conversation.appendInstruction(this.redirect);
         return null;
@@ -378,7 +380,7 @@ export class NativeSession implements LoopHost {
           )
         )
           throw new Error("Final answer exceeded the output budget");
-        const policy = await this.policy(this.round.text);
+        const policy = await this.policy(this.round.text, [], true);
         if (policy.redirect) {
           await this.release(true);
           this.response = [

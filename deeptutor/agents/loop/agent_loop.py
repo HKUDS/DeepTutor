@@ -419,7 +419,7 @@ class AgentLoop:
         # A tool-free salvage reply cannot satisfy an outstanding interaction.
         # Empty text asks capabilities about state, without inventing prose to
         # validate or giving the model another chance to claim completion.
-        if self.pipeline._capability_finish_instruction(self.context, ""):
+        if self.pipeline._capability_finish_decision(self.context, "").blocking:
             outcome = await self._reject_capability_finish()
             outcome.final_text = _join_answer_parts(continued_answer_parts or [], "")
             return outcome
@@ -465,14 +465,8 @@ class AgentLoop:
 
             if isinstance(exc, CapabilityPrerequisiteError):
                 raise
-            # The salvage call itself failed (e.g. the provider is still
-            # returning unusable data). Don't bubble up and lose the turn —
-            # emit the graceful fallback answer instead.
-            logger.warning("forced-finish LLM call failed: %s", exc)
-            return await self._finalize_finish(
-                "",
-                continued_answer_parts=continued_answer_parts,
-            )
+            await self._report_model_failure(exc)
+            raise
         state.rounds += 1
         # Two readings of one scene, at different precisions. The budget
         # check fires only when this round demonstrably hit its cap — that is
@@ -504,9 +498,16 @@ class AgentLoop:
             result.text.strip() and not self._clean(result.text)
         )
         messages.append(_assistant_round_message(result))
+        override = self.pipeline._capability_final_text_override(self.context, result.text)
+        if override is not None:
+            addition = (
+                override.replace(result.visible_text, "", 1) if result.visible_text else override
+            )
+            if addition.strip():
+                await self.pipeline._emit_protocol_fallback_final_response(self.stream, addition)
         return await self._finalize_finish(
-            result.text,
-            visible_text=result.visible_text,
+            override if override is not None else result.text,
+            visible_text=override if override is not None else result.visible_text,
             continued_answer_parts=continued_answer_parts,
             empty_response_kind=("reasoning_only" if reasoning_without_answer else None),
             provider_response_state=_provider_response_state(
@@ -514,6 +515,33 @@ class AgentLoop:
                 result.reasoning_content,
                 result.thinking_blocks,
             ),
+        )
+
+    async def _report_model_failure(self, exc: Exception) -> None:
+        """Retain the original call failure before completion policies run."""
+        message = str(exc).strip() or type(exc).__name__
+        config = self.pipeline.llm_config
+        secrets = [
+            getattr(config, "api_key", ""),
+            *(getattr(config, "extra_headers", {}) or {}).values(),
+        ]
+        for secret in secrets:
+            if isinstance(secret, str) and secret:
+                message = message.replace(secret, "[redacted]")
+        call_id = self.context.extension("agent_loop").get("model_call_id", "")
+        logger.warning("Model call failed (%s, %s): %s", call_id, type(exc).__name__, message)
+        await self.stream.progress(
+            message,
+            source=self.source,
+            stage=self.stage,
+            metadata={
+                "trace_kind": "call_status",
+                "call_state": "failed",
+                "call_id": call_id,
+                "error_code": getattr(exc, "error_code", "model_call_failed"),
+                "error_type": type(exc).__name__,
+                "retryable": getattr(exc, "retryable", False),
+            },
         )
 
     async def _finalize_finish(
