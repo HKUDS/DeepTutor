@@ -7480,7 +7480,6 @@
   "language.portuguese": "Portugais",
   "language.japanese": "Japonais",
   "language.turkish": "Türkçe",
-
   "settings.modelImport.title": "Importer des modèles pour ce service",
   "settings.modelImport.selectFiltered": "Sélectionner tous les résultats",
   "settings.modelImport.clear": "Effacer la sélection",
@@ -7489,5 +7488,7 @@
   "settings.modelImport.selected": "Sélectionnés : {{count}}",
   "language.korean": "한국어 (일부 번역)",
   "Zoom level": "Niveau de zoom",
-  "Reset zoom": "Réinitialiser le zoom"
+  "Reset zoom": "Réinitialiser le zoom",
+  "Fit text": "Ajuster au texte",
+  "Fit page": "Ajuster à la page"
 }

@@ -108,7 +108,11 @@ export function PdfZoomControls({
           onClick={() => setOpen((value) => !value)}
           className="h-7 min-w-[58px] rounded-lg px-2 text-[12px] tabular-nums transition hover:bg-[color-mix(in_srgb,currentColor_10%,transparent)]"
         >
-          {preference.mode === "fit" ? t("Fit") : `${effectivePercent}%`}
+          {preference.mode === "text"
+            ? t("Fit text")
+            : preference.mode === "fit"
+              ? t("Fit page")
+              : `${effectivePercent}%`}
         </button>
         <PreferenceButton
           label={t("Zoom in")}
@@ -128,18 +132,26 @@ export function PdfZoomControls({
             aria-label={t("Zoom level")}
             className="absolute bottom-full left-1/2 mb-2 min-w-[132px] -translate-x-1/2 rounded-xl border border-[var(--border)] bg-[var(--background)] p-1.5 shadow-xl"
           >
-            <button
-              type="button"
-              role="menuitem"
-              aria-current={preference.mode === "fit" ? "page" : undefined}
-              onClick={() => {
-                onSelect(DEFAULT_PDF_ZOOM);
-                setOpen(false);
-              }}
-              className="flex h-8 w-full items-center rounded-lg px-2.5 text-left text-[12px] hover:bg-[color-mix(in_srgb,currentColor_10%,transparent)]"
-            >
-              {t("Fit")}
-            </button>
+            {(
+              [
+                { mode: "text", label: t("Fit text") },
+                { mode: "fit", label: t("Fit page") },
+              ] as const
+            ).map((row) => (
+              <button
+                key={row.mode}
+                type="button"
+                role="menuitem"
+                aria-current={preference.mode === row.mode ? "page" : undefined}
+                onClick={() => {
+                  onSelect({ mode: row.mode });
+                  setOpen(false);
+                }}
+                className="flex h-8 w-full items-center rounded-lg px-2.5 text-left text-[12px] hover:bg-[color-mix(in_srgb,currentColor_10%,transparent)]"
+              >
+                {row.label}
+              </button>
+            ))}
             {PDF_ZOOM_OPTIONS.map((scale) => (
               <button
                 key={scale}

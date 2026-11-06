@@ -6575,7 +6575,6 @@
   "Reset learning text": "学習テキストをリセット",
   "language.portuguese": "Português",
   "language.turkish": "Türkçe",
-
   "settings.modelImport.title": "このサービスのモデルをインポート",
   "settings.modelImport.selectFiltered": "検索結果をすべて選択",
   "settings.modelImport.clear": "選択を解除",
@@ -6584,5 +6583,7 @@
   "settings.modelImport.selected": "選択済み：{{count}}",
   "language.korean": "한국어 (일부 번역)",
   "Zoom level": "ズーム倍率",
-  "Reset zoom": "ズームをリセット"
+  "Reset zoom": "ズームをリセット",
+  "Fit text": "テキストに合わせる",
+  "Fit page": "ページに合わせる"
 }

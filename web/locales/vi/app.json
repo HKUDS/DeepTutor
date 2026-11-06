@@ -6575,7 +6575,6 @@
   "language.portuguese": "Português",
   "language.japanese": "日本語",
   "language.turkish": "Türkçe",
-
   "settings.modelImport.title": "Nhập mô hình cho dịch vụ này",
   "settings.modelImport.selectFiltered": "Chọn tất cả kết quả",
   "settings.modelImport.clear": "Bỏ chọn tất cả",
@@ -6584,5 +6583,7 @@
   "settings.modelImport.selected": "Đã chọn: {{count}}",
   "language.korean": "한국어 (일부 번역)",
   "Zoom level": "Mức thu phóng",
-  "Reset zoom": "Đặt lại thu phóng"
+  "Reset zoom": "Đặt lại thu phóng",
+  "Fit text": "Vừa văn bản",
+  "Fit page": "Vừa trang"
 }

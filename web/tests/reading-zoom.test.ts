@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import {
   ACTUAL_SIZE_FACTOR,
   DEFAULT_PDF_ZOOM,
+  cropsPageMargins,
   MAX_FIT_PAGE_WIDTH,
   MAX_PDF_ZOOM,
   MAX_PAGE_CANVAS_PIXELS,
@@ -18,7 +19,7 @@ import {
   maxPageWidth,
   normalisePdfZoom,
   pdfZoomShortcut,
-  steppedPdfZoom,
+  zoomedBy,
   zoomedPageWidth,
 } from "../lib/reading-zoom";
 
@@ -50,19 +51,20 @@ test("zoom is clamped to the supported range", () => {
   assert.equal(clampPdfZoom(Number.POSITIVE_INFINITY), 1);
 });
 
-test("stepping walks the menu ladder, not a fixed percentage", () => {
-  assert.deepEqual(PDF_ZOOM_OPTIONS, [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4]);
-  // A pinch settles off-ladder; the next press must land on the next stop.
-  assert.equal(steppedPdfZoom(1.37, 1), 1.5);
-  assert.equal(steppedPdfZoom(1.37, -1), 1.25);
-  assert.equal(steppedPdfZoom(0.75, 1), 1);
-  assert.equal(steppedPdfZoom(1, 1), 1.25);
+test("a press steps by a ratio from what is on screen", () => {
+  // Continuous: a pinch settles at 137%, and the next press has to move from
+  // there — snapping to the menu's stops sent it *down* to 125%.
+  assert.equal(zoomedBy(1.37, 1), 1.713);
+  assert.equal(zoomedBy(1.37, -1), 1.096);
+  assert.equal(zoomedBy(0.75, 1), 0.938);
+  assert.equal(zoomedBy(1, 1), 1.25);
   // Both ends stop rather than wrap.
-  assert.equal(steppedPdfZoom(MAX_PDF_ZOOM, 1), MAX_PDF_ZOOM);
-  assert.equal(steppedPdfZoom(MIN_PDF_ZOOM, -1), MIN_PDF_ZOOM);
-  // An exact stop steps off it, never returns it.
-  assert.equal(steppedPdfZoom(2, 1), 3);
-  assert.equal(steppedPdfZoom(2, -1), 1.5);
+  assert.equal(zoomedBy(MAX_PDF_ZOOM, 1), MAX_PDF_ZOOM);
+  assert.equal(zoomedBy(MIN_PDF_ZOOM, -1), MIN_PDF_ZOOM);
+  // A press and its opposite come back to where they started.
+  assert.equal(zoomedBy(zoomedBy(1, 1), -1), 1);
+  // The menu still offers the named stops for jumping to a known size.
+  assert.deepEqual(PDF_ZOOM_OPTIONS, [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4]);
 });
 
 test("100% is the page's real size, not its scale:1 size", () => {
@@ -122,6 +124,17 @@ test("stored zoom is bounded and malformed values fall back", () => {
     normalisePdfZoom({ mode: "fixed", scale: Number.NaN }),
     DEFAULT_PDF_ZOOM,
   );
+});
+
+test("the three page-size modes round-trip, and fitting the text is the default", () => {
+  // A reader, not a document inspector: the paper margins exist for binding
+  // and thumbs, so the default fills the pane with the text block.
+  assert.deepEqual(DEFAULT_PDF_ZOOM, { mode: "text" });
+  assert.equal(cropsPageMargins(DEFAULT_PDF_ZOOM), true);
+  assert.equal(cropsPageMargins({ mode: "fit" }), false);
+  assert.equal(cropsPageMargins({ mode: "fixed", scale: 2 }), false);
+  assert.deepEqual(normalisePdfZoom({ mode: "text" }), { mode: "text" });
+  assert.deepEqual(normalisePdfZoom({ mode: "fit" }), { mode: "fit" });
 });
 
 test("zoom shortcuts are scoped to a hovered or focused reader", () => {
