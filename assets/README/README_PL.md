@@ -4,12 +4,14 @@
 <h1 align="center">DeepTutor: Spersonalizowane korepetycje przez całe życie</h1>
 
 <p align="center">
-  <a href="https://deeptutor.info" target="_blank"><img alt="Dokumentacja — deeptutor.info" src="https://img.shields.io/badge/Docs-deeptutor.info%20%E2%86%97-0A0A0A?style=for-the-badge&labelColor=F5F5F4" height="36"></a>&nbsp;
-  <a href="https://deeptutor.info/collaborate/" target="_blank"><img alt="Współpraca — pracuj z nami" src="https://img.shields.io/badge/Collaborate-work%20with%20us%20%E2%86%97-0A0A0A?style=for-the-badge&labelColor=F5F5F4" height="36"></a>
+<a href="https://www.star-history.com/hkuds/deeptutor"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending&amp;theme=dark" /><source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending" /><img alt="Popularne repozytorium dnia na GitHub" src="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending" height="55" /></picture></a>&#32;<a href="https://trendshift.io/repositories/17099"><img src="https://trendshift.io/api/badge/trendshift/repositories/17099/daily" alt="HKUDS/DeepTutor | Trendshift" width="250" height="55"></a>&#32;<a href="https://www.star-history.com/hkuds/deeptutor"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;theme=dark"><source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor"><img alt="Ranking historii gwiazdek" src="https://api.star-history.com/badge?repo=HKUDS/DeepTutor" width="185" height="55"></picture></a>
 </p>
 
 <p align="center">
-<a href="https://www.star-history.com/hkuds/deeptutor"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending&amp;theme=dark" /><source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending" /><img alt="Popularne repozytorium dnia na GitHub" src="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending" height="55" /></picture></a>&#32;<a href="https://trendshift.io/repositories/17099"><img src="https://trendshift.io/api/badge/trendshift/repositories/17099/daily" alt="HKUDS/DeepTutor | Trendshift" width="250" height="55"></a>&#32;<a href="https://www.star-history.com/hkuds/deeptutor"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;theme=dark"><source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor"><img alt="Ranking historii gwiazdek" src="https://api.star-history.com/badge?repo=HKUDS/DeepTutor" width="185" height="55"></picture></a>
+  <a href="https://github.com/HKUDS/DeepTutor/releases/latest/download/Open-DeepTutor-MacOS-Apple-Silicon.dmg"><img alt="Pobierz dla macOS (Apple Silicon)" src="../../assets/figs/badges/download-macos-apple-silicon.svg" height="32"></a>&nbsp;
+  <a href="https://github.com/HKUDS/DeepTutor/releases/latest/download/Open-DeepTutor-MacOS-Intel.dmg"><img alt="Pobierz dla macOS (Intel)" src="../../assets/figs/badges/download-macos-intel.svg" height="32"></a>&nbsp;
+  <a href="https://github.com/HKUDS/DeepTutor/releases/latest/download/Open-DeepTutor-Windows-Setup.exe"><img alt="Pobierz dla Windows (x64)" src="../../assets/figs/badges/download-windows.svg" height="32"></a>&nbsp;
+  <a href="https://deeptutor.info" target="_blank"><img alt="Dokumentacja — deeptutor.info" src="../../assets/figs/badges/docs.svg" height="32"></a>
 </p>
 
 <p align="center">
@@ -27,15 +29,7 @@
   <a href="README_PL.md"><img alt="Polski" height="40" src="https://img.shields.io/badge/Polski-BCDCF7"></a>
 </p>
 
-[![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/downloads/)
-[![Next.js 16](https://img.shields.io/badge/Next.js-16-000000?style=flat-square&logo=next.js&logoColor=white)](https://nextjs.org/)
-[![License](https://img.shields.io/badge/License-Apache_2.0-blue?style=flat-square)](../../LICENSE)
-[![GitHub release](https://img.shields.io/github/v/release/HKUDS/DeepTutor?style=flat-square&color=brightgreen)](https://github.com/HKUDS/DeepTutor/releases)
-[![arXiv](https://img.shields.io/badge/arXiv-2604.26962-b31b1b?style=flat-square&logo=arxiv&logoColor=white)](https://arxiv.org/abs/2604.26962)
-
-[![Discord](https://img.shields.io/badge/Discord-Community-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/eRsjPgMU4t)
-[![Feishu](https://img.shields.io/badge/Feishu-Group-00D4AA?style=flat-square&logo=feishu&logoColor=white)](../../Communication.md)
-[![WeChat](https://img.shields.io/badge/WeChat-Group-07C160?style=flat-square&logo=wechat&logoColor=white)](https://github.com/HKUDS/DeepTutor/issues/78)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue?style=flat-square)](../../LICENSE) [![GitHub release](https://img.shields.io/github/v/release/HKUDS/DeepTutor?style=flat-square&color=brightgreen)](https://github.com/HKUDS/DeepTutor/releases) [![arXiv](https://img.shields.io/badge/arXiv-2604.26962-b31b1b?style=flat-square&logo=arxiv&logoColor=white)](https://arxiv.org/abs/2604.26962) [![Discord](https://img.shields.io/badge/Discord-Community-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/eRsjPgMU4t) [![Feishu](https://img.shields.io/badge/Feishu-Group-00D4AA?style=flat-square&logo=feishu&logoColor=white)](../../Communication.md) [![WeChat](https://img.shields.io/badge/WeChat-Group-07C160?style=flat-square&logo=wechat&logoColor=white)](https://github.com/HKUDS/DeepTutor/issues/78)
 
 [Funkcje](#-główne-funkcje) · [Zacznij](#-pierwsze-kroki) · [Eksploruj](#-eksploracja-deeptutor) · [CLI](#️-deeptutor-cli--interfejs-natywny-dla-agentów) · [Ekosystem](#-ekosystem--eduhub-i-społeczność-umiejętności) · [Społeczność](#-społeczność)
 
@@ -43,7 +37,11 @@
 
 ---
 
-> 🤝 **Zapraszamy do wszelkich form współpracy!** Głosuj na elementy planu działania lub proponuj nowe w [`Roadmap`](https://github.com/HKUDS/DeepTutor/issues/498), a szczegóły dotyczące strategii gałęzi, standardów kodowania i sposobu rozpoczęcia pracy znajdziesz w naszym [Przewodniku dla współtwórców](../../CONTRIBUTING.md).
+> 🤝 **Szukamy nowych opiekunów projektu!** Role, wymagania i sposób zgłoszenia opisuje [Przewodnik dla współtwórców](../../CONTRIBUTING.md#join-the-team).
+
+<div align="center">
+<img src="../../assets/figs/web-dev/overview.png" alt="Strona główna DeepTutor i nawigacja obszaru roboczego" width="900">
+</div>
 
 ### 📰 Aktualności
 
@@ -73,9 +71,9 @@ Wybierz ścieżkę instalacji odpowiadającą temu, jak chcesz korzystać z Deep
 <details>
 <summary><b>Desktop — macOS i Windows (wersja zapoznawcza)</b></summary>
 
-**Open DeepTutor** zawiera Pythona, Node.js i pełne środowisko nauki, więc terminal ani osobna instalacja środowiska uruchomieniowego nie są potrzebne. Wersje zapoznawcze Desktop są dostępne na gałęzi `dev`; **wydanie v1.7.0 nie zawiera instalatorów desktopowych**.
+**Open DeepTutor** zawiera Pythona, Node.js i pełne środowisko nauki, więc terminal ani osobna instalacja środowiska uruchomieniowego nie są potrzebne. Opublikowane wersje desktopowe pobierzesz z [najnowszego wydania na GitHub](https://github.com/HKUDS/DeepTutor/releases/latest); wybierz poniżej instalator dla swojego komputera.
 
-Otwórz udany [przebieg workflow Desktop Release](https://github.com/HKUDS/DeepTutor/actions/workflows/desktop-release.yml?query=branch%3Adev), przewiń do **Artifacts** i pobierz wariant odpowiedni dla swojego komputera. Wymagane jest zalogowanie do GitHuba, a artefakty wygasają po siedmiu dniach.
+Aby pobrać wersję rozwojową, otwórz udany [przebieg workflow Desktop Release](https://github.com/HKUDS/DeepTutor/actions/workflows/desktop-release.yml?query=branch%3Adev) i pobierz odpowiedni **Artifact**. Te wersje wymagają zalogowania do GitHuba i wygasają po siedmiu dniach; pobieranie opublikowanych wydań nie podlega tym ograniczeniom.
 
 | Twój komputer | Wariant do pobrania | Instalator |
 | --- | --- | --- |
@@ -164,10 +162,6 @@ Rdzeń zawiera Chat, Ask Questions, CLI i SDK; pozostałe możliwości i polecen
 
 Zacznij od **obszaru roboczego** dla każdego przedmiotu lub projektu. Strona główna, Nauka i Zasoby zmieniają się wraz z aktywnym obszarem roboczym; Partners i Personalizacja pozostają dostępne we wszystkich obszarach roboczych.
 
-<div align="center">
-<img src="../../assets/figs/web-dev/overview.png" alt="Strona główna DeepTutor i nawigacja obszaru roboczego" width="900">
-</div>
-
 | Obszar | Zakres | Co zawiera |
 | --- | --- | --- |
 | **Strona główna** | Obszar roboczy | Chat, Task Board, Calendar i Notatnik do nauki |
@@ -208,6 +202,20 @@ Tutor wywołuje narzędzia w razie potrzeby i może wstrzymać pracę, aby zada�
 Narzędzia przełączalne przez użytkownika to `brainstorm`, `web_search`, `paper_search`, `zotero_search`, `reason` i `geogebra_analysis` — oraz `imagegen` i `videogen` po skonfigurowaniu odpowiedniego modelu generowania. Narzędzia kontekstowe, takie jak `rag`, `kb_files`, `knowledge_frontier`, `read_source`, `read_memory`, `write_memory`, `read_skill`, `load_tools`, `exec`, `web_fetch`, `ask_user`, `list_favorites`, `save_favorite`, `write_note`, `search_notes`, `question_bank`, `github`, `consult_subagent`, `workspace_list`, `workspace_read`, `workspace_search`, `workspace_present` i `workspace_export`, montują się automatycznie, gdy tura ma odpowiedni kontekst.
 
 Kontekst dzieli się na dwa rodzaje: **trwały kontekst sesji** (możliwość, obszar roboczy lub kurs, narzędzia, bazy wiedzy, persona, model oraz stan Reading / Mastery) jest zachowywany między turami; **odwołania** (pliki, historia czatu, książki, sekcje Reading, notatniki, wybrane wpisy banku pytań, zaimportowani agenci) pochodzą z menu `+` i domyślnie obowiązują przez jedną turę albo przez każdą turę, gdy zostaną przypięte. Przycisk głosowy jedynie transkrybuje bieżącą wiadomość.
+
+**Limit wyjścia zużyty wyłącznie na rozumowanie.** Wspólna pętla agenta ponawia próbę raz, gdy wewnętrzne rozumowanie wyczerpie budżet wyjścia bez odpowiedzi ani działania narzędzia. Domyślna strategia `prompt` zachowuje ten sam budżet. Aby zakończyć od razu, ustaw `strategy: stop` w `capabilities.chat.reasoning_budget_recovery` w pliku `settings/agents.yaml` środowiska uruchomieniowego. Jawnie zwiększony budżet może pomóc modelom potrzebującym więcej miejsca, kosztem potencjalnie większych opóźnień i zużycia:
+
+```yaml
+capabilities:
+  chat:
+    responding:
+      max_tokens: 8000
+    reasoning_budget_recovery:
+      strategy: increase_output_budget
+      max_tokens: 16000
+```
+
+Limit odzyskiwania musi przekraczać zwykły limit wyjścia i wynosić najwyżej 131072; wybierz wartość obsługiwaną przez model. Dotyczy tylko jednego wywołania odzyskiwania, zachowuje istniejące ograniczenia rund i czasu żądań oraz nie zmienia wysiłku rozumowania. Ślad zapisuje politykę, stare i nowe limity, rzeczywiste budżety poszczególnych wywołań oraz łączne zużycie. Ucięcie widocznej odpowiedzi nadal korzysta ze zwykłej kontynuacji. W eksperymentalnym środowisku `typescript-native` jawne polityki `stop` lub `increase_output_budget` wybierają wspólny host efektów Python z harmonogramem TypeScript przed rozpoczęciem tury; wynik podaje ten powód zgodności.
 
 W pełnym profilu Strona główna daje dostęp jednym kliknięciem do **Chat**, **Ask Questions**, **Quiz**, **Visualize** i **Video Lesson**; **Research** do raportów z cytowaniami i **Solve** do rozumowania krok po kroku znajdują się w sekcji *Więcej możliwości*. Zaznacz tekst w odpowiedzi, aby otworzyć **Little Tutor** — wyspecjalizowany wątek na pasku bocznym, który pozostaje zagnieżdżony pod rozmową źródłową. Po wysłaniu co najmniej trzech wiadomości lewy margines pokazuje, o ile jest miejsce, znacznik przy każdym pytaniu; najedź na niego, aby zobaczyć podgląd, kliknij, aby wrócić do pytania, albo użyj **Alt/Option + ↑/↓**, aby przechodzić między pytaniami.
 
@@ -422,10 +430,14 @@ Settings to operacyjna płaszczyzna kontroli, otwierana na stronie **General**, 
 
 **Język wietnamski:** w **Settings → General** wybierz **Tiếng Việt** jako **Interface language** i kliknij **Apply changes**. **Model output language** jest niezależne: wybierz tam **Tiếng Việt**, aby otrzymywać odpowiedzi po wietnamsku, albo zachowaj inny język odpowiedzi przy wietnamskim interfejsie. Jakość odpowiedzi zależy od obsługi języka wietnamskiego przez wybrany model.
 
+**Embeddingi NVIDIA NIM:** wybierz **NVIDIA NIM** w **Settings → Embedding**, aby wyszukiwać tekst za pomocą `nvidia/nemotron-3.5-embed-8b`. Domyślny punkt końcowy to `https://integrate.api.nvidia.com/v1/embeddings`; własny pełny adres jest używany w podanej postaci. Indeksowanie wysyła `input_type=passage`, wyszukiwanie — `input_type=query`, a testy połączenia domyślnie używają passage. Model hostowany domyślnie ma 4096 wymiarów i przyjmuje skonfigurowaną liczbę wymiarów od 1 do 4096. Ta integracja obsługuje wyłącznie tekst; embeddingi obrazów i opcje specyficzne dla modeli hostowanych samodzielnie są poza jej zakresem. Istniejące profile zgodne z OpenAI zachowują wcześniejszy sposób wysyłania żądań; przy zmianie istniejącej bazy wiedzy wybierz integrację NIM i ponownie ją zindeksuj. Zobacz [specyfikację API NVIDIA](https://docs.api.nvidia.com/nim/reference/nvidia-nemotron-3_5-embed-8b-infer).
+
 **Synteza mowy Xiaomi MiMo.** Dodaj dostawcę Xiaomi MiMo z adresem `https://api.xiaomimimo.com/v1` i jego kluczem API, a następnie dodaj `mimo-v2.5-tts` w Settings → Voice. Wybierz gotowy głos, na przykład `mimo_default`, `冰糖` lub `苏打`, użyj formatu wyjściowego `wav` lub `pcm16` i odsłuchaj próbkę przed zastosowaniem ustawień. Instrukcje głosowe sterują stylem i szybkością mówienia. Ten adapter obsługuje wyłącznie gotowe głosy; projektowanie i klonowanie głosu wymagają osobnych modeli i nie są obsługiwane. Jeśli starszy model mowy MiMo był skonfigurowany przez ogólny adapter zgodny z OpenAI, utwórz jego wpis mowy ponownie, korzystając z dostawcy Xiaomi MiMo, aby używał protokołu chat-completions. Zobacz [oficjalny przewodnik syntezy mowy MiMo](https://mimo.mi.com/docs/zh-CN/quick-start/usage-guide/audio/speech-synthesis-v2.5).
 
 **Synteza mowy MiniMax** — w Settings → Voice wybierz MiniMax do zamiany tekstu na mowę i model `speech-2.8-hd`. Skonfiguruj klucz API MiniMax i jawnie wybierz głos systemowy lub wpisz identyfikator własnego głosu. Domyślny bazowy adres API to `https://api.minimax.io/v1`; dla regionu Chin użyj `https://api.minimaxi.com/v1`. Czytanie na głos i próbki głosu korzystają z natywnego punktu końcowego syntezy mowy, z formatami wyjściowymi MP3, WAV, FLAC lub PCM oraz ustawieniami częstotliwości próbkowania, szybkości i języka. Informacje o identyfikatorach głosów i dostępności dla kont znajdziesz w [API syntezy mowy MiniMax](https://platform.minimax.io/docs/api-reference/speech-t2a-http).
 
+
+**Odczyt zaznaczonego tekstu:** zaznacz słowo lub fragment w Chat, Mastery Path albo Reading i kliknij **Czytaj na głos** na pobliskim pasku narzędzi. Kliknij **Zatrzymaj**, aby anulować syntezę lub odtwarzanie. Odczytywane jest tylko zaznaczenie, z użyciem aktywnego dostawcy TTS i głosu skonfigurowanego w **Settings → Voice**, bez wysyłania tury czatu. Samo zaznaczenie nigdy nie rozpoczyna odtwarzania. Wymagana jest działająca usługa mowy; ta funkcja nie instaluje ani nie wybiera jej za użytkownika.
 
 **Video Learning** w Settings → Learning & conversation konfiguruje napisy YouTube i dostęp do Invidious dla Reading. Aby użyć Invidious, ustaw zarządzany przez administratora adres bazowy API backendu (na przykład `http://127.0.0.1:3000`) oraz publiczny adres dostępny z przeglądarki, przetestuj połączenie, wybierz Invidious i zapisz. **Browse Invidious** w oknie dodawania materiałów Reading pozwala wyszukiwać filmy oraz otwierać połączone subskrypcje i playlisty. Odtwarzanie YouTube korzysta z oficjalnego odtwarzacza o podwyższonej ochronie prywatności; brak napisów jest widoczny i ogranicza materiał źródłowy tutora, ale nie blokuje natywnego odtwarzania. W kopii źródeł uruchom `python scripts/install_extras.py video-learning`, aby korzystać z domyślnego mechanizmu pobierania napisów YouTube. Istniejące linki Watching są przenoszone do Reading z zachowaniem historii rozmów, zgodnych transkrypcji, notatek i postępów; nowe notatki ze znacznikami czasu są adnotacjami Reading. Bilibili korzysta z własnej ścieżki odtwarzania i napisów.
 

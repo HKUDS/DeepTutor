@@ -4,12 +4,14 @@
 <h1 align="center">DeepTutor：生涯にわたるパーソナライズド個別指導</h1>
 
 <p align="center">
-  <a href="https://deeptutor.info" target="_blank"><img alt="Docs — deeptutor.info" src="https://img.shields.io/badge/Docs-deeptutor.info%20%E2%86%97-0A0A0A?style=for-the-badge&labelColor=F5F5F4" height="36"></a>&nbsp;
-  <a href="https://deeptutor.info/collaborate/" target="_blank"><img alt="Collaborate — work with us" src="https://img.shields.io/badge/Collaborate-work%20with%20us%20%E2%86%97-0A0A0A?style=for-the-badge&labelColor=F5F5F4" height="36"></a>
+<a href="https://www.star-history.com/hkuds/deeptutor"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending&amp;theme=dark" /><source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending" /><img alt="GitHubの本日のトレンドリポジトリ" src="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending" height="55" /></picture></a>&#32;<a href="https://trendshift.io/repositories/17099"><img src="https://trendshift.io/api/badge/trendshift/repositories/17099/daily" alt="HKUDS/DeepTutor | Trendshift" width="250" height="55"></a>&#32;<a href="https://www.star-history.com/hkuds/deeptutor"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;theme=dark"><source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor"><img alt="Star Historyランキング" src="https://api.star-history.com/badge?repo=HKUDS/DeepTutor" width="185" height="55"></picture></a>
 </p>
 
 <p align="center">
-<a href="https://www.star-history.com/hkuds/deeptutor"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending&amp;theme=dark" /><source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending" /><img alt="GitHub Trending Repository of the Day" src="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending" height="55" /></picture></a>&#32;<a href="https://trendshift.io/repositories/17099"><img src="https://trendshift.io/api/badge/trendshift/repositories/17099/daily" alt="HKUDS/DeepTutor | Trendshift" width="250" height="55"></a>&#32;<a href="https://www.star-history.com/hkuds/deeptutor"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;theme=dark"><source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor"><img alt="Star History Rank" src="https://api.star-history.com/badge?repo=HKUDS/DeepTutor" width="185" height="55"></picture></a>
+  <a href="https://github.com/HKUDS/DeepTutor/releases/latest/download/Open-DeepTutor-MacOS-Apple-Silicon.dmg"><img alt="macOS（Apple Silicon）版をダウンロード" src="../../assets/figs/badges/download-macos-apple-silicon.svg" height="32"></a>&nbsp;
+  <a href="https://github.com/HKUDS/DeepTutor/releases/latest/download/Open-DeepTutor-MacOS-Intel.dmg"><img alt="macOS（Intel）版をダウンロード" src="../../assets/figs/badges/download-macos-intel.svg" height="32"></a>&nbsp;
+  <a href="https://github.com/HKUDS/DeepTutor/releases/latest/download/Open-DeepTutor-Windows-Setup.exe"><img alt="Windows（x64）版をダウンロード" src="../../assets/figs/badges/download-windows.svg" height="32"></a>&nbsp;
+  <a href="https://deeptutor.info" target="_blank"><img alt="ドキュメント — deeptutor.info" src="../../assets/figs/badges/docs.svg" height="32"></a>
 </p>
 
 <p align="center">
@@ -27,15 +29,7 @@
   <a href="README_PL.md"><img alt="Polski" height="40" src="https://img.shields.io/badge/Polski-CDCFD4"></a>
 </p>
 
-[![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/downloads/)
-[![Next.js 16](https://img.shields.io/badge/Next.js-16-000000?style=flat-square&logo=next.js&logoColor=white)](https://nextjs.org/)
-[![License](https://img.shields.io/badge/License-Apache_2.0-blue?style=flat-square)](../../LICENSE)
-[![GitHub release](https://img.shields.io/github/v/release/HKUDS/DeepTutor?style=flat-square&color=brightgreen)](https://github.com/HKUDS/DeepTutor/releases)
-[![arXiv](https://img.shields.io/badge/arXiv-2604.26962-b31b1b?style=flat-square&logo=arxiv&logoColor=white)](https://arxiv.org/abs/2604.26962)
-
-[![Discord](https://img.shields.io/badge/Discord-Community-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/eRsjPgMU4t)
-[![Feishu](https://img.shields.io/badge/Feishu-Group-00D4AA?style=flat-square&logo=feishu&logoColor=white)](../../Communication.md)
-[![WeChat](https://img.shields.io/badge/WeChat-Group-07C160?style=flat-square&logo=wechat&logoColor=white)](https://github.com/HKUDS/DeepTutor/issues/78)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue?style=flat-square)](../../LICENSE) [![GitHub release](https://img.shields.io/github/v/release/HKUDS/DeepTutor?style=flat-square&color=brightgreen)](https://github.com/HKUDS/DeepTutor/releases) [![arXiv](https://img.shields.io/badge/arXiv-2604.26962-b31b1b?style=flat-square&logo=arxiv&logoColor=white)](https://arxiv.org/abs/2604.26962) [![Discord](https://img.shields.io/badge/Discord-Community-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/eRsjPgMU4t) [![Feishu](https://img.shields.io/badge/Feishu-Group-00D4AA?style=flat-square&logo=feishu&logoColor=white)](../../Communication.md) [![WeChat](https://img.shields.io/badge/WeChat-Group-07C160?style=flat-square&logo=wechat&logoColor=white)](https://github.com/HKUDS/DeepTutor/issues/78)
 
 [機能](#-主な機能) · [はじめに](#-はじめに) · [探索](#-deeptutorを探索する) · [CLI](#%EF%B8%8F-deeptutor-cli--エージェントネイティブインターフェース) · [エコシステム](#-エコシステム--eduhubとスキルコミュニティ) · [コミュニティ](#-コミュニティ)
 
@@ -43,7 +37,11 @@
 
 ---
 
-> 🤝 **あらゆる形の貢献を歓迎します！** [`Roadmap`](https://github.com/HKUDS/DeepTutor/issues/498) でアイテムに投票したり新しいアイデアを提案したりできます。ブランチ戦略、コーディング基準、参加方法については [貢献ガイド](../../CONTRIBUTING.md) をご覧ください。
+> 🤝 **メンテナーを積極的に募集しています！** 役割、応募条件、応募方法については[貢献ガイド](../../CONTRIBUTING.md#join-the-team)をご覧ください。
+
+<div align="center">
+<img src="../../assets/figs/web-dev/overview.png" alt="DeepTutorのHomeとワークスペースナビゲーション" width="900">
+</div>
 
 ### 📰 ニュース
 
@@ -73,9 +71,9 @@ DeepTutorの使い方に合うインストール方法を選択してくださ�
 <details>
 <summary><b>デスクトップ — macOSとWindows（プレビュー）</b></summary>
 
-**Open DeepTutor**にはPython、Node.js、完全な学習ワークスペースが同梱されているため、ターミナルやランタイムの個別インストールは不要です。デスクトッププレビューは`dev`で利用できます。**v1.7.0 Releaseにはデスクトップインストーラーは含まれません**。
+**Open DeepTutor**にはPython、Node.js、完全な学習ワークスペースが同梱されているため、ターミナルやランタイムの個別インストールは不要です。[最新のGitHub Release](https://github.com/HKUDS/DeepTutor/releases/latest)から公開済みのデスクトップビルドをダウンロードし、下の表でお使いのコンピューターに合うインストーラーを選んでください。
 
-成功した[Desktop Releaseワークフローの実行](https://github.com/HKUDS/DeepTutor/actions/workflows/desktop-release.yml?query=branch%3Adev)を開き、**Artifacts**までスクロールして、対応するターゲットをダウンロードしてください。GitHubへのサインインが必要で、アーティファクトの有効期限は7日間です。
+開発プレビューを試すには、成功した[Desktop Releaseワークフローの実行](https://github.com/HKUDS/DeepTutor/actions/workflows/desktop-release.yml?query=branch%3Adev)を開き、対応する**Artifact**をダウンロードしてください。これらのプレビューにはGitHubへのサインインが必要で、有効期限は7日間です。公開済みリリースのダウンロードには、この制限はありません。
 
 | お使いのコンピューター | ダウンロードターゲット | インストーラー |
 | --- | --- | --- |
@@ -172,10 +170,6 @@ deeptutor chat
 | **Partners** | アカウント | 永続的なコンパニオン、Partner Groups、リソースアクセス、IMチャンネル |
 | **Personalization** | アカウント | My Agents、Personas、Skills、MCP Services、CLI Apps、Memory、Settings |
 
-<div align="center">
-<img src="../../assets/figs/web-dev/overview.png" alt="DeepTutorのHomeとワークスペースナビゲーション" width="900">
-</div>
-
 <details>
 <summary><b>🏗️ システムアーキテクチャ</b></summary>
 
@@ -208,6 +202,20 @@ Chatはデフォルト機能であり、ほとんどの作業が始まる場所�
 ユーザーが切り替えられるツールは`brainstorm`、`web_search`、`paper_search`、`zotero_search`、`reason`、`geogebra_analysis` — 加えて、対応する生成モデルを設定すれば`imagegen`と`videogen`も利用できます。`rag`、`kb_files`、`knowledge_frontier`、`read_source`、`read_memory`、`write_memory`、`read_skill`、`load_tools`、`exec`、`web_fetch`、`ask_user`、`list_favorites`、`save_favorite`、`write_note`、`search_notes`、`question_bank`、`github`、`consult_subagent`、`workspace_list`、`workspace_read`、`workspace_search`、`workspace_present`、`workspace_export`などのコンテキスト依存ツールは、ターンに適切なコンテキストがある場合に自動的にマウントされます。
 
 コンテキストには2種類あります。**スティッキーセッションコンテキスト**（機能、ワークスペースまたはコース、ツール、知識ベース、ペルソナ、モデル、Reading / Masteryの状態）はターンをまたいで持続します。**参照**（ファイル、チャット履歴、本、読書セクション、ノートブック、問題バンクから選択した項目、インポートしたエージェント）は、デフォルトでは`+`メニューから1回のターンのために追加され、ピン留めすると毎回のターンで使われます。音声ボタンが文字起こしするのは現在のメッセージだけです。
+
+**推論のみで出力上限に達した場合。** 内部推論が出力予算を使い切り、回答もツール操作も生成されなかった場合、共有エージェントループは1回だけ再試行します。デフォルトの`prompt`戦略は同じ予算を維持します。直ちに停止するには、ランタイムの`settings/agents.yaml`で`capabilities.chat.reasoning_budget_recovery`の下に`strategy: stop`を設定してください。余裕が必要なモデルには、予算を明示的に増やす方法もありますが、遅延や使用量が増える可能性があります。
+
+```yaml
+capabilities:
+  chat:
+    responding:
+      max_tokens: 8000
+    reasoning_budget_recovery:
+      strategy: increase_output_budget
+      max_tokens: 16000
+```
+
+回復用の上限は通常の出力上限を超え、131072以下でなければなりません。モデルが対応する値を選んでください。この設定は1回の回復呼び出しにのみ適用され、既存のラウンド数とリクエストタイムアウトの制限を維持し、推論強度は変えません。トレースにはポリシー、変更前後の上限、各呼び出しの実効予算、累積使用量が記録されます。表示される回答の途切れには、通常の継続処理を使います。実験的な`typescript-native`ランタイムでは、`stop`または`increase_output_budget`を明示すると、ターン開始前に共有Python effects hostとTypeScriptスケジューラーの組み合わせが選択され、その互換性上の理由が結果に表示されます。
 
 フルプロファイルでは、Homeから**Chat**、**Ask Questions**、**Quiz**、**Visualize**、**Video Lesson**にワンクリックでアクセスできます。引用付きレポートの**Research**と手順を追った推論の**Solve**は*More Capabilities*の下にあります。回答内のテキストを選択すると**Little Tutor**が開き、元の会話の下にネストされた、集中できるサイドバースレッドでやり取りできます。送信済みメッセージが3つ以上ある場合、スペースが許せば左のガターに各質問の目盛りが表示されます。ホバーでプレビュー、クリックで質問に戻る、または**Alt/Option + ↑/↓**で質問間を移動できます。
 
@@ -422,9 +430,13 @@ Settingsはオペレーションコントロールプレーンで、最初に表
 
 **ベトナム語：** **Settings → General**で、**Interface language**に**Tiếng Việt**を選択し、**Apply changes**を選びます。**Model output language**は独立しています。ベトナム語で返答させるにはそこでも**Tiếng Việt**を選択し、ベトナム語のインターフェースを使いながら別の返答言語を維持することもできます。返答品質は、選択したモデルのベトナム語サポートに依存します。
 
+**NVIDIA NIMの埋め込み：** **Settings → Embedding**で**NVIDIA NIM**を選ぶと、`nvidia/nemotron-3.5-embed-8b`によるテキスト検索を利用できます。デフォルトのエンドポイントは`https://integrate.api.nvidia.com/v1/embeddings`で、完全なカスタムエンドポイントは入力したとおりに使用されます。インデックス作成時は`input_type=passage`、検索時は`input_type=query`を送信し、接続チェックではデフォルトでpassageを使います。ホスト型モデルのデフォルトは4096次元で、1から4096までの次元数を設定できます。このバインディングはテキストのみをサポートし、画像の埋め込みとセルフホストモデル固有のオプションは対象外です。既存のOpenAI互換プロファイルのリクエスト動作は変わりません。既存の知識ベースを切り替える場合は、NIMバインディングを選び、再インデックスしてください。[NVIDIA API仕様](https://docs.api.nvidia.com/nim/reference/nvidia-nemotron-3_5-embed-8b-infer)を参照してください。
+
 **Xiaomi MiMoの音声合成。** `https://api.xiaomimimo.com/v1`とAPIキーを指定してXiaomi MiMoプロバイダーを追加し、Settings → Voiceで`mimo-v2.5-tts`を追加します。`mimo_default`、`冰糖`、`苏打`などのプリセットを選び、出力形式を`wav`または`pcm16`にして、適用前に試聴してください。音声指示でスタイルと読み上げ速度を調整できます。このアダプターはプリセット音声のみをサポートします。音声デザインと音声クローンには別のモデルが必要で、このアダプターでは利用できません。以前のMiMo音声モデルを汎用のOpenAI互換アダプターで設定していた場合は、Xiaomi MiMoプロバイダーを使って音声エントリーを作成し直し、chat-completionsプロトコルを使うようにしてください。[MiMo公式音声ガイド](https://mimo.mi.com/docs/zh-CN/quick-start/usage-guide/audio/speech-synthesis-v2.5)を参照してください。
 
 **MiniMaxの音声合成** — Settings → Voiceでテキスト読み上げにMiniMaxを選択し、`speech-2.8-hd`を選びます。MiniMaxのAPIキーを設定し、システム音声を明示的に選択するか、カスタム音声のIDを入力してください。APIベースのデフォルトは`https://api.minimax.io/v1`で、中国リージョンでは`https://api.minimaxi.com/v1`を使用します。読み上げと音声プレビューはネイティブの音声エンドポイントを使用し、MP3、WAV、FLAC、PCMの出力形式、サンプルレート、速度、言語を調整できます。音声IDとアカウントでの利用可否については、[MiniMax音声API](https://platform.minimax.io/docs/api-reference/speech-t2a-http)を参照してください。
+
+**選択したテキストの読み上げ：** Chat、Mastery Path、Readingで単語や文章を選択し、近くのツールバーで**Read aloud**をクリックしてください。**Stop**で合成や再生を中止できます。選択した部分だけを読み上げ、**Settings → Voice**で設定したアクティブなTTSプロバイダーと音声を使い、チャットターンは送信しません。選択するだけでは再生は始まりません。動作する音声サービスが必要で、この機能がサービスをインストールしたり選択したりすることはありません。
 
 Settings → Learning & conversationの**Video Learning**では、Reading用のYouTube字幕とInvidiousへのアクセスを設定します。Invidiousを使用するには、管理者が管理するバックエンドAPIオリジン（例：`http://127.0.0.1:3000`）とブラウザからアクセスできる公開オリジンを設定し、接続をテストして、Invidiousを選択して保存します。Readingの教材追加ダイアログにある**Browse Invidious**から動画を検索し、接続済みの登録チャンネルやプレイリストにアクセスできます。YouTubeの再生には公式のプライバシー強化プレーヤーを使用します。字幕がない場合もその状態が表示され、チューターが参照できる根拠は制限されますが、ネイティブ再生は妨げられません。ソースチェックアウトでデフォルトのYouTube字幕ローダーを使用するには、`python scripts/install_extras.py video-learning`を実行してください。既存のWatchingリンクは、会話履歴、互換性のある文字起こし、ノート、進捗を保持してReadingに移行されます。新しいタイムスタンプ付きノートはReadingの注釈として保存されます。Bilibiliは独自の再生と字幕取得の経路を使用します。
 

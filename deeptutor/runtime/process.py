@@ -114,7 +114,7 @@ def _windows_probe_liveness(pid: int) -> Literal["alive", "dead", "unknown"]:
             # psutil treats OpenProcess error 87 (ERROR_INVALID_PARAMETER)
             # for a validated DWORD pid as "no such process"; every other
             # failure (including access denied) stays unknown.
-            return "dead" if ctypes.get_last_error() == 87 else "unknown"
+            return "dead" if ctypes.get_last_error() == 87 else "unknown"  # type: ignore[attr-defined]  # Windows-only API
         state: Literal["alive", "dead", "unknown"] = "unknown"
         try:
             exit_code = wintypes.DWORD()

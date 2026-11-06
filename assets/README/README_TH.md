@@ -4,12 +4,14 @@
 <h1 align="center">DeepTutor: การสอนพิเศษส่วนตัวตลอดชีวิต</h1>
 
 <p align="center">
-  <a href="https://deeptutor.info" target="_blank"><img alt="เอกสาร — deeptutor.info" src="https://img.shields.io/badge/Docs-deeptutor.info%20%E2%86%97-0A0A0A?style=for-the-badge&labelColor=F5F5F4" height="36"></a>&nbsp;
-  <a href="https://deeptutor.info/collaborate/" target="_blank"><img alt="ร่วมงาน — ทำงานกับเรา" src="https://img.shields.io/badge/Collaborate-work%20with%20us%20%E2%86%97-0A0A0A?style=for-the-badge&labelColor=F5F5F4" height="36"></a>
+<a href="https://www.star-history.com/hkuds/deeptutor"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending&amp;theme=dark" /><source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending" /><img alt="คลัง GitHub ที่กำลังเป็นที่นิยมประจำวัน" src="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending" height="55" /></picture></a>&#32;<a href="https://trendshift.io/repositories/17099"><img src="https://trendshift.io/api/badge/trendshift/repositories/17099/daily" alt="HKUDS/DeepTutor | Trendshift" width="250" height="55"></a>&#32;<a href="https://www.star-history.com/hkuds/deeptutor"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;theme=dark"><source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor"><img alt="อันดับประวัติดาว" src="https://api.star-history.com/badge?repo=HKUDS/DeepTutor" width="185" height="55"></picture></a>
 </p>
 
 <p align="center">
-<a href="https://www.star-history.com/hkuds/deeptutor"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending&amp;theme=dark" /><source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending" /><img alt="คลัง GitHub ที่กำลังเป็นที่นิยมประจำวัน" src="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending" height="55" /></picture></a>&#32;<a href="https://trendshift.io/repositories/17099"><img src="https://trendshift.io/api/badge/trendshift/repositories/17099/daily" alt="HKUDS/DeepTutor | Trendshift" width="250" height="55"></a>&#32;<a href="https://www.star-history.com/hkuds/deeptutor"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;theme=dark"><source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor"><img alt="อันดับประวัติดาว" src="https://api.star-history.com/badge?repo=HKUDS/DeepTutor" width="185" height="55"></picture></a>
+  <a href="https://github.com/HKUDS/DeepTutor/releases/latest/download/Open-DeepTutor-MacOS-Apple-Silicon.dmg"><img alt="ดาวน์โหลดสำหรับ macOS (Apple Silicon)" src="../../assets/figs/badges/download-macos-apple-silicon.svg" height="32"></a>&nbsp;
+  <a href="https://github.com/HKUDS/DeepTutor/releases/latest/download/Open-DeepTutor-MacOS-Intel.dmg"><img alt="ดาวน์โหลดสำหรับ macOS (Intel)" src="../../assets/figs/badges/download-macos-intel.svg" height="32"></a>&nbsp;
+  <a href="https://github.com/HKUDS/DeepTutor/releases/latest/download/Open-DeepTutor-Windows-Setup.exe"><img alt="ดาวน์โหลดสำหรับ Windows (x64)" src="../../assets/figs/badges/download-windows.svg" height="32"></a>&nbsp;
+  <a href="https://deeptutor.info" target="_blank"><img alt="เอกสาร — deeptutor.info" src="../../assets/figs/badges/docs.svg" height="32"></a>
 </p>
 
 <p align="center">
@@ -27,15 +29,7 @@
   <a href="README_PL.md"><img alt="Polski" height="40" src="https://img.shields.io/badge/Polski-CDCFD4"></a>
 </p>
 
-[![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/downloads/)
-[![Next.js 16](https://img.shields.io/badge/Next.js-16-000000?style=flat-square&logo=next.js&logoColor=white)](https://nextjs.org/)
-[![สัญญาอนุญาต](https://img.shields.io/badge/License-Apache_2.0-blue?style=flat-square)](../../LICENSE)
-[![รุ่นเผยแพร่บน GitHub](https://img.shields.io/github/v/release/HKUDS/DeepTutor?style=flat-square&color=brightgreen)](https://github.com/HKUDS/DeepTutor/releases)
-[![arXiv](https://img.shields.io/badge/arXiv-2604.26962-b31b1b?style=flat-square&logo=arxiv&logoColor=white)](https://arxiv.org/abs/2604.26962)
-
-[![Discord](https://img.shields.io/badge/Discord-Community-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/eRsjPgMU4t)
-[![Feishu](https://img.shields.io/badge/Feishu-Group-00D4AA?style=flat-square&logo=feishu&logoColor=white)](../../Communication.md)
-[![WeChat](https://img.shields.io/badge/WeChat-Group-07C160?style=flat-square&logo=wechat&logoColor=white)](https://github.com/HKUDS/DeepTutor/issues/78)
+[![สัญญาอนุญาต](https://img.shields.io/badge/License-Apache_2.0-blue?style=flat-square)](../../LICENSE) [![รุ่นเผยแพร่บน GitHub](https://img.shields.io/github/v/release/HKUDS/DeepTutor?style=flat-square&color=brightgreen)](https://github.com/HKUDS/DeepTutor/releases) [![arXiv](https://img.shields.io/badge/arXiv-2604.26962-b31b1b?style=flat-square&logo=arxiv&logoColor=white)](https://arxiv.org/abs/2604.26962) [![Discord](https://img.shields.io/badge/Discord-Community-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/eRsjPgMU4t) [![Feishu](https://img.shields.io/badge/Feishu-Group-00D4AA?style=flat-square&logo=feishu&logoColor=white)](../../Communication.md) [![WeChat](https://img.shields.io/badge/WeChat-Group-07C160?style=flat-square&logo=wechat&logoColor=white)](https://github.com/HKUDS/DeepTutor/issues/78)
 
 [คุณสมบัติ](#-คุณสมบัติหลัก) · [เริ่มต้น](#-เริ่มต้น) · [สำรวจ](#-สำรวจ-deeptutor) · [CLI](#️-deeptutor-cli--อินเทอร์เฟซ-agent-native) · [ระบบนิเวศ](#-ระบบนิเวศ--eduhub-และชุมชน-skills) · [ชุมชน](#-ชุมชน)
 
@@ -43,7 +37,11 @@
 
 ---
 
-> 🤝 **เรายินดีรับการมีส่วนร่วมทุกรูปแบบ!** โหวตรายการ roadmap หรือเสนอรายการใหม่ที่ [`Roadmap`](https://github.com/HKUDS/DeepTutor/issues/498) และดู [คู่มือการมีส่วนร่วม](../../CONTRIBUTING.md) สำหรับกลยุทธ์ branching มาตรฐานการเขียนโค้ด และวิธีเริ่มต้น
+> 🤝 **เรากำลังเปิดรับผู้ดูแลโครงการ!** ดูบทบาท คุณสมบัติ และวิธีสมัครได้ใน [คู่มือการมีส่วนร่วม](../../CONTRIBUTING.md#join-the-team)
+
+<div align="center">
+<img src="../../assets/figs/web-dev/overview.png" alt="หน้า Home และการนำทาง workspace ของ DeepTutor" width="900">
+</div>
 
 ### 📰 ข่าวสาร
 
@@ -73,9 +71,9 @@ DeepTutor คือ workspace การเรียนรู้แบบ agent-n
 <details>
 <summary><b>Desktop — macOS และ Windows (Preview)</b></summary>
 
-**Open DeepTutor** รวม Python, Node.js และ workspace การเรียนรู้แบบเต็มรูปแบบไว้ด้วยกัน จึงไม่ต้องใช้ terminal หรือติดตั้ง runtime แยกต่างหาก Desktop previews มีให้ใช้งานบน `dev`; **v1.7.0 Release ไม่รวมตัวติดตั้ง desktop**
+**Open DeepTutor** รวม Python, Node.js และ workspace การเรียนรู้แบบเต็มรูปแบบไว้ด้วยกัน จึงไม่ต้องใช้ terminal หรือติดตั้ง runtime แยกต่างหาก ดาวน์โหลด desktop builds ที่เผยแพร่แล้วจาก [GitHub Release ล่าสุด](https://github.com/HKUDS/DeepTutor/releases/latest) โดยเลือกตัวติดตั้งให้ตรงกับคอมพิวเตอร์ของคุณจากตารางด้านล่าง
 
-เปิด [Desktop Release workflow run](https://github.com/HKUDS/DeepTutor/actions/workflows/desktop-release.yml?query=branch%3Adev) ที่สำเร็จ เลื่อนลงไปที่ **Artifacts** แล้วดาวน์โหลด target ที่ตรงกับเครื่องของคุณ จำเป็นต้องลงชื่อเข้าใช้ GitHub และ artifacts จะหมดอายุหลังจากเจ็ดวัน
+สำหรับ development previews ให้เปิด [Desktop Release workflow run](https://github.com/HKUDS/DeepTutor/actions/workflows/desktop-release.yml?query=branch%3Adev) ที่สำเร็จ แล้วดาวน์โหลด **Artifact** ที่ตรงกับเครื่องของคุณ previews เหล่านี้ต้องลงชื่อเข้าใช้ GitHub และจะหมดอายุหลังจากเจ็ดวัน แต่ไฟล์ดาวน์โหลดของรุ่นที่เผยแพร่แล้วไม่มีข้อจำกัดดังกล่าว
 
 | คอมพิวเตอร์ของคุณ | Download target | ตัวติดตั้ง |
 | --- | --- | --- |
@@ -164,10 +162,6 @@ Core ประกอบด้วย Chat, Ask Questions, CLI และ SDK; capa
 
 เริ่มต้นด้วย **workspace** สำหรับแต่ละวิชาหรือโปรเจกต์ Home, Learning และ Resources จะเปลี่ยนตาม workspace ที่ใช้งานอยู่ ส่วน Partners และ Personalization ยังคงใช้ได้ข้าม workspaces
 
-<div align="center">
-<img src="../../assets/figs/web-dev/overview.png" alt="หน้า Home และการนำทาง workspace ของ DeepTutor" width="900">
-</div>
-
 | พื้นที่ | ขอบเขต | สิ่งที่อยู่ภายใน |
 | --- | --- | --- |
 | **Home** | Workspace | Chat, Task Board, Calendar และ Learning notebook |
@@ -208,6 +202,20 @@ Tutor เรียกเครื่องมือตามต้องกา�
 เครื่องมือที่ผู้ใช้สลับได้ ได้แก่ `brainstorm`, `web_search`, `paper_search`, `zotero_search`, `reason` และ `geogebra_analysis` — รวมถึง `imagegen` และ `videogen` เมื่อคุณกำหนดค่า generation model ที่ตรงกัน เครื่องมือตามบริบทเช่น `rag`, `kb_files`, `knowledge_frontier`, `read_source`, `read_memory`, `write_memory`, `read_skill`, `load_tools`, `exec`, `web_fetch`, `ask_user`, `list_favorites`, `save_favorite`, `write_note`, `search_notes`, `question_bank`, `github`, `consult_subagent`, `workspace_list`, `workspace_read`, `workspace_search`, `workspace_present` และ `workspace_export` จะ mount อัตโนมัติเมื่อ turn มีบริบทที่ถูกต้อง
 
 บริบทมีสองประเภท: **บริบท session ที่คงอยู่** (capability, workspace หรือ course, tools, knowledge bases, persona, model และสถานะ Reading / Mastery) คงอยู่ตลอด turns; **references** (ไฟล์ ประวัติ chat หนังสือ ส่วนการอ่าน notebooks รายการที่เลือกจาก question bank และ imported agents) มาจากเมนู `+` โดยค่าเริ่มต้นใช้สำหรับ turn เดียว หรือทุก turn เมื่อปักหมุดไว้ ปุ่ม voice ทำหน้าที่ถอดเสียงเฉพาะข้อความปัจจุบัน
+
+**ขีดจำกัด output เมื่อมีแต่การให้เหตุผล** ลูป agent ที่ใช้ร่วมกันจะลองใหม่หนึ่งครั้งเมื่อการให้เหตุผลภายในใช้ output budget หมดโดยไม่มีคำตอบหรือการเรียกใช้เครื่องมือ กลยุทธ์ `prompt` ซึ่งเป็นค่าเริ่มต้นจะคง budget เดิมไว้ หากต้องการหยุดทันที ให้ตั้ง `strategy: stop` ภายใต้ `capabilities.chat.reasoning_budget_recovery` ในไฟล์ `settings/agents.yaml` ของ runtime การกำหนด budget ที่สูงขึ้นอย่างชัดเจนอาจช่วยโมเดลที่ต้องการพื้นที่มากขึ้น แต่ก็อาจเพิ่มเวลาในการตอบสนองและปริมาณการใช้งาน:
+
+```yaml
+capabilities:
+  chat:
+    responding:
+      max_tokens: 8000
+    reasoning_budget_recovery:
+      strategy: increase_output_budget
+      max_tokens: 16000
+```
+
+ขีดจำกัดการกู้คืนต้องสูงกว่าขีดจำกัด output ปกติ และไม่เกิน 131072; เลือกค่าที่โมเดลของคุณรองรับ ค่านี้ใช้กับการเรียกเพื่อกู้คืนเพียงครั้งเดียว ยังคงขีดจำกัดจำนวนรอบและเวลา request เดิม และไม่เปลี่ยนระดับการให้เหตุผล trace จะบันทึกนโยบาย ขีดจำกัดเดิมและใหม่ budget ที่ใช้จริงในแต่ละการเรียก และการใช้งานสะสม หากคำตอบที่มองเห็นถูกตัด ระบบจะยังใช้วิธีต่อคำตอบตามปกติ เมื่อใช้ runtime ทดลอง `typescript-native` นโยบาย `stop` หรือ `increase_output_budget` ที่ตั้งไว้อย่างชัดเจนจะเลือก Python effects host ที่ใช้ร่วมกันพร้อม TypeScript scheduler ก่อนเริ่ม turn และผลลัพธ์จะรายงานเหตุผลด้านความเข้ากันได้นี้
 
 เมื่อใช้โปรไฟล์เต็มรูปแบบ Home ทำให้ **Chat**, **Ask Questions**, **Quiz**, **Visualize** และ **Video Lesson** อยู่ห่างเพียงคลิกเดียว; **Research** สำหรับรายงานที่มี citations และ **Solve** สำหรับการให้เหตุผลแบบละเอียดอยู่ภายใต้ *More Capabilities* เลือกข้อความในคำตอบเพื่อเปิด **Little Tutor** ซึ่งเป็น thread ในแถบด้านข้างที่เน้นเฉพาะเรื่องและยังคงซ้อนอยู่ใต้บทสนทนาต้นทาง เมื่อส่งข้อความอย่างน้อยสามข้อความ ริ้วด้านซ้ายจะแสดงเครื่องหมายสำหรับแต่ละคำถามเมื่อมีพื้นที่เพียงพอ; วางเมาส์เพื่อดูตัวอย่าง คลิกเพื่อกลับไป หรือใช้ **Alt/Option + ↑/↓** เพื่อย้ายระหว่างคำถาม
 
@@ -422,10 +430,14 @@ Settings คือ control plane สำหรับการทำงาน โ�
 
 **ภาษาเวียดนาม:** ใน **Settings → General** เลือก **Tiếng Việt** สำหรับ **Interface language** แล้วเลือก **Apply changes** **Model output language** เป็นอิสระ: เลือก **Tiếng Việt** ที่นั่นเพื่อให้ตอบเป็นภาษาเวียดนาม หรือคงภาษาคำตอบอื่นไว้ขณะใช้ interface ภาษาเวียดนาม คุณภาพคำตอบขึ้นอยู่กับการรองรับภาษาเวียดนามของ model ที่เลือก
 
+**NVIDIA NIM embeddings:** เลือก **NVIDIA NIM** ใน **Settings → Embedding** เพื่อค้นคืนข้อความด้วย `nvidia/nemotron-3.5-embed-8b` endpoint เริ่มต้นคือ `https://integrate.api.nvidia.com/v1/embeddings`; หากกำหนด endpoint แบบเต็มเอง ระบบจะใช้ตามที่ป้อน การทำดัชนีส่ง `input_type=passage` การค้นคืนส่ง `input_type=query` และการตรวจสอบการเชื่อมต่อใช้ passage เป็นค่าเริ่มต้น โมเดลที่ให้บริการบนคลาวด์ใช้ 4096 มิติเป็นค่าเริ่มต้น และรองรับการกำหนดมิติตั้งแต่ 1 ถึง 4096 binding นี้รองรับเฉพาะข้อความ ไม่ครอบคลุม image embeddings หรือตัวเลือกเฉพาะโมเดลที่โฮสต์เอง โปรไฟล์ OpenAI-compatible ที่มีอยู่จะยังคงพฤติกรรม request เดิม; เมื่อเปลี่ยน knowledge base ที่มีอยู่ให้ใช้ NIM ให้เลือก NIM binding และทำดัชนีใหม่ ดู [ข้อกำหนด NVIDIA API](https://docs.api.nvidia.com/nim/reference/nvidia-nemotron-3_5-embed-8b-infer)
+
 **เสียงพูด Xiaomi MiMo** เพิ่ม Xiaomi MiMo provider ด้วย `https://api.xiaomimimo.com/v1` และ API key จากนั้นเพิ่ม `mimo-v2.5-tts` ใน Settings → Voice เลือก preset เช่น `mimo_default`, `冰糖` หรือ `苏打`, ใช้ output แบบ `wav` หรือ `pcm16` และทดลองฟังก่อนนำไปใช้ Voice instructions ควบคุมสไตล์และความเร็วในการพูด adapter นี้รองรับเฉพาะเสียง preset; การออกแบบเสียงและการโคลนเสียงต้องใช้ models แยกต่างหากและไม่รองรับ หากเคยกำหนดค่า MiMo speech model รุ่นเก่าผ่าน generic OpenAI-compatible adapter ให้สร้างรายการเสียงใหม่โดยใช้ Xiaomi MiMo provider เพื่อให้ใช้ chat-completions protocol ดู [คู่มือเสียง MiMo อย่างเป็นทางการ](https://mimo.mi.com/docs/zh-CN/quick-start/usage-guide/audio/speech-synthesis-v2.5)
 
 **เสียงพูด MiniMax** — ใน Settings → Voice เลือก MiniMax สำหรับ text-to-speech และเลือก `speech-2.8-hd` กำหนดค่า MiniMax API key แล้วเลือก system voice อย่างชัดเจนหรือกรอก custom voice ID API base เริ่มต้นคือ `https://api.minimax.io/v1`; สำหรับภูมิภาคจีนใช้ `https://api.minimaxi.com/v1` การอ่านออกเสียงและ voice previews ใช้ native speech endpoint พร้อม output แบบ MP3, WAV, FLAC หรือ PCM รวมถึงตัวควบคุม sample rate, ความเร็ว และภาษา ดู [MiniMax speech API](https://platform.minimax.io/docs/api-reference/speech-t2a-http) สำหรับ voice IDs และความพร้อมใช้งานของบัญชี
 
+
+**อ่านออกเสียงข้อความที่เลือก:** เลือกคำหรือข้อความใน Chat, Mastery Path หรือ Reading แล้วคลิก **Read aloud** ในแถบเครื่องมือใกล้ ๆ คลิก **Stop** เพื่อยกเลิกการสังเคราะห์หรือการเล่นเสียง ฟังก์ชันนี้อ่านเฉพาะข้อความที่เลือก โดยใช้ TTS provider และเสียงที่ใช้งานอยู่ซึ่งกำหนดใน **Settings → Voice** และไม่ส่ง chat turn การเลือกข้อความเพียงอย่างเดียวจะไม่เริ่มเล่นเสียง ต้องมีบริการเสียงที่ทำงานได้อยู่ก่อน; ฟังก์ชันนี้จะไม่ติดตั้งหรือเลือกบริการให้คุณ
 
 **Video Learning** ภายใต้ Settings → Learning & conversation กำหนดค่าคำบรรยาย YouTube และการเข้าถึง Invidious สำหรับ Reading หากต้องการใช้ Invidious ให้ตั้งค่า backend API origin ที่ผู้ดูแลระบบจัดการ (ตัวอย่างเช่น `http://127.0.0.1:3000`) และ public origin ที่เบราว์เซอร์เข้าถึงได้ ทดสอบการเชื่อมต่อ เลือก Invidious แล้วบันทึก **Browse Invidious** ในกล่องเพิ่มสื่อของ Reading ใช้ค้นหาวิดีโอและเข้าถึง subscriptions และ playlists ที่เชื่อมต่อไว้ การเล่น YouTube ใช้ official privacy-enhanced player; หากไม่มีคำบรรยาย ระบบจะแสดงสถานะนี้และจำกัดหลักฐานที่ tutor ใช้ โดยไม่ปิดกั้นการเล่นแบบ native ใน source checkout ให้รัน `python scripts/install_extras.py video-learning` สำหรับตัวโหลดคำบรรยาย YouTube เริ่มต้น ลิงก์ Watching ที่มีอยู่จะย้ายเข้า Reading โดยรักษาประวัติการสนทนา transcripts ที่เข้ากันได้ notes และความคืบหน้าไว้; timestamp notes รายการใหม่จะเป็น Reading annotations ส่วน Bilibili ใช้เส้นทางการเล่นและคำบรรยายของตัวเอง
 

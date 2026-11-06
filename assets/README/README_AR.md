@@ -4,12 +4,14 @@
 <h1 align="center">DeepTutor: تدريس شخصي مدى الحياة</h1>
 
 <p align="center">
-  <a href="https://deeptutor.info" target="_blank"><img alt="الوثائق — deeptutor.info" src="https://img.shields.io/badge/Docs-deeptutor.info%20%E2%86%97-0A0A0A?style=for-the-badge&labelColor=F5F5F4" height="36"></a>&nbsp;
-  <a href="https://deeptutor.info/collaborate/" target="_blank"><img alt="التعاون — اعمل معنا" src="https://img.shields.io/badge/Collaborate-work%20with%20us%20%E2%86%97-0A0A0A?style=for-the-badge&labelColor=F5F5F4" height="36"></a>
+<a href="https://www.star-history.com/hkuds/deeptutor"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending&amp;theme=dark" /><source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending" /><img alt="مستودع GitHub الرائج لهذا اليوم" src="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending" height="55" /></picture></a>&#32;<a href="https://trendshift.io/repositories/17099"><img src="https://trendshift.io/api/badge/trendshift/repositories/17099/daily" alt="HKUDS/DeepTutor | Trendshift" width="250" height="55"></a>&#32;<a href="https://www.star-history.com/hkuds/deeptutor"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;theme=dark"><source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor"><img alt="ترتيب تاريخ النجوم" src="https://api.star-history.com/badge?repo=HKUDS/DeepTutor" width="185" height="55"></picture></a>
 </p>
 
 <p align="center">
-<a href="https://www.star-history.com/hkuds/deeptutor"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending&amp;theme=dark" /><source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending" /><img alt="مستودع GitHub الرائج لهذا اليوم" src="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending" height="55" /></picture></a>&#32;<a href="https://trendshift.io/repositories/17099"><img src="https://trendshift.io/api/badge/trendshift/repositories/17099/daily" alt="HKUDS/DeepTutor | Trendshift" width="250" height="55"></a>&#32;<a href="https://www.star-history.com/hkuds/deeptutor"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;theme=dark"><source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor"><img alt="ترتيب تاريخ النجوم" src="https://api.star-history.com/badge?repo=HKUDS/DeepTutor" width="185" height="55"></picture></a>
+  <a href="https://github.com/HKUDS/DeepTutor/releases/latest/download/Open-DeepTutor-MacOS-Apple-Silicon.dmg"><img alt="تنزيل إصدار macOS بمعالج Apple Silicon" src="../../assets/figs/badges/download-macos-apple-silicon.svg" height="32"></a>&nbsp;
+  <a href="https://github.com/HKUDS/DeepTutor/releases/latest/download/Open-DeepTutor-MacOS-Intel.dmg"><img alt="تنزيل إصدار macOS بمعالج Intel" src="../../assets/figs/badges/download-macos-intel.svg" height="32"></a>&nbsp;
+  <a href="https://github.com/HKUDS/DeepTutor/releases/latest/download/Open-DeepTutor-Windows-Setup.exe"><img alt="تنزيل إصدار Windows بمعمارية x64" src="../../assets/figs/badges/download-windows.svg" height="32"></a>&nbsp;
+  <a href="https://deeptutor.info" target="_blank"><img alt="الوثائق — deeptutor.info" src="../../assets/figs/badges/docs.svg" height="32"></a>
 </p>
 
 <p align="center">
@@ -27,15 +29,7 @@
   <a href="README_PL.md"><img alt="Polski" height="40" src="https://img.shields.io/badge/Polski-CDCFD4"></a>
 </p>
 
-[![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/downloads/)
-[![Next.js 16](https://img.shields.io/badge/Next.js-16-000000?style=flat-square&logo=next.js&logoColor=white)](https://nextjs.org/)
-[![License](https://img.shields.io/badge/License-Apache_2.0-blue?style=flat-square)](../../LICENSE)
-[![GitHub release](https://img.shields.io/github/v/release/HKUDS/DeepTutor?style=flat-square&color=brightgreen)](https://github.com/HKUDS/DeepTutor/releases)
-[![arXiv](https://img.shields.io/badge/arXiv-2604.26962-b31b1b?style=flat-square&logo=arxiv&logoColor=white)](https://arxiv.org/abs/2604.26962)
-
-[![Discord](https://img.shields.io/badge/Discord-Community-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/eRsjPgMU4t)
-[![Feishu](https://img.shields.io/badge/Feishu-Group-00D4AA?style=flat-square&logo=feishu&logoColor=white)](../../Communication.md)
-[![WeChat](https://img.shields.io/badge/WeChat-Group-07C160?style=flat-square&logo=wechat&logoColor=white)](https://github.com/HKUDS/DeepTutor/issues/78)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue?style=flat-square)](../../LICENSE) [![GitHub release](https://img.shields.io/github/v/release/HKUDS/DeepTutor?style=flat-square&color=brightgreen)](https://github.com/HKUDS/DeepTutor/releases) [![arXiv](https://img.shields.io/badge/arXiv-2604.26962-b31b1b?style=flat-square&logo=arxiv&logoColor=white)](https://arxiv.org/abs/2604.26962) [![Discord](https://img.shields.io/badge/Discord-Community-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/eRsjPgMU4t) [![Feishu](https://img.shields.io/badge/Feishu-Group-00D4AA?style=flat-square&logo=feishu&logoColor=white)](../../Communication.md) [![WeChat](https://img.shields.io/badge/WeChat-Group-07C160?style=flat-square&logo=wechat&logoColor=white)](https://github.com/HKUDS/DeepTutor/issues/78)
 
 [الميزات](#-الميزات-الرئيسية) · [البدء](#-البدء) · [الاستكشاف](#-استكشاف-deeptutor) · [واجهة CLI](#️-واجهة-سطر-أوامر-deeptutor--الواجهة-الأصيلة-للوكلاء) · [النظام البيئي](#-النظام-البيئي--eduhub-ومجتمع-المهارات) · [المجتمع](#-المجتمع)
 
@@ -43,7 +37,11 @@
 
 ---
 
-> 🤝 **نرحب بجميع أنواع المساهمات!** صوّت على عناصر خارطة الطريق أو اقترح عناصر جديدة في [`Roadmap`](https://github.com/HKUDS/DeepTutor/issues/498)، وراجع [دليل المساهمة](../../CONTRIBUTING.md) لمعرفة استراتيجية الفروع ومعايير البرمجة وكيفية البدء.
+> 🤝 **نبحث بنشاط عن مشرفين للمشروع!** راجع [دليل المساهمة](../../CONTRIBUTING.md#join-the-team) لمعرفة الأدوار والمتطلبات وطريقة التقديم.
+
+<div align="center">
+<img src="../../assets/figs/web-dev/overview.png" alt="الصفحة الرئيسية والتنقل بين مساحات العمل في DeepTutor" width="900">
+</div>
 
 ### 📰 الأخبار
 
@@ -73,9 +71,9 @@ DeepTutor هو مساحة عمل تعليمية أصيلة للوكلاء ترب
 <details>
 <summary><b>سطح المكتب — macOS وWindows (معاينة)</b></summary>
 
-يجمع **Open DeepTutor** بين Python وNode.js ومساحة العمل التعليمية الكاملة، لذا لا حاجة إلى طرفية أو تثبيت منفصل لوقت التشغيل. تتوفر معاينات سطح المكتب على `dev`؛ و**لا يتضمن إصدار v1.7.0 مثبّتات سطح المكتب**.
+يجمع **Open DeepTutor** بين Python وNode.js ومساحة العمل التعليمية الكاملة، لذا لا حاجة إلى طرفية أو تثبيت منفصل لوقت التشغيل. نزّل بُنى سطح المكتب المنشورة من [أحدث إصدار على GitHub](https://github.com/HKUDS/DeepTutor/releases/latest)، واختر المثبّت المناسب لجهازك من الجدول أدناه.
 
-افتح [تشغيلاً ناجحاً لسير عمل Desktop Release](https://github.com/HKUDS/DeepTutor/actions/workflows/desktop-release.yml?query=branch%3Adev)، وانتقل إلى **Artifacts**، ثم نزّل الهدف المطابق. يلزم تسجيل الدخول إلى GitHub، وتنتهي صلاحية القطع المرفوعة بعد سبعة أيام.
+لمعاينات التطوير، افتح [تشغيلاً ناجحاً لسير عمل Desktop Release](https://github.com/HKUDS/DeepTutor/actions/workflows/desktop-release.yml?query=branch%3Adev) ونزّل ملف **Artifact** المطابق. تتطلب هذه المعاينات تسجيل الدخول إلى GitHub وتنتهي صلاحيتها بعد سبعة أيام؛ أما تنزيلات الإصدارات المنشورة فلا تخضع لهذين القيدين.
 
 | جهازك | هدف التنزيل | المثبّت |
 | --- | --- | --- |
@@ -172,10 +170,6 @@ deeptutor chat
 | **Partners** | الحساب | رفاق دائمون وPartner Groups والوصول إلى الموارد وقنوات IM |
 | **التخصيص** | الحساب | My Agents والشخصيات والمهارات وخدمات MCP وتطبيقات CLI والذاكرة والإعدادات |
 
-<div align="center">
-<img src="../../assets/figs/web-dev/overview.png" alt="الصفحة الرئيسية والتنقل بين مساحات العمل في DeepTutor" width="900">
-</div>
-
 <details>
 <summary><b>🏗️ معمارية النظام</b></summary>
 
@@ -208,6 +202,20 @@ Chat هي القدرة الافتراضية والمكان الذي يبدأ ف�
 الأدوات القابلة للتبديل من قِبَل المستخدم هي `brainstorm` و`web_search` و`paper_search` و`zotero_search` و`reason` و`geogebra_analysis` — بالإضافة إلى `imagegen` و`videogen` بمجرد تهيئة نموذج التوليد المطابق. الأدوات السياقية مثل `rag` و`kb_files` و`knowledge_frontier` و`read_source` و`read_memory` و`write_memory` و`read_skill` و`load_tools` و`exec` و`web_fetch` و`ask_user` و`list_favorites` و`save_favorite` و`write_note` و`search_notes` و`question_bank` و`github` و`consult_subagent` و`workspace_list` و`workspace_read` و`workspace_search` و`workspace_present` و`workspace_export` تُثبَّت تلقائياً عندما يكون للدور السياق الصحيح.
 
 يأتي السياق في نوعين: يستمر **السياق الثابت للجلسة** (القدرة، ومساحة العمل أو الدورة، والأدوات، وقواعد المعرفة، والشخصية، والنموذج، وحالة Reading / Mastery) عبر الأدوار؛ وتأتي **المراجع** (الملفات وتاريخ المحادثة والكتب وأقسام القراءة ودفاتر الملاحظات ومدخلات بنك الأسئلة المحددة والوكلاء المستوردون) من قائمة `+` لدور واحد افتراضياً، أو لكل دور عند تثبيتها. ولا يفعل زر الصوت سوى تفريغ الرسالة الحالية نصياً.
+
+**حدود الإخراج عند الاكتفاء بالاستدلال.** تعيد حلقة الوكيل المشتركة المحاولة مرة واحدة عندما يستهلك الاستدلال الداخلي ميزانية الإخراج دون تقديم إجابة أو تنفيذ إجراء بأداة. تحتفظ استراتيجية `prompt` الافتراضية بالميزانية نفسها. للتوقف فوراً، اضبط `strategy: stop` ضمن `capabilities.chat.reasoning_budget_recovery` في ملف وقت التشغيل `settings/agents.yaml`. قد تساعد زيادة الميزانية صراحةً النماذج التي تحتاج إلى مساحة أكبر، لكنها قد تزيد زمن الاستجابة والاستخدام:
+
+```yaml
+capabilities:
+  chat:
+    responding:
+      max_tokens: 8000
+    reasoning_budget_recovery:
+      strategy: increase_output_budget
+      max_tokens: 16000
+```
+
+يجب أن يتجاوز حد الاسترداد حد الإخراج العادي وألا يزيد عن 131072؛ اختر قيمة يدعمها نموذجك. ينطبق هذا الحد على استدعاء استرداد واحد فقط، ويحافظ على الحدود الحالية للجولات ومهلة الطلب، ولا يغيّر مستوى جهد الاستدلال. يسجّل التتبّع السياسة والحدين القديم والجديد والميزانية الفعلية لكل استدعاء والاستخدام المتراكم. يستمر التعامل مع اقتطاع الإجابة المرئية عبر آلية المتابعة المعتادة. عند استخدام وقت التشغيل التجريبي `typescript-native`، يؤدي الاختيار الصريح لسياسة `stop` أو `increase_output_budget` إلى اختيار مضيف التأثيرات المشترك في Python مع مجدول TypeScript قبل بدء الدور؛ وتوضح النتيجة سبب هذا الاختيار المتعلق بالتوافق.
 
 مع ملف التثبيت الكامل، تُبقي الصفحة الرئيسية **Chat** و**Ask Questions** و**Quiz** و**Visualize** و**Video Lesson** على بُعد نقرة واحدة؛ وتقع **Research** للتقارير ذات الاستشهادات و**Solve** للاستدلال المشروح تحت *المزيد من القدرات*. حدّد نصاً في إجابة لفتح **Little Tutor**، وهو خيط جانبي مركّز يبقى متداخلاً تحت المحادثة المصدر. بعد إرسال ثلاث رسائل على الأقل، يعرض الهامش الأيسر علامة لكل سؤال عندما تسمح المساحة؛ مرّر المؤشر للمعاينة، أو انقر للعودة، أو استخدم **Alt/Option + ↑/↓** للتنقل بين الأسئلة.
 
@@ -422,10 +430,14 @@ Chat هي القدرة الافتراضية والمكان الذي يبدأ ف�
 
 **الفيتنامية:** في **الإعدادات ← عام**، اختر **Tiếng Việt** لـ **لغة الواجهة** ثم حدّد **تطبيق التغييرات**. **لغة مخرجات النموذج** مستقلة: اختر **Tiếng Việt** هناك للحصول على ردود فيتنامية، أو احتفظ بلغة رد أخرى أثناء استخدام الواجهة الفيتنامية. تعتمد جودة الردود على دعم النموذج المحدد للغة الفيتنامية.
 
+**تضمينات NVIDIA NIM:** اختر **NVIDIA NIM** ضمن **الإعدادات ← التضمين** لاسترجاع النصوص باستخدام `nvidia/nemotron-3.5-embed-8b`. نقطة النهاية الافتراضية هي `https://integrate.api.nvidia.com/v1/embeddings`؛ وتُستخدم نقطة النهاية المخصصة الكاملة كما أُدخلت. ترسل الفهرسة `input_type=passage`، ويرسل الاسترجاع `input_type=query`، وتستخدم فحوص الاتصال passage افتراضياً. يعمل النموذج المستضاف افتراضياً بـ 4096 بُعداً، ويقبل عدداً مضبوطاً من الأبعاد يتراوح بين 1 و4096. يدعم هذا الربط النص فقط؛ ولا يشمل تضمينات الصور أو الخيارات الخاصة بالنماذج المستضافة ذاتياً. تحتفظ ملفات التهيئة المتوافقة مع OpenAI بسلوك طلباتها السابق؛ وعند تحويل قاعدة معرفة موجودة، اختر ربط NIM وأعد فهرستها. راجع [عقد NVIDIA API](https://docs.api.nvidia.com/nim/reference/nvidia-nemotron-3_5-embed-8b-infer).
+
 **الكلام عبر Xiaomi MiMo.** أضف مزود Xiaomi MiMo بعنوان `https://api.xiaomimimo.com/v1` ومفتاح API الخاص به، ثم أضف `mimo-v2.5-tts` ضمن الإعدادات ← الصوت. اختر صوتاً مسبقاً مثل `mimo_default` أو `冰糖` أو `苏打`، واستخدم إخراج `wav` أو `pcm16`، وجرّبه قبل تطبيقه. تتحكم تعليمات الصوت في الأسلوب وسرعة الكلام. يدعم هذا الموائم الكلام بالأصوات المسبقة فقط؛ ويتطلب تصميم الأصوات واستنساخها نماذج منفصلة ولا يدعمهما. إذا كان نموذج MiMo صوتي قديم مهيّأً عبر الموائم العام المتوافق مع OpenAI، فأعد إنشاء مدخل الكلام باستخدام مزود Xiaomi MiMo كي يستخدم بروتوكول chat-completions. راجع [دليل MiMo الرسمي لتوليد الكلام](https://mimo.mi.com/docs/zh-CN/quick-start/usage-guide/audio/speech-synthesis-v2.5).
 
 **الكلام عبر MiniMax** — في الإعدادات ← الصوت، اختر MiniMax لتحويل النص إلى كلام وحدّد `speech-2.8-hd`. هيّئ مفتاح API لـ MiniMax واختر صراحةً صوتاً من أصوات النظام أو أدخل معرّف صوت مخصص. عنوان API الأساسي الافتراضي هو `https://api.minimax.io/v1`؛ ولمنطقة الصين استخدم `https://api.minimaxi.com/v1`. تستخدم القراءة بصوت عالٍ ومعاينات الصوت نقطة نهاية الكلام الأصلية، مع إخراج MP3 أو WAV أو FLAC أو PCM، وعناصر تحكم في معدل أخذ العينات والسرعة واللغة. راجع [واجهة API للكلام في MiniMax](https://platform.minimax.io/docs/api-reference/speech-t2a-http) لمعرّفات الأصوات وتوفرها للحساب.
 
+
+**قراءة النص المحدد بصوت عالٍ:** حدّد كلمة أو مقطعاً في Chat أو Mastery Path أو Reading، وانقر **قراءة بصوت عالٍ** في شريط الأدوات المجاور. انقر **إيقاف** لإلغاء التوليد أو التشغيل. تقرأ هذه الميزة الجزء المحدد فقط، وتستخدم مزود TTS والصوت النشطين المضبوطين ضمن **الإعدادات ← الصوت**، ولا ترسل دور محادثة. لا يبدأ التشغيل بمجرد تحديد النص. يلزم توفر خدمة صوتية تعمل؛ ولا تثبّت هذه الميزة خدمةً أو تختارها نيابةً عنك.
 
 **Video Learning** ضمن الإعدادات ← التعلم والمحادثة يهيّئ ترجمات YouTube والوصول إلى Invidious لاستخدامهما في Reading. لاستخدام Invidious، اضبط أصل API الخلفية الذي يديره المشرف (مثلاً `http://127.0.0.1:3000`) والأصل العام الذي يمكن للمتصفح الوصول إليه، واختبر الاتصال، واختر Invidious، ثم احفظ. يبحث **تصفّح Invidious** في مربع حوار إضافة المواد في Reading عن مقاطع الفيديو ويتيح الوصول إلى الاشتراكات وقوائم التشغيل المتصلة. يستخدم تشغيل YouTube المشغّل الرسمي المعزَّز للخصوصية؛ ويظل غياب الترجمات ظاهراً ويحدّ من الأدلة المتاحة للمدرّس دون تعطيل التشغيل الأصلي. في نسخة المصدر، شغّل `python scripts/install_extras.py video-learning` لاستخدام مُحمِّل ترجمات YouTube الافتراضي. تنتقل روابط Watching الموجودة إلى Reading مع الحفاظ على سجل المحادثة والنصوص المفرّغة المتوافقة والملاحظات والتقدّم؛ وتصبح الملاحظات الزمنية الجديدة تعليقات Reading التوضيحية. يستخدم Bilibili مساره الخاص للتشغيل والترجمات.
 

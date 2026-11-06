@@ -4,12 +4,14 @@
 <h1 align="center">DeepTutor: Пожизненное Персонализированное Обучение</h1>
 
 <p align="center">
-  <a href="https://deeptutor.info" target="_blank"><img alt="Документация — deeptutor.info" src="https://img.shields.io/badge/Docs-deeptutor.info%20%E2%86%97-0A0A0A?style=for-the-badge&labelColor=F5F5F4" height="36"></a>&nbsp;
-  <a href="https://deeptutor.info/collaborate/" target="_blank"><img alt="Сотрудничество — работайте с нами" src="https://img.shields.io/badge/Collaborate-work%20with%20us%20%E2%86%97-0A0A0A?style=for-the-badge&labelColor=F5F5F4" height="36"></a>
+<a href="https://www.star-history.com/hkuds/deeptutor"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending&amp;theme=dark" /><source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending" /><img alt="Популярный репозиторий дня на GitHub" src="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending" height="55" /></picture></a>&#32;<a href="https://trendshift.io/repositories/17099"><img src="https://trendshift.io/api/badge/trendshift/repositories/17099/daily" alt="HKUDS/DeepTutor | Trendshift" width="250" height="55"></a>&#32;<a href="https://www.star-history.com/hkuds/deeptutor"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;theme=dark"><source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor"><img alt="Рейтинг истории звёзд" src="https://api.star-history.com/badge?repo=HKUDS/DeepTutor" width="185" height="55"></picture></a>
 </p>
 
 <p align="center">
-<a href="https://www.star-history.com/hkuds/deeptutor"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending&amp;theme=dark" /><source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending" /><img alt="Популярный репозиторий дня на GitHub" src="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending" height="55" /></picture></a>&#32;<a href="https://trendshift.io/repositories/17099"><img src="https://trendshift.io/api/badge/trendshift/repositories/17099/daily" alt="HKUDS/DeepTutor | Trendshift" width="250" height="55"></a>&#32;<a href="https://www.star-history.com/hkuds/deeptutor"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;theme=dark"><source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor"><img alt="Рейтинг истории звёзд" src="https://api.star-history.com/badge?repo=HKUDS/DeepTutor" width="185" height="55"></picture></a>
+  <a href="https://github.com/HKUDS/DeepTutor/releases/latest/download/Open-DeepTutor-MacOS-Apple-Silicon.dmg"><img alt="Скачать для macOS (Apple Silicon)" src="../../assets/figs/badges/download-macos-apple-silicon.svg" height="32"></a>&nbsp;
+  <a href="https://github.com/HKUDS/DeepTutor/releases/latest/download/Open-DeepTutor-MacOS-Intel.dmg"><img alt="Скачать для macOS (Intel)" src="../../assets/figs/badges/download-macos-intel.svg" height="32"></a>&nbsp;
+  <a href="https://github.com/HKUDS/DeepTutor/releases/latest/download/Open-DeepTutor-Windows-Setup.exe"><img alt="Скачать для Windows (x64)" src="../../assets/figs/badges/download-windows.svg" height="32"></a>&nbsp;
+  <a href="https://deeptutor.info" target="_blank"><img alt="Документация — deeptutor.info" src="../../assets/figs/badges/docs.svg" height="32"></a>
 </p>
 
 <p align="center">
@@ -27,15 +29,7 @@
   <a href="README_PL.md"><img alt="Polski" height="40" src="https://img.shields.io/badge/Polski-CDCFD4"></a>
 </p>
 
-[![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/downloads/)
-[![Next.js 16](https://img.shields.io/badge/Next.js-16-000000?style=flat-square&logo=next.js&logoColor=white)](https://nextjs.org/)
-[![License](https://img.shields.io/badge/License-Apache_2.0-blue?style=flat-square)](../../LICENSE)
-[![GitHub release](https://img.shields.io/github/v/release/HKUDS/DeepTutor?style=flat-square&color=brightgreen)](https://github.com/HKUDS/DeepTutor/releases)
-[![arXiv](https://img.shields.io/badge/arXiv-2604.26962-b31b1b?style=flat-square&logo=arxiv&logoColor=white)](https://arxiv.org/abs/2604.26962)
-
-[![Discord](https://img.shields.io/badge/Discord-Community-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/eRsjPgMU4t)
-[![Feishu](https://img.shields.io/badge/Feishu-Group-00D4AA?style=flat-square&logo=feishu&logoColor=white)](../../Communication.md)
-[![WeChat](https://img.shields.io/badge/WeChat-Group-07C160?style=flat-square&logo=wechat&logoColor=white)](https://github.com/HKUDS/DeepTutor/issues/78)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue?style=flat-square)](../../LICENSE) [![GitHub release](https://img.shields.io/github/v/release/HKUDS/DeepTutor?style=flat-square&color=brightgreen)](https://github.com/HKUDS/DeepTutor/releases) [![arXiv](https://img.shields.io/badge/arXiv-2604.26962-b31b1b?style=flat-square&logo=arxiv&logoColor=white)](https://arxiv.org/abs/2604.26962) [![Discord](https://img.shields.io/badge/Discord-Community-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/eRsjPgMU4t) [![Feishu](https://img.shields.io/badge/Feishu-Group-00D4AA?style=flat-square&logo=feishu&logoColor=white)](../../Communication.md) [![WeChat](https://img.shields.io/badge/WeChat-Group-07C160?style=flat-square&logo=wechat&logoColor=white)](https://github.com/HKUDS/DeepTutor/issues/78)
 
 [Возможности](#-ключевые-возможности) · [Начать](#-начало-работы) · [Исследовать](#-обзор-deeptutor) · [CLI](#%EF%B8%8F-deeptutor-cli--интерфейс-для-агентов) · [Экосистема](#-экосистема--eduhub-и-сообщество-навыков) · [Сообщество](#-сообщество)
 
@@ -43,7 +37,11 @@
 
 ---
 
-> 🤝 **Мы приветствуем любые вклады в проект!** Голосуйте за элементы дорожной карты или предлагайте новые на странице [`Roadmap`](https://github.com/HKUDS/DeepTutor/issues/498), а также изучите наше [Руководство по участию](../../CONTRIBUTING.md) с описанием стратегии ветвления, стандартов кодирования и инструкций по началу работы.
+> 🤝 **Мы активно ищем сопровождающих проекта!** Роли, требования и порядок подачи заявки описаны в [Руководстве по участию](../../CONTRIBUTING.md#join-the-team).
+
+<div align="center">
+<img src="../../assets/figs/web-dev/overview.png" alt="Главная страница DeepTutor и навигация по рабочему пространству" width="900">
+</div>
 
 ### 📰 Новости
 
@@ -73,9 +71,9 @@ DeepTutor — это агентная учебная рабочая среда, 
 <details>
 <summary><b>Desktop — macOS и Windows (предварительная версия)</b></summary>
 
-**Open DeepTutor** включает Python, Node.js и полную учебную рабочую среду, поэтому терминал и отдельная установка среды выполнения не нужны. Предварительные версии Desktop доступны в ветке `dev`; **выпуск v1.7.0 не включает установщики desktop**.
+**Open DeepTutor** включает Python, Node.js и полную учебную рабочую среду, поэтому терминал и отдельная установка среды выполнения не нужны. Скачайте опубликованные desktop-сборки из [последнего релиза GitHub](https://github.com/HKUDS/DeepTutor/releases/latest), выбрав ниже установщик для своего компьютера.
 
-Откройте успешный запуск [рабочего процесса Desktop Release](https://github.com/HKUDS/DeepTutor/actions/workflows/desktop-release.yml?query=branch%3Adev), прокрутите до **Artifacts** и скачайте подходящий вариант. Требуется вход в GitHub, а артефакты хранятся семь дней.
+Для предварительных сборок разработки откройте успешный запуск [рабочего процесса Desktop Release](https://github.com/HKUDS/DeepTutor/actions/workflows/desktop-release.yml?query=branch%3Adev) и скачайте подходящий **Artifact**. Эти сборки требуют входа в GitHub и хранятся семь дней; на загрузки опубликованных релизов эти ограничения не распространяются.
 
 | Ваш компьютер | Вариант для скачивания | Установщик |
 | --- | --- | --- |
@@ -164,10 +162,6 @@ deeptutor chat
 
 Начните с **рабочего пространства** для каждого предмета или проекта. Разделы Home, Learning и Resources меняются вместе с активным рабочим пространством; Partners и Персонализация остаются доступны во всех рабочих пространствах.
 
-<div align="center">
-<img src="../../assets/figs/web-dev/overview.png" alt="Главная страница DeepTutor и навигация по рабочему пространству" width="900">
-</div>
-
 | Область | Область действия | Содержимое |
 | --- | --- | --- |
 | **Home** | Рабочее пространство | Chat, Task Board, Calendar и Learning notebook |
@@ -208,6 +202,20 @@ Chat — возможность по умолчанию и место, где н
 Переключаемые пользователем инструменты: `brainstorm`, `web_search`, `paper_search`, `zotero_search`, `reason` и `geogebra_analysis` — плюс `imagegen` и `videogen` после настройки соответствующей генеративной модели. Контекстные инструменты, такие как `rag`, `kb_files`, `knowledge_frontier`, `read_source`, `read_memory`, `write_memory`, `read_skill`, `load_tools`, `exec`, `web_fetch`, `ask_user`, `list_favorites`, `save_favorite`, `write_note`, `search_notes`, `question_bank`, `github`, `consult_subagent`, `workspace_list`, `workspace_read`, `workspace_search`, `workspace_present` и `workspace_export`, монтируются автоматически, когда ход имеет подходящий контекст.
 
 Контекст бывает двух видов: **постоянный контекст сессии** (возможность, рабочее пространство или курс, инструменты, базы знаний, персона, модель и состояние Reading / Mastery) сохраняется между ходами; **ссылки** (файлы, история чата, книги, разделы чтения, блокноты, выбранные записи банка вопросов, импортированные агенты) берутся из меню `+` по умолчанию для одного хода либо для каждого хода, если они закреплены. Кнопка голосового ввода только транскрибирует текущее сообщение.
+
+**Лимиты вывода при выдаче только рассуждений.** Общий агентный цикл делает одну повторную попытку, если внутренние рассуждения исчерпали бюджет вывода без ответа или вызова инструмента. Стратегия `prompt` по умолчанию сохраняет прежний бюджет. Чтобы сразу остановиться, задайте `strategy: stop` в разделе `capabilities.chat.reasoning_budget_recovery` файла `settings/agents.yaml` вашей среды выполнения. Явно увеличенный бюджет может помочь моделям, которым нужно больше места, но способен повысить задержку и расход ресурсов:
+
+```yaml
+capabilities:
+  chat:
+    responding:
+      max_tokens: 8000
+    reasoning_budget_recovery:
+      strategy: increase_output_budget
+      max_tokens: 16000
+```
+
+Лимит восстановления должен превышать обычный лимит вывода и составлять не более 131072; выбирайте значение, поддерживаемое вашей моделью. Он применяется только к одному вызову восстановления, сохраняет существующие ограничения числа раундов и времени запросов и не меняет интенсивность рассуждений. Трассировка записывает стратегию, старый и новый лимиты, фактические бюджеты каждого вызова и суммарный расход. Усечённый видимый ответ продолжает дописываться обычным способом. В экспериментальной среде `typescript-native` явные стратегии `stop` и `increase_output_budget` до начала хода выбирают общий Python effects host с планировщиком TypeScript; результат сообщает причину такого выбора для совместимости.
 
 При полном профиле Home держит **Chat**, **Ask Questions**, **Quiz**, **Visualize** и **Video Lesson** в одном клике; **Research** для отчётов с цитатами и **Solve** для пошаговых рассуждений находятся в разделе *Дополнительные возможности*. Выделите текст в ответе, чтобы открыть **Little Tutor** — отдельный поток в боковой панели, который остаётся вложенным в исходный разговор. После отправки как минимум трёх сообщений в левом поле при достатке места появляется отметка для каждого вопроса; наведите указатель для предварительного просмотра, нажмите для возврата к вопросу или используйте **Alt/Option + ↑/↓** для перехода между вопросами.
 
@@ -422,10 +430,14 @@ Memory Graph показывает всю пирамиду — синтез L3 в
 
 **Вьетнамский язык:** в **Настройки → Общие** выберите **Tiếng Việt** для **Язык интерфейса** и нажмите **Применить изменения**. **Язык вывода модели** настраивается независимо: выберите там **Tiếng Việt** для ответов на вьетнамском либо сохраните другой язык ответов при вьетнамском интерфейсе. Качество ответов зависит от поддержки вьетнамского языка выбранной моделью.
 
+**Эмбеддинги NVIDIA NIM:** выберите **NVIDIA NIM** в разделе **Настройки → Embedding** для текстового поиска с `nvidia/nemotron-3.5-embed-8b`. Конечная точка по умолчанию — `https://integrate.api.nvidia.com/v1/embeddings`; пользовательская полная конечная точка используется без изменений. При индексации передаётся `input_type=passage`, при поиске — `input_type=query`, а проверки подключения по умолчанию используют passage. Размещённая модель по умолчанию использует 4096 измерений и принимает настроенную размерность от 1 до 4096. Этот адаптер поддерживает только текст; эмбеддинги изображений и специфические параметры самостоятельно размещённых моделей не входят в его возможности. Существующие профили, совместимые с OpenAI, сохраняют прежнее поведение запросов; при переводе существующей базы знаний выберите адаптер NIM и перестройте индекс. См. [контракт API NVIDIA](https://docs.api.nvidia.com/nim/reference/nvidia-nemotron-3_5-embed-8b-infer).
+
 **Синтез речи Xiaomi MiMo.** Добавьте провайдера Xiaomi MiMo с адресом `https://api.xiaomimimo.com/v1` и его API-ключом, затем добавьте `mimo-v2.5-tts` в разделе Настройки → Voice. Выберите предустановленный голос, например `mimo_default`, `冰糖` или `苏打`, формат вывода `wav` или `pcm16` и прослушайте образец перед применением. Голосовые инструкции управляют стилем и скоростью речи. Этот адаптер поддерживает только предустановленные голоса; создание и клонирование голоса требуют отдельных моделей и не поддерживаются. Если старая речевая модель MiMo была настроена через общий адаптер, совместимый с OpenAI, создайте её речевой профиль заново с провайдером Xiaomi MiMo, чтобы использовать протокол chat-completions. См. [официальное руководство по синтезу речи MiMo](https://mimo.mi.com/docs/zh-CN/quick-start/usage-guide/audio/speech-synthesis-v2.5).
 
 **Синтез речи MiniMax** — в разделе Настройки → Voice выберите MiniMax для преобразования текста в речь и модель `speech-2.8-hd`. Настройте API-ключ MiniMax и явно выберите системный голос или введите идентификатор пользовательского голоса. Базовый URL API по умолчанию — `https://api.minimax.io/v1`; для региона Китай используйте `https://api.minimaxi.com/v1`. Чтение вслух и прослушивание образцов используют нативную конечную точку синтеза речи с выводом в MP3, WAV, FLAC или PCM и настройками частоты дискретизации, скорости и языка. Идентификаторы голосов и доступность для учётных записей описаны в [API синтеза речи MiniMax](https://platform.minimax.io/docs/api-reference/speech-t2a-http).
 
+
+**Озвучивание выделенного текста:** выделите слово или фрагмент в Chat, Mastery Path или Reading и нажмите **Read aloud** на появившейся рядом панели инструментов. Нажмите **Stop**, чтобы отменить синтез или воспроизведение. Озвучивается только выделение, с активным TTS-провайдером и голосом из раздела **Настройки → Voice**, без отправки хода чата. Само выделение никогда не запускает воспроизведение. Нужен работающий речевой сервис; эта функция не устанавливает и не выбирает его за вас.
 
 **Video Learning** в разделе Настройки → Learning & conversation настраивает субтитры YouTube и доступ к Invidious для Reading. Чтобы использовать Invidious, задайте управляемый администратором адрес его серверного API (например, `http://127.0.0.1:3000`) и публичный адрес, доступный из браузера, проверьте подключение, выберите Invidious и сохраните настройки. Кнопка **Browse Invidious** в диалоге добавления материалов Reading позволяет искать видео и открывать подключённые подписки и плейлисты. YouTube воспроизводится через официальный плеер с повышенной конфиденциальностью; отсутствие субтитров явно отображается и ограничивает доказательную базу репетитора, но не мешает нативному воспроизведению. В чекауте исходного кода выполните `python scripts/install_extras.py video-learning` для установки загрузчика субтитров YouTube по умолчанию. Существующие ссылки Watching переносятся в Reading с сохранением истории разговоров, совместимых транскриптов, заметок и прогресса; новые заметки с временными метками становятся аннотациями Reading. Bilibili использует собственный способ воспроизведения и получения субтитров.
 

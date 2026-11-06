@@ -4,12 +4,14 @@
 <h1 align="center">DeepTutor：终身个性化辅导</h1>
 
 <p align="center">
-  <a href="https://deeptutor.info" target="_blank"><img alt="文档 — deeptutor.info" src="https://img.shields.io/badge/Docs-deeptutor.info%20%E2%86%97-0A0A0A?style=for-the-badge&labelColor=F5F5F4" height="36"></a>&nbsp;
-  <a href="https://deeptutor.info/collaborate/" target="_blank"><img alt="合作 — 与我们携手" src="https://img.shields.io/badge/Collaborate-work%20with%20us%20%E2%86%97-0A0A0A?style=for-the-badge&labelColor=F5F5F4" height="36"></a>
+<a href="https://www.star-history.com/hkuds/deeptutor"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending&amp;theme=dark" /><source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending" /><img alt="GitHub 今日热门仓库" src="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending" height="55" /></picture></a>&#32;<a href="https://trendshift.io/repositories/17099"><img src="https://trendshift.io/api/badge/trendshift/repositories/17099/daily" alt="HKUDS/DeepTutor | Trendshift" width="250" height="55"></a>&#32;<a href="https://www.star-history.com/hkuds/deeptutor"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;theme=dark"><source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor"><img alt="Star History 排名" src="https://api.star-history.com/badge?repo=HKUDS/DeepTutor" width="185" height="55"></picture></a>
 </p>
 
 <p align="center">
-<a href="https://www.star-history.com/hkuds/deeptutor"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending&amp;theme=dark" /><source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending" /><img alt="GitHub 今日热门仓库" src="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending" height="55" /></picture></a>&#32;<a href="https://trendshift.io/repositories/17099"><img src="https://trendshift.io/api/badge/trendshift/repositories/17099/daily" alt="HKUDS/DeepTutor | Trendshift" width="250" height="55"></a>&#32;<a href="https://www.star-history.com/hkuds/deeptutor"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;theme=dark"><source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor"><img alt="Star History 排名" src="https://api.star-history.com/badge?repo=HKUDS/DeepTutor" width="185" height="55"></picture></a>
+  <a href="https://github.com/HKUDS/DeepTutor/releases/latest/download/Open-DeepTutor-MacOS-Apple-Silicon.dmg"><img alt="下载 macOS 版（Apple Silicon）" src="../../assets/figs/badges/download-macos-apple-silicon.svg" height="32"></a>&nbsp;
+  <a href="https://github.com/HKUDS/DeepTutor/releases/latest/download/Open-DeepTutor-MacOS-Intel.dmg"><img alt="下载 macOS 版（Intel）" src="../../assets/figs/badges/download-macos-intel.svg" height="32"></a>&nbsp;
+  <a href="https://github.com/HKUDS/DeepTutor/releases/latest/download/Open-DeepTutor-Windows-Setup.exe"><img alt="下载 Windows 版（x64）" src="../../assets/figs/badges/download-windows.svg" height="32"></a>&nbsp;
+  <a href="https://deeptutor.info" target="_blank"><img alt="文档 — deeptutor.info" src="../../assets/figs/badges/docs.svg" height="32"></a>
 </p>
 
 <p align="center">
@@ -27,15 +29,7 @@
   <a href="README_PL.md"><img alt="Polski" height="40" src="https://img.shields.io/badge/Polski-CDCFD4"></a>
 </p>
 
-[![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/downloads/)
-[![Next.js 16](https://img.shields.io/badge/Next.js-16-000000?style=flat-square&logo=next.js&logoColor=white)](https://nextjs.org/)
-[![License](https://img.shields.io/badge/License-Apache_2.0-blue?style=flat-square)](../../LICENSE)
-[![GitHub release](https://img.shields.io/github/v/release/HKUDS/DeepTutor?style=flat-square&color=brightgreen)](https://github.com/HKUDS/DeepTutor/releases)
-[![arXiv](https://img.shields.io/badge/arXiv-2604.26962-b31b1b?style=flat-square&logo=arxiv&logoColor=white)](https://arxiv.org/abs/2604.26962)
-
-[![Discord](https://img.shields.io/badge/Discord-Community-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/eRsjPgMU4t)
-[![Feishu](https://img.shields.io/badge/Feishu-Group-00D4AA?style=flat-square&logo=feishu&logoColor=white)](../../Communication.md)
-[![WeChat](https://img.shields.io/badge/WeChat-Group-07C160?style=flat-square&logo=wechat&logoColor=white)](https://github.com/HKUDS/DeepTutor/issues/78)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue?style=flat-square)](../../LICENSE) [![GitHub release](https://img.shields.io/github/v/release/HKUDS/DeepTutor?style=flat-square&color=brightgreen)](https://github.com/HKUDS/DeepTutor/releases) [![arXiv](https://img.shields.io/badge/arXiv-2604.26962-b31b1b?style=flat-square&logo=arxiv&logoColor=white)](https://arxiv.org/abs/2604.26962) [![Discord](https://img.shields.io/badge/Discord-Community-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/eRsjPgMU4t) [![Feishu](https://img.shields.io/badge/Feishu-Group-00D4AA?style=flat-square&logo=feishu&logoColor=white)](../../Communication.md) [![WeChat](https://img.shields.io/badge/WeChat-Group-07C160?style=flat-square&logo=wechat&logoColor=white)](https://github.com/HKUDS/DeepTutor/issues/78)
 
 [核心功能](#-核心功能) · [快速开始](#-快速开始) · [功能探索](#-探索-deeptutor) · [CLI 命令行](#️-deeptutor-cli--智能体原生界面) · [生态系统](#-生态系统--eduhub-与技能社区) · [社区](#-社区)
 
@@ -43,7 +37,11 @@
 
 ---
 
-> 🤝 **欢迎各种形式的贡献！** 在 [`Roadmap`](https://github.com/HKUDS/DeepTutor/issues/498) 为路线图议题投票或提出新建议，并参阅[贡献指南](../../CONTRIBUTING.md)，了解分支策略、编码规范及参与方式。
+> 🤝 **我们正在积极招募维护者！** 请参阅[贡献指南](../../CONTRIBUTING.md#join-the-team)，了解岗位、要求和申请方式。
+
+<div align="center">
+<img src="../../assets/figs/web-dev/overview.png" alt="DeepTutor 主页与工作区导航" width="900">
+</div>
 
 ### 📰 新闻动态
 
@@ -73,9 +71,9 @@ DeepTutor 是一个智能体原生的学习工作区，将辅导、研究、创�
 <details>
 <summary><b>桌面版 — macOS 和 Windows（预览版）</b></summary>
 
-**Open DeepTutor** 捆绑了 Python、Node.js 和完整的学习工作区，无需使用终端或单独安装运行时。桌面预览版已在 `dev` 分支提供；**v1.7.0 Release 不包含桌面安装程序**。
+**Open DeepTutor** 捆绑了 Python、Node.js 和完整的学习工作区，无需使用终端或单独安装运行时。从[最新 GitHub Release](https://github.com/HKUDS/DeepTutor/releases/latest) 下载已发布的桌面版本，按下表选择适合你电脑的安装程序。
 
-打开一次成功的 [Desktop Release 工作流运行](https://github.com/HKUDS/DeepTutor/actions/workflows/desktop-release.yml?query=branch%3Adev)，滚动到 **Artifacts**，下载与你的设备匹配的目标版本。需要登录 GitHub，且构建产物会在七天后过期。
+如需开发预览版，打开一次成功的 [Desktop Release 工作流运行](https://github.com/HKUDS/DeepTutor/actions/workflows/desktop-release.yml?query=branch%3Adev)，下载匹配的 **Artifact**。这些预览构建需要登录 GitHub，且会在七天后过期；已发布的 Release 下载不受此限制。
 
 | 你的电脑 | 下载目标 | 安装方式 |
 | --- | --- | --- |
@@ -164,10 +162,6 @@ deeptutor chat
 
 先为每个学科或项目建立一个**工作区**。主页、学习和资源会随当前工作区变化；Partners 和个性化则可跨工作区使用。
 
-<div align="center">
-<img src="../../assets/figs/web-dev/overview.png" alt="DeepTutor 主页与工作区导航" width="900">
-</div>
-
 | 区域 | 范围 | 包含内容 |
 | --- | --- | --- |
 | **主页** | 工作区 | Chat、Task Board、Calendar 和学习笔记本 |
@@ -208,6 +202,20 @@ Chat 是默认能力，也是大多数工作的起点。单个对话线程可以
 用户可切换的工具有 `brainstorm`、`web_search`、`paper_search`、`zotero_search`、`reason` 和 `geogebra_analysis` — 配置了对应生成模型后还有 `imagegen` 和 `videogen`。上下文工具如 `rag`、`kb_files`、`knowledge_frontier`、`read_source`、`read_memory`、`write_memory`、`read_skill`、`load_tools`、`exec`、`web_fetch`、`ask_user`、`list_favorites`、`save_favorite`、`write_note`、`search_notes`、`question_bank`、`github`、`consult_subagent`、`workspace_list`、`workspace_read`、`workspace_search`、`workspace_present` 和 `workspace_export` 会在当前轮次具备相应上下文时自动挂载。
 
 上下文分为两类：**粘性会话上下文**（能力、工作区或课程、工具、知识库、人格预设、模型，以及 Reading / Mastery 状态）会在各轮次间持续保留；**引用**（文件、聊天历史、书籍、阅读章节、笔记本、选中的题库条目、导入的智能体）通过 `+` 菜单添加，默认仅用于一个轮次，固定后则用于每个轮次。语音按钮只会转录当前消息。
+
+**仅推理输出的预算限制。** 当内部推理耗尽输出预算，却没有给出答案或执行工具操作时，共享智能体循环会重试一次。默认的 `prompt` 策略保持原有预算。若希望立即停止，请在运行时 `settings/agents.yaml` 的 `capabilities.chat.reasoning_budget_recovery` 下设置 `strategy: stop`。显式增加预算可为需要更多空间的模型提供余量，但可能增加延迟和用量：
+
+```yaml
+capabilities:
+  chat:
+    responding:
+      max_tokens: 8000
+    reasoning_budget_recovery:
+      strategy: increase_output_budget
+      max_tokens: 16000
+```
+
+恢复预算必须大于正常输出上限，且不超过 131072；请选择模型支持的值。它仅应用于一次恢复调用，沿用现有的轮次与请求超时限制，不改变推理强度。追踪记录会保留策略、调整前后的限制、每次调用的有效预算及累计用量。可见答案被截断时仍使用常规续写。在实验性的 `typescript-native` 运行时中，显式设置 `stop` 或 `increase_output_budget` 策略，会在轮次开始前选择共享 Python effects host 配合 TypeScript 调度器；结果会说明这一兼容性选择的原因。
 
 使用完整安装配置时，主页让 **Chat**、**Ask Questions**、**Quiz**、**Visualize** 和 **Video Lesson** 一键可达；用于生成引用报告的 **Research** 和用于展示完整推理过程的 **Solve** 位于*更多能力*之下。选中答案中的文本可打开 **Little Tutor**，这是一个嵌套在来源对话下的专注侧边栏线程。发送至少三条消息后，空间允许时左侧边栏会为每个问题显示一个刻度；悬停可预览，点击可跳回，也可使用 **Alt/Option + ↑/↓** 在问题之间移动。
 
@@ -422,10 +430,14 @@ Settings 是操作控制面板，首页**通用**用于设置界面与模型输�
 
 **越南语：** 在 **Settings → General** 中，将 **Interface language** 设为 **Tiếng Việt**，然后选择 **Apply changes**。**Model output language** 独立设置：若需越南语回复，请在那里选择 **Tiếng Việt**；也可以在使用越南语界面时保留其他回复语言。回复质量取决于所选模型对越南语的支持。
 
+**NVIDIA NIM 嵌入：** 在 **Settings → Embedding** 中选择 **NVIDIA NIM**，使用 `nvidia/nemotron-3.5-embed-8b` 进行文本检索。默认端点为 `https://integrate.api.nvidia.com/v1/embeddings`；自定义的完整端点会按原样使用。索引时发送 `input_type=passage`，检索时发送 `input_type=query`，连接检查默认使用 passage。托管模型默认输出 4096 维，支持配置 1 至 4096 的维度。该绑定仅支持文本；图像嵌入及自托管模型特有选项不在支持范围内。现有 OpenAI 兼容配置保留原有请求行为；为已有知识库切换时，请选择 NIM 绑定并重新索引。详见 [NVIDIA API 约定](https://docs.api.nvidia.com/nim/reference/nvidia-nemotron-3_5-embed-8b-infer)。
+
 **Xiaomi MiMo 语音。** 添加 Xiaomi MiMo 提供商，填写 `https://api.xiaomimimo.com/v1` 和 API Key，然后在 Settings → Voice 中添加 `mimo-v2.5-tts`。选择 `mimo_default`、`冰糖` 或 `苏打` 等预设音色，使用 `wav` 或 `pcm16` 输出，并在应用前试听。语音指令可控制风格和语速。该适配器仅支持预设语音；声音设计与声音克隆需要独立模型，目前不受支持。如果旧的 MiMo 语音模型通过通用的 OpenAI 兼容适配器配置，请使用 Xiaomi MiMo 提供商重新创建语音条目，使其采用 chat-completions 协议。详见 [MiMo 官方语音指南](https://mimo.mi.com/docs/zh-CN/quick-start/usage-guide/audio/speech-synthesis-v2.5)。
 
 **MiniMax 语音** — 在 Settings → Voice 中，将文本转语音提供商选为 MiniMax，并选择 `speech-2.8-hd`。配置 MiniMax API Key，并明确选择系统音色或输入自定义音色 ID。API 基础地址默认为 `https://api.minimax.io/v1`；中国地区使用 `https://api.minimaxi.com/v1`。朗读与音色预览使用原生语音端点，支持 MP3、WAV、FLAC 或 PCM 输出，以及采样率、语速和语言控制。音色 ID 和账号可用性详见 [MiniMax 语音 API](https://platform.minimax.io/docs/api-reference/speech-t2a-http)。
 
+
+**选中文本朗读：** 在 Chat、Mastery Path 或 Reading 中选中一个词或一段文字，点击旁边工具栏中的 **Read aloud**。点击 **Stop** 可取消合成或播放。该功能只朗读选中内容，使用 **Settings → Voice** 中已启用的 TTS 提供商和音色，不会发送聊天轮次。仅选择文本不会自动开始播放。此功能需要可用的语音服务，不会替你安装或选择服务。
 
 Settings → Learning & conversation 下的 **Video Learning** 为 Reading 配置 YouTube 字幕和 Invidious 访问。使用 Invidious 时，请设置由管理员管理的后端 API 来源（例如 `http://127.0.0.1:3000`）和浏览器可访问的公开来源，测试连接后选择 Invidious 并保存。Reading 添加素材对话框中的 **Browse Invidious** 可搜索视频，并访问已连接的订阅和播放列表。YouTube 播放使用官方隐私增强型播放器；字幕缺失时会明确显示，并限制导师可用的证据，但不会阻止原生播放。在源码仓库中，运行 `python scripts/install_extras.py video-learning` 可使用默认的 YouTube 字幕加载器。已有 Watching 链接会迁移到 Reading，保留对话历史、兼容的转录、笔记和进度；新的时间戳笔记会保存为 Reading 批注。Bilibili 使用独立的播放和字幕路径。
 
