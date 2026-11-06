@@ -402,6 +402,8 @@ The recovery limit must exceed the normal output limit and be at most 131072; ch
 
 With the full profile, Home keeps **Chat**, **Ask Questions**, **Quiz**, **Visualize**, and **Video Lesson** one click away; **Research** for cited reports and **Solve** for worked reasoning sit under *More Capabilities*. Select text in an answer to open **Little Tutor**, a focused sidebar thread that stays nested under the source conversation. With at least three sent messages, the left gutter shows a tick for each question when space allows; hover to preview, click to jump back, or use **Alt/Option + ↑/↓** to move between questions.
 
+**Math Animator narration** — configure a speech synthesis model in **Settings → Voice** to add spoken explanations to Manim videos. Each teaching step uses the selected voice, and the animation holds long enough to finish its narration before moving on or ending. Speech failures are reported instead of returning a silently unvoiced video. Without an active speech model, videos retain their silent rendering; storyboard images are unchanged.
+
 </details>
 
 <details>
