@@ -96,6 +96,43 @@ describe("reader image lightbox", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it("clips a zoomed picture at the dialog, not at the picture's own box", async () => {
+    const onClose = vi.fn();
+    render(
+      <ReaderImageLightbox src="/img.png" alt="diagram" onClose={onClose} />,
+    );
+    const stage = dialog()!.querySelector("img")!.parentElement as HTMLElement;
+
+    // jsdom has no layout, so the geometry itself is the Lead's browser run;
+    // what is asserted here is the structure that makes it true. The stage is
+    // pinned to the fixed backdrop instead of being sized by the picture it
+    // holds: `max-h-full max-w-full` shrank it to the unzoomed picture, so a
+    // zoomed picture was clipped at its own box and panning could not reveal
+    // the rest.
+    expect(stage.className).toContain("absolute");
+    expect(stage.className).toContain("inset-0");
+    expect(stage.className).not.toContain("max-h-full");
+    expect(stage.className).not.toContain("max-w-full");
+
+    // The stage now covers the backdrop, so the empty area around the picture
+    // is the stage; a click there still dismisses the way the backdrop's did.
+    await act(async () => {
+      fireEvent.click(stage);
+    });
+    expect(onClose).toHaveBeenCalledTimes(1);
+
+    // A drag that panned the picture ends with a click on that same stage, and
+    // that click must not dismiss the view the drag was panning.
+    await clickToolbar("Zoom in");
+    await act(async () => {
+      fireEvent.pointerDown(stage, { pointerId: 3, clientX: 10, clientY: 10 });
+      fireEvent.pointerMove(stage, { pointerId: 3, clientX: 90, clientY: 40 });
+      fireEvent.pointerUp(stage, { pointerId: 3 });
+      fireEvent.click(stage);
+    });
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
   it("zooms in and out, and reports the percentage it is at", async () => {
     render(
       <ReaderImageLightbox src="/img.png" alt="diagram" onClose={vi.fn()} />,

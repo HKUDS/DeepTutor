@@ -51,6 +51,9 @@ export function ReaderImageLightbox({
     originX: number;
     originY: number;
   } | null>(null);
+  // A drag releases over the stage and the browser then reports a click there.
+  // That click ended a pan, not a request to dismiss the view being panned.
+  const dragMovedRef = useRef(false);
   const [view, setView] = useState<ImageView>(FIT_VIEW);
 
   const zoomByFactor = useCallback((factor: number) => {
@@ -134,11 +137,23 @@ export function ReaderImageLightbox({
       className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-[2px]"
     >
       <div
-        className="relative flex max-h-full max-w-full items-center justify-center p-6"
-        // Clipping keeps a zoomed picture inside the dialog instead of letting
-        // it push a scrollbar onto the page behind.
+        // The stage fills the dialog, so the *window* is the box a zoomed
+        // picture is clipped by. Sizing it to the picture instead (`max-h-full
+        // max-w-full`) clipped the picture at its own natural box: at 2.5x a
+        // 300x200 picture was 750x500 but only 348x248 of it could ever be
+        // seen, and panning could not reveal the rest.
+        className="absolute inset-0 flex items-center justify-center p-6"
         style={{ overflow: "hidden", touchAction: "none" }}
+        onClick={(event) => {
+          // The stage covers the backdrop now, so a click on the empty area
+          // lands here rather than on the backdrop. It still dismisses, unless
+          // it is the click that ended a pan.
+          if (event.target !== event.currentTarget) return;
+          if (dragMovedRef.current) return;
+          onClose();
+        }}
         onPointerDown={(event) => {
+          dragMovedRef.current = false;
           if (view.scale <= MIN_IMAGE_ZOOM) return;
           dragRef.current = {
             pointerId: event.pointerId,
@@ -154,6 +169,13 @@ export function ReaderImageLightbox({
           if (!drag || drag.pointerId !== event.pointerId) return;
           const x = drag.originX + event.clientX - drag.startX;
           const y = drag.originY + event.clientY - drag.startY;
+          if (!dragMovedRef.current) {
+            const travelled =
+              Math.abs(event.clientX - drag.startX) +
+              Math.abs(event.clientY - drag.startY);
+            // A few pixels of jitter still count as a click, not a pan.
+            dragMovedRef.current = travelled > 3;
+          }
           setView((current) => ({ ...current, x, y }));
         }}
         onPointerUp={() => {
