@@ -243,7 +243,7 @@ class OpenAICompatProvider(LLMProvider):
         )
         self._responses_failures: dict[str, int] = {}
         self._responses_tripped_at: dict[str, float] = {}
-        self._responses_without_message_status_models: set[str] = set()
+        self._responses_without_optional_status_models: set[str] = set()
 
     @staticmethod
     def _status_code(exc: Exception) -> int | None:
@@ -645,7 +645,7 @@ class OpenAICompatProvider(LLMProvider):
         return None
 
     @staticmethod
-    def _responses_body_without_input_message_status(
+    def _responses_body_without_optional_input_status(
         body: dict[str, Any], item_index: int | None = None
     ) -> dict[str, Any] | None:
         input_items = body.get("input")
@@ -658,7 +658,7 @@ class OpenAICompatProvider(LLMProvider):
             rejected_item = input_items[item_index]
             if (
                 not isinstance(rejected_item, dict)
-                or rejected_item.get("type") != "message"
+                or rejected_item.get("type") not in {"message", "reasoning", "function_call"}
                 or "status" not in rejected_item
             ):
                 return None
@@ -666,7 +666,11 @@ class OpenAICompatProvider(LLMProvider):
         sanitized_items: list[Any] = []
         has_status = False
         for item in input_items:
-            if isinstance(item, dict) and item.get("type") == "message" and "status" in item:
+            if (
+                isinstance(item, dict)
+                and item.get("type") in {"message", "reasoning", "function_call"}
+                and "status" in item
+            ):
                 sanitized_items.append(
                     {key: value for key, value in item.items() if key != "status"}
                 )
@@ -681,18 +685,20 @@ class OpenAICompatProvider(LLMProvider):
     ) -> Any:
         model_name = str(body.get("model") or self.default_model).strip().lower()
         request_body = body
-        if model_name in self._responses_without_message_status_models:
-            request_body = self._responses_body_without_input_message_status(body) or body
+        if model_name in self._responses_without_optional_status_models:
+            request_body = self._responses_body_without_optional_input_status(body) or body
         try:
             return await self._create_with_key_rotation(self._client.responses.create, request_body)
         except Exception as exc:
             item_index = self._rejected_input_item_status_index(exc)
             if item_index is None:
                 raise
-            retry_body = self._responses_body_without_input_message_status(request_body, item_index)
+            retry_body = self._responses_body_without_optional_input_status(
+                request_body, item_index
+            )
             if retry_body is None:
                 raise
-            self._responses_without_message_status_models.add(model_name)
+            self._responses_without_optional_status_models.add(model_name)
             return await self._create_with_key_rotation(self._client.responses.create, retry_body)
 
     @staticmethod
@@ -835,8 +841,10 @@ class OpenAICompatProvider(LLMProvider):
             body["tool_choice"] = (
                 convert_tool_choice(self._effective_tool_choice(tool_choice, model)) or "auto"
             )
-        # Optional message status can be rejected inside an HTTP-200 SSE response.
-        return self._responses_body_without_input_message_status(body) or body
+        # Custom gateways may reject optional replay status inside an HTTP-200 stream.
+        if self._spec and self._spec.name == "custom":
+            return self._responses_body_without_optional_input_status(body) or body
+        return body
 
     # ------------------------------------------------------------------
     # Response parsing

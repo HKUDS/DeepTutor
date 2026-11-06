@@ -1,11 +1,9 @@
-"""Cover the one-shot retry for gateways that reject ``input[N].status``.
+"""Cover optional replay status removal and the bounded gateway fallback.
 
-Some Responses-wire gateways reject the ``status`` field that our replayed
-message items carry, with ``unknown_parameter`` naming the offending index.
-The provider strips the field and retries once, then remembers the model so
-the next turn does not pay a wasted round trip. These tests pin that
-behaviour at the request boundary: nothing here should broaden into a
-general retry-on-400.
+Custom Responses gateways can reject optional status fields on messages,
+reasoning and function calls inside an HTTP-200 stream. Requests omit those
+fields while preserving replay content and status required by other item
+kinds. The HTTP-error fallback remains bounded to one retry.
 """
 
 from __future__ import annotations
@@ -140,7 +138,7 @@ async def test_a_body_with_nothing_to_strip_reports_the_original_failure() -> No
         await provider._create_responses_with_status_retry(_body(statuses=False))
 
     assert len(calls) == 1
-    assert "responses-only-model" not in provider._responses_without_message_status_models
+    assert "responses-only-model" not in provider._responses_without_optional_status_models
 
 
 async def test_a_second_rejection_is_not_retried_again() -> None:
@@ -154,14 +152,32 @@ async def test_a_second_rejection_is_not_retried_again() -> None:
     assert len(calls) == 2
 
 
+async def test_status_is_preserved_for_items_where_it_is_required() -> None:
+    provider = _provider()
+    item = {"type": "web_search_call", "id": "ws_1", "status": "completed"}
+    body = {"input": [item, *_body()["input"]]}
+
+    sanitized = provider._responses_body_without_optional_input_status(body)
+
+    assert sanitized["input"][0] == item
+    assert provider._responses_body_without_optional_input_status(body, 0) is None
+    await provider._client.close()
+
+
 @pytest.mark.parametrize("method", ["chat", "chat_stream"])
 @pytest.mark.parametrize("replay_native_items", [False, True])
-async def test_requests_omit_message_status_before_a_gateway_can_reject_it(
+async def test_requests_omit_optional_status_before_a_gateway_can_reject_it(
     method: str, replay_native_items: bool
 ) -> None:
     provider = _provider()
     native_items = [
-        {"type": "reasoning", "id": "rs_1", "status": "completed", "summary": []},
+        {
+            "type": "reasoning",
+            "id": "rs_1",
+            "status": "completed",
+            "summary": [],
+            "encrypted_content": "opaque-reasoning-state",
+        },
         {
             "type": "message",
             "id": "msg_1",
@@ -192,7 +208,7 @@ async def test_requests_omit_message_status_before_a_gateway_can_reject_it(
         body = json.loads(request.content)
         requests.append(body)
         for index, item in enumerate(body["input"]):
-            if item.get("type") == "message" and "status" in item:
+            if item.get("type") in {"message", "reasoning", "function_call"} and "status" in item:
                 error = {
                     "code": "unknown_parameter",
                     "message": f"Unknown parameter: 'input[{index}].status'.",
@@ -244,13 +260,15 @@ async def test_requests_omit_message_status_before_a_gateway_can_reject_it(
     assert result.content == "ok"
     assert result.finish_reason == "stop"
     assert len(requests) == 1
-    assert all(
-        "status" not in item for item in requests[0]["input"] if item.get("type") == "message"
-    )
+    assert all("status" not in item for item in requests[0]["input"])
     assert messages == original
     if replay_native_items:
-        assert requests[0]["input"][1] == native_items[0]
+        assert requests[0]["input"][1] == {
+            key: value for key, value in native_items[0].items() if key != "status"
+        }
         assert requests[0]["input"][2] == {
             key: value for key, value in native_items[1].items() if key != "status"
         }
-        assert requests[0]["input"][3] == native_items[2]
+        assert requests[0]["input"][3] == {
+            key: value for key, value in native_items[2].items() if key != "status"
+        }
