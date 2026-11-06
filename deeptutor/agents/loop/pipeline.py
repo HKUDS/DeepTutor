@@ -52,6 +52,7 @@ from deeptutor.capabilities import (
 )
 from deeptutor.capabilities.protocol import END_LOOP
 from deeptutor.core.context import UnifiedContext
+from deeptutor.core.stream import StreamEvent, StreamEventType
 from deeptutor.core.tool_protocol import ToolLookup
 from deeptutor.core.trace import (
     build_trace_metadata,
@@ -185,6 +186,22 @@ def _merge_prompt_packs(base: dict[str, Any], override: dict[str, Any]) -> dict[
         else:
             merged[key] = value
     return merged
+
+
+def _format_ask_user_prompt(ask_user_payload: dict[str, Any]) -> str:
+    """Render the ask_user payload as a prompt event-stream clients can show."""
+    intro = str(ask_user_payload.get("intro") or "").strip()
+    lines: list[str] = []
+    for index, question in enumerate(ask_user_payload.get("questions") or [], 1):
+        if not isinstance(question, dict):
+            continue
+        header = str(question.get("header") or "").strip()
+        prompt = str(question.get("prompt") or "").strip()
+        lines.append(f"{index}. {header + ': ' if header else ''}{prompt}")
+    body = "\n".join(lines)
+    if intro and body:
+        return f"{intro}\n\n{body}"
+    return body or intro or _flatten_ask_user_summary(ask_user_payload)
 
 
 def _flatten_ask_user_summary(ask_user_payload: dict[str, Any]) -> str:
@@ -1289,6 +1306,22 @@ class AgenticLoopPipeline:
             )
             return False
 
+        # The turn is about to park in ``waiting_input`` until the reply queue
+        # yields. Executor-side state is not visible to clients that only read
+        # the event stream, so announce the pause here: without it such clients
+        # see no events at all and cannot tell a pending question from a hang.
+        await stream.emit(
+            StreamEvent(
+                type=StreamEventType.WAIT_FOR_INPUT,
+                source=self.event_source,
+                stage=self.event_stage,
+                content=_format_ask_user_prompt(ask_user),
+                metadata={
+                    "ask_user": ask_user,
+                    "tool_call_id": dispatch.pause_tool_call_id,
+                },
+            )
+        )
         raw_reply = await waiter()
         if raw_reply is None:
             return False
