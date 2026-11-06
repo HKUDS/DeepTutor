@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 
 import type { AnnotationItem } from "@/lib/reading-api";
 
@@ -30,6 +30,9 @@ export function useMarkSelection({
   const [selecting, setSelecting] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [busy, setBusy] = useState(false);
+  // Two presses dispatched before React re-renders both read the same state
+  // closure, so the guard has to read a ref that updates synchronously.
+  const busyRef = useRef(false);
 
   const start = useCallback(() => {
     setSelecting(true);
@@ -68,9 +71,10 @@ export function useMarkSelection({
    * wholly or partly; `-1` means there was nothing to do.
    */
   const removeSelected = useCallback(async (): Promise<number> => {
-    if (selected.size === 0 || busy) return -1;
+    if (selected.size === 0 || busyRef.current) return -1;
     const targets = rows.filter((row) => selected.has(row.id));
     stop();
+    busyRef.current = true;
     setBusy(true);
     let failed = 0;
     try {
@@ -82,10 +86,11 @@ export function useMarkSelection({
         }
       }
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
     return failed;
-  }, [busy, onDelete, rows, selected, stop]);
+  }, [onDelete, rows, selected, stop]);
 
   /** Copy the selection; `false` means the clipboard refused. */
   const copySelected = useCallback(async (): Promise<boolean> => {

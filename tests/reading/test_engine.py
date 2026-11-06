@@ -1289,3 +1289,44 @@ def test_state_written_before_the_split_is_still_read(store: ReadingStore, pdf_p
 
     notes = sorted(row.note for row in store.annotations(manifest.material_id))
     assert notes == ["written after the split", "written by the old reader"]
+
+
+def test_editing_a_mark_keeps_the_author_it_was_written_with(
+    store: ReadingStore, pdf_path: Path
+) -> None:
+    """An update must not relabel the assistant's mark as the reader's.
+
+    The request body cannot say who authored a mark — the router hardcodes
+    ``"user"`` — so an edit that ignored the stored author would silently strip
+    the assistant badge from a mark the model made.
+    """
+    manifest = store.ingest(pdf_path)
+
+    saved = store.save_annotation(
+        manifest.material_id,
+        Annotation(
+            annotation_id="",
+            locator=1,
+            quote="Introduction",
+            note="from the assistant",
+            author="assistant",
+        ),
+    )
+    assert saved.author == "assistant"
+
+    # The reader recolours it; the router would send author="user".
+    edited = store.save_annotation(
+        manifest.material_id,
+        Annotation(
+            annotation_id=saved.annotation_id,
+            locator=1,
+            quote="Introduction",
+            note="from the assistant",
+            color="green",
+            author="user",
+        ),
+    )
+
+    assert edited.author == "assistant"
+    stored = store.annotations(manifest.material_id)
+    assert [row.author for row in stored] == ["assistant"]
