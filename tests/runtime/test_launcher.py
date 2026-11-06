@@ -412,7 +412,13 @@ def test_reclaim_requires_same_deployment_and_dead_launcher(tmp_path, monkeypatc
             "from multiprocessing.spawn import spawn_main",
         ]
     resolved_role = "start.frontend" if role == "start.frontend" else "start.backend"
-    monkeypatch.setattr(psutil, "Process", lambda _pid: process)
+    monkeypatch.setattr(
+        psutil,
+        "Process",
+        lambda pid=None: (
+            process if pid is not None else SimpleNamespace(exe=lambda: sys.executable)
+        ),
+    )
     monkeypatch.setattr(launcher, "_is_pid_alive", lambda _pid: False)
 
     def inspect():
@@ -454,7 +460,13 @@ def test_reclaim_rejects_unverified_backend_identity(tmp_path, monkeypatch, faul
         exe=lambda: "/another/python" if fault == "interpreter" else sys.executable,
         cwd=lambda: str(tmp_path / "other") if fault == "cwd" else str(tmp_path),
     )
-    monkeypatch.setattr(psutil, "Process", lambda _pid: process)
+    monkeypatch.setattr(
+        psutil,
+        "Process",
+        lambda pid=None: (
+            process if pid is not None else SimpleNamespace(exe=lambda: sys.executable)
+        ),
+    )
     monkeypatch.setattr(launcher, "_is_pid_alive", lambda _pid: False)
     assert (
         launcher._owned_orphan_started_at(
@@ -462,6 +474,44 @@ def test_reclaim_rejects_unverified_backend_identity(tmp_path, monkeypatch, faul
         )
         is None
     )
+
+
+@pytest.mark.parametrize("identity", ["framework", "foreign", "uninspectable"])
+def test_reclaim_compares_running_interpreters_with_framework_python(
+    tmp_path, monkeypatch, identity
+):
+    import psutil
+
+    # A macOS framework build starts through bin/python3 but runs Python.app.
+    executable = tmp_path / "Python.framework/Resources/Python.app/Contents/MacOS/Python"
+    monkeypatch.setattr(sys, "executable", str(tmp_path / "Python.framework/bin/python3"))
+    child = SimpleNamespace(
+        pid=101,
+        environ=lambda: {
+            launcher.DEEPTUTOR_HOME_ENV: str(tmp_path),
+            launcher.LAUNCHER_PID_ENV: "4242",
+        },
+        create_time=lambda: 123.0,
+        parents=lambda: [],
+        cmdline=lambda: [str(executable), "-m", "uvicorn", "deeptutor.api.main:app"],
+        exe=lambda: str(tmp_path / "other-python") if identity == "foreign" else str(executable),
+        cwd=lambda: str(tmp_path),
+    )
+
+    def current_executable():
+        if identity == "uninspectable":
+            raise psutil.AccessDenied()
+        return str(executable)
+
+    monkeypatch.setattr(
+        psutil,
+        "Process",
+        lambda pid=None: child if pid is not None else SimpleNamespace(exe=current_executable),
+    )
+    monkeypatch.setattr(launcher, "_is_pid_alive", lambda _pid: False)
+    assert launcher._owned_orphan_started_at(
+        101, role="start.backend", runtime_home=tmp_path, frontend_cwd=None
+    ) == (123.0 if identity == "framework" else None)
 
 
 @pytest.mark.parametrize("case", ["owned", "unknown", "mixed", "pid_reused", "still_busy"])
