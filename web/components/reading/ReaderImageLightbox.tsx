@@ -21,6 +21,22 @@ interface ImageView {
 
 const FIT_VIEW: ImageView = { scale: 1, x: 0, y: 0 };
 
+const FOCUSABLE_SELECTOR = [
+  "a[href]",
+  "button:not([disabled])",
+  "input:not([disabled])",
+  "select:not([disabled])",
+  "textarea:not([disabled])",
+  "[tabindex]:not([tabindex='-1'])",
+].join(",");
+
+/** The controls a Tab press may land on, in DOM order. */
+function focusableControls(root: HTMLElement): HTMLElement[] {
+  return Array.from(
+    root.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR),
+  ).filter((node) => node.tabIndex >= 0);
+}
+
 /**
  * Full-screen viewer for a picture from the text or EPUB reader.
  *
@@ -119,6 +135,35 @@ export function ReaderImageLightbox({
         return;
       }
       if (event.metaKey || event.ctrlKey || event.altKey) return;
+      if (event.key === "Tab") {
+        // `aria-modal` only tells assistive technology that the rest of the
+        // page is inert; the browser still tabs through it. Cycle the dialog's
+        // own controls instead, and pull focus back in if it ever got out.
+        const root = backdropRef.current;
+        if (!root) return;
+        const controls = focusableControls(root);
+        if (controls.length === 0) {
+          event.preventDefault();
+          root.focus();
+          return;
+        }
+        const first = controls[0];
+        const last = controls[controls.length - 1];
+        const active = document.activeElement as HTMLElement | null;
+        if (!active || !root.contains(active)) {
+          event.preventDefault();
+          (event.shiftKey ? last : first).focus();
+          return;
+        }
+        if (event.shiftKey && (active === first || active === root)) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && active === last) {
+          event.preventDefault();
+          first.focus();
+        }
+        return;
+      }
       if (event.key === "+" || event.key === "=") {
         event.preventDefault();
         zoomByFactor(BUTTON_STEP);
@@ -232,11 +277,15 @@ export function ReaderImageLightbox({
         />
       </div>
 
-      <div className="absolute inset-x-0 bottom-4 flex justify-center">
+      {/* The band spans the whole window, but only the toolbar in it is a
+          control: without `pointer-events-none` the empty strip either side of
+          the toolbar swallowed the click-to-dismiss the rest of the stage
+          honours. The toolbar opts back in so its buttons still work. */}
+      <div className="pointer-events-none absolute inset-x-0 bottom-4 flex justify-center">
         <div
           role="toolbar"
           aria-label={t("Zoom level")}
-          className="flex items-center gap-0.5 rounded-xl bg-white/10 px-1.5 py-1 text-white backdrop-blur"
+          className="pointer-events-auto flex items-center gap-0.5 rounded-xl bg-white/10 px-1.5 py-1 text-white backdrop-blur"
         >
           <PreferenceButton
             label={t("Zoom out")}

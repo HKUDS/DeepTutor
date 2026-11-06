@@ -503,3 +503,85 @@ describe("reader image lightbox keyboard and wheel", () => {
     expect(toolbarPercent()).toBe(before);
   });
 });
+
+describe("the lightbox traps Tab inside the dialog", () => {
+  // `aria-modal` tells assistive technology the page behind is inert, but the
+  // browser still tabs into it. jsdom does not perform Tab navigation either,
+  // so a wrapped focus can only come from the component itself: this is the
+  // focus trap, not the browser's default.
+  function enabledControls(): HTMLButtonElement[] {
+    return Array.from(
+      dialog()!.querySelectorAll<HTMLButtonElement>("button:not([disabled])"),
+    );
+  }
+
+  it("cycles through the toolbar instead of walking out into the reader", async () => {
+    render(
+      <ReaderImageLightbox src="/img.png" alt="diagram" onClose={vi.fn()} />,
+    );
+
+    const toolbarButtons = enabledControls();
+    const first = toolbarButtons[0];
+    const last = toolbarButtons[toolbarButtons.length - 1];
+    // Zoom out is disabled at fit, so the ring starts at Zoom in and ends at
+    // Close - the control a Tab press would otherwise leave from.
+    expect(first).toBe(dialog()!.querySelector('button[aria-label="Zoom in"]'));
+    expect(last).toBe(dialog()!.querySelector('button[aria-label="Close"]'));
+
+    // Moving focus by hand blurs a toolbar button, and its tooltip reacts to
+    // that, so the move itself belongs inside `act`.
+    await act(async () => {
+      last.focus();
+    });
+    expect(document.activeElement).toBe(last);
+    await act(async () => {
+      fireEvent.keyDown(last, { key: "Tab" });
+    });
+    expect(document.activeElement).toBe(first);
+
+    await act(async () => {
+      fireEvent.keyDown(first, { key: "Tab", shiftKey: true });
+    });
+    expect(document.activeElement).toBe(last);
+
+    // Focus that ended up on the page behind the dialog is pulled back in by
+    // the next Tab rather than continuing through the reader.
+    const behind = document.createElement("button");
+    behind.textContent = "reader control";
+    document.body.appendChild(behind);
+    await act(async () => {
+      behind.focus();
+    });
+    expect(document.activeElement).toBe(behind);
+    await act(async () => {
+      fireEvent.keyDown(behind, { key: "Tab" });
+    });
+    expect(document.activeElement).toBe(first);
+    expect(dialog()!.contains(document.activeElement)).toBe(true);
+    behind.remove();
+
+    // Focusing a toolbar button starts the lazily loaded tooltip layer; let it
+    // settle inside the test instead of updating React after cleanup.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+  });
+});
+
+describe("the toolbar band does not swallow a click on empty space", () => {
+  it("lets a click beside the toolbar fall through to the dismissing stage", async () => {
+    render(
+      <ReaderImageLightbox src="/img.png" alt="diagram" onClose={vi.fn()} />,
+    );
+    const toolbar = dialog()!.querySelector('[role="toolbar"]')!;
+    const band = toolbar.parentElement as HTMLElement;
+
+    // jsdom does no hit testing, so this asserts the contract that makes
+    // Chromium's hit test fall through: the band spans the window but is
+    // transparent to the pointer, and only the toolbar inside it takes clicks.
+    // Without it, the empty black strip either side of the toolbar - about
+    // 34px tall - swallowed the click-to-dismiss the stage honours.
+    expect(band.className).toContain("pointer-events-none");
+    expect(toolbar.className).toContain("pointer-events-auto");
+  });
+});

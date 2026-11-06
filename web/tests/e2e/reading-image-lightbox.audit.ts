@@ -214,9 +214,6 @@ test.beforeEach(async ({ page }) => {
   });
 });
 
-
-const SHOTS = "/Users/laiyongqiang/code/DeepTutor/.visual";
-
 test("a picture opens full-screen, and tapping it does not dismiss the view", async ({
   page,
 }) => {
@@ -231,13 +228,17 @@ test("a picture opens full-screen, and tapping it does not dismiss the view", as
   await picture.click();
   const dialog = page.getByRole("dialog", { name: "Image" });
   await expect(dialog).toBeVisible({ timeout: 10_000 });
-  await page.screenshot({ path: `${SHOTS}/20-lightbox-open.png` });
+  await page.screenshot({
+    path: test.info().outputPath("20-lightbox-open.png"),
+  });
 
   // Zoom in twice with the toolbar; the toolbar must not dismiss the view.
   await dialog.getByRole("button", { name: "Zoom in" }).click();
   await dialog.getByRole("button", { name: "Zoom in" }).click();
   await expect(dialog).toBeVisible();
-  await page.screenshot({ path: `${SHOTS}/21-lightbox-zoomed.png` });
+  await page.screenshot({
+    path: test.info().outputPath("21-lightbox-zoomed.png"),
+  });
 
   // The regression: a plain click on the zoomed picture closed the viewer,
   // because pointer capture retargeted the click to the stage.
@@ -257,5 +258,28 @@ test("a picture opens full-screen, and tapping it does not dismiss the view", as
   await picture.click();
   await expect(dialog).toBeVisible();
   await page.mouse.click(20, 20);
+  await expect(dialog).toHaveCount(0);
+
+  // The bottom toolbar band spans the whole window, so its empty strip either
+  // side of the toolbar must fall through to the stage and dismiss. It used to
+  // swallow that click: the band was hit-testable but had no handler.
+  await picture.click();
+  await expect(dialog).toBeVisible();
+  // bottom-4 is 16px and the band is ~36px tall, so this is the middle of its
+  // empty left strip, far from the centred toolbar.
+  await page.mouse.click(100, 900 - 16 - 18);
+  await expect(dialog).toHaveCount(0);
+
+  // Tab must stay inside the modal instead of walking into the reader behind
+  // it: from the last control it wraps to the first, and back with Shift+Tab.
+  await picture.click();
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: "Close" }).focus();
+  await page.keyboard.press("Tab");
+  await expect(dialog.getByRole("button", { name: "Zoom in" })).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(dialog.getByRole("button", { name: "Close" })).toBeFocused();
+
+  await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
 });
