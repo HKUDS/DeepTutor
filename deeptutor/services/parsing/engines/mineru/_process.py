@@ -9,6 +9,21 @@ import sys
 import time
 from typing import Any
 
+#: How long the tree gets to disappear after the kill signals. Shared by the
+#: Windows job-object loop and the POSIX group poll so both give up at the same
+#: point; a test can shorten it instead of waiting out the real deadline.
+_PROCESS_SETTLE_SECONDS = 5.0
+
+
+class ProcessTreeNotSettled(RuntimeError):
+    """The CLI tree outlived the settle deadline.
+
+    A subclass of :class:`RuntimeError`, so callers that already catch broadly
+    keep working unchanged. It exists so the parse can report "cleanup failed"
+    rather than "the parser crashed": the two call for different handling, and
+    only this one means the artifacts may still be in motion (#2426).
+    """
+
 
 @contextmanager
 def cli_process(cmd: list[str], log_path: Path, env: dict[str, str]):
@@ -63,12 +78,14 @@ def cli_process(cmd: list[str], log_path: Path, env: dict[str, str]):
                     if process is not None and not assigned:
                         process.kill()  # Still suspended; cannot have spawned a child.
                     win32job.TerminateJobObject(job, 1)
-                    deadline = time.monotonic() + 5
+                    deadline = time.monotonic() + _PROCESS_SETTLE_SECONDS
                     while win32job.QueryInformationJobObject(
                         job, win32job.JobObjectBasicAccountingInformation
                     )["ActiveProcesses"]:
                         if time.monotonic() >= deadline:
-                            raise RuntimeError("MinerU process-tree cleanup did not settle")
+                            raise ProcessTreeNotSettled(
+                                "MinerU process-tree cleanup did not settle"
+                            )
                         time.sleep(0.05)
                 finally:
                     job.Close()
@@ -85,10 +102,10 @@ def cli_process(cmd: list[str], log_path: Path, env: dict[str, str]):
             if process is not None:
                 process.wait(timeout=5)
             if sys.platform != "win32" and process is not None:
-                deadline = time.monotonic() + 5
+                deadline = time.monotonic() + _PROCESS_SETTLE_SECONDS
                 while _process_group_alive(process.pid):
                     if time.monotonic() >= deadline:
-                        raise RuntimeError("MinerU process-tree cleanup did not settle")
+                        raise ProcessTreeNotSettled("MinerU process-tree cleanup did not settle")
                     time.sleep(0.05)
 
 

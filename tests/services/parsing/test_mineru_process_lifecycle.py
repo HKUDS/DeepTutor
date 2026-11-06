@@ -190,3 +190,87 @@ def test_permission_error_never_confirms_group_cleanup(monkeypatch):
 
     monkeypatch.setattr(_process.os, "killpg", denied)
     assert _process._process_group_alive(12345)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX process groups")
+def test_unsettled_tree_is_reported_as_cleanup_failed(tmp_path, monkeypatch):
+    """A tree that never settles gets its own reason and is not published (#2426).
+
+    The probe is patched rather than the exception: ``_process_group_alive``
+    answering "still alive" is exactly what a wedged tree looks like, so this
+    runs the real settle loop, its real deadline and the real handler in
+    ``local.py``. Injecting ``ProcessTreeNotSettled`` from the context manager,
+    as an earlier attempt did, would skip all three.
+
+    Driving it with a real unkillable child is not practical: ``SIGKILL`` cannot
+    be blocked, so a genuine process would settle in practice. The loop is
+    therefore exercised here, and the "can a tree really hang" question stays
+    open — stated in the PR rather than implied by a green test.
+    """
+    from deeptutor.services.parsing.engines.mineru import _process
+
+    monkeypatch.setattr(_process, "_PROCESS_SETTLE_SECONDS", 0.2)
+    monkeypatch.setattr(_process, "_process_group_alive", lambda _pgid: True)
+
+    result, elapsed = run_fixture(
+        tmp_path,
+        monkeypatch,
+        "import pathlib,sys; p=pathlib.Path(sys.argv[1]); "
+        "(p/'lesson.md').write_text('# parsed',encoding='utf-8')",
+        idle=10,
+    )
+
+    assert not result.ok
+    assert result.reason is local.LocalParseReason.CLEANUP_FAILED, result.reason
+    assert "ProcessTreeNotSettled" in result.detail
+    # A deliberately short deadline, so the poll ends instead of waiting 5s.
+    assert elapsed < 3
+    # Publication is withheld: the attempt was never renamed into the visible
+    # location, so a late write cannot land in a result a caller already has.
+    assert not (tmp_path / "out" / "lesson").exists()
+    (state_file,) = (tmp_path / "out").glob(".mineru-attempt-*/state.json")
+    assert '"cleanup_failed"' in state_file.read_text()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX process groups")
+def test_other_failures_keep_reporting_exception(tmp_path, monkeypatch):
+    """The new reason is narrow: an unrelated failure is still ``EXCEPTION``."""
+
+    def boom(*_args, **_kwargs):
+        raise ValueError("something else broke")
+
+    # ``local`` binds ``cli_process`` at import, so patch it there rather than
+    # in ``_process``.
+    monkeypatch.setattr(local, "cli_process", boom)
+
+    result, _ = run_fixture(tmp_path, monkeypatch, "import time; time.sleep(0.1)")
+
+    assert not result.ok
+    assert result.reason is local.LocalParseReason.EXCEPTION, result.reason
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX process groups")
+def test_settled_tree_still_publishes(tmp_path, monkeypatch):
+    """The normal path is untouched: a settling tree publishes and succeeds."""
+    from deeptutor.services.parsing.engines.mineru import _process
+
+    calls: list[int] = []
+
+    def settles(pgid: int) -> bool:
+        calls.append(pgid)
+        return False  # First poll: already empty.
+
+    monkeypatch.setattr(_process, "_process_group_alive", settles)
+
+    result, elapsed = run_fixture(
+        tmp_path,
+        monkeypatch,
+        "import pathlib,sys; p=pathlib.Path(sys.argv[1]); "
+        "(p/'lesson.md').write_text('# parsed',encoding='utf-8')",
+        idle=10,
+    )
+
+    assert result.ok, result
+    assert calls, "the settle probe must be consulted even when it clears at once"
+    assert (tmp_path / "out" / "lesson" / "lesson.md").read_text() == "# parsed"
+    assert elapsed < 3

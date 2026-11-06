@@ -20,7 +20,7 @@ from uuid import uuid4
 from deeptutor.services.file_io import atomic_write_json
 from deeptutor.services.parsing.cache import load_ir
 
-from ._process import cli_process
+from ._process import ProcessTreeNotSettled, cli_process
 from .formats import MINERU_SUPPORTED_FORMATS
 
 # Minimum seconds between on_output callbacks. MinerU's CLI emits tqdm-style
@@ -63,6 +63,12 @@ class LocalParseReason(StrEnum):
     NONZERO_EXIT = "nonzero_exit"
     NO_ARTIFACTS = "no_artifacts"
     EXCEPTION = "exception"
+    #: The parse produced artifacts but its process tree did not settle within
+    #: the deadline, so the attempt is not safe to treat as finished (#2426).
+    #: Kept apart from ``EXCEPTION`` because a caller deciding whether to retry
+    #: needs to tell a wedged teardown apart from a parser crash: the work may
+    #: already be good and only the cleanup in doubt.
+    CLEANUP_FAILED = "cleanup_failed"
 
 
 @dataclass(frozen=True, slots=True)
@@ -375,6 +381,17 @@ def parse_document_with_mineru_result(
         result = LocalParseResult.success()
         return result
 
+    except ProcessTreeNotSettled as e:
+        # The tree outlived the deadline, so whatever it wrote may still be
+        # changing. Publication is withheld either way — the rename sits above
+        # this handler — but the outcome is reported as its own reason rather
+        # than folded into the generic exception bucket (#2426).
+        print(f"✗ MinerU process tree did not settle: {e!s}")
+        result = LocalParseResult.failure(
+            LocalParseReason.CLEANUP_FAILED,
+            f"{type(e).__name__}: {e}",
+        )
+        return result
     except Exception as e:
         print(f"✗ Error occurred during parsing: {e!s}")
         import traceback
