@@ -50,7 +50,7 @@ def test_docling_parser_avoids_source_only_build_dependencies():
 @pytest.mark.parametrize(
     "module,requirement",
     [
-        ("core", "mcp>=1.26.0,<2.0.0"),
+        ("core", "mcp>=1.30.0,<2.0.0"),
         ("core", "typer>=0.9.0"),
         ("core", "tzdata>=2024.1"),
         ("core", "packaging>=24.2"),
