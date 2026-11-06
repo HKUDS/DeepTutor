@@ -185,40 +185,6 @@ export function ReadingProvider({ children }: { children: ReactNode }) {
     setReadingViewport({ locator: 0, selection: "" });
   }, []);
 
-  const saveMark = useCallback(
-    async (draft: AnnotationDraft, optimistic: AnnotationItem) => {
-      const materialId = material?.material_id;
-      if (!materialId) return false;
-      const token = openTokenRef.current;
-      // From here on this tab's list differs from any GET already in flight.
-      localMutationSeqRef.current += 1;
-      pendingWritesRef.current.add(optimistic.annotation_id);
-      const previous = annotations.find(row => row.annotation_id === optimistic.annotation_id);
-      setAnnotations(current => previous
-        ? current.map(row => row.annotation_id === optimistic.annotation_id ? optimistic : row)
-        : [...current, optimistic]);
-      try {
-        const saved = await saveAnnotation(materialId, draft);
-        if (token === openTokenRef.current) setAnnotations(current => current.map(row => row.annotation_id === optimistic.annotation_id ? saved : row));
-        pendingWritesRef.current.delete(optimistic.annotation_id);
-        // The acknowledged row is now part of this tab's list; a GET that
-        // started before the PUT returned may not contain it.
-        localMutationSeqRef.current += 1;
-        publishAnnotationsChange(materialId);
-        return true;
-      } catch (caught) {
-        pendingWritesRef.current.delete(optimistic.annotation_id);
-        localMutationSeqRef.current += 1;
-        if (token !== openTokenRef.current) return false;
-        setAnnotations(current => previous
-          ? current.map(row => row.annotation_id === optimistic.annotation_id ? previous : row)
-          : current.filter(row => row.annotation_id !== optimistic.annotation_id));
-        setErrorState(caught instanceof Error ? caught.message : "That annotation could not be saved.");
-        return false;
-      }
-    }, [material, annotations],
-  );
-
   const materialId = material?.material_id ?? null;
 
   /**
@@ -235,8 +201,8 @@ export function ReadingProvider({ children }: { children: ReactNode }) {
    *
    * Resolves `true` only when the response was applied. A superseded read, a
    * read that raced a local change, and a failed request all resolve `false`;
-   * the delete rollback needs that answer to decide whether it must fall back
-   * to its own captured row.
+   * the save and delete rollbacks need that answer to decide whether they must
+   * fall back to their own captured row.
    */
   const refreshMarks = useCallback((): Promise<boolean> => {
     if (!materialId) return Promise.resolve(false);
@@ -277,6 +243,60 @@ export function ReadingProvider({ children }: { children: ReactNode }) {
         return false;
       });
   }, [materialId]);
+
+  const saveMark = useCallback(
+    async (draft: AnnotationDraft, optimistic: AnnotationItem) => {
+      const materialId = material?.material_id;
+      if (!materialId) return false;
+      const token = openTokenRef.current;
+      // From here on this tab's list differs from any GET already in flight.
+      localMutationSeqRef.current += 1;
+      pendingWritesRef.current.add(optimistic.annotation_id);
+      const previous = annotations.find(row => row.annotation_id === optimistic.annotation_id);
+      setAnnotations(current => previous
+        ? current.map(row => row.annotation_id === optimistic.annotation_id ? optimistic : row)
+        : [...current, optimistic]);
+      try {
+        const saved = await saveAnnotation(materialId, draft);
+        if (token === openTokenRef.current) setAnnotations(current => current.map(row => row.annotation_id === optimistic.annotation_id ? saved : row));
+        pendingWritesRef.current.delete(optimistic.annotation_id);
+        // The acknowledged row is now part of this tab's list; a GET that
+        // started before the PUT returned may not contain it.
+        localMutationSeqRef.current += 1;
+        publishAnnotationsChange(materialId);
+        return true;
+      } catch (caught) {
+        // The write is no longer pending, so a refresh from here on is allowed
+        // to replace the optimistic row with whatever the server holds.
+        pendingWritesRef.current.delete(optimistic.annotation_id);
+        localMutationSeqRef.current += 1;
+        if (token !== openTokenRef.current) return false;
+        setErrorState(caught instanceof Error ? caught.message : "That annotation could not be saved.");
+        // The captured row may be stale: another tab can have edited this mark
+        // while the PUT was in flight, and a refresh may already have brought
+        // the newer copy — hidden here until now by the pending merge. The row
+        // may even be gone, deleted remotely while this tab was still editing
+        // it. Re-reading asks the server what it holds now, and the normal
+        // merge decides: the newer note wins, and a row the server no longer
+        // lists stays gone.
+        const reconciled = await refreshMarks();
+        if (token !== openTokenRef.current) return false;
+        if (!reconciled) {
+          // The re-read failed (or was superseded): fall back to the state
+          // captured before the edit. This is the pre-reconcile behaviour,
+          // kept so a flaky GET never costs the reader a row they can still
+          // see. A brand-new mark that never reached the server is removed.
+          // Deliberately a map, not an append: if the id is already absent,
+          // a newer refresh has settled the list without it, and putting the
+          // captured row back would resurrect a remotely deleted mark.
+          setAnnotations(current => previous
+            ? current.map(row => row.annotation_id === optimistic.annotation_id ? previous : row)
+            : current.filter(row => row.annotation_id !== optimistic.annotation_id));
+        }
+        return false;
+      }
+    }, [material, annotations, refreshMarks],
+  );
 
   const removeMark = useCallback(
     async (annotation: AnnotationItem): Promise<boolean> => {
@@ -346,8 +366,9 @@ export function ReadingProvider({ children }: { children: ReactNode }) {
   /**
    * Re-read the marks when another tab reports a change.
    *
-   * The read itself lives in `refreshMarks`, which the delete rollback also
-   * uses: both need the same "ask the server, then merge" answer.
+   * The read itself lives in `refreshMarks`, which the save and delete
+   * rollbacks also use: all three need the same "ask the server, then merge"
+   * answer.
    */
   useEffect(() => {
     if (!materialId) return;
