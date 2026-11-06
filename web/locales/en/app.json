@@ -6585,5 +6585,11 @@
   "Zoom level": "Zoom level",
   "Reset zoom": "Reset zoom",
   "Fit text": "Fit text",
-  "Fit page": "Fit page"
+  "Fit page": "Fit page",
+  "Drag to pan, scroll to zoom": "Drag to pan, scroll to zoom",
+  "Image preview": "Image preview",
+  "Loading image…": "Loading image…",
+  "Page {{n}}": "Page {{n}}",
+  "This image could not be rendered.": "This image could not be rendered.",
+  "Zoom image": "Zoom image"
 }

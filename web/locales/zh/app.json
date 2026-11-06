@@ -6585,5 +6585,11 @@
   "Zoom level": "缩放比例",
   "Reset zoom": "重置缩放",
   "Fit text": "适应文字",
-  "Fit page": "适应页面"
+  "Fit page": "适应页面",
+  "Drag to pan, scroll to zoom": "拖动平移，滚轮缩放",
+  "Image preview": "图片预览",
+  "Loading image…": "正在加载图片…",
+  "Page {{n}}": "第 {{n}} 页",
+  "This image could not be rendered.": "无法渲染这张图片。",
+  "Zoom image": "放大图片"
 }

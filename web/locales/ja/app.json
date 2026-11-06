@@ -6585,5 +6585,11 @@
   "Zoom level": "ズーム倍率",
   "Reset zoom": "ズームをリセット",
   "Fit text": "テキストに合わせる",
-  "Fit page": "ページに合わせる"
+  "Fit page": "ページに合わせる",
+  "Drag to pan, scroll to zoom": "ドラッグで移動、スクロールでズーム",
+  "Image preview": "画像プレビュー",
+  "Loading image…": "画像を読み込み中…",
+  "Page {{n}}": "{{n}} ページ",
+  "This image could not be rendered.": "この画像を表示できませんでした。",
+  "Zoom image": "画像を拡大"
 }
