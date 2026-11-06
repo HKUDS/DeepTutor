@@ -411,6 +411,16 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         default_api_base="https://cloudgpu.app/v1",
     ),
     ProviderSpec(
+        name="uberllm",
+        keywords=("uberllm",),
+        env_key="UBERLLM_API_KEY",
+        display_name="UberLLM",
+        backend="openai_compat",
+        is_gateway=True,
+        detect_by_base_keyword="uberllm",
+        default_api_base="https://api.uberllm.dev/v1",
+    ),
+    ProviderSpec(
         name="volcengine",
         keywords=("volcengine", "volces", "ark"),
         env_key="OPENAI_API_KEY",

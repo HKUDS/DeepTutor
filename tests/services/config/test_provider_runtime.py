@@ -1344,3 +1344,60 @@ def test_llm_cloudgpu_base_url_detection_preserves_openai_binding_compatibility(
     assert resolved.provider_name == "cloudgpu"
     assert resolved.provider_mode == "gateway"
     assert resolved.effective_url == "https://cloudgpu.app/v1"
+
+
+def test_llm_uberllm_binding_uses_default_openai_compatible_endpoint() -> None:
+    catalog = _build_catalog(
+        llm_profile={
+            "id": "llm-p",
+            "name": "UberLLM",
+            "binding": "uberllm",
+            "base_url": "",
+            "api_key": "uberllm-key",
+            "api_version": "",
+            "extra_headers": {},
+            "models": [
+                {
+                    "id": "llm-m",
+                    "name": "DeepSeek V4 Flash",
+                    "model": "deepseek/deepseek-v4-flash",
+                }
+            ],
+        }
+    )
+
+    resolved = resolve_llm_runtime_config(catalog=catalog)
+
+    assert resolved.provider_name == "uberllm"
+    assert resolved.provider_mode == "gateway"
+    assert resolved.binding == "uberllm"
+    assert resolved.model == "deepseek/deepseek-v4-flash"
+    assert resolved.api_key == "uberllm-key"
+    assert resolved.effective_url == "https://api.uberllm.dev/v1"
+
+
+def test_llm_uberllm_base_url_detection_preserves_openai_binding_compatibility() -> None:
+    catalog = _build_catalog(
+        llm_profile={
+            "id": "llm-p",
+            "name": "OpenAI Compatible",
+            "binding": "openai",
+            "base_url": "https://api.uberllm.dev/v1",
+            "api_key": "uberllm-key",
+            "api_version": "",
+            "extra_headers": {},
+            "models": [
+                {
+                    "id": "llm-m",
+                    "name": "DeepSeek V4 Flash",
+                    "model": "deepseek/deepseek-v4-flash",
+                }
+            ],
+        }
+    )
+
+    resolved = resolve_llm_runtime_config(catalog=catalog)
+
+    assert resolved.provider_name == "uberllm"
+    assert resolved.provider_mode == "gateway"
+    assert resolved.effective_url == "https://api.uberllm.dev/v1"
