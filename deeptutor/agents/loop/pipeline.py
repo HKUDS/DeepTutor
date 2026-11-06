@@ -50,7 +50,7 @@ from deeptutor.capabilities import (
     active_loop_capabilities,
     any_exclusive_capability_active,
 )
-from deeptutor.capabilities.protocol import END_LOOP
+from deeptutor.capabilities.protocol import END_LOOP, FinishDecision
 from deeptutor.core.context import UnifiedContext
 from deeptutor.core.tool_protocol import ToolLookup
 from deeptutor.core.trace import (
@@ -944,18 +944,20 @@ class AgenticLoopPipeline:
         return None
 
     def _capability_finish_instruction(self, context: UnifiedContext, final_text: str) -> str:
-        """Let an active capability reject a narrow tool-less finish once.
+        """Return repair instructions without consuming the repair allowance."""
+        return self._capability_finish_decision(context, final_text).instruction
 
-        This is a protocol guard, not a content generator: capabilities return
-        a short instruction only when their own state proves that required tool
-        work remains. A guard failure must not sink the learner's answer.
-        """
+    def _capability_finish_decision(
+        self, context: UnifiedContext, final_text: str
+    ) -> FinishDecision:
+        optional = FinishDecision()
         for cap in self._active_loop_capabilities(context):
-            hook = getattr(cap, "finish_instruction", None)
+            decision_hook = getattr(cap, "finish_decision", None)
+            hook = decision_hook or getattr(cap, "finish_instruction", None)
             if not callable(hook):
                 continue
             try:
-                instruction = hook(context, final_text)
+                value = hook(context, final_text)
             except Exception:
                 logger.warning(
                     "finish guard failed for capability %s",
@@ -963,10 +965,24 @@ class AgenticLoopPipeline:
                     exc_info=True,
                 )
                 continue
-            content = str(instruction or "").strip()
-            if content:
-                return content
-        return ""
+            decision = (
+                value
+                if isinstance(value, FinishDecision)
+                else FinishDecision(str(value or "").strip(), blocking=bool(value))
+            )
+            if decision.blocking:
+                return decision
+            if decision.instruction and not optional.instruction:
+                optional = decision
+        return optional
+
+    def _capability_finish_redirected(self, context: UnifiedContext) -> None:
+        selected = self._capability_finish_decision(context, "")
+        for cap in self._active_loop_capabilities(context):
+            hook = getattr(cap, "on_finish_redirect", None)
+            decide = getattr(cap, "finish_decision", None)
+            if callable(hook) and callable(decide) and decide(context, "") == selected:
+                hook(context)
 
     def _capability_tool_round_output_policy(
         self,
@@ -1280,6 +1296,19 @@ class AgenticLoopPipeline:
         if raw_reply is None:
             return False
         reply_text, answers = _normalise_user_reply(raw_reply)
+        if answers:
+            for answer in answers:
+                context.record_user_input(
+                    answer.get("text") or "",
+                    source="ask_user",
+                    input_id=f"{dispatch.pause_tool_call_id}:{answer.get('questionId', '')}",
+                )
+        else:
+            context.record_user_input(
+                reply_text,
+                source="ask_user",
+                input_id=str(dispatch.pause_tool_call_id),
+            )
         await self._notify_pause_hooks(
             context,
             "on_user_resume",

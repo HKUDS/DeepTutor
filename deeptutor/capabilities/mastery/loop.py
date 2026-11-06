@@ -20,7 +20,7 @@ import logging
 from typing import Any
 
 from deeptutor.capabilities.mastery.tools import MASTERY_TOOL_NAMES
-from deeptutor.capabilities.protocol import PromptBlock
+from deeptutor.capabilities.protocol import FinishDecision, PromptBlock
 from deeptutor.core.context import UnifiedContext
 from deeptutor.core.tool_protocol import TOOL_EVENT_PROJECTION, ToolEventProjection
 from deeptutor.services.prompt.lookup import prompt_text as _prompt_text
@@ -182,8 +182,23 @@ class MasteryLoopCapability:
             updated["_mastery_session_mode"] = context.metadata.get("mastery_session_mode")
             updated["_session_id"] = str(context.session_id or "").strip()
             updated["_turn_id"] = str(context.metadata.get("turn_id") or "").strip()
+            if tool_name == "mastery_build":
+                selection = int(state.get("outline_selection", 0)) + 1
+                state["outline_selection"] = selection
+                state["outline_write_pending"] = True
+
+                def outline_recorded(receipt):
+                    if (
+                        state.get("outline_selection") == selection
+                        and context.metadata.get("mastery_path_id") == path_id
+                    ):
+                        state["outline_write_pending"] = False
+                        state["outline_receipt"] = receipt
+
+                updated["_outline_recorded"] = outline_recorded
             if tool_name == "mastery_profile":
                 updated["_learner_message"] = context.user_message or ""
+                updated["_learner_evidence"] = context.user_evidence()
                 selection = int(state.get("profile_selection", 0)) + 1
                 state["profile_selection"] = selection
                 state["profile_write_pending"] = True
@@ -326,18 +341,37 @@ class MasteryLoopCapability:
         )
 
     def finish_instruction(self, context: UnifiedContext, final_text: str) -> str | None:
-        """Retry failed tool operations without classifying the learner-facing prose.
+        """Compatibility projection of the side-effect-free completion decision."""
+        return self.finish_decision(context, final_text).instruction or None
 
-        Discussing options, questioning a grade or quoting a question is ordinary
-        tutoring. Only an actual failed operation can require follow-up work;
-        answer wording is never evidence that the model must pose another quiz.
-        """
-        if not self.is_active(context):
-            return None
+    def on_finish_redirect(self, context: UnifiedContext) -> None:
+        """Record a scheduled optional repair, not a completion-policy query."""
         state = context.extension("mastery")
-        if state.get("profile_write_pending") and not state.get("profile_repair_requested"):
+        if state.get("profile_write_pending") and not self.finish_decision(context, "").blocking:
             state["profile_repair_requested"] = True
-            return (
+
+    def finish_decision(self, context: UnifiedContext, final_text: str) -> FinishDecision:
+        """Require delivered artifacts; let optional profile storage degrade honestly."""
+        if not self.is_active(context):
+            return FinishDecision()
+        state = context.extension("mastery")
+        if state.get("outline_write_pending"):
+            return FinishDecision(
+                "The selected mastery_build has no successful storage receipt. "
+                "Correct the tool arguments and save the requested outline before claiming completion.",
+                blocking=True,
+            )
+        if state.get("quiz_requested") and not state.get("card_posted"):
+            return FinishDecision(
+                "This turn selected mastery_quiz, but no question card was successfully "
+                "posted. Inspect the tool error and retry mastery_quiz with corrected "
+                "arguments. A prose reply or a grading call cannot complete the selected "
+                "question delivery. If delivery remains unsuccessful, this turn must "
+                "fail rather than report successful completion.",
+                blocking=True,
+            )
+        if state.get("profile_write_pending") and not state.get("profile_repair_requested"):
+            return FinishDecision(
                 "The selected mastery_profile update has no successful storage receipt. "
                 "If repairable, retry once with the current revision and only the requested "
                 "changed fields. Blank optional fields keep existing values. Otherwise continue "
@@ -345,15 +379,7 @@ class MasteryLoopCapability:
                 "not saved for future sessions. Do not claim durable persistence without a "
                 "successful receipt. Do not delay teaching with repeated optional profile retries."
             )
-        if state.get("quiz_requested") and not state.get("card_posted"):
-            return (
-                "This turn selected mastery_quiz, but no question card was successfully "
-                "posted. Inspect the tool error and retry mastery_quiz with corrected "
-                "arguments. A prose reply or a grading call cannot complete the selected "
-                "question delivery. If delivery remains unsuccessful, this turn must "
-                "fail rather than report successful completion."
-            )
-        return None
+        return FinishDecision()
 
     def final_text_override(self, context: UnifiedContext, final_text: str) -> str | None:
         """End the turn on the card once a question has been posed.
@@ -380,6 +406,8 @@ class MasteryLoopCapability:
             return None
         state = context.extension("mastery")
         notice = ""
+        if state.get("outline_write_pending"):
+            return None
         if state.get("profile_write_pending"):
             if not final_text.strip() and not state.get("card_posted"):
                 # This hook also runs after every tool batch. An optional

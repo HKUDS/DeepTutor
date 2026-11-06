@@ -6,6 +6,7 @@ It runs inside the originating Python task to preserve account/workspace scopes.
 
 from __future__ import annotations
 
+from contextlib import suppress
 from typing import TYPE_CHECKING, Any
 
 from deeptutor.runtime.agentic.messages import (
@@ -45,6 +46,7 @@ class AgentLoopHost:
         self.override_after_tools = False
         self.recovery_tools: frozenset[str] | None = None
         self.recovery_schemas: list[dict[str, Any]] | None = None
+        self.round_error: Exception | None = None
 
     async def invoke(self, operation: str, args: dict[str, Any], state: dict[str, Any]) -> Any:
         operations = {
@@ -67,7 +69,14 @@ class AgentLoopHost:
         if operation not in operations or not isinstance(args, dict):
             raise ValueError("Unknown chat host operation")
         self.sync_state(state)
-        return await operations[operation](**args)
+        try:
+            return await operations[operation](**args)
+        except Exception as exc:
+            if operation == "call_round":
+                self.round_error = exc
+                with suppress(Exception):
+                    await self.loop._report_model_failure(exc)
+            raise
 
     def sync_state(self, state: dict[str, Any]) -> None:
         for name in (
@@ -122,6 +131,12 @@ class AgentLoopHost:
         inputs = drain() if drain is not None else []
         if not inputs:
             return
+        for item in inputs:
+            self.context.record_user_input(
+                item["content"],
+                source="inbox",
+                input_id=item["command_id"],
+            )
         lead = self.pipeline._t(
             "loop.user_sent_while_working",
             default=(
@@ -273,6 +288,7 @@ class AgentLoopHost:
 
     async def redirect_finish(self) -> None:
         assert self.result is not None
+        self.pipeline._capability_finish_redirected(self.context)
         if self.result.text:
             self.messages.append(values._assistant_round_message(self.result))
         self.loop._append_loop_instruction(self.messages, self.redirect)
@@ -397,6 +413,11 @@ class AgentLoopHost:
         )
 
     async def forced_finish(self, *, reason: str, error: str) -> dict[str, int]:
+        if (
+            self.round_error is not None
+            and self.pipeline._capability_finish_decision(self.context, "").blocking
+        ):
+            raise self.round_error
         before = self.state.rounds
         self.outcome = await self.loop._forced_finish(
             self.messages,

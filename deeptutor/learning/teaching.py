@@ -52,13 +52,18 @@ class TeachingUpdate(BaseModel):
         return self
 
 
-def parse_teaching_updates(raw: list[dict], learner_message: str) -> list[TeachingUpdate]:
-    if not isinstance(raw, list) or not 1 <= len(raw) <= 6:
-        raise ValueError("teaching_updates limit is 1 to 6 operations")
+def parse_teaching_updates(
+    raw: list[dict], learner_message: str | tuple[str, ...]
+) -> list[TeachingUpdate]:
+    if not isinstance(raw, list) or len(raw) > 6:
+        raise ValueError("teaching_updates limit is 0 to 6 operations")
+    evidence = (learner_message,) if isinstance(learner_message, str) else learner_message
     updates = [TeachingUpdate.model_validate(item) for item in raw]
     for item in updates:
-        if item.evidence and item.evidence not in learner_message:
-            raise ValueError("evidence must be a literal quote from the current learner message")
+        if item.evidence and not any(item.evidence in message for message in evidence):
+            raise ValueError(
+                "evidence must be a literal quote from the current learner message or reply"
+            )
     keys = [(item.kind, item.key) for item in updates]
     if len(keys) != len(set(keys)):
         raise ValueError("update each teaching key only once per batch")

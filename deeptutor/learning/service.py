@@ -2106,6 +2106,7 @@ class LearningService:
         teaching_updates: list[dict] | None = None,
         expected_revision: int | None = None,
         learner_message: str = "",
+        learner_evidence: tuple[str, ...] | None = None,
         clear_fields: list[str] | None = None,
         clear_request: str = "",
     ) -> tuple[LearningProgress, list[str]]:
@@ -2121,6 +2122,7 @@ class LearningService:
         so the caller can tell the learner what it recorded rather than
         claiming to have recorded everything it was handed.
         """
+        evidence = learner_evidence if learner_evidence is not None else (learner_message,)
         cleaned = {
             key: str(value or "").strip()[:_MAX_PROFILE_FIELD_LEN]
             for key, value in fields.items()
@@ -2142,7 +2144,7 @@ class LearningService:
             if (
                 not isinstance(clear_request, str)
                 or not clear_request.strip()
-                or clear_request not in learner_message
+                or not any(clear_request in message for message in evidence)
             ):
                 raise ValueError(
                     "clear_request must be a literal quote from the current learner message"
@@ -2155,7 +2157,7 @@ class LearningService:
         from deeptutor.learning.teaching import apply_teaching_updates, parse_teaching_updates
 
         updates = (
-            parse_teaching_updates(teaching_updates, learner_message)
+            parse_teaching_updates(teaching_updates, evidence)
             if teaching_updates is not None
             else []
         )

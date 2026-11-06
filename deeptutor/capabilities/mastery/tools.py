@@ -2441,6 +2441,9 @@ class MasteryBuildTool(BaseTool):
         except ObjectiveRelationError as exc:
             return ToolResult(content=str(exc), success=False)
         kp_count = sum(len(m.knowledge_points) for m in new_modules)
+        receipt = kwargs.get("_outline_recorded")
+        if callable(receipt):
+            receipt({"path_id": path_id, "path_revision": progress.version})
         return _json_result(
             {
                 "status": "built",
@@ -2640,12 +2643,16 @@ class MasteryProfileTool(BaseTool):
                     name="teaching_updates",
                     type="array",
                     required=False,
+                    nullable=True,
+                    min_items=0,
+                    max_items=6,
                     description=(
-                        "1-6 keyed upsert/remove operations. Preference requires an explicit "
+                        "Up to 6 keyed upsert/remove operations. Omitted, null or empty means no "
+                        "teaching-feedback changes. Preference requires an explicit "
                         "learner_report with evidence. Observation requires a current path "
                         "knowledge_point_id; label inferred difficulties tentative. Strategy "
                         "results require learner_report evidence and strategy. Evidence is a "
-                        "literal quote from the current learner message, never silence "
+                        "literal quote from an actual learner message or clarification reply in this turn, never silence "
                         "or your own explanation. Upsert supplies the whole entry; remove "
                         "supplies only kind/op/key. Limits: 6 preferences, 12 observations."
                     ),
@@ -2677,7 +2684,7 @@ class MasteryProfileTool(BaseTool):
                     name="clear_request",
                     type="string",
                     required=False,
-                    description="Literal quote from the current learner request authorizing clear_fields. Omit unless clearing.",
+                    description="Literal quote from this turn's learner request or submitted reply authorizing clear_fields. Omit unless clearing.",
                 ),
             ],
         )
@@ -2701,7 +2708,7 @@ class MasteryProfileTool(BaseTool):
         }
         updates = kwargs.get("teaching_updates")
         clear_fields = kwargs.get("clear_fields")
-        if not fields and updates is None and not clear_fields:
+        if not fields and updates in (None, []) and not clear_fields:
             return ToolResult(
                 content=(
                     "mastery_profile needs at least one of prior_knowledge, "
@@ -2731,6 +2738,7 @@ class MasteryProfileTool(BaseTool):
                 teaching_updates=updates,
                 expected_revision=kwargs.get("expected_revision"),
                 learner_message=str(kwargs.get("_learner_message") or ""),
+                learner_evidence=kwargs.get("_learner_evidence"),
                 clear_fields=clear_fields,
                 clear_request=kwargs.get("clear_request") or "",
             )

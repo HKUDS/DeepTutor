@@ -53,6 +53,22 @@ class TestAttachment:
 
 
 class TestUnifiedContext:
+    def test_user_evidence_is_ordered_scoped_and_not_model_authored(self) -> None:
+        ctx = UnifiedContext(
+            user_message="Design an outline",
+            metadata={"turn_id": "turn", "mastery_path_id": "path"},
+        )
+        ctx.record_user_input("Project driven", source="ask_user", input_id="call:q1")
+        ctx.record_user_input("Examples first", source="ask_user", input_id="call:q1")
+        ctx.record_user_input("Keep it short", source="inbox", input_id="command")
+        ctx.conversation_history.append({"role": "assistant", "content": "Invented preference"})
+        assert ctx.user_evidence() == ("Design an outline", "Examples first", "Keep it short")
+        ctx.metadata["mastery_path_id"] = "other"
+        assert ctx.user_evidence() == ("Design an outline",)
+        ctx.metadata["mastery_path_id"] = "path"
+        ctx.metadata["turn_id"] = "next-turn"
+        assert ctx.user_evidence() == ("Design an outline",)
+
     def test_defaults(self) -> None:
         ctx = UnifiedContext()
         assert ctx.session_id == ""

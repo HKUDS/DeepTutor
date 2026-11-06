@@ -180,7 +180,7 @@ def test_bounds_and_revision_are_required_without_silent_eviction(system):
     assert len(store.load("path").learner_profile.teaching_preferences) == 6
 
 
-@pytest.mark.parametrize("updates", [[], {}, [preference()] * 7, [preference(), preference()]])
+@pytest.mark.parametrize("updates", [{}, [preference()] * 7, [preference(), preference()]])
 def test_operation_batch_shape_and_duplicate_keys(system, updates):
     store, service = system
     with pytest.raises(ValueError):
