@@ -835,7 +835,8 @@ class OpenAICompatProvider(LLMProvider):
             body["tool_choice"] = (
                 convert_tool_choice(self._effective_tool_choice(tool_choice, model)) or "auto"
             )
-        return body
+        # Optional message status can be rejected inside an HTTP-200 SSE response.
+        return self._responses_body_without_input_message_status(body) or body
 
     # ------------------------------------------------------------------
     # Response parsing

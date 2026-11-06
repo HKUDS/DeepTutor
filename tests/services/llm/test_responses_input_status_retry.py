@@ -10,8 +10,12 @@ general retry-on-400.
 
 from __future__ import annotations
 
+from copy import deepcopy
+import json
 from typing import Any
 
+import httpx
+from openai import AsyncOpenAI
 import pytest
 
 from deeptutor.services.llm.provider_core.openai_compat_provider import (
@@ -148,3 +152,105 @@ async def test_a_second_rejection_is_not_retried_again() -> None:
         await provider._create_responses_with_status_retry(_body())
 
     assert len(calls) == 2
+
+
+@pytest.mark.parametrize("method", ["chat", "chat_stream"])
+@pytest.mark.parametrize("replay_native_items", [False, True])
+async def test_requests_omit_message_status_before_a_gateway_can_reject_it(
+    method: str, replay_native_items: bool
+) -> None:
+    provider = _provider()
+    native_items = [
+        {"type": "reasoning", "id": "rs_1", "status": "completed", "summary": []},
+        {
+            "type": "message",
+            "id": "msg_1",
+            "role": "assistant",
+            "status": "completed",
+            "content": [{"type": "output_text", "text": "previous answer"}],
+        },
+        {
+            "type": "function_call",
+            "id": "fc_1",
+            "call_id": "call_1",
+            "name": "lookup",
+            "arguments": "{}",
+            "status": "completed",
+        },
+    ]
+    messages = [
+        {"role": "user", "content": "first"},
+        {"role": "assistant", "content": "previous answer"},
+        {"role": "user", "content": "retry"},
+    ]
+    if replay_native_items:
+        messages[1]["_provider_response_state"] = {"responses_output_items": native_items}
+    original = deepcopy(messages)
+    requests = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        requests.append(body)
+        for index, item in enumerate(body["input"]):
+            if item.get("type") == "message" and "status" in item:
+                error = {
+                    "code": "unknown_parameter",
+                    "message": f"Unknown parameter: 'input[{index}].status'.",
+                    "param": f"input[{index}].status",
+                    "type": "invalid_request_error",
+                }
+                if body["stream"]:
+                    return httpx.Response(
+                        200,
+                        headers={"content-type": "text/event-stream"},
+                        text="event: error\ndata: " + json.dumps({"error": error}) + "\n\n",
+                    )
+                return httpx.Response(400, json={"error": error})
+        response = {
+            "id": "resp_1",
+            "status": "completed",
+            "output": [
+                {
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [{"type": "output_text", "text": "ok", "annotations": []}],
+                }
+            ],
+        }
+        if not body["stream"]:
+            return httpx.Response(200, json=response)
+        events = [
+            {"type": "response.output_text.delta", "delta": "ok"},
+            {"type": "response.completed", "response": response},
+        ]
+        return httpx.Response(
+            200,
+            headers={"content-type": "text/event-stream"},
+            text="".join("data: " + json.dumps(event) + "\n\n" for event in events),
+        )
+
+    await provider._client.close()
+    provider._client = AsyncOpenAI(
+        api_key="test-key",
+        base_url="https://gateway.example/v1",
+        max_retries=0,
+        http_client=httpx.AsyncClient(transport=httpx.MockTransport(handle)),
+    )
+    try:
+        result = await getattr(provider, method)(messages)
+    finally:
+        await provider._client.close()
+
+    assert result.content == "ok"
+    assert result.finish_reason == "stop"
+    assert len(requests) == 1
+    assert all(
+        "status" not in item for item in requests[0]["input"] if item.get("type") == "message"
+    )
+    assert messages == original
+    if replay_native_items:
+        assert requests[0]["input"][1] == native_items[0]
+        assert requests[0]["input"][2] == {
+            key: value for key, value in native_items[1].items() if key != "status"
+        }
+        assert requests[0]["input"][3] == native_items[2]
