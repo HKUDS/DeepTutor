@@ -10,10 +10,6 @@ from deeptutor.services.config.provider_links import (
 )
 
 
-def _identity(ref):
-    return {key: ref[key] for key in ("connection_id", "service", "profile_id") if ref.get(key)}
-
-
 def _select_remaining(bucket, service):
     candidates = [
         p

@@ -14,13 +14,12 @@ from deeptutor.partners.config.schema import DeliveryOverrides
 
 try:
     import botpy
-    from botpy.message import C2CMessage, GroupMessage
+    from botpy.message import GroupMessage
 
     QQ_AVAILABLE = True
 except ImportError:
     QQ_AVAILABLE = False
     botpy = None
-    C2CMessage = None
     GroupMessage = None
 
 if TYPE_CHECKING:

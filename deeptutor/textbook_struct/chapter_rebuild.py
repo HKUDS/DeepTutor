@@ -13,7 +13,6 @@ page with ``page_idx`` / ``para_blocks``; blocks carry ``type`` / ``bbox`` /
 
 from __future__ import annotations
 
-from collections.abc import Sequence
 from dataclasses import dataclass, field
 import re
 
@@ -136,64 +135,6 @@ def assign_page_ranges(chapters: list[Chapter], *, page_count: int) -> list[Chap
             else max(page_count, chapter.page_idx + 1)
         )
     return chapters
-
-
-# ── Mid-page section-frame detection (no page-top band constraint) ─────────
-# Measured heading heights: frame ~22-24, exploration ~27, body lines ~21,
-# lesson-title wrap residue ~28. Column names go to the blacklist; stray
-# publisher header lines go to PUBLISHER_NOISE.
-
-PUBLISHER_NOISE = frozenset({"人民教育出版社", "出版社", "思想政治", "目录", "后记"})
-
-
-def detect_frames(
-    layout: dict,
-    *,
-    height_range: tuple[float, float] = (20.0, 25.0),
-    extras_range: tuple[float, float] = (26.0, 29.0),
-    first_lesson_page_idx: int | None = None,
-    lesson_titles: Sequence[str] = (),
-) -> tuple[list[dict], list[dict]]:
-    """Detect section-frame headings (and chapter-level extras like 综合探究).
-
-    Returns ``(frames, extras)`` — each item ``{title, page_idx, bbox, height}``.
-    Frames are mid-page title blocks in the frame height band; extras
-    (exploration sections / afterword) sit in the slightly taller band.
-    Blacklist + publisher noise + lesson-level regex filtered out.
-    """
-    frames: list[dict] = []
-    extras: list[dict] = []
-    for page in layout.get("pdf_info", []):
-        for block in page.get("para_blocks", []):
-            if block.get("type") != "title":
-                continue
-            text = block_text(block)
-            if not text or text in COLUMN_BLACKLIST or text in PUBLISHER_NOISE:
-                continue
-            if CHAPTER_RE.match(text):
-                continue  # lesson-level handled by the footer path
-            height = block["bbox"][3] - block["bbox"][1]
-            item = {
-                "title": text,
-                "page_idx": page["page_idx"],
-                "bbox": list(block["bbox"]),
-                "height": round(height, 1),
-            }
-            if height_range[0] <= height <= height_range[1]:
-                if len(text) >= 6:
-                    # front-matter noise + lesson-title wrap residue
-                    # (substring of a lesson title)
-                    if (
-                        first_lesson_page_idx is not None
-                        and item["page_idx"] < first_lesson_page_idx
-                    ):
-                        continue
-                    if any(text in lt for lt in lesson_titles):
-                        continue
-                    frames.append(item)
-            elif extras_range[0] <= height <= extras_range[1] and len(text) >= 3:
-                extras.append(item)
-    return frames, extras
 
 
 # ── Level-aware boundaries + printed-offset consistency check ──────────────

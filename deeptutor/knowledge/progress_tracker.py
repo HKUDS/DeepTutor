@@ -84,11 +84,6 @@ class ProgressTracker:
         if callback not in self._callbacks:
             self._callbacks.append(callback)
 
-    def remove_callback(self, callback: Callable[[dict], None]):
-        """Remove progress callback function"""
-        if callback in self._callbacks:
-            self._callbacks.remove(callback)
-
     def _notify(self, progress: dict):
         """Notify progress update (call all callbacks)"""
         from deeptutor.runtime.mode import is_server
