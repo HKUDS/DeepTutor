@@ -1275,9 +1275,10 @@ def _collect_pptx_shape_text(shape, out: list[str]) -> None:
     if getattr(shape, "has_table", False):
         for row in shape.table.rows:
             cells = [cell.text.strip() for cell in row.cells]
-            line = "\t".join(cell for cell in cells if cell)
-            if line:
-                out.append(line)
+            # Keep empty cells so each value stays under its column header;
+            # empty cells at the end of a row shift nothing, so they go.
+            if any(cells):
+                out.append("\t".join(cells).rstrip("\t"))
         return
 
     text = getattr(shape, "text", "")
