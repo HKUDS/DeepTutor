@@ -73,8 +73,13 @@ def get_model_pricing(model_name: str) -> dict[str, float]:
         return MODEL_PRICING[model_name]
     # Fuzzy matching
     lower = model_name.lower()
+    # Prefer the longest key contained in the name, so "gpt-4o-mini-<date>" is
+    # priced as "gpt-4o-mini" and not as the shorter "gpt-4o".
+    contained = [key for key in MODEL_PRICING if key in lower]
+    if contained:
+        return MODEL_PRICING[max(contained, key=len)]
     for key, val in MODEL_PRICING.items():
-        if key in lower or lower in key:
+        if lower in key:
             return val
     return MODEL_PRICING["gpt-4o-mini"]
 

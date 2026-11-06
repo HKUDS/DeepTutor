@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from pathlib import Path
+import sys
+from types import SimpleNamespace
 
 import pytest
 
@@ -161,3 +163,49 @@ def test_two_workers_do_not_drop_confirmed_records(journal_store):
     records = journal_store.load().records
     assert len(records) == 20
     assert len({record.id for record in records}) == 20
+
+
+class _LockHeldElsewhere:
+    """A lock file whose byte 0 another process holds.
+
+    Windows byte-range locks are mandatory: reading a locked byte fails with
+    PermissionError, while ``msvcrt.locking(..., LK_LOCK, 1)`` waits for it.
+    """
+
+    def __init__(self, handle: object) -> None:
+        self._handle = handle
+
+    def __enter__(self) -> _LockHeldElsewhere:
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        self._handle.close()
+
+    def read(self, *_args: object) -> bytes:
+        raise PermissionError(13, "Permission denied")
+
+    def __getattr__(self, name: str) -> object:
+        return getattr(self._handle, name)
+
+
+def test_windows_lock_waits_for_a_held_lock_instead_of_reading_it(journal_store, monkeypatch):
+    import deeptutor.services.learning_journal.store as module
+
+    calls: list[int] = []
+    fake_msvcrt = SimpleNamespace(
+        LK_LOCK=1, LK_UNLCK=0, locking=lambda _fileno, mode, _length: calls.append(mode)
+    )
+    monkeypatch.setattr(module, "sys", SimpleNamespace(platform="win32"))
+    monkeypatch.setitem(sys.modules, "msvcrt", fake_msvcrt)
+    real_open = Path.open
+
+    def open_lock_held_elsewhere(self: Path, *args: object, **kwargs: object) -> object:
+        handle = real_open(self, *args, **kwargs)
+        return _LockHeldElsewhere(handle) if self.suffix == ".lock" else handle
+
+    monkeypatch.setattr(Path, "open", open_lock_held_elsewhere)
+
+    journal_store.add_record(title="Held", insight="written once the lock is free")
+
+    assert calls == [fake_msvcrt.LK_LOCK, fake_msvcrt.LK_UNLCK]
+    assert [record.title for record in journal_store.load().records] == ["Held"]

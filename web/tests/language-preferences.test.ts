@@ -31,6 +31,10 @@ test("the locale registry accepts every supported language", () => {
     assert.equal(resolveResponseLanguage(raw, "en"), "tr");
   }
   assert.equal(getLocale("tr"), "tr-TR");
+  for (const raw of ["ko", "ko-KR", "ko_KR", "Korean", "한국어"]) {
+    assert.equal(normalizeLanguage(raw), "ko");
+  }
+  assert.equal(getLocale("ko"), "ko-KR");
 });
 
 test("response language remains independent from the interface language", () => {

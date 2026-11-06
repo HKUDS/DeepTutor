@@ -59,6 +59,27 @@ def documents_to_sources(documents: Iterable[ImaDocument]) -> list[dict[str, Any
     return sources
 
 
+def _title_names_unextractable_format(source: dict[str, Any]) -> bool:
+    """True when the item title names a format the text extractor cannot decode.
+
+    IMA items are titled after their files and the download keeps the same
+    extension, so a title like ``report.doc`` means a full-text fetch would
+    download bytes the built-in extractor refuses (#2338) — legacy Office
+    formats, images, and other engine-only formats among them. Titles whose
+    suffix is not a known document format stay hydratable: the download's own
+    filename can still carry a supported extension.
+    """
+    from pathlib import PurePosixPath
+
+    from deeptutor.utils.document_extractor import SUPPORTED_DOC_EXTENSIONS
+    from deeptutor.utils.file_types import FileTypeRouter
+
+    extension = PurePosixPath(str(source.get("title") or "")).suffix.lower()
+    if not extension or extension in SUPPORTED_DOC_EXTENSIONS:
+        return False
+    return extension in FileTypeRouter.get_supported_extensions()
+
+
 def hydration_targets(
     sources: Sequence[dict[str, Any]],
     *,
@@ -69,21 +90,27 @@ def hydration_targets(
 
     Snippet-less matches come first (they carry no evidence at all), then thin
     snippets in rank order. Sources without an item id cannot be fetched and are
-    never returned.
+    never returned, and titles suggesting an unsupported format are tried last
+    so they do not spend budget ahead of likely extractable items
+    (#2338).
     """
     if budget <= 0:
         return []
     empty: list[int] = []
     thin: list[int] = []
+    unlikely: list[int] = []
     for index, source in enumerate(sources):
         if not source.get("chunk_id"):
             continue
         content = str(source.get("content") or "").strip()
+        if len(content) < min_chars and _title_names_unextractable_format(source):
+            unlikely.append(index)
+            continue
         if not content:
             empty.append(index)
         elif len(content) < min_chars:
             thin.append(index)
-    return (empty + thin)[:budget]
+    return (empty + thin + unlikely)[:budget]
 
 
 def render_context(sources: Sequence[dict[str, Any]]) -> str:

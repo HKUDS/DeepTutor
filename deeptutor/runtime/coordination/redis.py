@@ -87,8 +87,7 @@ local payload_key = KEYS[2]
 local seq_key = KEYS[3]
 local requested_seq = tonumber(ARGV[1])
 local raw_payload = ARGV[2]
-local turn_id = ARGV[3]
-local retention = tonumber(ARGV[4])
+local retention = tonumber(ARGV[3])
 local seq
 if requested_seq > 0 then
   seq = requested_seq
@@ -99,10 +98,10 @@ else
 end
 local existing = redis.call('HGET', payload_key, tostring(seq))
 if existing then return {-1, existing} end
-local payload = cjson.decode(raw_payload)
-payload['seq'] = seq
-if payload['turn_id'] == nil or payload['turn_id'] == '' then payload['turn_id'] = turn_id end
-local encoded = cjson.encode(payload)
+-- Python supplies a JSON object without seq and with turn_id populated.
+-- Splice in the atomically allocated sequence without a cjson round trip:
+-- Redis Lua otherwise changes [] to {} and rounds large integer payloads.
+local encoded = '{"seq":' .. tostring(seq) .. ',' .. string.sub(raw_payload, 2)
 redis.call('HSET', payload_key, tostring(seq), encoded)
 redis.call('XADD', stream_key, '*', 'seq', tostring(seq), 'payload', encoded)
 redis.call('EXPIRE', stream_key, retention)
@@ -314,6 +313,9 @@ class RedisCoordinator:
 
     async def publish_event(self, turn_id: str, event: dict[str, Any]) -> dict[str, Any]:
         requested_seq = int(event.get("seq") or 0)
+        payload = dict(event)
+        payload.pop("seq", None)
+        payload["turn_id"] = payload.get("turn_id") or turn_id
         try:
             result = await self.client.eval(
                 _PUBLISH_EVENT_LUA,
@@ -322,8 +324,7 @@ class RedisCoordinator:
                 self._key("event_payloads", turn_id),
                 self._key("event_seq", turn_id),
                 requested_seq,
-                json.dumps(event, ensure_ascii=False, separators=(",", ":"), default=str),
-                turn_id,
+                json.dumps(payload, ensure_ascii=False, separators=(",", ":"), default=str),
                 self.stream_retention_seconds,
             )
         except Exception as exc:

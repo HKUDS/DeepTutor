@@ -195,6 +195,33 @@ def test_new_format_round_trip_is_idempotent() -> None:
     assert rendered == again
 
 
+def test_round_trip_preserves_footnote_like_token_in_text() -> None:
+    """A ``[^token]`` that is part of the entry text (not a real citation
+    marker) must survive serialize → parse. ``serialize`` only emits integer
+    labels, so a non-integer footnote-like token belongs to the text."""
+    entry_id = "m_01HZK1ABCDEFGHJKMNPQRSTVWX"
+    # No refs: the whole bullet is text, ending in a footnote-like token.
+    doc = Document(
+        title="T",
+        sections=[("S", [Entry(id=entry_id, section="S", text="footnote syntax is [^note]")])],
+    )
+    reparsed = parse(serialize(doc)).all_entries()[0]
+    assert reparsed.text == "footnote syntax is [^note]"
+    assert reparsed.refs == []
+
+    # With a real citation: the token stays in text, the ref still binds.
+    entry_id2 = "m_01HZK1ABCDEFGHJKMNPQRSTVWY"
+    doc2 = Document(
+        title="T",
+        sections=[
+            ("S", [Entry(id=entry_id2, section="S", text="note syntax [^note]", refs=["chat:x"])])
+        ],
+    )
+    reparsed2 = parse(serialize(doc2)).all_entries()[0]
+    assert reparsed2.text == "note syntax [^note]"
+    assert reparsed2.refs == ["chat:x"]
+
+
 def test_parse_tolerates_both_separator_styles_between_markers() -> None:
     """Bullets emitted before the separator change had ``[^1][^2]`` —
     the comma-tolerant parser still binds refs correctly on legacy

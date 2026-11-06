@@ -129,14 +129,11 @@ def _detect_provider_from_versions(versions: list[dict[str, Any]]) -> str:
 def file_lock_shared(file_handle):
     """Acquire a shared (read) lock on a file - cross-platform."""
     if sys.platform == "win32":
-        import msvcrt
-
-        msvcrt.locking(file_handle.fileno(), msvcrt.LK_NBLCK, 1)
-        try:
-            yield
-        finally:
-            file_handle.seek(0)
-            msvcrt.locking(file_handle.fileno(), msvcrt.LK_UNLCK, 1)
+        # msvcrt has no shared lock: LK_NBLCK is exclusive and mandatory, so a
+        # second concurrent reader failed at once, read the catalog as empty,
+        # and the next status update saved that over kb_config.json. Writers
+        # replace the file atomically, so a reader needs no lock here.
+        yield
     else:
         import fcntl
 

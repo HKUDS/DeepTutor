@@ -109,6 +109,10 @@ async def download_media(
             return ImaMediaContent(data=bytes(body), filename=filename)
 
 
+class UnsupportedMediaFormat(ValueError):
+    """Downloaded bytes and display title have no supported decoder."""
+
+
 async def extract_text(
     media: ImaMediaContent | None,
     *title_candidates: str,
@@ -130,7 +134,7 @@ async def extract_text(
         return ""
     filename = _extractable_filename(media.filename, *title_candidates)
     if not filename:
-        return ""
+        raise UnsupportedMediaFormat
     return await asyncio.to_thread(
         extract_text_from_bytes,
         filename,

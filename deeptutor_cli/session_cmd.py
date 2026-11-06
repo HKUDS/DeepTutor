@@ -65,7 +65,7 @@ async def _show_session(session_id: str, fmt: str) -> None:
         raise typer.Exit(code=1)
 
     if fmt == "json":
-        console.print(json.dumps(session, ensure_ascii=False, indent=2, default=str))
+        console.print_json(json.dumps(session, ensure_ascii=False, default=str))
         return
 
     console.print(f"[bold]{session.get('title', '')}[/] ({session.get('id', '')})")

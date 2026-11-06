@@ -542,7 +542,9 @@ async def test_copilot_normalization_does_not_change_openai_requests(stream):
     def handler(request):
         body = json.loads(request.content)
         bodies.append(body)
-        assert body["input"][:2] == items
+        # Everything is replayed as stored (message id and status included),
+        # except the null status the SDK dump added to the reasoning item.
+        assert body["input"][:2] == [_reasoning_output(1), _message_output(1)]
         return _responses_reply([_message_output(2)], stream)
 
     provider = module.OpenAICompatProvider(

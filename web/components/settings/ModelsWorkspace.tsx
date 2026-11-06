@@ -28,6 +28,7 @@ import {
   type ProviderSource,
 } from "@/lib/provider-registry";
 import { voiceModelOptions } from "@/lib/voice-settings";
+import { BulkModelImport } from "./BulkModelImport";
 import { VoiceDiscoveryField } from "./VoiceDiscoveryField";
 import { VoiceModelFields } from "./VoiceModelFields";
 import { VoicePreviewPanel } from "./VoicePreviewPanel";
@@ -274,13 +275,26 @@ export function ModelsWorkspace({
           },
     );
   };
-  const create = () => {
+  const create = (requested?: string[]) => {
     const source = selectable.find((p) => p.id === newProvider);
     if (!source) return;
     const modelValue = newService === "search" ? "" : newModelId.trim();
-    if (newService !== "search" && !modelValue) return;
-    const profileId = `${newService}-profile-${randomUuid()}`;
-    const modelId = `${newService}-model-${randomUuid()}`;
+    if (!requested && newService !== "search" && !modelValue) return;
+    const existing = new Set(
+      flattenModels(draft, [newService])
+        .filter((row) => modelProvider(draft, row.service, row.profile, row.model)?.id === source.id)
+        .map((row) => row.model?.model),
+    );
+    const values = requested
+      ? [...new Set(requested.map((id) => id.trim()).filter(Boolean))].filter((id) => !existing.has(id))
+      : [modelValue];
+    if (!values.length) return;
+    const entries = values.map((value) => ({
+      value,
+      profileId: `${newService}-profile-${randomUuid()}`,
+      modelId: `${newService}-model-${randomUuid()}`,
+    }));
+    const { profileId, modelId } = entries[0];
     const ref = providerAdapter(
       source,
       newService,
@@ -289,39 +303,41 @@ export function ModelsWorkspace({
     );
     const target = providers[newService]?.find((p) => p.value === ref.binding);
     mutateCatalog((next) => {
-      const profile: CatalogProfile = {
-        id: profileId,
-        name: source.name,
-        binding: ref.binding,
-        provider: newService === "search" ? ref.binding : undefined,
-        provider_ref: ref,
-        api_key: "",
-        base_url: "",
-        api_version: "",
-        models:
-          newService === "search"
-            ? []
-            : [
-                {
-                  id: modelId,
-                  model: modelValue,
-                  name: modelValue,
-                  provider_ref: ref,
-                  ...(newService === "tts"
-                    ? {
-                        voice: "",
-                        response_format:
-                          voiceModelOptions(
-                            target?.voice_options,
-                            modelValue,
-                          )?.formats[0] || "mp3",
-                      }
-                    : {}),
-                },
-              ],
-      };
-      if (newService === "search") profile.display_name = source.name;
-      next.services[newService].profiles.push(profile);
+      for (const { value, profileId, modelId } of entries) {
+        const profile: CatalogProfile = {
+          id: profileId,
+          name: source.name,
+          binding: ref.binding,
+          provider: newService === "search" ? ref.binding : undefined,
+          provider_ref: ref,
+          api_key: "",
+          base_url: "",
+          api_version: "",
+          models:
+            newService === "search"
+              ? []
+              : [
+                  {
+                    id: modelId,
+                    model: value,
+                    name: value,
+                    provider_ref: ref,
+                    ...(newService === "tts"
+                      ? {
+                          voice: "",
+                          response_format:
+                            voiceModelOptions(
+                              target?.voice_options,
+                              value,
+                            )?.formats[0] || "mp3",
+                        }
+                      : {}),
+                  },
+                ],
+        };
+        if (newService === "search") profile.display_name = source.name;
+        next.services[newService].profiles.push(profile);
+      }
     });
     setSelected(
       newService === "search"
@@ -510,7 +526,11 @@ export function ModelsWorkspace({
                 modelOptions={addModelOptions}
                 sources={selectable}
                 declared={(source) => declared(source, newService)}
-                onCreate={create}
+                existingModels={flattenModels(draft, [newService])
+                  .filter((row) => modelProvider(draft, row.service, row.profile, row.model)?.id === newProvider)
+                  .map((row) => row.model?.model || "")}
+                onImport={create}
+                onCreate={() => create()}
                 onCancel={cancelAdd}
               />
             ) : selectedRow ? (
@@ -589,6 +609,8 @@ function AddModelPanel({
   sources,
   declared,
   onCreate,
+  onImport,
+  existingModels,
   onCancel,
 }: {
   page: ModelPage;
@@ -602,6 +624,8 @@ function AddModelPanel({
   sources: ProviderSource[];
   declared: (source: ProviderSource) => boolean;
   onCreate: () => void;
+  onImport: (models: string[]) => void;
+  existingModels: string[];
   onCancel: () => void;
 }) {
   const { t } = useTranslation();
@@ -655,6 +679,14 @@ function AddModelPanel({
         <input type="checkbox" checked={custom} onChange={e => { setCustom(e.target.checked); onProvider(""); }} />
         {t("settings.serviceConfig.custom")}
       </label>}
+      {service !== "search" && visible.find((source) => source.id === provider) && (
+        <BulkModelImport
+          source={visible.find((source) => source.id === provider)!}
+          service={service}
+          existingModels={existingModels}
+          onImport={onImport}
+        />
+      )}
       {/* A model row cannot be created without an ID, so the field lives here
           rather than only in the editor: the empty row used to reach the draft
           and blocked Apply from a page that could not show it. */}

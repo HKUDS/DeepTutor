@@ -99,6 +99,7 @@ EMBEDDING_PROVIDER_ALIASES = {
 
 EMBEDDING_PROVIDER_LABELS = {
     "volcengine_agent_plan": "Volcengine Ark Agent Plan",
+    "nvidia_nim": "NVIDIA NIM",
     "openai": "OpenAI",
     "mistral": "Mistral",
     "gemini": "Gemini",
@@ -114,6 +115,7 @@ EMBEDDING_PROVIDER_LABELS = {
 
 EMBEDDING_PROVIDER_DEFAULT_ENDPOINTS = {
     "volcengine_agent_plan": "https://ark.cn-beijing.volces.com/api/plan/v3/embeddings",
+    "nvidia_nim": "https://integrate.api.nvidia.com/v1/embeddings",
     "openai": "https://api.openai.com/v1/embeddings",
     "mistral": "https://api.mistral.ai/v1/embeddings",
     "gemini": gemini_embedding_endpoint(GEMINI_DEFAULT_EMBEDDING_MODEL),
@@ -133,6 +135,7 @@ EMBEDDING_PROVIDER_DEFAULT_ENDPOINTS = {
 
 EMBEDDING_PROVIDERS_REQUIRING_EMBEDDINGS_PATH = {
     "volcengine_agent_plan",
+    "nvidia_nim",
     "openai",
     "mistral",
     "openrouter",

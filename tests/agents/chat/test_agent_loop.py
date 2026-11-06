@@ -2193,6 +2193,218 @@ async def test_repeated_reasoning_budget_exhaustion_is_retryable_error(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("engine", ["python", "typescript", "typescript-native"])
+async def test_reasoning_recovery_uses_one_explicit_budget_and_records_usage(monkeypatch, engine):
+    from deeptutor.agents.loop import pipeline as pipeline_module
+
+    if (
+        engine != "python"
+        and not (
+            Path(__file__).parents[3] / "packages/chat-engine/dist/src/transport/stdio.js"
+        ).is_file()
+    ):
+        pytest.skip("Build the experimental TypeScript engine first")
+    monkeypatch.setenv("DEEPTUTOR_CHAT_ENGINE", engine)
+
+    monkeypatch.setattr(
+        pipeline_module,
+        "get_chat_params",
+        lambda: {
+            "responding": {"max_tokens": 1024},
+            "reasoning_budget_recovery": {"strategy": "increase_output_budget", "max_tokens": 2048},
+        },
+    )
+    client = _ScriptedChatClient(
+        [
+            [
+                _llm_chunk(reasoning_content="private", finish_reason="length"),
+                _usage_only_chunk(prompt=100, completion=1024, total=1124),
+            ],
+            [
+                _llm_chunk(content="Recovered answer"),
+                _usage_only_chunk(prompt=200, completion=32, total=232),
+            ],
+        ]
+    )
+    pipeline = AgenticChatPipeline(language="en")
+    pipeline.registry = _Registry()
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda context: [])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+    events = await _run(pipeline, UnifiedContext(session_id="s1", user_message="Solve"))
+    assert [call["max_tokens"] for call in client.calls] == [1024, 2048]
+    recovery = next(
+        event for event in events if event.metadata.get("recovery_kind") == "reasoning_budget"
+    )
+    assert recovery.metadata["previous_max_tokens"] == 1024
+    assert recovery.metadata["next_max_tokens"] == 2048
+    assert "private" not in recovery.content
+    assert pipeline.usage.total_tokens == 1356
+    assert _answer_text(events) == "Recovered answer"
+    if engine == "typescript-native":
+        assert pipeline.last_result["execution_runtime"] == "python-effects"
+        assert (
+            pipeline.last_result["compatibility_reason"]
+            == "configured reasoning-budget recovery policy"
+        )
+
+
+@pytest.mark.asyncio
+async def test_reasoning_recovery_stop_does_not_spend_another_call(monkeypatch):
+    from deeptutor.agents.loop import pipeline as pipeline_module
+
+    monkeypatch.setattr(
+        pipeline_module,
+        "get_chat_params",
+        lambda: {
+            "reasoning_budget_recovery": {"strategy": "stop"},
+        },
+    )
+    client = _ScriptedChatClient(
+        [
+            [_llm_chunk(reasoning_content="private", finish_reason="length")],
+        ]
+    )
+    pipeline = AgenticChatPipeline(language="en")
+    pipeline.registry = _Registry()
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda context: [])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+    with pytest.raises(LLMReasoningBudgetExhausted):
+        await pipeline.run(UnifiedContext(session_id="s1", user_message="Solve"), StreamBus())
+    assert client.call_count == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("visible", [False, True])
+async def test_recovery_budget_is_single_use_and_does_not_change_visible_continuation(
+    monkeypatch, visible
+):
+    from deeptutor.agents.loop import pipeline as pipeline_module
+
+    monkeypatch.setattr(
+        pipeline_module,
+        "get_chat_params",
+        lambda: {
+            "responding": {"max_tokens": 1024},
+            "reasoning_budget_recovery": {"strategy": "increase_output_budget", "max_tokens": 2048},
+        },
+    )
+    first = _llm_chunk(
+        content="Visible part" if visible else None,
+        reasoning_content=None if visible else "private",
+        finish_reason="length",
+    )
+    client = _ScriptedChatClient(
+        [[first], [_llm_chunk(content="Answer")], [_llm_chunk(content="Next turn")]]
+    )
+    pipeline = AgenticChatPipeline(language="en")
+    pipeline.registry = _Registry()
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda context: [])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+    await _run(pipeline, UnifiedContext(session_id="s1", user_message="Solve"))
+    await _run(pipeline, UnifiedContext(session_id="s2", user_message="Another task"))
+    assert [call["max_tokens"] for call in client.calls] == [1024, 1024 if visible else 2048, 1024]
+    assert pipeline.loop_max_tokens == 1024
+
+
+@pytest.mark.asyncio
+async def test_increased_reasoning_budget_still_stops_after_one_recovery(monkeypatch):
+    from deeptutor.agents.loop import pipeline as pipeline_module
+
+    monkeypatch.setattr(
+        pipeline_module,
+        "get_chat_params",
+        lambda: {
+            "responding": {"max_tokens": 1024},
+            "reasoning_budget_recovery": {"strategy": "increase_output_budget", "max_tokens": 2048},
+        },
+    )
+    client = _ScriptedChatClient(
+        [
+            [
+                _llm_chunk(reasoning_content="first", finish_reason="length"),
+                _usage_only_chunk(prompt=100, completion=1024, total=1124),
+            ],
+            [
+                _llm_chunk(reasoning_content="second", finish_reason="length"),
+                _usage_only_chunk(prompt=200, completion=2048, total=2248),
+            ],
+        ]
+    )
+    pipeline = AgenticChatPipeline(language="en")
+    pipeline.registry = _Registry()
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda context: [])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+    with pytest.raises(LLMReasoningBudgetExhausted) as raised:
+        await pipeline.run(UnifiedContext(session_id="s1", user_message="Solve"), StreamBus())
+    assert client.call_count == 2
+    assert raised.value.diagnostics["requested_max_tokens"] == 2048
+    assert pipeline.usage.total_tokens == 3372
+
+
+@pytest.mark.parametrize(
+    "config",
+    [
+        [],
+        {"strategy": []},
+        {"strategy": "unbounded"},
+        {"strategy": "increase_output_budget", "max_tokens": True},
+        {"strategy": "increase_output_budget", "max_tokens": 1024},
+        {"strategy": "increase_output_budget", "max_tokens": 131073},
+    ],
+)
+def test_invalid_reasoning_recovery_configuration_is_rejected(config):
+    from deeptutor.agents.loop.reasoning_recovery import ReasoningBudgetRecovery
+
+    with pytest.raises(ValueError):
+        ReasoningBudgetRecovery.from_config(config, base_max_tokens=1024)
+
+
+@pytest.mark.asyncio
+async def test_pending_recovery_budget_reaches_existing_terminal_call_without_extra_rounds(
+    monkeypatch,
+):
+    from deeptutor.agents.loop import pipeline as pipeline_module
+
+    monkeypatch.setattr(
+        pipeline_module,
+        "get_chat_params",
+        lambda: {
+            "max_rounds": 1,
+            "responding": {"max_tokens": 1024},
+            "reasoning_budget_recovery": {"strategy": "increase_output_budget", "max_tokens": 2048},
+        },
+    )
+    tools = [
+        [
+            _llm_chunk(
+                tool_calls=[
+                    {"id": f"call-{i}", "name": "web_search", "arguments": '{"query":"test"}'}
+                ]
+            )
+        ]
+        for i in range(3)
+    ]
+    client = _ScriptedChatClient(
+        [
+            *tools,
+            [_llm_chunk(reasoning_content="private", finish_reason="length")],
+            [_llm_chunk(content="Terminal answer")],
+        ]
+    )
+    pipeline = AgenticChatPipeline(language="en")
+    pipeline.registry = _Registry()
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda context: ["web_search"])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+    events = await _run(
+        pipeline,
+        UnifiedContext(session_id="s1", user_message="Solve", enabled_tools=["web_search"]),
+    )
+    assert [call["max_tokens"] for call in client.calls] == [1024, 1024, 1024, 1024, 2048]
+    assert "tools" not in client.calls[-1]
+    assert _answer_text(events) == "Terminal answer"
+
+
+@pytest.mark.asyncio
 async def test_reasoning_progress_is_throttled_and_contains_no_reasoning_text(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

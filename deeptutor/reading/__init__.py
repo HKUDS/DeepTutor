@@ -64,6 +64,7 @@ from deeptutor.reading.search import SearchResult, search_units
 from deeptutor.reading.service import (
     QuoteCheck,
     RenderedUnits,
+    format_outline,
     material_summary,
     parse_locators,
     render_outline,
@@ -112,6 +113,7 @@ __all__ = [
     "delete_epub_pairing",
     "export_material",
     "extract_material",
+    "format_outline",
     "list_epub_pairings",
     "material_summary",
     "parse_locators",

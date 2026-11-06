@@ -146,36 +146,37 @@ export default function ToolsSettingsPage() {
     if (experience.length) {
       out.push({
         key: "experience",
-        label: zh ? "体验增强" : "Experience Enhancement",
+        label: zh ? "体验增强" : t("Experience Enhancement"),
         hint: zh
           ? "用户可选；按需为 chat agent 开启或关闭。"
-          : "User-toggleable. Switch on or off to shape the chat agent's behavior.",
+          : t("User-toggleable. Switch on or off to shape the chat agent's behavior."),
         tools: experience,
       });
     }
     if (builtin.length) {
       out.push({
         key: "builtin",
-        label: zh ? "内置工具" : "Built-in Tools",
+        label: zh ? "内置工具" : t("Built-in Tools"),
         hint: zh
           ? "Chat agent 在需要时自动挂载，无需手动开关。"
-          : "Mounted automatically by the chat agent when needed. Not user-toggleable.",
+          : t("Mounted automatically by the chat agent when needed. Not user-toggleable."),
         tools: builtin,
       });
     }
     for (const [cap, list] of capabilities) {
-      const label = CAPABILITY_LABELS[cap]?.[zh ? "zh" : "en"] ?? cap;
+      const capLabel = CAPABILITY_LABELS[cap];
+      const label = capLabel ? (zh ? capLabel.zh : t(capLabel.en)) : cap;
       out.push({
         key: `cap:${cap}`,
-        label: zh ? `${label} · 能力工具` : `${label} · Capability Tools`,
+        label: zh ? `${label} · 能力工具` : t("{{label}} · Capability Tools", { label }),
         hint: zh
           ? "该能力的专属工具，仅在此能力运行时挂载。"
-          : "Tools specific to this capability; mounted only when it runs.",
+          : t("Tools specific to this capability; mounted only when it runs."),
         tools: list,
       });
     }
     return out;
-  }, [tools, language]);
+  }, [tools, language, t]);
 
   const filteredSections = useMemo<ToolSection[] | null>(() => {
     if (!sections) return null;
@@ -322,12 +323,20 @@ export default function ToolsSettingsPage() {
                     const isPending = pending.has(tool.name);
                     const isComingSoon = !!tool.coming_soon;
                     const isAvailable = tool.available !== false;
-                    const availability = !isAvailable
+                    const availabilityCopy = !isAvailable
                       ? toolAvailabilityCopy(
                           tool.unavailable_reason,
                           language === "zh" ? "zh" : "en",
                         )
                       : null;
+                    const availability =
+                      availabilityCopy && language !== "zh"
+                        ? {
+                            ...availabilityCopy,
+                            badge: t(availabilityCopy.badge),
+                            detail: t(availabilityCopy.detail),
+                          }
+                        : availabilityCopy;
                     const isEnabled = toolEffectiveEnabled(
                       tool.toggleable ? enabled.has(tool.name) : true,
                       isAvailable,
@@ -376,7 +385,7 @@ export default function ToolsSettingsPage() {
                                   <span className="inline-flex items-center gap-1 rounded-full border border-[var(--border)] bg-[var(--muted)]/40 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-[var(--muted-foreground)]">
                                     {language === "zh"
                                       ? "敬请期待"
-                                      : "Coming soon"}
+                                      : t("Coming soon")}
                                   </span>
                                 )}
                                 {availability && !isComingSoon && (
@@ -404,7 +413,7 @@ export default function ToolsSettingsPage() {
                                     >
                                       {language === "zh"
                                         ? "打开设置"
-                                        : "Open settings"}
+                                        : t("Open settings")}
                                     </Link>
                                   )}
                                 </p>
@@ -425,7 +434,7 @@ export default function ToolsSettingsPage() {
                                   /* locked */
                                 }}
                                 label={
-                                  language === "zh" ? "敬请期待" : "Coming soon"
+                                  language === "zh" ? "敬请期待" : t("Coming soon")
                                 }
                               />
                             ) : !isAvailable ? (

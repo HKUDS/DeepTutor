@@ -55,7 +55,7 @@ def _patch_http(
         return resp
 
     async def fake_get(self: httpx.AsyncClient, url: str, **kwargs: Any) -> httpx.Response:
-        captured["gets"].append({"url": url})
+        captured["gets"].append({"url": url, "headers": kwargs.get("headers")})
         resp = get(url, kwargs) if callable(get) else get
         resp.request = httpx.Request("GET", url)
         return resp
@@ -244,6 +244,49 @@ async def test_dashscope_imagegen_task_polls_and_downloads(
 
 
 @pytest.mark.asyncio
+async def test_dashscope_poll_does_not_replay_the_async_header(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``X-DashScope-Async`` belongs to the submit POST only.
+
+    Verified against a workspace-scoped Bailian key: the submit succeeds, but
+    re-sending the header on ``GET /tasks/{id}`` answers
+    ``403 AccessDenied: current user api does not support asynchronous calls``,
+    so a task that is running upstream looks like a hard failure.
+    """
+    submit = httpx.Response(200, json={"output": {"task_id": "hdr-task"}})
+
+    def get_router(url: str, _kwargs: Any) -> httpx.Response:
+        if url.endswith("/tasks/hdr-task"):
+            return httpx.Response(
+                200,
+                json={
+                    "output": {
+                        "task_status": "SUCCEEDED",
+                        "results": [{"url": "https://cdn.example.com/a.png"}],
+                    }
+                },
+            )
+        return httpx.Response(200, content=b"DATA", headers={"content-type": "image/png"})
+
+    captured = _patch_http(monkeypatch, post=submit, get=get_router)
+    config = ImagegenConfig(
+        model="wanx2.1-t2i-turbo",
+        adapter="dashscope",
+        base_url="https://dashscope.aliyuncs.com/api/v1",
+        api_key="dash-key",
+        poll_interval=0.0,
+    )
+
+    await DashScopeImagegenAdapter().generate("a cat", config)
+
+    assert captured["posts"][0]["headers"]["X-DashScope-Async"] == "enable"
+    assert "X-DashScope-Async" not in (captured["gets"][0]["headers"] or {})
+    # Auth still travels with the poll.
+    assert captured["gets"][0]["headers"]["Authorization"] == "Bearer dash-key"
+
+
+@pytest.mark.asyncio
 async def test_dashscope_imagegen_task_failure_is_actionable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -286,6 +329,224 @@ async def test_dashscope_imagegen_http200_protocol_error_is_actionable(
         match=r"DashScope image task submission failed \(InvalidParameter\): unsupported size",
     ):
         await DashScopeImagegenAdapter().generate("x", config)
+
+
+# ── DashScope multimodal-generation protocol (issue #2422) ──────────────────
+
+
+def _multimodal_poll_body(urls: list[str]) -> dict[str, Any]:
+    return {
+        "output": {
+            "task_status": "SUCCEEDED",
+            "task_id": "mm-task",
+            "choices": [
+                {
+                    "finish_reason": "stop",
+                    "message": {
+                        "role": "assistant",
+                        "content": [{"type": "image", "image": url} for url in urls],
+                    },
+                }
+            ],
+        },
+        "request_id": "req-1",
+    }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "model",
+    ["wan2.6-t2i", "wan2.7-image", "wan2.7-image-pro", "qwen-image-3.0", "qwen-image-2.1-pro"],
+)
+async def test_dashscope_multimodal_models_use_the_new_route(
+    monkeypatch: pytest.MonkeyPatch, model: str
+) -> None:
+    """Every multimodal-only family posts the messages payload to its own route."""
+    submit = httpx.Response(200, json={"output": {"task_id": "mm-task"}})
+
+    def get_router(url: str, _kwargs: Any) -> httpx.Response:
+        if url.endswith("/tasks/mm-task"):
+            return httpx.Response(200, json=_multimodal_poll_body(["https://cdn/mm.png"]))
+        return httpx.Response(200, content=b"MMDATA", headers={"content-type": "image/png"})
+
+    captured = _patch_http(monkeypatch, post=submit, get=get_router)
+    config = ImagegenConfig(
+        model=model,
+        adapter="dashscope",
+        base_url="https://dashscope.aliyuncs.com/api/v1",
+        api_key="dash-key",
+        poll_interval=0.0,
+    )
+
+    images = await DashScopeImagegenAdapter().generate("a cat", config)
+
+    assert images == [(b"MMDATA", "image/png")]
+    post = captured["posts"][0]
+    assert (
+        post["url"]
+        == "https://dashscope.aliyuncs.com/api/v1/services/aigc/image-generation/generation"
+    )
+    assert post["headers"]["X-DashScope-Async"] == "enable"
+    assert post["json"] == {
+        "model": model,
+        "input": {"messages": [{"role": "user", "content": [{"text": "a cat"}]}]},
+        "parameters": {"n": 1},
+    }
+    # Polling is shared with the legacy protocol.
+    assert captured["gets"][0]["url"] == "https://dashscope.aliyuncs.com/api/v1/tasks/mm-task"
+
+
+@pytest.mark.asyncio
+async def test_dashscope_multimodal_extracts_every_image_in_the_choice(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    submit = httpx.Response(200, json={"output": {"task_id": "mm-task"}})
+    urls = ["https://cdn/a.png", "https://cdn/b.png"]
+
+    def get_router(url: str, _kwargs: Any) -> httpx.Response:
+        if url.endswith("/tasks/mm-task"):
+            return httpx.Response(200, json=_multimodal_poll_body(urls))
+        return httpx.Response(200, content=b"BYTES", headers={"content-type": "image/png"})
+
+    captured = _patch_http(monkeypatch, post=submit, get=get_router)
+    config = ImagegenConfig(
+        model="wan2.7-image",
+        adapter="dashscope",
+        base_url="https://dashscope.aliyuncs.com/api/v1",
+        api_key="dash-key",
+        poll_interval=0.0,
+    )
+
+    images = await DashScopeImagegenAdapter().generate("a cat, four seasons", config, n=2)
+
+    assert images == [(b"BYTES", "image/png"), (b"BYTES", "image/png")]
+    assert [call["url"] for call in captured["gets"][1:]] == urls
+
+
+@pytest.mark.asyncio
+async def test_dashscope_multimodal_failure_surfaces_the_task_message(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    submit = httpx.Response(200, json={"output": {"task_id": "mm-bad"}})
+    failed = httpx.Response(
+        200,
+        json={
+            "output": {
+                "task_status": "FAILED",
+                "code": "InvalidParameter",
+                "message": "size is not supported by wan2.7-image",
+            }
+        },
+    )
+    _patch_http(monkeypatch, post=submit, get=failed)
+    config = ImagegenConfig(
+        model="wan2.7-image",
+        adapter="dashscope",
+        base_url="https://dashscope.aliyuncs.com/api/v1",
+        api_key="dash-key",
+        poll_interval=0.0,
+    )
+
+    with pytest.raises(GenerationProviderError, match="size is not supported"):
+        await DashScopeImagegenAdapter().generate("x", config)
+
+
+@pytest.mark.asyncio
+async def test_dashscope_multimodal_success_without_content_is_actionable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    submit = httpx.Response(200, json={"output": {"task_id": "mm-empty"}})
+    empty = httpx.Response(200, json={"output": {"task_status": "SUCCEEDED", "choices": []}})
+    _patch_http(monkeypatch, post=submit, get=empty)
+    config = ImagegenConfig(
+        model="qwen-image-3.0",
+        adapter="dashscope",
+        base_url="https://dashscope.aliyuncs.com/api/v1",
+        api_key="dash-key",
+        poll_interval=0.0,
+    )
+
+    with pytest.raises(GenerationProviderError, match="no image URLs"):
+        await DashScopeImagegenAdapter().generate("x", config)
+
+
+@pytest.mark.parametrize(
+    ("model", "configured", "expected"),
+    [
+        # OpenAI spelling becomes DashScope's.
+        ("wanx2.1-t2i-turbo", "1024x1024", "1024*1024"),
+        ("wan2.7-image", "1024x1024", "1024*1024"),
+        ("qwen-image-3.0", "1024X1024", "1024*1024"),
+        # Already DashScope-spelled.
+        ("wanx2.1-t2i-turbo", "1280*1280", "1280*1280"),
+        # wan2.7 is the only family that takes resolution tiers.
+        ("wan2.7-image", "2K", "2K"),
+        ("wan2.7-image-pro", "4k", "4K"),
+        ("wan2.7-image", "", ""),
+    ],
+)
+def test_dashscope_size_normalization(model: str, configured: str, expected: str) -> None:
+    assert DashScopeImagegenAdapter._size(model, configured) == expected
+
+
+@pytest.mark.parametrize(
+    ("model", "configured"),
+    [("wan2.6-t2i", "2K"), ("qwen-image-3.0", "1K"), ("wanx2.1-t2i-turbo", "1K")],
+)
+def test_dashscope_rejects_tiers_outside_wan27(model: str, configured: str) -> None:
+    with pytest.raises(GenerationProviderError, match="wan2.7"):
+        DashScopeImagegenAdapter._size(model, configured)
+
+
+@pytest.mark.parametrize("configured", ["4K", "4k"])
+def test_dashscope_4k_is_pro_only(configured: str) -> None:
+    """4K text-to-image is wan2.7-image-pro only; the standard tier stops at 2K."""
+    with pytest.raises(GenerationProviderError, match="wan2.7-image-pro"):
+        DashScopeImagegenAdapter._size("wan2.7-image", configured)
+
+    assert DashScopeImagegenAdapter._size("wan2.7-image-pro", configured) == "4K"
+
+
+@pytest.mark.parametrize("configured", ["1K", "2K"])
+def test_dashscope_non_pro_wan27_still_takes_1k_and_2k(configured: str) -> None:
+    """The 4K guard must not narrow the tiers wan2.7-image does support."""
+    assert DashScopeImagegenAdapter._size("wan2.7-image", configured) == configured
+
+
+@pytest.mark.parametrize(
+    ("model", "expected"),
+    [
+        ("wanx2.1-t2i-turbo", "services/aigc/text2image/image-synthesis"),
+        ("wan2.5-t2i-preview", "services/aigc/text2image/image-synthesis"),
+        ("qwen-image-plus", "services/aigc/text2image/image-synthesis"),
+        ("wan2.6-t2i", "services/aigc/image-generation/generation"),
+        ("wan2.7-image-2026-09-01", "services/aigc/image-generation/generation"),
+        ("qwen-image-3.0-pro", "services/aigc/image-generation/generation"),
+        ("qwen-image-2.1-turbo", "services/aigc/image-generation/generation"),
+    ],
+)
+def test_dashscope_routes_models_to_their_protocol(model: str, expected: str) -> None:
+    assert DashScopeImagegenAdapter._submit_path(model) == expected
+
+
+def test_dashscope_legacy_payload_is_unchanged() -> None:
+    """Models that work today keep the exact request they send today."""
+    config = ImagegenConfig(
+        model="wanx2.1-t2i-turbo", adapter="dashscope", size="1024x1024", style="vivid"
+    )
+    payload = DashScopeImagegenAdapter._submit_payload("a cat", config, n=2)
+    assert payload == {
+        "model": "wanx2.1-t2i-turbo",
+        "input": {"prompt": "a cat"},
+        "parameters": {"n": 2, "size": "1024*1024", "style": "vivid"},
+    }
+
+
+def test_dashscope_multimodal_omits_the_thinking_switch() -> None:
+    """The thinking flag has a different name per family, so it is left default."""
+    config = ImagegenConfig(model="wan2.7-image", adapter="dashscope", size="2K", style="vivid")
+    payload = DashScopeImagegenAdapter._submit_payload("a cat", config, n=1)
+    assert payload["parameters"] == {"n": 1, "size": "2K"}
 
 
 # ── videogen adapter ────────────────────────────────────────────────────────

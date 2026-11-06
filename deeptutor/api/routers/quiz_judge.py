@@ -292,6 +292,22 @@ async def _build_multimodal_user_content(
     return content
 
 
+def _data_url_mime(value: str) -> str | None:
+    """Return the media type declared in a ``data:`` URL, or ``None``.
+
+    Args:
+        value: A string beginning with ``data:``, e.g.
+            ``data:image/jpeg;base64,...``.
+
+    Returns:
+        The declared media type (``image/jpeg``), or ``None`` when the URL
+        declares no media type.
+    """
+    header = value[len("data:") : value.find(",")] if "," in value else ""
+    mime = header.split(";", 1)[0].strip()
+    return mime or None
+
+
 def _guess_image_mime(filename: str | None) -> str:
     if not filename:
         return "image/png"
@@ -409,7 +425,9 @@ async def websocket_quiz_judge(websocket: WebSocket):
                 continue
             b64 = entry.get("base64") or ""
             url = entry.get("url") or ""
+            declared_mime: str | None = None
             if isinstance(b64, str) and b64.startswith("data:"):
+                declared_mime = _data_url_mime(b64)
                 try:
                     b64 = b64.split(",", 1)[1]
                 except IndexError:
@@ -417,7 +435,7 @@ async def websocket_quiz_judge(websocket: WebSocket):
             if not b64 and not url:
                 continue
             filename = entry.get("filename") or "answer.png"
-            mime_type = entry.get("mime_type") or _guess_image_mime(filename)
+            mime_type = entry.get("mime_type") or declared_mime or _guess_image_mime(filename)
             image_records.append(
                 {
                     "base64": b64,
@@ -428,7 +446,9 @@ async def websocket_quiz_judge(websocket: WebSocket):
             )
     else:
         legacy_b64 = data.get("user_answer_image") or ""
+        legacy_mime: str | None = None
         if isinstance(legacy_b64, str) and legacy_b64.startswith("data:"):
+            legacy_mime = _data_url_mime(legacy_b64)
             try:
                 legacy_b64 = legacy_b64.split(",", 1)[1]
             except IndexError:
@@ -440,7 +460,7 @@ async def websocket_quiz_judge(websocket: WebSocket):
                     "base64": legacy_b64,
                     "url": "",
                     "filename": legacy_filename,
-                    "mime_type": _guess_image_mime(legacy_filename),
+                    "mime_type": legacy_mime or _guess_image_mime(legacy_filename),
                 }
             )
 

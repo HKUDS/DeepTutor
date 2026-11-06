@@ -11,7 +11,7 @@ system: |
 
       {{"edits": [
         {{"op": "replace", "line": <int>, "new_text": "<≤240>",
-          "refs": ["<existing-or-new-refs>", ...], "reason": "<short>"}},
+          "refs": ["<source ref from refs=[...]>", ...], "reason": "<short>"}},
         {{"op": "delete",  "line_start": <int>, "line_end": <int>,
           "reason": "<merged into Lx | duplicate of Ly | low signal>"}}
       ]}}
@@ -23,6 +23,9 @@ system: |
   - When two entries restate the same fact verbatim, delete the later
     duplicate (lower-line wins).
   - text ≤ 240. Preserve refs (union when merging).
+  - Each entry's refs=[...] suffix contains its source references. Copy
+    those values exactly; [^m_...] is an entry anchor, not a source ref.
+    Do not include the refs metadata suffix in new_text.
   - Banned absolutist phrasing (same list as update mode).
   - If nothing needs deduping, emit `{{"edits": []}}`. Don't churn.
 
