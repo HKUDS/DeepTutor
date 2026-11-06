@@ -110,6 +110,14 @@ checkout. `npm start` runs the shell against this computer's bundled core.
 
 ## Releases
 
+Starting with the release after v1.7.1, every release must include both macOS
+architectures: Apple Silicon (`macos-arm64`) and Intel (`macos-x64`), alongside
+the Windows installer and portable ZIP. The `verify-release` job requires all
+three builds to succeed and checks that all four versioned downloads and their
+unversioned aliases are uploaded and nonempty. A missing Intel DMG means the
+desktop release is incomplete; fix and rerun the failed build before reporting
+the release as complete.
+
 `.github/workflows/desktop-release.yml` runs when a DeepTutor GitHub Release is
 published. For each target it verifies the tag matches
 `deeptutor/__version__.py`, builds and smoke-tests the runtime, packages the
