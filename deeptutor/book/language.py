@@ -10,21 +10,33 @@ from deeptutor.services.prompt.language import normalize_language
 _AUTO_LANGUAGE = "auto"
 
 # Only phrased requests are treated as explicit language selection. Merely
-# mentioning "Japanese history" must not force a Japanese book.
+# mentioning "Japanese history" must not force a Japanese book. Word cues are
+# bounded so "in Germany" or "Berlin German" is not read as "in German".
 _LANGUAGE_CUES: tuple[tuple[str, str], ...] = (
-    ("zh-tw", r"(?:繁體中文|正體中文|traditional\s+chinese)"),
-    ("zh", r"(?:用(?:简体中文|中文|汉语)|以(?:中文|汉语)|in\s+chinese|in\s+mandarin)"),
-    ("ja", r"(?:日本語で|用(?:日语|日文)|in\s+japanese)"),
-    ("ko", r"(?:한국어로|用(?:韩语|韓語)|in\s+korean)"),
-    ("ru", r"(?:по-русски|на\s+русском|in\s+russian)"),
-    ("es", r"(?:en\s+español|en\s+espanol|in\s+spanish|castellano|用(?:西班牙语|西班牙文))"),
-    ("fr", r"(?:en\s+français|en\s+francais|in\s+french|用(?:法语|法文))"),
-    ("de", r"(?:auf\s+deutsch|in\s+german|用(?:德语|德文))"),
-    ("pt", r"(?:em\s+português|em\s+portugues|in\s+portuguese|用(?:葡萄牙语|葡萄牙文))"),
-    ("it", r"(?:in\s+italiano|in\s+italian|用(?:意大利语|意大利文))"),
-    ("vi", r"(?:bằng\s+tiếng\s+việt|bang\s+tieng\s+viet|in\s+vietnamese|用越南(?:语|語|文))"),
-    ("tr", r"(?:türkçe\s+olarak|türkçe\s+yaz(?:ın)?\b|in\s+turkish|用土耳其(?:语|文))"),
-    ("en", r"(?:in\s+english|英語で|用(?:英语|英文)|en\s+anglais|en\s+inglés)"),
+    ("zh-tw", r"(?:繁體中文|正體中文|\bin\s+traditional\s+chinese\b)"),
+    ("zh", r"(?:用(?:简体中文|中文|汉语)|以(?:中文|汉语)|\bin\s+chinese\b|\bin\s+mandarin\b)"),
+    ("ja", r"(?:日本語で|用(?:日语|日文)|\bin\s+japanese\b)"),
+    ("ko", r"(?:한국어로|用(?:韩语|韓語)|\bin\s+korean\b)"),
+    ("ru", r"(?:\bпо-русски\b|\bна\s+русском\b|\bin\s+russian\b)"),
+    (
+        "es",
+        r"(?:\ben\s+español\b|\ben\s+espanol\b|\bin\s+spanish\b|\bcastellano\b"
+        r"|用(?:西班牙语|西班牙文))",
+    ),
+    ("fr", r"(?:\ben\s+français\b|\ben\s+francais\b|\bin\s+french\b|用(?:法语|法文))"),
+    ("de", r"(?:\bauf\s+deutsch\b|\bin\s+german\b|用(?:德语|德文))"),
+    (
+        "pt",
+        r"(?:\bem\s+português\b|\bem\s+portugues\b|\bin\s+portuguese\b|用(?:葡萄牙语|葡萄牙文))",
+    ),
+    ("it", r"(?:\bin\s+italiano\b|\bin\s+italian\b|用(?:意大利语|意大利文))"),
+    (
+        "vi",
+        r"(?:\bbằng\s+tiếng\s+việt\b|\bbang\s+tieng\s+viet\b|\bin\s+vietnamese\b"
+        r"|用越南(?:语|語|文))",
+    ),
+    ("tr", r"(?:\btürkçe\s+olarak\b|\btürkçe\s+yaz(?:ın)?\b|\bin\s+turkish\b|用土耳其(?:语|文))"),
+    ("en", r"(?:\bin\s+english\b|英語で|用(?:英语|英文)|\ben\s+anglais\b|\ben\s+inglés\b)"),
 )
 
 _COMPILED_CUES = tuple(
