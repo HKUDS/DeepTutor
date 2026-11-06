@@ -5,10 +5,87 @@ import { useTranslation } from "react-i18next";
 import { Loader2, RotateCcw, X, ZoomIn, ZoomOut } from "lucide-react";
 import { loadPdfjs, outputScale, type PdfDocument } from "@/lib/pdfjs-loader";
 import type { NormalisedBox } from "@/lib/pdf-page-geometry";
+import { MAX_PAGE_CANVAS_PIXELS } from "@/lib/reading-zoom";
 import Tooltip from "@/shared/ui/Tooltip";
 
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 4;
+
+/**
+ * Longest side the preview bitmap may take, in device pixels.
+ *
+ * A canvas is not useful past a few thousand device pixels on one side: the
+ * preview is shown at the pane's width and magnified with a CSS transform, so
+ * 8192 device pixels is already more than twice the widest stage at DPR 2
+ * (1600 CSS px × 2). It is also the texture size some older mobile GPUs cap at,
+ * and far below the 16384 per side current browsers allow.
+ *
+ * Without a cap, a 2%-wide full-height picture — a legal hotspot, since it
+ * passes the 0.3% area threshold — asks for a bitmap a hundred thousand pixels
+ * tall on the vertical axis alone.
+ */
+export const MAX_PREVIEW_CANVAS_AXIS = 8192;
+
+export interface PreviewCanvasPlan {
+  /** Scale to render the page at. */
+  scale: number;
+  /** CSS size of the canvas on the stage. */
+  cssWidth: number;
+  cssHeight: number;
+  /** Device-pixel size of the bitmap. */
+  width: number;
+  height: number;
+}
+
+/**
+ * Sizes the preview bitmap for one picture rectangle.
+ *
+ * `requestedScale` is what the picture would like: enough to make its width
+ * fill the stage. A tall narrow rectangle makes that scale enormous, so the
+ * scale — never the rectangle — is reduced until the bitmap fits both the page
+ * reader's device-pixel budget and {@link MAX_PREVIEW_CANVAS_AXIS}.
+ *
+ * Shrinking the scale shrinks the CSS box with the bitmap, which keeps the
+ * picture sharp at 1:1 and at its natural aspect: the preview is smaller, not
+ * a stretched thumbnail, and the reader can still zoom and pan it.
+ */
+export function previewCanvasPlan(
+  regionWidth: number,
+  regionHeight: number,
+  requestedScale: number,
+  dpr: number,
+): PreviewCanvasPlan {
+  const width = Math.max(1, regionWidth);
+  const height = Math.max(1, regionHeight);
+  const ratio = Number.isFinite(dpr) && dpr > 0 ? dpr : 1;
+  const requested =
+    Number.isFinite(requestedScale) && requestedScale > 0 ? requestedScale : 1;
+  const deviceWidth = width * requested * ratio;
+  const deviceHeight = height * requested * ratio;
+
+  let fit = 1;
+  const area = deviceWidth * deviceHeight;
+  if (area > MAX_PAGE_CANVAS_PIXELS) {
+    fit = Math.sqrt(MAX_PAGE_CANVAS_PIXELS / area);
+  }
+  const longest = Math.max(deviceWidth, deviceHeight);
+  if (longest * fit > MAX_PREVIEW_CANVAS_AXIS) {
+    fit = MAX_PREVIEW_CANVAS_AXIS / longest;
+  }
+
+  const scale = requested * fit;
+  // Floor the CSS box first and derive the bitmap from it: the canvas can only
+  // end up smaller than the fitted size, never a rounding step past the caps.
+  const cssWidth = Math.max(1, Math.floor(width * scale));
+  const cssHeight = Math.max(1, Math.floor(height * scale));
+  return {
+    scale,
+    cssWidth,
+    cssHeight,
+    width: Math.max(1, Math.floor(cssWidth * ratio)),
+    height: Math.max(1, Math.floor(cssHeight * ratio)),
+  };
+}
 
 export interface PdfImageZoomOverlayProps {
   doc: PdfDocument;
@@ -66,18 +143,25 @@ export function PdfImageZoomOverlay({
         Math.max(480, window.innerWidth * 0.82),
       );
       // Rendered at least 1.5× so a narrow picture still looks like a preview
-      // rather than a stretched thumbnail.
-      const scale = Math.max(1.5, target / regionWidth);
+      // rather than a stretched thumbnail. `previewCanvasPlan` then reduces the
+      // scale when that request would ask for a bitmap past the page reader's
+      // budget or past the single-axis cap — a legal 2%-wide full-height
+      // hotspot would otherwise allocate hundreds of MiB.
+      const requestedScale = Math.max(1.5, target / regionWidth);
       const dpr = outputScale();
-      const cssWidth = regionWidth * scale;
-      const cssHeight = regionHeight * scale;
-      canvas.width = Math.max(1, Math.floor(cssWidth * dpr));
-      canvas.height = Math.max(1, Math.floor(cssHeight * dpr));
-      canvas.style.width = `${Math.floor(cssWidth)}px`;
-      canvas.style.height = `${Math.floor(cssHeight)}px`;
-      const viewport = page.getViewport({ scale });
-      const shiftX = -box.x0 * base.width * scale * dpr;
-      const shiftY = -box.y0 * base.height * scale * dpr;
+      const plan = previewCanvasPlan(
+        regionWidth,
+        regionHeight,
+        requestedScale,
+        dpr,
+      );
+      canvas.width = plan.width;
+      canvas.height = plan.height;
+      canvas.style.width = `${plan.cssWidth}px`;
+      canvas.style.height = `${plan.cssHeight}px`;
+      const viewport = page.getViewport({ scale: plan.scale });
+      const shiftX = -box.x0 * base.width * plan.scale * dpr;
+      const shiftY = -box.y0 * base.height * plan.scale * dpr;
       renderTask = page.render({
         canvas,
         viewport,
