@@ -49,17 +49,33 @@ export interface PreviewCanvasPlan {
  * picture sharp at 1:1 and at its natural aspect: the preview is smaller, not
  * a stretched thumbnail, and the reader can still zoom and pan it.
  */
+export interface PreviewStage {
+  /** CSS pixels the stage can show, already net of its own padding. */
+  width: number;
+  height: number;
+}
+
 export function previewCanvasPlan(
   regionWidth: number,
   regionHeight: number,
   requestedScale: number,
   dpr: number,
+  stage?: PreviewStage,
 ): PreviewCanvasPlan {
   const width = Math.max(1, regionWidth);
   const height = Math.max(1, regionHeight);
   const ratio = Number.isFinite(dpr) && dpr > 0 ? dpr : 1;
-  const requested =
+  let requested =
     Number.isFinite(requestedScale) && requestedScale > 0 ? requestedScale : 1;
+  // A picture must open *whole*. Fitting only its width made a scanned page —
+  // one full-page image hotspot — open at 2.7x, showing the middle third with
+  // no way to zoom out below 1. The stage is the other half of "fit".
+  if (stage && stage.width > 0 && stage.height > 0) {
+    requested = Math.min(
+      requested,
+      Math.min(stage.width / width, stage.height / height),
+    );
+  }
   const deviceWidth = width * requested * ratio;
   const deviceHeight = height * requested * ratio;
 
@@ -149,11 +165,18 @@ export function PdfImageZoomOverlay({
       // hotspot would otherwise allocate hundreds of MiB.
       const requestedScale = Math.max(1.5, target / regionWidth);
       const dpr = outputScale();
+      const stage = stageRef.current?.getBoundingClientRect();
       const plan = previewCanvasPlan(
         regionWidth,
         regionHeight,
         requestedScale,
         dpr,
+        stage && stage.width > 0 && stage.height > 0
+          ? { width: stage.width - 32, height: stage.height - 72 }
+          : {
+              width: window.innerWidth * 0.86,
+              height: window.innerHeight * 0.72,
+            },
       );
       canvas.width = plan.width;
       canvas.height = plan.height;

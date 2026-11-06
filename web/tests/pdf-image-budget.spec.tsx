@@ -90,17 +90,21 @@ describe("picture preview bitmap budget", () => {
     expect(parseFloat(canvas.style.height)).toBeCloseTo(canvas.height / 2, 0);
   });
 
-  it("renders a normal picture at the stage's width and full resolution", async () => {
+  it("renders a normal picture whole, at full resolution", async () => {
     const box = { x0: 0.1, y0: 0.2, x1: 0.6, y1: 0.5 };
     const canvas = await preview(box);
 
-    // 82% of the 1024px jsdom window is ~840 CSS px, which is the target the
-    // preview has always aimed at; 2x that is the bitmap.
-    expect(parseFloat(canvas.style.width)).toBeGreaterThan(800);
-    expect(parseFloat(canvas.style.width)).toBeLessThan(900);
-    expect(canvas.width).toBe(Math.floor(parseFloat(canvas.style.width) * 2));
-    expect(canvas.width / canvas.height).toBeCloseTo(aspect(box), 2);
-    // Nothing was clamped: a normal picture is not made smaller by the guard.
+    // The preview opens the picture *whole*: the stage is 86% of the jsdom
+    // window wide and 72% of it tall, so a 300x240 picture is limited by
+    // height, not stretched to the full width.
+    const cssWidth = parseFloat(canvas.style.width);
+    const cssHeight = parseFloat(canvas.style.height);
+    expect(cssWidth).toBeLessThanOrEqual(1024 * 0.86);
+    expect(cssHeight).toBeLessThanOrEqual(768 * 0.72);
+    expect(cssWidth / cssHeight).toBeCloseTo(aspect(box), 2);
+    // Full device resolution for whatever CSS box was chosen.
+    expect(canvas.width).toBe(Math.floor(cssWidth * 2));
+    expect(canvas.height).toBe(Math.floor(cssHeight * 2));
     expect(canvas.width * canvas.height).toBeLessThan(
       MAX_PAGE_CANVAS_PIXELS / 4,
     );
@@ -139,5 +143,26 @@ describe("picture preview bitmap budget", () => {
     expect(plan.cssHeight).toBe(600);
     expect(plan.width).toBe(1500);
     expect(plan.height).toBe(1200);
+  });
+});
+
+describe("a picture opens whole", () => {
+  it("fits a full-page scan to the stage instead of showing its middle", () => {
+    // One full-page image hotspot: 600x800pt page, the whole page is the
+    // picture, the stage is a 1440x900 window net of padding and toolbar.
+    const stage = { width: 1240, height: 760 };
+    const plan = previewCanvasPlan(600, 800, 2.689, 2, stage);
+    expect(plan.cssHeight).toBeLessThanOrEqual(stage.height);
+    expect(plan.cssWidth).toBeLessThanOrEqual(stage.width);
+    // And it keeps the picture's aspect, so nothing is squashed.
+    expect(plan.cssWidth / plan.cssHeight).toBeCloseTo(600 / 800, 2);
+  });
+
+  it("leaves a picture that already fits alone", () => {
+    const stage = { width: 1240, height: 760 };
+    const plan = previewCanvasPlan(300, 240, 1.5, 2, stage);
+    // 300x240 at 1.5x is 450x360 CSS, inside the stage: untouched.
+    expect(plan.cssWidth).toBe(450);
+    expect(plan.cssHeight).toBe(360);
   });
 });
