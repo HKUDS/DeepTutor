@@ -146,7 +146,7 @@ jobs:
 
       - name: Install frontend dependencies
         working-directory: web
-        run: npm ci --legacy-peer-deps
+        run: npm ci
 
       - name: Build packaged Web assets
         run: python scripts/prepare_web_package.py

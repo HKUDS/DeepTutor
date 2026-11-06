@@ -120,7 +120,7 @@ deeptutor start                   # backend + frontend together
 Examples beyond core require their owning modules; use `deeptutor module list`
 to inspect installed/enabled/ready states and `deeptutor plugin list` to discover
 registered capabilities and tools. Source Web startup also needs Node.js 22 LTS
-and `npm ci --legacy-peer-deps` in `web/`. CLI-only source users can skip frontend
+and `npm ci` in `web/`. CLI-only source users can skip frontend
 setup, but still need the full Python dependencies. Follow
 [Agent Setup](docs-for-dev/AGENT_SETUP.md) for credentials and verification.
 
