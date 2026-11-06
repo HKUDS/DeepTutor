@@ -1041,6 +1041,114 @@ def test_initialize_requires_graphrag(tmp_path, monkeypatch) -> None:
         asyncio.run(pipe.initialize("kb", [str(txt)]))
 
 
+@pytest.mark.parametrize("operation", ["initialize", "add_documents"])
+@pytest.mark.parametrize("extension", [".pdf", ".png"])
+def test_pipeline_keeps_loop_responsive_during_document_parsing(
+    tmp_path, monkeypatch, operation, extension
+) -> None:
+    from contextvars import ContextVar
+    from threading import Event, Thread
+    from types import SimpleNamespace
+
+    from deeptutor.services import parsing
+
+    _force_available(monkeypatch, True)
+    builds = _stub_build(monkeypatch)
+    scope = ContextVar("graph_parse_scope", default="missing")
+    parse_started = Event()
+    heartbeat = Event()
+    release = Event()
+    heartbeat_before_release = []
+    parsed = []
+    application_loop = []
+
+    class Parser:
+        def supports(self, _path):
+            return True
+
+        def parse(self, path):
+            parsed.append((path.name, scope.get()))
+            if len(parsed) == 1:
+                parse_started.set()
+                application_loop[0].call_soon_threadsafe(heartbeat.set)
+                # A synchronous parser can finish only after another request
+                # gets a turn on the application's event loop. The timeout is
+                # a deadlock escape, not a latency threshold assertion.
+                assert release.wait(5), "parser release thread did not run"
+            return SimpleNamespace(markdown=f"Content from {path.name}", blocks=[])
+
+    monkeypatch.setattr(parsing, "get_parse_service", lambda: Parser())
+    sources = [tmp_path / f"{name}{extension}" for name in ("first", "second")]
+    for source in sources:
+        source.write_bytes(b"synthetic parser input")
+
+    def release_parser():
+        # Configuration and worker startup do not consume the responsiveness
+        # deadline: start observing the heartbeat only once parsing begins.
+        started = parse_started.wait(10)
+        heartbeat_before_release.append(started and heartbeat.wait(1))
+        release.set()
+
+    async def run():
+        scope.set("workspace-fixture")
+        application_loop.append(asyncio.get_running_loop())
+        pipeline = GraphRagPipeline(kb_base_dir=str(tmp_path))
+        task = asyncio.create_task(getattr(pipeline, operation)("kb", list(map(str, sources))))
+        return await task
+
+    releaser = Thread(target=release_parser)
+    releaser.start()
+    try:
+        assert asyncio.run(run()) is True
+    finally:
+        release.set()
+        parse_started.set()  # Also let the releaser exit if setup raised.
+        releaser.join(5)
+
+    assert heartbeat_before_release == [True], "document parser blocked the application loop"
+    assert parsed == [(source.name, "workspace-fixture") for source in sources]
+    assert len(builds) == 1
+    input_files = sorted(Path(builds[0]["root"]).joinpath("input").glob("*.txt"))
+    assert [path.read_text(encoding="utf-8") for path in input_files] == [
+        f"Content from {source.name}" for source in sources
+    ]
+
+
+@pytest.mark.parametrize("expected_parse_error", [True, False])
+def test_pipeline_preserves_parser_failure_handling(tmp_path, monkeypatch, expected_parse_error):
+    from types import SimpleNamespace
+
+    from deeptutor.services import parsing
+
+    _force_available(monkeypatch, True)
+    builds = _stub_build(monkeypatch)
+    failure = (
+        parsing.ParserError("unreadable document")
+        if expected_parse_error
+        else RuntimeError("unexpected parser failure")
+    )
+    sources = [tmp_path / name for name in ("broken.pdf", "good.pdf")]
+    for source in sources:
+        source.write_bytes(b"synthetic parser input")
+
+    class Parser:
+        def parse(self, path):
+            if path == sources[0]:
+                raise failure
+            return SimpleNamespace(markdown="usable content", blocks=[])
+
+    monkeypatch.setattr(parsing, "get_parse_service", lambda: Parser())
+    pipe = GraphRagPipeline(kb_base_dir=str(tmp_path))
+    if expected_parse_error:
+        assert asyncio.run(pipe.initialize("kb", list(map(str, sources)))) is True
+        assert (Path(builds[0]["root"]) / "input" / "good.txt").read_text() == "usable content"
+    else:
+        with pytest.raises(RuntimeError) as raised:
+            asyncio.run(pipe.initialize("kb", list(map(str, sources))))
+        assert raised.value is failure
+        assert builds == []
+
+
 def test_initialize_orchestrates_index(tmp_path, monkeypatch) -> None:
     _force_available(monkeypatch, True)
     calls = _stub_build(monkeypatch)
