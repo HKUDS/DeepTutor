@@ -7,6 +7,7 @@ import type { AnnotationItem } from "@/lib/reading-api";
 import {
   cropLayout,
   measurePageInkBox,
+  pageImageBoxes,
   type NormalisedBox,
 } from "@/lib/pdf-page-geometry";
 import { canvasPixelRatio } from "@/lib/reading-zoom";
@@ -41,6 +42,8 @@ export interface PdfPageProps {
    * neighbour's ratio must never stand in for the page being read.
    */
   onCropRatio?: (locator: number, ratio: number) => void;
+  /** Reports a picture the reader clicked, in page-normalised coordinates. */
+  onImageClick?: (locator: number, box: NormalisedBox) => void;
   /**
    * Cache key for the ink and picture measurements: a page that changes
    * material must never show the previous one's crop.
@@ -77,6 +80,7 @@ export function PdfPage({
   onAnnotationClick,
   cropMargins = false,
   onCropRatio,
+  onImageClick,
   inkKey = `${doc ? "doc" : "none"}:${locator}`,
 }: PdfPageProps) {
   const { t } = useTranslation();
@@ -107,6 +111,11 @@ export function PdfPage({
   // paint effect ran once before the measurement and again after it — every
   // page drawn twice, at two different widths when the crop landed.
   const awaitingInk = cropMargins && inkBox === undefined;
+  const [imageState, setImageState] = useState<{
+    key: string;
+    boxes: NormalisedBox[];
+  } | null>(null);
+  const imageBoxes = imageState?.key === inkKey ? imageState.boxes : [];
 
   const layout = useMemo(
     () =>
@@ -164,6 +173,25 @@ export function PdfPage({
 
   // -- pictures ------------------------------------------------------------
 
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const pdfjs = await loadPdfjs();
+      const page = await doc.getPage(locator);
+      if (cancelled) return;
+      const boxes = await pageImageBoxes(
+        page,
+        pdfjs.OPS as unknown as Record<string, number> | undefined,
+      );
+      if (!cancelled) setImageState({ key: inkKey, boxes });
+    })().catch(() => {
+      // A page whose operators cannot be read simply has no hotspots.
+      if (!cancelled) setImageState({ key: inkKey, boxes: [] });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [doc, locator, inkKey]);
 
   const height = Math.round(width * (ratio ?? fallbackRatio));
 
@@ -382,6 +410,29 @@ export function PdfPage({
         flashRects={flashRects}
         onAnnotationClick={onAnnotationClick}
       />
+      {onImageClick && imageBoxes.length > 0 && (
+        <div className="pointer-events-none absolute inset-0">
+          {imageBoxes.map((box, index) => (
+            <button
+              key={`image-${index}`}
+              type="button"
+              aria-label={t("Zoom image")}
+              onMouseUp={(event) => event.stopPropagation()}
+              onClick={(event) => {
+                event.stopPropagation();
+                onImageClick(locator, box);
+              }}
+              className="pointer-events-auto absolute cursor-zoom-in rounded-[3px] transition hover:bg-black/[0.05] hover:ring-1 hover:ring-[var(--primary)]/40"
+              style={{
+                left: `${box.x0 * 100}%`,
+                top: `${box.y0 * 100}%`,
+                width: `${(box.x1 - box.x0) * 100}%`,
+                height: `${(box.y1 - box.y0) * 100}%`,
+              }}
+            />
+          ))}
+        </div>
+      )}
       </div>
       {!active && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">

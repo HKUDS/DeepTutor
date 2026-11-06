@@ -6,6 +6,7 @@ import {
 } from "@/lib/reading-zoom";
 import {
   cropLayout,
+  imageBoxesFromOperatorList,
   inkBoxFromPixels,
   measurePageInkBox,
 } from "@/lib/pdf-page-geometry";
@@ -172,6 +173,59 @@ describe("crop layout", () => {
   });
 });
 
+describe("picture hotspots", () => {
+  it("comes from the operator list transformation matrix", () => {
+    // The rectangle comes from the current transform matrix, not from the
+    // operator's arguments: `transform` sets where the unit square lands, and
+    // `paintImageXObject` then paints into it.
+    const ops = {
+      save: 10,
+      restore: 11,
+      transform: 12,
+      paintImageXObject: 85,
+      paintInlineImageXObject: 86,
+      paintImageMaskXObject: 87,
+    };
+    const list = {
+      // transform places a 100x50 rectangle at (20, 30) in page space.
+      fnArray: [ops.transform, ops.paintImageXObject],
+      argsArray: [[100, 0, 0, 50, 20, 30], ["img1", 100, 50]],
+    };
+    const boxes = imageBoxesFromOperatorList(list, ops, {
+      width: 200,
+      height: 100,
+      transform: [1, 0, 0, -1, 0, 100],
+    });
+    expect(boxes.length).toBeGreaterThan(0);
+    // The rectangle lands inside the page, normalised to 0..1.
+    for (const box of boxes) {
+      expect(box.x0).toBeGreaterThanOrEqual(0);
+      expect(box.x1).toBeLessThanOrEqual(1);
+      expect(box.y0).toBeGreaterThanOrEqual(0);
+      expect(box.y1).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it("returns nothing for a page with no pictures", () => {
+    const boxes = imageBoxesFromOperatorList(
+      { fnArray: [10], argsArray: [[]] },
+      { paintImageXObject: 85 },
+      { width: 200, height: 100, transform: [1, 0, 0, -1, 0, 100] },
+    );
+    expect(boxes).toEqual([]);
+  });
+});
+
+/**
+ * Measuring the ink box paints a page into a scratch canvas.
+ *
+ * The regression this guards: `PDFPageProxy.render` reads `this._transport` and
+ * `this._stats`, so calling it as a bare function throws. The caller turns a
+ * failed measurement into "nothing to crop", so an unbound call degrades every
+ * page in the document to the full width — silently, with no error surfaced to
+ * the reader. That is exactly what shipped before these tests existed: the
+ * crop button toggled its own `aria-pressed` while the page never changed size.
+ */
 describe("measuring the ink box", () => {
   /**
    * jsdom ships no canvas backend, and the shared setup makes `getContext`

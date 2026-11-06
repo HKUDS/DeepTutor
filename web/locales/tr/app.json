@@ -6585,5 +6585,11 @@
   "Zoom level": "Yakınlaştırma düzeyi",
   "Reset zoom": "Yakınlaştırmayı sıfırla",
   "Fit text": "Metne sığdır",
-  "Fit page": "Sayfaya sığdır"
+  "Fit page": "Sayfaya sığdır",
+  "Drag to pan, scroll to zoom": "Taşımak için sürükleyin, yakınlaştırmak için kaydırın",
+  "Image preview": "Görsel önizlemesi",
+  "Loading image…": "Görsel yükleniyor…",
+  "Page {{n}}": "Sayfa {{n}}",
+  "This image could not be rendered.": "Bu görsel oluşturulamadı.",
+  "Zoom image": "Görseli büyüt"
 }

@@ -47,6 +47,7 @@ import {
   type PdfZoomPreference,
 } from "@/lib/reading-zoom";
 import type { NormalisedBox } from "@/lib/pdf-page-geometry";
+import { PdfImageZoomOverlay } from "./PdfImageZoomOverlay";
 import { PdfPage } from "./PdfPage";
 import dynamic from "next/dynamic";
 
@@ -201,6 +202,11 @@ export function PdfDocumentView({
     horizontalOffset: number;
   } | null>(null);
   const [visibleLocator, setVisibleLocator] = useState(1);
+  // A picture the reader clicked, awaiting the full-screen preview.
+  const [zoomTarget, setZoomTarget] = useState<{
+    locator: number;
+    box: NormalisedBox;
+  } | null>(null);
   // Tagged with the jump's nonce for the same reason: a stale flash cannot
   // outlive the request that produced it.
   const [flash, setFlash] = useState<{
@@ -950,6 +956,9 @@ export function PdfDocumentView({
                   cropMargins={cropsPageMargins(zoom)}
                   onCropRatio={reportCropRatio}
                   inkKey={`${materialId}:${locator}`}
+                  onImageClick={(targetLocator, box) =>
+                    setZoomTarget({ locator: targetLocator, box })
+                  }
                 />
               ),
             )}
@@ -957,6 +966,16 @@ export function PdfDocumentView({
         )}
       </div>
 
+      {zoomTarget && doc && (
+        <PdfImageZoomOverlay
+          // Remount for a different picture so its canvas starts clean.
+          key={`${zoomTarget.locator}:${zoomTarget.box.x0}:${zoomTarget.box.y0}:${zoomTarget.box.x1}:${zoomTarget.box.y1}`}
+          doc={doc}
+          locator={zoomTarget.locator}
+          box={zoomTarget.box}
+          onClose={() => setZoomTarget(null)}
+        />
+      )}
 
       {doc && (
         <PdfZoomControls
