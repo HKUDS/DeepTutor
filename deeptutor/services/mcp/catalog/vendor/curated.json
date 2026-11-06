@@ -812,6 +812,44 @@
       "docs_url": "https://docs.jina.ai"
     },
     {
+      "id": "keenable",
+      "display_name": "Keenable",
+      "category": "search",
+      "tier": "curated",
+      "transport": "streamableHttp",
+      "description": {
+        "en": "Search the web and read any page as clean markdown with Keenable.",
+        "zh": "用 Keenable 搜索网页，并把任意网页读取为干净的 Markdown。"
+      },
+      "requires": {
+        "en": "Works without a key; a Keenable API key raises the rate limits.",
+        "zh": "无需密钥即可使用；填入 Keenable API 密钥可提高调用频率上限。"
+      },
+      "server": {
+        "url": "https://api.keenable.ai/mcp",
+        "headers": {
+          "X-Keenable-Title": "DeepTutor"
+        },
+        "tool_timeout": 45
+      },
+      "fields": [
+        {
+          "key": "api_key",
+          "label": {
+            "en": "Keenable API key",
+            "zh": "Keenable API 密钥"
+          },
+          "target": [
+            "header",
+            "X-API-Key"
+          ],
+          "required": false
+        }
+      ],
+      "homepage": "https://keenable.ai",
+      "docs_url": "https://docs.keenable.ai/mcp-server"
+    },
+    {
       "id": "linear",
       "display_name": "Linear",
       "category": "business",
