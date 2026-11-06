@@ -29,6 +29,7 @@ import {
   selectionTextWithoutLineNumbers,
   locatorOfSelection,
   normaliseRects,
+  type Box,
 } from "@/lib/reading-selection";
 import {
   DEFAULT_PDF_ZOOM,
@@ -62,6 +63,33 @@ const RENDER_MARGIN = 1;
 const RETAIN_MARGIN = 6;
 /** How long a `reader_goto` highlight pulses before fading. */
 const PAGE_GAP = 16;
+
+/**
+ * The box a page's stored rects are normalised against: the whole page.
+ *
+ * `[data-reader-unit]` is the *strip* the crop leaves visible — `visibleWidth`
+ * wide — while marks and citation flashes are painted on the full-page surface
+ * behind it, which is `fullWidth` wide and starts `offsetX` to the left of the
+ * strip. Normalising a selection against the strip therefore stretched it by
+ * the crop ratio and shifted it by the trimmed margin: in Fit text, the
+ * default, a mark was stored at a fraction of the strip and painted back at
+ * the same fraction of the page, so it landed nowhere near its words. The page
+ * publishes the two numbers needed to undo the crop, so stored rects stay in
+ * page space — the space they are painted in.
+ */
+function pageSpaceBox(page: HTMLElement): Box {
+  const strip = page.getBoundingClientRect();
+  // Fallbacks keep a page that predates the attributes (or a bare test DOM)
+  // behaving as it did before the crop existed.
+  const width = Number(page.dataset.pageWidth) || strip.width;
+  const offsetX = Number(page.dataset.pageOffsetX) || 0;
+  return {
+    left: strip.left - offsetX,
+    top: strip.top,
+    width,
+    height: strip.height,
+  };
+}
 
 export interface SelectionPayload {
   locator: number;
@@ -213,17 +241,21 @@ export function PdfDocumentView({
   // Both fit modes fill the pane at the pre-zoom width — the difference is
   // what fills it, the page or its text block. `fixed` is a share of the page's
   // real size, so it holds still when the pane changes width.
-  const pageWidth =
-    measuredWidth <= 0
-      ? 0
-      : zoom.mode === "fixed"
+  const widthFor = useCallback(
+    (preference: PdfZoomPreference) => {
+      if (measuredWidth <= 0) return 0;
+      return preference.mode === "fixed"
         ? zoomedPageWidth(
             intrinsicWidth,
-            zoom.scale,
+            preference.scale,
             fallbackRatio,
             outputScale(),
           )
         : fittedPageWidth(measuredWidth);
+    },
+    [measuredWidth, intrinsicWidth, fallbackRatio],
+  );
+  const pageWidth = widthFor(zoom);
   const zoomPercent = effectiveZoomPercent(pageWidth, intrinsicWidth);
   // The ratio the page is drawn at, derived from committed state rather than the
   // gesture ref: render must not read a ref, and this is the value the toolbar's
@@ -484,27 +516,21 @@ export function PdfDocumentView({
     (next: PdfZoomPreference, clientY?: number, clientX?: number) => {
       if (cropsPageMargins(next) !== cropsPageMargins(zoomRef.current)) {
         // The pages change height rather than width, so the width-based
-        // restore below would not run: anchor the line here instead.
+        // restore below would not run: anchor the line here instead. Any width
+        // anchor still held belongs to the layout being left behind — applying
+        // it alongside this one is what made a mode change jump twice.
+        resizeAnchorRef.current = null;
         captureModeAnchor();
       } else {
         captureAnchor(clientY, clientX);
-        // A zoom that lands on the width already committed draws nothing new,
-        // so the anchor captured above would never be consumed: the layout
-        // effect only restores when `pageWidth` changes. Left behind, it would
-        // hijack the next real pane resize and pull the reader back to the old
-        // page and offset. Drop it instead — "nothing moved" means exactly that.
-        const nextWidth =
-          next.mode === "fixed"
-            ? zoomedPageWidth(
-                intrinsicWidth,
-                next.scale,
-                fallbackRatio,
-                outputScale(),
-              )
-            : fittedPageWidth(measuredWidth);
-        if (nextWidth === committedWidthRef.current) {
-          resizeAnchorRef.current = null;
-        }
+      }
+      // The restore effects only run when the layout they watch commits. At the
+      // MIN_PAGE_WIDTH floor or the 400% ceiling the requested width is the
+      // committed one, so nothing would consume the anchor captured above: it
+      // sat in the ref until some later resize or mode change applied it and
+      // yanked the reader back to wherever this gesture pointed. Drop it.
+      if (widthFor(next) === committedWidthRef.current) {
+        resizeAnchorRef.current = null;
       }
       setZoom(next);
       zoomRef.current = next;
@@ -515,13 +541,7 @@ export function PdfDocumentView({
         savePdfZoom(next);
       }, 150);
     },
-    [
-      captureAnchor,
-      captureModeAnchor,
-      measuredWidth,
-      intrinsicWidth,
-      fallbackRatio,
-    ],
+    [captureAnchor, captureModeAnchor, widthFor],
   );
 
   /** What the page is drawn at right now, used as the base for one step. */
@@ -798,14 +818,13 @@ export function PdfDocumentView({
         const layer = page?.querySelector<HTMLElement>(".textLayer");
         if (layer && layer.childElementCount > 0) {
           const range = domRangeForQuote(layer, quote);
-          const box = page?.getBoundingClientRect();
-          if (range && box) {
-            const rects = normaliseRects([...range.getClientRects()], {
-              left: box.left,
-              top: box.top,
-              width: box.width,
-              height: box.height,
-            });
+          if (range && page) {
+            // Page space, not strip space: the flash is painted on the
+            // full-page surface with the stored marks.
+            const rects = normaliseRects(
+              [...range.getClientRects()],
+              pageSpaceBox(page),
+            );
             if (rects.length) {
               setFlash({ nonce, locator, rects });
               return;
@@ -873,14 +892,11 @@ export function PdfDocumentView({
       return;
     }
 
-    const box = page.getBoundingClientRect();
     const clientRects = [...range.getClientRects()];
-    const rects = normaliseRects(clientRects, {
-      left: box.left,
-      top: box.top,
-      width: box.width,
-      height: box.height,
-    });
+    // Page space: a cropped page's strip is narrower than the page the marks
+    // are painted on, and `data-page-width`/`data-page-offset-x` are what turn
+    // strip pixels back into page fractions.
+    const rects = normaliseRects(clientRects, pageSpaceBox(page));
     if (!rects.length) {
       onSelection(null);
       return;
