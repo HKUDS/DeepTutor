@@ -1420,8 +1420,13 @@ class ReadingStore:
                 )
                 existing.append(stored)
             else:
+                # An update keeps the author it was written with. The request
+                # body cannot say who authored a mark — the router hardcodes
+                # "user" — so without this an edit to the assistant's mark
+                # would silently relabel it as the reader's.
                 stored = dataclass_replace(
                     stored,
+                    author=existing[index].author,
                     material_revision=existing[index].material_revision,
                     created_at=existing[index].created_at or now,
                     updated_at=now,
