@@ -37,6 +37,7 @@ class ToolCallAccumulator:
 
     def __init__(self) -> None:
         self._parts: dict[int, dict[str, Any]] = {}
+        self.last_slot: int | None = None
 
     def feed(self, tc_delta: Any) -> int:
         """Fold one tool-call delta in; return the characters it contributed.
@@ -44,7 +45,7 @@ class ToolCallAccumulator:
         The count covers ``name`` and ``arguments`` only, matching what
         callers bill as provider output.
         """
-        index = int(getattr(tc_delta, "index", 0) or 0)
+        index = self.last_slot = self._slot(tc_delta)
         part = self._parts.setdefault(index, {"id": "", "name": "", "arguments": ""})
 
         tcid = getattr(tc_delta, "id", None)
@@ -75,18 +76,30 @@ class ToolCallAccumulator:
             chars += len(str(arguments))
         return chars
 
-    def part_at(self, index: int) -> dict[str, Any] | None:
+    def _slot(self, tc_delta: Any) -> int:
+        """The part a delta folds into. Gemini omits ``index`` entirely (#2482)."""
+        index = getattr(tc_delta, "index", None)
+        if index is not None and index != "":
+            return int(index)
+        tc_id = getattr(tc_delta, "id", None)
+        if not tc_id:
+            return -1 if self.last_slot is None else self.last_slot
+        same = next((key for key, part in self._parts.items() if part["id"] == tc_id), None)
+        return -1 - len(self._parts) if same is None else same
+
+    def part_at(self, index: int | None = None) -> dict[str, Any] | None:
         """The part a provider index is folding into, if it exists yet.
 
         Lets a caller read one call's running ``name``/``arguments`` right
         after feeding a delta for it, without guessing that the provider's
-        indices happen to line up with list positions.
+        indices happen to line up with list positions. With no index it is the
+        part the last ``feed`` resolved — all a caller has when none arrive (#2482).
         """
-        return self._parts.get(int(index))
+        return self._parts.get(self.last_slot if index is None else int(index))
 
     def ordered(self) -> list[dict[str, Any]]:
-        """Every accumulated part, in provider index order, unfiltered."""
-        return [self._parts[key] for key in sorted(self._parts)]
+        """Every accumulated part, in arrival order, unfiltered."""
+        return list(self._parts.values())
 
     def collected(self) -> list[dict[str, Any]]:
         """Dispatchable tool calls: named parts only, with defaults applied.
@@ -95,7 +108,7 @@ class ToolCallAccumulator:
         to correlate the result message, hence the positional fallback.
         """
         calls: list[dict[str, Any]] = []
-        for index, part in sorted(self._parts.items()):
+        for index, part in self._parts.items():
             if not part.get("name"):
                 continue
             call: dict[str, Any] = {
