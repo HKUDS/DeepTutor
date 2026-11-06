@@ -210,6 +210,29 @@ def test_learner_settings_write_allowlist(
         assert _learning_surface_for_path(path, method) == ""
 
 
+@pytest.mark.parametrize(
+    ("path", "method", "route_path", "expected"),
+    [
+        # The chat composer records a question and reads answers aloud.
+        ("/api/voice/stt", "POST", "/api/voice/stt", "chat"),
+        ("/api/voice/tts", "POST", "/api/voice/tts", "chat"),
+        # Exact route template and method only: the admin voice catalog shares
+        # the prefix, and the router serves no GET under it.
+        ("/api/voice/stt", "GET", "/api/voice/stt", ""),
+        ("/api/voice/tts", "GET", "/api/voice/tts", ""),
+        ("/api/voice/voices", "POST", "/api/voice/voices", ""),
+        ("/api/voice/preview", "POST", "/api/voice/preview", ""),
+        ("/api/voice/tts/clone", "POST", "/api/voice/tts/clone", ""),
+    ],
+)
+def test_learner_voice_allowlist(path: str, method: str, route_path: str, expected: str) -> None:
+    assert _learning_surface_for_path(path, method, route_path=route_path) == expected
+    if expected:
+        # Without the resolved route template the guard must stay denied:
+        # prefix matching alone cannot tell these from admin operations.
+        assert _learning_surface_for_path(path, method) == ""
+
+
 def test_route_template_is_passed_to_surface_guard(monkeypatch) -> None:
     import asyncio
     from types import SimpleNamespace
