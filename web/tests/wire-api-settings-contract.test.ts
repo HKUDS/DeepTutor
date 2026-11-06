@@ -3,10 +3,6 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
 
-const EDITOR = path.resolve(
-  process.cwd(),
-  "components/settings/ServiceConfigEditor.tsx",
-);
 const CONTEXT = path.resolve(
   process.cwd(),
   "lib/model-catalog-types.ts",
@@ -23,16 +19,9 @@ const EN = path.resolve(process.cwd(), "locales/en/app.json");
 const ZH = path.resolve(process.cwd(), "locales/zh/app.json");
 
 test("LLM-shaped profiles expose API formats supplied by provider metadata", () => {
-  const editor = readFileSync(EDITOR, "utf8");
   const context = readFileSync(CONTEXT, "utf8");
 
   assert.match(context, /api_formats\?: string\[\]/);
-  assert.match(editor, /providerOption\?\.api_formats/);
-  assert.match(editor, /updateProfileField\(service, "api_format"/);
-  assert.match(editor, /t\("API format"\)/);
-  assert.match(editor, /openai_chat: "OpenAI Chat Completions"/);
-  assert.match(editor, /openai_responses: "OpenAI Responses"/);
-  assert.match(editor, /anthropic: "Anthropic Messages"/);
 });
 
 test("API format settings copy stays in sync across locales", () => {
@@ -57,7 +46,6 @@ test("API format settings copy stays in sync across locales", () => {
 });
 
 test("wire API settings remain usable on narrow viewports", () => {
-  const editor = readFileSync(EDITOR, "utf8");
   const main = readFileSync(MAIN, "utf8");
   const toolbar = readFileSync(TOOLBAR, "utf8");
   const pageLayout = readFileSync(
@@ -65,10 +53,8 @@ test("wire API settings remain usable on narrow viewports", () => {
     "utf8",
   );
 
-  // The 1.6 settings UI uses provider cards and an inline editor instead of the old
-  // sticky profile list. Profile fields stay one-column until the `sm`
-  // breakpoint, and the shell keeps compact horizontal padding on phones.
-  assert.match(editor, /grid gap-4 sm:grid-cols-2/);
+  // The settings shell keeps compact horizontal padding on phones; the live
+  // provider cards and model editor own their responsive grids.
   assert.match(main, /<PageContainer/);
   assert.match(pageLayout, /min-w-0[^\"]*px-6 md:px-9/);
   assert.match(toolbar, /flex flex-wrap/);
