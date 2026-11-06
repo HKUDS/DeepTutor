@@ -92,6 +92,8 @@ export function PdfPage({
   // page measured but never painted holds pdf.js's decoded copy just like a
   // rendered one and has to be handed back too.
   const measuredRef = useRef(false);
+  // Same, for the operator list the picture hotspots come from.
+  const picturesMeasuredRef = useRef(false);
   const [ratio, setRatio] = useState<number | null>(null);
   const [failed, setFailed] = useState(false);
   // `undefined` means "not measured yet"; `null` means "measured, nothing to
@@ -173,8 +175,19 @@ export function PdfPage({
 
   // -- pictures ------------------------------------------------------------
 
+  // The same render window as the ink measurement, for the same reason: reading
+  // a page's operator list parses it, and `PdfDocumentView` mounts one page per
+  // locator, so doing it on mount read 600 operator lists when a 600-page
+  // document opened. Pictures apply in every fit mode, so unlike the ink crop
+  // there is nothing to gate on besides the window itself.
+  const shouldMeasurePictures = active || retain;
+
   useEffect(() => {
+    if (!shouldMeasurePictures) return;
     let cancelled = false;
+    // Marked before the await: `getPage` parses the page, so one measured but
+    // never painted still holds pdf.js's copy and has to be handed back.
+    picturesMeasuredRef.current = true;
     (async () => {
       const pdfjs = await loadPdfjs();
       const page = await doc.getPage(locator);
@@ -191,7 +204,7 @@ export function PdfPage({
     return () => {
       cancelled = true;
     };
-  }, [doc, locator, inkKey]);
+  }, [doc, locator, inkKey, shouldMeasurePictures]);
 
   const height = Math.round(width * (ratio ?? fallbackRatio));
 
@@ -344,13 +357,28 @@ export function PdfPage({
     // `cleanup` waits for a cancelled render to settle before it frees.
     // Only pages that were drawn or measured: asking for the rest would load
     // them.
-    if (retain || !(renderedRef.current || measuredRef.current)) return;
+    if (
+      retain ||
+      !(
+        renderedRef.current ||
+        measuredRef.current ||
+        picturesMeasuredRef.current
+      )
+    ) {
+      return;
+    }
     releasePage(doc, locator);
   }, [retain, doc, locator]);
 
   useEffect(
     () => () => {
-      if (renderedRef.current || measuredRef.current) releasePage(doc, locator);
+      if (
+        renderedRef.current ||
+        measuredRef.current ||
+        picturesMeasuredRef.current
+      ) {
+        releasePage(doc, locator);
+      }
     },
     [doc, locator],
   );

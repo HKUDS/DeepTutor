@@ -332,7 +332,14 @@ export function imageBoxesFromOperatorList(
     }
     if (fn === ops.paintFormXObjectBegin) {
       stack.push([...ctm] as Matrix);
-      ctm = multiply(ctm, (args as [Matrix, unknown])[0]);
+      // A form with no Matrix entry is legal — pdf.js reports `null` for it,
+      // and generators emit them. An omitted Matrix means the identity, so
+      // multiplying by it must be a no-op; multiplying by `null` throws, and
+      // the caller treats the throw as "this page has no pictures", which
+      // dropped every hotspot on the page, including the ones outside the
+      // form.
+      const formMatrix = (args as [Matrix | null | undefined, unknown] | null)?.[0];
+      ctm = multiply(ctm, formMatrix ?? IDENTITY);
       continue;
     }
     if (fn === ops.paintFormXObjectEnd) {

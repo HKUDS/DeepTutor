@@ -4,18 +4,31 @@ import { PdfPage, type PdfPageProps } from "@/components/reading/PdfPage";
 import type { PdfDocument } from "@/lib/pdfjs-loader";
 
 /**
- * The ink measurement is a scratch render, and it must stay inside the render
- * window.
+ * The ink measurement and the picture measurement are both parses, and both
+ * must stay inside the render window.
  *
  * `PdfDocumentView` mounts one `PdfPage` per locator, so measuring on mount
- * started 600 scratch renders the moment a 600-page document opened with Fit
- * text — the default. The visible page still has to be measured, because its
- * crop is what Fit text draws.
+ * started 600 scratch renders and read 600 operator lists the moment a
+ * 600-page document opened. The visible page still has to be measured, because
+ * its crop is what Fit text draws and its hotspots are what the reader clicks.
  */
+
+/** The operator ids the picture walk needs; pdf.js's real ones are opaque. */
+const { OPS } = vi.hoisted(() => ({
+  OPS: {
+    save: 10,
+    restore: 11,
+    transform: 12,
+    paintFormXObjectBegin: 13,
+    paintFormXObjectEnd: 14,
+    paintImageXObject: 85,
+  },
+}));
 
 vi.mock("@/lib/pdfjs-loader", () => ({
   outputScale: () => 1,
   loadPdfjs: async () => ({
+    OPS,
     TextLayer: class {
       async render() {}
       cancel() {}
@@ -86,6 +99,8 @@ interface Calls {
   scratch: number;
   /** The page's own canvas. */
   visible: number;
+  /** Reads of the operator list the picture hotspots come from. */
+  operators: number;
   cleanup: number;
   /** Viewport width of every page-canvas paint, in order. */
   widths: number[];
@@ -97,6 +112,7 @@ function pageDocument({ inkLeft = 0.2, inkWidth = 0.6 } = {}) {
     getPage: 0,
     scratch: 0,
     visible: 0,
+    operators: 0,
     cleanup: 0,
     widths: [],
   };
@@ -136,6 +152,15 @@ function pageDocument({ inkLeft = 0.2, inkWidth = 0.6 } = {}) {
       };
     },
     getTextContent: async () => ({ items: [] }),
+    // One picture covering the top-left tenth of the page, so an in-window
+    // page gets a hotspot and the operator read has a visible result.
+    getOperatorList: async () => {
+      calls.operators += 1;
+      return {
+        fnArray: [OPS.transform, OPS.paintImageXObject],
+        argsArray: [[100, 0, 0, 50, 20, 30], ["img"]],
+      };
+    },
     cleanup: async () => {
       calls.cleanup += 1;
     },
@@ -181,6 +206,7 @@ describe("PDF page ink measurement window", () => {
     // Not even parsed: a page far from the viewport must not start pdf.js work.
     expect(calls.getPage).toBe(0);
     expect(calls.scratch).toBe(0);
+    expect(calls.operators).toBe(0);
   });
 
   it("still measures the active page and crops to its ink", async () => {
@@ -262,6 +288,80 @@ describe("PDF page ink measurement window", () => {
         active={false}
         retain={false}
         inkKey="ink-window:released"
+      />,
+    );
+    await waitFor(() => expect(calls.cleanup).toBeGreaterThanOrEqual(1));
+  });
+});
+
+describe("PDF page picture measurement window", () => {
+  it("does not read a page's operator list outside the window", async () => {
+    stubCanvas();
+    const { doc, calls } = pageDocument();
+    render(
+      <PdfPage
+        {...base}
+        doc={doc}
+        active={false}
+        retain={false}
+        cropMargins={false}
+        inkKey="picture-window:inactive"
+      />,
+    );
+    await settle();
+    // Reading 600 operator lists on open was the whole cost of this defect.
+    expect(calls.getPage).toBe(0);
+    expect(calls.operators).toBe(0);
+  });
+
+  it("reads the operators once for a page inside the window", async () => {
+    stubCanvas();
+    const { doc, calls } = pageDocument();
+    const onImageClick = vi.fn();
+    const view = render(
+      <PdfPage
+        {...base}
+        doc={doc}
+        active
+        retain
+        cropMargins={false}
+        inkKey="picture-window:active"
+        onImageClick={onImageClick}
+      />,
+    );
+    await waitFor(() => expect(calls.operators).toBe(1));
+    // The measurement reaches the DOM: the picture is a clickable hotspot.
+    const hotspot = await view.findByLabelText("Zoom image");
+    expect(hotspot).toBeTruthy();
+    expect(onImageClick).not.toHaveBeenCalled();
+  });
+
+  it("hands back a page measured only for its pictures", async () => {
+    stubCanvas();
+    const { doc, calls } = pageDocument();
+    const view = render(
+      <PdfPage
+        {...base}
+        doc={doc}
+        active={false}
+        retain
+        cropMargins={false}
+        inkKey="picture-window:released"
+      />,
+    );
+    // Parsed for its pictures, never painted: no canvas work at all.
+    await waitFor(() => expect(calls.operators).toBe(1));
+    expect(calls.visible).toBe(0);
+
+    // The page leaves the retained window without ever having drawn a canvas.
+    view.rerender(
+      <PdfPage
+        {...base}
+        doc={doc}
+        active={false}
+        retain={false}
+        cropMargins={false}
+        inkKey="picture-window:released"
       />,
     );
     await waitFor(() => expect(calls.cleanup).toBeGreaterThanOrEqual(1));

@@ -10,6 +10,7 @@ import {
   imageBoxesFromOperatorList,
   inkBoxFromPixels,
   measurePageInkBox,
+  pageImageBoxes,
 } from "@/lib/pdf-page-geometry";
 
 /**
@@ -214,6 +215,66 @@ describe("picture hotspots", () => {
       { width: 200, height: 100, transform: [1, 0, 0, -1, 0, 100] },
     );
     expect(boxes).toEqual([]);
+  });
+
+  /**
+   * A form XObject with no `Matrix` entry is legal, and pdf.js reports it as
+   * `null`. Multiplying by it threw, `pageImageBoxes` swallowed the throw as
+   * "this page has no pictures", and every hotspot on the page disappeared —
+   * including the pictures painted outside the form.
+   */
+  it("keeps a form's pictures when the form omits its Matrix", async () => {
+    const ops = {
+      save: 10,
+      restore: 11,
+      transform: 12,
+      paintFormXObjectBegin: 13,
+      paintFormXObjectEnd: 14,
+      paintImageXObject: 85,
+    };
+    const list = {
+      // One picture inside the form, one outside it. The form has no Matrix.
+      fnArray: [
+        ops.paintFormXObjectBegin,
+        ops.transform,
+        ops.paintImageXObject,
+        ops.paintFormXObjectEnd,
+        ops.transform,
+        ops.paintImageXObject,
+      ],
+      argsArray: [
+        [null, [0, 0, 200, 100]],
+        [100, 0, 0, 50, 20, 30],
+        ["inside"],
+        [],
+        [100, 0, 0, 50, 100, 40],
+        ["outside"],
+      ],
+    };
+    const viewport = { width: 200, height: 100, transform: [1, 0, 0, -1, 0, 100] };
+
+    // The walk itself must not throw: an omitted Matrix means the identity.
+    expect(() =>
+      imageBoxesFromOperatorList(list, ops, viewport),
+    ).not.toThrow();
+
+    const page = {
+      getViewport: () => viewport,
+      getOperatorList: async () => list,
+    };
+    const boxes = await pageImageBoxes(page, ops);
+    // Both pictures, not just the one the form happens to paint first.
+    expect(boxes).toHaveLength(2);
+    const inside = boxes.find((box) => box.x0 < 0.25 && box.x1 < 0.7);
+    const outside = boxes.find((box) => box.x0 >= 0.5);
+    expect(inside).toBeDefined();
+    expect(outside).toBeDefined();
+    // The form's pictures land where their own transform puts them, not at
+    // some origin produced by a broken matrix.
+    expect(inside!.x0).toBeCloseTo(0.1, 2);
+    expect(inside!.x1).toBeCloseTo(0.6, 2);
+    expect(outside!.x0).toBeCloseTo(0.5, 2);
+    expect(outside!.x1).toBeCloseTo(1, 2);
   });
 });
 
