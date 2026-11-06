@@ -1,7 +1,7 @@
 """Dedup mode — iterative line-level merge / delete over the full doc.
 
 Each iteration:
-1. Render the full md as a line-numbered view (footnote-stripped).
+1. Render the full md as a line-numbered view with each entry's source refs.
 2. One LLM call returns ``{"edits": [...]}`` (replace + delete only —
    the dedup prompt forbids inserts).
 3. Apply in reverse line order.
@@ -18,10 +18,12 @@ Dedup is invoked either:
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 import logging
 
 from deeptutor.services.memory import paths
 from deeptutor.services.memory.consolidator.line_doc import (
+    LineView,
     apply_edits,
     parse_edits_payload,
     render_view,
@@ -220,9 +222,17 @@ def _default_title(layer: str, key: str) -> str:
     }.get(key, f"{key} memory")
 
 
-def _render_with_numbers(view) -> str:
+def _render_with_numbers(view: LineView) -> str:
+    """Expose source refs as metadata without adding editable line numbers."""
     width = max(2, len(str(len(view.lines))))
-    return "\n".join(f"{line.number:>{width}}: {line.text}" for line in view.lines)
+    lines = []
+    for line in view.lines:
+        text = line.text
+        if line.entry_id is not None:
+            refs = view.entry_by_id[line.entry_id].refs
+            text += f" | refs={json.dumps(refs, ensure_ascii=False)}"
+        lines.append(f"{line.number:>{width}}: {text}")
+    return "\n".join(lines)
 
 
 __all__ = ["DedupResult", "run_dedup"]

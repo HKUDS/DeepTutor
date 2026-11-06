@@ -246,6 +246,44 @@ def test_launcher_completes_update_only_after_restart(tmp_path: Path) -> None:
     assert store.load().status == "succeeded"
 
 
+def test_launcher_fails_update_when_the_restart_never_finishes(tmp_path: Path) -> None:
+    store = UpdateJobStore(update_store_root(tmp_path))
+    pending = store.create(current_version="1.6.1", target_version="1.7.0")
+    store.prepare_handoff(
+        pending.id,
+        home=tmp_path,
+        restart_argv=["start", "--home", str(tmp_path.resolve())],
+    )
+    store.mark_running(pending.id)
+    store.mark_restarting(pending.id)
+
+    assert launcher._fail_restarted_update(tmp_path, "backend exited with code 1") is True
+    job = store.load()
+    assert job.status == "failed"
+    assert job.error == "backend exited with code 1"
+
+
+def test_launcher_failure_hook_ignores_other_homes_and_states(tmp_path: Path) -> None:
+    other = tmp_path / "other"
+    store = UpdateJobStore(update_store_root(tmp_path))
+    pending = store.create(current_version="1.6.1", target_version="1.7.0")
+    store.prepare_handoff(
+        pending.id,
+        home=tmp_path,
+        restart_argv=["start", "--home", str(tmp_path.resolve())],
+    )
+
+    # Still pending: the handoff has not reached the restart phase.
+    assert launcher._fail_restarted_update(tmp_path, "too early") is False
+    assert store.load().status == "handoff"
+
+    store.mark_running(pending.id)
+    store.mark_restarting(pending.id)
+    # A different runtime home must not touch this job.
+    assert launcher._fail_restarted_update(other, "wrong home") is False
+    assert store.load().status == "restarting"
+
+
 def test_packaged_web_cache_refreshes_when_public_settings_change(tmp_path: Path) -> None:
     packaged = tmp_path / "pkg"
     (packaged / ".next").mkdir(parents=True)
@@ -964,7 +1002,7 @@ def test_open_frontend_in_browser_is_best_effort(monkeypatch) -> None:
     launcher._open_frontend_in_browser("http://localhost:3782")
 
 
-def test_launch_detached_uses_a_separate_windows_process_group(
+def test_launch_detached_uses_a_hidden_console_and_separate_windows_process_group(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
@@ -982,7 +1020,7 @@ def test_launch_detached_uses_a_separate_windows_process_group(
     monkeypatch.setattr(launcher, "_is_pid_alive", lambda _pid: False)
     monkeypatch.setattr(launcher.sys, "platform", "win32")
     monkeypatch.setattr(launcher.subprocess, "CREATE_NEW_PROCESS_GROUP", 0x200, raising=False)
-    monkeypatch.setattr(launcher.subprocess, "DETACHED_PROCESS", 0x8, raising=False)
+    monkeypatch.setattr(launcher.subprocess, "CREATE_NO_WINDOW", 0x08000000, raising=False)
     monkeypatch.setattr(launcher.subprocess, "Popen", fake_popen)
     monkeypatch.setattr(launcher, "_log", lambda _message: None)
 
@@ -997,7 +1035,7 @@ def test_launch_detached_uses_a_separate_windows_process_group(
     assert captured["command"][-2:] == ["--dev", "--no-browser"]
     kwargs = captured["kwargs"]
     assert isinstance(kwargs, dict)
-    assert kwargs["creationflags"] == 0x208
+    assert kwargs["creationflags"] == 0x200 | 0x08000000
     assert kwargs["env"][launcher.DETACHED_WORKER_ENV] == "1"
     assert kwargs["env"][launcher.DETACHED_TOKEN_ENV] == state["token"]
     assert captured["log_name"] == str(paths.log)
@@ -1355,3 +1393,34 @@ def test_kill_port_listeners_reports_kill_round_failures_per_target(
     assert (123, launcher.KILL_SIGNAL) in sent
     assert (456, launcher.KILL_SIGNAL) in sent
     assert any("SIGKILL" in record.getMessage() for record in caplog.records)
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows venv console inheritance")
+def test_detached_venv_launcher_has_no_console(tmp_path, monkeypatch):
+    import venv
+
+    env_dir = tmp_path / "venv"
+    venv.EnvBuilder(with_pip=False).create(env_dir)
+    modules = tmp_path / "modules"
+    cli = modules / "deeptutor_cli"
+    cli.mkdir(parents=True)
+    (cli / "__init__.py").touch()
+    (cli / "main.py").write_text(
+        "import ctypes\nfrom pathlib import Path\n"
+        "Path('console.txt').write_text(str(bool(ctypes.windll.kernel32.GetConsoleWindow())))\n",
+        encoding="utf-8",
+    )
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / "deeptutor_cli").mkdir()
+    (home / "deeptutor_cli" / "__init__.py").write_text("raise RuntimeError('stale source')")
+    monkeypatch.setenv("PYTHONPATH", str(modules))
+    monkeypatch.setattr(launcher.sys, "executable", str(env_dir / "Scripts" / "python.exe"))
+    launcher._launch_detached(home, dev=False, open_browser=False)
+    marker = home / "console.txt"
+    deadline = time.monotonic() + 15
+    while time.monotonic() < deadline:
+        if marker.exists() and marker.stat().st_size:
+            break
+        time.sleep(0.05)
+    assert marker.read_text() == "False"

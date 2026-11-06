@@ -32,6 +32,7 @@ MAX_NOTEBOOKS_RENDERED = 50
 MAX_RECORDS_RENDERED = 80
 MAX_TITLE_PREVIEW = 100
 MAX_SUMMARY_PREVIEW = 240
+MAX_FAVORITE_BODY_PAGE_CHARS = 8_000
 
 
 @dataclass(frozen=True)
@@ -67,6 +68,79 @@ def list_notebooks_or_records(
     if not nid:
         return _render_index(manager)
     return _render_records(manager, nid)
+
+
+def read_favorite_record(
+    *,
+    notebook_id: str,
+    record_id: str,
+    offset: int = 0,
+    notebook_manager: Any = None,
+) -> ListOutcome:
+    """Read one saved record's body, in pages of at most 8,000 characters.
+
+    The caller must supply both IDs. Validate the notebook against the active
+    manager before requesting the record. A successful result puts the current
+    body page in ``text`` and ``mode='record'``, ``total_chars``, ``offset``,
+    ``truncated`` and ``next_offset`` in ``summary``. An empty body produces
+    an explicit empty-record message, zero total, and no continuation offset.
+    Negative or out-of-range offsets return ``ok=False`` with an explanation.
+    The manager is scoped to the active user by the chat runtime.
+    """
+    if not isinstance(offset, int) or isinstance(offset, bool) or offset < 0:
+        return ListOutcome(ok=False, error="offset must be a non-negative integer.")
+
+    nid = (notebook_id or "").strip()
+    rid = (record_id or "").strip()
+    if not nid or not rid:
+        return ListOutcome(ok=False, error="Both notebook_id and record_id are required.")
+
+    manager = notebook_manager
+    if manager is None:
+        from deeptutor.services.notebook import get_notebook_manager
+
+        manager = get_notebook_manager()
+
+    try:
+        record = manager.get_record(nid, rid, read_only=True)
+    except Exception:
+        logger.warning("list_favorites: record read failed", exc_info=True)
+        return ListOutcome(ok=False, error="Failed to load favorite record.")
+
+    if not record:
+        return ListOutcome(ok=False, error="Unknown notebook_id or record_id.")
+
+    body = str(record.get("output") or "")
+    total = len(body)
+    if (total == 0 and offset != 0) or (total > 0 and offset >= total):
+        return ListOutcome(
+            ok=False, error=f"offset {offset} is outside the record body ({total} characters)."
+        )
+
+    page = body[offset : offset + MAX_FAVORITE_BODY_PAGE_CHARS]
+    next_offset = offset + len(page) if offset + len(page) < total else None
+    title = _clip(str(record.get("title") or "").strip(), MAX_TITLE_PREVIEW)
+    summary = _clip(str(record.get("summary") or "").strip(), MAX_SUMMARY_PREVIEW)
+    lines = [f"**Favorite record `{rid}` — {title or '(untitled)'}**"]
+    if summary:
+        lines.append(f"Summary: {summary}")
+    lines.append(
+        f"Body characters {offset}–{offset + len(page)} of {total}; next_offset: {next_offset}."
+    )
+    lines.append(page if total else "(This favorite record has an empty body.)")
+    return ListOutcome(
+        ok=True,
+        text="\n\n".join(lines),
+        summary={
+            "mode": "record",
+            "notebook_id": nid,
+            "record_id": rid,
+            "total_chars": total,
+            "offset": offset,
+            "truncated": next_offset is not None,
+            "next_offset": next_offset,
+        },
+    )
 
 
 def _render_index(manager: Any) -> ListOutcome:
@@ -204,8 +278,10 @@ def _format_timestamp(raw: Any) -> str:
 
 
 __all__ = [
+    "MAX_FAVORITE_BODY_PAGE_CHARS",
     "MAX_NOTEBOOKS_RENDERED",
     "MAX_RECORDS_RENDERED",
     "ListOutcome",
     "list_notebooks_or_records",
+    "read_favorite_record",
 ]

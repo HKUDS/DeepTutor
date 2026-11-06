@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from deeptutor.services.session import thread_attribution
 from deeptutor.services.session._turn_runtime_shared import (
     _format_selection_tutor_context,
 )
@@ -9,6 +10,7 @@ from deeptutor.services.session.model_history import SOURCE_MESSAGE_METADATA_KEY
 from deeptutor.services.session.sqlite_store import SQLiteSessionStore
 from deeptutor.services.session.thread_attribution import (
     BACKFILL_ATTEMPTED_KEY,
+    BACKFILL_FAILED_AT_KEY,
     TUTOR_SOURCE_KEY,
     backfill_thread_sources,
     locate_quote_message,
@@ -94,7 +96,8 @@ async def test_an_ambiguous_passage_is_left_unattributed(tmp_path) -> None:
     rows = await backfill_thread_sources(store, parent["id"], [thread])
 
     assert "tutor_source_message_id" not in rows[0]["preferences"]
-    assert rows[0]["preferences"][BACKFILL_ATTEMPTED_KEY] is True
+    assert BACKFILL_ATTEMPTED_KEY not in rows[0]["preferences"]
+    assert rows[0]["preferences"][BACKFILL_FAILED_AT_KEY]
 
 
 @pytest.mark.asyncio
@@ -111,21 +114,29 @@ async def test_a_preferred_assistant_match_wins_over_a_user_echo(tmp_path) -> No
 
 
 @pytest.mark.asyncio
-async def test_a_thread_without_a_passage_is_only_attempted_once(tmp_path) -> None:
-    store = SQLiteSessionStore(tmp_path / "bare.db")
+async def test_a_failed_attribution_cools_down_then_retries(tmp_path) -> None:
+    store = SQLiteSessionStore(tmp_path / "retry.db")
     parent = await store.ensure_session(None)
-    thread = await _thread(store, parent["id"], {})
+    thread = await _thread(store, parent["id"], {"tutor_selected_text": "It returns twice."})
 
+    # The passage is not in the parent yet: fail, but do not spend the
+    # one-shot attempted flag that a deliberate detach also writes.
     await backfill_thread_sources(store, parent["id"], [thread])
     persisted = await store.get_session(thread["session_id"])
     assert persisted is not None
-    assert persisted["preferences"][BACKFILL_ATTEMPTED_KEY] is True
-    assert "tutor_source_message_id" not in persisted["preferences"]
+    assert BACKFILL_ATTEMPTED_KEY not in persisted["preferences"]
+    assert persisted["preferences"][BACKFILL_FAILED_AT_KEY]
 
-    # A second pass has nothing left to attempt, even if the parent changed.
-    await store.add_message(parent["id"], "assistant", "A late message.")
+    # A second read inside the cooldown does not rescan, even if the parent
+    # gained the passage in the meantime.
+    source = await store.add_message(parent["id"], "assistant", "It returns twice.")
     rows = await backfill_thread_sources(store, parent["id"], [persisted])
     assert "tutor_source_message_id" not in rows[0]["preferences"]
+
+    # After the cooldown the same thread is retried and now resolves.
+    thread_attribution._FAILED_UNTIL.clear()
+    rows = await backfill_thread_sources(store, parent["id"], [persisted])
+    assert rows[0]["preferences"][TUTOR_SOURCE_KEY] == source
 
 
 @pytest.mark.asyncio
@@ -304,7 +315,8 @@ async def test_multiple_quotes_on_one_message_are_not_guessed(tmp_path) -> None:
     rows = await backfill_thread_sources(store, parent["id"], [thread])
 
     assert TUTOR_SOURCE_KEY not in rows[0]["preferences"]
-    assert rows[0]["preferences"][BACKFILL_ATTEMPTED_KEY] is True
+    assert BACKFILL_ATTEMPTED_KEY not in rows[0]["preferences"]
+    assert rows[0]["preferences"][BACKFILL_FAILED_AT_KEY]
 
 
 @pytest.mark.asyncio
@@ -361,4 +373,13 @@ async def test_structured_metadata_cannot_point_outside_the_parent(tmp_path) -> 
     rows = await backfill_thread_sources(store, parent["id"], [thread])
 
     assert TUTOR_SOURCE_KEY not in rows[0]["preferences"]
-    assert rows[0]["preferences"][BACKFILL_ATTEMPTED_KEY] is True
+    assert BACKFILL_ATTEMPTED_KEY not in rows[0]["preferences"]
+    assert rows[0]["preferences"][BACKFILL_FAILED_AT_KEY]
+
+
+def test_failure_cooldown_evicts_oldest_at_capacity(monkeypatch):
+    monkeypatch.setattr(thread_attribution, "_FAILED_UNTIL", {})
+    for index in range(1001):
+        thread_attribution._remember_failure(str(index))
+    assert len(thread_attribution._FAILED_UNTIL) == 1000
+    assert "0" not in thread_attribution._FAILED_UNTIL

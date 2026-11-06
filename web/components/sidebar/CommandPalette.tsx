@@ -5,7 +5,7 @@ import { CalendarDays } from 'lucide-react'
 import { createPortal } from 'react-dom'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
-import { Columns3, CornerDownLeft, MessageCircle, PenLine, Search, Settings, Users, type LucideIcon } from 'lucide-react'
+import { Columns3, CornerDownLeft, MessageCircle, MessagesSquare, PenLine, Search, Settings, Users, type LucideIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import PartnerAvatar from '@/components/partners/PartnerAvatar'
 import { DASHBOARD_GROUPS, PERSONALIZATION_GROUPS, visibleGroups } from '@/components/space/dashboard-groups'
@@ -98,7 +98,7 @@ export function CommandPalette({
             .filter(row => row.href !== '/agents' || navVisibleUnderPolicy(row.href, allowedSurfaces))
             .map(row => ({
               id: `resource:${row.key}`,
-              label: zh ? row.title.zh : row.title.en,
+              label: zh ? row.title.zh : t(row.title.en),
               detail,
               icon: glyph(row.icon),
               run: go(row.href),
@@ -120,6 +120,30 @@ export function CommandPalette({
         icon: glyph(MessageCircle),
         run: () => void (onSelectSession ? onSelectSession(session.session_id) : go(`/chat/${session.session_id}`)()),
       }))
+    // Little Tutor threads live under their parent conversation in the
+    // sidebar, so without this group they are only discoverable from inside
+    // that conversation. The palette is the one cross-conversation index.
+    const parentsById = new Map(sessions.map(session => [session.session_id, session]))
+    const sideChats: PaletteItem[] = sessions
+      .filter(
+        session =>
+          !session.preferences?.archived &&
+          Boolean(session.preferences?.parent_session_id) &&
+          !isNoteSession(session)
+      )
+      .map(session => {
+        const parent = parentsById.get(session.preferences?.parent_session_id ?? '')
+        return {
+          id: `side-chat:${session.session_id}`,
+          label: session.title || t('Little Tutor'),
+          detail: parent?.title || t('Little Tutor'),
+          icon: glyph(MessagesSquare),
+          run: () =>
+            void (onSelectSession
+              ? onSelectSession(session.session_id)
+              : go(`/chat/${session.session_id}`)()),
+        }
+      })
     const learning: PaletteItem[] = allLearningActivity(sources).map(item => {
       const surface = learningSurface(item.kind)
       return {
@@ -150,6 +174,7 @@ export function CommandPalette({
     return [
       { title: t('navigation.jumpTo'), items: pick(places, 1 + categories.length + 2) },
       { title: t('Conversations'), items: pick(conversations, 5) },
+      { title: t('Little Tutor'), items: pick(sideChats, q ? 6 : 3) },
       { title: t('navigation.learning'), items: pick(learning, q ? 6 : 0) },
       { title: t('navigation.partners'), items: pick(partners, q ? 6 : 0) },
     ].filter(group => group.items.length > 0)

@@ -182,6 +182,12 @@ def test_latex_becomes_anki_mathjax_and_markdown_inline_is_html():
     assert "<i>this</i>" in italic
 
 
+def test_fenced_code_language_is_not_part_of_the_code_body():
+    html = markdown_to_anki_html("```python\nprint(1)\n```")
+    assert "<pre><code>print(1)</code></pre>" in html
+    assert "python" not in html
+
+
 def test_deck_title_sanitises_hierarchy_and_tags_slug_the_title():
     assert deck_name("Child::Name") == "DeepTutor::Child — Name"
     assert deck_name("") == "DeepTutor::Untitled"

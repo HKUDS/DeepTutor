@@ -1064,6 +1064,31 @@ class MasteryNoteExplainedTool(BaseTool):
         )
 
 
+_VISUAL_SOURCE_REFERENCES = ("kb_name", "asset_id", "source_path", "source_hash", "figure")
+
+
+def _is_placeholder_visual(visual: Any) -> bool:
+    """Read a visual the model filled only because it had to fill it.
+
+    Endpoints that normalise optional properties into required ones make the
+    model send ``visual`` even for a text-only card, with every source left
+    blank (issue #2427). A visual that names no source can never resolve, so
+    it is absent. ``page``, ``region`` and the enum fields are forced values
+    there, not intent, and are not consulted. A named source, even a wrong
+    one, keeps the request and its error.
+    """
+    if not isinstance(visual, dict):
+        return False
+    sources = visual.get("sources") or []
+    if not isinstance(sources, list):
+        return False
+    return all(
+        isinstance(source, dict)
+        and not any(str(source.get(key) or "").strip() for key in _VISUAL_SOURCE_REFERENCES)
+        for source in sources
+    )
+
+
 class MasteryQuizTool(BaseTool):
     """Register an objective-type question; the engine holds the answer."""
 
@@ -1342,7 +1367,11 @@ class MasteryQuizTool(BaseTool):
 
             try:
                 for raw in raw_questions:
-                    if isinstance(raw, dict) and isinstance(raw.get("visual"), dict):
+                    if (
+                        isinstance(raw, dict)
+                        and isinstance(raw.get("visual"), dict)
+                        and not _is_placeholder_visual(raw["visual"])
+                    ):
                         visual_hint_count(raw["visual"].get("hints_used"))
             except ValueError as exc:
                 return ToolResult(content=str(exc), success=False)
@@ -1568,7 +1597,8 @@ class MasteryQuizTool(BaseTool):
             )
         visual_context: dict[str, Any] = {}
         accepted_answers: list[str] = []
-        if kwargs.get("visual") is not None:
+        # A visual that names no source is a forced placeholder; the card is text-only.
+        if kwargs.get("visual") is not None and not _is_placeholder_visual(kwargs["visual"]):
             from deeptutor.learning.visual_practice import prepare_visual
 
             if not isinstance(kwargs["visual"], dict):
@@ -2040,6 +2070,16 @@ class MasteryAssessTool(BaseTool):
         feedback = receipt["feedback"]
         kp, _, _ = find_knowledge_point(progress, kp_id)
         assert kp is not None
+        # The graded explanation may include an earlier turn the learner was
+        # asked to clarify, so record what was assessed, not only this message.
+        assessed_answer = next(
+            (
+                item.learner_answer
+                for item in reversed(progress.learning_evidence)
+                if item.knowledge_point_id == kp_id and item.assessment_type == "qualitative"
+            ),
+            learner_answer,
+        )
         await _sync_qualitative_to_question_bank(
             path_id=path_id,
             session_id=_resolve_session_id(kwargs),
@@ -2047,21 +2087,50 @@ class MasteryAssessTool(BaseTool):
             knowledge_point_id=kp_id,
             knowledge_point_name=kp.name,
             passed=passed,
-            evidence=learner_answer,
+            evidence=assessed_answer,
             result=receipt["result"],
             quality={"correct": 1.0, "partial": 0.5, "incorrect": 0.0}[receipt["result"]],
             material_title=progress.name,
         )
+        mastered = is_mastered(progress, kp)
+        next_step = next_objective(progress).to_dict()
         payload = {
             "knowledge_point_id": kp_id,
             "path_revision": progress.version,
             "passed": passed,
             **receipt,
-            "mastered": is_mastered(progress, kp),
+            "mastered": mastered,
             "mastery": round(display_mastery(progress, kp), 3),
-            "next": next_objective(progress).to_dict(),
+            "next": next_step,
+            "instruction": _assess_next_move(mastered, next_step),
         }
         return _json_result(payload, meta_key="mastery_assess")
+
+
+def _assess_next_move(mastered: bool, next_step: dict) -> str:
+    """What to do after a final qualitative verdict.
+
+    ``mastery_grade`` already says this for cards. Without it, a passing
+    explanation tends to end the turn on an announcement of the next topic,
+    which leaves the learner nothing to answer.
+    """
+    if not mastered:
+        return (
+            "The gate is not cleared. Explain the gap this explanation left "
+            "(for a partial result, name the missing part), then ask the "
+            "learner to explain it again and record that with mastery_assess."
+        )
+    if next_step.get("action") == "complete":
+        return (
+            "This cleared the objective's gate and the path is complete. "
+            "Say what the explanation showed and tell the learner the path is done."
+        )
+    return (
+        "This cleared the objective's gate. Say briefly what the explanation "
+        "showed, then continue with `next` in this same reply: start its "
+        "lesson or ask its first question. Do not end the turn on an "
+        "announcement of what comes next."
+    )
 
 
 class MasterySkipQuestionTool(BaseTool):

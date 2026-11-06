@@ -186,12 +186,16 @@ class EventBus:
 
     @classmethod
     def reset(cls) -> None:
+        global _event_bus
         if cls._instance is not None:
             cls._instance._running = False
             if cls._instance._processor_task:
                 cls._instance._processor_task.cancel()
         cls._instance = None
         cls._initialized = False
+        # get_event_bus caches its own reference; clear it too so the accessor
+        # does not keep returning the stopped bus after a reset.
+        _event_bus = None
 
 
 _event_bus: EventBus | None = None

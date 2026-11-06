@@ -110,6 +110,30 @@ def _doc_status_has_success(root_dir: Path) -> bool | None:
     return False if saw_failure else None
 
 
+def doc_count(root_dir: Path | None) -> int | None:
+    """Return the count of successfully indexed LightRAG documents, or ``None``.
+
+    Resolves the native workspace store first (mirroring :func:`has_output` and
+    :func:`failure_summary`), so a native-layout index whose
+    ``kv_store_doc_status.json`` lives under the ``deeptutor_<hash>`` workspace
+    subdir is counted instead of being reported as ``None``.
+    """
+    if root_dir is None:
+        return None
+    payload = _read_doc_status(_store_root(Path(root_dir)))
+    if not payload:
+        return None
+    count = 0
+    for item in payload.values():
+        if not isinstance(item, dict):
+            continue
+        chunks = item.get("chunks_list")
+        status = str(item.get("status") or "").lower()
+        if (isinstance(chunks, list) and chunks) or status in _SUCCESS_STATUSES:
+            count += 1
+    return count
+
+
 def failure_summary(root_dir: Path | None, *, limit: int = 3) -> str:
     """Return a short human-readable summary of failed LightRAG documents."""
     if root_dir is None:
@@ -326,6 +350,7 @@ def write_meta(
 __all__ = [
     "META_FILENAME",
     "PROVIDER",
+    "doc_count",
     "document_error",
     "failure_summary",
     "has_any_doc_status",

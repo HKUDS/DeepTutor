@@ -28,6 +28,8 @@ from . import storage
 from .config import default_top_k, should_show_progress
 from .document_loader import LlamaIndexDocumentLoader
 from .embedding_adapter import (
+    CustomEmbedding,
+    bind_operation_embedding,
     configure_llamaindex_settings,
     set_progress_callback,
     verify_embedding_connectivity,
@@ -191,8 +193,14 @@ class LlamaIndexPipeline:
         self._signature_provider = signature_provider or signature_from_embedding_config
         self.document_loader = document_loader or LlamaIndexDocumentLoader(self.logger)
 
-    def _configure_settings(self) -> None:
-        configure_llamaindex_settings(self.logger)
+    def _configure_settings(self) -> CustomEmbedding | None:
+        return configure_llamaindex_settings(self.logger)
+
+    async def _configure_settings_async(self) -> None:
+        """Build the provider in a worker; publish scoped state in the calling task."""
+        adapter = await asyncio.to_thread(self._configure_settings)
+        if adapter is not None:
+            bind_operation_embedding(adapter)
 
     async def _verify_embedding_connectivity(self) -> None:
         await verify_embedding_connectivity(self.logger)
@@ -226,7 +234,7 @@ class LlamaIndexPipeline:
         image_progress_callback = kwargs.get("image_progress_callback")
         kb_dir = resolve_kb_dir(self.kb_base_dir, kb_name)
         _ensure_index_worker_available(str(kb_dir.resolve()))
-        self._configure_settings()
+        await self._configure_settings_async()
 
         self.logger.info(
             f"Initializing KB '{kb_name}' with {len(file_paths)} files using LlamaIndex"
@@ -339,7 +347,7 @@ class LlamaIndexPipeline:
             else:
                 if exact is not None:
                     return exact
-        self._configure_settings()
+        await self._configure_settings_async()
         self.logger.info(f"Searching KB '{kb_name}' with query: {query[:50]}...")
 
         kb_dir = resolve_kb_dir(self.kb_base_dir, kb_name)
@@ -486,7 +494,7 @@ class LlamaIndexPipeline:
         image_progress_callback = kwargs.get("image_progress_callback")
         kb_dir = resolve_kb_dir(self.kb_base_dir, kb_name)
         _ensure_index_worker_available(str(kb_dir.resolve()))
-        self._configure_settings()
+        await self._configure_settings_async()
 
         self.logger.info(f"Adding {len(file_paths)} documents to KB '{kb_name}' using LlamaIndex")
 

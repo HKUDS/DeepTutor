@@ -92,7 +92,20 @@ const EMPTY_LIBRARY: SourceLibrary = {
 //: Entries listed under one question-bank category.
 const MAX_CATEGORY_ENTRIES = 50
 
-type Translate = (cn: string, en: string) => string
+type Translate = (cn: string, en: string, vars?: Record<string, string | number>) => string
+
+/**
+ * Chinese keeps its inline text; every other language looks the English text up
+ * in its catalog. Callers used to pass i18next's `t` here, which read the
+ * Chinese text as the key and showed English even in Chinese.
+ */
+export function catalogTranslate(
+  t: (key: string, vars?: Record<string, string | number>) => string,
+  zh: boolean
+): Translate {
+  return (cn, en, vars) =>
+    zh ? cn.replace(/\{\{(\w+)\}\}/g, (_, name: string) => String(vars?.[name] ?? '')) : t(en, vars)
+}
 
 export function useTopicSourceLibrary(tr: Translate) {
   const [library, setLibrary] = useState<SourceLibrary>(EMPTY_LIBRARY)
@@ -133,7 +146,7 @@ export function useTopicSourceLibrary(tr: Translate) {
         key: JSON.stringify([row.content_workspace_id ?? '', kind, id]),
         kind,
         sourceId: String(id),
-        label: String(label || tr('Untitled', 'Untitled')),
+        label: String(label || tr('未命名', 'Untitled')),
         detail: String(detail || ''),
         content_workspace_id: String(row.content_workspace_id ?? ''),
         content_workspace_name: String(row.content_workspace_name || ''),
@@ -275,7 +288,7 @@ async function fetchChildren(
           kind: 'file' as const,
           sourceId: entry.name,
           label: entry.name,
-          detail: tr(`${kbName} 中的文件`, `File in ${kbName}`),
+          detail: tr('{{name}} 中的文件', 'File in {{name}}', { name: kbName }),
           available: true,
           kbName,
           path: entry.name,
@@ -311,7 +324,7 @@ async function fetchChildren(
       // The reference form chat's own transcript reader understands.
       sourceId: `partner:${candidate.sourceId}:${session.session_key}`,
       label: session.title || tr('未命名对话', 'Untitled conversation'),
-      detail: tr(`${session.message_count} 条消息`, `${session.message_count} messages`),
+      detail: tr('{{count}} 条消息', '{{count}} messages', { count: session.message_count }),
       available: true,
       excerpt: session.last_message || '',
       parentKey,
@@ -324,7 +337,7 @@ async function fetchChildren(
       kind: 'partner_group' as const,
       sourceId: `${candidate.sourceId}:${session.session_key}`,
       label: session.title || tr('未命名讨论', 'Untitled discussion'),
-      detail: tr(`${session.message_count} 条消息`, `${session.message_count} messages`),
+      detail: tr('{{count}} 条消息', '{{count}} messages', { count: session.message_count }),
       available: true,
       parentKey,
     }))

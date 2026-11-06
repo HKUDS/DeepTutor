@@ -299,6 +299,12 @@ class AgenticLoopPipeline:
         if max_tokens is not None:
             self._respond_max_tokens = max(256, int(max_tokens))
 
+        from .reasoning_recovery import ReasoningBudgetRecovery
+
+        self.reasoning_budget_recovery = ReasoningBudgetRecovery.from_config(
+            chat_cfg.get("reasoning_budget_recovery"), base_max_tokens=self.loop_max_tokens
+        )
+
         self._prompts: dict[str, Any] = self._load_prompt_pack()
         self._prompt_assembler = self.prompt_assembler_class(
             prompts=self._prompts,
@@ -420,10 +426,9 @@ class AgenticLoopPipeline:
             order = {item["function"]["name"]: i for i, item in enumerate(prior)}
             tool_schemas.sort(key=lambda item: order.get(item["function"]["name"], len(order)))
 
-        from deeptutor.runtime.ts_engine.config import compatibility_reason
-
-        if os.getenv("DEEPTUTOR_CHAT_ENGINE") == "typescript-native" and not compatibility_reason(
-            self.llm_config
+        if (
+            os.getenv("DEEPTUTOR_CHAT_ENGINE") == "typescript-native"
+            and not self._native_compatibility_reason()
         ):
             from deeptutor.agents.loop.native_adapter import run_native_turn
 
@@ -444,6 +449,14 @@ class AgenticLoopPipeline:
         )
         self.last_result = await loop.run()
         return self.last_result
+
+    def _native_compatibility_reason(self) -> str:
+        """Admit explicit recovery policies to the shared effects host."""
+        if self.reasoning_budget_recovery.strategy != "prompt":
+            return "configured reasoning-budget recovery policy"
+        from deeptutor.runtime.ts_engine.config import compatibility_reason
+
+        return compatibility_reason(self.llm_config)
 
     # ---- prompt assembly -------------------------------------------------
 

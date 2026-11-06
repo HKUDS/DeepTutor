@@ -210,6 +210,33 @@ class TestLegacyTutorBotMigration:
         history = mgr.get_history("old-bot")
         assert history and history[0]["content"] == "hi"
 
+    def test_migration_slugifies_a_non_ascii_bot_id(self, partners_root):
+        from deeptutor.services.partners.manager import slugify_partner_id
+
+        admin_root = partners_root.parent
+        self._seed_legacy_bot(admin_root, bot_id="中文机器人")
+
+        mgr = _mgr()
+        ids = mgr._discover_partner_ids()
+
+        expected = slugify_partner_id("中文机器人")
+        assert "中文机器人" not in ids
+        assert expected in ids
+        assert all(pid.isascii() for pid in ids)
+
+        cfg = mgr.load_config(expected)
+        assert cfg.name == "Old Bot"
+        assert cfg.channels["telegram"]["token"] == "tok"
+
+    def test_different_legacy_names_with_same_slug_survive_restart(self, partners_root):
+        self._seed_legacy_bot(partners_root.parent, bot_id="old bot")
+        self._seed_legacy_bot(partners_root.parent, bot_id="old-bot")
+        for _ in range(2):
+            mgr = _mgr()
+            ids = mgr._discover_partner_ids()
+            assert {mgr.load_config(pid).soul_origin["id"] for pid in ids} == {"old bot", "old-bot"}
+            assert len(ids) == 2
+
     def test_migration_is_idempotent_and_non_destructive(self, partners_root):
         admin_root = partners_root.parent
         legacy = self._seed_legacy_bot(admin_root)

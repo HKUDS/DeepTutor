@@ -5,6 +5,7 @@ import httpx
 from deeptutor.services.llm.request_compat import (
     error_text,
     is_image_input_unsupported,
+    is_response_format_unsupported,
     is_stream_options_unsupported,
     is_tool_schema_unsupported,
     is_transient_transport_error,
@@ -106,3 +107,24 @@ def test_glm_unrelated_parameter_ranges_do_not_trigger_image_retry() -> None:
         "messages.content.type is unavailable",
     ):
         assert not is_image_input_unsupported(ValueError(message))
+
+
+def test_response_format_classifier_matches_value_specific_rejections() -> None:
+    """Providers that reject a response_format *value* without naming the
+    parameter must still be detected so the drop-and-retry fires. DashScope
+    answers ``'json_object' is not supported by this model`` (#docstring)."""
+    assert is_response_format_unsupported(
+        ValueError("'json_object' is not supported by this model")
+    )
+    assert is_response_format_unsupported(
+        ValueError("'response_format.type' must be 'json_schema' or 'text'")
+    )
+    assert is_response_format_unsupported(ValueError("response_format is not supported"))
+
+
+def test_response_format_classifier_ignores_unrelated_unsupported_params() -> None:
+    """A generic unsupported-parameter error that never mentions response_format
+    must not strip it (e.g. stream_options)."""
+    assert not is_response_format_unsupported(ValueError("stream_options is not supported"))
+    assert not is_response_format_unsupported(ValueError("unknown parameter: temperature"))
+    assert not is_response_format_unsupported(RuntimeError("rate limit exceeded"))

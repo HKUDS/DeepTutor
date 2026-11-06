@@ -32,6 +32,7 @@ from deeptutor.runtime.home import (
 from deeptutor.runtime.memory_probe import SUPERVISOR_PID_ENV
 from deeptutor.runtime.process import is_process_alive
 from deeptutor.services.app_update import LAUNCHER_PID_ENV
+from deeptutor.utils.console_encoding import relax_console_encoding as _relax_console_encoding
 
 BACKEND_READY_TIMEOUT_ENV = "DEEPTUTOR_BACKEND_READY_TIMEOUT"
 FRONTEND_READY_TIMEOUT_ENV = "DEEPTUTOR_FRONTEND_READY_TIMEOUT"
@@ -402,28 +403,6 @@ def _terminate_all(
 def _terminate(proc: ManagedProcess | None) -> None:
     if proc is not None:
         _terminate_all([proc])
-
-
-def _relax_console_encoding(streams: tuple[object, ...] | None = None) -> None:
-    """Make the launcher's own console output lossy instead of fatal.
-
-    Child pipes are already decoded with ``errors="replace"`` (see ``_spawn``)
-    and the children themselves get ``PYTHONIOENCODING=utf-8:replace``, but the
-    parent process re-encodes every relayed line with the console's own codec.
-    On a legacy Windows code page (cp950/cp936/cp932) an ordinary Next.js
-    banner character like ``✓`` then raises ``UnicodeEncodeError`` inside
-    ``_stream_output``, killing the relay thread — the app keeps running but
-    goes silent for the rest of the session (issue #702).
-    """
-    for stream in streams if streams is not None else (sys.stdout, sys.stderr):
-        reconfigure = getattr(stream, "reconfigure", None)
-        if reconfigure is None:
-            continue
-        try:
-            reconfigure(errors="replace")
-        except (ValueError, OSError):
-            # Already-detached or non-reconfigurable stream: nothing to relax.
-            continue
 
 
 def _stream_output(prefix: str, process: subprocess.Popen[str]) -> None:
@@ -1345,6 +1324,7 @@ def _launch_detached(
     env[DEEPTUTOR_HOME_ENV] = str(runtime_home.resolve())
     env[DETACHED_WORKER_ENV] = "1"
     env[DETACHED_TOKEN_ENV] = token
+    env["PYTHONSAFEPATH"] = "1"
     kwargs: dict[str, Any] = {
         "cwd": str(runtime_home),
         "env": env,
@@ -1354,9 +1334,11 @@ def _launch_detached(
         "shell": False,
     }
     if sys.platform == "win32":
+        # A venv redirector's interpreter child must inherit a hidden console;
+        # DETACHED_PROCESS lets that child allocate a visible console (#2421).
         kwargs["creationflags"] = (
             subprocess.CREATE_NEW_PROCESS_GROUP  # type: ignore[attr-defined]
-            | subprocess.DETACHED_PROCESS  # type: ignore[attr-defined]
+            | subprocess.CREATE_NO_WINDOW  # type: ignore[attr-defined]
         )
     else:
         kwargs["start_new_session"] = True
@@ -1507,6 +1489,26 @@ def _complete_restarted_update(runtime_home: Path) -> bool:
     if job.status != "restarting" or job.restart_home != str(runtime_home.resolve()):
         return False
     store.mark_succeeded(job.id)
+    return True
+
+
+def _fail_restarted_update(runtime_home: Path, error: str) -> bool:
+    """Record a restart that will not reach readiness, so clients stop waiting.
+
+    Without this, a launcher that exits before ``_complete_restarted_update``
+    leaves the job in ``restarting`` while nothing listens (see #2330).
+    """
+
+    from deeptutor.services.app_update import UpdateJobStore, update_store_root
+
+    store = UpdateJobStore(update_store_root(runtime_home))
+    try:
+        job = store.load()
+    except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError):
+        return False
+    if job.status != "restarting" or job.restart_home != str(runtime_home.resolve()):
+        return False
+    store.mark_failed(job.id, error)
     return True
 
 
@@ -1823,8 +1825,17 @@ def start(
             shutdown_wake.wait(1)
     except KeyboardInterrupt:
         request_shutdown("SIGINT")
+    except Exception as exc:
+        _fail_restarted_update(runtime_home, f"Restart failed: {exc}")
+        raise
     finally:
         cleanup()
+        # A clean stop before readiness is still an incomplete update; leave a
+        # durable failure instead of a job that polls forever.
+        _fail_restarted_update(
+            runtime_home,
+            "DeepTutor stopped before the update restart completed.",
+        )
 
     if exit_code:
         raise SystemExit(exit_code)

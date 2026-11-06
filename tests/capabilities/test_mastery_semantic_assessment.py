@@ -410,6 +410,32 @@ async def test_question_support_must_quote_real_evidence(service, monkeypatch):
         await semantic.bind_question(service.store, progress, leaf())
 
 
+@pytest.mark.asyncio
+async def test_question_support_retries_a_mismatched_quote(service, monkeypatch):
+    from deeptutor.learning import lesson_evidence
+    from deeptutor.learning import semantic_assessment as semantic
+
+    progress = service.store.load("p")
+    source = "alpha is the first letter"
+    progress.lesson_evidence["kp1"] = {"sources": [{"ref": {}, "text": source}]}
+    monkeypatch.setattr(lesson_evidence, "validate_evidence", lambda *args, **kwargs: None)
+    instructions = []
+
+    async def request(config, instruction, *args, **kwargs):
+        instructions.append(instruction)
+        quote = "alpha comes first" if len(instructions) == 1 else source
+        return {"supported": True, "citations": [{"index": 0, "quote": quote}]}
+
+    monkeypatch.setattr(semantic, "_request", request)
+    question = leaf()
+    await semantic.bind_question(service.store, progress, question)
+    assert len(instructions) == 2
+    assert "prior citation did not match" in instructions[1]
+    assert question.source_evidence["assessment_contract"]["citations"] == [
+        {"index": 0, "quote": source}
+    ]
+
+
 def _source_packet(*texts):
     return {"sources": [{"ref": {}, "text": text} for text in texts]}
 

@@ -77,14 +77,26 @@ class TestConvertToolsNativeWebSearch:
         converted = convert_tools(tools, native_web_search=True)
         assert {"type": "web_search"} in converted
         # Other tools keep their function schema.
-        assert {"type": "function", "name": "rag", "description": "", "parameters": {}} in converted
+        assert {
+            "type": "function",
+            "name": "rag",
+            "description": "",
+            "parameters": {},
+            "strict": False,
+        } in converted
         assert len(converted) == 2
 
     def test_web_search_stays_a_function_by_default(self) -> None:
         tools = [{"type": "function", "function": {"name": "web_search", "parameters": {}}}]
         converted = convert_tools(tools)
         assert converted == [
-            {"type": "function", "name": "web_search", "description": "", "parameters": {}}
+            {
+                "type": "function",
+                "name": "web_search",
+                "description": "",
+                "parameters": {},
+                "strict": False,
+            }
         ]
 
 
