@@ -1420,13 +1420,25 @@ class ReadingStore:
                 )
                 existing.append(stored)
             else:
-                # An update keeps the author it was written with. The request
-                # body cannot say who authored a mark — the router hardcodes
-                # "user" — so without this an edit to the assistant's mark
-                # would silently relabel it as the reader's.
+                # An update keeps the server-owned fields the request body
+                # cannot express. The router sends an AnnotationPayload, which
+                # carries only the reader's own choices (locator, kind, colour,
+                # quote, note, rects, anchor, selectors) plus author="user";
+                # everything else here is decided by the server.
+                #
+                # - author: the body cannot say who wrote a mark, so without
+                #   this an edit to the assistant's mark would relabel it as
+                #   the reader's.
+                # - resolution: revision migration marks rows unresolved or
+                #   ambiguous; a payload built from defaults would claim the
+                #   quote resolves again without re-checking it against the
+                #   text, hiding the review badge the reader needs to see.
+                # - material_revision and created_at: provenance of the row,
+                #   not of this edit.
                 stored = dataclass_replace(
                     stored,
                     author=existing[index].author,
+                    resolution=existing[index].resolution,
                     material_revision=existing[index].material_revision,
                     created_at=existing[index].created_at or now,
                     updated_at=now,

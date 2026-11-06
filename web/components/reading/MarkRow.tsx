@@ -70,12 +70,16 @@ export function MarkRow({
   <div
     role="button"
     tabIndex={0}
+    aria-pressed={selecting ? selected : undefined}
     onClick={() => (selecting ? onToggle(annotation.annotation_id) : onSelect(annotation))}
     onKeyDown={(event) => {
-      if (event.key === "Enter" || event.key === " ") {
-        event.preventDefault();
-        onSelect(annotation);
-      }
+      if (event.key !== "Enter" && event.key !== " ") return;
+      // A focused child — the selection checkbox, or the edit/delete buttons —
+      // handles its own keys; acting here too would toggle twice.
+      if (event.target !== event.currentTarget) return;
+      event.preventDefault();
+      if (selecting) onToggle(annotation.annotation_id);
+      else onSelect(annotation);
     }}
     className={`group/anno relative w-full cursor-pointer rounded-lg border px-2.5 py-2 text-left transition ${
       active
