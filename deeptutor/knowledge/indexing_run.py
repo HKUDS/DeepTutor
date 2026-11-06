@@ -373,14 +373,18 @@ class IndexingRun:
         with self._mutex:
             if not self.active:
                 return
-            stored = load_run(self.kb_dir)
-            if stored and stored.get("task_id") != self.task_id:
+            if self.data.get("task_id") != self.task_id:
                 return
             key = self.source_key(source)
             doc = self.data["documents"].setdefault(key, {})
             doc.update({"status": status, "updated_at": time.time(), **details})
             self.data["last_progress_at"] = time.time()
-            self._save()
+            # Throttle the durable checkpoint. The entire run-state (every
+            # document) is serialized on each save, so saving per-document is
+            # O(n^2) and freezes reindexing on large knowledge bases. Persist at
+            # most every 100 documents; verify_sources() flushes the remainder.
+            if len(self.data["documents"]) % 100 == 0:
+                self._save()
 
     def verify_sources(self):
         self.check()
