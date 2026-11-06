@@ -150,7 +150,7 @@ function SubagentLine({ channel, text }: { channel: string; text: string }) {
 }
 
 function ToolResultBlock({ text }: { text: string }) {
-  const { i18n } = useTranslation();
+  const { t, i18n } = useTranslation();
   const zh = i18n.language?.toLowerCase().startsWith("zh");
   const [open, setOpen] = useState(false);
   const lines = text.split("\n");
@@ -177,10 +177,10 @@ function ToolResultBlock({ text }: { text: string }) {
           {open
             ? zh
               ? "收起"
-              : "collapse"
+              : t("collapse")
             : zh
               ? `… 展开 +${hidden} 行`
-              : `… +${hidden} lines`}
+              : t("… +{{count}} lines", { count: hidden })}
         </button>
       )}
     </div>

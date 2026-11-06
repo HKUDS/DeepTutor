@@ -834,6 +834,7 @@ class TurnExecutor:
             # card is on screen showing only what the learner picked, and the
             # verdict it is waiting for is already server-side.
             mastery_card_grade: dict[str, Any] | None = None
+            mastery_card_rejection: dict[str, Any] | None = None
             mastery_card_skip: dict[str, Any] | None = None
             if workspace_mode == WORKSPACE_MODE_MASTERY:
                 mastery_card_grade = await self._grade_submitted_card_answer(
@@ -841,6 +842,9 @@ class TurnExecutor:
                     path_id=_mastery_path_id(payload.get("mastery_path_id")),
                     answer=payload.get("mastery_answer") or {},
                 )
+                if mastery_card_grade and mastery_card_grade.get("reason") == "stale_card":
+                    mastery_card_rejection = mastery_card_grade
+                    mastery_card_grade = None
                 # And its counterpart: a question the learner declined instead
                 # of answering. Dropped here for the same reason a card answer
                 # is graded here — the path must already be clear of it when
@@ -1015,6 +1019,7 @@ class TurnExecutor:
                     # The ruling this turn opened with, when it opened with one.
                     # The tutor reads it as a seed rather than grading again.
                     "mastery_card_grade": mastery_card_grade or {},
+                    "mastery_card_rejection": mastery_card_rejection or {},
                     # The question this turn opened by dropping, if it did.
                     "mastery_card_skip": mastery_card_skip or {},
                     # Whether the message is a pick on the open card at all,

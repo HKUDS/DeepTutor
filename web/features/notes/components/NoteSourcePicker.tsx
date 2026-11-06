@@ -1,7 +1,8 @@
 'use client'
-import { useCallback, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
+  catalogTranslate,
   useTopicSourceLibrary,
   sourceRequest,
   type SourceCandidate,
@@ -20,10 +21,8 @@ export default function NoteSourcePicker({
   onKnowledge: (name: string, workspace: string) => void
 }) {
   const { t, i18n } = useTranslation()
-  const tr = useCallback(
-    (zh: string, en: string) => (i18n.language.startsWith('zh') ? zh : en),
-    [i18n.language]
-  )
+  const zh = i18n.language.startsWith('zh')
+  const tr = useMemo(() => catalogTranslate(t, zh), [t, zh])
   const { library, loading } = useTopicSourceLibrary(tr)
   const [query, setQuery] = useState('')
   const [busy, setBusy] = useState(false)

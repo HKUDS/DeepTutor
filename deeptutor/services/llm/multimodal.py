@@ -210,9 +210,7 @@ def _inject_images(
 
     dropped = 0
     for att in image_attachments:
-        mime = getattr(att, "mime_type", "") or _guess_mime_type(
-            getattr(att, "filename", "image.png")
-        )
+        mime = getattr(att, "mime_type", "") or ""
         b64 = getattr(att, "base64", "") or ""
         url = getattr(att, "url", "") or ""
 
@@ -246,6 +244,12 @@ def _inject_images(
                 )
                 dropped += 1
                 continue
+
+        # Fall back to the filename guess only after an explicit mime_type and
+        # the MIME resolved from the stored attachment have both been tried, so
+        # a resolved image/jpeg is not overridden by the image/png default.
+        if not mime:
+            mime = _guess_mime_type(getattr(att, "filename", "image.png"))
 
         if anthropic:
             if not b64:

@@ -72,9 +72,11 @@ async function request<T>(path: string, body?: object): Promise<T> {
 }
 
 export default function DataMigrationSettingsSection() {
-  const { i18n } = useTranslation()
+  const { t, i18n } = useTranslation()
   const zh = i18n.language.startsWith('zh')
-  const text = (en: string, cn: string) => (zh ? cn : en)
+  const text = (en: string, cn: string) => (zh ? cn : t(en))
+  const counted = (count: number, en: string, cn: string) =>
+    zh ? `${count} ${cn}` : t(en, { count })
   const { workspaces } = useChatWorkspaces()
   const [source, setSource] = useState(activeWorkspaceId)
   const [target, setTarget] = useState('')
@@ -85,7 +87,7 @@ export default function DataMigrationSettingsSection() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [historical, setHistorical] = useState(false)
-  const label = (key: string) => labels[key]?.[zh ? 1 : 0] ?? key
+  const label = (key: string) => (labels[key] ? text(...labels[key]) : key)
   const statusLabel = (key: string) => ({
     preparing: text('Preparing', '准备中'), copying: text('Copying', '复制中'),
     transferring: text('Transferring', '迁移中'), committed: text('Finishing', '收尾中'),
@@ -255,9 +257,9 @@ export default function DataMigrationSettingsSection() {
                   <span className="block text-sm font-medium">{label(row.feature)}</span>
                   <span className="block text-xs text-[var(--muted-foreground)]">
                     {row.sessions !== undefined
-                      ? `${row.sessions} ${text('conversations', '个对话')} · `
+                      ? `${counted(row.sessions, '{{count}} conversations', '个对话')} · `
                       : ''}
-                    {row.files} {text('files', '个文件')} · {(row.bytes / 1024 / 1024).toFixed(1)}{' '}
+                    {counted(row.files, '{{count}} files', '个文件')} · {(row.bytes / 1024 / 1024).toFixed(1)}{' '}
                     MB
                   </span>
                   <span className="mt-1 block break-all text-[11px] text-[var(--muted-foreground)]">
@@ -315,11 +317,11 @@ export default function DataMigrationSettingsSection() {
         {preview ? (
           <div className="space-y-3 rounded-xl border border-[var(--border)] p-4">
             <p className="text-sm">
-              {preview.sessions} {text('conversations', '个对话')} · {preview.files}{' '}
-              {text('files', '个文件')} · {(preview.bytes / 1024 / 1024).toFixed(1)} MB
+              {counted(preview.sessions, '{{count}} conversations', '个对话')} ·{' '}
+              {counted(preview.files, '{{count}} files', '个文件')} · {(preview.bytes / 1024 / 1024).toFixed(1)} MB
             </p>
             <p className="text-sm">
-              {text('Included features', '包含功能')}: {preview.features.map(label).join('、')}
+              {text('Included features', '包含功能')}: {preview.features.map(label).join(zh ? '、' : ', ')}
             </p>
             {preview.dependencies.length ? (
               <p className="text-xs text-[var(--muted-foreground)]">

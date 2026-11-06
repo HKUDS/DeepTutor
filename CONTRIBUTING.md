@@ -1,256 +1,144 @@
 # Contributing to DeepTutor
 
-Thank you for your interest in contributing to DeepTutor! We welcome developers of all skill levels to help build the next-generation intelligent learning companion.
+**English** | [简体中文](CONTRIBUTING_CN.md)
 
-<p align="center">
-<a href="https://discord.gg/eRsjPgMU4t"><img src="https://img.shields.io/badge/Discord-Join_Community-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord"></a>&nbsp;
-<a href="https://github.com/HKUDS/DeepTutor/issues/78"><img src="https://img.shields.io/badge/WeChat-Join_Group-07C160?style=for-the-badge&logo=wechat&logoColor=white" alt="WeChat"></a>&nbsp;
-<a href="./Communication.md"><img src="https://img.shields.io/badge/Feishu-Join_Group-00D4AA?style=for-the-badge&logo=feishu&logoColor=white" alt="Feishu"></a>
-</p>
+Thanks for helping build DeepTutor! Code, docs, translations, bug reports and
+answering other people's questions all count as contributions.
 
----
+Community: [Discord](https://discord.gg/eRsjPgMU4t) ·
+[Feishu](./Communication.md) · [WeChat](https://github.com/HKUDS/DeepTutor/issues/78) ·
+[Discussions](https://github.com/HKUDS/DeepTutor/discussions) ·
+[Roadmap](https://github.com/HKUDS/DeepTutor/issues/498)
 
-## Table of Contents
-
-- [Maintainer](#maintainer)
-- [Branching Strategy](#branching-strategy)
-- [Quick Start for Contributors](#quick-start-for-contributors)
-- [Development Setup](#development-setup)
-- [Code Quality & Security](#code-quality--security)
-- [Coding Standards](#coding-standards)
-- [Commit Message Format](#commit-message-format)
-- [Security Best Practices](#security-best-practices)
+- [Join the team](#join-the-team)
+- [Where to start](#where-to-start)
+- [Pull requests](#pull-requests)
+- [Development setup](#development-setup)
 
 ---
 
-## Maintainer
+## Join the team
 
-[@pancacake](https://github.com/pancacake) — Currently just me!
+**We're actively recruiting triagers and maintainers.** Everyone who
+contributes is a contributor; people who help run the project take on one of
+two roles:
 
----
+| | Triager | Maintainer |
+| --- | --- | --- |
+| **GitHub permission** | Triage | Write |
+| **Responsibilities** | Label and route new issues, reproduce bugs, ask for missing details, close duplicates and stale items, give PRs a first response, request reviews | Everything a triager does, plus review, approve and merge PRs into `dev` in the areas they know, and look after bugs in those areas |
+| **Time** | A few hours a week | A few hours a week, with steady responses in their areas |
 
-## Branching Strategy
+Releases, `main`, repository settings and secrets stay with the project lead.
 
-We use a multi-branch model to keep development organized:
+### Rules for maintainers
 
-| Branch | Purpose | Stability |
-|---|---|---|
-| `dev` | General development | May have bugs or breaking changes |
-| `multi-user` | Multi-user scenario development | Experimental, focused on multi-tenant features |
+- Merge only when CI is green and the PR has an approving review.
+- Get another maintainer's approval for your own PRs. Typo and small docs
+  fixes are the exception.
+- Changes to authentication, code execution, release workflows or signing
+  need the project lead's review.
+- Be kind and specific in reviews, and follow the
+  [Code of Conduct](CODE_OF_CONDUCT.md).
 
-> [!IMPORTANT]
-> Please do **not** submit PRs directly to `main`. All contributions should target `dev` or `multi-user`.
+### How to join
 
-### Which Branch Should I Target?
+- **Triager:** you've been helping for a while, for example answering issues,
+  reproducing bugs, or getting a few PRs merged.
+- **Maintainer:** you've been a triager, or you've landed several substantial
+  PRs in one area.
 
-**Target `dev`** if your PR includes:
+If that sounds like you, email
+[bingxizhao39@gmail.com](mailto:bingxizhao39@gmail.com) with:
 
-- New features or functionality
-- Refactoring that may affect existing behavior
-- Changes to APIs or configuration
-- General bug fixes
+- Links to the PRs you've opened on DeepTutor
+- Open source projects you maintain or have maintained
+- How much time you can give DeepTutor
 
-**Target `multi-user`** if your PR includes:
+Maintainers may also invite people they've seen doing good work.
 
-- Multi-user / multi-tenant related features
-- Session isolation, user management, or permission changes
-- Collaborative or shared workspace functionality
+People who are inactive for three months move to emeritus and their
+permissions are removed. They keep their place in the list below and are
+welcome back any time.
 
-> [!NOTE]
-> When in doubt, target `dev` — it is the default development branch.
+### Current team
 
----
-
-## Quick Start for Contributors
-
-1. **Fork & Clone** the repository.
-2. **Sync** with the target branch before starting:
-
-```bash
-git checkout dev && git pull origin dev
-```
-
-3. **Create** your feature branch from the target branch:
-
-```bash
-git checkout -b feature/your-feature-name
-```
-
-4. **Develop** your changes, following the coding standards below.
-5. **Validate** by running pre-commit checks:
-
-```bash
-pre-commit run --all-files
-```
-
-6. **Submit** your Pull Request to the correct target branch (not `main` unless it's a hotfix or docs-only change).
-
-> [!TIP]
-> Browse our [Issues](https://github.com/HKUDS/DeepTutor/issues) for tasks labeled `good first issue` to find a great starting point. Comment on the issue to let others know you're working on it.
+- **Project lead:** [@pancacake](https://github.com/pancacake)
+- **Maintainers:** looking for volunteers
+- **Triagers:** looking for volunteers
 
 ---
 
-## Development Setup
+## Where to start
 
-Start with the [developer and agent handbook](docs-for-dev/README.md).
-[Agent setup](docs-for-dev/AGENT_SETUP.md) owns installation and configuration;
-[Development](docs-for-dev/DEVELOPMENT.md) and [Testing](docs-for-dev/TESTING.md)
-describe the source workflow and verification gates.
+| You have | Do this |
+| --- | --- |
+| A bug | Open a [bug report](https://github.com/HKUDS/DeepTutor/issues/new?template=bug_report.yml) with steps to reproduce, your version and OS. Small, obvious fixes can go straight to a PR. |
+| A feature or behavior change | Open a [feature request](https://github.com/HKUDS/DeepTutor/issues/new?template=feature_request.yml) first and wait for a maintainer to agree on the direction before writing code. |
+| A docs or translation problem | Open a [docs issue](https://github.com/HKUDS/DeepTutor/issues/new?template=docs.yml) or send a PR. |
+| A question or setup trouble | Ask in [Discussions](https://github.com/HKUDS/DeepTutor/discussions) or on [Discord](https://discord.gg/eRsjPgMU4t). |
+| A security vulnerability | Report it privately through [GitHub security advisories](https://github.com/HKUDS/DeepTutor/security/advisories/new). Never open a public issue. |
 
-<details>
-<summary><b>Setting Up Your Environment</b></summary>
-
-**Step 1: Create a virtual environment**
-
-```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-```
-
-**Step 2: Install dependencies**
-
-```bash
-python -m pip install -r requirements/full.txt
-python -m pip install -e . --no-deps
-python scripts/install_extras.py dev
-cd web
-npm ci --legacy-peer-deps
-cd ..
-```
-
-</details>
-
-<details>
-<summary><b>Setting Up Pre-commit (First Time Only)</b></summary>
-
-**Step 1: Install pre-commit**
-
-```bash
-pip install pre-commit
-# Or: conda install -c conda-forge pre-commit
-```
-
-**Step 2: Install Git hooks**
-
-```bash
-pre-commit install
-```
-
-**Step 3: Initialize the Secrets Baseline**
-
-If you encounter false-positive secrets (like API hash placeholders), update the baseline:
-
-```bash
-detect-secrets scan > .secrets.baseline
-```
-
-</details>
-
-### Common Commands
-
-| Task | Command |
-|---|---|
-| Check clean workspace + tracked hygiene | `python3 scripts/check_workspace_hygiene.py` |
-| Check repository hygiene | `python3 scripts/check_repo_hygiene.py` |
-| Check all files | `pre-commit run --all-files` |
-| Check quietly | `pre-commit run --all-files -q` |
-| Update tools | `pre-commit autoupdate` |
-| Emergency skip | `git commit --no-verify -m "message"` *(not recommended)* |
-
-### Generated Files and Worktrees
-
-Keep build outputs out of Git. `web/.next*`, `node_modules`, test reports, and
-bytecode caches are regeneratable and must remain untracked. If a build output
-is already tracked, remove it from the index with `git rm --cached` rather than
-deleting the local file needed by an application run.
-
-Fresh checkouts can enable the dependency-free safety hook with:
-
-```bash
-git config core.hooksPath scripts/hooks
-```
-
-The hook also blocks accidental direct commits on `main`. Release maintainers who
-deliberately need a local `main` commit may opt in once with
-`git config deeptutor.allowMainCommit true`, then remove the setting immediately
-afterward.
-
-Use a separate Git worktree for each feature (`git worktree add ../DeepTutor-<task>
--b <branch> dev`) and keep the primary checkout clean. This lets builds, tests,
-and long-running agents operate independently without rewriting one another's
-outputs. Before removing a worktree, commit or explicitly preserve its changes;
-do not use `git reset --hard` or `git clean` as a routine cleanup shortcut.
----
-
-## Code Quality & Security
-
-We use automated tools (configured via `pyproject.toml` and `.pre-commit-config.yaml`) to maintain high standards:
-
-| Tool | Purpose |
-|---|---|
-| **Ruff** | Python linting and formatting |
-| **Prettier** | Frontend & config file formatting |
-| **detect-secrets** | Hardcoded secret scanning |
-| **pip-audit** | Dependency vulnerability scanning |
-| **Bandit** | Security issue analysis |
-| **MyPy** | Static type checking |
-| **Interrogate** | Docstring coverage reporting |
-
-> [!IMPORTANT]
-> Local pre-commit hooks may only show warnings, but **CI will perform strict checks** and automatically reject PRs that fail.
+Looking for something to work on? Try issues labeled
+[`good first issue`](https://github.com/HKUDS/DeepTutor/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)
+or [`help wanted`](https://github.com/HKUDS/DeepTutor/issues?q=is%3Aissue+is%3Aopen+label%3A%22help+wanted%22),
+and leave a comment so others know you're on it.
 
 ---
 
-## Coding Standards
+## Pull requests
 
-### Python
+**Target `dev`.** `main` only moves at a release, and PRs opened against it
+are retargeted before review.
 
-- Use **type hints** for all function signatures.
-- Prefer **f-strings** for string formatting.
-- Follow **PEP 8** (enforced by Ruff).
-- Keep functions **small and focused** on a single responsibility.
+- **One change per PR.** Don't mix unrelated fixes, formatting or refactors.
+- **Link the issue** with `Closes #123` or `Related to #123`.
+- **Explain the problem and show evidence.** Say what was wrong and what
+  changed, then show it works: test output, a screenshot or recording for UI
+  changes, or logs.
+- **Run the checks** that fit your change (see [Testing](docs-for-dev/TESTING.md)),
+  plus `pre-commit run --all-files`. CI runs the full suite.
+- **Leave "Allow edits by maintainers" on** so we can push small fixes and get
+  your PR merged faster.
+- **AI-assisted PRs are welcome.** No label needed, but you must understand
+  the code you submit and include evidence, like any other PR.
 
-### Documentation
+We usually don't accept:
 
-- Every new module, class, and public function should have a **docstring** (Google Python Style Guide format).
-- Update `README.md` if your change introduces new features or configuration.
+- Refactor-only PRs, unless a maintainer asked for one.
+- Large features that weren't discussed in an issue first.
+- More than 20 open PRs from one author at a time. Finish some before opening more.
 
----
-
-## Commit Message Format
+### Commit messages
 
 ```
 <type>: <short description>
-
-[optional body]
 ```
 
-| Type | Description |
-|---|---|
-| `feat` | A new feature (MINOR version bump) |
-| `fix` | A bug fix (PATCH version bump) |
-| `docs` | Documentation only changes |
-| `style` | Formatting, no logic changes |
-| `refactor` | Code restructuring, no new features or fixes |
-| `test` | Adding or correcting tests |
-| `chore` | Build process, tooling, or dependency updates |
+`feat` new feature · `fix` bug fix · `docs` documentation · `refactor` no
+behavior change · `test` tests · `chore` build, tooling or dependencies
 
 ---
 
-## Security Best Practices
+## Development setup
 
-### File Uploads
+The [developer handbook](docs-for-dev/README.md) is the source of truth:
+[Agent setup](docs-for-dev/AGENT_SETUP.md) for installation and configuration,
+[Development](docs-for-dev/DEVELOPMENT.md) for the source workflow and
+[Architecture](docs-for-dev/ARCHITECTURE.md) for where code lives. The short version
+(Python 3.11–3.14, Node.js 22 LTS):
 
-- **Size Limits**: General files capped at 100 MB; PDFs capped at 50 MB.
-- **Validation**: Multi-layer validation (extension + MIME type + content sanitization).
-- **Sanitization**: All filenames are sanitized to prevent path traversal.
+```bash
+git clone https://github.com/<you>/DeepTutor.git && cd DeepTutor
+git checkout dev
 
-### Development Standards
+python -m pip install -r requirements/full.txt
+python -m pip install -e . --no-deps
+python scripts/install_extras.py dev
+(cd web && npm ci --legacy-peer-deps)
 
-- **Subprocesses**: Always use `shell=False` to prevent command injection.
-- **Pathing**: Use `pathlib.Path` for cross-platform compatibility.
-- **Line Endings**: LF (Unix) line endings enforced for critical scripts via `.gitattributes`.
+pre-commit install
+```
 
----
-
-Questions? Reach out on [Discord](https://discord.gg/eRsjPgMU4t). Let's build the future of AI tutoring together!
+Then branch from `dev` (`git checkout -b fix/short-name`). Keep build outputs,
+runtime data and `node_modules` out of Git.

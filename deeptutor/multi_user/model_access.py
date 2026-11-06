@@ -166,9 +166,16 @@ def allowed_llm_options() -> dict[str, Any]:
         for item in redacted_model_access(user.id).get("llm", [])
         if item.get("available")
     ]
+    # The administrator's active model is often not one of the models an
+    # account was granted, which used to leave every option unflagged and the
+    # composer showing "Select model" even though the turn path already pins
+    # the first granted model (see request_preparer). Flag that same option so
+    # the picker and the runtime agree on the default (#2438).
+    if options and not any(option["is_active_default"] for option in options):
+        options[0]["is_active_default"] = True
     active = next(
         (
-            {"profile_id": active_profile_id, "model_id": active_model_id}
+            {"profile_id": option["profile_id"], "model_id": option["model_id"]}
             for option in options
             if option["is_active_default"]
         ),

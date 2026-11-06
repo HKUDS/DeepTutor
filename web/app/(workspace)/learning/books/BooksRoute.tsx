@@ -1017,11 +1017,14 @@ function BookPageInner() {
 
   const openBook = detail?.book || pendingBook || null
   return (
-    <div className="flex h-full w-full">
+    <div className="flex h-full w-full min-w-0 flex-col">
       {/* 「书 / this book」: the book switches to the others from the bar. */}
       {requestedBookId && openBook && (
-        <BookCrumb id={openBook.id} label={openBook.title || t('Untitled book')} />
+        <div className="flex min-w-0 shrink-0 items-center">
+          <BookCrumb id={openBook.id} label={openBook.title || t('Untitled book')} />
+        </div>
       )}
+      <div className="flex min-h-0 min-w-0 flex-1">
       {displayView !== 'list' && displayView !== 'creator' && displayView !== 'opening' && (
         <BookSidebar
           book={detail?.book || pendingBook || null}
@@ -1036,7 +1039,7 @@ function BookPageInner() {
         />
       )}
 
-      <main className="relative flex flex-1 overflow-hidden bg-[var(--background)]">
+      <main className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden bg-[var(--background)]">
         {/* One slot, one place, every view. The predecessor put a gradient
             progress card *inside* the creator's scrolling content and a
             second chip floating over the corner, so starting generation
@@ -1253,6 +1256,7 @@ function BookPageInner() {
           />
         )}
       </main>
+      </div>
     </div>
   )
 }

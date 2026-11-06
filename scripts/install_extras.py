@@ -105,6 +105,19 @@ def resolve(extras: dict[str, list[str]], names: list[str]) -> tuple[list[str], 
     return wanted, unknown
 
 
+def emit(message: str) -> None:
+    """Print *message* even when stdout uses a narrow strict encoding (#2354).
+
+    Characters the actual stdout encoding cannot represent (emojis, non-ASCII
+    extra names, dependency strings, exception details) are escaped with
+    backslashreplace instead of raising UnicodeEncodeError; everything the
+    encoding supports still comes through unchanged.
+    """
+    encoding = sys.stdout.encoding or "utf-8"
+    safe = message.encode(encoding, "backslashreplace").decode(encoding, "strict")
+    print(safe)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("names", nargs="?", default="", help="extras, comma- or space-separated")
@@ -123,33 +136,33 @@ def main(argv: list[str] | None = None) -> int:
     try:
         extras = load_extras(args.pyproject)
     except Exception as exc:
-        print(f"   ⚠️ Could not read {args.pyproject}: {exc}")
+        emit(f"   ⚠️ Could not read {args.pyproject}: {exc}")
         return 0
 
     requirements, unknown = resolve(extras, names)
     for name in unknown:
-        print(f"   ⚠️ Unknown extra '{name}'. Available: {', '.join(sorted(extras))}")
+        emit(f"   ⚠️ Unknown extra '{name}'. Available: {', '.join(sorted(extras))}")
     if not requirements:
         return 0
 
     missing = missing_requirements(requirements)
     if not missing:
-        print(f"   ✅ Extras already satisfied: {', '.join(names)}")
+        emit(f"   ✅ Extras already satisfied: {', '.join(names)}")
         return 0
 
     if args.dry_run:
-        print(f"   📦 Would install {len(missing)} package(s) for {', '.join(names)}:")
+        emit(f"   📦 Would install {len(missing)} package(s) for {', '.join(names)}:")
         for requirement in missing:
-            print(f"      {requirement}")
+            emit(f"      {requirement}")
         return 0
 
-    print(f"   📦 Installing {len(missing)} package(s) for: {', '.join(names)}")
+    emit(f"   📦 Installing {len(missing)} package(s) for: {', '.join(names)}")
     result = subprocess.run(
         [sys.executable, "-m", "pip", "install", "--no-input", *missing],
         check=False,
     )
     if result.returncode != 0:
-        print(f"   ⚠️ pip exited {result.returncode}; the extras above stay unavailable.")
+        emit(f"   ⚠️ pip exited {result.returncode}; the extras above stay unavailable.")
     return 0
 
 

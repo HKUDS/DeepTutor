@@ -45,6 +45,8 @@ class AgentLoopHost:
         self.override_after_tools = False
         self.recovery_tools: frozenset[str] | None = None
         self.recovery_schemas: list[dict[str, Any]] | None = None
+        self.round_max_tokens = self.pipeline.loop_max_tokens
+        self.next_round_max_tokens: int | None = None
 
     async def invoke(self, operation: str, args: dict[str, Any], state: dict[str, Any]) -> Any:
         operations = {
@@ -147,6 +149,8 @@ class AgentLoopHost:
     async def call_round(self, *, settling: bool, first: bool) -> dict[str, bool]:
         self.override_after_tools = False
         await self.read_inbox()
+        self.round_max_tokens = self.next_round_max_tokens or self.pipeline.loop_max_tokens
+        self.next_round_max_tokens = None
         self.result = await self.loop._call_llm(
             messages=self.messages,
             label=self.pipeline._t("labels.final_response", default="Final response")
@@ -154,7 +158,7 @@ class AgentLoopHost:
             else self.pipeline._t("labels.exploring", default="Exploring"),
             call_kind="agent_loop_round",
             trace_role="response" if settling else "explore",
-            max_tokens=self.pipeline.loop_max_tokens,
+            max_tokens=self.round_max_tokens,
             tool_schemas=self.recovery_schemas
             if self.recovery_tools is not None
             else self.loop.tool_schemas,
@@ -175,7 +179,7 @@ class AgentLoopHost:
             "hasText": bool(self.loop._clean(self.result.text)),
             "truncated": finish_was_truncated(self.result.finish_reason),
             "reasoningBudgetExhausted": values._reasoning_budget_exhausted(
-                self.result, self.pipeline.loop_max_tokens
+                self.result, self.round_max_tokens
             ),
         }
 
@@ -186,7 +190,7 @@ class AgentLoopHost:
             self.pipeline._t(
                 "notices.reasoning_budget_exhausted",
                 default=(
-                    "The model exhausted its output budget on internal reasoning twice without "
+                    "The model exhausted its output budget on internal reasoning without "
                     "producing an answer or tool action. Please retry, lower reasoning effort, "
                     "or split the task into smaller steps."
                 ),
@@ -196,17 +200,53 @@ class AgentLoopHost:
                 "reasoning_chars": self.result.reasoning_chars,
                 "completion_tokens": self.result.usage.get("completion_tokens"),
                 "reasoning_tokens": self.result.usage.get("reasoning_tokens"),
+                "requested_max_tokens": self.round_max_tokens,
+                "recovery_strategy": self.pipeline.reasoning_budget_recovery.strategy,
+                "usage": self.pipeline.usage.summary(),
             },
         )
 
     async def continue_truncated(self) -> None:
         result = self.result
         assert result is not None
+        if values._reasoning_budget_exhausted(result, self.round_max_tokens):
+            policy = self.pipeline.reasoning_budget_recovery
+            if policy.strategy == "stop":
+                await self.raise_reasoning_budget()
+            next_budget = (
+                policy.max_tokens
+                if policy.strategy == "increase_output_budget"
+                else self.pipeline.loop_max_tokens
+            )
+            self.next_round_max_tokens = next_budget
+            await self.stream.progress(
+                self.pipeline._t(
+                    "notices.reasoning_budget_increased"
+                    if policy.strategy == "increase_output_budget"
+                    else "notices.reasoning_budget_recovery",
+                    previous_max_tokens=self.round_max_tokens,
+                    next_max_tokens=next_budget,
+                    default="Internal reasoning used the output budget; applying the configured recovery policy.",
+                ),
+                source=self.loop.source,
+                stage=self.loop.stage,
+                metadata={
+                    "trace_kind": "warning",
+                    "recovery_kind": "reasoning_budget",
+                    "recovery_strategy": policy.strategy,
+                    "previous_max_tokens": self.round_max_tokens,
+                    "next_max_tokens": next_budget,
+                    "reasoning_effort": self.pipeline.reasoning_effort,
+                    "recovery_attempt": self.state.reasoning_budget_recoveries,
+                    "usage": self.pipeline.usage.summary(),
+                },
+            )
+        else:
+            await self.warning(
+                "notices.output_truncated",
+                "The model output reached its token limit; asked it to continue.",
+            )
         await self.loop._release_deferred_output(result)
-        await self.warning(
-            "notices.output_truncated",
-            "The model output reached its token limit; asked it to continue.",
-        )
         if result.visible_text:
             self.continued.append(result.visible_text)
         if values._has_replayable_assistant_state(result):
@@ -404,6 +444,7 @@ class AgentLoopHost:
             reason=reason,
             error=error,
             continued_answer_parts=self.continued,
+            max_tokens=self.next_round_max_tokens,
         )
         return {"extraRounds": self.state.rounds - before}
 

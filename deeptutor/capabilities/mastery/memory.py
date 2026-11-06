@@ -6,7 +6,9 @@ original transcript and successful summary watermark; read_source owns recall.
 
 from __future__ import annotations
 
+from collections import OrderedDict
 import json
+import time
 from typing import Any
 
 from deeptutor.capabilities.mastery.history import (
@@ -43,6 +45,35 @@ MEMORY_NOTICE = (
     "represented by archive_id references, not copied into later exchanges. "
     "Large archive reads are paginated; use the returned next_offset when needed."
 )
+
+
+# A truncated reply is deterministic for a given model and output limit: the
+# next turn would pay the same wait (tens of seconds on a reasoning model) and
+# fail the same way. Remember it for a while instead of retrying every turn.
+_TRUNCATION_BACKOFF_SECONDS = 15 * 60
+_TRUNCATION_BACKOFF_MAX = 256
+_truncation_backoff: OrderedDict[tuple[str, str, int], float] = OrderedDict()
+
+
+class MemoryTruncated(ValueError):
+    """The provider cut the tutoring memory off at its output limit."""
+
+
+def _backoff_active(key: tuple[str, str, int]) -> bool:
+    expires = _truncation_backoff.get(key)
+    if expires is None:
+        return False
+    if expires <= time.monotonic():
+        del _truncation_backoff[key]
+        return False
+    return True
+
+
+def _start_backoff(key: tuple[str, str, int]) -> None:
+    _truncation_backoff[key] = time.monotonic() + _TRUNCATION_BACKOFF_SECONDS
+    _truncation_backoff.move_to_end(key)
+    while len(_truncation_backoff) > _TRUNCATION_BACKOFF_MAX:
+        _truncation_backoff.popitem(last=False)
 
 
 def archive_id(group: list[dict[str, Any]]) -> str:
@@ -101,7 +132,11 @@ class MasteryContextBuilder(ContextBuilder):
     def _finalize_summary(self, summary: str, summary_budget: int, outcome: StreamOutcome) -> str:
         # JSON is atomic: prose-tail trimming destroys a complete object.
         if outcome.truncated:
-            raise ValueError("Tutoring memory: provider truncated the response")
+            raise MemoryTruncated(
+                "Tutoring memory: provider truncated the response at its "
+                f"{getattr(self, '_generation_limit', 8192)}-token output limit; "
+                "raise the model's max_tokens"
+            )
         return summary
 
     def _model_tokens(self, messages, summary="", route=None):
@@ -116,6 +151,9 @@ class MasteryContextBuilder(ContextBuilder):
         self._generation_limit = (
             configured_limit if type(configured_limit) is int and configured_limit > 0 else 8192
         )
+        # Changing the model or its max_tokens changes the key, so a fix on the
+        # user's side takes effect on the next turn without waiting out the backoff.
+        self._backoff_model = str(getattr(kwargs.get("llm_config"), "model", "") or "")
         # The store enforces the active user/session and the selected ancestor
         # chain. No filesystem path, arbitrary session selector, or global search.
         rows = await self.store.get_messages_for_context(
@@ -198,17 +236,30 @@ class MasteryContextBuilder(ContextBuilder):
             if groups
             else source_text
         )
+        backoff_key = (
+            str(kwargs.get("session_id") or ""),
+            getattr(self, "_backoff_model", ""),
+            getattr(self, "_generation_limit", 8192),
+        )
+        if _backoff_active(backoff_key):
+            # The same call just came back truncated; skip it and let the
+            # turn run on the bounded history it already degrades to.
+            raise MemoryTruncated("Tutoring memory: skipped after a recent truncated response")
         # A summary task needs learning evidence, not the full tutor persona,
         # 47 tool schemas, encrypted provider reasoning or current page pixels.
-        summary, events = await super()._summarize(
-            source_text=material,
-            summary_budget=summary_budget,
-            generation_budget=min(
-                summary_budget * 2, 8192, getattr(self, "_generation_limit", 8192)
-            ),
-            replay_request=None,
-            **kwargs,
-        )
+        try:
+            summary, events = await super()._summarize(
+                source_text=material,
+                summary_budget=summary_budget,
+                generation_budget=min(
+                    summary_budget * 2, 8192, getattr(self, "_generation_limit", 8192)
+                ),
+                replay_request=None,
+                **kwargs,
+            )
+        except MemoryTruncated:
+            _start_backoff(backoff_key)
+            raise
         try:
             data = json.loads(summary)
             if not isinstance(data, dict) or data.get("version") != 1:

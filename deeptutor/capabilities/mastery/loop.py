@@ -475,6 +475,9 @@ class MasteryLoopCapability:
         """
         if not self.is_active(context):
             return ""
+        rejected = self._stale_card_seed(context)
+        if rejected:
+            return rejected
         skipped = self._skip_seed(context)
         graded = self._grade_seed(context)
         return "\n\n".join(part for part in (skipped, graded) if part)
@@ -517,6 +520,27 @@ class MasteryLoopCapability:
             "Answer whatever they asked, then continue the objective from "
             "mastery_status.next — with a different question when you are ready "
             "to ask one."
+        )
+
+    def _stale_card_seed(self, context: UnifiedContext) -> str:
+        """Explain a runtime rejection without attributing a historical grade.
+
+        Read ``mastery_card_rejection`` metadata containing ``question_id`` and
+        ``reason='stale_card'``. Explain that this reply was not assessed, keep
+        the earlier attempt intact, and never use this reply to answer another
+        pending question. Return an empty string without a stale rejection.
+        """
+        rejection = context.metadata.get("mastery_card_rejection")
+        if not isinstance(rejection, dict) or rejection.get("reason") != "stale_card":
+            return ""
+        return (
+            "[Mastery] The learner replied to a card that was already completed. "
+            "This reply was rejected, NOT graded. Explain that the card is stale, "
+            "not that this answer is incorrect. Preserve the earlier attempt. "
+            "Do not call mastery_grade or mastery_assess for this reply, apply it "
+            "to another pending question, or treat it as new evidence. Offer a "
+            "new practice question through the normal mastery_quiz workflow "
+            "if the learner wants another attempt; never overwrite the old one."
         )
 
     def _grade_seed(self, context: UnifiedContext) -> str:

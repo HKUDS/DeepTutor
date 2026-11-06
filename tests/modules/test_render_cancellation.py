@@ -21,6 +21,8 @@ def test_cleanup_rechecks_group_after_permission_race(monkeypatch, group_exists)
         raise ProcessLookupError("group already reaped")
 
     monkeypatch.setattr(process, "os", SimpleNamespace(name="posix", killpg=killpg))
+    # The POSIX branch is simulated on every OS; Windows has no SIGKILL.
+    monkeypatch.setattr(process.signal, "SIGKILL", 9, raising=False)
     monkeypatch.setattr(process.time, "sleep", lambda _: None)
     if group_exists:
         with pytest.raises(PermissionError):
@@ -55,7 +57,11 @@ async def test_cancel_reaps_render_process(tmp_path, monkeypatch):
     real_popen = subprocess.Popen
     processes = []
 
-    def spawn(_argv, **kwargs):
+    def spawn(argv, **kwargs):
+        if list(argv[1:3]) != ["-m", "manim"]:
+            # Patching renderer.subprocess patches subprocess itself; let the
+            # cleanup's own commands (taskkill on Windows) through.
+            return real_popen(argv, **kwargs)
         process = real_popen([sys.executable, "-c", "import time; time.sleep(60)"], **kwargs)
         processes.append(process)
         return process
