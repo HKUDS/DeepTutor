@@ -163,6 +163,26 @@ test.beforeEach(async ({ page }) => {
 });
 
 /**
+ * The whole page's box, not the strip the reader happens to show.
+ *
+ * A page can be drawn wider than the strip it fills and shifted left, so its
+ * own margins are trimmed ("fit the text"). Measurements against the strip
+ * would then change with the mode; against the page they do not, because the
+ * glyphs and the ink they label are the same words at every size.
+ */
+function fullPageBox(element: HTMLElement) {
+  const box = element.getBoundingClientRect();
+  const width = Number(element.dataset.pageWidth ?? box.width);
+  const offsetX = Number(element.dataset.pageOffsetX ?? 0);
+  return {
+    left: box.left - offsetX,
+    top: box.top,
+    width,
+    height: box.height,
+  };
+}
+
+/**
  * Where a run of text actually sits inside the page, as a fraction of the page
  * box, next to where pdf.js's own text layer puts it.
  *
@@ -174,7 +194,15 @@ test.beforeEach(async ({ page }) => {
  */
 async function glyphGeometry(page: Page) {
   return page.locator('[data-reader-unit="1"]').evaluate((pageRoot) => {
-    const pageBox = pageRoot.getBoundingClientRect();
+    // Inlined rather than calling the helper above: this callback runs in the
+    // page, where a Node-side function reference does not exist.
+    const strip = pageRoot.getBoundingClientRect();
+    const pageBox = {
+      left: strip.left - Number(pageRoot.dataset.pageOffsetX ?? 0),
+      top: strip.top,
+      width: Number(pageRoot.dataset.pageWidth ?? strip.width),
+      height: strip.height,
+    };
     const spans = [...pageRoot.querySelectorAll<HTMLElement>(".textLayer span")];
     if (spans.length === 0) throw new Error("text layer has no spans");
     // The first span is the start of the fixture's heading, which sits in the
@@ -335,17 +363,32 @@ test("a real selection produces a mark on the words it covered", async ({
   // It sits on the heading: same row band, overlapping horizontally, and
   // inside the page rather than off its edge.
   expect(markBox.width).toBeGreaterThan(40);
-  const pageBox = await firstPage.boundingBox();
-  if (!pageBox) throw new Error("page has no box");
-  expect(markBox.x).toBeGreaterThanOrEqual(pageBox.x - 2);
+  const pageRect = await firstPage.evaluate(fullPageBox);
+  expect(markBox.x).toBeGreaterThanOrEqual(pageRect.left - 2);
   expect(markBox.x + markBox.width).toBeLessThanOrEqual(
-    pageBox.x + pageBox.width + 2,
+    pageRect.left + pageRect.width + 2,
   );
-  expect(markBox.y).toBeGreaterThanOrEqual(pageBox.y - 2);
+  expect(markBox.y).toBeGreaterThanOrEqual(pageRect.top - 2);
   expect(markBox.y + markBox.height).toBeLessThanOrEqual(
-    pageBox.y + pageBox.height + 2,
+    pageRect.top + pageRect.height + 2,
   );
   // The heading is in the top fifth of the page, so a mark on it must be too.
-  const relativeTop = (markBox.y - pageBox.y) / pageBox.height;
+  const relativeTop = (markBox.y - pageRect.top) / pageRect.height;
   expect(relativeTop).toBeLessThan(0.25);
+
+  // And it has to cover the words it was made from, not merely sit somewhere
+  // on the page: the mark's band must contain the heading span's centre, and
+  // the two must overlap horizontally.
+  const headingBox = await firstPage
+    .locator(".textLayer span")
+    .first()
+    .boundingBox();
+  if (!headingBox) throw new Error("heading span has no box");
+  const overlapX =
+    Math.min(markBox.x + markBox.width, headingBox.x + headingBox.width) -
+    Math.max(markBox.x, headingBox.x);
+  expect(overlapX).toBeGreaterThan(0);
+  const headingCentreY = headingBox.y + headingBox.height / 2;
+  expect(headingCentreY).toBeGreaterThanOrEqual(markBox.y - 2);
+  expect(headingCentreY).toBeLessThanOrEqual(markBox.y + markBox.height + 2);
 });
