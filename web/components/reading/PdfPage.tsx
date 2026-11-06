@@ -35,10 +35,12 @@ export interface PdfPageProps {
   /** Trim the page's own white side margins so the text block fills the pane. */
   cropMargins?: boolean;
   /**
-   * Reports the share of the page the visible strip covers, so the reader can
-   * measure "one zoom stop" from the size actually on screen.
+   * Reports this page's share of the page its visible strip covers, so the
+   * reader can measure "one zoom stop" from the size actually on screen. The
+   * locator tags the report: several pages are mounted at once, and a
+   * neighbour's ratio must never stand in for the page being read.
    */
-  onCropRatio?: (ratio: number) => void;
+  onCropRatio?: (locator: number, ratio: number) => void;
   /**
    * Cache key for the ink and picture measurements: a page that changes
    * material must never show the previous one's crop.
@@ -111,18 +113,21 @@ export function PdfPage({
     [width, ratio, fallbackRatio, cropMargins, inkBox],
   );
 
-  // How much of the page this strip shows. Reported only for the page the
-  // reader is on: every page measures its own margins, and the zoom step must
-  // start from what is under their eyes.
+  // How much of the page this strip shows. Reported only while this page is
+  // active: every page measures its own margins, and the zoom step must start
+  // from what is under the reader's eyes.
   //
   // Reported in every mode, not only while cropping: a page drawn whole is
   // showing all of itself, so the share is 1. Leaving the last text-mode ratio
   // behind made one press of "+" after switching to Fit page divide the fit
   // ratio by a crop that is no longer on screen — 1250px instead of 750px.
+  //
+  // The locator goes with it because the render window holds neighbours too:
+  // an untagged report let whichever page settled last define the step.
   useEffect(() => {
     if (!active || !onCropRatio) return;
-    onCropRatio(layout.visibleWidth / layout.fullWidth);
-  }, [active, layout.visibleWidth, layout.fullWidth, onCropRatio]);
+    onCropRatio(locator, layout.visibleWidth / layout.fullWidth);
+  }, [active, locator, layout.visibleWidth, layout.fullWidth, onCropRatio]);
 
   // -- ink box -------------------------------------------------------------
 
