@@ -219,13 +219,18 @@ export function PdfDocumentView({
 
   // -- page size mode ------------------------------------------------------
 
-  // How much of the page the reader actually sees: 1 when the page is drawn
-  // whole, `visible / full` when its own margins are trimmed. The active page
-  // reports it, and it is the base for "one zoom stop" — without it, stepping
-  // away from a trimmed page would land below the size already on screen.
-  const [cropRatio, setCropRatio] = useState(1);
-  const reportCropRatio = useCallback((ratio: number) => {
-    setCropRatio(Number.isFinite(ratio) && ratio > 0 ? ratio : 1);
+  // How much of each page the reader actually sees, keyed by locator: 1 when
+  // the page is drawn whole, `visible / full` when its own margins are
+  // trimmed. The render window holds pages just outside the viewport, so the
+  // reports have to stay apart — an untagged ratio let a neighbour override
+  // the page under the reader's eyes and made "+" shrink it. A page that has
+  // not reported yet falls back to 1 in `currentZoomRatio`.
+  const cropRatiosRef = useRef(new Map<number, number>());
+  const reportCropRatio = useCallback((locator: number, ratio: number) => {
+    cropRatiosRef.current.set(
+      locator,
+      Number.isFinite(ratio) && ratio > 0 ? ratio : 1,
+    );
   }, []);
 
   /**
@@ -480,10 +485,12 @@ export function PdfDocumentView({
     const current = zoomRef.current;
     if (current.mode === "fixed") return current.scale;
     // A trimmed page is drawn larger than the strip it fills: the strip is
-    // `cropRatio` of the page, so the drawn size is fit / cropRatio.
+    // `cropRatio` of the page, so the drawn size is fit / cropRatio. The ratio
+    // is the one the visible page reported, not whichever page spoke last.
     const fit = fitZoomRatio(pageWidth, intrinsicWidth);
+    const cropRatio = cropRatiosRef.current.get(visibleLocator) ?? 1;
     return cropRatio > 0 ? fit / cropRatio : fit;
-  }, [pageWidth, intrinsicWidth, cropRatio]);
+  }, [pageWidth, intrinsicWidth, visibleLocator]);
 
   const zoomBy = useCallback(
     (direction: 1 | -1, clientY?: number, clientX?: number) => {
