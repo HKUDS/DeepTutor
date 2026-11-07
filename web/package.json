@@ -37,6 +37,7 @@
     "@blocknote/core": "0.56.0",
     "@blocknote/react": "0.56.0",
     "@recogito/text-annotator": "4.2.5",
+    "@xyflow/react": "^12.12.1",
     "chart.js": "^4.5.1",
     "clsx": "^2.1.1",
     "cytoscape": "^3.33.1",

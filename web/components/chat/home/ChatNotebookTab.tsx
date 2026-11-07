@@ -38,9 +38,19 @@ import {
   runNotebookCell,
   type NotebookCellRun,
 } from "@/lib/notebook-lab-api";
+import {
+  appendNotebookGraph,
+  emptyNotebookGraph,
+  splitNotebookGraph,
+  type NotebookGraph,
+} from "@/lib/notebook-graph";
 
 // GeoGebra loads its applet from a CDN; it must stay client-only.
 const Geogebra = dynamic(() => import("@/components/Geogebra"), { ssr: false });
+const NotebookGraphView = dynamic(
+  () => import("@/components/chat/home/NotebookGraphView"),
+  { ssr: false },
+);
 
 interface ChatNotebookTabProps {
   sessionId?: string | null;
@@ -107,6 +117,8 @@ export default function ChatNotebookTab({ sessionId = null, docId = null }: Chat
   const [cells, setCells] = useState<NotebookCell[]>(() =>
     defaultNotebookCells(),
   );
+  const [graph, setGraph] = useState<NotebookGraph>(() => emptyNotebookGraph());
+  const [view, setView] = useState<"list" | "graph">("list");
   const [runs, setRuns] = useState<Record<string, CellRun>>({});
   const [previewing, setPreviewing] = useState<Set<string>>(() => new Set());
   const [saveState, setSaveState] = useState<SaveState>("idle");
@@ -142,7 +154,9 @@ export default function ChatNotebookTab({ sessionId = null, docId = null }: Chat
           pointerKeyRef.current = "";
           const markdown = page.content ?? "";
           lastSavedRef.current = markdown;
-          setCells(parseNotebookMarkdown(markdown));
+          const split = splitNotebookGraph(markdown);
+          setCells(parseNotebookMarkdown(split.body));
+          setGraph(split.graph);
         } catch (err) {
           if (!cancelled) setError(String(err));
         } finally {
@@ -179,7 +193,9 @@ export default function ChatNotebookTab({ sessionId = null, docId = null }: Chat
           revisionRef.current = page.revision;
           const markdown = page.content ?? "";
           lastSavedRef.current = markdown;
-          setCells(parseNotebookMarkdown(markdown));
+          const split = splitNotebookGraph(markdown);
+          setCells(parseNotebookMarkdown(split.body));
+          setGraph(split.graph);
           setReady(true);
           return;
         } catch {
@@ -191,6 +207,7 @@ export default function ChatNotebookTab({ sessionId = null, docId = null }: Chat
       revisionRef.current = 0;
       lastSavedRef.current = "";
       setCells(defaultNotebookCells());
+      setGraph(emptyNotebookGraph());
       setReady(true);
     })();
 
@@ -199,53 +216,64 @@ export default function ChatNotebookTab({ sessionId = null, docId = null }: Chat
     };
   }, [owner, sessionId, docId]);
 
-  const persist = useCallback(async (nextCells: NotebookCell[]) => {
-    const markdown = serializeNotebookMarkdown(nextCells);
-    if (markdown === lastSavedRef.current) return;
-    setSaveState("saving");
-    try {
-      const title = t("Code notebook");
-      if (docIdRef.current) {
-        const page = await saveNote(docIdRef.current, {
-          title,
-          content: markdown,
-          expected_revision: revisionRef.current,
-        });
-        revisionRef.current = page.revision;
-      } else {
-        const page = await createNote(title, null, markdown, "super_note");
-        docIdRef.current = page.id;
-        revisionRef.current = page.revision;
+  const persist = useCallback(
+    async (nextCells: NotebookCell[], nextGraph: NotebookGraph) => {
+      const markdown = appendNotebookGraph(
+        serializeNotebookMarkdown(nextCells),
+        nextGraph,
+        nextCells.map((cell) => cell.id),
+      );
+      if (markdown === lastSavedRef.current) return;
+      setSaveState("saving");
+      try {
+        const title = t("Code notebook");
+        if (docIdRef.current) {
+          const page = await saveNote(docIdRef.current, {
+            title,
+            content: markdown,
+            expected_revision: revisionRef.current,
+          });
+          revisionRef.current = page.revision;
+        } else {
+          const page = await createNote(title, null, markdown, "super_note");
+          docIdRef.current = page.id;
+          revisionRef.current = page.revision;
+        }
+        lastSavedRef.current = markdown;
+        if (pointerKeyRef.current) {
+          writePointer(pointerKeyRef.current, {
+            id: docIdRef.current as string,
+            revision: revisionRef.current,
+          });
+        }
+        setSaveState("saved");
+        setError("");
+      } catch (err) {
+        setSaveState("error");
+        setError(String(err instanceof Error ? err.message : err));
       }
-      lastSavedRef.current = markdown;
-      if (pointerKeyRef.current) {
-        writePointer(pointerKeyRef.current, {
-          id: docIdRef.current as string,
-          revision: revisionRef.current,
-        });
-      }
-      setSaveState("saved");
-      setError("");
-    } catch (err) {
-      setSaveState("error");
-      setError(String(err instanceof Error ? err.message : err));
-    }
-  }, [t]);
+    },
+    [t],
+  );
 
   // Debounced autosave. Never fires before the page has loaded, so restoring a
   // page cannot immediately rewrite it.
   useEffect(() => {
     if (!ready || !owner) return;
-    const markdown = serializeNotebookMarkdown(cells);
+    const markdown = appendNotebookGraph(
+      serializeNotebookMarkdown(cells),
+      graph,
+      cells.map((cell) => cell.id),
+    );
     if (markdown === lastSavedRef.current) return;
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
-      void persist(cells);
+      void persist(cells, graph);
     }, AUTOSAVE_MS);
     return () => {
       if (saveTimer.current) clearTimeout(saveTimer.current);
     };
-  }, [cells, ready, owner, persist]);
+  }, [cells, graph, ready, owner, persist]);
 
   const updateCell = useCallback((id: string, patch: Partial<NotebookCell>) => {
     setCells((prev) =>
@@ -349,6 +377,23 @@ export default function ChatNotebookTab({ sessionId = null, docId = null }: Chat
           </div>
         </div>
         <SaveBadge state={saveState} label={t} />
+        <div className="flex shrink-0 items-center rounded-lg border border-[color-mix(in_srgb,var(--border)_55%,transparent)] p-0.5">
+          {(["list", "graph"] as const).map((mode) => (
+            <button
+              key={mode}
+              type="button"
+              onClick={() => setView(mode)}
+              aria-pressed={view === mode}
+              className={`rounded-md px-2 py-0.5 text-[11px] font-medium transition-colors ${
+                view === mode
+                  ? "bg-[color-mix(in_srgb,var(--muted)_85%,transparent)] text-[var(--foreground)]"
+                  : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+              }`}
+            >
+              {t(mode === "list" ? "List" : "Graph")}
+            </button>
+          ))}
+        </div>
         {hasCode ? (
           <button
             type="button"
@@ -361,63 +406,79 @@ export default function ChatNotebookTab({ sessionId = null, docId = null }: Chat
         ) : null}
       </div>
 
-      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-3">
+      <div
+        className={
+          view === "graph"
+            ? "min-h-0 flex-1 overflow-hidden"
+            : "min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-3"
+        }
+      >
         {!ready ? (
           <div className="flex items-center gap-2 p-3 text-[12px] text-[var(--muted-foreground)]">
             <Loader2 size={13} className="animate-spin" />
             {t("Loading notebook…")}
           </div>
-        ) : (
-          cells.map((cell, index) => (
-            <CellCard
-              key={cell.id}
-              cell={cell}
-              index={index}
-              total={cells.length}
-              run={runs[cell.id]}
-              previewing={previewing.has(cell.id)}
-              onTogglePreview={() => togglePreview(cell.id)}
-              onChange={(patch) => updateCell(cell.id, patch)}
-              onRun={() => void runCell(cell)}
-              onMove={(delta) => moveCell(cell.id, delta)}
-              onRemove={() => removeCell(cell.id)}
+        ) : view === "graph" ? (
+          <div className="h-full w-full">
+            <NotebookGraphView
+              cells={cells}
+              graph={graph}
+              onGraphChange={setGraph}
             />
-          ))
+          </div>
+        ) : (
+          <>
+            {cells.map((cell, index) => (
+              <CellCard
+                key={cell.id}
+                cell={cell}
+                index={index}
+                total={cells.length}
+                run={runs[cell.id]}
+                previewing={previewing.has(cell.id)}
+                onTogglePreview={() => togglePreview(cell.id)}
+                onChange={(patch) => updateCell(cell.id, patch)}
+                onRun={() => void runCell(cell)}
+                onMove={(delta) => moveCell(cell.id, delta)}
+                onRemove={() => removeCell(cell.id)}
+              />
+            ))}
+
+            <div className="flex gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => addCell("markdown")}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-[color-mix(in_srgb,var(--border)_70%,transparent)] px-2.5 py-1.5 text-[12px] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
+              >
+                <Plus size={13} strokeWidth={2} />
+                {t("Note cell")}
+              </button>
+              <button
+                type="button"
+                onClick={() => addCell("code")}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-[color-mix(in_srgb,var(--border)_70%,transparent)] px-2.5 py-1.5 text-[12px] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
+              >
+                <Plus size={13} strokeWidth={2} />
+                {t("Code cell")}
+              </button>
+              <button
+                type="button"
+                onClick={() => addCell("geogebra")}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-[color-mix(in_srgb,var(--border)_70%,transparent)] px-2.5 py-1.5 text-[12px] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
+              >
+                <Plus size={13} strokeWidth={2} />
+                {t("Board cell")}
+              </button>
+            </div>
+          </>
         )}
-
-        <div className="flex gap-2 pt-1">
-          <button
-            type="button"
-            onClick={() => addCell("markdown")}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-[color-mix(in_srgb,var(--border)_70%,transparent)] px-2.5 py-1.5 text-[12px] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
-          >
-            <Plus size={13} strokeWidth={2} />
-            {t("Note cell")}
-          </button>
-          <button
-            type="button"
-            onClick={() => addCell("code")}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-[color-mix(in_srgb,var(--border)_70%,transparent)] px-2.5 py-1.5 text-[12px] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
-          >
-            <Plus size={13} strokeWidth={2} />
-            {t("Code cell")}
-          </button>
-          <button
-            type="button"
-            onClick={() => addCell("geogebra")}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-[color-mix(in_srgb,var(--border)_70%,transparent)] px-2.5 py-1.5 text-[12px] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
-          >
-            <Plus size={13} strokeWidth={2} />
-            {t("Board cell")}
-          </button>
-        </div>
-
-        {error ? (
-          <p role="alert" className="px-1 text-[11.5px] text-[var(--destructive,var(--foreground))]">
-            {t("The notebook could not be saved. Your edits stay on screen.")}
-          </p>
-        ) : null}
       </div>
+
+      {error ? (
+        <p role="alert" className="shrink-0 px-3 pb-2 text-[11.5px] text-[var(--destructive,var(--foreground))]">
+          {t("The notebook could not be saved. Your edits stay on screen.")}
+        </p>
+      ) : null}
     </div>
   );
 }

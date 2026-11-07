@@ -6287,5 +6287,11 @@
   "Quick note": "Kurznotiz",
   "Super notes": "Super-Notizen",
   "New super note": "Neue Super-Notiz",
-  "More suggestions": "Mehr Vorschläge"
+  "More suggestions": "Mehr Vorschläge",
+  "Graph": "Graph",
+  "Link label": "Verbindungslabel",
+  "Text, a $formula$ or an image — Markdown shown on the line.": "Text, eine $Formel$ oder ein Bild – als Markdown auf der Linie.",
+  "e.g. if $a>0$ then …": "z. B. wenn $a>0$, dann …",
+  "Delete link": "Verbindung löschen",
+  "(empty)": "(leer)"
 }
