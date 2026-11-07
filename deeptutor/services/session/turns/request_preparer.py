@@ -17,6 +17,7 @@ from deeptutor.services.session.protocol import (
     SUBMISSION_PREVIOUS_TURN_FIELD,
     SUBMISSION_REPLAY_FIELD,
     SUBMISSION_USER_FIELD,
+    ActiveTurnConflict,
 )
 from deeptutor.services.session.thread_attribution import (
     BACKFILL_ATTEMPTED_KEY,
@@ -801,7 +802,7 @@ class TurnRequestPreparer:
                 self.owner_id,
             )
             if lease is None:
-                raise RuntimeError("Session already has an active or recovering turn")
+                raise ActiveTurnConflict("Session already has an active or recovering turn")
         try:
             if not payload.get("preserve_session_preferences"):
                 await self.store.update_session_preferences(session["id"], preference_update)
