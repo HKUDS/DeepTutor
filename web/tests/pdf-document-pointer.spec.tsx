@@ -105,10 +105,12 @@ describe("the reading surface", () => {
     const { root, ...view } = await openReader();
     const trigger = await controlsBar(view);
     const wrapper = trigger.parentElement!.parentElement!;
-    // Entering the bar pins it: without this a reader who moved the pointer
-    // onto the controls would find them fading out from under them.
+    // The bar itself (the toolbar inside the transparent band) pins it:
+    // without this a reader who moved the pointer onto the controls would
+    // find them fading out from under them.
+    const bar = trigger.parentElement!;
     act(() => {
-      fireEvent.pointerEnter(wrapper);
+      fireEvent.pointerEnter(bar);
     });
     await waitFor(() => expect(wrapper.className).toContain("opacity-100"));
     // Then move the pointer to the top of the pane. `pointerNearBottom` is
@@ -126,15 +128,16 @@ describe("the reading surface", () => {
     const { root, ...view } = await openReader();
     const trigger = await controlsBar(view);
     const wrapper = trigger.parentElement!.parentElement!;
+    const bar = trigger.parentElement!;
     act(() => {
-      fireEvent.pointerEnter(wrapper);
+      fireEvent.pointerEnter(bar);
     });
     await waitFor(() => expect(wrapper.className).toContain("opacity-100"));
     act(() => {
       fireEvent.pointerMove(root, { clientY: -200 });
     });
     act(() => {
-      fireEvent.pointerLeave(wrapper);
+      fireEvent.pointerLeave(bar);
     });
     // Leaving the bar un-pins it, so the hide the move armed can now land.
     await waitFor(() => expect(wrapper.className).not.toContain("opacity-100"), {
