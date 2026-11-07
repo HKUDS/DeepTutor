@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { loadPdfjs, outputScale, type PdfDocument } from "@/lib/pdfjs-loader";
 import type { AnnotationItem } from "@/lib/reading-api";
+import { canvasPixelRatio } from "@/lib/reading-zoom";
 import { AnnotationLayer } from "./AnnotationLayer";
 
 export interface PdfPageProps {
@@ -96,7 +97,18 @@ export function PdfPage({
         const paintCanvas = async () => {
           const canvas = canvasRef.current;
           if (!canvas) return;
-          const dpr = outputScale();
+          // The caller clamps the page's *shared* width against page one's
+          // aspect ratio, so a page whose own ratio is taller — or a browser
+          // whose zoom pushed the device pixel ratio up — can still ask for a
+          // bitmap past the budget, which the browser drops as a blank page
+          // rather than an error. Clamp this page's bitmap against its own
+          // aspect: the ratio gives, the CSS box does not, so the layout width
+          // stays identical from page to page.
+          const dpr = canvasPixelRatio(
+            viewport.width,
+            viewport.height,
+            outputScale(),
+          );
           canvas.width = Math.floor(viewport.width * dpr);
           canvas.height = Math.floor(viewport.height * dpr);
           canvas.style.width = `${Math.floor(viewport.width)}px`;
