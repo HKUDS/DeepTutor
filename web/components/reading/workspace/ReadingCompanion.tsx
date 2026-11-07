@@ -32,6 +32,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { ChatMessageList } from "@/features/chat/messages";
+import FollowupChipsRow from "@/features/chat/messages/FollowupChipsRow";
 import { buildSessionActivity } from "@/components/chat/home/SessionActivityPanel";
 import SessionViewerPanel, {
   type SessionViewerPanelHandle,
@@ -105,6 +106,7 @@ export function ReadingCompanion({
   const { t } = useTranslation();
   const {
     state,
+    sendMessage,
     submitUserReply,
     regenerateLastMessage,
     resendLastMessage,
@@ -479,6 +481,13 @@ export function ReadingCompanion({
         <ReadingActionCards
           sessionId={state.sessionId}
           onFollowUp={followUpCard}
+        />
+        <FollowupChipsRow
+          sessionId={state.sessionId}
+          isStreaming={state.isStreaming}
+          turnKey={state.messages.length}
+          enabled={lastMessage?.role === "assistant"}
+          onFollowup={sendMessage}
         />
         <div ref={messagesEndRef} className="h-px" />
       </div>

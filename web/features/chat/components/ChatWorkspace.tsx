@@ -36,7 +36,7 @@ import type { SelectedHistorySession } from "@/components/chat/HistorySessionPic
 import type { SelectedQuestionEntry } from "@/components/chat/QuestionBankPicker";
 import ChatComposer from "@/components/chat/home/ChatComposer";
 import { ChatMessageList } from "@/features/chat/messages";
-import FollowupChips from "@/features/chat/messages/FollowupChips";
+import FollowupChipsRow from "@/features/chat/messages/FollowupChipsRow";
 import { TurnNavigator } from "@/components/chat/home/TurnNavigator";
 import SessionLoadingView from "@/components/chat/home/SessionLoadingView";
 import {
@@ -109,9 +109,7 @@ import { useSetupSync } from "@/hooks/useSetupSync";
 import { consumePendingPrompt } from "@/lib/pending-prompt";
 import {
   fetchSessionAskHint,
-  fetchSessionFollowups,
   updateSessionOrganization,
-  type FollowupSuggestion,
   type SessionDetail,
 } from "@/lib/session-api";
 import {
@@ -786,36 +784,9 @@ export default function ChatWorkspace() {
       cancelled = true;
     };
   }, [state.isStreaming, hasMessages, state.sessionId, state.messages.length]);
-  // One-click reactions to the latest answer (see chat_followups.py). Cleared
-  // on session switch and reset while a new turn streams, so stale chips never
-  // sit under a question that is still being answered.
-  const [followups, setFollowups] = useState<FollowupSuggestion[]>([]);
-  const [followupOffset, setFollowupOffset] = useState(0);
-  useEffect(() => {
-    setFollowups([]);
-    setFollowupOffset(0);
-  }, [state.sessionId]);
+  // True when the latest message is an answer — what the follow-up chips react
+  // to (see chat_followups.py and FollowupChipsRow).
   const lastMessageRole = state.messages[state.messages.length - 1]?.role;
-  useEffect(() => {
-    if (state.isStreaming || !hasMessages || !state.sessionId) return;
-    if (lastMessageRole !== "assistant") return;
-    let cancelled = false;
-    void fetchSessionFollowups(state.sessionId).then((rows) => {
-      if (!cancelled) {
-        setFollowups(rows);
-        setFollowupOffset(0);
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    state.isStreaming,
-    hasMessages,
-    state.sessionId,
-    state.messages.length,
-    lastMessageRole,
-  ]);
   // Time-of-day greeting: seeded once on mount from the user's local clock so
   // the heading stays stable while they're on the page. State (not useMemo)
   // because the random pick would otherwise mismatch SSR ↔ client hydration.
@@ -2744,20 +2715,15 @@ export default function ChatWorkspace() {
                           knowledgeBasesLoaded ? kbDisplayNames : undefined
                         }
                       />
-                      {!state.isStreaming && followups.length > 0 ? (
-                        <div className="-mt-4">
-                          <FollowupChips
-                            suggestions={followups}
-                            offset={followupOffset}
-                            onCycle={() =>
-                              setFollowupOffset(
-                                (offset) => (offset + 4) % followups.length,
-                              )
-                            }
-                            onPick={(prompt) => void handleSend(prompt)}
-                          />
-                        </div>
-                      ) : null}
+                      <div className="-mt-4">
+                        <FollowupChipsRow
+                          sessionId={state.sessionId}
+                          isStreaming={state.isStreaming}
+                          turnKey={state.messages.length}
+                          enabled={lastMessageRole === "assistant"}
+                          onFollowup={handleSend}
+                        />
+                      </div>
                       <div
                         ref={messagesEndRef}
                         className="h-px w-full shrink-0"

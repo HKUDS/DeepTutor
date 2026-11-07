@@ -31,6 +31,7 @@ import {
 } from "@/components/chat/home/AskUserOptions";
 import { pendingProseDecision } from "@/lib/outline-decision";
 import { ChatMessageList } from "@/features/chat/messages";
+import FollowupChipsRow from "@/features/chat/messages/FollowupChipsRow";
 import MasteryQuestionCard from "@/components/chat/home/MasteryQuestionCard";
 import {
   ComposerChoiceDock,
@@ -1431,6 +1432,17 @@ export function MasteryStudy({
                               );
                             }
                       }
+                    />
+                    <FollowupChipsRow
+                      sessionId={state.sessionId}
+                      isStreaming={state.isStreaming}
+                      turnKey={state.messages.length}
+                      enabled={
+                        sessionMode !== "outline" &&
+                        !openQuestion &&
+                        lastMessage?.role === "assistant"
+                      }
+                      onFollowup={sendMessage}
                     />
                     {sessionMode === "study" &&
                     lecturePoint &&
