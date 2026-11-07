@@ -6143,7 +6143,8 @@
               "pt",
               "vi",
               "ja",
-              "tr"
+              "tr",
+              "hu"
             ],
             "title": "Language",
             "type": "string"
@@ -13404,7 +13405,8 @@
                   "pt",
                   "vi",
                   "ja",
-                  "tr"
+                  "tr",
+                  "hu"
                 ],
                 "type": "string"
               },
@@ -13434,7 +13436,8 @@
                   "uk",
                   "ms",
                   "vi",
-                  "tr"
+                  "tr",
+                  "hu"
                 ],
                 "type": "string"
               },

@@ -6593,6 +6593,7 @@
   "Reset learning text": "Redefinir texto de aprendizado",
   "language.japanese": "日本語",
   "language.turkish": "Türkçe",
+  "language.hungarian": "Magyar",
   "settings.modelImport.title": "Importar modelos para este serviço",
   "settings.modelImport.selectFiltered": "Selecionar todos os resultados",
   "settings.modelImport.clear": "Limpar seleção",

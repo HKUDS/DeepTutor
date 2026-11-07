@@ -93,6 +93,19 @@ _LABELS: dict[str, dict[str, str]] = {
         "not_generated": "(Bu bölüm henüz oluşturulmadı.)",
         "omitted": "({kind} atlandı: metin karşılığı yok.)",
     },
+    "hu": {
+        "takeaway": "Kulcsgondolat",
+        "answer": "Válasz",
+        "front": "Előlap",
+        "back": "Hátlap",
+        "sources": "Források",
+        "chapters": "Fejezetek",
+        "note": "Megjegyzés",
+        "untitled_book": "Névtelen könyv",
+        "untitled_chapter": "Névtelen fejezet",
+        "not_generated": "(Ez a fejezet még nem készült el.)",
+        "omitted": "({kind} kihagyva — nincs szöveges megfelelője.)",
+    },
 }
 
 
