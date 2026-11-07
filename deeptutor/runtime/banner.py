@@ -160,6 +160,13 @@ LABELS: dict[str, dict[str, str]] = {
     "fr": {
         "tagline": "Tutorat personnalisé natif par agents",
         "lab": "Data Intelligence Lab @ HKU",
+        "version.mismatch": "installé {installed}",
+        "version.shadowed.warning": (
+            "Avertissement : DeepTutor {loaded} s’exécute depuis {origin}, mais la "
+            "distribution installée est {installed}. Une ancienne arborescence source "
+            "dans le répertoire d’exécution masque le paquet installé : la version "
+            "affichée ci-dessus est donc le code en cours, pas la version installée."
+        ),
         "init.mode": "Initialisation de l’espace de travail",
         "init.workspace": "Espace de travail",
         "init.note_settings_dir": "Les paramètres seront écrits dans data/user/settings.",
@@ -396,6 +403,13 @@ LABELS: dict[str, dict[str, str]] = {
     "de": {
         "tagline": "Agent-native, personalisierte Lernbegleitung",
         "lab": "Data Intelligence Lab @ HKU",
+        "version.mismatch": "{installed} installiert",
+        "version.shadowed.warning": (
+            "Warnung: DeepTutor {loaded} läuft aus {origin}, die installierte "
+            "Distribution ist jedoch {installed}. Ein veralteter Quellbaum im "
+            "Laufzeitverzeichnis verdeckt das installierte Paket; die oben "
+            "angezeigte Version ist der laufende Code, nicht die installierte Version."
+        ),
         "init.mode": "Workspace-Einrichtung",
         "init.workspace": "Workspace",
         "init.note_settings_dir": "Einstellungen werden unter data/user/settings gespeichert.",
@@ -504,6 +518,13 @@ LABELS: dict[str, dict[str, str]] = {
     "uk": {
         "tagline": "Агентно-орієнтоване персоналізоване навчання",
         "lab": "Data Intelligence Lab @ HKU",
+        "version.mismatch": "встановлено {installed}",
+        "version.shadowed.warning": (
+            "Попередження: DeepTutor {loaded} виконується з {origin}, але "
+            "встановлений дистрибутив — {installed}. Застаріле дерево джерел у "
+            "робочому каталозі затіняє встановлений пакет; показана вище версія — "
+            "це код, що виконується, а не встановлена версія."
+        ),
         "init.mode": "Майстер ініціалізації робочого простору",
         "init.workspace": "Робочий простір",
         "init.note_settings_dir": "Налаштування буде записано в data/user/settings.",
@@ -612,6 +633,13 @@ LABELS: dict[str, dict[str, str]] = {
     "pt": {
         "tagline": "Assistente de aprendizagem personalizada com arquitetura nativa de agentes",
         "lab": "Data Intelligence Lab @ HKU",
+        "version.mismatch": "{installed} instalado",
+        "version.shadowed.warning": (
+            "Aviso: o DeepTutor {loaded} está sendo executado a partir de {origin}, "
+            "mas a distribuição instalada é {installed}. Uma árvore de código antiga "
+            "no diretório de execução está ocultando o pacote instalado; a versão "
+            "acima é o código em execução, não a versão instalada."
+        ),
         "init.mode": "Configuração do espaço de trabalho",
         "init.workspace": "Espaço de trabalho",
         "init.note_settings_dir": "As configurações serão salvas em data/user/settings.",
@@ -720,6 +748,13 @@ LABELS: dict[str, dict[str, str]] = {
     "tr": {
         "tagline": "Ajan tabanlı kişiselleştirilmiş eğitim",
         "lab": "Data Intelligence Lab @ HKU",
+        "version.mismatch": "{installed} kurulu",
+        "version.shadowed.warning": (
+            "Uyarı: DeepTutor {loaded} sürümü {origin} konumundan çalışıyor, ancak "
+            "kurulu dağıtım {installed}. Çalışma dizinindeki eski bir kaynak ağacı "
+            "kurulu paketi gölgeliyor; yukarıda gösterilen sürüm çalışan koddur, "
+            "kurulu sürüm değildir."
+        ),
         "init.mode": "Çalışma alanı başlatıcı",
         "init.workspace": "Çalışma alanı",
         "init.note_settings_dir": "Ayarlar data/user/settings altına yazılacak.",
