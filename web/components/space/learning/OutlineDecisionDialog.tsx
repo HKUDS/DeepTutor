@@ -1,5 +1,6 @@
 "use client";
 
+import { X } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -7,6 +8,7 @@ import {
   AskUserOptions,
   type AskUserCardData,
 } from "@/components/chat/home/AskUserOptions";
+import Tooltip from "@/shared/ui/Tooltip";
 import { STUDY_COMPOSER_WIDTH } from "./MasteryComposer";
 
 /**
@@ -29,6 +31,7 @@ export function ComposerChoiceDock({
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
+  const { t } = useTranslation();
   return (
     <div
       data-testid={testId}
@@ -36,9 +39,28 @@ export function ComposerChoiceDock({
     >
       <div className="w-full overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)] shadow-[0_8px_28px_rgba(0,0,0,0.08)]">
         {open ? (
-          <div className="max-h-[min(38vh,360px)] overflow-y-auto overscroll-contain">
-            {children}
-          </div>
+          <>
+            {/* Expanded is a page, not a one-way door: the learner can put it
+                away and the summary row is still there to bring it back. */}
+            <div className="flex items-center justify-between gap-2 border-b border-[var(--border)] px-3.5 py-1.5">
+              <p className="min-w-0 truncate text-[12px] leading-5 text-[var(--muted-foreground)]">
+                {summary}
+              </p>
+              <Tooltip label={t("Close")} side="bottom">
+                <button
+                  type="button"
+                  onClick={() => setOpen(false)}
+                  aria-label={t("Close")}
+                  className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)]/60 hover:text-[var(--foreground)]"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </Tooltip>
+            </div>
+            <div className="max-h-[min(38vh,360px)] overflow-y-auto overscroll-contain">
+              {children}
+            </div>
+          </>
         ) : (
           <div className="flex items-center justify-between gap-3 px-3.5 py-2.5">
             <p className="min-w-0 text-[13px] leading-5 text-[var(--foreground)]">

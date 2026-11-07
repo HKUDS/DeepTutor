@@ -9,6 +9,7 @@ import pytest
 from deeptutor.capabilities.mastery.mode import STUDY
 from deeptutor.learning.placement import (
     commit_outline_addition,
+    lecture_coverage,
     lecture_diff,
     lecture_status,
     relocate_new_points,
@@ -193,6 +194,36 @@ def test_a_draft_only_point_still_renders_something_to_read():
     assert status["stale_from_study"] is False
 
 
+@pytest.mark.asyncio
+async def test_coverage_names_what_the_lecture_leaves_out(path_id):
+    """A question and a check answer absent from the body are candidate gaps."""
+    await _build(path_id)
+    store = LearningStore()
+    progress = store.load(path_id)
+    assert progress is not None
+    first = progress.modules[0].knowledge_points[0].id
+    bubbles = [
+        {"id": 1, "role": "assistant", "content": "讲了概念甲。"},
+        {"id": 2, "role": "user", "content": "概念甲是什么？"},
+        {"id": 3, "role": "user", "content": "它和反向传播的链式法则有什么关系？"},
+    ]
+    body = "# 概念甲\n\n这里只讲了概念甲本身。"
+    report = lecture_coverage(
+        store,
+        path_id,
+        first,
+        bubbles,
+        body,
+        checks=[{"question": "循环怎么停？", "correct_answer": "最大步数限制"}],
+    )
+    missing_text = [item["text"] for item in report["missing"]]
+    assert any("反向传播" in text for text in missing_text)
+    assert any(item["kind"] == "check" for item in report["missing"])
+    # A question the body already answers must not be reported.
+    assert not any("概念甲是什么" in text for text in missing_text)
+    assert report["count"] == len(report["missing"])
+
+
 def test_lecture_diff_names_the_sections_it_changes():
     changes = lecture_diff("# 一\nA\n\n# 二\nB", "# 一\nA changed\n\n# 三\nC")
     by_op = {change["heading"]: change["op"] for change in changes}
@@ -270,6 +301,87 @@ async def test_rolling_a_draft_twice_merges_instead_of_rewriting(path_id, monkey
     # composing from the whole transcript again.
     assert "--- CURRENT LECTURE ---" in written[-1]
     assert second["draft"]["body"] == "# 概念甲\n\n第一版。"
+
+
+@pytest.mark.asyncio
+async def test_a_lecture_is_written_from_the_whole_exchange_and_the_path(path_id, monkeypatch):
+    """The learner's questions and neighbouring points are material, not noise."""
+    await _build(path_id)
+    store = LearningStore()
+    progress = store.load(path_id)
+    assert progress is not None
+    first = progress.modules[0].knowledge_points[0].id
+    session_id = await _study_turn(path_id, first, store, "概念甲指的是……")
+    from deeptutor.services import session as session_services
+
+    session_store = session_services.get_session_store()
+    await session_store.add_message(session_id, "user", "它和概念乙有什么区别？")
+
+    async def fake_list_notebook_entries(**_kwargs):
+        return {
+            "items": [
+                {
+                    "question": "Agent 循环的终止条件有哪几类？",
+                    "correct_answer": "最大步数、任务完成、外部中断。",
+                    "explanation": "三者缺一不可。",
+                    "options": {},
+                }
+            ],
+            "total": 1,
+        }
+
+    monkeypatch.setattr(session_store, "list_notebook_entries", fake_list_notebook_entries)
+
+    written: list[str] = []
+
+    async def fake_complete(instruction, **_kwargs):
+        # The review pass is a second call; only the writer gets recorded here.
+        if "You are writing" in str(_kwargs.get("system_prompt") or ""):
+            written.append(str(instruction))
+        return "# 概念甲\n\n它是这一节的核心概念。"
+
+    monkeypatch.setattr("deeptutor.services.llm.factory.complete", fake_complete)
+    from deeptutor.learning.placement import write_lecture_draft
+
+    await write_lecture_draft(path_id, first, store=store)
+    prompt = written[-1]
+    assert "Learner: 它和概念乙有什么区别？" in prompt
+    assert "--- PATH CONTEXT ---" in prompt
+    assert "能说出这一节在讲什么" in prompt
+    assert "概念乙" in prompt
+    assert "CHECK QUESTIONS ALREADY ASKED" in prompt
+    assert "Reference answer: 最大步数、任务完成、外部中断。" in prompt
+
+
+@pytest.mark.asyncio
+async def test_a_lecture_is_reviewed_and_revised_before_it_is_saved(path_id, monkeypatch):
+    """Draft → Critique → Revise, bounded to one round."""
+    await _build(path_id)
+    store = LearningStore()
+    progress = store.load(path_id)
+    assert progress is not None
+    first = progress.modules[0].knowledge_points[0].id
+    await _study_turn(path_id, first, store, "讲了概念甲。")
+
+    systems: list[str] = []
+
+    async def fake_complete(instruction, *, system_prompt="", **_kwargs):
+        systems.append(str(system_prompt))
+        if "You review a lecture draft" in system_prompt:
+            return (
+                '{"verdict": "revise", "issues": '
+                '[{"section": "概念甲", "problem": "缺少例子", "fix": "补一个例子"}]}'
+            )
+        if "reviewer read the lecture draft below" in instruction:
+            return "# 概念甲\n\n补了例子的版本。"
+        return "# 概念甲\n\n初稿。"
+
+    monkeypatch.setattr("deeptutor.services.llm.factory.complete", fake_complete)
+    from deeptutor.learning.placement import write_lecture_draft
+
+    status = await write_lecture_draft(path_id, first, store=store)
+    assert status["draft"]["body"] == "# 概念甲\n\n补了例子的版本。"
+    assert any("You review a lecture draft" in system for system in systems)
 
 
 @pytest.mark.asyncio

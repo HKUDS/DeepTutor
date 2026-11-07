@@ -322,7 +322,9 @@ def next_objective(
 ) -> NextStep:
     """Decide the next thing to work on. Order of precedence:
 
-    1. an outstanding posed question (grade it before moving on);
+    1. an outstanding posed question on an objective not yet mastered (grade it
+       before moving on). A question on a mastered objective is review material
+       and belongs to step 3, not here — it must not shadow the frontier;
     2. the first not-yet-mastered objective in module/KP order (the gate IS
        the cursor — mastered objectives are skipped);
     3. a due spaced-repetition review of something already mastered (don't let
@@ -348,22 +350,31 @@ def next_objective(
     pending = progress.pending_question
     if pending is not None:
         kp, module_id, module_name = find_knowledge_point(progress, pending.knowledge_point_id)
-        return NextStep(
-            action="answer_pending",
-            module_id=module_id or pending.module_id,
-            module_name=module_name,
-            knowledge_point_id=pending.knowledge_point_id,
-            knowledge_point_name=kp.name if kp else "",
-            knowledge_point_type=kp.type.value if kp else "",
-            status=objective_status(progress, kp) if kp else "learning",
-            gate=gate_kind(kp) if kp else "",
-            mastery=display_mastery(progress, kp) if kp else 0.0,
-            threshold=gate_threshold(kp.type) if kp else 0.0,
-            reason="A posed question is awaiting the learner's answer; grade it with mastery_grade.",
-            pending_prompt=pending.prompt,
-            pending_question=public_pending_question(pending),
-            session_id=str(pending_session_id or ""),
-        )
+        # A pending question only blocks the frontier while its objective is
+        # still being learned. Once the objective is mastered the question is a
+        # review item: the review flow owns it, and letting it win here sent
+        # "continue learning" back to a finished point while the learner had
+        # moved on. Orphaned questions (the point was removed) are ignored too.
+        if kp is not None and not is_mastered(progress, kp):
+            return NextStep(
+                action="answer_pending",
+                module_id=module_id or pending.module_id,
+                module_name=module_name,
+                knowledge_point_id=pending.knowledge_point_id,
+                knowledge_point_name=kp.name,
+                knowledge_point_type=kp.type.value,
+                status=objective_status(progress, kp),
+                gate=gate_kind(kp),
+                mastery=display_mastery(progress, kp),
+                threshold=gate_threshold(kp.type),
+                reason=(
+                    "A posed question is awaiting the learner's answer; "
+                    "grade it with mastery_grade."
+                ),
+                pending_prompt=pending.prompt,
+                pending_question=public_pending_question(pending),
+                session_id=str(pending_session_id or ""),
+            )
 
     deferred_ids = set(progress.deferred_objectives)
     deferred_fallback: NextStep | None = None

@@ -32,3 +32,18 @@ def test_unknown_model_still_uses_the_small_fallback() -> None:
 
 def test_explicit_catalog_window_wins_over_the_family_heuristic() -> None:
     assert resolve_effective_context_window(context_window=500_000, model="grok-4.6") == 500_000
+
+
+def test_deepseek_v4_1_is_a_known_catalog_window() -> None:
+    """A dated v4.1 id must resolve to its real window, not the 64k guess.
+
+    ``deepseek/deepseek-v4.1-flash-1017`` matched only the generic "deepseek"
+    marker, so the guard used 65,536 and refused a request at ~51k tokens on a
+    model the provider reports at 1,048,576.
+    """
+    for model in (
+        "deepseek/deepseek-v4.1-flash-1017",
+        "deepseek/deepseek-v4.1-flash",
+        "deepseek-v4.1-flash",
+    ):
+        assert resolve_effective_context_window(model=model) == 1_000_000

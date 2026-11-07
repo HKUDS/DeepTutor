@@ -7,6 +7,7 @@ conversation moved last go through :func:`resolve_placed_session` instead.
 
 from __future__ import annotations
 
+import logging
 import re
 from typing import Any
 
@@ -14,7 +15,12 @@ from deeptutor.capabilities.mastery.mode import MODES, OUTLINE, admission_error
 from deeptutor.learning.storage import LearningStore
 from deeptutor.learning.topic_generation import _MAX_OBJECTIVES_PER_MODULE
 
-_BUBBLE_CHAR_BUDGET = 12_000
+logger = logging.getLogger(__name__)
+
+#: A lecture is written from a whole sitting, not the last exchange. The
+#: budget has to fit a lesson's teaching plus the learner's questions, or the
+#: writer silently loses the early knowledge points it is asked to build on.
+_BUBBLE_CHAR_BUDGET = 24_000
 #: A lecture is a document, not a chat reply. The chat default truncates one
 #: at roughly a page, which is shorter than the thing being written.
 _LECTURE_MAX_TOKENS = 4_000
@@ -40,6 +46,148 @@ def _module_name(modules: list[dict[str, Any]], module_id: str) -> str:
         if str(module.get("id") or "") == module_id:
             return str(module.get("name") or "").strip()
     return ""
+
+
+def _find_point(progress: Any, knowledge_point_id: str) -> tuple[Any, Any]:
+    """The module and point this lecture belongs to, or ``(None, None)``."""
+    for module in getattr(progress, "modules", []) or []:
+        for point in module.knowledge_points:
+            if point.id == knowledge_point_id:
+                return module, point
+    return None, None
+
+
+#: How much of an earlier lecture to repeat as context. Enough for the writer
+#: to name a connection, not enough for it to copy the whole page.
+_CONTEXT_LECTURE_CHARS = 700
+
+
+def _lecture_context(
+    store: LearningStore,
+    path_id: str,
+    progress: Any,
+    knowledge_point_id: str,
+) -> str:
+    """What this lecture may connect back to: its module and what came before.
+
+    A lecture written from one conversation in isolation reads like the point
+    appeared out of nowhere. The outline already knows the module's purpose and
+    which points are prerequisites, and earlier points may already have a
+    lecture — so the writer gets that material instead of inventing links.
+    """
+    module, point = _find_point(progress, knowledge_point_id)
+    if module is None or point is None:
+        return ""
+
+    lines: list[str] = [f"Module: {module.name}"]
+    if str(getattr(module, "objective", "") or "").strip():
+        lines.append(f"Module objective: {str(module.objective).strip()}")
+
+    siblings = [
+        candidate.name
+        for candidate in module.knowledge_points
+        if candidate.id != knowledge_point_id and str(candidate.name or "").strip()
+    ]
+    if siblings:
+        lines.append("Other knowledge points in this module: " + ", ".join(siblings))
+
+    prerequisites = _prerequisites(progress, knowledge_point_id)
+    if prerequisites:
+        lines.append(
+            "Prerequisites the learner studied first: "
+            + ", ".join(prerequisite.name for prerequisite in prerequisites)
+        )
+        for prerequisite in prerequisites:
+            lecture = store.get_lecture(path_id, prerequisite.id) or {}
+            body = str(lecture.get("body") or "").strip()
+            if body:
+                excerpt = body[:_CONTEXT_LECTURE_CHARS].strip()
+                lines.append(
+                    f"Already learned in 「{prerequisite.name}」:\n{excerpt}"
+                )
+    return "\n".join(lines)
+
+
+#: How many graded check questions the lecture may reuse. More than this turns
+#: the page into an exam paper, which is not what it is for.
+_CHECK_QUESTION_LIMIT = 12
+
+
+async def _check_question_items(
+    path_id: str,
+    knowledge_point_id: str,
+    *,
+    limit: int = _CHECK_QUESTION_LIMIT,
+) -> list[dict[str, Any]]:
+    """The graded check questions for this point, as question-bank rows.
+
+    The question bank stores a question only after it has been graded, so an
+    answer key still pending in the current turn can never leak into a draft
+    the learner is about to answer. These are the questions the conversation
+    actually asked; keeping them — and their answers — is what makes the
+    lecture a self-test instead of a summary.
+    """
+    from deeptutor.services.session import get_session_store
+
+    store = get_session_store()
+    lister = getattr(store, "list_notebook_entries", None)
+    if not callable(lister):
+        return []
+    try:
+        listing = await lister(
+            mastery_path_id=path_id,
+            knowledge_point_id=knowledge_point_id,
+            assessment_type="quiz",
+            limit=limit,
+            sort="oldest",
+        )
+    except Exception:
+        logger.warning(
+            "Could not read check questions for path %s point %s",
+            path_id,
+            knowledge_point_id,
+            exc_info=True,
+        )
+        return []
+    items = listing.get("items") if isinstance(listing, dict) else None
+    return [
+        item
+        for item in items or []
+        if isinstance(item, dict)
+        and str(item.get("question") or "").strip()
+        and str(item.get("correct_answer") or "").strip()
+    ]
+
+
+def _format_check_questions(items: list[dict[str, Any]]) -> str:
+    blocks: list[str] = []
+    for item in items:
+        question = str(item.get("question") or "").strip()
+        answer = str(item.get("correct_answer") or "").strip()
+        block = [f"Question: {question}"]
+        options = item.get("options") or {}
+        if isinstance(options, dict) and options:
+            block.append(
+                "Options: "
+                + "; ".join(f"{key}. {options[key]}" for key in sorted(options))
+            )
+        block.append(f"Reference answer: {answer}")
+        explanation = str(item.get("explanation") or "").strip()
+        if explanation:
+            block.append(f"Why: {explanation[:600]}")
+        blocks.append("\n".join(block))
+    return "\n\n".join(blocks)
+
+
+async def _check_questions(
+    path_id: str,
+    knowledge_point_id: str,
+    *,
+    limit: int = _CHECK_QUESTION_LIMIT,
+) -> str:
+    return _format_check_questions(
+        await _check_question_items(path_id, knowledge_point_id, limit=limit)
+    )
 
 
 async def resolve_placed_session(
@@ -200,6 +348,9 @@ async def study_bubbles(path_id: str, knowledge_point_id: str, *, store: Learnin
 
 
 def _transcript(bubbles: list[dict[str, Any]]) -> str:
+    # Both speakers are kept on purpose: the tutor carries the material, and the
+    # learner's questions show which points actually needed explaining, which is
+    # what makes the lecture answer the right thing.
     lines: list[str] = []
     used = 0
     for row in bubbles:
@@ -267,30 +418,219 @@ def lecture_diff(before: str, after: str) -> list[dict[str, Any]]:
     return changes
 
 
-_LECTURE_ROLL_SYSTEM = """You maintain one learner's revision card for a single knowledge point.
+# --------------------------------------------------------------------------
+# Coverage: what the conversation covered that the lecture does not.
+#
+# "Did the lecture miss anything?" is not a question a reader can answer,
+# because the reader has not seen the conversation. So the miss is computed as
+# a diff against a ledger the runtime already has: the learner's questions and
+# the graded check questions. The result is a list of candidates to review —
+# not an error — and it is the same list the reviewer and the UI see.
+# --------------------------------------------------------------------------
 
-The learner scans this before an interview or a discussion: they need to recall
-the point in seconds and say its first sentence out loud. So this is a task of
-selection and compression, not summarisation — write down what is worth
-remembering and leave the rest out.
+#: Words that carry no topic signal, so overlap on them proves nothing.
+_LATIN_STOPWORDS = frozenset(
+    {
+        "the", "and", "for", "that", "with", "this", "from", "what", "why",
+        "how", "does", "did", "are", "was", "were", "you", "your", "into",
+        "about", "when", "which", "then", "than", "not", "but", "can",
+        "could", "would", "should", "have", "has", "had", "its", "it's",
+        "they", "them", "there", "here", "will", "just", "like", "more",
+    }
+)
+#: Chinese characters so common that a bigram made only of them is noise.
+_CJK_STOP_CHARS = frozenset(
+    "的是了和与在也就都而及或有个这那我你他她它吗呢吧啊什么怎么为对不了把被让给还再从到向"
+)
 
-Shape:
-- The first heading names the knowledge point.
-- Open with the one line the learner would say first about this point.
-- An idea that needs a paragraph is an idea that is not yet thought through.
-  Prefer one line per idea, and a table whenever several things are compared.
-- Keep the tutor's analogies and concrete examples. They are what makes the
-  point stick.
-- Close with a short self-test: question, then a one-line answer.
-- Define a term the first time it appears.
+
+def _clip(text: str, limit: int = 200) -> str:
+    body = str(text or "").strip()
+    return body if len(body) <= limit else body[:limit].rstrip() + "…"
+
+
+def _meaningful_terms(text: str) -> set[str]:
+    """Distinctive terms in ``text`` for an overlap test.
+
+    Latin words of three or more letters, plus character bigrams for Chinese
+    (a single character is far too common to prove anything). No tokenizer
+    dependency: the test is deliberately cheap because it only ever produces
+    candidates for review.
+    """
+    raw = str(text or "")
+    terms: set[str] = set()
+    for word in re.findall(r"[A-Za-z][A-Za-z0-9_+-]{2,}", raw.lower()):
+        if word not in _LATIN_STOPWORDS:
+            terms.add(word)
+    for run in re.findall(r"[\u4e00-\u9fff]+", raw):
+        if len(run) == 1:
+            terms.add(run)
+            continue
+        for index in range(len(run) - 1):
+            bigram = run[index : index + 2]
+            if not all(char in _CJK_STOP_CHARS for char in bigram):
+                terms.add(bigram)
+    return terms
+
+
+def _prerequisites(progress: Any, knowledge_point_id: str) -> list[Any]:
+    module, point = _find_point(progress, knowledge_point_id)
+    if module is None or point is None:
+        return []
+    by_id = {
+        candidate.id: candidate
+        for each_module in getattr(progress, "modules", []) or []
+        for candidate in each_module.knowledge_points
+    }
+    return [
+        by_id[prerequisite_id]
+        for prerequisite_id in getattr(point, "prerequisite_ids", []) or []
+        if prerequisite_id in by_id
+    ]
+
+
+def lecture_coverage(
+    store: LearningStore,
+    path_id: str,
+    knowledge_point_id: str,
+    bubbles: list[dict[str, Any]],
+    body: str,
+    *,
+    checks: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Candidate gaps between the study conversation and the lecture body.
+
+    A gap is a learner question, a graded check question, or a prerequisite
+    that shares no distinctive term with the lecture. The list is intentionally
+    conservative: it flags what it cannot find, and a human (the learner) or the
+    reviewer decides whether the absence actually matters. ``count`` is what a
+    reader pane can show as "可能漏了 N 项".
+    """
+    covered = _meaningful_terms(body)
+    missing: list[dict[str, str]] = []
+    for row in bubbles:
+        if str(row.get("role") or "") != "user":
+            continue
+        text = str(row.get("content") or "").strip()
+        terms = _meaningful_terms(text)
+        if terms and not (terms & covered):
+            missing.append({"kind": "question", "text": _clip(text)})
+    for item in checks or []:
+        answer = str(item.get("correct_answer") or "").strip()
+        terms = _meaningful_terms(answer)
+        if terms and not (terms & covered):
+            question = str(item.get("question") or "").strip()
+            missing.append({"kind": "check", "text": _clip(question or answer)})
+    progress = store.load(path_id)
+    if progress is not None:
+        for prerequisite in _prerequisites(progress, knowledge_point_id):
+            terms = _meaningful_terms(getattr(prerequisite, "name", ""))
+            if terms and not (terms & covered):
+                missing.append({"kind": "prerequisite", "text": str(prerequisite.name)})
+    return {"missing": missing, "count": len(missing)}
+
+
+async def lecture_coverage_report(
+    path_id: str,
+    knowledge_point_id: str,
+    *,
+    store: LearningStore | None = None,
+) -> dict[str, Any]:
+    """What a reader pane can show: is the lecture behind, and what is it missing.
+
+    Two different questions, two different signals: ``stale`` is about *time*
+    (study moved past the lecture's watermark) and ``missing`` is about
+    *content* (a question or answer the lecture body does not carry). A lecture
+    can be current and still incomplete.
+    """
+    learning = store or LearningStore()
+    bubbles = await study_bubbles(path_id, knowledge_point_id, store=learning)
+    status = lecture_status(learning, path_id, knowledge_point_id, bubbles)
+    checks = await _check_question_items(path_id, knowledge_point_id)
+    report = lecture_coverage(
+        learning, path_id, knowledge_point_id, bubbles, status["body"], checks=checks
+    )
+    return {
+        **report,
+        "status": status["status"],
+        "revision": status["revision"],
+        "covered_message_id": status["covered_message_id"],
+        "latest_message_id": status["latest_message_id"],
+        "stale": status["stale"],
+    }
+
+
+_LECTURE_ROLL_SYSTEM = """You are writing one knowledge point's lecture (讲义) for a learner on a mastery path.
+
+This is the page they come back to: to understand the idea again, and to recall
+it before a test or a discussion. It is not a chat reply and not a stack of
+bullet points. Write to teach — 深入浅出: begin with something concrete, build up
+to the precise idea, say why it exists, and show where it stops being true. A
+reader who finishes a section should be able to explain it in their own words.
+
+There is no required template. A lecture that works answers these questions, in
+whatever order the material makes natural:
+- What is it, in one or two sentences they could say out loud?
+- What problem or question makes it necessary, and what would break without it?
+- How does it work — the mechanism, the steps, or the derivation?
+- What is a concrete example? Prefer the tutor's own analogy or example from
+  the conversation; those are what make the point stick.
+- How does it connect to what the learner already knows? The path context gives
+  you the module's objective, the sibling points, and the prerequisites, and
+  sometimes an excerpt of an earlier lecture. Name the connection, then build
+  the new idea on top of it. If the learner compared this to something in the
+  conversation, use their comparison.
+- Where do people get it wrong? Call out the mistakes and confusions the
+  learner actually hit, say what the mistake looks like, and how to tell it
+  apart from the correct idea.
+- What was actually checked? The conversation may contain graded check
+  questions with reference answers. Keep the real ones: give the question, its
+  options if it had any, and its reference answer, with the explanation where
+  that adds something. Prefer these over questions you invent. If there were
+  none, close with two to four recall questions that test understanding rather
+  than wording, each with a one-line answer.
+- What is the one thing worth remembering? Give it as a single sentence or a
+  small structure before the self-test.
+
+Follow the learner's thread, not the clock:
+- The exchange is a path, not a dump. The learner asked something, it was
+  clarified, then they probed further. Organize the lecture around the
+  questions the learner actually asked, and let each part answer the question
+  that produced it. Their first confusion is the reader's first question too.
+- A later question that sharpens an earlier idea is a refinement, not a new
+  topic. Rewrite that idea's section so the clarification is woven in, instead
+  of appending it at the end as one more bullet.
+- Keep the learner's own words for what they were trying to understand. If they
+  called it X and the answer gave X a precise name, the lecture says both.
+- Keep the extensions the learner asked for. A follow-up question may have
+  reached another knowledge point; put that material in a clearly named section
+  (e.g. "延伸" / "Going further") rather than dropping it. The point's name is a
+  starting place, not a fence.
+- Each round of questions should make the lecture clearer and more precise,
+  not longer. Fold answers into the sections they deepen; never just stack new
+  paragraphs on top of the old ones.
+
+How to write it:
+- Write in the language of the transcript.
+- Keep it scannable: headings, short paragraphs, a list for steps, a table only
+  when several things are compared, bold for the one thing in a section that
+  must be remembered.
+- Use short sentences and concrete words. Define a term the first time it
+  appears. Explain the why, not just the what.
+- Be generous enough that a reader who was not in the conversation can follow
+  the idea, but cut anything that only restates a heading.
 
 Never include:
-- The conversation itself ("earlier", "I showed you", "last round").
-- Feedback on an answer the learner gave ("you got that right", "you missed").
-  That belongs to the conversation, not the document.
-- The mechanics of quizzing, grading or confirming.
+- The conversation itself ("earlier", "I showed you", "last round"), except a
+  connection the learner will recognise ("you compared it to X").
+- Feedback on an answer the learner gave, scores, or the mechanics of quizzing
+  and grading — but the questions themselves and their reference answers do
+  belong in the self-test.
 - Instructions for the learner's next step.
-- The learner's own questions, quoted or paraphrased.
+- A replay of the question-and-answer exchange. The learner's questions are
+  evidence of what confused them, not text to reproduce.
+- Material the transcript did not discuss. No invented facts or examples, and
+  no filling in the obvious next chapter.
 
 Rules that matter more than fluency:
 - Keep every heading that already exists, in its existing order and wording.
@@ -298,10 +638,128 @@ Rules that matter more than fluency:
   now and you must not restyle it.
 - Merge new material into the section it belongs to. Add a new section only
   when the new material genuinely starts a new topic.
-- Add nothing the transcript did not discuss. No invented examples, no
-  filling in the obvious next chapter.
-- Write in the language of the transcript.
+- Do not rewrite a section the new material does not touch.
 - Output the document itself. No preamble, no code fence, no commentary."""
+
+
+#: One review round, modelled on the Draft → Critique → Revise loop in
+#: ``deeptutor/book/agents/spine_synthesizer.py``. The writer is not the best
+#: judge of whether it followed the learner's thread; a separate reader is.
+#: Bounded to a single pass so a lecture turn can never become a spiral, and
+#: run after DONE, so it costs latency the composer does not wait on.
+_LECTURE_CRITIQUE_ROUNDS = 1
+
+_LECTURE_CRITIQUE_SYSTEM = """You review a lecture draft before a learner reads it. You are not rewriting it; you decide whether it does its job, using only the material provided.
+
+Return JSON:
+{"verdict": "ok" | "revise",
+ "missing": ["<a learner question or taught point the lecture leaves out>"],
+ "issues": [{"section": "<heading, or whole>", "problem": "...", "fix": "..."}]}
+
+Judge, in order:
+1. Does the lecture follow the learner's own thread — the questions they asked, in the order their understanding moved?
+2. Does it answer those questions and fold each clarification into the right section, rather than appending it at the end?
+3. Are the checked questions and their reference answers present and faithful to the material given?
+4. Is it 深入浅出: concrete first, then the precise idea, why it exists, an example, and where it stops being true?
+5. Does it connect to the prior knowledge points named in the path context?
+6. Does it contain material the conversation and context do not support?
+7. Does it read like a lecture, not a transcript, a bullet dump, or a revision sheet?
+
+Return "ok" when a learner who read the lecture would not need to ask their questions again. Return "revise" only for issues that change what the learner understands; wording preferences are not issues. Keep the issue list short and specific, and name the section each one affects.
+"""
+
+
+def _strip_code_fence(text: str) -> str:
+    """Drop a wrapping code fence the model may have echoed.
+
+    Untouched, the fence becomes part of the draft's own text, so every later
+    merge inherits it.
+    """
+    body = str(text or "").strip()
+    if body.startswith("```"):
+        body = re.sub(r"^```[a-zA-Z]*\n", "", body)
+        body = re.sub(r"\n?```$", "", body).strip()
+    return body
+
+
+async def _review_lecture(
+    *,
+    point_name: str,
+    context_block: str,
+    check_block: str,
+    transcript: str,
+    draft: str,
+) -> str:
+    """One critique pass; returns a revised body, or ``draft`` unchanged.
+
+    Empty or unparseable critique is treated as "ok": a review step that fails
+    must never cost the learner the draft that already exists.
+    """
+    from deeptutor.services.llm.factory import complete
+    from deeptutor.utils.json_parser import parse_json_response
+
+    raw = await complete(
+        (
+            f"Knowledge point: {point_name}\n\n"
+            f"{context_block}{check_block}"
+            f"--- LEARNER'S CONVERSATION ---\n{transcript}\n--- END ---\n\n"
+            f"--- LECTURE DRAFT ---\n{draft}\n--- END DRAFT ---"
+        ),
+        system_prompt=_LECTURE_CRITIQUE_SYSTEM,
+        max_tokens=1_200,
+    )
+    payload = parse_json_response(raw, logger_instance=logger, fallback={})
+    if not isinstance(payload, dict):
+        return draft
+    issues = [issue for issue in (payload.get("issues") or []) if isinstance(issue, dict)]
+    missing = [
+        str(item).strip()
+        for item in (payload.get("missing") or [])
+        if str(item).strip()
+    ]
+    if str(payload.get("verdict") or "").lower() != "revise" or not (issues or missing):
+        return draft
+
+    rendered = "\n".join(
+        [
+            *(
+                "- [{section}] {problem} → {fix}".format(
+                    section=str(issue.get("section") or "whole").strip() or "whole",
+                    problem=str(issue.get("problem") or "").strip(),
+                    fix=str(issue.get("fix") or "").strip(),
+                )
+                for issue in issues
+                if str(issue.get("problem") or "").strip()
+            ),
+            *(
+                f"- [whole] missing from the lecture: {entry}"
+                for entry in missing
+            ),
+        ]
+    )
+    if not rendered:
+        return draft
+    revised = await complete(
+        (
+            f"Knowledge point: {point_name}\n\n"
+            f"{context_block}{check_block}"
+            "A reviewer read the lecture draft below. Rewrite it so every issue "
+            "is resolved. Keep everything the review does not name, keep every "
+            "existing heading's wording, and keep the reference answers. Output "
+            "the full document.\n\n"
+            f"--- REVIEW ---\n{rendered}\n--- END REVIEW ---\n\n"
+            f"--- CURRENT LECTURE ---\n{draft}\n--- END LECTURE ---"
+        ),
+        system_prompt=_LECTURE_ROLL_SYSTEM,
+        max_tokens=_LECTURE_MAX_TOKENS,
+    )
+    revised_text = _strip_code_fence(revised)
+    if not revised_text:
+        logger.warning(
+            "Lecture review for %s produced no text; keeping the draft", point_name
+        )
+        return draft
+    return revised_text
 
 
 async def write_lecture_draft(
@@ -338,16 +796,18 @@ async def write_lecture_draft(
         return lecture_status(learning, path_id, knowledge_point_id, bubbles)
 
     covered_before = int((existing or {}).get("covered_message_id") or 0)
-    fresh = [row for row in bubbles if int(row["id"]) > covered_before and row["role"] != "user"]
-    if not fresh and force:
-        # A forced re-roll means "write it again from what was taught", never
-        # "write it again from what was asked".
-        fresh = [row for row in bubbles if row["role"] != "user"]
-    if not fresh:
-        # Only the tutor's teaching is lecture material. A conversation that
-        # produced none — questions with no answers, or nothing new since the
-        # last roll — has nothing to write, and falling back to the whole
-        # transcript would put the learner's own questions in the document.
+    # Fresh material is the whole exchange past the watermark, learner included:
+    # which points the learner asked about is exactly what the lecture has to
+    # answer. Only a window with no teaching at all has nothing to write.
+    fresh = [row for row in bubbles if int(row["id"]) > covered_before]
+    if force:
+        # A forced re-roll means "write it again from the whole sitting", not
+        # "write it again from only what was asked".
+        fresh = list(bubbles)
+    if not any(row["role"] != "user" for row in fresh):
+        # Questions with no answers since the last roll teach nothing, and
+        # writing a lecture out of them would put the learner's own words in the
+        # document as if they were the lesson.
         return lecture_status(learning, path_id, knowledge_point_id, bubbles)
 
     previous_body = str((existing or {}).get("body") or "")
@@ -356,21 +816,67 @@ async def write_lecture_draft(
     base_revision = int(
         (existing or {}).get("base_revision") or confirmed.get("revision") or 0
     )
+    context = _lecture_context(learning, path_id, progress, knowledge_point_id)
+    context_block = (
+        f"--- PATH CONTEXT ---\n{context}\n--- END PATH CONTEXT ---\n\n" if context else ""
+    )
+    check_items = await _check_question_items(path_id, knowledge_point_id)
+    checks = _format_check_questions(check_items)
+    check_block = (
+        "--- CHECK QUESTIONS ALREADY ASKED (with reference answers) ---\n"
+        f"{checks}\n--- END ---\n\n"
+        if checks
+        else ""
+    )
 
     if previous_body:
+        # The lecture is the older of the two, so a question the learner asked
+        # after it was rolled is the most likely thing to be missing. Hand that
+        # ledger to the writer rather than hoping it re-reads every bubble.
+        coverage = lecture_coverage(
+            learning,
+            path_id,
+            knowledge_point_id,
+            bubbles,
+            previous_body,
+            checks=check_items,
+        )
+        missing_block = ""
+        if coverage["count"]:
+            missing_lines = "\n".join(
+                f"- [{item['kind']}] {item['text']}" for item in coverage["missing"]
+            )
+            missing_block = (
+                "--- NOT YET FOUND IN THE LECTURE (candidates, not orders) ---\n"
+                f"{missing_lines}\n--- END ---\n\n"
+            )
         instruction = (
             f"Knowledge point: {point_name}\n\n"
-            "Here is the revision card as it stands. Keep its structure and "
-            "wording, and merge in what was taught since.\n\n"
+            f"{context_block}{check_block}{missing_block}"
+            "Here is the lecture as it stands. The new conversation continues "
+            "the learner's own thread of questions and refinements. Read it for "
+            "how their understanding moved: fold each clarification into the "
+            "section that idea belongs to and rewrite that section so it answers "
+            "the question the learner was actually asking. Cover the candidates "
+            "above when the conversation supports them. Do not append the "
+            "answers at the end, and do not rewrite sections the exchange did "
+            "not touch. Keep every existing heading's wording. Keep the "
+            "reference answers of every check question that has been asked. "
+            "Write the lecture, not a transcript of the exchange.\n\n"
             f"--- CURRENT LECTURE ---\n{previous_body}\n--- END LECTURE ---\n\n"
-            f"--- NEW TRANSCRIPT ---\n{_transcript(fresh)}\n--- END ---"
+            f"--- NEW CONVERSATION ---\n{_transcript(fresh)}\n--- END ---"
         )
     else:
         instruction = (
             f"Knowledge point (use this verbatim as the first heading): {point_name}\n\n"
-            "Write this point's revision card from what the tutor taught in the "
-            "transcript below. The transcript is the tutor's own teaching; the "
-            "learner's questions are not in it and must not be reconstructed.\n\n"
+            f"{context_block}{check_block}"
+            "Write this point's lecture from the study conversation below. The "
+            "conversation has the tutor's teaching and the learner's questions: "
+            "follow the learner's own line of thought — each question they asked, "
+            "and what answering it added — and build on the knowledge points the "
+            "learner already met. Keep the reference answers of every check "
+            "question that has been asked. Write the lecture, not a transcript "
+            "of the exchange.\n\n"
             f"{_transcript(fresh)}"
         )
 
@@ -379,14 +885,28 @@ async def write_lecture_draft(
         system_prompt=_LECTURE_ROLL_SYSTEM,
         max_tokens=_LECTURE_MAX_TOKENS,
     )
-    text = str(body or "").strip()
+    text = _strip_code_fence(body)
     if not text:
         raise RuntimeError("The lecture could not be written.")
-    # A model that echoed the fence instead of the document would put one
-    # around every future merge, since the fence becomes the draft's own text.
-    if text.startswith("```"):
-        text = re.sub(r"^```[a-zA-Z]*\n", "", text)
-        text = re.sub(r"\n?```$", "", text).strip()
+    # Review the first draft and an explicit re-roll. An incremental merge is
+    # already anchored to the learner's edits, and reviewing every roll would
+    # spend two more model calls to protect text nobody has touched.
+    if _LECTURE_CRITIQUE_ROUNDS and (not previous_body or force):
+        try:
+            text = await _review_lecture(
+                point_name=point_name,
+                context_block=context_block,
+                check_block=check_block,
+                transcript=_transcript(fresh),
+                draft=text,
+            )
+        except Exception:
+            logger.warning(
+                "Lecture review failed for path %s point %s; keeping the draft",
+                path_id,
+                knowledge_point_id,
+                exc_info=True,
+            )
 
     covered = max(int(row["id"]) for row in bubbles)
     learning.save_lecture_draft(
@@ -446,10 +966,18 @@ async def revise_lecture_draft(
 
     target = f"\nTarget section: {section_heading}\n" if section_heading else ""
     quote = f'\nText to change (verbatim): "{quoted_text}"\n' if quoted_text else ""
+    context = (
+        _lecture_context(learning, path_id, progress, knowledge_point_id)
+        if progress is not None
+        else ""
+    )
+    context_block = (
+        f"--- PATH CONTEXT ---\n{context}\n--- END PATH CONTEXT ---\n" if context else ""
+    )
     body = await complete(
         (
             f"Knowledge point: {point_name}\n"
-            f"{target}{quote}\n"
+            f"{context_block}{target}{quote}\n"
             f"The learner asks: {instruction}\n\n"
             "Apply exactly what was asked and nothing else. Keep every other "
             "section's wording byte-for-byte. Output the full document.\n\n"
@@ -458,10 +986,7 @@ async def revise_lecture_draft(
         system_prompt=_LECTURE_ROLL_SYSTEM,
         max_tokens=_LECTURE_MAX_TOKENS,
     )
-    text = str(body or "").strip()
-    if text.startswith("```"):
-        text = re.sub(r"^```[a-zA-Z]*\n", "", text)
-        text = re.sub(r"\n?```$", "", text).strip()
+    text = _strip_code_fence(body)
     if not text:
         raise RuntimeError("The lecture could not be revised.")
     changes = lecture_diff(current, text)

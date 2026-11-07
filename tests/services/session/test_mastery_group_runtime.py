@@ -51,6 +51,49 @@ def test_partial_group_seed_does_not_claim_unanswered_questions_were_graded():
 
 
 @pytest.mark.asyncio
+async def test_a_foreign_card_is_rejected_with_a_section_pointer(monkeypatch):
+    """A card from another objective must not read as a failed submission.
+
+    The runtime rules on a tapped card before the tutor speaks. When the card
+    belongs to a different objective's conversation the engine refuses it, and
+    the learner has to be told where to answer it — "review or retry" would be
+    wrong, because retrying changes nothing.
+    """
+    from deeptutor.capabilities.mastery import tools as mastery_tools
+    from deeptutor.core.tool_protocol import ToolResult
+
+    published = []
+
+    async def grade(self, **kwargs):
+        return ToolResult(
+            content="That question belongs to objective b, not a.",
+            success=False,
+            metadata={"mastery_foreign_question": {"knowledge_point_id": "b", "bound": "a"}},
+        )
+
+    async def publish(execution, event):
+        published.append(event)
+        return {}
+
+    monkeypatch.setattr(mastery_tools.MasteryGradeTool, "execute", grade)
+    adapter = LearningTurnAdapter()
+    adapter._publish_live_event = publish
+    result = await adapter._grade_submitted_card_answer(
+        SimpleNamespace(session_id="session", turn_id="turn"),
+        path_id="path",
+        mode="study",
+        knowledge_point_id="a",
+        answer={"question_id": "question-b", "text": "A"},
+    )
+    assert result is None
+    metadata = published[0].metadata
+    rejected = metadata["tool_metadata"]["mastery_answer_rejected"]
+    assert rejected["question_id"] == "question-b"
+    assert "another section" in rejected["message"]
+    assert "mastery_grade" not in metadata["tool_metadata"]
+
+
+@pytest.mark.asyncio
 async def test_runtime_forwards_group_map_not_display_summary(monkeypatch):
     calls = []
     published = []
@@ -79,6 +122,8 @@ async def test_runtime_forwards_group_map_not_display_summary(monkeypatch):
     result = await adapter._grade_submitted_card_answer(
         SimpleNamespace(session_id="session", turn_id="turn"),
         path_id="path",
+        mode="",
+        knowledge_point_id="",
         answer={
             "question_id": "group",
             "text": "display only",
@@ -195,6 +240,8 @@ async def test_rejected_group_answer_emits_card_recovery_event(monkeypatch, grou
     result = await adapter._grade_submitted_card_answer(
         SimpleNamespace(session_id="session", turn_id="turn"),
         path_id="path",
+        mode="",
+        knowledge_point_id="",
         answer={
             "question_id": "group",
             "text": "display",

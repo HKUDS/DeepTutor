@@ -125,8 +125,27 @@ test("a point that left the outline keeps the conversation bound to it", () => {
 
 test("review is offered once the point on screen is mastered", () => {
   assert.equal(
-    isReviewAvailable({ modules: placedModules, pointId: "kp0", sessionMode: "study" }),
+    isReviewAvailable({
+      modules: placedModules,
+      pointId: "kp0",
+      sessionMode: "study",
+      hasLecture: true,
+    }),
     true,
+  );
+});
+
+test("review waits for the lecture even after the point is mastered", () => {
+  // The runtime writes the lecture just after the turn that masters the point.
+  // Offering review on mastery alone opened a screen with nothing to read.
+  assert.equal(
+    isReviewAvailable({
+      modules: placedModules,
+      pointId: "kp0",
+      sessionMode: "study",
+      hasLecture: false,
+    }),
+    false,
   );
 });
 
@@ -134,7 +153,12 @@ test("review is not offered while the point on screen is still being learned", (
   // The tutor refuses to examine an unmastered objective, so a review button
   // here would open a conversation the engine will not conduct.
   assert.equal(
-    isReviewAvailable({ modules: placedModules, pointId: "kp1", sessionMode: "study" }),
+    isReviewAvailable({
+      modules: placedModules,
+      pointId: "kp1",
+      sessionMode: "study",
+      hasLecture: true,
+    }),
     false,
   );
 });
@@ -143,21 +167,36 @@ test("a live review conversation keeps the control regardless of status", () => 
   // Older review sessions were created before this rule existed; the learner
   // must still be able to see which mode they are in and leave it.
   assert.equal(
-    isReviewAvailable({ modules: placedModules, pointId: "kp1", sessionMode: "review" }),
+    isReviewAvailable({
+      modules: placedModules,
+      pointId: "kp1",
+      sessionMode: "review",
+      hasLecture: false,
+    }),
     true,
   );
 });
 
 test("an unplaced conversation offers no review", () => {
   assert.equal(
-    isReviewAvailable({ modules: placedModules, pointId: "", sessionMode: "study" }),
+    isReviewAvailable({
+      modules: placedModules,
+      pointId: "",
+      sessionMode: "study",
+      hasLecture: true,
+    }),
     false,
   );
 });
 
 test("a point missing from the outline offers no review", () => {
   assert.equal(
-    isReviewAvailable({ modules: placedModules, pointId: "gone", sessionMode: "study" }),
+    isReviewAvailable({
+      modules: placedModules,
+      pointId: "gone",
+      sessionMode: "study",
+      hasLecture: true,
+    }),
     false,
   );
 });

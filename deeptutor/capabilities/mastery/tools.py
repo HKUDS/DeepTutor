@@ -582,6 +582,49 @@ def _placed_point_refusal(kwargs: dict[str, Any], kp_id: str) -> ToolResult | No
     )
 
 
+def _foreign_pending_refusal(
+    kwargs: dict[str, Any], pending: "PendingQuestion | None"
+) -> ToolResult | None:
+    """A placed study or review conversation only handles its own point's question.
+
+    The path holds one outstanding question at a time, but that question belongs
+    to the objective it was posed for. Handing the card to a *different*
+    objective's conversation is how a learner answering in objective A cleared
+    objective B's gate: B got the credit, A never did, and A's lecture — which
+    only rolls once A's own gate clears — was never written, while the tutor
+    happily announced A as done.
+    """
+    if enforced_mode(kwargs.get("_mastery_session_mode")) not in {STUDY, REVIEW}:
+        return None
+    bound = str(kwargs.get("_mastery_knowledge_point_id") or "").strip()
+    if not bound or pending is None:
+        return None
+    leaves = pending.questions or [pending]
+    foreign = [
+        str(question.knowledge_point_id or "").strip()
+        for question in leaves
+        if str(question.knowledge_point_id or "").strip()
+        and str(question.knowledge_point_id or "").strip() != bound
+    ]
+    if not foreign:
+        return None
+    other = foreign[0]
+    return ToolResult(
+        content=(
+            f"That question belongs to objective {other}, not to this "
+            f"conversation's objective {bound}. This conversation only poses and "
+            f"grades {bound}. Have the learner answer it in its own objective's "
+            "session: call mastery_mode with mode='study' or 'review' and "
+            f"knowledge_point_id={other}, and say why you are switching. Do not "
+            "clear another objective's gate from here."
+        ),
+        success=False,
+        # Lets the runtime's pre-turn card grader tell this refusal apart from
+        # an ordinary unreadable pick, so it can say what actually happened.
+        metadata={"mastery_foreign_question": {"knowledge_point_id": other, "bound": bound}},
+    )
+
+
 def _conversation_point(
     progress: LearningProgress | None, kwargs: dict[str, Any]
 ) -> dict[str, Any] | None:
@@ -1416,6 +1459,27 @@ class MasteryQuizTool(BaseTool):
                     content="Replacement needs a literal request from the current learner message.",
                     success=False,
                 )
+        # A pending card from another objective must not be resurfaced here.
+        # ``retain`` (the default) hands back whatever question the path is
+        # holding; if that question belongs to a different objective, this
+        # conversation would be quizzing a point it is not placed on — and the
+        # learner's answer would clear that other objective's gate instead.
+        if pending_action == "retain":
+            foreign = _foreign_pending_refusal(kwargs, progress.pending_question)
+            if foreign is not None:
+                return foreign
+        elif pending_action == "resume":
+            stored = (
+                service.store.get_interaction(path_id, resume_id.strip())
+                if isinstance(resume_id, str) and resume_id.strip()
+                else None
+            )
+            foreign = _foreign_pending_refusal(
+                kwargs, stored.question if stored is not None else None
+            )
+            if foreign is not None:
+                return foreign
+
         raw_questions = kwargs.get("questions")
         if pending_action == "resume":
             pending, echoed_options = None, False
@@ -1800,6 +1864,9 @@ class MasteryGradeTool(BaseTool):
         pending = (
             interaction.question if interaction is not None else progress_before.pending_question
         )
+        foreign = _foreign_pending_refusal(kwargs, pending)
+        if foreign is not None:
+            return foreign
         if pending is not None and pending.questions:
             return await self._grade_group(kwargs, service, scheduler, pending)
         choice_options: dict[str, str] = {}

@@ -88,6 +88,8 @@ class TurnExecutor:
             execution: _TurnExecution,
             *,
             path_id: str,
+            mode: str,
+            knowledge_point_id: str,
             answer: dict[str, Any],
         ) -> dict[str, Any] | None: ...
 
@@ -848,6 +850,14 @@ class TurnExecutor:
                 mastery_card_grade = await self._grade_submitted_card_answer(
                     execution,
                     path_id=_mastery_path_id(payload.get("mastery_path_id")),
+                    # The card the learner tapped has to be *this* conversation's
+                    # card. Without the placed objective the engine cannot tell,
+                    # and a stray card from another objective cleared that
+                    # objective's gate from here.
+                    mode=str(payload.get("mastery_session_mode") or ""),
+                    knowledge_point_id=str(
+                        payload.get("mastery_knowledge_point_id") or ""
+                    ).strip(),
                     answer=payload.get("mastery_answer") or {},
                 )
                 # And its counterpart: a question the learner declined instead

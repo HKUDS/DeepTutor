@@ -162,6 +162,19 @@ def test_next_objective_pending_question_takes_precedence():
     assert step.pending_prompt == "?"
 
 
+def test_pending_question_on_a_mastered_objective_does_not_block_the_frontier():
+    """A question left open on mastered ground is review material, not the
+    frontier. Letting it win sent "continue learning" back to a finished point
+    while the learner still had unlearned objectives ahead."""
+    kp = _kp("kp1", KnowledgeType.MEMORY)
+    progress = _progress(kp)
+    progress.mastery_levels["kp1"] = 1.0
+    progress.pending_question = PendingQuestion(
+        question_id="q1", knowledge_point_id="kp1", prompt="?", expected_answer="x"
+    )
+    assert policy.next_objective(progress).action != "answer_pending"
+
+
 def test_pending_choice_context_is_stable_and_does_not_expose_answer():
     kp = _kp("kp1", KnowledgeType.MEMORY)
     progress = _progress(kp)

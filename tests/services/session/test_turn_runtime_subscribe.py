@@ -720,6 +720,8 @@ async def test_card_answer_is_ruled_on_before_the_tutor_speaks(
     grade = await runtime._grade_submitted_card_answer(
         execution,
         path_id="shared",
+        mode="",
+        knowledge_point_id="",
         answer={"question_id": interaction.interaction_id, "text": "C"},
     )
 

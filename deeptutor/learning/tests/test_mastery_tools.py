@@ -2020,3 +2020,115 @@ async def test_an_empty_profile_call_is_refused_with_the_fields_it_wanted(path_i
     result = await MasteryProfileTool().execute(_mastery_path_id=path_id)
     assert result.success is False
     assert "time_budget" in result.content
+
+
+# ── one outstanding question, one objective ─────────────────────────────────
+
+
+async def _place_two_points(path_id):
+    """Build the basic module and return (first objective, second objective)."""
+    build = json.loads((await _build_basic(path_id)).content)
+    points = build["map"]["modules"][0]["knowledge_points"]
+    return points[0]["id"], points[1]["id"]
+
+
+@pytest.mark.asyncio
+async def test_a_placed_session_will_not_grade_another_points_question(path_id):
+    """Answering objective A must not clear objective B's gate.
+
+    The path holds one outstanding question at a time, and it belongs to the
+    objective it was posed for. Grading it from a *different* objective's study
+    conversation is how a learner's answer cleared the wrong gate: that
+    objective got the credit, this one stayed untouched, and its lecture —
+    which only rolls once its own gate clears — was never written, while the
+    tutor announced this section as done.
+    """
+    from deeptutor.capabilities.mastery.mode import STUDY
+
+    mine, other = await _place_two_points(path_id)
+    opened = await MasteryQuizTool().execute(
+        _mastery_path_id=path_id,
+        knowledge_point_id=mine,
+        question="2+2?",
+        expected_answer="4",
+        question_type="short",
+    )
+    opened_id = tool_payload(opened)["question_id"]
+
+    # Grading the open question from the other objective's conversation is
+    # refused, whether the tutor names it or relies on the open one.
+    by_name = await MasteryGradeTool().execute(
+        _mastery_path_id=path_id,
+        _mastery_session_mode=STUDY,
+        _mastery_knowledge_point_id=other,
+        answer="4",
+    )
+    assert by_name.success is False
+    assert mine in by_name.content
+
+    by_id = await MasteryGradeTool().execute(
+        _mastery_path_id=path_id,
+        _mastery_session_mode=STUDY,
+        _mastery_knowledge_point_id=other,
+        question_id=opened_id,
+        answer="4",
+    )
+    assert by_id.success is False
+
+    # Nothing was graded: the question is still open, and grading it from its
+    # own objective's conversation is what clears the gate.
+    graded = json.loads(
+        (
+            await MasteryGradeTool().execute(
+                _mastery_path_id=path_id,
+                _mastery_session_mode=STUDY,
+                _mastery_knowledge_point_id=mine,
+                answer="4",
+            )
+        ).content
+    )
+    assert graded["is_correct"] is True
+
+
+@pytest.mark.asyncio
+async def test_a_placed_session_will_not_resurface_another_points_card(path_id):
+    """``mastery_quiz`` must not hand this conversation another objective's card.
+
+    ``retain`` (the default) re-poses whatever question the path is holding;
+    ``resume`` re-shows a named stored card. Either one, aimed at the wrong
+    objective's conversation, puts a foreign question in front of the learner —
+    and answering it clears the other objective's gate.
+    """
+    from deeptutor.capabilities.mastery.mode import STUDY
+
+    mine, other = await _place_two_points(path_id)
+    opened = await MasteryQuizTool().execute(
+        _mastery_path_id=path_id,
+        knowledge_point_id=mine,
+        question="2+2?",
+        expected_answer="4",
+        question_type="short",
+    )
+    opened_id = tool_payload(opened)["question_id"]
+
+    retained = await MasteryQuizTool().execute(
+        _mastery_path_id=path_id,
+        _mastery_session_mode=STUDY,
+        _mastery_knowledge_point_id=other,
+        knowledge_point_id=other,
+        question="Why does XOR matter?",
+        expected_answer="it is not linearly separable",
+        question_type="short",
+    )
+    assert retained.success is False
+    assert mine in retained.content
+
+    resumed = await MasteryQuizTool().execute(
+        _mastery_path_id=path_id,
+        _mastery_session_mode=STUDY,
+        _mastery_knowledge_point_id=other,
+        pending_action="resume",
+        resume_question_id=opened_id,
+    )
+    assert resumed.success is False
+    assert mine in resumed.content

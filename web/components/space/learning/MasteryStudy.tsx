@@ -58,6 +58,7 @@ import {
   commitOutlineAddition,
   fetchMasteryAskHint,
   resolveMasterySession,
+  rollPointLectureDraft,
   type MasteryTopic,
 } from "@/lib/learning-api";
 import { isReviewAvailable, isRoutedStudySessionReady, modeSwitchTarget } from "@/lib/mastery-study-route";
@@ -92,8 +93,16 @@ import { MasteryComposer, STUDY_COMPOSER_WIDTH } from "./MasteryComposer";
 import { ProgressRing } from "./ProgressRing";
 import { StudyOutline } from "./StudyOutline";
 import { useMasteryLectureLayout } from "./useMasteryLectureLayout";
+import { usePointLectureReady } from "./usePointLectureReady";
 
 const OUTLINE_STORAGE_KEY = "dt.mastery.outline";
+
+/**
+ * Next-step actions that mean "go learn this knowledge point". A path whose
+ * frontier is one of these offers the point itself; ``answer_pending`` and
+ * ``review`` are not unfinished learning and must not become a "next point".
+ */
+const NEXT_STUDY_ACTIONS = new Set(["teach", "probe", "practice", "assess"]);
 
 /**
  * How each kind of session presents itself.
@@ -760,23 +769,6 @@ export function MasteryStudy({
     [boundPointId, openPlaced, t, topic],
   );
 
-  const advancedCelebrationRef = useRef(0);
-  useEffect(() => {
-    if (!celebration || state.isStreaming || sessionMode !== "study" || !topic) return;
-    if (celebration.key === advancedCelebrationRef.current) return;
-    const viewed = boundPointId || celebration.pointId;
-    if (celebration.pointId !== viewed) return;
-    const ordered = topic.map.modules.flatMap((module) => module.knowledge_points);
-    const currentIndex = ordered.findIndex((point) => point.id === celebration.pointId);
-    const nextPoint = ordered.slice(currentIndex + 1).find((point) => point.status !== "mastered");
-    if (!nextPoint) return;
-    advancedCelebrationRef.current = celebration.key;
-    void navigateToPlaced("study", nextPoint.id).catch(() => {
-      // The learner stays where they are; the next session can be opened from
-      // the outline rail.
-    });
-  }, [boundPointId, celebration, navigateToPlaced, sessionMode, state.isStreaming, topic]);
-
   useEffect(() => {
     const sessionId = state.sessionId;
     // The chat adapter can still be holding the previous conversation while
@@ -832,7 +824,10 @@ export function MasteryStudy({
   // Hooks have to run before the loading and not-found returns below, so the
   // layout and the lecture cards are set up unconditionally and merely render
   // nothing until a topic exists.
-  const topicModules: MasteryTopic["map"]["modules"] = topic?.map.modules ?? [];
+  const topicModules = useMemo<MasteryTopic["map"]["modules"]>(
+    () => topic?.map.modules ?? [],
+    [topic],
+  );
   const viewedPoint = topic
     ? viewedKnowledgePoint(topicModules, boundPointId, sessionMode, currentWaypoint(topic, "", t))
     : null;
@@ -851,6 +846,15 @@ export function MasteryStudy({
   const [lectureEpoch, setLectureEpoch] = useState(0);
   const handleLectureConfirmed = useCallback(() => setLectureEpoch((value) => value + 1), []);
 
+  // Confirming the section's lecture from study closes the loop: the section is
+  // done and its lecture is settled, so the learner lands on the review — the
+  // lecture beside the re-test — which is where the cue to start the next
+  // section lives.
+  const handleStudyLectureConfirmed = useCallback(() => {
+    handleLectureConfirmed();
+    if (viewedPoint) openPlaced("review", viewedPoint.id);
+  }, [handleLectureConfirmed, openPlaced, viewedPoint]);
+
   // The study draft is rolled after the assistant message is persisted, so it
   // lands slightly after the stream ends. Bumping once per settled turn makes
   // the card re-read the draft instead of waiting for a reload.
@@ -866,6 +870,62 @@ export function MasteryStudy({
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setTurnEpoch((value) => value + 1);
   }, [state.isStreaming]);
+
+  // Review is the lecture beside the re-test, so the control waits for the
+  // lecture the runtime writes just after the turn that masters the point.
+  // Re-read when a turn settles or a lecture is rewritten in the pane.
+  const lectureForReview = usePointLectureReady(pathId, lecturePoint, lectureEpoch + turnEpoch);
+  const hasLectureForReview = Boolean(lectureForReview && lectureForReview.status !== "none");
+
+  const orderedStudyPoints = useMemo(
+    () => topicModules.flatMap((module) => module.knowledge_points),
+    [topicModules],
+  );
+  const viewedPointStatus = viewedPoint
+    ? orderedStudyPoints.find((point) => point.id === viewedPoint.id)?.status
+    : undefined;
+
+  // The next point the learner has left to learn, after the one on screen.
+  // Offered on the review page once the section is confirmed — the review page
+  // is where a finished section lands, so the "keep going" cue belongs there.
+  // The path's own frontier wins when there is unfinished work, so this button
+  // and the topic page's "continue" never name different knowledge points.
+  const nextPointAfterCurrent = useMemo(() => {
+    if (!viewedPoint || viewedPointStatus !== "mastered") return null;
+    const frontier = topic?.next;
+    if (
+      frontier &&
+      NEXT_STUDY_ACTIONS.has(frontier.action) &&
+      frontier.knowledge_point_id &&
+      frontier.knowledge_point_id !== viewedPoint.id
+    ) {
+      return { id: frontier.knowledge_point_id, name: frontier.knowledge_point_name };
+    }
+    const currentIndex = orderedStudyPoints.findIndex((point) => point.id === viewedPoint.id);
+    if (currentIndex < 0) return null;
+    const next = orderedStudyPoints
+      .slice(currentIndex + 1)
+      .find((point) => point.status !== "mastered");
+    return next ? { id: next.id, name: next.name } : null;
+  }, [orderedStudyPoints, topic, viewedPoint, viewedPointStatus]);
+
+  // A finished point should never be left without its lecture. The runtime
+  // rolls one after the teaching turn, but an interrupted turn (or a failure)
+  // leaves nothing, and then the button above has nothing to wait for. Ask for
+  // it once, after the ready-hook's retries have had their chance.
+  const lectureRollAttemptedRef = useRef("");
+  useEffect(() => {
+    if (sessionMode !== "study" || !viewedPoint) return;
+    if (viewedPointStatus !== "mastered") return;
+    if (lectureForReview === null || lectureForReview.status !== "none") return;
+    if (lectureRollAttemptedRef.current === viewedPoint.id) return;
+    lectureRollAttemptedRef.current = viewedPoint.id;
+    void rollPointLectureDraft(pathId, viewedPoint.id)
+      .then(() => setLectureEpoch((value) => value + 1))
+      .catch(() => {
+        // Best-effort: the review pane's force-rewrite can retry.
+      });
+  }, [lectureForReview, pathId, sessionMode, viewedPoint, viewedPointStatus]);
 
   if (!topic && !topicError) {
     return (
@@ -897,6 +957,12 @@ export function MasteryStudy({
 
   const displayName = topicDisplayName(topic, t);
   const waypoint = currentWaypoint(topic, displayName, t);
+  // The crumb names the point this conversation is *on*, not the frontier the
+  // path is heading to. The two differ while a finished point is still open,
+  // and showing the frontier there told the learner they were somewhere else.
+  // ``viewedPoint`` is the placed point, and falls back to the frontier only
+  // when the conversation has no placement at all.
+  const onScreenPointName = viewedPoint?.name || waypoint.name;
   const completed = topic.map.counts.mastered;
   const total = topic.map.counts.total;
   // The outline sitting says which of its two jobs it is doing. "Nothing is
@@ -912,6 +978,7 @@ export function MasteryStudy({
     modules: topicModules,
     pointId: lecturePoint,
     sessionMode,
+    hasLecture: hasLectureForReview,
   });
   // Review is offered only once the point on screen is mastered — before that
   // there is nothing to consolidate, and the tutor refuses to examine it. The
@@ -934,12 +1001,12 @@ export function MasteryStudy({
         {locationInBar ? (
           <PageBarSlot name="instance">
             <MasteryPathCrumb id={pathId} label={displayName} bare />
-            {sessionMode === "study" ? (
+            {sessionMode !== "outline" ? (
               <>
                 <span aria-hidden className="dt-crumb-sep">
                   /
                 </span>
-                <span className="dt-crumb-tail">{waypoint.name}</span>
+                <span className="dt-crumb-tail">{onScreenPointName}</span>
               </>
             ) : null}
           </PageBarSlot>
@@ -965,9 +1032,9 @@ export function MasteryStudy({
               >
                 /
               </span>
-              {sessionMode === "study" ? (
+              {sessionMode !== "outline" ? (
                 <span className="hidden min-w-0 truncate text-[12.5px] text-[var(--muted-foreground)] sm:inline">
-                  {waypoint.name}
+                  {onScreenPointName}
                 </span>
               ) : null}
             </div>
@@ -1072,7 +1139,6 @@ export function MasteryStudy({
                 key={`split-${lectureEpoch}`}
                 pathId={pathId}
                 knowledgePointId={lecturePoint}
-                pointName={viewedPoint?.name ?? ""}
                 onLectureConfirmed={handleLectureConfirmed}
                 onCollapse={lectureLayout.toggle}
               />
@@ -1094,7 +1160,6 @@ export function MasteryStudy({
                 key={`stack-${lectureEpoch}`}
                 pathId={pathId}
                 knowledgePointId={lecturePoint}
-                pointName={viewedPoint?.name ?? ""}
                 onLectureConfirmed={handleLectureConfirmed}
                 onCollapse={lectureLayout.toggle}
               />
@@ -1367,13 +1432,14 @@ export function MasteryStudy({
                             }
                       }
                     />
-                    {sessionMode === "study" && lecturePoint ? (
-                      // Last thing in the transcript, where the learner is
-                      // already looking when the section they just studied
-                      // ends. Always mounted: the card asks the API whether an
-                      // unconfirmed draft exists, so it survives a reload and
-                      // appears for a lecture written before this tab opened.
-                      // `refreshToken` re-reads it once each turn settles.
+                    {sessionMode === "study" &&
+                    lecturePoint &&
+                    viewedPointStatus === "mastered" ? (
+                      // The lecture is the section's product, so its card waits
+                      // for the section to be done. The runtime keeps rolling
+                      // the draft as teaching happens, but showing it mid-way
+                      // reads as "this section is finished" when it is not.
+                      // Once mastered, the card is already there to confirm.
                       <LectureDraftCard
                         key={`draft-${lecturePoint}`}
                         pathId={pathId}
@@ -1381,7 +1447,7 @@ export function MasteryStudy({
                         sessionId={state.sessionId ?? ""}
                         pointName={viewedPoint?.name ?? ""}
                         refreshToken={lectureEpoch + turnEpoch}
-                        onConfirmed={handleLectureConfirmed}
+                        onConfirmed={handleStudyLectureConfirmed}
                       />
                     ) : null}
                   </div>
@@ -1407,6 +1473,25 @@ export function MasteryStudy({
               }`}
             >
               <div className={`mx-auto w-full shrink-0 px-6 ${STUDY_COMPOSER_WIDTH}`}>
+                {sessionMode === "review" && nextPointAfterCurrent ? (
+                  // A finished section lands on review; from there, starting
+                  // the next section is the learner's move, not an automatic
+                  // jump.
+                  <div className="mb-2">
+                    <button
+                      type="button"
+                      onClick={() => openPlaced("study", nextPointAfterCurrent.id)}
+                      disabled={modeBusy}
+                      className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-[var(--primary)] px-3 py-2 text-[13px] font-medium text-[var(--primary-foreground)] transition-opacity hover:opacity-90 disabled:opacity-40"
+                    >
+                      {t("Next knowledge point")}
+                      <span className="min-w-0 truncate opacity-80">
+                        · {nextPointAfterCurrent.name}
+                      </span>
+                      <ArrowRight className="h-3.5 w-3.5 shrink-0" />
+                    </button>
+                  </div>
+                ) : null}
                 {(sessionMode === "outline" || lecturePoint) && (
                   <div className="mb-2 flex gap-1.5">
                     {sessionMode === "outline" ? (

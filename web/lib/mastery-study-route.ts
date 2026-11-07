@@ -93,6 +93,12 @@ export function modeSwitchTarget(
  * A conversation already in review keeps the control regardless of the
  * point's current status, so a learner can always see and leave the mode they
  * are in.
+ *
+ * The lecture is the other half of the gate. Review is the lecture beside a
+ * re-test, and the runtime writes the lecture just *after* the turn that
+ * masters the point — so mastery alone offered a review tab a beat before
+ * there was anything to read. ``hasLecture`` is the fetched status; a live
+ * review conversation stays available either way so the learner can leave it.
  */
 export function isReviewAvailable(input: {
   modules: readonly {
@@ -100,10 +106,12 @@ export function isReviewAvailable(input: {
   }[];
   pointId: string;
   sessionMode: string;
+  hasLecture: boolean;
 }): boolean {
   if (input.sessionMode === "review") return true;
   const pointId = input.pointId.trim();
   if (!pointId) return false;
+  if (!input.hasLecture) return false;
   for (const region of input.modules) {
     const point = region.knowledge_points.find((item) => item.id === pointId);
     if (point) return point.status === "mastered";

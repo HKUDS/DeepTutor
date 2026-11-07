@@ -881,6 +881,15 @@ async def get_point_lecture(path_id: str, kp_id: str):
     return await asyncio.to_thread(lecture_status, store, path_id, kp_id, bubbles)
 
 
+@router.get("/topics/{path_id}/lectures/{kp_id}/coverage")
+async def get_point_lecture_coverage(path_id: str, kp_id: str):
+    """Is the lecture behind study (time) and what does it not carry (content)."""
+    from deeptutor.learning.placement import lecture_coverage_report
+
+    _validate_book_id(path_id)
+    return await lecture_coverage_report(path_id, kp_id)
+
+
 @router.post("/topics/{path_id}/lectures/{kp_id}/drafts")
 async def roll_point_lecture_draft(path_id: str, kp_id: str, body: LectureDraftRequest | None = None):
     """Write or roll the unconfirmed draft. Never touches the confirmed lecture."""

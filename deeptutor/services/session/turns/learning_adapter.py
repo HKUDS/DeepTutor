@@ -212,6 +212,8 @@ class LearningTurnAdapter:
         execution: _TurnExecution,
         *,
         path_id: str,
+        mode: str,
+        knowledge_point_id: str,
         answer: dict[str, Any],
     ) -> dict[str, Any] | None:
         """Rule on a card answer now, before the tutor writes a word.
@@ -247,6 +249,10 @@ class LearningTurnAdapter:
                 _mastery_path_id=path_id,
                 _session_id=execution.session_id,
                 _turn_id=execution.turn_id,
+                # The placed objective, so a card belonging to a different
+                # objective is refused rather than clearing the wrong gate.
+                _mastery_session_mode=mode,
+                _mastery_knowledge_point_id=knowledge_point_id,
                 question_id=question_id,
                 **({"answers": answers} if answers is not None else {"answer": text}),
             )
@@ -261,7 +267,17 @@ class LearningTurnAdapter:
             return None
         payload = (result.metadata or {}).get("mastery_grade")
         if not result.success or not isinstance(payload, dict):
-            await self._publish_mastery_group_rejection(execution, question_id)
+            foreign = (result.metadata or {}).get("mastery_foreign_question")
+            await self._publish_mastery_group_rejection(
+                execution,
+                question_id,
+                message=(
+                    "This question belongs to another section of the course. "
+                    "Open that section's session to answer it."
+                    if isinstance(foreign, dict)
+                    else ""
+                ),
+            )
             return None
         # One complete trace group, the same shape the dispatcher emits for a
         # tool the model called: a lone result with no terminal status renders
@@ -306,9 +322,14 @@ class LearningTurnAdapter:
         return payload
 
     async def _publish_mastery_group_rejection(
-        self, execution: _TurnExecution, question_id: str
+        self, execution: _TurnExecution, question_id: str, *, message: str = ""
     ) -> None:
-        """Reopen an optimistically submitted card without fabricating a verdict."""
+        """Reopen an optimistically submitted card without fabricating a verdict.
+
+        *message* replaces the generic "could not be submitted" line when the
+        caller knows why — a card from another objective is not a submission
+        failure, and telling the learner to retry it would be wrong.
+        """
         call_id = f"mastery-grade-{execution.turn_id}-{question_id}"
         trace = build_trace_metadata(
             call_id=call_id,
@@ -318,7 +339,7 @@ class LearningTurnAdapter:
             trace_id=call_id,
             tool="mastery_grade",
         )
-        message = "These answers could not be submitted. Please review or retry."
+        message = message or "These answers could not be submitted. Please review or retry."
         await self._publish_live_event(
             execution,
             StreamEvent(

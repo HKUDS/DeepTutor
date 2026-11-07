@@ -50,6 +50,14 @@ KNOWN_CONTEXT_WINDOWS: dict[str, int] = {
     "deepseek-v4": 1000000,
     "deepseek-v4-flash": 1000000,
     "deepseek-v4-flash-vision-exp": 1000000,
+    # OpenRouter /api/v1/models (2026-11-03): the 4.1 family reports
+    # 1,048,576. Without these the runtime matched only the generic "deepseek"
+    # large-context marker and guessed 65,536, so the context guard tripped at
+    # ~51k on a model that actually holds ~1M.
+    "deepseek-v4.1": 1000000,
+    "deepseek-v4.1-flash": 1000000,
+    "deepseek-v4.1-flash-1017": 1000000,
+    "deepseek-v4.1-flash:batch": 1000000,
     "deepseek-v4-pro": 1000000,
     "gemini-2.5-computer-use-preview-10-2025": 131072,
     "gemini-2.5-flash": 1048576,

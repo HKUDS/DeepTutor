@@ -12,6 +12,10 @@ const RichInlineMarkdown = dynamic(() => import("./RichInlineMarkdown"), {
 // question stem or an option. Matching them here (not just math) is what keeps
 // `**听懂**` from reaching the learner with its asterisks attached.
 const INLINE_MARKUP_RE = /(\*\*|__|`|~~|\[[^\]]+\]\()/;
+// A stem may also carry block constructs the phrasing renderer cannot lay out:
+// a GFM table (a row starts with `|`) or a list. A table has no inline marker
+// at all, so without this it reached the learner as raw pipe text.
+const BLOCK_MARKUP_RE = /(^|\n)\s*(\||[-*+]\s)/;
 
 /**
  * A short string a model wrote, rendered as the inline markdown it is.
@@ -21,7 +25,9 @@ const INLINE_MARKUP_RE = /(\*\*|__|`|~~|\[[^\]]+\]\()/;
  * bolded cue showed its asterisks. They are also *short* and sit inside
  * buttons and one-line rows, so they cannot use the block renderer: this one
  * emits phrasing content only, and loads KaTeX at all only when the string
- * actually contains something to render.
+ * actually contains something to render. Tables and lists are the exception —
+ * they are routed to the rich renderer because there is no phrasing way to
+ * show them.
  */
 export default function InlineMarkdown({
   content,
@@ -31,7 +37,8 @@ export default function InlineMarkdown({
   className?: string;
 }) {
   const text = decodeEscapedUnicodeForDisplay(content ?? "");
-  const rich = hasMarkdownMath(text) || INLINE_MARKUP_RE.test(text);
+  const rich =
+    hasMarkdownMath(text) || INLINE_MARKUP_RE.test(text) || BLOCK_MARKUP_RE.test(text);
 
   if (!rich) {
     return className ? <span className={className}>{text}</span> : <>{text}</>;

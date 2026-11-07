@@ -1,6 +1,15 @@
 "use client";
 
-import { AlertCircle, CheckCircle2, Loader2, PanelLeftClose, Pencil, RotateCcw, X } from "lucide-react";
+import {
+  AlertCircle,
+  CheckCircle2,
+  Loader2,
+  PanelLeftClose,
+  Pencil,
+  RefreshCw,
+  RotateCcw,
+  X,
+} from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -11,6 +20,7 @@ import {
   discardPointLectureDraft,
   fetchPointLecture,
   revertPointLecture,
+  rollPointLectureDraft,
   savePointLecture,
   type PointLecture,
 } from "@/lib/learning-api";
@@ -32,13 +42,11 @@ import {
 export function LectureReaderPane({
   pathId,
   knowledgePointId,
-  pointName,
   onLectureConfirmed,
   onCollapse,
 }: {
   pathId: string;
   knowledgePointId: string;
-  pointName: string;
   /** Lets the review chat know a draft became the real lecture. */
   onLectureConfirmed?: () => void;
   /**
@@ -55,7 +63,9 @@ export function LectureReaderPane({
     null,
   );
   const [error, setError] = useState<{ pointId: string; message: string } | null>(null);
-  const [busy, setBusy] = useState<"confirm" | "discard" | "revert" | "save" | null>(null);
+  const [busy, setBusy] = useState<"confirm" | "discard" | "revert" | "save" | "rewrite" | null>(
+    null,
+  );
   const [editing, setEditing] = useState(false);
   const [draftText, setDraftText] = useState("");
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -142,7 +152,24 @@ export function LectureReaderPane({
       await refresh();
     });
 
-  const body = useMemo(() => lecture?.body ?? "", [lecture]);
+  // A forced roll rewrites the lecture from the whole study conversation. The
+  // routine roll only merges what is new, so a lecture written before the
+  // writer changed its approach keeps the old shape until the learner asks for
+  // this. It writes the draft, never the confirmed lecture.
+  const rewrite = () =>
+    run("rewrite", async () => {
+      await rollPointLectureDraft(pathId, knowledgePointId, { force: true });
+      setEditing(false);
+      await refresh();
+    });
+
+  // A draft is the most recent unconfirmed text. When one exists — the point
+  // has no confirmed lecture yet, or a force-rewrite just produced a new one —
+  // show the draft and ask the learner to confirm it, rather than showing
+  // settled text that no longer matches.
+  const draftBody = lecture?.draft?.body ?? "";
+  const hasPendingDraft = Boolean(draftBody);
+  const body = useMemo(() => draftBody || lecture?.body || "", [draftBody, lecture]);
 
   if (!knowledgePointId) return null;
 
@@ -151,10 +178,12 @@ export function LectureReaderPane({
       <header className="flex shrink-0 items-center justify-between gap-2 border-b border-[var(--border)] px-4 py-2.5">
         <div className="min-w-0">
           <div className="flex items-center gap-1.5">
+            {/* The point's name lives in the page crumb above; this pane is
+                just "the lecture", so it does not repeat it. */}
             <h2 className="truncate text-[12.5px] font-semibold text-[var(--foreground)]">
-              {pointName || t("Lecture")}
+              {t("Lecture")}
             </h2>
-            {status === "draft_only" ? (
+            {hasPendingDraft ? (
               <span className="shrink-0 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400">
                 {t("Unconfirmed")}
               </span>
@@ -166,12 +195,12 @@ export function LectureReaderPane({
             ) : null}
           </div>
           <p className="mt-0.5 text-[11px] text-[var(--muted-foreground)]">
-            {status === "confirmed"
-              ? lecture?.source === "implicit"
-                ? t("Saved automatically when you moved on")
-                : t("Confirmed lecture")
-              : status === "draft_only"
-                ? t("A summary of your study conversation. Confirm it to make it final.")
+            {hasPendingDraft
+              ? t("A summary of your study conversation. Confirm it to make it final.")
+              : status === "confirmed"
+                ? lecture?.source === "implicit"
+                  ? t("Saved automatically when you moved on")
+                  : t("Confirmed lecture")
                 : t("No lecture yet for this knowledge point.")}
           </p>
         </div>
@@ -179,7 +208,22 @@ export function LectureReaderPane({
           {busy ? (
             <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin text-[var(--muted-foreground)]" />
           ) : null}
-          {status === "confirmed" && !editing ? (
+          {body && !editing ? (
+            <Tooltip label={t("Force rewrite lecture")} side="bottom">
+              <button
+                type="button"
+                onClick={() => void rewrite()}
+                disabled={busy !== null}
+                className="flex h-7 w-7 items-center justify-center rounded-md text-[var(--muted-foreground)] hover:bg-[var(--muted)]/60 hover:text-[var(--foreground)] disabled:opacity-40"
+                aria-label={t("Force rewrite lecture")}
+              >
+                <RefreshCw
+                  className={`h-3.5 w-3.5 ${busy === "rewrite" ? "animate-spin" : ""}`}
+                />
+              </button>
+            </Tooltip>
+          ) : null}
+          {status === "confirmed" && !editing && !hasPendingDraft ? (
             <Tooltip label={t("Edit lecture")} side="bottom">
               <button
                 type="button"
@@ -236,7 +280,7 @@ export function LectureReaderPane({
           </div>
         ) : null}
 
-        {status === "draft_only" && !editing ? (
+        {hasPendingDraft && !editing ? (
           <div className="mb-3 rounded-lg border border-amber-500/30 bg-amber-500/[0.07] px-3 py-2">
             <p className="text-[11.5px] leading-5 text-[var(--foreground)]">
               {t(
