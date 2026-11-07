@@ -14,6 +14,7 @@ import dynamic from "next/dynamic";
 import { useTranslation } from "react-i18next";
 
 import RichMarkdownRenderer from "@/components/common/RichMarkdownRenderer";
+import RichCodeBlock from "@/components/common/RichCodeBlock";
 import {
   CODE_LANGUAGE_OPTIONS,
   normalizeCellLanguage,
@@ -38,28 +39,44 @@ export default function NotebookCellEditor({
   if (cell.kind === "code") {
     return (
       <div className="space-y-2">
-        <select
-          value={normalizeCellLanguage(cell.language)}
-          onChange={(event) =>
-            onChange({ language: normalizeCellLanguage(event.target.value) })
-          }
-          aria-label={t("Language")}
-          className="h-7 rounded-md border border-[var(--border)] bg-transparent px-1.5 text-[12px] text-[var(--foreground)] outline-none"
-        >
-          {CODE_LANGUAGE_OPTIONS.map((option) => (
-            <option key={option.value} value={option.value}>
-              {t(option.label)}
-            </option>
-          ))}
-        </select>
-        <textarea
-          value={cell.source}
-          rows={16}
-          spellCheck={false}
-          onChange={(event) => onChange({ source: event.target.value })}
-          placeholder={t("print('hello')")}
-          className={TEXTAREA}
-        />
+        <div className="flex items-center justify-between gap-2">
+          <select
+            value={normalizeCellLanguage(cell.language)}
+            onChange={(event) =>
+              onChange({ language: normalizeCellLanguage(event.target.value) })
+            }
+            aria-label={t("Language")}
+            className="h-7 rounded-md border border-[var(--border)] bg-transparent px-1.5 text-[12px] text-[var(--foreground)] outline-none"
+          >
+            {CODE_LANGUAGE_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {t(option.label)}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            onClick={() => setPreview((value) => !value)}
+            className="rounded-md border border-[color-mix(in_srgb,var(--border)_60%,transparent)] px-2 py-1 text-[11px] font-medium text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
+          >
+            {t(preview ? "Edit" : "Preview")}
+          </button>
+        </div>
+        {preview ? (
+          <RichCodeBlock
+            raw={cell.source}
+            lang={normalizeCellLanguage(cell.language)}
+          />
+        ) : (
+          <textarea
+            value={cell.source}
+            rows={16}
+            spellCheck={false}
+            onChange={(event) => onChange({ source: event.target.value })}
+            placeholder={t("print('hello')")}
+            className={TEXTAREA}
+          />
+        )}
       </div>
     );
   }

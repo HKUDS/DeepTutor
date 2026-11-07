@@ -19,6 +19,7 @@ import { Play, Plus, Trash2, ArrowUp, ArrowDown, Loader2, Check } from "lucide-r
 import { useTranslation } from "react-i18next";
 
 import RichMarkdownRenderer from "@/components/common/RichMarkdownRenderer";
+import RichCodeBlock from "@/components/common/RichCodeBlock";
 import { useAuthStatus } from "@/hooks/useAuthStatus";
 import { apiUrl } from "@/lib/api";
 import { getSession } from "@/lib/session-api";
@@ -542,6 +543,8 @@ function CellCard({
   const { t } = useTranslation();
   const rows = Math.min(24, Math.max(2, cell.source.split("\n").length));
   const [scriptOpen, setScriptOpen] = useState(false);
+  // A code cell with content opens highlighted; an empty one opens editable.
+  const [codePreview, setCodePreview] = useState(cell.source.trim().length > 0);
 
   return (
     <div className="overflow-hidden rounded-xl border border-[color-mix(in_srgb,var(--border)_55%,transparent)] bg-[var(--card)]">
@@ -572,6 +575,16 @@ function CellCard({
           </button>
         ) : (
           <>
+            <button
+              type="button"
+              className={CELL_BUTTON}
+              onClick={() => setCodePreview((value) => !value)}
+              aria-label={t(codePreview ? "Edit" : "Preview")}
+            >
+              <span className="text-[10.5px] font-medium">
+                {t(codePreview ? "Edit" : "Preview")}
+              </span>
+            </button>
             <select
               value={normalizeCellLanguage(cell.language)}
               onChange={(event) =>
@@ -631,6 +644,13 @@ function CellCard({
 
       {cell.kind === "geogebra" ? (
         <BoardCellBody script={cell.source} />
+      ) : cell.kind === "code" && codePreview && cell.source.trim() ? (
+        <div className="px-2 py-2">
+          <RichCodeBlock
+            raw={cell.source}
+            lang={normalizeCellLanguage(cell.language)}
+          />
+        </div>
       ) : cell.kind === "markdown" && previewing && cell.source.trim() ? (
         <div className="px-3 py-2.5 text-[13px]">
           <RichMarkdownRenderer content={cell.source} enableMath enableCode enableMermaid />

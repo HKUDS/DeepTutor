@@ -57,6 +57,15 @@ vi.mock("@/lib/notebook-lab-api", async (importOriginal) => ({
 // The board loads its applet from a CDN; the tab tests only need it to mount.
 vi.mock("@/components/Geogebra", () => ({ default: () => null }));
 
+// RichCodeBlock reads the code-block theme from the app shell.
+vi.mock("@/context/AppShellContext", () => ({
+  useAppShell: () => ({
+    codeBlockTheme: "oneDark",
+    codeBlockShowLineNumbers: false,
+    codeBlockWrapLongLines: false,
+  }),
+}));
+
 beforeEach(() => {
   window.localStorage.clear();
   notes.getNote.mockReset();
@@ -133,4 +142,17 @@ it("adds a GeoGebra board cell with an editable script", async () => {
   // The board header offers its script toggle once the cell is added.
   const script = await screen.findByRole("button", { name: "Script" });
   expect(script).toBeInTheDocument();
+});
+
+it("shows a highlighted preview of a code cell", async () => {
+  render(<ChatNotebookTab sessionId="session-1" />);
+  const code = await screen.findByPlaceholderText("print('hello')");
+  fireEvent.change(code, { target: { value: "print(6 * 7)" } });
+
+  // The code cell's toggle is the second "Preview" (the note cell's is first).
+  fireEvent.click(screen.getAllByRole("button", { name: "Preview" })[1]);
+
+  await waitFor(() =>
+    expect(document.querySelector(".md-code-block")).not.toBeNull(),
+  );
 });

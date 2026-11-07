@@ -34,12 +34,13 @@ import {
 import "@xyflow/react/dist/style.css";
 
 import RichMarkdownRenderer from "@/components/common/RichMarkdownRenderer";
+import RichCodeBlock from "@/components/common/RichCodeBlock";
 import NotebookCellEditor from "@/components/chat/home/NotebookCellEditor";
 import {
   newNotebookEdgeId,
   type NotebookGraph,
 } from "@/lib/notebook-graph";
-import type { NotebookCell } from "@/lib/notebook-cells";
+import { normalizeCellLanguage, type NotebookCell } from "@/lib/notebook-cells";
 
 const Geogebra = dynamic(() => import("@/components/Geogebra"), { ssr: false });
 
@@ -77,9 +78,11 @@ function CellNodeView({ data }: NodeProps<CellNode>) {
       </div>
       <div className="max-h-[240px] overflow-auto px-2.5 py-2 text-[12px]">
         {cell.kind === "code" ? (
-          <pre className="m-0 whitespace-pre-wrap font-mono text-[11px] text-[var(--foreground)]">
-            {cell.source || empty}
-          </pre>
+          cell.source.trim() ? (
+            <RichCodeBlock raw={cell.source} lang={normalizeCellLanguage(cell.language)} />
+          ) : (
+            <span className="text-[var(--muted-foreground)]">{empty}</span>
+          )
         ) : cell.kind === "geogebra" ? (
           <Geogebra
             script={cell.source}
