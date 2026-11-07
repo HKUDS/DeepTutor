@@ -475,18 +475,32 @@ function SessionViewerPanelInner(
     setTrackedKey(tabsKey);
     if (reboundFromKey !== trackedKey) {
       const restored = stash.get(tabsKey);
+      // The notebook is bound to the knowledge point, not to one conversation,
+      // so it follows the learner across sessions instead of being stashed and
+      // disappearing when the point or mode changes. Every other tab still
+      // belongs to the conversation that opened it.
+      const carried = tabs.filter((tab) => tab.kind === "notebook");
+      const stashable = tabs.filter((tab) => tab.kind !== "notebook");
+      const carriedActive = carried.some((tab) => tab.id === activeTabId);
       // Re-inserted so a Map's insertion order stays oldest-first.
       const next = new Map(stash);
       next.delete(trackedKey);
       next.delete(tabsKey);
-      next.set(trackedKey, { tabs, activeTabId, closedTabs });
+      next.set(trackedKey, {
+        tabs: stashable,
+        activeTabId: carriedActive ? null : activeTabId,
+        closedTabs,
+      });
       for (const key of next.keys()) {
         if (next.size <= STASHED_CONVERSATIONS) break;
         next.delete(key);
       }
       setStash(next);
-      setTabs(restored?.tabs ?? []);
-      setActiveTabId(restored?.activeTabId ?? null);
+      setTabs([
+        ...(restored?.tabs ?? []).filter((tab) => tab.kind !== "notebook"),
+        ...carried,
+      ]);
+      setActiveTabId(carriedActive ? activeTabId : (restored?.activeTabId ?? null));
       setClosedTabs(restored?.closedTabs ?? []);
     }
   }

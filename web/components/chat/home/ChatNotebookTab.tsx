@@ -182,10 +182,25 @@ export default function ChatNotebookTab({ sessionId = null, docId = null }: Chat
 
       pointIdRef.current = pointId;
       notebookKeyRef.current = sessionId || "default";
-      const key = pointerKey(owner, sessionId, pointId || pathId);
+      // A mastery notebook belongs to the knowledge point, not to one
+      // conversation, so study, review and outline share it. The home chat has
+      // no point, so its notebook stays per conversation.
+      const scope = pointId || pathId;
+      const key = scope
+        ? `${POINTER_PREFIX}${encodeURIComponent(owner)}:point:${encodeURIComponent(pathId)}:${encodeURIComponent(pointId)}`
+        : pointerKey(owner, sessionId, "");
       pointerKeyRef.current = key;
 
-      const pointer = readPointer(key);
+      let pointer = readPointer(key);
+      // Adopt a notebook saved under the older session-scoped key.
+      const legacyKey = scope ? pointerKey(owner, sessionId, scope) : "";
+      if (!pointer && legacyKey && legacyKey !== key) {
+        const legacy = readPointer(legacyKey);
+        if (legacy) {
+          writePointer(key, legacy);
+          pointer = legacy;
+        }
+      }
       if (pointer) {
         try {
           const page = await getNote(pointer.id);
