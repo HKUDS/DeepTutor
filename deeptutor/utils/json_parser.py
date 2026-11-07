@@ -107,12 +107,19 @@ def parse_json_response(
     except (json.JSONDecodeError, TypeError) as parse_error:
         log.debug(f"Complete response JSON parse failed: {parse_error}")
 
-    # Extract from markdown code blocks if present.
+    # Extract from markdown code blocks if present. Prefer the first block that
+    # holds a JSON object or array: a reply can show a code snippet (e.g. a
+    # ```python block) before the fenced payload.
     extracted_response = response
     if "```" in response:
-        json_match = re.search(r"```(?:json)?\s*\n?(.*?)```", response, re.DOTALL)
-        if json_match:
-            extracted_response = json_match.group(1).strip()
+        blocks = [
+            match.group(1).strip()
+            for match in re.finditer(r"```(?:json)?\s*\n?(.*?)```", response, re.DOTALL)
+        ]
+        if blocks:
+            extracted_response = next(
+                (block for block in blocks if block.startswith(("{", "["))), blocks[0]
+            )
             log.debug("Extracted JSON from markdown code block")
 
     # Parse an extracted fence before any <think> stripping.
