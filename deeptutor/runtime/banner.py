@@ -7,6 +7,9 @@ output matches the UI language the user has chosen.
 
 from __future__ import annotations
 
+from importlib import metadata
+from pathlib import Path
+
 from rich.align import Align
 from rich.console import Console
 from rich.panel import Panel
@@ -26,6 +29,13 @@ LABELS: dict[str, dict[str, str]] = {
     "en": {
         "tagline": "Agent-Native Personalized Tutoring",
         "lab": "Data Intelligence Lab @ HKU",
+        "version.mismatch": "installed {installed}",
+        "version.shadowed.warning": (
+            "Warning: running DeepTutor {loaded} from {origin}, but the installed "
+            "distribution is {installed}. A stale source tree in the runtime home "
+            "is shadowing the installed package, so the version above is the code "
+            "that is running, not the version that was installed."
+        ),
         # init
         "init.mode": "Workspace initializer",
         "init.workspace": "Workspace",
@@ -150,6 +160,13 @@ LABELS: dict[str, dict[str, str]] = {
     "fr": {
         "tagline": "Tutorat personnalisé natif par agents",
         "lab": "Data Intelligence Lab @ HKU",
+        "version.mismatch": "installé {installed}",
+        "version.shadowed.warning": (
+            "Avertissement : DeepTutor {loaded} s’exécute depuis {origin}, mais la "
+            "distribution installée est {installed}. Une ancienne arborescence source "
+            "dans le répertoire d’exécution masque le paquet installé : la version "
+            "affichée ci-dessus est donc le code en cours, pas la version installée."
+        ),
         "init.mode": "Initialisation de l’espace de travail",
         "init.workspace": "Espace de travail",
         "init.note_settings_dir": "Les paramètres seront écrits dans data/user/settings.",
@@ -258,6 +275,12 @@ LABELS: dict[str, dict[str, str]] = {
     "zh": {
         "tagline": "智能体原生的个性化辅导",
         "lab": "香港大学数据智能实验室",
+        "version.mismatch": "已安装 {installed}",
+        "version.shadowed.warning": (
+            "警告：当前运行的 DeepTutor {loaded} 来自 {origin}，但已安装的发行版是 "
+            "{installed}。工作目录中的旧源码树遮蔽了已安装的包，因此上面显示的是"
+            "实际运行的代码版本，而非已安装的版本。"
+        ),
         # init
         "init.mode": "工作目录初始化",
         "init.workspace": "工作目录",
@@ -380,6 +403,13 @@ LABELS: dict[str, dict[str, str]] = {
     "de": {
         "tagline": "Agent-native, personalisierte Lernbegleitung",
         "lab": "Data Intelligence Lab @ HKU",
+        "version.mismatch": "{installed} installiert",
+        "version.shadowed.warning": (
+            "Warnung: DeepTutor {loaded} läuft aus {origin}, die installierte "
+            "Distribution ist jedoch {installed}. Ein veralteter Quellbaum im "
+            "Laufzeitverzeichnis verdeckt das installierte Paket; die oben "
+            "angezeigte Version ist der laufende Code, nicht die installierte Version."
+        ),
         "init.mode": "Workspace-Einrichtung",
         "init.workspace": "Workspace",
         "init.note_settings_dir": "Einstellungen werden unter data/user/settings gespeichert.",
@@ -488,6 +518,13 @@ LABELS: dict[str, dict[str, str]] = {
     "uk": {
         "tagline": "Агентно-орієнтоване персоналізоване навчання",
         "lab": "Data Intelligence Lab @ HKU",
+        "version.mismatch": "встановлено {installed}",
+        "version.shadowed.warning": (
+            "Попередження: DeepTutor {loaded} виконується з {origin}, але "
+            "встановлений дистрибутив — {installed}. Застаріле дерево джерел у "
+            "робочому каталозі затіняє встановлений пакет; показана вище версія — "
+            "це код, що виконується, а не встановлена версія."
+        ),
         "init.mode": "Майстер ініціалізації робочого простору",
         "init.workspace": "Робочий простір",
         "init.note_settings_dir": "Налаштування буде записано в data/user/settings.",
@@ -596,6 +633,13 @@ LABELS: dict[str, dict[str, str]] = {
     "pt": {
         "tagline": "Assistente de aprendizagem personalizada com arquitetura nativa de agentes",
         "lab": "Data Intelligence Lab @ HKU",
+        "version.mismatch": "{installed} instalado",
+        "version.shadowed.warning": (
+            "Aviso: o DeepTutor {loaded} está sendo executado a partir de {origin}, "
+            "mas a distribuição instalada é {installed}. Uma árvore de código antiga "
+            "no diretório de execução está ocultando o pacote instalado; a versão "
+            "acima é o código em execução, não a versão instalada."
+        ),
         "init.mode": "Configuração do espaço de trabalho",
         "init.workspace": "Espaço de trabalho",
         "init.note_settings_dir": "As configurações serão salvas em data/user/settings.",
@@ -704,6 +748,13 @@ LABELS: dict[str, dict[str, str]] = {
     "tr": {
         "tagline": "Ajan tabanlı kişiselleştirilmiş eğitim",
         "lab": "Data Intelligence Lab @ HKU",
+        "version.mismatch": "{installed} kurulu",
+        "version.shadowed.warning": (
+            "Uyarı: DeepTutor {loaded} sürümü {origin} konumundan çalışıyor, ancak "
+            "kurulu dağıtım {installed}. Çalışma dizinindeki eski bir kaynak ağacı "
+            "kurulu paketi gölgeliyor; yukarıda gösterilen sürüm çalışan koddur, "
+            "kurulu sürüm değildir."
+        ),
         "init.mode": "Çalışma alanı başlatıcı",
         "init.workspace": "Çalışma alanı",
         "init.note_settings_dir": "Ayarlar data/user/settings altına yazılacak.",
@@ -849,6 +900,46 @@ def labels_for(language: str | None) -> dict[str, str]:
     return LABELS[_pick_language(language)]
 
 
+def _translated(key: str, language: str | None) -> str:
+    """Read ``key`` for ``language``, falling back to English.
+
+    The version-warning strings are newer than most translations; a locale that
+    has not caught up must still render the banner rather than raise KeyError.
+    """
+
+    return LABELS[_pick_language(language)].get(key) or LABELS["en"][key]
+
+
+def _installed_version() -> str | None:
+    """Return the version recorded by the installed distribution, if any."""
+
+    try:
+        return metadata.version("deeptutor")
+    except metadata.PackageNotFoundError:
+        return None
+    except Exception:
+        # Unreadable metadata must never stop the CLI from starting.
+        return None
+
+
+def loaded_version_mismatch() -> tuple[str, str, str] | None:
+    """Return ``(loaded, installed, origin)`` when the two versions disagree.
+
+    The banner renders ``deeptutor.__version__`` from whichever module the import
+    system resolved. If a stale source tree in the runtime home shadows the
+    installed package, that value belongs to the old checkout while the
+    distribution metadata still reports the version pip installed (#2443).
+    Printing the shadowed value on its own makes a failed upgrade look clean,
+    so callers can surface the disagreement instead.
+    """
+
+    installed = _installed_version()
+    if installed is None or installed == __version__:
+        return None
+    origin = Path(__file__).resolve().parent.parent / "__init__.py"
+    return __version__, installed, str(origin)
+
+
 def render_banner(language: str | None, *, mode_key: str | None = None) -> Panel:
     """Build the branded banner panel.
 
@@ -866,6 +957,11 @@ def render_banner(language: str | None, *, mode_key: str | None = None) -> Panel
 
     logo = Text(_ASCII_LOGO, style="bold bright_cyan")
     tagline_line = f"{strings['tagline']}  ·  v{__version__}"
+    mismatch = loaded_version_mismatch()
+    if mismatch is not None:
+        tagline_line += (
+            "  (" + _translated("version.mismatch", language).format(installed=mismatch[1]) + ")"
+        )
 
     body = Text()
     body.append(logo)
@@ -895,11 +991,21 @@ def print_banner(
 
     target = console or Console()
     target.print(render_banner(language, mode_key=mode_key))
+    mismatch = loaded_version_mismatch()
+    if mismatch is not None:
+        loaded, installed, origin = mismatch
+        target.print(
+            _translated("version.shadowed.warning", language).format(
+                loaded=loaded, installed=installed, origin=origin
+            ),
+            style="bold yellow",
+        )
 
 
 __all__: tuple[str, ...] = (
     "LABELS",
     "labels_for",
+    "loaded_version_mismatch",
     "print_banner",
     "render_banner",
     "resolve_language",
