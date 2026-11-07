@@ -1039,6 +1039,65 @@ def test_summarize_tool_result_streams_chunks_and_returns_assembled_text() -> No
     assert joined == summary
 
 
+def test_summarize_tool_result_retries_without_stream_options_when_rejected() -> None:
+    """Providers that reject ``stream_options`` must not lose the summary.
+
+    Mirrors the retry in ``agent_loop`` / ``labeled_step``: the first call
+    raises an "unknown parameter: stream_options" error, the summarizer
+    retries once without it and still returns the summary.
+    """
+    pipeline = _make_pipeline()
+    bus = _StubStreamBus()
+
+    async def _thinking(text, source="", stage="", metadata=None):
+        return None
+
+    bus.thinking = _thinking  # type: ignore[assignment]
+
+    class _Delta:
+        content = "compressed"
+
+    class _Choice:
+        delta = _Delta()
+
+    class _Chunk:
+        choices = [_Choice()]
+        usage = None
+
+    async def _stream_chunks():
+        yield _Chunk()
+
+    calls: list[dict[str, Any]] = []
+
+    class _Completions:
+        async def create(self, **kwargs):
+            calls.append(dict(kwargs))
+            if "stream_options" in kwargs:
+                raise ValueError("unknown parameter: stream_options")
+            return _stream_chunks()
+
+    class _Chat:
+        completions = _Completions()
+
+    class _FakeClient:
+        chat = _Chat()
+
+    summary = asyncio.run(
+        pipeline._summarize_tool_result(
+            tool_name="rag",
+            tool_result="<long raw rag result here>",
+            iteration=1,
+            stream=bus,
+            client=_FakeClient(),
+        )
+    )
+
+    assert summary == "compressed"
+    assert len(calls) == 2
+    assert "stream_options" in calls[0]
+    assert "stream_options" not in calls[1]
+
+
 def test_summarize_tool_result_empty_input_returns_none() -> None:
     """No LLM call should fire for an empty/whitespace result — and the
     method must return None so the host keeps the original (empty) tool
