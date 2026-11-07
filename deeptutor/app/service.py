@@ -128,6 +128,8 @@ class TurnApplicationService:
         store, runtime = self._resolve()
         reserve = getattr(store, "reserve_submission", None)
         submission_turn = getattr(store, "submission_turn", None)
+        submission_id = ""
+        previous_turn_id = ""
         if (
             request.client_submission_id
             and request.persist_user_message
@@ -135,6 +137,7 @@ class TurnApplicationService:
             and callable(reserve)
             and callable(submission_turn)
         ):
+            submission_id = request.client_submission_id
             digest = self._submission_digest(payload)
             payload["session_id"] = await reserve(
                 request.client_submission_id, digest, request.session_id
@@ -145,15 +148,17 @@ class TurnApplicationService:
                 if session is None:
                     raise RuntimeError("Conversation not found in this workspace.")
                 return session, prior
+            if prior is not None:
+                previous_turn_id = prior["id"]
         try:
             session, turn = await runtime.start_turn(payload)
         except ActiveTurnConflict:
-            if request.client_submission_id and callable(reserve) and callable(submission_turn):
-                prior = await submission_turn(request.client_submission_id)
-                if prior is not None:
-                    session = await store.get_session(prior["session_id"])
-                    if session is not None:
-                        return session, prior
+            if submission_id:
+                replay = await self._wait_for_submission_receipt(
+                    store, submission_id, payload["session_id"], previous_turn_id
+                )
+                if replay is not None:
+                    return replay
             # Retry once, and only after something was actually reclaimed, so a
             # session busy with a live turn still gets its conflict.
             session_id = str(payload.get("session_id") or "")
@@ -198,6 +203,36 @@ class TurnApplicationService:
             session["id"], {"workspace_dependencies": dependencies}
         )
         return session, turn
+
+    # Admission takes the execution lease before atomically binding the
+    # submission to its durable turn. A retry on another worker must allow
+    # that short gap to close. Bound the wait in case the owner dies there.
+    _SUBMISSION_ADMISSION_WAIT_SECONDS = 5.0
+    _SUBMISSION_ADMISSION_POLL_SECONDS = 0.05
+
+    async def _wait_for_submission_receipt(
+        self,
+        store: SessionStoreProtocol,
+        submission_id: str,
+        session_id: str,
+        previous_turn_id: str,
+    ) -> tuple[dict[str, Any], dict[str, Any]] | None:
+        deadline = time.monotonic() + self._SUBMISSION_ADMISSION_WAIT_SECONDS
+        submission_turn = getattr(store, "submission_turn")
+        while True:
+            # Read the active row first: begin_turn inserts it and binds the
+            # submission together. Reading the receipt first could miss it,
+            # then mistake its newly committed row for a competing message.
+            active = await store.get_active_turn(session_id)
+            turn = await submission_turn(submission_id)
+            if turn is not None and turn["id"] != previous_turn_id:
+                session = await store.get_session(session_id)
+                if session is not None:
+                    return session, turn
+                return None
+            if active is not None or time.monotonic() >= deadline:
+                return None
+            await asyncio.sleep(self._SUBMISSION_ADMISSION_POLL_SECONDS)
 
     async def regenerate_last_turn(
         self,
