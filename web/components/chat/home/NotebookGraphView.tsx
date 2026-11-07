@@ -143,11 +143,22 @@ function LabeledEdgeView({
   const label = data?.label ?? "";
   return (
     <>
+      {/* A light halo keeps the line legible over the dotted canvas. */}
+      <path
+        d={path}
+        fill="none"
+        stroke="var(--background)"
+        strokeWidth={6}
+        strokeLinecap="round"
+      />
       <BaseEdge
         id={id}
         path={path}
         markerEnd={markerEnd}
-        style={selected ? { strokeWidth: 2.5 } : undefined}
+        style={{
+          stroke: selected ? "var(--primary)" : "#64748b",
+          strokeWidth: selected ? 3 : 2,
+        }}
       />
       {label ? (
         <EdgeLabelRenderer>
@@ -247,7 +258,12 @@ export default function NotebookGraphView({
         target: edge.to,
         type: "labeled" as const,
         data: { label: edge.label },
-        markerEnd: { type: MarkerType.ArrowClosed },
+        markerEnd: {
+          type: MarkerType.ArrowClosed,
+          width: 22,
+          height: 22,
+          color: "#64748b",
+        },
       })),
     [graph.edges],
   );
@@ -353,6 +369,7 @@ export default function NotebookGraphView({
           edgeTypes={EDGE_TYPES}
           deleteKeyCode={null}
           connectionMode={ConnectionMode.Loose}
+          connectionLineStyle={{ stroke: "#64748b", strokeWidth: 2 }}
           onNodeDoubleClick={(_event, node) => {
             if (onCellChange) setEditingCellId(node.id);
           }}

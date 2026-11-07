@@ -38,6 +38,11 @@ vi.mock("@/lib/session-api", async (importOriginal) => ({
   })),
 }));
 
+vi.mock("@/lib/learning-api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/learning-api")>()),
+  fetchMasteryMap: vi.fn(async () => ({ map: { modules: [] } })),
+}));
+
 const notes = vi.hoisted(() => ({
   getNote: vi.fn(),
   createNote: vi.fn(),

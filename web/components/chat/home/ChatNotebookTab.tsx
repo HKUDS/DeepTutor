@@ -23,6 +23,7 @@ import RichCodeBlock from "@/components/common/RichCodeBlock";
 import { useAuthStatus } from "@/hooks/useAuthStatus";
 import { apiUrl } from "@/lib/api";
 import { getSession } from "@/lib/session-api";
+import { fetchMasteryMap } from "@/lib/learning-api";
 import { createNote, getNote, saveNote, uploadNoteAsset } from "@/lib/notes-api";
 import {
   CODE_LANGUAGE_OPTIONS,
@@ -130,6 +131,9 @@ export default function ChatNotebookTab({ sessionId = null, docId = null }: Chat
       : null;
 
   const [ready, setReady] = useState(false);
+  const [title, setTitle] = useState("");
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [pointName, setPointName] = useState("");
   const [cells, setCells] = useState<NotebookCell[]>(() =>
     defaultNotebookCells(),
   );
@@ -145,6 +149,7 @@ export default function ChatNotebookTab({ sessionId = null, docId = null }: Chat
   const pointerKeyRef = useRef<string>("");
   const notebookKeyRef = useRef<string>("default");
   const lastSavedRef = useRef<string>("");
+  const lastSavedTitleRef = useRef<string>("");
   const pointIdRef = useRef<string>("");
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -168,8 +173,12 @@ export default function ChatNotebookTab({ sessionId = null, docId = null }: Chat
           notebookKeyRef.current = page.id;
           pointIdRef.current = "";
           pointerKeyRef.current = "";
+          const loadedTitle = page.title || "";
           const markdown = page.content ?? "";
           lastSavedRef.current = markdown;
+          lastSavedTitleRef.current = loadedTitle;
+          setTitle(loadedTitle);
+          setPointName("");
           const split = splitNotebookGraph(markdown);
           setCells(applySavedCellIds(parseNotebookMarkdown(split.body), split.cellIds));
           setGraph(split.graph);
@@ -192,6 +201,22 @@ export default function ChatNotebookTab({ sessionId = null, docId = null }: Chat
         } catch {
           // A conversation without readable preferences still gets a notebook.
         }
+      }
+      if (cancelled) return;
+
+      // Show the knowledge point's name, not its id, when the map resolves.
+      if (pointId && pathId) {
+        try {
+          const map = await fetchMasteryMap(pathId);
+          const resolved = map.map.modules
+            .flatMap((module) => module.knowledge_points)
+            .find((point) => point.id === pointId)?.name;
+          if (!cancelled && resolved) setPointName(resolved);
+        } catch {
+          // The id stands in until the map can be read.
+        }
+      } else {
+        setPointName("");
       }
       if (cancelled) return;
 
@@ -222,8 +247,11 @@ export default function ChatNotebookTab({ sessionId = null, docId = null }: Chat
           if (cancelled) return;
           docIdRef.current = page.id;
           revisionRef.current = page.revision;
+          const loadedTitle = page.title || "";
           const markdown = page.content ?? "";
           lastSavedRef.current = markdown;
+          lastSavedTitleRef.current = loadedTitle;
+          setTitle(loadedTitle);
           const split = splitNotebookGraph(markdown);
           setCells(applySavedCellIds(parseNotebookMarkdown(split.body), split.cellIds));
           setGraph(split.graph);
@@ -237,6 +265,8 @@ export default function ChatNotebookTab({ sessionId = null, docId = null }: Chat
       docIdRef.current = null;
       revisionRef.current = 0;
       lastSavedRef.current = "";
+      lastSavedTitleRef.current = "";
+      setTitle("");
       setCells(defaultNotebookCells());
       setGraph(emptyNotebookGraph());
       setReady(true);
@@ -254,20 +284,25 @@ export default function ChatNotebookTab({ sessionId = null, docId = null }: Chat
         nextGraph,
         nextCells.map((cell) => cell.id),
       );
-      if (markdown === lastSavedRef.current) return;
+      if (
+        markdown === lastSavedRef.current &&
+        title === lastSavedTitleRef.current
+      ) {
+        return;
+      }
       setSaveState("saving");
-      const title = t("Code notebook");
+      const pageTitle = title || t("Code notebook");
 
       const write = async () => {
         if (docIdRef.current) {
           const page = await saveNote(docIdRef.current, {
-            title,
+            title: pageTitle,
             content: markdown,
             expected_revision: revisionRef.current,
           });
           revisionRef.current = page.revision;
         } else {
-          const page = await createNote(title, null, markdown, "super_note");
+          const page = await createNote(pageTitle, null, markdown, "super_note");
           docIdRef.current = page.id;
           revisionRef.current = page.revision;
         }
@@ -275,6 +310,7 @@ export default function ChatNotebookTab({ sessionId = null, docId = null }: Chat
 
       const finish = () => {
         lastSavedRef.current = markdown;
+        lastSavedTitleRef.current = pageTitle;
         if (pointerKeyRef.current) {
           writePointer(pointerKeyRef.current, {
             id: docIdRef.current as string,
@@ -305,7 +341,7 @@ export default function ChatNotebookTab({ sessionId = null, docId = null }: Chat
         }
       }
     },
-    [t],
+    [t, title],
   );
 
   // Debounced autosave. Never fires before the page has loaded, so restoring a
@@ -317,7 +353,12 @@ export default function ChatNotebookTab({ sessionId = null, docId = null }: Chat
       graph,
       cells.map((cell) => cell.id),
     );
-    if (markdown === lastSavedRef.current) return;
+    if (
+      markdown === lastSavedRef.current &&
+      title === lastSavedTitleRef.current
+    ) {
+      return;
+    }
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
       void persist(cells, graph);
@@ -325,7 +366,7 @@ export default function ChatNotebookTab({ sessionId = null, docId = null }: Chat
     return () => {
       if (saveTimer.current) clearTimeout(saveTimer.current);
     };
-  }, [cells, graph, ready, owner, persist]);
+  }, [cells, graph, ready, owner, persist, title]);
 
   // Upload an image for a graph link's label. Assets hang off the page, so the
   // page is created first when a brand-new notebook has not saved yet.
@@ -458,13 +499,34 @@ export default function ChatNotebookTab({ sessionId = null, docId = null }: Chat
     <div className="flex h-full flex-col">
       <div className="flex shrink-0 items-center gap-2 border-b border-[color-mix(in_srgb,var(--border)_45%,transparent)] px-4 py-2.5">
         <div className="min-w-0 flex-1">
-          <div className="truncate text-[12.5px] font-semibold text-[var(--foreground)]">
-            {t("Code notebook")}
-          </div>
+          {editingTitle ? (
+            <input
+              autoFocus
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+              onBlur={() => setEditingTitle(false)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === "Escape") {
+                  setEditingTitle(false);
+                }
+              }}
+              placeholder={t("Code notebook")}
+              className="block w-full truncate rounded-md border border-[var(--border)] bg-transparent px-1 text-[12.5px] font-semibold text-[var(--foreground)] outline-none"
+            />
+          ) : (
+            <button
+              type="button"
+              onClick={() => setEditingTitle(true)}
+              title={t("Rename")}
+              className="block w-full truncate text-left text-[12.5px] font-semibold text-[var(--foreground)] hover:underline"
+            >
+              {title || t("Code notebook")}
+            </button>
+          )}
           <div className="truncate text-[10.5px] text-[var(--muted-foreground)]">
-            {pointIdRef.current
+            {pointName || pointIdRef.current
               ? t("Bound to knowledge point {{id}}", {
-                  id: pointIdRef.current,
+                  id: pointName || pointIdRef.current,
                 })
               : t("Notes and runnable code, kept with this conversation.")}
           </div>
