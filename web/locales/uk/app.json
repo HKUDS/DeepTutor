@@ -6261,5 +6261,9 @@
   "No output": "Немає виводу",
   "Exit code {{code}}": "Код виходу {{code}}",
   "timed out": "час вичерпано",
-  "Code notebook": "Блокнот коду"
+  "Code notebook": "Блокнот коду",
+  "Board cell": "Комірка дошки",
+  "Script": "Скрипт",
+  "Hide script": "Приховати скрипт",
+  "GeoGebra commands, one per line.": "Команди GeoGebra, по одній на рядок."
 }

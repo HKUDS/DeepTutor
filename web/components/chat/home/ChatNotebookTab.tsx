@@ -14,6 +14,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import { Play, Plus, Trash2, ArrowUp, ArrowDown, Loader2, Check } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
@@ -25,6 +26,7 @@ import { createNote, getNote, saveNote } from "@/lib/notes-api";
 import {
   CODE_LANGUAGE_OPTIONS,
   createCodeCell,
+  createGeogebraCell,
   createMarkdownCell,
   defaultNotebookCells,
   normalizeCellLanguage,
@@ -36,6 +38,9 @@ import {
   runNotebookCell,
   type NotebookCellRun,
 } from "@/lib/notebook-lab-api";
+
+// GeoGebra loads its applet from a CDN; it must stay client-only.
+const Geogebra = dynamic(() => import("@/components/Geogebra"), { ssr: false });
 
 interface ChatNotebookTabProps {
   sessionId: string | null;
@@ -226,10 +231,13 @@ export default function ChatNotebookTab({ sessionId }: ChatNotebookTabProps) {
   }, []);
 
   const addCell = useCallback((kind: NotebookCell["kind"]) => {
-    setCells((prev) => [
-      ...prev,
-      kind === "code" ? createCodeCell() : createMarkdownCell(),
-    ]);
+    const created =
+      kind === "code"
+        ? createCodeCell()
+        : kind === "geogebra"
+          ? createGeogebraCell()
+          : createMarkdownCell();
+    setCells((prev) => [...prev, created]);
   }, []);
 
   const removeCell = useCallback((id: string) => {
@@ -371,6 +379,14 @@ export default function ChatNotebookTab({ sessionId }: ChatNotebookTabProps) {
             <Plus size={13} strokeWidth={2} />
             {t("Code cell")}
           </button>
+          <button
+            type="button"
+            onClick={() => addCell("geogebra")}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-[color-mix(in_srgb,var(--border)_70%,transparent)] px-2.5 py-1.5 text-[12px] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
+          >
+            <Plus size={13} strokeWidth={2} />
+            {t("Board cell")}
+          </button>
         </div>
 
         {error ? (
@@ -440,17 +456,33 @@ function CellCard({
 }: CellCardProps) {
   const { t } = useTranslation();
   const rows = Math.min(24, Math.max(2, cell.source.split("\n").length));
+  const [scriptOpen, setScriptOpen] = useState(false);
 
   return (
     <div className="overflow-hidden rounded-xl border border-[color-mix(in_srgb,var(--border)_55%,transparent)] bg-[var(--card)]">
       <div className="flex items-center gap-1 border-b border-[color-mix(in_srgb,var(--border)_35%,transparent)] px-2 py-1">
         <span className="flex-1 pl-1 text-[10.5px] font-medium uppercase tracking-wide text-[var(--muted-foreground)]">
-          {cell.kind === "code" ? t("Code") : t("Note")}
+          {cell.kind === "code"
+            ? t("Code")
+            : cell.kind === "geogebra"
+              ? t("GeoGebra board")
+              : t("Note")}
         </span>
         {cell.kind === "markdown" ? (
           <button type="button" className={CELL_BUTTON} onClick={onTogglePreview} aria-label={t(previewing ? "Edit" : "Preview")}>
             <span className="text-[10.5px] font-medium">
               {t(previewing ? "Edit" : "Preview")}
+            </span>
+          </button>
+        ) : cell.kind === "geogebra" ? (
+          <button
+            type="button"
+            className={CELL_BUTTON}
+            onClick={() => setScriptOpen((open) => !open)}
+            aria-label={t("Script")}
+          >
+            <span className="text-[10.5px] font-medium">
+              {t(scriptOpen ? "Hide script" : "Script")}
             </span>
           </button>
         ) : (
@@ -512,9 +544,11 @@ function CellCard({
         </button>
       </div>
 
-      {cell.kind === "markdown" && previewing && cell.source.trim() ? (
+      {cell.kind === "geogebra" ? (
+        <BoardCellBody script={cell.source} />
+      ) : cell.kind === "markdown" && previewing && cell.source.trim() ? (
         <div className="px-3 py-2.5 text-[13px]">
-          <RichMarkdownRenderer content={cell.source} enableMath enableCode />
+          <RichMarkdownRenderer content={cell.source} enableMath enableCode enableMermaid />
         </div>
       ) : (
         <textarea
@@ -531,7 +565,52 @@ function CellCard({
         />
       )}
 
+      {cell.kind === "geogebra" && scriptOpen ? (
+        <textarea
+          value={cell.source}
+          rows={rows}
+          spellCheck={false}
+          onChange={(event) => onChange({ source: event.target.value })}
+          placeholder={t("GeoGebra commands, one per line.")}
+          className="block w-full resize-y border-t border-[color-mix(in_srgb,var(--border)_35%,transparent)] bg-transparent px-3 py-2.5 font-mono text-[12.5px] leading-relaxed text-[var(--foreground)] outline-none placeholder:text-[color-mix(in_srgb,var(--muted-foreground)_60%,transparent)]"
+        />
+      ) : null}
+
       {run ? <CellOutput run={run} /> : null}
+    </div>
+  );
+}
+
+/**
+ * A GeoGebra board sized to the panel. A blank board is editable (the learner
+ * draws on it); a scripted one shows a clean figure. Drawn changes are not
+ * persisted — only the script is.
+ */
+function BoardCellBody({ script }: { script: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [size, setSize] = useState<{ width: number; height: number } | null>(null);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const measure = () =>
+      setSize({ width: Math.max(280, Math.floor(el.clientWidth) - 2), height: 340 });
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <div ref={ref} className="w-full px-1 py-1">
+      {size ? (
+        <Geogebra
+          script={script}
+          editable={!script.trim()}
+          width={size.width}
+          height={size.height}
+        />
+      ) : null}
     </div>
   );
 }
@@ -568,7 +647,7 @@ function CellOutput({ run }: { run: CellRun }) {
       ) : null}
 
       {result.stdout.trim() ? (
-        <RichMarkdownRenderer content={result.stdout} enableMath enableCode />
+        <RichMarkdownRenderer content={result.stdout} enableMath enableCode enableMermaid />
       ) : null}
 
       {result.stderr.trim() ? (
@@ -577,27 +656,46 @@ function CellOutput({ run }: { run: CellRun }) {
         </pre>
       ) : null}
 
-      {result.artifacts.map((artifact) =>
-        artifact.mime_type.startsWith("image/") ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            key={artifact.relative_path}
-            src={apiUrl(artifact.url)}
-            alt={artifact.filename}
-            className="mt-2 max-w-full rounded-lg border border-[color-mix(in_srgb,var(--border)_45%,transparent)]"
-          />
-        ) : (
+      {result.artifacts.map((artifact) => {
+        const src = apiUrl(artifact.url);
+        if (artifact.mime_type.startsWith("image/")) {
+          return (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              key={artifact.relative_path}
+              src={src}
+              alt={artifact.filename}
+              className="mt-2 max-w-full rounded-lg border border-[color-mix(in_srgb,var(--border)_45%,transparent)]"
+            />
+          );
+        }
+        if (artifact.mime_type.startsWith("video/")) {
+          return (
+            <video
+              key={artifact.relative_path}
+              src={src}
+              controls
+              className="mt-2 max-w-full rounded-lg border border-[color-mix(in_srgb,var(--border)_45%,transparent)]"
+            />
+          );
+        }
+        if (artifact.mime_type.startsWith("audio/")) {
+          return (
+            <audio key={artifact.relative_path} src={src} controls className="mt-2 w-full" />
+          );
+        }
+        return (
           <a
             key={artifact.relative_path}
-            href={apiUrl(artifact.url)}
+            href={src}
             target="_blank"
             rel="noopener noreferrer"
             className="mt-1 block truncate text-[12px] text-[var(--primary)] underline"
           >
             {artifact.filename}
           </a>
-        ),
-      )}
+        );
+      })}
 
       {failed || result.stdout.trim() || result.stderr.trim() ? null : (
         <p className="text-[11.5px] text-[var(--muted-foreground)]">

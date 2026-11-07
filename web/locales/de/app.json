@@ -6279,5 +6279,9 @@
   "No output": "Keine Ausgabe",
   "Exit code {{code}}": "Exit-Code {{code}}",
   "timed out": "Zeitüberschreitung",
-  "Code notebook": "Code-Notizbuch"
+  "Code notebook": "Code-Notizbuch",
+  "Board cell": "Tafel-Zelle",
+  "Script": "Skript",
+  "Hide script": "Skript ausblenden",
+  "GeoGebra commands, one per line.": "GeoGebra-Befehle, einer pro Zeile."
 }

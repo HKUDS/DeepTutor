@@ -10,7 +10,7 @@ import type { NotebookCellLanguage } from "@/lib/notebook-lab-api";
  */
 export interface NotebookCell {
   id: string;
-  kind: "markdown" | "code";
+  kind: "markdown" | "code" | "geogebra";
   source: string;
   language?: NotebookCellLanguage;
 }
@@ -65,6 +65,16 @@ export function createCodeCell(
   return { id: newNotebookCellId(), kind: "code", source, language };
 }
 
+/** A GeoGebra board cell. The source is ggbscript, one command per line. */
+export function createGeogebraCell(source = ""): NotebookCell {
+  return { id: newNotebookCellId(), kind: "geogebra", source };
+}
+
+function isGeogebraFence(language: string): boolean {
+  const lang = language.trim().toLowerCase();
+  return lang === "geogebra" || lang === "ggb";
+}
+
 /** A fresh notebook: one note cell, one code cell. */
 export function defaultNotebookCells(): NotebookCell[] {
   return [createMarkdownCell(), createCodeCell()];
@@ -111,7 +121,12 @@ export function parseNotebookMarkdown(markdown: string): NotebookCell[] {
     }
     i += 1; // consume the closing fence
     flushProse();
-    cells.push(createCodeCell(body.join("\n"), normalizeCellLanguage(language)));
+    const source = body.join("\n");
+    cells.push(
+      isGeogebraFence(language)
+        ? createGeogebraCell(source)
+        : createCodeCell(source, normalizeCellLanguage(language)),
+    );
   }
   flushProse();
 
@@ -125,6 +140,9 @@ export function serializeNotebookMarkdown(cells: NotebookCell[]): string {
     if (cell.kind === "code") {
       const language = normalizeCellLanguage(cell.language);
       parts.push(`\`\`\`${language}\n${cell.source.replace(/\s+$/, "")}\n\`\`\``);
+    } else if (cell.kind === "geogebra") {
+      // Always emitted, even when empty, so a blank board survives a reload.
+      parts.push(`\`\`\`geogebra\n${cell.source.replace(/\s+$/, "")}\n\`\`\``);
     } else if (cell.source.trim()) {
       parts.push(cell.source.replace(/\s+$/, ""));
     }

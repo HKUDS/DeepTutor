@@ -54,6 +54,9 @@ vi.mock("@/lib/notebook-lab-api", async (importOriginal) => ({
   runNotebookCell: lab.runNotebookCell,
 }));
 
+// The board loads its applet from a CDN; the tab tests only need it to mount.
+vi.mock("@/components/Geogebra", () => ({ default: () => null }));
+
 beforeEach(() => {
   window.localStorage.clear();
   notes.getNote.mockReset();
@@ -120,4 +123,14 @@ it("binds the notebook to the knowledge point of the conversation", async () => 
   render(<ChatNotebookTab sessionId="session-1" />);
   // The header reports the bound point once preferences resolve.
   expect(await screen.findByText(/kp-1/)).toBeInTheDocument();
+});
+
+it("adds a GeoGebra board cell with an editable script", async () => {
+  render(<ChatNotebookTab sessionId="session-1" />);
+  await screen.findByPlaceholderText("print('hello')");
+
+  fireEvent.click(screen.getByRole("button", { name: /Board cell/ }));
+  // The board header offers its script toggle once the cell is added.
+  const script = await screen.findByRole("button", { name: "Script" });
+  expect(script).toBeInTheDocument();
 });

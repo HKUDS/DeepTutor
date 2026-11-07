@@ -6387,5 +6387,9 @@
   "No output": "Aucune sortie",
   "Exit code {{code}}": "Code de sortie {{code}}",
   "timed out": "délai dépassé",
-  "Code notebook": "Carnet de code"
+  "Code notebook": "Carnet de code",
+  "Board cell": "Cellule de panneau",
+  "Script": "Script",
+  "Hide script": "Masquer le script",
+  "GeoGebra commands, one per line.": "Commandes GeoGebra, une par ligne."
 }

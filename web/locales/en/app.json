@@ -6291,5 +6291,9 @@
   "No output": "No output",
   "Exit code {{code}}": "Exit code {{code}}",
   "timed out": "timed out",
-  "Code notebook": "Code notebook"
+  "Code notebook": "Code notebook",
+  "Board cell": "Board cell",
+  "Script": "Script",
+  "Hide script": "Hide script",
+  "GeoGebra commands, one per line.": "GeoGebra commands, one per line."
 }

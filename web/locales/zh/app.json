@@ -6291,5 +6291,9 @@
   "No output": "无输出",
   "Exit code {{code}}": "退出码 {{code}}",
   "timed out": "已超时",
-  "Code notebook": "代码笔记本"
+  "Code notebook": "代码笔记本",
+  "Board cell": "几何画板格",
+  "Script": "脚本",
+  "Hide script": "隐藏脚本",
+  "GeoGebra commands, one per line.": "GeoGebra 命令，每行一条。"
 }

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   createCodeCell,
+  createGeogebraCell,
   createMarkdownCell,
   parseNotebookMarkdown,
   serializeNotebookMarkdown,
@@ -34,5 +35,18 @@ describe("notebook cells", () => {
     const parsed = parseNotebookMarkdown("");
     expect(parsed.length).toBeGreaterThan(0);
     expect(parsed.some((c) => c.kind === "code")).toBe(true);
+  });
+
+  it("keeps a GeoGebra board cell across a round-trip", () => {
+    const cells = [
+      createMarkdownCell("Figure:"),
+      createGeogebraCell("A=(1,2)\nB=(3,4)\nSegment(A,B)"),
+    ];
+    const markdown = serializeNotebookMarkdown(cells);
+    expect(markdown).toContain("```geogebra");
+
+    const parsed = parseNotebookMarkdown(markdown);
+    expect(parsed.map((c) => c.kind)).toEqual(["markdown", "geogebra"]);
+    expect(parsed[1].source).toContain("Segment(A,B)");
   });
 });
