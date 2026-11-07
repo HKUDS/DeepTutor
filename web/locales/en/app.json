@@ -6305,5 +6305,7 @@
   "Text, a $formula$ or an image — Markdown shown on the line.": "Text, a $formula$ or an image — Markdown shown on the line.",
   "e.g. if $a>0$ then …": "e.g. if $a>0$ then …",
   "Delete link": "Delete link",
-  "(empty)": "(empty)"
+  "(empty)": "(empty)",
+  "Drag a dot on a cell onto another cell to link them; click a line to label it.": "Drag a dot on a cell onto another cell to link them; click a line to label it.",
+  "Connect in order": "Connect in order"
 }

@@ -6275,5 +6275,7 @@
   "Text, a $formula$ or an image — Markdown shown on the line.": "Текст, $формула$ або зображення — Markdown на лінії.",
   "e.g. if $a>0$ then …": "напр. якщо $a>0$, то …",
   "Delete link": "Видалити зв’язок",
-  "(empty)": "(порожньо)"
+  "(empty)": "(порожньо)",
+  "Drag a dot on a cell onto another cell to link them; click a line to label it.": "Перетягніть крапку однієї комірки на іншу, щоб з’єднати їх; натисніть лінію, щоб підписати.",
+  "Connect in order": "З’єднати по порядку"
 }

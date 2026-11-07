@@ -15,6 +15,7 @@ import { useTranslation } from "react-i18next";
 import {
   Background,
   BaseEdge,
+  ConnectionMode,
   Controls,
   EdgeLabelRenderer,
   Handle,
@@ -91,8 +92,16 @@ function CellNodeView({ data }: NodeProps<CellNode>) {
           <span className="text-[var(--muted-foreground)]">{empty}</span>
         )}
       </div>
-      <Handle type="target" position={Position.Left} className="!bg-[var(--primary)]" />
-      <Handle type="source" position={Position.Right} className="!bg-[var(--primary)]" />
+      <Handle
+        type="target"
+        position={Position.Left}
+        className="!h-3 !w-3 !border-2 !border-[var(--card)] !bg-[var(--primary)]"
+      />
+      <Handle
+        type="source"
+        position={Position.Right}
+        className="!h-3 !w-3 !border-2 !border-[var(--card)] !bg-[var(--primary)]"
+      />
     </div>
   );
 }
@@ -219,6 +228,17 @@ export default function NotebookGraphView({
     [graph, onGraphChange],
   );
 
+  const connectInOrder = useCallback(() => {
+    const next = [...graph.edges];
+    for (let i = 0; i < cells.length - 1; i += 1) {
+      const from = cells[i].id;
+      const to = cells[i + 1].id;
+      if (next.some((edge) => edge.from === from && edge.to === to)) continue;
+      next.push({ id: newNotebookEdgeId(), from, to, label: "" });
+    }
+    onGraphChange({ positions: graph.positions, edges: next });
+  }, [cells, graph, onGraphChange]);
+
   const saveLabel = useCallback(() => {
     if (!editing) return;
     onGraphChange({
@@ -240,7 +260,19 @@ export default function NotebookGraphView({
   }, [editing, graph, onGraphChange]);
 
   return (
-    <div className="h-full w-full">
+    <div className="relative h-full w-full">
+      <div className="pointer-events-none absolute left-3 top-3 z-10 max-w-[330px] rounded-lg border border-[color-mix(in_srgb,var(--border)_55%,transparent)] bg-[color-mix(in_srgb,var(--card)_92%,transparent)] px-3 py-2 text-[11.5px] leading-snug text-[var(--muted-foreground)] shadow-sm">
+        <p>
+          {t("Drag a dot on a cell onto another cell to link them; click a line to label it.")}
+        </p>
+        <button
+          type="button"
+          onClick={connectInOrder}
+          className="pointer-events-auto mt-1.5 rounded-md border border-[color-mix(in_srgb,var(--border)_60%,transparent)] px-2 py-1 text-[11px] text-[var(--foreground)] transition-colors hover:bg-[color-mix(in_srgb,var(--muted)_60%,transparent)]"
+        >
+          {t("Connect in order")}
+        </button>
+      </div>
       <ReactFlowProvider>
         <ReactFlow
           nodes={nodes}
@@ -255,6 +287,7 @@ export default function NotebookGraphView({
           nodeTypes={NODE_TYPES}
           edgeTypes={EDGE_TYPES}
           deleteKeyCode={null}
+          connectionMode={ConnectionMode.Loose}
           fitView
           minZoom={0.2}
           proOptions={{ hideAttribution: true }}

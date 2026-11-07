@@ -6320,5 +6320,7 @@
   "Text, a $formula$ or an image — Markdown shown on the line.": "Tekst, $formuła$ lub obraz — Markdown na linii.",
   "e.g. if $a>0$ then …": "np. jeśli $a>0$, to …",
   "Delete link": "Usuń połączenie",
-  "(empty)": "(puste)"
+  "(empty)": "(puste)",
+  "Drag a dot on a cell onto another cell to link them; click a line to label it.": "Przeciągnij kropkę jednej komórki na inną, aby je połączyć; kliknij linię, aby ją opisać.",
+  "Connect in order": "Połącz w kolejności"
 }

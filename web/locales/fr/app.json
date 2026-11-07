@@ -6401,5 +6401,7 @@
   "Text, a $formula$ or an image — Markdown shown on the line.": "Du texte, une $formule$ ou une image — en Markdown sur la ligne.",
   "e.g. if $a>0$ then …": "p. ex. si $a>0$ alors …",
   "Delete link": "Supprimer le lien",
-  "(empty)": "(vide)"
+  "(empty)": "(vide)",
+  "Drag a dot on a cell onto another cell to link them; click a line to label it.": "Fais glisser un point d’une cellule sur une autre pour les relier ; clique une ligne pour la légender.",
+  "Connect in order": "Relier dans l’ordre"
 }
