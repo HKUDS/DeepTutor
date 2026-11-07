@@ -6307,5 +6307,6 @@
   "Delete link": "删除连线",
   "(empty)": "（空）",
   "Drag a dot on a cell onto another cell to link them; click a line to label it.": "拖动单元格上的圆点到另一个单元格即可连线；点连线可写标签。",
-  "Connect in order": "按顺序连线"
+  "Connect in order": "按顺序连线",
+  "Add image": "上传图片"
 }

@@ -10,7 +10,7 @@
  */
 
 import dynamic from "next/dynamic";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Background,
@@ -165,11 +165,14 @@ export default function NotebookGraphView({
   graph,
   onGraphChange,
   onCellChange,
+  onUploadImage,
 }: {
   cells: NotebookCell[];
   graph: NotebookGraph;
   onGraphChange: (graph: NotebookGraph) => void;
   onCellChange?: (id: string, patch: Partial<NotebookCell>) => void;
+  /** Upload an image and return its URL, for a link label. */
+  onUploadImage?: (file: File) => Promise<string>;
 }) {
   const { t } = useTranslation();
   const [nodes, setNodes, onNodesChange] = useNodesState<CellNode>(
@@ -184,6 +187,35 @@ export default function NotebookGraphView({
     null,
   );
   const [editingCellId, setEditingCellId] = useState<string | null>(null);
+  const labelRef = useRef<HTMLTextAreaElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+
+  const insertLabelSnippet = useCallback((snippet: string) => {
+    setEditing((current) => {
+      if (!current) return current;
+      const element = labelRef.current;
+      const start = element?.selectionStart ?? current.label.length;
+      const end = element?.selectionEnd ?? current.label.length;
+      return {
+        ...current,
+        label:
+          current.label.slice(0, start) + snippet + current.label.slice(end),
+      };
+    });
+  }, []);
+
+  const uploadIntoLabel = useCallback(
+    async (file: File) => {
+      if (!onUploadImage) return;
+      try {
+        const url = await onUploadImage(file);
+        insertLabelSnippet(`\n![](${url})\n`);
+      } catch {
+        // A failed upload leaves the label as it was.
+      }
+    },
+    [insertLabelSnippet, onUploadImage],
+  );
 
   const edges: LabeledEdge[] = useMemo(
     () =>
@@ -369,12 +401,22 @@ export default function NotebookGraphView({
               {t("Text, a $formula$ or an image — Markdown shown on the line.")}
             </p>
             <textarea
+              ref={labelRef}
               autoFocus
               value={editing.label}
               rows={3}
               onChange={(event) =>
                 setEditing({ ...editing, label: event.target.value })
               }
+              onPaste={(event) => {
+                const file = Array.from(event.clipboardData?.files ?? []).find(
+                  (item) => item.type.startsWith("image/"),
+                );
+                if (file && onUploadImage) {
+                  event.preventDefault();
+                  void uploadIntoLabel(file);
+                }
+              }}
               placeholder={t("e.g. if $a>0$ then …")}
               className="mt-2 block w-full resize-y rounded-lg border border-[var(--border)] bg-transparent px-2.5 py-2 font-mono text-[12.5px] text-[var(--foreground)] outline-none"
             />
@@ -384,13 +426,37 @@ export default function NotebookGraphView({
               </div>
             ) : null}
             <div className="mt-3 flex items-center justify-between">
-              <button
-                type="button"
-                onClick={deleteEdge}
-                className="text-[12px] text-[var(--muted-foreground)] underline hover:text-[var(--foreground)]"
-              >
-                {t("Delete link")}
-              </button>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={deleteEdge}
+                  className="text-[12px] text-[var(--muted-foreground)] underline hover:text-[var(--foreground)]"
+                >
+                  {t("Delete link")}
+                </button>
+                {onUploadImage ? (
+                  <>
+                    <input
+                      ref={imageInputRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        event.target.value = "";
+                        if (file) void uploadIntoLabel(file);
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => imageInputRef.current?.click()}
+                      className="text-[12px] text-[var(--muted-foreground)] underline hover:text-[var(--foreground)]"
+                    >
+                      {t("Add image")}
+                    </button>
+                  </>
+                ) : null}
+              </div>
               <div className="flex gap-2">
                 <button
                   type="button"

@@ -58,11 +58,14 @@ function isNotebookGraph(value: unknown): value is NotebookGraph {
 export function splitNotebookGraph(markdown: string): {
   body: string;
   graph: NotebookGraph;
+  /** Cell ids in order, so links survive a reload (ids are otherwise fresh). */
+  cellIds: string[];
 } {
   const text = String(markdown ?? "");
   const lines = text.split("\n");
   const bodyLines: string[] = [];
   let graph = emptyNotebookGraph();
+  let cellIds: string[] = [];
   let found = false;
 
   let i = 0;
@@ -98,6 +101,12 @@ export function splitNotebookGraph(markdown: string): {
       const parsed = JSON.parse(inner.join("\n"));
       if (isNotebookGraph(parsed)) {
         graph = { positions: parsed.positions, edges: parsed.edges };
+        const rawCells = (parsed as { cells?: unknown }).cells;
+        if (Array.isArray(rawCells)) {
+          cellIds = rawCells.filter(
+            (id): id is string => typeof id === "string",
+          );
+        }
         found = true;
       }
     } catch {
@@ -105,7 +114,7 @@ export function splitNotebookGraph(markdown: string): {
     }
   }
 
-  return { body: bodyLines.join("\n"), graph };
+  return { body: bodyLines.join("\n"), graph, cellIds };
 }
 
 /**
@@ -127,7 +136,7 @@ export function appendNotebookGraph(
   );
   if (!edges.length && !Object.keys(positions).length) return markdown;
 
-  const payload = JSON.stringify({ positions, edges });
+  const payload = JSON.stringify({ cells: cellIds, positions, edges });
   const block = `\`\`\`dt-graph\n${payload}\n\`\`\``;
   const base = String(markdown ?? "").replace(/\s+$/, "");
   return `${base ? `${base}\n\n` : ""}${block}\n`;

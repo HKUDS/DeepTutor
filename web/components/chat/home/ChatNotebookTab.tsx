@@ -23,7 +23,7 @@ import RichCodeBlock from "@/components/common/RichCodeBlock";
 import { useAuthStatus } from "@/hooks/useAuthStatus";
 import { apiUrl } from "@/lib/api";
 import { getSession } from "@/lib/session-api";
-import { createNote, getNote, saveNote } from "@/lib/notes-api";
+import { createNote, getNote, saveNote, uploadNoteAsset } from "@/lib/notes-api";
 import {
   CODE_LANGUAGE_OPTIONS,
   createCodeCell,
@@ -104,6 +104,19 @@ function writePointer(key: string, pointer: StoredPointer): void {
   }
 }
 
+/**
+ * Restore each cell's saved id, so the graph's links (which point at ids) still
+ * find their cells after a reload. Parsing mints fresh ids every time; the ids
+ * persisted in the `dt-graph` block are the ones the links were written for.
+ */
+function applySavedCellIds(
+  cells: NotebookCell[],
+  ids: string[],
+): NotebookCell[] {
+  if (ids.length !== cells.length) return cells;
+  return cells.map((cell, index) => ({ ...cell, id: ids[index] }));
+}
+
 export default function ChatNotebookTab({ sessionId = null, docId = null }: ChatNotebookTabProps) {
   const { t } = useTranslation();
   const auth = useAuthStatus();
@@ -156,7 +169,7 @@ export default function ChatNotebookTab({ sessionId = null, docId = null }: Chat
           const markdown = page.content ?? "";
           lastSavedRef.current = markdown;
           const split = splitNotebookGraph(markdown);
-          setCells(parseNotebookMarkdown(split.body));
+          setCells(applySavedCellIds(parseNotebookMarkdown(split.body), split.cellIds));
           setGraph(split.graph);
         } catch (err) {
           if (!cancelled) setError(String(err));
@@ -210,7 +223,7 @@ export default function ChatNotebookTab({ sessionId = null, docId = null }: Chat
           const markdown = page.content ?? "";
           lastSavedRef.current = markdown;
           const split = splitNotebookGraph(markdown);
-          setCells(parseNotebookMarkdown(split.body));
+          setCells(applySavedCellIds(parseNotebookMarkdown(split.body), split.cellIds));
           setGraph(split.graph);
           setReady(true);
           return;
@@ -290,6 +303,38 @@ export default function ChatNotebookTab({ sessionId = null, docId = null }: Chat
       if (saveTimer.current) clearTimeout(saveTimer.current);
     };
   }, [cells, graph, ready, owner, persist]);
+
+  // Upload an image for a graph link's label. Assets hang off the page, so the
+  // page is created first when a brand-new notebook has not saved yet.
+  const uploadImage = useCallback(
+    async (file: File): Promise<string> => {
+      if (!docIdRef.current) {
+        const markdown = appendNotebookGraph(
+          serializeNotebookMarkdown(cells),
+          graph,
+          cells.map((cell) => cell.id),
+        );
+        const page = await createNote(
+          t("Code notebook"),
+          null,
+          markdown,
+          "super_note",
+        );
+        docIdRef.current = page.id;
+        revisionRef.current = page.revision;
+        lastSavedRef.current = markdown;
+        if (pointerKeyRef.current) {
+          writePointer(pointerKeyRef.current, {
+            id: page.id,
+            revision: page.revision,
+          });
+        }
+      }
+      const { url } = await uploadNoteAsset(docIdRef.current, file);
+      return url;
+    },
+    [cells, graph, t],
+  );
 
   const updateCell = useCallback((id: string, patch: Partial<NotebookCell>) => {
     setCells((prev) =>
@@ -441,6 +486,7 @@ export default function ChatNotebookTab({ sessionId = null, docId = null }: Chat
               graph={graph}
               onGraphChange={setGraph}
               onCellChange={updateCell}
+              onUploadImage={uploadImage}
             />
           </div>
         ) : (

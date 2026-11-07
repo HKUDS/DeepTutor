@@ -61,6 +61,24 @@ export const saveNote = (id: string, patch: Partial<NotePage> & { expected_revis
   noteRequest<NotePage>(`/${id}`, patch, 'PUT')
 export const createNote = (title = '', parent_id: string | null = null, content = '', kind = 'note') =>
   noteRequest<NotePage>('', { title, parent_id, content, kind, ...(content ? {} : { blocks: [] }) })
+
+/** Upload an image (or other allowed file) beside a page; returns its URL. */
+export async function uploadNoteAsset(
+  docId: string,
+  file: File,
+): Promise<{ url: string }> {
+  const form = new FormData()
+  form.append('file', file)
+  const response = await apiFetch(apiUrl(`/api/documents/${docId}/assets`), {
+    method: 'POST',
+    body: form,
+  })
+  if (!response.ok) {
+    const detail = await response.json().catch(() => null)
+    throw new Error(detail?.detail || `Upload failed (${response.status})`)
+  }
+  return response.json()
+}
 export const getSuggestions = (id: string) =>
   noteRequest<{ suggestions: NoteSuggestion[] }>(`/${id}/suggestions`)
 export const reviewSuggestion = (
