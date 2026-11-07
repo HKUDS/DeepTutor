@@ -1,19 +1,10 @@
 "use client";
 
-import dynamic from "next/dynamic";
 import { useMemo, useRef, useState } from "react";
 import {
-  AlertCircle,
-  ArrowDownNarrowWide,
-  ArrowUpNarrowWide,
   Bookmark,
-  Bot,
   Copy,
   Highlighter,
-  ListChecks,
-  Pencil,
-  Rows3,
-  Search,
   Sparkles,
   Trash2,
 } from "lucide-react";
@@ -43,11 +34,6 @@ import { AnnotationToolbar } from "./AnnotationToolbar";
 import { MarkRow } from "./MarkRow";
 import { toSelectable, useMarkSelection } from "./useMarkSelection";
 import { unitLabel } from "./TextUnitView";
-
-const AnnotationNoteEditor = dynamic(
-  () => import("./AnnotationNoteEditor").then((module) => module.AnnotationNoteEditor),
-  { ssr: false },
-);
 
 export interface AnnotationListProps {
   annotations: AnnotationItem[];
