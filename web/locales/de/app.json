@@ -6278,5 +6278,6 @@
   "Write a note, with $math$ in Markdown.": "Schreibe eine Notiz, mit $math$ in Markdown.",
   "No output": "Keine Ausgabe",
   "Exit code {{code}}": "Exit-Code {{code}}",
-  "timed out": "Zeitüberschreitung"
+  "timed out": "Zeitüberschreitung",
+  "Code notebook": "Code-Notizbuch"
 }

@@ -6260,5 +6260,6 @@
   "Write a note, with $math$ in Markdown.": "Напишіть нотатку, з $math$ у Markdown.",
   "No output": "Немає виводу",
   "Exit code {{code}}": "Код виходу {{code}}",
-  "timed out": "час вичерпано"
+  "timed out": "час вичерпано",
+  "Code notebook": "Блокнот коду"
 }

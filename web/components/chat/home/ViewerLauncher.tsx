@@ -141,7 +141,7 @@ export default function ViewerLauncher({
           />
           <ToolTile
             icon={SquareTerminal}
-            label={t("Notebook")}
+            label={t("Code notebook")}
             description={t("Notes and runnable code, with outputs inline.")}
             onClick={onOpenNotebook}
           />

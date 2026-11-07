@@ -6305,5 +6305,6 @@
   "Write a note, with $math$ in Markdown.": "Zapisz notatkę, z $math$ w Markdown.",
   "No output": "Brak danych wyjściowych",
   "Exit code {{code}}": "Kod wyjścia {{code}}",
-  "timed out": "przekroczono limit czasu"
+  "timed out": "przekroczono limit czasu",
+  "Code notebook": "Notatnik kodu"
 }

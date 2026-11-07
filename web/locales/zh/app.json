@@ -6290,5 +6290,6 @@
   "Write a note, with $math$ in Markdown.": "写点笔记，可用 $math$ 形式的 Markdown。",
   "No output": "无输出",
   "Exit code {{code}}": "退出码 {{code}}",
-  "timed out": "已超时"
+  "timed out": "已超时",
+  "Code notebook": "代码笔记本"
 }

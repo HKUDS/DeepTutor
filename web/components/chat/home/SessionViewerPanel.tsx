@@ -582,7 +582,7 @@ function SessionViewerPanelInner(
       const next: ViewerTab = {
         kind: "notebook",
         id: notebookTabId,
-        label: t("Notebook"),
+        label: t("Code notebook"),
       };
       setActiveTabId(notebookTabId);
       return [...prev, next];

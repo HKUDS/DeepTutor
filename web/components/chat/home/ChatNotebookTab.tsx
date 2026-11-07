@@ -176,7 +176,7 @@ export default function ChatNotebookTab({ sessionId }: ChatNotebookTabProps) {
     if (markdown === lastSavedRef.current) return;
     setSaveState("saving");
     try {
-      const title = t("Notebook");
+      const title = t("Code notebook");
       if (docIdRef.current) {
         const page = await saveNote(docIdRef.current, {
           title,
@@ -307,7 +307,7 @@ export default function ChatNotebookTab({ sessionId }: ChatNotebookTabProps) {
       <div className="flex shrink-0 items-center gap-2 border-b border-[color-mix(in_srgb,var(--border)_45%,transparent)] px-4 py-2.5">
         <div className="min-w-0 flex-1">
           <div className="truncate text-[12.5px] font-semibold text-[var(--foreground)]">
-            {t("Notebook")}
+            {t("Code notebook")}
           </div>
           <div className="truncate text-[10.5px] text-[var(--muted-foreground)]">
             {pointIdRef.current
