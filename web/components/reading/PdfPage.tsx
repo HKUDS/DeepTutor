@@ -4,6 +4,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { loadPdfjs, outputScale, type PdfDocument } from "@/lib/pdfjs-loader";
 import type { AnnotationItem } from "@/lib/reading-api";
+import {
+  cropLayout,
+  measurePageInkBox,
+  type NormalisedBox,
+} from "@/lib/pdf-page-geometry";
+import { canvasPixelRatio } from "@/lib/reading-zoom";
 import { AnnotationLayer } from "./AnnotationLayer";
 
 export interface PdfPageProps {
@@ -26,6 +32,20 @@ export interface PdfPageProps {
   /** Transient highlight from `reader_goto`, as normalised rects. */
   flashRects?: Array<[number, number, number, number]>;
   onAnnotationClick?: (annotation: AnnotationItem) => void;
+  /** Trim the page's own white side margins so the text block fills the pane. */
+  cropMargins?: boolean;
+  /**
+   * Reports this page's share of the page its visible strip covers, so the
+   * reader can measure "one zoom stop" from the size actually on screen. The
+   * locator tags the report: several pages are mounted at once, and a
+   * neighbour's ratio must never stand in for the page being read.
+   */
+  onCropRatio?: (locator: number, ratio: number) => void;
+  /**
+   * Cache key for the ink and picture measurements: a page that changes
+   * material must never show the previous one's crop.
+   */
+  inkKey?: string;
 }
 
 /**
@@ -55,14 +75,95 @@ export function PdfPage({
   highlightedAnnotationId,
   flashRects,
   onAnnotationClick,
+  cropMargins = false,
+  onCropRatio,
+  inkKey = `${doc ? "doc" : "none"}:${locator}`,
 }: PdfPageProps) {
   const { t } = useTranslation();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const textLayerRef = useRef<HTMLDivElement | null>(null);
   // Whether this page was ever drawn, so only those are handed back.
   const renderedRef = useRef(false);
+  // Whether this page's ink was ever measured. Measuring parses the page, so a
+  // page measured but never painted holds pdf.js's decoded copy just like a
+  // rendered one and has to be handed back too.
+  const measuredRef = useRef(false);
   const [ratio, setRatio] = useState<number | null>(null);
   const [failed, setFailed] = useState(false);
+  // `undefined` means "not measured yet"; `null` means "measured, nothing to
+  // crop". Painting waits for the answer so a page is not drawn once at full
+  // width and again at the cropped one.
+  const [inkState, setInkState] = useState<{
+    key: string;
+    box: NormalisedBox | null;
+  } | null>(null);
+  const inkBox = !cropMargins
+    ? null
+    : inkState?.key === inkKey
+      ? inkState.box
+      : undefined;
+  // "Not measured yet" is a state of its own, not the same thing as "measured,
+  // nothing to crop": both used to resolve to the uncropped layout, so the
+  // paint effect ran once before the measurement and again after it — every
+  // page drawn twice, at two different widths when the crop landed.
+  const awaitingInk = cropMargins && inkBox === undefined;
+
+  const layout = useMemo(
+    () =>
+      cropLayout(
+        width,
+        ratio ?? fallbackRatio,
+        cropMargins ? (inkBox ?? null) : null,
+      ),
+    [width, ratio, fallbackRatio, cropMargins, inkBox],
+  );
+
+  // How much of the page this strip shows. Reported only while this page is
+  // active: every page measures its own margins, and the zoom step must start
+  // from what is under the reader's eyes.
+  //
+  // Reported in every mode, not only while cropping: a page drawn whole is
+  // showing all of itself, so the share is 1. Leaving the last text-mode ratio
+  // behind made one press of "+" after switching to Fit page divide the fit
+  // ratio by a crop that is no longer on screen — 1250px instead of 750px.
+  //
+  // The locator goes with it because the render window holds neighbours too:
+  // an untagged report let whichever page settled last define the step.
+  useEffect(() => {
+    if (!active || !onCropRatio) return;
+    onCropRatio(locator, layout.visibleWidth / layout.fullWidth);
+  }, [active, locator, layout.visibleWidth, layout.fullWidth, onCropRatio]);
+
+  // -- ink box -------------------------------------------------------------
+
+  // Measured only inside the render window. `PdfDocumentView` mounts a page for
+  // every locator, so measuring on mount would start a scratch render for a
+  // 600-page document as soon as it opened with Fit text — the expensive work
+  // belongs to the pages that can be seen, or are about to be.
+  const shouldMeasureInk = cropMargins && (active || retain);
+
+  useEffect(() => {
+    if (!shouldMeasureInk) return;
+    let cancelled = false;
+    // Marked before the await: the page is parsed for its ink as soon as
+    // `getPage` is called, and the cleanup below has to hand back one that was
+    // measured but never painted.
+    measuredRef.current = true;
+    (async () => {
+      const page = await doc.getPage(locator);
+      if (cancelled) return;
+      const box = await measurePageInkBox(page, inkKey);
+      if (!cancelled) setInkState({ key: inkKey, box });
+    })().catch(() => {
+      if (!cancelled) setInkState({ key: inkKey, box: null });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [doc, locator, inkKey, shouldMeasureInk]);
+
+  // -- pictures ------------------------------------------------------------
+
 
   const height = Math.round(width * (ratio ?? fallbackRatio));
 
@@ -83,7 +184,9 @@ export function PdfPage({
         if (base.width > 0) {
           setRatio(base.height / base.width);
         }
-        const scale = width / base.width;
+        // The layout decides how much of the page is visible; the scale is
+        // still the full page's, because the bitmap is a window onto it.
+        const scale = layout.fullWidth / base.width;
         const viewport = page.getViewport({ scale });
 
         // Canvas and text layer are rendered CONCURRENTLY and independently.
@@ -94,20 +197,42 @@ export function PdfPage({
         // paint the page but never settle it, which produced a document that
         // looked perfect and could not be selected at all.
         const paintCanvas = async () => {
+          // The crop decides the bitmap's width and its horizontal shift, so
+          // painting before the measurement lands draws the page at the wrong
+          // size and then repaints it at the right one. Wait for the answer;
+          // the text layer below is still built, so the page can be selected
+          // while the measurement runs, and the page's own box keeps its
+          // place.
+          if (awaitingInk) return;
           const canvas = canvasRef.current;
           if (!canvas) return;
-          const dpr = outputScale();
-          canvas.width = Math.floor(viewport.width * dpr);
-          canvas.height = Math.floor(viewport.height * dpr);
-          canvas.style.width = `${Math.floor(viewport.width)}px`;
-          canvas.style.height = `${Math.floor(viewport.height)}px`;
+          // The bitmap holds only the visible strip, and the page is drawn
+          // shifted left by the cropped margin. Clamp this page's own bitmap
+          // against the budget: the caller clamps the *shared* width using page
+          // one's aspect, so a page whose own ratio is taller can still ask for
+          // a bitmap past the budget — which the browser drops as a blank page
+          // rather than an error. The ratio gives, the CSS box does not, so the
+          // layout width stays identical from page to page.
+          const dpr = canvasPixelRatio(
+            layout.visibleWidth,
+            layout.fullHeight,
+            outputScale(),
+          );
+          canvas.width = Math.max(1, Math.floor(layout.visibleWidth * dpr));
+          canvas.height = Math.max(1, Math.floor(layout.fullHeight * dpr));
+          canvas.style.width = `${layout.visibleWidth}px`;
+          canvas.style.height = `${layout.fullHeight}px`;
+          const shiftX = -layout.offsetX * dpr;
           // `canvas` only, never alongside `canvasContext`: pdf.js documents the
           // context parameter as backwards-compatibility requiring
           // `canvas: null`, and passing both is an unsupported combination.
           renderTask = page.render({
             canvas,
             viewport,
-            transform: dpr !== 1 ? [dpr, 0, 0, dpr, 0, 0] : undefined,
+            transform:
+              dpr !== 1 || layout.offsetX
+                ? [dpr, 0, 0, dpr, shiftX, 0]
+                : undefined,
           });
           await (renderTask as unknown as { promise: Promise<void> }).promise;
         };
@@ -171,7 +296,7 @@ export function PdfPage({
         // Already settled.
       }
     };
-  }, [doc, locator, width, active]);
+  }, [doc, locator, width, active, layout, awaitingInk]);
 
   // Free the canvas bitmap when the page scrolls far away. Without this a
   // 600-page document accumulates every page it ever showed.
@@ -189,14 +314,15 @@ export function PdfPage({
   // and operator list until told to let go — tens of MB a page for a scan.
   useEffect(() => {
     // `cleanup` waits for a cancelled render to settle before it frees.
-    // Only pages that were drawn: asking for the rest would load them.
-    if (retain || !renderedRef.current) return;
+    // Only pages that were drawn or measured: asking for the rest would load
+    // them.
+    if (retain || !(renderedRef.current || measuredRef.current)) return;
     releasePage(doc, locator);
   }, [retain, doc, locator]);
 
   useEffect(
     () => () => {
-      if (renderedRef.current) releasePage(doc, locator);
+      if (renderedRef.current || measuredRef.current) releasePage(doc, locator);
     },
     [doc, locator],
   );
@@ -209,16 +335,46 @@ export function PdfPage({
   return (
     <div
       data-reader-unit={locator}
+      data-page-width={layout.fullWidth}
+      data-page-offset-x={layout.offsetX}
       className="relative mx-auto shrink-0 overflow-hidden rounded-[10px] bg-white shadow-[0_1px_3px_rgba(0,0,0,0.10),0_8px_24px_-12px_rgba(0,0,0,0.18)] ring-1 ring-black/[0.06]"
-      style={{ width, height }}
+      style={{ width: layout.visibleWidth, height: layout.fullHeight }}
     >
-      <canvas ref={canvasRef} className="block h-full w-full" />
+      {/* Whole-page coordinates live here; the clip above trims the margins. */}
+      <div
+        className="absolute top-0"
+        // Explicit height: every child is absolutely positioned, so without it
+        // this surface would collapse and the annotation overlay (inset-0) with
+        // it.
+        style={{
+          left: -layout.offsetX,
+          top: 0,
+          width: layout.fullWidth,
+          height: layout.fullHeight,
+        }}
+      >
+      <canvas
+        ref={canvasRef}
+        className="absolute block"
+        // The bitmap holds the visible strip only, so it starts where that
+        // strip starts inside the page.
+        style={{
+          left: layout.offsetX,
+          top: 0,
+          width: layout.visibleWidth,
+          height: layout.fullHeight,
+        }}
+      />
       <div
         ref={textLayerRef}
-        className="textLayer"
+        className="textLayer absolute left-0 top-0"
         // The text layer is the selection surface; annotations sit above it but
         // must not swallow drags, so only this layer takes pointer events.
-        style={{ pointerEvents: "auto" }}
+        style={{
+          width: layout.fullWidth,
+          height: layout.fullHeight,
+          pointerEvents: "auto",
+        }}
       />
       <AnnotationLayer
         annotations={pageAnnotations}
@@ -226,6 +382,7 @@ export function PdfPage({
         flashRects={flashRects}
         onAnnotationClick={onAnnotationClick}
       />
+      </div>
       {!active && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
           <span className="font-mono text-[11px] text-black/25">{locator}</span>
