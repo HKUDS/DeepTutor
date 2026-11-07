@@ -264,11 +264,27 @@ class _ContextSummaryAgent(BaseAgent):
         raise NotImplementedError
 
 
+class HistoryBudgetExceeded(ValueError):
+    """Retained history cannot fit without cutting a complete exchange."""
+
+    error_code = "history_budget_exceeded"
+    retryable = False
+
+    def __init__(self, token_count: int, budget: int) -> None:
+        self.token_count = token_count
+        self.budget = budget
+        super().__init__(
+            f"Retained conversation history exceeds its budget ({token_count} estimated tokens "
+            f"for a {budget}-token plan). Start a new conversation or shorten the oversized "
+            "earlier exchange. Stored messages have been preserved."
+        )
+
+
 class ContextBuilder:
     """Construct history against a bounded plan plus optional summary trace.
 
-    The budget is a planning target, not destructive truncation: the newest
-    non-empty message is retained even when that single message exceeds it.
+    Older whole exchanges can be omitted from the request. If the remaining
+    exchange still exceeds the plan, fail explicitly and preserve stored data.
     """
 
     def __init__(
@@ -411,6 +427,11 @@ class ContextBuilder:
         return count_tokens(build_history_text(self._build_history(summary, messages))) + sum(
             _provider_response_state_tokens(row) for row in messages
         )
+
+    def _check_history_budget(self, token_count: int, budget: int) -> None:
+        """Validate the final plan; exact-recall builders can defer until projection."""
+        if token_count > budget:
+            raise HistoryBudgetExceeded(token_count, budget)
 
     async def _summarize(
         self,
@@ -779,6 +800,8 @@ class ContextBuilder:
         ):
             retained_groups.pop(0)
             retained_rows = [row for group in retained_groups for row in group]
+        final_tokens = self._model_tokens(retained_rows, stored_summary, route)
+        self._check_history_budget(final_tokens, budget)
         final_history = self._build_history(stored_summary, retained_rows)
 
         final_text = build_history_text(final_history)
@@ -787,7 +810,7 @@ class ContextBuilder:
             conversation_summary=stored_summary,
             context_text=final_text,
             events=events,
-            token_count=self._model_tokens(retained_rows, stored_summary, route),
+            token_count=final_tokens,
             budget=budget,
             model_history=replay_history(retained_rows, stored_summary, route),
             previous_model_turn=previous_model_turn,
@@ -797,6 +820,7 @@ class ContextBuilder:
 __all__ = [
     "ContextBuildResult",
     "ContextBuilder",
+    "HistoryBudgetExceeded",
     "TRUNCATION_GUARD_RATIO",
     "build_history_text",
     "count_tokens",

@@ -191,7 +191,11 @@ class MasteryContextBuilder(ContextBuilder):
             result.conversation_history = [*self._build_history(summary, []), pointer]
             result.context_text = build_history_text(result.conversation_history)
             result.token_count = _memory_tokens(result.model_history, summary)
+        super()._check_history_budget(result.token_count, result.budget)
         return result
+
+    def _check_history_budget(self, token_count: int, budget: int) -> None:
+        """Defer validation until build replaces oversized exchanges with recall pointers."""
 
     def _summary_instruction(self, language):
         return (
