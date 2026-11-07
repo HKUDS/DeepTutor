@@ -15,12 +15,15 @@ export interface NotePage extends CoWriterDocument {
   icon: string
   cover: string
   pinned: boolean
+  /** "note" (default) or "super_note" (the notebook editor). */
+  kind?: string
 }
 export interface NoteSummary extends CoWriterDocumentSummary {
   parent_id: string | null
   icon: string
   cover?: string
   pinned: boolean
+  kind?: string
   revision: number
 }
 export interface NoteSuggestion {
@@ -56,8 +59,8 @@ export const getNote = (id: string) => noteRequest<NotePage>(`/${id}`)
 export const listNotes = () => noteRequest<{ documents: NoteSummary[] }>('')
 export const saveNote = (id: string, patch: Partial<NotePage> & { expected_revision: number }) =>
   noteRequest<NotePage>(`/${id}`, patch, 'PUT')
-export const createNote = (title = '', parent_id: string | null = null, content = '') =>
-  noteRequest<NotePage>('', { title, parent_id, content, ...(content ? {} : { blocks: [] }) })
+export const createNote = (title = '', parent_id: string | null = null, content = '', kind = 'note') =>
+  noteRequest<NotePage>('', { title, parent_id, content, kind, ...(content ? {} : { blocks: [] }) })
 export const getSuggestions = (id: string) =>
   noteRequest<{ suggestions: NoteSuggestion[] }>(`/${id}/suggestions`)
 export const reviewSuggestion = (

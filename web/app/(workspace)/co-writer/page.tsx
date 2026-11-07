@@ -182,6 +182,20 @@ export default function CoWriterHomePage() {
     }
   }, [creating, router]);
 
+  const handleCreateSuperNote = useCallback(async () => {
+    if (creating) return;
+    setCreating(true);
+    setError("");
+    try {
+      const page = await createNote("", null, "", "super_note");
+      notifyCoWriterChanged();
+      router.push(`/co-writer/${page.id}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setCreating(false);
+    }
+  }, [creating, router]);
+
   const handleImportDocx = useCallback(
     async (file: File | undefined) => {
       if (!file || creating || importing) return;
@@ -239,8 +253,15 @@ export default function CoWriterHomePage() {
         `${page.title} ${page.preview}`.toLocaleLowerCase().includes(needle),
       )
     : pages.filter((page) => !page.parent_id || !byId.has(page.parent_id));
-  const pinned = visible.filter((page) => page.pinned);
-  const rest = visible.filter((page) => !page.pinned);
+  const orderPinnedFirst = (rows: NoteSummary[]) =>
+    [...rows].sort((a, b) => Number(b.pinned) - Number(a.pinned));
+  // Notes home holds two kinds: plain notes and notebook ("super note") pages.
+  const quickNotes = orderPinnedFirst(
+    visible.filter((page) => page.kind !== "super_note"),
+  );
+  const superNotes = orderPinnedFirst(
+    visible.filter((page) => page.kind === "super_note"),
+  );
 
   const card = (page: NoteSummary) => (
     <PageCard
@@ -270,7 +291,7 @@ export default function CoWriterHomePage() {
       />
       <PageHeader
         icon={PenLine}
-        title={t("Learning notebook")}
+        title={t("Co-Writer")}
         description={t("Pages for what you are learning — write, link, and study them with Dito.")}
         action={
           <div className="flex shrink-0 items-center gap-2">
@@ -283,6 +304,15 @@ export default function CoWriterHomePage() {
             >
               {importing ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
               {t("Import Word")}
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleCreateSuperNote()}
+              disabled={creating || importing}
+              className={pageActionClass("secondary")}
+            >
+              <Plus size={14} />
+              {t("New super note")}
             </button>
             <button
               type="button"
@@ -351,16 +381,16 @@ export default function CoWriterHomePage() {
           {!visible.length && (
             <p className="dt-notes-none">{t("No pages match “{{query}}”.", { query: query.trim() })}</p>
           )}
-          {!!pinned.length && (
-            <section className="dt-notes-section" aria-label={t("Pinned pages")}>
-              <h2>{t("Pinned pages")}</h2>
-              <div className="dt-notes-grid">{pinned.map(card)}</div>
+          {!!quickNotes.length && (
+            <section className="dt-notes-section" aria-label={t("Quick note")}>
+              <h2>{t("Quick note")}</h2>
+              <div className="dt-notes-grid">{quickNotes.map(card)}</div>
             </section>
           )}
-          {!!rest.length && (
-            <section className="dt-notes-section" aria-label={t(needle ? "Results" : "Recently edited")}>
-              {(pinned.length > 0 || needle) && <h2>{t(needle ? "Results" : "Recently edited")}</h2>}
-              <div className="dt-notes-grid">{rest.map(card)}</div>
+          {!!superNotes.length && (
+            <section className="dt-notes-section" aria-label={t("Super notes")}>
+              <h2>{t("Super notes")}</h2>
+              <div className="dt-notes-grid">{superNotes.map(card)}</div>
             </section>
           )}
         </>

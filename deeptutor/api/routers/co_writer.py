@@ -667,6 +667,8 @@ class CreateDocumentRequest(BaseModel):
     parent_id: str | None = None
     title: str | None = None
     content: str = ""
+    #: "note" (default) or "super_note" — which editor the page belongs to.
+    kind: str = "note"
 
 
 class UpdateDocumentRequest(BaseModel):
@@ -678,6 +680,7 @@ class UpdateDocumentRequest(BaseModel):
     pinned: bool = False
     title: str | None = None
     content: str | None = None
+    kind: str | None = None
 
 
 class DocumentResponse(CoWriterDocument):

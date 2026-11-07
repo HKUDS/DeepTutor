@@ -6265,5 +6265,8 @@
   "Board cell": "Комірка дошки",
   "Script": "Скрипт",
   "Hide script": "Приховати скрипт",
-  "GeoGebra commands, one per line.": "Команди GeoGebra, по одній на рядок."
+  "GeoGebra commands, one per line.": "Команди GeoGebra, по одній на рядок.",
+  "Quick note": "Швидка нотатка",
+  "Super notes": "Супернотатки",
+  "New super note": "Нова супернотатка"
 }

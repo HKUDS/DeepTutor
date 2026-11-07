@@ -48,6 +48,8 @@ class CoWriterDocument(BaseModel):
     icon: str = ""
     cover: str = ""
     pinned: bool = False
+    #: "note" (the plain note editor) or "super_note" (the notebook editor).
+    kind: str = "note"
     applied_suggestion_ids: list[str] = Field(default_factory=list)
     created_at: float = Field(default_factory=lambda: time.time())
     updated_at: float = Field(default_factory=lambda: time.time())
@@ -65,6 +67,7 @@ class CoWriterDocumentSummary(BaseModel):
     icon: str = ""
     cover: str = ""
     pinned: bool = False
+    kind: str = "note"
     revision: int = 0
 
 
@@ -219,6 +222,7 @@ class CoWriterStorage:
                     icon=doc.icon,
                     cover=doc.cover,
                     pinned=doc.pinned,
+                    kind=doc.kind,
                     revision=doc.revision,
                 )
             )
@@ -232,6 +236,7 @@ class CoWriterStorage:
         content: str = "",
         blocks: list[dict[str, Any]] | None = None,
         parent_id: str | None = None,
+        kind: str = "note",
     ) -> CoWriterDocument:
         with self.locked():
             if parent_id and self.load_document(parent_id) is None:
@@ -251,6 +256,7 @@ class CoWriterStorage:
                 content=content,
                 blocks=blocks,
                 parent_id=parent_id,
+                kind=kind,
                 created_at=now,
                 updated_at=now,
             )
@@ -344,7 +350,7 @@ class CoWriterStorage:
                         raise ValueError("Parent page does not exist")
                     cursor = ancestor.parent_id
                 document.parent_id = parent
-            for key in ("icon", "cover", "pinned"):
+            for key in ("icon", "cover", "pinned", "kind"):
                 if key in metadata:
                     setattr(document, key, metadata[key])
             document.revision += 1

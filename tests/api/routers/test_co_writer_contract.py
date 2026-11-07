@@ -144,6 +144,7 @@ def test_create_document_returns_full_document_shape(client, storage):
         "icon",
         "cover",
         "pinned",
+        "kind",
         "applied_suggestion_ids",
     }
     assert payload["blocks"] is None and payload["revision"] == 0
@@ -175,6 +176,14 @@ def test_create_document_rejects_non_string_fields(client):
     assert client.post("/documents", json={"content": ["not", "a", "string"]}).status_code == 422
 
 
+def test_create_document_records_its_kind(client):
+    """A page is a plain note by default; a notebook says so."""
+    default = client.post("/documents", json={"title": "note"}).json()
+    assert default["kind"] == "note"
+    notebook = client.post("/documents", json={"title": "nb", "kind": "super_note"}).json()
+    assert notebook["kind"] == "super_note"
+
+
 def test_list_documents_returns_summary_views_without_content(client, storage):
     first = storage.create_document(title="first", content="alpha body")
     second = storage.create_document(title="second", content="beta body")
@@ -198,6 +207,7 @@ def test_list_documents_returns_summary_views_without_content(client, storage):
             "icon",
             "cover",
             "pinned",
+            "kind",
             "revision",
         }
         assert "content" not in summary

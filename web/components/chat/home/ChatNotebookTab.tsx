@@ -43,7 +43,9 @@ import {
 const Geogebra = dynamic(() => import("@/components/Geogebra"), { ssr: false });
 
 interface ChatNotebookTabProps {
-  sessionId: string | null;
+  sessionId?: string | null;
+  /** Open a notebook page directly by id (from the Notes home). */
+  docId?: string | null;
 }
 
 type CellRun =
@@ -91,7 +93,7 @@ function writePointer(key: string, pointer: StoredPointer): void {
   }
 }
 
-export default function ChatNotebookTab({ sessionId }: ChatNotebookTabProps) {
+export default function ChatNotebookTab({ sessionId = null, docId = null }: ChatNotebookTabProps) {
   const { t } = useTranslation();
   const auth = useAuthStatus();
   const owner =
@@ -128,6 +130,27 @@ export default function ChatNotebookTab({ sessionId }: ChatNotebookTabProps) {
     setRuns({});
 
     void (async () => {
+      if (docId) {
+        // Opened directly from the Notes home: load this exact page.
+        try {
+          const page = await getNote(docId);
+          if (cancelled) return;
+          docIdRef.current = page.id;
+          revisionRef.current = page.revision;
+          notebookKeyRef.current = page.id;
+          pointIdRef.current = "";
+          pointerKeyRef.current = "";
+          const markdown = page.content ?? "";
+          lastSavedRef.current = markdown;
+          setCells(parseNotebookMarkdown(markdown));
+        } catch (err) {
+          if (!cancelled) setError(String(err));
+        } finally {
+          if (!cancelled) setReady(true);
+        }
+        return;
+      }
+
       let pointId = "";
       let pathId = "";
       if (sessionId) {
@@ -174,7 +197,7 @@ export default function ChatNotebookTab({ sessionId }: ChatNotebookTabProps) {
     return () => {
       cancelled = true;
     };
-  }, [owner, sessionId]);
+  }, [owner, sessionId, docId]);
 
   const persist = useCallback(async (nextCells: NotebookCell[]) => {
     const markdown = serializeNotebookMarkdown(nextCells);
@@ -190,7 +213,7 @@ export default function ChatNotebookTab({ sessionId }: ChatNotebookTabProps) {
         });
         revisionRef.current = page.revision;
       } else {
-        const page = await createNote(title, null, markdown);
+        const page = await createNote(title, null, markdown, "super_note");
         docIdRef.current = page.id;
         revisionRef.current = page.revision;
       }

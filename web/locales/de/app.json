@@ -6283,5 +6283,8 @@
   "Board cell": "Tafel-Zelle",
   "Script": "Skript",
   "Hide script": "Skript ausblenden",
-  "GeoGebra commands, one per line.": "GeoGebra-Befehle, einer pro Zeile."
+  "GeoGebra commands, one per line.": "GeoGebra-Befehle, einer pro Zeile.",
+  "Quick note": "Kurznotiz",
+  "Super notes": "Super-Notizen",
+  "New super note": "Neue Super-Notiz"
 }
