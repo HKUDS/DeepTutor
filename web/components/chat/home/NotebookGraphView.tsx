@@ -34,6 +34,7 @@ import {
 import "@xyflow/react/dist/style.css";
 
 import RichMarkdownRenderer from "@/components/common/RichMarkdownRenderer";
+import NotebookCellEditor from "@/components/chat/home/NotebookCellEditor";
 import {
   newNotebookEdgeId,
   type NotebookGraph,
@@ -160,10 +161,12 @@ export default function NotebookGraphView({
   cells,
   graph,
   onGraphChange,
+  onCellChange,
 }: {
   cells: NotebookCell[];
   graph: NotebookGraph;
   onGraphChange: (graph: NotebookGraph) => void;
+  onCellChange?: (id: string, patch: Partial<NotebookCell>) => void;
 }) {
   const { t } = useTranslation();
   const [nodes, setNodes, onNodesChange] = useNodesState<CellNode>(
@@ -177,6 +180,7 @@ export default function NotebookGraphView({
   const [editing, setEditing] = useState<{ id: string; label: string } | null>(
     null,
   );
+  const [editingCellId, setEditingCellId] = useState<string | null>(null);
 
   const edges: LabeledEdge[] = useMemo(
     () =>
@@ -259,6 +263,10 @@ export default function NotebookGraphView({
     setEditing(null);
   }, [editing, graph, onGraphChange]);
 
+  const editingCell = editingCellId
+    ? cells.find((cell) => cell.id === editingCellId)
+    : undefined;
+
   return (
     <div className="relative h-full w-full">
       <div className="pointer-events-none absolute left-3 top-3 z-10 max-w-[330px] rounded-lg border border-[color-mix(in_srgb,var(--border)_55%,transparent)] bg-[color-mix(in_srgb,var(--card)_92%,transparent)] px-3 py-2 text-[11.5px] leading-snug text-[var(--muted-foreground)] shadow-sm">
@@ -288,6 +296,10 @@ export default function NotebookGraphView({
           edgeTypes={EDGE_TYPES}
           deleteKeyCode={null}
           connectionMode={ConnectionMode.Loose}
+          onNodeDoubleClick={(_event, node) => {
+            if (onCellChange) setEditingCellId(node.id);
+          }}
+          zoomOnDoubleClick={false}
           fitView
           minZoom={0.2}
           proOptions={{ hideAttribution: true }}
@@ -296,6 +308,45 @@ export default function NotebookGraphView({
           <Controls showInteractive={false} />
         </ReactFlow>
       </ReactFlowProvider>
+
+      {editingCell ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/30 p-4"
+          onClick={() => setEditingCellId(null)}
+        >
+          <div
+            className="flex max-h-[85vh] w-full max-w-2xl flex-col rounded-xl border border-[var(--border)] bg-[var(--card)] shadow-xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex shrink-0 items-center justify-between border-b border-[color-mix(in_srgb,var(--border)_45%,transparent)] px-4 py-2.5">
+              <h2 className="text-[13px] font-semibold text-[var(--foreground)]">
+                {t(
+                  editingCell.kind === "code"
+                    ? "Code"
+                    : editingCell.kind === "geogebra"
+                      ? "GeoGebra board"
+                      : "Note",
+                )}
+              </h2>
+              <button
+                type="button"
+                onClick={() => setEditingCellId(null)}
+                className="rounded-md px-2 py-1 text-[12px] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
+              >
+                {t("Close")}
+              </button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto p-3">
+              <NotebookCellEditor
+                cell={editingCell}
+                onChange={(patch) => onCellChange?.(editingCell.id, patch)}
+              />
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {editing ? (
         <div

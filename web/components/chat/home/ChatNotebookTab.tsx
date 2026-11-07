@@ -424,6 +424,7 @@ export default function ChatNotebookTab({ sessionId = null, docId = null }: Chat
               cells={cells}
               graph={graph}
               onGraphChange={setGraph}
+              onCellChange={updateCell}
             />
           </div>
         ) : (
