@@ -6262,5 +6262,21 @@
   "Could not load the outline conversation.": "Der Lehrplan-Chat konnte nicht geladen werden.",
   "Describe how you want to change the outline, and the tutor will help you adjust it.": "Beschreibe, wie du den Lehrplan ändern möchtest, und der Tutor hilft dir bei der Anpassung.",
   "Could not start the outline conversation.": "Der Lehrplan-Chat konnte nicht gestartet werden.",
-  "Write it myself": "Selbst schreiben"
+  "Write it myself": "Selbst schreiben",
+  "Notes and runnable code, kept with this conversation.": "Notizen und ausführbarer Code, bei dieser Unterhaltung gespeichert.",
+  "Notes and runnable code, with outputs inline.": "Notizen und ausführbarer Code, Ausgaben direkt inline.",
+  "Bound to knowledge point {{id}}": "An Wissenspunkt {{id}} gebunden",
+  "Sign in to keep a notebook with this conversation.": "Melde dich an, um ein Notizbuch bei dieser Unterhaltung zu speichern.",
+  "Run all": "Alle ausführen",
+  "Loading notebook…": "Notizbuch wird geladen…",
+  "Note cell": "Notizzelle",
+  "Code cell": "Codezelle",
+  "The notebook could not be saved. Your edits stay on screen.": "Das Notizbuch konnte nicht gespeichert werden. Deine Änderungen bleiben sichtbar.",
+  "Run cell": "Zelle ausführen",
+  "Delete cell": "Zelle löschen",
+  "print('hello')": "print('hello')",
+  "Write a note, with $math$ in Markdown.": "Schreibe eine Notiz, mit $math$ in Markdown.",
+  "No output": "Keine Ausgabe",
+  "Exit code {{code}}": "Exit-Code {{code}}",
+  "timed out": "Zeitüberschreitung"
 }

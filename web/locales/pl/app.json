@@ -6289,5 +6289,21 @@
   "Could not load the outline conversation.": "Nie udało się wczytać rozmowy o planie.",
   "Describe how you want to change the outline, and the tutor will help you adjust it.": "Opisz, jak chcesz zmienić plan, a tutor pomoże Ci go dostosować.",
   "Could not start the outline conversation.": "Nie udało się rozpocząć rozmowy o planie.",
-  "Write it myself": "Napiszę to sam"
+  "Write it myself": "Napiszę to sam",
+  "Notes and runnable code, kept with this conversation.": "Notatki i kod do uruchomienia, zachowane przy tej rozmowie.",
+  "Notes and runnable code, with outputs inline.": "Notatki i kod do uruchomienia, z wynikami obok.",
+  "Bound to knowledge point {{id}}": "Powiązane z punktem wiedzy {{id}}",
+  "Sign in to keep a notebook with this conversation.": "Zaloguj się, aby zachować notatnik przy tej rozmowie.",
+  "Run all": "Uruchom wszystko",
+  "Loading notebook…": "Wczytywanie notatnika…",
+  "Note cell": "Komórka notatki",
+  "Code cell": "Komórka kodu",
+  "The notebook could not be saved. Your edits stay on screen.": "Nie udało się zapisać notatnika. Twoje zmiany pozostają na ekranie.",
+  "Run cell": "Uruchom komórkę",
+  "Delete cell": "Usuń komórkę",
+  "print('hello')": "print('hello')",
+  "Write a note, with $math$ in Markdown.": "Zapisz notatkę, z $math$ w Markdown.",
+  "No output": "Brak danych wyjściowych",
+  "Exit code {{code}}": "Kod wyjścia {{code}}",
+  "timed out": "przekroczono limit czasu"
 }

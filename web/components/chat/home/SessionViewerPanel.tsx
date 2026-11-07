@@ -49,6 +49,7 @@ import {
   NotebookPen,
   Paperclip,
   Plus,
+  SquareTerminal,
   UserRound,
   UsersRound,
   X,
@@ -133,6 +134,10 @@ const ChatMarkdownNoteTabBody = dynamic(
   () => import("@/components/chat/home/ChatMarkdownNoteTab"),
   { ssr: false },
 );
+const ChatNotebookTabBody = dynamic(
+  () => import("@/components/chat/home/ChatNotebookTab"),
+  { ssr: false },
+);
 const Geogebra = dynamic(() => import("@/components/Geogebra"), {
   ssr: false,
 });
@@ -177,6 +182,7 @@ type ViewerTab =
   | { kind: "file"; id: string; label: string; source: FilePreviewSource }
   | { kind: "web"; id: string; label: string; url: string }
   | { kind: "markdown-note"; id: string; label: string }
+  | { kind: "notebook"; id: string; label: string }
   | {
       kind: "quiz-followup";
       id: string;
@@ -211,6 +217,8 @@ export interface SessionViewerPanelHandle {
   openWebTab(url: string): void;
   /** Opens the session-scoped inline Markdown editor tab. */
   openMarkdownNoteTab(): void;
+  /** Opens the session-scoped notebook tab (notes + runnable code). */
+  openNotebookTab(): void;
   /** Opens (or focuses) the follow-up chat tab for a quiz question. */
   openQuizFollowupTab(context: QuizFollowupTabContext): void;
   /**
@@ -281,6 +289,8 @@ function webTabIdFor(url: string): string {
 
 const markdownNoteTabId = "markdown-note";
 
+const notebookTabId = "notebook";
+
 /** One launcher tab at a time — a second "+" focuses it instead of piling
  *  up blank tabs. */
 const newTabId = "new-tab";
@@ -315,6 +325,8 @@ function tabIcon(tab: ViewerTab): LucideIcon {
       return Globe;
     case "markdown-note":
       return NotebookPen;
+    case "notebook":
+      return SquareTerminal;
     case "side-chat":
       return RESPONDER_ICONS[tab.context.sideChat?.responder.kind ?? "dito"];
     case "quiz-followup":
@@ -555,6 +567,24 @@ function SessionViewerPanelInner(
         label: t("Markdown note"),
       };
       setActiveTabId(markdownNoteTabId);
+      return [...prev, next];
+    });
+    onAutoOpen();
+  }, [onAutoOpen, t]);
+
+  const openNotebookTab = useCallback(() => {
+    setTabs((prev) => {
+      const existingIdx = prev.findIndex((tab) => tab.id === notebookTabId);
+      if (existingIdx >= 0) {
+        setActiveTabId(notebookTabId);
+        return prev;
+      }
+      const next: ViewerTab = {
+        kind: "notebook",
+        id: notebookTabId,
+        label: t("Notebook"),
+      };
+      setActiveTabId(notebookTabId);
       return [...prev, next];
     });
     onAutoOpen();
@@ -841,6 +871,7 @@ function SessionViewerPanelInner(
       openFileTab,
       openWebTab,
       openMarkdownNoteTab,
+      openNotebookTab,
       openQuizFollowupTab,
       openSideChatTab,
       openGeogebraTab,
@@ -851,6 +882,7 @@ function SessionViewerPanelInner(
       openFileTab,
       openWebTab,
       openMarkdownNoteTab,
+      openNotebookTab,
       openQuizFollowupTab,
       openSideChatTab,
       openGeogebraTab,
@@ -1068,6 +1100,11 @@ function SessionViewerPanelInner(
             key={`${activeTab.id}:${sessionId ?? "pending"}`}
             sessionId={sessionId}
           />
+        ) : activeTab?.kind === "notebook" ? (
+          <ChatNotebookTabBody
+            key={`${activeTab.id}:${sessionId ?? "pending"}`}
+            sessionId={sessionId}
+          />
         ) : activeTab?.kind === "quiz-followup" ? (
           <QuizFollowupTabBody
             key={activeTab.context.questionKey}
@@ -1095,6 +1132,7 @@ function SessionViewerPanelInner(
             onOpenUrl={(url) => openFromNewTab(() => openWebTab(url))}
             onOpenLocalFile={(file) => openFromNewTab(() => openLocalFile(file))}
             onOpenMarkdownNote={() => openFromNewTab(openMarkdownNoteTab)}
+            onOpenNotebook={() => openFromNewTab(openNotebookTab)}
             onOpenGeogebraBoard={() => openFromNewTab(openGeogebraBoard)}
             // Always open: beside a draft it is a conversation of its own.
             onOpenSideChat={(responder) =>

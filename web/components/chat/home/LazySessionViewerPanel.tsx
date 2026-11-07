@@ -88,6 +88,7 @@ const LazySessionViewerPanel = forwardRef<
       openWebTab: (url) => callPanel((panel) => panel.openWebTab(url)),
       openMarkdownNoteTab: () =>
         callPanel((panel) => panel.openMarkdownNoteTab()),
+      openNotebookTab: () => callPanel((panel) => panel.openNotebookTab()),
       openQuizFollowupTab: (context) =>
         callPanel((panel) => panel.openQuizFollowupTab(context)),
       openSideChatTab: (options) => callPanel((panel) => panel.openSideChatTab(options)),

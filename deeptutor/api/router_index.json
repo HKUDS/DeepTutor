@@ -1,5 +1,5 @@
 {
-  "fingerprint": "d9c88a9523b9d1240fa460e52c250b7522815e24de0c08a6276951f41d43eb54",
+  "fingerprint": "112d9b507a3a0a7da89e9fc7bf127f2ca3aaaa62f83b77732cca117455233677",
   "routers": {
     "deeptutor.api.routers.auth:router": [
       {
@@ -1332,6 +1332,14 @@
         ]
       },
       {
+        "path": "/topics/{path_id}/lectures/{kp_id}/coverage",
+        "name": "get_point_lecture_coverage",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
         "path": "/topics/{path_id}/lectures/{kp_id}/drafts",
         "name": "roll_point_lecture_draft",
         "kind": "http",
@@ -1829,6 +1837,14 @@
         "kind": "http",
         "methods": [
           "GET"
+        ]
+      },
+      {
+        "path": "/notebooks/cells/run",
+        "name": "run_notebook_cell",
+        "kind": "http",
+        "methods": [
+          "POST"
         ]
       },
       {

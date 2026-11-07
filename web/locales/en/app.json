@@ -6274,5 +6274,21 @@
   "Could not load the outline conversation.": "Could not load the outline conversation.",
   "Describe how you want to change the outline, and the tutor will help you adjust it.": "Describe how you want to change the outline, and the tutor will help you adjust it.",
   "Could not start the outline conversation.": "Could not start the outline conversation.",
-  "Write it myself": "Write it myself"
+  "Write it myself": "Write it myself",
+  "Notes and runnable code, kept with this conversation.": "笔记与可运行的代码，随此会话保存。",
+  "Notes and runnable code, with outputs inline.": "笔记与可运行的代码，输出直接显示。",
+  "Bound to knowledge point {{id}}": "已绑定知识点 {{id}}",
+  "Sign in to keep a notebook with this conversation.": "登录后即可随此会话保存笔记本。",
+  "Run all": "全部运行",
+  "Loading notebook…": "正在载入笔记本…",
+  "Note cell": "笔记单元格",
+  "Code cell": "代码单元格",
+  "The notebook could not be saved. Your edits stay on screen.": "笔记本保存失败，你的修改仍保留在屏幕上。",
+  "Run cell": "运行单元格",
+  "Delete cell": "删除单元格",
+  "print('hello')": "print('hello')",
+  "Write a note, with $math$ in Markdown.": "写点笔记，可用 $math$ 形式的 Markdown。",
+  "No output": "无输出",
+  "Exit code {{code}}": "退出码 {{code}}",
+  "timed out": "已超时"
 }

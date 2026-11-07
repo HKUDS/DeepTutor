@@ -30,6 +30,7 @@ import {
   Globe,
   MessagesSquare,
   NotebookPen,
+  SquareTerminal,
   type LucideIcon,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -67,6 +68,7 @@ interface ViewerLauncherProps {
   onOpenUrl: (url: string) => void;
   onOpenLocalFile: (file: File) => void;
   onOpenMarkdownNote: () => void;
+  onOpenNotebook: () => void;
   onOpenGeogebraBoard: () => void;
   /** Open a side chat with whoever is picked (Dito from the tile itself). */
   onOpenSideChat: (responder: SideChatResponder) => void;
@@ -88,6 +90,7 @@ export default function ViewerLauncher({
   onOpenUrl,
   onOpenLocalFile,
   onOpenMarkdownNote,
+  onOpenNotebook,
   onOpenGeogebraBoard,
   onOpenSideChat,
   sideChatAboutConversation = true,
@@ -135,6 +138,12 @@ export default function ViewerLauncher({
             label={t("Markdown note")}
             description={t("A scratch page kept with this conversation.")}
             onClick={onOpenMarkdownNote}
+          />
+          <ToolTile
+            icon={SquareTerminal}
+            label={t("Notebook")}
+            description={t("Notes and runnable code, with outputs inline.")}
+            onClick={onOpenNotebook}
           />
           <ToolTile
             icon={FileUp}

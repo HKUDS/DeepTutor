@@ -4,7 +4,10 @@ Provides notebook creation, querying, updating, deletion, and record management 
 """
 
 import json
+from pathlib import Path
+import re
 from typing import AsyncGenerator, Literal
+import uuid
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import PlainTextResponse, StreamingResponse
@@ -187,6 +190,145 @@ async def _stream_add_record_with_summary(
 async def health_check():
     """Health check"""
     return {"status": "healthy", "service": "notebook"}
+
+
+# === Notebook code cells ====================================================
+# A notebook cell runs in the same sandbox the agent's ``exec`` tool uses, so a
+# learner's scratch code and the tutor share one execution environment. Literal
+# paths must stay above the ``/{notebook_id}`` routes below.
+
+
+class RunCellRequest(BaseModel):
+    """Run one notebook code cell."""
+
+    code: str
+    language: Literal["python", "shell", "c", "cpp"] = "python"
+    #: Optional per-notebook key so one notebook's files/outputs stay together.
+    notebook_id: str = ""
+    timeout: int = 30
+
+
+class RunCellArtifact(BaseModel):
+    filename: str
+    url: str
+    mime_type: str
+    size_bytes: int
+    relative_path: str
+
+
+class RunCellResponse(BaseModel):
+    stdout: str = ""
+    stderr: str = ""
+    exit_code: int = 0
+    timed_out: bool = False
+    #: Set when the sandbox itself failed (not the learner's code).
+    error: str = ""
+    artifacts: list[RunCellArtifact] = []
+
+
+_CELL_SOURCE_SUFFIX = {"python": "py", "c": "c", "cpp": "cpp"}
+_CELL_EXEC_LANGUAGES = ("python", "shell", "c", "cpp")
+
+
+def _cell_workdir(notebook_id: str) -> Path:
+    """A visible directory under the outputs root, so artifacts get URLs."""
+
+    from deeptutor.services.path_service import get_path_service
+
+    safe = re.sub(r"[^A-Za-z0-9_.-]", "_", notebook_id or "")[:80].strip("._-") or "default"
+    root = get_path_service().get_exec_workspace_dir() / "notebook_cells" / safe
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
+def _cell_command(language: str, source_name: str) -> str:
+    rel = f".deeptutor/{source_name}"
+    if language == "c":
+        return f"cc {rel} -O2 -o .deeptutor/prog && ./.deeptutor/prog"
+    if language == "cpp":
+        return f"c++ -std=c++17 -O2 {rel} -o .deeptutor/prog && ./.deeptutor/prog"
+    return f"python3 {rel}"
+
+
+@router.post("/notebooks/cells/run", response_model=RunCellResponse)
+async def run_notebook_cell(request: RunCellRequest) -> RunCellResponse:
+    """Run one cell and return its streams plus any files it produced.
+
+    Images and plots a cell writes land beside the code and are exposed through
+    ``/files/outputs`` — the same route agent artifacts use — so the notebook
+    can render them inline.
+    """
+
+    from deeptutor.multi_user.context import get_current_user
+    from deeptutor.services.sandbox import (
+        ExecRequest,
+        Mount,
+        ResourceLimits,
+        get_sandbox_service,
+    )
+    from deeptutor.services.sandbox.artifacts import (
+        collect_public_artifact_batch,
+        snapshot_public_artifact_files,
+    )
+
+    code = str(request.code or "").strip()
+    if not code:
+        raise HTTPException(status_code=400, detail="A cell needs source to run.")
+    language = request.language if request.language in _CELL_EXEC_LANGUAGES else "python"
+    limits = ResourceLimits(timeout_s=max(1, min(int(request.timeout or 30), 300)))
+
+    workdir = _cell_workdir(request.notebook_id)
+    src_dir = workdir / ".deeptutor"
+    src_dir.mkdir(parents=True, exist_ok=True)
+
+    if language == "shell":
+        command = code
+    else:
+        source_name = f"cell_{uuid.uuid4().hex[:12]}.{_CELL_SOURCE_SUFFIX[language]}"
+        (src_dir / source_name).write_text(code, encoding="utf-8")
+        command = _cell_command(language, source_name)
+
+    try:
+        user_id = str(get_current_user().id or "") or "local"
+    except Exception:
+        user_id = "local"
+
+    service = get_sandbox_service()
+    if not await service.available():
+        return RunCellResponse(
+            exit_code=1,
+            error="Code execution is unavailable in this environment.",
+        )
+
+    snapshot = snapshot_public_artifact_files(workdir)
+    result = await service.run(
+        ExecRequest(
+            command=command,
+            workdir=str(workdir),
+            mounts=(Mount(host_path=str(workdir), sandbox_path=str(workdir), read_only=False),),
+            limits=limits,
+        ),
+        user_id=user_id,
+    )
+    batch = collect_public_artifact_batch(str(workdir), changed_since=snapshot)
+    artifacts = [
+        RunCellArtifact(
+            filename=artifact.filename,
+            url=artifact.url,
+            mime_type=artifact.mime_type,
+            size_bytes=artifact.size_bytes,
+            relative_path=artifact.relative_path,
+        )
+        for artifact in batch.artifacts
+    ]
+    return RunCellResponse(
+        stdout=result.stdout,
+        stderr=result.stderr,
+        exit_code=result.exit_code,
+        timed_out=result.timed_out,
+        error=result.error,
+        artifacts=artifacts,
+    )
 
 
 @router.get("/notebooks")

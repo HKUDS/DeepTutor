@@ -23,6 +23,7 @@ vi.mock("next/dynamic", async () => {
       openFileTab: () => fixture.calls.push("file"),
       openWebTab: (url) => fixture.calls.push(url),
       openMarkdownNoteTab: () => fixture.calls.push("markdown"),
+      openNotebookTab: () => fixture.calls.push("notebook"),
       openQuizFollowupTab: () => fixture.calls.push("quiz"),
       openSideChatTab: () => fixture.calls.push("side-chat"),
       openGeogebraTab: () => fixture.calls.push("geogebra"),

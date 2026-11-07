@@ -6370,5 +6370,21 @@
   "Could not load the outline conversation.": "Impossible de charger la conversation sur le plan.",
   "Describe how you want to change the outline, and the tutor will help you adjust it.": "Décrivez comment vous souhaitez modifier le plan et le tuteur vous aidera à l'ajuster.",
   "Could not start the outline conversation.": "Impossible de démarrer la conversation sur le plan.",
-  "Write it myself": "L'écrire moi-même"
+  "Write it myself": "L'écrire moi-même",
+  "Notes and runnable code, kept with this conversation.": "Des notes et du code exécutable, conservés avec cette conversation.",
+  "Notes and runnable code, with outputs inline.": "Des notes et du code exécutable, avec les sorties intégrées.",
+  "Bound to knowledge point {{id}}": "Lié au point de connaissance {{id}}",
+  "Sign in to keep a notebook with this conversation.": "Connecte-toi pour conserver un carnet avec cette conversation.",
+  "Run all": "Tout exécuter",
+  "Loading notebook…": "Chargement du carnet…",
+  "Note cell": "Cellule de note",
+  "Code cell": "Cellule de code",
+  "The notebook could not be saved. Your edits stay on screen.": "Le carnet n'a pas pu être enregistré. Tes modifications restent affichées.",
+  "Run cell": "Exécuter la cellule",
+  "Delete cell": "Supprimer la cellule",
+  "print('hello')": "print('hello')",
+  "Write a note, with $math$ in Markdown.": "Écris une note, avec $math$ en Markdown.",
+  "No output": "Aucune sortie",
+  "Exit code {{code}}": "Code de sortie {{code}}",
+  "timed out": "délai dépassé"
 }

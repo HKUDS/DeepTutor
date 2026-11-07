@@ -6244,5 +6244,21 @@
   "Could not load the outline conversation.": "Не вдалося завантажити розмову про план.",
   "Describe how you want to change the outline, and the tutor will help you adjust it.": "Опишіть, як ви хочете змінити план, і тьютор допоможе вам його скоригувати.",
   "Could not start the outline conversation.": "Не вдалося запустить розмову про план.",
-  "Write it myself": "Написати самому"
+  "Write it myself": "Написати самому",
+  "Notes and runnable code, kept with this conversation.": "Нотатки та код для запуску, збережені при цій розмові.",
+  "Notes and runnable code, with outputs inline.": "Нотатки та код для запуску, з результатами поруч.",
+  "Bound to knowledge point {{id}}": "Прив'язано до вузла знань {{id}}",
+  "Sign in to keep a notebook with this conversation.": "Увійдіть, щоб зберегти блокнот при цій розмові.",
+  "Run all": "Запустити все",
+  "Loading notebook…": "Завантаження блокнота…",
+  "Note cell": "Комірка нотатки",
+  "Code cell": "Комірка коду",
+  "The notebook could not be saved. Your edits stay on screen.": "Не вдалося зберегти блокнот. Ваші зміни залишаються на екрані.",
+  "Run cell": "Запустити комірку",
+  "Delete cell": "Видалити комірку",
+  "print('hello')": "print('hello')",
+  "Write a note, with $math$ in Markdown.": "Напишіть нотатку, з $math$ у Markdown.",
+  "No output": "Немає виводу",
+  "Exit code {{code}}": "Код виходу {{code}}",
+  "timed out": "час вичерпано"
 }
