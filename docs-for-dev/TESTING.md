@@ -70,6 +70,20 @@ frontend at `WEB_BASE_URL`; critical and multi-worker projects have separate
 fixture requirements in [`playwright.config.ts`](../web/playwright.config.ts).
 Do not run browser mutations against a learner's only copy of data.
 
+The EPUB projects use the real API. Start a backend and frontend with a fresh,
+disposable `DEEPTUTOR_HOME` and authentication disabled, then point
+`WEB_BASE_URL` at that frontend. No model configuration or provider calls are
+needed. The tests upload unique synthetic EPUBs, create reading collections
+and sessions, and remove their own fixtures afterward. They exercise source
+anchors, chapter navigation, image rendering, and saved CFI restoration on
+the current reading-session route.
+
+```bash
+npx playwright install chromium webkit
+WEB_BASE_URL=http://127.0.0.1:3000 npx playwright test \
+  --project=epub-reader-chromium --project=epub-reader-webkit --workers=1
+```
+
 ## Modules, engines and optional integration
 
 Follow [Modules → Validation](MODULES.md#validation) for disposable wheel
