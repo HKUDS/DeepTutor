@@ -13,6 +13,7 @@ export function getLocale(lang: Language): string {
   if (lang === "ja") return "ja-JP";
   if (lang === "tr") return "tr-TR";
   if (lang === "ko") return "ko-KR";
+  if (lang === "hu") return "hu-HU";
   return "en-US";
 }
 

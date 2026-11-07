@@ -14533,7 +14533,17 @@ export interface components {
        * @enum {string}
        */
       readonly language:
-        "en" | "zh" | "fr" | "de" | "uk" | "pl" | "pt" | "vi" | "ja" | "tr";
+        | "en"
+        | "zh"
+        | "fr"
+        | "de"
+        | "uk"
+        | "pl"
+        | "pt"
+        | "vi"
+        | "ja"
+        | "tr"
+        | "hu";
     };
     /** LearnerOverrideRequest */
     readonly LearnerOverrideRequest: {
@@ -17944,7 +17954,19 @@ export interface components {
       readonly content_line_spacing: "compact" | "normal" | "relaxed";
       /** Language */
       readonly language?:
-        | ("en" | "zh" | "fr" | "de" | "uk" | "pl" | "pt" | "vi" | "ja" | "tr")
+        | (
+            | "en"
+            | "zh"
+            | "fr"
+            | "de"
+            | "uk"
+            | "pl"
+            | "pt"
+            | "vi"
+            | "ja"
+            | "tr"
+            | "hu"
+          )
         | null;
       /** Response Language */
       readonly response_language?:
@@ -17966,6 +17988,7 @@ export interface components {
             | "ms"
             | "vi"
             | "tr"
+            | "hu"
           )
         | null;
       /** Sidebar Description */

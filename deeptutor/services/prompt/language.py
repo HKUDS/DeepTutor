@@ -26,6 +26,7 @@ _LANGUAGE_LABELS: dict[str, str] = {
     "ms": "Bahasa Melayu",
     "vi": "Tiếng Việt",
     "tr": "Türkçe",
+    "hu": "Magyar",
 }
 
 

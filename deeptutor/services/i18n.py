@@ -15,6 +15,8 @@ def _parse_language(language: str | None) -> str:
         return "fr"
     if raw.replace("_", "-").split("-", 1)[0] == "tr" or raw in {"turkish", "türkçe"}:
         return "tr"
+    if raw.replace("_", "-").split("-", 1)[0] == "hu" or raw in {"hungarian", "magyar"}:
+        return "hu"
     return "en"
 
 
@@ -255,6 +257,59 @@ _MESSAGES: dict[str, dict[str, str]] = {
         ),
         "sandbox.disabled_for_account": "L’exécution de code est désactivée pour votre compte.",
         "sandbox.no_backend": "aucun backend de bac à sable disponible",
+    },
+    "hu": {
+        "api.content_required": "a tartalom kötelező",
+        "api.invalid_channels_config": "Érvénytelen csatornabeállítás",
+        "api.partner_already_exists": "'{name}' nevű partner már létezik",
+        "api.partner_not_found": "A partner nem található",
+        "api.partner_not_found_or_not_running": "A partner nem található vagy nem fut",
+        "api.partner_not_running": "A partner nem fut",
+        "api.partner_stopped_start_required": "A partner le van állítva. Beszélgetés előtt indítsa el.",
+        "api.persona_already_exists": "A persona már létezik: {name}",
+        "api.persona_name_required": "A persona neve kötelező",
+        "api.persona_not_found": "A persona nem található: {name}",
+        "api.soul_already_exists": "A(z) '{name}' soul már létezik",
+        "api.soul_content_empty": "Az egyéni soul tartalma üres",
+        "api.soul_library_not_found": "A(z) '{name}' soul nem található a könyvtárban",
+        "api.soul_not_found": "A soul nem található",
+        "api.tool_not_found": "A(z) '{name}' eszköz nem található",
+        "cli_apps.abi_mismatch": (
+            "A(z) {app!r} CLI-alkalmazás {installed} rendszerre települt, de ez a futókörnyezet "
+            "{current}. A rendszergazdának újra kell telepítenie."
+        ),
+        "cli_apps.args_required": (
+            "{tool} egy 'args' tömböt vár — elemenként egy parancssori argumentumot."
+        ),
+        "cli_apps.entry_admin_only": (
+            "A CLI-alkalmazásokat a rendszergazda telepíti; kérje meg, hogy adja hozzá ezt is."
+        ),
+        "cli_apps.install_in_progress": "Ez az alkalmazás már telepítés alatt áll.",
+        "cli_apps.not_in_catalog": "Nincs {id!r} nevű CLI-alkalmazás a katalógusban.",
+        "cli_apps.not_installed": (
+            "A(z) {app!r} CLI-alkalmazás már nincs telepítve ezen a telepítésen."
+        ),
+        "cli_apps.still_running": "{app} még fut ({seconds} s)",
+        "mcp.configure_command_or_url": "{name!r} kiszolgáló: állítson be vagy egy parancsot (stdio), vagy egy url-t.",
+        "mcp.configure_before_testing": "Tesztelés előtt állítson be vagy egy parancsot (stdio), vagy egy url-t.",
+        "mcp.server_error": "{name!r} kiszolgáló: {error}",
+        "mcp.server_missing": "Nincs {name!r} nevű kiszolgáló a listáján.",
+        "mcp.not_oauth": "Ez a kiszolgáló nem használ OAuth-ot; adjon meg inkább egy hitelesítő adatot.",
+        "mcp.oauth_callback_incomplete": "Az engedélyezési válasz hiányos volt.",
+        "mcp.oauth_callback_unknown": "Ez az engedélyezés lejárt vagy már befejeződött. Indítsa újra.",
+        "mcp.oauth_done": "Engedélyezve. Bezárhatja ezt a lapot.",
+        "mcp.oauth_failed": "Az engedélyezés nem sikerült.",
+        "mcp.catalog_entry_missing": "Nincs {id!r} nevű MCP-szolgáltatás a katalógusban.",
+        "mcp.entry_admin_only": (
+            "Ez a szolgáltatás helyi parancsként fut, ezért csak rendszergazda adhatja hozzá."
+        ),
+        "mcp.tool_not_available": (
+            "Ez az eszköz ebben a beszélgetésben nem érhető el. "
+            "Csak a promptban felsorolt eszközök hívhatók."
+        ),
+        "sandbox.command_blocked": "Hiba: a parancsot a biztonsági őr blokkolta (veszélyes minta).",
+        "sandbox.disabled_for_account": "A kódvégrehajtás ki van kapcsolva az Ön fiókjában.",
+        "sandbox.no_backend": "nincs elérhető sandbox-háttér",
     },
 }
 

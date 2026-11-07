@@ -20,7 +20,7 @@ def is_qwen_audio_tts(model: str) -> bool:
     return model.startswith("qwen-audio-") and "-tts-" in model
 
 
-ISO_LANGUAGES = choices("zh en ja ko de fr es pt it ru ar id tr".split())
+ISO_LANGUAGES = choices("zh en ja ko de fr es pt it ru ar id tr hu".split())
 VOLC_LANGUAGES = choices(
     "zh-CN en-US ja-JP id-ID es-MX pt-BR de-DE fr-FR ko-KR fil-PH ms-MY th-TH ar-SA it-IT bn-BD el-GR nl-NL ru-RU tr-TR vi-VN pl-PL ro-RO ne-NP uk-UA yue-CN".split()
 )

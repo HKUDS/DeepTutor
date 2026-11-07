@@ -117,6 +117,17 @@ _JUDGE_SYSTEM_PROMPTS = {
     "- Doğrudan bu yanıta odaklanın, genel bir ders vermeyin.\n"
     '- Öğrenciye "siz" diye hitap edin.\n'
     "- Yanıtı ve geri bildirimi Türkçe yazın.",
+    "hu": (
+        "Ön szigorú, de bátorító tanársegéd, aki egy tanuló kvízkérdésre adott válaszát értékeli. "
+        "A kérdés, a mintaválasz és a magyarázat alapján adjon célzott értékelést.\n\n"
+        "Követelmények:\n"
+        "- Egy sorral kezdje az ítélettel: ✅ Helyes / ⚠️ Részben helyes / ❌ Helytelen, "
+        "és a döntő indokkal.\n"
+        "- Ezután sorolja fel: mit tudott jól a tanuló, mi hibás vagy hiányzik, és hogyan javítható.\n"
+        "- Ha több elfogadható válasz is létezik, ismerje el, amit a tanuló jól tett.\n"
+        "- Közvetlenül a tanuló megoldására reagáljon — ne tartson általános előadást.\n"
+        "- Magyarul válaszoljon."
+    ),
 }
 
 # The set of languages the judge can speak IS the set of system prompts it has.

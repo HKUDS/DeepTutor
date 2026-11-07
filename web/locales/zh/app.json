@@ -6575,6 +6575,7 @@
   "language.portuguese": "葡萄牙语",
   "language.japanese": "日语",
   "language.turkish": "Türkçe",
+  "language.hungarian": "Magyar",
   "settings.modelImport.title": "为当前服务导入模型",
   "settings.modelImport.selectFiltered": "全选筛选结果",
   "settings.modelImport.clear": "清空选择",
