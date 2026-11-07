@@ -10,7 +10,7 @@
  */
 
 import dynamic from "next/dynamic";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Background,
@@ -39,12 +39,16 @@ import NotebookCellEditor from "@/components/chat/home/NotebookCellEditor";
 import {
   newNotebookEdgeId,
   type NotebookGraph,
+  type NotebookTag,
 } from "@/lib/notebook-graph";
 import { normalizeCellLanguage, type NotebookCell } from "@/lib/notebook-cells";
+import NotebookTagControl, {
+  NotebookTagChip,
+} from "@/components/chat/home/NotebookTagControl";
 
 const Geogebra = dynamic(() => import("@/components/Geogebra"), { ssr: false });
 
-type CellNode = Node<{ cell: NotebookCell }, "cell">;
+type CellNode = Node<{ cell: NotebookCell; tag?: NotebookTag }, "cell">;
 type LabeledEdge = Edge<{ label: string }, "labeled">;
 
 const NODE_WIDTH = 264;
@@ -70,11 +74,17 @@ function CellNodeView({ data }: NodeProps<CellNode>) {
         : t("Note");
   return (
     <div
-      style={{ width: NODE_WIDTH }}
+      style={{
+        width: NODE_WIDTH,
+        ...(data.tag ? { borderTop: `3px solid ${data.tag.color}` } : {}),
+      }}
       className="overflow-hidden rounded-xl border border-[color-mix(in_srgb,var(--border)_65%,transparent)] bg-[var(--card)] shadow-sm"
     >
-      <div className="border-b border-[color-mix(in_srgb,var(--border)_35%,transparent)] px-2.5 py-1 text-[10.5px] font-medium uppercase tracking-wide text-[var(--muted-foreground)]">
-        {label}
+      <div className="flex items-center justify-between gap-1 border-b border-[color-mix(in_srgb,var(--border)_35%,transparent)] px-2.5 py-1">
+        <span className="text-[10.5px] font-medium uppercase tracking-wide text-[var(--muted-foreground)]">
+          {label}
+        </span>
+        {data.tag ? <NotebookTagChip tag={data.tag} /> : null}
       </div>
       <div className="max-h-[240px] overflow-auto px-2.5 py-2 text-[12px]">
         {cell.kind === "code" ? (
@@ -166,6 +176,7 @@ export default function NotebookGraphView({
   onGraphChange,
   onCellChange,
   onUploadImage,
+  onTagChange,
 }: {
   cells: NotebookCell[];
   graph: NotebookGraph;
@@ -173,6 +184,7 @@ export default function NotebookGraphView({
   onCellChange?: (id: string, patch: Partial<NotebookCell>) => void;
   /** Upload an image and return its URL, for a link label. */
   onUploadImage?: (file: File) => Promise<string>;
+  onTagChange?: (id: string, tag: NotebookTag | null) => void;
 }) {
   const { t } = useTranslation();
   const [nodes, setNodes, onNodesChange] = useNodesState<CellNode>(
@@ -180,13 +192,23 @@ export default function NotebookGraphView({
       id: cell.id,
       type: "cell" as const,
       position: graph.positions[cell.id] ?? defaultPosition(index),
-      data: { cell },
+      data: { cell, tag: graph.tags[cell.id] },
     })),
   );
   const [editing, setEditing] = useState<{ id: string; label: string } | null>(
     null,
   );
   const [editingCellId, setEditingCellId] = useState<string | null>(null);
+  // Tags are edited from the list or the cell dialog; keep the nodes' chips in
+  // step without rebuilding the layout.
+  useEffect(() => {
+    setNodes((prev) =>
+      prev.map((node) => ({
+        ...node,
+        data: { ...node.data, tag: graph.tags[node.id] },
+      })),
+    );
+  }, [graph.tags, setNodes]);
   const labelRef = useRef<HTMLTextAreaElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
 
@@ -235,7 +257,7 @@ export default function NotebookGraphView({
       if (!connection.source || !connection.target) return;
       const id = newNotebookEdgeId();
       onGraphChange({
-        positions: graph.positions,
+        ...graph,
         edges: [
           ...graph.edges,
           { id, from: connection.source, to: connection.target, label: "" },
@@ -249,8 +271,8 @@ export default function NotebookGraphView({
   const onNodeDragStop = useCallback(
     (_event: unknown, node: CellNode) => {
       onGraphChange({
+        ...graph,
         positions: { ...graph.positions, [node.id]: node.position },
-        edges: graph.edges,
       });
     },
     [graph, onGraphChange],
@@ -260,7 +282,7 @@ export default function NotebookGraphView({
     (deleted: LabeledEdge[]) => {
       const ids = new Set(deleted.map((edge) => edge.id));
       onGraphChange({
-        positions: graph.positions,
+        ...graph,
         edges: graph.edges.filter((edge) => !ids.has(edge.id)),
       });
     },
@@ -275,13 +297,13 @@ export default function NotebookGraphView({
       if (next.some((edge) => edge.from === from && edge.to === to)) continue;
       next.push({ id: newNotebookEdgeId(), from, to, label: "" });
     }
-    onGraphChange({ positions: graph.positions, edges: next });
+    onGraphChange({ ...graph, edges: next });
   }, [cells, graph, onGraphChange]);
 
   const saveLabel = useCallback(() => {
     if (!editing) return;
     onGraphChange({
-      positions: graph.positions,
+      ...graph,
       edges: graph.edges.map((edge) =>
         edge.id === editing.id ? { ...edge, label: editing.label } : edge,
       ),
@@ -292,7 +314,7 @@ export default function NotebookGraphView({
   const deleteEdge = useCallback(() => {
     if (!editing) return;
     onGraphChange({
-      positions: graph.positions,
+      ...graph,
       edges: graph.edges.filter((edge) => edge.id !== editing.id),
     });
     setEditing(null);
@@ -377,6 +399,8 @@ export default function NotebookGraphView({
               <NotebookCellEditor
                 cell={editingCell}
                 onChange={(patch) => onCellChange?.(editingCell.id, patch)}
+                tag={graph.tags[editingCell.id]}
+                onTagChange={(next) => onTagChange?.(editingCell.id, next)}
               />
             </div>
           </div>

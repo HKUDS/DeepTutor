@@ -44,7 +44,9 @@ import {
   emptyNotebookGraph,
   splitNotebookGraph,
   type NotebookGraph,
+  type NotebookTag,
 } from "@/lib/notebook-graph";
+import NotebookTagControl from "@/components/chat/home/NotebookTagControl";
 
 // GeoGebra loads its applet from a CDN; it must stay client-only.
 const Geogebra = dynamic(() => import("@/components/Geogebra"), { ssr: false });
@@ -363,6 +365,15 @@ export default function ChatNotebookTab({ sessionId = null, docId = null }: Chat
     );
   }, []);
 
+  const updateTag = useCallback((id: string, tag: NotebookTag | null) => {
+    setGraph((prev) => {
+      const tags = { ...prev.tags };
+      if (tag) tags[id] = tag;
+      else delete tags[id];
+      return { ...prev, tags };
+    });
+  }, []);
+
   const addCell = useCallback((kind: NotebookCell["kind"]) => {
     const created =
       kind === "code"
@@ -512,6 +523,7 @@ export default function ChatNotebookTab({ sessionId = null, docId = null }: Chat
               onGraphChange={setGraph}
               onCellChange={updateCell}
               onUploadImage={uploadImage}
+              onTagChange={updateTag}
             />
           </div>
         ) : (
@@ -524,8 +536,10 @@ export default function ChatNotebookTab({ sessionId = null, docId = null }: Chat
                 total={cells.length}
                 run={runs[cell.id]}
                 previewing={previewing.has(cell.id)}
+                tag={graph.tags[cell.id]}
                 onTogglePreview={() => togglePreview(cell.id)}
                 onChange={(patch) => updateCell(cell.id, patch)}
+                onTagChange={(next) => updateTag(cell.id, next)}
                 onRun={() => void runCell(cell)}
                 onMove={(delta) => moveCell(cell.id, delta)}
                 onRemove={() => removeCell(cell.id)}
@@ -616,8 +630,10 @@ interface CellCardProps {
   total: number;
   run?: CellRun;
   previewing: boolean;
+  tag?: NotebookTag;
   onTogglePreview: () => void;
   onChange: (patch: Partial<NotebookCell>) => void;
+  onTagChange: (tag: NotebookTag | null) => void;
   onRun: () => void;
   onMove: (delta: number) => void;
   onRemove: () => void;
@@ -632,8 +648,10 @@ function CellCard({
   total,
   run,
   previewing,
+  tag,
   onTogglePreview,
   onChange,
+  onTagChange,
   onRun,
   onMove,
   onRemove,
@@ -654,6 +672,11 @@ function CellCard({
               ? t("GeoGebra board")
               : t("Note")}
         </span>
+        <NotebookTagControl
+          tag={tag}
+          onChange={onTagChange}
+          className="shrink-0"
+        />
         {cell.kind === "markdown" ? (
           <button type="button" className={CELL_BUTTON} onClick={onTogglePreview} aria-label={t(previewing ? "Edit" : "Preview")}>
             <span className="text-[10.5px] font-medium">

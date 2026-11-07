@@ -24,13 +24,34 @@ export interface NotebookGraphEdge {
   label: string;
 }
 
+/** A short label with a colour, shown on a cell's card. */
+export interface NotebookTag {
+  label: string;
+  color: string;
+}
+
 export interface NotebookGraph {
   positions: Record<string, NotebookGraphPoint>;
   edges: NotebookGraphEdge[];
+  /** Per-cell tag, keyed by cell id. */
+  tags: Record<string, NotebookTag>;
 }
 
+/** Colours a tag can take (kept in sync with the picker). */
+export const NOTEBOOK_TAG_COLORS = [
+  "#ef4444",
+  "#f59e0b",
+  "#eab308",
+  "#22c55e",
+  "#14b8a6",
+  "#3b82f6",
+  "#8b5cf6",
+  "#ec4899",
+  "#64748b",
+] as const;
+
 export function emptyNotebookGraph(): NotebookGraph {
-  return { positions: {}, edges: [] };
+  return { positions: {}, edges: [], tags: {} };
 }
 
 export function newNotebookEdgeId(): string {
@@ -47,6 +68,16 @@ function isNotebookGraph(value: unknown): value is NotebookGraph {
     typeof candidate.positions === "object" &&
     candidate.positions !== null &&
     Array.isArray(candidate.edges)
+  );
+}
+
+function isTagMap(value: unknown): value is Record<string, NotebookTag> {
+  if (!value || typeof value !== "object") return false;
+  return Object.values(value).every(
+    (tag) =>
+      Boolean(tag) &&
+      typeof (tag as NotebookTag).label === "string" &&
+      typeof (tag as NotebookTag).color === "string",
   );
 }
 
@@ -100,7 +131,13 @@ export function splitNotebookGraph(markdown: string): {
     try {
       const parsed = JSON.parse(inner.join("\n"));
       if (isNotebookGraph(parsed)) {
-        graph = { positions: parsed.positions, edges: parsed.edges };
+        graph = {
+          positions: parsed.positions,
+          edges: parsed.edges,
+          tags: isTagMap((parsed as { tags?: unknown }).tags)
+            ? (parsed as { tags: Record<string, NotebookTag> }).tags
+            : {},
+        };
         const rawCells = (parsed as { cells?: unknown }).cells;
         if (Array.isArray(rawCells)) {
           cellIds = rawCells.filter(
@@ -134,9 +171,18 @@ export function appendNotebookGraph(
   const edges = graph.edges.filter(
     (edge) => known.has(edge.from) && known.has(edge.to),
   );
-  if (!edges.length && !Object.keys(positions).length) return markdown;
+  const tags = Object.fromEntries(
+    Object.entries(graph.tags).filter(([id]) => known.has(id)),
+  );
+  if (
+    !edges.length &&
+    !Object.keys(positions).length &&
+    !Object.keys(tags).length
+  ) {
+    return markdown;
+  }
 
-  const payload = JSON.stringify({ cells: cellIds, positions, edges });
+  const payload = JSON.stringify({ cells: cellIds, positions, edges, tags });
   const block = `\`\`\`dt-graph\n${payload}\n\`\`\``;
   const base = String(markdown ?? "").replace(/\s+$/, "");
   return `${base ? `${base}\n\n` : ""}${block}\n`;

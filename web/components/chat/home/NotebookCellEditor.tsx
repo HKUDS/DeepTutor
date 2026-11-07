@@ -9,17 +9,19 @@
  * its language, a board cell edits its script with the board beside it.
  */
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import dynamic from "next/dynamic";
 import { useTranslation } from "react-i18next";
 
 import RichMarkdownRenderer from "@/components/common/RichMarkdownRenderer";
 import RichCodeBlock from "@/components/common/RichCodeBlock";
+import NotebookTagControl from "@/components/chat/home/NotebookTagControl";
 import {
   CODE_LANGUAGE_OPTIONS,
   normalizeCellLanguage,
   type NotebookCell,
 } from "@/lib/notebook-cells";
+import type { NotebookTag } from "@/lib/notebook-graph";
 
 const Geogebra = dynamic(() => import("@/components/Geogebra"), { ssr: false });
 
@@ -29,16 +31,21 @@ const TEXTAREA =
 export default function NotebookCellEditor({
   cell,
   onChange,
+  tag,
+  onTagChange,
 }: {
   cell: NotebookCell;
   onChange: (patch: Partial<NotebookCell>) => void;
+  tag?: NotebookTag;
+  onTagChange?: (tag: NotebookTag | null) => void;
 }) {
   const { t } = useTranslation();
   const [preview, setPreview] = useState(false);
 
+  let body: ReactNode;
   if (cell.kind === "code") {
-    return (
-      <div className="space-y-2">
+    body = (
+      <>
         <div className="flex items-center justify-between gap-2">
           <select
             value={normalizeCellLanguage(cell.language)}
@@ -77,13 +84,11 @@ export default function NotebookCellEditor({
             className={TEXTAREA}
           />
         )}
-      </div>
+      </>
     );
-  }
-
-  if (cell.kind === "geogebra") {
-    return (
-      <div className="space-y-2">
+  } else if (cell.kind === "geogebra") {
+    body = (
+      <>
         <Geogebra script={cell.source} editable width={520} height={320} />
         <textarea
           value={cell.source}
@@ -93,35 +98,49 @@ export default function NotebookCellEditor({
           placeholder={t("GeoGebra commands, one per line.")}
           className={TEXTAREA}
         />
-      </div>
+      </>
+    );
+  } else {
+    body = (
+      <>
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={() => setPreview((value) => !value)}
+            className="rounded-md border border-[color-mix(in_srgb,var(--border)_60%,transparent)] px-2 py-1 text-[11px] font-medium text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
+          >
+            {t(preview ? "Edit" : "Preview")}
+          </button>
+        </div>
+        {preview ? (
+          <div className="rounded-lg border border-[color-mix(in_srgb,var(--border)_45%,transparent)] px-3 py-2.5 text-[13px]">
+            <RichMarkdownRenderer content={cell.source} enableMath enableCode enableMermaid />
+          </div>
+        ) : (
+          <textarea
+            value={cell.source}
+            rows={16}
+            spellCheck={false}
+            onChange={(event) => onChange({ source: event.target.value })}
+            placeholder={t("Write a note, with $math$ in Markdown.")}
+            className={TEXTAREA}
+          />
+        )}
+      </>
     );
   }
 
   return (
     <div className="space-y-2">
-      <div className="flex justify-end">
-        <button
-          type="button"
-          onClick={() => setPreview((value) => !value)}
-          className="rounded-md border border-[color-mix(in_srgb,var(--border)_60%,transparent)] px-2 py-1 text-[11px] font-medium text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
-        >
-          {t(preview ? "Edit" : "Preview")}
-        </button>
-      </div>
-      {preview ? (
-        <div className="rounded-lg border border-[color-mix(in_srgb,var(--border)_45%,transparent)] px-3 py-2.5 text-[13px]">
-          <RichMarkdownRenderer content={cell.source} enableMath enableCode enableMermaid />
+      {onTagChange ? (
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-[11px] text-[var(--muted-foreground)]">
+            {t("Tag")}
+          </span>
+          <NotebookTagControl tag={tag} onChange={onTagChange} />
         </div>
-      ) : (
-        <textarea
-          value={cell.source}
-          rows={16}
-          spellCheck={false}
-          onChange={(event) => onChange({ source: event.target.value })}
-          placeholder={t("Write a note, with $math$ in Markdown.")}
-          className={TEXTAREA}
-        />
-      )}
+      ) : null}
+      {body}
     </div>
   );
 }

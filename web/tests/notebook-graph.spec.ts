@@ -14,6 +14,7 @@ describe("notebook graph", () => {
       edges: [
         { id: "e1", from: "cell-1", to: "cell-2", label: "if $a>0$ then …" },
       ],
+      tags: { "cell-1": { label: "core", color: "#3b82f6" } },
     };
     const page = appendNotebookGraph(cells, graph, ["cell-1", "cell-2"]);
     expect(page).toContain("```dt-graph");
@@ -23,6 +24,10 @@ describe("notebook graph", () => {
     expect(split.graph.edges).toHaveLength(1);
     expect(split.graph.edges[0].label).toBe("if $a>0$ then …");
     expect(split.graph.positions["cell-1"]).toEqual({ x: 10, y: 20 });
+    expect(split.graph.tags["cell-1"]).toEqual({
+      label: "core",
+      color: "#3b82f6",
+    });
     // The cell ids ride along, so the links can still find their cells.
     expect(split.cellIds).toEqual(["cell-1", "cell-2"]);
   });
@@ -35,10 +40,12 @@ describe("notebook graph", () => {
     const graph = {
       positions: { gone: { x: 1, y: 2 } },
       edges: [{ id: "e", from: "gone", to: "kept", label: "" }],
+      tags: { gone: { label: "x", color: "#ef4444" } },
     };
     const split = splitNotebookGraph(appendNotebookGraph("body", graph, ["kept"]));
     expect(split.graph.edges).toHaveLength(0);
     expect(split.graph.positions).toEqual({});
+    expect(split.graph.tags).toEqual({});
     expect(split.body.trimEnd()).toBe("body");
   });
 
@@ -52,6 +59,7 @@ describe("notebook graph", () => {
     const graph = {
       positions: {},
       edges: [{ id: "e1", from: "cell-a", to: "cell-b", label: "" }],
+      tags: {},
     };
     const page = appendNotebookGraph(
       "note\n\n```python\nx = 1\n```",
