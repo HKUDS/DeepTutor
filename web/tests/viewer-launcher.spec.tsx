@@ -86,7 +86,7 @@ it("names every tool on the launcher, and opening things lives there alone", asy
   fireEvent.click(screen.getByRole("button", { name: "New tab" }));
 
   expect(await screen.findByRole("textbox", { name: "Open URL" })).toBeVisible();
-  for (const name of ["Note", "Open a local file", "GeoGebra board"]) {
+  for (const name of ["Quick note", "Open a local file", "GeoGebra board"]) {
     expect(screen.getByRole("button", { name: new RegExp(name) })).not.toHaveAttribute(
       "aria-disabled",
       "true",

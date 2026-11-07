@@ -373,6 +373,37 @@ export async function fetchSessionAskHint(
   }
 }
 
+export interface FollowupSuggestion {
+  id: string;
+  /** Short chip text the learner reads. */
+  label: string;
+  /** The message sent as the learner's own turn when the chip is picked. */
+  prompt: string;
+}
+
+/**
+ * One-click reactions to the latest answer, for the chips under it.
+ *
+ * Empty is a valid answer (nothing to react to yet), so this never throws.
+ */
+export async function fetchSessionFollowups(
+  sessionId: string,
+  init?: RequestInit,
+): Promise<FollowupSuggestion[]> {
+  try {
+    const response = await apiFetch(
+      apiUrl(`/api/sessions/${sessionId}/followups`),
+      { cache: "no-store", ...init },
+    );
+    const result = await expectJson<{ suggestions?: FollowupSuggestion[] }>(
+      response,
+    );
+    return Array.isArray(result.suggestions) ? result.suggestions : [];
+  } catch {
+    return [];
+  }
+}
+
 export async function updateSessionTitle(
   sessionId: string,
   title: string,

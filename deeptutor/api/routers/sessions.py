@@ -514,6 +514,14 @@ async def get_session_ask_hint(session_id: str) -> dict[str, Any]:
     return await get_ask_hint(session_id)
 
 
+@router.get("/{session_id}/followups")
+async def get_session_followups(session_id: str) -> dict[str, Any]:
+    """One-click reactions to the latest answer, shown as chips beneath it."""
+    from deeptutor.services.chat_followups import get_followups
+
+    return await get_followups(session_id)
+
+
 @router.patch("/{session_id}")
 async def rename_session(session_id: str, payload: SessionRenameRequest):
     store = get_session_store()

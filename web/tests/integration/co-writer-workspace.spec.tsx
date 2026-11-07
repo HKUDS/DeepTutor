@@ -8,9 +8,16 @@ const source = (relative: string) =>
 describe("co-writer workspace boundaries", () => {
   it("keeps the dynamic route as composition only", () => {
     const route = source("app/(workspace)/co-writer/[docId]/page.tsx");
-    expect(route).toMatch(/<NoteWorkspace[^>]*docId=/);
+    expect(route).toMatch(/<NoteDocumentPage[^>]*docId=/);
     expect(route).not.toMatch(/apiFetch|localStorage|useState|useEffect/);
     expect(route.split("\n").length).toBeLessThan(20);
+  });
+
+  it("opens each page in the editor its kind calls for", () => {
+    const resolver = source("features/notes/components/NoteDocumentPage.tsx");
+    expect(resolver).toMatch(/<NoteWorkspace[^>]*docId=/);
+    expect(resolver).toMatch(/super_note/);
+    expect(resolver).toMatch(/ChatNotebookTab/);
   });
 
   it("uses revisioned blocks and scoped recovery", () => {

@@ -140,6 +140,7 @@ vi.mock('@/hooks/useContextBudget', () => ({
 
 vi.mock('@/lib/session-api', () => ({
   fetchSessionAskHint: vi.fn(async () => ''),
+  fetchSessionFollowups: vi.fn(async () => []),
   updateSessionOrganization: vi.fn(async () => ({})),
   getSessionOrganization: vi.fn(async (sessionId: string) => ({
     session_id: sessionId,

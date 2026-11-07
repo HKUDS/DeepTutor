@@ -1,5 +1,5 @@
 {
-  "fingerprint": "112d9b507a3a0a7da89e9fc7bf127f2ca3aaaa62f83b77732cca117455233677",
+  "fingerprint": "6f9476548d4b04ae6ca4824067cd628d20a683dc6c8e29e44158c9c4e168e18f",
   "routers": {
     "deeptutor.api.routers.auth:router": [
       {
@@ -3198,6 +3198,14 @@
       {
         "path": "/{session_id}/ask-hint",
         "name": "get_session_ask_hint",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/{session_id}/followups",
+        "name": "get_session_followups",
         "kind": "http",
         "methods": [
           "GET"
