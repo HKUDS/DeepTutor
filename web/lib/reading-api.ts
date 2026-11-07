@@ -39,6 +39,28 @@ export const ANNOTATION_SWATCH: Record<AnnotationColor, string> = {
   purple: "#c7aefa",
 };
 
+/**
+ * The English label for one palette colour.
+ *
+ * Lives beside the palette because three surfaces name the same five colours —
+ * the selection toolbar, the mark list, and anything else that offers a
+ * swatch — and a second copy would drift.
+ */
+export function annotationColorLabel(color: AnnotationColor): string {
+  switch (color) {
+    case "green":
+      return "Green";
+    case "blue":
+      return "Blue";
+    case "pink":
+      return "Pink";
+    case "purple":
+      return "Purple";
+    default:
+      return "Yellow";
+  }
+}
+
 export interface MaterialInfo {
   material_id: string;
   filename: string;

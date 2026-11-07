@@ -1289,3 +1289,106 @@ def test_state_written_before_the_split_is_still_read(store: ReadingStore, pdf_p
 
     notes = sorted(row.note for row in store.annotations(manifest.material_id))
     assert notes == ["written after the split", "written by the old reader"]
+
+
+def test_editing_a_mark_keeps_the_author_it_was_written_with(
+    store: ReadingStore, pdf_path: Path
+) -> None:
+    """An update must not relabel the assistant's mark as the reader's.
+
+    The request body cannot say who authored a mark — the router hardcodes
+    ``"user"`` — so an edit that ignored the stored author would silently strip
+    the assistant badge from a mark the model made.
+    """
+    manifest = store.ingest(pdf_path)
+
+    saved = store.save_annotation(
+        manifest.material_id,
+        Annotation(
+            annotation_id="",
+            locator=1,
+            quote="Introduction",
+            note="from the assistant",
+            author="assistant",
+        ),
+    )
+    assert saved.author == "assistant"
+
+    # The reader recolours it; the router would send author="user".
+    edited = store.save_annotation(
+        manifest.material_id,
+        Annotation(
+            annotation_id=saved.annotation_id,
+            locator=1,
+            quote="Introduction",
+            note="from the assistant",
+            color="green",
+            author="user",
+        ),
+    )
+
+    assert edited.author == "assistant"
+    stored = store.annotations(manifest.material_id)
+    assert [row.author for row in stored] == ["assistant"]
+
+
+def test_editing_a_mark_keeps_its_revision_resolution(store: ReadingStore, pdf_path: Path) -> None:
+    """An edit must not silently clear a revision-migration warning.
+
+    Revision migration marks a row ``unresolved`` or ``ambiguous`` when its
+    quote no longer identifies exactly one passage. The router's payload has
+    no way to say that, so a payload built from defaults claims ``resolved``;
+    an edit that trusted it would hide the review badge without re-checking
+    the quote against the new text.
+    """
+    manifest = store.ingest(pdf_path)
+
+    saved = store.save_annotation(
+        manifest.material_id,
+        Annotation(
+            annotation_id="",
+            locator=1,
+            quote="Introduction",
+            note="v1",
+            resolution="unresolved",
+        ),
+    )
+    assert saved.resolution == "unresolved"
+
+    # The reader edits the note. The router's payload has no resolution
+    # field, so the Annotation it builds carries the dataclass default.
+    edited = store.save_annotation(
+        manifest.material_id,
+        Annotation(
+            annotation_id=saved.annotation_id,
+            locator=1,
+            quote="Introduction",
+            note="v2",
+        ),
+    )
+
+    assert edited.note == "v2"
+    assert edited.resolution == "unresolved"
+    stored = store.annotations(manifest.material_id)
+    assert [(row.note, row.resolution) for row in stored] == [("v2", "unresolved")]
+
+
+def test_annotation_response_carries_its_resolution():
+    """The reader draws a badge from `resolution`; the response must carry it."""
+    from deeptutor.api.routers.reading import AnnotationInfo
+
+    info = AnnotationInfo(
+        annotation_id="a1",
+        locator=1,
+        kind="highlight",
+        color="yellow",
+        quote="Intro",
+        note="",
+        rects=[],
+        author="user",
+        created_at=1.0,
+        updated_at=2.0,
+        resolution="unresolved",
+    )
+
+    assert info.model_dump()["resolution"] == "unresolved"
