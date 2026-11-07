@@ -144,6 +144,24 @@ class MasteryContextBuilder(ContextBuilder):
             project_mastery_replay(replay_history(messages, route=route)), summary
         )
 
+    def _select_recent_messages(self, messages, recent_budget, route=None):
+        older, recent = super()._select_recent_messages(messages, recent_budget, route=route)
+        # A failed memory call keeps the watermark, so the backlog grows by one
+        # exchange every turn and each retry used to resend all of it (#2496).
+        # Fold in only the oldest exchanges that fit one history plan, at least
+        # one; the rest stay unsummarized for the next turn.
+        limit = getattr(self, "_fold_budget", None)
+        if limit is None:
+            return older, recent
+        folded = tokens = 0
+        for group in history_groups(older):
+            if "id" in group[-1]:
+                tokens += count_tokens(archive_text(group))
+            if folded and tokens > limit:
+                break
+            folded += len(group)
+        return older[:folded], older[folded:] + recent
+
     async def build(self, *, session_id, leaf_message_id=None, **kwargs):
         # Retained memory and generation are different budgets: reasoning
         # providers count hidden tokens in max_tokens too (#1926).
@@ -154,6 +172,7 @@ class MasteryContextBuilder(ContextBuilder):
         # Changing the model or its max_tokens changes the key, so a fix on the
         # user's side takes effect on the next turn without waiting out the backoff.
         self._backoff_model = str(getattr(kwargs.get("llm_config"), "model", "") or "")
+        self._fold_budget = self._history_budget(kwargs.get("llm_config"))
         # The store enforces the active user/session and the selected ancestor
         # chain. No filesystem path, arbitrary session selector, or global search.
         rows = await self.store.get_messages_for_context(

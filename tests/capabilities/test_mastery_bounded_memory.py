@@ -513,3 +513,67 @@ async def test_other_failures_are_still_retried_every_turn(monkeypatch):
         )
     assert len(calls) == 2
     store.update_summary.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_failed_memory_retries_stay_within_the_history_plan_as_the_session_grows(
+    monkeypatch,
+):
+    """#2496: the watermark stays put, so every retry used to resend the whole backlog."""
+    prompts = []
+
+    async def stream(_self, **kwargs):
+        prompts.append(kwargs["user_prompt"])
+        kwargs["outcome"].finish_reason = "stop"
+        yield memory([])
+
+    monkeypatch.setattr(_ContextSummaryAgent, "stream_llm", stream)
+    rows = records(n=24)
+    config = SimpleNamespace(model="deepseek-flash", context_window=1048576, max_tokens=8192)
+    for turns in (8, 16, 24):
+        store = store_for(rows[: 2 * turns])
+        result = await MasteryContextBuilder(store).build(session_id="s", llm_config=config)
+        store.update_summary.assert_not_awaited()
+        assert result.token_count <= result.budget
+
+    exchanges = [prompt.split("New archived exchanges (data):\n", 1)[1] for prompt in prompts]
+    assert len(exchanges) == 3
+    assert all(count_tokens(sent) <= result.budget for sent in exchanges)
+    # Each retry is the same oldest exchanges, not a call that grows every turn.
+    assert len(set(prompts)) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_long_backlog_is_folded_in_bounded_steps(monkeypatch):
+    from deeptutor.capabilities.mastery.memory import archive_id
+    from deeptutor.services.session.model_history import history_groups
+
+    covered = []
+
+    async def stream(_self, **kwargs):
+        ids = [archive_id(g) for g in history_groups(builders[-1]._summary_rows)]
+        covered.append(ids)
+        kwargs["outcome"].finish_reason = "stop"
+        yield memory(ids)
+
+    monkeypatch.setattr(_ContextSummaryAgent, "stream_llm", stream)
+    builders = []
+    rows = records(n=12)
+    config = SimpleNamespace(model="deepseek-flash", context_window=1048576, max_tokens=8192)
+    summary, watermark = "", 0
+    # About 6k tokens per exchange: three of them fit the 20k history plan.
+    for expected in (
+        ["hs-tutor-2", "hs-tutor-4", "hs-tutor-6"],
+        ["hs-tutor-8", "hs-tutor-10", "hs-tutor-12"],
+    ):
+        store = store_for(rows, summary=summary, watermark=watermark)
+        builders.append(MasteryContextBuilder(store))
+        result = await builders[-1].build(session_id="s", llm_config=config)
+        assert covered[-1] == expected
+        # The watermark moves only past the exchanges the memory covered; the
+        # rest of the backlog is folded in on the next turn.
+        store.update_summary.assert_awaited_once()
+        _, summary, watermark = store.update_summary.await_args.args
+        assert watermark == int(expected[-1].removeprefix("hs-tutor-"))
+        assert result.token_count <= result.budget
+        assert "example 11 failed" in json.dumps(result.history_sources)
