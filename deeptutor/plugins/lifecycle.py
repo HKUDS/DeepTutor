@@ -17,6 +17,7 @@ import zipfile
 
 from packaging.version import InvalidVersion, Version
 
+from deeptutor.plugins.environment import plugin_environment
 from deeptutor.plugins.manifest import (
     MANIFEST_FILENAME,
     ManifestValidationError,
@@ -377,8 +378,7 @@ def _venv_python(root: Path) -> Path:
 
 
 def _clean_env() -> dict[str, str]:
-    keep = ("PATH", "HOME", "LANG", "LC_ALL", "TMPDIR", "SSL_CERT_FILE", "SSL_CERT_DIR")
-    env = {key: os.environ[key] for key in keep if key in os.environ}
+    env = plugin_environment()
     for key in ("HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy"):
         if key in os.environ:
             env[key] = os.environ[key]

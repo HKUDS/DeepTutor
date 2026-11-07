@@ -409,12 +409,14 @@ def test_build_openai_client_routes_oauth_backend_through_adapter(monkeypatch) -
             binding="openai_codex",
             model="openai-codex/gpt-5.5",
             api_key="unused",
+            extra_headers={"X-Codex-Turn-Metadata": "fixture"},
             base_url="https://chatgpt.com/backend-api",
         )
     )
 
     assert isinstance(client, _ProviderOpenAIAdapter)
     assert captured["default_model"] == "openai-codex/gpt-5.5"
+    assert captured["extra_headers"] == {"X-Codex-Turn-Metadata": "fixture"}
 
 
 @pytest.mark.asyncio

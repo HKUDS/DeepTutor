@@ -426,9 +426,14 @@ class TurnApplicationService:
         timeout_seconds: float = 15.0,
     ) -> bool:
         """Stop a live turn and wait until its owner has finished teardown."""
-        if not await self.cancel_turn(turn_id, command_id=command_id):
-            return False
+        accepted = await self.cancel_turn(turn_id, command_id=command_id)
         store, _runtime = self._resolve()
+        if not accepted:
+            turn = await store.get_turn(turn_id)
+            if turn is None or turn.get("status") in self._ACTIVE_TURN_STATUSES:
+                return False
+            # A terminal row can precede the owner's finally/lease release.
+            # Duplicate Stop commands wait through that same boundary.
         deadline = time.monotonic() + max(0.0, float(timeout_seconds))
         released = False
         while True:

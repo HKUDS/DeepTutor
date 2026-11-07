@@ -169,6 +169,15 @@ class EmbeddingProviderSpec:
 
 
 EMBEDDING_PROVIDERS: dict[str, EmbeddingProviderSpec] = {
+    "nvidia_nim": EmbeddingProviderSpec(
+        label="NVIDIA NIM",
+        adapter="nvidia_nim",
+        default_api_base=EMBEDDING_PROVIDER_DEFAULT_ENDPOINTS["nvidia_nim"],
+        keywords=(),
+        is_local=False,
+        default_model="nvidia/nemotron-3.5-embed-8b",
+        default_dim=4096,
+    ),
     "openai": EmbeddingProviderSpec(
         label="OpenAI",
         default_api_base=EMBEDDING_PROVIDER_DEFAULT_ENDPOINTS["openai"],

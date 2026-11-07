@@ -2,4 +2,4 @@
 -r ../core.txt
 -r parsing.txt
 docling[xbrl]>=2.123.1
-docling-slim[format-iwork,format-opendocument,format-video]>=2.123.1
+docling-slim[format-iwork,format-opendocument]>=2.123.1

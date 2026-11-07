@@ -642,8 +642,10 @@ async def run_labeled_step(
     # pre-label thinking.
     if binding or saw_pre_label_think:
         text = clean_thinking_tags(text, binding, model)
-    ordered_tool_calls = tc_acc.ordered()
-    ordered_tool_calls = [tc for tc in ordered_tool_calls if tc.get("name")]
+    # ``collected`` filters unnamed parts and applies the id / arguments
+    # fallbacks, so a provider that streams a tool call without an ``id`` still
+    # yields a correlatable call (matching the other accumulator consumers).
+    ordered_tool_calls = tc_acc.collected()
     reasoning_acc_text = "".join(reasoning_acc)
     return LabeledStepResult(
         label=label,

@@ -22,6 +22,7 @@ from dataclasses import dataclass
 import logging
 import re
 import threading
+import time
 from typing import Any, Sequence
 import weakref
 
@@ -36,6 +37,12 @@ TUTOR_SOURCE_KEY = "tutor_source_message_id"
 # not re-scanned on every read. Clearing an anchor also sets it, which keeps a
 # deliberate detach from being undone by a later backfill.
 BACKFILL_ATTEMPTED_KEY = "tutor_source_backfill_attempted"
+# A failed attribution is not final: keep the reason, retry after a cooldown.
+# Kept in memory so a scan that found nothing does not repeat on every thread
+# list read; a process restart also gives every unresolved thread one retry.
+BACKFILL_FAILED_AT_KEY = "tutor_source_backfill_failed_at"
+BACKFILL_RETRY_SECONDS = 3600
+_FAILED_UNTIL: dict[str, float] = {}
 # One request may have to recover several threads; each needs the thread's
 # transcript and (at most once) the parent's. Keep a single caller bounded.
 MAX_BACKFILLED_THREADS = 50
@@ -403,27 +410,57 @@ def _locate_for_thread(
     return None
 
 
-async def _claim_source(store: Any, thread_session_id: str, source_id: Any) -> bool:
-    updates: dict[str, Any] = {BACKFILL_ATTEMPTED_KEY: True}
+def _remember_failure(thread_session_id: str) -> None:
+    now = time.monotonic()
+    _FAILED_UNTIL.pop(thread_session_id, None)
+    if len(_FAILED_UNTIL) >= 1000:
+        _FAILED_UNTIL.pop(next(iter(_FAILED_UNTIL)))
+    _FAILED_UNTIL[thread_session_id] = now + BACKFILL_RETRY_SECONDS
+
+
+async def _claim_source(
+    store: Any, thread_session_id: str, source_id: Any
+) -> dict[str, Any] | None:
     if source_id is not None:
-        updates[TUTOR_SOURCE_KEY] = source_id
+        updates: dict[str, Any] = {
+            TUTOR_SOURCE_KEY: source_id,
+            BACKFILL_ATTEMPTED_KEY: True,
+        }
+    else:
+        # Do not set BACKFILL_ATTEMPTED_KEY: that is also what a deliberate
+        # detach writes, and it must stay final. A failed attempt is recorded
+        # separately and only cools the scan down.
+        updates = {BACKFILL_FAILED_AT_KEY: time.time()}
     unset = (TUTOR_SOURCE_KEY, BACKFILL_ATTEMPTED_KEY)
     conditional = getattr(store, "update_session_preferences_if_unset", None)
     if conditional is not None:
-        return bool(await conditional(thread_session_id, updates, unset=unset, touch=False))
-    # Compatibility for test doubles: re-check immediately before the merge.
-    session = await store.get_session(thread_session_id)
-    if session is None:
-        return False
-    preferences = session.get("preferences") or {}
-    if any(preferences.get(key) for key in unset):
-        return False
-    return bool(await store.update_session_preferences(thread_session_id, updates, touch=False))
+        claimed = bool(await conditional(thread_session_id, updates, unset=unset, touch=False))
+    else:
+        # Compatibility for test doubles: re-check immediately before the merge.
+        session = await store.get_session(thread_session_id)
+        if session is None:
+            return None
+        preferences = session.get("preferences") or {}
+        if any(preferences.get(key) for key in unset):
+            return None
+        claimed = bool(
+            await store.update_session_preferences(thread_session_id, updates, touch=False)
+        )
+    if not claimed:
+        return None
+    if source_id is None:
+        _remember_failure(thread_session_id)
+    else:
+        _FAILED_UNTIL.pop(thread_session_id, None)
+    return updates
 
 
 def _is_pending(thread: dict[str, Any]) -> bool:
     preferences = thread.get("preferences") or {}
-    return not preferences.get(TUTOR_SOURCE_KEY) and not preferences.get(BACKFILL_ATTEMPTED_KEY)
+    if preferences.get(TUTOR_SOURCE_KEY) or preferences.get(BACKFILL_ATTEMPTED_KEY):
+        return False
+    thread_session_id = str(thread.get("session_id") or "")
+    return _FAILED_UNTIL.get(thread_session_id, 0.0) <= time.monotonic()
 
 
 async def backfill_thread_sources(
@@ -474,11 +511,8 @@ async def backfill_thread_sources(
                     parent_messages = await store.get_messages(parent_session_id)
                     projections = _message_texts(parent_messages)
                 message_id = _locate_for_thread(parent_messages, projections, evidence)
-                claimed = await _claim_source(store, thread_session_id, message_id)
-                if claimed:
-                    updates: dict[str, Any] = {BACKFILL_ATTEMPTED_KEY: True}
-                    if message_id is not None:
-                        updates[TUTOR_SOURCE_KEY] = message_id
+                updates = await _claim_source(store, thread_session_id, message_id)
+                if updates is not None:
                     thread["preferences"] = {
                         **dict(fresh.get("preferences") or {}),
                         **updates,
@@ -499,6 +533,8 @@ async def backfill_thread_sources(
 
 __all__ = [
     "BACKFILL_ATTEMPTED_KEY",
+    "BACKFILL_FAILED_AT_KEY",
+    "BACKFILL_RETRY_SECONDS",
     "MAX_BACKFILLED_THREADS",
     "TUTOR_SOURCE_KEY",
     "backfill_thread_sources",

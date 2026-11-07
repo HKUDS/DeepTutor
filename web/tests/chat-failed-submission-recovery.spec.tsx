@@ -65,6 +65,7 @@ vi.mock("@/features/chat/transport/UnifiedTurnClient", () => ({
       fixture.sent.push(message);
       return Promise.resolve(true);
     }
+    cancelCurrentTurn() { return Promise.resolve(true); }
     setResumeState() {}
   },
 }));
@@ -521,7 +522,7 @@ it("preserves a stopped-before-admission draft across reload", async () => {
   render(<ChatStateAdapterProvider><Harness /></ChatStateAdapterProvider>);
   await act(async () => fireEvent.click(screen.getByText("Load")));
   fireEvent.click(screen.getByText("Send"));
-  fireEvent.click(screen.getByText("Stop"));
+  await act(async () => fireEvent.click(screen.getByText("Stop")));
   expect(readMessages().at(-1)).toMatchObject({ content: "Hello offline", failed: true });
   await act(async () => fireEvent.click(screen.getByText("Load")));
   expect(readMessages().at(-1)).toMatchObject({ content: "Hello offline", failed: true });
@@ -962,7 +963,7 @@ it("Stop before admission cannot erase another tab's newer same-ID retry", async
       capability: original?.capability,
       requestSnapshot: original?.requestSnapshot,
     });
-    fireEvent.click(screen.getByText("Stop"));
+    await act(async () => fireEvent.click(screen.getByText("Stop")));
     expect(readFailedSubmission("draft:general")?.submissionId)
       .toBe(original?.submissionId);
     expect(screen.getByTestId("submissionFailed").textContent).toBe("true");

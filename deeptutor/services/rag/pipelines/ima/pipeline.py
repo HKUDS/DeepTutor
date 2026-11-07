@@ -154,15 +154,19 @@ class ImaPipeline:
         one unavailable file must never discard the other matches.
         """
         targets = source_policy.hydration_targets(sources)
+        failures = []
         if not targets:
-            return []
+            return failures
         results = await asyncio.gather(
             *(self._fetch_text(client, sources[index]) for index in targets),
             return_exceptions=True,
         )
-        failures = []
         for index, result in zip(targets, results):
-            if isinstance(result, BaseException):
+            if isinstance(result, media_ops.UnsupportedMediaFormat):
+                failures.append(
+                    {"source_id": sources[index]["chunk_id"], "error_type": "unsupported_format"}
+                )
+            elif isinstance(result, BaseException):
                 # HTTP errors may embed a signed COS URL; log only the error
                 # class so short-lived download credentials never reach logs.
                 self.logger.warning(

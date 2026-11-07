@@ -359,6 +359,18 @@ def _save_zip_archive(
                 status_code=400,
                 detail=f"'{sanitized_filename}' is not a valid zip archive.",
             ) from exc
+        except FileExistsError as exc:
+            # The extractor refuses to replace a document the KB already holds.
+            # Name the member only: the OS error carries the server's path.
+            existing = Path(exc.filename or "").name or "a file"
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Archive '{sanitized_filename}' contains '{existing}', which is "
+                    "already in this knowledge base. Rename it in the archive or "
+                    "remove the existing document, then upload again."
+                ),
+            ) from exc
 
         if not result.extracted:
             raise HTTPException(

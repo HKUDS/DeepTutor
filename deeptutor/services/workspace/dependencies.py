@@ -321,6 +321,11 @@ def _with_historical_references(
 ) -> list[dict]:
     """Old request snapshots retain references no longer selected by the last turn."""
     prefs = {row["id"]: _preferences(row) for row in sessions}
+    # A key the session already carries is the learner's current choice, even
+    # when the value is an empty list. Historical snapshots may only fill in
+    # references the session never recorded; otherwise a session can never be
+    # detached from a knowledge base (the old snapshot keeps resurrecting it).
+    explicit = {sid: frozenset(value) for sid, value in prefs.items()}
     aliases = {
         "historyReferences": "history_references",
         "notebookReferences": "notebook_references",
@@ -335,14 +340,14 @@ def _with_historical_references(
     }
     references = set(aliases.values())
 
-    def collect(value, into):
+    def collect(value, into, locked=frozenset()):
         if isinstance(value, list):
             for child in value:
-                collect(child, into)
+                collect(child, into, locked)
         elif isinstance(value, dict):
             for key, child in value.items():
                 key = aliases.get(key, key)
-                if key in references and child:
+                if key in references and key not in locked and child:
                     if isinstance(child, list):
                         current = into.setdefault(key, [])
                         for item in child:
@@ -350,7 +355,7 @@ def _with_historical_references(
                                 current.append(item)
                     else:
                         into.setdefault(key, child)
-                collect(child, into)
+                collect(child, into, locked)
 
     db = paths.get_chat_history_db()
     if db.exists():
@@ -358,7 +363,7 @@ def _with_historical_references(
             for sid, raw in conn.execute("SELECT session_id,metadata_json FROM messages"):
                 if sid in prefs and raw:
                     try:
-                        collect(json.loads(raw), prefs[sid])
+                        collect(json.loads(raw), prefs[sid], explicit[sid])
                     except (ValueError, TypeError) as exc:
                         _warn(
                             warnings,
@@ -389,5 +394,5 @@ def _with_historical_references(
                     )
                     continue
             if row.get("session_id") in prefs:
-                collect(value, prefs[row["session_id"]])
+                collect(value, prefs[row["session_id"]], explicit[row["session_id"]])
     return [{**row, "preferences_json": json.dumps(prefs[row["id"]])} for row in sessions]

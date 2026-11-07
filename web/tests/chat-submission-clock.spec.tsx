@@ -23,6 +23,7 @@ vi.mock("@/features/chat/transport/UnifiedTurnClient", () => ({
     connect() {}
     disconnect() {}
     send() {}
+    cancelCurrentTurn() { return Promise.resolve(true); }
     setResumeState() {}
   },
 }));
@@ -110,10 +111,10 @@ it("counts submission latency before the first frame, preserves it on completion
   expect(screen.getByRole("status")).toHaveTextContent("0s");
 });
 
-it("keeps an unsent retryable message when stopped before server admission", () => {
+it("keeps an unsent retryable message when stopped before server admission", async () => {
   render(<ChatStateAdapterProvider><Harness /></ChatStateAdapterProvider>);
   fireEvent.click(screen.getByText("Send"));
-  fireEvent.click(screen.getByText("Stop"));
+  await act(async () => fireEvent.click(screen.getByText("Stop")));
   expect(screen.getByTestId("last-turn-failed")).toHaveTextContent("true");
   expect(screen.getByTestId("last-message")).toHaveTextContent(
     '"role":"user","content":"Hello","failedSubmission":true',

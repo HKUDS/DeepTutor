@@ -830,6 +830,84 @@ class TestPipelineSearch:
 
         assert [source["title"] for source in result["sources"]] == ["Alpha"]
 
+    def test_folder_media_ids_do_not_consume_the_hydration_budget(self, tmp_path) -> None:
+        """Folder-name hits must not crowd out a real document (#2326)."""
+        base = _kb_config(
+            tmp_path,
+            {"client_id": "cid", "api_key": "key", "knowledge_base_id": "kb-1"},
+        )
+        folders = [
+            {
+                "media_id": f"folder_{index}",
+                "title": f"Folder {index}",
+                "parent_folder_id": "ima_kb_root",
+                "highlight_content": "",
+                "media_type": 99,
+            }
+            for index in range(DEFAULT_HYDRATION_BUDGET)
+        ]
+        stub = _SearchStub(
+            [
+                *folders,
+                {"media_id": "doc-1", "title": "Real document"},
+            ],
+            media={"doc-1": ImaMediaContent(text="readable body")},
+        )
+        pipeline = ImaPipeline(kb_base_dir=base, client_factory=lambda _c: stub)
+
+        result = asyncio.run(pipeline.search("q", "IMA"))
+
+        assert stub.media_calls == ["doc-1"]
+        assert [source["title"] for source in result["sources"]] == ["Real document"]
+        assert result["sources"][0]["content"] == "readable body"
+        assert result["retrieval_status"] == "ready"
+        assert result["diagnostics"]["hydration_failures"] == []
+
+    def test_title_extension_is_a_hint_and_readable_items_get_budget_first(self, tmp_path):
+        base = _kb_config(
+            tmp_path, {"client_id": "cid", "api_key": "key", "knowledge_base_id": "kb-1"}
+        )
+        stub = _SearchStub(
+            [
+                {"media_id": "renamed", "title": "old.doc"},
+                {"media_id": "plain", "title": "Lecture"},
+            ],
+            media={
+                "renamed": ImaMediaContent(data=b"real bytes", filename="actual.txt"),
+                "plain": ImaMediaContent(text="lecture body"),
+            },
+        )
+        result = asyncio.run(
+            ImaPipeline(kb_base_dir=base, client_factory=lambda _: stub).search("q", "IMA")
+        )
+        assert stub.media_calls == ["plain", "renamed"]
+        assert [row["content"] for row in result["sources"]] == ["real bytes", "lecture body"]
+
+    def test_only_folder_name_matches_report_no_matches(self, tmp_path) -> None:
+        base = _kb_config(
+            tmp_path,
+            {"client_id": "cid", "api_key": "key", "knowledge_base_id": "kb-1"},
+        )
+        stub = _SearchStub(
+            [
+                {
+                    "media_id": "folder_7359",
+                    "title": "Fourier",
+                    "parent_folder_id": "ima_kb_root",
+                    "highlight_content": "",
+                    "media_type": 99,
+                }
+            ]
+        )
+        pipeline = ImaPipeline(kb_base_dir=base, client_factory=lambda _c: stub)
+
+        result = asyncio.run(pipeline.search("q", "IMA"))
+
+        assert result["retrieval_status"] == "no_matches"
+        assert result["sources"] == []
+        assert "error_type" not in result
+        assert stub.media_calls == []
+
     def test_full_content_fallback_respects_its_budget(self, tmp_path) -> None:
         base = _kb_config(
             tmp_path,

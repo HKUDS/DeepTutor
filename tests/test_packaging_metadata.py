@@ -15,12 +15,14 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def project(path="pyproject.toml"):
-    return tomllib.loads((ROOT / path).read_text())["project"]
+    return tomllib.loads((ROOT / path).read_text(encoding="utf-8"))["project"]
 
 
 def test_core_and_cli_have_one_code_owner():
     assert project()["dependencies"] == manifests()["core"]["requirements"]
-    cli = tomllib.loads((ROOT / "packaging/deeptutor-cli/pyproject.toml").read_text())
+    cli = tomllib.loads(
+        (ROOT / "packaging/deeptutor-cli/pyproject.toml").read_text(encoding="utf-8")
+    )
     assert set(cli["project"]["dynamic"]) == {"version", "dependencies"}
     assert project_version() == __version__
     assert cli["tool"]["setuptools"]["packages"] == []
@@ -31,7 +33,18 @@ def test_core_and_cli_have_one_code_owner():
 
 def test_generated_source_dependency_files_are_current():
     for filename, content in generated().items():
-        assert (ROOT / "requirements" / filename).read_text() == content
+        assert (ROOT / "requirements" / filename).read_text(encoding="utf-8") == content
+
+
+def test_docling_parser_avoids_source_only_build_dependencies():
+    """The official image has no compiler.
+
+    ``format-video`` pulls ``resemblyzer`` -> ``webrtcvad``, which ships only an
+    sdist. The document parser does not use Docling's video extras, so keep the
+    one-click install runnable in the published image (#2327).
+    """
+    requirements = manifests()["parser-docling"]["requirements"]
+    assert all("format-video" not in requirement for requirement in requirements)
 
 
 @pytest.mark.parametrize(
@@ -47,13 +60,14 @@ def test_generated_source_dependency_files_are_current():
         ("partners", "qrcode>=7.4.0,<9.0.0"),
         ("knowledge", "pageindex>=0.2.10,<0.3.0"),
         ("calendar", "croniter>=6.0.0,<7.0.0"),
+        ("video-lesson", "edge-tts>=7.0,<8.0"),
         ("parsing", "pdfplumber>=0.11.0"),
         ("parsing", "reportlab>=4.0.0"),
         ("parser-markitdown", "markitdown[all]>=0.1.7"),
         ("parser-pymupdf4llm", "pymupdf4llm>=1.28.2"),
         ("parser-liteparse", "liteparse>=2.14.2"),
         ("parser-docling", "docling[xbrl]>=2.123.1"),
-        ("parser-docling", "docling-slim[format-iwork,format-opendocument,format-video]>=2.123.1"),
+        ("parser-docling", "docling-slim[format-iwork,format-opendocument]>=2.123.1"),
     ],
 )
 def test_dependency_floor_belongs_to_its_module(module, requirement):
@@ -122,3 +136,21 @@ def test_source_extras_install_dependencies_without_module_wheels():
     )
     assert "manim>=0.19.0" in extras["math-animator"]
     assert set(manifests()["partners"]["requirements"]) <= set(extras["partners"])
+
+
+@pytest.mark.parametrize("language", ["en", "zh"])
+def test_context_summary_prompts_are_core_package_data(language: str) -> None:
+    from setuptools import Distribution
+
+    from build_support import CoreBuildPy, owner
+
+    relative = f"deeptutor/agents/chat/prompts/{language}/context_summary_agent.yaml"
+    distribution = Distribution()
+    distribution.parse_config_files(filenames=[str(ROOT / "pyproject.toml")])
+    command = CoreBuildPy(distribution)
+    command.ensure_finalized()
+    # Exercise package-data globs independently of any cached egg-info manifest.
+    command.manifest_files = {}
+
+    assert owner(relative) == "core"
+    assert str(ROOT / relative) in command.find_data_files("deeptutor", str(ROOT / "deeptutor"))

@@ -292,6 +292,7 @@ DEFAULT_CHAT_PARAMS: dict[str, Any] = {
     "max_rounds": 8,
     "exploring": {"max_tokens": 1600},
     "responding": {"max_tokens": 8000},
+    "reasoning_budget_recovery": {"strategy": "prompt", "max_tokens": 0},
 }
 
 # A capability that makes several different LLM calls cannot be described by

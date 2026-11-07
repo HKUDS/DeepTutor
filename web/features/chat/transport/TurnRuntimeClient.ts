@@ -5,6 +5,7 @@ import type {
 } from "@/contracts/generated/turn-protocol";
 import {
   buildPing,
+  buildCancelTurn,
   buildResumeTurn,
   newCommandId,
 } from "@/contracts/parse/turn-command";
@@ -127,6 +128,15 @@ export class TurnRuntimeClient {
   private pending: PendingCommand[] = [];
   private connectionState: RuntimeConnectionState = "idle";
   private terminalObserved = false;
+  private cancellation: {
+    promise: Promise<boolean>;
+    resolve: (accepted: boolean) => void;
+    reject: (error: Error) => void;
+    timer: unknown;
+    dispatched: boolean;
+  } | null = null;
+  private stoppingTurn = false;
+  private stoppedFrames: ServerEvent[] = [];
 
   constructor(options: TurnRuntimeClientOptions) {
     this.options = {
@@ -154,7 +164,18 @@ export class TurnRuntimeClient {
     if (this.socket && this.socket.readyState <= SOCKET_OPEN) return;
     this.clearReconnect();
     this.setState(this.turnId ? "recovering" : "connecting");
-    const socket = this.options.socketFactory(this.options.url);
+    let socket: TurnSocket;
+    try {
+      socket = this.options.socketFactory(this.options.url);
+    } catch {
+      this.socket = null;
+      this.clearReplayProbe();
+      this.options.onDiagnostic?.(
+        "turn socket factory failed; scheduling reconnect",
+      );
+      this.scheduleReconnect();
+      return;
+    }
     this.socket = socket;
 
     socket.addEventListener("open", () => this.handleOpen(socket));
@@ -257,6 +278,73 @@ export class TurnRuntimeClient {
     pending.timeoutHandle = undefined;
   }
 
+  /** Keep admission and the socket alive until cancellation has released ownership. */
+  cancelCurrentTurn(): Promise<boolean> {
+    if (this.cancellation) return this.cancellation.promise;
+    const starts = this.pending.filter(
+      (item) =>
+        typeof item.command.type === "string" &&
+        ["start_turn", "message", "regenerate"].includes(item.command.type),
+    );
+    if (!this.turnId && !starts.some((item) => item.sentGeneration >= 0)) {
+      this.pending = this.pending.filter((item) => !starts.includes(item));
+      return Promise.resolve(true);
+    }
+    this.stoppingTurn = true;
+    let resolve!: (accepted: boolean) => void;
+    let reject!: (error: Error) => void;
+    const promise = new Promise<boolean>((yes, no) => {
+      resolve = yes;
+      reject = no;
+    });
+    const flight = {
+      promise,
+      resolve,
+      reject,
+      timer: undefined as unknown,
+      dispatched: false,
+    };
+    this.cancellation = flight;
+    flight.timer = this.options.scheduler.setTimeout(() => {
+      if (this.cancellation !== flight) return;
+      this.cancellation = null;
+      reject(new CommandDeliveryError());
+    }, this.options.commandAckTimeoutMs);
+    this.dispatchCancellation();
+    return promise;
+  }
+
+  private dispatchCancellation(): void {
+    const flight = this.cancellation;
+    if (!flight || flight.dispatched || !this.turnId) return;
+    flight.dispatched = true;
+    void this.sendAwaitingAck(buildCancelTurn(this.turnId)).then(
+      (accepted) => {
+        if (this.cancellation !== flight) return;
+        this.finishCancellation(accepted);
+      },
+      (error) => {
+        if (this.cancellation !== flight) return;
+        this.options.scheduler.clearTimeout(flight.timer);
+        this.cancellation = null;
+        flight.reject(error);
+      },
+    );
+  }
+
+  private finishCancellation(accepted: boolean): void {
+    const flight = this.cancellation;
+    if (!flight) return;
+    this.options.scheduler.clearTimeout(flight.timer);
+    this.cancellation = null;
+    if (accepted) {
+      this.stoppingTurn = false;
+      for (const event of this.stoppedFrames.splice(0))
+        this.options.onEvent(event);
+    }
+    flight.resolve(accepted);
+  }
+
   cancel(command: ClientCommand): void {
     this.send(command);
   }
@@ -275,6 +363,13 @@ export class TurnRuntimeClient {
   }
 
   stop(): void {
+    if (this.cancellation) {
+      this.options.scheduler.clearTimeout(this.cancellation.timer);
+      this.cancellation.reject(new CommandDeliveryError());
+      this.cancellation = null;
+    }
+    this.stoppingTurn = false;
+    this.stoppedFrames = [];
     this.stopped = true;
     this.clearReconnect();
     this.clearReplayProbe();
@@ -332,6 +427,8 @@ export class TurnRuntimeClient {
       return;
     }
     if (event.type === "protocol_error") {
+      if (!this.turnId && event.error_code === "start_turn_rejected")
+        this.finishCancellation(true);
       this.options.onDiagnostic?.(
         `turn protocol error; code=${event.error_code}; retryable=${String(event.retryable)}`,
       );
@@ -340,6 +437,7 @@ export class TurnRuntimeClient {
     }
     if (event.type === "active_turn_info") {
       if (event.turn_id) this.turnId = event.turn_id;
+      this.dispatchCancellation();
       this.options.onEvent(event);
       return;
     }
@@ -396,7 +494,14 @@ export class TurnRuntimeClient {
       this.terminalObserved = true;
       this.clearReplayProbe();
     }
-    this.options.onEvent(event);
+    this.dispatchCancellation();
+    if (
+      this.stoppingTurn &&
+      (event.type === "done" ||
+        (event.type === "error" && event.metadata?.turn_terminal === true))
+    ) {
+      this.stoppedFrames.push(event);
+    } else this.options.onEvent(event);
     if (event.type === "done") return;
     if (!this.terminalObserved) this.scheduleReplayProbe();
   }

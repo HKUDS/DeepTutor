@@ -332,6 +332,7 @@ def _build_codex_adapter(config: LLMClientConfig, spec: Any) -> Any:
 
     oauth_provider = OpenAICodexProvider(
         default_model=config.model or CODEX_DEFAULT_MODEL_ID,
+        extra_headers=config.extra_headers,
     )
     return _ProviderOpenAIAdapter(oauth_provider)
 

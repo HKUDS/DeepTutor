@@ -177,8 +177,8 @@ def _render_flash_cards(payload: dict[str, Any], labels: dict[str, str]) -> str:
     for card in cards:
         if not isinstance(card, dict):
             continue
-        front = _payload_text(card, "front").replace("|", "\\|")
-        back = _payload_text(card, "back").replace("|", "\\|")
+        front = _payload_text(card, "front").replace("|", "\\|").replace("\n", "<br>")
+        back = _payload_text(card, "back").replace("|", "\\|").replace("\n", "<br>")
         rows.append(f"| {front} | {back} |")
     return "\n".join(rows) if len(rows) > 2 else ""
 

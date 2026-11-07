@@ -264,6 +264,7 @@ export interface ChatState {
 }
 
 export interface SessionConfiguration {
+  llmSelection?: LLMSelection | null;
   capability?: string | null;
   workspaceMode?: WorkspaceMode | null;
   knowledgeBases?: string[];
@@ -687,6 +688,10 @@ function applySessionConfiguration(
   if (!configuration) return session;
   return {
     ...session,
+    llmSelection:
+      configuration.llmSelection !== undefined
+        ? configuration.llmSelection
+        : session.llmSelection,
     activeCapability:
       configuration.capability !== undefined
         ? configuration.capability
@@ -3494,33 +3499,35 @@ export function ChatStateAdapterProvider({
     if (!key) return;
     const session = currentState.sessions[key];
     if (!session) return;
-    const turnId = session.activeTurnId;
     const runner = runnersRef.current.get(key);
     if (runner) {
-      if (turnId) {
-        try {
-          if (!await runner.client.sendAwaitingAck({ type: "cancel_turn", turn_id: turnId })) {
-            notify(i18n.t("Couldn't reach the server. Please check your connection and retry."), { tone: "error" });
-            return;
-          }
-          if (generation !== runtimeGeneration.current) return;
-        } catch {
+      notify(i18n.t("Cancelling…"), { tone: "info" });
+      try {
+        if (!await runner.client.cancelCurrentTurn()) {
           notify(i18n.t("Couldn't reach the server. Please check your connection and retry."), { tone: "error" });
           return;
         }
+        if (generation !== runtimeGeneration.current) return;
+      } catch {
+        notify(i18n.t("Couldn't reach the server. Please check your connection and retry."), { tone: "error" });
+        return;
       }
       runner.client.disconnect();
-      runnersRef.current.delete(key);
+      runnersRef.current.delete(runner.key);
     }
-    if (session.isStreaming) {
+    // Admission may have moved the draft while Stop was waiting.
+    const stoppedKey = runner?.key ?? key;
+    const stoppedSession = stateRef.current.sessions[stoppedKey] ?? session;
+    const turnId = stoppedSession.activeTurnId;
+    if (stoppedSession.isStreaming) {
       // Stop is not proof that the server accepted the user row. In
       // particular, before a turn ID exists another tab may have stored a
       // newer attempt with this same logical submission ID. Keep the record
       // until a server transcript or DONE proves acceptance.
-      const pendingSubmission = pendingSubmissionIdsRef.current.get(key);
-      if (pendingSubmission) pendingSubmissionIdsRef.current.delete(key);
+      const pendingSubmission = pendingSubmissionIdsRef.current.get(stoppedKey);
+      if (pendingSubmission) pendingSubmissionIdsRef.current.delete(stoppedKey);
       dispatch({
-        type: "STREAM_END", key,
+        type: "STREAM_END", key: stoppedKey,
         status: pendingSubmission && !turnId ? "failed" : "cancelled",
         submissionFailed: Boolean(pendingSubmission && !turnId),
       });
