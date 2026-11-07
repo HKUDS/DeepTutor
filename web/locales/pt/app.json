@@ -6593,11 +6593,13 @@
   "Reset learning text": "Redefinir texto de aprendizado",
   "language.japanese": "日本語",
   "language.turkish": "Türkçe",
+
   "settings.modelImport.title": "Importar modelos para este serviço",
   "settings.modelImport.selectFiltered": "Selecionar todos os resultados",
   "settings.modelImport.clear": "Limpar seleção",
   "settings.modelImport.unverified": "Alguns modelos não declaram o tipo. Teste-os antes de usar neste serviço.",
   "settings.modelImport.draftHint": "Os modelos são adicionados ao rascunho. Aplique as alterações para salvar; o modelo padrão permanece igual.",
   "settings.modelImport.selected": "Selecionados: {{count}}",
-  "language.korean": "한국어 (일부 번역)"
+  "language.korean": "한국어 (일부 번역)",
+  "Zoom level": "Nível de zoom"
 }
