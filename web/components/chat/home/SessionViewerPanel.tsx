@@ -295,6 +295,72 @@ const notebookTabId = "notebook";
  *  up blank tabs. */
 const newTabId = "new-tab";
 
+/* ------------------------------------------------------------------ */
+/*  Restoring tabs                                                     */
+/* ------------------------------------------------------------------ */
+
+/** Kinds safe to bring back after a reload: their content lives elsewhere
+ *  (the page, the session) or is a plain string, so the tab can be rebuilt. */
+const RESTORABLE_TAB_KINDS = new Set<ViewerTab["kind"]>([
+  "notebook",
+  "markdown-note",
+  "geogebra",
+  "web",
+]);
+
+const VIEWER_TABS_KEY = "dt:viewer-tabs:";
+
+interface StoredViewerTabs {
+  tabs: ViewerTab[];
+  activeTabId: string | null;
+}
+
+function persistableTabs(tabs: ViewerTab[]): ViewerTab[] {
+  return tabs.filter((tab) => RESTORABLE_TAB_KINDS.has(tab.kind));
+}
+
+/** Tabs worth restoring for a conversation, or nothing if none were stored. */
+function readStoredViewerTabs(key: string): StoredViewerTabs {
+  try {
+    const raw = browserStorage.readRaw("local", `${VIEWER_TABS_KEY}${key}`);
+    if (!raw) return { tabs: [], activeTabId: null };
+    const parsed = JSON.parse(raw) as Partial<StoredViewerTabs>;
+    const tabs = Array.isArray(parsed.tabs)
+      ? parsed.tabs.filter(
+          (tab): tab is ViewerTab =>
+            Boolean(tab) &&
+            typeof tab.id === "string" &&
+            typeof tab.label === "string" &&
+            RESTORABLE_TAB_KINDS.has((tab as ViewerTab).kind),
+        )
+      : [];
+    const activeTabId =
+      typeof parsed.activeTabId === "string" &&
+      tabs.some((tab) => tab.id === parsed.activeTabId)
+        ? parsed.activeTabId
+        : (tabs[0]?.id ?? null);
+    return { tabs, activeTabId };
+  } catch {
+    return { tabs: [], activeTabId: null };
+  }
+}
+
+function writeStoredViewerTabs(
+  key: string,
+  tabs: ViewerTab[],
+  activeTabId: string | null,
+): void {
+  try {
+    browserStorage.writeRaw(
+      "local",
+      `${VIEWER_TABS_KEY}${key}`,
+      JSON.stringify({ tabs: persistableTabs(tabs), activeTabId }),
+    );
+  } catch {
+    // Storage may be unavailable; tabs simply do not survive a reload.
+  }
+}
+
 function quizFollowupTabIdFor(questionKey: string): string {
   return `quiz-followup:${questionKey}`;
 }
@@ -398,8 +464,16 @@ function SessionViewerPanelInner(
 ) {
   const { t } = useTranslation();
   const followups = useOptionalQuizFollowupController();
-  const [tabs, setTabs] = useState<ViewerTab[]>([]);
-  const [activeTabId, setActiveTabId] = useState<string | null>(null);
+  // Tabs belong to the conversation that opened them; the key is available
+  // before the state now so the first render can restore the tabs the learner
+  // left open for this conversation.
+  const tabsKey = sessionKey ?? sessionId ?? "draft";
+  const [tabs, setTabs] = useState<ViewerTab[]>(
+    () => readStoredViewerTabs(tabsKey).tabs,
+  );
+  const [activeTabId, setActiveTabId] = useState<string | null>(
+    () => readStoredViewerTabs(tabsKey).activeTabId,
+  );
   const [closedTabs, setClosedTabs] = useState<ViewerTab[]>([]);
 
   // Drag-to-resize width. The width is NOT React state — the panel reads it
@@ -466,7 +540,6 @@ function SessionViewerPanelInner(
   // Tabs belong to the conversation that opened them. Leaving one stashes its
   // tabs and coming back restores them. A draft whose first turn just bound
   // it to a session is the same conversation under a new key: it keeps them.
-  const tabsKey = sessionKey ?? sessionId ?? "draft";
   const [stash, setStash] = useState<ReadonlyMap<string, StashedTabs>>(
     () => new Map(),
   );
@@ -474,7 +547,10 @@ function SessionViewerPanelInner(
   if (trackedKey !== tabsKey) {
     setTrackedKey(tabsKey);
     if (reboundFromKey !== trackedKey) {
-      const restored = stash.get(tabsKey);
+      const restored = stash.get(tabsKey) ?? {
+        ...readStoredViewerTabs(tabsKey),
+        closedTabs: [] as ViewerTab[],
+      };
       // The notebook is bound to the knowledge point, not to one conversation,
       // so it follows the learner across sessions instead of being stashed and
       // disappearing when the point or mode changes. Every other tab still
@@ -504,6 +580,12 @@ function SessionViewerPanelInner(
       setClosedTabs(restored?.closedTabs ?? []);
     }
   }
+
+  // Persist the restorable tabs so a reload brings back what the learner had
+  // open for this conversation — their notebook, a note, a figure.
+  useEffect(() => {
+    writeStoredViewerTabs(tabsKey, tabs, activeTabId);
+  }, [tabs, activeTabId, tabsKey]);
 
   const openFileTab = useCallback(
     (a: MessageAttachment) => {
