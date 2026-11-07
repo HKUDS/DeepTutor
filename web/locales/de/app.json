@@ -6296,5 +6296,6 @@
   "(empty)": "(leer)",
   "Drag a dot on a cell onto another cell to link them; click a line to label it.": "Ziehe einen Punkt einer Zelle auf eine andere, um sie zu verbinden; klicke eine Linie, um sie zu beschriften.",
   "Connect in order": "Der Reihe nach verbinden",
-  "Add image": "Bild hinzufügen"
+  "Add image": "Bild hinzufügen",
+  "Retry save": "Speichern erneut"
 }

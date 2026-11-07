@@ -6404,5 +6404,6 @@
   "(empty)": "(vide)",
   "Drag a dot on a cell onto another cell to link them; click a line to label it.": "Fais glisser un point d’une cellule sur une autre pour les relier ; clique une ligne pour la légender.",
   "Connect in order": "Relier dans l’ordre",
-  "Add image": "Ajouter une image"
+  "Add image": "Ajouter une image",
+  "Retry save": "Réessayer"
 }

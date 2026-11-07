@@ -322,7 +322,13 @@ class CoWriterStorage:
             ) and expected_revision is None:
                 raise RevisionConflict("Block pages require expected_revision.")
             if document.blocks is not None and content is not None and blocks is None:
-                raise RevisionConflict("Edit this page through its block editor.")
+                if document.kind == "super_note":
+                    # A notebook owns its Markdown; the block editor is not its
+                    # editor, so a content edit drops the now-stale blocks rather
+                    # than being refused.
+                    document.blocks = None
+                else:
+                    raise RevisionConflict("Edit this page through its block editor.")
             previous_blocks = document.blocks or []
             if blocks is not None:
                 validate_blocks(blocks)

@@ -15,7 +15,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
-import { Play, Plus, Trash2, ArrowUp, ArrowDown, Loader2, Check } from "lucide-react";
+import { Play, Plus, Trash2, ArrowUp, ArrowDown, Loader2, Check, RefreshCw } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import RichMarkdownRenderer from "@/components/common/RichMarkdownRenderer";
@@ -254,8 +254,9 @@ export default function ChatNotebookTab({ sessionId = null, docId = null }: Chat
       );
       if (markdown === lastSavedRef.current) return;
       setSaveState("saving");
-      try {
-        const title = t("Code notebook");
+      const title = t("Code notebook");
+
+      const write = async () => {
         if (docIdRef.current) {
           const page = await saveNote(docIdRef.current, {
             title,
@@ -268,6 +269,9 @@ export default function ChatNotebookTab({ sessionId = null, docId = null }: Chat
           docIdRef.current = page.id;
           revisionRef.current = page.revision;
         }
+      };
+
+      const finish = () => {
         lastSavedRef.current = markdown;
         if (pointerKeyRef.current) {
           writePointer(pointerKeyRef.current, {
@@ -277,9 +281,26 @@ export default function ChatNotebookTab({ sessionId = null, docId = null }: Chat
         }
         setSaveState("saved");
         setError("");
+      };
+
+      try {
+        await write();
+        finish();
       } catch (err) {
-        setSaveState("error");
-        setError(String(err instanceof Error ? err.message : err));
+        // A stale revision (the page changed elsewhere) is the usual failure:
+        // take the server's current revision and try once more, without
+        // touching what is on screen.
+        try {
+          if (docIdRef.current) {
+            const latest = await getNote(docIdRef.current);
+            revisionRef.current = latest.revision;
+          }
+          await write();
+          finish();
+        } catch (retryErr) {
+          setSaveState("error");
+          setError(String(retryErr instanceof Error ? retryErr.message : retryErr));
+        }
       }
     },
     [t],
@@ -437,7 +458,11 @@ export default function ChatNotebookTab({ sessionId = null, docId = null }: Chat
               : t("Notes and runnable code, kept with this conversation.")}
           </div>
         </div>
-        <SaveBadge state={saveState} label={t} />
+        <SaveBadge
+          state={saveState}
+          label={t}
+          onRetry={() => void persist(cells, graph)}
+        />
         <div className="flex shrink-0 items-center rounded-lg border border-[color-mix(in_srgb,var(--border)_55%,transparent)] p-0.5">
           {(["list", "graph"] as const).map((mode) => (
             <button
@@ -549,11 +574,25 @@ export default function ChatNotebookTab({ sessionId = null, docId = null }: Chat
 function SaveBadge({
   state,
   label,
+  onRetry,
 }: {
   state: SaveState;
   label: (key: string) => string;
+  onRetry?: () => void;
 }) {
   if (state === "idle") return null;
+  if (state === "error") {
+    return (
+      <button
+        type="button"
+        onClick={onRetry}
+        className="inline-flex shrink-0 items-center gap-1 rounded-md border border-[color-mix(in_srgb,var(--border)_60%,transparent)] px-2 py-1 text-[10.5px] font-medium text-[var(--destructive,var(--foreground))] transition-colors hover:bg-[color-mix(in_srgb,var(--muted)_60%,transparent)]"
+      >
+        <RefreshCw size={11} strokeWidth={2} />
+        {label("Retry save")}
+      </button>
+    );
+  }
   return (
     <span className="inline-flex shrink-0 items-center gap-1 text-[10.5px] text-[var(--muted-foreground)]">
       {state === "saving" ? (
@@ -561,13 +600,11 @@ function SaveBadge({
           <Loader2 size={11} className="animate-spin" />
           {label("Saving…")}
         </>
-      ) : state === "saved" ? (
+      ) : (
         <>
           <Check size={11} strokeWidth={2.2} />
           {label("Saved")}
         </>
-      ) : (
-        label("Not saved")
       )}
     </span>
   );
