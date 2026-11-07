@@ -1,0 +1,69 @@
+# Pre-commit hooks configuration for DeepTutor
+#
+# Installation:
+#   pip install pre-commit
+#   pre-commit install
+#
+# Usage:
+#   pre-commit run --all-files  # Run on all files
+#   git commit  # Hooks run automatically on commit
+
+repos:
+  # ============================================
+  # General file checks
+  # ============================================
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+
+      - id: end-of-file-fixer
+
+      - id: check-yaml
+        args: [--unsafe]
+
+      - id: check-json
+
+      - id: check-added-large-files
+        args: [--maxkb=6144]
+
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: check-toml
+
+  # ============================================
+  # Python code formatting and linting
+  # ============================================
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.14.7
+    hooks:
+      - id: ruff
+        args: [--fix, --quiet, --exit-zero]
+
+      - id: ruff-format
+        args: [--quiet]
+
+  # ============================================
+  # Security checks
+  # ============================================
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.8.0
+    hooks:
+      - id: bandit
+        args: [-c, pyproject.toml, -q]
+        exclude: ^tests/
+        additional_dependencies: ["bandit[toml]"]
+
+  # ============================================
+  # Type checking
+  # ============================================
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.13.0
+    hooks:
+      - id: mypy
+        args: [--ignore-missing-imports, --no-error-summary, --no-strict-optional]
+        exclude: ^(tests/|scripts/|src/agents/|src/services/rag/)
+        additional_dependencies:
+          - types-PyYAML
+          - types-requests

@@ -1,0 +1,23 @@
+# Memory System Configuration
+# ============================
+# Configuration for the personalization memory system.
+
+llm:
+  # Model to use for memory agents. Empty string uses system default LLM.
+  model: "qwen3-next-80b-a3b-instruct"
+  # Temperature for memory analysis (lower = more deterministic)
+  temperature: 0.5
+
+memory:
+  # Whether to automatically update memory after task completion
+  auto_update: true
+  # Maximum ReAct rounds per agent
+  max_react_rounds: 6
+
+agents:
+  reflection:
+    enabled: true
+  summary:
+    enabled: true
+  weakness:
+    enabled: true

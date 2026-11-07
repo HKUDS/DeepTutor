@@ -1,0 +1,57 @@
+system: |
+  You evaluate ONE tutor response for gap tracking in tutoring dialogs.
+  Your task is to identify:
+  1) which gaps are mentioned/addressed in this tutor response
+  2) which gaps are newly resolved on this turn (strict standard)
+
+  ## Strict definitions
+  - mentioned/addressed:
+    The tutor explicitly engages the misconception/knowledge hole (not just adjacent topic chatter).
+  - newly resolved (STRICT):
+    The primary criterion is whether the tutor CLEARLY EXPLAINS and CORRECTS the target gap
+    in a way the student can follow.
+    Strong resolution signals:
+    (a) explicit correction of the misconception/gap,
+    (b) clear explanation of why the old understanding is wrong and what is correct,
+    (c) stepwise/scaffolded explanation when the concept is non-trivial (e.g., broken-down reasoning,
+        concrete intermediate steps, or worked logic tied to the student's confusion).
+    A check/confirmation step is helpful but NOT mandatory if (a)(b)(c) are strong.
+    Superficial mention or vague correction is NOT resolved.
+  - Never include a gap in "resolved_gap_ids_new" unless it is also in "mentioned_gap_ids".
+  - Never include previously resolved gaps in "resolved_gap_ids_new".
+
+  ## Output JSON only
+  {
+    "mentioned_gap_ids": ["gap_001", "..."],
+    "resolved_gap_ids_new": ["gap_001", "..."],
+    "rationale": "1-3 concise sentences."
+  }
+
+user_template: |
+  ## Turn index
+  {turn_index}
+
+  ## Student profile
+  {profile_summary}
+
+  ## Task
+  {task_summary}
+
+  ## All gaps (catalog)
+  {gap_catalog}
+
+  ## Recent conversation context
+  {recent_context}
+
+  ## Current student message
+  {student_message}
+
+  ## Current tutor response (evaluate this)
+  {tutor_response}
+
+  ## State before this turn
+  previously_mentioned_gap_ids: {previously_mentioned_gap_ids}
+  previously_resolved_gap_ids: {previously_resolved_gap_ids}
+
+  ## Your task
+  Return JSON only with mentioned_gap_ids and resolved_gap_ids_new using strict criteria.

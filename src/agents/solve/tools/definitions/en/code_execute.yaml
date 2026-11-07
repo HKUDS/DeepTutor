@@ -1,0 +1,14 @@
+name: code_execute
+order: 3
+type: tool
+
+planner_description: "Execute Python code in a sandbox (calculations, plotting, data processing)"
+
+solver:
+  when_to_use: "Need computation, derivation, plotting, or data processing"
+  action_input: "A clear description of **what** to compute (the system will generate and run Python code)"
+  guideline: "when the step involves computation, derivation, numerical verification, or data processing / plotting."
+  note: >-
+    For `code_execute`, describe the intent clearly
+    (e.g., "compute the convolution of x=[1,2,3] and h=[1,1]");
+    the system handles code generation.

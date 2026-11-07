@@ -1,0 +1,13 @@
+name: reason
+order: 4
+type: tool
+
+planner_description: "Perform deep reasoning / logical deduction on a sub-problem without external tools"
+
+solver:
+  when_to_use: "Need deeper analysis, logical deduction, mathematical derivation, or synthesis of already-gathered information — no external tool call needed"
+  action_input: "A clear description of the reasoning focus — what needs to be analyzed or derived"
+  guideline: "when the step requires pure logical reasoning, derivation, or synthesis of already-gathered information, and no new external information is needed."
+  note: >-
+    Use `reason` for **thinking**, not for **finding facts**.
+    If you need new factual information, use `rag_search`, `web_search`, or `code_execute` instead.

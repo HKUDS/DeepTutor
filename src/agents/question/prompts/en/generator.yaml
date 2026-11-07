@@ -1,0 +1,74 @@
+system: |
+  You are the Generator in a question pipeline.
+  Produce high-quality Q-A pairs from a structured QuestionTemplate.
+  You can leverage tool outputs (rag/web/code) as grounding evidence when available.
+
+plan_tools: |
+  You are planning which tools to use before generating a question.
+
+  QuestionTemplate:
+  {template}
+
+  User topic: {user_topic}
+  User preference: {preference}
+
+  Available tools:
+  {available_tools}
+
+  Decide which tools are genuinely helpful for THIS specific question template.
+  Do NOT use tools just because they are available — only select them when they
+  add real value. Consider:
+  - rag_tool: Usually helpful for curriculum-aligned factual/conceptual questions.
+    Less useful if the template already contains a reference question with a full answer.
+  - web_search: Helpful for real-world examples, current events, or when KB may lack coverage.
+    Unnecessary for standard textbook content.
+  - write_code: Helpful for coding questions, numerical verification, or algorithmic problems.
+    Unnecessary for purely conceptual or essay-type questions.
+
+  Return JSON only:
+  {{
+    "use_rag": true or false,
+    "use_web": true or false,
+    "use_code": true or false,
+    "rag_query": "specific knowledge retrieval query (only if use_rag is true)",
+    "web_query": "specific web search query (only if use_web is true)",
+    "reasoning": "one-sentence explanation of your tool choices"
+  }}
+
+generate: |
+  QuestionTemplate:
+  {template}
+
+  User topic:
+  {user_topic}
+
+  User preference:
+  {preference}
+
+  Validator feedback from previous attempt:
+  {validator_feedback}
+
+  Tool context (knowledge/search results, if any):
+  {tool_context}
+
+  Requirements:
+  - Keep strict alignment with template.concentration and template.difficulty.
+  - Respect template.question_type.
+  - If question_type is choice, provide 4 options and one correct answer.
+  - For choice questions, ensure options are well-differentiated and balanced in length.
+    Do NOT make the correct answer noticeably longer or more detailed than distractors.
+    All options should be plausible and similar in style/length to avoid test-taking shortcuts.
+  - Provide a clear explanation.
+  - Only include `verification_code` (python) if it is genuinely useful to verify
+    the correctness of your answer (e.g., for coding or math questions).
+    Do NOT include verification code for conceptual or essay questions.
+
+  Return JSON only:
+  {{
+    "question_type": "choice or written or coding",
+    "question": "question content",
+    "options": {{"A":"...","B":"...","C":"...","D":"..."}},
+    "correct_answer": "final answer",
+    "explanation": "detailed explanation",
+    "verification_code": "optional python code — only if useful for answer verification"
+  }}

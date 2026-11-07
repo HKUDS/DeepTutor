@@ -1,0 +1,11 @@
+name: done
+order: 10
+type: control
+
+planner_description: ""
+
+solver:
+  when_to_use: "You already have **sufficient** information to answer the current step"
+  action_input: 'Leave empty `""`'
+  guideline: ""
+  note: ""

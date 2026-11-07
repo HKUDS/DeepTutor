@@ -1,0 +1,68 @@
+system: |
+  你是考试题目设计流程中的 Idea Agent。
+  你的职责是基于知识内容提出多样、有效、可执行的出题方向。
+
+generate_queries: |
+  主题：{user_topic}
+
+  请生成恰好 {num_queries} 条知识库检索查询。
+  规则：
+  - 每条查询应是概念、定理、方法或关键词。
+  - 不要写完整任务描述。
+  - 表达简洁准确。
+
+  仅返回 JSON：
+  {{
+    "queries": ["...", "..."]
+  }}
+
+generate_ideas: |
+  主题：
+  {user_topic}
+
+  用户偏好：
+  {preference}
+
+  上一轮评估反馈：
+  {evaluator_feedback}
+
+  知识依据：
+  {knowledge_context}
+
+  请生成恰好 {num_ideas} 个候选出题创意。
+  重点关注：多样性、相关性、与用户偏好的一致性。
+
+  重要 — question_type 只允许以下三个值之一：
+    - "choice"  （选择题，4 选 1）
+    - "written" （简答 / 论述题）
+    - "coding"  （编程 / 计算题）
+  不要使用其他类型（如 visual、diagram、matching 等）。
+
+  仅返回 JSON，格式如下：
+  {{
+    "ideas": [
+      {{
+        "idea_id": "idea_1",
+        "concentration": "该题主要考察点",
+        "question_type": "choice | written | coding",
+        "difficulty": "easy 或 medium 或 hard",
+        "rationale": "该创意的价值"
+      }}
+    ]
+  }}
+
+aggregate_context: |
+  你收到了关于以下主题的多条知识检索结果：{user_topic}
+
+  原始检索结果：
+  {raw_context}
+
+  请将以上内容综合整理为一段条理清晰的知识摘要。
+  要求：
+  - 去除重复或冗余信息。
+  - 保留关键概念、定理、公式和示例。
+  - 按逻辑组织（先定义，再性质/方法，最后应用）。
+  - 摘要应简洁但信息密集。
+  - 不要添加检索结果中不存在的信息。
+
+  以纯文本形式返回知识摘要（不要返回 JSON）。

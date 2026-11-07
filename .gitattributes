@@ -1,0 +1,18 @@
+*.mp4 filter=lfs diff=lfs merge=lfs -text
+
+# Force critical build and script files to use LF line endings for cross-platform compatibility
+# This prevents CRLF-related security issues in Docker containers and shell scripts
+Dockerfile text eol=lf
+docker-compose.yml text eol=lf
+docker-compose.*.yml text eol=lf
+*.sh text eol=lf
+*.py text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
+*.env text eol=lf
+*.json text eol=lf
+*.toml text eol=lf
+*.cfg text eol=lf
+*.ini text eol=lf

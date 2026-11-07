@@ -1,0 +1,13 @@
+name: replan
+order: 11
+type: control
+
+planner_description: ""
+
+solver:
+  when_to_use: "原始计划存在根本性缺陷（前提错误、缺少关键信息等）"
+  action_input: "简述需要重新规划的原因"
+  guideline: ""
+  note: >-
+    **谨慎使用** `replan` — 仅当计划本身存在错误时使用，
+    而不是当某次搜索结果不佳时（应该用更好的查询重试）。

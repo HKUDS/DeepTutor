@@ -1,0 +1,83 @@
+# =============================================================================
+# Benchmark Configuration - Tutor Evaluation Data Generation
+# =============================================================================
+# This config is used to generate evaluation data from existing per-subtopic
+# knowledge bases. Subtopics have been manually split, each topic corresponds
+# to a pre-built RAG knowledge base.
+
+# Knowledge base configuration
+knowledge_bases:
+  # Base directory for knowledge bases (may be overridden by main.yaml paths.knowledge_bases_dir)
+  base_dir: "./data/knowledge_bases"
+  # List of KB names to process (empty = auto-discover all registered KBs)
+  kb_names: []
+
+# Profile generation configuration
+profile_generation:
+  # Number of profiles to generate per subtopic
+  profiles_per_subtopic: 3
+  # Student background types
+  background_types:
+    - "beginner"        # Novice, almost no relevant background
+    - "intermediate"    # Some foundation, partial knowledge
+    - "advanced"        # Solid foundation, wants deeper understanding
+
+# Knowledge gap generation configuration
+gap_generation:
+  # Use content_list for page-grounded gaps (each gap has source_pages)
+  use_content_list: true
+  # Number of pages to randomly select from content_list
+  pages_per_profile: 10
+  # Batch rejection sampling: verify task + gaps align with source
+  rejection_sampling: true
+  # Number of knowledge gaps per profile
+  gaps_per_profile: 3
+  # Gap type distribution
+  severity_levels:
+    - name: "misconception"    # Has incorrect understanding
+      weight: 0.3
+    - name: "incomplete"       # Partial / one-sided understanding
+      weight: 0.4
+    - name: "missing"          # Completely missing a knowledge point
+      weight: 0.3
+
+# Task generation configuration
+task_generation:
+  # Minimum tasks per profile; keep generating gaps and tasks until the threshold is met
+  min_tasks_per_profile: 3
+  # Gaps per batch when generating more to meet min_tasks
+  gaps_per_batch: 3
+  # Task types
+  task_types:
+    - name: "concept_understanding"  # Wants to understand a concept
+      weight: 0.3
+    - name: "problem_solving"        # Wants to solve a type of problem
+      weight: 0.3
+    - name: "application"            # Wants to know how to apply knowledge
+      weight: 0.2
+    - name: "comparison"             # Wants to distinguish confusable concepts
+      weight: 0.2
+
+# RAG query configuration (used to extract knowledge scope from KBs)
+rag_query:
+  # Query mode
+  mode: "naive"
+  # Seed queries for probing KB content
+  seed_queries:
+    - "What are the main knowledge points and core concepts in this content?"
+    - "What key theorems, formulas, or methods does this content cover?"
+    - "What are typical application scenarios and example problems in this content?"
+
+# LLM configuration (leave empty to use system default LLM config)
+llm:
+  temperature: 0.7
+  max_tokens: 4096
+
+# Output configuration
+output:
+  # Output directory
+  output_dir: "./benchmark/data/generated"
+  # Output format
+  format: "jsonl"  # jsonl / json
+  # Whether to save intermediate results
+  save_intermediate: true

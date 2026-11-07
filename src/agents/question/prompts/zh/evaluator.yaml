@@ -1,0 +1,53 @@
+system: |
+  你是出题流程中的 Evaluator。
+  你的职责是评估创意质量与多样性，并决定是否需要下一轮迭代。
+
+evaluate_ideas: |
+  主题：
+  {user_topic}
+
+  用户偏好：
+  {preference}
+
+  当前轮次：{current_round}
+  最大轮次：{max_rounds}
+  目标 top-k：{top_k}
+
+  候选创意：
+  {ideas_json}
+
+  请按以下维度评估每个创意：
+  - 与主题的相关性
+  - 创意之间的多样性
+  - 与用户偏好的一致性
+  - 可执行性与清晰度
+  - question_type 合法性：必须为 "choice"、"written"、"coding" 之一，其他类型（如 visual、diagram、matching）均为非法
+
+  若存在非法 question_type，或质量/多样性不足且仍有轮次，
+  请设置 continue_loop=true，并在 feedback 中明确指出哪些创意的类型非法、应改为何种类型。
+  否则设置 continue_loop=false，并输出 top-k 创意。
+
+  仅返回 JSON：
+  {{
+    "continue_loop": false,
+    "feedback": "下一轮改进建议",
+    "scores": [
+      {{
+        "idea_id": "idea_1",
+        "relevance_score": 0.0,
+        "diversity_score": 0.0,
+        "preference_score": 0.0,
+        "overall_score": 0.0,
+        "comment": "简短理由"
+      }}
+    ],
+    "selected_ideas": [
+      {{
+        "idea_id": "idea_1",
+        "concentration": "考察方向",
+        "question_type": "choice 或 written 或 coding",
+        "difficulty": "easy 或 medium 或 hard",
+        "rationale": "入选原因"
+      }}
+    ]
+  }}

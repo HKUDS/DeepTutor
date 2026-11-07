@@ -1,0 +1,13 @@
+name: code_execute
+order: 3
+type: tool
+
+planner_description: "在沙箱中执行 Python 代码（计算、绘图、数据处理）"
+
+solver:
+  when_to_use: "需要计算、推导、绘图或数据处理"
+  action_input: "清晰描述**要计算什么**（系统会自动生成并运行 Python 代码）"
+  guideline: "当步骤涉及计算、推导、数值验证或数据处理/绘图时。"
+  note: >-
+    对于 `code_execute`，请清晰描述意图
+    （例如："计算 x=[1,2,3] 和 h=[1,1] 的卷积"）；系统会负责代码生成。

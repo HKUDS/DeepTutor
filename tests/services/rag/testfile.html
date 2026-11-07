@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Deep Learning Basics - Test Document</title>
+</head>
+<body>
+    <header>
+        <h1>Deep Learning Basics Tutorial</h1>
+        <p>This document is used for RAG pipeline testing.</p>
+    </header>
+
+    <main>
+        <article>
+            <h2>What is deep learning?</h2>
+            <p>Deep learning is a branch of machine learning that uses multi-layer neural networks to learn hierarchical representations of data. It has achieved major breakthroughs in areas such as image recognition, natural language processing, and speech recognition.</p>
+
+            <h3>Basic components of a neural network</h3>
+            <ul>
+                <li><strong>Input layer</strong>: Receives raw input data</li>
+                <li><strong>Hidden layers</strong>: Perform feature extraction and transformation</li>
+                <li><strong>Output layer</strong>: Produces the final prediction</li>
+            </ul>
+
+            <h3>Common deep learning models</h3>
+            <table border="1">
+                <thead>
+                    <tr>
+                        <th>Model type</th>
+                        <th>Main applications</th>
+                        <th>Key characteristics</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Convolutional Neural Network (CNN)</td>
+                        <td>Image classification, object detection</td>
+                        <td>Local receptive fields, parameter sharing</td>
+                    </tr>
+                    <tr>
+                        <td>Recurrent Neural Network (RNN)</td>
+                        <td>Sequence modeling, time-series forecasting</td>
+                        <td>Handles variable-length sequences, supports memory</td>
+                    </tr>
+                    <tr>
+                        <td>Transformer</td>
+                        <td>Natural language processing, large language models</td>
+                        <td>Self-attention, parallel computation</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h2>The deep learning training process</h2>
+            <ol>
+                <li>Data preprocessing: cleaning, normalization, data augmentation</li>
+                <li>Forward pass: compute predictions</li>
+                <li>Loss computation: compare predictions with ground truth</li>
+                <li>Backpropagation: compute gradients</li>
+                <li>Parameter update: update weights with an optimizer</li>
+            </ol>
+
+            <h3>Common activation functions</h3>
+            <p>Activation functions introduce nonlinearity into neural networks. Common choices include:</p>
+            <ul>
+                <li><code>ReLU</code>: f(x) = max(0, x)</li>
+                <li><code>Sigmoid</code>: f(x) = 1 / (1 + e^(-x))</li>
+                <li><code>Tanh</code>: f(x) = (e^x - e^(-x)) / (e^x + e^(-x))</li>
+                <li><code>Softmax</code>: used in the output layer for multi-class classification</li>
+            </ul>
+
+            <blockquote>
+                <p>"The success of deep learning lies in its ability to learn feature representations automatically without manual feature engineering."</p>
+                <footer>&mdash; Yann LeCun, Geoffrey Hinton, Yoshua Bengio</footer>
+            </blockquote>
+        </article>
+
+        <aside>
+            <h3>Related resources</h3>
+            <nav>
+                <ul>
+                    <li><a href="https://pytorch.org">PyTorch official documentation</a></li>
+                    <li><a href="https://tensorflow.org">TensorFlow official documentation</a></li>
+                    <li><a href="https://keras.io">Keras tutorial</a></li>
+                </ul>
+            </nav>
+        </aside>
+    </main>
+
+    <footer>
+        <p>© 2024 DeepTutor test file | for unit tests only</p>
+    </footer>
+</body>
+</html>

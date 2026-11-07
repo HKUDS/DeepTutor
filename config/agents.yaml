@@ -1,0 +1,25 @@
+# =============================================================================
+# Unified Agent Parameters Configuration
+# =============================================================================
+# This file serves as the SINGLE source of truth for temperature and max_tokens
+# settings across all agent modules. DO NOT hardcode these values elsewhere.
+#
+# Each module shares ONE set of parameters for all its agents.
+# =============================================================================
+
+# Solve Module - Problem solving agents
+# Agents: planner_agent, solver_agent, writer_agent
+solve:
+  temperature: 0.3
+  max_tokens: 8192
+
+# Question Module - Question generation agents
+# Agents: idea_agent, evaluator, generator, validator
+question:
+  temperature: 0.7
+  max_tokens: 4096
+
+# Personalization Module - Memory agents (reflection, summary, weakness)
+personalization:
+  temperature: 0.5
+  max_tokens: 8192

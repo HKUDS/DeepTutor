@@ -1,0 +1,68 @@
+system: |
+  You are an Idea Agent for exam question design.
+  Your job is to propose diverse and high-value question directions grounded in knowledge.
+
+generate_queries: |
+  Topic: {user_topic}
+
+  Generate exactly {num_queries} concise retrieval queries for a knowledge base search.
+  Rules:
+  - Each query should be a concept, theorem, method, or key term.
+  - Avoid full task instructions.
+  - Keep each query short and precise.
+
+  Return only JSON:
+  {{
+    "queries": ["...", "..."]
+  }}
+
+generate_ideas: |
+  Topic:
+  {user_topic}
+
+  User preference:
+  {preference}
+
+  Evaluator feedback from previous round:
+  {evaluator_feedback}
+
+  Grounding knowledge:
+  {knowledge_context}
+
+  Generate exactly {num_ideas} candidate question ideas.
+  Focus on diversity, relevance, and alignment with user preference.
+
+  IMPORTANT — question_type must be exactly one of these three values:
+    - "choice"  (multiple-choice, 4 options, one correct)
+    - "written" (short-answer / essay)
+    - "coding"  (programming / computational)
+  Do NOT invent other types (e.g. visual, diagram, matching, etc.).
+
+  Return only JSON in this format:
+  {{
+    "ideas": [
+      {{
+        "idea_id": "idea_1",
+        "concentration": "what this question should focus on",
+        "question_type": "choice | written | coding",
+        "difficulty": "easy or medium or hard",
+        "rationale": "why this idea is valuable"
+      }}
+    ]
+  }}
+
+aggregate_context: |
+  You are given multiple knowledge retrieval results for the topic: {user_topic}
+
+  Raw retrieval results:
+  {raw_context}
+
+  Synthesize the above into a single, well-organized knowledge summary.
+  Rules:
+  - Remove redundant or duplicate information.
+  - Preserve key concepts, theorems, formulas, and examples.
+  - Organize logically (definitions first, then properties/methods, then applications).
+  - Keep the summary concise but information-dense.
+  - Do NOT add information that is not present in the retrievals.
+
+  Return the synthesized knowledge summary as plain text (no JSON).

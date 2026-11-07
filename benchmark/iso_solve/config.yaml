@@ -1,0 +1,400 @@
+# --- Global evaluation defaults (single source of truth) ---
+evaluation:
+  llm_extract: true
+  llm_judge: true
+  extract_model: anthropic/claude-sonnet-4.6:nitro
+  extract_temperature: 0.0
+  extract_max_tokens: 16384
+  judge_model: anthropic/claude-sonnet-4.6:nitro
+  judge_temperature: 0.0
+  judge_max_tokens: 16384
+
+# ======================================================================
+# MATH Benchmark Configuration
+# ======================================================================
+# python -m benchmark.iso_solve.run_benchmark --mode pipeline \
+#     --config benchmark/iso_solve/config.yaml --limit 5
+
+# python -m benchmark.iso_solve.run_benchmark --mode direct \
+#     --config benchmark/iso_solve/config.yaml --limit 5
+
+# --- Dataset ---
+# First run downloads from HuggingFace and caches locally.
+# Override with --dataroot to use a local file.
+dataset:
+  parquet_url: "hf://datasets/qwedsacf/competition_math/data/train-00000-of-00001-7320a6f3aba8ebd2.parquet"
+
+# --- Filtering ---
+filter:
+  # subjects:                  # Uncomment to filter by subject(s):
+  #   - Algebra                #   Prealgebra, Algebra, Number Theory,
+  #   - Prealgebra             #   Counting & Probability, Geometry,
+  #                            #   Intermediate Algebra, Precalculus
+  levels:                    # Uncomment to filter by level(s) 1-5:
+    - 3
+    - 4
+    - 5
+  limit: 500                 # Max problems to evaluate (null = all 12498)
+  seed: 42                    # Random seed for sampling
+
+# --- LLM settings (for direct mode) ---
+llm:
+  model: null                # null = use global LLM config; set to override
+  temperature: 0.0            # 0.0 = greedy / deterministic
+  max_tokens: 4096            # Max output tokens per problem
+
+# --- Concurrency (for direct mode) ---
+concurrency: 10                # Parallel LLM requests
+
+# --- Pipeline mode settings ---
+pipeline:
+  model: null                 # null = use llm.model; set to use a different model for pipeline
+  max_tokens: null                # null = use llm.max_tokens → agents.yaml default
+  temperature: null               # null = use llm.temperature → agents.yaml default
+  language: en                # Prompt language for pipeline agents
+  tools:                      # Tools available to the solver agent.
+    - code_execute            # Only code execution; no RAG / web search.
+    - reason                  # Deep reasoning without external tools.
+                              # done and replan are always included.
+                              # Set to null or remove to enable all tools.
+  concurrency: 20              # Parallel pipeline runs (each uses ~10-20 LLM calls,
+                              # keep low to avoid API rate limits)
+
+# --- Output ---
+output_dir: benchmark/iso_solve/results
+
+
+# ======================================================================
+# HLE (Humanity's Last Exam) Benchmark Configuration
+# ======================================================================
+# python -m benchmark.iso_solve.run_benchmark --benchmark hle --mode direct \
+#     --config benchmark/iso_solve/config.yaml --limit 500 --sequential
+#
+# python -m benchmark.iso_solve.run_benchmark --benchmark hle --mode pipeline \
+#     --config benchmark/iso_solve/config.yaml --limit 500 --sequential
+
+hle:
+  # --- Dataset ---
+  parquet_url: "hf://datasets/cais/hle/data/test-00000-of-00001.parquet"
+  skip_multimodal: false        # true = only evaluate text-only questions
+
+  # --- Filtering ---
+  filter:
+    # subjects: []              # Uncomment to filter by subject(s)
+    limit: null                # Max problems to evaluate (null = all ~2500)
+    seed: 42
+
+  # --- LLM settings (for direct mode) ---
+  llm:
+    model: qwen3.5-plus                 # null = use global LLM config; override for vision model
+    multimodal: true            # true = send images to LLM; false = text-only
+    temperature: 0.0
+    max_tokens: 16384            # Official recommendation: >= 8192
+
+  # --- Concurrency (for direct mode) ---
+  concurrency: 50
+
+  # --- Pipeline mode settings ---
+  pipeline:
+    model: qwen3.5-plus                # null = use llm.model; set to use a different model for pipeline
+    max_tokens: 16384                   # null = use llm.max_tokens → agents.yaml default
+    temperature: 0.0                    # null = use llm.temperature → agents.yaml default
+    language: en
+    tools:
+      - code_execute
+      - reason
+    concurrency: 30
+
+
+# ======================================================================
+# GPQA-Diamond Benchmark Configuration
+# ======================================================================
+# python -m benchmark.iso_solve.run_benchmark --benchmark gpqa --mode direct \
+#     --config benchmark/iso_solve/config.yaml --limit 5
+#
+# python -m benchmark.iso_solve.run_benchmark --benchmark gpqa --mode pipeline \
+#     --config benchmark/iso_solve/config.yaml --limit 5
+
+gpqa:
+  # --- Dataset (gated — requires `huggingface-cli login` or HF_TOKEN) ---
+  dataset_id: "Idavidrein/gpqa"
+  config_name: "gpqa_diamond"       # gpqa_diamond / gpqa_main / gpqa_extended
+  choice_shuffle_seed: 42           # Seed for shuffling answer choices (A/B/C/D)
+
+  # --- Filtering ---
+  filter:
+    # domains:                      # Uncomment to filter by domain(s):
+    #   - Physics                   #   Physics, Chemistry, Biology
+    #   - Chemistry
+    limit: null                     # Max problems to evaluate (null = all 198)
+    seed: 42                        # Random seed for sampling
+
+  # --- LLM settings (for direct mode) ---
+  llm:
+    model:                    # null = use global LLM config; set to override
+    temperature: 0.0                # 0.0 = greedy / deterministic
+    max_tokens: 16384             # Max output tokens per problem
+
+  # --- Concurrency (for direct mode) ---
+  concurrency: 50
+
+  # --- Pipeline mode settings ---
+  pipeline:
+    model:                    # null = use llm.model; set to use a different model for pipeline
+    max_tokens: 16384                    # null = use llm.max_tokens → agents.yaml default
+    temperature: 0.0                   # null = use llm.temperature → agents.yaml default
+    language: en
+    tools:
+      - code_execute
+      - reason
+    concurrency: 50
+
+# ======================================================================
+# LiveBench Benchmark Configuration
+# ======================================================================
+# python -m benchmark.iso_solve.run_benchmark --benchmark livebench --mode direct \
+#     --config benchmark/iso_solve/config.yaml --limit 20
+#
+# python -m benchmark.iso_solve.run_benchmark --benchmark livebench --mode pipeline \
+#     --config benchmark/iso_solve/config.yaml --limit 20
+#
+# Filter by category:
+# python -m benchmark.iso_solve.run_benchmark --benchmark livebench --mode direct \
+#     --config benchmark/iso_solve/config.yaml --livebench-categories math reasoning
+
+livebench:
+  # --- Categories to evaluate ---
+  # All 6 categories by default. Uncomment to select specific ones.
+  categories:
+    - reasoning                   # ~200 questions (web_of_lies, zebra_puzzle, spatial, ...)
+  #   - math                        # ~368 questions (AIME, AMC, AMPS_Hard, olympiad, ...)
+  #   - coding                      # ~128 questions (LCB_generation, code_generation, ...)
+    # - data_analysis               # ~150 questions (tablereformat, cta, tablejoin, ...)
+  #   - instruction_following       # ~400 questions
+  #   - language                    # ~190 questions (plot_unscrambling, typos, connections)
+
+  # --- Filtering ---
+  filter:
+    # tasks: []                     # Uncomment to filter by specific task name(s)
+    limit: null                     # Max problems to evaluate (null = all ~1436)
+    seed: 42                        # Random seed for sampling
+
+  # --- LLM settings (for direct mode) ---
+  llm:
+    model: openai/gpt-5.2:nitro                   # null = use global LLM config; set to override
+    temperature: 0.0                # 0.0 = greedy / deterministic
+    max_tokens: 16384                 # Max output tokens per problem
+
+  # --- Concurrency (for direct mode) ---
+  concurrency: 20
+
+  # --- Pipeline mode settings ---
+  pipeline:
+    model: anthropic/claude-sonnet-4.5                      # null = use llm.model
+    max_tokens: 16384                # null = use llm.max_tokens → agents.yaml default
+    temperature: 0.0               # null = use llm.temperature → agents.yaml default
+    language: en
+    tools:
+      - code_execute
+      - reason
+      # - web_search
+    concurrency: 10
+
+# ======================================================================
+# GAIA Benchmark Configuration
+# ======================================================================
+# python -m benchmark.iso_solve.run_benchmark --benchmark gaia --mode direct \
+#     --config benchmark/iso_solve/config.yaml --limit 5
+#
+# python -m benchmark.iso_solve.run_benchmark --benchmark gaia --mode pipeline \
+#     --config benchmark/iso_solve/config.yaml --limit 5
+
+gaia:
+  # --- Dataset (gated — requires `huggingface-cli login` or HF_TOKEN) ---
+  dataset_id: "gaia-benchmark/GAIA"
+  config_name: "2023_all"         # 2023_all / 2023_level1 / 2023_level2 / 2023_level3
+  split: "validation"             # validation (has ground truth) / test (private answers)
+
+  # --- Filtering ---
+  filter:
+    # levels:                     # Uncomment to filter by level(s) 1-3:
+    #   - 1
+    #   - 2
+    limit: null               # Max problems to evaluate (null = all ~165 validation)
+    seed: 42                      # Random seed for sampling
+
+  # --- LLM settings (for direct mode) ---
+  llm:
+    model:              # null = use global LLM config; set to override
+    multimodal: true              # true = send images to LLM as base64;
+                                  # false = text-only (images described as placeholders,
+                                  # documents/spreadsheets still injected as text)
+    temperature: 0.0
+    max_tokens: 16384
+
+  # --- Concurrency (for direct mode) ---
+  concurrency: 30
+
+  # --- Pipeline mode settings ---
+  pipeline:
+    model:                       # null = use llm.model; set to use a different model for pipeline
+    max_tokens: 16384                        # null = use llm.max_tokens → agents.yaml default
+    temperature: 0.0                       # null = use llm.temperature → agents.yaml default
+    language: en
+    tools:                        # Tools available to the solver agent.
+      - code_execute              # Code execution.
+      - web_search
+      - reason                # Web search (GAIA often requires it).
+    concurrency: 20
+
+# ======================================================================
+# AA-LCR (Artificial Analysis Long Context Reasoning) Benchmark
+# ======================================================================
+# 100 human-crafted questions requiring multi-step reasoning across
+# multiple long documents (~100k tokens per question). Text-only.
+# https://huggingface.co/datasets/ArtificialAnalysis/AA-LCR
+#
+# python -m benchmark.iso_solve.run_benchmark --benchmark aalcr --mode direct \
+#     --config benchmark/iso_solve/config.yaml --limit 5
+#
+# python -m benchmark.iso_solve.run_benchmark --benchmark aalcr --mode pipeline \
+#     --config benchmark/iso_solve/config.yaml --limit 5
+#
+# Filter by category:
+# python -m benchmark.iso_solve.run_benchmark --benchmark aalcr --mode direct \
+#     --config benchmark/iso_solve/config.yaml --aalcr-categories "Company Documents"
+
+aalcr:
+  # --- Dataset (HuggingFace: ArtificialAnalysis/AA-LCR) ---
+  dataset_id: "ArtificialAnalysis/AA-LCR"
+
+  # --- Filtering ---
+  filter:
+    # categories:                     # Uncomment to filter by document category:
+    #   - Marketing            #   Company Documents (63), Industry Reports (8),
+    #   - Legal                        #   Government Consultations (11), Academia (5),
+    #                                  #   Legal (6), Marketing (6), Survey Reports (1)
+    limit: null                       # Max problems to evaluate (null = all 100)
+    seed: 42                          # Random seed for sampling
+
+  # --- LLM settings (for direct mode) ---
+  # NOTE: AA-LCR requires long-context models (~100k+ input tokens per question).
+  llm:
+    model: openai/gpt-5-mini:nitro              # Must support >=128k context window
+    temperature: 0.0                   # 0.0 = greedy / deterministic
+    max_tokens: 16384                  # Max output tokens per problem
+
+  # --- Concurrency (for direct mode) ---
+  concurrency: 20                    # Keep low due to very large input sizes
+
+  # --- Pipeline mode settings ---
+  pipeline:
+    model: openai/gpt-5-mini:nitro             # Must support >=128k context window
+    max_tokens: 16384
+    temperature: 0.0
+    language: en
+    tools:
+      - code_execute
+      - reason 
+    concurrency: 25                    # Keep low; each call sends ~100k tokens
+
+# ======================================================================
+# AIME 2025 Benchmark Configuration
+# ======================================================================
+# python -m benchmark.iso_solve.run_benchmark --benchmark aime25 --mode direct \
+#     --config benchmark/iso_solve/config.yaml
+#
+# python -m benchmark.iso_solve.run_benchmark --benchmark aime25 --mode pipeline \
+#     --config benchmark/iso_solve/config.yaml
+#
+# Part I only:
+# python -m benchmark.iso_solve.run_benchmark --benchmark aime25 --mode direct \
+#     --config benchmark/iso_solve/config.yaml --aime-parts 1
+#
+# Part II only:
+# python -m benchmark.iso_solve.run_benchmark --benchmark aime25 --mode direct \
+#     --config benchmark/iso_solve/config.yaml --aime-parts 2
+
+aime25:
+  # --- Dataset (HuggingFace: opencompass/AIME2025) ---
+  # Configs: AIME2025-I (15 problems), AIME2025-II (15 problems)
+  # All answers are integers in [0, 999].
+  parts:                            # Which parts to evaluate:
+    - 1                             #   1 = AIME 2025-I
+    - 2                             #   2 = AIME 2025-II
+
+  # --- Filtering ---
+  filter:
+    limit: null                     # Max problems to evaluate (null = all 30)
+    seed: 42                        # Random seed for sampling
+
+  # --- LLM settings (for direct mode) ---
+  llm:
+    model: null                     # null = use global LLM config; set to override
+    temperature: 0.0                # 0.0 = greedy / deterministic
+    max_tokens: 8192                # Max output tokens per problem
+
+  # --- Concurrency (for direct mode) ---
+  concurrency: 5
+
+  # --- Pipeline mode settings ---
+  pipeline:
+    model: null                     # null = use llm.model
+    max_tokens: null                # null = use llm.max_tokens → agents.yaml default
+    temperature: null               # null = use llm.temperature → agents.yaml default
+    language: en
+    tools:
+      - code_execute
+    concurrency: 5
+
+# ======================================================================
+# SuperGPQA Benchmark Configuration
+# ======================================================================
+# 26,500 graduate-level multiple-choice questions across 285 disciplines.
+# Each question has 4-10 options; difficulty levels: easy, middle, hard.
+# https://huggingface.co/datasets/m-a-p/SuperGPQA
+#
+# python -m benchmark.iso_solve.run_benchmark --benchmark super_gpqa --mode direct \
+#     --config benchmark/iso_solve/config.yaml --limit 50
+#
+# python -m benchmark.iso_solve.run_benchmark --benchmark super_gpqa --mode pipeline \
+#     --config benchmark/iso_solve/config.yaml --limit 50
+#
+# Filter by difficulty:
+# python -m benchmark.iso_solve.run_benchmark --benchmark super_gpqa --mode direct \
+#     --config benchmark/iso_solve/config.yaml --super-gpqa-difficulties hard
+
+super_gpqa:
+  # --- Dataset (requires `huggingface-cli login`) ---
+  dataset_url: "hf://datasets/m-a-p/SuperGPQA/SuperGPQA-all.jsonl"
+
+  # --- Filtering ---
+  filter:
+    # disciplines:                     # Uncomment to filter by discipline(s):
+    #   - Physics                      #   13 disciplines (e.g. Physics, Chemistry,
+    #   - Computer Science             #   Biology, Mathematics, Engineering, ...)
+    # fields:                          # Uncomment to filter by field(s):
+    #   - Machine Learning             #   72 fields
+    # difficulties:                    # Uncomment to filter by difficulty:
+    #   - hard                         #   easy, middle, hard
+    limit: null                        # Max problems to evaluate (null = all 26500)
+    seed: 42                           # Random seed for sampling
+
+  # --- LLM settings (for direct mode) ---
+  llm:
+    model: null                # null = use global LLM config; set to override
+    temperature: 0.0                   # 0.0 = greedy / deterministic
+    max_tokens: 16384                  # Max output tokens per problem
+
+  # --- Concurrency (for direct mode) ---
+  concurrency: 20
+
+  # --- Pipeline mode settings ---
+  pipeline:
+    model: null                # null = use llm.model
+    max_tokens: null                   # null = use llm.max_tokens → agents.yaml default
+    temperature: null                  # null = use llm.temperature → agents.yaml default
+    language: en
+    tools:
+      - code_execute
+    concurrency: 10

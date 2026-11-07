@@ -1,0 +1,13 @@
+name: replan
+order: 11
+type: control
+
+planner_description: ""
+
+solver:
+  when_to_use: "The original plan is fundamentally flawed (wrong premise, missing critical info, etc.)"
+  action_input: "A brief reason explaining why a replan is needed"
+  guideline: ""
+  note: >-
+    Use `replan` **sparingly** — only when the plan itself is wrong,
+    not when a single search returns poor results (retry with a better query instead).

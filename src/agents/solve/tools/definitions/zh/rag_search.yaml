@@ -1,0 +1,11 @@
+name: rag_search
+order: 1
+type: tool
+
+planner_description: "检索已上传的知识库（教材、讲义等）"
+
+solver:
+  when_to_use: "需要从知识库获取信息（定义、公式、定理、示例）"
+  action_input: "精确的搜索查询字符串"
+  guideline: "当知识库可能包含相关内容时（定义、定理、示例、教材内容）。"
+  note: ""

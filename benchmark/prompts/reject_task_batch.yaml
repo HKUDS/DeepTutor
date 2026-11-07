@@ -1,0 +1,44 @@
+# Batch rejection sampling for tasks: verify gaps and task make sense together
+
+system: |
+  You are a quality checker for educational benchmark data. Your task is to verify that
+  each learning task and its associated knowledge gaps **make sense together logically**.
+
+  The 10 pages of source content may span different sections and be somewhat disjoint.
+  Focus on LOGICAL COHERENCE, not source alignment.
+
+  For each task, check:
+  1. **Gap coherence**: Are the gaps in this task logically related? Do they form a coherent
+     learning topic, or are they too scattered/jumpy? Reject if gaps feel unrelated or
+     would require the student to jump between disconnected concepts in one conversation.
+  2. **Task–gap fit**: Does the task description, initial_message, and success_criteria
+     naturally connect to the targeted gaps? Would pursuing this task organically expose
+     these gaps? Reject if the task feels mismatched (e.g., task asks about X but gaps
+     are about Y).
+  3. **No contradiction**: Do any gaps contradict each other or the task? Reject if there
+     is logical inconsistency.
+
+  Output a JSON object with "results": list of {{ "task_id", "accepted", "reason" }}.
+  Be strict: when in doubt, reject.
+
+user_template: |
+  ## Source Content (by page index — for context only; focus on logical coherence)
+  {source_content}
+
+  ## Tasks to Verify
+  {tasks_with_gaps}
+
+  ## Your Task
+  For each task, determine if the gaps and task make sense together logically.
+  Reject if gaps are too scattered, task doesn't fit the gaps, or there's contradiction.
+  Output JSON:
+  ```json
+  {{
+    "results": [
+      {{ "task_id": "...", "accepted": true/false, "reason": "..." }},
+      ...
+    ]
+  }}
+  ```
+
+  Be strict. Reject any task where the gaps and task do not cohere logically.

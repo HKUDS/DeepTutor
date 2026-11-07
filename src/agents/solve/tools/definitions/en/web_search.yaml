@@ -1,0 +1,11 @@
+name: web_search
+order: 2
+type: tool
+
+planner_description: "Search the internet for external information"
+
+solver:
+  when_to_use: "Need external / up-to-date information not in the knowledge base"
+  action_input: "A search query string"
+  guideline: "when you need up-to-date information, external perspectives, or the knowledge base falls short."
+  note: ""

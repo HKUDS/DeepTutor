@@ -1,0 +1,153 @@
+# ============================================
+# DeepTutor Project .gitignore
+# ============================================
+
+# ============================================
+# User Generated Data and Outputs
+# ============================================
+data/**
+!data/README.md
+run_code_workspace/
+src/agents/question/reference_papers/
+src/services/rag/eg_only_for_analysis/
+benchmark/data/
+paper/
+benchmark/iso_solve/report_trace/
+benchmark/pipeline/
+benchmark/human_alignment/
+tests/benchmark/test_human_alignment.py
+
+# ============================================
+# Python Related
+# ============================================
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution/Packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environments
+.env
+*.env
+!.env.example
+env/
+venv/
+ENV/
+.venv/
+env.bak/
+venv.bak/
+
+# ============================================
+# Common Output and Cache Directories
+# ============================================
+output/
+outputs/
+**/output/
+**/outputs/
+cache/
+**/cache/
+.cache/
+.ruff_cache
+
+# Log files
+*.log
+
+# ============================================
+# IDE and Editors
+# ============================================
+.vscode/
+.cursor/
+.idea/
+*.iml
+*.iws
+*.ipr
+*.sublime-project
+*.sublime-workspace
+*.swp
+*.swo
+*~
+.netrwhist
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+auto-save-list
+tramp
+.\#*
+
+# ============================================
+# Operating System Files
+# ============================================
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+Thumbs.db
+[Dd]esktop.ini
+$RECYCLE.BIN/
+
+# ============================================
+# Temporary Files
+# ============================================
+*.tmp
+*.temp
+*.bak
+*.backup
+
+# ============================================
+# Testing and Coverage
+# ============================================
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+.tox/
+nosetests.xml
+coverage.xml
+
+# ============================================
+# Type Checking
+# ============================================
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+.pytype/
+
+# ============================================
+# Other
+# ============================================
+*.prof
+*.pstats
+*.db
+*.sqlite
+*.sqlite3
+*.zip
+*.tar
+*.tar.gz
+*.rar
+*.7z
+/site
+
+# Benchmark cached data & results
+benchmark/iso_solve/data/
+benchmark/iso_solve/results/

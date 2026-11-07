@@ -1,0 +1,233 @@
+# Python project configuration for DeepTutor
+# This file configures Black, Ruff, and other Python tools
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "deeptutor-eval"
+version = "0.5.0"
+description = "DeepTutor evaluation toolkit — question generation, solving, RAG, and memory"
+requires-python = ">=3.10"
+readme = "README.md"
+license = {text = "Apache-2.0"}
+
+# Optional dependencies for different LLM providers
+[project.optional-dependencies]
+anthropic = ["anthropic>=0.30.0"]
+dashscope = ["dashscope>=1.14.0"]
+search = ["perplexityai>=0.1.0"]
+all = [
+    "anthropic>=0.30.0",
+    "dashscope>=1.14.0",
+    "perplexityai>=0.1.0"
+]
+
+# ============================================
+# Black code formatter configuration
+# ============================================
+[tool.black]
+line-length = 100
+target-version = ['py310', 'py311', 'py312']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # Exclude directories
+  \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | venv
+  | _build
+  | buck-out
+  | build
+  | dist
+  | __pycache__
+  | node_modules
+  | \.next
+)/
+'''
+
+# ============================================
+# Ruff linter and formatter configuration
+# ============================================
+[tool.ruff]
+# Target Python version
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+# Enable only the most essential rules
+select = [
+    "E",   # pycodestyle errors (syntax-related issues)
+    "F",   # pyflakes (unused imports, variables, etc.)
+    "I",   # isort (import ordering)
+    # Other rules are ignored and not enforced
+]
+
+extend-select = [
+    "B006",  # Do not use mutable data structures for argument defaults
+]
+
+# Ignore specific rules (keep only the most important checks)
+ignore = [
+    "E501",  # Line too long (handled by formatter)
+    "B008",  # Do not perform function calls in argument defaults
+    "PLR0911", # Too many return statements
+    "PLR0912", # Too many branches
+    "PLR0913", # Too many arguments
+    "PLR0915", # Too many statements
+    "PLR2004", # Magic value used in comparison
+    "TRY003", # Avoid specifying long messages outside exception class
+    "T201",  # print found (allow print statements for debugging)
+    "E722",  # Do not use bare except (needed in some cases)
+    "E402",  # Module level import not at top of file (needed in some cases)
+    "PLC0415", # import should be at top-level (needed in some cases)
+    "PTH123", # open() should be replaced by Path.open() (allow open)
+    "PTH103", # os.makedirs() should be replaced by Path.mkdir() (allow os.makedirs)
+    "PTH118", # os.path.join() should be replaced by Path (allow os.path.join)
+    "EM101",  # Exception must not use a string literal
+    "EM102",  # Exception must not use an f-string literal
+    "TRY002", # Create your own exception
+    "TRY300", # Consider moving this statement to an else block
+    "DTZ005", # datetime.now() called without tz argument
+    "RET504", # Unnecessary assignment before return
+    "PLW2901", # for loop variable overwritten by assignment target
+    "F841",  # Local variable assigned but never used
+    "ERA001", # Found commented-out code (allow commented code)
+]
+
+# Exclude patterns
+exclude = [
+    ".bzr",
+    ".direnv",
+    ".eggs",
+    ".git",
+    ".git-rewrite",
+    ".hg",
+    ".mypy_cache",
+    ".nox",
+    ".pants.d",
+    ".pyenv",
+    ".pytest_cache",
+    ".pytype",
+    ".ruff_cache",
+    ".svn",
+    ".tox",
+    ".venv",
+    ".vscode",
+    "__pypackages__",
+    "_build",
+    "buck-out",
+    "build",
+    "dist",
+    "node_modules",
+    ".next",
+    "out",
+    "venv",
+    "__pycache__",
+]
+
+# Allow autofix for all enabled rules
+fixable = ["ALL"]
+unfixable = []
+
+# Allow unused variables when underscore-prefixed
+dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+
+[tool.ruff.format]
+# Use double quotes for strings
+quote-style = "double"
+# Indent with spaces
+indent-style = "space"
+# Respect magic trailing comma
+skip-magic-trailing-comma = false
+# Automatically detect the appropriate line ending
+line-ending = "auto"
+
+# ============================================
+# Ruff import sorting (isort replacement)
+# ============================================
+[tool.ruff.lint.isort]
+known-first-party = ["src", "scripts"]
+force-sort-within-sections = true
+split-on-trailing-comma = true
+
+# ============================================
+# Ruff per-file-ignores
+# ============================================
+[tool.ruff.lint.per-file-ignores]
+# Allow longer lines in test files
+# F401: Allow unused imports for availability checks in tests
+"**/test_*.py" = ["E501", "PLR2004", "F401"]
+"**/__init__.py" = ["F401"]  # Allow unused imports in __init__.py
+
+# ============================================
+# Ruff mccabe complexity
+# ============================================
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+# ============================================
+# Pytest configuration
+# ============================================
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+asyncio_mode = "auto"
+addopts = [
+    "--strict-markers",
+    "--strict-config",
+    "--disable-warnings",
+    "--tb=short"
+]
+markers = [
+    "asyncio: mark a test as an asyncio coroutine",
+]
+
+# ============================================
+# MyPy type checking configuration
+# ============================================
+[tool.mypy]
+python_version = "3.10"
+# Relaxed type checking for gradual adoption
+pretty = false
+show_error_context = false
+warn_return_any = false
+warn_no_return = false
+show_error_codes = true
+ignore_missing_imports = true
+follow_imports = "silent"
+# Disable strict checks that generate too many errors
+check_untyped_defs = false
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+no_implicit_optional = false
+
+# Module-specific overrides
+[[tool.mypy.overrides]]
+module = "tests.*"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "src.tools.*"
+ignore_errors = true  # Some tools may have dynamic imports
+
+# ============================================
+# Bandit security linting configuration
+# ============================================
+[tool.bandit]
+exclude_dirs = ["tests", "scripts"]
+# B101=assert, B311=random, B403/B404=pickle/subprocess imports
+# B110=try_except_pass (intentional for non-critical error handling)
+# B104=hardcoded_bind_all_interfaces (required for server binding)
+# B112=try_except_continue (intentional for iteration)
+# B105=hardcoded_password_string (false positive on empty string initialization)
+# B301=pickle (used for internal embedding cache, not untrusted data)
+# B501=request_with_no_cert_validation (opt-in via env var for dev/testing)
+# B603=subprocess_without_shell_equals_true (controlled execution)
+# B202=tarfile_unsafe_members (already using safe_members filter)
+skips = ["B101", "B311", "B403", "B404", "B110", "B104", "B112", "B105", "B301", "B501", "B603", "B202"]

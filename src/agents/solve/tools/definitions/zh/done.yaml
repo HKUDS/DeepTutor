@@ -1,0 +1,11 @@
+name: done
+order: 10
+type: control
+
+planner_description: ""
+
+solver:
+  when_to_use: "你已经拥有**充分的**信息来回答当前步骤"
+  action_input: '留空 `""`'
+  guideline: ""
+  note: ""

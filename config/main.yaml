@@ -1,0 +1,54 @@
+system:
+  language: en
+paths:
+  user_data_dir: ./data/user
+  knowledge_bases_dir: ./data/knowledge_bases
+  user_log_dir: ./data/user/logs
+  performance_log_dir: ./data/user/performance
+  question_output_dir: ./data/user/question
+  solve_output_dir: ./data/user/solve
+tools:
+  rag_tool:
+    kb_base_dir: ./data/knowledge_bases
+    default_kb: ai-textbook
+  run_code:
+    workspace: ./data/user/run_code_workspace
+    allowed_roots:
+    - ./data/user
+    - ./src/tools
+  web_search:
+    enabled: true
+    consolidation: template
+    consolidation_template: ''
+    provider: jina
+logging:
+  # Global log level for the entire system (DEBUG, INFO, WARNING, ERROR)
+  # This controls both DeepTutor logs and RAG module logs
+  level: WARNING
+  save_to_file: true
+  console_output: true
+  # RAG module logger name mapping (optional customization)
+  rag_logger_names:
+    knowledge_init: RAG-Init
+    rag_tool: RAG
+question:
+  rag_query_count: 3
+  max_parallel_questions: 1
+  rag_mode: naive
+  idea_loop:
+    max_rounds: 3
+    ideas_per_round: 5
+  generation:
+    max_retries: 2
+    tools:
+      web_search: true
+      rag_tool: true
+      write_code: true
+solve:
+  max_react_iterations: 5        # Max ReAct rounds per plan step
+  max_plan_steps: 5            # Max steps in a plan
+  max_replans: 2                # Max replan attempts
+  observation_max_tokens: 2000  # Truncation limit for tool results
+  enable_citations: true
+  save_intermediate_results: true
+  detailed_answer: true        # true = iterative step-by-step writing; false = single-shot

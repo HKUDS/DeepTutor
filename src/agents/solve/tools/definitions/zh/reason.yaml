@@ -1,0 +1,13 @@
+name: reason
+order: 4
+type: tool
+
+planner_description: "对子问题进行深度推理/逻辑推演，无需外部工具"
+
+solver:
+  when_to_use: "需要更深入的分析、逻辑推演、数学推导，或对已收集信息的综合 — 不需要外部工具调用"
+  action_input: "清晰描述推理的重点 — 需要分析或推导什么"
+  guideline: "当步骤需要纯逻辑推理、推导或综合已有信息，且不需要新的外部信息时。"
+  note: >-
+    `reason` 用于**思考**，而非**查找事实**。
+    如果需要新的事实性信息，请改用 `rag_search`、`web_search` 或 `code_execute`。

@@ -1,0 +1,50 @@
+# ======================================================================
+# LLM Score Batch Jobs
+# ======================================================================
+# List the results directories to score. Run all jobs with:
+#
+#   python -m benchmark.iso_solve.get_llm_score --jobs benchmark/iso_solve/score_jobs.yaml
+#
+# Each job inherits global defaults below, but can override per-job.
+# ======================================================================
+
+# --- Global defaults (apply to all jobs unless overridden) ---
+defaults:
+  rounds: 3
+  concurrency: 20
+
+# --- Jobs ---
+jobs:
+  # -- AALCR --
+  # - results_dir: benchmark/iso_solve/report_trace/aalcr/direct/anthropic_claude-sonnet-4.5_20260223_223343
+  # - results_dir: benchmark/iso_solve/report_trace/aalcr/direct/google_gemini-3-flash-preview_nitro_20260224_000404
+  # - results_dir: benchmark/iso_solve/report_trace/aalcr/direct/openai_gpt-5-mini_20260223_185720-paper
+  # - results_dir: benchmark/iso_solve/report_trace/aalcr/direct/qwen3.5-plus_20260223_122140-paper
+
+  # # pipeline
+  # - results_dir: benchmark/iso_solve/report_trace/aalcr/pipeline/qwen3.5-plus_20260223_131936-paper
+
+
+  # # -- GAIA --
+  # - results_dir: benchmark/iso_solve/report_trace/gaia/direct/google_gemini-3-flash-preview_nitro_20260223_235651
+
+  # # -- GPQA --
+  # - results_dir: benchmark/iso_solve/report_trace/gpqa/direct/openai_gpt-5-mini_nitro_20260223_200205-paper
+
+  # # -- HLE --
+  # - results_dir: benchmark/iso_solve/report_trace/hle/direct/anthropic_claude-sonnet-4.5_20260224_133043
+
+  # -- LiveBench --
+  - results_dir: benchmark/iso_solve/report_trace/livebench/direct/anthropic_claude-sonnet-4.5_nitro_20260223_225829
+  - results_dir: benchmark/iso_solve/report_trace/livebench/direct/google_gemini-3-flash-preview_20260223_235455
+  - results_dir: benchmark/iso_solve/report_trace/livebench/direct/openai_gpt-5-mini_nitro_20260223_194601
+  - results_dir: benchmark/iso_solve/report_trace/livebench/direct/qwen3.5-plus_20260223_173705-paper
+  - results_dir: benchmark/iso_solve/report_trace/livebench/pipeline/anthropic_claude-sonnet-4.5_20260224_124453
+  - results_dir: benchmark/iso_solve/report_trace/livebench/pipeline/google_gemini-3-flash-preview_20260223_235735
+  - results_dir: benchmark/iso_solve/report_trace/livebench/pipeline/openai_gpt-5-mini_nitro_20260224_014320
+  - results_dir: benchmark/iso_solve/report_trace/livebench/pipeline/qwen3.5-plus_20260223_174525
+
+  # Per-job overrides example (uncomment to use):
+  # - results_dir: benchmark/iso_solve/report_trace/gaia/direct/some_run
+  #   rounds: 3           # override rounds for this job only
+  #   concurrency: 10     # override concurrency for this job only

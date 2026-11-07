@@ -1,0 +1,11 @@
+name: rag_search
+order: 1
+type: tool
+
+planner_description: "Search the uploaded knowledge base (textbooks, lecture notes, etc.)"
+
+solver:
+  when_to_use: "Need information from the knowledge base (definitions, formulas, theorems, examples)"
+  action_input: "A precise search query string"
+  guideline: "when the knowledge base likely has relevant content (definitions, theorems, examples, textbook material)."
+  note: ""

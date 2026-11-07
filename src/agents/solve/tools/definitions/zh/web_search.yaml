@@ -1,0 +1,11 @@
+name: web_search
+order: 2
+type: tool
+
+planner_description: "搜索互联网获取外部信息"
+
+solver:
+  when_to_use: "需要外部/最新信息，知识库中没有的内容"
+  action_input: "搜索查询字符串"
+  guideline: "当需要最新信息、外部观点，或知识库不足时。"
+  note: ""

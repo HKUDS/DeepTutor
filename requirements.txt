@@ -1,0 +1,59 @@
+# ============================================
+# DeepTutor Python Dependencies
+# ============================================
+# Python >= 3.10 required
+# Install: pip install -r requirements.txt
+
+# ============================================
+# Core dependencies
+# ============================================
+python-dotenv>=1.0.0
+PyYAML>=6.0
+tiktoken>=0.5.0
+jinja2>=3.1.0              # Template engine for search consolidation
+pydantic>=2.0.0
+
+# ============================================
+# HTTP and API clients
+# ============================================
+requests>=2.32.2
+openai>=1.30.0
+anthropic>=0.30.0          # Anthropic Claude API
+perplexityai>=0.1.0
+dashscope>=1.14.0
+aiohttp>=3.9.4
+httpx>=0.27.0
+urllib3>=2.2.1
+
+# ============================================
+# Async support
+# ============================================
+nest_asyncio>=1.5.8
+tenacity>=8.0.0
+
+# ============================================
+# RAG and knowledge base
+# ============================================
+raganything>=0.1.0
+docling>=2.31.0                # Document parser for Office/HTML (alternative to MinerU)
+
+# ============================================
+# LlamaIndex
+# ============================================
+llama-index>=0.14.12
+
+# ============================================
+# Scientific computing (for RAG and code execution)
+# ============================================
+numpy>=1.24.0,<2.0.0  # NumPy 1.24+ required for array API, <2.0 for compatibility
+
+# PDF parsing
+PyMuPDF>=1.26.0      # For PDF text extraction (fast and reliable)
+
+# ============================================
+# Development and testing tools
+# ============================================
+pytest>=7.0.0              # Testing framework
+pre-commit>=3.0.0
+safety<3.0.0               # Pin to stable 2.x version, 3.0.0 is broken
+bandit>=1.8.0

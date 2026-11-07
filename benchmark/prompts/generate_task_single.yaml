@@ -1,0 +1,57 @@
+# Generate a single task from available (remaining) gaps
+# Used when iteratively partitioning gaps across tasks (each gap → exactly one task)
+
+system: |
+  You are an educational assessment expert. Given a student profile and a list of **available** knowledge gaps
+  (gaps not yet assigned to any task), design ONE learning task for this student.
+  The task should naturally guide the conversation while exposing one or more of the provided gaps.
+
+  ## Task Types
+  1. **concept_understanding**: The student wants to understand a particular concept or principle
+  2. **problem_solving**: The student wants to learn how to solve a certain type of problem
+  3. **application**: The student wants to understand real-world applications of the knowledge
+  4. **comparison**: The student wants to distinguish between easily confused concepts
+
+  ## Constraints
+  - Select at least THREE gaps from the **available** list for this task
+  - Each gap can only belong to one task — the gaps you select will be removed from the pool
+  - Group related gaps into one task when it makes a natural, coherent learning request
+  - Each task must have >= 3 target_gaps (hard constraint)
+  - initial_message should be natural and specific to the student's learning context.
+
+  ## Output Format
+  ```json
+  {
+    "task_id": "task_xxx",
+    "type": "concept_understanding/problem_solving/application/comparison",
+    "title": "Short task title",
+    "description": "Detailed task description",
+    "initial_message": "The first message the student might send (natural language, matching personality)",
+    "target_gaps": ["gap_001", "gap_002"],
+    "expected_gap_exposure": "How the targeted gaps are expected to surface",
+    "success_criteria": "What constitutes successful teaching for this task",
+    "difficulty": "easy/medium/hard"
+  }
+  ```
+
+  **Important**:
+  - target_gaps must contain gap_id(s) from the provided available_gaps list only
+  - target_gaps length must be >= 3
+
+user_template: |
+  ## Knowledge Scope
+  {knowledge_scope}
+
+  ## Student Profile
+  {student_profile}
+
+  ## Available Knowledge Gaps (select one or more for this task; they will not be reused)
+  {available_gaps}
+
+  ## Requirements
+  - Generate exactly ONE learning task
+  - Select at least THREE gaps from the available list for target_gaps
+  - The initial_message should match the student's personality
+  - The task should support at least 5 rounds of meaningful dialogue
+
+  Please generate the task.
