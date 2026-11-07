@@ -6599,5 +6599,15 @@
   "settings.modelImport.unverified": "Alguns modelos não declaram o tipo. Teste-os antes de usar neste serviço.",
   "settings.modelImport.draftHint": "Os modelos são adicionados ao rascunho. Aplique as alterações para salvar; o modelo padrão permanece igual.",
   "settings.modelImport.selected": "Selecionados: {{count}}",
-  "language.korean": "한국어 (일부 번역)"
+  "language.korean": "한국어 (일부 번역)",
+  "Zoom level": "Nível de zoom",
+  "Reset zoom": "Redefinir zoom",
+  "Fit text": "Ajustar ao texto",
+  "Fit page": "Ajustar à página",
+  "Drag to pan, scroll to zoom": "Arraste para mover, role para ampliar",
+  "Image preview": "Pré-visualização da imagem",
+  "Loading image…": "Carregando imagem…",
+  "Page {{n}}": "Página {{n}}",
+  "This image could not be rendered.": "Não foi possível renderizar esta imagem.",
+  "Zoom image": "Ampliar imagem"
 }
