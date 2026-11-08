@@ -4620,3 +4620,101 @@ async def test_public_answer_with_capability_notice_is_preserved_once(monkeypatc
     assert answer.count(notice) == 1
     assert answer.startswith(explanation)
     assert _result(events).metadata["response"] == answer
+
+
+@pytest.mark.asyncio
+async def test_anonymous_fragment_does_not_land_in_the_wrong_streamed_call(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#2482: the wire cannot say which call an id-less fragment belongs to."""
+    client = _ScriptedChatClient(
+        [
+            [
+                _llm_chunk(
+                    tool_calls=[
+                        {
+                            "index": None,
+                            "id": "call_a",
+                            "name": "web_search",
+                            "arguments": '{"query":',
+                        }
+                    ]
+                ),
+                _llm_chunk(
+                    tool_calls=[
+                        {
+                            "index": None,
+                            "id": "call_b",
+                            "name": "web_search",
+                            "arguments": '{"query":',
+                        }
+                    ]
+                ),
+                _llm_chunk(tool_calls=[{"index": None, "arguments": '"x"}'}]),
+            ],
+            [_llm_chunk(content="done", finish_reason="stop")],
+        ]
+    )
+    pipeline = AgenticChatPipeline(language="en")
+    pipeline.registry = _Registry()
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _context: ["web_search"])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+
+    await _run(pipeline, UnifiedContext(session_id="s1", user_message="look it up"))
+
+    wire = client.calls[1]["messages"]
+    recorded = {
+        call["id"]: call["function"]["arguments"]
+        for message in wire
+        if message.get("role") == "assistant"
+        for call in (message.get("tool_calls") or [])
+    }
+    assert recorded == {"call_a": '{"query":', "call_b": '{"query":'}
+
+
+@pytest.mark.asyncio
+async def test_two_unindexed_ask_user_calls_keep_their_own_previews(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#2482: parallel ask_user calls arrive without an index.
+
+    Both cards stream at once, so a preview filed under the wrong call would
+    draw one question's options inside the other's card. Each preview has to
+    name the call whose arguments it was built from.
+    """
+    first = json.dumps({"intro": "Which path?", "questions": [{"id": "a", "prompt": "Route?"}]})
+    second = json.dumps({"intro": "How many?", "questions": [{"id": "b", "prompt": "Goals?"}]})
+    client = _ScriptedChatClient(
+        [
+            [
+                _llm_chunk(
+                    tool_calls=[
+                        {"index": None, "id": "ask-a", "name": "ask_user", "arguments": first[:20]}
+                    ]
+                ),
+                _llm_chunk(
+                    tool_calls=[
+                        {"index": None, "id": "ask-b", "name": "ask_user", "arguments": second[:20]}
+                    ]
+                ),
+                _llm_chunk(tool_calls=[{"index": None, "id": "ask-a", "arguments": first[20:]}]),
+                _llm_chunk(tool_calls=[{"index": None, "id": "ask-b", "arguments": second[20:]}]),
+            ]
+        ]
+    )
+    pipeline = AgenticChatPipeline(language="en")
+    pipeline.registry = _Registry()
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _context: ["ask_user"])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+
+    events = await _run(
+        pipeline,
+        UnifiedContext(session_id="s1", user_message="take me back", enabled_tools=["ask_user"]),
+    )
+
+    previews = {
+        event.metadata["draft_call_id"]: event.metadata["ask_user_draft"]["intro"]
+        for event in events
+        if isinstance(event.metadata.get("ask_user_draft"), dict)
+    }
+    assert previews == {"ask-a": "Which path?", "ask-b": "How many?"}

@@ -10,6 +10,10 @@ each field is stated here once instead of being restated per site:
 * Provider extensions attached to the call arrive **complete** and must be
   preserved. Gemini thinking models put the opaque signature required by the
   next tool round in ``extra_content.google.thought_signature`` (#1181).
+* A delta may carry neither ``index`` nor ``id``. Once a second call is
+  open that fragment no longer says which call it continues, and appending it
+  to the one that happened to arrive last corrupts that call's arguments while
+  leaving the intended one truncated. Ambiguous fragments are dropped.
 
 Appending a complete field is issue #937: a router that re-sent ``id`` on
 every chunk grew it to 47241 characters, far past the 64-character limit the
@@ -37,6 +41,7 @@ class ToolCallAccumulator:
 
     def __init__(self) -> None:
         self._parts: dict[int, dict[str, Any]] = {}
+        self.last_slot: int | None = None
 
     def feed(self, tc_delta: Any) -> int:
         """Fold one tool-call delta in; return the characters it contributed.
@@ -44,7 +49,14 @@ class ToolCallAccumulator:
         The count covers ``name`` and ``arguments`` only, matching what
         callers bill as provider output.
         """
-        index = int(getattr(tc_delta, "index", 0) or 0)
+        index = self._slot(tc_delta)
+        if index is None:
+            # Nothing to fold into without guessing. The call this fragment
+            # belonged to keeps the arguments it already has, so the dispatch
+            # guard rejects the truncated JSON with a corrective message
+            # (#779) instead of running another call's arguments.
+            return 0
+        self.last_slot = index
         part = self._parts.setdefault(index, {"id": "", "name": "", "arguments": ""})
 
         tcid = getattr(tc_delta, "id", None)
@@ -75,18 +87,39 @@ class ToolCallAccumulator:
             chars += len(str(arguments))
         return chars
 
-    def part_at(self, index: int) -> dict[str, Any] | None:
+    def _slot(self, tc_delta: Any) -> int | None:
+        """The part a delta folds into, or ``None`` when the wire is ambiguous.
+
+        Gemini omits ``index`` entirely (#2482), so those calls are
+        identified by ``id`` alone. A delta carrying neither is only a
+        continuation while a single call is open: with two or more open it
+        cannot name the call it belongs to, and the alternative -- the call
+        that arrived last -- is a guess that silently corrupts both.
+        """
+        index = getattr(tc_delta, "index", None)
+        if index is not None and index != "":
+            return int(index)
+        tc_id = getattr(tc_delta, "id", None)
+        if tc_id:
+            same = next((key for key, part in self._parts.items() if part["id"] == tc_id), None)
+            return -1 - len(self._parts) if same is None else same
+        if self.last_slot is None or len(self._parts) > 1:
+            return None
+        return self.last_slot
+
+    def part_at(self, index: int | None = None) -> dict[str, Any] | None:
         """The part a provider index is folding into, if it exists yet.
 
         Lets a caller read one call's running ``name``/``arguments`` right
         after feeding a delta for it, without guessing that the provider's
-        indices happen to line up with list positions.
+        indices happen to line up with list positions. With no index it is the
+        part the last ``feed`` resolved — all a caller has when none arrive (#2482).
         """
-        return self._parts.get(int(index))
+        return self._parts.get(self.last_slot if index is None else int(index))
 
     def ordered(self) -> list[dict[str, Any]]:
-        """Every accumulated part, in provider index order, unfiltered."""
-        return [self._parts[key] for key in sorted(self._parts)]
+        """Every accumulated part, in arrival order, unfiltered."""
+        return list(self._parts.values())
 
     def collected(self) -> list[dict[str, Any]]:
         """Dispatchable tool calls: named parts only, with defaults applied.
@@ -95,7 +128,7 @@ class ToolCallAccumulator:
         to correlate the result message, hence the positional fallback.
         """
         calls: list[dict[str, Any]] = []
-        for index, part in sorted(self._parts.items()):
+        for index, part in self._parts.items():
             if not part.get("name"):
                 continue
             call: dict[str, Any] = {

@@ -113,14 +113,113 @@ def test_arguments_without_a_name_are_not_dispatchable() -> None:
     assert acc.ordered() == [{"id": "call_1", "name": "", "arguments": '{"q":"x"}'}]
 
 
-def test_absent_index_is_coerced_so_parts_stay_sortable() -> None:
-    """A provider that omits ``index`` used to seed a ``None`` dict key,
-    which made the final ``sorted()`` raise once any real index appeared."""
-    acc = ToolCallAccumulator()
-    acc.feed(_Delta(index=None, id="call_1", name="rag_search", arguments="{}"))  # type: ignore[arg-type]
-    acc.feed(_Delta(index=1, id="call_2", name="web_search", arguments="{}"))
+def test_unindexed_parallel_calls_stay_separate() -> None:
+    """#2482: Gemini streams parallel calls with no ``index`` at all.
 
-    assert [call["id"] for call in acc.collected()] == ["call_1", "call_2"]
+    Coercing the absent index to 0 folded every call into one part, so the
+    ids overwrote each other and the arguments concatenated into invalid
+    JSON. Each fresh id has to open its own part instead.
+    """
+    acc = ToolCallAccumulator()
+    for suffix in ("alpha", "beta", "gamma"):
+        acc.feed(
+            _Delta(
+                index=None, id=f"call_{suffix}", name="rag_search", arguments=f'{{"q":"{suffix}"}}'
+            )  # type: ignore[arg-type]
+        )
+
+    assert acc.collected() == [
+        {"id": "call_alpha", "name": "rag_search", "arguments": '{"q":"alpha"}'},
+        {"id": "call_beta", "name": "rag_search", "arguments": '{"q":"beta"}'},
+        {"id": "call_gamma", "name": "rag_search", "arguments": '{"q":"gamma"}'},
+    ]
+
+
+def test_fragment_without_index_or_id_continues_the_last_addressed_call() -> None:
+    """Only a fresh id opens a part; an anonymous fragment resumes."""
+    acc = ToolCallAccumulator()
+    acc.feed(_Delta(index=None, id="call_a", name="rag_search", arguments='{"q":'))  # type: ignore[arg-type]
+    acc.feed(_Delta(index=None, arguments='"x"}'))  # type: ignore[arg-type]
+    acc.feed(_Delta(index=None, id="call_b", name="web_search", arguments="{}"))  # type: ignore[arg-type]
+
+    assert acc.collected() == [
+        {"id": "call_a", "name": "rag_search", "arguments": '{"q":"x"}'},
+        {"id": "call_b", "name": "web_search", "arguments": "{}"},
+    ]
+
+
+def test_anonymous_fragment_is_dropped_once_two_calls_are_open() -> None:
+    """#2482: an id-less fragment cannot name its call any more.
+
+    ``a`` and ``b`` are both open and neither carries an index, so the
+    arriving ``1}`` may belong to either. Folding it into whichever call
+    came last handed ``1}`` to ``b`` and left ``a`` truncated -- one call
+    silently ran another call's arguments. Dropping it truncates both, which
+    the dispatch guard reports instead.
+    """
+    acc = ToolCallAccumulator()
+    acc.feed(_Delta(index=None, id="call_a", name="rag_search", arguments='{"x":'))  # type: ignore[arg-type]
+    acc.feed(_Delta(index=None, id="call_b", name="web_search", arguments='{"y":'))  # type: ignore[arg-type]
+
+    assert acc.feed(_Delta(index=None, arguments="1}")) == 0  # type: ignore[arg-type]
+
+    assert acc.collected() == [
+        {"id": "call_a", "name": "rag_search", "arguments": '{"x":'},
+        {"id": "call_b", "name": "web_search", "arguments": '{"y":'},
+    ]
+    # Dropping does not stop the stream from finishing the call it can name.
+    acc.feed(_Delta(index=None, id="call_a", arguments="1}"))  # type: ignore[arg-type]
+    assert acc.collected() == [
+        {"id": "call_a", "name": "rag_search", "arguments": '{"x":1}'},
+        {"id": "call_b", "name": "web_search", "arguments": '{"y":'},
+    ]
+
+
+def test_anonymous_fragment_still_continues_the_only_open_call() -> None:
+    """With one call open the destination is unambiguous, so keep streaming."""
+    acc = ToolCallAccumulator()
+    acc.feed(_Delta(index=None, id="call_a", name="rag_search", arguments='{"x":'))  # type: ignore[arg-type]
+    assert acc.feed(_Delta(index=None, arguments="1}")) > 0  # type: ignore[arg-type]
+
+    assert acc.collected() == [{"id": "call_a", "name": "rag_search", "arguments": '{"x":1}'}]
+
+
+def test_explicit_index_zero_is_not_the_first_unindexed_call() -> None:
+    """A provider that omits ``index`` and one that sends ``index=0`` must not
+    share a part, or the two calls merge again through the back door."""
+    acc = ToolCallAccumulator()
+    acc.feed(_Delta(index=None, id="call_unindexed", name="rag_search", arguments="{}"))  # type: ignore[arg-type]
+    acc.feed(_Delta(index=0, id="call_zero", name="web_search", arguments="{}"))
+
+    assert acc.collected() == [
+        {"id": "call_unindexed", "name": "rag_search", "arguments": "{}"},
+        {"id": "call_zero", "name": "web_search", "arguments": "{}"},
+    ]
+
+
+def test_part_at_without_an_index_is_the_part_just_fed() -> None:
+    """Callers that preview a call as it streams should not re-derive the
+    slot: the accumulator already resolved it (#2482)."""
+    acc = ToolCallAccumulator()
+    acc.feed(_Delta(index=None, id="call_a", name="ask_user", arguments='{"q":'))  # type: ignore[arg-type]
+    assert acc.part_at()["arguments"] == '{"q":'  # type: ignore[index]
+
+    acc.feed(_Delta(index=None, id="call_b", name="rag_search", arguments="{}"))  # type: ignore[arg-type]
+    assert acc.part_at()["id"] == "call_b"  # type: ignore[index]
+    # Explicit lookups still work for the callers that keep a provider index.
+    acc.feed(_Delta(index=4, name="web_search", arguments="{}"))
+    assert acc.part_at(4)["name"] == "web_search"  # type: ignore[index]
+
+
+def test_calls_report_in_arrival_order_not_provider_index_order() -> None:
+    """Out-of-order indices are what the wire delivered; re-sorting them
+    would hand the dispatcher a different order than the model chose."""
+    acc = ToolCallAccumulator()
+    acc.feed(_Delta(index=1, id="call_b", name="web_search", arguments="{}"))
+    acc.feed(_Delta(index=0, id="call_a", name="rag_search", arguments="{}"))
+
+    assert [call["id"] for call in acc.collected()] == ["call_b", "call_a"]
+    assert [part["id"] for part in acc.ordered()] == ["call_b", "call_a"]
 
 
 def test_gemini_thought_signature_survives_stream_accumulation() -> None:
