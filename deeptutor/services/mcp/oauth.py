@@ -290,6 +290,7 @@ def build_auth(
     class StoredOAuthClientProvider(OAuthClientProvider):
         # The SDK alone records issuer provenance. A successful token exchange
         # can use a resource-origin fallback and cannot establish that binding.
+        # The inner generator keeps discovery inside the SDK's redirect handling.
         async def _auth_flow(
             self, request: "httpx.Request"
         ) -> AsyncGenerator["httpx.Request", "httpx.Response"]:

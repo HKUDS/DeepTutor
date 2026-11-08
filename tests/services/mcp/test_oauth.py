@@ -148,6 +148,83 @@ def roots(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return admin_root
 
 
+@pytest.mark.parametrize("cross_origin_redirect", [False, True])
+def test_refresh_metadata_keeps_sdk_redirect_policy(
+    roots: Path, cross_origin_redirect: bool
+) -> None:
+    import httpx
+    from mcp.shared.auth import OAuthClientInformationFull, OAuthToken
+
+    resource = "https://resource.example/mcp"
+    issuer = "https://issuer.example"
+    destination = ("https://outside.example" if cross_origin_redirect else issuer) + "/metadata"
+    requests: list[tuple[str, str]] = []
+
+    async def handle(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        requests.append((request.method, url))
+        assert request.url.host != "outside.example", "Cross-origin discovery redirect followed"
+        if "oauth-protected-resource" in request.url.path:
+            return httpx.Response(
+                200, json={"resource": resource, "authorization_servers": [issuer]}
+            )
+        if request.method == "GET":
+            if url != destination:
+                return httpx.Response(302, headers={"Location": destination})
+            return httpx.Response(
+                200,
+                json={
+                    "issuer": issuer,
+                    "authorization_endpoint": issuer + "/authorize",
+                    "token_endpoint": issuer + "/token",
+                    "response_types_supported": ["code"],
+                },
+            )
+        if url == issuer + "/token":
+            assert parse_qs(request.content.decode())["grant_type"] == ["refresh_token"]
+            return httpx.Response(
+                200, json={"access_token": "refreshed", "token_type": "Bearer", "expires_in": 3600}
+            )
+        assert url == resource
+        assert request.headers["Authorization"] == "Bearer refreshed"
+        return httpx.Response(200)
+
+    async def run() -> None:
+        storage = oauth.OwnerTokenStorage("u_ada", "fixture")
+        await storage.set_client_info(
+            OAuthClientInformationFull(
+                client_id="fixture-client",
+                issuer=issuer,
+                redirect_uris=["http://localhost/callback"],
+            )
+        )
+        await storage.set_tokens(
+            OAuthToken(
+                access_token="expired",
+                token_type="Bearer",
+                refresh_token="fixture-refresh",
+                expires_in=-1,
+            )
+        )
+        auth = oauth.build_auth(
+            server_url=resource,
+            server_name="fixture",
+            owner_id="u_ada",
+            redirect_uri="http://localhost/callback",
+        )
+        async with httpx.AsyncClient(auth=auth, transport=httpx.MockTransport(handle)) as client:
+            if cross_origin_redirect:
+                with pytest.raises(oauth.AuthorizationRequired):
+                    await client.post(resource)
+                assert not any(method == "POST" for method, _url in requests)
+            else:
+                assert (await client.post(resource)).status_code == 200
+                assert ("GET", destination) in requests
+                assert ("POST", issuer + "/token") in requests
+
+    asyncio.run(run())
+
+
 def _token(access: str = "tok-1", refresh: str = "ref-1") -> object:
     from mcp.shared.auth import OAuthToken
 
