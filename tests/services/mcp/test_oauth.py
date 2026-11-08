@@ -11,10 +11,128 @@ import asyncio
 import json
 from pathlib import Path
 import stat
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
 from deeptutor.services.mcp import oauth
+
+
+@pytest.mark.parametrize(
+    "separate_issuer,metadata_initially_available",
+    [(True, False), (False, False), (True, True)],
+)
+def test_issuer_provenance_survives_restart(
+    roots: Path, separate_issuer: bool, metadata_initially_available: bool
+) -> None:
+    """Exercise SDK discovery, consent, persistence and refresh over offline HTTP."""
+    import httpx
+
+    resource_origin = "https://resource.example"
+    resource_url = f"{resource_origin}/mcp"
+    issuer = "https://issuer.example" if separate_issuer else resource_origin
+    metadata_available = metadata_initially_available
+    requests: list[tuple[str, str]] = []
+    states: list[str] = []
+
+    async def redirect(url: str) -> None:
+        states.append(parse_qs(urlsplit(url).query)["state"][0])
+
+    async def callback() -> tuple[str, str]:
+        return "fixture-code", states[-1]
+
+    async def handle(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        requests.append((request.method, url))
+        if url == resource_url:
+            if request.headers.get("authorization"):
+                return httpx.Response(200, json={"ok": True})
+            return httpx.Response(
+                401,
+                headers={
+                    "WWW-Authenticate": (
+                        f'Bearer resource_metadata="{resource_origin}'
+                        '/.well-known/oauth-protected-resource"'
+                    )
+                },
+            )
+        if "oauth-protected-resource" in request.url.path:
+            return httpx.Response(
+                200, json={"resource": resource_url, "authorization_servers": [issuer]}
+            )
+        if request.method == "GET":
+            if not metadata_available:
+                return httpx.Response(404)
+            return httpx.Response(
+                200,
+                json={
+                    "issuer": issuer,
+                    "authorization_endpoint": f"{issuer}/authorize",
+                    "token_endpoint": f"{issuer}/token",
+                    "registration_endpoint": f"{issuer}/register",
+                    "response_types_supported": ["code"],
+                },
+            )
+        origin = issuer if metadata_initially_available else resource_origin
+        if request.url.path == "/register":
+            assert url == f"{origin}/register"
+            return httpx.Response(
+                201,
+                json={
+                    **json.loads(request.content),
+                    "client_id": "fixture-client",
+                    "client_secret": "fixture-secret",
+                },
+            )
+        if request.url.path == "/token":
+            form = parse_qs(request.content.decode())
+            if form["grant_type"] == ["refresh_token"]:
+                assert metadata_initially_available, "Unbound refresh credentials sent"
+                assert url == f"{origin}/token"
+            else:
+                assert url == f"{origin}/token"
+            return httpx.Response(
+                200,
+                json={
+                    "access_token": "fixture-access",
+                    "refresh_token": "fixture-refresh",
+                    "token_type": "Bearer",
+                    "expires_in": 3600,
+                },
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {url}")
+
+    async def run() -> None:
+        nonlocal metadata_available
+        options = {
+            "server_url": resource_url,
+            "server_name": "fixture",
+            "owner_id": "u_ada",
+            "redirect_uri": "http://localhost/callback",
+        }
+        auth = oauth.build_auth(**options, redirect_handler=redirect, callback_handler=callback)
+        async with httpx.AsyncClient(auth=auth, transport=httpx.MockTransport(handle)) as client:
+            assert (await client.post(resource_url)).status_code == 200
+
+        saved = oauth._read("u_ada", "fixture")
+        saved["expires_at"] = 1.0
+        oauth._write("u_ada", "fixture", saved)
+        metadata_available = True
+        requests.clear()
+        restarted = oauth.build_auth(**options)
+        async with httpx.AsyncClient(
+            auth=restarted, transport=httpx.MockTransport(handle)
+        ) as client:
+            if metadata_initially_available:
+                assert (await client.post(resource_url)).status_code == 200
+                assert ("POST", f"{issuer}/token") in requests
+            else:
+                with pytest.raises(oauth.AuthorizationRequired):
+                    await client.post(resource_url)
+                assert saved["client"].get("issuer") is None
+                assert requests == []
+
+    asyncio.run(run())
 
 
 @pytest.fixture(autouse=True)

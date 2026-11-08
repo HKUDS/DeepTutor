@@ -288,15 +288,8 @@ def build_auth(
     )
 
     class StoredOAuthClientProvider(OAuthClientProvider):
-        async def _handle_token_response(self, response: "httpx.Response") -> None:
-            await super()._handle_token_response(response)
-            client = self.context.client_info
-            if client is not None and not client.issuer:
-                # A successful code exchange establishes the binding even for
-                # legacy servers that do not publish authorization metadata.
-                client.issuer = self._expected_issuer()
-                await self.context.storage.set_client_info(client)
-
+        # The SDK alone records issuer provenance. A successful token exchange
+        # can use a resource-origin fallback and cannot establish that binding.
         async def _auth_flow(
             self, request: "httpx.Request"
         ) -> AsyncGenerator["httpx.Request", "httpx.Response"]:
