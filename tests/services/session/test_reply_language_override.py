@@ -83,6 +83,7 @@ async def test_explicit_reply_language_stays_with_one_conversation(
         "ms",
         "vi",
         "tr",
+        "hi",
     ],
 )
 def test_selector_accepts_every_supported_response_language(code: str) -> None:

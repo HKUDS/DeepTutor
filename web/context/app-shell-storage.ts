@@ -31,6 +31,7 @@ const SUPPORTED_RESPONSE_LANGUAGE_CODES: readonly ResponseLanguage[] = [
   "ms",
   "vi",
   "tr",
+  "hi",
 ];
 
 export function isResponseLanguage(value: unknown): value is ResponseLanguage {
@@ -60,6 +61,9 @@ const RESPONSE_LANGUAGE_ALIASES: Record<string, ResponseLanguage> = {
   "bahasa melayu": "ms",
   vietnamese: "vi",
   "tiếng việt": "vi",
+  hindi: "hi",
+  "हिन्दी": "hi",
+  "हिंदी": "hi",
   "zh-cn": "zh",
 };
 
