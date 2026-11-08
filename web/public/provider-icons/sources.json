@@ -118,6 +118,11 @@
       "sha256": "8051137fee486b2a36a7f6744cf86fb48ac17520d5ee8dd712c659feb8adb912",
       "source": "Official website asset"
     },
+    "standardcompute.svg": {
+      "url": "https://standardcompute.com/logo.svg",
+      "sha256": "b8ba9a992247f59bd2af8206354e76e8cebcb5a39a885150366f3cf1aeaad1c9",
+      "source": "Official website asset"
+    },
     "api-route.png": {
       "url": "https://www.api-route.com/apple-touch-icon.png?v=2",
       "sha256": "28866bf8b7c0913c634a34d2839a3201b0eab2019b926e556411a72f4c969e42",
