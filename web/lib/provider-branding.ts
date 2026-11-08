@@ -60,6 +60,7 @@ export const PROVIDER_ICONS: Readonly<Record<string, ProviderIconSpec>> = {
   serper: { file: "serper.png" },
   serply: { file: "serply.png" },
   siliconflow: { file: "siliconcloud-color.svg" },
+  standardcompute: { file: "standardcompute.svg" },
   stepfun: { file: "stepfun-color.svg" },
   tavily: { file: "tavily-color.svg" },
   unifically: { file: "unifically.webp" },
