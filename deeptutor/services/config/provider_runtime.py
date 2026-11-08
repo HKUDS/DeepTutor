@@ -121,6 +121,12 @@ SEARCH_PROVIDERS: dict[str, SearchProviderSpec] = {
     "aliyun_iqs": SearchProviderSpec(
         label="Aliyun IQS", requires_api_key=True, soft_fallback=False
     ),
+    "specstream": SearchProviderSpec(
+        label="SpecStream",
+        requires_api_key=True,
+        soft_fallback=False,
+        supports_answer=True,
+    ),
 }
 
 # The credential-free provider every soft fallback lands on.
