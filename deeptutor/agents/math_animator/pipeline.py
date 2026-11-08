@@ -27,6 +27,24 @@ from .visual_review import VisualReviewService
 MAX_LAYOUT_ROUNDS = 3
 
 
+def _record_only_review(
+    review: VisualReviewResult | None,
+) -> VisualReviewResult | None:
+    """Keep a post-render geometry report without asking for another repair.
+
+    The pre-render check owns the repair rounds. Once those are exhausted the
+    rendered lesson is final, so a remaining issue is recorded in
+    ``render_result.visual_review``. It stays ``passed=False`` so the UI can
+    show the warning; ``CodeRetryManager(review_is_advisory=True)`` is what
+    prevents another repair round.
+    """
+    if review is None:
+        return None
+    if not review.passed:
+        review.summary = "Layout issues remain after repair rounds: " + review.summary
+    return review
+
+
 class MathAnimatorPipeline:
     def __init__(
         self,
@@ -179,6 +197,7 @@ class MathAnimatorPipeline:
             )
         )
         review_callback: Callable[[str, RenderResult], Any] | None = None
+        review_is_advisory = False
         if self.enable_visual_review and self.visual_review_agent is not None:
             review_service = VisualReviewService(
                 turn_id,
@@ -227,13 +246,9 @@ class MathAnimatorPipeline:
                 current_code: str, render_result: RenderResult
             ) -> VisualReviewResult | None:
                 # Record-only: what the rendered scene still has, for the result payload.
-                review = await geometry_review(current_code)
-                if review is None:
-                    return None
-                if not review.passed:
-                    review.summary = "Layout issues remain after repair rounds: " + review.summary
-                return review
+                return _record_only_review(await geometry_review(current_code))
 
+            review_is_advisory = True
             review_callback = _geometry_callback
 
         retry_manager = CodeRetryManager(
@@ -242,6 +257,7 @@ class MathAnimatorPipeline:
             on_retry=on_retry,
             on_status=on_retry_status,
             review_callback=review_callback,
+            review_is_advisory=review_is_advisory,
             repair_callback=lambda current_code, error_message, attempt: self.repair_agent.repair(
                 user_input=user_input,
                 output_mode=request_config.output_mode,
