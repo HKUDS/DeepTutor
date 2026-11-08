@@ -7,14 +7,16 @@ deterministically and without any network:
 
 * the downloader is never invoked — no ``get_encoding``, no
   ``read_file_cached`` — including when the cache file is deleted, replaced
-  or swapped for a FIFO after verification began;
+  or swapped for a FIFO after verification began; the deletion and
+  replacement races run against the real tiktoken with a synthetic,
+  hash-verified ranks blob, so they never skip on clean CI;
 * imports, filesystem reads and parsing never block the synchronous caller
   or the event loop: acquisition runs on a background worker, and callers
   get the heuristic while it is pending;
 * concurrent callers share one acquisition attempt and one encoding;
-* a real verified warm cache produces the exact ``cl100k_base`` counts
-  (parity against tiktoken itself, using a local fixture — never a
-  download).
+* a real verified warm cache produces the exact ``cl100k_base`` counts —
+  optional parity only, compared against tiktoken itself via a local
+  fixture when one exists (never a download).
 """
 
 from __future__ import annotations
@@ -65,6 +67,20 @@ def _fixture_ranks() -> bytes | None:
     return None
 
 
+def _synthetic_ranks() -> bytes:
+    """A small, deterministic, valid ``.tiktoken`` ranks blob.
+
+    Every byte value 0..255 gets a rank equal to its value, so any text
+    round-trips and one-character pieces encode to their own byte; two
+    merged tokens beyond the byte alphabet exercise the merge path while
+    keeping the blob trivially valid for the real ``tiktoken.Encoding``.
+    """
+    lines = [base64.b64encode(bytes([value])) + b" " + str(value).encode() for value in range(256)]
+    lines.append(base64.b64encode(b"He") + b" 256")
+    lines.append(base64.b64encode(b"llo") + b" 257")
+    return b"\n".join(lines) + b"\n"
+
+
 @pytest.fixture()
 def acquisition(monkeypatch: pytest.MonkeyPatch) -> Any:
     """Reset the process-wide acquisition state around each test."""
@@ -102,6 +118,33 @@ def no_network(monkeypatch: pytest.MonkeyPatch) -> list[str]:
 
     monkeypatch.setattr(tiktoken_load, "read_file", _blocked)
     return attempts
+
+
+@pytest.fixture()
+def registry_free_tiktoken(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The real tiktoken with every download-capable entry point exploding.
+
+    ``get_encoding`` and the cached loaders must never be reached, and the
+    in-process registry is emptied so its resident-encoding shortcut cannot
+    bypass the verified-file path the race tests exercise.
+    """
+    tiktoken = pytest.importorskip("tiktoken")
+    tiktoken_load = pytest.importorskip("tiktoken.load")
+
+    def _forbidden(callee: str) -> Any:
+        def _raise(*args: Any, **kwargs: Any) -> None:
+            raise AssertionError(f"{callee} must never be called: it can download")
+
+        return _raise
+
+    monkeypatch.setattr(tiktoken, "get_encoding", _forbidden("tiktoken.get_encoding"))
+    monkeypatch.setattr(
+        tiktoken_load, "read_file_cached", _forbidden("tiktoken.load.read_file_cached")
+    )
+    monkeypatch.setattr(
+        tiktoken_load, "load_tiktoken_bpe", _forbidden("tiktoken.load.load_tiktoken_bpe")
+    )
+    monkeypatch.setattr(tiktoken.registry, "ENCODINGS", {})
 
 
 def _settle(timeout: float = 5.0) -> None:
@@ -160,10 +203,33 @@ def _fabricated_cache(
     return cache_dir
 
 
+def _warm_synthetic_cache(acquisition: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> Path:
+    """Warm the cache with the synthetic blob, verified as if published.
+
+    Unlike ``_warm_real_cache`` this never skips: the hash gate simply
+    trusts the blob we just wrote, so the race tests below always run.
+    """
+    ranks = _synthetic_ranks()
+    cache_dir = tmp_path / "ranks"
+    cache_dir.mkdir()
+    (cache_dir / acquisition._CACHE_KEY).write_bytes(ranks)
+    monkeypatch.setattr(acquisition, "_EXPECTED_SHA256", hashlib.sha256(ranks).hexdigest())
+    monkeypatch.setenv("TIKTOKEN_CACHE_DIR", str(cache_dir))
+    return cache_dir
+
+
 def _warm_real_cache(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> Path:
+    """Warm the cache from a verified local fixture; skip when absent.
+
+    Used only by the optional ``test_real_warm_cache_parity`` — every test
+    that must always run builds from ``_warm_synthetic_cache`` instead.
+    """
     ranks = _fixture_ranks()
     if ranks is None:
-        pytest.skip("no verified local cl100k_base fixture (set DEEPTUTOR_CL100K_FIXTURE)")
+        pytest.skip(
+            "optional parity test: no verified local cl100k_base fixture "
+            "(set DEEPTUTOR_CL100K_FIXTURE to provide one)"
+        )
     cache_dir = tmp_path / "ranks"
     cache_dir.mkdir()
     (cache_dir / token_encoding._CACHE_KEY).write_bytes(ranks)
@@ -222,11 +288,19 @@ def test_untrusted_ranks_are_never_parsed_or_built(
 
 
 def test_file_deleted_after_read_still_builds_and_never_downloads(
-    acquisition: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Any, no_network: list[str]
+    acquisition: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Any,
+    no_network: list[str],
+    registry_free_tiktoken: None,
 ) -> None:
-    """The old verify-then-load race: deletion must not reach a downloader."""
-    pytest.importorskip("tiktoken")
-    cache_dir = _warm_real_cache(monkeypatch, tmp_path)
+    """The old verify-then-load race: deletion must not reach a downloader.
+
+    The ranks are synthetic, but the hash gate and the build run the real
+    code paths against the real tiktoken, with every download-capable
+    entry point rigged to fail loudly.
+    """
+    cache_dir = _warm_synthetic_cache(acquisition, monkeypatch, tmp_path)
     original_build = acquisition._build_encoding
 
     def _unlink_then_build(module: Any, ranks: bytes) -> Any:
@@ -237,17 +311,26 @@ def test_file_deleted_after_read_still_builds_and_never_downloads(
 
     assert acquisition.get_local_encoding() is None  # pending, not blocking
     encoding = _wait_ready()
-    assert encoding.encode("Hello, world!") == [9906, 11, 1917, 0]
+    assert encoding.name == "cl100k_base"  # built by the verified-bytes path
+    assert encoding.decode(encoding.encode("Hello, world!")) == "Hello, world!"
+    assert encoding.encode("A") == [ord("A")]  # byte-level ranks equal byte values
     assert not (cache_dir / acquisition._CACHE_KEY).exists()
     assert no_network == []
 
 
 def test_file_replaced_after_read_uses_the_verified_bytes(
-    acquisition: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Any, no_network: list[str]
+    acquisition: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Any,
+    no_network: list[str],
+    registry_free_tiktoken: None,
 ) -> None:
-    """Replacement mid-acquisition: the verified bytes already in hand win."""
-    pytest.importorskip("tiktoken")
-    cache_dir = _warm_real_cache(monkeypatch, tmp_path)
+    """Replacement mid-acquisition: the verified bytes already in hand win.
+
+    Same synthetic-blob setup as the deletion race: real tiktoken, real
+    hash gate, and any download-capable loader call fails loudly.
+    """
+    cache_dir = _warm_synthetic_cache(acquisition, monkeypatch, tmp_path)
     original_build = acquisition._build_encoding
 
     def _swap_then_build(module: Any, ranks: bytes) -> Any:
@@ -258,7 +341,9 @@ def test_file_replaced_after_read_uses_the_verified_bytes(
 
     acquisition.get_local_encoding()
     encoding = _wait_ready()
-    assert encoding.encode("Hello, world!") == [9906, 11, 1917, 0]
+    assert encoding.name == "cl100k_base"  # built by the verified-bytes path
+    assert encoding.decode(encoding.encode("Hello, world!")) == "Hello, world!"
+    assert encoding.encode("A") == [ord("A")]  # byte-level ranks equal byte values
     assert (cache_dir / acquisition._CACHE_KEY).read_bytes() == b"swapped in a race\n"
     assert no_network == []
 
@@ -634,7 +719,12 @@ def test_real_tiktoken_cold_cache_stays_local_and_quick(
 def test_real_warm_cache_parity(
     acquisition: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Any, no_network: list[str]
 ) -> None:
-    """The background-built encoding matches tiktoken's own, token for token."""
+    """Optional parity only: exact ``cl100k_base`` counts against tiktoken.
+
+    Requires a verified local fixture of the published ranks and skips
+    without one; the always-run race tests above already cover the
+    no-download guarantees using the synthetic verified blob.
+    """
     tiktoken = pytest.importorskip("tiktoken")
     _warm_real_cache(monkeypatch, tmp_path)
 
