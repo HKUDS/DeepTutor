@@ -100,6 +100,7 @@ from deeptutor.services.rag.pipelines.ima.config import (
 from deeptutor.services.rag.visual_assets import VisualAssetStore
 from deeptutor.services.web_source.scheduler import get_web_source_sync_scheduler
 from deeptutor.services.workspace.knowledge import workspace_id_for_kb_base_dir
+from deeptutor.services.workspace.models import WorkspaceError
 from deeptutor.utils.document_extractor import (
     MAX_EXTRACTED_CHARS_PER_DOC,
     DocumentExtractionError,
@@ -3431,6 +3432,11 @@ async def upload_files(
     """
     try:
         manager, kb_name, kb_base_dir = _writable_kb(kb_name)
+        # Resolve the storage scope before copying anything or marking the KB
+        # queued: this lookup walks the workspace catalog and may fail, and a
+        # failure here must not leave a "queued" progress entry whose
+        # background task was never registered.
+        storage_workspace_id = workspace_id_for_kb_base_dir(kb_base_dir)
         requested_provider = None
         if rag_provider is not None and str(rag_provider).strip():
             requested_provider = _validate_registered_provider(rag_provider)
@@ -3506,7 +3512,7 @@ async def upload_files(
             task_id=task_id,
             rag_provider=kb_provider,
             owner=get_current_user(),
-            storage_workspace_id=workspace_id_for_kb_base_dir(kb_base_dir),
+            storage_workspace_id=storage_workspace_id,
         )
 
         return {
@@ -3516,6 +3522,9 @@ async def upload_files(
         }
     except (HTTPException, AccessError):
         raise
+    except WorkspaceError as exc:
+        # A workspace problem is not a missing knowledge base; keep the reason.
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError:
         raise HTTPException(status_code=404, detail=f"Knowledge base '{kb_name}' not found")
     except Exception as e:
@@ -4131,6 +4140,8 @@ async def reindex_knowledge_base(
     """
     try:
         manager, kb_name, kb_base_dir = _writable_kb(kb_name)
+        # See upload_files(): resolve the destination scope before queueing.
+        storage_workspace_id = workspace_id_for_kb_base_dir(kb_base_dir)
         kb_entry = _load_kb_entry_or_404(manager, kb_name)
         _assert_not_connected_kb(kb_name, kb_entry)
         force_reindex = str(kb_entry.get("status") or "").lower() == "error"
@@ -4273,7 +4284,7 @@ async def reindex_knowledge_base(
             signature_hash=signature_hash,
             indexing_snapshot=indexing_snapshot,
             owner=get_current_user(),
-            storage_workspace_id=workspace_id_for_kb_base_dir(kb_base_dir),
+            storage_workspace_id=storage_workspace_id,
             **(
                 {"embedding_selection": embedding_selection, "embedding_config": embedding_config}
                 if embedding_selection
@@ -4807,6 +4818,9 @@ async def sync_folder(kb_name: str, folder_id: str, background_tasks: Background
     """
     try:
         manager, kb_name, kb_base_dir = _writable_kb(kb_name)
+        # See upload_files(): resolve the destination scope before queueing so a
+        # failing lookup cannot leave a task-less "starting" progress entry.
+        storage_workspace_id = workspace_id_for_kb_base_dir(kb_base_dir)
         kb_entry = _load_kb_entry_or_404(manager, kb_name)
         _assert_kb_writable_or_409(kb_name, kb_entry)
         kb_provider = _validate_registered_provider(
@@ -4871,7 +4885,7 @@ async def sync_folder(kb_name: str, folder_id: str, background_tasks: Background
             folder_id=folder_id,  # Pass folder_id to update state on success
             folder_root=folder_path,  # Preserve each file's path relative to this root
             owner=get_current_user(),
-            storage_workspace_id=workspace_id_for_kb_base_dir(kb_base_dir),
+            storage_workspace_id=storage_workspace_id,
         )
 
         return SyncFolderResponse(
@@ -4885,6 +4899,8 @@ async def sync_folder(kb_name: str, folder_id: str, background_tasks: Background
         )
     except (HTTPException, AccessError):
         raise
+    except WorkspaceError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError:
         raise HTTPException(status_code=404, detail=f"Knowledge base '{kb_name}' not found")
     except Exception as e:
