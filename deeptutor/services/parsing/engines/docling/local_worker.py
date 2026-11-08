@@ -94,7 +94,15 @@ def _stop_worker(process: subprocess.Popen) -> None:
 
 
 def _build_converter(*, do_ocr: bool, do_table_structure: bool):
-    """Import and configure Docling inside the isolated worker only."""
+    """Import and configure Docling inside the isolated worker only.
+
+    Docling's option API moves between compatible releases, so a configuration
+    failure degrades to a converter with upstream defaults instead of failing the
+    parse. That fallback still has to be visible: Docling defaults ``do_ocr`` to
+    True while DeepTutor defaults it to False, so a silent fallback can turn OCR
+    on, change the output and slow the run down with nothing in the log to
+    explain it (see #2518).
+    """
     from docling.document_converter import DocumentConverter
 
     try:
@@ -108,9 +116,17 @@ def _build_converter(*, do_ocr: bool, do_table_structure: bool):
         return DocumentConverter(
             format_options={InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)}
         )
-    except Exception:
-        # Docling's option API varies between compatible releases. Preserve the
-        # previous behavior: conversion still runs with upstream defaults.
+    except Exception as exc:  # noqa: BLE001 - degrade to upstream defaults, loudly
+        # The worker runs under ``python -m`` and the parent relays stderr through
+        # ``on_output``, so a single line here reaches the parse log.
+        print(
+            "Docling option setup failed "
+            f"({type(exc).__name__}: {exc}); falling back to upstream defaults "
+            "with do_ocr and do_table_structure left unset "
+            f"(DeepTutor requested do_ocr={do_ocr}, do_table_structure={do_table_structure}).",
+            file=sys.stderr,
+            flush=True,
+        )
         return DocumentConverter()
 
 
