@@ -1018,12 +1018,13 @@ class AgentLoop:
                         output_chars += fed_chars
                         if fed_chars:
                             action_started = True
-                        if ask_user_drafts is not None:
-                            index = int(getattr(tc_delta, "index", 0) or 0)
-                            part = tool_acc.part_at(index)
+                        # A fragment the accumulator could not place fed no bytes; the
+                        # preview stays on the call that actually grew (#2482).
+                        if ask_user_drafts is not None and fed_chars:
+                            part = tool_acc.part_at()
                             if part is not None:
                                 await ask_user_drafts.observe(
-                                    call_id=str(part.get("id") or f"call_{index}"),
+                                    call_id=str(part.get("id") or f"call_{tool_acc.last_slot}"),
                                     tool_name=str(part.get("name") or ""),
                                     arguments=str(part.get("arguments") or ""),
                                 )
