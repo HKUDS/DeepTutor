@@ -17966,6 +17966,7 @@ export interface components {
             | "ms"
             | "vi"
             | "tr"
+            | "hi"
           )
         | null;
       /** Sidebar Description */
