@@ -6581,5 +6581,12 @@
   "settings.modelImport.unverified": "Một số mô hình không khai báo loại. Hãy kiểm tra trước khi dùng cho dịch vụ này.",
   "settings.modelImport.draftHint": "Mô hình được thêm vào bản nháp. Áp dụng thay đổi để lưu; mô hình mặc định được giữ nguyên.",
   "settings.modelImport.selected": "Đã chọn: {{count}}",
-  "language.korean": "한국어 (일부 번역)"
+  "language.korean": "한국어 (일부 번역)",
+  "Web fetch backend": "Backend tải trang web",
+  "Which service fetches and extracts pages for web_fetch calls.": "Dịch vụ tải và trích xuất trang cho các lượt gọi web_fetch.",
+  "Failed to load web fetch settings.": "Không tải được cài đặt tải trang web.",
+  "Failed to save web fetch settings.": "Không lưu được cài đặt tải trang web.",
+  "Loading web fetch settings...": "Đang tải cài đặt tải trang web...",
+  "Applies from the next web_fetch onwards.": "Có hiệu lực từ lần gọi web_fetch tiếp theo.",
+  "DEEPTUTOR_FETCH_BACKEND is overriding the saved choice for this deployment.": "DEEPTUTOR_FETCH_BACKEND đang ghi đè lựa chọn đã lưu của bản triển khai này."
 }

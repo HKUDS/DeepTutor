@@ -6603,5 +6603,12 @@
   "settings.modelImport.unverified": "Деякі моделі не вказують тип. Перевірте їх перед використанням для цієї служби.",
   "settings.modelImport.draftHint": "Моделі додаються до чернетки. Застосуйте зміни, щоб зберегти їх; типова модель залишається незмінною.",
   "settings.modelImport.selected": "Вибрано: {{count}}",
-  "language.korean": "한국어 (일부 번역)"
+  "language.korean": "한국어 (일부 번역)",
+  "Web fetch backend": "Сервер веб-отримання",
+  "Which service fetches and extracts pages for web_fetch calls.": "Служба, яка отримує та видобуває сторінки для викликів web_fetch.",
+  "Failed to load web fetch settings.": "Не вдалося завантажити параметри веб-отримання.",
+  "Failed to save web fetch settings.": "Не вдалося зберегти параметри веб-отримання.",
+  "Loading web fetch settings...": "Завантаження параметрів веб-отримання...",
+  "Applies from the next web_fetch onwards.": "Застосовується починаючи з наступного web_fetch.",
+  "DEEPTUTOR_FETCH_BACKEND is overriding the saved choice for this deployment.": "DEEPTUTOR_FETCH_BACKEND має пріоритет над збереженим вибором для цього розгортання."
 }

@@ -9705,6 +9705,24 @@ export interface paths {
     readonly patch?: never;
     readonly trace?: never;
   };
+  readonly "/api/settings/web-fetch": {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: never;
+      readonly path?: never;
+      readonly cookie?: never;
+    };
+    /** Get Web Fetch Settings */
+    readonly get: operations["get_web_fetch_settings_api_settings_web_fetch_get"];
+    /** Update Web Fetch Settings */
+    readonly put: operations["update_web_fetch_settings_api_settings_web_fetch_put"];
+    readonly post?: never;
+    readonly delete?: never;
+    readonly options?: never;
+    readonly head?: never;
+    readonly patch?: never;
+    readonly trace?: never;
+  };
   readonly "/api/settings/workspace": {
     readonly parameters: {
       readonly query?: never;
@@ -18550,6 +18568,18 @@ export interface components {
       /** Session Key */
       readonly session_key?: string | null;
     };
+    /**
+     * WebFetchSettingsUpdate
+     * @description Web fetch backend selection — the ``web_fetch.backend`` settings row.
+     *
+     *     The value names an entry in the backend's ``FETCH_PROVIDERS`` spec table;
+     *     the endpoint validates against it because the choice set is owned by the
+     *     backend, not by this schema.
+     */
+    readonly WebFetchSettingsUpdate: {
+      /** Backend */
+      readonly backend: string;
+    };
     /** WebSourceInfo */
     readonly WebSourceInfo: {
       /**
@@ -19373,6 +19403,8 @@ export type SchemaVoicePreviewPayload =
   components["schemas"]["VoicePreviewPayload"];
 export type SchemaWebContinuityBody =
   components["schemas"]["WebContinuityBody"];
+export type SchemaWebFetchSettingsUpdate =
+  components["schemas"]["WebFetchSettingsUpdate"];
 export type SchemaWebSourceInfo = components["schemas"]["WebSourceInfo"];
 export type SchemaWebSourceScheduleUpdate =
   components["schemas"]["WebSourceScheduleUpdate"];
@@ -40904,6 +40936,76 @@ export interface operations {
     readonly requestBody: {
       readonly content: {
         readonly "application/json": components["schemas"]["VoiceDiscoveryPayload"];
+      };
+    };
+    readonly responses: {
+      /** @description Successful Response */
+      readonly 200: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": unknown;
+        };
+      };
+      /** @description Validation Error */
+      readonly 422: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  readonly get_web_fetch_settings_api_settings_web_fetch_get: {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: {
+        readonly Authorization?: string | null;
+      };
+      readonly path?: never;
+      readonly cookie?: {
+        readonly dt_token?: string | null;
+      };
+    };
+    readonly requestBody?: never;
+    readonly responses: {
+      /** @description Successful Response */
+      readonly 200: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": unknown;
+        };
+      };
+      /** @description Validation Error */
+      readonly 422: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  readonly update_web_fetch_settings_api_settings_web_fetch_put: {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: {
+        readonly Authorization?: string | null;
+      };
+      readonly path?: never;
+      readonly cookie?: {
+        readonly dt_token?: string | null;
+      };
+    };
+    readonly requestBody: {
+      readonly content: {
+        readonly "application/json": components["schemas"]["WebFetchSettingsUpdate"];
       };
     };
     readonly responses: {

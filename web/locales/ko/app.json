@@ -597,5 +597,12 @@
   "starters.research.3": "쟁점의 양쪽 입장 비교하기",
   "starters.research.3.prompt": "한 쟁점의 양쪽 입장에서 주요 주장과 근거, 각각의 전제를 정리하고 종합적인 판단을 제시해 주세요. 쟁점이 무엇인지 말하지 않았다면 먼저 물어봐 주세요.",
   "starters.research.4": "문헌 검토 개요 작성하기",
-  "starters.research.4.prompt": "한 주제의 문헌 검토 개요를 작성해 주세요. 배경, 연구를 분류할 틀, 절별 핵심 내용, 인용할 만한 자료 유형을 포함해 주세요. 주제와 목적을 말하지 않았다면 먼저 물어봐 주세요."
+  "starters.research.4.prompt": "한 주제의 문헌 검토 개요를 작성해 주세요. 배경, 연구를 분류할 틀, 절별 핵심 내용, 인용할 만한 자료 유형을 포함해 주세요. 주제와 목적을 말하지 않았다면 먼저 물어봐 주세요.",
+  "Web fetch backend": "웹 페치 백엔드",
+  "Which service fetches and extracts pages for web_fetch calls.": "web_fetch 호출 시 페이지를 가져와 추출하는 서비스.",
+  "Failed to load web fetch settings.": "웹 페치 설정을 불러오지 못했습니다.",
+  "Failed to save web fetch settings.": "웹 페치 설정을 저장하지 못했습니다.",
+  "Loading web fetch settings...": "웹 페치 설정을 불러오는 중...",
+  "Applies from the next web_fetch onwards.": "다음 web_fetch부터 적용됩니다.",
+  "DEEPTUTOR_FETCH_BACKEND is overriding the saved choice for this deployment.": "DEEPTUTOR_FETCH_BACKEND가 이 배포의 저장된 선택을 재정의합니다."
 }

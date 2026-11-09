@@ -140,6 +140,49 @@ def supported_search_providers_hint() -> str:
     return ", ".join(name for name in SEARCH_PROVIDERS if name != "none")
 
 
+@dataclass(frozen=True)
+class FetchProviderSpec:
+    """Single web-fetch-backend metadata entry.
+
+    Companion to :class:`SearchProviderSpec` for the ``web_fetch`` fetch
+    backend (issue #2448). ``local`` is the in-process httpx GET +
+    readability extractor and the default for every install; a remote
+    backend replaces the HTTP+extract step only — the scheme/SSRF gate in
+    ``deeptutor/tools/web_fetch.py`` always runs before any backend is
+    contacted, so a private URL is never handed to a third party.
+
+    The fetch registry (``deeptutor/services/fetch/providers``) derives its
+    adapter metadata from this table, mirroring how the search registry
+    derives from ``SEARCH_PROVIDERS``.
+    """
+
+    label: str
+    requires_api_key: bool = False
+    requires_base_url: bool = False
+
+
+# Insertion order is the Settings dropdown order.
+FETCH_PROVIDERS: dict[str, FetchProviderSpec] = {
+    "local": FetchProviderSpec(label="Local"),
+    "deepseek": FetchProviderSpec(label="DeepSeek Fetch", requires_api_key=True),
+}
+
+# The credential-free backend every unconfigured install keeps using.
+DEFAULT_FETCH_PROVIDER = "local"
+
+SUPPORTED_FETCH_PROVIDERS = frozenset(FETCH_PROVIDERS)
+
+
+def fetch_provider_spec(provider: str | None) -> FetchProviderSpec | None:
+    """Look up a fetch backend's spec, or ``None`` for unknown names."""
+    return FETCH_PROVIDERS.get((provider or "").strip().lower())
+
+
+def supported_fetch_providers_hint() -> str:
+    """Human-readable fetch-backend list for error messages and CLI output."""
+    return ", ".join(FETCH_PROVIDERS)
+
+
 LLM_LOCALHOST_PROVIDERS = ("ollama", "vllm")
 
 
@@ -1672,6 +1715,12 @@ __all__ = [
     "search_missing_credential",
     "search_fallback_candidates",
     "supported_search_providers_hint",
+    "FETCH_PROVIDERS",
+    "SUPPORTED_FETCH_PROVIDERS",
+    "DEFAULT_FETCH_PROVIDER",
+    "FetchProviderSpec",
+    "fetch_provider_spec",
+    "supported_fetch_providers_hint",
     "NANOBOT_LLM_PROVIDERS",
     "EmbeddingProviderSpec",
     "EMBEDDING_PROVIDERS",

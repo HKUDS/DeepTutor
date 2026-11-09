@@ -6581,5 +6581,12 @@
   "settings.modelImport.unverified": "種類が未指定のモデルがあります。このサービスで使用する前にテストしてください。",
   "settings.modelImport.draftHint": "モデルは下書きに追加されます。変更を適用すると保存されます。既定のモデルは変わりません。",
   "settings.modelImport.selected": "選択済み：{{count}}",
-  "language.korean": "한국어 (일부 번역)"
+  "language.korean": "한국어 (일부 번역)",
+  "Web fetch backend": "ウェブフェッチバックエンド",
+  "Which service fetches and extracts pages for web_fetch calls.": "web_fetch 呼び出しでページを取得・抽出するサービス。",
+  "Failed to load web fetch settings.": "ウェブフェッチ設定の読み込みに失敗しました。",
+  "Failed to save web fetch settings.": "ウェブフェッチ設定の保存に失敗しました。",
+  "Loading web fetch settings...": "ウェブフェッチ設定を読み込み中...",
+  "Applies from the next web_fetch onwards.": "次回の web_fetch から適用されます。",
+  "DEEPTUTOR_FETCH_BACKEND is overriding the saved choice for this deployment.": "DEEPTUTOR_FETCH_BACKEND がこのデプロイの保存済み選択を上書きしています。"
 }
