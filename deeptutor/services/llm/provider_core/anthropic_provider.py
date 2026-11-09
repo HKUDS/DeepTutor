@@ -482,7 +482,16 @@ class AnthropicProvider(LLMProvider):
                     }
                 )
 
-        stop_map = {"tool_use": "tool_calls", "end_turn": "stop", "max_tokens": "length"}
+        stop_map = {
+            "tool_use": "tool_calls",
+            "end_turn": "stop",
+            "stop_sequence": "stop",
+            "max_tokens": "length",
+            # The context window filled before the model finished: the output
+            # is cut off exactly like a max_tokens stop, so report it as such.
+            "model_context_window_exceeded": "length",
+            "refusal": "content_filter",
+        }
         finish_reason = stop_map.get(response.stop_reason or "", response.stop_reason or "stop")
 
         usage: dict[str, int] = {}
