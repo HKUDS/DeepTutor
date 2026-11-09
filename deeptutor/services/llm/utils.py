@@ -254,8 +254,14 @@ def _extract_content_field(content: object) -> str:
     if isinstance(content, list):
         parts: list[str] = []
         for part in content:
-            if isinstance(part, Mapping) and "text" in part:
-                parts.append(str(part["text"]))
+            if isinstance(part, Mapping):
+                text = part.get("text")
+                # A delta with no text, or an explicit null, contributes
+                # nothing. ``str(None)`` would inject the word "None" into the
+                # reply, which is what a streamed part with an empty text field
+                # used to produce.
+                if text is not None:
+                    parts.append(str(text))
             elif isinstance(part, str):
                 parts.append(part)
         return "".join(parts)
