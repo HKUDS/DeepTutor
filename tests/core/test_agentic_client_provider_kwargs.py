@@ -295,6 +295,21 @@ async def test_provider_stream_does_not_retry_a_permanent_error() -> None:
     assert "x-api-key" in str(excinfo.value)
 
 
+@pytest.mark.asyncio
+async def test_provider_stream_error_response_with_empty_content_raises_a_reason() -> None:
+    """#2539: an error response with empty content must still raise a
+    non-empty reason, never an exception whose message says nothing."""
+
+    class EmptyErrorProvider:
+        async def chat_stream(self, **_kwargs):
+            return LLMResponse(content="", finish_reason="error")
+
+    with pytest.raises(LLMProviderError) as excinfo:
+        [chunk async for chunk in _stream_for(EmptyErrorProvider())]
+
+    assert str(excinfo.value).strip()
+
+
 @pytest.mark.parametrize("binding", ["moonshot", "openai", "custom"])
 def test_agentic_kwargs_drop_temperature_for_bare_kimi_k3(binding: str) -> None:
     kwargs = build_completion_kwargs(

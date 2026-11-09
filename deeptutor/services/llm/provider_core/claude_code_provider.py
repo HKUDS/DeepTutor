@@ -230,6 +230,7 @@ class ClaudeCodeProvider(LLMProvider):
         try:
             sdk = _load_sdk()
             system_prompt, conversation = _split_system(messages)
+            system_prompt = _align_advertised_tools(system_prompt, tools)
             model = model or self.default_model
             if session_id:
                 return await self._run_session(
@@ -580,6 +581,52 @@ def _build_tool_options(sdk: ModuleType, tools: list[dict[str, Any]] | None) -> 
     }
 
 
+def _mounted_tool_names(tools: list[dict[str, Any]] | None) -> list[str]:
+    """Bare registry names of the tools this call mounts on the MCP server."""
+    names: list[str] = []
+    for schema in tools or []:
+        function = schema.get("function") if isinstance(schema, dict) else None
+        name = str(function.get("name") or "").strip() if isinstance(function, dict) else ""
+        if name:
+            names.append(name)
+    return names
+
+
+def _align_advertised_tools(system_prompt: str, tools: list[dict[str, Any]] | None) -> str:
+    """Make the system prompt's tool advertising match the mounted surface.
+
+    The chat manifest advertises tools by bare registry name, but the CLI can
+    only reach them through the ``deeptutor`` SDK MCP server as
+    ``mcp__deeptutor__<name>`` — a bare-name call is rejected with ``No such
+    tool available`` and, with ``max_turns=1``, the turn dies with no text
+    (#2539). Rewrite each mounted tool's advertised name to the reachable one,
+    and when a call mounts no tools at all (e.g. the loop's forced-finish
+    salvage, which sends the manifest-laden prompt without ``tools``), say so
+    instead of leaving the manifest's invitation standing.
+    """
+    if not system_prompt:
+        return system_prompt
+    mounted = _mounted_tool_names(tools)
+    if not mounted:
+        return f"{system_prompt}\n\n{_TOOL_ACCESS_NONE_NOTE}"
+    aligned = system_prompt
+    for name in mounted:
+        # Backticks give exact-token semantics: `` `rag` `` never matches
+        # inside `` `kb_files` `` or an already-prefixed name.
+        aligned = aligned.replace(f"`{name}`", f"`{_MCP_TOOL_PREFIX}{name}`")
+    return f"{aligned}\n\n{_TOOL_NAMING_NOTE}"
+
+
+_TOOL_NAMING_NOTE = (
+    "Tools are reachable only through the `deeptutor` MCP server: call each one by "
+    "its exact `mcp__deeptutor__<name>` name as listed in this prompt. A bare tool "
+    "name without that prefix does not exist, and calling it will be rejected."
+)
+_TOOL_ACCESS_NONE_NOTE = (
+    "No tools are mounted for this response. Do not call any tool; answer in plain text."
+)
+
+
 def _session_signature(
     model: str,
     system_prompt: str,
@@ -596,7 +643,10 @@ def _session_signature(
 
 
 def _friendly_error(exc: Exception) -> str:
-    message = str(exc)
+    # An exception with no message must still yield an actionable reason —
+    # "Error calling Claude Code: " with nothing after it hides the failure
+    # from the user entirely (#2539).
+    message = str(exc).strip() or f"{type(exc).__name__} reported no details"
     lowered = message.lower()
     if "not found" in lowered and "claude" in lowered and "cli" in lowered:
         return (

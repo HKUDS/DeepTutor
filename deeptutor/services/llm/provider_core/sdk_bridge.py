@@ -26,16 +26,20 @@ async def _consume_messages(
 ) -> LLMResponse:
     chunks: list[str] = []
     pending_result_text = ""
+    last_result_message: Any = None
+    rejected_tool_errors: list[str] = []
     async for message in messages:
         if _is_error_result(message):
             return LLMResponse(
-                content=f"Error calling {label}: {_result_text(message)}",
+                content=_provider_error(label, message, rejected_tool_errors),
                 finish_reason="error",
             )
         if _is_result_message(message):
+            last_result_message = message
             pending_result_text = _result_text(message)
             continue
 
+        rejected_tool_errors.extend(_tool_result_errors(message))
         tool_calls = _assistant_tool_calls(message)
         text = _assistant_text(message)
         if text:
@@ -65,7 +69,16 @@ async def _consume_messages(
         chunks.append(pending_result_text)
         if on_content_delta:
             await on_content_delta(pending_result_text)
-    return LLMResponse(content="".join(chunks), finish_reason="stop")
+    content = "".join(chunks)
+    if not content.strip() and rejected_tool_errors:
+        # A turn the CLI ended without any model text, right after rejecting
+        # a tool call, must not look like an empty success. The final result
+        # message (e.g. a ``max_turns`` stop) carries the finish subtype.
+        return LLMResponse(
+            content=_provider_error(label, last_result_message, rejected_tool_errors),
+            finish_reason="error",
+        )
+    return LLMResponse(content=content, finish_reason="stop")
 
 
 async def _drain_interrupted_response(messages: Any, *, label: str = "CodeBuddy") -> None:
@@ -239,3 +252,87 @@ def _result_text(message: Any) -> str:
     else:
         value = getattr(message, "result", None) or getattr(message, "error", None)
     return "" if value is None else str(value)
+
+
+def _result_subtype(message: Any) -> str:
+    """The CLI's finish subtype (``error_max_turns``, ``error_during_execution``, …)."""
+    if isinstance(message, dict):
+        value = message.get("subtype")
+    else:
+        value = getattr(message, "subtype", None)
+    return str(value or "").strip()
+
+
+def _tool_result_errors(message: Any) -> list[str]:
+    """Error text carried by ``tool_result`` blocks — e.g. a rejected tool call.
+
+    When the CLI rejects a tool call the model made (``No such tool
+    available: <name>``), the rejection only surfaces as an error
+    ``tool_result`` on a user message. Collect it so a turn that dies right
+    afterwards can still report an actionable cause (#2539).
+    """
+    blocks: list[Any] = []
+    containers = [message]
+    if isinstance(message, dict):
+        inner = message.get("message")
+    else:
+        inner = getattr(message, "message", None)
+    if inner is not None:
+        containers.append(inner)
+    for container in containers:
+        content = (
+            container.get("content")
+            if isinstance(container, dict)
+            else getattr(container, "content", None)
+        )
+        if isinstance(content, list):
+            blocks.extend(content)
+
+    errors: list[str] = []
+    for block in blocks:
+        if isinstance(block, dict):
+            block_type = str(block.get("type") or "")
+            is_error = bool(block.get("is_error"))
+            raw = block.get("content")
+            if raw is None:
+                raw = block.get("text")
+        else:
+            block_type = str(getattr(block, "type", "") or "")
+            is_error = bool(getattr(block, "is_error", False))
+            raw = getattr(block, "content", None)
+            if raw is None:
+                raw = getattr(block, "text", None)
+        if "tool_result" not in block_type:
+            continue
+        text = _content_text(raw).strip()
+        if not is_error and "<tool_use_error>" not in text:
+            continue
+        cleaned = text.replace("<tool_use_error>", "").replace("</tool_use_error>", "").strip()
+        if cleaned:
+            errors.append(cleaned)
+    return errors
+
+
+def _provider_error(label: str, message: Any, rejected_tool_errors: list[str]) -> str:
+    """Operator-facing error text for a failed CLI turn; never empty.
+
+    The CLI's error ``ResultMessage`` often carries an empty ``result`` — a
+    ``max_turns`` stop right after a rejected tool call reports nothing — so
+    the detail is assembled from whatever the turn did surface: the result
+    text, rejected ``tool_result`` blocks, then the finish subtype (#2539).
+    """
+    result_text = _result_text(message).strip()
+    subtype = _result_subtype(message)
+    details: list[str] = []
+    if result_text:
+        details.append(result_text)
+    for error in rejected_tool_errors:
+        if error and error not in result_text:
+            details.append(f"rejected tool call: {error}")
+    # Only the CLI's own error subtypes (``error_max_turns``, …) explain a
+    # failure; a plain ``success`` subtype would only pad the message.
+    if subtype.startswith("error") and not any(subtype in detail for detail in details):
+        details.append(f"finish subtype: {subtype}")
+    if not details:
+        details.append("the CLI returned an error result without details")
+    return f"Error calling {label}: {'; '.join(details)}"
