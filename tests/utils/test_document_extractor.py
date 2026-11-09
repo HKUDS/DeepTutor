@@ -154,6 +154,7 @@ class TestIsDocumentExtension:
         # Any extension in FileTypeRouter.TEXT_EXTENSIONS should be supported.
         assert is_document_extension("notes.txt")
         assert is_document_extension("readme.md")
+        assert is_document_extension("guide.mdx")
         assert is_document_extension("module.py")
         assert is_document_extension("config.yaml")
         assert is_document_extension("data.json")
