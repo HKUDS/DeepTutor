@@ -628,28 +628,53 @@ def test_concurrent_warm_calls_yield_one_encoding(
     stub = _stub_tiktoken()
     monkeypatch.setattr(acquisition, "_import_tiktoken", lambda: stub)
     _fabricated_cache(acquisition, monkeypatch, tmp_path, b"AAAA 0\n")
-    # No fixed wall-clock window: on a slow or loaded runner the worker may
-    # publish after any chosen window, and "nobody saw it yet" says nothing
-    # about sharing. Each thread churns until it personally observes the
-    # published encoding (bounded below), so slowness only costs time.
+    # Readiness first: no fixed wall-clock window for correctness — on a
+    # slow or loaded runner the worker may publish after any chosen window,
+    # and "nobody saw it yet" says nothing about sharing. Each caller churns
+    # until it personally observes the published encoding (bounded below),
+    # so slowness only costs time.
     deadline = time.monotonic() + 10.0
     start = threading.Barrier(8)
+    stability_checks = 50
 
-    def churn(mine: set[int]) -> None:
+    def churn(first_seen: set[int], unstable: list[str]) -> None:
         start.wait(10)
-        while not mine and time.monotonic() < deadline:
+        first = None
+        while first is None and time.monotonic() < deadline:
             encoding = token_encoding.get_local_encoding()
             if encoding is not None:
-                mine.add(id(encoding))
+                first = encoding
+                first_seen.add(id(encoding))
+        if first is None:
+            unstable.append("caller never observed the encoding")
+            return
+        # Stability after readiness: the shared instance must survive every
+        # subsequent concurrent call — never None, never a different object.
+        for call in range(stability_checks):
+            encoding = token_encoding.get_local_encoding()
+            if encoding is None:
+                unstable.append(f"call {call} returned None after readiness")
+            elif encoding is not first:
+                unstable.append(f"call {call} returned a different instance")
 
     seen_per_thread: list[set[int]] = [set() for _ in range(8)]
+    unstable_per_thread: list[list[str]] = [[] for _ in range(8)]
     with ThreadPoolExecutor(max_workers=8) as pool:
-        list(pool.map(churn, seen_per_thread))
+        futures = [
+            pool.submit(churn, seen_per_thread[index], unstable_per_thread[index])
+            for index in range(8)
+        ]
+        for future in futures:
+            future.result(30)  # bounded join: a hung caller fails, never hangs CI
     every_seen = set().union(*seen_per_thread)
-    # Every caller observed exactly one shared encoding instance, ever.
+    # Every caller observed exactly one shared encoding instance, ever, and
+    # every later call kept returning that very same object.
     assert len(every_seen) == 1
     assert all(seen_per_thread), "some concurrent caller never observed the encoding"
     assert every_seen == seen_per_thread[0]
+    assert not any(unstable_per_thread), (
+        f"shared instance was unstable across later calls: {unstable_per_thread}"
+    )
     assert len(stub.built) == 1  # built exactly once
 
 
