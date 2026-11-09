@@ -76,6 +76,32 @@ def test_clean_thinking_tags_handles_backtick_wrapped_tags() -> None:
     assert clean_thinking_tags("`<think>`ignore`</think>`Hello") == "Hello"
 
 
+def test_clean_thinking_tags_keeps_prose_that_names_the_tag() -> None:
+    """A reply explaining the tag is prose, not an unterminated scratchpad."""
+    assert (
+        clean_thinking_tags("Use <think> to start a reasoning block.")
+        == "Use <think> to start a reasoning block."
+    )
+    assert (
+        clean_thinking_tags("The `<think>` tag marks the scratchpad.")
+        == "The `<think>` tag marks the scratchpad."
+    )
+
+
+def test_clean_thinking_tags_closes_on_either_spelling() -> None:
+    """<think>...</thinking> is a closed block, not an unterminated one."""
+    assert clean_thinking_tags("<think>reasoning</thinking>answer") == "answer"
+    assert clean_thinking_tags("<thinking>reasoning</think>answer") == "answer"
+
+
+def test_clean_thinking_tags_keeps_text_after_a_closed_block() -> None:
+    """Only the block is removed; a later literal mention survives intact."""
+    assert (
+        clean_thinking_tags("<think>r</think>The <think> tag is a marker.")
+        == "The <think> tag is a marker."
+    )
+
+
 def test_extract_response_content() -> None:
     """Response content extraction should handle mapping payloads."""
     payload = {"content": [{"text": "Hello"}, {"text": "World"}]}
