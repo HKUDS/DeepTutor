@@ -38,6 +38,18 @@ export function sameLLMSelection(
   return llmSelectionKey(a) === llmSelectionKey(b);
 }
 
+/** The most recent option list any `listLLMOptions` call fetched — no TTL.
+ *
+ *  Synchronous, so a send path can validate its `llm_selection` against the
+ *  catalog without awaiting (or firing) a request (#641): empty until the
+ *  first successful load, which callers treat as "option unresolved".
+ */
+let lastKnownOptions: LLMOption[] = [];
+
+export function readLastKnownLLMOptions(): LLMOption[] {
+  return lastKnownOptions;
+}
+
 /** List the configured model profiles.
  *
  *  Cached so the many consumers that need the model list (composer, model
@@ -65,9 +77,10 @@ export async function listLLMOptions(options?: {
           throw new Error(`Failed to load LLM options: ${response.status}`);
         }
         const data = (await response.json()) as LLMOptionsResponse;
+        lastKnownOptions = Array.isArray(data.options) ? data.options : [];
         return {
           active: data.active ?? null,
-          options: Array.isArray(data.options) ? data.options : [],
+          options: lastKnownOptions,
         };
       } finally {
         clearTimeout(timeout);

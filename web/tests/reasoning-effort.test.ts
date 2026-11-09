@@ -2,10 +2,13 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  dropUnvalidatedReasoningEffort,
+  effectiveReasoningEffort,
   normalizeReasoningEffort,
   reasoningEffortOptions,
   reasoningEffortOptionsFromSupportedLevels,
   setModelReasoningEffort,
+  supportedReasoningEffortValues,
   VALID_REASONING_EFFORTS,
 } from "../lib/reasoning-effort";
 
@@ -241,4 +244,95 @@ test("normalizeReasoningEffort keeps legal values and drops everything else", ()
   assert.equal(normalizeReasoningEffort(42), null);
   // Provider-specific levels live outside the turn vocabulary.
   assert.equal(normalizeReasoningEffort("adaptive"), null);
+});
+
+test("effectiveReasoningEffort drops overrides the selected model rejects (#641)", () => {
+  const restricted = {
+    provider: "openai",
+    model: "gpt-5.2",
+    supported_reasoning_efforts: ["low", "high"],
+  };
+  assert.equal(effectiveReasoningEffort(restricted, "xhigh"), null);
+  assert.equal(effectiveReasoningEffort(restricted, "high"), "high");
+  assert.equal(effectiveReasoningEffort(restricted, null), null);
+  // An unresolved option cannot validate anything: the override is not
+  // effective, so send paths fall back to the configured default.
+  assert.equal(effectiveReasoningEffort(null, "high"), null);
+});
+
+test("supportedReasoningEffortValues never adds a stale stored value (#641)", () => {
+  // Catalog list wins when published, narrowed to the wire vocabulary.
+  assert.deepEqual(
+    supportedReasoningEffortValues({
+      provider: "openai",
+      model: "gpt-5.2",
+      supported_reasoning_efforts: ["low", "high", "adaptive"],
+    }),
+    ["low", "high"],
+  );
+  // Fallback table path: the tables' own reset-recovery retention is
+  // bypassed, so a value they would re-add for a stored override is absent.
+  const gemini = supportedReasoningEffortValues({
+    provider: "gemini",
+    model: "gemini-3.6-flash",
+  });
+  assert.deepEqual(gemini, ["minimal", "low", "medium", "high"]);
+  assert.equal(gemini.includes("none"), false);
+  assert.equal(gemini.includes("xhigh"), false);
+  // declared_reasoning is honoured on the table path too.
+  assert.deepEqual(
+    supportedReasoningEffortValues({
+      provider: "unknown",
+      model: "mystery",
+      declared_reasoning: true,
+    }),
+    ["none", "low", "medium", "high"],
+  );
+  assert.deepEqual(
+    supportedReasoningEffortValues({
+      provider: "openai",
+      model: "gpt-5.2",
+      declared_reasoning: false,
+    }),
+    [],
+  );
+  assert.deepEqual(supportedReasoningEffortValues(null), []);
+});
+
+test("a restored xhigh override never reaches the wire once the model restricts levels (#641)", () => {
+  // Restore step: `xhigh` is legal wire vocabulary, so asLLMSelection-style
+  // normalization keeps it in the conversation's selection.
+  const restored = {
+    profile_id: "p-alt",
+    model_id: "m-alt",
+    reasoning_effort: normalizeReasoningEffort("xhigh"),
+  };
+  assert.equal(restored.reasoning_effort, "xhigh");
+  // Submit step: the option resolved from the catalog restricts the model.
+  const option = {
+    provider: "openai",
+    model: "gpt-5.2",
+    supported_reasoning_efforts: ["low", "high"],
+  };
+  const outgoing = dropUnvalidatedReasoningEffort(restored, option);
+  assert.notEqual(outgoing, null);
+  assert.equal("reasoning_effort" in (outgoing as object), false);
+  // Options still loading / profile gone: the override is omitted rather
+  // than forwarded unvalidated (falls back to the configured default).
+  const unresolved = dropUnvalidatedReasoningEffort(restored, null);
+  assert.equal("reasoning_effort" in (unresolved as object), false);
+  // A still-supported override passes through untouched.
+  const kept = dropUnvalidatedReasoningEffort(
+    { ...restored, reasoning_effort: "high" },
+    option,
+  );
+  assert.equal(kept?.reasoning_effort, "high");
+  // Selections without an override are returned as-is.
+  const plain: {
+    profile_id: string;
+    model_id: string;
+    reasoning_effort?: string | null;
+  } = { profile_id: "p-alt", model_id: "m-alt" };
+  assert.equal(dropUnvalidatedReasoningEffort(plain, null), plain);
+  assert.equal(dropUnvalidatedReasoningEffort(null, option), null);
 });

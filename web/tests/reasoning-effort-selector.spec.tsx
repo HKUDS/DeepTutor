@@ -97,3 +97,30 @@ it("hides while no model option is resolved", () => {
   );
   expect(container.firstChild).toBeNull();
 });
+
+it("drops a stored value the selected model no longer supports (#641)", () => {
+  const onChange = vi.fn();
+  render(
+    <ReasoningEffortSelector
+      option={option({ supported_reasoning_efforts: ["low", "high"] })}
+      value="xhigh"
+      onChange={onChange}
+    />,
+  );
+  // The stale override is not a selectable level: Auto shows as selected…
+  const trigger = screen.getByRole("button", { name: "Reasoning effort" });
+  expect(trigger.textContent).toContain("Auto");
+  // …and the menu must not re-list it.
+  fireEvent.click(trigger);
+  const items = screen
+    .getAllByRole("button")
+    .map((button) => button.textContent)
+    .filter((text): text is string => Boolean(text));
+  expect(items).not.toContain("Extra high");
+  expect(items).toContain("Low");
+  expect(items).toContain("High");
+  // A real level still reports normally; the composer resets the persisted
+  // override through this same onChange path.
+  fireEvent.click(screen.getByRole("button", { name: "Low" }));
+  expect(onChange).toHaveBeenLastCalledWith("low");
+});

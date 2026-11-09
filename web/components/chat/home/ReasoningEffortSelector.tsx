@@ -7,9 +7,9 @@ import { useOutsideClick } from "@/hooks/use-outside-click";
 import Tooltip from "@/shared/ui/Tooltip";
 import type { LLMOption } from "@/lib/llm-options";
 import {
-  reasoningEffortOptions,
+  effectiveReasoningEffort,
   reasoningEffortOptionsFromSupportedLevels,
-  VALID_REASONING_EFFORTS,
+  supportedReasoningEffortValues,
   type ReasoningEffortOption,
 } from "@/lib/reasoning-effort";
 
@@ -17,12 +17,13 @@ import {
  * Per-conversation reasoning-effort override (#641), rendered beside the
  * model selector in the composer.
  *
- * The offered levels mirror the knowledge indexing selector: the model's
+ * The offered levels come from `supportedReasoningEffortValues`: the model's
  * live `supported_reasoning_efforts` list when the catalog publishes one,
  * otherwise the provider/model tables in `lib/reasoning-effort.ts`. Both
  * are narrowed to `VALID_REASONING_EFFORTS` — the wire vocabulary the turn
- * contract accepts — so an unsupported value is never offered, let alone
- * sent. A model with no selectable level hides the control entirely.
+ * contract accepts — and a stored value the model does not support is never
+ * re-listed; the selector shows Auto instead and the composer resets the
+ * persisted override. A model with no selectable level hides the control.
  */
 export default function ReasoningEffortSelector({
   option,
@@ -42,8 +43,8 @@ export default function ReasoningEffortSelector({
   const rootRef = useRef<HTMLDivElement>(null);
 
   const options = useMemo<ReasoningEffortOption[]>(
-    () => computeReasoningOptions(option, value),
-    [option, value],
+    () => computeReasoningOptions(option),
+    [option],
   );
 
   useOutsideClick(rootRef, open, () => setOpen(false));
@@ -51,7 +52,10 @@ export default function ReasoningEffortSelector({
   // Nothing to choose (only the implicit provider default): hide, per #641.
   if (!option || !options.some((item) => item.value)) return null;
 
-  const selected = value ?? "";
+  // A stored override the selected model does not support is not a
+  // selectable level: render Auto as selected instead (#641). The composer
+  // resets the persisted override once the model options are loaded.
+  const selected = effectiveReasoningEffort(option, value) ?? "";
   const selectedLabel =
     options.find((item) => item.value === selected)?.label ?? selected;
 
@@ -124,27 +128,10 @@ export default function ReasoningEffortSelector({
 
 function computeReasoningOptions(
   option: LLMOption | null,
-  value: string | null,
 ): ReasoningEffortOption[] {
-  if (!option) return [];
-  const offered =
-    option.supported_reasoning_efforts !== undefined
-      ? reasoningEffortOptionsFromSupportedLevels(
-          option.supported_reasoning_efforts,
-        )
-      : reasoningEffortOptions(
-          option.provider,
-          option.model,
-          value || "",
-          option.declared_reasoning,
-        );
-  // A stale override stays listed so it can be seen and reset even when the
-  // tables no longer offer it; everything else is narrowed to the wire
-  // vocabulary the turn contract accepts.
-  return offered.filter(
-    (item) =>
-      item.value === "" ||
-      VALID_REASONING_EFFORTS.has(item.value) ||
-      item.value === value,
+  // Only levels the selected model supports, narrowed to the wire
+  // vocabulary — the stored override is never re-added (#641).
+  return reasoningEffortOptionsFromSupportedLevels(
+    supportedReasoningEffortValues(option),
   );
 }
