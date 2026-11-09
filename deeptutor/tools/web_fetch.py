@@ -7,6 +7,13 @@ The chat pipeline calls it via the thin ``WebFetchTool`` wrapper in
 ``deeptutor/tools/builtin/__init__.py``; no internal global state, no
 hidden side-effects — easy to test by passing a mock httpx client.
 
+Since issue #2448 the HTTP+extract step is pluggable: ``backend="local"``
+(the default, unchanged in-process path) or a registered remote backend
+such as ``deepseek`` from ``deeptutor/services/fetch/providers``. The
+safety gate below always runs first, retryable backend failures fall back
+to local, and the crawler stays on the local path — see
+:mod:`deeptutor.services.fetch`.
+
 Security stance (kept tight on purpose because the model decides
 arguments, not a human):
 
@@ -79,8 +86,21 @@ async def fetch_url_as_markdown(
     user_agent: str = DEFAULT_USER_AGENT,
     client_factory: Any = None,
     host_validator: Any = None,
+    backend: str | None = None,
 ) -> FetchOutcome:
     """Fetch ``url`` and extract readable text.
+
+    ``backend`` selects the fetch backend (issue #2448): ``"local"`` (the
+    default in-process httpx + extractor path) or a registered remote
+    backend such as ``"deepseek"``. ``None`` means "whatever the
+    deployment default says" (``DEEPTUTOR_FETCH_BACKEND``, else local), so
+    existing installs behave exactly as before. A remote backend replaces
+    only the HTTP+extract step — the scheme/SSRF gate below runs *first*,
+    so a private/loopback URL is never handed to a third party. Retryable
+    backend failures (auth, balance, throttle, network) fall back to the
+    local extractor; 400/404/413 and an empty body are a hard failure. The
+    site crawler (``services/web_source/crawler.py``) never routes through
+    this dispatcher's remote backends.
 
     ``client_factory`` accepts a no-arg callable returning an
     ``httpx.AsyncClient``-compatible context manager. ``host_validator``
@@ -100,6 +120,38 @@ async def fetch_url_as_markdown(
     if not host:
         return FetchOutcome(ok=False, error="URL is missing a host.")
     validator = host_validator or _is_disallowed_host
+
+    backend_name = _resolve_backend_name(backend)
+    if backend_name is None:
+        from deeptutor.services.config import supported_fetch_providers_hint
+
+        return FetchOutcome(
+            ok=False,
+            error=(
+                f"Unknown fetch backend: {backend!r}. "
+                f"Available: {supported_fetch_providers_hint()}."
+            ),
+        )
+    if backend_name != "local":
+        # The SSRF gate must stay in front of any remote backend: a backend
+        # replaces the HTTP+extract step, never the decision of whether the
+        # URL is safe to contact — otherwise a private URL would be handed
+        # to a third party.
+        if validator(host):
+            return FetchOutcome(
+                ok=False,
+                error=f"Refusing to fetch private/loopback host: {host}.",
+            )
+        remote = await _fetch_via_backend(
+            backend_name,
+            url_clean,
+            max_chars=max_chars,
+            timeout_s=timeout_s,
+            user_agent=user_agent,
+        )
+        if remote is not None:
+            return remote
+        # Retryable backend failure — fall through to the local extractor.
 
     factory = client_factory or _default_client_factory
     current_url = url_clean
@@ -165,6 +217,93 @@ async def fetch_url_as_markdown(
 # ---------------------------------------------------------------------------
 # Internals
 # ---------------------------------------------------------------------------
+
+
+def _resolve_backend_name(backend: str | None) -> str | None:
+    """Map the ``backend`` argument to a registered fetch-backend name.
+
+    ``None`` means "whatever the deployment default says"
+    (``DEEPTUTOR_FETCH_BACKEND``, else local). Unknown names return
+    ``None`` so the caller can surface a hard error — an explicit
+    per-call override naming a backend that doesn't exist must not
+    silently become local.
+    """
+    from deeptutor.services.config import SUPPORTED_FETCH_PROVIDERS
+
+    if backend is None:
+        from deeptutor.services.fetch import resolve_fetch_backend
+
+        return resolve_fetch_backend()
+    name = backend.strip().lower()
+    return name if name in SUPPORTED_FETCH_PROVIDERS else None
+
+
+async def _fetch_via_backend(
+    backend_name: str,
+    url: str,
+    *,
+    max_chars: int,
+    timeout_s: float,
+    user_agent: str,
+) -> FetchOutcome | None:
+    """Run a remote fetch backend; ``None`` means "fall back to local".
+
+    Failure semantics split by what can be retried: a retryable backend
+    error (auth, balance, throttle, network — see
+    :class:`~deeptutor.services.fetch.base.FetchProviderError`) answers
+    ``None`` so the local extractor still serves the call, while hard
+    failures (400/404/413, an empty body, or a non-retryable provider
+    error) come back as a failing outcome — the same meaning as today's
+    ``HTTP >= 400`` branch. A crashing adapter is treated as retryable so
+    a broken backend never takes ``web_fetch`` down.
+    """
+    from deeptutor.services.fetch import get_fetch_provider
+    from deeptutor.services.fetch.base import FetchProviderError
+
+    try:
+        provider = get_fetch_provider(backend_name)
+        outcome = await provider.fetch(
+            url, max_chars=max_chars, timeout_s=timeout_s, user_agent=user_agent
+        )
+    except FetchProviderError as exc:
+        if not exc.retryable:
+            return FetchOutcome(ok=False, url=url, error=exc.message)
+        logger.warning(
+            "Fetch backend %r unavailable (%s); falling back to local extraction.",
+            backend_name,
+            exc,
+        )
+        return None
+    except Exception as exc:  # pragma: no cover — defensive
+        logger.warning(
+            "Fetch backend %r raised %r; falling back to local extraction.",
+            backend_name,
+            exc,
+        )
+        return None
+
+    if not outcome.ok:
+        return outcome
+    markdown = outcome.markdown or ""
+    if not markdown.strip():
+        return FetchOutcome(
+            ok=False,
+            url=url,
+            error=f"Fetch backend {backend_name!r} returned no content.",
+        )
+    truncated = False
+    if len(markdown) > max_chars:
+        markdown = markdown[:max_chars].rstrip() + "\n…[truncated]"
+        truncated = True
+    # Remote backends can't report the post-redirect final URL, so the
+    # requested URL is what citations get (documented trade-off).
+    return FetchOutcome(
+        ok=True,
+        markdown=markdown,
+        url=outcome.url or url,
+        title=outcome.title,
+        truncated=truncated,
+    )
 
 
 def _default_client_factory(*, timeout: float, user_agent: str) -> httpx.AsyncClient:
