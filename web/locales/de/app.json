@@ -6581,5 +6581,6 @@
   "settings.modelImport.unverified": "Einige Modelle geben keinen Typ an. Testen Sie sie vor der Verwendung mit diesem Dienst.",
   "settings.modelImport.draftHint": "Modelle werden zum Entwurf hinzugefügt. Änderungen anwenden, um sie zu speichern; das Standardmodell bleibt gleich.",
   "settings.modelImport.selected": "Ausgewählt: {{count}}",
-  "language.korean": "한국어 (일부 번역)"
+  "language.korean": "한국어 (일부 번역)",
+  "language.italian": "Italiano"
 }

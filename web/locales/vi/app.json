@@ -6581,5 +6581,6 @@
   "settings.modelImport.unverified": "Một số mô hình không khai báo loại. Hãy kiểm tra trước khi dùng cho dịch vụ này.",
   "settings.modelImport.draftHint": "Mô hình được thêm vào bản nháp. Áp dụng thay đổi để lưu; mô hình mặc định được giữ nguyên.",
   "settings.modelImport.selected": "Đã chọn: {{count}}",
-  "language.korean": "한국어 (일부 번역)"
+  "language.korean": "한국어 (일부 번역)",
+  "language.italian": "Italiano"
 }

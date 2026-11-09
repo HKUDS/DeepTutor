@@ -158,6 +158,27 @@ _COPY: dict[str, dict[str, Any]] = {
         "chapter_index_title": "Bölüm dizini",
         "chapter_index_heading": "## Bölüm dizini",
     },
+    "it": {
+        "chapter_title": "Come leggere questo libro",
+        "chapter_summary": (
+            "Panoramica generata automaticamente della mappa concettuale e dell'indice dei capitoli del libro."
+        ),
+        "objectives": [
+            "Avere una panoramica completa della mappa dei capitoli a colpo d'occhio",
+            "Comprendere le relazioni tra i concetti chiave",
+            "Scegliere il percorso di lettura più adatto ai propri obiettivi",
+        ],
+        "intro_title": "Come leggere questo libro",
+        "intro_body": (
+            "Il diagramma seguente mostra i {concepts} concetti fondamentali di questo libro e le loro "
+            "interconnessioni. L'indice successivo elenca tutti i {chapters} capitoli; puoi leggerli "
+            "in ordine sequenziale oppure passare direttamente al capitolo di tuo interesse."
+        ),
+        "untitled_book": "Questo libro",
+        "concept_map_title": "Mappa concettuale",
+        "chapter_index_title": "Indice dei capitoli",
+        "chapter_index_heading": "## Indice dei capitoli",
+    },
 }
 
 
