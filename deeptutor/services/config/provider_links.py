@@ -193,7 +193,17 @@ def resolve_profile_provider(
             binding, result["base_url"], (model or {}).get("model")
         )
     for field in ("api_format", "wire_api"):
-        result[field] = source.get(field) or "auto"
+        # Precedence: the profile's explicit (non-default) setting wins over
+        # the linked connection's, which wins over "auto". Previously the
+        # connection unconditionally clobbered the profile — and a profile
+        # that named the Responses API silently lost it even when the
+        # connection left the default alone (#2451, profile-side). A profile
+        # whose own value is empty/"auto" falls through to the connection.
+        explicit = profile.get(field)
+        if explicit and explicit != "auto":
+            result[field] = explicit
+        else:
+            result[field] = source.get(field) or "auto"
     if source.get("owner_bound"):
         result["owner_bound"] = True
     result["name"] = source.get("name") or profile.get("name", "")
