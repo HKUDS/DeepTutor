@@ -11,6 +11,7 @@ export interface GuardianRelationship {
 }
 
 export interface GuardianReport {
+  reading?: GuardianReadingSummary;
   learner: { id: string; username: string; disabled: boolean };
   assigned_materials: Array<{
     book_id: string;
@@ -22,6 +23,53 @@ export interface GuardianReport {
     knowledge_base_count: number;
     skill_count: number;
   };
+}
+
+export interface GuardianReadingSummary {
+  help_status?: "available" | "unavailable";
+  help_total?: number;
+  help_events?: Array<{
+    material_id: string;
+    material_title?: string;
+    locator: number;
+    question_id: string;
+    question: string;
+    help_kind: string;
+    created_at: number;
+  }>;
+  reading_status: "available" | "not_initialized" | "migration_required";
+  quiz_status: "available" | "not_initialized" | "migration_required";
+  progress_total: number;
+  progress: Array<{
+    material_id: string;
+    material_title?: string;
+    latest_locator: number;
+    latest_percentage: number;
+    furthest_locator: number;
+    furthest_percentage: number;
+    updated_at: number;
+  }>;
+  activities: Array<{
+    activity_id: string;
+    material_id: string;
+    extension_id: string;
+    action: string;
+    locator: number;
+    created_at: number;
+  }>;
+  quiz_total: number;
+  quizzes: Array<{
+    id: number;
+    question_id: string;
+    material_id: string;
+    material_title: string | null;
+    section_title: string | null;
+    question: string;
+    is_correct: boolean | null;
+    hints_used: number;
+    attempt_count: number;
+  }>;
+  limit: number;
 }
 
 export interface GuardianMaterial {

@@ -460,3 +460,82 @@ def test_guardian_access_rechecks_the_current_account_presets(mu_isolated_root, 
         headers=_auth("guardian-token"),
     )
     assert report.status_code == 403
+
+
+def test_guardian_reading_report_authorization_scope_and_revocation(mu_isolated_root, monkeypatch):
+    import sqlite3
+
+    from deeptutor.learning.storage import LearningStore
+    from deeptutor.multi_user import guardian_reading
+    from deeptutor.multi_user.paths import get_path_service_for_scope, scope_for_user
+    from deeptutor.services.session.sqlite_store import SQLiteSessionStore
+
+    client, users = _client(mu_isolated_root, monkeypatch)
+    learner_id = users["learner"]["id"]
+    for name in ("learner", "guardian"):
+        paths = get_path_service_for_scope(scope_for_user(users[name]["id"], is_admin=False))
+        LearningStore(
+            root=paths.get_workspace_dir() / "learning" / "mastery"
+        ).record_reading_position(name, locator=2, percentage=0.5)
+        store = SQLiteSessionStore(db_path=paths.get_chat_history_db())
+        with sqlite3.connect(store.db_path) as db:
+            db.execute(
+                "INSERT INTO notebook_entries (origin_ref, question_id, question, source, "
+                "material_id, hints_used, is_correct, correct_answer, created_at, updated_at) "
+                "VALUES (?, ?, ?, 'immersive_reading', ?, 2, 0, 'secret key', 1, 1)",
+                (name, name, name + " question", name),
+            )
+    calls = []
+    read = guardian_reading.reading_report_for
+
+    async def observed(uid):
+        calls.append(uid)
+        return await read(uid)
+
+    monkeypatch.setattr(guardian_reading, "reading_report_for", observed)
+    url = f"/api/multi-user/learners/{learner_id}/guardian-report"
+    for token in ("learner-token", "guardian-token", "stranger-token"):
+        assert client.get(url, headers=_auth(token)).status_code == 403
+    assert calls == []
+
+    def authorize(permissions):
+        response = client.post(
+            "/api/multi-user/guardians",
+            headers=_auth("root-token"),
+            json={
+                "guardian_user_id": users["guardian"]["id"],
+                "learner_user_id": learner_id,
+                "permissions": permissions,
+            },
+        )
+        assert response.status_code == 201
+        return response.json()["relationship"]["id"]
+
+    relation = authorize(["assign_materials"])
+    assert client.get(url, headers=_auth("guardian-token")).status_code == 403
+    assert calls == []
+    assert (
+        client.delete(
+            f"/api/multi-user/guardians/{relation}", headers=_auth("root-token")
+        ).status_code
+        == 200
+    )
+    relation = authorize(["view_reports"])
+    response = client.get(url, headers=_auth("guardian-token"))
+    assert response.status_code == 200
+    data = response.json()["reading"]
+    assert data["progress"][0]["material_id"] == "learner"
+    assert data["quizzes"][0]["question"] == "learner question"
+    assert data["quizzes"][0]["hints_used"] == 2
+    assert data["quizzes"][0]["is_correct"] is False
+    assert "secret key" not in response.text
+    assert "guardian question" not in response.text
+    assert calls == [learner_id]
+    assert (
+        client.delete(
+            f"/api/multi-user/guardians/{relation}", headers=_auth("root-token")
+        ).status_code
+        == 200
+    )
+    assert client.get(url, headers=_auth("guardian-token")).status_code == 403
+    assert calls == [learner_id]

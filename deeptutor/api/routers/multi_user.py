@@ -503,6 +503,9 @@ async def guardian_report(
     learner_username, learner_record, actor_user_id, is_admin = _require_guardian_access(
         current, learner_user_id, "view_reports"
     )
+    from deeptutor.multi_user.guardian_reading import reading_report_for
+
+    reading = await reading_report_for(learner_user_id)
     from deeptutor.multi_user.book_access import admin_book_catalog
     from deeptutor.multi_user.book_permission import (
         normalize_book_permission,
@@ -532,6 +535,7 @@ async def guardian_report(
         },
         "book_permission": permission_dict,
         "assigned_materials": assigned_materials,
+        "reading": reading,
         "grant_summary": {
             "model_count": len(grant.get("models", {}).get("llm", []) or []),
             "knowledge_base_count": len(grant.get("knowledge_bases") or []),
