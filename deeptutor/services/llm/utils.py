@@ -187,15 +187,21 @@ def clean_thinking_tags(
     if not content:
         return ""
 
+    # Either spelling closes the block. A provider that opens with <think> and
+    # closes with </thinking> (or the reverse) used to match neither pattern, so
+    # the block fell through to the unclosed rule and took the answer with it.
     closed_pattern = re.compile(
-        r"`?<\s*(?P<tag>think(?:ing)?)\b[^>]*>`?.*?`?<\s*/\s*(?P=tag)\s*>`?",
+        r"`?<\s*(?:think|thinking)\b[^>]*>`?.*?`?<\s*/\s*(?:think|thinking)\s*>`?",
         re.DOTALL | re.IGNORECASE,
     )
     cleaned = re.sub(closed_pattern, "", content)
     # Streaming providers can surface a final partial block if the request is
     # interrupted after reasoning has started. Never expose that scratchpad.
+    # Only a block that starts a line counts as that scratchpad: a reply that
+    # mentions "<think>" mid-sentence is prose, and deleting from there to the
+    # end of the text dropped the rest of the answer.
     unclosed_pattern = re.compile(
-        r"`?<\s*think(?:ing)?\b[^>]*>`?.*$",
+        r"(?:\A|\n)[ \t]*`?<\s*think(?:ing)?\b[^>]*>`?.*\Z",
         re.DOTALL | re.IGNORECASE,
     )
     cleaned = re.sub(unclosed_pattern, "", cleaned)
