@@ -1327,6 +1327,16 @@ async def refresh_fingerprints(
     """
     resolved = _resolve_book_or_404(book_id, edit=True)
     engine = resolved.engine
+    # Run the engine's refusal gate before claiming the canonical revision:
+    # the claim bumps book.revision, so a refusal discovered only afterwards
+    # would strand the client's expected_revision on a version its own failed
+    # attempt advanced — and the force retry would 409 forever.
+    try:
+        book_exists = engine.check_refresh_kb_fingerprints(book_id, force=force)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if not book_exists:
+        raise HTTPException(status_code=404, detail="Book not found")
     revision = _claim_content_mutation(
         resolved,
         book_id,
@@ -1337,6 +1347,8 @@ async def refresh_fingerprints(
     try:
         result = engine.refresh_kb_fingerprints(book_id, force=force)
     except ValueError as exc:
+        # Only reachable when a concurrent drift mark lands between the
+        # preflight and this call; degrade to the same 409.
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     if result is None:
         raise HTTPException(status_code=404, detail="Book not found")
