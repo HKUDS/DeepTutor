@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ComponentType } from "react";
+import { useRouter } from "next/navigation";
 
 import ChatNotebookTab from "@/components/chat/home/ChatNotebookTab";
 import NoteWorkspace from "@/features/notes/components/NoteWorkspace";
@@ -22,6 +23,7 @@ export default function NoteDocumentPage({
   docId: string;
   companion?: ComponentType<NoteCompanionProps>;
 }) {
+  const router = useRouter();
   const [resolved, setResolved] = useState<{ docId: string; kind: string } | null>(
     null,
   );
@@ -50,7 +52,13 @@ export default function NoteDocumentPage({
       : null;
 
   if (kind === "super_note") {
-    return <ChatNotebookTab key={docId} docId={docId} />;
+    return (
+      <ChatNotebookTab
+        key={docId}
+        docId={docId}
+        onExit={() => router.push("/co-writer")}
+      />
+    );
   }
   if (kind === null) {
     return <div className="h-dvh w-full bg-[var(--card)]" aria-hidden="true" />;

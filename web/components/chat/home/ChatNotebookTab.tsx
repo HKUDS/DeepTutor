@@ -15,7 +15,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
-import { Play, Plus, Trash2, ArrowUp, ArrowDown, Loader2, Check, RefreshCw } from "lucide-react";
+import { Play, Plus, Trash2, ArrowUp, ArrowDown, Loader2, Check, RefreshCw, ArrowLeft } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import RichMarkdownRenderer from "@/components/common/RichMarkdownRenderer";
@@ -60,6 +60,8 @@ interface ChatNotebookTabProps {
   sessionId?: string | null;
   /** Open a notebook page directly by id (from the Notes home). */
   docId?: string | null;
+  /** Leave the notebook page (from the Notes home); absent in the viewer. */
+  onExit?: () => void;
 }
 
 type CellRun =
@@ -120,7 +122,7 @@ function applySavedCellIds(
   return cells.map((cell, index) => ({ ...cell, id: ids[index] }));
 }
 
-export default function ChatNotebookTab({ sessionId = null, docId = null }: ChatNotebookTabProps) {
+export default function ChatNotebookTab({ sessionId = null, docId = null, onExit }: ChatNotebookTabProps) {
   const { t } = useTranslation();
   const auth = useAuthStatus();
   const owner =
@@ -498,6 +500,17 @@ export default function ChatNotebookTab({ sessionId = null, docId = null }: Chat
   return (
     <div className="flex h-full flex-col">
       <div className="flex shrink-0 items-center gap-2 border-b border-[color-mix(in_srgb,var(--border)_45%,transparent)] px-4 py-2.5">
+        {onExit ? (
+          <button
+            type="button"
+            onClick={onExit}
+            aria-label={t("Back to Notes")}
+            title={t("Back to Notes")}
+            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[var(--muted-foreground)] transition-colors hover:bg-[color-mix(in_srgb,var(--muted)_70%,transparent)] hover:text-[var(--foreground)]"
+          >
+            <ArrowLeft size={15} strokeWidth={1.9} />
+          </button>
+        ) : null}
         <div className="min-w-0 flex-1">
           {editingTitle ? (
             <input

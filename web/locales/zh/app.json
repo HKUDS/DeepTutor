@@ -6309,5 +6309,6 @@
   "Drag a dot on a cell onto another cell to link them; click a line to label it.": "拖动单元格上的圆点到另一个单元格即可连线；点连线可写标签。",
   "Connect in order": "按顺序连线",
   "Add image": "上传图片",
-  "Retry save": "重试保存"
+  "Retry save": "重试保存",
+  "Back to Notes": "返回笔记"
 }

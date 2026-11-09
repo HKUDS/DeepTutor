@@ -584,6 +584,7 @@ export default function NoteWorkspace({
         onMetadata={patch => void metadata(patch)}
         onInsertFavorite={() => setFavorites(true)}
         onExport={format => void exportFile(format)}
+        onExit={embedded ? undefined : () => router.push('/co-writer')}
       />
       {error && (
         <div role="alert" className="dt-note-banner is-error">

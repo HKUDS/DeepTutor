@@ -62,6 +62,7 @@ export default function NoteTopBar({
   onMetadata,
   onInsertFavorite,
   onExport,
+  onExit,
 }: {
   page: NotePage | null
   pages: NoteSummary[]
@@ -80,6 +81,8 @@ export default function NoteTopBar({
   onMetadata: (patch: Partial<NotePage>) => void
   onInsertFavorite: () => void
   onExport: (format: 'md' | 'docx') => void
+  /** Leave the standalone page, back to the Notes board. */
+  onExit?: () => void
 }) {
   const { t } = useTranslation()
   const feature = useShelfFeature('/co-writer')
@@ -114,6 +117,17 @@ export default function NoteTopBar({
   }
   return (
     <header className="dt-note-topbar">
+      {onExit ? (
+        <Tooltip label={t('Back to Notes')} side="bottom">
+          <button
+            className="dt-note-icon-button"
+            aria-label={t('Back to Notes')}
+            onClick={onExit}
+          >
+            <ArrowLeft size={16} strokeWidth={1.7} />
+          </button>
+        </Tooltip>
+      ) : null}
       <Tooltip label={t(treeOpen ? 'Hide pages' : 'Show pages')} side="bottom">
         <button
           className="dt-note-icon-button"
