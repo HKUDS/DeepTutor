@@ -19,6 +19,7 @@ from typing import Callable, Optional, Sequence
 
 from ...types import ParserError
 from .config import DoclingConfig
+from .content_list import write_content_list
 
 _WORKER_MODULE = "deeptutor.services.parsing.engines.docling.local_worker"
 _ERROR_TAIL_LINES = 20
@@ -105,6 +106,13 @@ def _build_converter(*, do_ocr: bool, do_table_structure: bool):
         pipeline_options = PdfPipelineOptions()
         pipeline_options.do_ocr = do_ocr
         pipeline_options.do_table_structure = do_table_structure
+        # Picture crops feed the image blocks of the content_list IR. Guarded
+        # attribute-by-attribute so a Docling release that renames an option
+        # keeps converting (same contract as the fallback below).
+        if hasattr(pipeline_options, "generate_picture_images"):
+            pipeline_options.generate_picture_images = True
+        if hasattr(pipeline_options, "images_scale"):
+            pipeline_options.images_scale = 2.0
         return DocumentConverter(
             format_options={InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)}
         )
@@ -126,9 +134,17 @@ def _convert(
         do_table_structure=do_table_structure,
     )
     result = converter.convert(str(source_path))
-    markdown = result.document.export_to_markdown()
+    document = result.document
+    markdown = document.export_to_markdown()
     workdir.mkdir(parents=True, exist_ok=True)
     (workdir / f"{source_path.stem}.md").write_text(str(markdown), encoding="utf-8")
+    try:
+        blocks = write_content_list(document, workdir, stem=source_path.stem)
+    except Exception as exc:  # noqa: BLE001 - markdown remains a valid IR
+        print(f"content-list mapping failed; keeping markdown only: {exc}", flush=True)
+        return
+    if blocks:
+        print(f"Wrote {len(blocks)} content_list blocks", flush=True)
 
 
 def _parser() -> argparse.ArgumentParser:
