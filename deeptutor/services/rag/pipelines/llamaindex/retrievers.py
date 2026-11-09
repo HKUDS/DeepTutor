@@ -260,8 +260,47 @@ def retrieve_nodes(
     )
 
 
+def _scope_key(value: str) -> str:
+    """Normalise a path-ish document identity for scope comparison."""
+    return value.replace("\\", "/").strip("/").casefold()
+
+
+def _scope_matcher(document_keys: tuple[str, ...], raw_root: Path | None) -> Any:
+    """Membership test for one KB's document keys against its loaded nodes.
+
+    Source-schema nodes carry ``document_key`` (the path relative to the KB's
+    ``raw`` directory). Plain-text documents are ingested with only a
+    ``file_path`` (#2374) — the absolute location under that same ``raw``
+    directory — so those match by raw-relative position instead. A same-named
+    file in another folder is a different document and never matches.
+    """
+    keys = {_scope_key(key) for key in document_keys if str(key).strip()}
+    raw_resolved = raw_root.resolve() if raw_root is not None else None
+
+    def node_in_scope(node: Any) -> bool:
+        metadata = getattr(node, "metadata", None)
+        metadata = metadata if isinstance(metadata, dict) else {}
+        key = metadata.get("document_key")
+        if isinstance(key, str) and _scope_key(key) in keys:
+            return True
+        file_path = str(metadata.get("file_path") or "")
+        if not file_path:
+            return False
+        if _scope_key(file_path) in keys:
+            return True
+        if raw_resolved is None:
+            return False
+        try:
+            relative = Path(file_path).resolve().relative_to(raw_resolved)
+        except (OSError, ValueError):
+            return False
+        return _scope_key(relative.as_posix()) in keys
+
+    return node_in_scope
+
+
 @lru_cache(maxsize=4)
-def _scoped_index(index: Any, document_keys: tuple[str, ...]) -> Any:
+def _scoped_index(index: Any, document_keys: tuple[str, ...], raw_root: str = "") -> Any:
     """Reuse stored vectors in an isolated corpus; FAISS ignores node_ids filters.
 
     This never embeds the documents again. The small LRU dies with the loaded
@@ -271,7 +310,7 @@ def _scoped_index(index: Any, document_keys: tuple[str, ...]) -> Any:
 
     from .vector_store import storage_context_for_nodes
 
-    allowed = set(document_keys)
+    in_scope = _scope_matcher(document_keys, Path(raw_root) if raw_root else None)
     # .docs reconstructs all nodes on every access; never call it per vector.
     documents = index.docstore.docs
     store = index.vector_store
@@ -283,15 +322,15 @@ def _scoped_index(index: Any, document_keys: tuple[str, ...]) -> Any:
         by_node = {
             node_id: faiss_index.reconstruct(int(vector_id)).tolist()
             for vector_id, node_id in index.index_struct.nodes_dict.items()
-            if documents[node_id].metadata.get("document_key") in allowed
+            if in_scope(documents[node_id])
         }
     else:
         raise ValueError("This vector backend cannot enforce selected-document retrieval scope.")
     nodes = []
     for node in documents.values():
         if (
-            node.metadata.get("document_key") not in allowed
-            or node.metadata.get("page_status") != "searchable"
+            not in_scope(node)
+            or node.metadata.get("page_status") not in (None, "searchable")
             or node.node_id not in by_node
         ):
             continue
@@ -308,10 +347,17 @@ def _scoped_index(index: Any, document_keys: tuple[str, ...]) -> Any:
 
 
 def retrieve_scoped_nodes(
-    index: Any, query: str, document_keys: list[str], *, top_k: int = 8
+    index: Any,
+    query: str,
+    document_keys: list[str],
+    *,
+    top_k: int = 8,
+    raw_root: Path | None = None,
 ) -> list[Any]:
     """Restrict the corpus before retrieval, including the BM25 component."""
-    index = _scoped_index(index, tuple(sorted(set(document_keys))))
+    index = _scoped_index(
+        index, tuple(sorted(set(document_keys))), str(raw_root) if raw_root else ""
+    )
     if index is None:
         return []
     nodes = list(index.docstore.docs.values())

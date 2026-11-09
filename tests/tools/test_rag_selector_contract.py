@@ -1,4 +1,4 @@
-"""RAG tool selector contract regressions (issue #1928).
+"""RAG tool selector contract regressions (issues #1928 and #2374).
 
 Offline, LLM-free checks on a synthetic single-page PDF: the advertised
 schema must match what execution enforces (optional selectors accept null,
@@ -6,6 +6,13 @@ pages are one-based integers, crops are four coordinates in 0..1), legacy
 ``region=[]`` placeholders mean "full page" instead of switching retrieval
 modes, and malformed selectors fail visibly with a correctable message
 instead of being clamped or replaced with other evidence.
+
+``source_path`` alone is a document scope, not a visual request (#2374):
+the query stays on the text path, restricted to that one document, and a
+backend that cannot enforce the scope — or a document with no matching
+passage — fails explicitly instead of mixing in other files. True visual
+selectors (page, figure, region, asset_id, or page/figure references in
+the query) still route to exact-source visual inspection.
 """
 
 from __future__ import annotations
@@ -159,30 +166,125 @@ async def test_malformed_selectors_fail_visibly_without_substitution(
     assert rag_calls["resolve_for_rag"] == []
 
 
-@pytest.mark.parametrize(
-    "extra",
-    [
-        {},
-        {"region": [], "page": None, "asset_id": None, "figure": None},
-        {"source_hash": "a" * 64, "_vision_supported": True},
-    ],
-)
 @pytest.mark.asyncio
-async def test_source_only_text_query_reports_unsupported_scope(kb, rag_calls, extra):
+async def test_source_only_text_query_runs_document_scoped_text_search(kb, rag_calls, monkeypatch):
+    (kb / "raw" / "notes.txt").write_text("Keep this source private.", encoding="utf-8")
+
+    async def scoped_rag_search(**kwargs):
+        rag_calls["rag_search"].append(kwargs)
+        return {
+            "answer": "scoped answer",
+            "sources": [{"file_name": "notes.txt", "source": "notes.txt"}],
+        }
+
+    monkeypatch.setattr("deeptutor.tools.rag_tool.rag_search", scoped_rag_search)
+    result = await RAGTool().execute(
+        query="What does this document say?",
+        kb_name=kb.name,
+        source_path="notes.txt",
+    )
+    assert result.success
+    assert result.content == "scoped answer"
+    assert result.metadata["source_scope"] == "notes.txt"
+    assert result.sources == [
+        {"type": "rag", "kb_name": kb.name, "file_name": "notes.txt", "source": "notes.txt"}
+    ]
+    assert result.model_message is None
+    assert len(rag_calls["rag_search"]) == 1
+    assert rag_calls["rag_search"][0]["document_keys"] == ["notes.txt"]
+    assert rag_calls["resolve_for_rag"] == [kb.name]
+
+
+@pytest.mark.asyncio
+async def test_scoped_text_search_withholds_foreign_sources(kb, rag_calls, monkeypatch):
+    (kb / "raw" / "notes.txt").write_text("Keep this source private.", encoding="utf-8")
+
+    async def leaky_rag_search(**kwargs):
+        return {
+            "answer": "mixed answer",
+            "provider": "mock",
+            "sources": [
+                {"file_name": "notes.txt", "source": "notes.txt"},
+                {"file_name": "manual.pdf", "source": "manual.pdf"},
+            ],
+        }
+
+    monkeypatch.setattr("deeptutor.tools.rag_tool.rag_search", leaky_rag_search)
+    result = await RAGTool().execute(
+        query="What does this document say?",
+        kb_name=kb.name,
+        source_path="notes.txt",
+    )
+    assert not result.success
+    assert result.metadata["error_type"] == "source_scope_unsupported"
+    assert result.metadata["source_scope"] == "notes.txt"
+    assert result.sources == []
+    assert "withheld" in result.content
+    assert rag_calls["rag_search"] == []
+
+
+@pytest.mark.asyncio
+async def test_scoped_text_search_reports_no_match_without_whole_kb_fallback(kb, rag_calls):
     (kb / "raw" / "notes.txt").write_text("Keep this source private.", encoding="utf-8")
     result = await RAGTool().execute(
         query="What does this document say?",
         kb_name=kb.name,
         source_path="notes.txt",
-        **extra,
     )
     assert not result.success
-    assert result.metadata["error_type"] == "source_scope_unsupported"
-    assert "scoped text retrieval" in result.content
+    assert result.metadata["error_type"] == "source_scope_no_match"
+    assert result.metadata["source_scope"] == "notes.txt"
     assert result.sources == []
-    assert result.model_message is None
+    assert "no other document was searched" in result.content
+    assert len(rag_calls["rag_search"]) == 1
+    assert rag_calls["rag_search"][0]["document_keys"] == ["notes.txt"]
+
+
+@pytest.mark.asyncio
+async def test_scoped_text_search_rejects_unavailable_source(kb, rag_calls):
+    result = await RAGTool().execute(
+        query="What does this document say?",
+        kb_name=kb.name,
+        source_path="gone.txt",
+    )
+    assert not result.success
+    assert result.metadata["error_type"] == "source_unavailable"
+    assert result.sources == []
     assert rag_calls["rag_search"] == []
-    assert rag_calls["resolve_for_rag"] == [kb.name]
+
+
+@pytest.mark.asyncio
+async def test_scoped_text_search_verifies_source_hash(kb, rag_calls, monkeypatch):
+    import hashlib
+
+    notes = kb / "raw" / "notes.txt"
+    notes.write_text("Keep this source private.", encoding="utf-8")
+    digest = hashlib.sha256(notes.read_bytes()).hexdigest()
+
+    async def scoped_rag_search(**kwargs):
+        rag_calls["rag_search"].append(kwargs)
+        return {"answer": "scoped answer", "sources": [{"source": "notes.txt"}]}
+
+    monkeypatch.setattr("deeptutor.tools.rag_tool.rag_search", scoped_rag_search)
+    current = await RAGTool().execute(
+        query="What does this document say?",
+        kb_name=kb.name,
+        source_path="notes.txt",
+        source_hash=digest,
+    )
+    assert current.success
+    assert current.content == "scoped answer"
+
+    stale = await RAGTool().execute(
+        query="What does this document say?",
+        kb_name=kb.name,
+        source_path="notes.txt",
+        source_hash="b" * 64,
+    )
+    assert not stale.success
+    assert stale.metadata["error_type"] == "source_changed"
+    assert stale.sources == []
+    assert len(rag_calls["rag_search"]) == 1
 
 
 @pytest.mark.asyncio
