@@ -5140,6 +5140,7 @@
   "Other — write your own reply…": "Outra — escreva sua própria resposta…",
   "Pick an option or type your own to continue.": "Escolha uma opção ou digite sua própria resposta para continuar.",
   "{{count}} questions — tap a tab to switch.": "{{count}} perguntas — toque em uma aba para alternar.",
+  "settings.nav.workspace": "Espaço de trabalho",
   "settings.presets.title": "Pontos de partida",
   "settings.presets.blurb": "Carregue uma predefinição revisada como rascunho. Nada muda até você aplicá-la.",
   "settings.presets.error": "Não foi possível carregar as predefinições.",

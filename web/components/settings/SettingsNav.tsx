@@ -7,7 +7,7 @@ import { Search, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import Tooltip from '@/shared/ui/Tooltip'
 import { useSettingsAccess } from '@/features/settings/navigation/SettingsAccessProvider'
-import { settingsAnchorHref, type Lang } from '@/features/settings/navigation/settings-nav'
+import { settingsAnchorHref } from '@/features/settings/navigation/settings-nav'
 import {
   SETTINGS_PAGE_GROUPS,
   settingsPageFamily,
@@ -17,9 +17,7 @@ import {
 } from '@/features/settings/navigation/settings-pages'
 
 export default function SettingsNav({ onNavigate }: { onNavigate?: () => void }) {
-  const { t, i18n } = useTranslation()
-  const zh = i18n.language?.toLowerCase().startsWith('zh')
-  const tr = (label: Lang) => (zh ? label.zh : t(label.en))
+  const { t } = useTranslation()
   const pathname = usePathname()
   const access = useSettingsAccess()
   const pages = visibleSettingsPages(access)
@@ -27,25 +25,24 @@ export default function SettingsNav({ onNavigate }: { onNavigate?: () => void })
   const needle = query.trim().toLocaleLowerCase()
   const currentKey = pathname.split('/')[2] || 'general'
   const currentFamily = settingsPageFamily(currentKey)
-  const matches = pages.filter(page =>
-    [
-      page.label.en,
-      page.label.zh,
-      page.blurb.en,
-      page.blurb.zh,
-      tr(page.label),
-      tr(page.blurb),
-      tr(settingsPageLabel(page.key, page.label)),
+  const matches = pages.filter(page => {
+    const navLabel = settingsPageLabel(page.key, page.label)
+    return [
+      page.label,
+      t(page.label),
+      page.blurb,
+      t(page.blurb),
+      navLabel,
+      t(navLabel),
       page.key,
       page.key === 'connections' ? 'API Key token base url 密钥 凭据 地址 供应商' : '',
-      ...Object.values(settingsPageLabel(page.key, page.label)),
     ]
       .join(' ')
       .toLocaleLowerCase()
       .includes(needle)
-  )
+  })
   const groups = needle
-    ? [{ label: { en: 'Search results', zh: '搜索结果' }, pages: matches }]
+    ? [{ label: 'Search results', pages: matches }]
     : SETTINGS_PAGE_GROUPS.map(group => ({
         ...group,
         pages: group.keys.flatMap(key => {
@@ -87,16 +84,16 @@ export default function SettingsNav({ onNavigate }: { onNavigate?: () => void })
         {groups
           .filter(group => group.pages.length)
           .map(group => (
-            <div key={group.label.en} className="mb-0.5">
+            <div key={group.label} className="mb-0.5">
               <p className="px-2.5 pb-1.5 pt-5 text-[12px] font-medium text-muted-foreground">
-                {tr(group.label)}
+                {t(group.label)}
               </p>
               <div className="space-y-0.5">
                 {group.pages.map(page => {
                   const Icon = needle ? page.icon : settingsPageIcon(page.key, page.icon)
                   const active = needle ? page.key === currentKey : currentFamily.includes(page.key)
                   return (
-                    <Tooltip key={page.key} label={tr(page.blurb)} as="div" side="right">
+                    <Tooltip key={page.key} label={t(page.blurb)} as="div" side="right">
                       <Link
                         href={settingsAnchorHref(page.key)}
                         scroll={false}
@@ -107,7 +104,7 @@ export default function SettingsNav({ onNavigate }: { onNavigate?: () => void })
                       >
                         <Icon size={15} strokeWidth={1.8} className="shrink-0" />
                         <span>
-                          {tr(needle ? page.label : settingsPageLabel(page.key, page.label))}
+                          {t(needle ? page.label : settingsPageLabel(page.key, page.label))}
                         </span>
                       </Link>
                     </Tooltip>

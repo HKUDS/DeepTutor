@@ -5154,6 +5154,7 @@
   "Other — write your own reply…": "Inne — napisz własną odpowiedź...",
   "Pick an option or type your own to continue.": "Wybierz opcję lub wpisz własną, aby kontynuować.",
   "{{count}} questions — tap a tab to switch.": "{{count}} pytań — dotknij karty, aby przełączyć.",
+  "settings.nav.workspace": "Workspace",
   "settings.presets.title": "Punkty wyjścia",
   "settings.presets.blurb": "Wczytaj sprawdzoną konfigurację jako szkic. Nic się nie zmieni, dopóki jej nie zastosujesz.",
   "settings.presets.error": "Nie udało się wczytać presetów.",

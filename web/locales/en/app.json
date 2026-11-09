@@ -5272,6 +5272,7 @@
   "Other — write your own reply…": "Other — write your own reply…",
   "Pick an option or type your own to continue.": "Pick an option or type your own to continue.",
   "{{count}} questions — tap a tab to switch.": "{{count}} questions — tap a tab to switch.",
+  "settings.nav.workspace": "Workspace",
   "settings.presets.title": "Starting points",
   "settings.presets.blurb": "Load a reviewed preset as a draft. Nothing changes until you apply it.",
   "settings.presets.error": "Presets could not be loaded.",

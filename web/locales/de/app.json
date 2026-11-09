@@ -5155,6 +5155,7 @@
   "Other — write your own reply…": "Andere: Schreibe deine eigene Antwort…",
   "Pick an option or type your own to continue.": "Wähle eine Option oder tippe deine eigene, um fortzufahren.",
   "{{count}} questions — tap a tab to switch.": "{{count}} Fragen. Tipp auf einen Tab, um zu wechseln.",
+  "settings.nav.workspace": "Workspace",
   "settings.presets.title": "Startpunkte",
   "settings.presets.blurb": "Lade ein geprüftes Preset als Entwurf. Nichts ändert sich, bis du es anwendest.",
   "settings.presets.error": "Presets konnten nicht geladen werden.",

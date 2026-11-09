@@ -178,6 +178,7 @@
   "Providers": "제공업체",
   "Chat model": "대화 모델",
   "Appearance": "화면 설정",
+  "settings.nav.workspace": "작업 공간",
   "Pick the colour palette and interface style. Each tile previews the theme it applies.": "색상과 화면 스타일을 선택하세요. 각 타일에서 적용할 테마를 미리 볼 수 있습니다.",
   "Code blocks": "코드 블록",
   "Choose how code snippets look across the app. Changes apply immediately to saved and streamed responses.": "앱에서 코드를 표시할 방식을 선택하세요. 저장된 답변과 실시간으로 생성되는 답변에 즉시 적용됩니다.",

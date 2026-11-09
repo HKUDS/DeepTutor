@@ -4414,6 +4414,7 @@
   "No linked folders yet. Click \"Link folder\" to keep a local source in sync.": "Aucun dossier lié pour le moment. Cliquez sur « Lier un dossier » pour synchroniser une source locale.",
   "Last synced": "Dernière synchronisation",
   "Zotero search tool": "Outil de recherche Zotero",
+  "settings.nav.workspace": "Espace de travail",
   "settings.presets.title": "Points de départ",
   "settings.presets.blurb": "Chargez un préréglage vérifié en brouillon. Aucun réglage ne change avant son application.",
   "settings.presets.error": "Impossible de charger les préréglages.",
