@@ -7,9 +7,11 @@ import json
 import re
 from typing import Any, Callable, Literal
 
-from jsonschema.exceptions import SchemaError, ValidationError
-from jsonschema.validators import validator_for
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+# ``jsonschema`` is imported where it is used, not here. Importing it builds the
+# format-checker tables (``rfc3987_syntax`` alone costs ~0.6s of the server's
+# start-up) for a validator that only plugin manifests ever need.
 
 VISUALIZE_MODE_KEY = "_visualizer_mode"
 VISUALIZATION_RESULT_KEY = "_visualizer_result"
@@ -78,6 +80,9 @@ class VisualizerManifest(BaseModel):
                 raise ValueError(
                     f"payload_schema may only use local # references, found: {remote_ref}"
                 )
+            from jsonschema.exceptions import SchemaError
+            from jsonschema.validators import validator_for
+
             try:
                 validator_for(self.payload_schema).check_schema(self.payload_schema)
             except SchemaError as exc:
@@ -147,6 +152,9 @@ class VisualizerPlugin:
             except json.JSONDecodeError as exc:
                 return False, None, f"payload is not valid JSON: {exc}"
             if self.manifest.payload_schema:
+                from jsonschema.exceptions import ValidationError
+                from jsonschema.validators import validator_for
+
                 validator_type = validator_for(self.manifest.payload_schema)
                 try:
                     validator_type(self.manifest.payload_schema).validate(data)
