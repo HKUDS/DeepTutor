@@ -228,6 +228,13 @@ SEARCH_PROVIDERS: tuple[SearchProviderSpec, ...] = (
         hint="China-hosted · reranked results",
     ),
     SearchProviderSpec(
+        name="deepseek",
+        label="DeepSeek (深度求索)",
+        requires_api_key=True,
+        env_keys=("DEEPSEEK_API_KEY", "SEARCH_API_KEY"),
+        hint="own engine · optional page bodies · billed per request",
+    ),
+    SearchProviderSpec(
         name="duckduckgo",
         label="DuckDuckGo",
         requires_api_key=False,
