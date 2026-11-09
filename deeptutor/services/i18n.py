@@ -15,10 +15,77 @@ def _parse_language(language: str | None) -> str:
         return "fr"
     if raw.replace("_", "-").split("-", 1)[0] == "tr" or raw in {"turkish", "türkçe"}:
         return "tr"
+    if raw.replace("_", "-").split("-", 1)[0] == "it" or raw in {"italian", "italiano"}:
+        return "it"
     return "en"
 
 
 _MESSAGES: dict[str, dict[str, str]] = {
+    "it": {
+        "api.content_required": "Il contenuto è obbligatorio",
+        "api.invalid_channels_config": "Configurazione dei canali non valida",
+        "api.partner_already_exists": "Il partner '{name}' esiste già",
+        "api.partner_not_found": "Partner non trovato",
+        "api.partner_not_found_or_not_running": "Partner non trovato o non in esecuzione",
+        "api.partner_not_running": "Il partner non è in esecuzione",
+        "api.partner_stopped_start_required": (
+            "Il partner è arrestato. Avvialo prima di iniziare a chattare."
+        ),
+        "api.persona_already_exists": "La persona esiste già: {name}",
+        "api.persona_name_required": "Il nome della persona è obbligatorio",
+        "api.persona_not_found": "Persona non trovata: {name}",
+        "api.soul_already_exists": "La personalità '{name}' esiste già",
+        "api.soul_content_empty": "Il contenuto personalizzato della personalità è vuoto",
+        "api.soul_library_not_found": "Personalità '{name}' non trovata nella libreria",
+        "api.soul_not_found": "Personalità non trovata",
+        "api.tool_not_found": "Strumento '{name}' non trovato",
+        "cli_apps.abi_mismatch": (
+            "L’applicazione CLI {app!r} è stata installata per {installed}, ma questo runtime "
+            "usa {current}. Un amministratore deve reinstallare l’applicazione."
+        ),
+        "cli_apps.args_required": (
+            "{tool} richiede un array 'args' — un argomento della riga di comando per elemento."
+        ),
+        "cli_apps.entry_admin_only": (
+            "Le applicazioni CLI vengono installate da un amministratore; chiedi al tuo "
+            "amministratore di aggiungere questa applicazione."
+        ),
+        "cli_apps.install_in_progress": "Questa applicazione è già in fase di installazione.",
+        "cli_apps.not_in_catalog": "Nessuna applicazione CLI denominata {id!r} nel catalogo.",
+        "cli_apps.not_installed": (
+            "L’applicazione CLI {app!r} non è più installata in questa distribuzione."
+        ),
+        "cli_apps.still_running": "{app} è ancora in esecuzione ({seconds} s)",
+        "mcp.configure_command_or_url": (
+            "Server {name!r}: configura un comando (stdio) o un URL."
+        ),
+        "mcp.configure_before_testing": (
+            "Configura un comando (stdio) o un URL prima di eseguire il test."
+        ),
+        "mcp.server_error": "Server {name!r}: {error}",
+        "mcp.server_missing": "Nessun server denominato {name!r} nel tuo elenco.",
+        "mcp.not_oauth": ("Questo server non utilizza OAuth; fornisci invece una credenziale."),
+        "mcp.oauth_callback_incomplete": "La risposta di autorizzazione era incompleta.",
+        "mcp.oauth_callback_unknown": (
+            "Questa autorizzazione è scaduta o è già stata completata. Riavvia la procedura."
+        ),
+        "mcp.oauth_done": "Autorizzazione completata. Puoi chiudere questa scheda.",
+        "mcp.oauth_failed": "Autorizzazione non riuscita.",
+        "mcp.catalog_entry_missing": "Nessun servizio MCP denominato {id!r} nel catalogo.",
+        "mcp.entry_admin_only": (
+            "Questo servizio viene eseguito come comando locale e può essere aggiunto solo "
+            "da un amministratore."
+        ),
+        "mcp.tool_not_available": (
+            "Questo strumento non è disponibile in questa chat. Possono essere chiamati solo gli "
+            "strumenti elencati nel prompt."
+        ),
+        "sandbox.command_blocked": (
+            "Errore: comando bloccato dalla protezione di sicurezza (pattern pericoloso)."
+        ),
+        "sandbox.disabled_for_account": "L’esecuzione del codice è disabilitata per il tuo account.",
+        "sandbox.no_backend": "Nessun backend sandbox disponibile",
+    },
     "tr": {
         "api.content_required": "İçerik gereklidir",
         "api.invalid_channels_config": "Geçersiz kanal yapılandırması",

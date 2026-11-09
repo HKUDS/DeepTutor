@@ -6581,5 +6581,6 @@
   "settings.modelImport.unverified": "Bazı modeller türlerini belirtmez. Bu hizmette kullanmadan önce test edin.",
   "settings.modelImport.draftHint": "Modeller taslağa eklenir. Kaydetmek için değişiklikleri uygulayın; varsayılan model aynı kalır.",
   "settings.modelImport.selected": "Seçilen: {{count}}",
-  "language.korean": "한국어 (일부 번역)"
+  "language.korean": "한국어 (일부 번역)",
+  "language.italian": "Italiano"
 }
