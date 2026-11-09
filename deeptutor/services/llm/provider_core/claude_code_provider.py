@@ -596,7 +596,7 @@ def _session_signature(
 
 
 def _friendly_error(exc: Exception) -> str:
-    message = str(exc)
+    message = str(exc).strip()
     lowered = message.lower()
     if "not found" in lowered and "claude" in lowered and "cli" in lowered:
         return (
@@ -606,6 +606,14 @@ def _friendly_error(exc: Exception) -> str:
     if "login" in lowered or "authenticat" in lowered or "401" in message:
         return (
             "Error calling Claude Code: not signed in. Run `claude` and enter `/login`, then retry."
+        )
+    if not message:
+        # An exception with no text used to render as a bare "Error calling
+        # Claude Code: " with nothing after the colon. Name the type so the
+        # report is actionable rather than blank (#2539).
+        return (
+            f"Error calling Claude Code: the SDK raised {type(exc).__name__} "
+            "without a message. Retry, and check the Claude Code CLI log if it persists."
         )
     return f"Error calling Claude Code: {message}"
 

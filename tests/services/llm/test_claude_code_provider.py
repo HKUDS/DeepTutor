@@ -499,3 +499,21 @@ async def test_cancel_during_sdk_connect_settles_owner(monkeypatch):
     with pytest.raises(asyncio.CancelledError):
         await asyncio.wait_for(task, 1)
     assert FakeClient.instances[0].disconnected
+
+
+def test_an_empty_sdk_exception_still_names_a_reason() -> None:
+    """#2539: a blank exception must not render as a bare "Error calling …:"."""
+    from deeptutor.services.llm.provider_core.claude_code_provider import _friendly_error
+
+    for exc in (Exception(""), RuntimeError(), ValueError("   ")):
+        message = _friendly_error(exc)
+        assert message != "Error calling Claude Code: "
+        assert type(exc).__name__ in message
+
+
+def test_a_non_empty_sdk_exception_is_reported_verbatim() -> None:
+    from deeptutor.services.llm.provider_core.claude_code_provider import _friendly_error
+
+    assert _friendly_error(RuntimeError("socket closed")) == (
+        "Error calling Claude Code: socket closed"
+    )

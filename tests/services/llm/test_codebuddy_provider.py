@@ -624,3 +624,13 @@ async def test_interrupted_drain_logs_error_type_without_exception_body(caplog):
     assert "fake-token" not in caplog.text
     assert "private-user-body" not in caplog.text
     assert all(record.exc_info is None for record in caplog.records)
+
+
+def test_an_empty_sdk_exception_still_names_a_reason() -> None:
+    """Same blank-error hole as #2539, on the CodeBuddy bridge."""
+    from deeptutor.services.llm.provider_core.codebuddy_provider import _friendly_error
+
+    for exc in (Exception(""), RuntimeError(), ValueError("   ")):
+        message = _friendly_error(exc)
+        assert message != "Error calling CodeBuddy: "
+        assert type(exc).__name__ in message
