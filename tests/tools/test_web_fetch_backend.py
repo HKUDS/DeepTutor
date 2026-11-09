@@ -92,8 +92,17 @@ def _mount_provider(monkeypatch, provider: _StubRemoteProvider) -> None:
 
 
 @pytest.fixture(autouse=True)
-def _clean_backend_env(monkeypatch):
+def _clean_backend_env(tmp_path, monkeypatch):
     monkeypatch.delenv("DEEPTUTOR_FETCH_BACKEND", raising=False)
+    # ``backend=None`` reads the persisted system setting; point it at a
+    # throwaway dir so the suite never depends on (or writes) the real
+    # user settings.
+    from deeptutor.services.config import runtime_settings
+
+    settings_dir = tmp_path / "settings"
+    settings_dir.mkdir(parents=True)
+    monkeypatch.setattr(runtime_settings, "_global_settings_dir", lambda: settings_dir)
+    monkeypatch.setattr(runtime_settings.RuntimeSettingsService, "_instances", {}, raising=False)
 
 
 # ---------------------------------------------------------------------------

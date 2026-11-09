@@ -1,6 +1,7 @@
 "use client";
 import { useTranslation } from "react-i18next";
 import { ModelsWorkspace } from "@/components/settings/ModelsWorkspace";
+import { WebFetchBackendCard } from "@/components/settings/WebFetchBackendCard";
 import { SettingsPageHeader } from "@/components/settings/shared";
 export default function SearchSettingsPage() {
   const { t } = useTranslation();
@@ -13,6 +14,7 @@ export default function SearchSettingsPage() {
         )}
       />
       <ModelsWorkspace page="search" />
+      <WebFetchBackendCard />
     </div>
   );
 }

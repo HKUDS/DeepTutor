@@ -91,10 +91,12 @@ async def fetch_url_as_markdown(
     """Fetch ``url`` and extract readable text.
 
     ``backend`` selects the fetch backend (issue #2448): ``"local"`` (the
-    default in-process httpx + extractor path) or a registered remote
-    backend such as ``"deepseek"``. ``None`` means "whatever the
-    deployment default says" (``DEEPTUTOR_FETCH_BACKEND``, else local), so
-    existing installs behave exactly as before. A remote backend replaces
+    default in-process httpx + extractor path) or a registered remote backend
+    such as ``"deepseek"``. ``None`` means "whatever the deployment default
+    says" — ``DEEPTUTOR_FETCH_BACKEND``, else the persisted
+    ``web_fetch_backend`` system setting (``web_fetch.backend`` in the
+    settings spec), else local — so existing installs behave exactly as
+    before. A remote backend replaces
     only the HTTP+extract step — the scheme/SSRF gate below runs *first*,
     so a private/loopback URL is never handed to a third party. Retryable
     backend failures (auth, balance, throttle, network) fall back to the
@@ -223,10 +225,10 @@ def _resolve_backend_name(backend: str | None) -> str | None:
     """Map the ``backend`` argument to a registered fetch-backend name.
 
     ``None`` means "whatever the deployment default says"
-    (``DEEPTUTOR_FETCH_BACKEND``, else local). Unknown names return
-    ``None`` so the caller can surface a hard error — an explicit
-    per-call override naming a backend that doesn't exist must not
-    silently become local.
+    (``DEEPTUTOR_FETCH_BACKEND``, else the persisted system setting, else
+    local). Unknown names return ``None`` so the caller can surface a hard
+    error — an explicit per-call override naming a backend that doesn't
+    exist must not silently become local.
     """
     from deeptutor.services.config import SUPPORTED_FETCH_PROVIDERS
 
@@ -258,7 +260,7 @@ async def _fetch_via_backend(
     a broken backend never takes ``web_fetch`` down.
     """
     from deeptutor.services.fetch import get_fetch_provider
-    from deeptutor.services.fetch.base import FetchProviderError
+    from deeptutor.services.fetch.base import FetchProviderError, redact_fetch_error
 
     try:
         provider = get_fetch_provider(backend_name)
@@ -268,17 +270,19 @@ async def _fetch_via_backend(
     except FetchProviderError as exc:
         if not exc.retryable:
             return FetchOutcome(ok=False, url=url, error=exc.message)
+        # Exception text can echo Authorization headers / API keys back, so
+        # only the redacted form is ever logged.
         logger.warning(
             "Fetch backend %r unavailable (%s); falling back to local extraction.",
             backend_name,
-            exc,
+            redact_fetch_error(exc),
         )
         return None
     except Exception as exc:  # pragma: no cover — defensive
         logger.warning(
-            "Fetch backend %r raised %r; falling back to local extraction.",
+            "Fetch backend %r raised (%s); falling back to local extraction.",
             backend_name,
-            exc,
+            redact_fetch_error(exc),
         )
         return None
 

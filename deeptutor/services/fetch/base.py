@@ -4,10 +4,39 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 import logging
+import re
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:  # runtime imports stay lazy to keep the layer cycle-free
     from deeptutor.tools.web_fetch import FetchOutcome
+
+# Remote-fetch errors can echo request headers or credential fragments back
+# (httpx and some gateways include the Authorization line in exception text).
+# Anything that reaches a log line goes through redact_fetch_error first.
+_BEARER_TOKEN_RE = re.compile(r"(?i)bearer\s+[A-Za-z0-9._~+/=-]{6,}")
+_API_KEY_TOKEN_RE = re.compile(r"\bsk-[A-Za-z0-9_-]{4,}\b")
+_REDACTED_DETAIL_LIMIT = 200
+
+
+def redact_fetch_error(
+    error: str | BaseException,
+    *,
+    secret: str = "",
+    limit: int = _REDACTED_DETAIL_LIMIT,
+) -> str:
+    """Render ``error`` as text that is safe to log or surface.
+
+    Logs the exception *type* plus a redacted, truncated message: ``Bearer
+    <token>`` headers and ``sk-…``-style keys are masked, the known API-key
+    value (``secret``) is replaced outright, and the result is capped at
+    ``limit`` characters so a hostile error body can't flood the log either.
+    """
+    text = f"{type(error).__name__}: {error}" if isinstance(error, BaseException) else str(error)
+    if secret:
+        text = text.replace(secret, "***")
+    text = _BEARER_TOKEN_RE.sub("Bearer ***", text)
+    text = _API_KEY_TOKEN_RE.sub("sk-***", text)
+    return text[:limit]
 
 
 class FetchProviderError(Exception):
@@ -59,4 +88,4 @@ class BaseFetchProvider(ABC):
         raise NotImplementedError
 
 
-__all__ = ["BaseFetchProvider", "FetchProviderError"]
+__all__ = ["BaseFetchProvider", "FetchProviderError", "redact_fetch_error"]

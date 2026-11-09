@@ -6599,5 +6599,12 @@
   "settings.modelImport.unverified": "Alguns modelos não declaram o tipo. Teste-os antes de usar neste serviço.",
   "settings.modelImport.draftHint": "Os modelos são adicionados ao rascunho. Aplique as alterações para salvar; o modelo padrão permanece igual.",
   "settings.modelImport.selected": "Selecionados: {{count}}",
-  "language.korean": "한국어 (일부 번역)"
+  "language.korean": "한국어 (일부 번역)",
+  "Web fetch backend": "Backend de busca web",
+  "Which service fetches and extracts pages for web_fetch calls.": "Serviço que busca e extrai páginas para chamadas web_fetch.",
+  "Failed to load web fetch settings.": "Falha ao carregar as configurações de busca web.",
+  "Failed to save web fetch settings.": "Falha ao salvar as configurações de busca web.",
+  "Loading web fetch settings...": "Carregando configurações de busca web...",
+  "Applies from the next web_fetch onwards.": "Aplica-se a partir do próximo web_fetch.",
+  "DEEPTUTOR_FETCH_BACKEND is overriding the saved choice for this deployment.": "DEEPTUTOR_FETCH_BACKEND está substituindo a escolha salva para esta implantação."
 }

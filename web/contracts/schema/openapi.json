@@ -14990,6 +14990,20 @@
         "title": "WebContinuityBody",
         "type": "object"
       },
+      "WebFetchSettingsUpdate": {
+        "description": "Web fetch backend selection — the ``web_fetch.backend`` settings row.\n\nThe value names an entry in the backend's ``FETCH_PROVIDERS`` spec table;\nthe endpoint validates against it because the choice set is owned by the\nbackend, not by this schema.",
+        "properties": {
+          "backend": {
+            "title": "Backend",
+            "type": "string"
+          }
+        },
+        "required": [
+          "backend"
+        ],
+        "title": "WebFetchSettingsUpdate",
+        "type": "object"
+      },
       "WebSourceInfo": {
         "properties": {
           "added_at": {
@@ -60035,6 +60049,140 @@
           }
         },
         "summary": "List Voice Choices",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/settings/web-fetch": {
+      "get": {
+        "operationId": "get_web_fetch_settings_api_settings_web_fetch_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Web Fetch Settings",
+        "tags": [
+          "settings"
+        ]
+      },
+      "put": {
+        "operationId": "update_web_fetch_settings_api_settings_web_fetch_put",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WebFetchSettingsUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Web Fetch Settings",
         "tags": [
           "settings"
         ]

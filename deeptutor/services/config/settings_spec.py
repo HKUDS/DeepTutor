@@ -645,6 +645,62 @@ def _redact(text: str) -> str:
     return re.sub(r"[A-Za-z0-9_\-]{32,}", "***", redacted)
 
 
+# --------------------------------------------------------------------------
+# system.json rows (global scope)
+# --------------------------------------------------------------------------
+
+# Choice descriptions for the web_fetch backend row. Labels come from the
+# FETCH_PROVIDERS spec table (single source of truth); only the prose lives
+# here because the table is metadata, not copy.
+_FETCH_BACKEND_DESCRIPTIONS = {
+    "local": "Fetch and extract pages in-process; no third party, no API key.",
+    "deepseek": (
+        "Server-side extraction to Markdown via the DeepSeek Fetch API; "
+        "reuses the DeepSeek chat API key and is billed per successful page."
+    ),
+}
+
+
+def _read_web_fetch_backend() -> str:
+    from deeptutor.services.config.runtime_settings import get_runtime_settings_service
+
+    return str(get_runtime_settings_service().load_system().get("web_fetch_backend") or "local")
+
+
+def _write_web_fetch_backend(value: str) -> None:
+    from deeptutor.services.config.runtime_settings import get_runtime_settings_service
+
+    service = get_runtime_settings_service()
+    # Load without process overrides so a deployment DEEPTUTOR_FETCH_BACKEND
+    # is never baked into the JSON as if the operator had chosen it.
+    settings = service.load_system(include_process_overrides=False)
+    settings["web_fetch_backend"] = value
+    service.save_system(settings)
+
+
+def _web_fetch_backend_choices() -> tuple[SettingChoice, ...]:
+    from deeptutor.services.config.provider_runtime import FETCH_PROVIDERS
+
+    active = _read_web_fetch_backend()
+    return tuple(
+        SettingChoice(
+            value=name,
+            label=spec.label,
+            description=_FETCH_BACKEND_DESCRIPTIONS.get(name, spec.label),
+            current=name == active,
+        )
+        for name, spec in FETCH_PROVIDERS.items()
+    )
+
+
+def _validate_web_fetch_backend(value: str) -> str | None:
+    from deeptutor.services.config.provider_runtime import SUPPORTED_FETCH_PROVIDERS
+
+    if value not in SUPPORTED_FETCH_PROVIDERS:
+        return f"Unknown web fetch backend: {value!r}."
+    return None
+
+
 def _catalog_specs() -> list[SettingSpec]:
     return [
         SettingSpec(
@@ -688,6 +744,19 @@ def _catalog_specs() -> list[SettingSpec]:
             choices=_catalog_profile_choices("search"),
             write=_write_catalog_profile("search"),
             effect_detail="Applies from the next search onwards.",
+        ),
+        SettingSpec(
+            key="web_fetch.backend",
+            area="models",
+            scope="global",
+            effect="instant",
+            label="Web fetch backend",
+            summary="Which service fetches and extracts pages for web_fetch calls.",
+            read=_read_web_fetch_backend,
+            choices=_web_fetch_backend_choices,
+            write=_write_web_fetch_backend,
+            validate=_validate_web_fetch_backend,
+            effect_detail="Applies from the next web_fetch onwards.",
         ),
     ]
 
