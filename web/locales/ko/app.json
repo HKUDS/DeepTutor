@@ -597,5 +597,21 @@
   "starters.research.3": "쟁점의 양쪽 입장 비교하기",
   "starters.research.3.prompt": "한 쟁점의 양쪽 입장에서 주요 주장과 근거, 각각의 전제를 정리하고 종합적인 판단을 제시해 주세요. 쟁점이 무엇인지 말하지 않았다면 먼저 물어봐 주세요.",
   "starters.research.4": "문헌 검토 개요 작성하기",
-  "starters.research.4.prompt": "한 주제의 문헌 검토 개요를 작성해 주세요. 배경, 연구를 분류할 틀, 절별 핵심 내용, 인용할 만한 자료 유형을 포함해 주세요. 주제와 목적을 말하지 않았다면 먼저 물어봐 주세요."
+  "starters.research.4.prompt": "한 주제의 문헌 검토 개요를 작성해 주세요. 배경, 연구를 분류할 틀, 절별 핵심 내용, 인용할 만한 자료 유형을 포함해 주세요. 주제와 목적을 말하지 않았다면 먼저 물어봐 주세요.",
+  "Reading progress and quiz records": "읽기 진행 상황 및 퀴즈 기록",
+  "Reading position and quiz results do not establish independent mastery.": "읽기 위치와 퀴즈 결과만으로는 독립적인 숙달을 확인할 수 없습니다.",
+  "Showing {{shown}} of {{total}} reading records": "읽기 기록 {{total}}개 중 {{shown}}개 표시",
+  "Reading material": "읽기 자료",
+  "Current section {{section}} · furthest position {{percent}}%": "현재 섹션 {{section}} · 가장 멀리 읽은 위치 {{percent}}%",
+  "Showing {{shown}} of {{total}} quiz records": "퀴즈 기록 {{total}}개 중 {{shown}}개 표시",
+  "Not graded": "채점되지 않음",
+  "{{count}} attempts": "시도 {{count}}회",
+  "{{count}} recorded hints": "기록된 힌트 {{count}}개",
+  "No question-linked help recorded": "문제에 연결된 도움 기록 없음",
+  "Recent reading activities: {{count}} (up to {{limit}})": "최근 읽기 활동: {{count}}개 (최대 {{limit}}개)",
+  "Reading records need migration before they can be reported. Viewing this report does not migrate them.": "읽기 기록을 표시하려면 마이그레이션이 필요합니다. 이 보고서를 보는 것만으로는 마이그레이션되지 않습니다.",
+  "Quiz records need migration before they can be reported. Viewing this report does not migrate them.": "퀴즈 기록을 표시하려면 마이그레이션이 필요합니다. 이 보고서를 보는 것만으로는 마이그레이션되지 않습니다.",
+  "Reading records have not been initialized.": "읽기 기록이 아직 초기화되지 않았습니다.",
+  "Quiz records have not been initialized.": "퀴즈 기록이 아직 초기화되지 않았습니다.",
+  "Reading material {{id}}": "읽기 자료 {{id}}"
 }

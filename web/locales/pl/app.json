@@ -6603,5 +6603,21 @@
   "settings.modelImport.unverified": "Niektóre modele nie określają typu. Przetestuj je przed użyciem w tej usłudze.",
   "settings.modelImport.draftHint": "Modele są dodawane do wersji roboczej. Zastosuj zmiany, aby je zapisać; model domyślny pozostaje bez zmian.",
   "settings.modelImport.selected": "Wybrano: {{count}}",
-  "language.korean": "한국어 (일부 번역)"
+  "language.korean": "한국어 (일부 번역)",
+  "Reading progress and quiz records": "Postępy w czytaniu i wyniki quizów",
+  "Reading position and quiz results do not establish independent mastery.": "Pozycja w tekście i wyniki quizów nie potwierdzają samodzielnego opanowania materiału.",
+  "Showing {{shown}} of {{total}} reading records": "Wyświetlanie {{shown}} z {{total}} zapisów czytania",
+  "Reading material": "Materiał do czytania",
+  "Current section {{section}} · furthest position {{percent}}%": "Bieżąca sekcja {{section}} · najdalsza pozycja {{percent}}%",
+  "Showing {{shown}} of {{total}} quiz records": "Wyświetlanie {{shown}} z {{total}} zapisów quizów",
+  "Not graded": "Nie oceniono",
+  "{{count}} attempts": "Liczba prób: {{count}}",
+  "{{count}} recorded hints": "Zapisane podpowiedzi: {{count}}",
+  "No question-linked help recorded": "Brak zapisanej pomocy powiązanej z pytaniem",
+  "Recent reading activities: {{count}} (up to {{limit}})": "Ostatnie aktywności czytania: {{count}} (maksymalnie {{limit}})",
+  "Reading records need migration before they can be reported. Viewing this report does not migrate them.": "Zapisy czytania wymagają migracji przed wyświetleniem w raporcie. Wyświetlenie tego raportu nie przeprowadza migracji.",
+  "Quiz records need migration before they can be reported. Viewing this report does not migrate them.": "Zapisy quizów wymagają migracji przed wyświetleniem w raporcie. Wyświetlenie tego raportu nie przeprowadza migracji.",
+  "Reading records have not been initialized.": "Zapisy czytania nie zostały jeszcze zainicjalizowane.",
+  "Quiz records have not been initialized.": "Zapisy quizów nie zostały jeszcze zainicjalizowane.",
+  "Reading material {{id}}": "Materiał do czytania {{id}}"
 }

@@ -6581,5 +6581,21 @@
   "settings.modelImport.unverified": "Một số mô hình không khai báo loại. Hãy kiểm tra trước khi dùng cho dịch vụ này.",
   "settings.modelImport.draftHint": "Mô hình được thêm vào bản nháp. Áp dụng thay đổi để lưu; mô hình mặc định được giữ nguyên.",
   "settings.modelImport.selected": "Đã chọn: {{count}}",
-  "language.korean": "한국어 (일부 번역)"
+  "language.korean": "한국어 (일부 번역)",
+  "Reading progress and quiz records": "Tiến độ đọc và bản ghi bài kiểm tra",
+  "Reading position and quiz results do not establish independent mastery.": "Vị trí đọc và kết quả kiểm tra không chứng minh khả năng tự nắm vững kiến thức.",
+  "Showing {{shown}} of {{total}} reading records": "Hiển thị {{shown}} trong {{total}} bản ghi đọc",
+  "Reading material": "Tài liệu đọc",
+  "Current section {{section}} · furthest position {{percent}}%": "Phần hiện tại {{section}} · vị trí xa nhất {{percent}}%",
+  "Showing {{shown}} of {{total}} quiz records": "Hiển thị {{shown}} trong {{total}} bản ghi kiểm tra",
+  "Not graded": "Chưa chấm điểm",
+  "{{count}} attempts": "{{count}} lần làm bài",
+  "{{count}} recorded hints": "{{count}} gợi ý đã ghi nhận",
+  "No question-linked help recorded": "Chưa ghi nhận trợ giúp gắn với câu hỏi",
+  "Recent reading activities: {{count}} (up to {{limit}})": "Hoạt động đọc gần đây: {{count}} (tối đa {{limit}})",
+  "Reading records need migration before they can be reported. Viewing this report does not migrate them.": "Cần chuyển đổi dữ liệu đọc trước khi hiển thị trong báo cáo. Xem báo cáo này không thực hiện việc chuyển đổi.",
+  "Quiz records need migration before they can be reported. Viewing this report does not migrate them.": "Cần chuyển đổi dữ liệu kiểm tra trước khi hiển thị trong báo cáo. Xem báo cáo này không thực hiện việc chuyển đổi.",
+  "Reading records have not been initialized.": "Dữ liệu đọc chưa được khởi tạo.",
+  "Quiz records have not been initialized.": "Dữ liệu kiểm tra chưa được khởi tạo.",
+  "Reading material {{id}}": "Tài liệu đọc {{id}}"
 }

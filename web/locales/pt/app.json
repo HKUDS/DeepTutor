@@ -6599,5 +6599,21 @@
   "settings.modelImport.unverified": "Alguns modelos não declaram o tipo. Teste-os antes de usar neste serviço.",
   "settings.modelImport.draftHint": "Os modelos são adicionados ao rascunho. Aplique as alterações para salvar; o modelo padrão permanece igual.",
   "settings.modelImport.selected": "Selecionados: {{count}}",
-  "language.korean": "한국어 (일부 번역)"
+  "language.korean": "한국어 (일부 번역)",
+  "Reading progress and quiz records": "Progresso de leitura e registros de questionários",
+  "Reading position and quiz results do not establish independent mastery.": "A posição de leitura e os resultados dos questionários não comprovam domínio independente.",
+  "Showing {{shown}} of {{total}} reading records": "Exibindo {{shown}} de {{total}} registros de leitura",
+  "Reading material": "Material de leitura",
+  "Current section {{section}} · furthest position {{percent}}%": "Seção atual {{section}} · posição mais avançada {{percent}}%",
+  "Showing {{shown}} of {{total}} quiz records": "Exibindo {{shown}} de {{total}} registros de questionários",
+  "Not graded": "Não avaliado",
+  "{{count}} attempts": "{{count}} tentativas",
+  "{{count}} recorded hints": "{{count}} dicas registradas",
+  "No question-linked help recorded": "Nenhuma ajuda vinculada à pergunta registrada",
+  "Recent reading activities: {{count}} (up to {{limit}})": "Atividades de leitura recentes: {{count}} (até {{limit}})",
+  "Reading records need migration before they can be reported. Viewing this report does not migrate them.": "Os registros de leitura precisam ser migrados antes de serem apresentados. Visualizar este relatório não realiza a migração.",
+  "Quiz records need migration before they can be reported. Viewing this report does not migrate them.": "Os registros de questionários precisam ser migrados antes de serem apresentados. Visualizar este relatório não realiza a migração.",
+  "Reading records have not been initialized.": "Os registros de leitura ainda não foram inicializados.",
+  "Quiz records have not been initialized.": "Os registros de questionários ainda não foram inicializados.",
+  "Reading material {{id}}": "Material de leitura {{id}}"
 }

@@ -6603,5 +6603,21 @@
   "settings.modelImport.unverified": "Деякі моделі не вказують тип. Перевірте їх перед використанням для цієї служби.",
   "settings.modelImport.draftHint": "Моделі додаються до чернетки. Застосуйте зміни, щоб зберегти їх; типова модель залишається незмінною.",
   "settings.modelImport.selected": "Вибрано: {{count}}",
-  "language.korean": "한국어 (일부 번역)"
+  "language.korean": "한국어 (일부 번역)",
+  "Reading progress and quiz records": "Прогрес читання та записи тестів",
+  "Reading position and quiz results do not establish independent mastery.": "Позиція читання та результати тестів не підтверджують самостійного засвоєння матеріалу.",
+  "Showing {{shown}} of {{total}} reading records": "Показано {{shown}} із {{total}} записів читання",
+  "Reading material": "Матеріал для читання",
+  "Current section {{section}} · furthest position {{percent}}%": "Поточний розділ {{section}} · найдальша позиція {{percent}}%",
+  "Showing {{shown}} of {{total}} quiz records": "Показано {{shown}} із {{total}} записів тестів",
+  "Not graded": "Не оцінено",
+  "{{count}} attempts": "Кількість спроб: {{count}}",
+  "{{count}} recorded hints": "Записані підказки: {{count}}",
+  "No question-linked help recorded": "Допомогу, пов’язану із запитанням, не записано",
+  "Recent reading activities: {{count}} (up to {{limit}})": "Нещодавні дії читання: {{count}} (до {{limit}})",
+  "Reading records need migration before they can be reported. Viewing this report does not migrate them.": "Для відображення у звіті записи читання потребують міграції. Перегляд цього звіту не виконує міграцію.",
+  "Quiz records need migration before they can be reported. Viewing this report does not migrate them.": "Для відображення у звіті записи тестів потребують міграції. Перегляд цього звіту не виконує міграцію.",
+  "Reading records have not been initialized.": "Записи читання ще не ініціалізовано.",
+  "Quiz records have not been initialized.": "Записи тестів ще не ініціалізовано.",
+  "Reading material {{id}}": "Матеріал для читання {{id}}"
 }
