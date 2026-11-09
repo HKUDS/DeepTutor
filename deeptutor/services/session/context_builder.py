@@ -35,6 +35,7 @@ from .model_history import (
 )
 from .protocol import SessionStoreProtocol
 from .provider_response_state import normalize_provider_response_state
+from .token_encoding import get_local_encoding
 
 logger = logging.getLogger(__name__)
 
@@ -103,13 +104,21 @@ def sanitize_summary(text: str) -> str:
 
 
 def count_tokens(text: str) -> int:
-    """Estimate token count with tiktoken when available."""
+    """Estimate token count with a locally verified tiktoken when available.
+
+    The encoding comes from :func:`token_encoding.get_local_encoding`, which
+    never starts a download, never blocks, and only ever hands back a
+    ``cl100k_base`` built from locally hash-verified ranks (acquired in the
+    background): while that is pending, or with a cold, disabled or corrupt
+    cache, this stays on the chars/4 heuristic instead of letting
+    ``get_encoding`` hang the event loop on a no-timeout CDN fetch (#2522).
+    """
     if not text:
         return 0
+    encoding = get_local_encoding()
+    if encoding is None:
+        return max(1, len(text) // 4)
     try:
-        import tiktoken
-
-        encoding = tiktoken.get_encoding("cl100k_base")
         return len(encoding.encode(text))
     except Exception:
         return max(1, len(text) // 4)
