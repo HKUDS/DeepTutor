@@ -1,7 +1,7 @@
 "use client";
 
 import { useStagedSettings } from "@/features/settings/store/useStagedSettings";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   KeyRound,
   Library,
@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
+import { GuardianReadingReport } from "@/features/multi-user/components/GuardianReadingReport";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import {
   getGuardianMaterials,
@@ -43,6 +44,7 @@ const permissionKeys: Record<string, string> = {
 
 export default function GuardianSettingsPage() {
   const { t } = useTranslation();
+  const selectionGeneration = useRef(0);
   const [relationships, setRelationships] = useState<GuardianRelationship[]>(
     [],
   );
@@ -78,6 +80,7 @@ export default function GuardianSettingsPage() {
       });
     return () => {
       cancelled = true;
+      selectionGeneration.current += 1;
     };
   }, []);
 
@@ -85,6 +88,7 @@ export default function GuardianSettingsPage() {
     selectedRelationship?.permissions.includes(permission) ?? false;
 
   const selectLearner = async (relationship: GuardianRelationship) => {
+    const generation = ++selectionGeneration.current;
     setSelectedRelationship(relationship);
     setReport(null);
     setMaterials([]);
@@ -107,6 +111,7 @@ export default function GuardianSettingsPage() {
           ? getGuardianRestrictions(relationship.learner_user_id)
           : Promise.resolve(null),
       ]);
+      if (generation !== selectionGeneration.current) return;
       setReport(nextReport);
       if (nextMaterials) {
         setMaterials(nextMaterials);
@@ -121,9 +126,9 @@ export default function GuardianSettingsPage() {
         setExtensions(nextRestrictions.available_extensions);
       }
     } catch (reason) {
-      setError((reason as Error).message);
+      if (generation === selectionGeneration.current) setError((reason as Error).message);
     } finally {
-      setBusy(null);
+      if (generation === selectionGeneration.current) setBusy(null);
     }
   };
 
@@ -275,6 +280,10 @@ export default function GuardianSettingsPage() {
               {t("You are not authorized to view this learner report.")}
             </p>
           ) : null}
+
+          {busy !== "loading" && can("view_reports") && report?.reading && report.learner.id === selectedRelationship.learner_user_id && (
+            <GuardianReadingReport reading={report.reading} />
+          )}
 
           {can("assign_materials") && (
             <div className="rounded-lg border border-[var(--border)] p-4">

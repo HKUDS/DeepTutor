@@ -1,5 +1,7 @@
 "use client";
 
+import { GuardianReadingReport } from "./GuardianReadingReport";
+
 import { useEffect, useMemo, useState } from "react";
 import { KeyRound, ShieldCheck, ShieldOff, UserPlus } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -273,6 +275,8 @@ export function GuardianRelationshipsEditor({
               )}
             </p>
           )}
+
+          {report?.reading && report.learner.id === learnerId && <GuardianReadingReport reading={report.reading} />}
 
           <div className="mt-3 rounded-lg border border-[var(--border)] p-3">
             <label className="text-xs">
