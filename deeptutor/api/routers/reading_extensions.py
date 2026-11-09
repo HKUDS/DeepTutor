@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import inspect
+import json
 import logging
 import re
 from typing import Any
@@ -24,6 +26,7 @@ from deeptutor.reading.extensions import (
     get_reading_extension_registry,
 )
 from deeptutor.services.llm.exceptions import LLMError
+from deeptutor.services.session.reading_quiz_help import QuizHelpConflict
 from deeptutor.services.voice import VoiceProviderError, synthesize_speech
 from deeptutor.services.voice.audio import _parse_pcm_content_type, _pcm16_to_wav
 
@@ -55,6 +58,8 @@ class ActionPayload(BaseModel):
     locator: int = Field(ge=1)
     selection: str = Field(default="", max_length=10_000)
     locale: str = Field(default="en", max_length=32)
+    question_id: str = Field(default="", max_length=200)
+    help_request_id: str = Field(default="", max_length=200)
 
 
 class ReadAloudAudioPayload(BaseModel):
@@ -238,22 +243,60 @@ async def run_extension_action(
             status_code=422,
             detail="This reading unit is too large for the extension protocol.",
         ) from exc
-    # Sync plugins run on a private worker we cannot kill; a timeout must
-    # open the circuit so later clicks do not queue behind the stuck call.
-    # Async plugins (quiz, translation, …) are cancelled with the request,
-    # so a slow LLM must not disable the button for the rest of the process.
-    run = extension.run_action
-    sync_plugin = not inspect.iscoroutinefunction(run)
-    if not registry.begin_action(extension_id, circuit_break=sync_plugin):
-        raise HTTPException(
-            status_code=503,
-            detail=_unavailable_detail(reason="busy_or_circuit_open"),
+    help_store = None
+    help_args = None
+    if payload.question_id or payload.help_request_id:
+        if not payload.question_id.strip() or not payload.help_request_id.strip():
+            raise HTTPException(
+                status_code=422, detail="Question and help request IDs are required together."
+            )
+        if (extension_id, action) not in {("guided_learning", "guide"), ("vocabulary", "explain")}:
+            raise HTTPException(status_code=400, detail="This action is not question help.")
+        _assert_quiz_extension_allowed()
+        if not selection:
+            raise HTTPException(status_code=400, detail="Select text from the quiz unit first.")
+        from deeptutor.services.session import get_sqlite_session_store
+
+        help_store = get_sqlite_session_store()
+        fingerprint = hashlib.sha256(
+            json.dumps(
+                [extension_id, action, selection, payload.locale],
+                ensure_ascii=False,
+            ).encode("utf-8")
+        ).hexdigest()
+        help_args = (
+            material_id,
+            payload.locator,
+            payload.question_id.strip(),
+            payload.help_request_id.strip(),
+            fingerprint,
+            uuid4().hex,
         )
+        try:
+            replay = await help_store.reading_quiz_help(
+                *help_args,
+                "claim",
+                lease_seconds=ACTION_TIMEOUT_S + 30,
+                help_kind=f"{extension_id}:{action}",
+            )
+        except QuizHelpConflict as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        if replay is not None:
+            return replay
+    # Sync workers cannot be killed; preserve the existing circuit behavior.
+    sync_plugin = not inspect.iscoroutinefunction(extension.run_action)
+    reserved = False
+    help_completed = False
     # Only a still-running worker needs the circuit kept open (#1448).
     # Async cancellation finishes before the reservation is released, including
     # sync handlers that return an awaitable after their worker has finished.
     worker: asyncio.Future | None = None
     try:
+        reserved = registry.begin_action(extension_id, circuit_break=sync_plugin)
+        if not reserved:
+            raise HTTPException(
+                status_code=503, detail=_unavailable_detail(reason="busy_or_circuit_open")
+            )
         async with asyncio.timeout(ACTION_TIMEOUT_S):
             handler = extension.run_action
             if inspect.iscoroutinefunction(handler):
@@ -272,10 +315,31 @@ async def run_extension_action(
         )
         if result.type not in extension.manifest.result_types:
             raise ValueError(f"Extension returned undeclared result type {result.type!r}.")
+        if help_store is not None and result.type not in {"card", "feedback"}:
+            raise ValueError("Question help must return a card or feedback.")
         dumped = result.model_dump()
         quiz_payload = dumped.get("payload")
         if dumped.get("type") == "quiz" and isinstance(quiz_payload, dict):
             await _persist_reading_quiz_pending(material_id, payload.locator, quiz_payload)
+        if help_store is not None and help_args is not None:
+            # A relationship or extension policy can be revoked while the model runs.
+            try:
+                assert_learning_material(material_id)
+                _assert_quiz_extension_allowed()
+            except PermissionError as exc:
+                raise HTTPException(status_code=403, detail=str(exc)) from exc
+            current_allowed = allowed_reading_extensions()
+            if current_allowed is not None and extension_id not in current_allowed:
+                raise HTTPException(
+                    status_code=403, detail="This reading extension is not allowed."
+                )
+            dumped = await help_store.reading_quiz_help(*help_args, "complete", result=dumped)
+            assert dumped is not None
+            help_completed = True
+    except QuizHelpConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except HTTPException:
+        raise
     except TimeoutError as exc:
         logger.warning("Reading extension %s action %s timed out", extension_id, action)
         raise HTTPException(
@@ -306,7 +370,15 @@ async def run_extension_action(
         if worker is not None and not worker.done():
             registry.mark_timed_out(extension_id)
             worker.add_done_callback(_discard_late_worker_result)
-        registry.finish_action(extension_id)
+        if reserved:
+            registry.finish_action(extension_id)
+        if help_store is not None and help_args is not None and not help_completed:
+            try:
+                await help_store.reading_quiz_help(*help_args, "abort")
+            except Exception:
+                # The lease permits retry after a process/storage failure. Cleanup
+                # must not replace the original timeout, denial or provider error.
+                logger.exception("Could not release Reading help claim; lease expiry permits retry")
 
     try:
         await asyncio.to_thread(
@@ -455,6 +527,7 @@ async def submit_quiz_answers(material_id: str, payload: QuizAnswersPayload) -> 
                     mastery_path_id=str(question.get("mastery_path_id") or ""),
                     knowledge_point_id=str(question.get("knowledge_point_id") or ""),
                     attempt_id=attempt_id,
+                    hints_used=int(question.get("_help_count", 0)),
                 )
             )
         except RecordAssessmentError as exc:
