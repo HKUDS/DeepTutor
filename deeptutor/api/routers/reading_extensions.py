@@ -276,6 +276,9 @@ async def run_extension_action(
         quiz_payload = dumped.get("payload")
         if dumped.get("type") == "quiz" and isinstance(quiz_payload, dict):
             await _persist_reading_quiz_pending(material_id, payload.locator, quiz_payload)
+            quiz_payload["questions"] = [
+                _public_quiz_question(question) for question in quiz_payload["questions"]
+            ]
     except TimeoutError as exc:
         logger.warning("Reading extension %s action %s timed out", extension_id, action)
         raise HTTPException(
@@ -342,6 +345,19 @@ def _assert_quiz_extension_allowed() -> None:
     allowed = allowed_reading_extensions()
     if allowed is not None and "quiz" not in allowed:
         raise HTTPException(status_code=403, detail="This reading extension is not allowed.")
+
+
+def _public_quiz_question(question: dict[str, Any]) -> dict[str, Any]:
+    # The complete answer key stays in pending storage; only display fields
+    # and server-computed answerability cross the browser boundary.
+    choices = question["choices"]
+    correct_index = question.get("correct_choice_index")
+    return {
+        "id": question["id"],
+        "prompt": question["prompt"],
+        "choices": choices,
+        "can_answer": type(correct_index) is int and 0 <= correct_index < len(choices),
+    }
 
 
 async def _persist_reading_quiz_pending(
