@@ -17,13 +17,21 @@ module walks the body layer and emits MinerU-shaped blocks:
 * ``picture`` → ``{"type": "image", "img_path": "images/…", …}`` with the
   crop saved beside the content list (requires ``generate_picture_images``);
   pictures without a crop are skipped rather than emitted unresolvable
-* ``list_item`` runs → ``{"type": "list", "list_items": […]}``
+* ``list_item`` runs → ``{"type": "list", "list_items": […]}`` — one block
+  per page, with a bbox covering every grouped item
 * ``code`` → ``{"type": "code", "code_body": …}``
 
 Page chrome (``page_header`` / ``page_footer`` / ``page_number``) never
 becomes a block: Docling's reading-order stage already moves those items
 into the furniture layer — which the body walk skips — and the labels are
 filtered defensively as well.
+
+Provenance comes from Docling's ``prov`` records: a list of 1-based
+``page_no`` + ``bbox`` entries per item. ``page_idx`` is the first record's
+page converted to the IR's 0-based indexing, and each emitted ``bbox``
+(``[l, t, r, b]`` floats, preserving the records' coordinate origin) covers
+the records on that page. A single non-list record and missing/empty
+``prov`` are tolerated.
 
 Everything is duck-typed, so this module never imports Docling and the
 mapping is unit-testable with fakes. Unknown labels degrade to plain
@@ -44,10 +52,17 @@ logger = logging.getLogger(__name__)
 
 # Bumped when the block mapping itself changes shape, so parse caches built
 # by an older mapping are invalidated via the parser signature.
-CONTENT_LIST_SCHEMA_VERSION = 1
+# v2: read Docling's list-shaped provenance (``page_no`` + per-record
+# bboxes) and split list groups per page with union bboxes — v1 caches carry
+# wrong page_idx/bbox coordinates.
+CONTENT_LIST_SCHEMA_VERSION = 2
 
 CONTENT_LIST_SUFFIX = "_content_list.json"
 IMAGES_DIRNAME = "images"
+
+# (l, r, y_min, y_max, bottom_origin): y bounds normalized to min/max so
+# unions are orientation-independent, with the input origin kept for output.
+_Bounds = tuple[float, float, float, float, bool]
 
 # Docling furniture labels that must never reach the block IR. Same strings
 # MinerU's LightRAG block policy filters (see block_policy.py).
@@ -69,25 +84,71 @@ def _item_text(item: Any) -> str:
     return value.strip() if isinstance(value, str) else ""
 
 
-def _provenance(item: Any) -> tuple[Optional[int], Optional[list[float]]]:
-    """``(page_idx, bbox)`` from a Docling ``prov``, or ``(None, None)``.
+def _record_page_no(record: Any) -> Optional[int]:
+    """1-based page number of a provenance record (legacy ``page`` kept)."""
+    for source in ("page_no", "page"):
+        value = getattr(record, source, None)
+        if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+            return value
+    return None
 
-    Docling provenance pages are 1-based; the shared block IR uses MinerU's
-    0-based ``page_idx``.
+
+def _box_bounds(box: Any) -> Optional[_Bounds]:
+    """``(l, r, y_min, y_max, bottom_origin)`` from a duck-typed BoundingBox.
+
+    The y pair is min/max-normalized so unions are orientation-independent;
+    ``bottom_origin`` remembers the input orientation (BOTTOMLEFT boxes carry
+    ``t > b``) so the emitted ``[l, t, r, b]`` keeps it.
+    """
+    try:
+        left, top, right, bottom = (float(getattr(box, name)) for name in ("l", "t", "r", "b"))
+    except (AttributeError, TypeError, ValueError):
+        return None
+    origin = getattr(box, "coord_origin", None)
+    value = getattr(origin, "value", origin)
+    is_bottom = isinstance(value, str) and value.strip().upper() == "BOTTOMLEFT"
+    return left, right, min(top, bottom), max(top, bottom), is_bottom
+
+
+def _union_bounds(bounds: list[_Bounds]) -> _Bounds:
+    """Smallest bounds covering every input (orientation from the first)."""
+    return (
+        min(b[0] for b in bounds),
+        max(b[1] for b in bounds),
+        min(b[2] for b in bounds),
+        max(b[3] for b in bounds),
+        bounds[0][4],
+    )
+
+
+def _bounds_bbox(bounds: _Bounds) -> list[float]:
+    left, right, y_min, y_max, is_bottom = bounds
+    return [left, y_max if is_bottom else y_min, right, y_min if is_bottom else y_max]
+
+
+def _provenance(item: Any) -> tuple[Optional[int], Optional[_Bounds]]:
+    """``(page_idx, bounds)`` from a Docling ``prov``, or ``(None, None)``.
+
+    Real Docling items carry ``prov`` as a list of provenance records, each
+    with a 1-based ``page_no`` and a ``bbox``. The page comes from the first
+    record (converted to the IR's 0-based ``page_idx``), and the bbox covers
+    every record on that page, so an item continued onto another page keeps
+    only its first page's geometry. A single non-list record is tolerated,
+    and a missing/empty ``prov`` yields ``(None, None)``.
     """
     prov = getattr(item, "prov", None)
-    page_idx: Optional[int] = None
-    page = getattr(prov, "page", None)
-    if isinstance(page, int) and not isinstance(page, bool) and page > 0:
-        page_idx = page - 1
-    bbox: Optional[list[float]] = None
-    box = getattr(prov, "bbox", None)
-    if box is not None:
-        try:
-            bbox = [float(getattr(box, name)) for name in ("l", "t", "r", "b")]
-        except (AttributeError, TypeError, ValueError):
-            bbox = None
-    return page_idx, bbox
+    if not prov:
+        return None, None
+    records = prov if isinstance(prov, (list, tuple)) else [prov]
+    page_no = _record_page_no(records[0])
+    page_idx = page_no - 1 if page_no is not None else None
+    on_page = [record for record in records if _record_page_no(record) == page_no]
+    bounds = [
+        parsed
+        for parsed in (_box_bounds(getattr(record, "bbox", None)) for record in on_page)
+        if parsed is not None
+    ]
+    return page_idx, _union_bounds(bounds) if bounds else None
 
 
 def _base_fields(page_idx: Optional[int], bbox: Optional[list[float]]) -> dict[str, Any]:
@@ -220,30 +281,51 @@ def build_content_list(
     """Map a Docling document to MinerU-shaped content_list blocks."""
     blocks: list[dict[str, Any]] = []
     prefix = _safe_prefix(image_prefix)
-    pending_list: Optional[dict[str, Any]] = None
+    pending_items: list[str] = []
+    pending_page_idx: Optional[int] = None
+    pending_bounds: list[_Bounds] = []
     picture_seq = 0
 
     def flush_list() -> None:
-        nonlocal pending_list
-        if pending_list is not None:
-            blocks.append(pending_list)
-            pending_list = None
+        nonlocal pending_items, pending_page_idx, pending_bounds
+        if pending_items:
+            block: dict[str, Any] = {"type": "list", "list_items": pending_items}
+            if pending_page_idx is not None:
+                block["page_idx"] = pending_page_idx
+            if pending_bounds:
+                # Cover every grouped item: min/max per axis, keeping the
+                # orientation of the items' bboxes.
+                block["bbox"] = _bounds_bbox(_union_bounds(pending_bounds))
+            blocks.append(block)
+        pending_items = []
+        pending_page_idx = None
+        pending_bounds = []
 
     for node, level in _iterate_body(document):
         label = _label_value(node)
         if not label or label in _CHROME_LABELS:
             continue
-        page_idx, bbox = _provenance(node)
-        base = _base_fields(page_idx, bbox)
+        page_idx, bounds = _provenance(node)
+        base = _base_fields(page_idx, _bounds_bbox(bounds) if bounds is not None else None)
 
         if label == "list_item":
             text = _item_text(node)
             if not text:
                 continue
-            if pending_list is None:
-                pending_list = {"type": "list", "list_items": [text], **base}
-            else:
-                pending_list["list_items"].append(text)
+            if (
+                pending_items
+                and page_idx is not None
+                and pending_page_idx is not None
+                and page_idx != pending_page_idx
+            ):
+                # Consecutive list items never merge across a page break:
+                # one block per page, each with that page's coordinates.
+                flush_list()
+            if not pending_items:
+                pending_page_idx = page_idx
+            pending_items.append(text)
+            if bounds is not None:
+                pending_bounds.append(bounds)
             continue
         flush_list()
 

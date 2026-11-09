@@ -31,15 +31,45 @@ class _Label:
         self.value = value
 
 
+class _CoordOrigin:
+    """Enum-like fake mirroring ``docling_core.types.doc.CoordOrigin``."""
+
+    def __init__(self, value: str) -> None:
+        self.value = value
+
+
 class _BBox:
-    def __init__(self, l: float, t: float, r: float, b: float) -> None:  # noqa: E741
+    def __init__(
+        self,
+        l: float,  # noqa: E741
+        t: float,
+        r: float,
+        b: float,
+        coord_origin: str | _CoordOrigin | None = None,
+    ) -> None:
         self.l, self.t, self.r, self.b = l, t, r, b
+        if coord_origin is not None:
+            self.coord_origin = coord_origin
 
 
-class _Prov:
+class _ProvRecord:
+    """Duck-typed ``ProvenanceItem``: 1-based page_no, bbox, charspan."""
+
+    def __init__(self, page_no: int | None = 1, bbox: _BBox | None = None) -> None:
+        self.page_no = page_no
+        self.bbox = bbox
+        self.charspan = (0, 0)
+
+
+class _LegacyProv:
+    """Pre-schema-v2 single record carrying the legacy ``page`` attribute."""
+
     def __init__(self, page: int | None = 1, bbox: _BBox | None = None) -> None:
         self.page = page
         self.bbox = bbox
+
+
+_UNSET = object()
 
 
 class _TextItem:
@@ -50,10 +80,13 @@ class _TextItem:
         *,
         page: int | None = 1,
         bbox: _BBox | None = None,
+        prov: object = _UNSET,
     ) -> None:
         self.label = _Label(label)
         self.text = text
-        self.prov = _Prov(page=page, bbox=bbox)
+        # Real Docling shape: prov is a list of provenance records. Tests can
+        # override it with a single record, None, or an empty list.
+        self.prov = [_ProvRecord(page_no=page, bbox=bbox)] if prov is _UNSET else prov
 
 
 class _Ref:
@@ -89,7 +122,7 @@ class _TableItem:
         self._fail_html = fail_html
         self.captions = captions or []
         self.data = _TableData(2, 3)
-        self.prov = _Prov(page=page)
+        self.prov = [_ProvRecord(page_no=page)]
 
     def export_to_html(self) -> str:
         if self._fail_html:
@@ -128,7 +161,7 @@ class _PictureItem:
     ) -> None:
         self.image = image
         self.captions = captions or []
-        self.prov = _Prov(page=page, bbox=_BBox(0.1, 0.2, 0.3, 0.4))
+        self.prov = [_ProvRecord(page_no=page, bbox=_BBox(0.1, 0.2, 0.3, 0.4))]
 
 
 class _FakeDocument:
@@ -269,6 +302,169 @@ def test_consecutive_list_items_group_into_one_block() -> None:
         {"type": "list", "list_items": ["first", "second"], "page_idx": 0},
         {"type": "text", "text": "interrupt", "page_idx": 0},
         {"type": "list", "list_items": ["third"], "page_idx": 1},
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Provenance records (real shape: prov is a list with page_no + bbox)
+# ---------------------------------------------------------------------------
+
+
+def test_prov_list_records_yield_page_idx_and_bbox() -> None:
+    document = _FakeDocument(
+        [(_TextItem("paragraph", "text", page=3, bbox=_BBox(1.5, 2.5, 3.5, 4.5)), 1)]
+    )
+
+    assert build_content_list(document) == [
+        {"type": "text", "text": "text", "page_idx": 2, "bbox": [1.5, 2.5, 3.5, 4.5]}
+    ]
+
+
+def test_prov_records_on_one_page_union_their_bboxes() -> None:
+    item = _TextItem(
+        "paragraph",
+        "text",
+        prov=[
+            _ProvRecord(page_no=2, bbox=_BBox(10.0, 20.0, 30.0, 40.0)),
+            _ProvRecord(page_no=2, bbox=_BBox(5.0, 25.0, 35.0, 45.0)),
+            # A continuation on another page must not leak into this bbox.
+            _ProvRecord(page_no=3, bbox=_BBox(99.0, 99.0, 99.0, 99.0)),
+        ],
+    )
+    document = _FakeDocument([(item, 1)])
+
+    assert build_content_list(document) == [
+        {"type": "text", "text": "text", "page_idx": 1, "bbox": [5.0, 20.0, 35.0, 45.0]}
+    ]
+
+
+def test_prov_bottomleft_bbox_keeps_orientation() -> None:
+    item = _TextItem(
+        "paragraph",
+        "text",
+        prov=[
+            _ProvRecord(
+                page_no=1,
+                bbox=_BBox(1.0, 4.0, 2.0, 3.0, coord_origin=_CoordOrigin("BOTTOMLEFT")),
+            ),
+            _ProvRecord(
+                page_no=1,
+                bbox=_BBox(1.5, 3.5, 4.0, 2.0, coord_origin=_CoordOrigin("BOTTOMLEFT")),
+            ),
+        ],
+    )
+    document = _FakeDocument([(item, 1)])
+
+    # y values {4, 3, 3.5, 2}: the union spans 2..4; BOTTOMLEFT emits t > b.
+    assert build_content_list(document) == [
+        {"type": "text", "text": "text", "page_idx": 0, "bbox": [1.0, 4.0, 4.0, 2.0]}
+    ]
+
+
+def test_single_record_and_legacy_prov_are_tolerated() -> None:
+    document = _FakeDocument(
+        [
+            (
+                _TextItem("paragraph", "one", prov=_ProvRecord(page_no=2, bbox=_BBox(1, 2, 3, 4))),
+                1,
+            ),
+            (_TextItem("paragraph", "two", prov=_LegacyProv(page=5)), 1),
+        ]
+    )
+
+    assert build_content_list(document) == [
+        {"type": "text", "text": "one", "page_idx": 1, "bbox": [1.0, 2.0, 3.0, 4.0]},
+        {"type": "text", "text": "two", "page_idx": 4},
+    ]
+
+
+def test_missing_or_empty_prov_yields_no_page_or_bbox() -> None:
+    document = _FakeDocument(
+        [
+            (_TextItem("paragraph", "none", prov=None), 1),
+            (_TextItem("paragraph", "empty", prov=[]), 1),
+        ]
+    )
+
+    assert build_content_list(document) == [
+        {"type": "text", "text": "none"},
+        {"type": "text", "text": "empty"},
+    ]
+
+
+# ---------------------------------------------------------------------------
+# List grouping across pages
+# ---------------------------------------------------------------------------
+
+
+def test_list_items_on_different_pages_split_into_blocks() -> None:
+    document = _FakeDocument(
+        [
+            (_TextItem("list_item", "one", page=1), 2),
+            (_TextItem("list_item", "two", page=1), 2),
+            (_TextItem("list_item", "three", page=2), 2),
+            (_TextItem("paragraph", "after", page=2), 1),
+        ]
+    )
+
+    assert build_content_list(document) == [
+        {"type": "list", "list_items": ["one", "two"], "page_idx": 0},
+        {"type": "list", "list_items": ["three"], "page_idx": 1},
+        {"type": "text", "text": "after", "page_idx": 1},
+    ]
+
+
+def test_list_block_bbox_unions_grouped_item_bboxes() -> None:
+    document = _FakeDocument(
+        [
+            (_TextItem("list_item", "one", page=1, bbox=_BBox(10, 20, 30, 40)), 2),
+            (_TextItem("list_item", "two", page=1, bbox=_BBox(5, 8, 12, 50)), 2),
+        ]
+    )
+
+    assert build_content_list(document) == [
+        {
+            "type": "list",
+            "list_items": ["one", "two"],
+            "page_idx": 0,
+            "bbox": [5.0, 8.0, 30.0, 50.0],
+        }
+    ]
+
+
+def test_list_block_bbox_union_keeps_bottomleft_orientation() -> None:
+    document = _FakeDocument(
+        [
+            (
+                _TextItem(
+                    "list_item",
+                    "one",
+                    page=1,
+                    bbox=_BBox(10, 40, 30, 20, coord_origin="BOTTOMLEFT"),
+                ),
+                2,
+            ),
+            (
+                _TextItem(
+                    "list_item",
+                    "two",
+                    page=1,
+                    bbox=_BBox(5, 35, 12, 8, coord_origin="BOTTOMLEFT"),
+                ),
+                2,
+            ),
+        ]
+    )
+
+    # x: min(l)=5, max(r)=30; y values {40, 20, 35, 8} span 8..40 and
+    # BOTTOMLEFT emits t > b.
+    assert build_content_list(document) == [
+        {
+            "type": "list",
+            "list_items": ["one", "two"],
+            "page_idx": 0,
+            "bbox": [5.0, 40.0, 30.0, 8.0],
+        }
     ]
 
 
@@ -477,11 +673,12 @@ def test_local_signature_tracks_content_list_schema(monkeypatch: pytest.MonkeyPa
 
     parser = factory.get_parser("docling")
 
+    assert docling_engine.CONTENT_LIST_SCHEMA_VERSION == 2
     local_before = parser.signature(DoclingConfig(mode="local")).hash()
     remote_config = DoclingConfig(mode="remote", api_base_url="http://host:5001")
     remote_before = parser.signature(remote_config).hash()
 
-    monkeypatch.setattr(docling_engine, "CONTENT_LIST_SCHEMA_VERSION", 2)
+    monkeypatch.setattr(docling_engine, "CONTENT_LIST_SCHEMA_VERSION", 99)
 
     assert parser.signature(DoclingConfig(mode="local")).hash() != local_before
     assert parser.signature(remote_config).hash() == remote_before
