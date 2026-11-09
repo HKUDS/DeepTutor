@@ -35,7 +35,7 @@ from deeptutor.reading.extract import (
     first_line_label,
     split_into_sections,
 )
-from deeptutor.reading.models import parse_text_selectors
+from deeptutor.reading.models import MAX_TEXT_SELECTOR_CHARS, parse_text_selectors
 from deeptutor.reading.search import normalise, search_units, terms_of
 from deeptutor.utils.document_images import MAX_INLINE_IMAGE_EDGE
 from tests.docx_math_fixture import (
@@ -879,6 +879,120 @@ def test_quote_and_position_selectors_must_identify_the_same_text(
                     TextQuoteSelector(exact="Introduction"),
                     TextPositionSelector(start=0, end=7),
                 ),
+            ),
+        )
+
+
+def _markdown_store(store: ReadingStore, unit: str) -> str:
+    store.ingest_units(
+        "abcdef0123456789",
+        filename="notes.md",
+        units=[unit],
+        content_format="web_markdown",
+    )
+    return "abcdef0123456789"
+
+
+def test_markdown_positions_are_measured_against_the_rendered_text(
+    store: ReadingStore,
+) -> None:
+    material_id = _markdown_store(
+        store, "A **bold** claim and $x^2$ growth, then a plain tail word."
+    )
+    # What the browser shows, and what rangeToSelector measures against.
+    rendered = "A bold claim and x² growth, then a plain tail word."
+    start = rendered.index("plain tail")
+
+    saved = store.save_annotation(
+        material_id,
+        Annotation(
+            annotation_id="",
+            locator=1,
+            selectors=(
+                TextQuoteSelector(
+                    exact="plain tail",
+                    prefix="then a ",
+                    suffix=" word",
+                ),
+                TextPositionSelector(start=start, end=start + len("plain tail")),
+            ),
+        ),
+    )
+
+    assert saved.quote == "plain tail"
+    assert [selector.to_dict() for selector in store.annotations(material_id)[0].selectors] == [
+        {
+            "type": "TextQuoteSelector",
+            "exact": "plain tail",
+            "prefix": "then a ",
+            "suffix": " word",
+        },
+        {"type": "TextPositionSelector", "start": start, "end": start + len("plain tail")},
+    ]
+
+
+def test_markdown_quote_crossing_inline_formatting_is_stored_verbatim(
+    store: ReadingStore,
+) -> None:
+    # "Some bold text" is the rendered wording of "Some **bold** text" — it
+    # cannot occur in the raw unit, yet it is exactly what the reader selected.
+    material_id = _markdown_store(store, "Some **bold** text follows.")
+
+    saved = store.save_annotation(
+        material_id,
+        Annotation(
+            annotation_id="",
+            locator=1,
+            selectors=(
+                TextQuoteSelector(exact="Some bold text", suffix=" follows"),
+                TextPositionSelector(start=0, end=len("Some bold text")),
+            ),
+        ),
+    )
+
+    assert saved.quote == "Some bold text"
+    stored_quote = next(
+        selector
+        for selector in store.annotations(material_id)[0].selectors
+        if isinstance(selector, TextQuoteSelector)
+    )
+    assert stored_quote.exact == "Some bold text"
+
+
+def test_markdown_position_selector_without_quote_keeps_the_client_quote(
+    store: ReadingStore,
+) -> None:
+    material_id = _markdown_store(
+        store, "A **bold** claim and $x^2$ growth, then a plain tail word."
+    )
+    rendered = "A bold claim and x² growth, then a plain tail word."
+    start = rendered.index("plain tail")
+
+    saved = store.save_annotation(
+        material_id,
+        Annotation(
+            annotation_id="",
+            locator=1,
+            quote="plain tail",
+            selectors=(TextPositionSelector(start=start, end=start + len("plain tail")),),
+        ),
+    )
+
+    assert saved.quote == "plain tail"
+
+
+def test_markdown_position_selector_span_ceiling_still_applies(
+    store: ReadingStore,
+) -> None:
+    material_id = _markdown_store(store, "A plain unit of markdown text.")
+
+    with pytest.raises(ReadingError, match="too long"):
+        store.save_annotation(
+            material_id,
+            Annotation(
+                annotation_id="",
+                locator=1,
+                selectors=(TextPositionSelector(start=0, end=MAX_TEXT_SELECTOR_CHARS + 1),),
             ),
         )
 

@@ -1358,20 +1358,27 @@ class ReadingStore:
             unit_text = self.unit_text(material_id, annotation.locator)
         else:
             unit_text = ""
+        # Markdown units are rendered before display, and the browser measures
+        # TextPositionSelectors against that rendered text — a coordinate space
+        # the raw unit cannot reproduce (``**bold**`` loses its asterisks,
+        # ``$x^2$`` becomes KaTeX markup). For those units positions are stored
+        # as sent, and the quote alone is validated against the unit below.
+        rendered_positions = manifest.content_format == "web_markdown"
         position_text = ""
         if position_selector:
-            if position_selector.end > len(unit_text):
+            if not rendered_positions and position_selector.end > len(unit_text):
                 raise ReadingError("TextPositionSelector extends past this reading unit")
             if position_selector.end - position_selector.start > MAX_TEXT_SELECTOR_CHARS:
                 raise ReadingError("TextPositionSelector span is too long")
-            position_text = unit_text[position_selector.start : position_selector.end]
+            if not rendered_positions:
+                position_text = unit_text[position_selector.start : position_selector.end]
         if quote_selector:
             normalised_exact = _normalise_selector_text(quote_selector.exact)
             if not normalised_exact:
                 raise ReadingError("TextQuoteSelector exact text is empty")
             if annotation.quote and _normalise_selector_text(annotation.quote) != normalised_exact:
                 raise ReadingError("annotation quote does not match its TextQuoteSelector")
-            if position_selector:
+            if position_selector and not rendered_positions:
                 if _normalise_selector_text(position_text) != normalised_exact:
                     raise ReadingError("text quote and position selectors describe different text")
                 if not _quote_context_matches(
@@ -1383,9 +1390,16 @@ class ReadingStore:
                 canonical_exact = position_text
             else:
                 span = _find_quote_span(unit_text, quote_selector)
-                if span is None:
+                if span is not None:
+                    canonical_exact = unit_text[slice(*span)]
+                elif rendered_positions:
+                    # A selection may cross inline formatting or math, so its
+                    # wording need not occur verbatim in the raw Markdown. The
+                    # quote is the rendered text's own wording; the reader
+                    # re-anchors it against that same rendered text.
+                    canonical_exact = quote_selector.exact
+                else:
                     raise ReadingError("TextQuoteSelector does not occur in this reading unit")
-                canonical_exact = unit_text[slice(*span)]
             canonical_quote = dataclass_replace(quote_selector, exact=canonical_exact)
             annotation = dataclass_replace(
                 annotation,
@@ -1395,7 +1409,7 @@ class ReadingStore:
                     for selector in annotation.selectors
                 ),
             )
-        elif position_selector:
+        elif position_selector and not rendered_positions:
             if annotation.quote and _normalise_selector_text(
                 annotation.quote
             ) != _normalise_selector_text(position_text):
