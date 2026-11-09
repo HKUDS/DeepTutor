@@ -92,7 +92,14 @@ def test_send_tree_signal_uses_process_group_when_known(monkeypatch) -> None:
     killpg_calls: list[tuple[int, signal.Signals]] = []
     kill_calls: list[tuple[int, signal.Signals]] = []
     monkeypatch.setattr(launcher.os, "name", "posix")
-    monkeypatch.setattr(launcher.os, "killpg", lambda pgid, sig: killpg_calls.append((pgid, sig)))
+    # ``os.killpg`` only exists on POSIX; add it as a stub so the group branch
+    # can still be exercised from a Windows checkout.
+    monkeypatch.setattr(
+        launcher.os,
+        "killpg",
+        lambda pgid, sig: killpg_calls.append((pgid, sig)),
+        raising=False,
+    )
     monkeypatch.setattr(launcher.os, "kill", lambda pid, sig: kill_calls.append((pid, sig)))
 
     launcher._send_tree_signal(4242, 4242, signal.SIGTERM)
@@ -105,7 +112,14 @@ def test_send_tree_signal_falls_back_to_single_pid_without_pgid(monkeypatch) -> 
     killpg_calls: list[tuple[int, signal.Signals]] = []
     kill_calls: list[tuple[int, signal.Signals]] = []
     monkeypatch.setattr(launcher.os, "name", "posix")
-    monkeypatch.setattr(launcher.os, "killpg", lambda pgid, sig: killpg_calls.append((pgid, sig)))
+    # ``os.killpg`` only exists on POSIX; add it as a stub so the group branch
+    # can still be exercised from a Windows checkout.
+    monkeypatch.setattr(
+        launcher.os,
+        "killpg",
+        lambda pgid, sig: killpg_calls.append((pgid, sig)),
+        raising=False,
+    )
     monkeypatch.setattr(launcher.os, "kill", lambda pid, sig: kill_calls.append((pid, sig)))
 
     launcher._send_tree_signal(4242, None, signal.SIGTERM)
@@ -140,8 +154,14 @@ def test_send_tree_signal_windows_uses_taskkill_with_force_only_on_kill(
     launcher._send_tree_signal(4242, None, signal.SIGTERM)
     launcher._send_tree_signal(4242, None, launcher.KILL_SIGNAL)
 
-    assert commands[0] == ["taskkill", "/PID", "4242", "/T"]
-    assert commands[1] == ["taskkill", "/PID", "4242", "/T", "/F"]
+    forced = ["taskkill", "/PID", "4242", "/T", "/F"]
+    graceful = ["taskkill", "/PID", "4242", "/T"]
+    if launcher.KILL_SIGNAL == signal.SIGTERM:
+        # Windows defines no SIGKILL, so ``KILL_SIGNAL`` resolves to SIGTERM and
+        # the graceful round cannot be distinguished from the forced one.
+        assert commands == [forced, forced]
+    else:
+        assert commands == [graceful, forced]
 
 
 # --------------------------------------------------------------------------
@@ -196,7 +216,9 @@ def test_kill_port_listeners_escalates_to_kill_when_port_stays_busy(
 
     def fake_signal(pid, _pgid, sig) -> None:
         signals(pid, None, sig)
-        if sig == launcher.KILL_SIGNAL:
+        # Release on the escalation round only. Windows defines no SIGKILL, so
+        # ``sig == KILL_SIGNAL`` is already true on the graceful round there.
+        if len(signals.calls) == 2:
             occupied.discard(8000)
 
     monkeypatch.setattr(launcher, "_port_accepts_connection", lambda port: port in occupied)

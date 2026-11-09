@@ -1249,8 +1249,13 @@ def test_terminate_warns_when_both_signal_rounds_fail(
 
     assert sent == [signal.SIGTERM, launcher.KILL_SIGNAL]
     warnings = [record.getMessage() for record in caplog.records]
-    assert any("SIGTERM" in message for message in warnings)
-    assert any("SIGKILL" in message for message in warnings)
+    # Windows defines no SIGKILL, so ``KILL_SIGNAL`` resolves to SIGTERM and
+    # both rounds log the same name there. Count failed deliveries instead of
+    # matching a signal name that only POSIX platforms have.
+    failures = [message for message in warnings if "failed to send" in message]
+    assert len(failures) == 2
+    assert all("backend (pid=4242)" in message for message in failures)
+    assert any(getattr(signal.SIGTERM, "name", "SIGTERM") in message for message in failures)
 
 
 def test_terminate_warns_on_sigterm_but_accepts_kill_escalation(
@@ -1262,11 +1267,16 @@ def test_terminate_warns_on_sigterm_but_accepts_kill_escalation(
     child = _StubbornPopen()
     proc = launcher.ManagedProcess(name="backend", process=child, pgid=4242)
 
+    calls: list[signal.Signals | int] = []
+
     def fake_send(pid, pgid, sig):
-        if sig == launcher.KILL_SIGNAL:
-            child.exited = True
-            return
-        raise PermissionError("operation not permitted")
+        calls.append(sig)
+        # Round one (graceful) is refused, round two (escalation) lands. The
+        # round is identified by order rather than by comparing signal values:
+        # Windows defines no SIGKILL, so both rounds carry SIGTERM there.
+        if len(calls) == 1:
+            raise PermissionError("operation not permitted")
+        child.exited = True
 
     monkeypatch.setattr(launcher, "_send_tree_signal", fake_send)
 
@@ -1274,9 +1284,10 @@ def test_terminate_warns_on_sigterm_but_accepts_kill_escalation(
         launcher._terminate(proc)
 
     assert child.exited is True
+    assert calls == [signal.SIGTERM, launcher.KILL_SIGNAL]
     warnings = [record.getMessage() for record in caplog.records]
-    assert any("SIGTERM" in message for message in warnings)
-    assert not any("SIGKILL" in message for message in warnings)
+    failures = [message for message in warnings if "failed to send" in message]
+    assert len(failures) == 1
 
 
 def test_terminate_skips_absent_or_exited_child(
@@ -1370,10 +1381,14 @@ def test_kill_port_listeners_reports_kill_round_failures_per_target(
     occupied = {8000}
     sent: list[tuple[int, int]] = []
     clock = {"now": 0.0}
+    rounds: dict[int, int] = {}
 
     def fake_send(pid, pgid, sig):
         sent.append((pid, sig))
-        if sig == launcher.KILL_SIGNAL and pid == 123:
+        rounds[pid] = rounds.get(pid, 0) + 1
+        # Round is identified by order, not by signal value: Windows has no
+        # SIGKILL, so both rounds carry SIGTERM there.
+        if pid == 123 and rounds[pid] == 2:
             raise OSError("no such process")
         # pid 456 accepts both signals; zombie 123 keeps holding the port.
 
@@ -1392,7 +1407,11 @@ def test_kill_port_listeners_reports_kill_round_failures_per_target(
     assert (456, signal.SIGTERM) in sent
     assert (123, launcher.KILL_SIGNAL) in sent
     assert (456, launcher.KILL_SIGNAL) in sent
-    assert any("SIGKILL" in record.getMessage() for record in caplog.records)
+    failures = [
+        record.getMessage() for record in caplog.records if "failed to send" in record.getMessage()
+    ]
+    assert len(failures) == 1
+    assert "123" in failures[0]
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows venv console inheritance")
