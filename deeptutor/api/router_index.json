@@ -1,5 +1,5 @@
 {
-  "fingerprint": "b3ff4a2963d642a226ba3b8fd034f616c878ec27cdb071e720e82674dabd3b75",
+  "fingerprint": "605ad27fa849b2139f859e2b1100021d8cb89746d9387fdaed1ab0172cd000fa",
   "routers": {
     "deeptutor.api.routers.auth:router": [
       {
@@ -3580,6 +3580,22 @@
       {
         "path": "/network",
         "name": "update_network_settings",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/web-fetch",
+        "name": "get_web_fetch_settings",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/web-fetch",
+        "name": "update_web_fetch_settings",
         "kind": "http",
         "methods": [
           "PUT"
