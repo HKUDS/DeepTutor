@@ -29,6 +29,31 @@ class LLMSelection(BaseModel):
 
     profile_id: str
     model_id: str
+    # Per-conversation reasoning-effort override (#641). ``None``/omitted
+    # keeps the profile/model default; the wire vocabulary is owned by the
+    # service layer, so the validator defers to ``VALID_REASONING_EFFORTS``
+    # rather than duplicating the tuple here.
+    reasoning_effort: str | None = None
+
+    @field_validator("reasoning_effort", mode="before")
+    @classmethod
+    def _validate_reasoning_effort(cls, value: Any) -> Any:
+        if value is None:
+            return None
+        # Same normalization as the service layer: trim, lowercase, and
+        # treat a blank string as "no override".
+        normalized = str(value).strip().lower()
+        if not normalized:
+            return None
+        # Imported lazily: ``core`` must not pin ``services`` at import time.
+        from deeptutor.services.model_selection.llm import VALID_REASONING_EFFORTS
+
+        if normalized not in VALID_REASONING_EFFORTS:
+            raise ValueError(
+                "reasoning_effort must be one of "
+                f"{', '.join(VALID_REASONING_EFFORTS)} (got {normalized!r})"
+            )
+        return normalized
 
 
 class OutgoingAttachment(BaseModel):

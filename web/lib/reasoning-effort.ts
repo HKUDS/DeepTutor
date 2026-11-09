@@ -3,6 +3,35 @@ export type ReasoningEffortOption = {
   label: string;
 };
 
+/**
+ * The wire vocabulary a turn's `llm_selection.reasoning_effort` may carry —
+ * mirrors `VALID_REASONING_EFFORTS` in deeptutor/services/model_selection/llm.py.
+ * Values outside this set (e.g. provider-specific "adaptive") are rejected by
+ * the backend turn contract, so chat-side pickers must filter them out.
+ */
+export const VALID_REASONING_EFFORTS: ReadonlySet<string> = new Set([
+  "none",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+]);
+
+/**
+ * Normalize an untrusted reasoning-effort value from persisted state.
+ * Returns the lowercase value when it is a legal wire value, else null —
+ * illegal values are dropped rather than forwarded to the provider.
+ */
+export function normalizeReasoningEffort(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toLowerCase();
+  return normalized && VALID_REASONING_EFFORTS.has(normalized)
+    ? normalized
+    : null;
+}
+
 const LABELS: Record<string, string> = {
   "": "Provider default (Auto)",
   none: "None",

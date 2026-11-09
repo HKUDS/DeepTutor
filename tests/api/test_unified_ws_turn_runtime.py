@@ -545,6 +545,136 @@ async def test_turn_runtime_persists_llm_selection_in_turn_snapshot(
 
 
 @pytest.mark.asyncio
+async def test_turn_runtime_persists_reasoning_effort_override(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    """A per-conversation reasoning-effort override (#641) survives the turn.
+
+    The wire contract accepts the override inside ``llm_selection``, keeps it
+    through the normalized execution payload, and persists it as part of the
+    conversation's stored selection so later turns reuse it.
+    """
+    from pydantic import ValidationError
+
+    from deeptutor.api.contracts.turn_protocol import StartTurnCommand
+
+    selection = {
+        "profile_id": "p-alt",
+        "model_id": "m-alt",
+        "reasoning_effort": "high",
+    }
+    command = {
+        "type": "start_turn",
+        "protocol_version": "2.0",
+        "content": "think harder",
+        "llm_selection": selection,
+    }
+    # The WS gate validates through StartTurnCommand; the override must pass
+    # it (and the old two-ID shape must keep passing alongside).
+    assert StartTurnCommand.model_validate(command).llm_selection is not None
+    StartTurnCommand.model_validate(
+        {
+            "type": "start_turn",
+            "protocol_version": "2.0",
+            "content": "think harder",
+            "llm_selection": {"profile_id": "p-alt", "model_id": "m-alt"},
+        }
+    )
+    with pytest.raises(ValidationError):
+        StartTurnCommand.model_validate(
+            {
+                "type": "start_turn",
+                "protocol_version": "2.0",
+                "content": "think harder",
+                "llm_selection": {
+                    "profile_id": "p-alt",
+                    "model_id": "m-alt",
+                    "reasoning_effort": "warp-9",
+                },
+            }
+        )
+
+    store = SQLiteSessionStore(tmp_path / "chat_history.db")
+    runtime = TurnRuntimeManager(store)
+    captured: dict[str, object] = {}
+
+    class FakeContextBuilder:
+        def __init__(self, *_args, **_kwargs) -> None:
+            pass
+
+        async def build(self, **kwargs):
+            return SimpleNamespace(
+                conversation_history=[],
+                conversation_summary="",
+                context_text="",
+                token_count=0,
+                budget=0,
+            )
+
+    class FakeOrchestrator:
+        async def handle(self, context):
+            yield StreamEvent(
+                type=StreamEventType.CONTENT,
+                source="chat",
+                stage="responding",
+                content="Alt reply",
+                metadata={"call_kind": "llm_final_response"},
+            )
+            yield StreamEvent(type=StreamEventType.DONE, source="chat")
+
+    def fake_activate(sel):
+        captured["activated_selection"] = sel
+        return SimpleNamespace(
+            model="anthropic/claude-sonnet-4", provider_name="openrouter"
+        ), object()
+
+    monkeypatch.setattr(
+        "deeptutor.services.config.get_model_catalog_service",
+        lambda: SimpleNamespace(load=_model_catalog),
+    )
+    monkeypatch.setattr(
+        "deeptutor.services.model_selection.runtime.activate_llm_selection",
+        fake_activate,
+    )
+    monkeypatch.setattr(
+        "deeptutor.services.model_selection.runtime.reset_llm_selection",
+        lambda _token: captured.setdefault("reset_called", True),
+    )
+    monkeypatch.setattr(
+        "deeptutor.services.session.context_builder.ContextBuilder", FakeContextBuilder
+    )
+    monkeypatch.setattr("deeptutor.runtime.orchestrator.ChatOrchestrator", FakeOrchestrator)
+    monkeypatch.setattr(
+        "deeptutor.services.memory.get_memory_store",
+        lambda: SimpleNamespace(
+            read_l3_concat=lambda: "",
+            emit=_noop_async,
+        ),
+    )
+    monkeypatch.setattr("deeptutor.services.skill.get_skill_service", _fake_skill_service)
+    monkeypatch.setattr("deeptutor.services.persona.get_persona_service", _fake_persona_service)
+
+    session, turn = await runtime.start_turn(
+        {
+            "content": "think harder",
+            "llm_selection": selection,
+        }
+    )
+
+    execution = runtime._executions[turn["id"]]
+    assert execution.task is not None
+    await asyncio.wait_for(execution.task, timeout=5)
+
+    detail = await store.get_session_with_messages(session["id"])
+    assert detail is not None
+    assert detail["preferences"]["llm_selection"] == selection
+    assert detail["messages"][0]["metadata"]["request_snapshot"]["llmSelection"] == selection
+    assert captured["activated_selection"] == selection
+    assert captured["reset_called"] is True
+
+
+@pytest.mark.asyncio
 async def test_turn_runtime_session_persona_persists_falls_back_and_clears(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path,

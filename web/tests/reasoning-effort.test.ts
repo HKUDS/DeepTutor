@@ -2,9 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  normalizeReasoningEffort,
   reasoningEffortOptions,
   reasoningEffortOptionsFromSupportedLevels,
   setModelReasoningEffort,
+  VALID_REASONING_EFFORTS,
 } from "../lib/reasoning-effort";
 
 const values = (binding: string, model: string, current = ""): string[] =>
@@ -213,4 +215,30 @@ test("GLM effort choices follow the documented model family and retain invalid v
   assert.deepEqual(values("openai", "glm-5.3-unknown"), []);
   assert.deepEqual(values("openai", "glm-5.3", "medium"), ["", "low", "high", "max", "medium"]);
   assert.deepEqual(values("openai", "glm-4.7", "vendor-level"), ["", "vendor-level"]);
+});
+
+test("the wire vocabulary mirrors the backend VALID_REASONING_EFFORTS", () => {
+  // deeptutor/services/model_selection/llm.py::VALID_REASONING_EFFORTS. A
+  // turn's llm_selection.reasoning_effort is rejected outside this set, so
+  // chat-side pickers filter on it.
+  assert.deepEqual([...VALID_REASONING_EFFORTS].sort(), [
+    "high",
+    "low",
+    "max",
+    "medium",
+    "minimal",
+    "none",
+    "xhigh",
+  ]);
+});
+
+test("normalizeReasoningEffort keeps legal values and drops everything else", () => {
+  assert.equal(normalizeReasoningEffort("  High "), "high");
+  assert.equal(normalizeReasoningEffort("xhigh"), "xhigh");
+  assert.equal(normalizeReasoningEffort(""), null);
+  assert.equal(normalizeReasoningEffort("   "), null);
+  assert.equal(normalizeReasoningEffort(null), null);
+  assert.equal(normalizeReasoningEffort(42), null);
+  // Provider-specific levels live outside the turn vocabulary.
+  assert.equal(normalizeReasoningEffort("adaptive"), null);
 });

@@ -1761,7 +1761,7 @@ class AgenticLoopPipeline:
         Returns ``None`` when the measurement fails, so the turn is unaffected.
         """
         loaded = self._deferred_loader.loaded_names if self._deferred_loader is not None else set()
-        return build_context_budget(
+        budget = build_context_budget(
             blocks=self._last_prompt_blocks,
             request=request,
             model=str(self.model or ""),
@@ -1770,6 +1770,12 @@ class AgenticLoopPipeline:
             loaded_deferred_names=loaded,
             deferred_tool_count=self._unloaded_deferred_tool_count(loaded),
         )
+        # The composer's runtime readout shows the model; the effective
+        # reasoning effort rides along when one was resolved for the turn
+        # (#641) — a provider default (``None`` here) stays implicit.
+        if budget is not None and self.reasoning_effort:
+            budget["reasoning_effort"] = str(self.reasoning_effort)
+        return budget
 
     def _unloaded_deferred_tool_count(self, loaded: set[str]) -> int:
         """Extended tools whose full schemas never entered the window.

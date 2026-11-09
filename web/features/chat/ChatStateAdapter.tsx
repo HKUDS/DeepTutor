@@ -84,6 +84,7 @@ import { reconcileTurnIds } from "@/lib/turn-reconcile";
 import { decideFailedTurnReplay, isFailedTurnVisible } from "@/lib/chat-resend";
 import { shouldAppendEventContent } from "@/lib/stream";
 import { hasPendingAskUserInMessages, pendingAskUserKeyInMessages } from "@/lib/ask-user-state";
+import { normalizeReasoningEffort } from "@/lib/reasoning-effort";
 import { notify } from "@/lib/notifications";
 import { forwardReaderAction } from "@/lib/reading-reader-action";
 import {
@@ -1865,9 +1866,13 @@ function asLLMSelection(value: unknown): LLMSelection | null {
     typeof record?.profile_id === "string" ? record.profile_id.trim() : "";
   const modelId =
     typeof record?.model_id === "string" ? record.model_id.trim() : "";
-  return profileId && modelId
-    ? { profile_id: profileId, model_id: modelId }
-    : null;
+  if (!profileId || !modelId) return null;
+  // A persisted reasoning-effort override (#641) survives the round-trip;
+  // illegal values are dropped here rather than sent to the provider.
+  const reasoningEffort = normalizeReasoningEffort(record?.reasoning_effort);
+  return reasoningEffort
+    ? { profile_id: profileId, model_id: modelId, reasoning_effort: reasoningEffort }
+    : { profile_id: profileId, model_id: modelId };
 }
 
 function normalizeSelectedBranches(value: unknown): Record<string, number> {
