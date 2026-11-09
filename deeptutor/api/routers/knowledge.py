@@ -149,6 +149,41 @@ def get_kb_manager():
     return current_kb_manager()
 
 
+@contextmanager
+def _connected_kb_registration(name: str):
+    """Register a connected KB in the workspace viewing the library."""
+    from contextlib import nullcontext
+
+    from deeptutor.services.workspace.context import current_workspace_id, workspace_context
+    from deeptutor.services.workspace.knowledge import (
+        canonical_kb_id,
+        library_request,
+        library_viewer,
+        qualified_kb_id,
+    )
+    from deeptutor.services.workspace.models import WorkspaceError
+
+    viewer = library_viewer.get() if library_request.get() else None
+    try:
+        with workspace_context(viewer) if viewer is not None else nullcontext() as scope:
+            if scope is not None and scope.archived:
+                raise WorkspaceError(
+                    "Restore the storage workspace before creating a knowledge base."
+                )
+            token = library_request.set(False) if viewer is not None else None
+            try:
+                workspace_id = "" if library_request.get() else current_workspace_id()
+                resource_id = qualified_kb_id(validate_knowledge_base_name(name), workspace_id)
+                if canonical_kb_id(resource_id) != resource_id:
+                    raise WorkspaceError("This knowledge base ID is reserved by an earlier move.")
+                yield get_kb_manager(), resource_id
+            finally:
+                if token is not None:
+                    library_request.reset(token)
+    except WorkspaceError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
 def _overridden_kb_manager() -> KnowledgeBaseManager | None:
     """Return the legacy/test manager when the route-level getter is patched.
 
@@ -2211,9 +2246,14 @@ async def connect_obsidian_vault(payload: ConnectObsidianRequest):
         raise HTTPException(status_code=400, detail="Both name and vault_path are required.")
     try:
         folder = assert_path_allowed(vault_path)
-        manager = get_kb_manager()
-        entry = manager.register_obsidian_vault(name, str(folder))
-        return {"status": "connected", "name": name, "vault_path": entry["vault_path"]}
+        with _connected_kb_registration(name) as (manager, resource_id):
+            entry = manager.register_obsidian_vault(name, str(folder))
+        return {
+            "status": "connected",
+            "id": resource_id,
+            "name": name,
+            "vault_path": entry["vault_path"],
+        }
     except ValueError as e:
         # Missing/invalid path, disallowed location, or a name clash → 400.
         raise HTTPException(status_code=400, detail=str(e))
@@ -2242,18 +2282,20 @@ async def connect_marginnote4(payload: ConnectMarginNote4Request):
     if not name:
         raise HTTPException(status_code=400, detail="name is required.")
     try:
-        manager = get_kb_manager()
-        entry = manager.register_marginnote4_kb(
-            name,
-            db_path=(payload.db_path or "").strip(),
-            description=(payload.description or "").strip(),
-        )
-        result = {"status": "connected", "name": name}
+        with _connected_kb_registration(name) as (manager, resource_id):
+            entry = manager.register_marginnote4_kb(
+                name,
+                db_path=(payload.db_path or "").strip(),
+                description=(payload.description or "").strip(),
+            )
+        result = {"status": "connected", "id": resource_id, "name": name}
         if entry.get("db_path"):
             result["db_path"] = entry["db_path"]
         return result
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except (HTTPException, AccessError):
+        raise
     except Exception as e:
         logger.error(f"Error connecting MarginNote 4 library: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -2316,13 +2358,13 @@ async def connect_linked_folder_route(payload: ConnectFolderRequest):
         "doc_count": result.doc_count,
     }
     try:
-        manager = get_kb_manager()
-        entry = manager.register_linked_kb(
-            name,
-            str(folder),
-            result.provider,
-            stats=stats,
-        )
+        with _connected_kb_registration(name) as (manager, resource_id):
+            entry = manager.register_linked_kb(
+                name,
+                str(folder),
+                result.provider,
+                stats=stats,
+            )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except (HTTPException, AccessError):
@@ -2333,6 +2375,7 @@ async def connect_linked_folder_route(payload: ConnectFolderRequest):
 
     return {
         "status": "connected",
+        "id": resource_id,
         "name": name,
         "external_path": entry["external_path"],
         "rag_provider": entry["rag_provider"],
@@ -2426,13 +2469,13 @@ async def connect_lightrag_server_route(payload: ConnectLightRagServerRequest):
         search_mode = ""
 
     try:
-        manager = get_kb_manager()
-        entry = manager.register_lightrag_server_kb(
-            name,
-            result.base_url,
-            api_key=api_key,
-            search_mode=search_mode,
-        )
+        with _connected_kb_registration(name) as (manager, resource_id):
+            entry = manager.register_lightrag_server_kb(
+                name,
+                result.base_url,
+                api_key=api_key,
+                search_mode=search_mode,
+            )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except (HTTPException, AccessError):
@@ -2443,6 +2486,7 @@ async def connect_lightrag_server_route(payload: ConnectLightRagServerRequest):
 
     return {
         "status": "connected",
+        "id": resource_id,
         "name": name,
         "server_url": entry["server_url"],
         "rag_provider": entry["rag_provider"],
@@ -2495,13 +2539,13 @@ async def connect_weknora_route(payload: ConnectWeKnoraRequest):
         )
 
     try:
-        manager = get_kb_manager()
-        entry = manager.register_weknora_kb(
-            name,
-            result.base_url,
-            payload.api_key or "",
-            result.knowledge_base_id,
-        )
+        with _connected_kb_registration(name) as (manager, resource_id):
+            entry = manager.register_weknora_kb(
+                name,
+                result.base_url,
+                payload.api_key or "",
+                result.knowledge_base_id,
+            )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except (HTTPException, AccessError):
@@ -2512,6 +2556,7 @@ async def connect_weknora_route(payload: ConnectWeKnoraRequest):
 
     return {
         "status": "connected",
+        "id": resource_id,
         "name": name,
         "server_url": entry["server_url"],
         "knowledge_base_id": entry["knowledge_base_id"],
@@ -2645,17 +2690,18 @@ async def connect_kiwix_route(payload: ConnectKiwixRequest) -> dict[str, Any]:
     try:
         client = KiwixClient(payload.server_url, payload.zim_name)
         title = await client.probe()
-        manager = get_kb_manager()
-        entry = manager.register_kiwix_kb(
-            payload.name,
-            client.base_url,
-            client.zim_name,
-            zim_title=title,
-        )
+        with _connected_kb_registration(payload.name) as (manager, resource_id):
+            entry = manager.register_kiwix_kb(
+                payload.name,
+                client.base_url,
+                client.zim_name,
+                zim_title=title,
+            )
     except (KiwixError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {
         "status": "connected",
+        "id": resource_id,
         "name": payload.name,
         "zim_name": entry["zim_name"],
         "title": entry["zim_title"],
@@ -2744,14 +2790,14 @@ async def connect_ima_route(payload: ConnectImaRequest):
         )
 
     try:
-        manager = get_kb_manager()
-        entry = manager.register_ima_kb(
-            name,
-            overrides.client_id,
-            overrides.api_key,
-            payload.knowledge_base_id,
-            description=result.description or "",
-        )
+        with _connected_kb_registration(name) as (manager, resource_id):
+            entry = manager.register_ima_kb(
+                name,
+                overrides.client_id,
+                overrides.api_key,
+                payload.knowledge_base_id,
+                description=result.description or "",
+            )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except (HTTPException, AccessError):
@@ -2764,6 +2810,7 @@ async def connect_ima_route(payload: ConnectImaRequest):
 
     return {
         "status": "connected",
+        "id": resource_id,
         "name": name,
         "knowledge_base_id": entry["knowledge_base_id"],
         "rag_provider": entry["rag_provider"],
