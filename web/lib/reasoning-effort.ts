@@ -3,6 +3,35 @@ export type ReasoningEffortOption = {
   label: string;
 };
 
+/**
+ * The wire vocabulary a turn's `llm_selection.reasoning_effort` may carry —
+ * mirrors `VALID_REASONING_EFFORTS` in deeptutor/services/model_selection/llm.py.
+ * Values outside this set (e.g. provider-specific "adaptive") are rejected by
+ * the backend turn contract, so chat-side pickers must filter them out.
+ */
+export const VALID_REASONING_EFFORTS: ReadonlySet<string> = new Set([
+  "none",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+]);
+
+/**
+ * Normalize an untrusted reasoning-effort value from persisted state.
+ * Returns the lowercase value when it is a legal wire value, else null —
+ * illegal values are dropped rather than forwarded to the provider.
+ */
+export function normalizeReasoningEffort(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toLowerCase();
+  return normalized && VALID_REASONING_EFFORTS.has(normalized)
+    ? normalized
+    : null;
+}
+
 const LABELS: Record<string, string> = {
   "": "Provider default (Auto)",
   none: "None",
@@ -247,4 +276,89 @@ export function setModelReasoningEffort(
   } else {
     delete model.reasoning_effort;
   }
+}
+
+/**
+ * The catalog fields reasoning-effort validation needs from a model option.
+ * Structural so `LLMOption` satisfies it without lib → features imports.
+ */
+export interface ReasoningEffortModelOption {
+  provider?: string | null;
+  model?: string | null;
+  supported_reasoning_efforts?: string[];
+  declared_reasoning?: boolean | null;
+}
+
+/**
+ * The reasoning-effort wire values a selected model supports (#641): the
+ * catalog's live `supported_reasoning_efforts` when it publishes one,
+ * otherwise the provider/model tables (honouring `declared_reasoning`),
+ * narrowed to `VALID_REASONING_EFFORTS`.
+ *
+ * Unlike the tables' own retention rule, a stored/stale value is NEVER
+ * re-added to this list — an unsupported level must not be offered, let
+ * alone sent to the provider.
+ */
+export function supportedReasoningEffortValues(
+  option: ReasoningEffortModelOption | null | undefined,
+): string[] {
+  if (!option) return [];
+  const offered =
+    option.supported_reasoning_efforts !== undefined
+      ? reasoningEffortOptionsFromSupportedLevels(
+          option.supported_reasoning_efforts,
+        )
+      : reasoningEffortOptions(
+          option.provider,
+          option.model,
+          // Deliberately empty: passing the current override would re-add it
+          // through the tables' reset-recovery path (#641 review blocker).
+          "",
+          option.declared_reasoning,
+        );
+  return offered
+    .map((item) => item.value)
+    .filter((value) => VALID_REASONING_EFFORTS.has(value));
+}
+
+/**
+ * The override a turn may actually send for this model: the stored value
+ * only when it is in `supportedReasoningEffortValues`, else null (= the
+ * configured default / provider default). A null `option` resolves to null
+ * — an override that cannot be validated is treated as unsupported.
+ */
+export function effectiveReasoningEffort(
+  option: ReasoningEffortModelOption | null | undefined,
+  override: string | null | undefined,
+): string | null {
+  const normalized = normalizeReasoningEffort(override);
+  if (!normalized) return null;
+  return supportedReasoningEffortValues(option).includes(normalized)
+    ? normalized
+    : null;
+}
+
+/**
+ * Strip `reasoning_effort` from a selection the selected model would reject
+ * before the selection is put on the wire (#641).
+ *
+ * Choice: when `option` is null — options still loading, catalog error, or
+ * the profile no longer listed — the override is omitted rather than
+ * forwarded. An unvalidatable value is exactly the provider-error case, so
+ * the turn safely falls back to the configured default; the persisted
+ * conversation selection is left alone for the composer to reconcile once
+ * the option resolves.
+ */
+export function dropUnvalidatedReasoningEffort<
+  T extends { reasoning_effort?: string | null },
+>(
+  selection: T | null,
+  option: ReasoningEffortModelOption | null | undefined,
+): T | null {
+  if (!selection?.reasoning_effort) return selection;
+  if (effectiveReasoningEffort(option, selection.reasoning_effort)) {
+    return selection;
+  }
+  const { reasoning_effort: _unvalidated, ...rest } = selection;
+  return rest as T;
 }

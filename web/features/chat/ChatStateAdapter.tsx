@@ -84,6 +84,15 @@ import { reconcileTurnIds } from "@/lib/turn-reconcile";
 import { decideFailedTurnReplay, isFailedTurnVisible } from "@/lib/chat-resend";
 import { shouldAppendEventContent } from "@/lib/stream";
 import { hasPendingAskUserInMessages, pendingAskUserKeyInMessages } from "@/lib/ask-user-state";
+import {
+  dropUnvalidatedReasoningEffort,
+  normalizeReasoningEffort,
+} from "@/lib/reasoning-effort";
+import {
+  readLastKnownLLMOptions,
+  sameLLMSelection,
+  type LLMOption,
+} from "@/lib/llm-options";
 import { notify } from "@/lib/notifications";
 import { forwardReaderAction } from "@/lib/reading-reader-action";
 import {
@@ -1859,15 +1868,36 @@ function asStringArray(value: unknown): string[] {
     : [];
 }
 
-function asLLMSelection(value: unknown): LLMSelection | null {
+export function asLLMSelection(value: unknown): LLMSelection | null {
   const record = asRecord(value);
   const profileId =
     typeof record?.profile_id === "string" ? record.profile_id.trim() : "";
   const modelId =
     typeof record?.model_id === "string" ? record.model_id.trim() : "";
-  return profileId && modelId
-    ? { profile_id: profileId, model_id: modelId }
-    : null;
+  if (!profileId || !modelId) return null;
+  // A persisted reasoning-effort override (#641) survives the round-trip;
+  // illegal values are dropped here rather than sent to the provider.
+  const reasoningEffort = normalizeReasoningEffort(record?.reasoning_effort);
+  return reasoningEffort
+    ? { profile_id: profileId, model_id: modelId, reasoning_effort: reasoningEffort }
+    : { profile_id: profileId, model_id: modelId };
+}
+
+/**
+ * #641: an override is only forwarded when the selected model supports it.
+ * The model option is resolved against the last-known option catalog
+ * (synchronous — never blocks or fires a request); `dropUnvalidated…`
+ * omits the override when the option is unresolved, so the turn falls back
+ * to the configured default instead of erroring at the provider.
+ */
+export function sanitizeOutgoingLLMSelection(
+  selection: LLMSelection | null,
+  options: LLMOption[] = readLastKnownLLMOptions(),
+): LLMSelection | null {
+  if (!selection?.reasoning_effort) return selection;
+  const option =
+    options.find((candidate) => sameLLMSelection(candidate, selection)) ?? null;
+  return dropUnvalidatedReasoningEffort(selection, option);
 }
 
 function normalizeSelectedBranches(value: unknown): Record<string, number> {
@@ -3059,11 +3089,16 @@ export function ChatStateAdapterProvider({
         replaySnapshot?.enabledTools ?? session.enabledTools;
       const effectiveKnowledgeBases =
         replaySnapshot?.knowledgeBases ?? session.knowledgeBases;
-      const effectiveLLMSelection =
+      // #641: a reasoning-effort override the selected model does not
+      // support (or that cannot be validated against the option catalog)
+      // never reaches the provider — it is dropped from the outgoing
+      // llm_selection, never from the persisted conversation selection.
+      const effectiveLLMSelection = sanitizeOutgoingLLMSelection(
         exactReplay ? (replaySnapshot?.llmSelection ?? null) :
         replaySnapshot && "llmSelection" in replaySnapshot
           ? (replaySnapshot.llmSelection ?? null)
-          : session.llmSelection;
+          : session.llmSelection,
+      );
       const effectiveMasteryPathId =
         exactReplay ? (replaySnapshot?.masteryPathId ?? null) :
         replaySnapshot?.masteryPathId ?? session.masteryPathId;
@@ -3616,8 +3651,10 @@ export function ChatStateAdapterProvider({
         ? {
             replay_snapshot: true,
             // The failed turn's context is replayed, but the model and the
-            // reply language are the ones selected right now (#2105).
-            llm_selection: session.llmSelection ?? null,
+            // reply language are the ones selected right now (#2105). The
+            // reasoning-effort override is validated like a live send
+            // (#641): unsupported values are omitted, not forwarded.
+            llm_selection: sanitizeOutgoingLLMSelection(session.llmSelection),
             language: session.replyLanguageOverride ?? readStoredResponseLanguage(),
           }
         : { language: readStoredResponseLanguage() },

@@ -7,6 +7,7 @@ import warnings
 
 from pydantic import BaseModel, ConfigDict, Field, StrictStr, field_validator, model_validator
 
+from deeptutor.core.reasoning_efforts import VALID_REASONING_EFFORTS, normalize_reasoning_effort
 from deeptutor.core.response_languages import validate_reply_language_override
 
 _LEGACY_RUNTIME_CONFIG_KEYS: dict[str, str] = {
@@ -29,6 +30,26 @@ class LLMSelection(BaseModel):
 
     profile_id: str
     model_id: str
+    # Per-conversation reasoning-effort override (#641). ``None``/omitted
+    # keeps the profile/model default; the wire vocabulary lives in
+    # ``deeptutor.core.reasoning_efforts`` (values only) so this validator
+    # never reaches into the service layer.
+    reasoning_effort: str | None = None
+
+    @field_validator("reasoning_effort", mode="before")
+    @classmethod
+    def _validate_reasoning_effort(cls, value: Any) -> Any:
+        # Same normalization as the service layer: trim, lowercase, and
+        # treat a blank string as "no override".
+        normalized = normalize_reasoning_effort(value)
+        if normalized is None:
+            return None
+        if normalized not in VALID_REASONING_EFFORTS:
+            raise ValueError(
+                "reasoning_effort must be one of "
+                f"{', '.join(VALID_REASONING_EFFORTS)} (got {normalized!r})"
+            )
+        return normalized
 
 
 class OutgoingAttachment(BaseModel):
