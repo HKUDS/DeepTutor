@@ -349,9 +349,20 @@ def test_file_replaced_after_read_uses_the_verified_bytes(
 
 
 def test_fifo_ranks_file_never_blocks_the_caller_or_downloads(
-    acquisition: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Any, no_network: list[str]
+    acquisition: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Any,
+    no_network: list[str],
+    registry_free_tiktoken: None,
 ) -> None:
-    """A FIFO swapped into the cache slot hangs only the daemon worker."""
+    """A FIFO swapped into the cache slot hangs only the daemon worker.
+
+    ``registry_free_tiktoken`` keeps the resident-encoding shortcut out of
+    the picture: in a full-suite run another test's ``tiktoken.get_encoding``
+    can leave a ``cl100k_base`` in tiktoken's in-process registry, and the
+    acquisition would adopt it without ever opening the FIFO — hiding the
+    very path under test here.
+    """
     pytest.importorskip("tiktoken")
     if os.name != "posix":
         pytest.skip("requires os.mkfifo")
@@ -617,20 +628,28 @@ def test_concurrent_warm_calls_yield_one_encoding(
     stub = _stub_tiktoken()
     monkeypatch.setattr(acquisition, "_import_tiktoken", lambda: stub)
     _fabricated_cache(acquisition, monkeypatch, tmp_path, b"AAAA 0\n")
-    stop_at = time.monotonic() + 0.5
+    # No fixed wall-clock window: on a slow or loaded runner the worker may
+    # publish after any chosen window, and "nobody saw it yet" says nothing
+    # about sharing. Each thread churns until it personally observes the
+    # published encoding (bounded below), so slowness only costs time.
+    deadline = time.monotonic() + 10.0
+    start = threading.Barrier(8)
 
-    def churn() -> set[int]:
-        seen: set[int] = set()
-        while time.monotonic() < stop_at:
+    def churn(mine: set[int]) -> None:
+        start.wait(10)
+        while not mine and time.monotonic() < deadline:
             encoding = token_encoding.get_local_encoding()
             if encoding is not None:
-                seen.add(id(encoding))
-        return seen
+                mine.add(id(encoding))
 
+    seen_per_thread: list[set[int]] = [set() for _ in range(8)]
     with ThreadPoolExecutor(max_workers=8) as pool:
-        seen_per_thread = list(pool.map(lambda _: churn(), range(8)))
+        list(pool.map(churn, seen_per_thread))
     every_seen = set().union(*seen_per_thread)
-    assert len(every_seen) == 1  # one shared encoding instance, ever
+    # Every caller observed exactly one shared encoding instance, ever.
+    assert len(every_seen) == 1
+    assert all(seen_per_thread), "some concurrent caller never observed the encoding"
+    assert every_seen == seen_per_thread[0]
     assert len(stub.built) == 1  # built exactly once
 
 
@@ -699,10 +718,21 @@ def test_detect_counter_name_tracks_encoding_availability(monkeypatch: pytest.Mo
 
 
 def test_real_tiktoken_cold_cache_stays_local_and_quick(
-    acquisition: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Any, no_network: list[str]
+    acquisition: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Any,
+    no_network: list[str],
+    registry_free_tiktoken: None,
 ) -> None:
     """End to end with the real tiktoken import: a cold cache yields the
-    heuristic without entering tiktoken's loader (which would download)."""
+    heuristic without entering tiktoken's loader (which would download).
+
+    ``registry_free_tiktoken`` matters in a full-suite run: another test's
+    ``tiktoken.get_encoding`` may have left a resident ``cl100k_base`` in
+    tiktoken's in-process registry, and adopting that in-memory object is
+    correct production behavior — but not what this test pins. Emptying the
+    registry isolates the cold-cache path actually under test.
+    """
     pytest.importorskip("tiktoken")
     monkeypatch.setenv("TIKTOKEN_CACHE_DIR", str(tmp_path / "cold"))
 
