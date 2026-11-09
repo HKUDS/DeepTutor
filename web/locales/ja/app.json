@@ -5141,6 +5141,8 @@
   "Other — write your own reply…": "その他 — 自分で返信を入力…",
   "Pick an option or type your own to continue.": "選択肢を選ぶか、自分で入力して続けてください。",
   "{{count}} questions — tap a tab to switch.": "{{count}}件の質問 — タブをタップして切り替えます。",
+  "settings.nav.voice": "音声",
+  "settings.nav.workspace": "ワークスペース",
   "settings.presets.title": "スタートポイント",
   "settings.presets.blurb": "確認済みのプリセットを下書きとして読み込みます。適用するまで何も変更されません。",
   "settings.presets.error": "プリセットを読み込めませんでした。",

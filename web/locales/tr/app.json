@@ -5141,6 +5141,8 @@
   "Other — write your own reply…": "Diğer: kendi cevabınızı yazın…",
   "Pick an option or type your own to continue.": "Devam etmek için bir seçenek belirleyin ya da kendi cevabınızı yazın.",
   "{{count}} questions — tap a tab to switch.": "{{count}} soru; geçiş yapmak için bir sekmeye dokunun.",
+  "settings.nav.voice": "Ses",
+  "settings.nav.workspace": "Çalışma Alanı",
   "settings.presets.title": "Başlangıç noktaları",
   "settings.presets.blurb": "İncelenmiş bir hazır ayarı taslak olarak yükleyin. Uygulayana kadar hiçbir şey değişmez.",
   "settings.presets.error": "Hazır ayarlar yüklenemedi.",
