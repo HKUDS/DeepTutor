@@ -138,6 +138,28 @@ async def test_codebuddy_provider_uses_result_when_no_assistant_text(monkeypatch
 
 
 @pytest.mark.asyncio
+async def test_codebuddy_empty_terminal_result_is_an_error_not_a_silent_stop(
+    monkeypatch,
+) -> None:
+    """Shared bridge rule: no text and no captured rejection is still an error."""
+
+    async def fake_query(**_kwargs):
+        yield SimpleNamespace(result="", is_error=False, subtype="error_max_turns")
+
+    monkeypatch.setitem(
+        sys.modules,
+        "codebuddy_agent_sdk",
+        SimpleNamespace(query=fake_query, CodeBuddyAgentOptions=FakeOptions),
+    )
+
+    response = await CodeBuddyProvider().chat([{"role": "user", "content": "ping"}])
+
+    assert response.finish_reason == "error"
+    assert response.content.strip()
+    assert "error_max_turns" in response.content
+
+
+@pytest.mark.asyncio
 async def test_codebuddy_provider_maps_sdk_mcp_tool_calls(monkeypatch) -> None:
     captured: dict[str, object] = {}
 

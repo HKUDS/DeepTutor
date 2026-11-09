@@ -70,10 +70,13 @@ async def _consume_messages(
         if on_content_delta:
             await on_content_delta(pending_result_text)
     content = "".join(chunks)
-    if not content.strip() and rejected_tool_errors:
-        # A turn the CLI ended without any model text, right after rejecting
-        # a tool call, must not look like an empty success. The final result
-        # message (e.g. a ``max_turns`` stop) carries the finish subtype.
+    if not content.strip():
+        # A terminal result with no text is never a usable answer: the turn
+        # may have died right after a rejected tool call, hit ``max_turns``,
+        # or ended on an error result that carries no text of its own.
+        # Whether or not a rejection was captured, surface the CLI's result
+        # text / finish subtype as an actionable error instead of an empty
+        # success (#2539).
         return LLMResponse(
             content=_provider_error(label, last_result_message, rejected_tool_errors),
             finish_reason="error",
@@ -314,12 +317,13 @@ def _tool_result_errors(message: Any) -> list[str]:
 
 
 def _provider_error(label: str, message: Any, rejected_tool_errors: list[str]) -> str:
-    """Operator-facing error text for a failed CLI turn; never empty.
+    """Operator-facing error text for a failed or empty CLI turn; never empty.
 
-    The CLI's error ``ResultMessage`` often carries an empty ``result`` — a
-    ``max_turns`` stop right after a rejected tool call reports nothing — so
-    the detail is assembled from whatever the turn did surface: the result
-    text, rejected ``tool_result`` blocks, then the finish subtype (#2539).
+    The CLI's terminal ``ResultMessage`` often carries an empty ``result`` —
+    an error result, a ``max_turns`` stop right after a rejected tool call,
+    or a turn that produced no text at all — so the detail is assembled from
+    whatever the turn did surface: the result text, rejected ``tool_result``
+    blocks, then the finish subtype (#2539).
     """
     result_text = _result_text(message).strip()
     subtype = _result_subtype(message)
@@ -334,5 +338,5 @@ def _provider_error(label: str, message: Any, rejected_tool_errors: list[str]) -
     if subtype.startswith("error") and not any(subtype in detail for detail in details):
         details.append(f"finish subtype: {subtype}")
     if not details:
-        details.append("the CLI returned an error result without details")
+        details.append("the CLI ended the turn without output or details")
     return f"Error calling {label}: {'; '.join(details)}"

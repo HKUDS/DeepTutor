@@ -541,10 +541,11 @@ async def test_system_prompt_advertises_mounted_tools_by_reachable_name(monkeypa
     assert "`mcp__deeptutor__get_weather`" in prompt
     assert "`get_weather`" not in prompt
     assert "mcp__deeptutor__" in prompt  # the naming rule names the exact prefix
-    # A tool that is advertised but NOT mounted keeps its bare name — the
-    # prompt must not claim a mounted name for it.
-    assert "`write_note`" in prompt
-    assert "`mcp__deeptutor__write_note`" not in prompt
+    assert "the user asks about weather" in prompt  # the mounted entry keeps its lines
+    # A tool that is advertised but NOT mounted must not be advertised at all.
+    assert "`write_note`" not in prompt
+    assert "Create an authored notebook page" not in prompt
+    assert "mcp__deeptutor__write_note" not in prompt
 
 
 @pytest.mark.asyncio
@@ -634,6 +635,27 @@ async def test_rejected_tool_call_ends_turn_with_actionable_error(monkeypatch) -
     assert response.content.strip()
     assert "No such tool available: write_note" in response.content
     assert "No such tool available: search_notes" in response.content
+    assert "error_max_turns" in response.content
+
+
+@pytest.mark.asyncio
+async def test_empty_terminal_result_without_rejection_still_reports_error(
+    monkeypatch,
+) -> None:
+    """An empty terminal result must never surface as an empty success.
+
+    With no rejected tool call captured either, the only clue is the CLI's
+    finish subtype (``error_max_turns``) — the error path must surface it.
+    """
+    _install_fake_sdk(monkeypatch)
+    FakeClient.script = [[FakeResultMessage("", is_error=False, subtype="error_max_turns")]]
+
+    response = await ClaudeCodeProvider().chat(
+        messages=[{"role": "user", "content": "hi"}], deeptutor_session_id="s1"
+    )
+
+    assert response.finish_reason == "error"
+    assert response.content.strip()
     assert "error_max_turns" in response.content
 
 
