@@ -537,3 +537,52 @@ def test_manual_service_changes_do_not_rekey_or_remove_existing_models(tmp_path)
     saved = store.save(catalog)
     saved["services"]["llm"]["profiles"][0].pop("service_overrides")
     assert saved["services"] == before
+
+
+# ── #2451 (profile side): an explicitly-set profile api_format must not be
+# silently clobbered by the linked connection's value.
+
+
+def _linked_profile_with_api_format(tmp_path, *, profile_format=None, connection_format=None):
+    store, catalog = fixture(tmp_path)
+
+
+def _linked_profile_with_api_format(tmp_path, *, profile_format=None, connection_format=None):
+    store, catalog = fixture(tmp_path)
+    # merge_registry_edit is what materializes the "account" connection the
+    # profile links to; without it saved["connections"] stays empty.
+    catalog = merge_registry_edit(catalog, provider_edit())
+    profile = catalog["services"]["llm"]["profiles"][0]
+    profile["provider_ref"] = {"connection_id": "account", "binding": "custom"}
+    if profile_format is not None:
+        profile["api_format"] = profile_format
+    saved = store.save(catalog)
+    source = next(c for c in saved["connections"] if c["id"] == "account")
+    if connection_format is not None:
+        source["api_format"] = connection_format
+    saved = store.save(saved)
+    return resolve_profile_provider(saved, "llm", saved["services"]["llm"]["profiles"][0])
+
+
+def test_profile_explicit_api_format_wins_over_connection(tmp_path):
+    resolved = _linked_profile_with_api_format(
+        tmp_path, profile_format="openai_responses", connection_format="auto"
+    )
+
+    assert resolved["api_format"] == "openai_responses"
+
+
+def test_profile_without_api_format_inherits_connection(tmp_path):
+    resolved = _linked_profile_with_api_format(
+        tmp_path, profile_format=None, connection_format="openai_responses"
+    )
+
+    assert resolved["api_format"] == "openai_responses"
+
+
+def test_api_format_defaults_to_auto_when_unset(tmp_path):
+    resolved = _linked_profile_with_api_format(
+        tmp_path, profile_format=None, connection_format=None
+    )
+
+    assert resolved["api_format"] == "auto"
