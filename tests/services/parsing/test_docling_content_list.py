@@ -1,7 +1,9 @@
 """Unit tests for the Docling → content_list block mapping (#2518).
 
-All Docling objects are duck-typed fakes — the mapper must be testable (and
-importable) without a real Docling install or model download.
+Docling objects are duck-typed fakes mirroring the real docling-core 2.106
+shapes — the mapper must be testable (and importable) without a real Docling
+install or model download. One test additionally exercises the real
+docling-core API when it is installed and skips otherwise.
 """
 
 from __future__ import annotations
@@ -106,6 +108,14 @@ class _TableData:
 
 
 class _TableItem:
+    """Duck-typed ``TableItem`` mirroring docling-core 2.106 exporters.
+
+    ``export_to_html`` returns ``""`` unless the owning document is passed
+    (the real deprecated doc-less call does exactly that), and
+    ``export_to_markdown`` accepts ``doc`` as well. ``fail_html`` simulates
+    an exporter that raises even with ``doc``.
+    """
+
     label = _Label("table")
 
     def __init__(
@@ -124,13 +134,22 @@ class _TableItem:
         self.data = _TableData(2, 3)
         self.prov = [_ProvRecord(page_no=page)]
 
-    def export_to_html(self) -> str:
+    def export_to_html(self, doc=None, add_caption: bool = True) -> str:
+        if doc is None:
+            return ""
         if self._fail_html:
             raise RuntimeError("html export unavailable")
         return self._html
 
-    def export_to_markdown(self) -> str:
+    def export_to_markdown(self, doc=None) -> str:
         return self._markdown
+
+
+class _DoclessHtmlTableItem(_TableItem):
+    """Old-shape exporter whose signature takes no ``doc`` parameter."""
+
+    def export_to_html(self) -> str:  # type: ignore[override]
+        return self._html
 
 
 class _PilImage:
@@ -233,6 +252,132 @@ def test_table_html_failure_degrades_to_markdown_text() -> None:
     blocks = build_content_list(document)
 
     assert blocks == [{"type": "text", "text": "| a |", "page_idx": 0}]
+
+
+def test_table_exporters_receive_the_owning_document() -> None:
+    """Regression (#2518): docling-core 2.106's ``export_to_html()`` returns
+    "" for the deprecated doc-less call, so the mapper must hand over the
+    owning document or every table flattens to markdown. The markdown
+    fallback exporter must receive it too."""
+    received: list[object] = []
+
+    class _TrackingTable(_TableItem):
+        def export_to_html(self, doc=None, add_caption: bool = True) -> str:
+            received.append(doc)
+            if self._fail_html:
+                raise RuntimeError("html export unavailable")
+            return self._html
+
+        def export_to_markdown(self, doc=None) -> str:
+            received.append(doc)
+            return self._markdown
+
+    document = _FakeDocument([(_TrackingTable(), 1)])
+    blocks = build_content_list(document)
+    assert received == [document]
+    assert blocks == [
+        {
+            "type": "table",
+            "table_body": "<table><tr><td>a</td></tr></table>",
+            "num_rows": 2,
+            "num_cols": 3,
+            "page_idx": 0,
+        }
+    ]
+
+    # HTML failure degrades to markdown — which still gets the document.
+    received.clear()
+    failing = _FakeDocument([(_TrackingTable(fail_html=True), 1)])
+    assert build_content_list(failing) == [{"type": "text", "text": "| a |", "page_idx": 0}]
+    assert received == [failing, failing]
+
+
+def test_docless_html_exporter_still_yields_html() -> None:
+    """An exporter whose signature takes no ``doc`` keeps working (the
+    doc-passing call degrades to a doc-less one)."""
+    document = _FakeDocument([(_DoclessHtmlTableItem(), 1)])
+
+    blocks = build_content_list(document)
+
+    assert blocks == [
+        {
+            "type": "table",
+            "table_body": "<table><tr><td>a</td></tr></table>",
+            "num_rows": 2,
+            "num_cols": 3,
+            "page_idx": 0,
+        }
+    ]
+
+
+def test_real_docling_core_table_keeps_merged_cells() -> None:
+    """End-to-end against the real docling-core API (when installed): a
+    merged header cell survives as a rowspan attribute in the table body."""
+    pytest.importorskip("docling_core.types.doc")
+    from docling_core.types.doc import (
+        BoundingBox,
+        CoordOrigin,
+        DocItemLabel,
+        DoclingDocument,
+        ProvenanceItem,
+        TableCell,
+        TableData,
+    )
+
+    document = DoclingDocument(name="merged-cell-test")
+    # 2x2 grid with a vertically merged header cell in column 0.
+    data = TableData(
+        num_rows=2,
+        num_cols=2,
+        table_cells=[
+            TableCell(
+                row_span=2,
+                start_row_offset_idx=0,
+                end_row_offset_idx=2,
+                start_col_offset_idx=0,
+                end_col_offset_idx=1,
+                text="merged",
+                column_header=True,
+            ),
+            TableCell(
+                start_row_offset_idx=0,
+                end_row_offset_idx=1,
+                start_col_offset_idx=1,
+                end_col_offset_idx=2,
+                text="top",
+                column_header=True,
+            ),
+            TableCell(
+                start_row_offset_idx=1,
+                end_row_offset_idx=2,
+                start_col_offset_idx=1,
+                end_col_offset_idx=2,
+                text="bottom",
+            ),
+        ],
+    )
+    document.add_table(
+        data=data,
+        prov=ProvenanceItem(
+            page_no=1,
+            bbox=BoundingBox(l=10.0, t=20.0, r=30.0, b=40.0, coord_origin=CoordOrigin.TOPLEFT),
+            charspan=(0, 0),
+        ),
+        label=DocItemLabel.TABLE,
+    )
+
+    # The upstream behavior this mapper defends against: the doc-less
+    # deprecated call returns "".
+    assert document.tables[0].export_to_html() == ""
+
+    blocks = build_content_list(document)
+
+    (table_block,) = (block for block in blocks if block["type"] == "table")
+    assert '<th rowspan="2">merged</th>' in table_block["table_body"]
+    assert table_block["num_rows"] == 2
+    assert table_block["num_cols"] == 2
+    assert table_block["page_idx"] == 0
+    assert table_block["bbox"] == [10.0, 20.0, 30.0, 40.0]
 
 
 def test_picture_crop_saved_and_referenced(tmp_path: Path) -> None:
@@ -468,6 +613,73 @@ def test_list_block_bbox_union_keeps_bottomleft_orientation() -> None:
     ]
 
 
+# ---------------------------------------------------------------------------
+# List grouping across known/unknown page transitions (#2518 regression)
+# ---------------------------------------------------------------------------
+
+
+def test_list_unknown_then_known_pages_never_merge() -> None:
+    """Regression: [unknown, page1, page2] used to merge into one block with
+    combined coordinates because a ``None`` pending page disabled the page
+    check. Every known/unknown transition must flush."""
+    document = _FakeDocument(
+        [
+            (_TextItem("list_item", "mystery", prov=None), 2),
+            (_TextItem("list_item", "p1", page=1, bbox=_BBox(1, 2, 3, 4)), 2),
+            (_TextItem("list_item", "p2", page=2, bbox=_BBox(5, 6, 7, 8)), 2),
+        ]
+    )
+
+    assert build_content_list(document) == [
+        {"type": "list", "list_items": ["mystery"]},
+        {"type": "list", "list_items": ["p1"], "page_idx": 0, "bbox": [1.0, 2.0, 3.0, 4.0]},
+        {"type": "list", "list_items": ["p2"], "page_idx": 1, "bbox": [5.0, 6.0, 7.0, 8.0]},
+    ]
+
+
+def test_list_known_unknown_known_split_into_three_blocks() -> None:
+    """[p1, unknown, p1] flushes on both transitions — the trailing p1 never
+    merges back into the first group."""
+    document = _FakeDocument(
+        [
+            (_TextItem("list_item", "p1", page=1), 2),
+            (_TextItem("list_item", "mystery", prov=None), 2),
+            (_TextItem("list_item", "p1-again", page=1), 2),
+        ]
+    )
+
+    assert build_content_list(document) == [
+        {"type": "list", "list_items": ["p1"], "page_idx": 0},
+        {"type": "list", "list_items": ["mystery"]},
+        {"type": "list", "list_items": ["p1-again"], "page_idx": 0},
+    ]
+
+
+def test_list_consecutive_unknown_items_stay_one_block() -> None:
+    document = _FakeDocument(
+        [
+            (_TextItem("list_item", "one", prov=None), 2),
+            (_TextItem("list_item", "two", prov=[]), 2),
+        ]
+    )
+
+    assert build_content_list(document) == [{"type": "list", "list_items": ["one", "two"]}]
+
+
+def test_list_known_then_unknown_flushes() -> None:
+    document = _FakeDocument(
+        [
+            (_TextItem("list_item", "p2", page=2, bbox=_BBox(9, 9, 9, 9)), 2),
+            (_TextItem("list_item", "mystery", prov=None), 2),
+        ]
+    )
+
+    assert build_content_list(document) == [
+        {"type": "list", "list_items": ["p2"], "page_idx": 1, "bbox": [9.0, 9.0, 9.0, 9.0]},
+        {"type": "list", "list_items": ["mystery"]},
+    ]
+
+
 def test_code_items_carry_code_body() -> None:
     document = _FakeDocument([(_TextItem("code", "print('hi')"), 1)])
 
@@ -673,7 +885,7 @@ def test_local_signature_tracks_content_list_schema(monkeypatch: pytest.MonkeyPa
 
     parser = factory.get_parser("docling")
 
-    assert docling_engine.CONTENT_LIST_SCHEMA_VERSION == 2
+    assert docling_engine.CONTENT_LIST_SCHEMA_VERSION == 3
     local_before = parser.signature(DoclingConfig(mode="local")).hash()
     remote_config = DoclingConfig(mode="remote", api_base_url="http://host:5001")
     remote_before = parser.signature(remote_config).hash()

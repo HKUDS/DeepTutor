@@ -13,12 +13,14 @@ module walks the body layer and emits MinerU-shaped blocks:
 * ``formula`` → ``{"type": "equation", "text": <LaTeX>}`` — only when Docling
   actually produced the LaTeX (formula enrichment); LaTeX is never invented
 * ``table`` → ``{"type": "table", "table_body": <html>, …}`` via
-  ``TableItem.export_to_html()`` so merged cells survive serialization
+  ``TableItem.export_to_html(doc=document)`` so merged cells survive
+  serialization (docling-core returns "" for the doc-less deprecated call)
 * ``picture`` → ``{"type": "image", "img_path": "images/…", …}`` with the
   crop saved beside the content list (requires ``generate_picture_images``);
   pictures without a crop are skipped rather than emitted unresolvable
 * ``list_item`` runs → ``{"type": "list", "list_items": […]}`` — one block
-  per page, with a bbox covering every grouped item
+  per page (or per run of items with unknown provenance), with a bbox
+  covering every grouped item
 * ``code`` → ``{"type": "code", "code_body": …}``
 
 Page chrome (``page_header`` / ``page_footer`` / ``page_number``) never
@@ -55,7 +57,11 @@ logger = logging.getLogger(__name__)
 # v2: read Docling's list-shaped provenance (``page_no`` + per-record
 # bboxes) and split list groups per page with union bboxes — v1 caches carry
 # wrong page_idx/bbox coordinates.
-CONTENT_LIST_SCHEMA_VERSION = 2
+# v3: pass ``doc`` to the table exporters so tables carry real HTML with
+# merged-cell spans (v2 caches hold flattened markdown), and split list
+# groups on known/unknown page transitions (v2 caches hold merged groups
+# with cross-page bboxes).
+CONTENT_LIST_SCHEMA_VERSION = 3
 
 CONTENT_LIST_SUFFIX = "_content_list.json"
 IMAGES_DIRNAME = "images"
@@ -177,20 +183,39 @@ def _caption_texts(item: Any, document: Any) -> list[str]:
     return captions
 
 
+def _export_with_doc(item: Any, attr: str, document: Any) -> str:
+    """Call ``item.<attr>(doc=document)``, tolerating doc-less exporters.
+
+    docling-core's table exporters need the owning document: without
+    ``doc``, ``export_to_html()`` is deprecated and returns ``""`` (observed
+    on 2.106), and ``export_to_markdown()`` falls back to a flattened
+    tabulate export. An exporter without the parameter (older shapes,
+    fakes) is retried doc-less; any failure yields ``""`` so callers can
+    degrade instead of losing the parse.
+    """
+    export = getattr(item, attr, None)
+    if not callable(export):
+        return ""
+    try:
+        return str(export(doc=document) or "").strip()
+    except TypeError:
+        try:
+            return str(export() or "").strip()
+        except Exception:  # noqa: BLE001 - a broken export must not kill the parse
+            return ""
+    except Exception:  # noqa: BLE001 - a broken export must not kill the parse
+        return ""
+
+
 def _table_block(item: Any, document: Any, base: dict[str, Any]) -> Optional[dict[str, Any]]:
     """A table block carrying HTML so merged header cells survive.
 
-    Falls back to the flattened markdown export as a plain text block —
-    never drops the content — and returns ``None`` when nothing is
-    extractable.
+    Both exporters are handed ``doc=document`` — without it docling-core's
+    HTML export returns ``""`` and the markdown export flattens spans.
+    Falls back to that flattened markdown as a plain text block — never
+    drops the content — and returns ``None`` when nothing is extractable.
     """
-    html = ""
-    export_html = getattr(item, "export_to_html", None)
-    if callable(export_html):
-        try:
-            html = str(export_html() or "").strip()
-        except Exception:  # noqa: BLE001 - degrade to the markdown export
-            html = ""
+    html = _export_with_doc(item, "export_to_html", document)
     if html:
         block: dict[str, Any] = {"type": "table", "table_body": html}
         data = getattr(item, "data", None)
@@ -206,13 +231,7 @@ def _table_block(item: Any, document: Any, base: dict[str, Any]) -> Optional[dic
             block["table_caption"] = captions
         block.update(base)
         return block
-    export_markdown = getattr(item, "export_to_markdown", None)
-    markdown = ""
-    if callable(export_markdown):
-        try:
-            markdown = str(export_markdown() or "").strip()
-        except Exception:  # noqa: BLE001 - a broken table must not kill the parse
-            markdown = ""
+    markdown = _export_with_doc(item, "export_to_markdown", document)
     if markdown:
         return {"type": "text", "text": markdown, **base}
     return None
@@ -312,14 +331,13 @@ def build_content_list(
             text = _item_text(node)
             if not text:
                 continue
-            if (
-                pending_items
-                and page_idx is not None
-                and pending_page_idx is not None
-                and page_idx != pending_page_idx
-            ):
-                # Consecutive list items never merge across a page break:
-                # one block per page, each with that page's coordinates.
+            if pending_items and pending_page_idx != page_idx:
+                # Consecutive list items never merge across a page break or
+                # across a known/unknown provenance transition: one block
+                # per page (or per unknown run), each with its own
+                # coordinates. Comparing against ``pending_page_idx`` even
+                # when it is ``None`` is what splits a group that started
+                # with an unknown-provenance item.
                 flush_list()
             if not pending_items:
                 pending_page_idx = page_idx
