@@ -243,6 +243,9 @@ def test_quiz_crosses_the_api_boundary_with_stored_text(monkeypatch, tmp_path):
     body = response.json()
     assert body["type"] == "quiz"
     assert len(body["payload"]["questions"]) == 3
+    for question in body["payload"]["questions"]:
+        assert set(question) == {"id", "prompt", "choices", "can_answer"}
+        assert question["can_answer"] is True
     assert len(calls) == 2
     prompt = json.loads(calls[1]["prompt"])
     assert prompt["selection"] == "verified phrase supports the answer"

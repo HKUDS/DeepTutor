@@ -34,13 +34,13 @@ beforeEach(() => {
           id: "quiz-1",
           prompt: "Which ocean?",
           choices: ["Pacific", "Atlantic"],
-          correct_choice_index: 1,
+          can_answer: true,
         },
       ],
     },
   });
 });
-it("waits for saving, uses the server verdict, and preserves the original locator after scrolling", async () => {
+it("answers a quiz without an answer key, waits for the server verdict, and preserves the locator", async () => {
   const onError = vi.fn();
   let finish!: (value: Awaited<ReturnType<typeof submitReadingQuizAnswers>>) => void;
   vi.mocked(submitReadingQuizAnswers).mockImplementation(
@@ -54,6 +54,8 @@ it("waits for saving, uses the server verdict, and preserves the original locato
   );
   fireEvent.click(await screen.findByRole("button", { name: "Quiz me" }));
   const answer = await screen.findByRole("button", { name: "B. Atlantic" });
+  expect(screen.queryByText("Correct")).not.toBeInTheDocument();
+  expect(screen.queryByText("Incorrect")).not.toBeInTheDocument();
   view.rerender(<ReadingExtensionBar materialId="material-1" locator={9} onError={onError} />);
   fireEvent.click(answer);
   expect(answer).toBeDisabled();
@@ -72,6 +74,30 @@ it("waits for saving, uses the server verdict, and preserves the original locato
   expect(await screen.findByText("Incorrect")).toBeInTheDocument();
   expect(answer).not.toBeDisabled();
   expect(onError).not.toHaveBeenCalled();
+});
+
+it("keeps display-only questions visible without offering a submission", async () => {
+  vi.mocked(runReadingExtension).mockResolvedValueOnce({
+    type: "quiz",
+    title: "",
+    message: "",
+    payload: {
+      questions: [
+        {
+          id: "display-only",
+          prompt: "Which ocean?",
+          choices: ["Pacific", "Atlantic"],
+          can_answer: false,
+        },
+      ],
+    },
+  });
+  render(<ReadingExtensionBar materialId="material-1" locator={4} onError={vi.fn()} />);
+  fireEvent.click(await screen.findByRole("button", { name: "Quiz me" }));
+  expect(await screen.findByText("Which ocean?")).toBeInTheDocument();
+  expect(screen.getByText("Atlantic")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "B. Atlantic" })).not.toBeInTheDocument();
+  expect(submitReadingQuizAnswers).not.toHaveBeenCalled();
 });
 it("keeps a failed answer retryable without showing a successful grade", async () => {
   const onError = vi.fn();

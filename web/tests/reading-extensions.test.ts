@@ -142,7 +142,7 @@ test("the built-in reading-quiz action is localized", () => {
 });
 
 test("reading quizzes reveal grading only after the learner answers", () => {
-  assert.match(component, /correct_choice_index\?: number/);
+  assert.doesNotMatch(component, /correct_choice_index/);
   assert.match(component, /const \[answers, setAnswers\] = useState/);
   assert.match(component, /aria-pressed=\{selected === choiceIndex\}/);
   assert.match(component, /verdicts\[key\]/);
