@@ -6597,5 +6597,10 @@
   "Quiz records need migration before they can be reported. Viewing this report does not migrate them.": "测验记录需要先完成格式迁移才能显示；查看报告不会自动迁移。",
   "Reading records have not been initialized.": "尚未建立阅读记录。",
   "Quiz records have not been initialized.": "尚未建立测验记录。",
-  "Reading material {{id}}": "阅读材料 {{id}}"
+  "Reading material {{id}}": "阅读材料 {{id}}",
+  "Question-linked help history": "单题帮助历史",
+  "Help may occur before or after an answer; it does not change earlier attempt records.": "帮助可能发生在作答前或作答后，不会改写之前的作答记录。",
+  "Showing {{shown}} of {{total}} help records": "显示 {{total}} 条帮助记录中的 {{shown}} 条",
+  "Reading section {{section}}": "阅读段落 {{section}}",
+  "Question-linked help history is unavailable in this version.": "当前版本无法提供单题帮助历史。"
 }

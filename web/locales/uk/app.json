@@ -6619,5 +6619,10 @@
   "Quiz records need migration before they can be reported. Viewing this report does not migrate them.": "Для відображення у звіті записи тестів потребують міграції. Перегляд цього звіту не виконує міграцію.",
   "Reading records have not been initialized.": "Записи читання ще не ініціалізовано.",
   "Quiz records have not been initialized.": "Записи тестів ще не ініціалізовано.",
-  "Reading material {{id}}": "Матеріал для читання {{id}}"
+  "Reading material {{id}}": "Матеріал для читання {{id}}",
+  "Question-linked help history": "Історія допомоги до запитань",
+  "Help may occur before or after an answer; it does not change earlier attempt records.": "Допомогу можна отримати до або після відповіді; вона не змінює записи попередніх спроб.",
+  "Showing {{shown}} of {{total}} help records": "Показано {{shown}} із {{total}} записів допомоги",
+  "Reading section {{section}}": "Розділ читання {{section}}",
+  "Question-linked help history is unavailable in this version.": "Історія допомоги до запитань недоступна в цій версії."
 }

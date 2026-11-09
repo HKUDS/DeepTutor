@@ -24,6 +24,14 @@ _QUIZ_FIELDS = (
     "attempt_count",
     "updated_at",
 )
+_HELP_FIELDS = (
+    "material_id",
+    "locator",
+    "question_id",
+    "question",
+    "help_kind",
+    "created_at",
+)
 _PROGRESS_FIELDS = (
     "material_id",
     "latest_locator",
@@ -60,6 +68,9 @@ def _read_report(paths: Any) -> dict[str, Any]:
     result: dict[str, Any] = {
         "reading_status": "not_initialized",
         "quiz_status": "not_initialized",
+        "help_status": "unavailable",
+        "help_total": 0,
+        "help_events": [],
         "progress_total": 0,
         "progress": [],
         "activities": [],
@@ -105,6 +116,23 @@ def _read_report(paths: Any) -> dict[str, Any]:
     chat_db = paths.get_chat_history_db()
     if chat_db.exists():
         with closing(_open_readonly(chat_db)) as conn:
+            conn.execute("BEGIN")
+            # Optional additive evidence from question-linked help. An older
+            # account remains readable; viewing reports never creates this table.
+            if _has_columns(conn, "reading_quiz_help_events", _HELP_FIELDS + ("request_id",)):
+                result["help_status"] = "available"
+                result["help_total"] = conn.execute(
+                    "SELECT COUNT(*) FROM reading_quiz_help_events"
+                ).fetchone()[0]
+                result["help_events"] = [
+                    dict(row)
+                    for row in conn.execute(
+                        "SELECT material_id, locator, question_id, question, help_kind, created_at "
+                        "FROM reading_quiz_help_events "
+                        "ORDER BY created_at DESC, material_id, locator, question_id, request_id LIMIT ?",
+                        (_LIMIT,),
+                    )
+                ]
             if not (
                 _has_columns(
                     conn, "notebook_entries", _QUIZ_FIELDS + ("source", "session_id", "created_at")
@@ -115,7 +143,6 @@ def _read_report(paths: Any) -> dict[str, Any]:
             else:
                 # Match the Question Bank's source and recycle-bin visibility.
                 where = "n.source = ? AND NOT EXISTS (SELECT 1 FROM sessions s WHERE s.id = n.session_id AND s.deleted_at IS NOT NULL)"
-                conn.execute("BEGIN")
                 result["quiz_status"] = "available"
                 result["quiz_total"] = conn.execute(
                     "SELECT COUNT(*) FROM notebook_entries n WHERE " + where,
@@ -135,13 +162,14 @@ def _read_report(paths: Any) -> dict[str, Any]:
                         None if item["is_correct"] is None else bool(item["is_correct"])
                     )
                     result["quizzes"].append(item)
-    for item in result["progress"]:
+    titled_items = result["progress"] + result["help_events"]
+    for item in titled_items:
         item["material_title"] = ""
     catalog = paths.get_workspace_dir() / "reading" / "_catalog.sqlite3"
-    if result["progress"] and catalog.exists():
+    if titled_items and catalog.exists():
         with closing(_open_readonly(catalog)) as conn:
             if _has_columns(conn, "reading_materials", ("material_id", "title", "filename")):
-                for item in result["progress"]:
+                for item in titled_items:
                     row = conn.execute(
                         "SELECT title, filename FROM reading_materials WHERE material_id = ?",
                         (item["material_id"],),

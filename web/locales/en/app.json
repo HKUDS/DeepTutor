@@ -6597,5 +6597,10 @@
   "Quiz records need migration before they can be reported. Viewing this report does not migrate them.": "Quiz records need migration before they can be reported. Viewing this report does not migrate them.",
   "Reading records have not been initialized.": "Reading records have not been initialized.",
   "Quiz records have not been initialized.": "Quiz records have not been initialized.",
-  "Reading material {{id}}": "Reading material {{id}}"
+  "Reading material {{id}}": "Reading material {{id}}",
+  "Question-linked help history": "Question-linked help history",
+  "Help may occur before or after an answer; it does not change earlier attempt records.": "Help may occur before or after an answer; it does not change earlier attempt records.",
+  "Showing {{shown}} of {{total}} help records": "Showing {{shown}} of {{total}} help records",
+  "Reading section {{section}}": "Reading section {{section}}",
+  "Question-linked help history is unavailable in this version.": "Question-linked help history is unavailable in this version."
 }

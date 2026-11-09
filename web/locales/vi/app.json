@@ -6597,5 +6597,10 @@
   "Quiz records need migration before they can be reported. Viewing this report does not migrate them.": "Cần chuyển đổi dữ liệu kiểm tra trước khi hiển thị trong báo cáo. Xem báo cáo này không thực hiện việc chuyển đổi.",
   "Reading records have not been initialized.": "Dữ liệu đọc chưa được khởi tạo.",
   "Quiz records have not been initialized.": "Dữ liệu kiểm tra chưa được khởi tạo.",
-  "Reading material {{id}}": "Tài liệu đọc {{id}}"
+  "Reading material {{id}}": "Tài liệu đọc {{id}}",
+  "Question-linked help history": "Lịch sử trợ giúp theo câu hỏi",
+  "Help may occur before or after an answer; it does not change earlier attempt records.": "Trợ giúp có thể diễn ra trước hoặc sau câu trả lời; việc này không thay đổi bản ghi các lần làm bài trước.",
+  "Showing {{shown}} of {{total}} help records": "Hiển thị {{shown}} trong {{total}} bản ghi trợ giúp",
+  "Reading section {{section}}": "Phần đọc {{section}}",
+  "Question-linked help history is unavailable in this version.": "Phiên bản này chưa cung cấp lịch sử trợ giúp theo câu hỏi."
 }

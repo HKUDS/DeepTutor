@@ -51,3 +51,31 @@ it("distinguishes two materials that have no quiz records", () => {
   expect(screen.getByText("First lesson")).toBeTruthy();
   expect(screen.getByText("Reading material second")).toBeTruthy();
 });
+
+
+it("shows durable help without requiring a later quiz answer", () => {
+  const value = report();
+  value.quizzes = [];
+  value.quiz_total = 0;
+  value.help_status = "available";
+  value.help_total = 51;
+  value.help_events = [{ material_id: "help-only", material_title: "Help lesson", locator: 3,
+    question_id: "unanswered", question: "Unanswered question", help_kind: "vocabulary:explain", created_at: 1794153600 }];
+  render(<GuardianReadingReport reading={value} />);
+  expect(screen.getByText("Unanswered question")).toBeTruthy();
+  expect(screen.getByText("Showing 1 of 51 help records")).toBeTruthy();
+  expect(screen.getByText(/Help lesson/).textContent).toContain("Reading section 3");
+  expect(screen.getByText(/Help lesson/).textContent).toContain("Explain vocabulary");
+  expect(screen.getByText("Help may occur before or after an answer; it does not change earlier attempt records.")).toBeTruthy();
+  expect(screen.queryByRole("button")).toBeNull();
+});
+
+it("distinguishes unavailable help history from available zero events", () => {
+  const value = report();
+  const view = render(<GuardianReadingReport reading={value} />);
+  expect(screen.getByText("Question-linked help history is unavailable in this version.")).toBeTruthy();
+  expect(screen.queryByText(/of 0 help records/)).toBeNull();
+  view.rerender(<GuardianReadingReport reading={{ ...value, help_status: "available", help_total: 0, help_events: [] }} />);
+  expect(screen.getByText("Showing 0 of 0 help records")).toBeTruthy();
+  expect(screen.queryByText("Question-linked help history is unavailable in this version.")).toBeNull();
+});

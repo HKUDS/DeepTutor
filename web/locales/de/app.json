@@ -6597,5 +6597,10 @@
   "Quiz records need migration before they can be reported. Viewing this report does not migrate them.": "Quizaufzeichnungen müssen vor der Anzeige migriert werden. Das Öffnen dieses Berichts führt keine Migration durch.",
   "Reading records have not been initialized.": "Leseaufzeichnungen wurden noch nicht initialisiert.",
   "Quiz records have not been initialized.": "Quizaufzeichnungen wurden noch nicht initialisiert.",
-  "Reading material {{id}}": "Lesematerial {{id}}"
+  "Reading material {{id}}": "Lesematerial {{id}}",
+  "Question-linked help history": "Aufgabenbezogener Hilfeverlauf",
+  "Help may occur before or after an answer; it does not change earlier attempt records.": "Hilfe kann vor oder nach einer Antwort erfolgen; frühere Antwortversuche werden dadurch nicht verändert.",
+  "Showing {{shown}} of {{total}} help records": "{{shown}} von {{total}} Hilfeeinträgen werden angezeigt",
+  "Reading section {{section}}": "Leseabschnitt {{section}}",
+  "Question-linked help history is unavailable in this version.": "Der aufgabenbezogene Hilfeverlauf ist in dieser Version nicht verfügbar."
 }

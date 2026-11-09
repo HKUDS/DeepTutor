@@ -86,6 +86,7 @@ def test_readonly_projection_filters_source_and_recycled_entries_limits_and_coun
 def test_uses_verified_learner_scope_not_another_accounts_store(tmp_path, monkeypatch):
     for name in ("learner", "guardian", "other"):
         seed(tmp_path / name, name)
+        seed_help(tmp_path / name, name)
     calls = []
     monkeypatch.setattr(
         guardian_reading, "scope_for_user", lambda uid, **kw: calls.append((uid, kw)) or uid
@@ -96,6 +97,7 @@ def test_uses_verified_learner_scope_not_another_accounts_store(tmp_path, monkey
     result = asyncio.run(guardian_reading.reading_report_for("learner"))
     assert calls == [("learner", {"is_admin": False})]
     assert all(q["material_title"] == "learner" for q in result["quizzes"])
+    assert result["help_events"][0]["question"] == "learner 0"
 
 
 def test_uninitialized_report_creates_no_files_or_directories(tmp_path):
@@ -163,3 +165,101 @@ def test_material_title_comes_from_catalog_without_any_quiz(tmp_path):
     result = guardian_reading._read_report(paths_at(tmp_path / "learner"))
     assert result["quizzes"] == []
     assert result["progress"][0]["material_title"] == "Current lesson title"
+
+
+def seed_help(root: Path, label: str, count: int = 1):
+    with sqlite3.connect(root / "chat.db") as db:
+        db.execute("""CREATE TABLE reading_quiz_help_events (
+            material_id TEXT, locator INTEGER, question_id TEXT, request_id TEXT,
+            help_kind TEXT, question TEXT, created_at REAL,
+            answer_key TEXT, selected_text TEXT, model_output TEXT)""")
+        for i in range(count):
+            db.execute(
+                "INSERT INTO reading_quiz_help_events VALUES (?,?,?,?,?,?,?,?,?,?)",
+                (
+                    "material",
+                    2,
+                    f"q{i}",
+                    f"private-request-{i}",
+                    "guided_learning:guide",
+                    f"{label} {i}",
+                    i,
+                    "secret key",
+                    "secret selection",
+                    "secret output",
+                ),
+            )
+
+
+def test_help_without_answers_remains_visible_bounded_and_readonly(tmp_path):
+    root = tmp_path / "learner"
+    seed(root, "Learner")
+    seed_help(root, "Help question", 52)
+    with sqlite3.connect(root / "chat.db") as db:
+        db.execute("DELETE FROM notebook_entries")
+    before = snapshot(tmp_path)
+    result = guardian_reading._read_report(paths_at(root))
+    assert result["quizzes"] == []
+    assert result["help_status"] == "available"
+    assert result["help_total"] == 52
+    assert len(result["help_events"]) == 50
+    assert result["help_events"][0]["question"] == "Help question 51"
+    assert result["help_events"][0]["help_kind"] == "guided_learning:guide"
+    assert "secret" not in str(result)
+    assert "private-request" not in str(result)
+    assert set(result["help_events"][0]) == {
+        "material_id",
+        "material_title",
+        "locator",
+        "question_id",
+        "question",
+        "help_kind",
+        "created_at",
+    }
+    assert snapshot(tmp_path) == before
+
+
+def test_missing_help_table_is_unavailable_not_a_zero_record_claim(tmp_path):
+    root = tmp_path / "learner"
+    seed(root, "Learner")
+    before = snapshot(tmp_path)
+    result = guardian_reading._read_report(paths_at(root))
+    assert result["quiz_status"] == "available"
+    assert result["help_status"] == "unavailable"
+    assert snapshot(tmp_path) == before
+    seed_help(root, "Help", 0)
+    result = guardian_reading._read_report(paths_at(root))
+    assert result["help_status"] == "available"
+    assert result["help_total"] == 0
+
+
+def test_partial_help_schema_is_unavailable_without_migrating_or_hiding_quizzes(tmp_path):
+    root = tmp_path / "learner"
+    seed(root, "Learner")
+    with sqlite3.connect(root / "chat.db") as db:
+        db.execute("CREATE TABLE reading_quiz_help_events(question_id TEXT)")
+    before = snapshot(tmp_path)
+    result = guardian_reading._read_report(paths_at(root))
+    assert result["help_status"] == "unavailable"
+    assert result["quiz_status"] == "available"
+    assert snapshot(tmp_path) == before
+
+
+def test_help_material_title_without_progress_or_answer(tmp_path):
+    root = tmp_path / "learner"
+    seed(root, "Learner")
+    seed_help(root, "Unanswered question")
+    with sqlite3.connect(root / "chat.db") as db:
+        db.execute("DELETE FROM notebook_entries")
+    with sqlite3.connect(root / "workspace/learning/mastery/mastery.sqlite3") as db:
+        db.execute("DELETE FROM reading_progress")
+    catalog = root / "workspace/reading"
+    catalog.mkdir()
+    with sqlite3.connect(catalog / "_catalog.sqlite3") as db:
+        db.execute("CREATE TABLE reading_materials(material_id TEXT, title TEXT, filename TEXT)")
+        db.execute(
+            "INSERT INTO reading_materials VALUES ('material', 'Synthetic lesson', 'file.txt')"
+        )
+    result = guardian_reading._read_report(paths_at(root))
+    assert result["progress"] == result["quizzes"] == []
+    assert result["help_events"][0]["material_title"] == "Synthetic lesson"

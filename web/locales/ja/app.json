@@ -6597,5 +6597,10 @@
   "Quiz records need migration before they can be reported. Viewing this report does not migrate them.": "クイズ記録の表示には移行が必要です。このレポートを閲覧しても移行は行われません。",
   "Reading records have not been initialized.": "読書記録はまだ初期化されていません。",
   "Quiz records have not been initialized.": "クイズ記録はまだ初期化されていません。",
-  "Reading material {{id}}": "読書教材 {{id}}"
+  "Reading material {{id}}": "読書教材 {{id}}",
+  "Question-linked help history": "問題別のヘルプ履歴",
+  "Help may occur before or after an answer; it does not change earlier attempt records.": "ヘルプは回答の前後に利用できます。過去の回答記録は変更されません。",
+  "Showing {{shown}} of {{total}} help records": "ヘルプ記録 {{total}} 件中 {{shown}} 件を表示",
+  "Reading section {{section}}": "読書セクション {{section}}",
+  "Question-linked help history is unavailable in this version.": "このバージョンでは問題別のヘルプ履歴を利用できません。"
 }

@@ -26,6 +26,17 @@ export interface GuardianReport {
 }
 
 export interface GuardianReadingSummary {
+  help_status?: "available" | "unavailable";
+  help_total?: number;
+  help_events?: Array<{
+    material_id: string;
+    material_title?: string;
+    locator: number;
+    question_id: string;
+    question: string;
+    help_kind: string;
+    created_at: number;
+  }>;
   reading_status: "available" | "not_initialized" | "migration_required";
   quiz_status: "available" | "not_initialized" | "migration_required";
   progress_total: number;

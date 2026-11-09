@@ -6597,5 +6597,10 @@
   "Quiz records need migration before they can be reported. Viewing this report does not migrate them.": "Test kayıtlarının raporlanmadan önce taşınması gerekir. Bu raporu görüntülemek taşıma işlemini gerçekleştirmez.",
   "Reading records have not been initialized.": "Okuma kayıtları henüz başlatılmadı.",
   "Quiz records have not been initialized.": "Test kayıtları henüz başlatılmadı.",
-  "Reading material {{id}}": "Okuma materyali {{id}}"
+  "Reading material {{id}}": "Okuma materyali {{id}}",
+  "Question-linked help history": "Soruya bağlı yardım geçmişi",
+  "Help may occur before or after an answer; it does not change earlier attempt records.": "Yardım, yanıttan önce veya sonra alınabilir; önceki deneme kayıtlarını değiştirmez.",
+  "Showing {{shown}} of {{total}} help records": "{{total}} yardım kaydından {{shown}} tanesi gösteriliyor",
+  "Reading section {{section}}": "Okuma bölümü {{section}}",
+  "Question-linked help history is unavailable in this version.": "Bu sürümde soruya bağlı yardım geçmişi kullanılamıyor."
 }

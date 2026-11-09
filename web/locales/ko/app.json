@@ -613,5 +613,10 @@
   "Quiz records need migration before they can be reported. Viewing this report does not migrate them.": "퀴즈 기록을 표시하려면 마이그레이션이 필요합니다. 이 보고서를 보는 것만으로는 마이그레이션되지 않습니다.",
   "Reading records have not been initialized.": "읽기 기록이 아직 초기화되지 않았습니다.",
   "Quiz records have not been initialized.": "퀴즈 기록이 아직 초기화되지 않았습니다.",
-  "Reading material {{id}}": "읽기 자료 {{id}}"
+  "Reading material {{id}}": "읽기 자료 {{id}}",
+  "Question-linked help history": "문제별 도움 기록",
+  "Help may occur before or after an answer; it does not change earlier attempt records.": "도움은 답변 전후에 받을 수 있으며 이전 답변 기록을 변경하지 않습니다.",
+  "Showing {{shown}} of {{total}} help records": "도움 기록 {{total}}개 중 {{shown}}개 표시",
+  "Reading section {{section}}": "읽기 섹션 {{section}}",
+  "Question-linked help history is unavailable in this version.": "이 버전에서는 문제별 도움 기록을 사용할 수 없습니다."
 }
