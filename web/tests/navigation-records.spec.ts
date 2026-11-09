@@ -47,6 +47,78 @@ it('retains duplicate question IDs from distinct workspaces and preserves exact 
   expect(sources.practice?.[0].question).toBe('Original question')
 })
 
+it('collapses the questions of one practice session into a single expandable row', () => {
+  const sources: LearningSources = {
+    books: [],
+    mastery: [],
+    reading: [],
+    watching: [],
+    practice: [
+      { id: 3, question: 'Q3', created_at: 1, updated_at: 30, session_id: 'set-1', session_title: 'Physics set', content_workspace_id: '' },
+      { id: 2, question: 'Q2', created_at: 2, updated_at: 20, session_id: 'set-1', session_title: 'Physics set', content_workspace_id: '' },
+      { id: 1, question: 'Q1', created_at: 3, updated_at: 10, session_id: 'set-1', session_title: 'Physics set', content_workspace_id: '' },
+    ],
+  }
+  const rows = allLearningActivity(sources)
+  expect(rows).toHaveLength(1)
+  const group = rows[0]
+  expect(group.title).toBe('Physics set')
+  expect(group.count).toBe(3)
+  expect(group.updatedAt).toBe(30)
+  expect(group.createdAt).toBe(1)
+  expect(group.href).toBe('/learning/practice?dt_workspace=')
+  // The questions stay reachable from the group, newest first, each on its own link.
+  expect(group.children?.map(child => child.title)).toEqual(['Q3', 'Q2', 'Q1'])
+  expect(group.children?.map(child => child.href)).toEqual([
+    '/learning/practice?question=3&dt_workspace=',
+    '/learning/practice?question=2&dt_workspace=',
+    '/learning/practice?question=1&dt_workspace=',
+  ])
+})
+
+it('keeps practice entries without a shared session as individual rows', () => {
+  const sources: LearningSources = {
+    books: [],
+    mastery: [],
+    reading: [],
+    watching: [],
+    practice: [
+      { id: 1, question: 'Loose question', created_at: 1, updated_at: 10, content_workspace_id: '' },
+      { id: 2, question: 'Only one in its session', created_at: 2, updated_at: 20, session_id: 'solo-1', session_title: 'Solo', content_workspace_id: '' },
+    ],
+  }
+  const rows = allLearningActivity(sources)
+  expect(rows.map(row => row.title)).toEqual(['Only one in its session', 'Loose question'])
+  expect(rows.every(row => row.count === undefined && row.children === undefined)).toBe(true)
+  expect(rows.map(row => row.href)).toEqual([
+    '/learning/practice?question=2&dt_workspace=',
+    '/learning/practice?question=1&dt_workspace=',
+  ])
+})
+
+it('falls back to the newest question when a session has no title, and never merges workspaces', () => {
+  const sources: LearningSources = {
+    books: [],
+    mastery: [],
+    reading: [],
+    watching: [],
+    practice: [
+      { id: 1, question: 'Older', created_at: 1, updated_at: 10, session_id: 'set-1', session_title: '', content_workspace_id: '' },
+      { id: 2, question: 'Newer', created_at: 2, updated_at: 20, session_id: 'set-1', session_title: '', content_workspace_id: '' },
+      { id: 3, question: 'Elsewhere', created_at: 3, updated_at: 30, session_id: 'set-1', session_title: '', content_workspace_id: 'ws_other' },
+    ],
+  }
+  const rows = allLearningActivity(sources)
+  expect(rows).toHaveLength(2)
+  const untitled = rows.find(row => row.key === 'practice::session:set-1')
+  expect(untitled?.title).toBe('Newer')
+  expect(untitled?.count).toBe(2)
+  // The same session id in another workspace is not the same practice set.
+  const other = rows.find(row => row.key === 'practice:ws_other:3')
+  expect(other?.title).toBe('Elsewhere')
+  expect(other?.count).toBeUndefined()
+})
+
 it('encodes partner identities and session keys independently without rewriting them', () => {
   const url = new URL(
     partnerSessionHref({ kind: 'partner', owner_id: '研究伙伴', session_key: 'web:old/+?' }),

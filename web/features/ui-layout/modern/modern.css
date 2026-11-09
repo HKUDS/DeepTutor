@@ -246,6 +246,11 @@ button.dt-record-toggle:focus-visible { outline: 2px solid var(--ring); outline-
 .dt-record-loose { padding: 0 0 0 4px; }
 /* Their times line up with the records' own. */
 .dt-record-children [role="button"], .dt-record-loose [role="button"] { padding-right: var(--dt-nav-pad-x); }
+/* The questions of a collapsed practice set, under its single row. */
+.dt-record-question { display: flex; align-items: center; gap: 6px; min-height: var(--dt-nav-row); padding: 0 var(--dt-nav-pad-x) 0 calc(var(--dt-nav-gap) - 3px); border-radius: var(--dt-nav-radius); color: var(--dt-nav-ink); font-size: var(--dt-nav-list-text); transition: background-color 130ms, color 130ms; }
+.dt-record-question:hover, .dt-record-question.is-active { background: var(--accent); color: var(--foreground); }
+.dt-record-question.is-active { font-weight: 500; }
+.dt-record-question:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
 
 /* ---- Sidebar header: the workspace menu ------------------------------ */
 .dt-sidebar-header { display: flex; align-items: center; gap: 4px; height: 52px; padding: 0 8px; flex-shrink: 0; }

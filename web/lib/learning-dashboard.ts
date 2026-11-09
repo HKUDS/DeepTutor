@@ -14,11 +14,21 @@ import { sessionWorkspaceId } from '@/lib/session-api'
 
 export type LearningKind = 'books' | 'mastery' | 'reading' | 'watching' | 'practice'
 export type Located<T> = T & { content_workspace_id?: string; content_workspace_name?: string }
+/** One Practice notebook entry as the learning index reads it: identity only, no answers. */
+export interface PracticeEntry {
+  id: number
+  question: string
+  created_at: number
+  updated_at: number
+  /** The practice session the entry was recorded in; a set's entries share it. */
+  session_id?: string | null
+  session_title?: string | null
+}
 export interface LearningSources {
   books: Located<Book>[]
   mastery: Located<MasteryTopic>[]
   reading: Located<ReadingWorkspace>[]
-  practice?: Located<{ id: number; question: string; created_at: number; updated_at: number }>[]
+  practice?: Located<PracticeEntry>[]
   watching: SessionSummary[]
 }
 export interface LearningActivity {
@@ -29,6 +39,10 @@ export interface LearningActivity {
   updatedAt: number
   createdAt: number
   progress?: number
+  /** How many questions a collapsed practice set holds. */
+  count?: number
+  /** The individual questions of a collapsed practice set. */
+  children?: LearningActivity[]
 }
 export function isWatchingSession(session: SessionSummary): boolean {
   return (
@@ -36,20 +50,71 @@ export function isWatchingSession(session: SessionSummary): boolean {
     session.preferences?.capability === 'immersive_watching'
   )
 }
+function practiceQuestionActivity(entry: Located<PracticeEntry>): LearningActivity {
+  return {
+    key: `practice:${entry.content_workspace_id || ''}:${entry.id}`,
+    kind: 'practice' as const,
+    title: entry.question,
+    href: scopedUrl(
+      practiceRoute(new URLSearchParams({ question: String(entry.id) }), ''),
+      entry.content_workspace_id || ''
+    ),
+    updatedAt: entry.updated_at || entry.created_at,
+    createdAt: entry.created_at || entry.updated_at,
+  }
+}
+
+/**
+ * Practice rows, one per practice set: the questions recorded in one session
+ * collapse into a single row titled by that session and counted, expandable
+ * to each question. An entry without a shared session — or a session that
+ * produced only one — keeps a row of its own, exactly as before.
+ */
+function practiceActivity(entries: readonly Located<PracticeEntry>[]): LearningActivity[] {
+  const bySession = new Map<string, Located<PracticeEntry>[]>()
+  const rows: LearningActivity[] = []
+  for (const entry of entries) {
+    const sessionId = (entry.session_id ?? '').trim()
+    if (!sessionId) {
+      rows.push(practiceQuestionActivity(entry))
+      continue
+    }
+    const groupKey = `${entry.content_workspace_id || ''}:${sessionId}`
+    bySession.set(groupKey, [...(bySession.get(groupKey) ?? []), entry])
+  }
+  for (const questions of bySession.values()) {
+    if (questions.length === 1) {
+      rows.push(practiceQuestionActivity(questions[0]))
+      continue
+    }
+    const workspaceId = questions[0].content_workspace_id || ''
+    const sessionId = (questions[0].session_id ?? '').trim()
+    const newest = questions.reduce((a, b) => ((b.updated_at || b.created_at) > (a.updated_at || a.created_at) ? b : a))
+    const title =
+      questions
+        .map(question => (question.session_title ?? '').trim())
+        .find(Boolean) || newest.question
+    rows.push({
+      key: `practice:${workspaceId}:session:${sessionId}`,
+      kind: 'practice' as const,
+      title,
+      href: scopedUrl(practiceRoute(undefined, ''), workspaceId),
+      updatedAt: Math.max(...questions.map(question => question.updated_at || question.created_at)),
+      createdAt: Math.min(...questions.map(question => question.created_at || question.updated_at)),
+      count: questions.length,
+      children: questions
+        .slice()
+        .sort((a, b) => (b.updated_at || b.created_at) - (a.updated_at || a.created_at))
+        .map(practiceQuestionActivity),
+    })
+  }
+  return rows
+}
+
 /** Every activity across the surfaces, newest first. Archived paths are not work in progress. */
 export function allLearningActivity(sources: LearningSources): LearningActivity[] {
   return [
-    ...(sources.practice ?? []).map(entry => ({
-      key: `practice:${entry.content_workspace_id || ''}:${entry.id}`,
-      kind: 'practice' as const,
-      title: entry.question,
-      href: scopedUrl(
-        practiceRoute(new URLSearchParams({ question: String(entry.id) }), ''),
-        entry.content_workspace_id || ''
-      ),
-      updatedAt: entry.updated_at || entry.created_at,
-      createdAt: entry.created_at || entry.updated_at,
-    })),
+    ...practiceActivity(sources.practice ?? []),
     ...sources.books.map(book => ({
       key: `book:${book.content_workspace_id || ''}:${book.id}`,
       kind: 'books' as const,

@@ -5,7 +5,7 @@ import { RecordGroups, RecordHeader, RecordTime, useRecordView } from './RecordL
 import { useLayoutEffect, useState, type ReactNode } from 'react'
 import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
-import { ChevronRight, LayoutGrid, MessageCircle, Plus } from 'lucide-react'
+import { ChevronRight, ClipboardList, LayoutGrid, MessageCircle, Plus } from 'lucide-react'
 import { learningSurface } from '@/components/learning/surfaces'
 import { allLearningActivity, fileLearningSessions, type LearningActivity } from '@/lib/learning-dashboard'
 import { isNavigationTargetActive } from '@/lib/navigation'
@@ -52,6 +52,13 @@ export function LearningNavigation({
   const { t } = useTranslation()
   const { sources, loading, failed, retry } = useLearningIndex(active)
   const view = useRecordView('deeptutor.navigation.learning.sort')
+  const pathname = usePathname()
+  const query = new URLSearchParams(useSearchParams().toString())
+  // A collapsed practice set opens on the question being practised, the same
+  // fallback that opens a record on the conversation being read — unless the
+  // learner stored a collapse preference for it.
+  const practicing = (record: LearningActivity) =>
+    (record.children ?? []).some(child => isNavigationTargetActive(child.href, pathname, query))
   const [open, setOpen] = useState<Record<string, boolean>>({})
   useLayoutEffect(() => {
     // Restore which records were left open before paint, without a mismatch.
@@ -77,7 +84,8 @@ export function LearningNavigation({
       row.kind === 'session'
         ? matches(titleOf(row.session), view.query)
         : matches(`${row.record.title} ${t(learningSurface(row.record.kind).title)}`, view.query) ||
-          row.sessions.some(session => matches(titleOf(session), view.query))
+          row.sessions.some(session => matches(titleOf(session), view.query)) ||
+          (row.record.children ?? []).some(child => matches(child.title, view.query))
     )
     .sort((a, b) => b.time - a.time || a.key.localeCompare(b.key))
   const toggle = (key: string, next: boolean) =>
@@ -122,8 +130,12 @@ export function LearningNavigation({
                 sessions={row.sessions}
                 render={sessions?.render}
                 open={
-                  (view.query.trim() !== '' && row.sessions.some(session => matches(titleOf(session), view.query))) ||
-                  (open[row.key] ?? row.sessions.some(session => session.session_id === sessions?.activeSessionId))
+                  (view.query.trim() !== '' &&
+                    ((row.record.children ?? []).some(child => matches(child.title, view.query)) ||
+                      row.sessions.some(session => matches(titleOf(session), view.query)))) ||
+                  (open[row.key] ??
+                    (row.sessions.some(session => session.session_id === sessions?.activeSessionId) ||
+                      practicing(row.record)))
                 }
                 onToggle={next => toggle(row.key, next)}
               />
@@ -165,8 +177,16 @@ function RecordNode({
   const search = useSearchParams()
   const selected = isNavigationTargetActive(record.href, pathname, new URLSearchParams(search.toString()))
   const Icon = learningSurface(record.kind).icon
-  const expandable = sessions.length > 0 && Boolean(render)
+  const questions = record.children ?? []
+  const expandable = questions.length > 0 || (sessions.length > 0 && Boolean(render))
   const expanded = expandable && open
+  const toggleLabel = questions.length
+    ? t(expanded ? 'navigation.hidePracticeQuestions' : 'navigation.showPracticeQuestions', {
+        count: questions.length,
+      })
+    : t(expanded ? 'navigation.hideRecordChats' : 'navigation.showRecordChats', {
+        count: sessions.length,
+      })
   return (
     <div className="dt-record-node">
       <div className={`dt-record-node-row ${selected ? 'is-active' : ''} ${expanded ? 'is-open' : ''}`}>
@@ -175,9 +195,7 @@ function RecordNode({
             type="button"
             className="dt-record-toggle"
             aria-expanded={expanded}
-            aria-label={t(expanded ? 'navigation.hideRecordChats' : 'navigation.showRecordChats', {
-              count: sessions.length,
-            })}
+            aria-label={toggleLabel}
             onClick={() => onToggle(!expanded)}
           >
             <Icon size={16} strokeWidth={1.6} className="dt-record-glyph" />
@@ -198,7 +216,13 @@ function RecordNode({
           className="dt-record-node-link"
         >
           <span className="min-w-0 flex-1 truncate">{record.title}</span>
-          {expandable && !expanded && (
+          {questions.length > 0 && !expanded && (
+            <span className="dt-record-chat-count" title={t('navigation.practiceQuestions', { count: questions.length })}>
+              <ClipboardList size={11} strokeWidth={1.8} aria-hidden />
+              {questions.length}
+            </span>
+          )}
+          {expandable && !expanded && questions.length === 0 && (
             <span className="dt-record-chat-count" title={t('navigation.recordChats', { count: sessions.length })}>
               <MessageCircle size={11} strokeWidth={1.8} aria-hidden />
               {sessions.length}
@@ -207,7 +231,40 @@ function RecordNode({
           <RecordTime seconds={time} />
         </Link>
       </div>
-      {expanded && <div className="dt-record-children">{render!(sessions)}</div>}
+      {expanded && (
+        <div className="dt-record-children">
+          {questions.map(question => (
+            <PracticeQuestionNode key={question.key} question={question} />
+          ))}
+          {render && sessions.length > 0 && render(sessions)}
+        </div>
+      )}
     </div>
+  )
+}
+
+/** One question of a collapsed practice set, linking to its own practice turn. */
+function PracticeQuestionNode({ question }: { question: LearningActivity }) {
+  const drawer = useSidebarDrawer()
+  const pathname = usePathname()
+  const search = useSearchParams()
+  const selected = isNavigationTargetActive(
+    question.href,
+    pathname,
+    new URLSearchParams(search.toString())
+  )
+  return (
+    <Link
+      href={question.href}
+      prefetch={false}
+      aria-current={selected ? 'page' : undefined}
+      onClick={event => {
+        if (!event.metaKey && !event.ctrlKey && !event.shiftKey) drawer?.close()
+      }}
+      className={`dt-record-question ${selected ? 'is-active' : ''}`}
+    >
+      <span className="min-w-0 flex-1 truncate">{question.title}</span>
+      <RecordTime seconds={question.updatedAt} />
+    </Link>
   )
 }
