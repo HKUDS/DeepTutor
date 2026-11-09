@@ -56,6 +56,25 @@ def test_list_keeps_entries_when_directory_present(tmp_path: Path) -> None:
     assert "kept" in _read_config(manager.config_file).get("knowledge_bases", {})
 
 
+def test_list_survives_unreadable_discovered_kb(tmp_path: Path, monkeypatch) -> None:
+    """One KB whose index cannot be read must not take the catalogue down."""
+    from deeptutor.services.rag import index_versioning
+
+    broken = tmp_path / "broken"
+    (broken / "version-1").mkdir(parents=True)
+    (broken / "version-1" / "docstore.json").write_text("{}", encoding="utf-8")
+    manager = KnowledgeBaseManager(base_dir=str(tmp_path))
+
+    def unreadable(path: Path):
+        if Path(path).name == "broken":
+            raise PermissionError(13, "Permission denied", str(path))
+        return []
+
+    monkeypatch.setattr(index_versioning, "list_kb_versions", unreadable)
+
+    assert manager.list_knowledge_bases() == []
+
+
 def test_get_default_reuses_available_names(monkeypatch, tmp_path: Path) -> None:
     manager = KnowledgeBaseManager(base_dir=str(tmp_path))
 

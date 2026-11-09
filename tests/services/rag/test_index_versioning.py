@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from pathlib import Path
 
 from deeptutor.services.rag.index_versioning import (
@@ -180,3 +181,64 @@ def test_list_kb_versions_includes_legacy_nested_and_root_layouts(tmp_path: Path
     layouts = {entry["layout"] for entry in list_kb_versions(kb_dir)}
 
     assert {"nested_legacy", "root_legacy"} <= layouts
+
+
+def test_read_json_treats_unreadable_meta_as_absent(
+    tmp_path: Path, monkeypatch, caplog
+) -> None:
+    """EACCES from ``Path.exists()`` must not escape metadata probing."""
+    from deeptutor.services.rag import index_versioning
+
+    meta_path = tmp_path / "version-1" / "meta.json"
+    real_open = open
+
+    def deny(path, *args, **kwargs):
+        if Path(path) == meta_path:
+            raise PermissionError(13, "Permission denied", str(path))
+        return real_open(path, *args, **kwargs)
+
+    monkeypatch.setattr("builtins.open", deny)
+    with caplog.at_level(logging.WARNING):
+        assert index_versioning._read_json(meta_path) is None
+    assert "Failed to read version meta" in caplog.text
+
+
+def test_unreadable_flat_version_is_skipped(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """One unreadable version must not abort discovery of its siblings."""
+    from deeptutor.services.rag import index_versioning
+
+    kb_dir = tmp_path / "kb"
+    for version in ("version-1", "version-2"):
+        version_dir = kb_dir / version
+        version_dir.mkdir(parents=True)
+        (version_dir / "docstore.json").write_text("{}", encoding="utf-8")
+
+    original = index_versioning._entry_from_flat_version
+
+    def entry(version_dir: Path):
+        if version_dir.name == "version-2":
+            raise PermissionError(13, "Permission denied", str(version_dir / "meta.json"))
+        return original(version_dir)
+
+    monkeypatch.setattr(index_versioning, "_entry_from_flat_version", entry)
+
+    assert [row["version"] for row in list_kb_versions(kb_dir)] == ["version-1"]
+
+
+def test_unreadable_storage_is_not_ready(tmp_path: Path, monkeypatch) -> None:
+    from deeptutor.services.rag import index_versioning
+
+    storage = tmp_path / "version-1"
+    storage.mkdir()
+    real_iterdir = Path.iterdir
+
+    def deny(path: Path):
+        if path == storage:
+            raise PermissionError(13, "Permission denied", str(path))
+        return real_iterdir(path)
+
+    monkeypatch.setattr(Path, "iterdir", deny)
+
+    assert index_versioning._is_storage_ready(storage) is False

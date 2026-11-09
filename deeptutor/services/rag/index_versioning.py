@@ -82,19 +82,28 @@ def _legacy_storage_dir_for_signature(kb_dir: Path, sig_hash: str) -> Path:
 
 
 def _is_storage_ready(storage_dir: Path) -> bool:
-    return storage_dir.is_dir() and any(
-        child.name != META_FILENAME for child in storage_dir.iterdir()
-    )
+    try:
+        return storage_dir.is_dir() and any(
+            child.name != META_FILENAME for child in storage_dir.iterdir()
+        )
+    except OSError:
+        # An unreadable store is not ready. Probing readiness must never be
+        # what takes a KB out of the catalogue.
+        return False
 
 
 def _read_json(path: Path) -> Optional[dict[str, Any]]:
-    if not path.exists():
-        return None
     try:
         with open(path, encoding="utf-8") as handle:
             payload = json.load(handle)
         return payload if isinstance(payload, dict) else None
-    except Exception as exc:
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError) as exc:
+        # PermissionError (wrong ownership), a stale network handle, or invalid
+        # JSON all mean the same thing to a caller: this version has no usable
+        # metadata. ``Path.exists()`` would surface EACCES here, so open()
+        # directly instead of probing first.
         logger.warning(f"Failed to read version meta {path}: {exc}")
         return None
 
@@ -105,12 +114,21 @@ def _flat_version_number(path: Path) -> int:
 
 
 def _flat_version_dirs(kb_dir: Path) -> list[Path]:
-    if not kb_dir.is_dir():
+    try:
+        if not kb_dir.is_dir():
+            return []
+        children = list(kb_dir.iterdir())
+    except OSError as exc:
+        logger.warning(f"Failed to list index versions in {kb_dir}: {exc}")
         return []
-    return sorted(
-        (child for child in kb_dir.iterdir() if child.is_dir() and _VERSION_RE.match(child.name)),
-        key=_flat_version_number,
-    )
+    version_dirs: list[Path] = []
+    for child in children:
+        try:
+            if child.is_dir() and _VERSION_RE.match(child.name):
+                version_dirs.append(child)
+        except OSError:
+            continue
+    return sorted(version_dirs, key=_flat_version_number)
 
 
 def _next_flat_version_dir(kb_dir: Path) -> Path:
@@ -217,20 +235,43 @@ def list_kb_versions(kb_dir: Path) -> list[dict[str, Any]]:
     New flat ``version-N`` directories are returned alongside legacy nested and
     root stores so older KBs stay queryable while new re-indexes use the simpler
     flat layout.
+
+    A version this process cannot read (wrong ownership, a stale NFS handle) is
+    skipped with a warning. One inaccessible store must not remove the whole KB
+    — or every KB sharing the parent directory — from the catalogue.
     """
     versions: list[dict[str, Any]] = []
 
     for version_dir in _flat_version_dirs(kb_dir):
-        versions.append(_entry_from_flat_version(version_dir))
+        try:
+            versions.append(_entry_from_flat_version(version_dir))
+        except OSError as exc:
+            logger.warning(f"Skipping unreadable index version {version_dir}: {exc}")
 
     legacy_versions_root = kb_versions_dir(kb_dir)
-    if legacy_versions_root.is_dir():
-        for child in sorted(legacy_versions_root.iterdir(), key=lambda path: path.name):
+    try:
+        legacy_children = (
+            sorted(legacy_versions_root.iterdir(), key=lambda path: path.name)
+            if legacy_versions_root.is_dir()
+            else []
+        )
+    except OSError as exc:
+        logger.warning(f"Failed to list legacy index versions in {legacy_versions_root}: {exc}")
+        legacy_children = []
+    for child in legacy_children:
+        try:
             if child.is_dir():
                 versions.append(_entry_from_legacy_nested(kb_dir, child))
+        except OSError as exc:
+            logger.warning(f"Skipping unreadable legacy index version {child}: {exc}")
 
     root_legacy = legacy_storage_dir(kb_dir)
-    if root_legacy.is_dir() and any(root_legacy.iterdir()):
+    try:
+        has_root_legacy = root_legacy.is_dir() and any(root_legacy.iterdir())
+    except OSError as exc:
+        logger.warning(f"Failed to inspect legacy index store {root_legacy}: {exc}")
+        has_root_legacy = False
+    if has_root_legacy:
         versions.append(_entry_from_root_legacy(kb_dir))
 
     return _sort_versions(versions)
