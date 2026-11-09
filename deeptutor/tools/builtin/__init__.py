@@ -117,6 +117,89 @@ def _rag_selector_error(message: str) -> ToolResult:
     )
 
 
+def _semantic_tool_result(
+    result: dict[str, Any], *, query: str, kb_name: str, vision_supported: bool
+) -> ToolResult:
+    """Shape one semantic ``rag_search`` result into the tool's envelope."""
+    content = result.get("answer") or result.get("content", "")
+    failed = bool(result.get("error_type") or result.get("needs_reindex"))
+    if not content and result.get("error_type"):
+        content = f"Knowledge base '{kb_name}' search failed ({result['error_type']})."
+    elif not content and result.get("needs_reindex"):
+        content = f"Knowledge base '{kb_name}' needs reindexing before it can be searched."
+    elif not content and not result.get("sources"):
+        content = (
+            f"No matching content was found in knowledge base '{kb_name}'. "
+            "The search completed successfully."
+        )
+    visual_sources = [
+        source
+        for source in (result.get("sources") or [])
+        if isinstance(source, dict) and source.get("visual_asset_id")
+    ]
+    model_message = None
+    if visual_sources and vision_supported:
+        model_message = _rag_visual_model_message(kb_name, visual_sources)
+        if model_message is None:
+            content += "\nRetrieved source visuals were unavailable for pixel inspection."
+    elif visual_sources:
+        content += (
+            "\nThe selected model cannot inspect source image pixels. "
+            "Use the retrieved caption and text context; do not claim to have seen the image."
+        )
+    return ToolResult(
+        content=content,
+        sources=_rag_sources(result, query=query, kb_name=kb_name),
+        metadata=result,
+        success=not failed,
+        model_message=model_message,
+    )
+
+
+def _document_keys_of(value: Any) -> set[str]:
+    """Normalised relative path (under raw/) a document is recognised by, case-exact."""
+    normalized = str(value or "").replace("\\", "/").strip("/")
+    return {normalized} if normalized else set()
+
+
+def _scoped_source_identity(entry: dict[str, Any]) -> set[str] | None:
+    """Document keys one retrieved source entry claims, or ``None`` if it names none.
+
+    Pipelines disagree on how a provenance row names its document —
+    ``document_key`` (LlamaIndex source pages), ``file_name``/``source``
+    (chunk provenance). Full-path namings (``document_key`` and
+    ``source``, the row's location under the KB's ``raw`` directory) are
+    authoritative: when either is present it alone defines the row's
+    identity, and basename-only metadata (``file_name``) cannot widen
+    it (#2374). A row whose full path is under another folder therefore
+    never matches a bare basename request — or a different folder path.
+    Rows that name no document at all (query metadata) stay neutral.
+    """
+    keys: set[str] = set()
+    for field in ("document_key", "source"):
+        keys |= _document_keys_of(entry.get(field))
+    if not keys:
+        keys = _document_keys_of(entry.get("file_name"))
+    return keys or None
+
+
+def _split_scoped_sources(
+    entries: list[Any] | None, source_path: str
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Partition retrieved rows into (matching, foreign) for one source scope."""
+    wanted = _document_keys_of(source_path)
+    matching: list[dict[str, Any]] = []
+    foreign: list[dict[str, Any]] = []
+    for entry in entries or []:
+        if not isinstance(entry, dict):
+            continue
+        identity = _scoped_source_identity(entry)
+        if identity is None:
+            continue
+        (matching if identity & wanted else foreign).append(entry)
+    return matching, foreign
+
+
 def _normalize_rag_selectors(kwargs: dict[str, Any]) -> dict[str, Any] | str:
     """Validate the optional exact-source selectors at the LLM boundary.
 
@@ -185,7 +268,12 @@ class RAGTool(_PromptHintsMixin, BaseTool):
                     type="string",
                     required=False,
                     nullable=True,
-                    description="Exact document path from kb_files for visual/page inspection with a page, figure, region or asset_id. Source-only scoped text retrieval is unsupported; it never falls back to a whole-KB search.",
+                    description=(
+                        "Exact document path from kb_files. Alone, it scopes an ordinary "
+                        "text query to that one document — never the whole knowledge base. "
+                        "Together with a page, figure, region or asset_id it instead selects "
+                        "exact visual/page inspection."
+                    ),
                 ),
                 ToolParameter(
                     name="asset_id",
@@ -332,14 +420,13 @@ class RAGTool(_PromptHintsMixin, BaseTool):
                 and not visual_requested
                 and page_reference(query) is None
             ):
-                return ToolResult(
-                    content=(
-                        "RAG does not support scoped text retrieval by source_path. "
-                        "No search was run. For exact visual inspection, also select "
-                        "a page, figure, region or asset_id."
-                    ),
-                    success=False,
-                    metadata={"error_type": "source_scope_unsupported"},
+                return await self._scoped_text_search(
+                    query=query,
+                    kb_name=kb_name,
+                    kb_dir=resolve_kb_dir(resource.base_dir, resource.name),
+                    selectors=selectors,
+                    event_sink=event_sink,
+                    vision_supported=vision_supported,
                 )
             try:
                 evidence = await asyncio.to_thread(
@@ -415,38 +502,96 @@ class RAGTool(_PromptHintsMixin, BaseTool):
             event_sink=event_sink,
             **extra_kwargs,
         )
-        content = result.get("answer") or result.get("content", "")
-        failed = bool(result.get("error_type") or result.get("needs_reindex"))
-        if not content and result.get("error_type"):
-            content = f"Knowledge base '{kb_name}' search failed ({result['error_type']})."
-        elif not content and result.get("needs_reindex"):
-            content = f"Knowledge base '{kb_name}' needs reindexing before it can be searched."
-        elif not content and not result.get("sources"):
-            content = (
-                f"No matching content was found in knowledge base '{kb_name}'. "
-                "The search completed successfully."
+        return _semantic_tool_result(
+            result, query=query, kb_name=kb_name, vision_supported=vision_supported
+        )
+
+    async def _scoped_text_search(
+        self,
+        *,
+        query: str,
+        kb_name: str,
+        kb_dir: Any,
+        selectors: dict[str, Any],
+        event_sink: Any,
+        vision_supported: bool,
+    ) -> ToolResult:
+        """Semantic retrieval restricted to one source document (#2374).
+
+        Source scope and evidence modality are separate axes: an ordinary text
+        query with only ``source_path`` runs on the text path, restricted to
+        that document. It never falls back to a whole-KB search — a backend
+        that cannot enforce the scope, or a document with no matching passage,
+        fails explicitly instead of mixing in other files.
+        """
+        from deeptutor.services.rag.source_visuals import source_file
+        from deeptutor.services.rag.visual_assets import _sha256_file
+        from deeptutor.tools.rag_tool import rag_search
+
+        source_path = str(selectors["source_path"])
+        try:
+            source = await asyncio.to_thread(source_file, kb_dir, source_path)
+        except (OSError, ValueError) as exc:
+            return ToolResult(
+                content=str(exc) or "Source is unavailable; select an existing document.",
+                success=False,
+                metadata={"error_type": "source_unavailable", "source_scope": source_path},
             )
-        visual_sources = [
-            source
-            for source in (result.get("sources") or [])
-            if isinstance(source, dict) and source.get("visual_asset_id")
-        ]
-        model_message = None
-        if visual_sources and vision_supported:
-            model_message = _rag_visual_model_message(kb_name, visual_sources)
-            if model_message is None:
-                content += "\nRetrieved source visuals were unavailable for pixel inspection."
-        elif visual_sources:
-            content += (
-                "\nThe selected model cannot inspect source image pixels. "
-                "Use the retrieved caption and text context; do not claim to have seen the image."
+        expected_hash = str(selectors.get("source_hash") or "")
+        if expected_hash:
+            digest = await asyncio.to_thread(_sha256_file, source)
+            if digest != expected_hash:
+                return ToolResult(
+                    content=(
+                        "The source changed since this reference was created. "
+                        "Select its current source_path explicitly."
+                    ),
+                    success=False,
+                    metadata={"error_type": "source_changed", "source_scope": source_path},
+                )
+        result = await rag_search(
+            query=query,
+            kb_name=kb_name,
+            event_sink=event_sink,
+            document_keys=[source_path],
+        )
+        if result.get("error_type") or result.get("needs_reindex"):
+            return _semantic_tool_result(
+                result, query=query, kb_name=kb_name, vision_supported=vision_supported
             )
-        return ToolResult(
-            content=content,
-            sources=_rag_sources(result, query=query, kb_name=kb_name),
-            metadata=result,
-            success=not failed,
-            model_message=model_message,
+        matching, foreign = _split_scoped_sources(result.get("sources"), source_path)
+        if foreign:
+            provider = str(result.get("provider") or "").strip() or "rag"
+            return ToolResult(
+                content=(
+                    f"The {provider} backend did not restrict retrieval to "
+                    f"'{source_path}', so no scoped answer was returned; passages "
+                    "from other documents were withheld. Scope the query by "
+                    "rephrasing it around content you know is in that document, "
+                    "or run an unscoped semantic search without source_path."
+                ),
+                success=False,
+                metadata={
+                    "error_type": "source_scope_unsupported",
+                    "source_scope": source_path,
+                    "provider": result.get("provider"),
+                },
+            )
+        if not matching:
+            return ToolResult(
+                content=(
+                    f"No content from '{source_path}' matched this query; the scope "
+                    "was enforced and no other document was searched. Rephrase the "
+                    "query around that document's content, or check with kb_files "
+                    "that the document is indexed in this knowledge base."
+                ),
+                success=False,
+                metadata={"error_type": "source_scope_no_match", "source_scope": source_path},
+            )
+        result["sources"] = matching
+        result["source_scope"] = source_path
+        return _semantic_tool_result(
+            result, query=query, kb_name=kb_name, vision_supported=vision_supported
         )
 
 
