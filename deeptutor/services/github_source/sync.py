@@ -18,7 +18,7 @@ from deeptutor.services.github_source.client import (
 logger = logging.getLogger(__name__)
 
 SYNC_INTERVAL_HOURS = 24
-MARKDOWN_EXTENSIONS = (".md", ".markdown")
+MARKDOWN_EXTENSIONS = (".md", ".markdown", ".mdx")
 
 
 @dataclass
