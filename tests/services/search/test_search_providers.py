@@ -148,6 +148,8 @@ _NEW_PROVIDERS = [
     # aliyun_iqs has no count parameter at all — it caps client-side, which
     # `test_aliyun_iqs_caps_results_client_side` covers instead.
     ("aliyun_iqs", "AliyunIQSProvider", None),
+    # specstream also caps client-side (`test_specstream_caps_sources_client_side`).
+    ("specstream", "SpecStreamProvider", None),
 ]
 
 
@@ -340,6 +342,151 @@ def test_aliyun_iqs_caps_results_client_side(monkeypatch) -> None:
     assert len(result.citations) == 3
     # The epoch stamp must not reach the model as a raw integer.
     assert result.citations[0].date.count("-") == 2
+
+
+_SPECSTREAM_FACT_BODY: dict[str, Any] = {
+    "data": {
+        "kind": "fact",
+        "query": "Who is the CEO of Stripe",
+        "answer": {
+            "value": "Patrick Collison",
+            "page": "https://en.wikipedia.org/wiki/Patrick_Collison",
+            "seen_at": "2026-11-05T01:06:52+00:00",
+        },
+        "rows": [
+            {
+                "name": "Patrick Collison",
+                "page": "https://en.wikipedia.org/wiki/Patrick_Collison",
+                "probability": 0.64,
+            },
+            {"name": "John Collison", "page": "https://e/john", "probability": 0.2},
+        ],
+        "sources": [
+            {
+                "url": "https://en.wikipedia.org/wiki/Patrick_Collison",
+                "title": "Patrick Collison - Wikipedia",
+                "site": "en.wikipedia.org",
+                "snippet": "Irish businessman",
+                "published": "2026-01-02T03:04:05+00:00",
+                "cited": True,
+            },
+            {
+                "url": "https://www.forbes.com/profile/patrick-collison/",
+                "title": "Patrick Collison - Forbes",
+                "site": "forbes.com",
+                "snippet": "Stripe cofounder",
+                "cited": False,
+            },
+        ],
+        "id": "a1",
+        "request_id": "req-1",
+        "took_ms": 2404,
+        "price_usd": 0.005,
+    }
+}
+
+
+class _SpecStreamCapture:
+    """Fake requests.get that records the call and replies with a set body."""
+
+    def __init__(self, body: dict[str, Any]) -> None:
+        self.calls: list[dict[str, Any]] = []
+        self._body = body
+
+    def get(self, url: str, **kwargs: Any) -> _FakeResponse:
+        self.calls.append({"method": "GET", "url": url, **kwargs})
+        return _FakeResponse(self._body)
+
+
+def test_specstream_sends_bearer_key_and_plain_query(monkeypatch) -> None:
+    capture = _SpecStreamCapture(_SPECSTREAM_FACT_BODY)
+    monkeypatch.setattr("deeptutor.services.search.providers.specstream.requests", capture)
+
+    from deeptutor.services.search.providers.specstream import SpecStreamProvider
+
+    SpecStreamProvider(api_key="k").search("Who is the CEO of Stripe?")
+
+    call = capture.calls[-1]
+    assert call["method"] == "GET"
+    assert call["url"] == "https://api.specstream.ai/v1/web-search"
+    assert call["headers"]["Authorization"] == "Bearer k"
+    assert call["params"] == {"q": "Who is the CEO of Stripe?"}
+
+
+def test_specstream_caps_sources_client_side(monkeypatch) -> None:
+    """web-search has no count parameter; every source read comes back."""
+    body = {
+        "data": {
+            "kind": "fact",
+            "answer": None,
+            "rows": [],
+            "sources": [
+                {"url": f"https://e/{i}", "title": f"t{i}", "site": "e", "snippet": "s"}
+                for i in range(6)
+            ],
+        }
+    }
+    capture = _SpecStreamCapture(body)
+    monkeypatch.setattr("deeptutor.services.search.providers.specstream.requests", capture)
+
+    from deeptutor.services.search.providers.specstream import SpecStreamProvider
+
+    result = SpecStreamProvider(api_key="k").search("q", max_results=2)
+    assert len(result.search_results) == 2
+    assert len(result.citations) == 2
+    assert [c.id for c in result.citations] == [1, 2]
+
+
+def test_specstream_maps_answer_sources_and_rows(monkeypatch) -> None:
+    capture = _SpecStreamCapture(_SPECSTREAM_FACT_BODY)
+    monkeypatch.setattr("deeptutor.services.search.providers.specstream.requests", capture)
+
+    from deeptutor.services.search.providers.specstream import SpecStreamProvider
+
+    result = SpecStreamProvider(api_key="k").search("Who is the CEO of Stripe?")
+    # The confirmed answer is the provider's own; consolidation must not rewrite it.
+    assert result.answer == "Patrick Collison"
+    assert result.provider == "specstream"
+    top = result.citations[0]
+    assert top.url == "https://en.wikipedia.org/wiki/Patrick_Collison"
+    assert top.title == "Patrick Collison - Wikipedia"
+    assert top.snippet == "Irish businessman"
+    assert top.source == "en.wikipedia.org"
+    assert top.website == "en.wikipedia.org"
+    assert top.date == "2026-01-02T03:04:05+00:00"
+    assert result.metadata["kind"] == "fact"
+    assert result.metadata["request_id"] == "req-1"
+    assert result.metadata["took_ms"] == 2404
+    # List rows survive in metadata: on a list request they are the results.
+    assert result.metadata["rows"][0] == {
+        "name": "Patrick Collison",
+        "page": "https://en.wikipedia.org/wiki/Patrick_Collison",
+        "probability": 0.64,
+    }
+
+
+def test_specstream_surfaces_http_errors(monkeypatch) -> None:
+    class _ErrorResponse:
+        status_code = 402
+        text = "insufficient_balance"
+
+    class _FakeRequests:
+        @staticmethod
+        def get(url: str, **kwargs: Any) -> _ErrorResponse:
+            return _ErrorResponse()
+
+    monkeypatch.setattr("deeptutor.services.search.providers.specstream.requests", _FakeRequests)
+
+    from deeptutor.services.search.providers.specstream import SpecStreamProvider
+
+    with pytest.raises(Exception, match="402"):
+        SpecStreamProvider(api_key="k").search("q")
+
+
+def test_specstream_is_registered() -> None:
+    from deeptutor.services.search.providers import list_providers
+
+    assert "specstream" in list_providers()
 
 
 def test_bocha_surfaces_an_error_carried_inside_a_200(monkeypatch) -> None:

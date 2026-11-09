@@ -161,6 +161,11 @@
       "url": "https://unpkg.com/@lobehub/icons-static-svg@1.95.1/icons/microsoft-color.svg",
       "sha256": "5cfb0ffa3231313c2968b5e3fedfcce8e2e96c61bde4572384c3889a77a80350",
       "source": "@lobehub/icons-static-svg 1.95.1 (MIT)"
+    },
+    "specstream.ico": {
+      "url": "https://specstream.ai/favicon.ico",
+      "sha256": "c2b68886b5e696508b40203a6779bb01d0709d225b4bfbe933714f2d6bd00578",
+      "source": "Official website asset"
     }
   },
   "chinese_names": {
