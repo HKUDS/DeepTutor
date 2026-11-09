@@ -109,3 +109,105 @@ async def test_codebuddy_label_is_used_in_the_same_shape() -> None:
     )
 
     assert response.content.startswith("Error calling CodeBuddy: the turn hit")
+
+
+# --- frames captured from a live claude-agent-sdk 0.2.x run ----------------
+#
+# ``errors[]`` is where the CLI puts the sentence a human should read, and on
+# the turn-limit path ``result`` is *None*. The SDK's own
+# ``_error_result_text`` prefers the same field for the same reason, so these
+# cases pin our priority order to it.
+
+
+class _LiveMaxTurnsFrame:
+    """Verbatim shape observed from a real ``error_max_turns`` result."""
+
+    subtype = "error_max_turns"
+    is_error = True
+    result = None
+    errors = ["Reached maximum number of turns (1)"]
+    api_error_status = None
+    terminal_reason = "max_turns"
+
+
+@pytest.mark.asyncio
+async def test_live_max_turns_frame_uses_the_cli_sentence() -> None:
+    response = await _consume(_LiveMaxTurnsFrame())
+
+    assert response.finish_reason == "error"
+    # The CLI's own prose, not our paraphrase of the subtype.
+    assert response.content == ("Error calling Claude Code: Reached maximum number of turns (1)")
+
+
+def test_errors_list_wins_over_the_result_field() -> None:
+    assert (
+        _result_detail(
+            {
+                "subtype": "error_during_execution",
+                "is_error": True,
+                "result": "generic",
+                "errors": ["No such tool available: write_note"],
+            }
+        )
+        == "No such tool available: write_note"
+    )
+
+
+def test_multiple_errors_are_joined() -> None:
+    assert (
+        _result_detail({"is_error": True, "errors": ["first reason", "second reason"]})
+        == "first reason; second reason"
+    )
+
+
+def test_blank_and_non_string_errors_fall_through() -> None:
+    assert (
+        _result_detail(
+            {
+                "subtype": "error_max_turns",
+                "is_error": True,
+                "result": None,
+                "errors": ["  ", None, 7],
+            }
+        )
+        == "the turn hit its maximum number of turns (error_max_turns)"
+    )
+
+
+def test_a_bare_string_in_errors_is_tolerated() -> None:
+    assert _result_detail({"is_error": True, "errors": "only one reason"}) == "only one reason"
+
+
+def test_api_failure_keeps_the_result_prose_not_the_success_subtype() -> None:
+    """An API failure arrives as ``subtype: "success"`` with prose in ``result``.
+
+    Rendering the subtype there would produce the self-contradictory
+    "an error result: success" the SDK itself calls out.
+    """
+    assert (
+        _result_detail(
+            {
+                "subtype": "success",
+                "is_error": True,
+                "result": "API Error: 529 overloaded",
+                "errors": None,
+                "api_error_status": 529,
+            }
+        )
+        == "API Error: 529 overloaded"
+    )
+
+
+def test_http_status_is_the_last_resort_before_giving_up() -> None:
+    assert (
+        _result_detail(
+            {
+                "subtype": "success",
+                "is_error": True,
+                "result": None,
+                "errors": [],
+                "api_error_status": 429,
+            }
+        )
+        == "the provider API call failed (HTTP 429)"
+    )
