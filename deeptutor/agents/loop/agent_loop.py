@@ -86,7 +86,7 @@ from deeptutor.services.llm.request_compat import (
     logged_error_text,
 )
 from deeptutor.services.llm.usage_frame import usage_breakdown
-from deeptutor.services.llm.utils import unreachable_endpoint_hint
+from deeptutor.services.llm.utils import provider_failure_hint, unreachable_endpoint_hint
 
 if TYPE_CHECKING:  # pragma: no cover
     from deeptutor.agents.loop.pipeline import AgenticLoopPipeline
@@ -1124,7 +1124,12 @@ class AgentLoop:
                     # container's own ``localhost`` is not the host running
                     # Ollama. Say which, instead of leaving the reader a bare
                     # ``ConnectError`` in the server log.
-                    hint = unreachable_endpoint_hint(self.pipeline.base_url)
+                    # Anything the provider itself named — an HTTP status, a
+                    # quota marker, ``upstream_error`` — says more than "retry",
+                    # so fall back to it when the endpoint is not local.
+                    hint = unreachable_endpoint_hint(
+                        self.pipeline.base_url
+                    ) or provider_failure_hint(exc)
                     if hint:
                         message = f"{message} {hint}"
                 raise LLMProviderTransportError(

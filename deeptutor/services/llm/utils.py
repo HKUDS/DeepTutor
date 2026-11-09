@@ -132,6 +132,48 @@ def unreachable_endpoint_hint(base_url: str | None) -> str:
     )
 
 
+_HTTP_STATUS_PATTERN = re.compile(r"(?:Error code|HTTP(?: status)?)[:\s]+(\d{3})\b", re.IGNORECASE)
+
+
+def _http_status_from_text(text: str) -> int | None:
+    match = _HTTP_STATUS_PATTERN.search(text or "")
+    return int(match.group(1)) if match else None
+
+
+def provider_failure_hint(exc: BaseException) -> str:
+    """One sentence naming what the reader can do about a failed provider call.
+
+    ``LLMProviderTransportError`` carries only the provider's own wording, and
+    every failure surfaces behind the same "Please retry" notice, so a revoked
+    key, an exhausted quota and a provider outage read identically. Providers do
+    report the reason in that wording — an HTTP status, ``model_not_found``,
+    ``upstream_error`` — so read it back instead of leaving the reader to guess.
+    """
+    text = str(exc)
+    status = _http_status_from_text(text)
+    if status in (401, 403):
+        return "The provider rejected the API key; update it in Settings › Models."
+    if status == 404:
+        return "The provider does not serve this model; check its name in Settings › Models."
+    if status == 408:
+        return "The provider did not answer in time; retry or raise the request timeout."
+    if status == 429:
+        return "The provider is rate limiting this key; wait before retrying."
+    if status is not None and status >= 500:
+        return f"The provider returned HTTP {status}, so the failure is on the provider side."
+
+    lowered = text.lower()
+    if "model_not_found" in lowered or "no available channel for model" in lowered:
+        return "No provider channel serves this model; choose another model in Settings › Models."
+    if "invalid token" in lowered or "invalid api key" in lowered or "unauthorized" in lowered:
+        return "The provider rejected the API key; update it in Settings › Models."
+    if "quota" in lowered or "insufficient" in lowered:
+        return "The provider account is out of quota for this model."
+    if "upstream_error" in lowered:
+        return "The provider's own upstream failed; retrying later is the only local action."
+    return ""
+
+
 def running_in_container() -> bool:
     """Whether this process is inside a Docker/Podman container."""
     return any(Path(marker).exists() for marker in ("/.dockerenv", "/run/.containerenv"))
@@ -357,6 +399,7 @@ __all__ = [
     "is_local_llm_server",
     "running_in_container",
     "unreachable_endpoint_hint",
+    "provider_failure_hint",
     "build_chat_url",
     "build_completion_url",
     "build_auth_headers",
