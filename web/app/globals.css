@@ -443,6 +443,118 @@
   @apply font-serif text-[16px];
 }
 
+/* ─── Prose: language-aware CJK stacks ───
+   The shared serif/sans stacks in tailwind.config.js intentionally lead with
+   Simplified Chinese faces so `zh` replies never hit an arbitrary browser
+   default. That same ordering serves every other CJK language badly: a
+   Japanese reply on Windows renders in SimSun (Simplified glyph forms, kana
+   from a Chinese face) because SimSun answers before any Japanese font is
+   reached. Assistant messages set `lang` from the reply language (see
+   `lib/content-lang.ts` + `AssistantResponse`), and these rules list the
+   region-correct faces FIRST while keeping the Simplified Chinese ones as
+   trailing fallbacks for machines without the regional fonts. `zh` and `en`
+   match no rule here and keep the default stacks — do not reorder the shared
+   stacks to fix this, Chinese text would pick up Japanese glyph forms. */
+.prose:lang(ja),
+.font-serif:lang(ja) {
+  font-family:
+    var(--font-serif),
+    'Hiragino Mincho ProN',
+    'Yu Mincho',
+    'Noto Serif JP',
+    'MS Mincho',
+    'Songti SC',
+    'STSong',
+    'Noto Serif SC',
+    'Source Han Serif SC',
+    'SimSun',
+    Georgia,
+    serif;
+}
+
+.prose:lang(ja) :is(h1, h2, h3, h4, h5, h6),
+.font-sans:lang(ja) {
+  font-family:
+    var(--font-sans),
+    'Hiragino Sans',
+    'Yu Gothic',
+    'Noto Sans JP',
+    'Meiryo',
+    'PingFang SC',
+    'Hiragino Sans GB',
+    'Microsoft YaHei',
+    'Noto Sans SC',
+    system-ui,
+    sans-serif;
+}
+
+.prose:lang(ko),
+.font-serif:lang(ko) {
+  font-family:
+    var(--font-serif),
+    'Nanum Myeongjo',
+    'Batang',
+    'Noto Serif KR',
+    'Songti SC',
+    'STSong',
+    'Noto Serif SC',
+    'Source Han Serif SC',
+    'SimSun',
+    Georgia,
+    serif;
+}
+
+.prose:lang(ko) :is(h1, h2, h3, h4, h5, h6),
+.font-sans:lang(ko) {
+  font-family:
+    var(--font-sans),
+    'Nanum Gothic',
+    'Malgun Gothic',
+    'Apple SD Gothic Neo',
+    'Noto Sans KR',
+    'PingFang SC',
+    'Hiragino Sans GB',
+    'Microsoft YaHei',
+    'Noto Sans SC',
+    system-ui,
+    sans-serif;
+}
+
+.prose:lang(zh-Hant),
+.prose:lang(zh-TW),
+.font-serif:lang(zh-Hant),
+.font-serif:lang(zh-TW) {
+  font-family:
+    var(--font-serif),
+    'Songti TC',
+    'Noto Serif TC',
+    'PMingLiU',
+    'Songti SC',
+    'STSong',
+    'Noto Serif SC',
+    'Source Han Serif SC',
+    'SimSun',
+    Georgia,
+    serif;
+}
+
+.prose:lang(zh-Hant) :is(h1, h2, h3, h4, h5, h6),
+.prose:lang(zh-TW) :is(h1, h2, h3, h4, h5, h6),
+.font-sans:lang(zh-Hant),
+.font-sans:lang(zh-TW) {
+  font-family:
+    var(--font-sans),
+    'PingFang TC',
+    'Microsoft JhengHei',
+    'Noto Sans TC',
+    'PingFang SC',
+    'Hiragino Sans GB',
+    'Microsoft YaHei',
+    'Noto Sans SC',
+    system-ui,
+    sans-serif;
+}
+
 .prose pre {
   @apply rounded-lg p-4 overflow-x-auto my-4;
   background: #292524;
