@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import builtins
+import json
 from pathlib import Path
 import subprocess
 import sys
@@ -904,10 +905,17 @@ def _install_fake_liteparse(monkeypatch, *, image_names: tuple[str, ...] = ()) -
         def __init__(self, name: str) -> None:
             self.name = name
 
+    class _FakePage:
+        def __init__(self, page_num: int, markdown: str) -> None:
+            self.page_num = page_num
+            self.markdown = markdown
+            self.text = markdown
+
     class _FakeResult:
         def __init__(self, text: str, images: list) -> None:
             self.text = text
             self.images = images
+            self.pages = [_FakePage(1, text)]
 
     class _FakeLiteParse:
         def __init__(self, **kwargs) -> None:
@@ -953,6 +961,12 @@ def test_liteparse_pins_markdown_output_and_images_dir(tmp_path, monkeypatch) ->
     markdown = (workdir / "paper.md").read_text(encoding="utf-8")
     # Bare ``![](img_p1_1.png)`` is invalid once the file lands in images/.
     assert "![](images/img_p1_1.png)" in markdown
+    content_list = json.loads(
+        (workdir / "paper_content_list.json").read_text(encoding="utf-8")
+    )
+    assert content_list == [
+        {"type": "text", "text": markdown, "page_idx": 0}
+    ]
     assert (workdir / "images" / "img_p1_1.png").exists()
 
 

@@ -16,6 +16,7 @@ invisible to the cache loader).
 from __future__ import annotations
 
 import importlib.util
+import json
 from pathlib import Path
 import re
 from typing import Any, Callable, Optional
@@ -62,6 +63,11 @@ class LiteParseParser:
                 "extract_links": config.extract_links,
                 "extract_images": config.extract_images,
                 "max_pages": config.max_pages,
+                # v1 preserves LiteParse's physical-page boundaries in the
+                # canonical content-list IR. Keep this in the signature so
+                # caches produced before page metadata was retained are not
+                # reused by page-grounded retrieval.
+                "page_structure": 1,
             },
         )
 
@@ -132,6 +138,26 @@ class LiteParseParser:
                 images_dir.rmdir()
 
         (workdir / f"{source_path.stem}.md").write_text(markdown, encoding="utf-8")
+
+        # LiteParse already exposes per-page text, but saving only result.text
+        # discards those locators. Scanned PDFs then remain searchable through
+        # one unlocated Markdown document while source-grounded lessons reject
+        # every hit because it has no page_index. Emit the optional canonical
+        # content list so all downstream consumers retain the physical page.
+        page_blocks = []
+        for page in getattr(result, "pages", None) or []:
+            page_num = getattr(page, "page_num", None)
+            if type(page_num) is not int or page_num < 1:
+                continue
+            text = str(getattr(page, "markdown", "") or getattr(page, "text", "") or "")
+            if config.extract_images:
+                text = self._portable_image_links(text, getattr(result, "images", None))
+            if text.strip():
+                page_blocks.append({"type": "text", "text": text, "page_idx": page_num - 1})
+        if page_blocks:
+            (workdir / f"{source_path.stem}_content_list.json").write_text(
+                json.dumps(page_blocks, ensure_ascii=False), encoding="utf-8"
+            )
 
     @staticmethod
     def _portable_image_links(markdown: str, images: Any) -> str:
