@@ -364,6 +364,48 @@ def test_upsert_notebook_entries_persists_all(store: SQLiteSessionStore) -> None
     assert all(e["session_title"] == "Test" for e in result["items"])
 
 
+def test_notebook_navigation_names_each_entrys_session(store: SQLiteSessionStore) -> None:
+    """Navigation can collapse one practice session's questions into a row.
+
+    Each identity row carries the session its entry was recorded in — the
+    durable grouping id — while an entry without a session keeps ``None`` so
+    it stays an individual row. No answers travel with them.
+    """
+    session = asyncio.run(store.create_session(title="Physics set", session_id="set-1"))
+    asyncio.run(
+        store.upsert_notebook_entries(
+            session["id"],
+            _make_items(("q1", "Q1?", False), ("q2", "Q2?", True)),
+        )
+    )
+    asyncio.run(
+        store.upsert_notebook_entries(
+            None,
+            [
+                {
+                    "origin_type": "external_import",
+                    "origin_ref": "import-a",
+                    "question_id": "i1",
+                    "question": "Imported?",
+                    "question_type": "choice",
+                    "user_answer": "A",
+                    "correct_answer": "B",
+                    "is_correct": False,
+                }
+            ],
+        )
+    )
+
+    rows = {row["id"]: row for row in asyncio.run(store.list_notebook_navigation())}
+    set_rows = [row for row in rows.values() if row["session_id"] == "set-1"]
+    assert sorted(row["question"] for row in set_rows) == ["Q1?", "Q2?"]
+    assert all(row["session_title"] == "Physics set" for row in set_rows)
+    loose = next(row for row in rows.values() if row["question"] == "Imported?")
+    assert loose["session_id"] is None
+    assert loose["session_title"] == ""
+    assert not any("correct_answer" in row or "user_answer" in row for row in rows.values())
+
+
 def test_list_notebook_entries_intersects_session_filters(
     store: SQLiteSessionStore,
 ) -> None:

@@ -7,17 +7,24 @@ vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => k
 vi.mock('@/components/learning/LearningCreateMenu', () => ({ LearningCreateMenu: () => <button>Create learning</button> }))
 vi.mock('@/components/layout/AppShell', () => ({ useSidebarDrawer: () => null }))
 const mastery = vi.hoisted(() => ({ topics: [] as unknown[] }))
+const practice = vi.hoisted(() => ({
+  rows: [
+    { id: 1, question: 'Older material, recently studied', created_at: 100, updated_at: 900, content_workspace_id: 'physics' },
+    { id: 2, question: 'Newly created material', created_at: 800, updated_at: 800, content_workspace_id: '' },
+  ] as unknown[],
+}))
 vi.mock('@/hooks/useLearningIndex', () => ({ useLearningIndex: () => ({
   loading: false, failed: [], retry: vi.fn(), sources: {
-    books: [], mastery: mastery.topics, reading: [], watching: [], practice: [
-      { id: 1, question: 'Older material, recently studied', created_at: 100, updated_at: 900, content_workspace_id: 'physics' },
-      { id: 2, question: 'Newly created material', created_at: 800, updated_at: 800, content_workspace_id: '' },
-    ],
+    books: [], mastery: mastery.topics, reading: [], watching: [], practice: practice.rows,
   },
 }) }))
 beforeEach(() => {
   localStorage.clear()
   mastery.topics = []
+  practice.rows = [
+    { id: 1, question: 'Older material, recently studied', created_at: 100, updated_at: 900, content_workspace_id: 'physics' },
+    { id: 2, question: 'Newly created material', created_at: 800, updated_at: 800, content_workspace_id: '' },
+  ]
 })
 
 it('sorts by creation independently of activity and retains the preference', () => {
@@ -43,6 +50,34 @@ it('searches records without discarding the rest of the library', () => {
   expect(list.getByRole('link')).toHaveTextContent('Older material')
   fireEvent.keyDown(input, { key: 'Escape' })
   expect(list.getAllByRole('link')).toHaveLength(2)
+})
+
+it('collapses one practice session into a row that expands to its questions', () => {
+  practice.rows = [
+    { id: 3, question: 'Q3', created_at: 1, updated_at: 30, session_id: 'set-1', session_title: 'Physics set', content_workspace_id: '' },
+    { id: 2, question: 'Q2', created_at: 2, updated_at: 20, session_id: 'set-1', session_title: 'Physics set', content_workspace_id: '' },
+    { id: 1, question: 'Loose question', created_at: 3, updated_at: 10, content_workspace_id: '' },
+  ]
+  render(<LearningNavigation />)
+  const region = within(screen.getByRole('region', { name: 'navigation.learningRecords' }))
+  // One row for the set, one for the entry without a session — the questions
+  // themselves only appear once the set is opened.
+  expect(region.getAllByRole('link').map(link => link.getAttribute('href'))).toEqual([
+    '/learning/practice?dt_workspace=',
+    '/learning/practice?question=1&dt_workspace=',
+  ])
+  expect(region.getAllByRole('link')[0]).toHaveTextContent('Physics set')
+  expect(region.queryByText('Q3')).toBeNull()
+  fireEvent.click(region.getByRole('button', { name: 'navigation.showPracticeQuestions' }))
+  expect(region.getAllByRole('link').map(link => link.getAttribute('href'))).toEqual([
+    '/learning/practice?dt_workspace=',
+    '/learning/practice?question=3&dt_workspace=',
+    '/learning/practice?question=2&dt_workspace=',
+    '/learning/practice?question=1&dt_workspace=',
+  ])
+  expect(region.getByText('Q3')).toBeInTheDocument()
+  fireEvent.click(region.getByRole('button', { name: 'navigation.hidePracticeQuestions' }))
+  expect(region.queryByText('Q3')).toBeNull()
 })
 
 it('files a conversation under the record it was held in', () => {

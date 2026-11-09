@@ -4287,6 +4287,9 @@ class SQLiteSessionStore:
 
         Uses the same recycle predicate as the Question Bank. No new schema or
         migration: old entry IDs remain the IDs used by practice and review.
+        Every row also names its session, so navigation can collapse the
+        questions recorded in one practice session into a single group;
+        entries without a session keep their own row.
         """
 
         def read() -> list[dict[str, Any]]:
@@ -4295,10 +4298,13 @@ class SQLiteSessionStore:
                     dict(row)
                     for row in conn.execute(
                         # Only a fixed table alias is substituted into the local predicate.
-                        "SELECT id, substr(question, 1, 160) AS question, created_at, updated_at "  # nosec B608
-                        "FROM notebook_entries WHERE "
-                        + _NOT_RECYCLED_ENTRY_SQL.format(entries="notebook_entries")
-                        + " ORDER BY updated_at DESC, id DESC"
+                        "SELECT n.id, substr(n.question, 1, 160) AS question, "
+                        "n.session_id, COALESCE(s.title, '') AS session_title, "
+                        "n.created_at, n.updated_at "  # nosec B608
+                        "FROM notebook_entries n "
+                        "LEFT JOIN sessions s ON s.id = n.session_id WHERE "
+                        + _NOT_RECYCLED_ENTRY_SQL.format(entries="n")
+                        + " ORDER BY n.updated_at DESC, n.id DESC"
                     ).fetchall()
                 ]
 
