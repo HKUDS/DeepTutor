@@ -104,17 +104,11 @@ export function ReadingActionsProvider({
   // same promise the standalone toolbar makes.
   useEffect(() => stopSpeaking, [locator, materialId, stopSpeaking]);
 
-  const actions = useMemo<ReadingActionEntry[]>(
+  const catalogActions = useMemo<ReadingActionEntry[]>(
     () =>
       extensions
         .flatMap((extension) =>
           extension.actions
-            .filter(
-              (action) =>
-                !CHAT_ROUTED_READING_ACTIONS.has(
-                  `${extension.id}:${action.id}`,
-                ),
-            )
             .map((action) => {
               const key = `${extension.id}:${action.id}`;
               const builtIn = builtInActionLabel(extension.id, action.id);
@@ -135,6 +129,16 @@ export function ReadingActionsProvider({
           );
         }),
     [extensions, t],
+  );
+
+  const actions = useMemo(
+    () => catalogActions.filter((entry) => !CHAT_ROUTED_READING_ACTIONS.has(entry.key)),
+    [catalogActions],
+  );
+  const helpActions = useMemo(
+    () => catalogActions.filter((entry) =>
+      entry.key === "guided_learning:guide" || entry.key === "vocabulary:explain"),
+    [catalogActions],
   );
 
   const run = useCallback<ReadingActionsValue["run"]>(
@@ -218,6 +222,7 @@ export function ReadingActionsProvider({
     () => ({
       ageMode,
       actions,
+      helpActions,
       cards,
       speaking,
       busyKey,
@@ -225,7 +230,7 @@ export function ReadingActionsProvider({
       stopSpeaking,
       dismiss,
     }),
-    [actions, ageMode, busyKey, cards, dismiss, run, speaking, stopSpeaking],
+    [actions, helpActions, ageMode, busyKey, cards, dismiss, run, speaking, stopSpeaking],
   );
 
   return (

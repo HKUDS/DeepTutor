@@ -42,6 +42,8 @@ export interface ReadingActionCard {
 export interface ReadingActionsValue {
   ageMode: ReadingAgeMode;
   actions: ReadingActionEntry[];
+  /** Permission-filtered helpers for quiz cards, separate from chat-routed menus. */
+  helpActions: ReadingActionEntry[];
   cards: ReadingActionCard[];
   speaking: boolean;
   /** Key of the action currently running, or "". */

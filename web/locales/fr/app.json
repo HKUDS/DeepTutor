@@ -7486,5 +7486,8 @@
   "settings.modelImport.unverified": "Certains modèles ne précisent pas leur type. Testez-les avant de les utiliser pour ce service.",
   "settings.modelImport.draftHint": "Les modèles sont ajoutés au brouillon. Appliquez les modifications pour les enregistrer ; le modèle par défaut reste identique.",
   "settings.modelImport.selected": "Sélectionnés : {{count}}",
-  "language.korean": "한국어 (일부 번역)"
+  "language.korean": "한국어 (일부 번역)",
+  "Recorded help: {{count}}": "Aides enregistrées : {{count}}",
+  "Select text from this question's reading section first.": "Sélectionnez d’abord du texte dans la section de lecture de cette question.",
+  "Failed to record help. Please try again.": "Impossible d’enregistrer l’aide. Veuillez réessayer."
 }

@@ -202,6 +202,7 @@ export interface ReadingExtensionManifest {
 }
 
 export interface ReadingExtensionResult {
+  quiz_help?: { question_id: string; hints_used: number };
   type: "card" | "quiz" | "feedback" | "browser_speech";
   title: string;
   message: string;
@@ -371,6 +372,8 @@ export async function runReadingExtension(
     locator: number;
     selection?: string;
     locale?: string;
+    question_id?: string;
+    help_request_id?: string;
   },
 ): Promise<ReadingExtensionResult> {
   return unwrap(

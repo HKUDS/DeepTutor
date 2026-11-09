@@ -39,6 +39,15 @@ type VocabularyTerm = {
   usage: string;
 };
 
+export type QuizHelpContext = {
+  selection?: string;
+  locator?: number;
+  actions: Array<{
+    extension: ReadingExtensionManifest;
+    action: ReadingExtensionManifest["actions"][number];
+  }>;
+};
+
 type QuizQuestion = {
   id?: string;
   prompt: string;
@@ -300,6 +309,7 @@ function ExtensionToolbar({
           result={result}
           materialId={materialId}
           locator={resultLocator}
+          helpContext={{ selection, locator: selectionLocator ?? locator, actions }}
           sessionId={sessionId}
           closeLabel={t("Close")}
           onClose={() => setResult(null)}
@@ -341,6 +351,7 @@ export function ExtensionResult({
   onClose,
   onError,
   variant = "strip",
+  helpContext,
 }: {
   result: ReadingExtensionResult;
   materialId: string;
@@ -355,6 +366,7 @@ export function ExtensionResult({
    * carries both.
    */
   variant?: "strip" | "card";
+  helpContext?: QuizHelpContext;
 }) {
   const questions = Array.isArray(result.payload.questions)
     ? (result.payload.questions as QuizQuestion[])
@@ -451,6 +463,8 @@ export function ExtensionResult({
       ) : null}
       {questions.length ? (
         <QuizQuestions
+          key={JSON.stringify([materialId, locator, questions.map((question) => question.id)])}
+          helpContext={helpContext}
           questions={questions}
           materialId={materialId}
           locator={locator}
@@ -468,18 +482,21 @@ function QuizQuestions({
   locator,
   sessionId,
   onError,
+  helpContext,
 }: {
   questions: QuizQuestion[];
   materialId: string;
   locator: number;
   sessionId?: string | null;
   onError: (message: string) => void;
+  helpContext?: QuizHelpContext;
 }) {
   const { t } = useTranslation();
   const [answers, setAnswers] = useState<Record<string, number>>({});
   const [verdicts, setVerdicts] = useState<Record<string, boolean>>({});
   const [reward, setReward] = useState<ReadingQuizReward | null>(null);
   const [saving, setSaving] = useState<Record<string, boolean>>({});
+  const [helping, setHelping] = useState<Record<string, boolean>>({});
   const pendingSubmissions = useRef<Record<string, { selected: number; id: string }>>({});
 
   async function persistAnswer(question: QuizQuestion, index: number, choiceIndex: number) {
@@ -539,7 +556,7 @@ function QuizQuestions({
                   key={choice}
                   type="button"
                   aria-pressed={selected === choiceIndex}
-                  disabled={Boolean(saving[key])}
+                  disabled={Boolean(saving[key] || helping[key])}
                   onClick={() => {
                     void persistAnswer(question, index, choiceIndex);
                   }}
@@ -549,6 +566,17 @@ function QuizQuestions({
                 </button>
               ))}
             </div>
+            {question.id && helpContext ? (
+              <QuestionHelp
+                questionId={question.id}
+                materialId={materialId}
+                locator={locator}
+                context={helpContext}
+                disabled={Boolean(saving[key])}
+                onBusyChange={(busy) => setHelping((current) => ({ ...current, [key]: busy }))}
+                onError={onError}
+              />
+            ) : null}
             {selected !== undefined ? (
               <p
                 role="status"
@@ -574,5 +602,97 @@ function QuizQuestions({
         </p>
       ) : null}
     </>
+  );
+}
+
+function QuestionHelp({
+  questionId, materialId, locator, context, disabled, onBusyChange, onError,
+}: {
+  questionId: string;
+  materialId: string;
+  locator: number;
+  context: QuizHelpContext;
+  disabled: boolean;
+  onBusyChange: (busy: boolean) => void;
+  onError: (message: string) => void;
+}) {
+  const { t, i18n } = useTranslation();
+  const [result, setResult] = useState<ReadingExtensionResult | null>(null);
+  const [count, setCount] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const busyRef = useRef(false);
+  const active = useRef(true);
+  const requests = useRef(new Map<string, string>());
+  useEffect(() => {
+    active.current = true;
+    return () => { active.current = false; };
+  }, []);
+  const actions = context.actions.filter(({ extension, action }) =>
+    (extension.id === "guided_learning" && action.id === "guide") ||
+    (extension.id === "vocabulary" && action.id === "explain"),
+  );
+  if (!actions.length) return null;
+  const hasSelection = Boolean(context.selection?.trim()) && context.locator === locator;
+
+  async function requestHelp(entry: QuizHelpContext["actions"][number]) {
+    if (busyRef.current || disabled || !hasSelection) return;
+    const selection = context.selection || "";
+    const locale = i18n.language;
+    const requestKey = JSON.stringify([entry.extension.id, entry.action.id, selection, locale]);
+    const requestId = requests.current.get(requestKey) || randomUuid();
+    requests.current.set(requestKey, requestId);
+    busyRef.current = true;
+    setBusy(true);
+    onBusyChange(true);
+    try {
+      const next = await runReadingExtension(materialId, entry.extension.id, entry.action.id, {
+        locator, selection, locale, question_id: questionId, help_request_id: requestId,
+      });
+      if (!active.current) return;
+      const receipt = next.quiz_help;
+      if (!receipt || receipt.question_id !== questionId ||
+          !Number.isInteger(receipt.hints_used) || receipt.hints_used < 1 ||
+          (next.type !== "card" && next.type !== "feedback")) {
+        throw new Error(t("Failed to record help. Please try again."));
+      }
+      requests.current.delete(requestKey);
+      setCount((previous) => Math.max(previous, receipt.hints_used));
+      setResult(next);
+    } catch (error) {
+      if (active.current) onError(error instanceof Error ? error.message : String(error));
+    } finally {
+      if (active.current) {
+        busyRef.current = false;
+        setBusy(false);
+        onBusyChange(false);
+      }
+    }
+  }
+
+  return (
+    <div className="mt-2 space-y-2">
+      <div className="flex flex-wrap gap-2">
+        {actions.map((entry) => (
+          <button
+            key={`${entry.extension.id}:${entry.action.id}`}
+            type="button"
+            disabled={disabled || busy || !hasSelection}
+            onClick={() => { void requestHelp(entry); }}
+            className="rounded-md border border-[var(--border)] px-2 py-1 text-xs disabled:opacity-50"
+          >
+            {entry.extension.id === "guided_learning" ? t("Guide me") : t("Explain vocabulary")}
+          </button>
+        ))}
+      </div>
+      {!hasSelection ? <p className="text-xs text-[var(--muted-foreground)]">{t("Select text from this question's reading section first.")}</p> : null}
+      {busy ? <p role="status">{t("Working on it…")}</p> : null}
+      {count > 0 ? <p role="status">{t("Recorded help: {{count}}", { count })}</p> : null}
+      {result ? (
+        <ExtensionResult
+          variant="card" result={result} materialId={materialId} locator={locator}
+          closeLabel={t("Close")} onClose={() => setResult(null)} onError={onError}
+        />
+      ) : null}
+    </div>
   );
 }
