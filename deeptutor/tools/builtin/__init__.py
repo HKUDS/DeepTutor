@@ -167,14 +167,19 @@ def _scoped_source_identity(entry: dict[str, Any]) -> set[str] | None:
 
     Pipelines disagree on how a provenance row names its document —
     ``document_key`` (LlamaIndex source pages), ``file_name``/``source``
-    (chunk provenance) — so every naming is normalised to its full
-    relative path under the KB's ``raw`` directory, and rows that name
-    no document at all (query metadata) stay neutral. A same-named file
-    in another folder is a different document and never matches.
+    (chunk provenance). Full-path namings (``document_key`` and
+    ``source``, the row's location under the KB's ``raw`` directory) are
+    authoritative: when either is present it alone defines the row's
+    identity, and basename-only metadata (``file_name``) cannot widen
+    it (#2374). A row whose full path is under another folder therefore
+    never matches a bare basename request — or a different folder path.
+    Rows that name no document at all (query metadata) stay neutral.
     """
     keys: set[str] = set()
-    for field in ("document_key", "file_name", "source"):
+    for field in ("document_key", "source"):
         keys |= _document_keys_of(entry.get(field))
+    if not keys:
+        keys = _document_keys_of(entry.get("file_name"))
     return keys or None
 
 
