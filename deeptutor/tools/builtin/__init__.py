@@ -157,9 +157,9 @@ def _semantic_tool_result(
 
 
 def _document_keys_of(value: Any) -> set[str]:
-    """Normalised keys one document path can be recognised by, basename included."""
-    normalized = str(value or "").replace("\\", "/").strip("/").casefold()
-    return {normalized, normalized.rsplit("/", 1)[-1]} if normalized else set()
+    """Normalised relative path (under raw/) a document is recognised by, case-exact."""
+    normalized = str(value or "").replace("\\", "/").strip("/")
+    return {normalized} if normalized else set()
 
 
 def _scoped_source_identity(entry: dict[str, Any]) -> set[str] | None:
@@ -167,8 +167,10 @@ def _scoped_source_identity(entry: dict[str, Any]) -> set[str] | None:
 
     Pipelines disagree on how a provenance row names its document —
     ``document_key`` (LlamaIndex source pages), ``file_name``/``source``
-    (chunk provenance) — so every naming is normalised, basename included,
-    and rows that name no document at all (query metadata) stay neutral.
+    (chunk provenance) — so every naming is normalised to its full
+    relative path under the KB's ``raw`` directory, and rows that name
+    no document at all (query metadata) stay neutral. A same-named file
+    in another folder is a different document and never matches.
     """
     keys: set[str] = set()
     for field in ("document_key", "file_name", "source"):

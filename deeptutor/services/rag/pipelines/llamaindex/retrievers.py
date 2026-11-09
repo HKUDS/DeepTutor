@@ -261,8 +261,8 @@ def retrieve_nodes(
 
 
 def _scope_key(value: str) -> str:
-    """Normalise a path-ish document identity for scope comparison."""
-    return value.replace("\\", "/").strip("/").casefold()
+    """Normalise a path-ish document identity for exact, case-sensitive comparison."""
+    return value.replace("\\", "/").strip("/")
 
 
 def _scope_matcher(document_keys: tuple[str, ...], raw_root: Path | None) -> Any:
@@ -272,7 +272,8 @@ def _scope_matcher(document_keys: tuple[str, ...], raw_root: Path | None) -> Any
     ``raw`` directory). Plain-text documents are ingested with only a
     ``file_path`` (#2374) — the absolute location under that same ``raw``
     directory — so those match by raw-relative position instead. A same-named
-    file in another folder is a different document and never matches.
+    file in another folder is a different document and never matches, and
+    neither does one whose path differs only by case.
     """
     keys = {_scope_key(key) for key in document_keys if str(key).strip()}
     raw_resolved = raw_root.resolve() if raw_root is not None else None

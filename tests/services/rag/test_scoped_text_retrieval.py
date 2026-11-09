@@ -87,6 +87,31 @@ def test_scoped_retrieval_without_raw_root_does_not_match_by_basename(
     )
 
 
+def test_scoped_retrieval_is_case_exact(tmp_path: Path) -> None:
+    """``NOTES.txt`` and ``notes.txt`` are distinct files and never share a scope."""
+    raw = tmp_path / "raw"
+    raw.mkdir(parents=True)
+    nodes = [
+        TextNode(
+            text="Lowercase notes content.",
+            id_="lower-hit",
+            metadata={"file_name": "notes.txt", "file_path": str(raw / "notes.txt")},
+        ),
+        TextNode(
+            text="Uppercase notes content.",
+            id_="upper-hit",
+            metadata={"file_name": "NOTES.txt", "file_path": str(raw / "NOTES.txt")},
+        ),
+    ]
+    index = VectorStoreIndex(nodes, embed_model=MockEmbedding(embed_dim=8))
+
+    hits = retriever_module.retrieve_scoped_nodes(
+        index, "notes content", ["notes.txt"], top_k=4, raw_root=raw
+    )
+
+    assert [hit.node.node_id for hit in hits] == ["lower-hit"]
+
+
 def test_scoped_retrieval_returns_nothing_outside_the_requested_document(
     tmp_path: Path,
 ) -> None:

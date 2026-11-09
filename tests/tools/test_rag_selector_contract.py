@@ -224,6 +224,37 @@ async def test_scoped_text_search_withholds_foreign_sources(kb, rag_calls, monke
 
 
 @pytest.mark.asyncio
+async def test_scoped_text_search_rejects_same_basename_in_another_folder(
+    kb, rag_calls, monkeypatch
+):
+    """Basename equality must not leak a foreign document into the scope (#2374)."""
+    requested = kb / "raw" / "requested"
+    requested.mkdir()
+    (requested / "notes.txt").write_text("Keep this source private.", encoding="utf-8")
+
+    async def leaky_rag_search(**kwargs):
+        rag_calls["rag_search"].append(kwargs)
+        return {
+            "answer": "foreign answer",
+            "provider": "mock",
+            "sources": [{"file_name": "notes.txt", "source": "other/notes.txt"}],
+        }
+
+    monkeypatch.setattr("deeptutor.tools.rag_tool.rag_search", leaky_rag_search)
+    result = await RAGTool().execute(
+        query="What does this document say?",
+        kb_name=kb.name,
+        source_path="requested/notes.txt",
+    )
+    assert not result.success
+    assert result.metadata["error_type"] == "source_scope_unsupported"
+    assert result.metadata["source_scope"] == "requested/notes.txt"
+    assert result.sources == []
+    assert "withheld" in result.content
+    assert rag_calls["rag_search"][0]["document_keys"] == ["requested/notes.txt"]
+
+
+@pytest.mark.asyncio
 async def test_scoped_text_search_reports_no_match_without_whole_kb_fallback(kb, rag_calls):
     (kb / "raw" / "notes.txt").write_text("Keep this source private.", encoding="utf-8")
     result = await RAGTool().execute(
