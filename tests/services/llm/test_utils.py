@@ -82,6 +82,13 @@ def test_extract_response_content() -> None:
     assert extract_response_content(payload) == "HelloWorld"
 
 
+def test_extract_response_content_skips_null_text_parts() -> None:
+    """A delta with a null text field must not contribute the word "None"."""
+    assert extract_response_content({"content": [{"text": None}]}) == ""
+    assert extract_response_content({"content": [{"text": None}, {"text": "hi"}]}) == "hi"
+    assert extract_response_content({"content": [{"type": "text"}]}) == ""
+
+
 def test_extract_response_content_from_object_attributes() -> None:
     """Response content extraction should handle SDK-like objects."""
 
