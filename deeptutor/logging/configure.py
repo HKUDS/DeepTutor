@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from logging.handlers import RotatingFileHandler
+from logging.handlers import RotatingFileHandler as _RotatingFileHandler
 from pathlib import Path
 import sys
 from typing import TextIO
@@ -16,6 +16,27 @@ from .loguru_bridge import install_loguru_bridge
 
 _CONFIGURED = False
 _MANAGED_ATTR = "_deeptutor_managed"
+
+
+class _TolerantRotatingFileHandler(_RotatingFileHandler):
+    """Keep appending when rotation cannot rename the current file.
+
+    Windows refuses to rename a file that another process holds open, and two
+    DeepTutor processes do hold this one: the launcher configures logging, and
+    the server it spawns configures it again on import. The stdlib handler then
+    drops every record and prints a full traceback for each emit. Letting the
+    file grow until the other process exits is the lesser failure: records are
+    kept and the console stays readable.
+    """
+
+    def doRollover(self) -> None:
+        try:
+            super().doRollover()
+        except PermissionError:
+            # ``doRollover`` closes the stream before the rename, so reopen it
+            # or the next emit has nowhere to write.
+            if self.stream is None:
+                self.stream = self._open()
 
 
 def _level(value: str | int) -> int:
@@ -67,7 +88,7 @@ def configure_logging(
         ensure_private_directory(log_dir)
         log_path = log_dir / "deeptutor.jsonl"
         file_handler = _managed(
-            RotatingFileHandler(
+            _TolerantRotatingFileHandler(
                 log_path,
                 maxBytes=config.max_bytes,
                 backupCount=config.backup_count,

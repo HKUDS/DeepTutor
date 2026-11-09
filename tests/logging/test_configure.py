@@ -113,3 +113,32 @@ def test_configure_logging_uses_private_directory_and_file_modes(monkeypatch, tm
 
     assert stat.S_IMODE(log_dir.stat().st_mode) == 0o700
     assert stat.S_IMODE((log_dir / "deeptutor.jsonl").stat().st_mode) == 0o600
+
+
+def test_rotation_keeps_records_when_the_file_is_held_open(tmp_path: Path) -> None:
+    """Windows cannot rename an open file: the records must survive anyway."""
+    configure_module = importlib.import_module("deeptutor.logging.configure")
+    log_path = tmp_path / "deeptutor.jsonl"
+    handler = configure_module._TolerantRotatingFileHandler(
+        log_path, maxBytes=200, backupCount=1, encoding="utf-8"
+    )
+    handler.setFormatter(logging.Formatter("%(message)s"))
+    logger = logging.getLogger("deeptutor.tests.rotation")
+    logger.handlers = [handler]
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
+
+    # A second handle on the same path is what the other DeepTutor process
+    # holds while it writes its own records.
+    holder = log_path.open("a", encoding="utf-8")
+    try:
+        for index in range(12):
+            logger.info("record-%02d-%s", index, "x" * 40)
+    finally:
+        holder.close()
+        logger.handlers = []
+        handler.close()
+
+    text = log_path.read_text(encoding="utf-8")
+    for index in range(12):
+        assert f"record-{index:02d}" in text
