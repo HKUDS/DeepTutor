@@ -17,7 +17,11 @@ import {
 } from '@/features/settings/navigation/settings-pages'
 
 export default function SettingsNav({ onNavigate }: { onNavigate?: () => void }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  // Fixed translators keep search bilingual (English + Chinese) regardless of
+  // the active locale; rendering stays on t() with the active locale only.
+  const tEn = i18n.getFixedT('en')
+  const tZh = i18n.getFixedT('zh')
   const pathname = usePathname()
   const access = useSettingsAccess()
   const pages = visibleSettingsPages(access)
@@ -30,10 +34,16 @@ export default function SettingsNav({ onNavigate }: { onNavigate?: () => void })
     return [
       page.label,
       t(page.label),
+      tEn(page.label),
+      tZh(page.label),
       page.blurb,
       t(page.blurb),
+      tEn(page.blurb),
+      tZh(page.blurb),
       navLabel,
       t(navLabel),
+      tEn(navLabel),
+      tZh(navLabel),
       page.key,
       page.key === 'connections' ? 'API Key token base url 密钥 凭据 地址 供应商' : '',
     ]

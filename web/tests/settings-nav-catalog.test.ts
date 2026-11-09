@@ -88,3 +88,20 @@ test("settings navigation copy avoids inline zh/en pairs and language branches",
     );
   }
 });
+
+test("settings search stays bilingual via fixed translators", () => {
+  const source = readFileSync(
+    path.join(process.cwd(), "components/settings/SettingsNav.tsx"),
+    "utf8",
+  );
+  assert.match(
+    source,
+    /getFixedT\(\s*['"]en['"]/,
+    "SettingsNav.tsx: include English terms in search via getFixedT('en')",
+  );
+  assert.match(
+    source,
+    /getFixedT\(\s*['"]zh['"]/,
+    "SettingsNav.tsx: include Chinese terms in search via getFixedT('zh')",
+  );
+});

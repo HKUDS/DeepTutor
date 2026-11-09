@@ -5169,6 +5169,7 @@
   "{{count}} skills": "{{count}} навичок",
   "SVG / chart / diagram generation loop.": "Цикл створення SVG / діаграми / діаграми.",
   "A reasoning model can spend most of this on internal reasoning; raise it if a canvas comes back empty.": "Модель міркування може витратити більшу частину цього на внутрішнє міркування; підніміть його, якщо полотно повертається порожнім.",
+  "settings.nav.voice": "Голос",
   "settings.nav.workspace": "Workspace",
   "settings.presets.title": "Відправні точки",
   "settings.presets.blurb": "Завантажте перевірений стиль як чернетку. Нічого не зміниться, поки ви не застосуєте його.",
