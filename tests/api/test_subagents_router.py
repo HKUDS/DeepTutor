@@ -115,7 +115,9 @@ def test_connect_list_and_disconnect_roundtrip(client):
     assert len(listed) == 1
     assert listed[0]["name"] == "MyClaude"
     assert listed[0]["agent_kind"] == "claude_code"
-    assert listed[0]["cwd"] == "/tmp"
+    # The router stores the resolved path (``assert_path_allowed``), which is
+    # native — ``WindowsPath('/tmp')`` renders as ``\tmp``.
+    assert Path(listed[0]["cwd"]) == Path("/tmp")
 
     gone = client.delete("/api/subagents/connections/MyClaude")
     assert gone.status_code == 200

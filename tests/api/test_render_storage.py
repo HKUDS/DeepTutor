@@ -273,7 +273,9 @@ def test_chat_output_reveal_requires_local_browser(chat_output_api, monkeypatch)
     )
     assert response.status_code == 200
     assert run.call_args.args[0][:2] == ["open", "-R"]
-    assert run.call_args.args[0][-1].endswith("/gap-lock.html")
+    # Compare the basename, not a POSIX suffix: reveal() passes the native path
+    # and Windows joins it with backslashes.
+    assert Path(run.call_args.args[0][-1]).name == "gap-lock.html"
 
 
 def test_chat_output_actions_reject_symlinked_paths(chat_output_api, tmp_path: Path):
