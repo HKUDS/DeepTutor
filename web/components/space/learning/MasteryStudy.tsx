@@ -97,6 +97,7 @@ import { topicDisplayName, type Translate } from "./format";
 import { LevelUpCelebration } from "./LevelUpCelebration";
 import { MasteryComposer, STUDY_COMPOSER_WIDTH } from "./MasteryComposer";
 import { ProgressRing } from "./ProgressRing";
+import ReadAlongArticle from "./ReadAlongArticle";
 import StudySelectionActions, {
   type StudyAskKind,
 } from "./StudySelectionActions";
@@ -416,6 +417,11 @@ export function MasteryStudy({
   );
   const [viewerOpen, setViewerOpen] = useState(false);
   const [showSaveModal, setShowSaveModal] = useState(false);
+  // A reply opened in the focus-reading overlay: full text, read-along, one signal.
+  const [readAlong, setReadAlong] = useState<{
+    content: string;
+    title: string;
+  } | null>(null);
   // A passage the learner dragged over in the transcript, and the screen
   // coordinates the study-ask toolbar should sit at.
   const [selectedPassage, setSelectedPassage] = useState<{
@@ -1604,6 +1610,22 @@ export function MasteryStudy({
                               );
                             }
                       }
+                      assistantActions={(message) =>
+                        message.role === "assistant" && message.content.trim() ? (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setReadAlong({
+                                content: message.content,
+                                title: viewedPoint?.name ?? "",
+                              })
+                            }
+                            className="inline-flex items-center gap-1 rounded-md border border-[var(--border)] px-2 py-1 text-[11px] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
+                          >
+                            {t("Read along")}
+                          </button>
+                        ) : null
+                      }
                     />
                     <FollowupChipsRow
                       sessionId={state.sessionId}
@@ -1656,6 +1678,13 @@ export function MasteryStudy({
                 onAsk={askAboutSelection}
                 onPrefill={prefillSelectedPassage}
                 onDismiss={dismissSelectedPassage}
+              />
+            ) : null}
+            {readAlong ? (
+              <ReadAlongArticle
+                content={readAlong.content}
+                title={readAlong.title}
+                onClose={() => setReadAlong(null)}
               />
             ) : null}
           </div>

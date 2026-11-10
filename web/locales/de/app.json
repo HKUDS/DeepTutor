@@ -6318,5 +6318,16 @@
   "Before I answer, please teach me the background this question assumes. Keep it short and concrete, then ask me again.": "Bevor ich antworte, erkläre mir bitte den Hintergrund, den diese Frage voraussetzt. Kurz und konkret, dann frag mich erneut.",
   "Before I answer, please teach me the background I need for '{{objective}}'. Keep it short and concrete, then ask me again.": "Bevor ich antworte, erkläre mir bitte den Hintergrund, den ich für '{{objective}}' brauche. Kurz und konkret, dann frag mich erneut.",
   "Terms": "Begriffe",
-  "Explain '{{text}}' again, with one concrete example.": "Erkläre '{{text}}' noch einmal mit einem konkreten Beispiel."
+  "Explain '{{text}}' again, with one concrete example.": "Erkläre '{{text}}' noch einmal mit einem konkreten Beispiel.",
+  "Read along": "Mitlesen",
+  "Focus reading": "Fokuslesen",
+  "Start read-along": "Mitlesen starten",
+  "Previous sentence": "Vorheriger Satz",
+  "Next sentence": "Nächster Satz",
+  "Silent": "Stumm",
+  "Skip code & formulas": "Code & Formeln überspringen",
+  "Code · pause": "Code · kurz innehalten",
+  "Formula · pause": "Formel · kurz innehalten",
+  "Table · pause": "Tabelle · kurz innehalten",
+  "Click a sentence to start; click the current one again to mark it as the key point.": "Auf einen Satz klicken, um dort zu starten; erneut klicken markiert ihn als wichtigsten Punkt."
 }

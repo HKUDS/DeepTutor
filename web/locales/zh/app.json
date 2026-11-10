@@ -6330,5 +6330,16 @@
   "Before I answer, please teach me the background this question assumes. Keep it short and concrete, then ask me again.": "在回答之前，请先给我讲一下这道题需要的前置背景，尽量简短、具体，然后再问我一次。",
   "Before I answer, please teach me the background I need for '{{objective}}'. Keep it short and concrete, then ask me again.": "在回答之前，请先给我讲一下掌握「{{objective}}」所需的前置背景，尽量简短、具体，然后再问我一次。",
   "Terms": "术语",
-  "Explain '{{text}}' again, with one concrete example.": "再用一个具体例子解释一下「{{text}}」。"
+  "Explain '{{text}}' again, with one concrete example.": "再用一个具体例子解释一下「{{text}}」。",
+  "Read along": "跟读",
+  "Focus reading": "专注跟读",
+  "Start read-along": "开始跟读",
+  "Previous sentence": "上一句",
+  "Next sentence": "下一句",
+  "Silent": "静默",
+  "Skip code & formulas": "跳过代码公式",
+  "Code · pause": "代码 · 停一下",
+  "Formula · pause": "公式 · 停一下",
+  "Table · pause": "表格 · 停一下",
+  "Click a sentence to start; click the current one again to mark it as the key point.": "点击任意一句从句开始；再次点击当前句，可设为必须记住的重点。"
 }

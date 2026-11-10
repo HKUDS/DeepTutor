@@ -6330,5 +6330,16 @@
   "Before I answer, please teach me the background this question assumes. Keep it short and concrete, then ask me again.": "Before I answer, please teach me the background this question assumes. Keep it short and concrete, then ask me again.",
   "Before I answer, please teach me the background I need for '{{objective}}'. Keep it short and concrete, then ask me again.": "Before I answer, please teach me the background I need for '{{objective}}'. Keep it short and concrete, then ask me again.",
   "Terms": "Terms",
-  "Explain '{{text}}' again, with one concrete example.": "Explain '{{text}}' again, with one concrete example."
+  "Explain '{{text}}' again, with one concrete example.": "Explain '{{text}}' again, with one concrete example.",
+  "Read along": "Read along",
+  "Focus reading": "Focus reading",
+  "Start read-along": "Start read-along",
+  "Previous sentence": "Previous sentence",
+  "Next sentence": "Next sentence",
+  "Silent": "Silent",
+  "Skip code & formulas": "Skip code & formulas",
+  "Code · pause": "Code · pause",
+  "Formula · pause": "Formula · pause",
+  "Table · pause": "Table · pause",
+  "Click a sentence to start; click the current one again to mark it as the key point.": "Click a sentence to start; click the current one again to mark it as the key point."
 }
