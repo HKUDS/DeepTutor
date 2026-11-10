@@ -504,7 +504,7 @@ async def _ask(
                 {"role": "system", "content": instruction},
                 {"role": "user", "content": content},
             ],
-            max_tokens=1800,
+            max_tokens=8192,
             allow_image_fallback=False,
         )
     except LessonUnavailable:
