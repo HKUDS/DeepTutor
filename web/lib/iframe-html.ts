@@ -17,11 +17,65 @@ const KATEX_RESOURCES = [
     "/script>",
 ].join("\n  ");
 
+// Math a widget writes after load (step-by-step reveals, slider readouts) is
+// rendered too: DOM changes schedule another pass, and the observer is
+// disconnected while KaTeX writes so its own output does not loop.
 const KATEX_INIT_SCRIPT =
-  "<script data-katex-init>" +
-  'document.addEventListener("DOMContentLoaded",function(){var t=0,i=setInterval(function(){if(typeof renderMathInElement==="function"){clearInterval(i);try{renderMathInElement(document.body,{delimiters:[{left:"$$",right:"$$",display:true},{left:"$",right:"$",display:false},{left:"\\\\(",right:"\\\\)",display:false},{left:"\\\\[",right:"\\\\]",display:true}],throwOnError:false})}catch(e){console.error("[KaTeX] Error:",e)}}else if(++t>50){clearInterval(i);console.warn("[KaTeX] Timeout")}},100)});' +
-  "<" +
-  "/script>";
+  `<script data-katex-init>
+(function () {
+  var options = {
+    delimiters: [
+      { left: "$$", right: "$$", display: true },
+      { left: "$", right: "$", display: false },
+      { left: "\\\\(", right: "\\\\)", display: false },
+      { left: "\\\\[", right: "\\\\]", display: true }
+    ],
+    ignoredClasses: ["katex"],
+    throwOnError: false
+  };
+  var observed = { characterData: true, childList: true, subtree: true };
+  var observer = null;
+  var scheduled = 0;
+
+  function render() {
+    try {
+      renderMathInElement(document.body, options);
+    } catch (error) {
+      console.error("[KaTeX] Error:", error);
+    }
+  }
+
+  function rerender() {
+    scheduled = 0;
+    observer.disconnect();
+    render();
+    observer.takeRecords();
+    observer.observe(document.body, observed);
+  }
+
+  function start() {
+    render();
+    if (typeof MutationObserver === "undefined") return;
+    observer = new MutationObserver(function () {
+      if (!scheduled) scheduled = setTimeout(rerender, 80);
+    });
+    observer.observe(document.body, observed);
+  }
+
+  document.addEventListener("DOMContentLoaded", function () {
+    var tries = 0;
+    var timer = setInterval(function () {
+      if (typeof renderMathInElement === "function") {
+        clearInterval(timer);
+        start();
+      } else if (++tries > 50) {
+        clearInterval(timer);
+        console.warn("[KaTeX] Timeout");
+      }
+    }, 100);
+  });
+})();
+<` + "/script>";
 
 const KATEX_HEAD = KATEX_RESOURCES + "\n  " + KATEX_INIT_SCRIPT;
 
@@ -40,16 +94,23 @@ export function injectKaTeX(html: string): string {
 
   if (hasKaTeX) return html;
 
+  // Replacer functions, not strings: in a replacement string "$$" means "$",
+  // which would turn the "$$" delimiter above into "$".
   if (html.includes("</head>")) {
-    return html.replace("</head>", KATEX_HEAD + "\n</head>");
+    return html.replace("</head>", () => KATEX_HEAD + "\n</head>");
   }
   if (html.includes("<head>")) {
-    return html.replace(/<head([^>]*)>/i, "<head$1>\n" + KATEX_HEAD);
+    return html.replace(
+      /<head([^>]*)>/i,
+      (_tag, attributes: string) => `<head${attributes}>\n` + KATEX_HEAD,
+    );
   }
   if (html.includes("<html")) {
     return html.replace(
       /(<html[^>]*>)/i,
-      '$1\n<head>\n  <meta charset="UTF-8">\n  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n' +
+      (tag: string) =>
+        tag +
+        '\n<head>\n  <meta charset="UTF-8">\n  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n' +
         KATEX_HEAD +
         "\n</head>",
     );
