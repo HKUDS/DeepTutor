@@ -908,9 +908,10 @@ async def prepare_lesson(
                         }
                     )
         if len(sources) > MAX_LESSON_PAGES:
-            raise LessonUnavailable(
-                "Invalid source selection count: too many distinct physical pages."
-            )
+            # Models often exceed the cap they were given; keep their ranked
+            # picks and drop context-only neighbour pages first.
+            primary = [s for s in sources if s["quote"] or s["text"]]
+            sources = (primary + [s for s in sources if s not in primary])[:MAX_LESSON_PAGES]
         return sources
 
     # One preparation has immutable learning context. Its single repair may
