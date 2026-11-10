@@ -1148,6 +1148,37 @@ def test_page_limit_counts_physical_pages_not_multiple_quotes_from_one_page(mate
     assert len(evidence["sources"]) == 1
 
 
+def test_missing_neighbor_page_is_skipped_not_fatal(material, monkeypatch):
+    last = next(d for d in material.documents if d.metadata.get("page_index") == 71)
+    _install_preparation(
+        material,
+        monkeypatch,
+        rankings=[
+            {
+                "sufficient": True,
+                "selected": [
+                    {
+                        "id": "c0",
+                        "quote": "Unrelated section 71.",
+                        "reason": "Last page",
+                        "neighbor": 1,
+                    }
+                ],
+            }
+        ],
+    )
+
+    async def search(self, query, kb_name, **kwargs):
+        return {"sources": [{**last.metadata, "chunk_id": "n71", "evidence_text": last.text}]}
+
+    monkeypatch.setattr(
+        "deeptutor.services.rag.pipelines.llamaindex.pipeline.LlamaIndexPipeline.search", search
+    )
+    evidence = asyncio.run(lessons.prepare_lesson(material.store, "path", "kp", material.config))
+    # The document has no page after 71; the chosen page still makes the lesson.
+    assert [s["ref"]["page_index"] for s in evidence["sources"]] == [71]
+
+
 def test_page_enrichment_never_discards_the_hit_near_end_of_a_long_page(material, monkeypatch):
     hit = "Membrane lipids form a bilayer."
     monkeypatch.setattr(
