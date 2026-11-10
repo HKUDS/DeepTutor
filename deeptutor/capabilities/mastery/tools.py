@@ -1708,10 +1708,38 @@ class MasteryGradeTool(BaseTool):
             # reply — unless that commit was unreadable clarifying prose on a
             # choice card (#1004), in which case a later readable answer may
             # still recover the gate.
-            from deeptutor.learning.pending import is_readable_choice_answer
+            from deeptutor.learning.pending import (
+                is_readable_choice_answer,
+                supersedes_ungraded_reply,
+            )
 
             stored = str(interaction.user_answer or "")
             question = interaction.question
+            superseded = (
+                supersedes_ungraded_reply(stored, answer, interaction.result)
+                if question.question_type != "choice" and not question.questions
+                else None
+            )
+            if superseded is not None:
+                # A reply already ruled non-final is a question the learner
+                # asked, not an answer we are holding: they asked for help, the
+                # tutor explained, and they have now answered. Reusing the
+                # stored reply here graded the old help request again — the
+                # judge declined it again as ungraded, and the question could
+                # never be cleared (#2595, the free-text half of #1004).
+                # Revising through the service rewrites ``user_answer`` and
+                # keeps the superseded attempt in the event log as
+                # ``assessment.revised``.
+                revised = service.record_question_answer(
+                    path_id,
+                    superseded,
+                    interaction_id=interaction.interaction_id,
+                    session_id=_resolve_session_id(kwargs),
+                    turn_id=_resolve_turn_id(kwargs),
+                )
+                if revised is not None:
+                    interaction = revised
+                stored = str(interaction.user_answer or "")
             if question.question_type != "choice" or is_readable_choice_answer(
                 stored, question.choice_map
             ):
