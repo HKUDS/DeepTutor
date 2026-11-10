@@ -28,6 +28,7 @@ import {
   ArrowLeft,
   ArrowUp,
   Check,
+  Columns2,
   Eye,
   FileText,
   GripVertical,
@@ -200,7 +201,7 @@ export default function ChatNotebookTab({ sessionId = null, docId = null, onExit
   const [draggingCellId, setDraggingCellId] = useState<string | null>(null);
   const [dragOverCellId, setDragOverCellId] = useState<string | null>(null);
   const [graph, setGraph] = useState<NotebookGraph>(() => emptyNotebookGraph());
-  const [view, setView] = useState<"list" | "split" | "graph">("list");
+  const [view, setView] = useState<"list" | "graph">("list");
   const [runs, setRuns] = useState<Record<string, CellRun>>({});
   const [previewing, setPreviewing] = useState<Set<string>>(() => new Set());
   const [saveState, setSaveState] = useState<SaveState>("idle");
@@ -633,7 +634,7 @@ export default function ChatNotebookTab({ sessionId = null, docId = null, onExit
           onRetry={() => void persist(cells, graph)}
         />
         <div className="flex shrink-0 items-center gap-0.5 rounded-xl border border-[color-mix(in_srgb,var(--border)_55%,transparent)] bg-[color-mix(in_srgb,var(--muted)_22%,transparent)] p-0.5">
-          {(["list", "split", "graph"] as const).map((mode) => (
+          {(["list", "graph"] as const).map((mode) => (
             <button
               key={mode}
               type="button"
@@ -645,7 +646,7 @@ export default function ChatNotebookTab({ sessionId = null, docId = null, onExit
                   : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
               }`}
             >
-              {t(mode === "list" ? "List" : mode === "split" ? "Split" : "Graph")}
+              {t(mode === "list" ? "List" : "Graph")}
             </button>
           ))}
         </div>
@@ -695,7 +696,6 @@ export default function ChatNotebookTab({ sessionId = null, docId = null, onExit
                 total={cells.length}
                 run={runs[cell.id]}
                 previewing={previewing.has(cell.id)}
-                split={view === "split"}
                 tag={graph.tags[cell.id]}
                 dragging={draggingCellId === cell.id}
                 dragOver={
@@ -801,7 +801,6 @@ interface CellCardProps {
   total: number;
   run?: CellRun;
   previewing: boolean;
-  split: boolean;
   tag?: NotebookTag;
   dragging: boolean;
   dragOver: boolean;
@@ -847,7 +846,6 @@ function CellCard({
   total,
   run,
   previewing,
-  split,
   tag,
   dragging,
   dragOver,
@@ -869,6 +867,7 @@ function CellCard({
     Math.max(cell.kind === "markdown" ? 3 : 2, cell.source.split("\n").length),
   );
   const [scriptOpen, setScriptOpen] = useState(false);
+  const [split, setSplit] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -1068,6 +1067,50 @@ function CellCard({
                 <ImagePlus size={14} strokeWidth={1.9} />
               )}
             </button>
+          ) : null}
+          <button
+            type="button"
+            className={CELL_BUTTON}
+            onClick={() => setSplit((value) => !value)}
+            aria-label={t("Split")}
+            aria-pressed={split}
+            title={t("Split")}
+          >
+            <Columns2 size={14} strokeWidth={1.9} />
+          </button>
+          {cell.kind === "code" ? (
+            <>
+              <select
+                value={normalizeCellLanguage(cell.language)}
+                onChange={(event) =>
+                  onChange({ language: normalizeCellLanguage(event.target.value) })
+                }
+                aria-label={t("Language")}
+                title={t("Language")}
+                className="h-7 max-w-[76px] cursor-pointer rounded-lg bg-transparent px-1 text-[11px] font-medium text-[var(--muted-foreground)] outline-none transition-colors hover:text-[var(--foreground)]"
+              >
+                {CODE_LANGUAGE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {t(option.label)}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={onRun}
+                disabled={!cell.source.trim() || running}
+                aria-label={t("Run cell")}
+                title={t("Run cell")}
+                className="inline-flex h-7 items-center gap-1.5 rounded-lg bg-[var(--primary)] px-2.5 text-[11.5px] font-semibold text-[var(--primary-foreground)] shadow-sm transition hover:brightness-95 active:brightness-90 disabled:pointer-events-none disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+              >
+                {running ? (
+                  <Loader2 size={12} className="animate-spin" />
+                ) : (
+                  <Play size={12} strokeWidth={2.2} fill="currentColor" />
+                )}
+                {t(running ? "Running…" : "Run cell")}
+              </button>
+            </>
           ) : null}
           {!split && cell.kind === "geogebra" ? (
             <button
@@ -1278,45 +1321,6 @@ function CellCard({
           placeholder={t("GeoGebra commands, one per line.")}
           className="block w-full resize-y border-t border-[color-mix(in_srgb,var(--border)_45%,transparent)] bg-[color-mix(in_srgb,var(--muted)_18%,transparent)] px-3.5 py-2.5 font-mono text-[12.5px] leading-relaxed text-[var(--foreground)] outline-none placeholder:text-[color-mix(in_srgb,var(--muted-foreground)_55%,transparent)]"
         />
-      ) : null}
-
-      {cell.kind === "code" ? (
-        <div className="flex items-center justify-between gap-2 px-2.5 pb-2 pt-0.5">
-          <label
-            title={t("Language")}
-            className="inline-flex items-center rounded-lg px-1.5 py-0.5 transition-colors hover:bg-[color-mix(in_srgb,var(--muted)_60%,transparent)]"
-          >
-            <span className="sr-only">{t("Language")}</span>
-            <select
-              value={normalizeCellLanguage(cell.language)}
-              onChange={(event) =>
-                onChange({ language: normalizeCellLanguage(event.target.value) })
-              }
-              aria-label={t("Language")}
-              className="cursor-pointer bg-transparent pr-1 text-[11px] font-medium text-[var(--muted-foreground)] outline-none hover:text-[var(--foreground)]"
-            >
-              {CODE_LANGUAGE_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {t(option.label)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <button
-            type="button"
-            onClick={onRun}
-            disabled={!cell.source.trim() || running}
-            aria-label={t("Run cell")}
-            className="inline-flex h-7 items-center gap-1.5 rounded-lg bg-[var(--primary)] px-2.5 text-[11.5px] font-semibold text-[var(--primary-foreground)] shadow-sm transition hover:brightness-95 active:brightness-90 disabled:pointer-events-none disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
-          >
-            {running ? (
-              <Loader2 size={12} className="animate-spin" />
-            ) : (
-              <Play size={12} strokeWidth={2.2} fill="currentColor" />
-            )}
-            {t(running ? "Running…" : "Run cell")}
-          </button>
-        </div>
       ) : null}
 
       {run ? <CellOutput run={run} /> : null}

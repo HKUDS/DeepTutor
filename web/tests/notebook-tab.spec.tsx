@@ -160,7 +160,7 @@ it("offers image upload on a note cell and a split view", async () => {
   ).toBeGreaterThan(0);
 
   // The split view keeps it: the editor and its preview sit side by side.
-  fireEvent.click(screen.getByRole("button", { name: "Split" }));
+  fireEvent.click(screen.getAllByRole("button", { name: "Split" })[0]);
   expect(
     screen.getAllByRole("button", { name: "Add image" }).length,
   ).toBeGreaterThan(0);
