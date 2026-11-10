@@ -1861,3 +1861,52 @@ async def test_side_chat_persists_its_structured_source_on_the_assistant_row(
         "message_id": source,
         "role": "assistant",
     }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("capability", ["deep_solve", "visualize"])
+async def test_attached_reading_sections_reach_non_chat_capabilities(
+    monkeypatch, tmp_path, capability
+) -> None:
+    """Chat reads attached Reading units through ``read_source``; capabilities
+    without that tool get them inline, like attached documents and books."""
+    store = SQLiteSessionStore(tmp_path / "chat_history.db")
+    runtime = TurnRuntimeManager(store)
+    captured: dict[str, object] = {}
+
+    class FakeOrchestrator:
+        async def handle(self, context):
+            captured["message"] = context.user_message
+            yield StreamEvent(type=StreamEventType.DONE, source=capability)
+
+    _patch_turn_services(monkeypatch, FakeOrchestrator)
+    resolved: list[object] = []
+
+    def fake_resolve(references):
+        resolved.append(references)
+        return [SimpleNamespace(full_text="Lecture 3, page 2\n\nA sequence converges if ...")]
+
+    monkeypatch.setattr("deeptutor.reading.references.resolve_reading_sources", fake_resolve)
+    _session, turn = await runtime.start_turn(
+        {
+            "type": "start_turn",
+            "content": "Solve exercise 4",
+            "session_id": None,
+            "capability": capability,
+            "tools": [],
+            "knowledge_bases": [],
+            "attachments": [],
+            "reading_references": [
+                {"material_id": "0123456789abcdef", "revision": 1, "locators": [2]}
+            ],
+            "language": "en",
+            "config": {},
+        }
+    )
+    async for _event in runtime.subscribe_turn(turn["id"], after_seq=0):
+        pass
+
+    message = str(captured["message"])
+    assert "[Reading Sections]\nLecture 3, page 2\n\nA sequence converges if ..." in message
+    assert message.rstrip().endswith("[User Question]\nSolve exercise 4")
+    assert resolved == [[{"material_id": "0123456789abcdef", "revision": 1, "locators": [2]}]]

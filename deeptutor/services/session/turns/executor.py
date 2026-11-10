@@ -41,6 +41,7 @@ from .._turn_runtime_shared import (
     _reading_material_id,
     _reading_material_revision,
     _reading_references,
+    _reading_sections_context,
     _reading_viewport,
     _reading_viewport_image_attachments,
     _reading_workspace_id,
@@ -793,6 +794,12 @@ class TurnExecutor:
                     context_parts.append("[Attached Documents]\n" + "\n\n".join(document_texts))
                 if book_context:
                     context_parts.append(f"[Book Context]\n{book_context}")
+                if reading_references:
+                    reading_context = await asyncio.to_thread(
+                        _reading_sections_context, reading_references
+                    )
+                    if reading_context:
+                        context_parts.append(f"[Reading Sections]\n{reading_context}")
                 if notebook_context:
                     context_parts.append(f"[Notebook Context]\n{notebook_context}")
                 if history_context:

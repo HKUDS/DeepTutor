@@ -752,6 +752,22 @@ def _reading_references(value: Any) -> list[dict[str, Any]]:
     return normalize_reading_references(value)
 
 
+def _reading_sections_context(references: list[dict[str, Any]]) -> str:
+    """Text of the reading units attached to a turn, for capabilities that
+    cannot call ``read_source`` (chat reaches them through the source
+    inventory)."""
+
+    if not references:
+        return ""
+    from deeptutor.reading.references import resolve_reading_sources
+
+    return "\n\n---\n\n".join(
+        source.full_text
+        for source in resolve_reading_sources(references)
+        if source.full_text.strip()
+    )
+
+
 def _llm_selection_dict(value: Any) -> dict[str, str] | None:
     from deeptutor.services.model_selection import LLMSelection
 
