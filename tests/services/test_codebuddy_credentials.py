@@ -199,9 +199,7 @@ def test_load_credentials_reads_the_workbuddy_flat_envelope(tmp_path, monkeypatc
     assert credentials.user_id == "uid-9"
 
 
-def test_an_encrypted_workbuddy_token_is_never_sent_as_a_bearer(
-    tmp_path, monkeypatch
-) -> None:
+def test_an_encrypted_workbuddy_token_is_never_sent_as_a_bearer(tmp_path, monkeypatch) -> None:
     """An at-rest encrypted token is not a bearer token, so it is rejected."""
     from deeptutor.services import codebuddy_credentials as creds
 
