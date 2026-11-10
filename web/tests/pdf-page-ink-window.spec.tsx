@@ -343,15 +343,21 @@ describe("PDF page picture measurement window", () => {
       <PdfPage
         {...base}
         doc={doc}
-        active={false}
+        active
         retain
         cropMargins={false}
         inkKey="picture-window:released"
       />,
     );
-    // Parsed for its pictures, never painted: no canvas work at all.
-    await waitFor(() => expect(calls.operators).toBe(1));
-    expect(calls.visible).toBe(0);
+    // Parsed for its pictures on the page being read. Only the active page is
+    // measured: the operator list decodes every image on the page at full
+    // resolution, so measuring the whole retained window did thirteen pages at
+    // once, past the canvas budget the visible bitmaps obey.
+    // The active page both paints and reads its operator list for hotspots.
+    // What this case pins is the release: a page that was parsed (and, when
+    // active, painted) is handed back to pdf.js once it leaves the window, so
+    // its decoded images do not outlive its usefulness.
+    await waitFor(() => expect(calls.operators).toBeGreaterThanOrEqual(1));
 
     // The page leaves the retained window without ever having drawn a canvas.
     view.rerender(

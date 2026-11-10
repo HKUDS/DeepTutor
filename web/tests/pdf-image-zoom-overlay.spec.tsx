@@ -70,12 +70,48 @@ describe("picture preview", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it("closes on a click on the backdrop", async () => {
+  it("closes on a click on the empty stage around the picture", async () => {
     const { onClose } = await overlay();
+    const dialog = screen.getByRole("dialog", { name: "Image preview" });
+    // The stage fills the space below the toolbar, so a click on the dialog
+    // itself never happens in a browser — the stage swallows it. This used to
+    // stop propagation for every click, which made the surrounding area dead
+    // and left Escape as the only way out.
+    const stage = dialog.lastElementChild as HTMLElement;
     await act(async () => {
-      fireEvent.click(screen.getByRole("dialog", { name: "Image preview" }));
+      fireEvent.click(stage);
     });
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not close on a click on the picture itself", async () => {
+    const { onClose } = await overlay();
+    const dialog = screen.getByRole("dialog", { name: "Image preview" });
+    const stage = dialog.lastElementChild as HTMLElement;
+    const canvas = stage.querySelector("canvas")!;
+    await act(async () => {
+      fireEvent.click(canvas);
+    });
+    // A click on the picture is a click on the thing being looked at.
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("takes focus while open and gives it back on close", async () => {
+    const trigger = document.createElement("button");
+    document.body.append(trigger);
+    trigger.focus();
+    const { onClose, unmount } = await overlay();
+    // ⌘+/− and the arrow keys follow focus, so a modal that leaves it on the
+    // page behind it hands those keys to the wrong surface.
+    expect(document.activeElement).toBe(
+      screen.getByRole("dialog", { name: "Image preview" }),
+    );
+    await act(async () => {
+      unmount();
+    });
+    expect(document.activeElement).toBe(trigger);
+    trigger.remove();
+    void onClose;
   });
 
   it("does not close when the click lands on the toolbar", async () => {

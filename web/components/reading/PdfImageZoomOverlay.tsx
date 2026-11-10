@@ -225,20 +225,42 @@ export function PdfImageZoomOverlay({
     return () => stage.removeEventListener("wheel", onWheel);
   }, []);
 
+  // Focus belongs to the overlay while it is open. Without this the trigger
+  // (a hotspot button behind the dialog) kept focus, so ⌘+/− and arrow keys
+  // acted on the page underneath a modal the reader was looking at. The
+  // previously focused element gets focus back on close.
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const previous = document.activeElement as HTMLElement | null;
+    dialogRef.current?.focus({ preventScroll: true });
+    return () => previous?.focus?.({ preventScroll: true });
+  }, []);
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape") {
+        // `preventDefault` alone cannot stop the reader's own Escape handling:
+        // both listeners sit on `window`, so stopping propagation from a
+        // capture-phase listener is what actually keeps one Escape from
+        // closing this overlay and leaving learning mode.
+        event.stopPropagation();
+        onClose();
+      }
     };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
   }, [onClose]);
 
   return (
     <div
+      ref={dialogRef}
       role="dialog"
       aria-modal="true"
       aria-label={t("Image preview")}
-      className="fixed inset-0 z-50 flex flex-col bg-black/85"
+      // Focusable so the overlay can hold focus; `-1` keeps it out of the tab
+      // order itself.
+      tabIndex={-1}
+      className="fixed inset-0 z-50 flex flex-col bg-black/85 outline-none"
       onClick={onClose}
     >
       <div
@@ -303,7 +325,13 @@ export function PdfImageZoomOverlay({
       <div
         ref={stageRef}
         className="flex min-h-0 flex-1 items-center justify-center overflow-hidden px-4 pb-4"
-        onClick={(event) => event.stopPropagation()}
+        // Only a click that lands on the picture is "not a dismissal"; a click
+        // on the empty stage around it closes the overlay, which is what the
+        // backdrop promises. Stopping every click here made the surrounding
+        // area dead and left Escape as the only way out.
+        onClick={(event) => {
+          if (event.target !== event.currentTarget) event.stopPropagation();
+        }}
         onPointerDown={(event) => {
           dragRef.current = {
             pointer: event.pointerId,

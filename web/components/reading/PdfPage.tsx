@@ -178,9 +178,14 @@ export function PdfPage({
   // The same render window as the ink measurement, for the same reason: reading
   // a page's operator list parses it, and `PdfDocumentView` mounts one page per
   // locator, so doing it on mount read 600 operator lists when a 600-page
-  // document opened. Pictures apply in every fit mode, so unlike the ink crop
-  // there is nothing to gate on besides the window itself.
-  const shouldMeasurePictures = active || retain;
+  // document opened. Pictures apply in every fit mode, so there is no crop to
+  // gate on — but the window is too wide: `getOperatorList` runs its own intent
+  // in the worker, which decodes every image on the page at full resolution and
+  // keeps it alive on the main thread until the page is cleaned up. Doing that
+  // for the whole retained window decoded thirteen pages' images at once, past
+  // the canvas budget the visible bitmaps obey. Only the page being read can be
+  // clicked anyway, so only it is measured.
+  const shouldMeasurePictures = active;
 
   useEffect(() => {
     if (!shouldMeasurePictures) return;
@@ -421,6 +426,43 @@ export function PdfPage({
           height: layout.fullHeight,
         }}
       />
+      {/*
+        Picture hotspots sit UNDER the text layer, not over it.
+
+        A page is one bitmap by the time it reaches the DOM, so the click target
+        is a positioned box. Placing that box above the text layer (which is
+        what DOM order gave us) meant an OCR scan — one picture covering the
+        whole page — put a button over every word: selection, highlights and
+        existing annotations all stopped responding. Underneath, the text layer
+        keeps the pointer and the hotspot only sees clicks that fall through a
+        gap in the text. Page-filling boxes are dropped in the geometry layer
+        for the same reason.
+      */}
+      {onImageClick && imageBoxes.length > 0 && (
+        <div className="pointer-events-none absolute inset-0">
+          {imageBoxes.map((box, index) => (
+            <button
+              key={`image-${index}`}
+              type="button"
+              aria-label={t("Zoom image")}
+              // No `onMouseUp` guard: a selection that ends on the picture must
+              // still reach the reader, or dragging across an image loses the
+              // quote. The click is what opens the viewer.
+              onClick={(event) => {
+                event.stopPropagation();
+                onImageClick(locator, box);
+              }}
+              className="pointer-events-auto absolute cursor-zoom-in rounded-[3px] transition hover:bg-black/[0.05] hover:ring-1 hover:ring-[var(--primary)]/40"
+              style={{
+                left: `${box.x0 * 100}%`,
+                top: `${box.y0 * 100}%`,
+                width: `${(box.x1 - box.x0) * 100}%`,
+                height: `${(box.y1 - box.y0) * 100}%`,
+              }}
+            />
+          ))}
+        </div>
+      )}
       <div
         ref={textLayerRef}
         className="textLayer absolute left-0 top-0"
@@ -438,29 +480,6 @@ export function PdfPage({
         flashRects={flashRects}
         onAnnotationClick={onAnnotationClick}
       />
-      {onImageClick && imageBoxes.length > 0 && (
-        <div className="pointer-events-none absolute inset-0">
-          {imageBoxes.map((box, index) => (
-            <button
-              key={`image-${index}`}
-              type="button"
-              aria-label={t("Zoom image")}
-              onMouseUp={(event) => event.stopPropagation()}
-              onClick={(event) => {
-                event.stopPropagation();
-                onImageClick(locator, box);
-              }}
-              className="pointer-events-auto absolute cursor-zoom-in rounded-[3px] transition hover:bg-black/[0.05] hover:ring-1 hover:ring-[var(--primary)]/40"
-              style={{
-                left: `${box.x0 * 100}%`,
-                top: `${box.y0 * 100}%`,
-                width: `${(box.x1 - box.x0) * 100}%`,
-                height: `${(box.y1 - box.y0) * 100}%`,
-              }}
-            />
-          ))}
-        </div>
-      )}
       </div>
       {!active && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">

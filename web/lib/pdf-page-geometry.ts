@@ -270,7 +270,17 @@ type Matrix = [number, number, number, number, number, number];
 const IDENTITY: Matrix = [1, 0, 0, 1, 0, 0];
 /** Picture boxes smaller than this share of the page are not worth a hotspot. */
 const MIN_IMAGE_AREA = 0.003;
-/** A hotspot that covers the page is a scan; still useful, but keep just one. */
+/**
+ * A hotspot covering this share of the page is the page's own bitmap — a scan,
+ * or a background image behind the text — not a picture inside it.
+ *
+ * Such a box is not a click target: it covers the whole text layer, so it would
+ * swallow every selection, every highlight and every existing annotation on the
+ * page. The page is still readable, just without a "zoom the picture" affordance
+ * over the text.
+ */
+const FULL_PAGE_AREA = 0.85;
+/** Upper bound on click targets per page, for a page of many small pictures. */
 const MAX_HOTSPOTS = 60;
 
 function multiply(m: Matrix, n: Matrix): Matrix {
@@ -313,6 +323,8 @@ export function imageBoxesFromOperatorList(
 
   const stack: Matrix[] = [];
   let ctm: Matrix = IDENTITY;
+  // >0 while replaying an annotation appearance stream (see below).
+  let annotationDepth = 0;
   const boxes: NormalisedBox[] = [];
 
   for (let index = 0; index < list.fnArray.length; index += 1) {
@@ -346,6 +358,21 @@ export function imageBoxesFromOperatorList(
       ctm = stack.pop() ?? IDENTITY;
       continue;
     }
+    // An annotation's appearance stream is drawn into its own canvas, and the
+    // renderer resets the transform to the annotation's own space first
+    // (`CanvasGraphics.beginAnnotation`). The images inside — a stamp, a
+    // signature — are therefore NOT in page space, and treating their CTM as
+    // page space put the hotspot near the page origin. The whole stream is
+    // skipped: those pictures have no page-space click target.
+    if (fn === ops.beginAnnotation) {
+      annotationDepth += 1;
+      continue;
+    }
+    if (fn === ops.endAnnotation) {
+      annotationDepth = Math.max(0, annotationDepth - 1);
+      continue;
+    }
+    if (annotationDepth > 0) continue;
     if (!paintImage.has(fn)) continue;
 
     const corners = [
@@ -382,6 +409,11 @@ export function imageBoxesFromOperatorList(
       seen.add(key);
       return true;
     })
+    // A page-filling box is the page bitmap, not a picture in it: keeping it
+    // would put one button over the entire text layer.
+    .filter(
+      (box) => (box.x1 - box.x0) * (box.y1 - box.y0) < FULL_PAGE_AREA,
+    )
     .sort(
       (a, b) =>
         (b.x1 - b.x0) * (b.y1 - b.y0) - (a.x1 - a.x0) * (a.y1 - a.y0),
