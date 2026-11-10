@@ -77,8 +77,7 @@ async def test_start_login_exposes_url_then_records_completion(monkeypatch) -> N
 
     flow.result = auth_result("CodeBuddy User")
     flow.ready.set()
-    await asyncio.sleep(0)
-    await asyncio.sleep(0)
+    await _drain(service)
 
     completed = service.public_status()
     assert completed["connection"] == "connected"
@@ -171,5 +170,66 @@ async def _account_label(credentials):
     return credentials.user_label
 
 
+async def _drain(service, ticks: int = 20) -> None:
+    """Let the background login task settle before reading public status."""
+    for _ in range(ticks):
+        await asyncio.sleep(0)
+        if service.public_status()["connection"] != "authorizing":
+            return
+
+
 async def _value(value):
     return value
+
+
+class _WedgedFlow:
+    """A flow like the SDK returns when ``createSession`` silently failed.
+
+    No ``auth_url``; its await never completes — exactly what used to freeze
+    the settings API.
+    """
+
+    auth_url = ""
+
+    def __init__(self) -> None:
+        self.entered = asyncio.Event()
+
+    def __await__(self):
+        return self._wait().__await__()
+
+    async def _wait(self):
+        self.entered.set()
+        await asyncio.Event().wait()
+
+    async def cancel(self) -> None:
+        return None
+
+
+@pytest.mark.asyncio
+async def test_start_login_does_not_hold_the_lock_on_a_wedged_flow(monkeypatch) -> None:
+    """Regression: a no-URL flow must not wedge the settings API.
+
+    ``/auth/start`` used to await the flow while holding ``_lock``; a flow that
+    never resolved then blocked every ``/auth/status`` poll forever. A
+    concurrent ``cancel_login`` returning promptly proves the await is no longer
+    under the lock.
+    """
+    flow = _WedgedFlow()
+    monkeypatch.setattr(codebuddy_auth, "_start_sdk_authenticate", lambda: _value(flow))
+    service = CodeBuddyAuthService()
+
+    starter = asyncio.create_task(service.start_login())
+    try:
+        await asyncio.wait_for(flow.entered.wait(), timeout=1.0)
+        try:
+            status = await asyncio.wait_for(service.cancel_login(), timeout=1.0)
+        except asyncio.TimeoutError:
+            pytest.fail("cancel_login blocked on the lock held by a wedged flow")
+    finally:
+        starter.cancel()
+        try:
+            await starter
+        except asyncio.CancelledError:
+            pass
+
+    assert status["connection"] == "disconnected"

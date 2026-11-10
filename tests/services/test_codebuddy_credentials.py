@@ -160,3 +160,53 @@ def test_a_trusted_cached_endpoint_is_still_honoured(tmp_path, monkeypatch) -> N
     monkeypatch.delenv("CODEBUDDY_INTERNET_ENVIRONMENT", raising=False)
 
     assert creds.cached_product_endpoint() == creds.INTERNAL_ENDPOINT
+
+
+def test_find_auth_file_locates_the_workbuddy_desktop_session(tmp_path, monkeypatch) -> None:
+    """Regression: WorkBuddy 5.9.3 renamed the shared session file.
+
+    The lookup only knew ``Tencent-Cloud.coding-copilot.info``, so on current
+    WorkBuddy installs ``find_auth_file`` returned ``None`` and the SDK-free
+    login path was dead even though the session existed on disk.
+    """
+    from deeptutor.services import codebuddy_credentials as creds
+
+    auth_dir = tmp_path / "CodeBuddyExtension" / "Data" / "Public" / "auth"
+    auth_dir.mkdir(parents=True)
+    session = auth_dir / "workbuddy-desktop.info"
+    session.write_text(json.dumps({"access_token": "wb-token"}), encoding="utf-8")
+    monkeypatch.delenv("DEEPTUTOR_CODEBUDDY_AUTH_FILE", raising=False)
+    monkeypatch.setattr(creds, "_auth_search_dirs", lambda: [auth_dir])
+
+    assert creds.find_auth_file() == session
+
+
+def test_load_credentials_reads_the_workbuddy_flat_envelope(tmp_path, monkeypatch) -> None:
+    """The WorkBuddy envelope carries the access token at the top level."""
+    from deeptutor.services import codebuddy_credentials as creds
+
+    path = tmp_path / "workbuddy-desktop.info"
+    path.write_text(
+        json.dumps({"account": {"uid": "uid-9"}, "access_token": "wb-access-token"}),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("DEEPTUTOR_CODEBUDDY_AUTH_FILE", str(path))
+
+    credentials = creds.load_credentials()
+
+    assert credentials is not None
+    assert credentials.access_token == "wb-access-token"
+    assert credentials.user_id == "uid-9"
+
+
+def test_an_encrypted_workbuddy_token_is_never_sent_as_a_bearer(
+    tmp_path, monkeypatch
+) -> None:
+    """An at-rest encrypted token is not a bearer token, so it is rejected."""
+    from deeptutor.services import codebuddy_credentials as creds
+
+    path = tmp_path / "workbuddy-desktop.info"
+    path.write_text(json.dumps({"access_token": "$wbEncrypted:opaque"}), encoding="utf-8")
+    monkeypatch.setenv("DEEPTUTOR_CODEBUDDY_AUTH_FILE", str(path))
+
+    assert creds.load_credentials() is None
