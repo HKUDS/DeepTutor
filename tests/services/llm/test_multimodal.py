@@ -191,6 +191,8 @@ def test_should_degrade_only_for_non_vision_model_with_images() -> None:
     assert should_degrade_to_text("openai_codex", "gpt-5.6-sol", msgs) is False
     # Qwen3.8-Max is multimodal even though its model ID has no ``-vl`` suffix.
     assert should_degrade_to_text("dashscope", "qwen3.8-max", msgs) is False
+    # DeepSeek-V4.1-Flash is natively multimodal under its dated gateway id.
+    assert should_degrade_to_text("dashscope", "deepseek-v4.1-flash-1017", msgs) is False
     # An allowlisted provider (VolcEngine) is trusted even for a model we have
     # no per-model entry for.
     assert should_degrade_to_text("volcengine", "doubao-1.5-vision-pro", msgs) is False
