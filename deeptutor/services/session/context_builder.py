@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import re
+import threading
 from typing import Any, Awaitable, Callable
 
 from deeptutor.agents.base_agent import BaseAgent
@@ -102,17 +103,72 @@ def sanitize_summary(text: str) -> str:
     return _OPEN_THINK_RE.sub("", cleaned).replace("</think>", "").strip() or raw
 
 
+_ENCODING_NAME = "cl100k_base"
+#: A stalled vocab CDN must degrade, not wedge the event loop (#2522). Only the
+#: first caller pays this deadline; the loader keeps running in the background.
+_ENCODING_LOAD_TIMEOUT_SECONDS = 2.0
+
+_encoding_lock = threading.Lock()
+_encoding: Any | None = None
+_encoding_thread: threading.Thread | None = None
+_encoding_waited = False
+
+
+def _load_encoding() -> None:
+    global _encoding
+    try:
+        import tiktoken
+
+        _encoding = tiktoken.get_encoding(_ENCODING_NAME)
+    except Exception:
+        logger.debug("tiktoken encoding unavailable; using character estimate", exc_info=True)
+
+
+def _get_encoding() -> Any | None:
+    """The cached tokenizer, or ``None`` while it is unavailable or still loading.
+
+    ``tiktoken.get_encoding`` may download the vocab over a timeout-less request.
+    Wait for it at most once per process, bounded, so a stalled CDN cannot block
+    the caller indefinitely; a late completion still promotes later calls.
+    """
+    global _encoding_thread, _encoding_waited
+    with _encoding_lock:
+        if _encoding is not None:
+            return _encoding
+        if _encoding_waited:
+            return None
+        if _encoding_thread is None:
+            _encoding_thread = threading.Thread(
+                target=_load_encoding, name="tiktoken-encoding", daemon=True
+            )
+            _encoding_thread.start()
+        loader = _encoding_thread
+        _encoding_waited = True
+    loader.join(_ENCODING_LOAD_TIMEOUT_SECONDS)
+    with _encoding_lock:
+        return _encoding
+
+
 def count_tokens(text: str) -> int:
     """Estimate token count with tiktoken when available."""
     if not text:
         return 0
+    encoding = _get_encoding()
+    if encoding is None:
+        return max(1, len(text) // 4)
     try:
-        import tiktoken
-
-        encoding = tiktoken.get_encoding("cl100k_base")
         return len(encoding.encode(text))
     except Exception:
         return max(1, len(text) // 4)
+
+
+def tokenizer_name() -> str:
+    """Name of the tokenizer ``count_tokens`` is using right now.
+
+    Reported by the counter itself: a readout must not claim an accuracy the
+    numbers do not have, nor repeat the vocab download to find out (#2522).
+    """
+    return _ENCODING_NAME if _get_encoding() is not None else "heuristic"
 
 
 def _count_model_context_tokens(value: Any) -> int:
@@ -800,6 +856,7 @@ __all__ = [
     "TRUNCATION_GUARD_RATIO",
     "build_history_text",
     "count_tokens",
+    "tokenizer_name",
     "format_messages_as_transcript",
     "extract_ask_user_clarifications",
     "trim_incomplete_tail",

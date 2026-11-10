@@ -109,17 +109,14 @@ def resolve_window_info(
 def detect_counter_name() -> str:
     """Name of the tokenizer ``count_tokens`` will actually use in this process.
 
-    ``count_tokens`` swallows a missing or broken tiktoken and silently drops to
-    a chars/4 estimate; probing the same import keeps the reported counter from
-    claiming an accuracy the numbers do not have.
+    Asked of the counter rather than re-probed: it swallows a missing or broken
+    tiktoken and drops to a chars/4 estimate, and an independent ``get_encoding``
+    here would repeat the timeout-less vocab download on the caller's thread —
+    the event loop, for the post-turn readout (#2522).
     """
-    try:
-        import tiktoken
+    from deeptutor.services.session.context_builder import tokenizer_name
 
-        tiktoken.get_encoding("cl100k_base")
-    except Exception:
-        return "heuristic"
-    return "cl100k_base"
+    return tokenizer_name()
 
 
 def count_conversation_tokens(

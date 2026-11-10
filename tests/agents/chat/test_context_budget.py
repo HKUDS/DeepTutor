@@ -9,10 +9,12 @@ alongside ``cost_summary``.
 from __future__ import annotations
 
 import asyncio
+import threading
 from types import SimpleNamespace
 from typing import Any
 
 import pytest
+import tiktoken
 
 from deeptutor.agents.chat.agentic_pipeline import AgenticChatPipeline
 from deeptutor.agents.loop.agent_loop import MAX_SETTLEMENT_ROUNDS
@@ -20,6 +22,7 @@ from deeptutor.agents.loop.context_budget import (
     LLMRequestSnapshot,
     build_context_budget,
     count_conversation_tokens,
+    detect_counter_name,
     resolve_window_info,
 )
 from deeptutor.capabilities import PromptBlock
@@ -27,6 +30,7 @@ from deeptutor.core.context import TurnRuntimeContext, UnifiedContext, Workspace
 from deeptutor.core.stream import StreamEvent, StreamEventType
 from deeptutor.core.tool_protocol import ToolResult
 from deeptutor.runtime.stream_bus import StreamBus
+from deeptutor.services.session import context_builder as cb
 
 
 def _chars(text: str) -> int:
@@ -280,6 +284,50 @@ def test_unparseable_window_falls_back_and_says_so() -> None:
     info = resolve_window_info(context_window="not-a-number", model="unknown")
 
     assert info.estimated is True
+
+
+def test_counter_probe_does_not_repeat_the_stalled_vocab_download(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # agent_loop calls measure_context_budget synchronously on the event loop, so
+    # a second independent vocab download here would wedge the core again (#2522).
+    real = tiktoken.get_encoding
+    release = threading.Event()
+    started = threading.Event()
+
+    def stalled(name: str) -> Any:
+        started.set()
+        release.wait()
+        return real(name)
+
+    monkeypatch.setattr(tiktoken, "get_encoding", stalled)
+    for name, value in (
+        ("_encoding", None),
+        ("_encoding_thread", None),
+        ("_encoding_waited", False),
+    ):
+        monkeypatch.setattr(cb, name, value, raising=False)
+    monkeypatch.setattr(cb, "_ENCODING_LOAD_TIMEOUT_SECONDS", 0.2, raising=False)
+
+    outcome: dict[str, Any] = {}
+
+    def probe() -> None:
+        try:
+            outcome["name"] = detect_counter_name()
+        except BaseException as exc:  # noqa: BLE001 - reported to the caller
+            outcome["error"] = exc
+
+    worker = threading.Thread(target=probe, daemon=True)
+    try:
+        worker.start()
+        worker.join(3.0)
+        assert not worker.is_alive(), "detect_counter_name blocked on a stalled vocab download"
+        assert "error" not in outcome, outcome["error"]
+        assert outcome["name"] in {"cl100k_base", "heuristic"}
+        assert started.wait(1.0), "the probe never reached the tokenizer"
+    finally:
+        release.set()
+        worker.join(3.0)
 
 
 def test_deferred_tools_split_from_builtins_and_unloaded_ones_are_a_scalar() -> None:
