@@ -281,6 +281,18 @@ async def _full_sync(
 ):
     tree = await client.get_tree(repo, branch, path_prefix=path_prefix, glob=glob)
     entries = _filter_markdown_entries(tree, path_prefix, glob)
+    if not entries:
+        detail = (
+            f"{len(tree)} file(s) matched the GitHub source path and glob, "
+            "but none have a supported Markdown extension."
+            if tree
+            else "No files matched the GitHub source path and glob."
+        )
+        return SyncResult(
+            ok=False,
+            error=f"{detail} Check the path and glob settings. "
+            f"Supported extensions: {', '.join(MARKDOWN_EXTENSIONS)}.",
+        )
     downloaded = []
     for entry in entries:
         rel = _raw_rel_path(entry.path, path_prefix)
