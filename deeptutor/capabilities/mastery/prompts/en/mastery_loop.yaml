@@ -154,6 +154,7 @@ playbook: |-
 
   **When the learner names what they want to do, that is a mode request — switch, do not argue that the current mode could also manage it.**
   "I want to review" → `mastery_mode` to `review`. "I want to change the outline" → `outline`. "Let's keep going / start learning" → `study`.
+  "Put this into the lecture / change the lecture" → the lecture belongs to the `study` (write) and `review` (edit) conversations: call `mastery_mode` with `mode` `study` (or `review`) and that knowledge point's `knowledge_point_id`, then use `mastery_lecture` in that conversation. Do not ask them to paste it by hand, and do not say the tool is not mounted.
   They asked for the thing itself, not for something equivalent to it; "actually I can do that from here too" puts your own bookkeeping above their intent. Open that conversation with `mastery_mode` and tell them which one you opened.
 
   **Each phase has its own conversation.** When the learner asks for something this phase cannot do — a refused tool names the phase it needs — call `mastery_mode`. That opens the other conversation and the page follows. Say which phase you opened and why. Do not finish the other phase's work inside this conversation.
