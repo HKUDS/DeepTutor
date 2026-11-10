@@ -43,6 +43,7 @@ from deeptutor.reading.extract import Extraction, extract_material
 from deeptutor.reading.models import (
     ANNOTATION_COLORS,
     Annotation,
+    AnnotationConflict,
     AnnotationKind,
     MaterialManifest,
     MaterialNotFound,
@@ -50,7 +51,6 @@ from deeptutor.reading.models import (
     ReadingBookmark,
     ReadingError,
     ReadingPosition,
-    AnnotationConflict,
     ReadingUpgradeConflict,
     Rect,
     RenderMode,
@@ -79,6 +79,7 @@ from deeptutor.reading.store import ReadingStore, content_hash
 __all__ = [
     "ANNOTATION_COLORS",
     "Annotation",
+    "AnnotationConflict",
     "AnnotationKind",
     "ExportFormat",
     "ExportResult",
@@ -94,7 +95,6 @@ __all__ = [
     "ReadingBookmark",
     "ReadingPosition",
     "ReadingSessionRecord",
-    "AnnotationConflict",
     "ReadingUpgradeConflict",
     "ReadingStore",
     "Rect",

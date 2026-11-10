@@ -44,9 +44,9 @@ import uuid
 
 from deeptutor.reading.extract import MARKDOWN_SUFFIXES, extract_material, synthesise_outline
 from deeptutor.reading.models import (
-    AnnotationConflict,
     MAX_TEXT_SELECTOR_CHARS,
     Annotation,
+    AnnotationConflict,
     MaterialManifest,
     MaterialNotFound,
     OutlineEntry,
