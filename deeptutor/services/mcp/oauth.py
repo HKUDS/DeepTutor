@@ -143,6 +143,17 @@ def forget(owner_id: str, server: str) -> None:
         return
 
 
+def usable_store_name(server: str) -> bool:
+    """Whether *server* may address an OAuth store.
+
+    The name becomes a filename under the owner's secrets tree, so anything it
+    refuses can neither hold a grant nor be probed for one. A caller about to
+    build a store (or a probe that would) uses this to tell a name the grant
+    could live under from one that must be answered some other way.
+    """
+    return bool(_SAFE_NAME_RE.match(server))
+
+
 def oauth_state(owner_id: str, server: str) -> OAuthState:
     """Whether *server* is authorized for *owner_id*. Never returns a token."""
     tokens = _read(owner_id, server).get("tokens")
@@ -435,4 +446,5 @@ __all__ = [
     "oauth_redirect_uri",
     "oauth_state",
     "refusing_handlers",
+    "usable_store_name",
 ]
