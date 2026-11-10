@@ -35,6 +35,11 @@ def _gen_tool_id() -> str:
     return "toolu_" + "".join(secrets.choice(_ALNUM) for _ in range(22))
 
 
+#: Canonical finish reason for a response cut off because the context window
+#: was full (distinct from the output-cap reasons in ``TRUNCATED_FINISH_REASONS``).
+CONTEXT_LENGTH_EXCEEDED_FINISH = "context_length_exceeded"
+
+
 class AnthropicProvider(LLMProvider):
     """LLM provider using the native Anthropic SDK for Claude models."""
 
@@ -482,7 +487,17 @@ class AnthropicProvider(LLMProvider):
                     }
                 )
 
-        stop_map = {"tool_use": "tool_calls", "end_turn": "stop", "max_tokens": "length"}
+        stop_map = {
+            "tool_use": "tool_calls",
+            "end_turn": "stop",
+            "stop_sequence": "stop",
+            "max_tokens": "length",
+            # The *input* context filled up. This is not an output cap, so it must
+            # not map to "length": callers read that as "continue the answer",
+            # which would resend the same full history.
+            "model_context_window_exceeded": CONTEXT_LENGTH_EXCEEDED_FINISH,
+            "refusal": "content_filter",
+        }
         finish_reason = stop_map.get(response.stop_reason or "", response.stop_reason or "stop")
 
         usage: dict[str, int] = {}

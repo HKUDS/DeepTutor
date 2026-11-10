@@ -296,3 +296,37 @@ def test_assistant_blocks_omit_unsigned_history_blocks() -> None:
     )
 
     assert all(block.get("type") != "thinking" for block in blocks)
+
+
+def _response(stop_reason: str) -> Any:
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        content=[SimpleNamespace(type="text", text="partial")],
+        stop_reason=stop_reason,
+        usage=None,
+    )
+
+
+@pytest.mark.parametrize(
+    ("stop_reason", "expected"),
+    [
+        ("end_turn", "stop"),
+        ("stop_sequence", "stop"),
+        ("tool_use", "tool_calls"),
+        ("max_tokens", "length"),
+        ("model_context_window_exceeded", "context_length_exceeded"),
+        ("refusal", "content_filter"),
+    ],
+)
+def test_stop_reason_is_mapped_to_canonical_finish_reason(stop_reason: str, expected: str) -> None:
+    result = AnthropicProvider._parse_response(_response(stop_reason))
+    assert result.finish_reason == expected
+
+
+def test_context_window_exceeded_is_not_an_output_truncation() -> None:
+    """A full input context must not drive the "continue the answer" recovery."""
+    from deeptutor.services.llm import finish_was_truncated
+
+    result = AnthropicProvider._parse_response(_response("model_context_window_exceeded"))
+    assert not finish_was_truncated(result.finish_reason)
