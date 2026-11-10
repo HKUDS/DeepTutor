@@ -6,8 +6,6 @@ import { useTranslation } from "react-i18next";
 
 import {
   DEFAULT_PDF_ZOOM,
-  MAX_PDF_ZOOM,
-  MIN_PDF_ZOOM,
   PDF_ZOOM_OPTIONS,
   type PdfZoomPreference,
 } from "@/lib/reading-zoom";
@@ -25,6 +23,8 @@ export function PdfZoomControls({
   preference,
   effectivePercent,
   visible,
+  canZoomIn,
+  canZoomOut,
   onZoomIn,
   onZoomOut,
   onSelect,
@@ -35,6 +35,9 @@ export function PdfZoomControls({
   /** The percentage actually rendered, which clamping can lower. */
   effectivePercent: number;
   visible: boolean;
+  /** False when a further step would not change the drawn width. */
+  canZoomIn: boolean;
+  canZoomOut: boolean;
   onZoomIn: () => void;
   onZoomOut: () => void;
   onSelect: (next: PdfZoomPreference) => void;
@@ -45,6 +48,7 @@ export function PdfZoomControls({
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
 
   // The ref wraps the trigger *and* the menu, so a pointerdown on a menu row is
   // not read as "outside" before that row's click fires.
@@ -55,19 +59,35 @@ export function PdfZoomControls({
       if (root && !root.contains(event.target as Node)) setOpen(false);
     };
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
+      if (event.key !== "Escape") return;
+      setOpen(false);
+      // `preventDefault()` alone cannot keep the Escape from the Guided
+      // Learning handler: that one listens on `document` and only steps aside
+      // for a visible `[role=dialog]`, while this menu is a `role="menu"`. Both
+      // listeners sit on the same node, and `preventDefault` never stops
+      // delivery to the other. Stopping propagation here is what actually
+      // keeps one Escape from closing the menu and leaving learning mode.
+      event.stopPropagation();
+      // Focus goes back to the trigger the menu belongs to, so a keyboard user
+      // is not dropped on `<body>` after closing.
+      rootRef.current?.querySelector<HTMLElement>('[aria-haspopup="menu"]')?.focus();
     };
     document.addEventListener("pointerdown", onPointerDown);
-    document.addEventListener("keydown", onKeyDown);
+    // Capture phase: this runs before the learning-mode listener regardless of
+    // which one registered first.
+    document.addEventListener("keydown", onKeyDown, true);
     return () => {
       document.removeEventListener("pointerdown", onPointerDown);
-      document.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("keydown", onKeyDown, true);
     };
   }, [open]);
 
-  const atFloor = effectivePercent <= Math.round(MIN_PDF_ZOOM * 100);
-  const atCeiling =
-    preference.mode === "fixed" && preference.scale >= MAX_PDF_ZOOM;
+  // Both limits come from the parent, which knows the page geometry the canvas
+  // budget depends on. Reading them off the requested scale here was wrong: the
+  // budget can clamp a 4× request to 211%, so comparing `preference.scale`
+  // against MAX_PDF_ZOOM left zoom-in enabled while every press was a no-op.
+  const atFloor = !canZoomOut;
+  const atCeiling = !canZoomIn;
 
   return (
     <div
@@ -76,7 +96,11 @@ export function PdfZoomControls({
       // sibling of the scroll container, so a pointer-opaque wrapper would
       // swallow wheel/ctrl+wheel, selection and annotation clicks across the
       // bottom band of every page. Only the toolbar itself opts back in.
-      className={`pointer-events-none absolute inset-x-0 bottom-3 z-20 flex justify-center transition-opacity duration-150 ${
+      // `opacity-0` hides the bar but does not remove it from the tab order, so
+      // a keyboard user could land on controls they cannot see. `focus-within`
+      // reveals it the moment focus enters, which keeps the bar usable without
+      // making it a hit target while hidden (`pointer-events-none` above).
+      className={`pointer-events-none absolute inset-x-0 bottom-3 z-20 flex justify-center transition-opacity duration-150 focus-within:opacity-100 ${
         visible ? "opacity-100" : "opacity-0"
       }`}
     >
@@ -126,12 +150,38 @@ export function PdfZoomControls({
           <div
             role="menu"
             aria-label={t("Zoom level")}
+            ref={menuRef}
+            // Arrow keys move focus through the rows; the menu is a radio
+            // group, so Up/Down is the expected movement and Home/End jump to
+            // the ends. Without this the rows could only be reached by mouse.
+            onKeyDown={(event) => {
+              const rows = Array.from(
+                menuRef.current?.querySelectorAll<HTMLElement>('[role="menuitemradio"]') ?? [],
+              );
+              if (rows.length === 0) return;
+              const at = rows.indexOf(document.activeElement as HTMLElement);
+              const focusAt = (index: number) =>
+                rows[(index + rows.length) % rows.length].focus();
+              if (event.key === "ArrowDown") {
+                event.preventDefault();
+                focusAt(at < 0 ? 0 : at + 1);
+              } else if (event.key === "ArrowUp") {
+                event.preventDefault();
+                focusAt(at < 0 ? rows.length - 1 : at - 1);
+              } else if (event.key === "Home") {
+                event.preventDefault();
+                focusAt(0);
+              } else if (event.key === "End") {
+                event.preventDefault();
+                focusAt(rows.length - 1);
+              }
+            }}
             className="absolute bottom-full left-1/2 mb-2 min-w-[132px] -translate-x-1/2 rounded-xl border border-[var(--border)] bg-[var(--background)] p-1.5 shadow-xl"
           >
             <button
               type="button"
-              role="menuitem"
-              aria-current={preference.mode === "fit" ? "page" : undefined}
+              role="menuitemradio"
+              aria-checked={preference.mode === "fit"}
               onClick={() => {
                 onSelect(DEFAULT_PDF_ZOOM);
                 setOpen(false);
@@ -144,12 +194,13 @@ export function PdfZoomControls({
               <button
                 key={scale}
                 type="button"
-                role="menuitem"
-                aria-current={
+                role="menuitemradio"
+                // `aria-checked` is what a radio row exposes; `aria-current`
+                // is for navigation landmarks and was simply the wrong
+                // attribute here.
+                aria-checked={
                   preference.mode === "fixed" &&
                   Math.abs(preference.scale - scale) < 0.001
-                    ? "page"
-                    : undefined
                 }
                 onClick={() => {
                   onSelect({ mode: "fixed", scale });

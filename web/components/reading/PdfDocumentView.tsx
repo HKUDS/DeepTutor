@@ -41,6 +41,8 @@ import {
   pdfZoomShortcut,
   savePdfZoom,
   steppedPdfZoom,
+  steppedPdfZoomByWidth,
+  canStepPdfZoom,
   zoomedPageWidth,
   type PdfZoomPreference,
 } from "@/lib/reading-zoom";
@@ -139,6 +141,8 @@ export function PdfDocumentView({
   const zoomRef = useRef<PdfZoomPreference>(DEFAULT_PDF_ZOOM);
   // Debounced write of a gesture's settled zoom.
   const settleRef = useRef<number | null>(null);
+  // The value the pending debounce would have written, so unmount can flush it.
+  const pendingSaveRef = useRef<PdfZoomPreference>(DEFAULT_PDF_ZOOM);
   const controlsHideRef = useRef<number | null>(null);
   // A device without hover can never move a pointer into the reveal strip, so
   // the bar would be permanently unreachable: keep it out instead. Read lazily
@@ -175,12 +179,17 @@ export function PdfDocumentView({
     rects: NormalisedRect[];
   } | null>(null);
 
-  // Timers that outlive the component would fire into a torn-down reader: the
-  // save debounce would write a preference nobody is looking at, and the hide
-  // timer would set state on an unmounted tree. Clear both on unmount.
+  // Timers that outlive the component would fire into a torn-down reader, so
+  // both are cleared here. The save debounce is FLUSHED rather than dropped: a
+  // reader who zoomed and immediately closed the pane chose a size, and losing
+  // it silently means the next open surprises them with the old one. Writing a
+  // preference during unmount is harmless — it is the value they just picked.
   useEffect(() => {
     return () => {
-      if (settleRef.current !== null) clearTimeout(settleRef.current);
+      if (settleRef.current !== null) {
+        clearTimeout(settleRef.current);
+        savePdfZoom(pendingSaveRef.current);
+      }
       if (controlsHideRef.current !== null) {
         clearTimeout(controlsHideRef.current);
       }
@@ -209,6 +218,17 @@ export function PdfDocumentView({
             outputScale(),
           );
   const zoomPercent = effectiveZoomPercent(pageWidth, intrinsicWidth);
+  // The ratio the page is drawn at, derived from committed state rather than the
+  // gesture ref: render must not read a ref, and this is the value the toolbar's
+  // enablement describes. Memoised because the compiler cannot hoist a plain
+  // derivation that depends on the same values the surrounding callbacks do.
+  const renderedZoomRatio = useMemo(
+    () =>
+      zoom.mode === "fit"
+        ? fitZoomRatio(pageWidth, intrinsicWidth)
+        : zoom.scale,
+    [zoom, pageWidth, intrinsicWidth],
+  );
 
   // -- document ------------------------------------------------------------
 
@@ -399,15 +419,33 @@ export function PdfDocumentView({
   const applyZoom = useCallback(
     (next: PdfZoomPreference, clientY?: number, clientX?: number) => {
       captureAnchor(clientY, clientX);
+      // A zoom that lands on the width already committed draws nothing new, so
+      // the anchor captured above would never be consumed: the layout effect
+      // only restores when `pageWidth` changes. Left behind, it would hijack
+      // the next real pane resize and pull the reader back to the old page and
+      // offset. Drop it instead — that is what "nothing moved" means.
+      const nextWidth =
+        next.mode === "fit"
+          ? fittedPageWidth(measuredWidth)
+          : zoomedPageWidth(
+              intrinsicWidth,
+              next.scale,
+              fallbackRatio,
+              outputScale(),
+            );
+      if (nextWidth === committedWidthRef.current) {
+        resizeAnchorRef.current = null;
+      }
       setZoom(next);
       zoomRef.current = next;
       if (settleRef.current !== null) clearTimeout(settleRef.current);
+      pendingSaveRef.current = next;
       settleRef.current = window.setTimeout(() => {
         settleRef.current = null;
         savePdfZoom(next);
       }, 150);
     },
-    [captureAnchor],
+    [captureAnchor, measuredWidth, intrinsicWidth, fallbackRatio],
   );
 
   /** What the page is drawn at right now, used as the base for one step. */
@@ -422,12 +460,21 @@ export function PdfDocumentView({
   const zoomBy = useCallback(
     (direction: 1 | -1, clientY?: number, clientX?: number) => {
       applyZoom(
-        { mode: "fixed", scale: steppedPdfZoom(currentZoomRatio(), direction) },
+        {
+          mode: "fixed",
+          scale: steppedPdfZoomByWidth(
+            currentZoomRatio(),
+            direction,
+            intrinsicWidth,
+            fallbackRatio,
+            outputScale(),
+          ),
+        },
         clientY,
         clientX,
       );
     },
-    [applyZoom, currentZoomRatio],
+    [applyZoom, currentZoomRatio, intrinsicWidth, fallbackRatio],
   );
 
   // -- zoom bar visibility -------------------------------------------------
@@ -847,6 +894,24 @@ export function PdfDocumentView({
           preference={zoom}
           effectivePercent={zoomPercent}
           visible={controlsVisible}
+          // Asked of the same function the buttons call, so a control is
+          // disabled exactly when pressing it would draw the same width.
+          canZoomIn={canStepPdfZoom(
+            1,
+            renderedZoomRatio,
+            intrinsicWidth,
+            fallbackRatio,
+            outputScale(),
+            pageWidth,
+          )}
+          canZoomOut={canStepPdfZoom(
+            -1,
+            renderedZoomRatio,
+            intrinsicWidth,
+            fallbackRatio,
+            outputScale(),
+            pageWidth,
+          )}
           onActiveChange={handleControlsActive}
           onZoomIn={() => zoomBy(1)}
           onZoomOut={() => zoomBy(-1)}

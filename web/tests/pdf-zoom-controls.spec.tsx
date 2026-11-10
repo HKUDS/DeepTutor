@@ -13,6 +13,8 @@ function controls(overrides: Partial<Parameters<typeof PdfZoomControls>[0]> = {}
     preference: { mode: "fit" } as PdfZoomPreference,
     effectivePercent: 100,
     visible: true,
+    canZoomIn: true,
+    canZoomOut: true,
     onZoomIn: vi.fn(),
     onZoomOut: vi.fn(),
     onSelect: vi.fn(),
@@ -51,7 +53,7 @@ describe("zoom level menu", () => {
     await act(async () => {
       fireEvent.click(view.getByRole("button", { name: "Zoom level" }));
     });
-    const fit = view.getByRole("menuitem", { name: "Fit" });
+    const fit = view.getByRole("menuitemradio", { name: "Fit" });
     await act(async () => {
       fireEvent.click(fit);
     });
@@ -136,6 +138,7 @@ describe("zoom level menu", () => {
     const view = controls({
       preference: { mode: "fixed", scale: 0.25 },
       effectivePercent: 25,
+      canZoomOut: false,
     });
     expect(
       view.getByRole("button", { name: "Zoom out" }).hasAttribute("disabled"),
@@ -145,13 +148,27 @@ describe("zoom level menu", () => {
     ).toBe(false);
   });
 
-  it("disables zoom-in at the ceiling", () => {
+  it("disables zoom-in when the parent reports no further step", () => {
     const view = controls({
       preference: { mode: "fixed", scale: 4 },
       effectivePercent: 400,
+      canZoomIn: false,
     });
     expect(
       view.getByRole("button", { name: "Zoom in" }).hasAttribute("disabled"),
     ).toBe(true);
+  });
+
+  it("keeps zoom-in live when the budget already flattened the request", () => {
+    // 3x requested but only 211% landed: the parent knows a press still does
+    // something, so the button must stay enabled even though scale < MAX.
+    const view = controls({
+      preference: { mode: "fixed", scale: 3 },
+      effectivePercent: 211,
+      canZoomIn: true,
+    });
+    expect(
+      view.getByRole("button", { name: "Zoom in" }).hasAttribute("disabled"),
+    ).toBe(false);
   });
 });

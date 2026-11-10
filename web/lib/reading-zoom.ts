@@ -77,6 +77,76 @@ export function fittedPageWidth(available: number): number {
   return Math.max(MIN_PAGE_WIDTH, Math.min(MAX_FIT_PAGE_WIDTH, available));
 }
 
+/** The width one ladder stop actually lands at, budget clamp included. */
+function landedWidth(
+  intrinsicWidth: number,
+  scale: number,
+  ratio: number,
+  dpr: number,
+): number {
+  return zoomedPageWidth(intrinsicWidth, scale, ratio, dpr);
+}
+
+/**
+ * Step one stop along the ladder, skipping stops the budget collapses.
+ *
+ * The ladder is written in requested percentages, but the canvas budget decides
+ * what lands: a 612pt page at DPR 2 cannot draw past ~1722 CSS px, so 3× and 4×
+ * both land at 211%. Stepping by the requested value alone made 4×→3× change
+ * nothing and wasted the first press of a climb — the reader asked for a bigger
+ * page and got the same one back. This walks past every stop that lands on the
+ * width already on screen, so one press always means one visible step.
+ */
+export function steppedPdfZoomByWidth(
+  scale: number,
+  direction: 1 | -1,
+  intrinsicWidth: number,
+  ratio: number,
+  dpr: number,
+): number {
+  const landed = (value: number) => landedWidth(intrinsicWidth, value, ratio, dpr);
+  const current = landed(scale);
+  const end = direction === 1 ? MAX_PDF_ZOOM : MIN_PDF_ZOOM;
+  let next = steppedPdfZoom(scale, direction);
+  // Walk while this stop draws the width already on screen. `next !== end`
+  // stops at the ladder's edge, and the `following === next` guard keeps a
+  // clamped step from looping forever.
+  while (Math.abs(landed(next) - current) < 0.5 && next !== end) {
+    const following = steppedPdfZoom(next, direction);
+    if (following === next) break;
+    next = following;
+  }
+  return next;
+}
+
+/**
+ * Whether a step in this direction would actually change the drawn width.
+ *
+ * The toolbar disables a control that cannot do anything. Reading this off the
+ * requested scale is wrong for the same reason the step was: at a
+ * budget-clamped 3× the scale is below 4, so zoom-in looked available while
+ * every press was a no-op.
+ */
+export function canStepPdfZoom(
+  direction: 1 | -1,
+  scale: number,
+  intrinsicWidth: number,
+  ratio: number,
+  dpr: number,
+  currentWidth: number,
+): boolean {
+  const next = steppedPdfZoomByWidth(
+    scale,
+    direction,
+    intrinsicWidth,
+    ratio,
+    dpr,
+  );
+  return (
+    Math.abs(landedWidth(intrinsicWidth, next, ratio, dpr) - currentWidth) >= 0.5
+  );
+}
+
 /** The page's CSS width at "100%". */
 export function actualSizeWidth(intrinsicWidth: number): number {
   return intrinsicWidth > 0 ? intrinsicWidth * ACTUAL_SIZE_FACTOR : 0;

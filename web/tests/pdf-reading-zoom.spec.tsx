@@ -368,7 +368,7 @@ describe("PDF reader zoom", () => {
     await act(async () => {
       fireEvent.click(
         view.container.querySelector<HTMLButtonElement>(
-          '[role="menuitem"]:last-of-type',
+          '[role="menuitemradio"]:last-of-type',
         )!,
       );
     });
@@ -417,7 +417,7 @@ describe("PDF reader zoom", () => {
     await act(async () => {
       fireEvent.click(
         view.container.querySelector<HTMLButtonElement>(
-          '[role="menuitem"]:last-of-type',
+          '[role="menuitemradio"]:last-of-type',
         )!,
       );
     });
@@ -466,6 +466,28 @@ describe("PDF reader zoom", () => {
     ).toBe("Fit");
   });
 
+  it("does not leave a stale anchor behind a zoom that changes nothing", async () => {
+    const view = await openReader();
+    // The bar only renders once the pointer is in the bottom band.
+    await act(async () => {
+      fireEvent.pointerMove(view.root, {
+        clientY: ROOT_TOP + viewportHeight - 8,
+      });
+    });
+    // Reset while already at Fit: the request cannot move the page, so nothing
+    // consumes the anchor the gesture captured. Left behind, it hijacked the
+    // next pane resize and pulled the reader back to the old page and offset.
+    await act(async () => {
+      fireEvent.click(zoomButton(view, "Reset zoom"));
+    });
+    // A pane resize that actually commits a new width must not scroll: the
+    // no-op reset left no anchor for it to restore.
+    await resize(900);
+    // Fit is the pane width less its inset, exactly as before the zoom bar.
+    await waitFor(() => expect(widthOf(view.root)).toBe(852));
+    expect(view.root.scrollTop).toBe(0);
+  });
+
   it("keeps the keyboard shortcut alive while focus is in the zoom bar", async () => {
     const view = await openReader();
     // The bar is a sibling of the scroll root, so neither `:hover` on the root
@@ -486,7 +508,7 @@ describe("PDF reader zoom", () => {
     await waitFor(() => expect(widthOf(view.root)).toBe(600));
   });
 
-  it("clears its pending save and hide timers when it unmounts", async () => {
+  it("flushes a pending zoom save and clears its timers when it unmounts", async () => {
     const view = await openReader();
     const zoomIn = await waitFor(() => zoomButton(view, "Zoom in"));
     // Fake timers keep the debounce from firing while the two-pointer-move
@@ -512,11 +534,13 @@ describe("PDF reader zoom", () => {
 
       view.unmount();
       expect(vi.getTimerCount()).toBe(0);
-      // Nothing lands in storage after the reader is gone.
-      act(() => {
-        vi.runAllTimers();
+      // The debounce is flushed, not dropped: the size the reader picked just
+      // before closing is the one they expect on the next open. (This used to
+      // assert the opposite — a deliberate trade-off that lost the last zoom.)
+      expect(JSON.parse(localStorage.getItem(PDF_ZOOM_KEY) ?? "null")).toEqual({
+        mode: "fixed",
+        scale: 1,
       });
-      expect(localStorage.getItem(PDF_ZOOM_KEY)).toBeNull();
     } finally {
       vi.useRealTimers();
     }

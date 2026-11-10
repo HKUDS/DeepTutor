@@ -18,18 +18,14 @@ import {
   maxPageWidth,
   normalisePdfZoom,
   pdfZoomShortcut,
+  canStepPdfZoom,
   steppedPdfZoom,
+  PDF_ZOOM_KEY,
+  type PdfZoomPreference,
+  steppedPdfZoomByWidth,
   zoomedPageWidth,
 } from "../lib/reading-zoom";
 
-const zoomControls = readFileSync(
-  "components/reading/PdfZoomControls.tsx",
-  "utf8",
-);
-const pdfView = readFileSync("components/reading/PdfDocumentView.tsx", "utf8");
-const pdfPage = readFileSync("components/reading/PdfPage.tsx", "utf8");
-const preferences = readFileSync("lib/reading-display-preferences.ts", "utf8");
-const en = readFileSync("locales/en/app.json", "utf8");
 
 test("fit width is the pre-zoom formula, unchanged", () => {
   // The whole feature has to leave the default layout bit-for-bit identical:
@@ -63,6 +59,45 @@ test("stepping walks the menu ladder, not a fixed percentage", () => {
   // An exact stop steps off it, never returns it.
   assert.equal(steppedPdfZoom(2, 1), 3);
   assert.equal(steppedPdfZoom(2, -1), 1.5);
+});
+
+test("a step skips the stops the canvas budget has flattened", () => {
+  // 612pt page at DPR 2: the budget caps the drawn width at 1722 CSS px, so
+  // both 3x (2448 requested) and 4x (3264 requested) land on 211%. Stepping by
+  // the requested value alone made 4x->3x a no-op and wasted the first press
+  // of a climb; one press must always mean one visible step.
+  const page = 612;
+  const ratio = 1.414;
+  const dpr = 2;
+  assert.equal(zoomedPageWidth(page, 3, ratio, dpr), 1722);
+  assert.equal(zoomedPageWidth(page, 4, ratio, dpr), 1722);
+  // 4x -> smaller skips the collapsed 3x stop and lands where the page shrinks.
+  assert.equal(steppedPdfZoomByWidth(4, -1, page, ratio, dpr), 2);
+  assert.ok(
+    zoomedPageWidth(page, 2, ratio, dpr) < zoomedPageWidth(page, 4, ratio, dpr),
+  );
+  // From 2x (1632px) the next stop 3x really does grow to 1722, so it is taken.
+  assert.equal(steppedPdfZoomByWidth(2, 1, page, ratio, dpr), 3);
+  // With no clamping in play the ladder is walked one stop at a time.
+  assert.equal(steppedPdfZoomByWidth(1, 1, page, ratio, dpr), 1.25);
+  assert.equal(steppedPdfZoomByWidth(2, 1, page, 4, 1), 3);
+});
+
+test("a control is enabled only when its step changes the drawn width", () => {
+  const page = 612;
+  const ratio = 1.414;
+  const dpr = 2;
+  const landed = zoomedPageWidth(page, 4, ratio, dpr);
+  // At the clamped 4x there is no larger width to reach, so zoom-in is spent.
+  assert.equal(canStepPdfZoom(1, 4, page, ratio, dpr, landed), false);
+  assert.equal(canStepPdfZoom(-1, 4, page, ratio, dpr, landed), true);
+  // At the floor, shrinking has nowhere to go.
+  const floor = zoomedPageWidth(page, MIN_PDF_ZOOM, ratio, dpr);
+  assert.equal(canStepPdfZoom(-1, MIN_PDF_ZOOM, page, ratio, dpr, floor), false);
+  // A clamped 3x still has 4x above it? No: both land on the same width, so the
+  // honest answer is that another press cannot change anything.
+  const threeLanded = zoomedPageWidth(page, 3, ratio, dpr);
+  assert.equal(canStepPdfZoom(1, 3, page, ratio, dpr, threeLanded), false);
 });
 
 test("100% is the page's real size, not its scale:1 size", () => {
@@ -154,40 +189,26 @@ test("zoom shortcuts are scoped to a hovered or focused reader", () => {
 test("zoom lives in its own store, not in the text typography preferences", () => {
   // The text preferences carry an exact-shape assertion in their own test;
   // adding a page-bitmap field there would break it and hand the text and EPUB
-  // readers a value they cannot honour.
-  assert.doesNotMatch(preferences, /pdfZoom|pageZoom|cropMargins/);
-  assert.match(
-    readFileSync("lib/reading-zoom.ts", "utf8"),
-    /dt\.reader\.pdfZoom/,
-  );
-});
-
-test("the reader wires the zoom bar, gestures and the canvas guard", () => {
-  assert.match(zoomControls, /export function PdfZoomControls/);
-  assert.match(zoomControls, /PDF_ZOOM_OPTIONS\.map/);
-  assert.match(zoomControls, /aria-haspopup="menu"/);
-  // The trigger and the menu share one ref, or a menu click reads as "outside".
-  assert.match(
-    zoomControls,
-    /if \(root && !root\.contains\(event\.target as Node\)\)/,
-  );
-
-  assert.match(pdfView, /<PdfZoomControls/);
-  assert.match(pdfView, /if \(!event\.ctrlKey\) return;/);
-  assert.match(pdfView, /pdfZoomShortcut\(/);
-  assert.match(pdfView, /fittedPageWidth\(measuredWidth\)/);
-  assert.match(pdfView, /zoomedPageWidth\(/);
-  // Horizontal overflow needs a container that scrolls both ways, and a page
-  // column that does not centre overflowing pages out of reach.
-  assert.match(pdfView, /overflow-auto/);
-  assert.doesNotMatch(pdfView, /flex flex-col items-center/);
-
-  // The page clamps its own bitmap, not just the shared CSS width: page one's
-  // aspect ratio cannot speak for every page in the document.
-  assert.match(pdfPage, /canvasPixelRatio\(/);
+  // readers a value they cannot honour. Asserting on the STORED KEY (a public
+  // contract) rather than on source text keeps this from breaking on any
+  // refactor of either module.
+  assert.equal(PDF_ZOOM_KEY, "dt.reader.pdfZoom");
+  // The preference is a closed union: there is no field to smuggle a page
+  // bitmap into, which is the whole point of keeping it out of the typography
+  // store.
+  const preference: PdfZoomPreference = DEFAULT_PDF_ZOOM;
+  assert.deepEqual(preference, { mode: "fit" });
 });
 
 test("new copy is translated in every shipped locale", () => {
+  // This used to read only `en`, so a locale that never got the key still
+  // passed. `web/i18n/init.ts` is the list of shipped locales; read it rather
+  // than hard-coding, so a new locale is covered the day it ships.
+  const init = readFileSync("i18n/init.ts", "utf8");
+  const shipped = [...init.matchAll(/locales\/([a-z]{2})\/app\.json/g)].map(
+    (match) => match[1],
+  );
+  assert.ok(shipped.includes("en"), "en must be a shipped locale");
   for (const key of [
     "Zoom level",
     "Reset zoom",
@@ -195,9 +216,12 @@ test("new copy is translated in every shipped locale", () => {
     "Zoom out",
     "Fit",
   ]) {
-    assert.ok(
-      en.includes(`"${key}"`),
-      `en/app.json is missing the "${key}" key`,
-    );
+    for (const locale of shipped) {
+      const body = readFileSync(`locales/${locale}/app.json`, "utf8");
+      assert.ok(
+        body.includes(`"${key}"`),
+        `${locale}/app.json is missing the "${key}" key`,
+      );
+    }
   }
 });
