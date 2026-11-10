@@ -888,7 +888,9 @@ async def prepare_lesson(
                     None,
                 )
                 if page is None:
-                    raise LessonUnavailable("The requested neighboring page is unavailable.")
+                    # Context page only (e.g. past the document's edge): skip it
+                    # rather than discard the pages that were actually chosen.
+                    continue
                 neighbor_ref = ref.model_copy(
                     update={
                         "page_index": page["page_index"],
