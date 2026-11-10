@@ -13,11 +13,23 @@
  * - 点击任意一句可从句开始；学习者可把某一句设为“重点”
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { Pause, Play, SkipBack, SkipForward, Star, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import RichMarkdownRenderer from "@/components/common/RichMarkdownRenderer";
+
+/**
+ * The markdown body is rendered once and never re-rendered: the read-along
+ * annotates its DOM (sentence spans, unit classes), and a re-render would make
+ * React reconcile against a tree it no longer recognises. The content is fixed
+ * for the lifetime of the overlay, so memoising it is enough to keep React out.
+ */
+const ArticleBody = memo(function ArticleBody({ content }: { content: string }) {
+  return (
+    <RichMarkdownRenderer content={content} enableMath enableCode enableMermaid />
+  );
+});
 
 type UnitKind = "prose" | "listitem" | "code" | "formula" | "table";
 
@@ -380,7 +392,7 @@ export default function ReadAlongArticle({
 
         <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6">
           <div ref={articleRef} className="ra-article mx-auto max-w-[680px]">
-            <RichMarkdownRenderer content={content} enableMath enableCode enableMermaid />
+            <ArticleBody content={content} />
           </div>
         </div>
 
