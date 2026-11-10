@@ -1081,6 +1081,24 @@ function CellCard({
           ) : null}
         </div>
         <div className="flex shrink-0 items-center gap-0.5">
+          <div className="flex shrink-0 items-center gap-0.5 rounded-lg border border-[color-mix(in_srgb,var(--border)_55%,transparent)] p-0.5">
+            {(["edit", "split", "preview"] as const).map((value) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setMode(value)}
+                aria-pressed={mode === value}
+                title={t(value === "edit" ? "Edit" : value === "split" ? "Split" : "Preview")}
+                className={`rounded-md px-1.5 py-0.5 text-[10.5px] font-medium transition-colors ${
+                  mode === value
+                    ? "bg-[color-mix(in_srgb,var(--muted)_85%,transparent)] text-[var(--foreground)]"
+                    : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+                }`}
+              >
+                {t(value === "edit" ? "Edit" : value === "split" ? "Split" : "Preview")}
+              </button>
+            ))}
+          </div>
           <NotebookTagControl tag={tag} onChange={onTagChange} />
           {cell.kind === "markdown" && onUploadImage ? (
             <button
@@ -1132,24 +1150,6 @@ function CellCard({
               </button>
             </>
           ) : null}
-          <div className="flex shrink-0 items-center gap-0.5 rounded-lg border border-[color-mix(in_srgb,var(--border)_55%,transparent)] p-0.5">
-            {(["edit", "split", "preview"] as const).map((value) => (
-              <button
-                key={value}
-                type="button"
-                onClick={() => setMode(value)}
-                aria-pressed={mode === value}
-                title={t(value === "edit" ? "Edit" : value === "split" ? "Split" : "Preview")}
-                className={`rounded-md px-1.5 py-0.5 text-[10.5px] font-medium transition-colors ${
-                  mode === value
-                    ? "bg-[color-mix(in_srgb,var(--muted)_85%,transparent)] text-[var(--foreground)]"
-                    : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
-                }`}
-              >
-                {t(value === "edit" ? "Edit" : value === "split" ? "Split" : "Preview")}
-              </button>
-            ))}
-          </div>
           <div ref={menuRef} className="relative">
             <button
               type="button"
