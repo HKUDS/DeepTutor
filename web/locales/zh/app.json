@@ -2830,6 +2830,8 @@
   "Environment variables": "环境变量",
   "Remote (SSE / streamable HTTP)": "远程（SSE / streamable HTTP）",
   "HTTP headers": "HTTP 请求头",
+  "Authentication": "身份验证",
+  "OAuth": "OAuth",
   "Tool timeout (seconds)": "工具超时（秒）",
   "Enabled tools (one per line, * = all)": "启用的工具（每行一个，* 表示全部）",
   "Connected — {{count}} tools detected": "已连接 —— 检测到 {{count}} 个工具",

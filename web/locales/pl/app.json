@@ -2724,6 +2724,8 @@
   "Environment variables": "Zmienne środowiskowe",
   "Remote (SSE / streamable HTTP)": "Zdalny (SSE / strumieniowy HTTP)",
   "HTTP headers": "Nagłówki HTTP",
+  "Authentication": "Uwierzytelnianie",
+  "OAuth": "OAuth",
   "Tool timeout (seconds)": "Czas oczekiwania narzędzia (w sekundach)",
   "Enabled tools (one per line, * = all)": "Włączone narzędzia (jeden na linię, * = wszystkie)",
   "Connected — {{count}} tools detected": "Połączone — wykryto {{count}} narzędzi",

@@ -2707,6 +2707,8 @@
   "Environment variables": "環境変数",
   "Remote (SSE / streamable HTTP)": "リモート（SSE / ストリーミングHTTP）",
   "HTTP headers": "HTTPヘッダー",
+  "Authentication": "認証",
+  "OAuth": "OAuth",
   "Tool timeout (seconds)": "ツールのタイムアウト（秒）",
   "Enabled tools (one per line, * = all)": "有効なツール（1行に1つ、* = すべて）",
   "Connected — {{count}} tools detected": "接続済み — {{count}}個のツールを検出",

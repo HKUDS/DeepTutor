@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   MCP_ADMIN_BASE_PATH,
+  MCP_SPACE_BASE_PATH,
   arrayToLines,
   buildMcpServerConfig,
   dictToPairs,
@@ -14,6 +15,7 @@ import {
   mcpRowStatus,
   normalizeServerConfig,
   pairsToDict,
+  putSpaceMcpServer,
   resolveMcpTransport,
   updateMcpSettings,
   type McpServerConfig,
@@ -63,6 +65,7 @@ function draftFrom(cfg: McpServerConfig): McpServerFormDraft {
     headerPairs: dictToPairs(cfg.headers),
     toolTimeout: cfg.tool_timeout,
     enabledToolsText: arrayToLines(cfg.enabled_tools),
+    auth: cfg.auth,
   };
 }
 
@@ -296,4 +299,78 @@ test("private-network selection survives normalization and form edits without ch
   const revoked = buildMcpServerConfig({ ...draftFrom(selected), allowPrivateNetwork: false }, selected);
   assert.equal(revoked.allow_private_network, false);
   assert.equal(normalizeServerConfig({ url: "https://example.com/mcp" }).allow_private_network, undefined);
+});
+
+test("a URL-added server can opt into OAuth rather than inherit the blank auth", () => {
+  // Regression guard for #2585: the builder used to copy `auth` from the
+  // initial config, which is "" for a new server, so an OAuth-only endpoint
+  // added by URL connected with no credentials, got 401, and — with no
+  // cfg.auth to read — never offered the Connect button.
+  const base = emptyMcpServerConfig();
+  const built = buildMcpServerConfig(
+    { ...draftFrom(base), url: "https://mcp.example.test/mcp", auth: "oauth" },
+    base,
+  );
+  assert.equal(built.auth, "oauth");
+});
+
+test("a URL-added server saved with OAuth reaches the API with auth=oauth", async () => {
+  // The issue's workaround proves the backend path: the same definition PUT
+  // with `auth` set reports needs_auth and the authorize route answers. This
+  // checks the UI now sends that field on the per-user save.
+  const stub = stubFetch([{ servers: {}, status: [] }]);
+  try {
+    const base = emptyMcpServerConfig();
+    const built = buildMcpServerConfig(
+      { ...draftFrom(base), url: "https://mcp.example.test/mcp", auth: "oauth" },
+      base,
+    );
+    await putSpaceMcpServer(MCP_SPACE_BASE_PATH, "notes-demo", built);
+    const put = stub.calls[0];
+    assert.equal(put.url, `${MCP_SPACE_BASE_PATH}/servers/notes-demo?dt_workspace=`);
+    const sent = JSON.parse(String(put.init?.body)) as {
+      config: McpServerConfig;
+    };
+    assert.equal(sent.config.auth, "oauth");
+    assert.equal(sent.config.url, "https://mcp.example.test/mcp");
+  } finally {
+    stub.restore();
+  }
+});
+
+test("a server left on None keeps an empty auth and its static headers", () => {
+  const base = emptyMcpServerConfig();
+  const built = buildMcpServerConfig(
+    {
+      ...draftFrom(base),
+      url: "https://mcp.example.test/mcp",
+      headerPairs: [{ key: "Authorization", value: "Bearer demo-token" }],
+      auth: "",
+    },
+    base,
+  );
+  assert.equal(built.auth, "");
+  assert.deepEqual(built.headers, { Authorization: "Bearer demo-token" });
+});
+
+test("an edit keeps a catalog server's OAuth opt-in and only loses it on an explicit None", () => {
+  const catalogServer = normalizeServerConfig({
+    type: "streamableHttp",
+    url: "https://mcp.example.test/mcp",
+    auth: "oauth",
+    catalog_entry: "notes-demo",
+  });
+  assert.equal(catalogServer.auth, "oauth");
+  // The form initializes its select from the config, so an unchanged save —
+  // here modelled by a draft carrying the same value — must keep the opt-in
+  // that the row's Connect button depends on.
+  const edited = buildMcpServerConfig(draftFrom(catalogServer), catalogServer);
+  assert.equal(edited.auth, "oauth");
+  assert.equal(edited.catalog_entry, "notes-demo");
+  // Choosing None in the form is an explicit opt-out, not a silent reset.
+  const optedOut = buildMcpServerConfig(
+    { ...draftFrom(catalogServer), auth: "" },
+    catalogServer,
+  );
+  assert.equal(optedOut.auth, "");
 });
