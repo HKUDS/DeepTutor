@@ -6,6 +6,7 @@ import {
   BookmarkCheck,
   Sparkles,
 } from "lucide-react";
+import MarkdownRenderer from "@/components/common/MarkdownRenderer";
 import type { Block } from "@/lib/book-types";
 
 const VARIANT_STYLES: Record<
@@ -59,7 +60,14 @@ export default function CalloutBlock({ block }: CalloutBlockProps) {
         >
           {label}
         </div>
-        <div className="text-[14.5px] leading-relaxed">{body}</div>
+        <div className="text-[14.5px] leading-relaxed">
+          <MarkdownRenderer
+            content={body}
+            variant="compact"
+            className="font-sans text-[14.5px] [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 [&_p]:my-0"
+            allowHtml={false}
+          />
+        </div>
       </div>
     </aside>
   );
