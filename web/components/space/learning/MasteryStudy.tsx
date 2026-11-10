@@ -1638,14 +1638,13 @@ export function MasteryStudy({
                       }
                       onFollowup={sendMessage}
                     />
-                    {sessionMode === "study" &&
-                    lecturePoint &&
-                    viewedPointStatus === "mastered" ? (
-                      // The lecture is the section's product, so its card waits
-                      // for the section to be done. The runtime keeps rolling
-                      // the draft as teaching happens, but showing it mid-way
-                      // reads as "this section is finished" when it is not.
-                      // Once mastered, the card is already there to confirm.
+                    {sessionMode === "study" && lecturePoint ? (
+                      // The runtime rolls a draft as the point is taught, so
+                      // the card is mounted for the whole study sitting and
+                      // reads whatever draft exists — waiting for "mastered"
+                      // hid it behind a status refresh and read as "the
+                      // lecture never arrived". The card itself stays empty
+                      // until a draft exists.
                       <LectureDraftCard
                         key={`draft-${lecturePoint}`}
                         pathId={pathId}
