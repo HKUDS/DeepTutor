@@ -165,6 +165,16 @@ class AgentLoopHost:
             defer_visible_output=self.pipeline._capability_buffers_visible_output(self.context),
             tool_choice=self.pipeline.initial_tool_choice if first else None,
         )
+        if str(self.result.finish_reason or "").strip().lower() == "context_length_exceeded":
+            # The input context is full, so resuming (``continue_truncated``) would
+            # resend the same history. Finish the round and tell the reader why.
+            await self.warning(
+                "notices.context_length_exceeded",
+                (
+                    "The conversation filled the model's context window, so the answer was cut "
+                    "off. Start a new chat or shorten the history and try again."
+                ),
+            )
         rejected = self.recovery_tools is not None and any(
             str(call.get("name") or "").strip() not in self.recovery_tools
             for call in self.result.tool_calls
