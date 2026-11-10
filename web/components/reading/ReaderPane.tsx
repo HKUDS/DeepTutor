@@ -44,7 +44,6 @@ import {
   type ReadingBookmark,
 } from "@/lib/reading-api";
 import { AnnotationList } from "./AnnotationList";
-import { ReadingPanelSeparator } from "./workspace/ReadingPanelSeparator";
 import { AnnotationPopover, type PopoverAiAction } from "./AnnotationPopover";
 import { passagePrompts } from "@/lib/reading-passage-prompts";
 import {
@@ -198,7 +197,7 @@ export function ReaderPane({
   const { t, i18n } = useTranslation();
   // Below `lg` the annotation column does not fit beside the page, so it
   // becomes an overlay instead of a column - see the aside below.
-  const { isMobile, isCompact } = useDevice();
+  const { isCompact } = useDevice();
   // Document + annotations live in the provider (workspace layout), so they
   // survive the remount that sending the first message causes.
   const {

@@ -129,3 +129,63 @@ describe("a failed delete after a remote edit", () => {
     expect(result.current.error).toBe("That annotation could not be removed.");
   });
 });
+
+/**
+ * A mark still being created must not be deleted by its optimistic id.
+ *
+ * A brand-new mark lives under `pending-…` until its PUT returns. Deleting it
+ * then sent that id to the server, which had never seen it: the DELETE 404'd
+ * while the PUT created the real row, leaving a mark the server holds and this
+ * tab has hidden — invisible until something else refreshed the list.
+ */
+describe("deleting a mark whose create is still in flight", () => {
+  it("waits for the create, then deletes the id the server minted", async () => {
+    const { result } = renderHook(useReading, { wrapper: ReadingProvider });
+    await open(result, "doc-a", []);
+
+    // The create is in flight and will succeed with the server's own id.
+    let resolveCreate!: (value: Response) => void;
+    api.fetch.mockImplementationOnce(
+      () => new Promise<Response>((resolve) => {
+        resolveCreate = resolve;
+      }),
+    );
+    const optimistic = { ...mark("pending-1"), quote: "fresh" };
+    let saving!: Promise<boolean>;
+    act(() => {
+      saving = result.current.saveMark(
+        { locator: 1, quote: "fresh" },
+        optimistic,
+      );
+    });
+    expect(result.current.annotations.map((row) => row.annotation_id)).toEqual([
+      "pending-1",
+    ]);
+
+    // The reader deletes it before the PUT has returned.
+    let removing!: Promise<boolean>;
+    act(() => {
+      removing = result.current.removeMark(result.current.annotations[0]);
+    });
+
+    // The create lands with the real id; the delete must now name that id.
+    api.fetch.mockImplementationOnce(() => Promise.resolve(new Response("{}")));
+    await act(async () => {
+      resolveCreate(new Response(JSON.stringify({ ...mark("real-1"), quote: "fresh" })));
+      await saving;
+      await removing;
+      await flush();
+    });
+
+    const calls = api.fetch.mock.calls.map((call) => [
+      String(call[1]?.method ?? "GET"),
+      String(call[0]),
+    ]);
+    // A DELETE went out, and it named the server's id — never `pending-1`.
+    const deletes = calls.filter(([method]) => method === "DELETE");
+    expect(deletes).toHaveLength(1);
+    expect(deletes[0][1]).toContain("real-1");
+    expect(deletes[0][1]).not.toContain("pending-1");
+    expect(result.current.annotations).toEqual([]);
+  });
+});

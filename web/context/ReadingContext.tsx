@@ -108,6 +108,18 @@ export function ReadingProvider({ children }: { children: ReactNode }) {
   // Ids whose write has been sent but not yet acknowledged. A refresh that
   // lands while this is non-empty must merge, not replace.
   const pendingWritesRef = useRef<Set<string>>(new Set());
+  // Resolvers for writes in flight, keyed by their optimistic id. A row cannot
+  // be deleted before the server knows its real id, so `removeMark` awaits the
+  // write and then deletes the row the server actually created.
+  const pendingResolversRef = useRef<
+    Map<string, Set<(createdId: string | null) => void>>
+  >(new Map());
+  // The newest list, for callbacks that must read it after an await without
+  // closing over a stale render.
+  const annotationsRef = useRef<AnnotationItem[]>([]);
+  useEffect(() => {
+    annotationsRef.current = annotations;
+  }, [annotations]);
   // Ids this tab has deleted but the server has not confirmed yet. A refresh
   // that lands while the DELETE is in flight still lists them; without this
   // tombstone the row would come back and stay back.
@@ -252,6 +264,10 @@ export function ReadingProvider({ children }: { children: ReactNode }) {
       // From here on this tab's list differs from any GET already in flight.
       localMutationSeqRef.current += 1;
       pendingWritesRef.current.add(optimistic.annotation_id);
+      // Registered as a listener rather than a single slot: a delete may join
+      // while the write is still in flight, and both must be told how it ended.
+      const listeners = new Set<(createdId: string | null) => void>();
+      pendingResolversRef.current.set(optimistic.annotation_id, listeners);
       const previous = annotations.find(row => row.annotation_id === optimistic.annotation_id);
       setAnnotations(current => previous
         ? current.map(row => row.annotation_id === optimistic.annotation_id ? optimistic : row)
@@ -260,6 +276,10 @@ export function ReadingProvider({ children }: { children: ReactNode }) {
         const saved = await saveAnnotation(materialId, draft);
         if (token === openTokenRef.current) setAnnotations(current => current.map(row => row.annotation_id === optimistic.annotation_id ? saved : row));
         pendingWritesRef.current.delete(optimistic.annotation_id);
+        for (const listener of pendingResolversRef.current.get(optimistic.annotation_id) ?? []) {
+          listener(saved.annotation_id);
+        }
+        pendingResolversRef.current.delete(optimistic.annotation_id);
         // The acknowledged row is now part of this tab's list; a GET that
         // started before the PUT returned may not contain it.
         localMutationSeqRef.current += 1;
@@ -269,6 +289,10 @@ export function ReadingProvider({ children }: { children: ReactNode }) {
         // The write is no longer pending, so a refresh from here on is allowed
         // to replace the optimistic row with whatever the server holds.
         pendingWritesRef.current.delete(optimistic.annotation_id);
+        for (const listener of pendingResolversRef.current.get(optimistic.annotation_id) ?? []) {
+          listener(null);
+        }
+        pendingResolversRef.current.delete(optimistic.annotation_id);
         localMutationSeqRef.current += 1;
         if (token !== openTokenRef.current) return false;
         setErrorState(caught instanceof Error ? caught.message : "That annotation could not be saved.");
@@ -298,11 +322,48 @@ export function ReadingProvider({ children }: { children: ReactNode }) {
     }, [material, annotations, refreshMarks],
   );
 
+  /** Wait for a create in flight; resolves to the real id, or null on failure. */
+  const waitForPendingWrite = useCallback(
+    (optimisticId: string): Promise<string | null> => {
+      if (!pendingWritesRef.current.has(optimisticId)) {
+        return Promise.resolve(optimisticId);
+      }
+      // `saveMark` resolves every registered write on both paths, so this
+      // settles whether the PUT succeeded or failed.
+      return new Promise<string | null>((resolve) => {
+        const listeners = pendingResolversRef.current.get(optimisticId);
+        if (!listeners) {
+          resolve(optimisticId);
+          return;
+        }
+        listeners.add(resolve);
+      });
+    },
+    [],
+  );
+
   const removeMark = useCallback(
     async (annotation: AnnotationItem): Promise<boolean> => {
       if (!materialId) return false;
       const scope = annotationScopeRef.current;
-      const id = annotation.annotation_id;
+      // A row still being created carries the optimistic `pending-…` id, which
+      // the server has never seen: deleting it 404s while the PUT that follows
+      // creates the real row, leaving a mark on the server that this tab has
+      // hidden and will not show again until something refreshes. Ask the
+      // write in flight to finish first, so the delete names the real id.
+      let target = annotation;
+      if (pendingWritesRef.current.has(annotation.annotation_id)) {
+        const createdId = await waitForPendingWrite(annotation.annotation_id);
+        if (scope !== annotationScopeRef.current) return false;
+        if (!createdId) return false;
+        const created = annotationsRef.current.find(
+          (row) => row.annotation_id === createdId,
+        );
+        // The write landed but the row is not in the list (a refresh settled
+        // without it): the server may still hold it, so delete by id anyway.
+        target = created ?? { ...annotation, annotation_id: createdId };
+      }
+      const id = target.annotation_id;
       // The row is gone from this tab's list before the request even leaves;
       // any GET that overlaps must be told, or it will bring the row back.
       deletedIdsRef.current.add(id);
@@ -338,12 +399,12 @@ export function ReadingProvider({ children }: { children: ReactNode }) {
           // fallback so a flaky GET never costs the reader their mark.
           setAnnotations((current) => current.some(
             (row) => row.annotation_id === id,
-          ) ? current : [...current, annotation]);
+          ) ? current : [...current, target]);
         }
         return false;
       }
     },
-    [materialId, refreshMarks],
+    [materialId, refreshMarks, waitForPendingWrite],
   );
 
   const mergeMark = useCallback((annotation: AnnotationItem) => {
