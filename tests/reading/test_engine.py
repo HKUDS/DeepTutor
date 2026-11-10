@@ -1433,9 +1433,7 @@ def test_migration_rebuilds_the_quote_context(store: ReadingStore) -> None:
         unit="section",
         render_mode="text",
     )
-    selector = TextQuoteSelector(
-        exact="latency budget", prefix="We keep the ", suffix="tight in"
-    )
+    selector = TextQuoteSelector(exact="latency budget", prefix="We keep the ", suffix="tight in")
     saved = store.save_annotation(
         material,
         Annotation(
@@ -1461,9 +1459,7 @@ def test_migration_rebuilds_the_quote_context(store: ReadingStore) -> None:
         row for row in store.annotations(material) if row.annotation_id == saved.annotation_id
     )
     assert migrated.resolution == "resolved"
-    quote_selector = next(
-        row for row in migrated.selectors if isinstance(row, TextQuoteSelector)
-    )
+    quote_selector = next(row for row in migrated.selectors if isinstance(row, TextQuoteSelector))
     # The context follows the new text, not the old one.
     assert quote_selector.prefix.endswith("keep the ")
     assert quote_selector.suffix.startswith(" very tigh")
