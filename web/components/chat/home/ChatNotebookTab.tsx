@@ -20,7 +20,9 @@ import {
   useRef,
   useState,
   type ClipboardEvent,
+  type CSSProperties,
   type DragEvent,
+  type PointerEvent as ReactPointerEvent,
 } from "react";
 import dynamic from "next/dynamic";
 import {
@@ -28,14 +30,11 @@ import {
   ArrowLeft,
   ArrowUp,
   Check,
-  Columns2,
-  Eye,
   FileText,
   GripVertical,
   ImagePlus,
   Loader2,
   MoreHorizontal,
-  Pencil,
   Play,
   RefreshCw,
   Shapes,
@@ -100,6 +99,29 @@ type SaveState = "idle" | "saving" | "saved" | "error";
 
 const POINTER_PREFIX = "dt:chat-notebook:";
 const AUTOSAVE_MS = 900;
+
+/** The split cell: editor, a draggable divider, preview. Stacks when narrow. */
+const SPLIT_CELL_CSS = `
+.nb-split { display: grid; grid-template-columns: 1fr; }
+.nb-split-divider { display: none; }
+@media (min-width: 1024px) {
+  .nb-split {
+    grid-template-columns:
+      calc(var(--nb-split, 0.5) * 100%)
+      8px
+      calc((1 - var(--nb-split, 0.5)) * 100%);
+  }
+  .nb-split-divider {
+    display: block;
+    cursor: col-resize;
+    touch-action: none;
+    background: color-mix(in srgb, var(--border) 70%, transparent);
+  }
+  .nb-split-divider:hover {
+    background: color-mix(in srgb, var(--primary) 45%, var(--border));
+  }
+}
+`;
 
 function pointerKey(
   owner: string,
@@ -203,7 +225,6 @@ export default function ChatNotebookTab({ sessionId = null, docId = null, onExit
   const [graph, setGraph] = useState<NotebookGraph>(() => emptyNotebookGraph());
   const [view, setView] = useState<"list" | "graph">("list");
   const [runs, setRuns] = useState<Record<string, CellRun>>({});
-  const [previewing, setPreviewing] = useState<Set<string>>(() => new Set());
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [error, setError] = useState("");
 
@@ -559,15 +580,6 @@ export default function ChatNotebookTab({ sessionId = null, docId = null, onExit
     }
   }, [cells, runCell]);
 
-  const togglePreview = useCallback((id: string) => {
-    setPreviewing((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }, []);
-
   const hasCode = useMemo(
     () => cells.some((cell) => cell.kind === "code" && cell.source.trim()),
     [cells],
@@ -583,6 +595,7 @@ export default function ChatNotebookTab({ sessionId = null, docId = null, onExit
 
   return (
     <div className="flex h-full flex-col">
+      <style>{SPLIT_CELL_CSS}</style>
       <div className="flex shrink-0 items-center gap-2.5 border-b border-[color-mix(in_srgb,var(--border)_45%,transparent)] px-4 py-3">
         {onExit ? (
           <button
@@ -695,7 +708,6 @@ export default function ChatNotebookTab({ sessionId = null, docId = null, onExit
                 index={index}
                 total={cells.length}
                 run={runs[cell.id]}
-                previewing={previewing.has(cell.id)}
                 tag={graph.tags[cell.id]}
                 dragging={draggingCellId === cell.id}
                 dragOver={
@@ -714,7 +726,6 @@ export default function ChatNotebookTab({ sessionId = null, docId = null, onExit
                   setDraggingCellId(null);
                   setDragOverCellId(null);
                 }}
-                onTogglePreview={() => togglePreview(cell.id)}
                 onUploadImage={uploadImage}
                 onChange={(patch) => updateCell(cell.id, patch)}
                 onTagChange={(next) => updateTag(cell.id, next)}
@@ -800,7 +811,6 @@ interface CellCardProps {
   index: number;
   total: number;
   run?: CellRun;
-  previewing: boolean;
   tag?: NotebookTag;
   dragging: boolean;
   dragOver: boolean;
@@ -808,8 +818,6 @@ interface CellCardProps {
   onDragOver: () => void;
   onDragEnd: () => void;
   onDrop: () => void;
-  onTogglePreview: () => void;
-  /** Upload a pasted/dropped file and return its URL. */
   onUploadImage?: (file: File) => Promise<string>;
   onChange: (patch: Partial<NotebookCell>) => void;
   onTagChange: (tag: NotebookTag | null) => void;
@@ -845,7 +853,6 @@ function CellCard({
   index,
   total,
   run,
-  previewing,
   tag,
   dragging,
   dragOver,
@@ -853,7 +860,6 @@ function CellCard({
   onDragOver,
   onDragEnd,
   onDrop,
-  onTogglePreview,
   onUploadImage,
   onChange,
   onTagChange,
@@ -866,8 +872,15 @@ function CellCard({
     24,
     Math.max(cell.kind === "markdown" ? 3 : 2, cell.source.split("\n").length),
   );
-  const [scriptOpen, setScriptOpen] = useState(false);
-  const [split, setSplit] = useState(false);
+  // One control per cell: edit the source, see both side by side, or only the
+  // preview. A cell with content opens on its rendered form, an empty one on
+  // the editor.
+  const [mode, setMode] = useState<"edit" | "split" | "preview">(
+    cell.kind === "markdown" ? "edit" : cell.source.trim() ? "preview" : "edit",
+  );
+  const split = mode === "split";
+  const [splitRatio, setSplitRatio] = useState(0.5);
+  const splitRef = useRef<HTMLDivElement>(null);
   const [editingName, setEditingName] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -875,8 +888,6 @@ function CellCard({
   const cardRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  // A code cell with content opens highlighted; an empty one opens editable.
-  const [codePreview, setCodePreview] = useState(cell.source.trim().length > 0);
   const kindLabel = cellKindLabel(cell, t);
   const name = cell.name?.trim() ?? "";
   const running = run?.status === "running";
@@ -960,6 +971,25 @@ function CellCard({
     },
     [onUploadImage],
   );
+
+  // Drag the middle of a split cell to trade width between editor and preview.
+  const startSplitDrag = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const container = splitRef.current;
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+    const onMove = (moveEvent: PointerEvent) => {
+      if (!rect.width) return;
+      const ratio = (moveEvent.clientX - rect.left) / rect.width;
+      setSplitRatio(Math.min(0.8, Math.max(0.2, ratio)));
+    };
+    const onUp = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  }, []);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -1068,16 +1098,6 @@ function CellCard({
               )}
             </button>
           ) : null}
-          <button
-            type="button"
-            className={CELL_BUTTON}
-            onClick={() => setSplit((value) => !value)}
-            aria-label={t("Split")}
-            aria-pressed={split}
-            title={t("Split")}
-          >
-            <Columns2 size={14} strokeWidth={1.9} />
-          </button>
           {cell.kind === "code" ? (
             <>
               <select
@@ -1112,44 +1132,24 @@ function CellCard({
               </button>
             </>
           ) : null}
-          {!split && cell.kind === "geogebra" ? (
-            <button
-              type="button"
-              className={CELL_BUTTON}
-              onClick={() => setScriptOpen((open) => !open)}
-              aria-label={t("Script")}
-              aria-pressed={scriptOpen}
-              title={t(scriptOpen ? "Hide script" : "Script")}
-            >
-              <Pencil size={13} strokeWidth={1.9} />
-            </button>
-          ) : !split ? (
-            <button
-              type="button"
-              className={CELL_BUTTON}
-              onClick={
-                cell.kind === "code"
-                  ? () => setCodePreview((value) => !value)
-                  : onTogglePreview
-              }
-              aria-label={t(
-                (cell.kind === "code" ? codePreview : previewing)
-                  ? "Edit"
-                  : "Preview",
-              )}
-              title={t(
-                (cell.kind === "code" ? codePreview : previewing)
-                  ? "Edit"
-                  : "Preview",
-              )}
-            >
-              {(cell.kind === "code" ? codePreview : previewing) ? (
-                <Pencil size={13} strokeWidth={1.9} />
-              ) : (
-                <Eye size={14} strokeWidth={1.9} />
-              )}
-            </button>
-          ) : null}
+          <div className="flex shrink-0 items-center gap-0.5 rounded-lg border border-[color-mix(in_srgb,var(--border)_55%,transparent)] p-0.5">
+            {(["edit", "split", "preview"] as const).map((value) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setMode(value)}
+                aria-pressed={mode === value}
+                title={t(value === "edit" ? "Edit" : value === "split" ? "Split" : "Preview")}
+                className={`rounded-md px-1.5 py-0.5 text-[10.5px] font-medium transition-colors ${
+                  mode === value
+                    ? "bg-[color-mix(in_srgb,var(--muted)_85%,transparent)] text-[var(--foreground)]"
+                    : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+                }`}
+              >
+                {t(value === "edit" ? "Edit" : value === "split" ? "Split" : "Preview")}
+              </button>
+            ))}
+          </div>
           <div ref={menuRef} className="relative">
             <button
               type="button"
@@ -1226,7 +1226,11 @@ function CellCard({
       />
 
       {split ? (
-        <div className="grid grid-cols-1 divide-y divide-[color-mix(in_srgb,var(--border)_40%,transparent)] lg:grid-cols-2 lg:divide-x lg:divide-y-0">
+        <div
+          ref={splitRef}
+          className="nb-split"
+          style={{ "--nb-split": String(splitRatio) } as CSSProperties}
+        >
           <div className="min-w-0">
             <textarea
               ref={cell.kind === "markdown" ? textareaRef : undefined}
@@ -1251,6 +1255,13 @@ function CellCard({
               }`}
             />
           </div>
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            aria-label={t("Split")}
+            className="nb-split-divider"
+            onPointerDown={startSplitDrag}
+          />
           <div className="min-w-0 overflow-auto px-3.5 py-2.5">
             {cell.kind === "geogebra" ? (
               <BoardCellBody script={cell.source} />
@@ -1276,16 +1287,16 @@ function CellCard({
             )}
           </div>
         </div>
-      ) : cell.kind === "geogebra" ? (
+      ) : cell.kind === "geogebra" && mode === "preview" ? (
         <BoardCellBody script={cell.source} />
-      ) : cell.kind === "code" && codePreview && cell.source.trim() ? (
+      ) : cell.kind === "code" && mode === "preview" && cell.source.trim() ? (
         <div className="px-2.5 pb-1 pt-1.5">
           <RichCodeBlock
             raw={cell.source}
             lang={normalizeCellLanguage(cell.language)}
           />
         </div>
-      ) : cell.kind === "markdown" && previewing && cell.source.trim() ? (
+      ) : cell.kind === "markdown" && mode === "preview" && cell.source.trim() ? (
         <div className="px-3.5 pb-3 pt-1.5 text-[13.5px] leading-relaxed">
           <RichMarkdownRenderer content={cell.source} enableMath enableCode enableMermaid />
         </div>
@@ -1300,28 +1311,19 @@ function CellCard({
           onDragOver={cell.kind === "markdown" ? onDragOverFiles : undefined}
           onChange={(event) => onChange({ source: event.target.value })}
           placeholder={
-            cell.kind === "code"
-              ? t("print('hello')")
-              : t("Write a note, with $math$ in Markdown.")
+            cell.kind === "geogebra"
+              ? t("GeoGebra commands, one per line.")
+              : cell.kind === "code"
+                ? t("print('hello')")
+                : t("Write a note, with $math$ in Markdown.")
           }
           className={`block w-full resize-y bg-transparent px-3.5 py-2 text-[var(--foreground)] outline-none placeholder:text-[color-mix(in_srgb,var(--muted-foreground)_55%,transparent)] ${
-            cell.kind === "code"
+            cell.kind === "code" || cell.kind === "geogebra"
               ? "font-mono text-[12.5px] leading-relaxed"
               : "text-[13.5px] leading-6"
           }`}
         />
       )}
-
-      {cell.kind === "geogebra" && scriptOpen && !split ? (
-        <textarea
-          value={cell.source}
-          rows={rows}
-          spellCheck={false}
-          onChange={(event) => onChange({ source: event.target.value })}
-          placeholder={t("GeoGebra commands, one per line.")}
-          className="block w-full resize-y border-t border-[color-mix(in_srgb,var(--border)_45%,transparent)] bg-[color-mix(in_srgb,var(--muted)_18%,transparent)] px-3.5 py-2.5 font-mono text-[12.5px] leading-relaxed text-[var(--foreground)] outline-none placeholder:text-[color-mix(in_srgb,var(--muted-foreground)_55%,transparent)]"
-        />
-      ) : null}
 
       {run ? <CellOutput run={run} /> : null}
     </div>

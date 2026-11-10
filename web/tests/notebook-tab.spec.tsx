@@ -177,9 +177,11 @@ it("adds a GeoGebra board cell with an editable script", async () => {
   await screen.findByPlaceholderText("print('hello')");
 
   fireEvent.click(screen.getByRole("button", { name: /Board cell/ }));
-  // The board header offers its script toggle once the cell is added.
-  const script = await screen.findByRole("button", { name: "Script" });
-  expect(script).toBeInTheDocument();
+  // The board cell's editor is its script: switch that cell to Edit.
+  fireEvent.click(screen.getAllByRole("button", { name: "Edit" })[2]);
+  expect(
+    await screen.findByPlaceholderText("GeoGebra commands, one per line."),
+  ).toBeInTheDocument();
 });
 
 it("shows a highlighted preview of a code cell", async () => {
