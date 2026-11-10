@@ -75,7 +75,7 @@ def test_ask_retries_once_with_reasoning_turned_down(monkeypatch):
 
     async def complete(**kwargs):
         efforts.append(kwargs["config"].reasoning_effort)
-        assert kwargs["max_tokens"] == 1800
+        assert kwargs["max_tokens"] == 8192
         # The first reply spent its budget thinking and returned no answer.
         return "<think>Considering the objective" if len(efforts) == 1 else '{"queries": ["a"]}'
 
@@ -126,7 +126,7 @@ def test_assessment_requests_share_the_parser_and_retry(monkeypatch):
 
     async def complete(**kwargs):
         efforts.append(kwargs["config"].reasoning_effort)
-        assert kwargs["max_tokens"] == 2200
+        assert kwargs["max_tokens"] == 8192
         if len(efforts) == 1:
             return ""
         return 'Verdicts follow.\n```json\n{"verdicts": []}\n```'
