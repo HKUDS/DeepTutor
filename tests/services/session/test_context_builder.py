@@ -4,13 +4,17 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from pathlib import Path
+import threading
+import time
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+import tiktoken
 
 from deeptutor.services.prompt import get_prompt_manager
 from deeptutor.services.prompt.language import language_label
+from deeptutor.services.session import context_builder as cb
 from deeptutor.services.session.context_builder import (
     MAX_HISTORY_PLAN_TOKENS,
     MAX_RAW_REBUILD_TOKENS,
@@ -46,6 +50,149 @@ class TestCountTokens:
         short = count_tokens("Hi")
         long = count_tokens("Hello, this is a longer sentence with many words in it.")
         assert long > short
+
+
+# ---------------------------------------------------------------------------
+# count_tokens — a stalled vocab download must not wedge the caller (#2522)
+# ---------------------------------------------------------------------------
+
+
+def _run_bounded(fn: Any, deadline: float = 3.0) -> tuple[threading.Thread, dict[str, Any]]:
+    """Run ``fn`` off-thread so a hang fails the test instead of freezing it."""
+    outcome: dict[str, Any] = {}
+
+    def target() -> None:
+        try:
+            outcome["value"] = fn()
+        except BaseException as exc:  # noqa: BLE001 - reported to the caller
+            outcome["error"] = exc
+
+    worker = threading.Thread(target=target, daemon=True)
+    worker.start()
+    worker.join(deadline)
+    return worker, outcome
+
+
+class _StallingVocab:
+    """A CDN that connects but never answers, then recovers on ``release``."""
+
+    def __init__(self, real: Any) -> None:
+        self._real = real
+        self._lock = threading.Lock()
+        self.release = threading.Event()
+        self.started = threading.Event()
+        self.calls = 0
+
+    def __call__(self, name: str) -> Any:
+        with self._lock:
+            self.calls += 1
+        self.started.set()
+        self.release.wait()
+        return self._real(name)
+
+
+@pytest.fixture
+def isolated_tokenizer(monkeypatch: pytest.MonkeyPatch) -> Any:
+    """Reset the process-wide tokenizer cache, then reap any loader thread."""
+    for name, value in (
+        ("_encoding", None),
+        ("_encoding_thread", None),
+        ("_encoding_waited", False),
+    ):
+        monkeypatch.setattr(cb, name, value, raising=False)
+    yield
+    loader = getattr(cb, "_encoding_thread", None)
+    if loader is not None and loader.is_alive():
+        loader.join(3.0)
+
+
+class TestCountTokensStalledVocab:
+    def test_stalled_download_degrades_within_the_deadline(
+        self, monkeypatch: pytest.MonkeyPatch, isolated_tokenizer: Any
+    ) -> None:
+        stall = _StallingVocab(tiktoken.get_encoding)
+        monkeypatch.setattr(tiktoken, "get_encoding", stall)
+        monkeypatch.setattr(cb, "_ENCODING_LOAD_TIMEOUT_SECONDS", 0.2, raising=False)
+        text = "Hello, world!"
+        try:
+            worker, outcome = _run_bounded(lambda: count_tokens(text))
+            assert not worker.is_alive(), (
+                "count_tokens blocked past the deadline on a stalled vocab download"
+            )
+            assert "error" not in outcome, outcome["error"]
+            assert outcome["value"] == max(1, len(text) // 4)
+            assert stall.started.is_set()
+        finally:
+            stall.release.set()
+
+    def test_available_vocab_still_counts_exactly(
+        self, monkeypatch: pytest.MonkeyPatch, isolated_tokenizer: Any
+    ) -> None:
+        monkeypatch.setattr(cb, "_ENCODING_LOAD_TIMEOUT_SECONDS", 5.0, raising=False)
+        text = "Hello, world!"
+        expected = len(tiktoken.get_encoding("cl100k_base").encode(text))
+        worker, outcome = _run_bounded(lambda: count_tokens(text))
+        assert not worker.is_alive()
+        assert "error" not in outcome, outcome["error"]
+        assert outcome["value"] == expected
+
+    def test_repeated_calls_do_not_restart_the_stalled_download(
+        self, monkeypatch: pytest.MonkeyPatch, isolated_tokenizer: Any
+    ) -> None:
+        stall = _StallingVocab(tiktoken.get_encoding)
+        monkeypatch.setattr(tiktoken, "get_encoding", stall)
+        monkeypatch.setattr(cb, "_ENCODING_LOAD_TIMEOUT_SECONDS", 0.2, raising=False)
+        text = "some repeated text"
+        expected = max(1, len(text) // 4)
+        try:
+            started = time.monotonic()
+            worker, outcome = _run_bounded(lambda: [count_tokens(text) for _ in range(3)])
+            elapsed = time.monotonic() - started
+            assert not worker.is_alive(), "a later call re-paid the download deadline"
+            assert "error" not in outcome, outcome["error"]
+            assert outcome["value"] == [expected, expected, expected]
+            assert stall.calls == 1
+            assert elapsed < 1.5, elapsed
+        finally:
+            stall.release.set()
+
+    def test_late_load_promotes_later_calls_to_exact_counts(
+        self, monkeypatch: pytest.MonkeyPatch, isolated_tokenizer: Any
+    ) -> None:
+        real = tiktoken.get_encoding
+        text = "Hello, world!"
+        expected = len(real("cl100k_base").encode(text))
+        stall = _StallingVocab(real)
+        monkeypatch.setattr(tiktoken, "get_encoding", stall)
+        monkeypatch.setattr(cb, "_ENCODING_LOAD_TIMEOUT_SECONDS", 0.2, raising=False)
+        try:
+            worker, outcome = _run_bounded(lambda: count_tokens(text))
+            assert not worker.is_alive()
+            assert outcome["value"] == max(1, len(text) // 4)
+            stall.release.set()
+            loader = getattr(cb, "_encoding_thread", None)
+            if loader is not None:
+                loader.join(3.0)
+            worker, outcome = _run_bounded(lambda: count_tokens(text))
+            assert not worker.is_alive()
+            assert "error" not in outcome, outcome["error"]
+            assert outcome["value"] == expected
+        finally:
+            stall.release.set()
+
+    def test_loader_exception_falls_back(
+        self, monkeypatch: pytest.MonkeyPatch, isolated_tokenizer: Any
+    ) -> None:
+        def boom(name: str) -> Any:
+            raise ImportError("tiktoken is not installed")
+
+        monkeypatch.setattr(tiktoken, "get_encoding", boom)
+        monkeypatch.setattr(cb, "_ENCODING_LOAD_TIMEOUT_SECONDS", 0.2, raising=False)
+        text = "Hello"
+        worker, outcome = _run_bounded(lambda: count_tokens(text))
+        assert not worker.is_alive()
+        assert "error" not in outcome, outcome["error"]
+        assert outcome["value"] == max(1, len(text) // 4)
 
 
 # ---------------------------------------------------------------------------
