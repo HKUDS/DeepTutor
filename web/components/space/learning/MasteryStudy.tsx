@@ -38,7 +38,7 @@ import {
   OutlineDecisionDialog,
 } from "@/components/space/learning/OutlineDecisionDialog";
 import { OutlineChatDialog } from "@/components/space/learning/OutlineChatDialog";
-import { latestOpenMasteryQuestion } from "@/lib/mastery-question";
+import { latestOpenMasteryQuestion, type MasteryQuestion } from "@/lib/mastery-question";
 import { localizedRejectionReason } from "@/lib/submission-rejection";
 import { ChatViewerBridges } from "@/components/chat/home/ChatViewerBridges";
 import { buildSessionActivity } from "@/components/chat/home/SessionActivityPanel";
@@ -74,6 +74,11 @@ import { notify } from "@/lib/notifications";
 import { copyText } from "@/lib/clipboard";
 import { consumePendingPrompt } from "@/lib/pending-prompt";
 import { buildChatOutline, scrollToChatTurn } from "@/lib/chat-outline";
+import {
+  addGlossaryTerm,
+  loadGlossary,
+  removeGlossaryTerm,
+} from "@/lib/study-glossary";
 import { buildConversationNotebookSave } from "@/lib/conversation-notebook-save";
 import { type MasteryMode } from "@/lib/mastery-mode";
 import { workspaceActionNeedsConfiguration } from "@/lib/workspace-mode";
@@ -92,7 +97,11 @@ import { topicDisplayName, type Translate } from "./format";
 import { LevelUpCelebration } from "./LevelUpCelebration";
 import { MasteryComposer, STUDY_COMPOSER_WIDTH } from "./MasteryComposer";
 import { ProgressRing } from "./ProgressRing";
+import StudySelectionActions, {
+  type StudyAskKind,
+} from "./StudySelectionActions";
 import { StudyOutline } from "./StudyOutline";
+import { textFromDomSelection } from "@/lib/selection-text";
 import { useMasteryLectureLayout } from "./useMasteryLectureLayout";
 import { usePointLectureReady } from "./usePointLectureReady";
 
@@ -104,6 +113,21 @@ const OUTLINE_STORAGE_KEY = "dt.mastery.outline";
  * ``review`` are not unfinished learning and must not become a "next point".
  */
 const NEXT_STUDY_ACTIONS = new Set(["teach", "probe", "practice", "assess"]);
+
+/**
+ * What a passage selected in the transcript can ask. Each entry is the
+ * learner's own next message; the value is the English source copy, translated
+ * when sent. The selection rides as an indented quote so the question stays
+ * attached to the words it is about.
+ */
+const STUDY_ASK_PROMPTS: Record<StudyAskKind, string> = {
+  explain:
+    "Explain this passage in simpler words, then state the one key idea. The passage: {{text}}",
+  example: "Give one concrete, everyday example of this. The passage: {{text}}",
+  simpler: "Say this again in shorter, simpler sentences. The passage: {{text}}",
+  lost: "I'm lost here. Break it into small steps and first fill any background I may be missing. The passage: {{text}}",
+  term: "I have not seen '{{text}}' before. Explain it in one sentence, then say how it is used here.",
+};
 
 /**
  * How each kind of session presents itself.
@@ -392,6 +416,28 @@ export function MasteryStudy({
   );
   const [viewerOpen, setViewerOpen] = useState(false);
   const [showSaveModal, setShowSaveModal] = useState(false);
+  // A passage the learner dragged over in the transcript, and the screen
+  // coordinates the study-ask toolbar should sit at.
+  const [selectedPassage, setSelectedPassage] = useState<{
+    text: string;
+    anchor: { left: number; right: number; top: number; bottom: number };
+  } | null>(null);
+  // Terms the learner looked up, kept per session so the glossary is a record
+  // of what this conversation had to explain, not of the whole account. The
+  // session is remembered alongside so a route change reloads it during the
+  // render rather than through a state-setting effect.
+  const [glossary, setGlossary] = useState<string[]>(() =>
+    loadGlossary(state.sessionId),
+  );
+  const [glossarySession, setGlossarySession] = useState<string | null>(
+    state.sessionId ?? null,
+  );
+  if (glossarySession !== (state.sessionId ?? null)) {
+    setGlossarySession(state.sessionId ?? null);
+    setGlossary(loadGlossary(state.sessionId));
+  }
+  const studyAskingDisabled =
+    state.isStreaming || sessionLoading || Boolean(sessionError);
   const sessionActivity = buildSessionActivity(state.messages);
   /* ── Transcript scrolling ────────────────────────────────────────────
      Was a bare `scrollIntoView` keyed on message count — no notion of the
@@ -414,6 +460,129 @@ export function MasteryStudy({
     lastMessageContent: lastMessage?.content,
     lastEventCount: lastMessage?.events?.length,
   });
+
+  const dismissSelectedPassage = useCallback(() => {
+    setSelectedPassage(null);
+    window.getSelection()?.removeAllRanges();
+  }, []);
+
+  // Selecting text inside a rendered reply — not the trace chrome or the
+  // page around it — offers the study-ask toolbar. Same rules as the main
+  // chat page: only real message text, at least two characters, KaTeX read
+  // back as its original TeX.
+  const handleMessagesSelection = useCallback(() => {
+    const container = messagesContainerRef.current;
+    const selection = window.getSelection();
+    if (
+      !container ||
+      !selection ||
+      selection.isCollapsed ||
+      !selection.rangeCount
+    ) {
+      setSelectedPassage(null);
+      return;
+    }
+    const range = selection.getRangeAt(0);
+    if (!container.contains(range.commonAncestorContainer)) {
+      setSelectedPassage(null);
+      return;
+    }
+    const text = textFromDomSelection(selection);
+    const inMessage = (node: Node | null) =>
+      Boolean(
+        (node instanceof HTMLElement ? node : node?.parentElement)?.closest(
+          "[data-chat-message-id]",
+        ),
+      );
+    if (
+      text.length < 2 ||
+      !inMessage(selection.anchorNode) ||
+      !inMessage(selection.focusNode)
+    ) {
+      setSelectedPassage(null);
+      return;
+    }
+    const rects = range.getClientRects();
+    const rect =
+      rects.length > 0 ? rects[rects.length - 1] : range.getBoundingClientRect();
+    setSelectedPassage({
+      text,
+      anchor: {
+        left: rect.left,
+        right: rect.right,
+        top: rect.top,
+        bottom: rect.bottom,
+      },
+    });
+  }, [messagesContainerRef]);
+
+  const passageShown = selectedPassage !== null;
+  useEffect(() => {
+    if (!passageShown) return;
+    const onSelectionChange = () => {
+      if (window.getSelection()?.isCollapsed ?? true) setSelectedPassage(null);
+    };
+    document.addEventListener("selectionchange", onSelectionChange);
+    window.addEventListener("scroll", handleMessagesSelection, true);
+    return () => {
+      document.removeEventListener("selectionchange", onSelectionChange);
+      window.removeEventListener("scroll", handleMessagesSelection, true);
+    };
+  }, [passageShown, handleMessagesSelection]);
+
+  const askAboutSelection = useCallback(
+    (kind: StudyAskKind) => {
+      if (!selectedPassage || studyAskingDisabled) return;
+      const prompt = t(STUDY_ASK_PROMPTS[kind], {
+        text: selectedPassage.text,
+      });
+      if (kind === "term") {
+        setGlossary((prev) =>
+          addGlossaryTerm(state.sessionId, prev, selectedPassage.text),
+        );
+      }
+      dismissSelectedPassage();
+      void sendMessage(prompt);
+    },
+    [
+      dismissSelectedPassage,
+      selectedPassage,
+      sendMessage,
+      state.sessionId,
+      studyAskingDisabled,
+      t,
+    ],
+  );
+
+  const prefillSelectedPassage = useCallback(() => {
+    if (!selectedPassage) return;
+    const quoted = `> ${selectedPassage.text.replace(/\n/g, "\n> ")}\n\n`;
+    dismissSelectedPassage();
+    prefillInputRef.current?.(quoted);
+  }, [dismissSelectedPassage, selectedPassage]);
+
+  // A question can assume material the session has not covered. Rather than
+  // let the learner guess, this asks the tutor to teach the background first;
+  // it names the objective so the tutor knows which prerequisites to fill.
+  const requestMasteryBackground = useCallback(
+    (question: MasteryQuestion) => {
+      if (studyAskingDisabled) return false;
+      const objective = question.objectiveName.trim();
+      void sendMessage(
+        objective
+          ? t(
+              "Before I answer, please teach me the background I need for '{{objective}}'. Keep it short and concrete, then ask me again.",
+              { objective },
+            )
+          : t(
+              "Before I answer, please teach me the background this question assumes. Keep it short and concrete, then ask me again.",
+            ),
+      );
+      return true;
+    },
+    [sendMessage, studyAskingDisabled, t],
+  );
+
   const chatOutline = useMemo(
     () => buildChatOutline(state.messages, state.selectedBranches),
     [state.messages, state.selectedBranches],
@@ -1174,6 +1343,8 @@ export function MasteryStudy({
               // rule; without it the browser's own scroll anchoring fights
               // the pin every time a code block or KaTeX span reflows.
               data-chat-scroll-root="true"
+              onMouseUp={handleMessagesSelection}
+              onKeyUp={handleMessagesSelection}
               onScroll={() => {
                 const container = messagesContainerRef.current;
                 if (!container) return;
@@ -1364,6 +1535,7 @@ export function MasteryStudy({
                         sendMessage(t('Please review assessment {{questionId}} against its original source evidence. If it is unsupported, invalidate it and recompute learning state. Do not grant mastery merely because I challenged it.', { questionId }));
                         return true;
                       }}
+                      onRequestMasteryBackground={requestMasteryBackground}
                       onPreviewAttachment={handlePreviewMessageAttachment}
                       onConfirmOutline={confirmResearchOutline}
                       onLoadMessageTrace={(messageId) =>
@@ -1473,6 +1645,19 @@ export function MasteryStudy({
               onJump={jumpToTurn}
               onJumpToBottom={resumeFollowingLatest}
             />
+            {selectedPassage ? (
+              <StudySelectionActions
+                anchor={selectedPassage.anchor}
+                termEligible={
+                  selectedPassage.text.length <= 40 &&
+                  selectedPassage.text.split(/\s+/).filter(Boolean).length <= 6
+                }
+                disabled={studyAskingDisabled}
+                onAsk={askAboutSelection}
+                onPrefill={prefillSelectedPassage}
+                onDismiss={dismissSelectedPassage}
+              />
+            ) : null}
           </div>
 
           {!sessionError && (
@@ -1484,6 +1669,50 @@ export function MasteryStudy({
                   : "max-h-[min(42vh,400px)] overflow-y-auto overscroll-contain"
               }`}
             >
+              {glossary.length > 0 && sessionMode !== "outline" ? (
+                <div className={`mx-auto w-full shrink-0 px-6 ${STUDY_COMPOSER_WIDTH}`}>
+                  <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
+                    <span className="text-[11px] text-[var(--muted-foreground)]">
+                      {t("Terms")}
+                    </span>
+                    {glossary.map((term) => (
+                      <span
+                        key={term}
+                        className="inline-flex items-center gap-0.5 rounded-full border border-[var(--border)] bg-[var(--card)] pl-2.5 pr-1 text-[11.5px] text-[var(--foreground)]"
+                      >
+                        <button
+                          type="button"
+                          disabled={studyAskingDisabled}
+                          onClick={() => {
+                            if (studyAskingDisabled) return;
+                            void sendMessage(
+                              t(
+                                "Explain '{{text}}' again, with one concrete example.",
+                                { text: term },
+                              ),
+                            );
+                          }}
+                          className="py-1 transition-colors hover:text-[var(--primary)] disabled:opacity-40"
+                        >
+                          {term}
+                        </button>
+                        <button
+                          type="button"
+                          aria-label={t("Remove")}
+                          onClick={() =>
+                            setGlossary((prev) =>
+                              removeGlossaryTerm(state.sessionId, prev, term),
+                            )
+                          }
+                          className="rounded-full px-1 py-1 text-[var(--muted-foreground)] transition-colors hover:text-[var(--destructive)]"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
               <div className={`mx-auto w-full shrink-0 px-6 ${STUDY_COMPOSER_WIDTH}`}>
                 {sessionMode === "review" && nextPointAfterCurrent ? (
                   // A finished section lands on review; from there, starting

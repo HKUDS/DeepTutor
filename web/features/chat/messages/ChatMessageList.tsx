@@ -738,6 +738,7 @@ export const AssistantMessage = memo(function AssistantMessage({
   onAnswerMasteryQuestion,
   onSkipMasteryQuestion,
   onChallengeMasteryQuestion,
+  onRequestMasteryBackground,
   researchRequestSnapshot,
   onTraceToggle,
   masteryGrades,
@@ -814,6 +815,11 @@ export const AssistantMessage = memo(function AssistantMessage({
     questionId: string,
   ) => void | boolean | Promise<void | boolean>;
   onChallengeMasteryQuestion?: (questionId: string) => void | boolean | Promise<void | boolean>;
+  /** The learner does not know the material this question assumes. Ask the
+   *  tutor to teach the missing background first, instead of guessing. */
+  onRequestMasteryBackground?: (
+    question: MasteryQuestion,
+  ) => void | boolean | Promise<void | boolean>;
   /**
    * Outline editing lifts an unanswered ``ask_user`` into a dialog. The
    * choices stay out of the transcript until the learner picks; the resolved
@@ -955,6 +961,7 @@ export const AssistantMessage = memo(function AssistantMessage({
           }
           onSkip={onSkipMasteryQuestion}
           onChallenge={onChallengeMasteryQuestion}
+          onRequestBackground={onRequestMasteryBackground}
         />
       );
     },
@@ -966,6 +973,7 @@ export const AssistantMessage = memo(function AssistantMessage({
       onAnswerMasteryQuestion,
       onSkipMasteryQuestion,
       onChallengeMasteryQuestion,
+      onRequestMasteryBackground,
     ],
   );
   const questionWaitsAboveComposer = useCallback(
@@ -2173,6 +2181,7 @@ export const ChatMessageList = memo(function ChatMessageList({
   onAnswerMasteryQuestion,
   onSkipMasteryQuestion,
   onChallengeMasteryQuestion,
+  onRequestMasteryBackground,
   showModeBadge = true,
   onLoadMessageTrace,
   onReleaseMessageTrace,
@@ -2241,6 +2250,11 @@ export const ChatMessageList = memo(function ChatMessageList({
     questionId: string,
   ) => void | boolean | Promise<void | boolean>;
   onChallengeMasteryQuestion?: (questionId: string) => void | boolean | Promise<void | boolean>;
+  /** See ``AssistantMessage``. The learner does not know the material a
+   *  question assumes; the tutor teaches the background before asking again. */
+  onRequestMasteryBackground?: (
+    question: MasteryQuestion,
+  ) => void | boolean | Promise<void | boolean>;
   /** Names of KBs confirmed to exist. Omitted when the KB list is unavailable. */
   availableKbNames?: Set<string>;
   /** Qualified KB ref -> display name, from the same catalog the composer
@@ -2612,6 +2626,7 @@ export const ChatMessageList = memo(function ChatMessageList({
                 onAnswerMasteryQuestion={onAnswerMasteryQuestion}
                 onSkipMasteryQuestion={onSkipMasteryQuestion}
                 onChallengeMasteryQuestion={onChallengeMasteryQuestion}
+                onRequestMasteryBackground={onRequestMasteryBackground}
                 researchRequestSnapshot={
                   pairedUserMessage?.requestSnapshot ?? null
                 }

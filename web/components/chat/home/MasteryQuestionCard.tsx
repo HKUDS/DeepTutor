@@ -113,6 +113,11 @@ interface MasteryQuestionCardProps {
    *  cannot start a turn of its own, which hides the control entirely. */
   onSkip?: (questionId: string) => void | boolean | Promise<void | boolean>;
   onChallenge?: (questionId: string) => void | boolean | Promise<void | boolean>;
+  /** The material this question assumes has not been taught. Ask the tutor to
+   *  fill the background before the learner answers. */
+  onRequestBackground?: (
+    question: MasteryQuestion,
+  ) => void | boolean | Promise<void | boolean>;
 }
 
 /** The same native controls, with submission owned by their group instead. */
@@ -123,7 +128,7 @@ interface GroupInput {
 
 const SingleMasteryQuestionCard = memo(function SingleMasteryQuestionCard({
   question, grade, answered, skipped, submittedAnswer, onSubmit, onSkip,
-  onChallenge, groupInput, rejectionKey,
+  onChallenge, onRequestBackground, groupInput, rejectionKey,
 }: MasteryQuestionCardProps & { groupInput?: GroupInput }) {
   const { t } = useTranslation();
   const [picked, setPicked] = useState<string>(() => grade?.final === false ? grade.learnerAnswer : "");
@@ -334,6 +339,21 @@ const SingleMasteryQuestionCard = memo(function SingleMasteryQuestionCard({
                   : t("Write your answer to continue.")}
           </span>
           <div className="flex shrink-0 items-center gap-1">
+            {/* Not a dead end for the learner who has not been taught the
+                material: the tutor fills the background, then asks again. */}
+            {onRequestBackground ? (
+              <button
+                type="button"
+                onClick={() => {
+                  void onRequestBackground(question);
+                }}
+                disabled={locked}
+                title={t("Teach the background first")}
+                className="rounded-md px-2 py-1.5 text-[12px] text-[var(--muted-foreground)] transition-colors hover:bg-[color-mix(in_srgb,var(--foreground)_4%,transparent)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {t("Teach the background first")}
+              </button>
+            ) : null}
             {/* Not a dead end: the engine holds one open question per path, so
                 without this the tutor's next question is this same one again.
                 Quiet, because skipping is the rarer move. */}
@@ -371,7 +391,7 @@ const SingleMasteryQuestionCard = memo(function SingleMasteryQuestionCard({
 });
 
 function GroupedMasteryQuestionCard({
-  question, grade, answered, skipped, onSubmit, onSkip, onChallenge, rejectionKey,
+  question, grade, answered, skipped, onSubmit, onSkip, onChallenge, onRequestBackground, rejectionKey,
 }: MasteryQuestionCardProps) {
   const { t } = useTranslation();
   const [answers, setAnswers] = useState<Record<string, { text: string; available: boolean }>>({});
@@ -427,6 +447,10 @@ function GroupedMasteryQuestionCard({
           : t("Write your answer to continue.")}
       </span>
       <div className="flex shrink-0 items-center gap-1">
+        {onRequestBackground && <button type="button" onClick={() => void onRequestBackground(question)} disabled={locked}
+          className="rounded-md px-2 py-1.5 text-xs text-[var(--muted-foreground)] disabled:opacity-40">
+          {t("Teach the background first")}
+        </button>}
         {onSkip && <button type="button" onClick={() => void handleSkip()} disabled={locked}
           className="rounded-md px-2 py-1.5 text-xs text-[var(--muted-foreground)] disabled:opacity-40">
           {skipping ? t("Skipping…") : t("Skip this one")}

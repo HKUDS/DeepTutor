@@ -6313,5 +6313,22 @@
   "Back to Notes": "Back to Notes",
   "Cell name": "Cell name",
   "Rename cell": "Rename cell",
-  "Drag to reorder": "Drag to reorder"
+  "Drag to reorder": "Drag to reorder",
+  "Ask about this passage": "Ask about this passage",
+  "Explain": "Explain",
+  "Example": "Example",
+  "Simpler": "Simpler",
+  "I'm lost": "I'm lost",
+  "Explain term": "Explain term",
+  "Add to input": "Add to input",
+  "Explain this passage in simpler words, then state the one key idea. The passage: {{text}}": "Explain this passage in simpler words, then state the one key idea. The passage: {{text}}",
+  "Give one concrete, everyday example of this. The passage: {{text}}": "Give one concrete, everyday example of this. The passage: {{text}}",
+  "Say this again in shorter, simpler sentences. The passage: {{text}}": "Say this again in shorter, simpler sentences. The passage: {{text}}",
+  "I'm lost here. Break it into small steps and first fill any background I may be missing. The passage: {{text}}": "I'm lost here. Break it into small steps and first fill any background I may be missing. The passage: {{text}}",
+  "I have not seen '{{text}}' before. Explain it in one sentence, then say how it is used here.": "I have not seen '{{text}}' before. Explain it in one sentence, then say how it is used here.",
+  "Teach the background first": "Teach the background first",
+  "Before I answer, please teach me the background this question assumes. Keep it short and concrete, then ask me again.": "Before I answer, please teach me the background this question assumes. Keep it short and concrete, then ask me again.",
+  "Before I answer, please teach me the background I need for '{{objective}}'. Keep it short and concrete, then ask me again.": "Before I answer, please teach me the background I need for '{{objective}}'. Keep it short and concrete, then ask me again.",
+  "Terms": "Terms",
+  "Explain '{{text}}' again, with one concrete example.": "Explain '{{text}}' again, with one concrete example."
 }

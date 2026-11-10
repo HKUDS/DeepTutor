@@ -6283,5 +6283,22 @@
   "Back to Notes": "Назад до нотаток",
   "Cell name": "Назва клітинки",
   "Rename cell": "Перейменувати клітинку",
-  "Drag to reorder": "Перетягніть, щоб змінити порядок"
+  "Drag to reorder": "Перетягніть, щоб змінити порядок",
+  "Ask about this passage": "Запитати про цей уривок",
+  "Explain": "Пояснити",
+  "Example": "Приклад",
+  "Simpler": "Простіше",
+  "I'm lost": "Я не розумію",
+  "Explain term": "Пояснити термін",
+  "Add to input": "Додати у поле",
+  "Explain this passage in simpler words, then state the one key idea. The passage: {{text}}": "Поясни цей уривок простішими словами й назви одну ключову думку. Уривок: {{text}}",
+  "Give one concrete, everyday example of this. The passage: {{text}}": "Наведи один конкретний, побутовий приклад. Уривок: {{text}}",
+  "Say this again in shorter, simpler sentences. The passage: {{text}}": "Скажи це ще раз коротшими й простішими реченнями. Уривок: {{text}}",
+  "I'm lost here. Break it into small steps and first fill any background I may be missing. The passage: {{text}}": "Я не розумію цього місця. Розбий його на маленькі кроки й спершу заповни потрібний мені контекст. Уривок: {{text}}",
+  "I have not seen '{{text}}' before. Explain it in one sentence, then say how it is used here.": "Я раніше не бачив '{{text}}'. Поясни це одним реченням і скажи, як воно тут використовується.",
+  "Teach the background first": "Спершу контекст",
+  "Before I answer, please teach me the background this question assumes. Keep it short and concrete, then ask me again.": "Перш ніж я відповім, поясни контекст, який передбачає це питання. Коротко й конкретно, потім запитай знову.",
+  "Before I answer, please teach me the background I need for '{{objective}}'. Keep it short and concrete, then ask me again.": "Перш ніж я відповім, поясни контекст, потрібний для '{{objective}}'. Коротко й конкретно, потім запитай знову.",
+  "Terms": "Терміни",
+  "Explain '{{text}}' again, with one concrete example.": "Поясни '{{text}}' ще раз, з одним конкретним прикладом."
 }

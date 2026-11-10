@@ -6409,5 +6409,22 @@
   "Back to Notes": "Retour aux notes",
   "Cell name": "Nom de la cellule",
   "Rename cell": "Renommer la cellule",
-  "Drag to reorder": "Glisser pour réorganiser"
+  "Drag to reorder": "Glisser pour réorganiser",
+  "Ask about this passage": "Poser une question sur ce passage",
+  "Explain": "Expliquer",
+  "Example": "Exemple",
+  "Simpler": "Plus simple",
+  "I'm lost": "Je ne comprends pas",
+  "Explain term": "Expliquer le terme",
+  "Add to input": "Ajouter à la saisie",
+  "Explain this passage in simpler words, then state the one key idea. The passage: {{text}}": "Explique ce passage avec des mots plus simples, puis donne l'idée clé. Le passage : {{text}}",
+  "Give one concrete, everyday example of this. The passage: {{text}}": "Donne un exemple concret du quotidien. Le passage : {{text}}",
+  "Say this again in shorter, simpler sentences. The passage: {{text}}": "Redis-le avec des phrases plus courtes et plus simples. Le passage : {{text}}",
+  "I'm lost here. Break it into small steps and first fill any background I may be missing. The passage: {{text}}": "Je ne comprends pas ici. Décompose en petites étapes et commence par combler le contexte qui me manque. Le passage : {{text}}",
+  "I have not seen '{{text}}' before. Explain it in one sentence, then say how it is used here.": "Je n'ai jamais vu « {{text}} ». Explique-le en une phrase, puis dis comment il est utilisé ici.",
+  "Teach the background first": "D'abord le contexte",
+  "Before I answer, please teach me the background this question assumes. Keep it short and concrete, then ask me again.": "Avant de répondre, explique-moi le contexte que cette question suppose. Sois bref et concret, puis repose-moi la question.",
+  "Before I answer, please teach me the background I need for '{{objective}}'. Keep it short and concrete, then ask me again.": "Avant de répondre, explique-moi le contexte dont j'ai besoin pour « {{objective}} ». Sois bref et concret, puis repose-moi la question.",
+  "Terms": "Termes",
+  "Explain '{{text}}' again, with one concrete example.": "Explique à nouveau « {{text}} » avec un exemple concret."
 }

@@ -6328,5 +6328,22 @@
   "Back to Notes": "Powrót do notatek",
   "Cell name": "Nazwa komórki",
   "Rename cell": "Zmień nazwę komórki",
-  "Drag to reorder": "Przeciągnij, aby zmienić kolejność"
+  "Drag to reorder": "Przeciągnij, aby zmienić kolejność",
+  "Ask about this passage": "Zapytaj o ten fragment",
+  "Explain": "Wyjaśnij",
+  "Example": "Przykład",
+  "Simpler": "Prościej",
+  "I'm lost": "Nie rozumiem",
+  "Explain term": "Wyjaśnij termin",
+  "Add to input": "Dodaj do pola",
+  "Explain this passage in simpler words, then state the one key idea. The passage: {{text}}": "Wyjaśnij ten fragment prostszymi słowami i podaj jedną kluczową myśl. Fragment: {{text}}",
+  "Give one concrete, everyday example of this. The passage: {{text}}": "Podaj jeden konkretny, codzienny przykład. Fragment: {{text}}",
+  "Say this again in shorter, simpler sentences. The passage: {{text}}": "Powiedz to jeszcze raz krótszymi, prostszymi zdaniami. Fragment: {{text}}",
+  "I'm lost here. Break it into small steps and first fill any background I may be missing. The passage: {{text}}": "Nie rozumiem tego miejsca. Podziel to na małe kroki i najpierw uzupełnij brakujące tło. Fragment: {{text}}",
+  "I have not seen '{{text}}' before. Explain it in one sentence, then say how it is used here.": "Nie widziałem wcześniej '{{text}}'. Wyjaśnij to w jednym zdaniu i powiedz, jak jest tu użyte.",
+  "Teach the background first": "Najpierw tło",
+  "Before I answer, please teach me the background this question assumes. Keep it short and concrete, then ask me again.": "Zanim odpowiem, wyjaśnij mi tło, które zakłada to pytanie. Krótko i konkretnie, potem zapytaj ponownie.",
+  "Before I answer, please teach me the background I need for '{{objective}}'. Keep it short and concrete, then ask me again.": "Zanim odpowiem, wyjaśnij mi tło potrzebne do '{{objective}}'. Krótko i konkretnie, potem zapytaj ponownie.",
+  "Terms": "Terminy",
+  "Explain '{{text}}' again, with one concrete example.": "Wyjaśnij ponownie '{{text}}' z jednym konkretnym przykładem."
 }

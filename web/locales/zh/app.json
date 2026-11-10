@@ -6313,5 +6313,22 @@
   "Back to Notes": "返回笔记",
   "Cell name": "单元格名称",
   "Rename cell": "重命名单元格",
-  "Drag to reorder": "拖动调整顺序"
+  "Drag to reorder": "拖动调整顺序",
+  "Ask about this passage": "针对这段提问",
+  "Explain": "解释",
+  "Example": "举个例子",
+  "Simpler": "再简化",
+  "I'm lost": "没看懂",
+  "Explain term": "解释术语",
+  "Add to input": "加到输入框",
+  "Explain this passage in simpler words, then state the one key idea. The passage: {{text}}": "用更简单的话解释下面这段内容，然后点出最关键的一点。内容：{{text}}",
+  "Give one concrete, everyday example of this. The passage: {{text}}": "针对下面这段内容举一个具体、贴近生活的例子。内容：{{text}}",
+  "Say this again in shorter, simpler sentences. The passage: {{text}}": "用更短、更简单的句子把下面这段再讲一遍。内容：{{text}}",
+  "I'm lost here. Break it into small steps and first fill any background I may be missing. The passage: {{text}}": "这里我没看懂。请把它拆成小步骤，并先补上我可能缺少的前置知识。内容：{{text}}",
+  "I have not seen '{{text}}' before. Explain it in one sentence, then say how it is used here.": "我没见过「{{text}}」这个词。请先用一句话解释它，再说明它在这里的作用。",
+  "Teach the background first": "先补背景",
+  "Before I answer, please teach me the background this question assumes. Keep it short and concrete, then ask me again.": "在回答之前，请先给我讲一下这道题需要的前置背景，尽量简短、具体，然后再问我一次。",
+  "Before I answer, please teach me the background I need for '{{objective}}'. Keep it short and concrete, then ask me again.": "在回答之前，请先给我讲一下掌握「{{objective}}」所需的前置背景，尽量简短、具体，然后再问我一次。",
+  "Terms": "术语",
+  "Explain '{{text}}' again, with one concrete example.": "再用一个具体例子解释一下「{{text}}」。"
 }
