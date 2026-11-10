@@ -191,7 +191,7 @@ export default function ChatNotebookTab({ sessionId = null, docId = null, onExit
   const [draggingCellId, setDraggingCellId] = useState<string | null>(null);
   const [dragOverCellId, setDragOverCellId] = useState<string | null>(null);
   const [graph, setGraph] = useState<NotebookGraph>(() => emptyNotebookGraph());
-  const [view, setView] = useState<"list" | "graph">("list");
+  const [view, setView] = useState<"list" | "split" | "graph">("list");
   const [runs, setRuns] = useState<Record<string, CellRun>>({});
   const [previewing, setPreviewing] = useState<Set<string>>(() => new Set());
   const [saveState, setSaveState] = useState<SaveState>("idle");
@@ -624,7 +624,7 @@ export default function ChatNotebookTab({ sessionId = null, docId = null, onExit
           onRetry={() => void persist(cells, graph)}
         />
         <div className="flex shrink-0 items-center gap-0.5 rounded-xl border border-[color-mix(in_srgb,var(--border)_55%,transparent)] bg-[color-mix(in_srgb,var(--muted)_22%,transparent)] p-0.5">
-          {(["list", "graph"] as const).map((mode) => (
+          {(["list", "split", "graph"] as const).map((mode) => (
             <button
               key={mode}
               type="button"
@@ -636,7 +636,7 @@ export default function ChatNotebookTab({ sessionId = null, docId = null, onExit
                   : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
               }`}
             >
-              {t(mode === "list" ? "List" : "Graph")}
+              {t(mode === "list" ? "List" : mode === "split" ? "Split" : "Graph")}
             </button>
           ))}
         </div>
@@ -686,6 +686,7 @@ export default function ChatNotebookTab({ sessionId = null, docId = null, onExit
                 total={cells.length}
                 run={runs[cell.id]}
                 previewing={previewing.has(cell.id)}
+                split={view === "split"}
                 tag={graph.tags[cell.id]}
                 dragging={draggingCellId === cell.id}
                 dragOver={
@@ -790,6 +791,7 @@ interface CellCardProps {
   total: number;
   run?: CellRun;
   previewing: boolean;
+  split: boolean;
   tag?: NotebookTag;
   dragging: boolean;
   dragOver: boolean;
@@ -833,6 +835,7 @@ function CellCard({
   total,
   run,
   previewing,
+  split,
   tag,
   dragging,
   dragOver,
@@ -954,7 +957,7 @@ function CellCard({
         </div>
         <div className="flex shrink-0 items-center gap-0.5">
           <NotebookTagControl tag={tag} onChange={onTagChange} />
-          {cell.kind === "geogebra" ? (
+          {!split && cell.kind === "geogebra" ? (
             <button
               type="button"
               className={CELL_BUTTON}
@@ -965,7 +968,7 @@ function CellCard({
             >
               <Pencil size={13} strokeWidth={1.9} />
             </button>
-          ) : (
+          ) : !split ? (
             <button
               type="button"
               className={CELL_BUTTON}
@@ -991,7 +994,7 @@ function CellCard({
                 <Eye size={14} strokeWidth={1.9} />
               )}
             </button>
-          )}
+          ) : null}
           <div ref={menuRef} className="relative">
             <button
               type="button"
@@ -1054,7 +1057,54 @@ function CellCard({
         </div>
       </div>
 
-      {cell.kind === "geogebra" ? (
+      {split ? (
+        <div className="grid grid-cols-1 divide-y divide-[color-mix(in_srgb,var(--border)_40%,transparent)] lg:grid-cols-2 lg:divide-x lg:divide-y-0">
+          <div className="min-w-0">
+            <textarea
+              value={cell.source}
+              rows={rows}
+              spellCheck={false}
+              onChange={(event) => onChange({ source: event.target.value })}
+              placeholder={
+                cell.kind === "geogebra"
+                  ? t("GeoGebra commands, one per line.")
+                  : cell.kind === "code"
+                    ? t("print('hello')")
+                    : t("Write a note, with $math$ in Markdown.")
+              }
+              className={`block h-full w-full resize-y bg-transparent px-3.5 py-2.5 text-[var(--foreground)] outline-none placeholder:text-[color-mix(in_srgb,var(--muted-foreground)_55%,transparent)] ${
+                cell.kind === "code" || cell.kind === "geogebra"
+                  ? "font-mono text-[12.5px] leading-relaxed"
+                  : "text-[13.5px] leading-6"
+              }`}
+            />
+          </div>
+          <div className="min-w-0 overflow-auto px-3.5 py-2.5">
+            {cell.kind === "geogebra" ? (
+              <BoardCellBody script={cell.source} />
+            ) : cell.kind === "code" ? (
+              cell.source.trim() ? (
+                <RichCodeBlock
+                  raw={cell.source}
+                  lang={normalizeCellLanguage(cell.language)}
+                />
+              ) : (
+                <p className="text-[12px] text-[var(--muted-foreground)]">
+                  {t("(empty)")}
+                </p>
+              )
+            ) : cell.source.trim() ? (
+              <div className="text-[13.5px] leading-relaxed">
+                <RichMarkdownRenderer content={cell.source} enableMath enableCode enableMermaid />
+              </div>
+            ) : (
+              <p className="text-[12px] text-[var(--muted-foreground)]">
+                {t("(empty)")}
+              </p>
+            )}
+          </div>
+        </div>
+      ) : cell.kind === "geogebra" ? (
         <BoardCellBody script={cell.source} />
       ) : cell.kind === "code" && codePreview && cell.source.trim() ? (
         <div className="px-2.5 pb-1 pt-1.5">
@@ -1086,7 +1136,7 @@ function CellCard({
         />
       )}
 
-      {cell.kind === "geogebra" && scriptOpen ? (
+      {cell.kind === "geogebra" && scriptOpen && !split ? (
         <textarea
           value={cell.source}
           rows={rows}
