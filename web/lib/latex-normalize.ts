@@ -603,6 +603,10 @@ function normalizeProse(text: string, mathContext: boolean): string {
   result = convertBracketDelimiters(result);
   result = convertParenDelimiters(result);
 
+  // Pair the dollars first as well: a loose formula (`$\lim a_n = $ ____`) is
+  // no MATH_SPAN_RE match until it is tightened, and the bare-LaTeX pass would
+  // otherwise wrap its body a second time (`$$\lim a_n =$ $`).
+  result = escapeStrayDollars(result);
   const math = maskSpans(result, MATH_SPAN_RE, "MATH");
   result = math.restore(wrapBareLatex(math.masked));
   result = escapeStrayDollars(result);
