@@ -13,7 +13,15 @@
  * mastery sitting, to its knowledge point — through a stored page pointer.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ClipboardEvent,
+  type DragEvent,
+} from "react";
 import dynamic from "next/dynamic";
 import {
   ArrowDown,
@@ -23,6 +31,7 @@ import {
   Eye,
   FileText,
   GripVertical,
+  ImagePlus,
   Loader2,
   MoreHorizontal,
   Pencil,
@@ -706,6 +715,7 @@ export default function ChatNotebookTab({ sessionId = null, docId = null, onExit
                   setDragOverCellId(null);
                 }}
                 onTogglePreview={() => togglePreview(cell.id)}
+                onUploadImage={uploadImage}
                 onChange={(patch) => updateCell(cell.id, patch)}
                 onTagChange={(next) => updateTag(cell.id, next)}
                 onRun={() => void runCell(cell)}
@@ -800,6 +810,8 @@ interface CellCardProps {
   onDragEnd: () => void;
   onDrop: () => void;
   onTogglePreview: () => void;
+  /** Upload a pasted/dropped file and return its URL. */
+  onUploadImage?: (file: File) => Promise<string>;
   onChange: (patch: Partial<NotebookCell>) => void;
   onTagChange: (tag: NotebookTag | null) => void;
   onRun: () => void;
@@ -844,6 +856,7 @@ function CellCard({
   onDragEnd,
   onDrop,
   onTogglePreview,
+  onUploadImage,
   onChange,
   onTagChange,
   onRun,
@@ -858,13 +871,96 @@ function CellCard({
   const [scriptOpen, setScriptOpen] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   // A code cell with content opens highlighted; an empty one opens editable.
   const [codePreview, setCodePreview] = useState(cell.source.trim().length > 0);
   const kindLabel = cellKindLabel(cell, t);
   const name = cell.name?.trim() ?? "";
   const running = run?.status === "running";
+
+  // Insert a snippet at the caret, keeping the cursor after it. The textarea is
+  // React-controlled, so the source change drives the value and the selection
+  // is restored once the new value has painted.
+  const insertAtCaret = useCallback(
+    (snippet: string) => {
+      const element = textareaRef.current;
+      const value = cell.source;
+      if (!element) {
+        const spacer = value && !value.endsWith("\n") ? "\n" : "";
+        onChange({ source: `${value}${spacer}${snippet}\n` });
+        return;
+      }
+      const start = element.selectionStart ?? value.length;
+      const end = element.selectionEnd ?? value.length;
+      onChange({ source: value.slice(0, start) + snippet + value.slice(end) });
+      requestAnimationFrame(() => {
+        element.focus();
+        const caret = start + snippet.length;
+        element.setSelectionRange(caret, caret);
+      });
+    },
+    [cell.source, onChange],
+  );
+
+  // Paste or drop a file into a note: upload it and drop the Markdown in place.
+  const attachFiles = useCallback(
+    async (files: File[]) => {
+      if (!onUploadImage || files.length === 0) return;
+      setUploading(true);
+      try {
+        for (const file of files) {
+          const url = await onUploadImage(file);
+          const label = file.name || "file";
+          insertAtCaret(
+            file.type.startsWith("image/")
+              ? `![${label}](${url})`
+              : `[${label}](${url})`,
+          );
+        }
+      } catch {
+        // A failed upload leaves the note as it was; nothing is inserted.
+      } finally {
+        setUploading(false);
+      }
+    },
+    [insertAtCaret, onUploadImage],
+  );
+
+  const onPasteFiles = useCallback(
+    (event: ClipboardEvent<HTMLTextAreaElement>) => {
+      const files = Array.from(event.clipboardData?.files ?? []);
+      if (files.length === 0 || !onUploadImage) return;
+      event.preventDefault();
+      void attachFiles(files);
+    },
+    [attachFiles, onUploadImage],
+  );
+
+  const onDropFiles = useCallback(
+    (event: DragEvent<HTMLTextAreaElement>) => {
+      const files = Array.from(event.dataTransfer?.files ?? []);
+      if (files.length === 0 || !onUploadImage) return;
+      // Keep the cell-reorder drop handler on the card out of this.
+      event.preventDefault();
+      event.stopPropagation();
+      void attachFiles(files);
+    },
+    [attachFiles, onUploadImage],
+  );
+
+  const onDragOverFiles = useCallback(
+    (event: DragEvent<HTMLTextAreaElement>) => {
+      if (onUploadImage && event.dataTransfer?.types?.includes("Files")) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    },
+    [onUploadImage],
+  );
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -957,6 +1053,22 @@ function CellCard({
         </div>
         <div className="flex shrink-0 items-center gap-0.5">
           <NotebookTagControl tag={tag} onChange={onTagChange} />
+          {cell.kind === "markdown" && onUploadImage ? (
+            <button
+              type="button"
+              className={CELL_BUTTON}
+              onClick={() => fileInputRef.current?.click()}
+              aria-label={t("Add image")}
+              title={t("Add image")}
+              disabled={uploading}
+            >
+              {uploading ? (
+                <Loader2 size={13} className="animate-spin" />
+              ) : (
+                <ImagePlus size={14} strokeWidth={1.9} />
+              )}
+            </button>
+          ) : null}
           {!split && cell.kind === "geogebra" ? (
             <button
               type="button"
@@ -1057,13 +1169,30 @@ function CellCard({
         </div>
       </div>
 
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        multiple
+        className="hidden"
+        onChange={(event) => {
+          const files = Array.from(event.target.files ?? []);
+          event.target.value = "";
+          void attachFiles(files);
+        }}
+      />
+
       {split ? (
         <div className="grid grid-cols-1 divide-y divide-[color-mix(in_srgb,var(--border)_40%,transparent)] lg:grid-cols-2 lg:divide-x lg:divide-y-0">
           <div className="min-w-0">
             <textarea
+              ref={cell.kind === "markdown" ? textareaRef : undefined}
               value={cell.source}
               rows={rows}
               spellCheck={false}
+              onPaste={cell.kind === "markdown" ? onPasteFiles : undefined}
+              onDrop={cell.kind === "markdown" ? onDropFiles : undefined}
+              onDragOver={cell.kind === "markdown" ? onDragOverFiles : undefined}
               onChange={(event) => onChange({ source: event.target.value })}
               placeholder={
                 cell.kind === "geogebra"
@@ -1119,9 +1248,13 @@ function CellCard({
         </div>
       ) : (
         <textarea
+          ref={cell.kind === "markdown" ? textareaRef : undefined}
           value={cell.source}
           rows={rows}
           spellCheck={false}
+          onPaste={cell.kind === "markdown" ? onPasteFiles : undefined}
+          onDrop={cell.kind === "markdown" ? onDropFiles : undefined}
+          onDragOver={cell.kind === "markdown" ? onDragOverFiles : undefined}
           onChange={(event) => onChange({ source: event.target.value })}
           placeholder={
             cell.kind === "code"

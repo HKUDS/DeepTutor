@@ -150,6 +150,22 @@ it("renames a cell and keeps its kind as a subtitle", async () => {
   expect(screen.getByText("Note")).toBeInTheDocument();
 });
 
+it("offers image upload on a note cell and a split view", async () => {
+  render(<ChatNotebookTab sessionId="session-1" />);
+  await screen.findByPlaceholderText("print('hello')");
+
+  // A note cell carries its own upload control.
+  expect(
+    screen.getAllByRole("button", { name: "Add image" }).length,
+  ).toBeGreaterThan(0);
+
+  // The split view keeps it: the editor and its preview sit side by side.
+  fireEvent.click(screen.getByRole("button", { name: "Split" }));
+  expect(
+    screen.getAllByRole("button", { name: "Add image" }).length,
+  ).toBeGreaterThan(0);
+});
+
 it("binds the notebook to the knowledge point of the conversation", async () => {
   render(<ChatNotebookTab sessionId="session-1" />);
   // The header reports the bound point once preferences resolve.
