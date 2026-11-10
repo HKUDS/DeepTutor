@@ -5,6 +5,7 @@ import {
   maxPageWidth,
 } from "@/lib/reading-zoom";
 import {
+  INK_MEASURE_TIMEOUT_MS,
   cropLayout,
   inkBoxFromPixels,
   measurePageInkBox,
@@ -294,6 +295,37 @@ describe("measuring the ink box", () => {
     ).toThrow(TypeError);
     // The real call path keeps `this`, so it must not throw.
     await expect(measurePageInkBox(source as never, "measure:bound")).resolves.not.toBeNull();
+  });
+
+  it("gives up on a measurement that never settles", async () => {
+    // Some embedded browsers paint a page but never settle the render promise.
+    // Without a bound the "not measured yet" state never ended: the canvas was
+    // never painted at all, and the hung promise stayed cached for the life of
+    // the tab, so a remount got the same dead promise back.
+    stubCanvas();
+    vi.useFakeTimers();
+    try {
+      const stuck = {
+        calls: 0,
+        getViewport: () => ({ width: 612, height: 792 }),
+        // Never resolves: exactly the environment the comment describes.
+        render() {
+          this.calls += 1;
+          return { promise: new Promise<void>(() => {}) };
+        },
+      };
+      const pending = measurePageInkBox(stuck as never, "measure:stuck");
+      // The reader gets the whole page rather than a blank one.
+      await vi.advanceTimersByTimeAsync(INK_MEASURE_TIMEOUT_MS + 1);
+      await expect(pending).resolves.toBeNull();
+      // And the dead promise is not kept: a remount measures again.
+      const second = measurePageInkBox(stuck as never, "measure:stuck");
+      await vi.advanceTimersByTimeAsync(INK_MEASURE_TIMEOUT_MS + 1);
+      await expect(second).resolves.toBeNull();
+      expect(stuck.calls).toBe(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("remembers a page so a re-render does not measure twice", async () => {

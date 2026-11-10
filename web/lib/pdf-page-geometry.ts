@@ -167,6 +167,32 @@ export function cropLayout(
 }
 
 /**
+ * How long a measurement may take before the page is drawn uncropped.
+ *
+ * Some embedded browsers paint a page but never settle the render promise (the
+ * reason the canvas paint was decoupled from it). Without a bound, the "not
+ * measured yet" state never ends: the canvas is never painted at all, and the
+ * hung promise stays in `inkBoxRequests` for the life of the tab, so a remount
+ * gets the same dead promise back. Failing to "no crop" is the honest answer —
+ * the reader sees the whole page, which is what the mode did before.
+ */
+export const INK_MEASURE_TIMEOUT_MS = 1000;
+
+/** Race a measurement against the timeout, resolving `null` when it loses. */
+function withInkTimeout(
+  measurement: Promise<NormalisedBox | null>,
+): Promise<NormalisedBox | null> {
+  return new Promise<NormalisedBox | null>((resolve) => {
+    const timer = setTimeout(() => resolve(null), INK_MEASURE_TIMEOUT_MS);
+    const settle = (value: NormalisedBox | null) => {
+      clearTimeout(timer);
+      resolve(value);
+    };
+    measurement.then(settle, () => settle(null));
+  });
+}
+
+/**
  * Ink box of one page, measured once per material and remembered.
  *
  * Measurement renders the page into a 200px-wide scratch canvas rather than
@@ -182,10 +208,15 @@ export async function measurePageInkBox(
   const inflight = inkBoxRequests.get(key);
   if (inflight) return inflight;
 
-  const request = measureInkBox(page).then(
+  const request = withInkTimeout(measureInkBox(page)).then(
     (box) => {
-      if (inkBoxes.size >= INK_CACHE_LIMIT) inkBoxes.clear();
-      inkBoxes.set(key, box);
+      // `null` from a TIMEOUT is not an answer, so it is not remembered: a
+      // remount (or a second attempt) should measure again rather than inherit
+      // "this page has nothing to crop" from a browser that never replied.
+      if (box !== null) {
+        if (inkBoxes.size >= INK_CACHE_LIMIT) inkBoxes.clear();
+        inkBoxes.set(key, box);
+      }
       inkBoxRequests.delete(key);
       return box;
     },

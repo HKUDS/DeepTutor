@@ -125,6 +125,12 @@ export function steppedPdfZoomByWidth(
   const landed = (value: number) => landedWidth(intrinsicWidth, value, ratio, dpr);
   const current = landed(scale);
   const end = direction === 1 ? MAX_PDF_ZOOM : MIN_PDF_ZOOM;
+  // Already drawn past the ceiling: a small page in a wide pane, trimmed by
+  // Fit text, can be drawn above 400%. There is no larger size to reach, and
+  // stepping would ask for MAX_PDF_ZOOM, which is SMALLER than what is on
+  // screen — so the press would shrink the page. Return the current scale so
+  // the press is a no-op and the control disables.
+  if (direction === 1 && scale > MAX_PDF_ZOOM) return scale;
   let next = zoomedBy(scale, direction);
   // Walk while this step draws the width already on screen. The step is a
   // continuous factor here rather than a ladder, so the loop is bounded by the
@@ -156,6 +162,11 @@ export function canStepPdfZoom(
   dpr: number,
   currentWidth: number,
 ): boolean {
+  // Past the ceiling there is nothing larger to reach, and a step would ask
+  // for a size below what is drawn. This is checked on the RATIO because the
+  // trimmed modes draw the page wider than `zoomedPageWidth` returns, so a
+  // width comparison alone reads "same width" and leaves the button live.
+  if (direction === 1 && scale > MAX_PDF_ZOOM) return false;
   const next = steppedPdfZoomByWidth(
     scale,
     direction,

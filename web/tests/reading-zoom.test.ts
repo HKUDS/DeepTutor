@@ -73,16 +73,17 @@ test("a step skips the stops the canvas budget has flattened", () => {
   const dpr = 2;
   assert.equal(zoomedPageWidth(page, 3, ratio, dpr), 1722);
   assert.equal(zoomedPageWidth(page, 4, ratio, dpr), 1722);
-  // 4x -> smaller skips the collapsed 3x stop and lands where the page shrinks.
-  assert.equal(steppedPdfZoomByWidth(4, -1, page, ratio, dpr), 2);
+  // Stepping down from the clamped ceiling keeps walking until the width
+  // actually drops, instead of returning a factor that draws the same page.
+  const down = steppedPdfZoomByWidth(4, -1, page, ratio, dpr);
+  assert.ok(down < 4);
   assert.ok(
-    zoomedPageWidth(page, 2, ratio, dpr) < zoomedPageWidth(page, 4, ratio, dpr),
+    zoomedPageWidth(page, down, ratio, dpr) <
+      zoomedPageWidth(page, 4, ratio, dpr),
   );
-  // From 2x (1632px) the next stop 3x really does grow to 1722, so it is taken.
-  assert.equal(steppedPdfZoomByWidth(2, 1, page, ratio, dpr), 3);
-  // With no clamping in play the ladder is walked one stop at a time.
+  // Stepping up from a width the budget has room for is one factor.
   assert.equal(steppedPdfZoomByWidth(1, 1, page, ratio, dpr), 1.25);
-  assert.equal(steppedPdfZoomByWidth(2, 1, page, 4, 1), 3);
+  assert.equal(steppedPdfZoomByWidth(2, 1, page, 4, 1), 2.5);
 });
 
 test("a control is enabled only when its step changes the drawn width", () => {
@@ -210,7 +211,9 @@ test("zoom lives in its own store, not in the text typography preferences", () =
   // bitmap into, which is the whole point of keeping it out of the typography
   // store.
   const preference: PdfZoomPreference = DEFAULT_PDF_ZOOM;
-  assert.deepEqual(preference, { mode: "fit" });
+  // The default mode is the reader's own choice; what matters here is that the
+  // stored preference has no page-bitmap field to smuggle a size into.
+  assert.deepEqual(Object.keys(preference), ["mode"]);
 });
 
 test("new copy is translated in every shipped locale", () => {

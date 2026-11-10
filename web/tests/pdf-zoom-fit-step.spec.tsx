@@ -132,7 +132,7 @@ async function selectZoomMode(
     fireEvent.click(trigger);
   });
   const item = [
-    ...view.container.querySelectorAll<HTMLElement>('[role="menuitem"]'),
+    ...view.container.querySelectorAll<HTMLElement>('[role="menuitemradio"]'),
   ].find((node) => node.textContent === label);
   if (!item) throw new Error(`No "${label}" zoom mode`);
   await act(async () => {
