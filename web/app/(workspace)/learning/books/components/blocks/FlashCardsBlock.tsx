@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { ChevronLeft, ChevronRight, RotateCcw } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import MarkdownRenderer from "@/components/common/MarkdownRenderer";
 import type { Block } from "@/lib/book-types";
 
 interface Card {
@@ -40,13 +41,23 @@ export default function FlashCardsBlock({ block }: FlashCardsBlockProps) {
         <span className="text-[10px] uppercase tracking-wider text-[var(--muted-foreground)]">
           {showBack ? t("Answer") : t("Question")}
         </span>
-        <span className="text-base font-medium text-[var(--foreground)]">
-          {showBack ? card.back : card.front}
-        </span>
+        <div className="text-base font-medium text-[var(--foreground)]">
+          <MarkdownRenderer
+            content={String((showBack ? card.back : card.front) ?? "")}
+            variant="compact"
+            className="font-sans text-base font-medium [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 [&_p]:my-0"
+            allowHtml={false}
+          />
+        </div>
         {!showBack && card.hint && (
-          <span className="text-xs italic text-[var(--muted-foreground)]">
-            {t("Hint")}: {card.hint}
-          </span>
+          <div className="text-xs italic text-[var(--muted-foreground)]">
+            <MarkdownRenderer
+              content={`${t("Hint")}: ${card.hint}`}
+              variant="compact"
+              className="font-sans text-xs italic [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 [&_p]:my-0"
+              allowHtml={false}
+            />
+          </div>
         )}
       </button>
       <div className="mt-3 flex items-center justify-between">

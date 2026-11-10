@@ -55,9 +55,13 @@ export default function SectionBlock({ block }: SectionBlockProps) {
       {keyTakeaway && (
         <div className="mt-6 flex items-start gap-2 rounded-xl border border-[var(--border)] bg-[var(--muted)]/30 px-3 py-2 text-sm">
           <Sparkles className="mt-0.5 h-4 w-4 flex-shrink-0 text-[var(--muted-foreground)]" />
-          <div className="flex-1">
-            <span className="mr-1 font-medium">{t("Key takeaway:")}</span>
-            <span className="text-[var(--foreground)]">{keyTakeaway}</span>
+          <div className="flex-1 text-[var(--foreground)]">
+            <MarkdownRenderer
+              content={`**${t("Key takeaway:")}** ${keyTakeaway}`}
+              variant="compact"
+              className="font-sans text-sm [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 [&_p]:my-0"
+              allowHtml={false}
+            />
           </div>
         </div>
       )}
