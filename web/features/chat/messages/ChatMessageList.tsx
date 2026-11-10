@@ -57,6 +57,7 @@ import { docIconFor } from "@/lib/doc-attachments";
 import { isQuoteAttachment, quoteText } from "@/lib/quote-attachments";
 import { QUOTE_RULE_CLASS } from "@/components/chat/home/QuotedPassage";
 import { useVoiceAutoplay } from "@/hooks/useVoiceAutoplay";
+import { useTtsReadiness } from "@/hooks/useTtsReadiness";
 import {
   SPEECH_PLAYBACK_FAILURE_MESSAGE,
   SPEECH_TIMEOUT_MESSAGE,
@@ -2283,6 +2284,8 @@ export const ChatMessageList = memo(function ChatMessageList({
   compactActions?: boolean;
 }) {
   const { t } = useTranslation();
+  // Hide the read-aloud control (and its 400s) when no TTS provider is set up.
+  const ttsReady = useTtsReadiness();
   // Visible path: when no branching has happened the result is identical
   // to the input. After an edit, sibling branches are filtered out so the
   // UI shows exactly one continuous thread, with arrow nav exposed on the
@@ -2697,7 +2700,7 @@ export const ChatMessageList = memo(function ChatMessageList({
                         onCopy={onCopyAssistantMessage}
                       />
                     )}
-                    {showActions && !compactActions && (
+                    {showActions && !compactActions && ttsReady !== false && (
                       <PlayAudioButton
                         content={msg.content}
                         conversationKey={sessionId ?? undefined}

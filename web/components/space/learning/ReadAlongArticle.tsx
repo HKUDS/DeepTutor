@@ -18,6 +18,8 @@ import { Pause, Play, SkipBack, SkipForward, Star, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import RichMarkdownRenderer from "@/components/common/RichMarkdownRenderer";
+import { apiFetch, apiUrl } from "@/lib/api";
+import { useTtsReadiness } from "@/hooks/useTtsReadiness";
 
 /**
  * The markdown body is rendered once and never re-rendered: the read-along
@@ -135,6 +137,13 @@ export default function ReadAlongArticle({
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const unitsRef = useRef<HTMLElement[]>([]);
   const goRef = useRef<(i: number) => void>(() => {});
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const urlRef = useRef<string | null>(null);
+  const playingRef = useRef(false);
+  // Set after the first backend TTS failure so we stop asking and fall back to
+  // the browser voice for the rest of the overlay instead of logging 400s.
+  const backendFailedRef = useRef(false);
+  const ttsReady = useTtsReadiness();
 
   const [units, setUnits] = useState<HTMLElement[]>([]);
 
@@ -154,10 +163,19 @@ export default function ReadAlongArticle({
   );
 
   const stop = useCallback(() => {
+    playingRef.current = false;
     setPlaying(false);
     if (timerRef.current) {
       clearTimeout(timerRef.current);
       timerRef.current = null;
+    }
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+    if (urlRef.current) {
+      URL.revokeObjectURL(urlRef.current);
+      urlRef.current = null;
     }
     if (synth) synth.cancel();
   }, [synth]);
@@ -173,6 +191,74 @@ export default function ReadAlongArticle({
       return Math.max(1150, unitText(el).length * 150 / rate);
     },
     [rate],
+  );
+
+  // Backend TTS plays a whole unit as audio; the read-along advances when it ends.
+  const speakBackend = useCallback(async (text: string) => {
+    const resp = await apiFetch(apiUrl("/api/voice/tts"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    });
+    if (!resp.ok) throw new Error(`tts ${resp.status}`);
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    urlRef.current = url;
+    await new Promise<void>((resolve, reject) => {
+      const audio = new Audio(url);
+      audioRef.current = audio;
+      const release = () => {
+        if (urlRef.current === url) {
+          URL.revokeObjectURL(url);
+          urlRef.current = null;
+        }
+        if (audioRef.current === audio) audioRef.current = null;
+      };
+      audio.onended = () => {
+        release();
+        resolve();
+      };
+      audio.onerror = () => {
+        release();
+        reject(new Error("audio"));
+      };
+      void audio.play().catch((error) => {
+        release();
+        reject(error);
+      });
+    });
+  }, []);
+
+  // The browser voice is the fallback: code/formula blocks only announce a
+  // short label, never the symbols themselves.
+  const speakWithBrowser = useCallback(
+    (i: number, el: HTMLElement, speakable: boolean) => {
+      const kind = kindOf(el);
+      if (ttsAvailable) {
+        const utter = new SpeechSynthesisUtterance(
+          speakable
+            ? unitText(el)
+            : kind === "code"
+              ? t("Code · pause")
+              : t("Formula · pause"),
+        );
+        utter.lang = "zh-CN";
+        utter.rate = rate;
+        utter.onend = () => {
+          if (!playingRef.current) return;
+          if (speakable) goRef.current(i + 1);
+          else timerRef.current = setTimeout(() => goRef.current(i + 1), dwell(el));
+        };
+        utter.onerror = () => {
+          if (playingRef.current)
+            timerRef.current = setTimeout(() => goRef.current(i + 1), dwell(el));
+        };
+        synth?.speak(utter);
+        return;
+      }
+      timerRef.current = setTimeout(() => goRef.current(i + 1), dwell(el));
+    },
+    [dwell, rate, synth, t, ttsAvailable],
   );
 
   // The read-along engine: one step per unit, prose read aloud, blocks paused.
@@ -195,29 +281,26 @@ export default function ReadAlongArticle({
       highlight(i);
 
       const speakable = kind === "prose" || kind === "listitem";
-      if (ttsAvailable && !silent) {
-        const utter = new SpeechSynthesisUtterance(
-          speakable
-            ? unitText(el)
-            : kind === "code"
-              ? t("Code · pause")
-              : t("Formula · pause"),
-        );
-        utter.lang = "zh-CN";
-        utter.rate = rate;
-        utter.onend = () => {
-          if (speakable) goRef.current(i + 1);
-          else timerRef.current = setTimeout(() => goRef.current(i + 1), dwell(el));
-        };
-        utter.onerror = () => {
-          timerRef.current = setTimeout(() => goRef.current(i + 1), dwell(el));
-        };
-        synth?.speak(utter);
+      if (!silent) {
+        // Prefer the configured backend voice; on the first failure stop asking
+        // and use the browser voice for the rest of the overlay.
+        if (speakable && ttsReady === true && !backendFailedRef.current) {
+          speakBackend(unitText(el))
+            .then(() => {
+              if (playingRef.current) goRef.current(i + 1);
+            })
+            .catch(() => {
+              backendFailedRef.current = true;
+              speakWithBrowser(i, el, true);
+            });
+          return;
+        }
+        speakWithBrowser(i, el, speakable);
         return;
       }
       timerRef.current = setTimeout(() => goRef.current(i + 1), dwell(el));
     },
-    [dwell, highlight, rate, silent, skipBlocks, synth, t, ttsAvailable],
+    [dwell, highlight, silent, skipBlocks, speakBackend, speakWithBrowser, ttsReady],
   );
 
   useEffect(() => {
@@ -227,6 +310,7 @@ export default function ReadAlongArticle({
   const play = useCallback(
     (from: number) => {
       stop();
+      playingRef.current = true;
       setPlaying(true);
       go(Math.max(0, from));
     },
