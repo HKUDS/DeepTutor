@@ -46,6 +46,7 @@ from deeptutor.reading import (
     ReadingError,
     ReadingPosition,
     ReadingStore,
+    AnnotationConflict,
     ReadingUpgradeConflict,
     SourceKind,
     export_material,
@@ -160,7 +161,7 @@ def _http_error(exc: Exception) -> HTTPException:
         return HTTPException(status_code=403, detail=str(exc))
     if isinstance(exc, MaterialNotFound):
         return HTTPException(status_code=404, detail=str(exc))
-    if isinstance(exc, ReadingUpgradeConflict):
+    if isinstance(exc, (ReadingUpgradeConflict, AnnotationConflict)):
         return HTTPException(status_code=409, detail=str(exc))
     if isinstance(exc, ReadingError):
         return HTTPException(status_code=400, detail=str(exc))
@@ -284,6 +285,11 @@ class AnnotationPayload(BaseModel):
         default_factory=list,
         max_length=2,
     )
+    # The `updated_at` the client last read, for an edit. Omitted by creates and
+    # by older clients, so it is optional; when present it makes the write
+    # conditional and a stale copy is refused with 409 rather than silently
+    # overwriting whatever the other tab changed.
+    expected_updated_at: float = 0.0
 
     def to_annotation(self) -> Annotation:
         return Annotation.from_dict(
@@ -297,6 +303,7 @@ class AnnotationPayload(BaseModel):
                 "rects": self.rects,
                 "source_anchor": self.source_anchor,
                 "selectors": [selector.model_dump() for selector in self.selectors],
+                "expected_updated_at": self.expected_updated_at,
                 "author": "user",
             }
         )

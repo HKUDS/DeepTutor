@@ -81,7 +81,9 @@ export function visibleMarks(
     color: string | null;
   },
 ): AnnotationItem[] {
-  const needle = options.query.trim().toLowerCase();
+  // NFC so a composed and a decomposed accent are the same letter to the
+  // search: "é" typed as U+00E9 must match text stored as "e" + U+0301.
+  const needle = options.query.trim().normalize("NFC").toLowerCase();
   return annotations.filter((annotation) => {
     if (!inView(annotation, options.view)) return false;
     if (options.color !== null && annotation.color !== options.color) return false;
@@ -89,8 +91,8 @@ export function visibleMarks(
     // A reader looking for "that note about latency" should not have to
     // remember which page it was on.
     return (
-      annotation.quote.toLowerCase().includes(needle) ||
-      annotation.note.toLowerCase().includes(needle)
+      annotation.quote.normalize("NFC").toLowerCase().includes(needle) ||
+      annotation.note.normalize("NFC").toLowerCase().includes(needle)
     );
   });
 }

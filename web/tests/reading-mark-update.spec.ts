@@ -38,6 +38,9 @@ describe("buildMarkUpdate", () => {
     expect(update!.draft.rects).toEqual([[0.1, 0.2, 0.5, 0.24]]);
     expect(update!.draft.locator).toBe(3);
     expect(update!.draft.annotation_id).toBe("a1");
+    // The copy this edit was built from travels with it, so a second tab's save
+    // is refused with 409 instead of silently reverting this one.
+    expect(update!.draft.expected_updated_at).toBe(10);
     expect(update!.optimistic.created_at).toBe(10);
   });
 

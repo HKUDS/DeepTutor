@@ -82,6 +82,27 @@ describe("narrowing the rows", () => {
     expect(both.map((row) => row.annotation_id)).toEqual(["y1"]);
   });
 
+  it("matches a differently-composed accent", () => {
+    // "é" can arrive composed (U+00E9) or decomposed (e + U+0301); a reader
+    // typing one must find a mark stored with the other.
+    const composed = "caf\u00e9 notes";
+    const decomposed = "cafe\u0301 notes";
+    const accented = [
+      mark({ annotation_id: "n1", locator: 1, quote: composed }),
+      mark({ annotation_id: "n2", locator: 2, quote: decomposed }),
+    ];
+    expect(
+      visibleMarks(accented, { view: "annotations", query: "caf\u00e9", color: null }).map(
+        (row) => row.annotation_id,
+      ),
+    ).toEqual(["n1", "n2"]);
+    expect(
+      visibleMarks(accented, { view: "annotations", query: "cafe\u0301", color: null }).map(
+        (row) => row.annotation_id,
+      ),
+    ).toEqual(["n1", "n2"]);
+  });
+
   it("does not leak the other tab's rows", () => {
     expect(
       visibleMarks(rows, { view: "citations", query: "throughput", color: null }).map(

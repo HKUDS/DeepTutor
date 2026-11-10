@@ -159,6 +159,14 @@ export interface AnnotationDraft {
   rects?: NormalisedRect[];
   source_anchor?: string;
   selectors?: ReadingTextSelector[];
+  /**
+   * The `updated_at` this edit was built from.
+   *
+   * The store refuses the write with 409 when the row moved since — two tabs on
+   * one document would otherwise silently revert each other's changes. Omitted
+   * for creates.
+   */
+  expected_updated_at?: number;
 }
 
 export interface ReadingPosition {

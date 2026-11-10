@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 
 import type { AnnotationItem } from "@/lib/reading-api";
 
@@ -29,6 +29,19 @@ export function useMarkSelection({
 }) {
   const [selecting, setSelecting] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  // Selection is kept in step with what is on screen. A search or colour filter
+  // can hide a row that is still selected; leaving it in the set made the
+  // batch delete fewer rows than the count promised, with no notice, because
+  // the batch only walks visible rows. Pruning here means `count` and "select
+  // all" always describe the same set the actions will touch.
+  const visibleIds = useMemo(
+    () => new Set(rows.map((row) => row.id)),
+    [rows],
+  );
+  const live = useMemo(
+    () => new Set([...selected].filter((id) => visibleIds.has(id))),
+    [selected, visibleIds],
+  );
   const [busy, setBusy] = useState(false);
   // Two presses dispatched before React re-renders both read the same state
   // closure, so the guard has to read a ref that updates synchronously.
@@ -54,10 +67,13 @@ export function useMarkSelection({
   }, []);
 
   const toggleAll = useCallback(() => {
-    setSelected((current) =>
-      current.size === rows.length ? new Set() : new Set(rows.map((row) => row.id)),
-    );
-  }, [rows]);
+    setSelected((current) => {
+      const already = new Set([...current].filter((id) => visibleIds.has(id)));
+      return already.size === rows.length
+        ? new Set()
+        : new Set(rows.map((row) => row.id));
+    });
+  }, [rows, visibleIds]);
 
   /**
    * Remove every selected mark, one at a time.
@@ -73,8 +89,8 @@ export function useMarkSelection({
    * wholly or partly; `-1` means there was nothing to do.
    */
   const removeSelected = useCallback(async (): Promise<number> => {
-    if (selected.size === 0 || busyRef.current) return -1;
-    const targets = rows.filter((row) => selected.has(row.id));
+    if (live.size === 0 || busyRef.current) return -1;
+    const targets = rows.filter((row) => live.has(row.id));
     stop();
     busyRef.current = true;
     setBusy(true);
@@ -92,14 +108,14 @@ export function useMarkSelection({
       setBusy(false);
     }
     return failed;
-  }, [onDelete, rows, selected, stop]);
+  }, [onDelete, rows, live, stop]);
 
   /** Copy the selection; `false` means the clipboard refused. */
   const copySelected = useCallback(async (): Promise<boolean> => {
-    if (selected.size === 0) return false;
-    const targets = rows.filter((row) => selected.has(row.id)).map((row) => row.mark);
+    if (live.size === 0) return false;
+    const targets = rows.filter((row) => live.has(row.id)).map((row) => row.mark);
     return onCopy(targets);
-  }, [onCopy, rows, selected]);
+  }, [onCopy, rows, live]);
 
   return {
     selecting,
@@ -111,8 +127,8 @@ export function useMarkSelection({
     toggleAll,
     removeSelected,
     copySelected,
-    count: selected.size,
-    allSelected: rows.length > 0 && selected.size === rows.length,
+    count: live.size,
+    allSelected: rows.length > 0 && live.size === rows.length,
   };
 }
 

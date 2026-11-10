@@ -93,3 +93,62 @@ describe("removing a selection in one React frame", () => {
     ]);
   });
 });
+
+/**
+ * Selection follows the rows the reader can actually see.
+ *
+ * A search or colour filter can hide a selected row. The batch actions only
+ * walk visible rows, so a selection that kept hidden ids made the delete cover
+ * fewer rows than the count promised — silently, because a batch that deletes
+ * everything it attempted reports no failure.
+ */
+describe("a filter narrowing the list under a selection", () => {
+  it("counts only the rows a batch would act on", () => {
+    const all = [mark("a"), mark("b"), mark("c")];
+    const { result, rerender } = renderHook(
+      ({ rows }: { rows: AnnotationItem[] }) =>
+        useMarkSelection({
+          rows: toSelectable(rows),
+          onDelete: async () => true,
+          onCopy: async () => true,
+        }),
+      { initialProps: { rows: all } },
+    );
+    act(() => result.current.start());
+    act(() => result.current.toggleAll());
+    expect(result.current.count).toBe(3);
+
+    // The reader searches; only "b" survives the filter.
+    rerender({ rows: [mark("b")] });
+    expect(result.current.count).toBe(1);
+    expect(result.current.allSelected).toBe(true);
+  });
+
+  it("deletes exactly the rows the count promised", async () => {
+    const deleted: string[] = [];
+    const all = [mark("a"), mark("b"), mark("c")];
+    const { result, rerender } = renderHook(
+      ({ rows }: { rows: AnnotationItem[] }) =>
+        useMarkSelection({
+          rows: toSelectable(rows),
+          onDelete: async (annotation) => {
+            deleted.push(annotation.annotation_id);
+            return true;
+          },
+          onCopy: async () => true,
+        }),
+      { initialProps: { rows: all } },
+    );
+    act(() => result.current.start());
+    act(() => result.current.toggleAll());
+    // Filter down to one row, then delete: the two hidden rows must not be
+    // counted, and the one visible row must be the one removed.
+    rerender({ rows: [mark("b")] });
+    let failed = 0;
+    await act(async () => {
+      failed = await result.current.removeSelected();
+    });
+    expect(failed).toBe(0);
+    expect(deleted).toEqual(["b"]);
+  });
+});

@@ -51,6 +51,9 @@ export function buildMarkUpdate(
       rects: annotation.rects,
       source_anchor: annotation.source_anchor,
       selectors: annotation.selectors ?? [],
+      // The copy this edit was built from, so a second tab cannot silently
+      // overwrite it: the store answers 409 when the row has moved on.
+      expected_updated_at: annotation.updated_at,
     },
     optimistic: next,
   };
