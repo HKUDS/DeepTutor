@@ -96,7 +96,7 @@ describe("the reading surface", () => {
     act(() => {
       fireEvent.pointerLeave(root);
     });
-    await waitFor(() => expect(wrapper.className).not.toContain("opacity-100"), {
+    await waitFor(() => expect(wrapper.className).not.toMatch(/(^|\s)opacity-100($|\s)/), {
       timeout: 1000,
     });
   });
@@ -140,7 +140,7 @@ describe("the reading surface", () => {
       fireEvent.pointerLeave(bar);
     });
     // Leaving the bar un-pins it, so the hide the move armed can now land.
-    await waitFor(() => expect(wrapper.className).not.toContain("opacity-100"), {
+    await waitFor(() => expect(wrapper.className).not.toMatch(/(^|\s)opacity-100($|\s)/), {
       timeout: 1500,
     });
   });
@@ -160,7 +160,7 @@ describe("the reading surface", () => {
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 600));
     });
-    expect(wrapper.className).not.toContain("opacity-100");
+    expect(wrapper.className).not.toMatch(/(^|\s)opacity-100($|\s)/);
     act(() => {
       fireEvent.pointerMove(root, { clientY: 540 });
     });
