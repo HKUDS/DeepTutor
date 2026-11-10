@@ -36,6 +36,28 @@ describe("notebook graph", () => {
     expect(appendNotebookGraph("# A", emptyNotebookGraph(), ["c"])).toBe("# A");
   });
 
+  it("round-trips learner-given cell names", () => {
+    const page = appendNotebookGraph(
+      "note\n\n```python\nx = 1\n```",
+      emptyNotebookGraph(),
+      ["cell-a", "cell-b"],
+      { "cell-a": "  Objectives  ", "cell-b": "   ", gone: "Dropped" },
+    );
+    const split = splitNotebookGraph(page);
+    expect(split.names).toEqual({ "cell-a": "Objectives" });
+  });
+
+  it("keeps the body plain when only cell names are set", () => {
+    const page = appendNotebookGraph(
+      "# A",
+      emptyNotebookGraph(),
+      ["cell-a"],
+      { "cell-a": "Intro" },
+    );
+    expect(page).toContain("```dt-graph");
+    expect(splitNotebookGraph(page).body.trimEnd()).toBe("# A");
+  });
+
   it("drops links and positions for cells that no longer exist", () => {
     const graph = {
       positions: { gone: { x: 1, y: 2 } },

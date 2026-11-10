@@ -133,6 +133,23 @@ it("adds note and code cells", async () => {
   );
 });
 
+it("renames a cell and keeps its kind as a subtitle", async () => {
+  render(<ChatNotebookTab sessionId="session-1" />);
+  await screen.findByPlaceholderText("print('hello')");
+
+  // The note cell's default kind label doubles as its rename button.
+  fireEvent.click(screen.getByRole("button", { name: "Note" }));
+  const input = screen.getByRole("textbox", { name: "Cell name" });
+  fireEvent.change(input, { target: { value: "Objectives" } });
+  fireEvent.blur(input);
+
+  expect(
+    await screen.findByRole("button", { name: "Objectives" }),
+  ).toBeInTheDocument();
+  // The original kind label stays as a subtitle beneath the name.
+  expect(screen.getByText("Note")).toBeInTheDocument();
+});
+
 it("binds the notebook to the knowledge point of the conversation", async () => {
   render(<ChatNotebookTab sessionId="session-1" />);
   // The header reports the bound point once preferences resolve.

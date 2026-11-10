@@ -4,6 +4,7 @@ import {
   createCodeCell,
   createGeogebraCell,
   createMarkdownCell,
+  moveNotebookCell,
   parseNotebookMarkdown,
   serializeNotebookMarkdown,
 } from "@/lib/notebook-cells";
@@ -48,5 +49,30 @@ describe("notebook cells", () => {
     const parsed = parseNotebookMarkdown(markdown);
     expect(parsed.map((c) => c.kind)).toEqual(["markdown", "geogebra"]);
     expect(parsed[1].source).toContain("Segment(A,B)");
+  });
+
+  it("reorders cells by dropping one onto another", () => {
+    const a = createMarkdownCell("A");
+    const b = createMarkdownCell("B");
+    const c = createMarkdownCell("C");
+    const d = createMarkdownCell("D");
+    const cells = [a, b, c, d];
+
+    // Moving down places the cell after the target.
+    expect(moveNotebookCell(cells, a.id, c.id).map((cell) => cell.source)).toEqual([
+      "B",
+      "C",
+      "A",
+      "D",
+    ]);
+    // Moving up places it before the target.
+    expect(moveNotebookCell(cells, d.id, b.id).map((cell) => cell.source)).toEqual([
+      "A",
+      "D",
+      "B",
+      "C",
+    ]);
+    // Dropping onto itself keeps the order.
+    expect(moveNotebookCell(cells, b.id, b.id)).toBe(cells);
   });
 });

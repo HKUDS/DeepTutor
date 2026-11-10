@@ -6310,5 +6310,8 @@
   "Connect in order": "按顺序连线",
   "Add image": "上传图片",
   "Retry save": "重试保存",
-  "Back to Notes": "返回笔记"
+  "Back to Notes": "返回笔记",
+  "Cell name": "单元格名称",
+  "Rename cell": "重命名单元格",
+  "Drag to reorder": "拖动调整顺序"
 }

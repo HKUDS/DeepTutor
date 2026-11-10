@@ -15,7 +15,23 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
-import { Play, Plus, Trash2, ArrowUp, ArrowDown, Loader2, Check, RefreshCw, ArrowLeft } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowLeft,
+  ArrowUp,
+  Check,
+  Eye,
+  FileText,
+  GripVertical,
+  Loader2,
+  MoreHorizontal,
+  Pencil,
+  Play,
+  RefreshCw,
+  Shapes,
+  SquareTerminal,
+  Trash2,
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import RichMarkdownRenderer from "@/components/common/RichMarkdownRenderer";
@@ -31,6 +47,7 @@ import {
   createGeogebraCell,
   createMarkdownCell,
   defaultNotebookCells,
+  moveNotebookCell,
   normalizeCellLanguage,
   parseNotebookMarkdown,
   serializeNotebookMarkdown,
@@ -122,6 +139,38 @@ function applySavedCellIds(
   return cells.map((cell, index) => ({ ...cell, id: ids[index] }));
 }
 
+/** Restore learner-given names from the hidden metadata block. */
+function applySavedCellNames(
+  cells: NotebookCell[],
+  names: Record<string, string>,
+): NotebookCell[] {
+  if (!Object.keys(names).length) return cells;
+  return cells.map((cell) =>
+    names[cell.id] ? { ...cell, name: names[cell.id] } : cell,
+  );
+}
+
+/** Collect non-empty cell names for the hidden metadata block. */
+function collectCellNames(cells: NotebookCell[]): Record<string, string> {
+  const names: Record<string, string> = {};
+  for (const cell of cells) {
+    const name = cell.name?.trim();
+    if (name) names[cell.id] = name;
+  }
+  return names;
+}
+
+function cellKindLabel(
+  cell: NotebookCell,
+  t: (key: string) => string,
+): string {
+  return cell.kind === "code"
+    ? t("Code")
+    : cell.kind === "geogebra"
+      ? t("GeoGebra board")
+      : t("Note");
+}
+
 export default function ChatNotebookTab({ sessionId = null, docId = null, onExit }: ChatNotebookTabProps) {
   const { t } = useTranslation();
   const auth = useAuthStatus();
@@ -139,6 +188,8 @@ export default function ChatNotebookTab({ sessionId = null, docId = null, onExit
   const [cells, setCells] = useState<NotebookCell[]>(() =>
     defaultNotebookCells(),
   );
+  const [draggingCellId, setDraggingCellId] = useState<string | null>(null);
+  const [dragOverCellId, setDragOverCellId] = useState<string | null>(null);
   const [graph, setGraph] = useState<NotebookGraph>(() => emptyNotebookGraph());
   const [view, setView] = useState<"list" | "graph">("list");
   const [runs, setRuns] = useState<Record<string, CellRun>>({});
@@ -182,7 +233,15 @@ export default function ChatNotebookTab({ sessionId = null, docId = null, onExit
           setTitle(loadedTitle);
           setPointName("");
           const split = splitNotebookGraph(markdown);
-          setCells(applySavedCellIds(parseNotebookMarkdown(split.body), split.cellIds));
+          setCells(
+            applySavedCellNames(
+              applySavedCellIds(
+                parseNotebookMarkdown(split.body),
+                split.cellIds,
+              ),
+              split.names,
+            ),
+          );
           setGraph(split.graph);
         } catch (err) {
           if (!cancelled) setError(String(err));
@@ -255,7 +314,15 @@ export default function ChatNotebookTab({ sessionId = null, docId = null, onExit
           lastSavedTitleRef.current = loadedTitle;
           setTitle(loadedTitle);
           const split = splitNotebookGraph(markdown);
-          setCells(applySavedCellIds(parseNotebookMarkdown(split.body), split.cellIds));
+          setCells(
+            applySavedCellNames(
+              applySavedCellIds(
+                parseNotebookMarkdown(split.body),
+                split.cellIds,
+              ),
+              split.names,
+            ),
+          );
           setGraph(split.graph);
           setReady(true);
           return;
@@ -285,6 +352,7 @@ export default function ChatNotebookTab({ sessionId = null, docId = null, onExit
         serializeNotebookMarkdown(nextCells),
         nextGraph,
         nextCells.map((cell) => cell.id),
+        collectCellNames(nextCells),
       );
       if (
         markdown === lastSavedRef.current &&
@@ -354,6 +422,7 @@ export default function ChatNotebookTab({ sessionId = null, docId = null, onExit
       serializeNotebookMarkdown(cells),
       graph,
       cells.map((cell) => cell.id),
+      collectCellNames(cells),
     );
     if (
       markdown === lastSavedRef.current &&
@@ -379,6 +448,7 @@ export default function ChatNotebookTab({ sessionId = null, docId = null, onExit
           serializeNotebookMarkdown(cells),
           graph,
           cells.map((cell) => cell.id),
+          collectCellNames(cells),
         );
         const page = await createNote(
           t("Code notebook"),
@@ -445,6 +515,10 @@ export default function ChatNotebookTab({ sessionId = null, docId = null, onExit
     });
   }, []);
 
+  const reorderCell = useCallback((fromId: string, toId: string) => {
+    setCells((prev) => moveNotebookCell(prev, fromId, toId));
+  }, []);
+
   const runCell = useCallback(async (cell: NotebookCell) => {
     const language = normalizeCellLanguage(cell.language);
     setRuns((prev) => ({ ...prev, [cell.id]: { status: "running" } }));
@@ -499,16 +573,16 @@ export default function ChatNotebookTab({ sessionId = null, docId = null, onExit
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex shrink-0 items-center gap-2 border-b border-[color-mix(in_srgb,var(--border)_45%,transparent)] px-4 py-2.5">
+      <div className="flex shrink-0 items-center gap-2.5 border-b border-[color-mix(in_srgb,var(--border)_45%,transparent)] px-4 py-3">
         {onExit ? (
           <button
             type="button"
             onClick={onExit}
             aria-label={t("Back to Notes")}
             title={t("Back to Notes")}
-            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[var(--muted-foreground)] transition-colors hover:bg-[color-mix(in_srgb,var(--muted)_70%,transparent)] hover:text-[var(--foreground)]"
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[var(--muted-foreground)] transition-colors hover:bg-[color-mix(in_srgb,var(--muted)_70%,transparent)] hover:text-[var(--foreground)]"
           >
-            <ArrowLeft size={15} strokeWidth={1.9} />
+            <ArrowLeft size={16} strokeWidth={1.9} />
           </button>
         ) : null}
         <div className="min-w-0 flex-1">
@@ -524,19 +598,19 @@ export default function ChatNotebookTab({ sessionId = null, docId = null, onExit
                 }
               }}
               placeholder={t("Code notebook")}
-              className="block w-full truncate rounded-md border border-[var(--border)] bg-transparent px-1 text-[12.5px] font-semibold text-[var(--foreground)] outline-none"
+              className="block w-full truncate rounded-md border border-[var(--border)] bg-transparent px-1 text-[13.5px] font-semibold text-[var(--foreground)] outline-none focus:border-[var(--primary)]"
             />
           ) : (
             <button
               type="button"
               onClick={() => setEditingTitle(true)}
               title={t("Rename")}
-              className="block w-full truncate text-left text-[12.5px] font-semibold text-[var(--foreground)] hover:underline"
+              className="block max-w-full truncate rounded-md text-left text-[13.5px] font-semibold text-[var(--foreground)] transition-colors hover:text-[var(--primary)]"
             >
               {title || t("Code notebook")}
             </button>
           )}
-          <div className="truncate text-[10.5px] text-[var(--muted-foreground)]">
+          <div className="mt-0.5 truncate text-[11px] text-[var(--muted-foreground)]">
             {pointName || pointIdRef.current
               ? t("Bound to knowledge point {{id}}", {
                   id: pointName || pointIdRef.current,
@@ -549,16 +623,16 @@ export default function ChatNotebookTab({ sessionId = null, docId = null, onExit
           label={t}
           onRetry={() => void persist(cells, graph)}
         />
-        <div className="flex shrink-0 items-center rounded-lg border border-[color-mix(in_srgb,var(--border)_55%,transparent)] p-0.5">
+        <div className="flex shrink-0 items-center gap-0.5 rounded-xl border border-[color-mix(in_srgb,var(--border)_55%,transparent)] bg-[color-mix(in_srgb,var(--muted)_22%,transparent)] p-0.5">
           {(["list", "graph"] as const).map((mode) => (
             <button
               key={mode}
               type="button"
               onClick={() => setView(mode)}
               aria-pressed={view === mode}
-              className={`rounded-md px-2 py-0.5 text-[11px] font-medium transition-colors ${
+              className={`rounded-lg px-2.5 py-1 text-[11px] font-medium transition-colors ${
                 view === mode
-                  ? "bg-[color-mix(in_srgb,var(--muted)_85%,transparent)] text-[var(--foreground)]"
+                  ? "bg-[var(--card)] text-[var(--foreground)] shadow-sm"
                   : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
               }`}
             >
@@ -570,7 +644,7 @@ export default function ChatNotebookTab({ sessionId = null, docId = null, onExit
           <button
             type="button"
             onClick={() => void runAll()}
-            className="inline-flex shrink-0 items-center gap-1 rounded-md border border-[color-mix(in_srgb,var(--border)_55%,transparent)] px-2 py-1 text-[11px] font-medium text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
+            className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-[color-mix(in_srgb,var(--border)_55%,transparent)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--muted-foreground)] transition-colors hover:bg-[color-mix(in_srgb,var(--muted)_45%,transparent)] hover:text-[var(--foreground)]"
           >
             <Play size={11} strokeWidth={2} />
             {t("Run all")}
@@ -582,7 +656,7 @@ export default function ChatNotebookTab({ sessionId = null, docId = null, onExit
         className={
           view === "graph"
             ? "min-h-0 flex-1 overflow-hidden"
-            : "min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-3"
+            : "min-h-0 flex-1 space-y-2.5 overflow-y-auto px-3.5 py-4"
         }
       >
         {!ready ? (
@@ -599,6 +673,7 @@ export default function ChatNotebookTab({ sessionId = null, docId = null, onExit
               onCellChange={updateCell}
               onUploadImage={uploadImage}
               onTagChange={updateTag}
+              onAddCell={addCell}
             />
           </div>
         ) : (
@@ -612,6 +687,23 @@ export default function ChatNotebookTab({ sessionId = null, docId = null, onExit
                 run={runs[cell.id]}
                 previewing={previewing.has(cell.id)}
                 tag={graph.tags[cell.id]}
+                dragging={draggingCellId === cell.id}
+                dragOver={
+                  dragOverCellId === cell.id && draggingCellId !== cell.id
+                }
+                onDragStart={() => setDraggingCellId(cell.id)}
+                onDragOver={() => setDragOverCellId(cell.id)}
+                onDragEnd={() => {
+                  setDraggingCellId(null);
+                  setDragOverCellId(null);
+                }}
+                onDrop={() => {
+                  if (draggingCellId) {
+                    reorderCell(draggingCellId, cell.id);
+                  }
+                  setDraggingCellId(null);
+                  setDragOverCellId(null);
+                }}
                 onTogglePreview={() => togglePreview(cell.id)}
                 onChange={(patch) => updateCell(cell.id, patch)}
                 onTagChange={(next) => updateTag(cell.id, next)}
@@ -621,31 +713,24 @@ export default function ChatNotebookTab({ sessionId = null, docId = null, onExit
               />
             ))}
 
-            <div className="flex gap-2 pt-1">
-              <button
-                type="button"
-                onClick={() => addCell("markdown")}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-[color-mix(in_srgb,var(--border)_70%,transparent)] px-2.5 py-1.5 text-[12px] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
-              >
-                <Plus size={13} strokeWidth={2} />
-                {t("Note cell")}
-              </button>
-              <button
-                type="button"
-                onClick={() => addCell("code")}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-[color-mix(in_srgb,var(--border)_70%,transparent)] px-2.5 py-1.5 text-[12px] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
-              >
-                <Plus size={13} strokeWidth={2} />
-                {t("Code cell")}
-              </button>
-              <button
-                type="button"
-                onClick={() => addCell("geogebra")}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-[color-mix(in_srgb,var(--border)_70%,transparent)] px-2.5 py-1.5 text-[12px] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
-              >
-                <Plus size={13} strokeWidth={2} />
-                {t("Board cell")}
-              </button>
+            <div className="flex flex-wrap gap-2 pt-1.5">
+              {(
+                [
+                  { kind: "markdown", icon: FileText, label: "Note cell" },
+                  { kind: "code", icon: SquareTerminal, label: "Code cell" },
+                  { kind: "geogebra", icon: Shapes, label: "Board cell" },
+                ] as const
+              ).map(({ kind, icon: Icon, label }) => (
+                <button
+                  key={kind}
+                  type="button"
+                  onClick={() => addCell(kind)}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-dashed border-[color-mix(in_srgb,var(--border)_75%,transparent)] bg-[color-mix(in_srgb,var(--muted)_12%,transparent)] px-3 py-2 text-[12px] font-medium text-[var(--muted-foreground)] transition-colors hover:border-[color-mix(in_srgb,var(--primary)_35%,var(--border))] hover:bg-[color-mix(in_srgb,var(--muted)_35%,transparent)] hover:text-[var(--foreground)]"
+                >
+                  <Icon size={13} strokeWidth={1.8} aria-hidden />
+                  {t(label)}
+                </button>
+              ))}
             </div>
           </>
         )}
@@ -706,6 +791,12 @@ interface CellCardProps {
   run?: CellRun;
   previewing: boolean;
   tag?: NotebookTag;
+  dragging: boolean;
+  dragOver: boolean;
+  onDragStart: () => void;
+  onDragOver: () => void;
+  onDragEnd: () => void;
+  onDrop: () => void;
   onTogglePreview: () => void;
   onChange: (patch: Partial<NotebookCell>) => void;
   onTagChange: (tag: NotebookTag | null) => void;
@@ -715,7 +806,26 @@ interface CellCardProps {
 }
 
 const CELL_BUTTON =
-  "inline-flex h-6 w-6 items-center justify-center rounded-md text-[var(--muted-foreground)] transition-colors hover:bg-[color-mix(in_srgb,var(--muted)_70%,transparent)] hover:text-[var(--foreground)] disabled:pointer-events-none disabled:opacity-30";
+  "inline-flex h-7 w-7 items-center justify-center rounded-lg text-[var(--muted-foreground)] transition-colors hover:bg-[color-mix(in_srgb,var(--muted)_75%,transparent)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:pointer-events-none disabled:opacity-30";
+
+function CellKindIcon({
+  kind,
+  className,
+}: {
+  kind: NotebookCell["kind"];
+  className?: string;
+}) {
+  const Icon =
+    kind === "code" ? SquareTerminal : kind === "geogebra" ? Shapes : FileText;
+  return (
+    <Icon
+      size={14}
+      strokeWidth={1.8}
+      aria-hidden
+      className={className}
+    />
+  );
+}
 
 function CellCard({
   cell,
@@ -724,6 +834,12 @@ function CellCard({
   run,
   previewing,
   tag,
+  dragging,
+  dragOver,
+  onDragStart,
+  onDragOver,
+  onDragEnd,
+  onDrop,
   onTogglePreview,
   onChange,
   onTagChange,
@@ -732,123 +848,223 @@ function CellCard({
   onRemove,
 }: CellCardProps) {
   const { t } = useTranslation();
-  const rows = Math.min(24, Math.max(2, cell.source.split("\n").length));
+  const rows = Math.min(
+    24,
+    Math.max(cell.kind === "markdown" ? 3 : 2, cell.source.split("\n").length),
+  );
   const [scriptOpen, setScriptOpen] = useState(false);
+  const [editingName, setEditingName] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
   // A code cell with content opens highlighted; an empty one opens editable.
   const [codePreview, setCodePreview] = useState(cell.source.trim().length > 0);
+  const kindLabel = cellKindLabel(cell, t);
+  const name = cell.name?.trim() ?? "";
+  const running = run?.status === "running";
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const closeOnOutside = (event: MouseEvent) => {
+      if (!menuRef.current?.contains(event.target as Node)) setMenuOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMenuOpen(false);
+    };
+    document.addEventListener("mousedown", closeOnOutside);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("mousedown", closeOnOutside);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [menuOpen]);
 
   return (
-    <div className="overflow-hidden rounded-xl border border-[color-mix(in_srgb,var(--border)_55%,transparent)] bg-[var(--card)]">
-      <div className="flex items-center gap-1 border-b border-[color-mix(in_srgb,var(--border)_35%,transparent)] px-2 py-1">
-        <span className="flex-1 pl-1 text-[10.5px] font-medium uppercase tracking-wide text-[var(--muted-foreground)]">
-          {cell.kind === "code"
-            ? t("Code")
-            : cell.kind === "geogebra"
-              ? t("GeoGebra board")
-              : t("Note")}
-        </span>
-        <NotebookTagControl
-          tag={tag}
-          onChange={onTagChange}
-          className="shrink-0"
+    <div
+      ref={cardRef}
+      onDragOver={(event) => {
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "move";
+        onDragOver();
+      }}
+      onDrop={(event) => {
+        event.preventDefault();
+        onDrop();
+      }}
+      className={`overflow-hidden rounded-2xl border bg-[var(--card)] shadow-sm transition-[border-color,box-shadow,opacity] ${
+        dragOver
+          ? "border-[var(--primary)] shadow-md"
+          : "border-[color-mix(in_srgb,var(--border)_60%,transparent)] hover:border-[color-mix(in_srgb,var(--border)_95%,transparent)] focus-within:border-[color-mix(in_srgb,var(--primary)_35%,var(--border))] focus-within:shadow-md"
+      } ${dragging ? "opacity-45" : ""}`}
+    >
+      <div className="flex items-start gap-1.5 px-2.5 pb-1 pt-2">
+        <button
+          type="button"
+          draggable
+          onDragStart={(event) => {
+            event.dataTransfer.effectAllowed = "move";
+            event.dataTransfer.setData("text/plain", cell.id);
+            if (cardRef.current) {
+              event.dataTransfer.setDragImage(cardRef.current, 24, 20);
+            }
+            onDragStart();
+          }}
+          onDragEnd={onDragEnd}
+          aria-label={t("Drag to reorder")}
+          title={t("Drag to reorder")}
+          className="-ml-1 mt-[3px] inline-flex h-7 w-5 shrink-0 cursor-grab items-center justify-center rounded-md text-[var(--muted-foreground)] opacity-60 transition hover:bg-[color-mix(in_srgb,var(--muted)_70%,transparent)] hover:opacity-100 active:cursor-grabbing"
+        >
+          <GripVertical size={14} strokeWidth={1.8} />
+        </button>
+        <CellKindIcon
+          kind={cell.kind}
+          className="mt-[5px] shrink-0 text-[var(--muted-foreground)]"
         />
-        {cell.kind === "markdown" ? (
-          <button type="button" className={CELL_BUTTON} onClick={onTogglePreview} aria-label={t(previewing ? "Edit" : "Preview")}>
-            <span className="text-[10.5px] font-medium">
-              {t(previewing ? "Edit" : "Preview")}
-            </span>
-          </button>
-        ) : cell.kind === "geogebra" ? (
-          <button
-            type="button"
-            className={CELL_BUTTON}
-            onClick={() => setScriptOpen((open) => !open)}
-            aria-label={t("Script")}
-          >
-            <span className="text-[10.5px] font-medium">
-              {t(scriptOpen ? "Hide script" : "Script")}
-            </span>
-          </button>
-        ) : (
-          <>
+        <div className="min-w-0 flex-1">
+          {editingName ? (
+            <input
+              autoFocus
+              value={cell.name ?? ""}
+              onChange={(event) => onChange({ name: event.target.value })}
+              onBlur={() => setEditingName(false)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === "Escape") {
+                  setEditingName(false);
+                }
+              }}
+              placeholder={kindLabel}
+              aria-label={t("Cell name")}
+              className="block w-full min-w-0 truncate rounded-md border border-[var(--border)] bg-transparent px-1 py-0.5 text-[13px] font-medium text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)] focus:border-[var(--primary)]"
+            />
+          ) : (
             <button
               type="button"
-              className={CELL_BUTTON}
-              onClick={() => setCodePreview((value) => !value)}
-              aria-label={t(codePreview ? "Edit" : "Preview")}
+              onClick={() => setEditingName(true)}
+              title={t("Rename cell")}
+              className="block w-full min-w-0 truncate rounded-md px-1 py-0.5 text-left text-[13px] font-medium text-[var(--foreground)] transition-colors hover:bg-[color-mix(in_srgb,var(--muted)_60%,transparent)]"
             >
-              <span className="text-[10.5px] font-medium">
-                {t(codePreview ? "Edit" : "Preview")}
-              </span>
+              {name || kindLabel}
             </button>
-            <select
-              value={normalizeCellLanguage(cell.language)}
-              onChange={(event) =>
-                onChange({ language: normalizeCellLanguage(event.target.value) })
-              }
-              aria-label={t("Language")}
-              className="h-6 rounded-md bg-transparent px-1 text-[11px] text-[var(--foreground)] outline-none"
-            >
-              {CODE_LANGUAGE_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {t(option.label)}
-                </option>
-              ))}
-            </select>
+          )}
+          {name ? (
+            <div className="truncate px-1 text-[10px] font-medium text-[var(--muted-foreground)]">
+              {kindLabel}
+            </div>
+          ) : null}
+        </div>
+        <div className="flex shrink-0 items-center gap-0.5">
+          <NotebookTagControl tag={tag} onChange={onTagChange} />
+          {cell.kind === "geogebra" ? (
             <button
               type="button"
               className={CELL_BUTTON}
-              onClick={onRun}
-              disabled={!cell.source.trim() || run?.status === "running"}
-              aria-label={t("Run cell")}
+              onClick={() => setScriptOpen((open) => !open)}
+              aria-label={t("Script")}
+              aria-pressed={scriptOpen}
+              title={t(scriptOpen ? "Hide script" : "Script")}
             >
-              {run?.status === "running" ? (
-                <Loader2 size={13} className="animate-spin" />
+              <Pencil size={13} strokeWidth={1.9} />
+            </button>
+          ) : (
+            <button
+              type="button"
+              className={CELL_BUTTON}
+              onClick={
+                cell.kind === "code"
+                  ? () => setCodePreview((value) => !value)
+                  : onTogglePreview
+              }
+              aria-label={t(
+                (cell.kind === "code" ? codePreview : previewing)
+                  ? "Edit"
+                  : "Preview",
+              )}
+              title={t(
+                (cell.kind === "code" ? codePreview : previewing)
+                  ? "Edit"
+                  : "Preview",
+              )}
+            >
+              {(cell.kind === "code" ? codePreview : previewing) ? (
+                <Pencil size={13} strokeWidth={1.9} />
               ) : (
-                <Play size={13} strokeWidth={2} />
+                <Eye size={14} strokeWidth={1.9} />
               )}
             </button>
-          </>
-        )}
-        <button
-          type="button"
-          className={CELL_BUTTON}
-          onClick={() => onMove(-1)}
-          disabled={index === 0}
-          aria-label={t("Move up")}
-        >
-          <ArrowUp size={13} strokeWidth={2} />
-        </button>
-        <button
-          type="button"
-          className={CELL_BUTTON}
-          onClick={() => onMove(1)}
-          disabled={index === total - 1}
-          aria-label={t("Move down")}
-        >
-          <ArrowDown size={13} strokeWidth={2} />
-        </button>
-        <button
-          type="button"
-          className={CELL_BUTTON}
-          onClick={onRemove}
-          aria-label={t("Delete cell")}
-        >
-          <Trash2 size={13} strokeWidth={2} />
-        </button>
+          )}
+          <div ref={menuRef} className="relative">
+            <button
+              type="button"
+              className={CELL_BUTTON}
+              onClick={() => setMenuOpen((open) => !open)}
+              aria-label={t("More actions")}
+              title={t("More actions")}
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
+            >
+              <MoreHorizontal size={15} strokeWidth={1.9} />
+            </button>
+            {menuOpen ? (
+              <div
+                role="menu"
+                className="absolute right-0 top-full z-30 mt-1 w-40 rounded-xl border border-[var(--border)] bg-[var(--card)] p-1 shadow-xl"
+              >
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={index === 0}
+                  onClick={() => {
+                    onMove(-1);
+                    setMenuOpen(false);
+                  }}
+                  className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[12px] text-[var(--foreground)] transition-colors hover:bg-[color-mix(in_srgb,var(--muted)_75%,transparent)] disabled:pointer-events-none disabled:opacity-35"
+                >
+                  <ArrowUp size={13} strokeWidth={1.9} />
+                  {t("Move up")}
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={index === total - 1}
+                  onClick={() => {
+                    onMove(1);
+                    setMenuOpen(false);
+                  }}
+                  className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[12px] text-[var(--foreground)] transition-colors hover:bg-[color-mix(in_srgb,var(--muted)_75%,transparent)] disabled:pointer-events-none disabled:opacity-35"
+                >
+                  <ArrowDown size={13} strokeWidth={1.9} />
+                  {t("Move down")}
+                </button>
+                <div className="my-1 h-px bg-[color-mix(in_srgb,var(--border)_55%,transparent)]" />
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    onRemove();
+                    setMenuOpen(false);
+                  }}
+                  className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[12px] text-[var(--destructive,var(--foreground))] transition-colors hover:bg-[color-mix(in_srgb,var(--destructive)_10%,transparent)]"
+                >
+                  <Trash2 size={13} strokeWidth={1.9} />
+                  {t("Delete cell")}
+                </button>
+              </div>
+            ) : null}
+          </div>
+        </div>
       </div>
 
       {cell.kind === "geogebra" ? (
         <BoardCellBody script={cell.source} />
       ) : cell.kind === "code" && codePreview && cell.source.trim() ? (
-        <div className="px-2 py-2">
+        <div className="px-2.5 pb-1 pt-1.5">
           <RichCodeBlock
             raw={cell.source}
             lang={normalizeCellLanguage(cell.language)}
           />
         </div>
       ) : cell.kind === "markdown" && previewing && cell.source.trim() ? (
-        <div className="px-3 py-2.5 text-[13px]">
+        <div className="px-3.5 pb-3 pt-1.5 text-[13.5px] leading-relaxed">
           <RichMarkdownRenderer content={cell.source} enableMath enableCode enableMermaid />
         </div>
       ) : (
@@ -862,7 +1078,11 @@ function CellCard({
               ? t("print('hello')")
               : t("Write a note, with $math$ in Markdown.")
           }
-          className="block w-full resize-y bg-transparent px-3 py-2.5 font-mono text-[12.5px] leading-relaxed text-[var(--foreground)] outline-none placeholder:text-[color-mix(in_srgb,var(--muted-foreground)_60%,transparent)]"
+          className={`block w-full resize-y bg-transparent px-3.5 py-2 text-[var(--foreground)] outline-none placeholder:text-[color-mix(in_srgb,var(--muted-foreground)_55%,transparent)] ${
+            cell.kind === "code"
+              ? "font-mono text-[12.5px] leading-relaxed"
+              : "text-[13.5px] leading-6"
+          }`}
         />
       )}
 
@@ -873,8 +1093,47 @@ function CellCard({
           spellCheck={false}
           onChange={(event) => onChange({ source: event.target.value })}
           placeholder={t("GeoGebra commands, one per line.")}
-          className="block w-full resize-y border-t border-[color-mix(in_srgb,var(--border)_35%,transparent)] bg-transparent px-3 py-2.5 font-mono text-[12.5px] leading-relaxed text-[var(--foreground)] outline-none placeholder:text-[color-mix(in_srgb,var(--muted-foreground)_60%,transparent)]"
+          className="block w-full resize-y border-t border-[color-mix(in_srgb,var(--border)_45%,transparent)] bg-[color-mix(in_srgb,var(--muted)_18%,transparent)] px-3.5 py-2.5 font-mono text-[12.5px] leading-relaxed text-[var(--foreground)] outline-none placeholder:text-[color-mix(in_srgb,var(--muted-foreground)_55%,transparent)]"
         />
+      ) : null}
+
+      {cell.kind === "code" ? (
+        <div className="flex items-center justify-between gap-2 px-2.5 pb-2 pt-0.5">
+          <label
+            title={t("Language")}
+            className="inline-flex items-center rounded-lg px-1.5 py-0.5 transition-colors hover:bg-[color-mix(in_srgb,var(--muted)_60%,transparent)]"
+          >
+            <span className="sr-only">{t("Language")}</span>
+            <select
+              value={normalizeCellLanguage(cell.language)}
+              onChange={(event) =>
+                onChange({ language: normalizeCellLanguage(event.target.value) })
+              }
+              aria-label={t("Language")}
+              className="cursor-pointer bg-transparent pr-1 text-[11px] font-medium text-[var(--muted-foreground)] outline-none hover:text-[var(--foreground)]"
+            >
+              {CODE_LANGUAGE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {t(option.label)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            type="button"
+            onClick={onRun}
+            disabled={!cell.source.trim() || running}
+            aria-label={t("Run cell")}
+            className="inline-flex h-7 items-center gap-1.5 rounded-lg bg-[var(--primary)] px-2.5 text-[11.5px] font-semibold text-[var(--primary-foreground)] shadow-sm transition hover:brightness-95 active:brightness-90 disabled:pointer-events-none disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+          >
+            {running ? (
+              <Loader2 size={12} className="animate-spin" />
+            ) : (
+              <Play size={12} strokeWidth={2.2} fill="currentColor" />
+            )}
+            {t(running ? "Running…" : "Run cell")}
+          </button>
+        </div>
       ) : null}
 
       {run ? <CellOutput run={run} /> : null}
@@ -921,7 +1180,7 @@ function CellOutput({ run }: { run: CellRun }) {
 
   if (run.status === "running") {
     return (
-      <div className="flex items-center gap-2 border-t border-[color-mix(in_srgb,var(--border)_30%,transparent)] px-3 py-2 text-[11.5px] text-[var(--muted-foreground)]">
+      <div className="flex items-center gap-2 border-t border-[color-mix(in_srgb,var(--border)_40%,transparent)] px-3.5 py-2.5 text-[11.5px] text-[var(--muted-foreground)]">
         <Loader2 size={12} className="animate-spin" />
         {t("Running…")}
       </div>
@@ -930,7 +1189,7 @@ function CellOutput({ run }: { run: CellRun }) {
 
   if (run.status === "error") {
     return (
-      <div className="border-t border-[color-mix(in_srgb,var(--border)_30%,transparent)] px-3 py-2 text-[11.5px] text-[var(--destructive,var(--foreground))]">
+      <div className="border-t border-[color-mix(in_srgb,var(--border)_40%,transparent)] px-3.5 py-2.5 text-[11.5px] text-[var(--destructive,var(--foreground))]">
         {run.message}
       </div>
     );
@@ -940,7 +1199,7 @@ function CellOutput({ run }: { run: CellRun }) {
   const failed = Boolean(result.error) || result.exit_code !== 0 || result.timed_out;
 
   return (
-    <div className="border-t border-[color-mix(in_srgb,var(--border)_30%,transparent)] bg-[color-mix(in_srgb,var(--muted)_28%,var(--card))] px-3 py-2 text-[12.5px]">
+    <div className="border-t border-[color-mix(in_srgb,var(--border)_40%,transparent)] bg-[color-mix(in_srgb,var(--muted)_24%,var(--card))] px-3.5 py-2.5 text-[12.5px]">
       {result.error ? (
         <p className="whitespace-pre-wrap text-[var(--destructive,var(--foreground))]">
           {result.error}

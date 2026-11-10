@@ -81,6 +81,11 @@ function isTagMap(value: unknown): value is Record<string, NotebookTag> {
   );
 }
 
+function isNameMap(value: unknown): value is Record<string, string> {
+  if (!value || typeof value !== "object") return false;
+  return Object.values(value).every((name) => typeof name === "string");
+}
+
 /**
  * Pull the hidden `dt-graph` block out of the page, returning the remaining
  * Markdown (the cells) and the graph. A malformed block is dropped rather than
@@ -91,12 +96,15 @@ export function splitNotebookGraph(markdown: string): {
   graph: NotebookGraph;
   /** Cell ids in order, so links survive a reload (ids are otherwise fresh). */
   cellIds: string[];
+  /** Learner-given cell names, keyed by cell id. */
+  names: Record<string, string>;
 } {
   const text = String(markdown ?? "");
   const lines = text.split("\n");
   const bodyLines: string[] = [];
   let graph = emptyNotebookGraph();
   let cellIds: string[] = [];
+  let names: Record<string, string> = {};
   let found = false;
 
   let i = 0;
@@ -144,6 +152,8 @@ export function splitNotebookGraph(markdown: string): {
             (id): id is string => typeof id === "string",
           );
         }
+        const rawNames = (parsed as { names?: unknown }).names;
+        names = isNameMap(rawNames) ? rawNames : {};
         found = true;
       }
     } catch {
@@ -151,18 +161,19 @@ export function splitNotebookGraph(markdown: string): {
     }
   }
 
-  return { body: bodyLines.join("\n"), graph, cellIds };
+  return { body: bodyLines.join("\n"), graph, cellIds, names };
 }
 
 /**
  * Write the graph back as a hidden block, after the cells. Nothing is written
- * when the graph is empty, so a notebook that never used the graph view stays
- * plain Markdown.
+ * when both the graph and the cell names are empty, so a notebook that never
+ * used the graph view stays plain Markdown.
  */
 export function appendNotebookGraph(
   markdown: string,
   graph: NotebookGraph,
   cellIds: string[],
+  names: Record<string, string> = {},
 ): string {
   const known = new Set(cellIds);
   const positions = Object.fromEntries(
@@ -174,15 +185,27 @@ export function appendNotebookGraph(
   const tags = Object.fromEntries(
     Object.entries(graph.tags).filter(([id]) => known.has(id)),
   );
+  const cellNames = Object.fromEntries(
+    Object.entries(names)
+      .filter(([id, name]) => known.has(id) && name.trim())
+      .map(([id, name]) => [id, name.trim()]),
+  );
   if (
     !edges.length &&
     !Object.keys(positions).length &&
-    !Object.keys(tags).length
+    !Object.keys(tags).length &&
+    !Object.keys(cellNames).length
   ) {
     return markdown;
   }
 
-  const payload = JSON.stringify({ cells: cellIds, positions, edges, tags });
+  const payload = JSON.stringify({
+    cells: cellIds,
+    positions,
+    edges,
+    tags,
+    names: cellNames,
+  });
   const block = `\`\`\`dt-graph\n${payload}\n\`\`\``;
   const base = String(markdown ?? "").replace(/\s+$/, "");
   return `${base ? `${base}\n\n` : ""}${block}\n`;

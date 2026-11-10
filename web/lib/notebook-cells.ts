@@ -13,6 +13,8 @@ export interface NotebookCell {
   kind: "markdown" | "code" | "geogebra";
   source: string;
   language?: NotebookCellLanguage;
+  /** Learner-given name, shown above the cell's kind label. */
+  name?: string;
 }
 
 export const CODE_LANGUAGES: NotebookCellLanguage[] = [
@@ -78,6 +80,25 @@ function isGeogebraFence(language: string): boolean {
 /** A fresh notebook: one note cell, one code cell. */
 export function defaultNotebookCells(): NotebookCell[] {
   return [createMarkdownCell(), createCodeCell()];
+}
+
+/**
+ * Reorder cells by dropping one cell onto another. Moving a cell downward puts
+ * it after the target; moving it upward puts it before the target.
+ */
+export function moveNotebookCell(
+  cells: NotebookCell[],
+  fromId: string,
+  toId: string,
+): NotebookCell[] {
+  const from = cells.findIndex((cell) => cell.id === fromId);
+  const to = cells.findIndex((cell) => cell.id === toId);
+  if (from < 0 || to < 0 || from === to) return cells;
+  const next = [...cells];
+  const [moved] = next.splice(from, 1);
+  const target = next.findIndex((cell) => cell.id === toId);
+  next.splice(from < to ? target + 1 : target, 0, moved);
+  return next;
 }
 
 const FENCE_RE = /^\s*(`{3,}|~{3,})\s*([A-Za-z0-9_+#-]*)\s*$/;

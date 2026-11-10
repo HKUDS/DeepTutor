@@ -12,6 +12,7 @@
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { FileText, Shapes, SquareTerminal } from "lucide-react";
 import {
   Background,
   BaseEdge,
@@ -55,6 +56,12 @@ const NODE_WIDTH = 264;
 const NODE_GAP_X = 320;
 const NODE_GAP_Y = 260;
 
+const ADD_CELL_OPTIONS = [
+  { kind: "markdown" as const, icon: FileText, label: "Note cell" },
+  { kind: "code" as const, icon: SquareTerminal, label: "Code cell" },
+  { kind: "geogebra" as const, icon: Shapes, label: "Board cell" },
+];
+
 function defaultPosition(index: number) {
   return {
     x: 60 + (index % 3) * NODE_GAP_X,
@@ -66,24 +73,32 @@ function CellNodeView({ data }: NodeProps<CellNode>) {
   const { t } = useTranslation();
   const cell = data.cell;
   const empty = t("(empty)");
-  const label =
+  const kindLabel =
     cell.kind === "code"
       ? t("Code")
       : cell.kind === "geogebra"
         ? t("GeoGebra board")
         : t("Note");
+  const name = cell.name?.trim() ?? "";
   return (
     <div
       style={{
         width: NODE_WIDTH,
         ...(data.tag ? { borderTop: `3px solid ${data.tag.color}` } : {}),
       }}
-      className="overflow-hidden rounded-xl border border-[color-mix(in_srgb,var(--border)_65%,transparent)] bg-[var(--card)] shadow-sm"
+      className="overflow-hidden rounded-2xl border border-[color-mix(in_srgb,var(--border)_65%,transparent)] bg-[var(--card)] shadow-sm"
     >
-      <div className="flex items-center justify-between gap-1 border-b border-[color-mix(in_srgb,var(--border)_35%,transparent)] px-2.5 py-1">
-        <span className="text-[10.5px] font-medium uppercase tracking-wide text-[var(--muted-foreground)]">
-          {label}
-        </span>
+      <div className="flex items-center justify-between gap-1 border-b border-[color-mix(in_srgb,var(--border)_35%,transparent)] px-2.5 py-1.5">
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-[12.5px] font-medium text-[var(--foreground)]">
+            {name || kindLabel}
+          </div>
+          {name ? (
+            <div className="truncate text-[10px] text-[var(--muted-foreground)]">
+              {kindLabel}
+            </div>
+          ) : null}
+        </div>
         {data.tag ? <NotebookTagChip tag={data.tag} /> : null}
       </div>
       <div className="max-h-[240px] overflow-auto px-2.5 py-2 text-[12px]">
@@ -188,6 +203,7 @@ export default function NotebookGraphView({
   onCellChange,
   onUploadImage,
   onTagChange,
+  onAddCell,
 }: {
   cells: NotebookCell[];
   graph: NotebookGraph;
@@ -196,6 +212,8 @@ export default function NotebookGraphView({
   /** Upload an image and return its URL, for a link label. */
   onUploadImage?: (file: File) => Promise<string>;
   onTagChange?: (id: string, tag: NotebookTag | null) => void;
+  /** Add a new cell; the list appends it after the current cells. */
+  onAddCell?: (kind: NotebookCell["kind"]) => void;
 }) {
   const { t } = useTranslation();
   const [nodes, setNodes, onNodesChange] = useNodesState<CellNode>(
@@ -210,16 +228,41 @@ export default function NotebookGraphView({
     null,
   );
   const [editingCellId, setEditingCellId] = useState<string | null>(null);
-  // Tags are edited from the list or the cell dialog; keep the nodes' chips in
-  // step without rebuilding the layout.
+  // Keep nodes aligned with the cell list: edits update their data, new cells
+  // appear as cards after the previous cell in the list, and deleted cells drop
+  // out. Existing nodes keep the position the learner dragged them to.
   useEffect(() => {
-    setNodes((prev) =>
-      prev.map((node) => ({
-        ...node,
-        data: { ...node.data, tag: graph.tags[node.id] },
-      })),
-    );
-  }, [graph.tags, setNodes]);
+    setNodes((prev) => {
+      const current = new Map(prev.map((node) => [node.id, node]));
+      let previous: { x: number; y: number } | null = null;
+      return cells.map((cell, index) => {
+        const existing = current.get(cell.id);
+        if (existing) {
+          previous = existing.position;
+          return {
+            ...existing,
+            data: {
+              ...existing.data,
+              cell,
+              tag: graph.tags[cell.id],
+            },
+          };
+        }
+        const position =
+          graph.positions[cell.id] ??
+          (previous
+            ? { x: previous.x, y: previous.y + NODE_GAP_Y }
+            : defaultPosition(index));
+        previous = position;
+        return {
+          id: cell.id,
+          type: "cell" as const,
+          position,
+          data: { cell, tag: graph.tags[cell.id] },
+        };
+      });
+    });
+  }, [cells, graph.tags, graph.positions, setNodes]);
   const labelRef = useRef<HTMLTextAreaElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
 
@@ -383,6 +426,22 @@ export default function NotebookGraphView({
         </ReactFlow>
       </ReactFlowProvider>
 
+      {onAddCell ? (
+        <div className="pointer-events-none absolute bottom-4 left-1/2 z-10 flex -translate-x-1/2 items-center gap-0.5 rounded-full border border-[color-mix(in_srgb,var(--border)_65%,transparent)] bg-[color-mix(in_srgb,var(--card)_94%,transparent)] p-1 shadow-lg backdrop-blur">
+          {ADD_CELL_OPTIONS.map(({ kind, icon: Icon, label }) => (
+            <button
+              key={kind}
+              type="button"
+              onClick={() => onAddCell(kind)}
+              className="pointer-events-auto inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11.5px] font-medium text-[var(--muted-foreground)] transition-colors hover:bg-[color-mix(in_srgb,var(--muted)_70%,transparent)] hover:text-[var(--foreground)]"
+            >
+              <Icon size={13} strokeWidth={1.8} aria-hidden />
+              {t(label)}
+            </button>
+          ))}
+        </div>
+      ) : null}
+
       {editingCell ? (
         <div
           role="dialog"
@@ -395,15 +454,29 @@ export default function NotebookGraphView({
             onClick={(event) => event.stopPropagation()}
           >
             <div className="flex shrink-0 items-center justify-between border-b border-[color-mix(in_srgb,var(--border)_45%,transparent)] px-4 py-2.5">
-              <h2 className="text-[13px] font-semibold text-[var(--foreground)]">
-                {t(
-                  editingCell.kind === "code"
-                    ? "Code"
-                    : editingCell.kind === "geogebra"
-                      ? "GeoGebra board"
-                      : "Note",
-                )}
-              </h2>
+              <div className="min-w-0">
+                <h2 className="truncate text-[13px] font-semibold text-[var(--foreground)]">
+                  {editingCell.name?.trim() ||
+                    t(
+                      editingCell.kind === "code"
+                        ? "Code"
+                        : editingCell.kind === "geogebra"
+                          ? "GeoGebra board"
+                          : "Note",
+                    )}
+                </h2>
+                {editingCell.name?.trim() ? (
+                  <p className="truncate text-[10px] text-[var(--muted-foreground)]">
+                    {t(
+                      editingCell.kind === "code"
+                        ? "Code"
+                        : editingCell.kind === "geogebra"
+                          ? "GeoGebra board"
+                          : "Note",
+                    )}
+                  </p>
+                ) : null}
+              </div>
               <button
                 type="button"
                 onClick={() => setEditingCellId(null)}

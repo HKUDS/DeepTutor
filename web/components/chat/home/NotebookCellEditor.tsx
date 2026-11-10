@@ -28,6 +28,9 @@ const Geogebra = dynamic(() => import("@/components/Geogebra"), { ssr: false });
 const TEXTAREA =
   "block w-full resize-y rounded-lg border border-[var(--border)] bg-transparent px-2.5 py-2 font-mono text-[12.5px] leading-relaxed text-[var(--foreground)] outline-none placeholder:text-[color-mix(in_srgb,var(--muted-foreground)_60%,transparent)]";
 
+const NOTE_TEXTAREA =
+  "block w-full resize-y rounded-lg border border-[var(--border)] bg-transparent px-2.5 py-2 text-[13.5px] leading-6 text-[var(--foreground)] outline-none placeholder:text-[color-mix(in_srgb,var(--muted-foreground)_60%,transparent)]";
+
 export default function NotebookCellEditor({
   cell,
   onChange,
@@ -41,6 +44,12 @@ export default function NotebookCellEditor({
 }) {
   const { t } = useTranslation();
   const [preview, setPreview] = useState(false);
+  const kindLabel =
+    cell.kind === "code"
+      ? t("Code")
+      : cell.kind === "geogebra"
+        ? t("GeoGebra board")
+        : t("Note");
 
   let body: ReactNode;
   if (cell.kind === "code") {
@@ -123,7 +132,7 @@ export default function NotebookCellEditor({
             spellCheck={false}
             onChange={(event) => onChange({ source: event.target.value })}
             placeholder={t("Write a note, with $math$ in Markdown.")}
-            className={TEXTAREA}
+            className={NOTE_TEXTAREA}
           />
         )}
       </>
@@ -132,6 +141,18 @@ export default function NotebookCellEditor({
 
   return (
     <div className="space-y-2">
+      <div className="space-y-1">
+        <span className="text-[11px] text-[var(--muted-foreground)]">
+          {t("Cell name")}
+        </span>
+        <input
+          value={cell.name ?? ""}
+          onChange={(event) => onChange({ name: event.target.value })}
+          placeholder={kindLabel}
+          aria-label={t("Cell name")}
+          className="block w-full rounded-lg border border-[var(--border)] bg-transparent px-2.5 py-1.5 text-[12.5px] text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)]"
+        />
+      </div>
       {onTagChange ? (
         <div className="flex items-center justify-between gap-2">
           <span className="text-[11px] text-[var(--muted-foreground)]">

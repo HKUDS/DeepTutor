@@ -6298,5 +6298,8 @@
   "Connect in order": "Der Reihe nach verbinden",
   "Add image": "Bild hinzufügen",
   "Retry save": "Speichern erneut",
-  "Back to Notes": "Zurück zu Notizen"
+  "Back to Notes": "Zurück zu Notizen",
+  "Cell name": "Zellenname",
+  "Rename cell": "Zelle umbenennen",
+  "Drag to reorder": "Zum Umsortieren ziehen"
 }

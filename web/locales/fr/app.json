@@ -6406,5 +6406,8 @@
   "Connect in order": "Relier dans l’ordre",
   "Add image": "Ajouter une image",
   "Retry save": "Réessayer",
-  "Back to Notes": "Retour aux notes"
+  "Back to Notes": "Retour aux notes",
+  "Cell name": "Nom de la cellule",
+  "Rename cell": "Renommer la cellule",
+  "Drag to reorder": "Glisser pour réorganiser"
 }

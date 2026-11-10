@@ -6310,5 +6310,8 @@
   "Connect in order": "Connect in order",
   "Add image": "Add image",
   "Retry save": "Retry save",
-  "Back to Notes": "Back to Notes"
+  "Back to Notes": "Back to Notes",
+  "Cell name": "Cell name",
+  "Rename cell": "Rename cell",
+  "Drag to reorder": "Drag to reorder"
 }

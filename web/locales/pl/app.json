@@ -6325,5 +6325,8 @@
   "Connect in order": "Połącz w kolejności",
   "Add image": "Dodaj obraz",
   "Retry save": "Spróbuj zapisać",
-  "Back to Notes": "Powrót do notatek"
+  "Back to Notes": "Powrót do notatek",
+  "Cell name": "Nazwa komórki",
+  "Rename cell": "Zmień nazwę komórki",
+  "Drag to reorder": "Przeciągnij, aby zmienić kolejność"
 }
