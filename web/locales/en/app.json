@@ -2830,6 +2830,8 @@
   "Environment variables": "Environment variables",
   "Remote (SSE / streamable HTTP)": "Remote (SSE / streamable HTTP)",
   "HTTP headers": "HTTP headers",
+  "Authentication": "Authentication",
+  "OAuth": "OAuth",
   "Tool timeout (seconds)": "Tool timeout (seconds)",
   "Enabled tools (one per line, * = all)": "Enabled tools (one per line, * = all)",
   "Connected — {{count}} tools detected": "Connected — {{count}} tools detected",
