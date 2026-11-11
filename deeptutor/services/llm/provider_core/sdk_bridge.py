@@ -338,15 +338,36 @@ def _error_detail(message: Any, rejected_tool_errors: list[str] | None = None) -
     """
     detail = _result_detail(message)
     for error in rejected_tool_errors or []:
-        if not error:
+        core = _rejection_core(error)
+        if not core:
             continue
-        # A ``tool_result`` block often wraps the sentence the CLI already
-        # reported (an ``Error: `` prefix around it); containment either way
-        # marks it as the same fact, not new evidence.
-        if error in detail or detail in error:
+        # The ``tool_result`` block usually wraps the sentence the CLI already
+        # put in ``errors[]`` (an ``Error: `` prefix around it), so a rejection
+        # whose text the detail already contains is the same fact, not new
+        # evidence. The comparison is one-way on purpose: a short ``errors[]``
+        # entry such as "Error" is contained in every rejection, and letting
+        # that direction win would drop the only mention of the tool that was
+        # actually refused.
+        if core in detail:
             continue
         detail = f"{detail}; rejected tool call: {error}"
     return detail
+
+
+def _rejection_core(text: str) -> str:
+    """The part of a rejected-tool message that identifies the rejection.
+
+    ``_tool_result_errors`` has already stripped the ``<tool_use_error>`` tags;
+    what usually remains is the CLI's own ``Error: `` prefix in front of the
+    sentence it also reports elsewhere. Dropping that prefix lets the caller
+    recognise the sentence instead of appending it twice.
+    """
+    core = text.strip()
+    lowered = core.lower()
+    for prefix in ("error:", "error :"):
+        if lowered.startswith(prefix):
+            return core[len(prefix) :].strip()
+    return core
 
 
 def _tool_result_errors(message: Any) -> list[str]:

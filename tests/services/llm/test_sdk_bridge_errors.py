@@ -305,3 +305,38 @@ def test_error_detail_appends_only_new_rejections() -> None:
     assert _error_detail(frame, ["", "error_max_turns"]) == (
         "the turn hit its maximum number of turns (error_max_turns)"
     )
+
+
+def test_a_short_cli_reason_never_swallows_the_rejection() -> None:
+    """Dedup runs one way: evidence in the detail is redundant, not vice versa.
+
+    ``errors[]`` sometimes carries a stub ("Error") rather than the sentence.
+    Comparing the detail against the rejection as well would read that stub as
+    "already reported" and drop the only mention of the refused tool — the
+    exact silence #2539 is about.
+    """
+    frame = {
+        "is_error": True,
+        "subtype": "error_during_execution",
+        "result": None,
+        "errors": ["Error"],
+    }
+
+    detail = _error_detail(frame, ["Error: No such tool available: write_note"])
+
+    assert "No such tool available: write_note" in detail
+    assert detail.startswith("Error; rejected tool call:")
+
+
+def test_the_wrapped_rejection_is_still_recognised_as_the_same_fact() -> None:
+    """The ``Error: `` prefix the CLI wraps around a sentence is not new evidence."""
+    frame = {
+        "is_error": True,
+        "subtype": "error_max_turns",
+        "result": None,
+        "errors": ["No such tool available: write_note"],
+    }
+
+    assert _error_detail(frame, ["Error: No such tool available: write_note"]) == (
+        "No such tool available: write_note"
+    )
