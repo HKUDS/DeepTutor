@@ -6587,5 +6587,11 @@
   "Zoom level": "Mức thu phóng",
   "Reset zoom": "Đặt lại thu phóng",
   "Fit text": "Vừa văn bản",
-  "Fit page": "Vừa trang"
+  "Fit page": "Vừa trang",
+  "Drag to pan, scroll to zoom": "Kéo để di chuyển, cuộn để thu phóng",
+  "Image preview": "Xem trước hình ảnh",
+  "Loading image…": "Đang tải hình ảnh…",
+  "Page {{n}}": "Trang {{n}}",
+  "This image could not be rendered.": "Không thể hiển thị hình ảnh này.",
+  "Zoom image": "Phóng to hình ảnh"
 }

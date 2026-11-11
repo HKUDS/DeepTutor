@@ -21,6 +21,10 @@ export interface PdfPageGeometrySource {
     height: number;
     transform: number[];
   };
+  getOperatorList?(): Promise<{
+    fnArray: number[];
+    argsArray: unknown[];
+  }>;
 }
 
 /** A page that can also be painted, which is what measuring the ink needs. */
@@ -259,4 +263,183 @@ async function measureInkBox(page: PdfPageMeasureSource): Promise<NormalisedBox 
   await renderPage.call(page, { canvas, viewport }).promise;
   const { data } = context.getImageData(0, 0, canvas.width, canvas.height);
   return inkBoxFromPixels(data, canvas.width, canvas.height);
+}
+
+type Matrix = [number, number, number, number, number, number];
+
+const IDENTITY: Matrix = [1, 0, 0, 1, 0, 0];
+/** Picture boxes smaller than this share of the page are not worth a hotspot. */
+const MIN_IMAGE_AREA = 0.003;
+/**
+ * A hotspot covering this share of the page is the page's own bitmap — a scan,
+ * or a background image behind the text — not a picture inside it.
+ *
+ * Such a box is not a click target: it covers the whole text layer, so it would
+ * swallow every selection, every highlight and every existing annotation on the
+ * page. The page is still readable, just without a "zoom the picture" affordance
+ * over the text.
+ */
+const FULL_PAGE_AREA = 0.85;
+/** Upper bound on click targets per page, for a page of many small pictures. */
+const MAX_HOTSPOTS = 60;
+
+function multiply(m: Matrix, n: Matrix): Matrix {
+  return [
+    m[0] * n[0] + m[2] * n[1],
+    m[1] * n[0] + m[3] * n[1],
+    m[0] * n[2] + m[2] * n[3],
+    m[1] * n[2] + m[3] * n[3],
+    m[0] * n[4] + m[2] * n[5] + m[4],
+    m[1] * n[4] + m[3] * n[5] + m[5],
+  ];
+}
+
+function apply(m: Matrix, x: number, y: number): [number, number] {
+  return [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]];
+}
+
+/**
+ * Boxes of the images a page paints, in page-normalised coordinates.
+ *
+ * A PDF page is one bitmap by the time it reaches the DOM, so there is no
+ * element to click. The operator list still knows where each image was placed:
+ * `paintImageXObject` draws the unit square through the current transformation
+ * matrix, so replaying save/restore/transform/form-object pairing recovers the
+ * rectangle each picture covers.
+ */
+export function imageBoxesFromOperatorList(
+  list: { fnArray: number[]; argsArray: unknown[] },
+  ops: Readonly<Record<string, number>>,
+  viewport: { width: number; height: number; transform: number[] },
+): NormalisedBox[] {
+  const paintImage = new Set(
+    [
+      ops.paintImageXObject,
+      ops.paintInlineImageXObject,
+      ops.paintImageMaskXObject,
+    ].filter((value): value is number => typeof value === "number"),
+  );
+  if (!paintImage.size) return [];
+
+  const stack: Matrix[] = [];
+  let ctm: Matrix = IDENTITY;
+  // >0 while replaying an annotation appearance stream (see below).
+  let annotationDepth = 0;
+  const boxes: NormalisedBox[] = [];
+
+  for (let index = 0; index < list.fnArray.length; index += 1) {
+    const fn = list.fnArray[index];
+    const args = list.argsArray[index];
+    if (fn === ops.save) {
+      stack.push([...ctm] as Matrix);
+      continue;
+    }
+    if (fn === ops.restore) {
+      ctm = stack.pop() ?? IDENTITY;
+      continue;
+    }
+    if (fn === ops.transform) {
+      ctm = multiply(ctm, args as Matrix);
+      continue;
+    }
+    if (fn === ops.paintFormXObjectBegin) {
+      stack.push([...ctm] as Matrix);
+      // A form with no Matrix entry is legal — pdf.js reports `null` for it,
+      // and generators emit them. An omitted Matrix means the identity, so
+      // multiplying by it must be a no-op; multiplying by `null` throws, and
+      // the caller treats the throw as "this page has no pictures", which
+      // dropped every hotspot on the page, including the ones outside the
+      // form.
+      const formMatrix = (args as [Matrix | null | undefined, unknown] | null)?.[0];
+      ctm = multiply(ctm, formMatrix ?? IDENTITY);
+      continue;
+    }
+    if (fn === ops.paintFormXObjectEnd) {
+      ctm = stack.pop() ?? IDENTITY;
+      continue;
+    }
+    // An annotation's appearance stream is drawn into its own canvas, and the
+    // renderer resets the transform to the annotation's own space first
+    // (`CanvasGraphics.beginAnnotation`). The images inside — a stamp, a
+    // signature — are therefore NOT in page space, and treating their CTM as
+    // page space put the hotspot near the page origin. The whole stream is
+    // skipped: those pictures have no page-space click target.
+    if (fn === ops.beginAnnotation) {
+      annotationDepth += 1;
+      continue;
+    }
+    if (fn === ops.endAnnotation) {
+      annotationDepth = Math.max(0, annotationDepth - 1);
+      continue;
+    }
+    if (annotationDepth > 0) continue;
+    if (!paintImage.has(fn)) continue;
+
+    const corners = [
+      apply(ctm, 0, 0),
+      apply(ctm, 1, 0),
+      apply(ctm, 0, 1),
+      apply(ctm, 1, 1),
+    ].map(([x, y]) => {
+      const [px, py] = apply(viewport.transform as Matrix, x, y);
+      return { x: px / viewport.width, y: py / viewport.height };
+    });
+    const xs = corners.map((corner) => corner.x);
+    const ys = corners.map((corner) => corner.y);
+    const box: NormalisedBox = {
+      x0: Math.max(0, Math.min(...xs)),
+      y0: Math.max(0, Math.min(...ys)),
+      x1: Math.min(1, Math.max(...xs)),
+      y1: Math.min(1, Math.max(...ys)),
+    };
+    if (box.x1 - box.x0 <= 0 || box.y1 - box.y0 <= 0) continue;
+    if ((box.x1 - box.x0) * (box.y1 - box.y0) < MIN_IMAGE_AREA) continue;
+    boxes.push(box);
+  }
+
+  // Duplicates arise from masks painted on top of their own picture; keeping
+  // the first of each rounded rectangle is enough for a click target.
+  const seen = new Set<string>();
+  return boxes
+    .filter((box) => {
+      const key = [box.x0, box.y0, box.x1, box.y1]
+        .map((value) => value.toFixed(2))
+        .join(":");
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    // A page-filling box is the page bitmap, not a picture in it: keeping it
+    // would put one button over the entire text layer.
+    .filter(
+      (box) => (box.x1 - box.x0) * (box.y1 - box.y0) < FULL_PAGE_AREA,
+    )
+    .sort(
+      (a, b) =>
+        (b.x1 - b.x0) * (b.y1 - b.y0) - (a.x1 - a.x0) * (a.y1 - a.y0),
+    )
+    .slice(0, MAX_HOTSPOTS);
+}
+
+/** Image boxes for one page, or nothing when the page has no pictures. */
+export async function pageImageBoxes(
+  page: PdfPageGeometrySource,
+  ops: Readonly<Record<string, number>> | undefined,
+): Promise<NormalisedBox[]> {
+  if (!ops || typeof page.getOperatorList !== "function") return [];
+  try {
+    const list = await page.getOperatorList();
+    const viewport = page.getViewport({ scale: 1 });
+    return imageBoxesFromOperatorList(
+      { fnArray: [...list.fnArray], argsArray: [...list.argsArray] },
+      ops,
+      {
+        width: viewport.width,
+        height: viewport.height,
+        transform: viewport.transform as number[],
+      },
+    );
+  } catch {
+    return [];
+  }
 }

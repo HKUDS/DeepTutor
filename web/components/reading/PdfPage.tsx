@@ -7,6 +7,7 @@ import type { AnnotationItem } from "@/lib/reading-api";
 import {
   cropLayout,
   measurePageInkBox,
+  pageImageBoxes,
   type NormalisedBox,
 } from "@/lib/pdf-page-geometry";
 import { canvasPixelRatio } from "@/lib/reading-zoom";
@@ -41,6 +42,8 @@ export interface PdfPageProps {
    * neighbour's ratio must never stand in for the page being read.
    */
   onCropRatio?: (locator: number, ratio: number) => void;
+  /** Reports a picture the reader clicked, in page-normalised coordinates. */
+  onImageClick?: (locator: number, box: NormalisedBox) => void;
   /**
    * Cache key for the ink and picture measurements: a page that changes
    * material must never show the previous one's crop.
@@ -77,6 +80,7 @@ export function PdfPage({
   onAnnotationClick,
   cropMargins = false,
   onCropRatio,
+  onImageClick,
   inkKey = `${doc ? "doc" : "none"}:${locator}`,
 }: PdfPageProps) {
   const { t } = useTranslation();
@@ -88,6 +92,8 @@ export function PdfPage({
   // page measured but never painted holds pdf.js's decoded copy just like a
   // rendered one and has to be handed back too.
   const measuredRef = useRef(false);
+  // Same, for the operator list the picture hotspots come from.
+  const picturesMeasuredRef = useRef(false);
   const [ratio, setRatio] = useState<number | null>(null);
   const [failed, setFailed] = useState(false);
   // `undefined` means "not measured yet"; `null` means "measured, nothing to
@@ -107,6 +113,11 @@ export function PdfPage({
   // paint effect ran once before the measurement and again after it — every
   // page drawn twice, at two different widths when the crop landed.
   const awaitingInk = cropMargins && inkBox === undefined;
+  const [imageState, setImageState] = useState<{
+    key: string;
+    boxes: NormalisedBox[];
+  } | null>(null);
+  const imageBoxes = imageState?.key === inkKey ? imageState.boxes : [];
 
   const layout = useMemo(
     () =>
@@ -164,6 +175,41 @@ export function PdfPage({
 
   // -- pictures ------------------------------------------------------------
 
+  // The same render window as the ink measurement, for the same reason: reading
+  // a page's operator list parses it, and `PdfDocumentView` mounts one page per
+  // locator, so doing it on mount read 600 operator lists when a 600-page
+  // document opened. Pictures apply in every fit mode, so there is no crop to
+  // gate on — but the window is too wide: `getOperatorList` runs its own intent
+  // in the worker, which decodes every image on the page at full resolution and
+  // keeps it alive on the main thread until the page is cleaned up. Doing that
+  // for the whole retained window decoded thirteen pages' images at once, past
+  // the canvas budget the visible bitmaps obey. Only the page being read can be
+  // clicked anyway, so only it is measured.
+  const shouldMeasurePictures = active;
+
+  useEffect(() => {
+    if (!shouldMeasurePictures) return;
+    let cancelled = false;
+    // Marked before the await: `getPage` parses the page, so one measured but
+    // never painted still holds pdf.js's copy and has to be handed back.
+    picturesMeasuredRef.current = true;
+    (async () => {
+      const pdfjs = await loadPdfjs();
+      const page = await doc.getPage(locator);
+      if (cancelled) return;
+      const boxes = await pageImageBoxes(
+        page,
+        pdfjs.OPS as unknown as Record<string, number> | undefined,
+      );
+      if (!cancelled) setImageState({ key: inkKey, boxes });
+    })().catch(() => {
+      // A page whose operators cannot be read simply has no hotspots.
+      if (!cancelled) setImageState({ key: inkKey, boxes: [] });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [doc, locator, inkKey, shouldMeasurePictures]);
 
   const height = Math.round(width * (ratio ?? fallbackRatio));
 
@@ -316,13 +362,28 @@ export function PdfPage({
     // `cleanup` waits for a cancelled render to settle before it frees.
     // Only pages that were drawn or measured: asking for the rest would load
     // them.
-    if (retain || !(renderedRef.current || measuredRef.current)) return;
+    if (
+      retain ||
+      !(
+        renderedRef.current ||
+        measuredRef.current ||
+        picturesMeasuredRef.current
+      )
+    ) {
+      return;
+    }
     releasePage(doc, locator);
   }, [retain, doc, locator]);
 
   useEffect(
     () => () => {
-      if (renderedRef.current || measuredRef.current) releasePage(doc, locator);
+      if (
+        renderedRef.current ||
+        measuredRef.current ||
+        picturesMeasuredRef.current
+      ) {
+        releasePage(doc, locator);
+      }
     },
     [doc, locator],
   );
@@ -365,6 +426,43 @@ export function PdfPage({
           height: layout.fullHeight,
         }}
       />
+      {/*
+        Picture hotspots sit UNDER the text layer, not over it.
+
+        A page is one bitmap by the time it reaches the DOM, so the click target
+        is a positioned box. Placing that box above the text layer (which is
+        what DOM order gave us) meant an OCR scan — one picture covering the
+        whole page — put a button over every word: selection, highlights and
+        existing annotations all stopped responding. Underneath, the text layer
+        keeps the pointer and the hotspot only sees clicks that fall through a
+        gap in the text. Page-filling boxes are dropped in the geometry layer
+        for the same reason.
+      */}
+      {onImageClick && imageBoxes.length > 0 && (
+        <div className="pointer-events-none absolute inset-0">
+          {imageBoxes.map((box, index) => (
+            <button
+              key={`image-${index}`}
+              type="button"
+              aria-label={t("Zoom image")}
+              // No `onMouseUp` guard: a selection that ends on the picture must
+              // still reach the reader, or dragging across an image loses the
+              // quote. The click is what opens the viewer.
+              onClick={(event) => {
+                event.stopPropagation();
+                onImageClick(locator, box);
+              }}
+              className="pointer-events-auto absolute cursor-zoom-in rounded-[3px] transition hover:bg-black/[0.05] hover:ring-1 hover:ring-[var(--primary)]/40"
+              style={{
+                left: `${box.x0 * 100}%`,
+                top: `${box.y0 * 100}%`,
+                width: `${(box.x1 - box.x0) * 100}%`,
+                height: `${(box.y1 - box.y0) * 100}%`,
+              }}
+            />
+          ))}
+        </div>
+      )}
       <div
         ref={textLayerRef}
         className="textLayer absolute left-0 top-0"

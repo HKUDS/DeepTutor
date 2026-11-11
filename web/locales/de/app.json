@@ -6587,5 +6587,11 @@
   "Zoom level": "Zoomstufe",
   "Reset zoom": "Zoom zurücksetzen",
   "Fit text": "An Text anpassen",
-  "Fit page": "An Seite anpassen"
+  "Fit page": "An Seite anpassen",
+  "Drag to pan, scroll to zoom": "Ziehen zum Verschieben, scrollen zum Zoomen",
+  "Image preview": "Bildvorschau",
+  "Loading image…": "Bild wird geladen…",
+  "Page {{n}}": "Seite {{n}}",
+  "This image could not be rendered.": "Dieses Bild konnte nicht gerendert werden.",
+  "Zoom image": "Bild vergrößern"
 }

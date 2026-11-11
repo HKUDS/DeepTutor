@@ -7,8 +7,10 @@ import {
 import {
   INK_MEASURE_TIMEOUT_MS,
   cropLayout,
+  imageBoxesFromOperatorList,
   inkBoxFromPixels,
   measurePageInkBox,
+  pageImageBoxes,
 } from "@/lib/pdf-page-geometry";
 
 /**
@@ -173,6 +175,119 @@ describe("crop layout", () => {
   });
 });
 
+describe("picture hotspots", () => {
+  it("comes from the operator list transformation matrix", () => {
+    // The rectangle comes from the current transform matrix, not from the
+    // operator's arguments: `transform` sets where the unit square lands, and
+    // `paintImageXObject` then paints into it.
+    const ops = {
+      save: 10,
+      restore: 11,
+      transform: 12,
+      paintImageXObject: 85,
+      paintInlineImageXObject: 86,
+      paintImageMaskXObject: 87,
+    };
+    const list = {
+      // transform places a 100x50 rectangle at (20, 30) in page space.
+      fnArray: [ops.transform, ops.paintImageXObject],
+      argsArray: [[100, 0, 0, 50, 20, 30], ["img1", 100, 50]],
+    };
+    const boxes = imageBoxesFromOperatorList(list, ops, {
+      width: 200,
+      height: 100,
+      transform: [1, 0, 0, -1, 0, 100],
+    });
+    expect(boxes.length).toBeGreaterThan(0);
+    // The rectangle lands inside the page, normalised to 0..1.
+    for (const box of boxes) {
+      expect(box.x0).toBeGreaterThanOrEqual(0);
+      expect(box.x1).toBeLessThanOrEqual(1);
+      expect(box.y0).toBeGreaterThanOrEqual(0);
+      expect(box.y1).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it("returns nothing for a page with no pictures", () => {
+    const boxes = imageBoxesFromOperatorList(
+      { fnArray: [10], argsArray: [[]] },
+      { paintImageXObject: 85 },
+      { width: 200, height: 100, transform: [1, 0, 0, -1, 0, 100] },
+    );
+    expect(boxes).toEqual([]);
+  });
+
+  /**
+   * A form XObject with no `Matrix` entry is legal, and pdf.js reports it as
+   * `null`. Multiplying by it threw, `pageImageBoxes` swallowed the throw as
+   * "this page has no pictures", and every hotspot on the page disappeared —
+   * including the pictures painted outside the form.
+   */
+  it("keeps a form's pictures when the form omits its Matrix", async () => {
+    const ops = {
+      save: 10,
+      restore: 11,
+      transform: 12,
+      paintFormXObjectBegin: 13,
+      paintFormXObjectEnd: 14,
+      paintImageXObject: 85,
+    };
+    const list = {
+      // One picture inside the form, one outside it. The form has no Matrix.
+      fnArray: [
+        ops.paintFormXObjectBegin,
+        ops.transform,
+        ops.paintImageXObject,
+        ops.paintFormXObjectEnd,
+        ops.transform,
+        ops.paintImageXObject,
+      ],
+      argsArray: [
+        [null, [0, 0, 200, 100]],
+        [100, 0, 0, 50, 20, 30],
+        ["inside"],
+        [],
+        [100, 0, 0, 50, 100, 40],
+        ["outside"],
+      ],
+    };
+    const viewport = { width: 200, height: 100, transform: [1, 0, 0, -1, 0, 100] };
+
+    // The walk itself must not throw: an omitted Matrix means the identity.
+    expect(() =>
+      imageBoxesFromOperatorList(list, ops, viewport),
+    ).not.toThrow();
+
+    const page = {
+      getViewport: () => viewport,
+      getOperatorList: async () => list,
+    };
+    const boxes = await pageImageBoxes(page, ops);
+    // Both pictures, not just the one the form happens to paint first.
+    expect(boxes).toHaveLength(2);
+    const inside = boxes.find((box) => box.x0 < 0.25 && box.x1 < 0.7);
+    const outside = boxes.find((box) => box.x0 >= 0.5);
+    expect(inside).toBeDefined();
+    expect(outside).toBeDefined();
+    // The form's pictures land where their own transform puts them, not at
+    // some origin produced by a broken matrix.
+    expect(inside!.x0).toBeCloseTo(0.1, 2);
+    expect(inside!.x1).toBeCloseTo(0.6, 2);
+    expect(outside!.x0).toBeCloseTo(0.5, 2);
+    expect(outside!.x1).toBeCloseTo(1, 2);
+  });
+});
+
+/**
+ * Measuring the ink box paints a page into a scratch canvas.
+ *
+ * The regression this guards: `PDFPageProxy.render` reads `this._transport` and
+ * `this._stats`, so calling it as a bare function throws. The caller turns a
+ * failed measurement into "nothing to crop", so an unbound call degrades every
+ * page in the document to the full width — silently, with no error surfaced to
+ * the reader. That is exactly what shipped before these tests existed: the
+ * crop button toggled its own `aria-pressed` while the page never changed size.
+ */
 describe("measuring the ink box", () => {
   /**
    * jsdom ships no canvas backend, and the shared setup makes `getContext`
