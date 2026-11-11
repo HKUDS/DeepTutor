@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 import pytest
@@ -12,6 +13,7 @@ from deeptutor.capabilities.protocol import PromptBlock
 from deeptutor.core.context import Attachment, UnifiedContext
 from deeptutor.core.stream import StreamEventType
 from deeptutor.runtime.stream_bus import StreamBus
+from deeptutor.services.llm.exceptions import LLMProviderTransportError
 
 
 def _ctx(**metadata: Any) -> UnifiedContext:
@@ -306,6 +308,104 @@ async def test_loop_falls_back_to_single_pass_on_client_error(
 
     assert isinstance(block, PromptBlock)
     assert "fallback briefing text" in block.content
+
+
+# ---------------------------------------------------------------------------
+# Stream idle timeout (#2539: a connected provider that stops yielding
+# chunks parked the whole turn in ``running`` — the pre-pass runs before the
+# answer loop's watchdog, so nothing else bounded it).
+# ---------------------------------------------------------------------------
+
+
+class _StalledStream:
+    """A stream that yields one chunk, then never produces another."""
+
+    def __init__(self, first: _FakeChunk | None = None) -> None:
+        self._first = first
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        if self._first is not None:
+            chunk, self._first = self._first, None
+            return chunk
+        await asyncio.Event().wait()
+        raise StopAsyncIteration  # pragma: no cover — unreachable
+
+
+@pytest.mark.asyncio
+async def test_a_stalled_pre_pass_stream_times_out(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The pre-pass raises once the provider goes idle instead of hanging.
+
+    Done against ``ContextExplorer._call_llm`` rather than the helper, so the
+    test fails on a hang (not just on a missing symbol) if the bound is ever
+    removed from the call site.
+    """
+    monkeypatch.setattr(explorer_mod, "_STREAM_IDLE_TIMEOUT_SECONDS", 0.1, raising=False)
+
+    explorer = explorer_mod.ContextExplorer.__new__(explorer_mod.ContextExplorer)
+    explorer.model = "m"
+    explorer.binding = "openai"
+    explorer.reasoning_effort = None
+
+    class _Client:
+        def __init__(self) -> None:
+            self.chat = type(
+                "Chat", (), {"completions": type("Completions", (), {"create": self._create})()}
+            )()
+
+        async def _create(self, **_kwargs: Any) -> _StalledStream:
+            return _StalledStream()
+
+    # Without the idle bound the await never returns; the outer ``wait_for``
+    # then trips with ``asyncio.TimeoutError`` and this assertion fails, which
+    # is the regression signal (a hang, not a missing symbol).
+    with pytest.raises(LLMProviderTransportError):
+        await asyncio.wait_for(
+            explorer._call_llm(
+                client=_Client(),
+                messages=[{"role": "user", "content": "hi"}],
+                tool_schemas=None,
+                chunk_meta={},
+                stream=StreamBus(),
+                session_id="s1",
+            ),
+            timeout=5,
+        )
+
+
+@pytest.mark.asyncio
+async def test_loop_falls_back_to_single_pass_when_stream_stalls(
+    monkeypatch: pytest.MonkeyPatch, _force_loop: None
+) -> None:
+    """A stream that stalls mid-round degrades to the single-pass briefing.
+
+    This is the #2539 third-attempt hang: without the idle bound, the
+    ``pre_loop`` await never completed, the turn stayed ``running`` forever,
+    and the lease kept renewing so recovery never claimed it.
+    """
+    monkeypatch.setattr(explorer_mod, "_STREAM_IDLE_TIMEOUT_SECONDS", 0.1, raising=False)
+
+    class _StalledClient:
+        def __init__(self) -> None:
+            self.chat = type(
+                "Chat", (), {"completions": type("Completions", (), {"create": self._create})()}
+            )()
+
+        async def _create(self, **_kwargs: Any) -> _StalledStream:
+            return _StalledStream(_FakeChunk(_FakeDelta(content="partial")))
+
+    monkeypatch.setattr(explorer_mod, "build_openai_client", lambda _cfg: _StalledClient())
+    monkeypatch.setattr(explorer_mod, "llm_stream", _fake_stream(["stalled fallback briefing"]))
+
+    cap = ExploreContextCapability()
+    ctx = _ctx(source_index={"hs-x": "transcript body"}, history_references=["x"])
+
+    block = await asyncio.wait_for(cap.pre_loop(ctx, StreamBus(), usage=None), timeout=5)
+
+    assert isinstance(block, PromptBlock)
+    assert "stalled fallback briefing" in block.content
 
 
 # ---------------------------------------------------------------------------

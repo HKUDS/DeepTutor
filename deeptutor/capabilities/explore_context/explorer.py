@@ -24,6 +24,7 @@ Two execution paths:
 
 from __future__ import annotations
 
+import asyncio
 from contextlib import suppress
 from dataclasses import dataclass, field
 import logging
@@ -47,6 +48,7 @@ from deeptutor.services.config.loader import get_capability_params
 from deeptutor.services.llm import clean_thinking_tags, get_llm_config, get_token_limit_kwargs
 from deeptutor.services.llm import stream as llm_stream
 from deeptutor.services.llm.capabilities import threads_session_id
+from deeptutor.services.llm.exceptions import LLMProviderTransportError
 from deeptutor.services.session.provider_response_state import normalize_provider_response_state
 
 logger = logging.getLogger(__name__)
@@ -98,6 +100,26 @@ _KIND_BY_PREFIX: dict[str, tuple[str, str]] = {
     "qb-": ("Question-bank entry", "题库条目"),
     "at-": ("Document", "文档"),
 }
+
+# A connected provider that never yields another chunk must settle (#2539).
+# The answer loop already bounds its stream reads
+# (``agent_loop._bounded_stream_chunks``); this pre-pass runs *before* that
+# loop, as a ``pre_loop`` hook, so without its own bound a stalled CLI parks
+# the whole turn in ``running`` — the lease keeps renewing, recovery sees a
+# live owner, and only an explicit cancel frees it.
+_STREAM_IDLE_TIMEOUT_SECONDS = 90.0
+
+
+async def _bounded_stream_chunks(stream: Any):
+    """Yield stream chunks, raising once the provider goes idle for too long."""
+    iterator = stream.__aiter__()
+    while True:
+        try:
+            yield await asyncio.wait_for(iterator.__anext__(), _STREAM_IDLE_TIMEOUT_SECONDS)
+        except StopAsyncIteration:
+            return
+        except TimeoutError:
+            raise LLMProviderTransportError("The model provider stream timed out.") from None
 
 
 @dataclass(slots=True)
@@ -401,7 +423,7 @@ class ContextExplorer:
         output_chars = 0
         response_stream = await client.chat.completions.create(**kwargs)
         try:
-            async for chunk in response_stream:
+            async for chunk in _bounded_stream_chunks(response_stream):
                 choices = getattr(chunk, "choices", None) or []
                 if not choices:
                     continue
