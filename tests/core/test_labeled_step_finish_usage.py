@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import suppress
 from types import SimpleNamespace
 from typing import Any
 
@@ -10,6 +11,7 @@ import deeptutor.runtime.agentic.labeled_step as labeled_step_module
 from deeptutor.runtime.agentic.labeled_step import run_labeled_step
 from deeptutor.runtime.agentic.usage import UsageTracker
 from deeptutor.runtime.stream_bus import StreamBus
+from deeptutor.services.llm import LLMProviderTransportError
 
 
 def _chunk(
@@ -172,3 +174,175 @@ async def test_stream_options_unsupported_retries_without_usage_request() -> Non
     assert len(client.calls) == 2
     assert "stream_options" in client.calls[0]
     assert "stream_options" not in client.calls[1]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "content",
+    [
+        None,
+        "`",
+        "``THINK``\nStill thinking.",
+        "``TOOL``",
+        "``FINISH``",
+        "<think>reason</think>``FINISH``",
+        "``FINISH``\n<think>reason</think>",
+        ["<thi", "nk>reason</thi", "nk>``FINISH``"],
+        ["``FINISH``\n<thi", "nk>reason</thi", "nk>"],
+        "``FINISH``\n \t",
+        "``FINISH``\n`<think>reason</think>`",
+        ["``FINISH``\n`<thi", "nk>reason</thi", "nk>`"],
+        "``FINISH``\n<think>reason</thinking>discarded",
+        ["``FINISH``\n<think " + " " * 25, ">reason</think>"],
+    ],
+    ids=[
+        "first-chunk",
+        "partial-label",
+        "thinking",
+        "tool-label",
+        "empty-final",
+        "empty-final-after-thinking",
+        "thinking-only-final",
+        "fragmented-prelude",
+        "fragmented-final-thinking",
+        "whitespace-final",
+        "quoted-thinking-only-final",
+        "fragmented-quoted-thinking",
+        "mismatched-thinking-close",
+        "long-fragmented-thinking-opener",
+    ],
+)
+async def test_stalled_incomplete_stream_raises_transport_error_and_closes(
+    monkeypatch: pytest.MonkeyPatch,
+    content: str | list[str] | None,
+) -> None:
+    monkeypatch.setattr(labeled_step_module, "_STREAM_IDLE_TIMEOUT_S", 0.01, raising=False)
+    monkeypatch.setattr(labeled_step_module, "_FINAL_LABEL_IDLE_TIMEOUT_S", 0.01)
+    texts = content if isinstance(content, list) else [content]
+    chunks = [_chunk(text) for text in texts if text is not None]
+    stream = _Stream(chunks, stall_after_chunks=True)
+    client = _Client([stream])
+
+    with pytest.raises(LLMProviderTransportError, match="provider stream timed out"):
+        await asyncio.wait_for(_run_step(client, UsageTracker(model="gpt-test")), timeout=0.3)
+
+    assert stream.closed is True
+    assert len(client.calls) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("reject_stream_options", [False, True])
+async def test_stalled_connection_raises_transport_error(
+    monkeypatch: pytest.MonkeyPatch,
+    reject_stream_options: bool,
+) -> None:
+    monkeypatch.setattr(labeled_step_module, "_STREAM_IDLE_TIMEOUT_S", 0.01)
+    client = _Client([])
+    create_cancelled = asyncio.Event()
+
+    async def create(**kwargs: Any) -> _Stream:
+        client.calls.append(dict(kwargs))
+        if reject_stream_options and len(client.calls) == 1:
+            raise ValueError("unknown parameter: stream_options")
+        try:
+            await asyncio.Event().wait()
+        finally:
+            create_cancelled.set()
+        raise AssertionError("unreachable")
+
+    monkeypatch.setattr(client.chat.completions, "create", create)
+
+    with pytest.raises(LLMProviderTransportError, match="provider connection timed out"):
+        await asyncio.wait_for(_run_step(client, UsageTracker(model="gpt-test")), timeout=0.3)
+
+    assert create_cancelled.is_set()
+    assert len(client.calls) == (2 if reject_stream_options else 1)
+
+
+@pytest.mark.asyncio
+async def test_incomplete_stream_resets_idle_timeout_for_each_chunk(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(labeled_step_module, "_STREAM_IDLE_TIMEOUT_S", 0.03)
+
+    class SlowStream(_Stream):
+        async def __anext__(self) -> SimpleNamespace:
+            await asyncio.sleep(0.01)
+            return await super().__anext__()
+
+    stream = SlowStream([_chunk(text) for text in ["``THINK``\n", "a", "b", "c", "d"]])
+
+    result = await asyncio.wait_for(
+        _run_step(_Client([stream]), UsageTracker(model="gpt-test")), timeout=0.5
+    )
+
+    assert result.label == "THINK"
+    assert result.text == "abcd"
+    assert not result.stream_idle_timeout
+    assert stream.closed
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("content", "expected_text"),
+    [
+        ("``FINISH``\nDone.", "Done."),
+        ("<think>reason</think>``FINISH``\nDone.", "Done."),
+        ("``FINISH``\n<think>reason</think>Done.", "Done."),
+        ("``FINISH``\n`Done.`", "`Done.`"),
+    ],
+)
+async def test_final_answer_keeps_its_short_idle_settlement(
+    monkeypatch: pytest.MonkeyPatch,
+    content: str,
+    expected_text: str,
+) -> None:
+    monkeypatch.setattr(labeled_step_module, "_FINAL_LABEL_IDLE_TIMEOUT_S", 0.01)
+    stream = _Stream([_chunk(content)], stall_after_chunks=True)
+
+    result = await asyncio.wait_for(
+        _run_step(_Client([stream]), UsageTracker(model="gpt-test")), timeout=0.5
+    )
+
+    assert result.label == "FINISH"
+    assert result.text == expected_text
+    assert result.stream_idle_timeout
+    assert stream.closed
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("during_create", [False, True])
+async def test_cancelling_labeled_step_propagates_and_closes_open_stream(
+    during_create: bool,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    started = asyncio.Event()
+
+    class SignaledStream(_Stream):
+        async def __anext__(self) -> SimpleNamespace:
+            started.set()
+            return await super().__anext__()
+
+    stream = SignaledStream([], stall_after_chunks=True)
+    client = _Client([stream])
+    if during_create:
+
+        async def create(**kwargs: Any) -> _Stream:
+            started.set()
+            await asyncio.Event().wait()
+            raise AssertionError("unreachable")
+
+        monkeypatch.setattr(client.chat.completions, "create", create)
+
+    task = asyncio.create_task(_run_step(client, UsageTracker(model="gpt-test")))
+    try:
+        await asyncio.wait_for(started.wait(), timeout=0.5)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(task, timeout=0.5)
+    finally:
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
+
+    assert stream.closed is not during_create

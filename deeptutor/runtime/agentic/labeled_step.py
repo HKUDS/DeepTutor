@@ -53,7 +53,7 @@ from deeptutor.runtime.agentic.usage import (
     record_streamed_usage,
 )
 from deeptutor.runtime.stream_bus import StreamBus
-from deeptutor.services.llm import clean_thinking_tags
+from deeptutor.services.llm import LLMProviderTransportError, clean_thinking_tags
 from deeptutor.services.llm.multimodal import should_degrade_to_text, strip_image_parts_inplace
 from deeptutor.services.llm.request_compat import (
     is_image_input_unsupported,
@@ -84,6 +84,8 @@ _THINK_CLOSE_RE = re.compile(
 # We keep at most this many trailing chars of the prelude unsent so a close
 # tag that arrives split across chunks is still detectable.
 _THINK_CLOSE_TAIL_GUARD = 24
+# Match the chat loop's idle watchdog before a complete answer is available.
+_STREAM_IDLE_TIMEOUT_S = 90.0
 # Once a provider has explicitly sent ``finish_reason`` the text generation is
 # done. Some OpenAI-compatible gateways keep the SSE connection open while
 # waiting for an optional usage trailer; wait briefly for that frame, then
@@ -213,6 +215,7 @@ async def run_labeled_step(
     # label just as readily as before it. The pre-label case is handled by the
     # prelude state machine below; this splitter covers the post-label body.
     post_label_think = InlineThinkFilter()
+    final_content_seen = False
     tc_acc = ToolCallAccumulator()
     # Kept for replay on the next round's assistant message, not for display.
     reasoning_acc: list[str] = []
@@ -276,12 +279,15 @@ async def run_labeled_step(
           with any inline ``<think>`` block split off to the reasoning trace.
         * Non-final labels: streamed into the reasoning sub-trace.
         """
-        nonlocal output_chars_seen
+        nonlocal output_chars_seen, final_content_seen
         if not text:
             return
         output_chars_seen += len(text)
         content_acc.append(text)
         if label in final_labels:
+            # Recompute with the return-value cleanup: a split thinking opener
+            # can turn apparently visible text back into reasoning-only output.
+            final_content_seen = bool(clean_thinking_tags("".join(content_acc), binding, model))
             if final_meta is not None:
                 await _emit_final_segments(post_label_think.feed(text))
             return
@@ -491,35 +497,37 @@ async def run_labeled_step(
                 return await client.chat.completions.create(**kwargs)
             raise
 
-    response_stream = await _create_response_stream()
+    try:
+        response_stream = await asyncio.wait_for(
+            _create_response_stream(), timeout=_STREAM_IDLE_TIMEOUT_S
+        )
+    except asyncio.TimeoutError:
+        raise LLMProviderTransportError("The model provider connection timed out.") from None
     try:
         stream_iter = response_stream.__aiter__()
         while True:
-            timeout: float | None = None
+            timeout = _STREAM_IDLE_TIMEOUT_S
             if finish_reason_seen:
                 if usage is not None and usage_seen is None and not usage_trailer_waited:
                     timeout = _USAGE_TRAILER_GRACE_TIMEOUT_S
                     usage_trailer_waited = True
                 else:
                     break
-            elif label in final_labels and content_acc:
+            elif label in final_labels and final_content_seen:
                 timeout = _FINAL_LABEL_IDLE_TIMEOUT_S
             try:
-                if timeout is None:
-                    chunk = await stream_iter.__anext__()
-                else:
-                    chunk = await asyncio.wait_for(stream_iter.__anext__(), timeout=timeout)
+                chunk = await asyncio.wait_for(stream_iter.__anext__(), timeout=timeout)
             except StopAsyncIteration:
                 break
             except asyncio.TimeoutError:
                 # Terminal enough for the chat UI: the model already sent a
                 # final-label answer (or an explicit finish_reason), but the
                 # gateway is holding the connection open.
-                if finish_reason_seen or label in final_labels:
+                if finish_reason_seen or (label in final_labels and final_content_seen):
                     if not finish_reason_seen:
                         stream_idle_timeout = True
                     break
-                raise
+                raise LLMProviderTransportError("The model provider stream timed out.") from None
             if getattr(chunk, "usage", None):
                 usage_seen = chunk.usage
             choices = getattr(chunk, "choices", None) or []
