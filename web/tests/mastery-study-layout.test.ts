@@ -37,15 +37,15 @@ test("mastery study exposes the shared transcript navigation and save actions", 
   assert.match(study, /source: "mastery_path"/);
 });
 
-test("a finished point lands on review, which offers the next one", () => {
-  // Completing a section used to navigate away on its own. Confirming its
-  // lecture now opens the review page, and the cue to start the next section
-  // lives there — never an automatic jump. A self-healing roll asks for a
-  // lecture if the runtime roll never landed.
+test("a finished point offers the next one without jumping on its own", () => {
+  // Confirming the lecture settles it and makes review available; it does not
+  // navigate. The review tab is the learner's move, and the cue to start the
+  // next section lives on the review page as a button. A self-healing roll
+  // asks for a lecture if the runtime roll never landed.
   const study = source("components/space/learning/MasteryStudy.tsx");
 
   assert.match(study, /Next knowledge point/);
-  assert.match(study, /openPlaced\("review", viewedPoint\.id\)/);
+  assert.doesNotMatch(study, /openPlaced\("review", viewedPoint\.id\)/);
   assert.match(study, /rollPointLectureDraft/);
   assert.doesNotMatch(study, /navigateToPlaced\("study", nextPoint\.id\)/);
 });

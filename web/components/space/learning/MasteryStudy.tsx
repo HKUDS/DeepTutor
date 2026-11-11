@@ -1050,7 +1050,10 @@ export function MasteryStudy({
   // lecture the runtime writes just after the turn that masters the point.
   // Re-read when a turn settles or a lecture is rewritten in the pane.
   const lectureForReview = usePointLectureReady(pathId, lecturePoint, lectureEpoch + turnEpoch);
-  const hasLectureForReview = Boolean(lectureForReview && lectureForReview.status !== "none");
+  // Review re-tests a point against the lecture that has been *settled*. A
+  // draft still being edited is not yet the thing to review from, so the mode
+  // switch waits for the learner to confirm it.
+  const hasConfirmedLecture = lectureForReview?.status === "confirmed";
 
   const orderedStudyPoints = useMemo(
     () => topicModules.flatMap((module) => module.knowledge_points),
@@ -1153,7 +1156,7 @@ export function MasteryStudy({
     modules: topicModules,
     pointId: lecturePoint,
     sessionMode,
-    hasLecture: hasLectureForReview,
+    hasLecture: hasConfirmedLecture,
   });
   // Review is offered only once the point on screen is mastered — before that
   // there is nothing to consolidate, and the tutor refuses to examine it. The

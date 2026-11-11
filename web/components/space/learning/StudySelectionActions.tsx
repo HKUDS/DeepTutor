@@ -122,7 +122,6 @@ export default function StudySelectionActions({
           disabled={disabled}
           onClick={onPrefill}
           aria-label={t("Add to input")}
-          title={t("Add to input")}
           className={`${segment} px-2`}
         >
           <MessageSquarePlus size={14} strokeWidth={1.8} aria-hidden="true" />

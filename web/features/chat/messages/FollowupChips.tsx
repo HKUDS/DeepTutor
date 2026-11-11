@@ -51,7 +51,6 @@ export default function FollowupChips({
           key={`${suggestion.id}:${offset}`}
           type="button"
           className={CHIP}
-          title={suggestion.prompt}
           onClick={() => onPick(suggestion.prompt)}
           disabled={!suggestion.prompt}
         >

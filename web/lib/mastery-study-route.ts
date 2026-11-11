@@ -95,10 +95,10 @@ export function modeSwitchTarget(
  * are in.
  *
  * The lecture is the other half of the gate. Review is the lecture beside a
- * re-test, and the runtime writes the lecture just *after* the turn that
- * masters the point — so mastery alone offered a review tab a beat before
- * there was anything to read. ``hasLecture`` is the fetched status; a live
- * review conversation stays available either way so the learner can leave it.
+ * re-test, so it waits for the lecture to be *confirmed*, not merely drafted:
+ * a draft the learner is still shaping is not yet the document they review
+ * from. ``hasLecture`` is whether a confirmed lecture exists; a live review
+ * conversation stays available either way so the learner can leave it.
  */
 export function isReviewAvailable(input: {
   modules: readonly {
@@ -106,6 +106,7 @@ export function isReviewAvailable(input: {
   }[];
   pointId: string;
   sessionMode: string;
+  /** Whether the point has a *confirmed* lecture. */
   hasLecture: boolean;
 }): boolean {
   if (input.sessionMode === "review") return true;

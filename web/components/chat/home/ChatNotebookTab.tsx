@@ -25,6 +25,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import dynamic from "next/dynamic";
+import { browserStorage } from "@/shared/storage";
 import {
   ArrowDown,
   ArrowLeft,
@@ -140,7 +141,7 @@ interface StoredPointer {
 
 function readPointer(key: string): StoredPointer | null {
   try {
-    const raw = window.localStorage.getItem(key);
+    const raw = browserStorage.readRaw("local", key);
     if (!raw) return null;
     const value = JSON.parse(raw) as Partial<StoredPointer>;
     if (typeof value.id !== "string") return null;
@@ -152,7 +153,7 @@ function readPointer(key: string): StoredPointer | null {
 
 function writePointer(key: string, pointer: StoredPointer): void {
   try {
-    window.localStorage.setItem(key, JSON.stringify(pointer));
+    browserStorage.writeRaw("local", key, JSON.stringify(pointer));
   } catch {
     // Storage may be unavailable; the page still saves, it just cannot resume.
   }
@@ -602,7 +603,6 @@ export default function ChatNotebookTab({ sessionId = null, docId = null, onExit
             type="button"
             onClick={onExit}
             aria-label={t("Back to Notes")}
-            title={t("Back to Notes")}
             className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[var(--muted-foreground)] transition-colors hover:bg-[color-mix(in_srgb,var(--muted)_70%,transparent)] hover:text-[var(--foreground)]"
           >
             <ArrowLeft size={16} strokeWidth={1.9} />
@@ -627,7 +627,6 @@ export default function ChatNotebookTab({ sessionId = null, docId = null, onExit
             <button
               type="button"
               onClick={() => setEditingTitle(true)}
-              title={t("Rename")}
               className="block max-w-full truncate rounded-md text-left text-[13.5px] font-semibold text-[var(--foreground)] transition-colors hover:text-[var(--primary)]"
             >
               {title || t("Code notebook")}
@@ -1039,7 +1038,6 @@ function CellCard({
           }}
           onDragEnd={onDragEnd}
           aria-label={t("Drag to reorder")}
-          title={t("Drag to reorder")}
           className="-ml-1 mt-[3px] inline-flex h-7 w-5 shrink-0 cursor-grab items-center justify-center rounded-md text-[var(--muted-foreground)] opacity-60 transition hover:bg-[color-mix(in_srgb,var(--muted)_70%,transparent)] hover:opacity-100 active:cursor-grabbing"
         >
           <GripVertical size={14} strokeWidth={1.8} />
@@ -1068,7 +1066,6 @@ function CellCard({
             <button
               type="button"
               onClick={() => setEditingName(true)}
-              title={t("Rename cell")}
               className="block w-full min-w-0 truncate rounded-md px-1 py-0.5 text-left text-[13px] font-medium text-[var(--foreground)] transition-colors hover:bg-[color-mix(in_srgb,var(--muted)_60%,transparent)]"
             >
               {name || kindLabel}
@@ -1088,7 +1085,6 @@ function CellCard({
                 type="button"
                 onClick={() => setMode(value)}
                 aria-pressed={mode === value}
-                title={t(value === "edit" ? "Edit" : value === "split" ? "Split" : "Preview")}
                 className={`rounded-md px-1.5 py-0.5 text-[10.5px] font-medium transition-colors ${
                   mode === value
                     ? "bg-[color-mix(in_srgb,var(--muted)_85%,transparent)] text-[var(--foreground)]"
@@ -1106,7 +1102,6 @@ function CellCard({
               className={CELL_BUTTON}
               onClick={() => fileInputRef.current?.click()}
               aria-label={t("Add image")}
-              title={t("Add image")}
               disabled={uploading}
             >
               {uploading ? (
@@ -1124,7 +1119,6 @@ function CellCard({
                   onChange({ language: normalizeCellLanguage(event.target.value) })
                 }
                 aria-label={t("Language")}
-                title={t("Language")}
                 className="h-7 max-w-[76px] cursor-pointer rounded-lg bg-transparent px-1 text-[11px] font-medium text-[var(--muted-foreground)] outline-none transition-colors hover:text-[var(--foreground)]"
               >
                 {CODE_LANGUAGE_OPTIONS.map((option) => (
@@ -1138,7 +1132,6 @@ function CellCard({
                 onClick={onRun}
                 disabled={!cell.source.trim() || running}
                 aria-label={t("Run cell")}
-                title={t("Run cell")}
                 className="inline-flex h-7 items-center gap-1.5 rounded-lg bg-[var(--primary)] px-2.5 text-[11.5px] font-semibold text-[var(--primary-foreground)] shadow-sm transition hover:brightness-95 active:brightness-90 disabled:pointer-events-none disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
               >
                 {running ? (
@@ -1156,7 +1149,6 @@ function CellCard({
               className={CELL_BUTTON}
               onClick={() => setMenuOpen((open) => !open)}
               aria-label={t("More actions")}
-              title={t("More actions")}
               aria-haspopup="menu"
               aria-expanded={menuOpen}
             >

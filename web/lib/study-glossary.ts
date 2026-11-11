@@ -9,6 +9,8 @@
  * learner scroll up to find the one word they looked up.
  */
 
+import { browserStorage } from "@/shared/storage";
+
 const KEY_PREFIX = "dt.mastery.glossary:";
 const MAX_TERMS = 40;
 const MAX_TERM_LENGTH = 80;
@@ -21,7 +23,7 @@ export function normalizeGlossaryTerm(term: string): string {
 export function loadGlossary(sessionId: string | null | undefined): string[] {
   if (!sessionId || typeof window === "undefined") return [];
   try {
-    const raw = window.localStorage.getItem(KEY_PREFIX + sessionId);
+    const raw = browserStorage.readRaw("local", KEY_PREFIX + sessionId);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
@@ -36,7 +38,8 @@ export function loadGlossary(sessionId: string | null | undefined): string[] {
 
 function saveGlossary(sessionId: string, terms: string[]): void {
   try {
-    window.localStorage.setItem(
+    browserStorage.writeRaw(
+      "local",
       KEY_PREFIX + sessionId,
       JSON.stringify(terms.slice(0, MAX_TERMS)),
     );

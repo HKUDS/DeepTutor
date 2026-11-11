@@ -348,7 +348,6 @@ const SingleMasteryQuestionCard = memo(function SingleMasteryQuestionCard({
                   void onRequestBackground(question);
                 }}
                 disabled={locked}
-                title={t("Teach the background first")}
                 className="rounded-md px-2 py-1.5 text-[12px] text-[var(--muted-foreground)] transition-colors hover:bg-[color-mix(in_srgb,var(--foreground)_4%,transparent)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {t("Teach the background first")}
