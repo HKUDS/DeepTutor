@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 from typing import Any
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -37,6 +38,7 @@ def _capture_async_openai(monkeypatch: pytest.MonkeyPatch, module: Any) -> list[
     class AsyncOpenAIStub:
         def __init__(self, **kwargs: Any) -> None:
             captured.append(kwargs)
+            self.chat = SimpleNamespace(completions=SimpleNamespace(create=AsyncMock()))
 
     monkeypatch.setattr(module, "AsyncOpenAI", AsyncOpenAIStub)
     return captured
