@@ -936,6 +936,9 @@ class MasteryStatusTool(BaseTool):
             return ToolResult(content="include_teaching_history must be a boolean.", success=False)
         service = _new_service()
         progress = _load_path(service, path_id)
+        from deeptutor.learning.question_profile import question_profile_for_path
+
+        question_profile = await question_profile_for_path(path_id)
         # Which goal this is, in the learner's own words. The tutor had no way
         # to see it before: the map carries a name, and the sentence the
         # learner actually wrote when they created the goal lived only in the
@@ -969,6 +972,7 @@ class MasteryStatusTool(BaseTool):
                     **identity,
                     "message": await _unbuilt_status_message(service, path_id, topic),
                     **_profile_status(progress, include_teaching_history=include_history),
+                    "question_profile": question_profile,
                 },
                 meta_key="mastery_status",
             )
@@ -992,6 +996,7 @@ class MasteryStatusTool(BaseTool):
                 focus_id or None,
                 include_teaching_history=include_history,
             ),
+            "question_profile": question_profile,
             "learning_stages": {
                 kp.id: learning_stage(progress, kp.id)
                 for module in progress.modules
