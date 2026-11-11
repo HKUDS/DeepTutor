@@ -6357,5 +6357,7 @@
   "Code · pause": "Kod · pauza",
   "Formula · pause": "Wzór · pauza",
   "Table · pause": "Tabela · pauza",
-  "Click a sentence to start; click the current one again to mark it as the key point.": "Kliknij zdanie, aby zacząć; kliknij ponownie, aby oznaczyć je jako kluczowe."
+  "Click a sentence to start; click the current one again to mark it as the key point.": "Kliknij zdanie, aby zacząć; kliknij ponownie, aby oznaczyć je jako kluczowe.",
+  "Discard this draft?": "Odrzucić ten szkic?",
+  "If the draft is not good, regenerate it — the tutor reads your study conversation again and reorganizes the lecture. Discarding alone leaves this point without this draft.": "Jeśli szkic jest słaby, wygeneruj go ponownie — tutor ponownie przeczyta Twoją rozmowę i uporządkuje wykład. Samo odrzucenie zostawi ten punkt bez tego szkicu."
 }

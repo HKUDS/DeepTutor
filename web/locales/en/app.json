@@ -6342,5 +6342,7 @@
   "Code · pause": "Code · pause",
   "Formula · pause": "Formula · pause",
   "Table · pause": "Table · pause",
-  "Click a sentence to start; click the current one again to mark it as the key point.": "Click a sentence to start; click the current one again to mark it as the key point."
+  "Click a sentence to start; click the current one again to mark it as the key point.": "Click a sentence to start; click the current one again to mark it as the key point.",
+  "Discard this draft?": "Discard this draft?",
+  "If the draft is not good, regenerate it — the tutor reads your study conversation again and reorganizes the lecture. Discarding alone leaves this point without this draft.": "If the draft is not good, regenerate it — the tutor reads your study conversation again and reorganizes the lecture. Discarding alone leaves this point without this draft."
 }

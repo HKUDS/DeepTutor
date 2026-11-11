@@ -6330,5 +6330,7 @@
   "Code · pause": "Code · kurz innehalten",
   "Formula · pause": "Formel · kurz innehalten",
   "Table · pause": "Tabelle · kurz innehalten",
-  "Click a sentence to start; click the current one again to mark it as the key point.": "Auf einen Satz klicken, um dort zu starten; erneut klicken markiert ihn als wichtigsten Punkt."
+  "Click a sentence to start; click the current one again to mark it as the key point.": "Auf einen Satz klicken, um dort zu starten; erneut klicken markiert ihn als wichtigsten Punkt.",
+  "Discard this draft?": "Diesen Entwurf verwerfen?",
+  "If the draft is not good, regenerate it — the tutor reads your study conversation again and reorganizes the lecture. Discarding alone leaves this point without this draft.": "Ist der Entwurf nicht gut, generiere ihn neu — der Tutor liest dein Lerngespräch erneut und ordnet die Lektion neu. Nur zu verwerfen lässt diesen Punkt ohne diesen Entwurf zurück."
 }

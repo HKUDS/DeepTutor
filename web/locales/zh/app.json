@@ -6342,5 +6342,7 @@
   "Code · pause": "代码 · 停一下",
   "Formula · pause": "公式 · 停一下",
   "Table · pause": "表格 · 停一下",
-  "Click a sentence to start; click the current one again to mark it as the key point.": "点击任意一句从句开始；再次点击当前句，可设为必须记住的重点。"
+  "Click a sentence to start; click the current one again to mark it as the key point.": "点击任意一句从句开始；再次点击当前句，可设为必须记住的重点。",
+  "Discard this draft?": "丢弃这份草稿？",
+  "If the draft is not good, regenerate it — the tutor reads your study conversation again and reorganizes the lecture. Discarding alone leaves this point without this draft.": "如果草稿内容不行，建议重新生成——导师会重新看一遍你的学习对话并重新整理讲义。只丢弃的话，这个知识点就没有这份草稿了。"
 }

@@ -67,6 +67,7 @@ export function LectureReaderPane({
     null,
   );
   const [editing, setEditing] = useState(false);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [draftText, setDraftText] = useState("");
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
@@ -299,7 +300,7 @@ export function LectureReaderPane({
               </button>
               <button
                 type="button"
-                onClick={() => void discard()}
+                onClick={() => setConfirmDiscard(true)}
                 disabled={busy !== null}
                 className="inline-flex items-center gap-1 rounded-md border border-[var(--border)] px-2.5 py-1 text-[11.5px] text-[var(--muted-foreground)] hover:text-[var(--foreground)] disabled:opacity-40"
               >
@@ -351,6 +352,62 @@ export function LectureReaderPane({
           </div>
         ) : null}
       </div>
+
+      {confirmDiscard ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/35 p-4"
+          onClick={() => setConfirmDiscard(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl border border-[var(--border)] bg-[var(--card)] p-5 shadow-xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h3 className="text-[14px] font-semibold text-[var(--foreground)]">
+              {t("Discard this draft?")}
+            </h3>
+            <p className="mt-1.5 text-[12.5px] leading-6 text-[var(--muted-foreground)]">
+              {t(
+                "If the draft is not good, regenerate it — the tutor reads your study conversation again and reorganizes the lecture. Discarding alone leaves this point without this draft.",
+              )}
+            </p>
+            <div className="mt-4 flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setConfirmDiscard(false)}
+                disabled={busy !== null}
+                className="rounded-lg px-3 py-1.5 text-[12px] text-[var(--muted-foreground)] transition-colors hover:bg-[var(--accent)] disabled:opacity-40"
+              >
+                {t("Cancel")}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setConfirmDiscard(false);
+                  void discard();
+                }}
+                disabled={busy !== null}
+                className="rounded-lg border border-[var(--border)] px-3 py-1.5 text-[12px] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)] disabled:opacity-40"
+              >
+                {t("Discard draft")}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setConfirmDiscard(false);
+                  void rewrite();
+                }}
+                disabled={busy !== null}
+                className="inline-flex items-center gap-1 rounded-lg bg-[var(--primary)] px-3 py-1.5 text-[12px] font-medium text-[var(--primary-foreground)] transition-opacity hover:opacity-90 disabled:opacity-40"
+              >
+                <RefreshCw className="h-3 w-3" />
+                {t("Regenerate")}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }
