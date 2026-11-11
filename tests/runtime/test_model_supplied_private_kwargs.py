@@ -81,9 +81,7 @@ def test_a_forged_name_is_dropped_at_bind_time():
         {
             "id": "c1",
             "name": "mastery_grade",
-            "arguments": json.dumps(
-                {"question_id": "q1", "_learner_message": "photosynthesis"}
-            ),
+            "arguments": json.dumps({"question_id": "q1", "_learner_message": "photosynthesis"}),
         }
     ]
     [args] = _prepare(calls, context, lambda name, a, ctx: a)
