@@ -1981,6 +1981,201 @@ class BookEngine:
             book_id=book_id, page_id=page_id, block_id=block_id, stream=stream
         )
 
+    # ── Chapter CRUD operations (post-generation structure editing) ────
+    #
+    # Structural edits mirror the block-CRUD pattern: load → mutate → save,
+    # no compilation. A new chapter is an empty shell whose page compiles on
+    # demand; every page outside the edit keeps its compiled content. Because
+    # ``storage.list_pages`` sorts by ``order`` and titles come from the page,
+    # each edit carries the chapter's order/title onto its pages — otherwise
+    # the reader would see no change (the rule ``confirm_spine`` already uses).
+
+    def _renumber_chapters(self, book_id: str, spine: Spine) -> None:
+        """Keep ``chapter.order`` sequential and carry it onto each page."""
+        for index, chapter in enumerate(spine.chapters):
+            chapter.order = index
+            for page_id in chapter.page_ids:
+                page = self.storage.load_page(book_id, page_id)
+                if page is not None and page.order != index:
+                    page.order = index
+                    page.updated_at = time.time()
+                    self.storage.save_page(page)
+
+    async def add_chapter(
+        self,
+        *,
+        book_id: str,
+        title: str,
+        position: int | None = None,
+        content_type: ContentType = ContentType.THEORY,
+        learning_objectives: list[str] | None = None,
+        summary: str = "",
+    ) -> Chapter | None:
+        """Append (or insert) a chapter as an empty shell with a pending page."""
+        spine = self.storage.load_spine(book_id)
+        book = self.storage.load_book(book_id)
+        if spine is None or book is None:
+            return None
+
+        chapter = Chapter(
+            title=title,
+            content_type=content_type,
+            learning_objectives=list(learning_objectives or []),
+            summary=summary,
+        )
+        count = len(spine.chapters)
+        index = count if position is None else max(0, min(position, count))
+        spine.chapters.insert(index, chapter)
+        self._renumber_chapters(book_id, spine)
+
+        page = Page(
+            book_id=book_id,
+            chapter_id=chapter.id,
+            title=chapter.title,
+            learning_objectives=list(chapter.learning_objectives),
+            content_type=chapter.content_type,
+            order=chapter.order,
+            status=PageStatus.PENDING,
+        )
+        self.storage.save_page(page)
+        chapter.page_ids = [page.id]
+
+        book.chapter_count = len(spine.chapters)
+        book.page_count = len(self.storage.list_pages(book_id))
+        book.updated_at = time.time()
+        self.storage.save_book(book)
+        self.storage.save_spine(spine)
+        self.storage.append_log(
+            book_id,
+            f"added chapter {chapter.id} at position {index}: {title}",
+            op="add_chapter",
+        )
+        return chapter
+
+    async def rename_chapter(
+        self,
+        *,
+        book_id: str,
+        chapter_id: str,
+        title: str | None = None,
+        summary: str | None = None,
+        learning_objectives: list[str] | None = None,
+    ) -> Chapter | None:
+        """Edit a chapter's descriptive fields and carry them onto its pages."""
+        spine = self.storage.load_spine(book_id)
+        if spine is None:
+            return None
+        chapter = spine.chapter_by_id(chapter_id)
+        if chapter is None:
+            return None
+
+        if title is not None:
+            chapter.title = title
+        if summary is not None:
+            chapter.summary = summary
+        if learning_objectives is not None:
+            chapter.learning_objectives = list(learning_objectives)
+
+        for page_id in chapter.page_ids:
+            page = self.storage.load_page(book_id, page_id)
+            if page is None:
+                continue
+            changed = False
+            if title is not None and page.title != chapter.title:
+                page.title = chapter.title
+                changed = True
+            if learning_objectives is not None:
+                page.learning_objectives = list(chapter.learning_objectives)
+                changed = True
+            if changed:
+                page.updated_at = time.time()
+                self.storage.save_page(page)
+
+        self.storage.save_spine(spine)
+        self.storage.append_log(book_id, f"renamed chapter {chapter_id}", op="rename_chapter")
+        return chapter
+
+    async def move_chapter(self, *, book_id: str, chapter_id: str, new_position: int) -> bool:
+        """Reorder a chapter; its pages follow so the reader sees the change."""
+        spine = self.storage.load_spine(book_id)
+        if spine is None:
+            return False
+        index = next((i for i, c in enumerate(spine.chapters) if c.id == chapter_id), -1)
+        if index < 0:
+            return False
+        new_position = max(0, min(len(spine.chapters) - 1, new_position))
+        chapter = spine.chapters.pop(index)
+        spine.chapters.insert(new_position, chapter)
+        self._renumber_chapters(book_id, spine)
+        self.storage.save_spine(spine)
+        self.storage.append_log(
+            book_id,
+            f"moved chapter {chapter_id} → position {new_position}",
+            op="move_chapter",
+        )
+        return True
+
+    async def delete_chapter(self, *, book_id: str, chapter_id: str) -> bool:
+        """Remove a chapter and its pages, leaving every other page compiled.
+
+        The engine-injected Overview is not the reader's to delete: it is the
+        book's front page and concept map, rebuilt by ``confirm_spine``.
+        """
+        spine = self.storage.load_spine(book_id)
+        book = self.storage.load_book(book_id)
+        if spine is None or book is None:
+            return False
+        chapter = spine.chapter_by_id(chapter_id)
+        if chapter is None:
+            return False
+        if _is_auto_overview(chapter):
+            self.storage.append_log(
+                book_id,
+                f"refused to delete overview chapter {chapter_id}",
+                op="delete_chapter",
+            )
+            return False
+
+        removed_page_ids = {
+            p.id for p in self.storage.list_pages(book_id) if p.chapter_id == chapter_id
+        }
+        removed_page_ids.update(chapter.page_ids)
+        for page_id in removed_page_ids:
+            self.storage.delete_page(book_id, page_id)
+
+        spine.chapters = [c for c in spine.chapters if c.id != chapter_id]
+        for other in spine.chapters:
+            if chapter_id in other.prerequisites:
+                other.prerequisites = [p for p in other.prerequisites if p != chapter_id]
+        dropped = _prune_concept_graph(spine)
+        self._renumber_chapters(book_id, spine)
+
+        progress = self.storage.load_progress(book_id)
+        if progress is not None:
+            if progress.current_page_id in removed_page_ids:
+                progress.current_page_id = ""
+            progress.visited_page_ids = [
+                p for p in progress.visited_page_ids if p not in removed_page_ids
+            ]
+            progress.bookmarked_page_ids = [
+                p for p in progress.bookmarked_page_ids if p not in removed_page_ids
+            ]
+            progress.weak_chapters = [c for c in progress.weak_chapters if c != chapter_id]
+            self.storage.save_progress(progress)
+
+        book.chapter_count = len(spine.chapters)
+        book.page_count = len(self.storage.list_pages(book_id))
+        book.updated_at = time.time()
+        self.storage.save_book(book)
+        self.storage.save_spine(spine)
+        self.storage.append_log(
+            book_id,
+            f"deleted chapter {chapter_id} "
+            f"({len(removed_page_ids)} page(s), {dropped} concept node(s))",
+            op="delete_chapter",
+        )
+        return True
+
     # ── Deep-dive sub-page (Phase 3) ──────────────────────────────────
 
     async def create_deep_dive_subpage(

@@ -153,6 +153,27 @@ class DeepDiveRequest(BaseModel):
     expected_revision: int | None = Field(default=None, ge=1)
 
 
+class AddChapterRequest(BaseModel):
+    title: str = Field(default="", max_length=500)
+    position: int | None = None
+    content_type: str = "theory"
+    learning_objectives: list[str] = Field(default_factory=list)
+    summary: str = ""
+    expected_revision: int | None = Field(default=None, ge=1)
+
+
+class UpdateChapterRequest(BaseModel):
+    title: str | None = Field(default=None, max_length=500)
+    summary: str | None = None
+    learning_objectives: list[str] | None = None
+    expected_revision: int | None = Field(default=None, ge=1)
+
+
+class MoveChapterRequest(BaseModel):
+    new_position: int
+    expected_revision: int | None = Field(default=None, ge=1)
+
+
 class QuizAttemptRequest(BaseModel):
     book_id: str
     page_id: str
@@ -1067,6 +1088,122 @@ async def change_block_type(req: ChangeBlockTypeRequest) -> dict[str, Any]:
     if block is None:
         raise HTTPException(status_code=404, detail="Block not found")
     return {"block": block.model_dump(mode="json"), "book_revision": revision}
+
+
+@router.post("/books/{book_id}/chapters")
+async def add_chapter(book_id: str, req: AddChapterRequest) -> dict[str, Any]:
+    """Append an empty chapter shell after generation, without recompiling."""
+    if not req.title.strip():
+        raise HTTPException(status_code=400, detail="title is required")
+    resolved = _resolve_book_or_404(book_id, edit=True)
+    engine = resolved.engine
+    revision = _claim_content_mutation(
+        resolved,
+        book_id,
+        req.expected_revision,
+        "add_chapter",
+        extra={"title": req.title.strip(), "position": req.position},
+    )
+    content_type = _coerce_content_type(req.content_type)
+    try:
+        chapter = await engine.add_chapter(
+            book_id=book_id,
+            title=req.title.strip(),
+            position=req.position,
+            content_type=content_type,
+            learning_objectives=req.learning_objectives,
+            summary=req.summary,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.error(f"add_chapter failed: {exc}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(exc))
+    if chapter is None:
+        raise HTTPException(status_code=404, detail="Book spine not found")
+    return {"chapter": chapter.model_dump(mode="json"), "book_revision": revision}
+
+
+@router.patch("/books/{book_id}/chapters/{chapter_id}")
+async def update_chapter(
+    book_id: str, chapter_id: str, req: UpdateChapterRequest
+) -> dict[str, Any]:
+    """Rename a chapter (and carry the title onto its pages) without recompiling."""
+    if req.title is not None and not req.title.strip():
+        raise HTTPException(status_code=400, detail="title cannot be empty")
+    resolved = _resolve_book_or_404(book_id, edit=True)
+    engine = resolved.engine
+    revision = _claim_content_mutation(
+        resolved,
+        book_id,
+        req.expected_revision,
+        "rename_chapter",
+        extra={"chapter_id": chapter_id},
+    )
+    try:
+        chapter = await engine.rename_chapter(
+            book_id=book_id,
+            chapter_id=chapter_id,
+            title=req.title.strip() if req.title is not None else None,
+            summary=req.summary,
+            learning_objectives=req.learning_objectives,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.error(f"rename_chapter failed: {exc}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(exc))
+    if chapter is None:
+        raise HTTPException(status_code=404, detail="Chapter not found")
+    return {"chapter": chapter.model_dump(mode="json"), "book_revision": revision}
+
+
+@router.delete("/books/{book_id}/chapters/{chapter_id}")
+async def delete_chapter(
+    book_id: str,
+    chapter_id: str,
+    expected_revision: int | None = Query(default=None, ge=1),
+) -> dict[str, Any]:
+    """Delete a chapter and only its pages; other compiled pages are untouched."""
+    resolved = _resolve_book_or_404(book_id, edit=True)
+    engine = resolved.engine
+    revision = _claim_content_mutation(
+        resolved,
+        book_id,
+        expected_revision,
+        "delete_chapter",
+        extra={"chapter_id": chapter_id},
+    )
+    try:
+        ok = await engine.delete_chapter(book_id=book_id, chapter_id=chapter_id)
+    except Exception as exc:  # noqa: BLE001
+        logger.error(f"delete_chapter failed: {exc}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(exc))
+    if not ok:
+        raise HTTPException(status_code=404, detail="Chapter not found")
+    return {"ok": True, "book_revision": revision}
+
+
+@router.post("/books/{book_id}/chapters/{chapter_id}/move")
+async def move_chapter(book_id: str, chapter_id: str, req: MoveChapterRequest) -> dict[str, Any]:
+    """Reorder a chapter and carry the new order onto its pages."""
+    resolved = _resolve_book_or_404(book_id, edit=True)
+    engine = resolved.engine
+    revision = _claim_content_mutation(
+        resolved,
+        book_id,
+        req.expected_revision,
+        "move_chapter",
+        extra={"chapter_id": chapter_id, "new_position": req.new_position},
+    )
+    try:
+        ok = await engine.move_chapter(
+            book_id=book_id,
+            chapter_id=chapter_id,
+            new_position=req.new_position,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.error(f"move_chapter failed: {exc}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(exc))
+    if not ok:
+        raise HTTPException(status_code=404, detail="Chapter not found")
+    return {"ok": True, "book_revision": revision}
 
 
 @router.post("/books/deep-dive")

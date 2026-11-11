@@ -1,5 +1,5 @@
 {
-  "fingerprint": "b3ff4a2963d642a226ba3b8fd034f616c878ec27cdb071e720e82674dabd3b75",
+  "fingerprint": "fc2fab7200af1d493e8ab4a56c9987dfed6edf0290e108a4f5ef2fe90401ef6c",
   "routers": {
     "deeptutor.api.routers.auth:router": [
       {
@@ -2270,6 +2270,38 @@
       {
         "path": "/books/change-block-type",
         "name": "change_block_type",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/books/{book_id}/chapters",
+        "name": "add_chapter",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/books/{book_id}/chapters/{chapter_id}",
+        "name": "update_chapter",
+        "kind": "http",
+        "methods": [
+          "PATCH"
+        ]
+      },
+      {
+        "path": "/books/{book_id}/chapters/{chapter_id}",
+        "name": "delete_chapter",
+        "kind": "http",
+        "methods": [
+          "DELETE"
+        ]
+      },
+      {
+        "path": "/books/{book_id}/chapters/{chapter_id}/move",
+        "name": "move_chapter",
         "kind": "http",
         "methods": [
           "POST"
