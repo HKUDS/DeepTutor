@@ -60,14 +60,10 @@ class BrainstormTool(_PromptHintsMixin, BaseTool):
     async def execute(self, **kwargs: Any) -> ToolResult:
         from deeptutor.tools.brainstorm import brainstorm
 
+        # Let the service resolve trusted LLM settings.
         result = await brainstorm(
             topic=kwargs.get("topic", ""),
             context=kwargs.get("context", ""),
-            api_key=kwargs.get("api_key"),
-            base_url=kwargs.get("base_url"),
-            model=kwargs.get("model"),
-            max_tokens=kwargs.get("max_tokens"),
-            temperature=kwargs.get("temperature"),
         )
         return ToolResult(content=result.get("answer", ""), metadata=result)
 
@@ -650,15 +646,13 @@ class KnowledgeFrontierTool(_PromptHintsMixin, BaseTool):
         if manifest is None:
             raise ValueError(f"Knowledge base '{kb_name}' is not accessible.")
 
+        # Let the service resolve trusted LLM settings.
         result = await discover_frontier(
             kb_name=kb_name,
             manifest=manifest,
             focus=kwargs.get("focus", ""),
             max_papers=kwargs.get("max_papers", 5),
             years_limit=kwargs.get("years_limit", 3),
-            api_key=kwargs.get("api_key"),
-            base_url=kwargs.get("base_url"),
-            model=kwargs.get("model"),
         )
         paper_sources = [
             {
@@ -690,15 +684,8 @@ class WebSearchTool(_PromptHintsMixin, BaseTool):
     async def execute(self, **kwargs: Any) -> ToolResult:
         from deeptutor.tools.web_search import web_search
 
-        query = kwargs.get("query", "")
-        output_dir = kwargs.get("output_dir")
-        verbose = kwargs.get("verbose", False)
-        result = await asyncio.to_thread(
-            web_search,
-            query=query,
-            output_dir=output_dir,
-            verbose=verbose,
-        )
+        # Model calls search in memory; programmatic callers own result-file paths.
+        result = await asyncio.to_thread(web_search, query=kwargs.get("query", ""))
 
         if isinstance(result, dict):
             answer = result.get("answer", "")
@@ -743,14 +730,10 @@ class ReasonTool(_PromptHintsMixin, BaseTool):
     async def execute(self, **kwargs: Any) -> ToolResult:
         from deeptutor.tools.reason import reason
 
+        # Let the service resolve trusted LLM settings.
         result = await reason(
             query=kwargs.get("query", ""),
             context=kwargs.get("context", ""),
-            api_key=kwargs.get("api_key"),
-            base_url=kwargs.get("base_url"),
-            model=kwargs.get("model"),
-            max_tokens=kwargs.get("max_tokens"),
-            temperature=kwargs.get("temperature"),
         )
         return ToolResult(content=result.get("answer", ""), metadata=result)
 
