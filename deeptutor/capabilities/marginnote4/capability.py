@@ -30,6 +30,7 @@ class MarginNoteCapability(KnowledgeCapability):
 
     name = "marginnote4"
     owned_tools = MARGINNOTE_TOOL_NAMES
+    coexisting_tools = ("web_search", "web_fetch")
 
     def is_active(self, context: UnifiedContext) -> bool:
         return marginnote_binding(context) is not None

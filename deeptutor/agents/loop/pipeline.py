@@ -479,7 +479,7 @@ class AgenticLoopPipeline:
             ),
             notebook_manifest=self._build_notebook_manifest(),
             workspace_note=self._workspace_system_note(context),
-            capability_blocks=self._capability_system_blocks(context),
+            capability_blocks=self._capability_system_blocks(context, enabled_tools),
             include_tool_manifest=include_tool_manifest,
         )
         stable_blocks, self._runtime_snapshots = self._prompt_assembler.split_for_replay(
@@ -830,6 +830,7 @@ class AgenticLoopPipeline:
             ),
             capability_owned=self._capability_owned_tools(context),
             exclusive=self._exclusive_capability_active(context),
+            coexisting=self._capability_coexisting_tools(context),
             builtin_whitelist=(
                 set(context.allowed_builtin_tools)
                 if context.allowed_builtin_tools is not None
@@ -882,6 +883,19 @@ class AgenticLoopPipeline:
             names.extend(cap.owned_tools)
         return tuple(names)
 
+    def _capability_coexisting_tools(self, context: UnifiedContext) -> tuple[str, ...]:
+        """Built-ins the active exclusive capability declares as coexisting.
+
+        Honoured only in the exclusive branch of
+        :func:`~deeptutor.agents._shared.tool_composition.compose_enabled_tools`
+        (issue #2612): each name still passes its usual gate there, so a
+        declaration never forces anything on.
+        """
+        names: list[str] = []
+        for cap in self._active_loop_capabilities(context):
+            names.extend(getattr(cap, "coexisting_tools", ()) or ())
+        return tuple(names)
+
     def _capability_rebinding_tools(self, context: UnifiedContext) -> frozenset[str]:
         """Tools that repoint the rest of the round at a different target.
 
@@ -895,7 +909,11 @@ class AgenticLoopPipeline:
             names.extend(getattr(cap, "rebinding_tools", ()) or ())
         return frozenset(names)
 
-    def _capability_system_blocks(self, context: UnifiedContext):
+    def _capability_system_blocks(
+        self,
+        context: UnifiedContext,
+        enabled_tools: list[str] | None = None,
+    ):
         blocks = []
         for cap in self._active_loop_capabilities(context):
             block = cap.system_block(
@@ -905,6 +923,22 @@ class AgenticLoopPipeline:
             )
             if block is not None:
                 blocks.append(block)
+            # An exclusive capability that keeps coexisting built-ins mounted
+            # (e.g. the web pair, #2612) must also say so in its own prompt —
+            # otherwise the model reads the exclusive playbook as "no web this
+            # turn" and disclaims tools that are actually mounted. The mention
+            # is filtered through the composed list, so a tool whose gate
+            # closed (web_search toggled off) is never advertised.
+            coexisting_block = getattr(cap, "coexisting_tools_block", None)
+            if not callable(coexisting_block):
+                continue
+            extra_block = coexisting_block(
+                context,
+                language=self.language,
+                mounted_tools=enabled_tools or [],
+            )
+            if extra_block is not None:
+                blocks.append(extra_block)
         return blocks
 
     def _capability_pre_loop_seed(self, context: UnifiedContext) -> str:
