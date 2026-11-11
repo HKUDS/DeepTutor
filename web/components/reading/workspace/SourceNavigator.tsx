@@ -33,6 +33,7 @@ import {
 } from "@/lib/reading-workspace-api";
 import { formatMediaTime, timeFromSourceHref } from "@/lib/reading-media-time";
 import Tooltip from "@/shared/ui/Tooltip";
+import { buildMarkUpdate } from "@/lib/reading-mark-update";
 import { AnnotationList } from "../AnnotationList";
 import { iconForMaterial } from "./WorkspaceChrome";
 import { type TranscriptRow } from "./types";
@@ -106,6 +107,22 @@ export function SourceNavigator({
   );
   const notesAvailable = Boolean(onOpenAnnotation) && !mediaSourceOf(material);
   const showNotes = notesAvailable && view === "notes";
+  /**
+   * Edit a mark from the navigator's list.
+   *
+   * The reader pane and this navigator both mount the annotation list — in a
+   * workspace the navigator is the one that shows it — so both need the update
+   * path, or editing works in one layout and silently does nothing in the other.
+   */
+  const updateMark = async (
+    annotation: AnnotationItem,
+    changes: { note?: string; color?: string; kind?: AnnotationItem["kind"] },
+  ): Promise<boolean> => {
+    const update = buildMarkUpdate(annotation, changes);
+    if (!update) return true;
+    return reading.saveMark(update.draft, update.optimistic);
+  };
+
   const openAnnotation = (annotation: AnnotationItem) => {
     setActiveAnnotationId(annotation.annotation_id);
     onOpenAnnotation?.(annotation.locator, annotation.quote || undefined);
@@ -255,7 +272,9 @@ export function SourceNavigator({
             unit={reading.material?.unit ?? "page"}
             activeId={activeAnnotationId}
             onSelect={openAnnotation}
-            onDelete={(annotation) => void reading.removeMark(annotation)}
+            onDelete={(annotation) => reading.removeMark(annotation)}
+            onEditNote={(annotation, note) => updateMark(annotation, { note })}
+            onChangeMark={updateMark}
           />
         </div>
       ) : (

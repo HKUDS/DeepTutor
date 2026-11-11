@@ -95,7 +95,17 @@ export function readerDisplayShortcut(input: {
   modifier: boolean;
   readerHovered: boolean;
   readerFocused: boolean;
+  /**
+   * The event is going into a field the reader must not take the keys from.
+   *
+   * The text reader binds the same ⌘+ / ⌘− / ⌘0 combinations as the PDF reader,
+   * so it had the same gap: with the pointer over the reader, typing in a note
+   * lost the keystroke to a font-size change and the browser's own zoom was
+   * swallowed with it.
+   */
+  editableTarget: boolean;
 }): ReaderDisplayShortcut | null {
+  if (input.editableTarget) return null;
   if (!input.modifier || (!input.readerHovered && !input.readerFocused))
     return null;
   if (input.key === "+" || input.key === "=") return "increase";

@@ -22,7 +22,9 @@ import {
   X,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { useDevice } from "@/hooks/useDevice";
 import { useReading } from "@/context/ReadingContext";
+import { buildMarkUpdate } from "@/lib/reading-mark-update";
 import {
   READER_ACTION_EVENT,
   READER_TURN_END_EVENT,
@@ -37,6 +39,7 @@ import {
   saveReadingPosition,
   type AnnotationColor,
   type AnnotationItem,
+  type ExportFormat,
   type MaterialDetail,
   type ReadingBookmark,
 } from "@/lib/reading-api";
@@ -192,6 +195,9 @@ export function ReaderPane({
   headSlot = null,
 }: ReaderPaneProps) {
   const { t, i18n } = useTranslation();
+  // Below `lg` the annotation column does not fit beside the page, so it
+  // becomes an overlay instead of a column - see the aside below.
+  const { isCompact } = useDevice();
   // Document + annotations live in the provider (workspace layout), so they
   // survive the remount that sending the first message causes.
   const {
@@ -241,6 +247,9 @@ export function ReaderPane({
   // a layout bug rather than an affordance. An explicit true/false means the
   // user decided, and that wins from then on.
   const [annotationPanel, setAnnotationPanel] = useState<boolean | null>(null);
+  // The phone-sized annotation sheet is a modal: it has to take focus on open
+  // and hand it back on close, or a keyboard user is left behind it.
+  const annotationSheetRef = useRef<HTMLDivElement | null>(null);
   const [autoJump, setAutoJump] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [currentLocator, setCurrentLocator] = useState(1);
@@ -763,6 +772,32 @@ export function ReaderPane({
 
   // -- annotations ---------------------------------------------------------
 
+  /**
+   * Change the presentation of a saved mark: its note, its colour, its kind.
+   *
+   * The update travels through the same `saveMark` path a fresh mark takes, so
+   * it inherits the optimistic apply and the rollback on failure. Which fields
+   * move is decided by `buildMarkUpdate`, shared with the workspace navigator.
+   */
+  const updateMark = useCallback(
+    async (
+      annotation: AnnotationItem,
+      changes: { note?: string; color?: string; kind?: AnnotationItem["kind"] },
+    ): Promise<boolean> => {
+      if (!material) return false;
+      const update = buildMarkUpdate(annotation, changes);
+      // No-op: nothing to send, and the caller treats it as success.
+      if (!update) return true;
+      return saveMark(update.draft, update.optimistic);
+    },
+    [material, saveMark],
+  );
+
+  const editNote = useCallback(
+    async (annotation: AnnotationItem, note: string) => updateMark(annotation, { note }),
+    [updateMark],
+  );
+
   const commitSelection = useCallback(
     (
       kind: "highlight" | "underline" | "note" | "citation",
@@ -875,12 +910,21 @@ export function ReaderPane({
 
   // -- export --------------------------------------------------------------
 
-  const runExport = useCallback(async () => {
+  /**
+   * Download the material with its marks.
+   *
+   * `auto` is the sensible default — the annotated original when the file kept
+   * its bytes, the marks themselves otherwise — but a reader who wants the
+   * Markdown to paste into their notes, or the annotated PDF to hand to a
+   * colleague, should not have to accept whatever the default happens to be.
+   */
+  const runExport = useCallback(
+    async (fmt: ExportFormat = "auto") => {
     if (!material || exporting) return;
     setExporting(true);
     dismissError();
     try {
-      const { blob, filename } = await fetchExport(material.material_id);
+      const { blob, filename } = await fetchExport(material.material_id, fmt);
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
@@ -896,11 +940,32 @@ export function ReaderPane({
     } finally {
       setExporting(false);
     }
-  }, [material, exporting, t, dismissError, setError]);
+    },
+    [material, exporting, t, dismissError, setError],
+  );
 
   // -- render --------------------------------------------------------------
 
   const showAnnotations = annotationPanel ?? annotations.length > 0;
+
+  // Modal behaviour for the phone sheet: Escape closes it, focus starts inside
+  // it, and closing returns focus to whatever the reader was on.
+  const sheetOpen = Boolean(material) && ownAnnotationList && showAnnotations && isCompact;
+  useEffect(() => {
+    if (!sheetOpen) return;
+    const previous = document.activeElement as HTMLElement | null;
+    annotationSheetRef.current?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.stopPropagation();
+      setAnnotationPanel(false);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      if (previous && document.contains(previous)) previous.focus();
+    };
+  }, [sheetOpen]);
   const unitWord = material ? t(unitLabel(material.unit)) : "";
   const isEpub = material?.render_mode === "epub";
   const currentUnitTitle = isEpub
@@ -962,14 +1027,33 @@ export function ReaderPane({
         onSelect: () => setAnnotationPanel(!showAnnotations),
       });
     }
-    items.push({
-      key: "export",
-      icon: exporting ? Loader2 : Download,
-      label: t("Export annotated file"),
-      spinning: exporting,
-      disabled: exporting,
-      onSelect: () => void runExport(),
-    });
+    // Three rows rather than one: `auto` keeps the historical behaviour, and
+    // the other two let the reader pick the artefact they actually want.
+    items.push(
+      {
+        key: "export",
+        icon: exporting ? Loader2 : Download,
+        label: t("Export annotated file"),
+        hint: t("Annotated original when available, otherwise the marks"),
+        spinning: exporting,
+        disabled: exporting,
+        onSelect: () => void runExport("auto"),
+      },
+      {
+        key: "export-pdf",
+        icon: Download,
+        label: t("Download annotated PDF"),
+        disabled: exporting || !material.has_raw_view,
+        onSelect: () => void runExport("pdf"),
+      },
+      {
+        key: "export-markdown",
+        icon: Download,
+        label: t("Download as Markdown"),
+        disabled: exporting,
+        onSelect: () => void runExport("markdown"),
+      },
+    );
     return items;
   }, [
     autoJump,
@@ -1155,12 +1239,10 @@ export function ReaderPane({
             />
           )}
           <div className="my-1 h-px bg-[var(--border)]" aria-hidden />
-          <MenuToolButton
-            icon={exporting ? Loader2 : Download}
-            label={t("Export annotated file")}
-            spinning={exporting}
-            onClick={() => {
-              void runExport();
+          <ExportMenuGroup
+            exporting={exporting}
+            onExport={(fmt) => {
+              void runExport(fmt);
               setShowMoreTools(false);
             }}
           />
@@ -1312,7 +1394,17 @@ export function ReaderPane({
           )}
         </div>
 
-        {material && ownAnnotationList && showAnnotations && (
+        {material && ownAnnotationList && showAnnotations && !isCompact && (
+          // A docked column needs the width a desktop has. Below `lg` the same
+          // panel is drawn as the overlay further down, so the "Annotations"
+          // toggle in the ⋯ menu does something on a phone instead of flipping
+          // a panel that `hidden lg:block` keeps invisible.
+          //
+          // The column is a fixed width here. A resizable one lived here too,
+          // with its own width store, but the workspace — the only route that
+          // mounts this pane — passes `ownAnnotationList={false}` and resizes
+          // its navigator through `useReadingPanelLayout` instead, so that store
+          // was a second implementation nothing could reach.
           <aside className="hidden w-[248px] shrink-0 bg-[var(--background)] lg:block">
             <AnnotationList
               annotations={annotations}
@@ -1322,11 +1414,59 @@ export function ReaderPane({
                 setActiveAnnotationId(annotation.annotation_id);
                 requestJump(annotation.locator, annotation.quote || undefined);
               }}
-              onDelete={(annotation) => void removeMark(annotation)}
+              onDelete={(annotation) => removeMark(annotation)}
+              onEditNote={editNote}
+              onChangeMark={updateMark}
             />
           </aside>
         )}
       </div>
+
+      {material && ownAnnotationList && showAnnotations && isCompact && (
+        <div
+          ref={annotationSheetRef}
+          role="dialog"
+          aria-modal="true"
+          aria-label={t("Annotations")}
+          tabIndex={-1}
+          className="fixed inset-0 z-40 flex flex-col bg-[var(--overlay)] outline-none"
+          onClick={(event) => {
+            // Only a click on the backdrop closes; one inside the sheet is the
+            // reader working with their marks.
+            if (event.target === event.currentTarget) setAnnotationPanel(false);
+          }}
+        >
+          <div className="mt-auto flex max-h-[80vh] min-h-0 flex-col rounded-t-2xl border-t border-[var(--border)] bg-[var(--background)] shadow-2xl">
+            <div className="flex shrink-0 items-center justify-between border-b border-[var(--border)] px-3 py-2">
+              <span className="text-[12px] font-semibold text-[var(--foreground)]">
+                {t("Annotations")}
+              </span>
+              <button
+                type="button"
+                aria-label={t("Close")}
+                onClick={() => setAnnotationPanel(false)}
+                className="inline-flex h-7 w-7 items-center justify-center rounded-md text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
+              >
+                <X size={14} />
+              </button>
+            </div>
+            <div className="min-h-0 flex-1">
+              <AnnotationList
+                annotations={annotations}
+                unit={material.unit}
+                activeId={activeAnnotationId}
+                onSelect={(annotation) => {
+                  setActiveAnnotationId(annotation.annotation_id);
+                  requestJump(annotation.locator, annotation.quote || undefined);
+                }}
+                onDelete={(annotation) => removeMark(annotation)}
+                onEditNote={editNote}
+                onChangeMark={updateMark}
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* `popoverOpen` and not just `selection`: dismissal now leaves the
           selection in place for the toolbar, so gating the mount on the
@@ -1448,6 +1588,64 @@ function MenuToolButton({
         ) : null}
       </span>
     </button>
+  );
+}
+
+
+/**
+ * The export control, in both menus the reader offers.
+ *
+ * A single "Export" item used to call the backend with `auto` and accept
+ * whatever that chose. A reader who wants the Markdown to paste into their
+ * notes, or the annotated PDF to hand to a colleague, has no way to say so —
+ * so the trigger now opens the three formats the backend actually serves.
+ */
+export function ExportMenuGroup({
+  exporting,
+  onExport,
+}: {
+  exporting: boolean;
+  onExport: (fmt: ExportFormat) => void;
+}) {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const formats: Array<{ fmt: ExportFormat; label: string; hint: string }> = [
+    {
+      fmt: "auto",
+      label: t("Export annotated file"),
+      hint: t("Annotated original when available, otherwise the marks"),
+    },
+    { fmt: "pdf", label: t("Download annotated PDF"), hint: t("PDF with real annotations") },
+    { fmt: "markdown", label: t("Download as Markdown"), hint: t("The marks, ready to paste") },
+  ];
+  return (
+    <div role="group" aria-label={t("Export annotated file")}>
+      <MenuToolButton
+        icon={exporting ? Loader2 : Download}
+        label={t("Export annotated file")}
+        spinning={exporting}
+        disabled={exporting}
+        active={open}
+        onClick={() => setOpen((value) => !value)}
+      />
+      {open && (
+        <div role="menu" aria-label={t("Export annotated file")} className="mt-0.5 ml-2 border-l border-[var(--border)] pl-1">
+          {formats.map((row) => (
+            <MenuToolButton
+              key={row.fmt}
+              icon={Download}
+              label={row.label}
+              hint={row.hint}
+              disabled={exporting}
+              onClick={() => {
+                setOpen(false);
+                onExport(row.fmt);
+              }}
+            />
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 

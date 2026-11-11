@@ -43,6 +43,7 @@ from deeptutor.reading.extract import Extraction, extract_material
 from deeptutor.reading.models import (
     ANNOTATION_COLORS,
     Annotation,
+    AnnotationConflict,
     AnnotationKind,
     MaterialManifest,
     MaterialNotFound,
@@ -78,6 +79,7 @@ from deeptutor.reading.store import ReadingStore, content_hash
 __all__ = [
     "ANNOTATION_COLORS",
     "Annotation",
+    "AnnotationConflict",
     "AnnotationKind",
     "ExportFormat",
     "ExportResult",

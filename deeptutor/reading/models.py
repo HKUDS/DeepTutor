@@ -63,6 +63,16 @@ class ReadingUpgradeConflict(ReadingError):
     """A source-faithful upgrade would invalidate existing annotations."""
 
 
+class AnnotationConflict(ReadingError):
+    """An annotation edit was built from a copy the store has since replaced.
+
+    Two tabs on one document each hold their own copy of a mark. Without a
+    precondition, the second save overwrites the whole row from its stale copy
+    and silently reverts whatever the first tab changed. The client sends the
+    `updated_at` it read; a mismatch means someone else moved the row first.
+    """
+
+
 @dataclass(frozen=True, slots=True)
 class Rect:
     """A normalised rectangle within one unit: 0..1, origin top-left."""
@@ -389,6 +399,10 @@ class Annotation:
     author: str = "user"
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
+    # The `updated_at` the client read, when it is sending an edit. Zero means
+    # "no precondition" (a create, or an older client). Kept out of `to_dict`:
+    # it is request state, not row state.
+    expected_updated_at: float = 0.0
 
     def touched(self, **changes: Any) -> "Annotation":
         return replace(self, updated_at=time.time(), **changes)

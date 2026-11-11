@@ -23,8 +23,12 @@ test("citation capture extends the existing annotation contract", () => {
 });
 
 test("citations have a dedicated view in the existing annotation sidebar", () => {
+  // The view split and the kind predicate moved to the list's pure data
+  // module when the component was split up; the tab label stayed in the
+  // component. Assert each where it now lives.
   const list = source("components/reading/AnnotationList.tsx");
-  assert.match(list, /view === "citations"/);
-  assert.match(list, /annotation\.kind === "citation"/);
+  const model = source("lib/reading-mark-list.ts");
+  assert.match(model, /view === "citations"/);
+  assert.match(model, /annotation\.kind === "citation"/);
   assert.match(list, /label=\{t\("Citations"\)\}/);
 });

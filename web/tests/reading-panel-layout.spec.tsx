@@ -13,15 +13,23 @@ let observers: { resize: () => void; disconnect: ReturnType<typeof vi.fn> }[] = 
 function Harness({
   loading = false,
   navigatorOpen = true,
+  companionDocked = true,
 }: {
   loading?: boolean
   navigatorOpen?: boolean
+  companionDocked?: boolean
 }) {
-  const { gridRef, ...panels } = useReadingPanelLayout({ enabled: true, navigatorOpen, companionOpen: true })
+  const { gridRef, ...panels } = useReadingPanelLayout({
+    enabled: true,
+    navigatorOpen,
+    companionOpen: true,
+    companionDocked,
+  })
   if (loading) return <div>Loading</div>
   return (
     <div ref={gridRef} style={panels.gridStyle} data-testid="grid">
       <output data-testid="navigator">{String(panels.navigatorOpen)}</output>
+      <output data-testid="columns">{panels.gridStyle?.gridTemplateColumns ?? ''}</output>
       <button onClick={panels.toggleFocus}>Focus</button>
       {panels.showNavigatorHandle && (
         <ReadingPanelSeparator
@@ -149,6 +157,23 @@ describe('reading panel layout', () => {
     expect(nav).toHaveAttribute('aria-valuenow', '400')
     expect(companion).toHaveAttribute('aria-valuenow', '300')
     expect(nav).toHaveAttribute('tabindex', '0')
+  })
+
+  it('sizes the navigator while the companion is still a sheet', () => {
+    // Between `lg` and `xl` the navigator docks and the companion does not:
+    // the outline is resizable, the document keeps its full width because no
+    // companion column is reserved, and no companion handle exists to drag.
+    render(<Harness companionDocked={false} />)
+    measure()
+    expect(screen.getByRole('separator', { name: 'Navigator' })).toBeInTheDocument()
+    expect(screen.queryByRole('separator', { name: 'Companion' })).not.toBeInTheDocument()
+    expect(screen.getByTestId('columns')).toHaveTextContent(/^210px 5px minmax\(0,1fr\)$/)
+
+    const nav = screen.getByRole('separator', { name: 'Navigator' })
+    fireEvent.keyDown(nav, { key: 'End' })
+    expect(nav).toHaveAttribute('aria-valuenow', '400')
+    expect(screen.getByTestId('columns')).toHaveTextContent('400px 5px minmax(0,1fr)')
+    expect(localStorage.getItem('dt.reader.navigatorWidth')).toBe('400')
   })
 
   it('ends a captured drag on cancel and restores body styles on unmount', () => {
