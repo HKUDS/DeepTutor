@@ -34,6 +34,31 @@ def test_base_url_without_v1_is_preserved() -> None:
     assert str(provider._client.base_url).rstrip("/") == "https://proxy.example.com/anthropic"
 
 
+def test_tool_ids_from_other_providers_are_made_valid_and_stay_paired() -> None:
+    """Codex history stores ``call_id|item_id``, which the API rejects."""
+    _, messages = _provider()._convert_messages(
+        [
+            {"role": "user", "content": "look it up"},
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [
+                    {
+                        "id": "call_abc|fc_def",
+                        "type": "function",
+                        "function": {"name": "rag", "arguments": "{}"},
+                    }
+                ],
+            },
+            {"role": "tool", "tool_call_id": "call_abc|fc_def", "content": "found"},
+        ]
+    )
+
+    tool_use = next(b for b in messages[1]["content"] if b["type"] == "tool_use")
+    tool_result = messages[2]["content"][0]
+    assert tool_use["id"] == tool_result["tool_use_id"] == "call_abc_fc_def"
+
+
 def _kwargs(provider: AnthropicProvider, model: str) -> dict[str, Any]:
     return provider._build_kwargs(
         messages=[{"role": "user", "content": "hi"}],

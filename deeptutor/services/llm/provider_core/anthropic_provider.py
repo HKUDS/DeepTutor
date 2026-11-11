@@ -148,11 +148,18 @@ class AnthropicProvider(LLMProvider):
         return system, self._merge_consecutive(raw)
 
     @staticmethod
+    def _tool_id(raw: Any) -> str:
+        # History from other providers (e.g. Codex "call_x|fc_y") can carry ids
+        # Anthropic rejects; map them deterministically so tool_use/tool_result
+        # pairs still match. Stored history is left untouched.
+        return re.sub(r"[^a-zA-Z0-9_-]", "_", str(raw or ""))
+
+    @staticmethod
     def _tool_result_block(msg: dict[str, Any]) -> dict[str, Any]:
         content = msg.get("content")
         block: dict[str, Any] = {
             "type": "tool_result",
-            "tool_use_id": msg.get("tool_call_id", ""),
+            "tool_use_id": AnthropicProvider._tool_id(msg.get("tool_call_id", "")),
         }
         if isinstance(content, (str, list)):
             block["content"] = content
@@ -212,7 +219,7 @@ class AnthropicProvider(LLMProvider):
             blocks.append(
                 {
                     "type": "tool_use",
-                    "id": tc.get("id") or _gen_tool_id(),
+                    "id": AnthropicProvider._tool_id(tc.get("id")) or _gen_tool_id(),
                     "name": func.get("name", ""),
                     "input": args,
                 }
