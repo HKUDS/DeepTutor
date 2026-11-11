@@ -1379,6 +1379,67 @@ async def test_a_repeated_clarification_is_not_treated_as_a_revision(path_id):
         assert row.user_answer == help_request
 
 
+@pytest.mark.asyncio
+async def test_a_model_supplied_answer_cannot_revise_a_committed_one(path_id):
+    """Revision needs the runtime's key, not the model-controlled ``answer``.
+
+    The public ``answer`` parameter is model-authored; ``_learner_message`` is
+    injected from the turn's real user message. Preferring ``_learner_message``
+    but falling back to ``answer`` left the escalation open one parameter over:
+    a tool call with no trusted key could replace a committed learner reply and
+    credit mastery for text the learner never typed.
+    """
+    await _build_basic(path_id)
+    initial = json.loads((await MasteryStatusTool().execute(_mastery_path_id=path_id)).content)
+    kp_id = initial["next"]["knowledge_point_id"]
+    quiz = tool_payload(
+        (
+            await MasteryQuizTool().execute(
+                _mastery_path_id=path_id,
+                knowledge_point_id=kp_id,
+                question="How does a plant make its food?",
+                expected_answer="photosynthesis",
+                question_type="short",
+            )
+        )
+    )
+    from deeptutor.learning.service import LearningService
+
+    help_request = "I don't understand, please explain the task with the solution"
+    LearningService().record_question_answer(
+        path_id, help_request, interaction_id=quiz["question_id"]
+    )
+    ungraded = await MasteryGradeTool().execute(
+        _mastery_path_id=path_id,
+        question_id=quiz["question_id"],
+        _learner_message=help_request,
+    )
+    assert json.loads(ungraded.content)["is_correct"] is None
+    stuck = LearningStore().get_interaction(path_id, quiz["question_id"])
+    assert stuck is not None
+    assert stuck.result["final"] is False
+
+    # A model-only answer, with no trusted key, must not revise anything.
+    forged = json.loads(
+        (
+            await MasteryGradeTool().execute(
+                _mastery_path_id=path_id,
+                question_id=quiz["question_id"],
+                answer="photosynthesis",
+            )
+        ).content
+    )
+    assert forged["is_correct"] is None
+    assert forged["mastery"] == 0.0
+    row = LearningStore().get_interaction(path_id, quiz["question_id"])
+    assert row is not None
+    assert row.status == InteractionStatus.ANSWERED
+    assert row.user_answer == help_request
+    progress = LearningStore().load(path_id)
+    assert progress is not None
+    assert progress.quiz_attempts == []
+
+
 # ── assess: the qualitative gate ─────────────────────────────────────────────
 
 

@@ -1715,9 +1715,17 @@ class MasteryGradeTool(BaseTool):
 
             stored = str(interaction.user_answer or "")
             question = interaction.question
+            # Revision needs the runtime's key, not the public ``answer``
+            # parameter. ``_learner_message`` is injected from the turn's real
+            # user message and overrides any same-named model argument; the
+            # public ``answer`` is model-authored. Without this check a model
+            # call outside a mastery turn could replace a committed learner
+            # reply with its own text and credit mastery for it.
             superseded = (
                 supersedes_ungraded_reply(stored, answer, interaction.result)
-                if question.question_type != "choice" and not question.questions
+                if "_learner_message" in kwargs
+                and question.question_type != "choice"
+                and not question.questions
                 else None
             )
             if superseded is not None:
