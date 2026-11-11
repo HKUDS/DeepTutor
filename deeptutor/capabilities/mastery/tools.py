@@ -3382,10 +3382,13 @@ class MasteryLectureTool(BaseTool):
             name="mastery_lecture",
             description=(
                 "Propose a change to this knowledge point's lecture (讲义) from "
-                "the learner's request. Returns a preview with a section-level "
-                "diff; the learner applies it from the button under your reply. "
-                "This never saves the lecture itself, so never say the lecture "
-                "has been changed. Use it for 'shorten section 2', 'add an "
+                "the learner's request. The lecture is written from this study "
+                "conversation, and you may revise it — it is not read-only and "
+                "you do not need special permission. Returns a preview with a "
+                "section-level diff; the learner applies it from the button "
+                "under your reply. Never say the lecture has already changed, "
+                "and never refuse by claiming you cannot write it. Use it for "
+                "'shorten section 2', 'reorganise the whole lecture', 'add an "
                 "example about X', 'fix the wording here' — anything that edits "
                 "the study notes rather than teaching something new."
             ),
