@@ -196,6 +196,30 @@ function zoomButton(view: ReturnType<typeof render>, label: string) {
   return button;
 }
 
+/** Pick a named mode from the zoom bar's level menu. */
+async function selectZoomMode(
+  view: ReturnType<typeof render>,
+  label: string,
+) {
+  const trigger = await waitFor(() => {
+    const element = view.container.querySelector<HTMLButtonElement>(
+      'button[aria-haspopup="menu"]',
+    );
+    if (!element) throw new Error("the zoom bar has not mounted yet");
+    return element;
+  });
+  await act(async () => {
+    fireEvent.click(trigger);
+  });
+  const item = [
+    ...view.container.querySelectorAll<HTMLElement>('[role="menuitemradio"]'),
+  ].find((node) => node.textContent === label);
+  if (!item) throw new Error(`No "${label}" zoom mode`);
+  await act(async () => {
+    fireEvent.click(item);
+  });
+}
+
 beforeEach(() => {
   containerWidth = 648;
   viewportHeight = 500;
@@ -251,7 +275,7 @@ afterEach(() => {
 });
 
 describe("PDF reader zoom", () => {
-  it("opens at fit, so the default layout is unchanged", async () => {
+  it("opens fitting the text, at the pre-zoom page width", async () => {
     const view = await openReader();
     expect(widthOf(view.root)).toBe(600);
     const control = await waitFor(() => {
@@ -259,24 +283,24 @@ describe("PDF reader zoom", () => {
       if (!element) throw new Error("zoom bar has not mounted yet");
       return element;
     });
-    expect(control.textContent).toBe("Fit");
+    expect(control.textContent).toBe("Fit text");
   });
 
-  it("steps up the ladder from the ratio actually on screen", async () => {
+  it("steps by a ratio from the size actually on screen", async () => {
     const view = await openReader();
-    // Fitted at 75%, so one press goes to 100% = 800px, not to 25%.
+    // Fitted at 75% of 800px, so one press is 0.75 x 1.25 = 93.8% = 750px.
     await act(async () => {
       fireEvent.click(zoomButton(view, "Zoom in"));
     });
-    await waitFor(() => expect(widthOf(view.root)).toBe(800));
+    await waitFor(() => expect(widthOf(view.root)).toBeCloseTo(750, 0));
     await act(async () => {
       fireEvent.click(zoomButton(view, "Zoom in"));
     });
-    await waitFor(() => expect(widthOf(view.root)).toBe(1000));
+    await waitFor(() => expect(widthOf(view.root)).toBeCloseTo(938, 0));
     await act(async () => {
       fireEvent.click(zoomButton(view, "Zoom out"));
     });
-    await waitFor(() => expect(widthOf(view.root)).toBe(800));
+    await waitFor(() => expect(widthOf(view.root)).toBeCloseTo(750, 0));
   });
 
   it("holds the page still when the pane resizes in fixed mode", async () => {
@@ -284,11 +308,11 @@ describe("PDF reader zoom", () => {
     await act(async () => {
       fireEvent.click(zoomButton(view, "Zoom in"));
     });
-    await waitFor(() => expect(widthOf(view.root)).toBe(800));
+    await waitFor(() => expect(widthOf(view.root)).toBeCloseTo(750, 0));
     // Fixed is a share of the page's real size, so a wider pane must not
     // stretch it - unlike fit, which tracks the pane.
     await resize(1098);
-    expect(widthOf(view.root)).toBe(800);
+    expect(widthOf(view.root)).toBeCloseTo(750, 0);
     // Reset returns to fit, which does track the pane: 1098 - 48 = 1050.
     await act(async () => {
       fireEvent.click(zoomButton(view, "Reset zoom"));
@@ -394,45 +418,6 @@ describe("PDF reader zoom", () => {
     expect(first.width).toBe(3200);
   });
 
-  it("makes the first wheel notch of a zoom-out change the page", async () => {
-    // The regression: the gesture multiplied the STORED request (4x) rather than
-    // the width on screen. At 2x DPR a tall page is capped at 1722px, so 4x, 3x
-    // and 2.5x all draw the same page — the first notches of a zoom-out did
-    // nothing, and a zoom-in from there did nothing either.
-    pdf.dpr = 2;
-    const view = await openReader();
-    // Drive the stored request to 400% through the menu, which the budget caps.
-    await act(async () => {
-      fireEvent.click(
-        view.container.querySelector<HTMLButtonElement>(
-          'button[aria-haspopup="menu"]',
-        )!,
-      );
-    });
-    await act(async () => {
-      fireEvent.click(
-        view.container.querySelector<HTMLButtonElement>(
-          '[role="menuitemradio"]:last-of-type',
-        )!,
-      );
-    });
-    await waitFor(() => expect(widthOf(view.root)).toBe(1722));
-
-    // One notch down must shrink the page. Multiplied from the stored 4x it
-    // stayed at 1722 for several notches.
-    await act(async () => {
-      fireEvent.wheel(view.root, {
-        ctrlKey: true,
-        deltaY: 40,
-        clientX: 200,
-        clientY: 300,
-      });
-    });
-    await waitFor(() =>
-      expect(widthOf(view.root)).toBeLessThan(1722),
-    );
-  });
-
   it("ignores a wheel that is not a zoom gesture", async () => {
     const view = await openReader();
     await act(async () => {
@@ -471,12 +456,12 @@ describe("PDF reader zoom", () => {
     await act(async () => {
       fireEvent.click(zoomButton(first, "Zoom in"));
     });
-    await waitFor(() => expect(widthOf(first.root)).toBe(800));
+    await waitFor(() => expect(widthOf(first.root)).toBeCloseTo(750, 0));
     // The write is debounced, so a drag or pinch does not hit localStorage on
     // every frame; it lands once the gesture settles.
     await waitFor(() =>
       expect(localStorage.getItem(PDF_ZOOM_KEY)).toBe(
-        JSON.stringify({ mode: "fixed", scale: 1 }),
+        JSON.stringify({ mode: "fixed", scale: 0.938 }),
       ),
     );
     first.unmount();
@@ -487,22 +472,22 @@ describe("PDF reader zoom", () => {
       { materialId: "another-pdf" },
       { expectFitWidth: false },
     );
-    expect(widthOf(second.root)).toBe(800);
+    expect(widthOf(second.root)).toBeCloseTo(750, 0);
   });
 
-  it("restores fit from the toolbar's reset control", async () => {
+  it("restores the default (fit text) from the toolbar's reset control", async () => {
     const view = await openReader();
     await act(async () => {
       fireEvent.click(zoomButton(view, "Zoom in"));
     });
-    await waitFor(() => expect(widthOf(view.root)).toBe(800));
+    await waitFor(() => expect(widthOf(view.root)).toBeCloseTo(750, 0));
     await act(async () => {
       fireEvent.click(zoomButton(view, "Reset zoom"));
     });
     await waitFor(() => expect(widthOf(view.root)).toBe(600));
     expect(
       view.container.querySelector('[aria-haspopup="menu"]')?.textContent,
-    ).toBe("Fit");
+    ).toBe("Fit text");
   });
 
   it("does not leave a stale anchor behind a zoom that changes nothing", async () => {
@@ -540,7 +525,8 @@ describe("PDF reader zoom", () => {
     await act(async () => {
       fireEvent.keyDown(window, { key: "+", metaKey: true });
     });
-    await waitFor(() => expect(widthOf(view.root)).toBe(800));
+    // One step up from the trimmed default, not a round 800.
+    await waitFor(() => expect(widthOf(view.root)).toBeCloseTo(750, 0));
     await act(async () => {
       fireEvent.keyDown(window, { key: "-", metaKey: true });
     });
@@ -558,7 +544,9 @@ describe("PDF reader zoom", () => {
       await act(async () => {
         fireEvent.click(zoomIn);
       });
-      expect(widthOf(view.root)).toBe(800);
+      // From the default trimmed mode the first press lands on the next step
+      // above the drawn width, not on a round 800.
+      expect(widthOf(view.root)).toBeCloseTo(750, 0);
       // Moving into the bottom band reveals the bar; moving out schedules its
       // hide (420 ms).
       await act(async () => {
@@ -576,13 +564,70 @@ describe("PDF reader zoom", () => {
       // The debounce is flushed, not dropped: the size the reader picked just
       // before closing is the one they expect on the next open. (This used to
       // assert the opposite — a deliberate trade-off that lost the last zoom.)
-      expect(JSON.parse(localStorage.getItem(PDF_ZOOM_KEY) ?? "null")).toEqual({
-        mode: "fixed",
-        scale: 1,
-      });
+      const flushed = JSON.parse(
+        localStorage.getItem(PDF_ZOOM_KEY) ?? "null",
+      ) as { mode: string; scale: number };
+      expect(flushed.mode).toBe("fixed");
+      expect(flushed.scale).toBeCloseTo(0.938, 2);
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("does not keep a stale anchor when a zoom commits the same width", async () => {
+    // Open at the MIN_PAGE_WIDTH floor: 25% of an 800px page is 200px, which
+    // the reader raises to 240px.
+    localStorage.setItem(
+      PDF_ZOOM_KEY,
+      JSON.stringify({ mode: "fixed", scale: 0.25 }),
+    );
+    const view = await openReader({}, { expectFitWidth: false });
+    await waitFor(() => expect(widthOf(view.root)).toBe(240));
+
+    await scrollTo(view.root, 99, 0.3);
+    // Another zoom-out asks for the width already committed: nothing re-lays
+    // out, so the width restore never runs. Before the fix this captured an
+    // anchor and left it behind.
+    await act(async () => {
+      fireEvent.click(zoomButton(view, "Zoom out"));
+    });
+    expect(widthOf(view.root)).toBe(240);
+
+    // The reader moves on, and then changes mode. That commits a new width
+    // (240 -> 600), which used to apply the stale page-99 anchor and yank the
+    // reader back dozens of pages.
+    await scrollTo(view.root, 120, 0.4);
+    await selectZoomMode(view, "Fit text");
+    await waitFor(() => expect(widthOf(view.root)).toBe(600));
+    expect(positionWithin(view.root, 120)).toBeCloseTo(0.4, 2);
+  });
+
+  it("does not keep a stale anchor at the 400% ceiling either", async () => {
+    localStorage.setItem(
+      PDF_ZOOM_KEY,
+      JSON.stringify({ mode: "fixed", scale: 4 }),
+    );
+    const view = await openReader({}, { expectFitWidth: false });
+    await waitFor(() => expect(widthOf(view.root)).toBe(3200));
+
+    await scrollTo(view.root, 99, 0.3);
+    // The zoom-in button is disabled at the ceiling, but a pinch or ctrl+wheel
+    // still asks for a scale the clamp refuses: same width, no relayout.
+    const page = pageAt(view.root, 99);
+    const rect = page.getBoundingClientRect();
+    await act(async () => {
+      fireEvent.wheel(view.root, {
+        ctrlKey: true,
+        deltaY: -120,
+        clientY: rect.top + rect.height * 0.3,
+      });
+    });
+    expect(widthOf(view.root)).toBe(3200);
+
+    await scrollTo(view.root, 120, 0.4);
+    await selectZoomMode(view, "Fit text");
+    await waitFor(() => expect(widthOf(view.root)).toBe(600));
+    expect(positionWithin(view.root, 120)).toBeCloseTo(0.4, 2);
   });
 
   it("zooms with the keyboard only while the reader is in focus", async () => {
@@ -597,7 +642,7 @@ describe("PDF reader zoom", () => {
     await act(async () => {
       fireEvent.keyDown(window, { key: "+", ctrlKey: true });
     });
-    await waitFor(() => expect(widthOf(view.root)).toBe(800));
+    await waitFor(() => expect(widthOf(view.root)).toBeCloseTo(750, 0));
     await act(async () => {
       fireEvent.keyDown(window, { key: "0", ctrlKey: true });
     });

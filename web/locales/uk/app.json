@@ -6605,5 +6605,9 @@
   "settings.modelImport.unverified": "Деякі моделі не вказують тип. Перевірте їх перед використанням для цієї служби.",
   "settings.modelImport.draftHint": "Моделі додаються до чернетки. Застосуйте зміни, щоб зберегти їх; типова модель залишається незмінною.",
   "settings.modelImport.selected": "Вибрано: {{count}}",
-  "language.korean": "한국어 (일부 번역)"
+  "language.korean": "한국어 (일부 번역)",
+  "Zoom level": "Рівень масштабу",
+  "Reset zoom": "Скинути масштаб",
+  "Fit text": "За розміром тексту",
+  "Fit page": "За розміром сторінки"
 }

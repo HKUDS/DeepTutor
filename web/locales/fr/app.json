@@ -7488,5 +7488,9 @@
   "settings.modelImport.unverified": "Certains modèles ne précisent pas leur type. Testez-les avant de les utiliser pour ce service.",
   "settings.modelImport.draftHint": "Les modèles sont ajoutés au brouillon. Appliquez les modifications pour les enregistrer ; le modèle par défaut reste identique.",
   "settings.modelImport.selected": "Sélectionnés : {{count}}",
-  "language.korean": "한국어 (일부 번역)"
+  "language.korean": "한국어 (일부 번역)",
+  "Zoom level": "Niveau de zoom",
+  "Reset zoom": "Réinitialiser le zoom",
+  "Fit text": "Ajuster au texte",
+  "Fit page": "Ajuster à la page"
 }

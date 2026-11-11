@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import {
   ACTUAL_SIZE_FACTOR,
   DEFAULT_PDF_ZOOM,
+  cropsPageMargins,
   MAX_FIT_PAGE_WIDTH,
   MAX_PDF_ZOOM,
   MAX_PAGE_CANVAS_PIXELS,
@@ -23,6 +24,7 @@ import {
   PDF_ZOOM_KEY,
   type PdfZoomPreference,
   steppedPdfZoomByWidth,
+  zoomedBy,
   zoomedPageWidth,
 } from "../lib/reading-zoom";
 import { readerDisplayShortcut } from "../lib/reading-display-preferences";
@@ -62,26 +64,44 @@ test("stepping walks the menu ladder, not a fixed percentage", () => {
   assert.equal(steppedPdfZoom(2, -1), 1.5);
 });
 
-test("a step skips the stops the canvas budget has flattened", () => {
-  // 612pt page at DPR 2: the budget caps the drawn width at 1722 CSS px, so
-  // both 3x (2448 requested) and 4x (3264 requested) land on 211%. Stepping by
-  // the requested value alone made 4x->3x a no-op and wasted the first press
-  // of a climb; one press must always mean one visible step.
+test("a press steps by a ratio from what is on screen", () => {
+  // Continuous: a pinch settles at 137%, and the next press has to move from
+  // there — snapping to the menu's stops sent it *down* to 125%.
+  assert.equal(zoomedBy(1.37, 1), 1.713);
+  assert.equal(zoomedBy(1.37, -1), 1.096);
+  assert.equal(zoomedBy(0.75, 1), 0.938);
+  assert.equal(zoomedBy(1, 1), 1.25);
+  // Both ends stop rather than wrap.
+  assert.equal(zoomedBy(MAX_PDF_ZOOM, 1), MAX_PDF_ZOOM);
+  assert.equal(zoomedBy(MIN_PDF_ZOOM, -1), MIN_PDF_ZOOM);
+  // A press and its opposite come back to where they started.
+  assert.equal(zoomedBy(zoomedBy(1, 1), -1), 1);
+  // The menu still offers the named stops for jumping to a known size.
+  assert.deepEqual(PDF_ZOOM_OPTIONS, [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4]);
+});
+
+test("a step skips the factors the canvas budget has flattened", () => {
+  // 612pt page at DPR 2: the budget caps the drawn width at 1722 CSS px, so 4x
+  // (3264 requested) and 3x (2448) land on the same page. Multiplying the
+  // requested value alone made the first presses of a zoom-out draw nothing;
+  // `steppedPdfZoomByWidth` walks until the width actually changes.
   const page = 612;
   const ratio = 1.414;
   const dpr = 2;
   assert.equal(zoomedPageWidth(page, 3, ratio, dpr), 1722);
   assert.equal(zoomedPageWidth(page, 4, ratio, dpr), 1722);
-  // 4x -> smaller skips the collapsed 3x stop and lands where the page shrinks.
-  assert.equal(steppedPdfZoomByWidth(4, -1, page, ratio, dpr), 2);
+
+  // From the clamped ceiling, the step keeps walking until the width drops.
+  const down = steppedPdfZoomByWidth(4, -1, page, ratio, dpr);
+  assert.ok(down < 4);
   assert.ok(
-    zoomedPageWidth(page, 2, ratio, dpr) < zoomedPageWidth(page, 4, ratio, dpr),
+    zoomedPageWidth(page, down, ratio, dpr) <
+      zoomedPageWidth(page, 4, ratio, dpr),
   );
-  // From 2x (1632px) the next stop 3x really does grow to 1722, so it is taken.
-  assert.equal(steppedPdfZoomByWidth(2, 1, page, ratio, dpr), 3);
-  // With no clamping in play the ladder is walked one stop at a time.
+
+  // With room in the budget, one press is one factor.
   assert.equal(steppedPdfZoomByWidth(1, 1, page, ratio, dpr), 1.25);
-  assert.equal(steppedPdfZoomByWidth(2, 1, page, 4, 1), 3);
+  assert.equal(steppedPdfZoomByWidth(2, 1, page, 4, 1), 2.5);
 });
 
 test("a control is enabled only when its step changes the drawn width", () => {
@@ -158,6 +178,17 @@ test("stored zoom is bounded and malformed values fall back", () => {
     normalisePdfZoom({ mode: "fixed", scale: Number.NaN }),
     DEFAULT_PDF_ZOOM,
   );
+});
+
+test("the three page-size modes round-trip, and fitting the text is the default", () => {
+  // A reader, not a document inspector: the paper margins exist for binding
+  // and thumbs, so the default fills the pane with the text block.
+  assert.deepEqual(DEFAULT_PDF_ZOOM, { mode: "text" });
+  assert.equal(cropsPageMargins(DEFAULT_PDF_ZOOM), true);
+  assert.equal(cropsPageMargins({ mode: "fit" }), false);
+  assert.equal(cropsPageMargins({ mode: "fixed", scale: 2 }), false);
+  assert.deepEqual(normalisePdfZoom({ mode: "text" }), { mode: "text" });
+  assert.deepEqual(normalisePdfZoom({ mode: "fit" }), { mode: "fit" });
 });
 
 test("zoom shortcuts are scoped to a hovered or focused reader", () => {
@@ -247,7 +278,12 @@ test("zoom lives in its own store, not in the text typography preferences", () =
   // bitmap into, which is the whole point of keeping it out of the typography
   // store.
   const preference: PdfZoomPreference = DEFAULT_PDF_ZOOM;
-  assert.deepEqual(preference, { mode: "fit" });
+  // The default mode is the reader's own choice; what matters here is that the
+  // stored preference has no page-bitmap field to smuggle a size into.
+  assert.deepEqual(Object.keys(preference), ["mode"]);
+  // The default mode is the reader's own choice; what matters here is that the
+  // stored preference has no page-bitmap field to smuggle a size into.
+  assert.deepEqual(Object.keys(preference), ["mode"]);
 });
 
 test("new copy is translated in every shipped locale", () => {

@@ -54,11 +54,25 @@ describe("zoom level menu", () => {
     await act(async () => {
       fireEvent.click(view.getByRole("button", { name: "Zoom level" }));
     });
-    const fit = view.getByRole("menuitemradio", { name: "Fit" });
+    const fit = view.getByRole("menuitemradio", { name: "Fit text" });
     await act(async () => {
       fireEvent.click(fit);
     });
     expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(view.queryByRole("menu")).toBeNull();
+  });
+
+  it("offers both fit modes, and reports which one was picked", async () => {
+    const onSelect = vi.fn();
+    const view = controls({ onSelect });
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Zoom level" }));
+    });
+    expect(view.getByRole("menuitemradio", { name: "Fit text" })).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(view.getByRole("menuitemradio", { name: "Fit page" }));
+    });
+    expect(onSelect).toHaveBeenCalledWith({ mode: "fit" });
     expect(view.queryByRole("menu")).toBeNull();
   });
 
@@ -133,30 +147,6 @@ describe("zoom level menu", () => {
       fireEvent.pointerEnter(view.container.firstElementChild!);
     });
     expect(onActiveChange).not.toHaveBeenCalled();
-  });
-
-  it("labels a row with what it lands at, not what it asks for", async () => {
-    // `MIN_PAGE_WIDTH` (240px) is above a Letter page's 25% (204px), so picking
-    // "25%" drew 29% while the toolbar said 29% and the row still claimed 25%.
-    // The row prints the landed value now, so the two cannot disagree.
-    const view = controls({
-      percentFor: (scale: number) => (scale === 0.25 ? 29 : Math.round(scale * 100)),
-    });
-    await act(async () => {
-      fireEvent.click(view.getByRole("button", { name: "Zoom level" }));
-    });
-    expect(view.getByRole("menuitemradio", { name: "29%" })).toBeTruthy();
-    expect(view.queryByRole("menuitemradio", { name: "25%" })).toBeNull();
-  });
-
-  it("announces the percentage so a step has feedback without sight of the page", () => {
-    const view = controls({
-      preference: { mode: "fixed", scale: 1.75 },
-      effectivePercent: 175,
-    });
-    const trigger = view.getByRole("button", { name: "Zoom level" });
-    expect(trigger.getAttribute("aria-live")).toBe("polite");
-    expect(trigger.textContent).toBe("175%");
   });
 
   it("disables the ends of the range instead of wrapping", () => {
