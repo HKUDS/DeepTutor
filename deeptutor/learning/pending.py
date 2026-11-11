@@ -212,6 +212,31 @@ def is_readable_choice_answer(answer: str, options: list[str] | dict[str, str]) 
     )
 
 
+def supersedes_ungraded_reply(stored: Any, incoming: Any, result: dict | None) -> str | None:
+    """The new reply that replaces one the judge already ruled non-final.
+
+    The committed ``user_answer`` is authoritative: the pause/resume boundary
+    stored the learner's exact words, and a later model round must not
+    paraphrase them into a different answer. It stops being authoritative once
+    the learner has said something else *and* the stored reply was never ruled
+    on — on a free-text question that reply is usually a question ("I don't get
+    it, explain"), so keeping it re-graded the help request forever and left
+    the question unclearable (#2595, the free-text half of #1004).
+
+    Returns the trimmed incoming reply when it should replace the stored one,
+    or ``None`` to keep the stored answer. A repeated, empty, or
+    whitespace-identical reply is never a revision.
+    """
+
+    if not result or result.get("final") is not False:
+        return None
+    previous = str(stored or "").strip()
+    fresh = str(incoming or "").strip()
+    if not fresh or fresh == previous:
+        return None
+    return fresh
+
+
 @dataclass(frozen=True, slots=True)
 class PublicPendingOption:
     """One learner-visible option; ``id`` and ``label`` are intentionally stable."""
