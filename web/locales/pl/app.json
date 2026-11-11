@@ -3104,7 +3104,9 @@
   "Could not load this section.": "Nie można wczytać tej sekcji.",
   "Smaller text ({{percent}}%)": "Mniejszy tekst ({{percent}}%)",
   "Larger text ({{percent}}%)": "Większy tekst ({{percent}}%)",
+  "Zoom level": "Poziom powiększenia",
   "Reset reading display": "Przywróć domyślne ustawienia czytania",
+  "Reset zoom": "Resetuj powiększenie",
   "Use sans-serif font": "Użyj czcionki bezszeryfowej",
   "Use serif font": "Użyj czcionki szeryfowej",
   "Change line width ({{width}} characters)": "Zmień szerokość linii ({{width}} znaków)",
@@ -6603,5 +6605,15 @@
   "settings.modelImport.unverified": "Niektóre modele nie określają typu. Przetestuj je przed użyciem w tej usłudze.",
   "settings.modelImport.draftHint": "Modele są dodawane do wersji roboczej. Zastosuj zmiany, aby je zapisać; model domyślny pozostaje bez zmian.",
   "settings.modelImport.selected": "Wybrano: {{count}}",
-  "language.korean": "한국어 (일부 번역)"
+  "language.korean": "한국어 (일부 번역)",
+  "Zoom level": "Poziom powiększenia",
+  "Reset zoom": "Resetuj powiększenie",
+  "Fit text": "Dopasuj do tekstu",
+  "Fit page": "Dopasuj do strony",
+  "Drag to pan, scroll to zoom": "Przeciągnij, aby przesunąć; przewiń, aby powiększyć",
+  "Image preview": "Podgląd obrazu",
+  "Loading image…": "Ładowanie obrazu…",
+  "Page {{n}}": "Strona {{n}}",
+  "This image could not be rendered.": "Nie udało się wyrenderować tego obrazu.",
+  "Zoom image": "Powiększ obraz"
 }

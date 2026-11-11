@@ -3086,7 +3086,9 @@
   "Could not load this section.": "Không thể tải phần này.",
   "Smaller text ({{percent}}%)": "Chữ nhỏ hơn ({{percent}}%)",
   "Larger text ({{percent}}%)": "Chữ lớn hơn ({{percent}}%)",
+  "Zoom level": "Mức thu phóng",
   "Reset reading display": "Đặt lại hiển thị đọc",
+  "Reset zoom": "Đặt lại thu phóng",
   "Use sans-serif font": "Dùng phông chữ không chân",
   "Use serif font": "Dùng phông chữ có chân",
   "Change line width ({{width}} characters)": "Đổi độ rộng dòng ({{width}} ký tự)",
@@ -6581,5 +6583,15 @@
   "settings.modelImport.unverified": "Một số mô hình không khai báo loại. Hãy kiểm tra trước khi dùng cho dịch vụ này.",
   "settings.modelImport.draftHint": "Mô hình được thêm vào bản nháp. Áp dụng thay đổi để lưu; mô hình mặc định được giữ nguyên.",
   "settings.modelImport.selected": "Đã chọn: {{count}}",
-  "language.korean": "한국어 (일부 번역)"
+  "language.korean": "한국어 (일부 번역)",
+  "Zoom level": "Mức thu phóng",
+  "Reset zoom": "Đặt lại thu phóng",
+  "Fit text": "Vừa văn bản",
+  "Fit page": "Vừa trang",
+  "Drag to pan, scroll to zoom": "Kéo để di chuyển, cuộn để thu phóng",
+  "Image preview": "Xem trước hình ảnh",
+  "Loading image…": "Đang tải hình ảnh…",
+  "Page {{n}}": "Trang {{n}}",
+  "This image could not be rendered.": "Không thể hiển thị hình ảnh này.",
+  "Zoom image": "Phóng to hình ảnh"
 }

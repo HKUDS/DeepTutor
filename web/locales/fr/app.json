@@ -3577,6 +3577,7 @@
   "Smaller text": "Texte plus petit",
   "Larger text": "Texte plus grand",
   "Reset reading display": "Réinitialiser l'affichage de lecture",
+  "Reset zoom": "Réinitialiser le zoom",
   "Use sans-serif font": "Utiliser une police sans empattement",
   "Use serif font": "Utiliser une police à empattement",
   "Change line width": "Changer la largeur de ligne",
@@ -4940,6 +4941,7 @@
   "LLM calls": "Appels au modèle",
   "Language models": "Modèles de langage",
   "Larger text ({{percent}}%)": "Texte plus grand ({{percent}} %)",
+  "Zoom level": "Niveau de zoom",
   "Last {{count}} days": "Les {{count}} derniers jours",
   "Latest practice answer": "Dernière réponse d'entraînement",
   "Leader": "Meneur",
@@ -7486,5 +7488,15 @@
   "settings.modelImport.unverified": "Certains modèles ne précisent pas leur type. Testez-les avant de les utiliser pour ce service.",
   "settings.modelImport.draftHint": "Les modèles sont ajoutés au brouillon. Appliquez les modifications pour les enregistrer ; le modèle par défaut reste identique.",
   "settings.modelImport.selected": "Sélectionnés : {{count}}",
-  "language.korean": "한국어 (일부 번역)"
+  "language.korean": "한국어 (일부 번역)",
+  "Zoom level": "Niveau de zoom",
+  "Reset zoom": "Réinitialiser le zoom",
+  "Fit text": "Ajuster au texte",
+  "Fit page": "Ajuster à la page",
+  "Drag to pan, scroll to zoom": "Glisser pour déplacer, défiler pour zoomer",
+  "Image preview": "Aperçu de l'image",
+  "Loading image…": "Chargement de l'image…",
+  "Page {{n}}": "Page {{n}}",
+  "This image could not be rendered.": "Cette image n'a pas pu être rendue.",
+  "Zoom image": "Agrandir l'image"
 }
