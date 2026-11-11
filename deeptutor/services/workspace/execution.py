@@ -93,6 +93,11 @@ def prepare_workspace_execution_env(
         "HF_HOME": str(locations["cache"] / "huggingface"),
         "TORCH_HOME": str(locations["cache"] / "torch"),
         "MPLCONFIGDIR": str(locations["cache"] / "matplotlib"),
+        # The exec sandbox has no GUI session. A figure's ``show()`` (including
+        # schemdraw's default ``Drawing(show=True)`` on context exit) blocks
+        # until the tool timeout in that environment. Pin the non-interactive
+        # backend so printing, saving, and ``plt.show()`` all return at once.
+        "MPLBACKEND": "Agg",
         "LANG": os.environ.get("LANG", "C.UTF-8"),
         "PYTHONUNBUFFERED": "1",
         "PYTHONDONTWRITEBYTECODE": "1",
