@@ -500,6 +500,233 @@ def test_serply_rejects_an_unknown_mode() -> None:
 
 
 # --------------------------------------------------------------------------
+# SearchApi: one key, three Google engines (google / google_news /
+# google_scholar) behind a single GET endpoint selected by `engine`. Google no
+# longer honors `num` for web and news, so those rows are cut client-side.
+# --------------------------------------------------------------------------
+
+_SEARCHAPI_BODIES: dict[str, dict[str, Any]] = {
+    "google": {
+        "organic_results": [
+            {
+                "position": i + 1,
+                "title": f"Result {i}" if i else "[1706.03762] Attention Is All You Need",
+                "link": f"https://example.org/{i}" if i else "https://arxiv.org/abs/1706.03762",
+                "source": "arXiv",
+                "domain": "arxiv.org",
+                "snippet": "We propose a new simple network architecture, the Transformer...",
+                "date": "Jun 12, 2017",
+            }
+            for i in range(10)
+        ],
+        "related_searches": [{"query": "transformer paper"}],
+        "knowledge_graph": {"title": "Attention Is All You Need"},
+    },
+    "google_news": {
+        "organic_results": [
+            {
+                "position": i + 1,
+                "title": f"Story {i}",
+                "link": f"https://news.example/{i}",
+                "source": "Example Times",
+                "date": "8 hours ago",
+                "iso_date": "2026-11-10T11:00:00Z",
+                "snippet": "Genuine attention & chatbots",
+            }
+            for i in range(10)
+        ]
+    },
+    "google_scholar": {
+        "organic_results": [
+            {
+                "position": 1,
+                "title": "Attention is all you need",
+                "data_cid": "5Gohgn6QFikJ",
+                "link": "https://proceedings.neurips.cc/paper/7181-attention-is-all-you-need",
+                "publication": "A Vaswani, N Shazeer, N Parmar - Advances in neural ..., 2017",
+                "snippet": "The dominant sequence transduction models...",
+                "inline_links": {
+                    "cited_by": {"total": 281445, "link": "https://scholar.google.com/x"}
+                },
+                "resource": {"name": "[PDF]", "link": "https://example.org/attention.pdf"},
+                "authors": [{"name": "A Vaswani"}, {"name": "N Shazeer"}],
+            },
+            {
+                "position": 2,
+                "title": "Is Attention All You Need?",
+                "data_cid": "QEhbjTxy5DIJ",
+                "link": "https://link.springer.com/chapter/10.1007/978-3-031-84300-6_13",
+                "snippet": "We show how transformers...",
+                "inline_links": {"cited_by": {"total": 14}},
+                # Scholar renders a dead "[PDF]" badge as a javascript: href.
+                "resource": {
+                    "name": "[PDF]",
+                    "link": "https://scholar.google.comjavascript:void(0)",
+                },
+                "authors": [{"name": "P Mineault"}],
+            },
+        ]
+    },
+}
+
+
+@pytest.fixture
+def searchapi_calls(monkeypatch):
+    """Capture SearchApi GETs and answer each with the fixture body for its engine."""
+    captured: list[dict[str, Any]] = []
+
+    def _get(url: str, **kwargs: Any) -> _FakeResponse:
+        captured.append({"method": "GET", "url": url, **kwargs})
+        return _FakeResponse(_SEARCHAPI_BODIES[kwargs["params"]["engine"]])
+
+    class _FakeRequests:
+        get = staticmethod(_get)
+
+    monkeypatch.setattr("deeptutor.services.search.providers.searchapi.requests", _FakeRequests)
+    return captured
+
+
+def test_searchapi_sends_bearer_header_params_proxy_and_base_url_root(searchapi_calls) -> None:
+    from deeptutor.services.search.providers.searchapi import SearchApiProvider
+
+    provider = SearchApiProvider(api_key="k", proxy=PROXY)
+    provider.search("attention & focus", max_results=3, base_url="https://gateway.example/v1/")
+
+    call = searchapi_calls[-1]
+    assert call["url"] == "https://gateway.example/v1/search"
+    assert call["params"] == {"engine": "google", "q": "attention & focus"}
+    assert "num" not in call["params"]
+    assert "api_key" not in call["params"] and "k" not in call["url"]
+    assert call["headers"]["Authorization"] == "Bearer k"
+    assert call["headers"]["User-Agent"] == "DeepTutor"
+    assert call["proxies"] == {"http": PROXY, "https": PROXY}
+
+
+def test_searchapi_forwards_gl_and_hl_only_when_given(searchapi_calls) -> None:
+    from deeptutor.services.search.providers.searchapi import SearchApiProvider
+
+    SearchApiProvider(api_key="k").search("q", gl="br", hl="pt")
+    assert searchapi_calls[-1]["params"]["gl"] == "br"
+    assert searchapi_calls[-1]["params"]["hl"] == "pt"
+    assert "proxies" not in searchapi_calls[-1]
+
+
+def test_searchapi_metadata_comes_from_the_spec_table() -> None:
+    from deeptutor.services.config import SEARCH_PROVIDERS
+    from deeptutor.services.search.providers import list_providers
+    from deeptutor.services.search.providers.searchapi import SearchApiProvider
+
+    spec = SEARCH_PROVIDERS["searchapi"]
+    assert "searchapi" in list_providers()
+    assert SearchApiProvider.display_name == spec.label == "SearchApi"
+    assert SearchApiProvider.requires_api_key is True
+    assert SearchApiProvider.supports_answer is False
+    # Paid provider: never quietly turn a billed key into DuckDuckGo.
+    assert spec.soft_fallback is False
+
+
+def test_searchapi_web_rows_map_and_are_cut_to_max_results(searchapi_calls) -> None:
+    from deeptutor.services.search.providers.searchapi import SearchApiProvider
+
+    response = SearchApiProvider(api_key="k").search("attention is all you need", max_results=3)
+
+    assert response.provider == "searchapi"
+    assert response.model == "searchapi-google"
+    assert response.answer == ""
+    assert len(response.search_results) == len(response.citations) == 3
+    row = response.search_results[0]
+    assert row.url == "https://arxiv.org/abs/1706.03762"
+    assert row.source == "arXiv"
+    assert row.date == "Jun 12, 2017"
+    assert response.citations[0].reference == "[1]"
+    assert response.metadata["relatedSearches"] == [{"query": "transformer paper"}]
+    assert response.metadata["knowledgeGraph"] == {"title": "Attention Is All You Need"}
+
+
+def test_searchapi_news_resolves_links_and_trims_client_side(searchapi_calls) -> None:
+    from deeptutor.services.search.providers.searchapi import SearchApiProvider
+
+    response = SearchApiProvider(api_key="k").search("chatbots", mode="news", max_results=4)
+
+    params = searchapi_calls[-1]["params"]
+    assert params["engine"] == "google_news"
+    assert params["link"] == "resolved"
+    assert "num" not in params
+    assert len(response.search_results) == 4
+    assert response.search_results[0].snippet == "Genuine attention & chatbots"
+    assert response.search_results[0].source == "Example Times"
+    assert response.search_results[0].date == "2026-11-10T11:00:00Z"
+
+
+def test_searchapi_scholar_rows_render_through_the_academic_template(searchapi_calls) -> None:
+    from deeptutor.services.search.consolidation import AnswerConsolidator
+    from deeptutor.services.search.providers.searchapi import SearchApiProvider
+
+    response = SearchApiProvider(api_key="k").search("attention", mode="scholar", max_results=50)
+
+    params = searchapi_calls[-1]["params"]
+    assert params["engine"] == "google_scholar"
+    assert params["num"] == 20  # Scholar still honors num, capped at its 20
+    assert response.provider == "searchapi_scholar"
+    first, second = response.search_results
+    assert first.attributes == {
+        "publicationInfo": "A Vaswani, N Shazeer, N Parmar - Advances in neural ..., 2017",
+        "citedBy": 281445,
+        "pdfUrl": "https://example.org/attention.pdf",
+        "paperId": "5Gohgn6QFikJ",
+    }
+    # No publication string: fall back to the author names; dead PDF badge dropped.
+    assert second.attributes == {
+        "publicationInfo": "P Mineault",
+        "citedBy": 14,
+        "paperId": "QEhbjTxy5DIJ",
+    }
+    rendered = AnswerConsolidator().consolidate(response).answer
+    assert "Cited by: 281445" in rendered
+    assert "[PDF](https://example.org/attention.pdf)" in rendered
+    assert "javascript:" not in rendered
+
+
+def test_searchapi_surfaces_the_api_error_message(monkeypatch) -> None:
+    from deeptutor.services.search.providers.searchapi import SearchApiProvider
+
+    class _Unauthorized(_FakeResponse):
+        status_code = 401
+        text = '{"error":"Invalid API key."}'
+
+    class _FakeRequests:
+        get = staticmethod(lambda url, **kwargs: _Unauthorized({"error": "Invalid API key."}))
+
+    monkeypatch.setattr("deeptutor.services.search.providers.searchapi.requests", _FakeRequests)
+    with pytest.raises(Exception, match="401 - Invalid API key."):
+        SearchApiProvider(api_key="bad").search("q")
+
+
+def test_searchapi_rejects_a_non_json_body(monkeypatch) -> None:
+    from deeptutor.services.search.providers.searchapi import SearchApiProvider
+
+    class _Garbled(_FakeResponse):
+        text = "<html>upstream timeout</html>"
+
+        def json(self) -> dict[str, Any]:
+            raise ValueError("No JSON object could be decoded")
+
+    class _FakeRequests:
+        get = staticmethod(lambda url, **kwargs: _Garbled({}))
+
+    monkeypatch.setattr("deeptutor.services.search.providers.searchapi.requests", _FakeRequests)
+    with pytest.raises(Exception, match="not valid JSON"):
+        SearchApiProvider(api_key="k").search("q")
+
+
+def test_searchapi_rejects_an_unknown_mode() -> None:
+    from deeptutor.services.search.providers.searchapi import SearchApiProvider
+
+    with pytest.raises(ValueError, match="mode"):
+        SearchApiProvider(api_key="k").search("q", mode="images")
+
+
+# --------------------------------------------------------------------------
 # You.com: authenticated Search API.
 # --------------------------------------------------------------------------
 

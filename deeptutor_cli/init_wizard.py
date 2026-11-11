@@ -176,6 +176,13 @@ SEARCH_PROVIDERS: tuple[SearchProviderSpec, ...] = (
         hint="Google SERP · News & Scholar modes · paid",
     ),
     SearchProviderSpec(
+        name="searchapi",
+        label="SearchApi",
+        requires_api_key=True,
+        env_keys=("SEARCHAPI_API_KEY", "SEARCH_API_KEY"),
+        hint="Google SERP · News & Scholar modes · 100 free requests",
+    ),
+    SearchProviderSpec(
         name="perplexity",
         label="Perplexity",
         requires_api_key=True,
