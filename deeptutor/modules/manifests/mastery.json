@@ -43,6 +43,7 @@
           "mastery_mode",
           "mastery_profile",
           "mastery_revise",
+          "mastery_lecture",
           "mastery_paths",
           "mastery_switch",
           "mastery_leave",
@@ -131,17 +132,21 @@
       "class_path": "deeptutor.capabilities.mastery.tools:MasteryReviseTool",
       "order": 56
     },
+    "mastery_lecture": {
+      "class_path": "deeptutor.capabilities.mastery.tools:MasteryLectureTool",
+      "order": 57
+    },
     "mastery_paths": {
       "class_path": "deeptutor.capabilities.mastery.tools:MasteryPathsTool",
-      "order": 57
+      "order": 58
     },
     "mastery_switch": {
       "class_path": "deeptutor.capabilities.mastery.tools:MasterySwitchTool",
-      "order": 58
+      "order": 59
     },
     "mastery_leave": {
       "class_path": "deeptutor.capabilities.mastery.tools:MasteryLeaveTool",
-      "order": 59
+      "order": 60
     }
   },
   "routes": [
