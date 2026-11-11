@@ -535,6 +535,11 @@ class TurnExecutor:
                         filename=rec.get("filename", ""),
                         mime_type=rec.get("mime_type", ""),
                         id=rec.get("id", ""),
+                        # Prior-turn images are labelled for the model (#2632):
+                        # without the marker the multimodal layer presents them
+                        # like current-turn uploads.
+                        historical=bool(rec.get("historical", False)),
+                        source_message_id=str(rec.get("source_message_id", "") or ""),
                     )
                     for rec in prior_images
                 )
