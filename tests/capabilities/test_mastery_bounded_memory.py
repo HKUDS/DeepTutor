@@ -577,3 +577,51 @@ async def test_a_long_backlog_is_folded_in_bounded_steps(monkeypatch):
         assert watermark == int(expected[-1].removeprefix("hs-tutor-"))
         assert result.token_count <= result.budget
         assert "example 11 failed" in json.dumps(result.history_sources)
+
+
+@pytest.mark.asyncio
+async def test_an_oldest_exchange_over_the_plan_sends_no_memory_call(monkeypatch):
+    """#2510 review: "at least one" exchange sent a single 45k one to a 20k plan."""
+    calls = []
+
+    async def stream(_self, **kwargs):
+        calls.append(kwargs)
+        kwargs["outcome"].finish_reason = "stop"
+        yield "not json"
+
+    monkeypatch.setattr(_ContextSummaryAgent, "stream_llm", stream)
+    store = store_for(records(n=2, padding=15000))
+    config = SimpleNamespace(model="deepseek-flash", context_window=1048576, max_tokens=8192)
+    for _ in range(2):
+        result = await MasteryContextBuilder(store).build(session_id="s", llm_config=config)
+        assert result.token_count <= result.budget
+        assert "distinct-0 " * 15000 in result.history_sources["hs-tutor-2"]
+    assert calls == []
+    store.update_summary.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_the_memory_request_counts_prior_memory_and_instructions(monkeypatch):
+    """#2510 review: two exchanges fit the plan, but not with the memory around them."""
+    from deeptutor.capabilities.mastery.memory import archive_id
+    from deeptutor.services.session.model_history import history_groups
+
+    calls = []
+
+    async def stream(_self, **kwargs):
+        calls.append(kwargs)
+        kwargs["outcome"].finish_reason = "stop"
+        yield "not json"
+
+    monkeypatch.setattr(_ContextSummaryAgent, "stream_llm", stream)
+    prior = json.loads(memory(["hs-tutor-2"]))
+    prior["learner_state"][0]["note"] = "remembered " * 1500
+    store = store_for(records(n=4, padding=3100), summary=json.dumps(prior), watermark=2)
+    builder = MasteryContextBuilder(store)
+    config = SimpleNamespace(model="deepseek-flash", context_window=1048576, max_tokens=8192)
+    result = await builder.build(session_id="s", llm_config=config)
+    assert len(calls) == 1
+    sent = count_tokens(calls[0]["user_prompt"]) + count_tokens(calls[0]["system_prompt"])
+    assert sent <= result.budget
+    assert [archive_id(g) for g in history_groups(builder._summary_rows)] == ["hs-tutor-4"]
+    store.update_summary.assert_not_awaited()
