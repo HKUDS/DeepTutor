@@ -134,3 +134,40 @@ async def test_registration_shuffles_the_card_the_learner_sees(tmp_path, monkeyp
     ]
     assert [option.label for option in pending.options] == ["A", "B", "C"]
     assert pending.choice_map[pending.expected_answer] == "correct body"
+
+
+@pytest.mark.asyncio
+async def test_registration_accepts_the_correct_body_as_expected_answer(
+    tmp_path, monkeypatch
+) -> None:
+    """The model may register the correct body directly, not a letter.
+
+    Labels are only a presentation detail; accepting the body here keeps the
+    answer key independent of whatever label the card happens to show.
+    """
+    _use_store_root(monkeypatch, tmp_path)
+    real_random_class = random.Random
+    monkeypatch.setattr(
+        "deeptutor.capabilities.mastery.tools.random.Random",
+        lambda *args, **kwargs: real_random_class(7),
+    )
+    LearningStore().save(_built_path())
+
+    result = await MasteryQuizTool().execute(
+        _mastery_path_id="path-1",
+        knowledge_point_id="path-1-kp1",
+        question="Which option is correct?",
+        question_type="choice",
+        options=[
+            {"label": "A", "body": "correct body"},
+            {"label": "B", "body": "distractor one"},
+            {"label": "C", "body": "distractor two"},
+        ],
+        expected_answer="correct body",
+        explanation="because.",
+    )
+
+    assert result.success is True, result.content
+    pending = LearningStore().load("path-1").pending_question
+    assert pending is not None
+    assert pending.choice_map[pending.expected_answer] == "correct body"
