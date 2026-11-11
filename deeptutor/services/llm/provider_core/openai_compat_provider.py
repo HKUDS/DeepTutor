@@ -410,8 +410,9 @@ class OpenAICompatProvider(LLMProvider):
             return tool_call_id
         return hashlib.sha256(tool_call_id.encode()).hexdigest()[:9]
 
+    @classmethod
     def _sanitize_messages(
-        self,
+        cls,
         messages: list[dict[str, Any]],
         *,
         responses_api: bool = False,
@@ -464,7 +465,7 @@ class OpenAICompatProvider(LLMProvider):
         def map_id(value: Any) -> Any:
             if not isinstance(value, str):
                 return value
-            return id_map.setdefault(value, self._normalize_tool_call_id(value))
+            return id_map.setdefault(value, cls._normalize_tool_call_id(value))
 
         for clean in sanitized:
             if isinstance(clean.get("tool_calls"), list):

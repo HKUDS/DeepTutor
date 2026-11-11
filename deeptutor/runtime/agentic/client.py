@@ -187,12 +187,38 @@ def _build_openai_client(
     )
     if config.binding == "azure_openai" or (config.binding == "openai" and config.api_version):
         sdk_kwargs.pop("base_url", None)
-        return AsyncAzureOpenAI(
-            azure_endpoint=config.base_url,
-            api_version=config.api_version,
-            **sdk_kwargs,
+        return _sanitize_chat_client(
+            AsyncAzureOpenAI(
+                azure_endpoint=config.base_url,
+                api_version=config.api_version,
+                **sdk_kwargs,
+            )
         )
-    return AsyncOpenAI(**sdk_kwargs)
+    return _sanitize_chat_client(AsyncOpenAI(**sdk_kwargs))
+
+
+def _sanitize_chat_client(client: Any) -> Any:
+    """Project internal replay state before a raw SDK request crosses the wire.
+
+    Agent loops call the SDK directly, bypassing the services provider's
+    request builder. Reuse its projection so strict compatible endpoints do
+    not receive private fields, while thinking models retain their reasoning.
+    Native/Responses adapters return above and keep their own replay format.
+    """
+    create = client.chat.completions.create
+
+    async def create_chat_completion(**kwargs: Any) -> Any:
+        from deeptutor.services.llm.provider_core.openai_compat_provider import (
+            OpenAICompatProvider,
+        )
+
+        request = dict(kwargs)
+        if "messages" in request:
+            request["messages"] = OpenAICompatProvider._sanitize_messages(request["messages"])
+        return await create(**request)
+
+    client.chat.completions.create = create_chat_completion
+    return client
 
 
 class _KeyRotatingCompletions:

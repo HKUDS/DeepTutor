@@ -1,5 +1,6 @@
 import asyncio
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -100,7 +101,7 @@ def test_agentic_client_routes_forced_responses_through_adapter(monkeypatch) -> 
 def test_agentic_client_does_not_force_responses_for_azure(monkeypatch) -> None:
     class FakeAzureClient:
         def __init__(self, **_kwargs):
-            pass
+            self.chat = SimpleNamespace(completions=SimpleNamespace(create=AsyncMock()))
 
     class UnexpectedCompatProvider:
         def __init__(self, **_kwargs):
@@ -130,7 +131,7 @@ def test_agentic_client_does_not_force_responses_for_azure(monkeypatch) -> None:
 def test_agentic_client_forced_chat_completions_beats_auto_responses(monkeypatch) -> None:
     class FakeChatCompletionsClient:
         def __init__(self, **_kwargs):
-            self.chat = SimpleNamespace(completions=SimpleNamespace())
+            self.chat = SimpleNamespace(completions=SimpleNamespace(create=AsyncMock()))
 
     monkeypatch.setattr(agentic_client, "AsyncOpenAI", FakeChatCompletionsClient)
 
