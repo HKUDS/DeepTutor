@@ -230,6 +230,7 @@ class ClaudeCodeProvider(LLMProvider):
         try:
             sdk = _load_sdk()
             system_prompt, conversation = _split_system(messages)
+            system_prompt = _align_advertised_tools(system_prompt, tools)
             model = model or self.default_model
             if session_id:
                 return await self._run_session(
@@ -578,6 +579,97 @@ def _build_tool_options(sdk: ModuleType, tools: list[dict[str, Any]] | None) -> 
             _MCP_SERVER_NAME: sdk.create_sdk_mcp_server(_MCP_SERVER_NAME, tools=sdk_tools)
         },
     }
+
+
+def _mounted_tool_names(tools: list[dict[str, Any]] | None) -> list[str]:
+    """Bare registry names of the tools this call mounts on the MCP server."""
+    names: list[str] = []
+    for schema in tools or []:
+        function = schema.get("function") if isinstance(schema, dict) else None
+        name = str(function.get("name") or "").strip() if isinstance(function, dict) else ""
+        if name:
+            names.append(name)
+    return names
+
+
+def _align_advertised_tools(system_prompt: str, tools: list[dict[str, Any]] | None) -> str:
+    """Make the system prompt's tool advertising match the mounted surface.
+
+    The chat manifest advertises tools by bare registry name, but the CLI can
+    only reach them through the ``deeptutor`` SDK MCP server as
+    ``mcp__deeptutor__<name>`` — a bare-name call is rejected with ``No such
+    tool available`` and, with ``max_turns=1``, the turn dies with no text
+    (#2539). Rewrite each mounted tool's advertised name to the reachable one,
+    drop manifest entries for tools this call did not mount, and when a call
+    mounts no tools at all (e.g. the loop's forced-finish salvage, which sends
+    the manifest-laden prompt without ``tools``), say so instead of leaving
+    the manifest's invitation standing.
+    """
+    if not system_prompt:
+        return system_prompt
+    mounted = _mounted_tool_names(tools)
+    if not mounted:
+        return f"{system_prompt}\n\n{_TOOL_ACCESS_NONE_NOTE}"
+    aligned = _prune_unmounted_tool_entries(system_prompt, set(mounted))
+    for name in mounted:
+        # Backticks give exact-token semantics: `` `rag` `` never matches
+        # inside `` `kb_files` `` or an already-prefixed name.
+        aligned = aligned.replace(f"`{name}`", f"`{_MCP_TOOL_PREFIX}{name}`")
+    return f"{aligned}\n\n{_TOOL_NAMING_NOTE}"
+
+
+_TOOL_MANIFEST_SECTION = "tools"
+# Assembler block headings look like ``## tools``; ``###`` sub-group headings
+# (deferred tools group their providers) do not start a new block.
+_MANIFEST_HEADING_RE = re.compile(r"^##\s+(.+?)\s*$")
+# A manifest entry bullet: ``- `name` — description``. Prose and the ``- none``
+# fallback carry no backticked name and never match.
+_MANIFEST_ENTRY_RE = re.compile(r"^(\s*)[-*]\s+`([^`]+)`")
+
+
+def _prune_unmounted_tool_entries(system_prompt: str, mounted: set[str]) -> str:
+    """Remove ``## tools`` manifest entries this call did not mount.
+
+    The manifest lists every tool enabled for the turn, but a single call may
+    mount only a subset of them; a surviving entry would advertise a bare name
+    the CLI rejects, so its bullet — and the indented ``When to use`` /
+    ``Input`` lines under it — are removed. Other blocks (notebook ids,
+    deferred tools, prose) are left untouched.
+    """
+    kept: list[str] = []
+    in_tool_section = False
+    skipping_indent: int | None = None
+    for line in system_prompt.split("\n"):
+        heading = _MANIFEST_HEADING_RE.match(line)
+        if heading:
+            in_tool_section = heading.group(1) == _TOOL_MANIFEST_SECTION
+            skipping_indent = None
+            kept.append(line)
+            continue
+        indent = len(line) - len(line.lstrip())
+        if skipping_indent is not None:
+            # Continuation lines of a pruned entry are more indented than its
+            # bullet; a blank line or the next entry ends the removal.
+            if line.strip() and indent > skipping_indent:
+                continue
+            skipping_indent = None
+        if in_tool_section:
+            entry = _MANIFEST_ENTRY_RE.match(line)
+            if entry and entry.group(2) not in mounted:
+                skipping_indent = len(entry.group(1))
+                continue
+        kept.append(line)
+    return "\n".join(kept)
+
+
+_TOOL_NAMING_NOTE = (
+    "Tools are reachable only through the `deeptutor` MCP server: call each one by "
+    "its exact `mcp__deeptutor__<name>` name as listed in this prompt. A bare tool "
+    "name without that prefix does not exist, and calling it will be rejected."
+)
+_TOOL_ACCESS_NONE_NOTE = (
+    "No tools are mounted for this response. Do not call any tool; answer in plain text."
+)
 
 
 def _session_signature(

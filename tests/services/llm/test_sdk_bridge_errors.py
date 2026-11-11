@@ -15,6 +15,7 @@ import pytest
 
 from deeptutor.services.llm.provider_core.sdk_bridge import (
     _consume_messages,
+    _error_detail,
     _result_detail,
 )
 
@@ -210,4 +211,97 @@ def test_http_status_is_the_last_resort_before_giving_up() -> None:
             }
         )
         == "the provider API call failed (HTTP 429)"
+    )
+
+
+# --- rejected tool calls must survive as turn-failure evidence -------------
+#
+# When the CLI rejects a tool call the model made, the rejection only
+# surfaces as an error ``tool_result`` block on a user message. A turn that
+# dies right afterwards (``max_turns``) must still name it, after the CLI's
+# own fields (#2539).
+
+_REJECTED_TOOL_RESULT_MESSAGE = {
+    "type": "user",
+    "message": {
+        "role": "user",
+        "content": [
+            {
+                "type": "tool_result",
+                "tool_use_id": "toolu_1",
+                "is_error": True,
+                "content": "Error: No such tool available: write_note",
+            },
+            {
+                "type": "tool_result",
+                "tool_use_id": "toolu_2",
+                "content": "<tool_use_error>No such tool available: search_notes</tool_use_error>",
+            },
+        ],
+    },
+}
+
+
+@pytest.mark.asyncio
+async def test_rejected_tool_evidence_is_appended_to_the_cli_reason() -> None:
+    response = await _consume(
+        _REJECTED_TOOL_RESULT_MESSAGE,
+        _LiveMaxTurnsFrame(),
+    )
+
+    assert response.finish_reason == "error"
+    # The CLI's own prose leads…
+    assert response.content.startswith(
+        "Error calling Claude Code: Reached maximum number of turns (1)"
+    )
+    # …and both rejections follow as evidence.
+    assert "rejected tool call: Error: No such tool available: write_note" in response.content
+    assert "rejected tool call: No such tool available: search_notes" in response.content
+
+
+@pytest.mark.asyncio
+async def test_rejection_not_repeated_when_the_cli_already_reported_it() -> None:
+    frame = _ResultMessage(result="", is_error=True, subtype="error_during_execution")
+    frame.errors = ["No such tool available: write_note"]
+
+    response = await _consume(_REJECTED_TOOL_RESULT_MESSAGE, frame)
+
+    assert response.content.count("write_note") == 1
+
+
+@pytest.mark.asyncio
+async def test_rejection_evidence_alone_names_the_unavailable_tool() -> None:
+    """No ``errors[]``, no ``result``: the subtype plus the rejections speak."""
+    response = await _consume(
+        _REJECTED_TOOL_RESULT_MESSAGE,
+        _ResultMessage(result="", is_error=True, subtype="error_max_turns"),
+    )
+
+    assert response.finish_reason == "error"
+    assert "maximum number of turns" in response.content
+    assert "No such tool available: write_note" in response.content
+
+
+@pytest.mark.asyncio
+async def test_codebuddy_label_wraps_rejection_evidence_the_same_way() -> None:
+    response = await _consume(
+        _REJECTED_TOOL_RESULT_MESSAGE,
+        _ResultMessage(result="", is_error=True, subtype="error_during_execution"),
+        label="CodeBuddy",
+    )
+
+    assert response.content.startswith("Error calling CodeBuddy: the CLI reported an error")
+    assert "No such tool available: write_note" in response.content
+
+
+def test_error_detail_appends_only_new_rejections() -> None:
+    frame = {"is_error": True, "subtype": "error_max_turns", "result": "", "errors": []}
+
+    assert _error_detail(frame, ["Error: No such tool available: write_note"]) == (
+        "the turn hit its maximum number of turns (error_max_turns); "
+        "rejected tool call: Error: No such tool available: write_note"
+    )
+    # Already-covered evidence and blank entries add nothing.
+    assert _error_detail(frame, ["", "error_max_turns"]) == (
+        "the turn hit its maximum number of turns (error_max_turns)"
     )

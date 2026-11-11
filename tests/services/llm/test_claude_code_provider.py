@@ -11,6 +11,7 @@ from deeptutor.services.llm.config import LLMConfig
 from deeptutor.services.llm.provider_core import ClaudeCodeProvider
 from deeptutor.services.llm.provider_core.claude_code_provider import (
     _INLINE_SYSTEM_PROMPT_LIMIT,
+    _align_advertised_tools,
 )
 from deeptutor.services.llm.provider_factory import get_runtime_provider
 from deeptutor.services.provider_registry import find_by_name
@@ -39,9 +40,17 @@ class FakeAssistantMessage:
 
 
 class FakeResultMessage:
-    def __init__(self, result: str = "", is_error: bool = False):
+    def __init__(
+        self,
+        result: str = "",
+        is_error: bool = False,
+        subtype: str = "",
+        errors: list[str] | None = None,
+    ):
         self.result = result
         self.is_error = is_error
+        self.subtype = subtype
+        self.errors = errors
 
 
 def fake_tool(name, description, parameters):
@@ -142,7 +151,7 @@ async def test_long_system_prompt_goes_to_a_file_not_the_command_line(monkeypatc
     option = captured["options"].kwargs["system_prompt"]
     assert option["type"] == "file"
     path = Path(option["path"])
-    assert path.read_text(encoding="utf-8") == long_prompt
+    assert path.read_text(encoding="utf-8") == _align_advertised_tools(long_prompt, None)
     assert path.parent == Path(provider._workspace.name)
     assert not list(path.parent.glob("*.tmp"))
 
@@ -156,14 +165,17 @@ async def test_system_prompt_at_the_inline_limit_stays_inline(monkeypatch) -> No
         yield FakeResultMessage("ok")
 
     _install_fake_sdk(monkeypatch, query=fake_query)
-    prompt = "x" * _INLINE_SYSTEM_PROMPT_LIMIT
+    # The provider appends its tool-access note before measuring, so size the
+    # base prompt for the aligned result to sit exactly at the limit.
+    note_suffix = _align_advertised_tools("x", None)[1:]
+    prompt = "x" * (_INLINE_SYSTEM_PROMPT_LIMIT - len(note_suffix))
 
     provider = ClaudeCodeProvider(default_model="claude-code/sonnet")
     await provider.chat(
         messages=[{"role": "system", "content": prompt}, {"role": "user", "content": "Go"}]
     )
 
-    assert captured["options"].kwargs["system_prompt"] == prompt
+    assert captured["options"].kwargs["system_prompt"] == prompt + note_suffix
 
 
 @pytest.mark.asyncio
@@ -187,7 +199,8 @@ async def test_one_shot_lifts_system_prompt_and_isolates_claude_code(monkeypatch
 
     assert response.content == "hello"
     options = captured["options"].kwargs
-    assert options["system_prompt"] == "Be concise."
+    assert options["system_prompt"] == _align_advertised_tools("Be concise.", None)
+    assert options["system_prompt"].startswith("Be concise.")
     assert options["model"] == "sonnet"
     assert options["tools"] == []
     assert options["setting_sources"] == []
@@ -517,3 +530,185 @@ def test_a_non_empty_sdk_exception_is_reported_verbatim() -> None:
     assert _friendly_error(RuntimeError("socket closed")) == (
         "Error calling Claude Code: socket closed"
     )
+
+
+# ---- #2539: advertised tools must match the mounted MCP surface ----------
+
+TOOL_MANIFEST = (
+    "## tools\n"
+    "- `get_weather` — Weather lookup\n"
+    "    When to use: the user asks about weather.\n"
+    "- `write_note` — Create an authored notebook page."
+)
+
+
+@pytest.mark.asyncio
+async def test_system_prompt_advertises_mounted_tools_by_reachable_name(monkeypatch) -> None:
+    """The manifest's bare names do not exist on the CLI; mount-aligned ones do."""
+    captured: dict[str, object] = {}
+
+    async def fake_query(**kwargs):
+        captured.update(kwargs)
+        yield FakeResultMessage("ok")
+
+    _install_fake_sdk(monkeypatch, query=fake_query)
+
+    await ClaudeCodeProvider().chat(
+        messages=[
+            {"role": "system", "content": TOOL_MANIFEST},
+            {"role": "user", "content": "Weather?"},
+        ],
+        tools=[WEATHER_TOOL],
+    )
+
+    prompt = captured["options"].kwargs["system_prompt"]
+    assert "`mcp__deeptutor__get_weather`" in prompt
+    assert "`get_weather`" not in prompt
+    assert "mcp__deeptutor__" in prompt  # the naming rule names the exact prefix
+    assert "the user asks about weather" in prompt  # the mounted entry keeps its lines
+    # A tool that is advertised but NOT mounted must not be advertised at all.
+    assert "`write_note`" not in prompt
+    assert "Create an authored notebook page" not in prompt
+    assert "mcp__deeptutor__write_note" not in prompt
+
+
+@pytest.mark.asyncio
+async def test_system_prompt_without_mounted_tools_says_no_tools(monkeypatch) -> None:
+    """Forced-finish calls send the manifest with no tools mounted; say that."""
+    captured: dict[str, object] = {}
+
+    async def fake_query(**kwargs):
+        captured.update(kwargs)
+        yield FakeResultMessage("ok")
+
+    _install_fake_sdk(monkeypatch, query=fake_query)
+
+    await ClaudeCodeProvider().chat(
+        messages=[
+            {"role": "system", "content": TOOL_MANIFEST},
+            {"role": "user", "content": "Finish now."},
+        ],
+        tools=None,
+    )
+
+    options = captured["options"].kwargs
+    prompt = options["system_prompt"]
+    assert prompt.startswith(TOOL_MANIFEST)
+    assert "No tools are mounted" in prompt
+    # Nothing is mounted, so no tool is renamed into a reachable one.
+    assert "mcp__deeptutor__" not in prompt
+    assert "mcp_servers" not in options
+
+
+@pytest.mark.asyncio
+async def test_empty_system_prompt_is_left_empty(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    async def fake_query(**kwargs):
+        captured.update(kwargs)
+        yield FakeResultMessage("ok")
+
+    _install_fake_sdk(monkeypatch, query=fake_query)
+
+    await ClaudeCodeProvider().chat(messages=[{"role": "user", "content": "hi"}])
+
+    assert captured["options"].kwargs["system_prompt"] == ""
+
+
+# ---- #2539: a rejected tool call must survive as turn-failure evidence ----
+
+REJECTED_TOOL_RESULT_MESSAGE = {
+    "type": "user",
+    "message": {
+        "role": "user",
+        "content": [
+            {
+                "type": "tool_result",
+                "tool_use_id": "toolu_1",
+                "is_error": True,
+                "content": "Error: No such tool available: write_note",
+            },
+            {
+                "type": "tool_result",
+                "tool_use_id": "toolu_2",
+                "content": "<tool_use_error>No such tool available: search_notes</tool_use_error>",
+            },
+        ],
+    },
+}
+
+
+@pytest.mark.asyncio
+async def test_rejected_tool_call_ends_turn_with_actionable_error(monkeypatch) -> None:
+    """A turn killed by max_turns right after a rejection keeps every cause.
+
+    Real CLI frames mark this terminal result ``is_error=True`` with the
+    prose in ``errors[]`` and ``result=None``; when the frame carries only
+    the subtype, the rejections must still be named (#2539).
+    """
+    _install_fake_sdk(monkeypatch)
+    FakeClient.script = [
+        [
+            REJECTED_TOOL_RESULT_MESSAGE,
+            FakeResultMessage("", is_error=True, subtype="error_max_turns"),
+        ]
+    ]
+
+    response = await ClaudeCodeProvider().chat(
+        messages=[{"role": "user", "content": "Make me a study guide."}],
+        tools=[WEATHER_TOOL],
+        deeptutor_session_id="s1",
+    )
+
+    assert response.finish_reason == "error"
+    assert response.content.strip()
+    assert "error_max_turns" in response.content
+    assert "No such tool available: write_note" in response.content
+    assert "No such tool available: search_notes" in response.content
+
+
+@pytest.mark.asyncio
+async def test_cli_errors_prose_stays_ahead_of_rejected_tool_evidence(monkeypatch) -> None:
+    """The CLI's own ``errors[]`` sentence leads; rejections are appended."""
+    _install_fake_sdk(monkeypatch)
+    FakeClient.script = [
+        [
+            REJECTED_TOOL_RESULT_MESSAGE,
+            FakeResultMessage(
+                "",
+                is_error=True,
+                subtype="error_max_turns",
+                errors=["Reached maximum number of turns (1)"],
+            ),
+        ]
+    ]
+
+    response = await ClaudeCodeProvider().chat(
+        messages=[{"role": "user", "content": "hi"}], deeptutor_session_id="s1"
+    )
+
+    assert response.finish_reason == "error"
+    assert response.content.startswith(
+        "Error calling Claude Code: Reached maximum number of turns (1)"
+    )
+    assert "rejected tool call: Error: No such tool available: write_note" in response.content
+
+
+@pytest.mark.asyncio
+async def test_text_after_a_rejected_tool_call_is_still_a_normal_answer(monkeypatch) -> None:
+    """A rejection the model recovered from must not fail the whole turn."""
+    _install_fake_sdk(monkeypatch)
+    FakeClient.script = [
+        [
+            REJECTED_TOOL_RESULT_MESSAGE,
+            FakeAssistantMessage([FakeTextBlock("here is the answer")]),
+            FakeResultMessage("here is the answer"),
+        ]
+    ]
+
+    response = await ClaudeCodeProvider().chat(
+        messages=[{"role": "user", "content": "hi"}], deeptutor_session_id="s1"
+    )
+
+    assert response.finish_reason == "stop"
+    assert response.content == "here is the answer"

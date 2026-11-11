@@ -26,16 +26,18 @@ async def _consume_messages(
 ) -> LLMResponse:
     chunks: list[str] = []
     pending_result_text = ""
+    rejected_tool_errors: list[str] = []
     async for message in messages:
         if _is_error_result(message):
             return LLMResponse(
-                content=f"Error calling {label}: {_result_detail(message)}",
+                content=f"Error calling {label}: {_error_detail(message, rejected_tool_errors)}",
                 finish_reason="error",
             )
         if _is_result_message(message):
             pending_result_text = _result_text(message)
             continue
 
+        rejected_tool_errors.extend(_tool_result_errors(message))
         tool_calls = _assistant_tool_calls(message)
         text = _assistant_text(message)
         if text:
@@ -321,3 +323,77 @@ def _result_detail(message: Any) -> str:
     if status is not None:
         return f"the provider API call failed (HTTP {status})"
     return "the CLI ended the turn without a result and reported no reason"
+
+
+def _error_detail(message: Any, rejected_tool_errors: list[str] | None = None) -> str:
+    """The CLI's reason for the failed turn, plus rejected-tool evidence.
+
+    Wraps ``_result_detail``, keeping the CLI's own fields (``errors[]``,
+    ``result``, ``subtype``, HTTP status) in their priority order, and appends
+    the text of tool calls the CLI rejected during the turn. A turn killed by
+    ``max_turns`` right after a ``No such tool available`` rejection often
+    carries the rejection only in a ``tool_result`` block, so without this the
+    named cause would be lost (#2539). A rejection the CLI already reported in
+    ``errors[]`` or ``result`` is not repeated.
+    """
+    detail = _result_detail(message)
+    for error in rejected_tool_errors or []:
+        if not error:
+            continue
+        # A ``tool_result`` block often wraps the sentence the CLI already
+        # reported (an ``Error: `` prefix around it); containment either way
+        # marks it as the same fact, not new evidence.
+        if error in detail or detail in error:
+            continue
+        detail = f"{detail}; rejected tool call: {error}"
+    return detail
+
+
+def _tool_result_errors(message: Any) -> list[str]:
+    """Error text carried by ``tool_result`` blocks — e.g. a rejected tool call.
+
+    When the CLI rejects a tool call the model made (``No such tool
+    available: <name>``), the rejection only surfaces as an error
+    ``tool_result`` on a user message. Collect it so a turn that dies right
+    afterwards can still report an actionable cause (#2539).
+    """
+    blocks: list[Any] = []
+    containers = [message]
+    if isinstance(message, dict):
+        inner = message.get("message")
+    else:
+        inner = getattr(message, "message", None)
+    if inner is not None:
+        containers.append(inner)
+    for container in containers:
+        content = (
+            container.get("content")
+            if isinstance(container, dict)
+            else getattr(container, "content", None)
+        )
+        if isinstance(content, list):
+            blocks.extend(content)
+
+    errors: list[str] = []
+    for block in blocks:
+        if isinstance(block, dict):
+            block_type = str(block.get("type") or "")
+            is_error = bool(block.get("is_error"))
+            raw = block.get("content")
+            if raw is None:
+                raw = block.get("text")
+        else:
+            block_type = str(getattr(block, "type", "") or "")
+            is_error = bool(getattr(block, "is_error", False))
+            raw = getattr(block, "content", None)
+            if raw is None:
+                raw = getattr(block, "text", None)
+        if "tool_result" not in block_type:
+            continue
+        text = _content_text(raw).strip()
+        if not is_error and "<tool_use_error>" not in text:
+            continue
+        cleaned = text.replace("<tool_use_error>", "").replace("</tool_use_error>", "").strip()
+        if cleaned:
+            errors.append(cleaned)
+    return errors
