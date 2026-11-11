@@ -757,6 +757,44 @@ async def test_collect_prior_images_returns_branch_images_most_recent_first() ->
 
 
 @pytest.mark.asyncio
+async def test_collect_prior_images_marks_records_historical_with_source_message() -> None:
+    """#2632: re-injected records must carry their origin so the multimodal
+    layer can tell the model they came from an earlier message."""
+    messages = [
+        {
+            "id": 131,
+            "role": "user",
+            "content": "look at this",
+            "parent_message_id": None,
+            "attachments": [
+                {
+                    "id": "img-131",
+                    "type": "image",
+                    "filename": "plot.png",
+                    "mime_type": "image/png",
+                    "url": "/files/attachments/s1/img-131/plot.png",
+                }
+            ],
+        },
+        {"id": 132, "role": "assistant", "content": "ok", "parent_message_id": 131},
+        {
+            "id": 227,
+            "role": "user",
+            "content": "and then?",
+            "parent_message_id": 132,
+            "attachments": [],
+        },
+    ]
+    store = FakeStore(messages=messages)
+
+    collected = await collect_prior_image_attachments(store, session_id="s1", leaf_message_id=227)
+
+    assert [entry["id"] for entry in collected] == ["img-131"]
+    assert collected[0]["historical"] is True
+    assert collected[0]["source_message_id"] == "131"
+
+
+@pytest.mark.asyncio
 async def test_collect_prior_images_skips_non_images_and_url_less_entries() -> None:
     messages = [
         {
