@@ -1022,14 +1022,13 @@ export function MasteryStudy({
   const [lectureEpoch, setLectureEpoch] = useState(0);
   const handleLectureConfirmed = useCallback(() => setLectureEpoch((value) => value + 1), []);
 
-  // Confirming the section's lecture from study closes the loop: the section is
-  // done and its lecture is settled, so the learner lands on the review — the
-  // lecture beside the re-test — which is where the cue to start the next
-  // section lives.
+  // Confirming the section's lecture settles it and makes the review available;
+  // it does not move the learner. The review is the learner's own move — the
+  // mode switch gains its tab, and the "next knowledge point" cue lives there
+  // and is clicked, never auto-opened.
   const handleStudyLectureConfirmed = useCallback(() => {
     handleLectureConfirmed();
-    if (viewedPoint) openPlaced("review", viewedPoint.id);
-  }, [handleLectureConfirmed, openPlaced, viewedPoint]);
+  }, [handleLectureConfirmed]);
 
   // The study draft is rolled after the assistant message is persisted, so it
   // lands slightly after the stream ends. Bumping once per settled turn makes
