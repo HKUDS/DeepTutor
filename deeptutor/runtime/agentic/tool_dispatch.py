@@ -560,6 +560,7 @@ RESERVED_ARGUMENT_NAMES = frozenset(
         "_visualizer_registry",
         "_vision_supported",
         "_vault_path",
+        "_working_brief",
         "_workspace_dir",
         "_workspace_id",
         "_workspace_root",

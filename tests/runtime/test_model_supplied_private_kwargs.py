@@ -181,3 +181,18 @@ async def test_a_rebinding_round_does_not_re_admit_a_filtered_name():
 
     assert "_learner_message" not in received
     assert received.get("q") == "hello"
+
+
+def test_a_mastery_brief_flag_cannot_be_turned_off_by_the_model():
+    """`_working_brief` is injected by the mastery loop and read as trusted.
+
+    It decides whether `mastery_status` projects the working brief. It was
+    missing from the reserved list, so a model could send `_working_brief:
+    False` and have the tool honour it — the same class of bug as
+    `_learner_message`, caught on a later pass.
+    """
+
+    assert "_working_brief" in RESERVED_ARGUMENT_NAMES
+    assert _drop_server_owned_args({"knowledge_point_id": "k", "_working_brief": False}) == {
+        "knowledge_point_id": "k"
+    }
