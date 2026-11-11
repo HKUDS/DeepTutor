@@ -77,6 +77,10 @@ _INTERNAL_RESPONSE_STATE_KEYS = frozenset({"_provider_response_state", "_respons
 
 _RESPONSES_FAILURE_THRESHOLD = 2
 _RESPONSES_PROBE_INTERVAL_S = 300.0
+# Reporting threshold only. Mirrors the transport idle window in ``chat_stream``
+# so a stretch with no answer/reasoning/tool output is named once; it never
+# shortens a deadline, aborts a stream or triggers a retry.
+_SEMANTIC_SILENCE_REPORT_S = 90.0
 _INPUT_ITEM_STATUS_PARAM = re.compile(r"^input\[(0|[1-9][0-9]*)\]\.status$")
 _MAX_INPUT_ITEM_INDEX_DIGITS = len(str(sys.maxsize))
 
@@ -187,6 +191,41 @@ def _responses_circuit_key(
     model_name = (model or default_model or "").strip().lower()
     effort = (reasoning_effort or "").strip().lower() or "none"
     return f"{model_name}|{effort}"
+
+
+class _SemanticProgress:
+    """Separates "an event arrived" from "the model produced something".
+
+    Every event the SDK yields restarts the read deadline, so lifecycle frames
+    alone can hold a turn open without producing output. This only reports that
+    distinction; it never changes a deadline or interrupts the stream.
+    """
+
+    def __init__(self) -> None:
+        self._last_output = time.monotonic()
+        self._last_event: str | None = None
+        self._reported = False
+
+    def note_output(self) -> None:
+        self._last_output = time.monotonic()
+        self._reported = False
+
+    def note_event(self, event_type: str | None) -> None:
+        self._last_event = event_type
+
+    def report_if_silent(self, window_s: float) -> None:
+        if self._reported:
+            return
+        silent_for = time.monotonic() - self._last_output
+        if silent_for < window_s:
+            return
+        self._reported = True
+        logger.warning(
+            f"LLM stream has produced no content, reasoning or tool output for "
+            f"{silent_for:.0f}s while events keep arriving (last: "
+            f"{self._last_event or 'unknown'}). The connection is still alive, so "
+            "the read deadline keeps renewing; this is not a stall verdict."
+        )
 
 
 class OpenAICompatProvider(LLMProvider):
@@ -1279,24 +1318,47 @@ class OpenAICompatProvider(LLMProvider):
                     body["stream"] = True
                     stream = await self._create_responses_with_status_retry(body)
 
+                    progress = _SemanticProgress()
+
                     async def _timed_stream():
                         stream_iter = stream.__aiter__()
                         while True:
+                            # Reached after the previous event's callbacks, so a
+                            # semantic event has already reset the silence.
+                            progress.report_if_silent(_SEMANTIC_SILENCE_REPORT_S)
                             try:
-                                yield await asyncio.wait_for(
+                                event = await asyncio.wait_for(
                                     stream_iter.__anext__(),
                                     timeout=idle_timeout_s,
                                 )
                             except StopAsyncIteration:
                                 break
+                            progress.note_event(getattr(event, "type", None))
+                            yield event
 
                     native_output_items: list[dict[str, Any]] = []
                     native_citations: list[dict[str, Any]] = []
+
+                    async def _progress_content(text: str) -> None:
+                        progress.note_output()
+                        if on_content_delta:
+                            await on_content_delta(text)
+
+                    async def _progress_reasoning(text: str) -> None:
+                        progress.note_output()
+                        if on_reasoning_delta:
+                            await on_reasoning_delta(text)
+
+                    async def _progress_tool_args(call_id: str, name: str, arguments: str) -> None:
+                        progress.note_output()
+                        if on_tool_args_delta:
+                            await on_tool_args_delta(call_id, name, arguments)
 
                     def _collect_provider_event(
                         kind: str,
                         payload: dict[str, Any],
                     ) -> None:
+                        progress.note_output()
                         if kind == "output_item":
                             native_output_items.append(payload)
                         elif kind == "citation":
@@ -1310,10 +1372,10 @@ class OpenAICompatProvider(LLMProvider):
                         reasoning_content,
                     ) = await consume_sdk_stream(
                         _timed_stream(),
-                        on_content_delta,
-                        on_reasoning_delta=on_reasoning_delta,
+                        _progress_content,
+                        on_reasoning_delta=_progress_reasoning,
                         on_provider_event=_collect_provider_event,
-                        on_tool_args_delta=on_tool_args_delta,
+                        on_tool_args_delta=_progress_tool_args,
                     )
                     if not any(item.get("type") == "reasoning" for item in native_output_items):
                         native_output_items = [
