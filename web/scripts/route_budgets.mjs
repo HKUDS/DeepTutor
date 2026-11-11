@@ -22,12 +22,20 @@ const ROUTE_TARGETS = [
   {
     route: "/learning/reading/[workspaceId]/sessions/[sessionId]",
     requestPath: "/learning/reading/perf-budget/sessions/perf-session",
-    budgetKb: 1_370,
+    // +5KB for the annotation workflow: the list's data selection, the row
+    // renderer and the selection hook are separate modules now, which costs a
+    // little module overhead and buys a component that owns layout rather than
+    // eight responsibilities. Still inside the 2-4% headroom noted above.
+    budgetKb: 1_375,
   },
   {
     route: "/learning/mastery/[pathId]/sessions/[sessionId]",
     requestPath: "/learning/mastery/perf-budget/sessions/perf-session",
-    budgetKb: 1_090,
+    // Raised by 5KB: the reader's annotation sync and mark-update helpers live
+    // in `ReadingProvider`, which the workspace layout mounts for every
+    // learning route, so mastery carries ~1KB of them. Still inside the 2-4%
+    // headroom this file documents.
+    budgetKb: 1_095,
   },
 ];
 

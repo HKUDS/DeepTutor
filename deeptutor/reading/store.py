@@ -46,6 +46,7 @@ from deeptutor.reading.extract import MARKDOWN_SUFFIXES, extract_material, synth
 from deeptutor.reading.models import (
     MAX_TEXT_SELECTOR_CHARS,
     Annotation,
+    AnnotationConflict,
     MaterialManifest,
     MaterialNotFound,
     OutlineEntry,
@@ -88,6 +89,12 @@ _CONTENT_ID_RE = re.compile(r"^[0-9a-f]{8,64}$")
 _MATERIAL_ID_RE = re.compile(r"^(?:[0-9a-f]{8,64}|rm_[0-9a-f]{12})$")
 _ID_LENGTH = 16
 
+# How much surrounding text a TextQuoteSelector carries on each side. The reader
+# builds selectors with this window (see `web/lib/reading-w3c-annotations.ts`),
+# and revision migration rebuilds it with the same width so a migrated row is
+# anchored exactly as a freshly drawn one would be.
+QUOTE_CONTEXT_CHARS = 10
+
 # Hard ceiling on how much unit text one tool call may return, so a model asking
 # for "1-400" cannot blow the turn's context budget. The tool reports the
 # truncation rather than silently trimming.
@@ -96,6 +103,60 @@ MAX_READ_CHARS = 60_000
 
 def _normalise_selector_text(value: str) -> str:
     return re.sub(r"\s+", " ", value).strip()
+
+
+def _selector_identity(selector: TextSelector) -> tuple[Any, ...]:
+    """The parts of a selector that place a mark, ignoring its canonical text.
+
+    `exact` is rewritten to the canonical slice of the current text on every
+    save, so comparing it literally would report a change on a mark nobody
+    moved. Offsets and context are what actually pin the mark.
+    """
+
+    if isinstance(selector, TextQuoteSelector):
+        return (
+            "quote",
+            _normalise_selector_text(selector.exact),
+            _normalise_selector_text(selector.prefix),
+            _normalise_selector_text(selector.suffix),
+        )
+    return ("position", selector.start, selector.end)
+
+
+def _require_fresh_copy(stored: Annotation, incoming: Annotation) -> None:
+    """Reject an edit built from a copy the store has since replaced.
+
+    Two tabs on one document each hold their own copy of a mark; without this,
+    the later save overwrites the whole row from its stale copy and silently
+    reverts whatever the other tab changed. The comparison is deliberately
+    lenient about float noise and a zero precondition (creates, older clients).
+    """
+
+    if incoming.expected_updated_at <= 0:
+        return
+    if abs(stored.updated_at - incoming.expected_updated_at) <= 1e-6:
+        return
+    raise AnnotationConflict(
+        "this annotation changed since you loaded it — reload the marks and try again"
+    )
+
+
+def _same_anchor(stored: Annotation, incoming: Annotation) -> bool:
+    """Whether an edit leaves every field that anchors the mark untouched.
+
+    Used to skip anchor re-validation: a note or colour edit carries the
+    stored anchor back verbatim, and re-resolving it would fail for exactly the
+    marks revision migration could not resolve — the ones the reader most needs
+    to annotate.
+    """
+
+    if stored.locator != incoming.locator:
+        return False
+    if _normalise_selector_text(stored.quote) != _normalise_selector_text(incoming.quote):
+        return False
+    stored_selectors = tuple(_selector_identity(s) for s in stored.selectors)
+    incoming_selectors = tuple(_selector_identity(s) for s in incoming.selectors)
+    return stored_selectors == incoming_selectors
 
 
 def _find_quote_span(text: str, selector: TextQuoteSelector) -> tuple[int, int] | None:
@@ -1285,7 +1346,19 @@ class ReadingStore:
                     locator, (start, end) = matches[0]
                     unit_text = new_unit_texts[locator]
                     canonical_exact = unit_text[start:end]
-                    new_quote = dataclass_replace(quote_selector, exact=canonical_exact)
+                    # Rebuild the surrounding context too. Rewriting only
+                    # `exact` left the OLD prefix/suffix attached to the NEW
+                    # text while marking the row `resolved` — so the row showed
+                    # no review badge, yet `save_annotation` re-checks the
+                    # context on every edit and answered 400 for all of them.
+                    # The window matches what the reader builds when it makes a
+                    # selector (10 characters each side).
+                    new_quote = dataclass_replace(
+                        quote_selector,
+                        exact=canonical_exact,
+                        prefix=unit_text[max(0, start - QUOTE_CONTEXT_CHARS) : start],
+                        suffix=unit_text[end : end + QUOTE_CONTEXT_CHARS],
+                    )
                     new_selectors: list[TextSelector] = []
                     for s in row.selectors:
                         if s is quote_selector:
@@ -1342,6 +1415,18 @@ class ReadingStore:
             )
         if len(annotation.source_anchor) > 4096:
             raise ReadingError("source anchor is too long")
+        # An edit that leaves the anchor alone must not be re-validated against
+        # the current text. A mark whose revision migration marked `unresolved`
+        # or `ambiguous` is, by definition, one whose quote no longer identifies
+        # exactly one passage — so re-checking it here rejected every attempt to
+        # fix its note or colour with a 400, which is the only thing those
+        # states ever asked the reader to do. The anchor is what the row *is*;
+        # note, colour, kind and rects are what an edit may change.
+        existing_row = self._annotation_by_id(material_id, annotation.annotation_id)
+        if existing_row is not None:
+            _require_fresh_copy(existing_row, annotation)
+        if existing_row is not None and _same_anchor(existing_row, annotation):
+            return self._apply_annotation_edit(material_id, existing_row, annotation)
         quote_selectors = [
             selector for selector in annotation.selectors if isinstance(selector, TextQuoteSelector)
         ]
@@ -1420,8 +1505,26 @@ class ReadingStore:
                 )
                 existing.append(stored)
             else:
+                _require_fresh_copy(existing[index], stored)
+                # An update keeps the server-owned fields the request body
+                # cannot express. The router sends an AnnotationPayload, which
+                # carries only the reader's own choices (locator, kind, colour,
+                # quote, note, rects, anchor, selectors) plus author="user";
+                # everything else here is decided by the server.
+                #
+                # - author: the body cannot say who wrote a mark, so without
+                #   this an edit to the assistant's mark would relabel it as
+                #   the reader's.
+                # - resolution: revision migration marks rows unresolved or
+                #   ambiguous; a payload built from defaults would claim the
+                #   quote resolves again without re-checking it against the
+                #   text, hiding the review badge the reader needs to see.
+                # - material_revision and created_at: provenance of the row,
+                #   not of this edit.
                 stored = dataclass_replace(
                     stored,
+                    author=existing[index].author,
+                    resolution=existing[index].resolution,
                     material_revision=existing[index].material_revision,
                     created_at=existing[index].created_at or now,
                     updated_at=now,
@@ -1429,6 +1532,52 @@ class ReadingStore:
                 existing[index] = stored
             self._write_annotations(material_id, existing)
             return stored
+
+    def _annotation_by_id(self, material_id: str, annotation_id: str) -> Annotation | None:
+        """One stored row, or None for a create (or an id nobody holds)."""
+        if not annotation_id:
+            return None
+        return next(
+            (row for row in self.annotations(material_id) if row.annotation_id == annotation_id),
+            None,
+        )
+
+    def _apply_annotation_edit(
+        self,
+        material_id: str,
+        stored: Annotation,
+        incoming: Annotation,
+    ) -> Annotation:
+        """Apply a note/colour/kind/rects edit to a row whose anchor is unchanged.
+
+        The anchor fields come from the stored row, never from the request: the
+        request carries them back verbatim, and taking the stored copy keeps a
+        mark whose quote no longer resolves (`unresolved`/`ambiguous`) anchored
+        exactly where revision migration left it, badge and all.
+        """
+
+        with self._locked(material_id):
+            existing = self.annotations(material_id)
+            index = next(
+                (i for i, row in enumerate(existing) if row.annotation_id == stored.annotation_id),
+                None,
+            )
+            if index is None:
+                # Deleted between the read and the lock: fall back to a create
+                # so the caller still gets a row back.
+                return self.save_annotation(material_id, incoming)
+            edited = dataclass_replace(
+                stored,
+                kind=incoming.kind,
+                color=incoming.color,
+                note=incoming.note,
+                rects=incoming.rects,
+                source_anchor=incoming.source_anchor or stored.source_anchor,
+                updated_at=time.time(),
+            )
+            existing[index] = edited
+            self._write_annotations(material_id, existing)
+            return edited
 
     # -- bookmarks ---------------------------------------------------------
 

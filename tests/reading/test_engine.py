@@ -15,6 +15,7 @@ import pytest
 
 from deeptutor.reading import (
     Annotation,
+    AnnotationConflict,
     MaterialNotFound,
     ReadingError,
     ReadingStore,
@@ -1289,3 +1290,271 @@ def test_state_written_before_the_split_is_still_read(store: ReadingStore, pdf_p
 
     notes = sorted(row.note for row in store.annotations(manifest.material_id))
     assert notes == ["written after the split", "written by the old reader"]
+
+
+def test_editing_a_mark_keeps_the_author_it_was_written_with(
+    store: ReadingStore, pdf_path: Path
+) -> None:
+    """An update must not relabel the assistant's mark as the reader's.
+
+    The request body cannot say who authored a mark — the router hardcodes
+    ``"user"`` — so an edit that ignored the stored author would silently strip
+    the assistant badge from a mark the model made.
+    """
+    manifest = store.ingest(pdf_path)
+
+    saved = store.save_annotation(
+        manifest.material_id,
+        Annotation(
+            annotation_id="",
+            locator=1,
+            quote="Introduction",
+            note="from the assistant",
+            author="assistant",
+        ),
+    )
+    assert saved.author == "assistant"
+
+    # The reader recolours it; the router would send author="user".
+    edited = store.save_annotation(
+        manifest.material_id,
+        Annotation(
+            annotation_id=saved.annotation_id,
+            locator=1,
+            quote="Introduction",
+            note="from the assistant",
+            color="green",
+            author="user",
+        ),
+    )
+
+    assert edited.author == "assistant"
+    stored = store.annotations(manifest.material_id)
+    assert [row.author for row in stored] == ["assistant"]
+
+
+def test_editing_a_mark_keeps_its_revision_resolution(store: ReadingStore, pdf_path: Path) -> None:
+    """An edit must not silently clear a revision-migration warning.
+
+    Revision migration marks a row ``unresolved`` or ``ambiguous`` when its
+    quote no longer identifies exactly one passage. The router's payload has
+    no way to say that, so a payload built from defaults claims ``resolved``;
+    an edit that trusted it would hide the review badge without re-checking
+    the quote against the new text.
+    """
+    manifest = store.ingest(pdf_path)
+
+    saved = store.save_annotation(
+        manifest.material_id,
+        Annotation(
+            annotation_id="",
+            locator=1,
+            quote="Introduction",
+            note="v1",
+            resolution="unresolved",
+        ),
+    )
+    assert saved.resolution == "unresolved"
+
+    # The reader edits the note. The router's payload has no resolution
+    # field, so the Annotation it builds carries the dataclass default.
+    edited = store.save_annotation(
+        manifest.material_id,
+        Annotation(
+            annotation_id=saved.annotation_id,
+            locator=1,
+            quote="Introduction",
+            note="v2",
+        ),
+    )
+
+    assert edited.note == "v2"
+    assert edited.resolution == "unresolved"
+    stored = store.annotations(manifest.material_id)
+    assert [(row.note, row.resolution) for row in stored] == [("v2", "unresolved")]
+
+
+def test_editing_an_unresolved_mark_that_resends_its_selectors(
+    store: ReadingStore, pdf_path: Path
+) -> None:
+    """A note or colour edit must not be re-anchored.
+
+    This is the case the original test missed: the reader's update payload
+    carries the stored selectors back verbatim, and re-validating them against
+    the current text fails for exactly the marks migration could not resolve —
+    so the one edit those rows invite (fix the note) answered 400 every time.
+    """
+    manifest = store.ingest(pdf_path)
+    selector = TextQuoteSelector(exact="Introduction", prefix="", suffix="")
+    saved = store.save_annotation(
+        manifest.material_id,
+        Annotation(
+            annotation_id="",
+            locator=1,
+            quote="Introduction",
+            note="v1",
+            resolution="unresolved",
+            selectors=(selector,),
+        ),
+    )
+    assert saved.resolution == "unresolved"
+
+    # The reader edits the note, sending the selectors it holds.
+    edited = store.save_annotation(
+        manifest.material_id,
+        Annotation(
+            annotation_id=saved.annotation_id,
+            locator=1,
+            quote=saved.quote,
+            note="fixed the note",
+            color="green",
+            selectors=saved.selectors,
+        ),
+    )
+
+    assert edited.note == "fixed the note"
+    assert edited.color == "green"
+    assert edited.resolution == "unresolved"
+
+
+def test_migration_rebuilds_the_quote_context(store: ReadingStore) -> None:
+    """A migrated row must be anchored like a freshly drawn one.
+
+    Rewriting only ``exact`` left the old prefix/suffix pointing at text that no
+    longer surrounded the quote, while the row was marked ``resolved``. It then
+    showed no review badge yet rejected every edit, because saving re-checks the
+    context.
+    """
+    material = "a1b2c3d4e5f60718"
+    store.ingest_units(
+        material,
+        filename="a.txt",
+        units=["We keep the latency budget tight in this release cycle."],
+        unit="section",
+        render_mode="text",
+    )
+    selector = TextQuoteSelector(exact="latency budget", prefix="We keep the ", suffix="tight in")
+    saved = store.save_annotation(
+        material,
+        Annotation(
+            annotation_id="",
+            locator=1,
+            quote="latency budget",
+            note="v1",
+            selectors=(selector,),
+        ),
+    )
+
+    # Re-ingest with the surrounding prose rewritten; the quote still occurs
+    # exactly once, so migration re-anchors it.
+    store.ingest_units(
+        material,
+        filename="a.txt",
+        units=["However the team must keep the latency budget very tight in the new cycle."],
+        unit="section",
+        render_mode="text",
+    )
+
+    migrated = next(
+        row for row in store.annotations(material) if row.annotation_id == saved.annotation_id
+    )
+    assert migrated.resolution == "resolved"
+    quote_selector = next(row for row in migrated.selectors if isinstance(row, TextQuoteSelector))
+    # The context follows the new text, not the old one.
+    assert quote_selector.prefix.endswith("keep the ")
+    assert quote_selector.suffix.startswith(" very tigh")
+
+    # And an edit still works, which is what the stale context broke.
+    edited = store.save_annotation(
+        material,
+        Annotation(
+            annotation_id=saved.annotation_id,
+            locator=migrated.locator,
+            quote=migrated.quote,
+            note="v2",
+            selectors=migrated.selectors,
+        ),
+    )
+    assert edited.note == "v2"
+
+
+def test_a_stale_copy_is_refused(store: ReadingStore) -> None:
+    """Two tabs must not silently overwrite each other."""
+    material = "c1b2c3d4e5f60718"
+    store.ingest_units(
+        material,
+        filename="c.txt",
+        units=["Alpha beta gamma."],
+        unit="section",
+        render_mode="text",
+    )
+    base = store.save_annotation(
+        material,
+        Annotation(
+            annotation_id="",
+            locator=1,
+            quote="beta",
+            note="v1",
+            selectors=(TextQuoteSelector(exact="beta"),),
+        ),
+    )
+    stale = base.updated_at
+    first = store.save_annotation(
+        material,
+        Annotation(
+            annotation_id=base.annotation_id,
+            locator=1,
+            quote="beta",
+            note="tab A",
+            color="green",
+            selectors=base.selectors,
+            expected_updated_at=stale,
+        ),
+    )
+    with pytest.raises(AnnotationConflict):
+        store.save_annotation(
+            material,
+            Annotation(
+                annotation_id=base.annotation_id,
+                locator=1,
+                quote="beta",
+                note="tab B",
+                selectors=base.selectors,
+                expected_updated_at=stale,
+            ),
+        )
+    # A copy built from the fresh row is accepted.
+    second = store.save_annotation(
+        material,
+        Annotation(
+            annotation_id=base.annotation_id,
+            locator=1,
+            quote="beta",
+            note="tab B",
+            color="green",
+            selectors=base.selectors,
+            expected_updated_at=first.updated_at,
+        ),
+    )
+    assert second.note == "tab B"
+
+
+def test_annotation_response_carries_its_resolution():
+    """The reader draws a badge from `resolution`; the response must carry it."""
+    from deeptutor.api.routers.reading import AnnotationInfo
+
+    info = AnnotationInfo(
+        annotation_id="a1",
+        locator=1,
+        kind="highlight",
+        color="yellow",
+        quote="Intro",
+        note="",
+        rects=[],
+        author="user",
+        created_at=1.0,
+        updated_at=2.0,
+        resolution="unresolved",
+    )
+
+    assert info.model_dump()["resolution"] == "unresolved"
