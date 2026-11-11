@@ -26,16 +26,18 @@ async def _consume_messages(
 ) -> LLMResponse:
     chunks: list[str] = []
     pending_result_text = ""
+    rejected_tool_errors: list[str] = []
     async for message in messages:
         if _is_error_result(message):
             return LLMResponse(
-                content=f"Error calling {label}: {_result_text(message)}",
+                content=f"Error calling {label}: {_error_detail(message, rejected_tool_errors)}",
                 finish_reason="error",
             )
         if _is_result_message(message):
             pending_result_text = _result_text(message)
             continue
 
+        rejected_tool_errors.extend(_tool_result_errors(message))
         tool_calls = _assistant_tool_calls(message)
         text = _assistant_text(message)
         if text:
@@ -239,3 +241,180 @@ def _result_text(message: Any) -> str:
     else:
         value = getattr(message, "result", None) or getattr(message, "error", None)
     return "" if value is None else str(value)
+
+
+def _result_errors(message: Any) -> list[str]:
+    """The CLI's own prose for a failed turn (``errors: [...]``).
+
+    ``ResultMessage.errors`` is where the CLI puts the sentence a human should
+    read — ``"Reached maximum number of turns (1)"``, the unavailable-tool
+    rejection, an API failure. It is normally the *only* place: a turn that
+    ends on ``error_max_turns`` carries ``result=None``. The SDK's own
+    ``_error_result_text`` prefers this field for the same reason.
+    """
+    if isinstance(message, dict):
+        raw = message.get("errors")
+    else:
+        raw = getattr(message, "errors", None)
+    if isinstance(raw, str):
+        raw = [raw]
+    elif not isinstance(raw, list):
+        return []
+    # Older or buggy emitters may put non-strings in the list.
+    return [str(item).strip() for item in raw if isinstance(item, str) and item.strip()]
+
+
+def _result_subtype(message: Any) -> str:
+    """The CLI's own one-word verdict for the turn (``error_max_turns`` …)."""
+    if isinstance(message, dict):
+        value = message.get("subtype")
+    else:
+        value = getattr(message, "subtype", None)
+    return str(value or "").strip()
+
+
+def _result_api_status(message: Any) -> int | None:
+    """HTTP status of the failing API call, when the CLI reports one."""
+    if isinstance(message, dict):
+        value = message.get("api_error_status")
+    else:
+        value = getattr(message, "api_error_status", None)
+    return value if isinstance(value, int) else None
+
+
+# Why a failed turn ended. The CLI reports these in ``subtype``; ``errors[]``
+# is preferred when present, so this table is the fallback for frames that
+# carry the subtype only.
+_RESULT_FAILURES: dict[str, str] = {
+    "error_max_turns": "the turn hit its maximum number of turns",
+    "error_during_execution": "the CLI reported an error while running the turn",
+    "error_max_budget_usd": "the turn hit its budget limit",
+}
+
+
+def _result_detail(message: Any) -> str:
+    """An operator-facing reason for a failed SDK turn that is never blank.
+
+    Sources, in the order the SDK itself prefers them (see
+    ``claude_agent_sdk._internal.query._error_result_text``): ``errors[]``,
+    then ``result``, then a non-``success`` ``subtype``, then the HTTP status.
+
+    A turn that dies on the turn limit or on a rejected tool call ends with
+    ``result=None`` and the prose in ``errors[]``; the old code read only
+    ``result``, so a reported ``write_note`` failure reached the UI as
+    ``"Error calling Claude Code: "`` with the cause nowhere on screen
+    (#2539). Note that such a frame arrives as ``subtype: "success"`` when the
+    run ended on an API failure, which is why the subtype is not the primary
+    source.
+    """
+    errors = _result_errors(message)
+    if errors:
+        return "; ".join(errors)
+    text = _result_text(message).strip()
+    subtype = _result_subtype(message)
+    if text:
+        # Keep the CLI's wording first; the subtype is a machine-readable hint.
+        return f"{text} ({subtype})" if subtype and subtype != "success" else text
+    if subtype in _RESULT_FAILURES:
+        return f"{_RESULT_FAILURES[subtype]} ({subtype})"
+    if subtype and subtype != "success":
+        return f"the CLI ended the turn without a result ({subtype})"
+    status = _result_api_status(message)
+    if status is not None:
+        return f"the provider API call failed (HTTP {status})"
+    return "the CLI ended the turn without a result and reported no reason"
+
+
+def _error_detail(message: Any, rejected_tool_errors: list[str] | None = None) -> str:
+    """The CLI's reason for the failed turn, plus rejected-tool evidence.
+
+    Wraps ``_result_detail``, keeping the CLI's own fields (``errors[]``,
+    ``result``, ``subtype``, HTTP status) in their priority order, and appends
+    the text of tool calls the CLI rejected during the turn. A turn killed by
+    ``max_turns`` right after a ``No such tool available`` rejection often
+    carries the rejection only in a ``tool_result`` block, so without this the
+    named cause would be lost (#2539). A rejection the CLI already reported in
+    ``errors[]`` or ``result`` is not repeated.
+    """
+    detail = _result_detail(message)
+    for error in rejected_tool_errors or []:
+        core = _rejection_core(error)
+        if not core:
+            continue
+        # The ``tool_result`` block usually wraps the sentence the CLI already
+        # put in ``errors[]`` (an ``Error: `` prefix around it), so a rejection
+        # whose text the detail already contains is the same fact, not new
+        # evidence. The comparison is one-way on purpose: a short ``errors[]``
+        # entry such as "Error" is contained in every rejection, and letting
+        # that direction win would drop the only mention of the tool that was
+        # actually refused.
+        if core in detail:
+            continue
+        detail = f"{detail}; rejected tool call: {error}"
+    return detail
+
+
+def _rejection_core(text: str) -> str:
+    """The part of a rejected-tool message that identifies the rejection.
+
+    ``_tool_result_errors`` has already stripped the ``<tool_use_error>`` tags;
+    what usually remains is the CLI's own ``Error: `` prefix in front of the
+    sentence it also reports elsewhere. Dropping that prefix lets the caller
+    recognise the sentence instead of appending it twice.
+    """
+    core = text.strip()
+    lowered = core.lower()
+    for prefix in ("error:", "error :"):
+        if lowered.startswith(prefix):
+            return core[len(prefix) :].strip()
+    return core
+
+
+def _tool_result_errors(message: Any) -> list[str]:
+    """Error text carried by ``tool_result`` blocks — e.g. a rejected tool call.
+
+    When the CLI rejects a tool call the model made (``No such tool
+    available: <name>``), the rejection only surfaces as an error
+    ``tool_result`` on a user message. Collect it so a turn that dies right
+    afterwards can still report an actionable cause (#2539).
+    """
+    blocks: list[Any] = []
+    containers = [message]
+    if isinstance(message, dict):
+        inner = message.get("message")
+    else:
+        inner = getattr(message, "message", None)
+    if inner is not None:
+        containers.append(inner)
+    for container in containers:
+        content = (
+            container.get("content")
+            if isinstance(container, dict)
+            else getattr(container, "content", None)
+        )
+        if isinstance(content, list):
+            blocks.extend(content)
+
+    errors: list[str] = []
+    for block in blocks:
+        if isinstance(block, dict):
+            block_type = str(block.get("type") or "")
+            is_error = bool(block.get("is_error"))
+            raw = block.get("content")
+            if raw is None:
+                raw = block.get("text")
+        else:
+            block_type = str(getattr(block, "type", "") or "")
+            is_error = bool(getattr(block, "is_error", False))
+            raw = getattr(block, "content", None)
+            if raw is None:
+                raw = getattr(block, "text", None)
+        if "tool_result" not in block_type:
+            continue
+        text = _content_text(raw).strip()
+        if not is_error and "<tool_use_error>" not in text:
+            continue
+        cleaned = text.replace("<tool_use_error>", "").replace("</tool_use_error>", "").strip()
+        if cleaned:
+            errors.append(cleaned)
+    return errors
