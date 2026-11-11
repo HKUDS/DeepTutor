@@ -23,7 +23,44 @@ logger = logging.getLogger(__name__)
 _BUBBLE_CHAR_BUDGET = 24_000
 #: A lecture is a document, not a chat reply. The chat default truncates one
 #: at roughly a page, which is shorter than the thing being written.
-_LECTURE_MAX_TOKENS = 4_000
+_LECTURE_MAX_TOKENS = 8_000
+#: A reasoning model can spend the whole budget before it writes a visible
+#: answer; the retry gets more room and less deliberation.
+_LECTURE_RETRY_MAX_TOKENS = 16_000
+
+
+async def _lecture_complete(instruction: str) -> str:
+    """Run one lecture-writing call, retrying an empty answer once.
+
+    Some models answer only in their hidden reasoning and leave the visible
+    content empty — the lecture then looks like "the writer failed" when it
+    really ran out of budget. A second call with more room and a lower
+    reasoning effort is cheap next to losing the whole roll.
+    """
+    from deeptutor.services.llm.factory import complete
+
+    try:
+        body = await complete(
+            instruction,
+            system_prompt=_LECTURE_ROLL_SYSTEM,
+            max_tokens=_LECTURE_MAX_TOKENS,
+        )
+        if _strip_code_fence(body):
+            return body
+    except Exception:
+        body = ""
+    try:
+        retry = await complete(
+            instruction,
+            system_prompt=_LECTURE_ROLL_SYSTEM,
+            max_tokens=_LECTURE_RETRY_MAX_TOKENS,
+            reasoning_effort="low",
+        )
+        if _strip_code_fence(retry):
+            return retry
+    except Exception:
+        return body
+    return body
 
 
 def _point_name(progress: Any, knowledge_point_id: str) -> str:
@@ -739,7 +776,7 @@ async def _review_lecture(
     )
     if not rendered:
         return draft
-    revised = await complete(
+    revised = await _lecture_complete(
         (
             f"Knowledge point: {point_name}\n\n"
             f"{context_block}{check_block}"
@@ -750,8 +787,6 @@ async def _review_lecture(
             f"--- REVIEW ---\n{rendered}\n--- END REVIEW ---\n\n"
             f"--- CURRENT LECTURE ---\n{draft}\n--- END LECTURE ---"
         ),
-        system_prompt=_LECTURE_ROLL_SYSTEM,
-        max_tokens=_LECTURE_MAX_TOKENS,
     )
     revised_text = _strip_code_fence(revised)
     if not revised_text:
@@ -779,8 +814,6 @@ async def write_lecture_draft(
     hand. So the existing draft is an *input*: only bubbles past its watermark
     are summarised, and they are merged into the sections already there.
     """
-    from deeptutor.services.llm.factory import complete
-
     learning = store or LearningStore()
     progress = learning.load(path_id)
     point_name = _point_name(progress, knowledge_point_id) if progress is not None else ""
@@ -880,11 +913,7 @@ async def write_lecture_draft(
             f"{_transcript(fresh)}"
         )
 
-    body = await complete(
-        instruction,
-        system_prompt=_LECTURE_ROLL_SYSTEM,
-        max_tokens=_LECTURE_MAX_TOKENS,
-    )
+    body = await _lecture_complete(instruction)
     text = _strip_code_fence(body)
     if not text:
         raise RuntimeError("The lecture could not be written.")
@@ -943,8 +972,6 @@ async def revise_lecture_draft(
     and the learner only noticed afterwards that a paragraph they had written
     themselves was gone.
     """
-    from deeptutor.services.llm.factory import complete
-
     learning = store or LearningStore()
     progress = learning.load(path_id)
     point_name = _point_name(progress, knowledge_point_id) if progress is not None else ""
@@ -974,7 +1001,7 @@ async def revise_lecture_draft(
     context_block = (
         f"--- PATH CONTEXT ---\n{context}\n--- END PATH CONTEXT ---\n" if context else ""
     )
-    body = await complete(
+    body = await _lecture_complete(
         (
             f"Knowledge point: {point_name}\n"
             f"{context_block}{target}{quote}\n"
@@ -983,8 +1010,6 @@ async def revise_lecture_draft(
             "section's wording byte-for-byte. Output the full document.\n\n"
             f"--- CURRENT LECTURE ---\n{current}\n--- END LECTURE ---"
         ),
-        system_prompt=_LECTURE_ROLL_SYSTEM,
-        max_tokens=_LECTURE_MAX_TOKENS,
     )
     text = _strip_code_fence(body)
     if not text:
