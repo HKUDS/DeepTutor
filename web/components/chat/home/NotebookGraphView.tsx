@@ -123,11 +123,13 @@ function CellNodeView({ data }: NodeProps<CellNode>) {
       </div>
       <Handle
         type="target"
+        id="left"
         position={Position.Left}
         className="!h-3 !w-3 !border-2 !border-[var(--card)] !bg-[var(--primary)]"
       />
       <Handle
         type="source"
+        id="right"
         position={Position.Right}
         className="!h-3 !w-3 !border-2 !border-[var(--card)] !bg-[var(--primary)]"
       />
@@ -299,6 +301,8 @@ export default function NotebookGraphView({
         id: edge.id,
         source: edge.from,
         target: edge.to,
+        sourceHandle: edge.sourceHandle ?? "right",
+        targetHandle: edge.targetHandle ?? "left",
         type: "labeled" as const,
         data: { label: edge.label },
         markerEnd: {
@@ -314,12 +318,20 @@ export default function NotebookGraphView({
   const onConnect = useCallback(
     (connection: Connection) => {
       if (!connection.source || !connection.target) return;
+      // Each card has one source dot (right) and one target dot (left). If the
+      // drag began on a target dot, swap the two ends so the edge still leaves
+      // a source and lands on a target — the same two dots the learner touched.
+      let from = connection.source;
+      let to = connection.target;
+      if ((connection.sourceHandle ?? "right") === "left") {
+        [from, to] = [to, from];
+      }
       const id = newNotebookEdgeId();
       onGraphChange({
         ...graph,
         edges: [
           ...graph.edges,
-          { id, from: connection.source, to: connection.target, label: "" },
+          { id, from, to, label: "", sourceHandle: "right", targetHandle: "left" },
         ],
       });
       setEditing({ id, label: "" });
@@ -354,7 +366,14 @@ export default function NotebookGraphView({
       const from = cells[i].id;
       const to = cells[i + 1].id;
       if (next.some((edge) => edge.from === from && edge.to === to)) continue;
-      next.push({ id: newNotebookEdgeId(), from, to, label: "" });
+      next.push({
+        id: newNotebookEdgeId(),
+        from,
+        to,
+        label: "",
+        sourceHandle: "right",
+        targetHandle: "left",
+      });
     }
     onGraphChange({ ...graph, edges: next });
   }, [cells, graph, onGraphChange]);

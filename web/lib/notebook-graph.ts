@@ -22,6 +22,9 @@ export interface NotebookGraphEdge {
   to: string;
   /** Markdown shown on the line: text, `$math$`, or an image. */
   label: string;
+  /** Which handle the line leaves from and lands on ("right" / "left"). */
+  sourceHandle?: string;
+  targetHandle?: string;
 }
 
 /** A short label with a colour, shown on a cell's card. */

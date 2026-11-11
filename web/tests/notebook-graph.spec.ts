@@ -12,7 +12,14 @@ describe("notebook graph", () => {
     const graph = {
       positions: { "cell-1": { x: 10, y: 20 } },
       edges: [
-        { id: "e1", from: "cell-1", to: "cell-2", label: "if $a>0$ then …" },
+        {
+          id: "e1",
+          from: "cell-1",
+          to: "cell-2",
+          label: "if $a>0$ then …",
+          sourceHandle: "right",
+          targetHandle: "left",
+        },
       ],
       tags: { "cell-1": { label: "core", color: "#3b82f6" } },
     };
@@ -23,6 +30,8 @@ describe("notebook graph", () => {
     expect(split.body.trimEnd()).toBe(cells);
     expect(split.graph.edges).toHaveLength(1);
     expect(split.graph.edges[0].label).toBe("if $a>0$ then …");
+    expect(split.graph.edges[0].sourceHandle).toBe("right");
+    expect(split.graph.edges[0].targetHandle).toBe("left");
     expect(split.graph.positions["cell-1"]).toEqual({ x: 10, y: 20 });
     expect(split.graph.tags["cell-1"]).toEqual({
       label: "core",
