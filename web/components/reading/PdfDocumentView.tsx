@@ -12,6 +12,7 @@ import { Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
   loadPdfjs,
+  outputScale,
   pdfjsCMapUrl,
   pdfjsWasmUrl,
   type PdfDocument,
@@ -29,7 +30,31 @@ import {
   locatorOfSelection,
   normaliseRects,
 } from "@/lib/reading-selection";
+import {
+  DEFAULT_PDF_ZOOM,
+  READER_WIDTH_INSET,
+  actualSizeWidth,
+  clampPdfZoom,
+  effectiveZoomPercent,
+  fitZoomRatio,
+  fittedPageWidth,
+  loadPdfZoom,
+  pdfZoomShortcut,
+  savePdfZoom,
+  steppedPdfZoom,
+  steppedPdfZoomByWidth,
+  canStepPdfZoom,
+  zoomedPageWidth,
+  type PdfZoomPreference,
+} from "@/lib/reading-zoom";
+import { isEditableTarget } from "@/lib/shortcuts";
 import { PdfPage } from "./PdfPage";
+import dynamic from "next/dynamic";
+
+const PdfZoomControls = dynamic(
+  () => import("./PdfZoomControls").then((module) => module.PdfZoomControls),
+  { ssr: false },
+);
 
 /** Pages kept rendered on each side of the viewport. */
 const RENDER_MARGIN = 1;
@@ -99,18 +124,53 @@ export function PdfDocumentView({
     materialId: string;
     doc: PdfDocument;
     ratio: number;
+    /** Page 1's width at `scale: 1`, in PDF points — the base for "100%". */
+    intrinsicWidth: number;
   } | null>(null);
   const [loadError, setLoadError] = useState<{
     materialId: string;
     message: string;
   } | null>(null);
-  const [pageWidth, setPageWidth] = useState(0);
+  // What the pane can give the page. The page's own width is derived from this
+  // and the zoom preference, so a zoom change is never mistaken for a resize.
+  const [measuredWidth, setMeasuredWidth] = useState(0);
+  // Seeded from storage lazily: the stored zoom never reaches the server
+  // render, because the page width stays 0 and the toolbar stays unmounted
+  // until the ResizeObserver and the document loader have both run.
+  const [zoom, setZoom] = useState<PdfZoomPreference>(loadPdfZoom);
+  // Mirrors `zoom` for the wheel/keydown handlers, which must read the
+  // preference without being re-registered on every gesture frame.
+  const zoomRef = useRef<PdfZoomPreference>(DEFAULT_PDF_ZOOM);
+  // Debounced write of a gesture's settled zoom.
+  const settleRef = useRef<number | null>(null);
+  // The value the pending debounce would have written, so unmount can flush it.
+  const pendingSaveRef = useRef<PdfZoomPreference>(DEFAULT_PDF_ZOOM);
+  const controlsHideRef = useRef<number | null>(null);
+  // A device without hover can never move a pointer into the reveal strip, so
+  // the bar would be permanently unreachable: keep it out instead. Read lazily
+  // for the same reason as the zoom preference above.
+  const [controlsVisible, setControlsVisible] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(hover: none)").matches,
+  );
+  // The wheel listener is registered once, so it reaches the latest
+  // `showControls` through a ref instead of a dependency.
+  const showControlsRef = useRef<(() => void) | null>(null);
+  const pointerNearBottom = useRef(false);
+  const overControls = useRef(false);
   const committedWidthRef = useRef(0);
   const resizeAnchorRef = useRef<{
     doc: PdfDocument;
     locator: string;
+    /** Where the anchored point sits inside the page, vertically. */
     fraction: number;
+    /** The same share, across the page's width. */
+    xFraction: number;
+    /** How far that point sits from the pane's top and left edges. */
     viewportOffset: number;
+    horizontalOffset: number;
   } | null>(null);
   const [visibleLocator, setVisibleLocator] = useState(1);
   // Tagged with the jump's nonce for the same reason: a stale flash cannot
@@ -121,10 +181,69 @@ export function PdfDocumentView({
     rects: NormalisedRect[];
   } | null>(null);
 
+  // Timers that outlive the component would fire into a torn-down reader, so
+  // both are cleared here. The save debounce is FLUSHED rather than dropped: a
+  // reader who zoomed and immediately closed the pane chose a size, and losing
+  // it silently means the next open surprises them with the old one. Writing a
+  // preference during unmount is harmless — it is the value they just picked.
+  useEffect(() => {
+    // A closing tab or a backgrounded phone does not unmount the component, so
+    // the unmount flush below never ran and a zoom changed inside the 150ms
+    // debounce was lost. These fire on the way out.
+    const flush = () => {
+      if (settleRef.current === null) return;
+      clearTimeout(settleRef.current);
+      settleRef.current = null;
+      savePdfZoom(pendingSaveRef.current);
+    };
+    const onHide = () => {
+      if (document.visibilityState === "hidden") flush();
+    };
+    window.addEventListener("pagehide", flush);
+    document.addEventListener("visibilitychange", onHide);
+    return () => {
+      window.removeEventListener("pagehide", flush);
+      document.removeEventListener("visibilitychange", onHide);
+      flush();
+      if (controlsHideRef.current !== null) {
+        clearTimeout(controlsHideRef.current);
+      }
+      settleRef.current = null;
+      controlsHideRef.current = null;
+    };
+  }, []);
+
   const doc = loaded?.materialId === materialId ? loaded.doc : null;
   const fallbackRatio =
     loaded?.materialId === materialId ? loaded.ratio : 1.414; // A4 until measured
   const error = loadError?.materialId === materialId ? loadError.message : null;
+  const intrinsicWidth =
+    loaded?.materialId === materialId ? loaded.intrinsicWidth : 0;
+  // `fit` fills the pane at the pre-zoom width; `fixed` is a share of the
+  // page's real size, so it holds still when the pane changes width.
+  const pageWidth =
+    measuredWidth <= 0
+      ? 0
+      : zoom.mode === "fit"
+        ? fittedPageWidth(measuredWidth)
+        : zoomedPageWidth(
+            intrinsicWidth,
+            zoom.scale,
+            fallbackRatio,
+            outputScale(),
+          );
+  const zoomPercent = effectiveZoomPercent(pageWidth, intrinsicWidth);
+  // The ratio the page is drawn at, derived from committed state rather than the
+  // gesture ref: render must not read a ref, and this is the value the toolbar's
+  // enablement describes. Memoised because the compiler cannot hoist a plain
+  // derivation that depends on the same values the surrounding callbacks do.
+  const renderedZoomRatio = useMemo(
+    () =>
+      zoom.mode === "fit"
+        ? fitZoomRatio(pageWidth, intrinsicWidth)
+        : zoom.scale,
+    [zoom, pageWidth, intrinsicWidth],
+  );
 
   // -- document ------------------------------------------------------------
 
@@ -166,6 +285,9 @@ export function PdfDocumentView({
           materialId,
           doc: opened,
           ratio: viewport.width > 0 ? viewport.height / viewport.width : 1.414,
+          // Letter is the fallback: 612pt is the width most documents that
+          // report nothing are actually laid out at.
+          intrinsicWidth: viewport.width || 612,
         });
       } catch (caught) {
         if (cancelled) return;
@@ -200,56 +322,315 @@ export function PdfDocumentView({
     );
     if (!page) return;
     const rect = page.getBoundingClientRect();
+    const rootRect = root.getBoundingClientRect();
     // Restore after the new page heights commit, before paint or the visible
     // locator effect can report the page at the old pixel scroll position.
     root.scrollTop = Math.max(
       0,
       root.scrollTop +
         rect.top -
-        root.getBoundingClientRect().top +
+        rootRect.top +
         anchor.fraction * rect.height -
         anchor.viewportOffset,
     );
+    // The same maths across, because a page zoomed past the pane's width also
+    // scrolls sideways — that is the point of zoom — and restoring only the
+    // vertical axis snapped the column back to its left edge on every zoom.
+    // The page's CSS width is shared between pages, but it still changes with
+    // the zoom, so the horizontal offset has to be re-derived, not left alone.
+    root.scrollLeft = Math.max(
+      0,
+      root.scrollLeft +
+        rect.left -
+        rootRect.left +
+        anchor.xFraction * rect.width -
+        anchor.horizontalOffset,
+    );
   }, [doc, pageWidth]);
+
+  /**
+   * Remember the point on screen that must not move.
+   *
+   * Without a `clientY` the anchor is the viewport's top edge — what a pane
+   * resize has always used. With one it is the pointer — what a zoom gesture
+   * needs, so the page grows away from the reader's cursor instead of jumping
+   * to a different part of the document. `clientX` is the same idea across:
+   * a zoomed page overflows the pane sideways, and without an x anchor the
+   * column snaps back to its left edge on every gesture.
+   */
+  const captureAnchor = useCallback(
+    (clientY?: number, clientX?: number) => {
+      const root = scrollRef.current;
+      if (!root || !doc) return;
+      const rootRect = root.getBoundingClientRect();
+      const y = clientY ?? rootRect.top;
+      const x = clientX ?? rootRect.left;
+      const pages = root.querySelectorAll<HTMLElement>("[data-reader-unit]");
+      for (const page of pages) {
+        const rect = page.getBoundingClientRect();
+        if (rect.height <= 0 || rect.bottom <= y) continue;
+        if (rect.top >= rootRect.bottom) break;
+        // The point in page coordinates, plus any padding/gap above that page.
+        // Coalesced notifications retain this anchor until the width commits.
+        //
+        // When the target sits above this page — a pane resize with a gap or the
+        // document's own top padding in view — the anchor is the page's top
+        // edge, not a point inside it. `Math.max` expresses both cases: the
+        // anchor never floats above the page it belongs to.
+        const anchorY = Math.max(y, rect.top);
+        // Across, the same clamp, plus one the vertical axis does not need: a
+        // page narrower than the pane leaves the pointer over the desk on
+        // either side of it, so the share is pinned to the page's own edges.
+        // Anchoring the nearest edge is what "the page grows away from here"
+        // means when the pointer is not over the paper at all.
+        const anchorX = Math.max(x, rect.left);
+        resizeAnchorRef.current = {
+          doc,
+          locator: page.dataset.readerUnit!,
+          fraction: Math.max(0, (anchorY - rect.top) / rect.height),
+          xFraction:
+            rect.width > 0
+              ? Math.min(1, Math.max(0, (anchorX - rect.left) / rect.width))
+              : 0,
+          viewportOffset: Math.max(0, anchorY - rootRect.top),
+          horizontalOffset: Math.max(0, anchorX - rootRect.left),
+        };
+        return;
+      }
+    },
+    [doc],
+  );
 
   useEffect(() => {
     const element = scrollRef.current;
     if (!element) return;
     const measure = () => {
       // Leave room for the scrollbar gutter and the page's own margin.
-      const available = element.clientWidth - 48;
-      const nextWidth = Math.max(240, Math.min(1100, available));
-      if (nextWidth === committedWidthRef.current) {
+      const available = element.clientWidth - READER_WIDTH_INSET;
+      const fitWidth = fittedPageWidth(available);
+      if (fitWidth === committedWidthRef.current) {
         // A resize can return to the committed width before React renders.
         // Do not leave an unused anchor to override a later user scroll.
         resizeAnchorRef.current = null;
       } else if (doc && !resizeAnchorRef.current) {
-        const rootRect = element.getBoundingClientRect();
-        const pages =
-          element.querySelectorAll<HTMLElement>("[data-reader-unit]");
-        for (const page of pages) {
-          const rect = page.getBoundingClientRect();
-          if (rect.height <= 0 || rect.bottom <= rootRect.top) continue;
-          if (rect.top >= rootRect.bottom) break;
-          // The first visible page anchors the viewport's top edge. Keep the
-          // point in page coordinates, plus any padding/gap above that page.
-          // Coalesced notifications retain this anchor until the width commits.
-          resizeAnchorRef.current = {
-            doc,
-            locator: page.dataset.readerUnit!,
-            fraction: Math.max(0, (rootRect.top - rect.top) / rect.height),
-            viewportOffset: Math.max(0, rect.top - rootRect.top),
-          };
-          break;
-        }
+        captureAnchor();
       }
-      setPageWidth(nextWidth);
+      setMeasuredWidth(available);
     };
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(element);
     return () => observer.disconnect();
-  }, [doc]);
+  }, [doc, captureAnchor]);
+
+  // -- zoom ----------------------------------------------------------------
+
+  // Keep the ref in step with the state; `applyZoom` also writes it eagerly so
+  // a second gesture in the same frame starts from the new value.
+  useEffect(() => {
+    zoomRef.current = zoom;
+  }, [zoom]);
+
+  const applyZoom = useCallback(
+    (next: PdfZoomPreference, clientY?: number, clientX?: number) => {
+      captureAnchor(clientY, clientX);
+      // A zoom that lands on the width already committed draws nothing new, so
+      // the anchor captured above would never be consumed: the layout effect
+      // only restores when `pageWidth` changes. Left behind, it would hijack
+      // the next real pane resize and pull the reader back to the old page and
+      // offset. Drop it instead — that is what "nothing moved" means.
+      const nextWidth =
+        next.mode === "fit"
+          ? fittedPageWidth(measuredWidth)
+          : zoomedPageWidth(
+              intrinsicWidth,
+              next.scale,
+              fallbackRatio,
+              outputScale(),
+            );
+      if (nextWidth === committedWidthRef.current) {
+        resizeAnchorRef.current = null;
+      }
+      setZoom(next);
+      zoomRef.current = next;
+      if (settleRef.current !== null) clearTimeout(settleRef.current);
+      pendingSaveRef.current = next;
+      settleRef.current = window.setTimeout(() => {
+        settleRef.current = null;
+        savePdfZoom(next);
+      }, 150);
+    },
+    [captureAnchor, measuredWidth, intrinsicWidth, fallbackRatio],
+  );
+
+  /** What the page is drawn at right now, used as the base for one step. */
+  /**
+   * The ratio the page is actually drawn at, in every mode.
+   *
+   * `fixed` used to report the stored request, which the canvas budget does not
+   * honour: a 4x on a tall page lands at 211%, and both the button step and the
+   * wheel gesture multiplied the 4 — so the first notches of a zoom-out drew the
+   * same width and a zoom-in from there did nothing. Reporting what landed is
+   * what makes one gesture mean one visible change.
+   */
+  const currentZoomRatio = useCallback(() => {
+    if (zoomRef.current.mode !== "fit") {
+      const actual = actualSizeWidth(intrinsicWidth);
+      if (actual > 0 && pageWidth > 0) return pageWidth / actual;
+      return zoomRef.current.scale;
+    }
+    return fitZoomRatio(pageWidth, intrinsicWidth);
+  }, [pageWidth, intrinsicWidth]);
+
+  const zoomBy = useCallback(
+    (direction: 1 | -1, clientY?: number, clientX?: number) => {
+      applyZoom(
+        {
+          mode: "fixed",
+          scale: steppedPdfZoomByWidth(
+            currentZoomRatio(),
+            direction,
+            intrinsicWidth,
+            fallbackRatio,
+            outputScale(),
+          ),
+        },
+        clientY,
+        clientX,
+      );
+    },
+    [applyZoom, currentZoomRatio, intrinsicWidth, fallbackRatio],
+  );
+
+  // -- zoom bar visibility -------------------------------------------------
+
+  const showControls = useCallback(() => {
+    if (controlsHideRef.current !== null) clearTimeout(controlsHideRef.current);
+    setControlsVisible(true);
+  }, []);
+
+  const scheduleControlsHide = useCallback(() => {
+    if (controlsHideRef.current !== null) clearTimeout(controlsHideRef.current);
+    if (pointerNearBottom.current || overControls.current) return;
+    controlsHideRef.current = window.setTimeout(
+      () => setControlsVisible(false),
+      420,
+    );
+  }, []);
+
+  const handleControlsActive = useCallback(
+    (active: boolean) => {
+      overControls.current = active;
+      if (active) showControls();
+      else scheduleControlsHide();
+    },
+    [showControls, scheduleControlsHide],
+  );
+
+  const handlePointerMove = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      const rect = event.currentTarget.getBoundingClientRect();
+      pointerNearBottom.current = event.clientY >= rect.bottom - 72;
+      if (pointerNearBottom.current) showControls();
+      else scheduleControlsHide();
+    },
+    [showControls, scheduleControlsHide],
+  );
+
+  const handlePointerLeave = useCallback(() => {
+    pointerNearBottom.current = false;
+    scheduleControlsHide();
+  }, [scheduleControlsHide]);
+
+  // Ctrl+wheel — and, on macOS, a trackpad pinch, which Chromium reports as
+  // exactly this event. Registered non-passively because the pane would
+  // otherwise scroll vertically instead of zooming.
+  useEffect(() => {
+    const node = scrollRef.current;
+    if (!node) return;
+    const onWheel = (event: WheelEvent) => {
+      if (!event.ctrlKey) return;
+      event.preventDefault();
+      showControlsRef.current?.();
+      const unit =
+        event.deltaMode === 1
+          ? 16
+          : event.deltaMode === 2
+            ? node.clientHeight
+            : 1;
+      // A single wheel notch can report hundreds of pixels; capping the exponent
+      // keeps one notch from jumping half the range.
+      const delta = Math.max(-40, Math.min(40, event.deltaY * unit));
+      // The gesture multiplies the ratio that is actually on screen, not the
+      // stored request. The canvas budget clamps the drawn width, so a stored
+      // 4x on a tall page lands at 211%: multiplying the request left the first
+      // several notches of a zoom-out drawing the same width, and a zoom-in from
+      // there did nothing at all. `currentZoomRatio` reports what landed, which
+      // is what the reader is looking at.
+      const factor = Math.exp(-delta * 0.01);
+      applyZoom(
+        {
+          mode: "fixed",
+          scale: clampPdfZoom(currentZoomRatio() * factor),
+        },
+        event.clientY,
+        event.clientX,
+      );
+    };
+    node.addEventListener("wheel", onWheel, { passive: false });
+
+    // Safari reports a trackpad pinch as `gesturestart`/`gesturechange` on the
+    // element, not as ctrl+wheel, so without these the browser zooms the whole
+    // page and the pane never sees the gesture. Non-passive so the default can
+    // be cancelled; the scale itself is driven by the wheel handler above on
+    // browsers that report it as a wheel, and by nothing on Safari — the
+    // gesture is cancelled rather than half-supported.
+    const onGesture = (event: Event) => event.preventDefault();
+    node.addEventListener("gesturestart", onGesture, { passive: false });
+    node.addEventListener("gesturechange", onGesture, { passive: false });
+
+    return () => {
+      node.removeEventListener("wheel", onWheel);
+      node.removeEventListener("gesturestart", onGesture);
+      node.removeEventListener("gesturechange", onGesture);
+    };
+  }, [applyZoom, currentZoomRatio]);
+
+  useEffect(() => {
+    showControlsRef.current = showControls;
+  }, [showControls]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const root = scrollRef.current;
+      // The zoom bar is a sibling of the scroll root, so neither `:hover` on
+      // the root nor `activeElement` inside the root covers it: after clicking
+      // Zoom the shortcut went dead until the pointer moved back over a page.
+      // The bar is part of the reader — the pointer on it already reports
+      // through `overControls`, and focus inside it is matched here.
+      const controls = document.querySelector<HTMLElement>(
+        "[data-pdf-zoom-controls]",
+      );
+      const focused = document.activeElement;
+      const action = pdfZoomShortcut({
+        key: event.key,
+        modifier: event.metaKey || event.ctrlKey,
+        editableTarget: isEditableTarget(event.target),
+        readerHovered:
+          (root?.matches(":hover") ?? false) || overControls.current,
+        readerFocused:
+          Boolean(root && root.contains(focused)) ||
+          Boolean(controls && focused && controls.contains(focused)),
+      });
+      if (!action) return;
+      event.preventDefault();
+      if (action === "increase") zoomBy(1);
+      if (action === "decrease") zoomBy(-1);
+      if (action === "reset") applyZoom(DEFAULT_PDF_ZOOM);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [applyZoom, zoomBy]);
 
   // -- which page is on screen --------------------------------------------
 
@@ -497,45 +878,100 @@ export function PdfDocumentView({
   }
 
   return (
-    <div
-      ref={scrollRef}
-      onMouseUp={handlePointerUp}
-      // The desk the pages lie on. This was `bg-[var(--muted)]/40`, which
-      // compiles to nothing here — a var() colour has no channels for the
-      // `/NN` modifier to reach into, so the rule was dropped and the desk
-      // rendered the same white as the paper on it. `--secondary` is the
-      // token for exactly this: one step back from the page.
-      className="dt-reader-scroll h-full overflow-y-auto overscroll-contain bg-[var(--secondary)] px-6 py-4"
-    >
-      {!doc ? (
-        <div className="flex h-full items-center justify-center gap-2 text-[12px] text-[var(--muted-foreground)]">
-          <Loader2 size={14} className="animate-spin" />
-          {t("Opening document…")}
-        </div>
-      ) : (
-        <div className="flex flex-col items-center" style={{ gap: PAGE_GAP }}>
-          {Array.from({ length: unitCount }, (_, index) => index + 1).map(
-            (locator) => (
-              <PdfPage
-                key={locator}
-                doc={doc}
-                locator={locator}
-                width={pageWidth}
-                fallbackRatio={fallbackRatio}
-                active={isActive(locator)}
-                retain={Math.abs(locator - visibleLocator) <= RETAIN_MARGIN || isActive(locator)}
-                annotations={annotations}
-                highlightedAnnotationId={highlightedAnnotationId}
-                flashRects={
-                  activeFlash?.locator === locator
-                    ? activeFlash.rects
-                    : undefined
-                }
-                onAnnotationClick={onAnnotationClick}
-              />
-            ),
+    <div className="relative h-full">
+      <div
+        ref={scrollRef}
+        // `tabIndex={-1}` makes the scrollable region focusable, which is what
+        // lets a keyboard user scroll it and reach the zoom shortcuts without a
+        // pointer. `TextUnitView` does the same for its own root.
+        tabIndex={-1}
+        onPointerDown={() => scrollRef.current?.focus({ preventScroll: true })}
+        onMouseUp={handlePointerUp}
+        onPointerMove={handlePointerMove}
+        onPointerLeave={handlePointerLeave}
+        // The desk the pages lie on. This was `bg-[var(--muted)]/40`, which
+        // compiles to nothing here — a var() colour has no channels for the
+        // `/NN` modifier to reach into, so the rule was dropped and the desk
+        // rendered the same white as the paper on it. `--secondary` is the
+        // token for exactly this: one step back from the page.
+        //
+        // `overflow-auto`, not `overflow-y-auto`: a page zoomed past the pane's
+        // width overflows sideways, and a container that only scrolls vertically
+        // would clip it with no way to reach the right-hand columns.
+        className="dt-reader-scroll h-full overflow-auto overscroll-contain bg-[var(--secondary)] px-6 py-4"
+      >
+        {!doc ? (
+          <div className="flex h-full items-center justify-center gap-2 text-[12px] text-[var(--muted-foreground)]">
+            <Loader2 size={14} className="animate-spin" />
+            {t("Opening document…")}
+          </div>
+        ) : (
+          // No `items-center`: when a page is wider than the pane, a centred
+          // flex item overflows on both sides and the left half becomes
+          // unreachable. Each page carries `mx-auto`, whose auto margins resolve
+          // to zero once the free space is negative — so the page starts at the
+          // left edge and the horizontal scrollbar reaches its far side.
+          <div className="flex flex-col" style={{ gap: PAGE_GAP }}>
+            {Array.from({ length: unitCount }, (_, index) => index + 1).map(
+              (locator) => (
+                <PdfPage
+                  key={locator}
+                  doc={doc}
+                  locator={locator}
+                  width={pageWidth}
+                  fallbackRatio={fallbackRatio}
+                  active={isActive(locator)}
+                  retain={Math.abs(locator - visibleLocator) <= RETAIN_MARGIN || isActive(locator)}
+                  annotations={annotations}
+                  highlightedAnnotationId={highlightedAnnotationId}
+                  flashRects={
+                    activeFlash?.locator === locator
+                      ? activeFlash.rects
+                      : undefined
+                  }
+                  onAnnotationClick={onAnnotationClick}
+                />
+              ),
+            )}
+          </div>
+        )}
+      </div>
+
+      {doc && (
+        <PdfZoomControls
+          preference={zoom}
+          effectivePercent={zoomPercent}
+          visible={controlsVisible}
+          // Asked of the same function the buttons call, so a control is
+          // disabled exactly when pressing it would draw the same width.
+          canZoomIn={canStepPdfZoom(
+            1,
+            renderedZoomRatio,
+            intrinsicWidth,
+            fallbackRatio,
+            outputScale(),
+            pageWidth,
           )}
-        </div>
+          percentFor={(scale) =>
+            effectiveZoomPercent(
+              zoomedPageWidth(intrinsicWidth, scale, fallbackRatio, outputScale()),
+              intrinsicWidth,
+            )
+          }
+          canZoomOut={canStepPdfZoom(
+            -1,
+            renderedZoomRatio,
+            intrinsicWidth,
+            fallbackRatio,
+            outputScale(),
+            pageWidth,
+          )}
+          onActiveChange={handleControlsActive}
+          onZoomIn={() => zoomBy(1)}
+          onZoomOut={() => zoomBy(-1)}
+          onSelect={applyZoom}
+          onReset={() => applyZoom(DEFAULT_PDF_ZOOM)}
+        />
       )}
     </div>
   );

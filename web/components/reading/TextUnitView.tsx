@@ -8,6 +8,8 @@ import {
   useRef,
   useState,
 } from "react";
+
+import { isEditableTarget } from "@/lib/shortcuts";
 import {
   ChevronLeft,
   ChevronRight,
@@ -174,6 +176,7 @@ export function TextUnitView({
         modifier: event.metaKey || event.ctrlKey,
         readerHovered: root?.matches(":hover") ?? false,
         readerFocused: Boolean(root && root.contains(document.activeElement)),
+        editableTarget: isEditableTarget(event.target),
       });
       if (!action) return;
       event.preventDefault();
