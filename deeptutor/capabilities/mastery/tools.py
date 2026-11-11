@@ -1140,7 +1140,7 @@ class MasteryQuizTool(BaseTool):
                 ToolParameter(
                     name="expected_answer",
                     type="string",
-                    description="The correct answer, used only server-side for grading.",
+                    description="The correct answer, used only server-side for grading. For choice questions, pass the exact full body text of the correct option, never its letter.",
                     # The learner is looking at this question, and the trace
                     # that records the call is theirs to expand.
                     sensitive=True,
@@ -2216,7 +2216,7 @@ class MasteryRepairQuestionTool(BaseTool):
                 ToolParameter(
                     name="expected_answer",
                     type="string",
-                    description="The corrected answer key. Required when action is correct.",
+                    description="The corrected answer key. Required when action is correct. For choice questions, pass the exact full body text of the correct option, never its letter.",
                     required=False,
                 ),
             ],
