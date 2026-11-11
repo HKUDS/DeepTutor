@@ -34,6 +34,7 @@ class SubagentCapability(KnowledgeCapability):
 
     name = "subagent"
     owned_tools = SUBAGENT_TOOL_NAMES
+    coexisting_tools = ("web_search", "web_fetch")
 
     def is_active(self, context: UnifiedContext) -> bool:
         return connection_for_turn(context) is not None
