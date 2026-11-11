@@ -605,3 +605,42 @@ def test_preload_never_exceeds_limit_even_for_the_first_source():
     assert sum(len(sources[key]) for key in selected) <= explorer_mod.PRELOAD_MAX_CHARS
     assert sources["too-large"] == "x" * 120001
     assert explorer._preload_selection({"only": sources["too-large"]}) == []
+
+
+@pytest.mark.asyncio
+async def test_a_stalled_connection_setup_also_times_out(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Opening the stream is bounded too, not just reading it.
+
+    A provider that hangs while connecting parks the turn exactly like one
+    that stalls mid-stream, and the answer loop already bounds both halves.
+    """
+    monkeypatch.setattr(explorer_mod, "_STREAM_IDLE_TIMEOUT_SECONDS", 0.1)
+
+    explorer = explorer_mod.ContextExplorer.__new__(explorer_mod.ContextExplorer)
+    explorer.model = "m"
+    explorer.binding = "openai"
+    explorer.reasoning_effort = None
+
+    class _HangingClient:
+        def __init__(self) -> None:
+            self.chat = type(
+                "Chat", (), {"completions": type("Completions", (), {"create": self._create})()}
+            )()
+
+        async def _create(self, **_kwargs: Any) -> Any:
+            await asyncio.Event().wait()
+
+    with pytest.raises(asyncio.TimeoutError):
+        await asyncio.wait_for(
+            explorer._call_llm(
+                client=_HangingClient(),
+                messages=[{"role": "user", "content": "hi"}],
+                tool_schemas=None,
+                chunk_meta={},
+                stream=StreamBus(),
+                session_id="s1",
+            ),
+            timeout=5,
+        )

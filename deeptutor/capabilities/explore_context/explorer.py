@@ -421,7 +421,13 @@ class ContextExplorer:
         thinking_blocks: list[dict[str, Any]] = []
         tool_acc = ToolCallAccumulator()
         output_chars = 0
-        response_stream = await client.chat.completions.create(**kwargs)
+        # Bound connection setup as well as the idle reads below, the same way
+        # the answer loop does: a provider that hangs while opening the stream
+        # parks the turn just as effectively as one that stalls mid-stream.
+        response_stream = await asyncio.wait_for(
+            client.chat.completions.create(**kwargs),
+            _STREAM_IDLE_TIMEOUT_SECONDS,
+        )
         try:
             async for chunk in _bounded_stream_chunks(response_stream):
                 choices = getattr(chunk, "choices", None) or []
