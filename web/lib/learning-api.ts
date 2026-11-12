@@ -811,6 +811,55 @@ export function discardPointLectureDraft(
   );
 }
 
+export interface ReplyFeedbackSummary {
+  count: number;
+  liked: boolean;
+  message_id: number;
+  per_knowledge_point: Record<string, number>;
+  recent: Array<{
+    message_id: number;
+    session_id: string;
+    knowledge_point_id: string;
+    excerpt: string;
+    updated_at: number;
+  }>;
+}
+
+/** Message ids the learner has liked on this path (for the toggle state). */
+export function fetchLikedReplies(
+  pathId: string,
+  sessionId = "",
+): Promise<{ message_ids: number[] }> {
+  const query = sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : "";
+  return masteryJson(
+    `/api/mastery-paths/topics/${encodeURIComponent(pathId)}/replies/likes${query}`,
+    undefined,
+    "load reply likes",
+  );
+}
+
+/** Like or un-like one tutor reply; returns the refreshed summary. */
+export function setReplyLike(
+  pathId: string,
+  messageId: number,
+  body: {
+    liked: boolean;
+    session_id?: string;
+    knowledge_point_id?: string;
+    excerpt?: string;
+  },
+): Promise<ReplyFeedbackSummary> {
+  return masteryJson(
+    `/api/mastery-paths/topics/${encodeURIComponent(pathId)}/replies/${messageId}/like`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+    "save reply like",
+  );
+}
+
 /** Ask for a change in the learner's own words; the result needs applying. */
 export function proposePointLectureRevision(
   pathId: string,

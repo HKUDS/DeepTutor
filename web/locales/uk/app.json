@@ -6314,5 +6314,8 @@
   "Table · pause": "Таблиця · пауза",
   "Click a sentence to start; click the current one again to mark it as the key point.": "Натисніть речення, щоб почати; натисніть ще раз, щоб позначити його як ключове.",
   "Discard this draft?": "Відхилити цю чернетку?",
-  "If the draft is not good, regenerate it — the tutor reads your study conversation again and reorganizes the lecture. Discarding alone leaves this point without this draft.": "Якщо чернетка невдала, згенеруйте її заново — викладач перечитає вашу навчальну розмову й упорядкує лекцію. Саме лише відхилення залишить цей пункт без цієї чернетки."
+  "If the draft is not good, regenerate it — the tutor reads your study conversation again and reorganizes the lecture. Discarding alone leaves this point without this draft.": "Якщо чернетка невдала, згенеруйте її заново — викладач перечитає вашу навчальну розмову й упорядкує лекцію. Саме лише відхилення залишить цей пункт без цієї чернетки.",
+  "Like": "Вподобати",
+  "Like this reply": "Вподобати цю відповідь",
+  "Unlike this reply": "Прибрати вподобання"
 }

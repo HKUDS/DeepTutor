@@ -21,6 +21,7 @@ import {
   MessageCircle,
   PanelRight,
   Sparkles,
+  ThumbsUp,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -57,9 +58,11 @@ import { useMeasuredHeight } from "@/hooks/useMeasuredHeight";
 import { useResearchOutlineContinuation } from "@/hooks/useResearchOutlineContinuation";
 import {
   commitOutlineAddition,
+  fetchLikedReplies,
   fetchMasteryAskHint,
   resolveMasterySession,
   rollPointLectureDraft,
+  setReplyLike,
   type MasteryTopic,
 } from "@/lib/learning-api";
 import { isReviewAvailable, isRoutedStudySessionReady, modeSwitchTarget } from "@/lib/mastery-study-route";
@@ -422,6 +425,22 @@ export function MasteryStudy({
     content: string;
     title: string;
   } | null>(null);
+  // Tutor replies the learner liked, for the 👍 toggle on each reply.
+  const [likedMessages, setLikedMessages] = useState<Set<number>>(() => new Set());
+  useEffect(() => {
+    if (!pathId || !state.sessionId) return;
+    let cancelled = false;
+    void fetchLikedReplies(pathId, state.sessionId)
+      .then((result) => {
+        if (!cancelled) setLikedMessages(new Set(result.message_ids));
+      })
+      .catch(() => {
+        // Liking is best-effort; the toggle still works for this sitting.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [pathId, state.sessionId]);
   // A passage the learner dragged over in the transcript, and the screen
   // coordinates the study-ask toolbar should sit at.
   const [selectedPassage, setSelectedPassage] = useState<{
@@ -1030,6 +1049,36 @@ export function MasteryStudy({
     handleLectureConfirmed();
   }, [handleLectureConfirmed]);
 
+  // Mark one reply as good. Optimistic: the toggle flips at once, and a failed
+  // save flips it back.
+  const toggleReplyLike = useCallback(
+    (message: { id?: number; content: string }) => {
+      const id = message.id;
+      if (typeof id !== "number") return;
+      const wasLiked = likedMessages.has(id);
+      setLikedMessages((prev) => {
+        const next = new Set(prev);
+        if (wasLiked) next.delete(id);
+        else next.add(id);
+        return next;
+      });
+      void setReplyLike(pathId, id, {
+        liked: !wasLiked,
+        session_id: state.sessionId ?? "",
+        knowledge_point_id: viewedPoint?.id ?? "",
+        excerpt: message.content.slice(0, 200),
+      }).catch(() => {
+        setLikedMessages((prev) => {
+          const next = new Set(prev);
+          if (wasLiked) next.add(id);
+          else next.delete(id);
+          return next;
+        });
+      });
+    },
+    [likedMessages, pathId, state.sessionId, viewedPoint],
+  );
+
   // The study draft is rolled after the assistant message is persisted, so it
   // lands slightly after the stream ends. Bumping once per settled turn makes
   // the card re-read the draft instead of waiting for a reload.
@@ -1614,18 +1663,48 @@ export function MasteryStudy({
                       }
                       assistantActions={(message) =>
                         message.role === "assistant" && message.content.trim() ? (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setReadAlong({
-                                content: message.content,
-                                title: viewedPoint?.name ?? "",
-                              })
-                            }
-                            className="inline-flex items-center gap-1 rounded-md border border-[var(--border)] px-2 py-1 text-[11px] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
-                          >
-                            {t("Read along")}
-                          </button>
+                          <>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setReadAlong({
+                                  content: message.content,
+                                  title: viewedPoint?.name ?? "",
+                                })
+                              }
+                              className="inline-flex items-center gap-1 rounded-md border border-[var(--border)] px-2 py-1 text-[11px] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
+                            >
+                              {t("Read along")}
+                            </button>
+                            {typeof message.id === "number" ? (
+                              <button
+                                type="button"
+                                onClick={() => toggleReplyLike(message)}
+                                aria-pressed={likedMessages.has(message.id)}
+                                aria-label={t(
+                                  likedMessages.has(message.id)
+                                    ? "Unlike this reply"
+                                    : "Like this reply",
+                                )}
+                                className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] transition-colors ${
+                                  likedMessages.has(message.id)
+                                    ? "border-[color-mix(in_srgb,var(--primary)_45%,var(--border))] text-[var(--primary)]"
+                                    : "border-[var(--border)] text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+                                }`}
+                              >
+                                <ThumbsUp
+                                  size={12}
+                                  strokeWidth={1.9}
+                                  className={
+                                    likedMessages.has(message.id)
+                                      ? "fill-current"
+                                      : undefined
+                                  }
+                                />
+                                {t("Like")}
+                              </button>
+                            ) : null}
+                          </>
                         ) : null
                       }
                     />

@@ -514,6 +514,23 @@ class LearningStore:
                         PRIMARY KEY(path_id, knowledge_point_id, session_id)
                     );
 
+                    -- What the learner marked as a good tutor reply. One row
+                    -- per liked message; an unlike removes the row. This is the
+                    -- learner's own signal about which explanations landed, and
+                    -- it feeds back into how the tutor teaches next.
+                    CREATE TABLE IF NOT EXISTS mastery_reply_feedback (
+                        path_id TEXT NOT NULL REFERENCES mastery_paths(path_id) ON DELETE CASCADE,
+                        message_id INTEGER NOT NULL,
+                        session_id TEXT NOT NULL DEFAULT '',
+                        knowledge_point_id TEXT NOT NULL DEFAULT '',
+                        excerpt TEXT NOT NULL DEFAULT '',
+                        created_at REAL NOT NULL,
+                        updated_at REAL NOT NULL,
+                        PRIMARY KEY(path_id, message_id)
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_mastery_reply_feedback_path
+                        ON mastery_reply_feedback(path_id, updated_at DESC);
+
                     CREATE TABLE IF NOT EXISTS mastery_interactions (
                         interaction_id TEXT PRIMARY KEY,
                         path_id TEXT NOT NULL REFERENCES mastery_paths(path_id) ON DELETE CASCADE,
@@ -2262,6 +2279,133 @@ class LearningStore:
                 (path_id,),
             ).fetchall()
         return [str(row["session_id"]) for row in rows]
+
+    def set_reply_feedback(
+        self,
+        path_id: str,
+        message_id: int,
+        *,
+        liked: bool,
+        session_id: str = "",
+        knowledge_point_id: str = "",
+        excerpt: str = "",
+    ) -> dict[str, Any]:
+        """Record or clear a like on one tutor reply, then return the summary."""
+        path_id = self._validate_id(path_id)
+        try:
+            mid = int(message_id)
+        except (TypeError, ValueError):
+            raise ValueError("A reply like needs a message id")
+        if mid <= 0:
+            raise ValueError("A reply like needs a message id")
+        now = time.time()
+        with self._connect() as conn:
+            if liked:
+                conn.execute(
+                    """
+                    INSERT INTO mastery_reply_feedback (
+                        path_id, message_id, session_id, knowledge_point_id,
+                        excerpt, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(path_id, message_id) DO UPDATE SET
+                        session_id = excluded.session_id,
+                        knowledge_point_id = excluded.knowledge_point_id,
+                        excerpt = excluded.excerpt,
+                        updated_at = excluded.updated_at
+                    """,
+                    (
+                        path_id,
+                        mid,
+                        str(session_id or "").strip(),
+                        str(knowledge_point_id or "").strip(),
+                        str(excerpt or "")[:280],
+                        now,
+                        now,
+                    ),
+                )
+            else:
+                conn.execute(
+                    "DELETE FROM mastery_reply_feedback WHERE path_id = ? AND message_id = ?",
+                    (path_id, mid),
+                )
+        return self.reply_feedback_summary(
+            path_id, liked_message_id=mid if liked else 0
+        )
+
+    def reply_feedback_summary(
+        self,
+        path_id: str,
+        *,
+        limit: int = 5,
+        liked_message_id: int = 0,
+    ) -> dict[str, Any]:
+        """How many replies the learner liked, and the most recent few.
+
+        Read by ``mastery_status`` so the tutor can lean into the kind of
+        explanation the learner has actually marked as good.
+        """
+        path_id = self._validate_id(path_id)
+        with self._connect() as conn:
+            total_row = conn.execute(
+                "SELECT COUNT(*) AS n FROM mastery_reply_feedback WHERE path_id = ?",
+                (path_id,),
+            ).fetchone()
+            rows = conn.execute(
+                """
+                SELECT message_id, session_id, knowledge_point_id, excerpt, updated_at
+                FROM mastery_reply_feedback
+                WHERE path_id = ?
+                ORDER BY updated_at DESC LIMIT ?
+                """,
+                (path_id, int(limit)),
+            ).fetchall()
+            per_point = conn.execute(
+                """
+                SELECT knowledge_point_id, COUNT(*) AS n
+                FROM mastery_reply_feedback
+                WHERE path_id = ? AND knowledge_point_id != ''
+                GROUP BY knowledge_point_id
+                """,
+                (path_id,),
+            ).fetchall()
+        return {
+            "count": int(total_row["n"] or 0) if total_row is not None else 0,
+            "liked": bool(liked_message_id),
+            "message_id": int(liked_message_id or 0),
+            "per_knowledge_point": {
+                str(row["knowledge_point_id"]): int(row["n"] or 0) for row in per_point
+            },
+            "recent": [
+                {
+                    "message_id": int(row["message_id"]),
+                    "session_id": str(row["session_id"] or ""),
+                    "knowledge_point_id": str(row["knowledge_point_id"] or ""),
+                    "excerpt": str(row["excerpt"] or ""),
+                    "updated_at": float(row["updated_at"] or 0),
+                }
+                for row in rows
+            ],
+        }
+
+    def liked_message_ids(self, path_id: str, session_id: str = "") -> list[int]:
+        """The message ids this learner has liked, for rendering the toggle."""
+        path_id = self._validate_id(path_id)
+        scope = str(session_id or "").strip()
+        with self._connect() as conn:
+            if scope:
+                rows = conn.execute(
+                    """
+                    SELECT message_id FROM mastery_reply_feedback
+                    WHERE path_id = ? AND session_id = ?
+                    """,
+                    (path_id, scope),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT message_id FROM mastery_reply_feedback WHERE path_id = ?",
+                    (path_id,),
+                ).fetchall()
+        return [int(row["message_id"]) for row in rows]
 
     def path_id_for_session(self, session_id: str) -> str:
         """The one path this conversation is on, or ``""`` when it is on none."""

@@ -939,6 +939,13 @@ class MasteryStatusTool(BaseTool):
         from deeptutor.learning.question_profile import question_profile_for_path
 
         question_profile = await question_profile_for_path(path_id)
+        reply_feedback: dict[str, Any] | None = None
+        feedback_reader = getattr(service.store, "reply_feedback_summary", None)
+        if callable(feedback_reader):
+            try:
+                reply_feedback = await asyncio.to_thread(feedback_reader, path_id)
+            except Exception:
+                reply_feedback = None
         # Which goal this is, in the learner's own words. The tutor had no way
         # to see it before: the map carries a name, and the sentence the
         # learner actually wrote when they created the goal lived only in the
@@ -973,6 +980,7 @@ class MasteryStatusTool(BaseTool):
                     "message": await _unbuilt_status_message(service, path_id, topic),
                     **_profile_status(progress, include_teaching_history=include_history),
                     "question_profile": question_profile,
+                    "reply_feedback": reply_feedback,
                 },
                 meta_key="mastery_status",
             )
@@ -997,6 +1005,7 @@ class MasteryStatusTool(BaseTool):
                 include_teaching_history=include_history,
             ),
             "question_profile": question_profile,
+            "reply_feedback": reply_feedback,
             "learning_stages": {
                 kp.id: learning_stage(progress, kp.id)
                 for module in progress.modules

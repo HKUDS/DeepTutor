@@ -6440,5 +6440,8 @@
   "Table · pause": "Tableau · pause",
   "Click a sentence to start; click the current one again to mark it as the key point.": "Cliquez une phrase pour commencer ; recliquez-la pour la marquer comme point clé.",
   "Discard this draft?": "Abandonner ce brouillon ?",
-  "If the draft is not good, regenerate it — the tutor reads your study conversation again and reorganizes the lecture. Discarding alone leaves this point without this draft.": "Si le brouillon ne convient pas, régénérez-le — le tuteur relit votre conversation d'étude et réorganise le cours. Le simple abandon laisse ce point sans ce brouillon."
+  "If the draft is not good, regenerate it — the tutor reads your study conversation again and reorganizes the lecture. Discarding alone leaves this point without this draft.": "Si le brouillon ne convient pas, régénérez-le — le tuteur relit votre conversation d'étude et réorganise le cours. Le simple abandon laisse ce point sans ce brouillon.",
+  "Like": "J'aime",
+  "Like this reply": "J'aime cette réponse",
+  "Unlike this reply": "Retirer mon j'aime"
 }

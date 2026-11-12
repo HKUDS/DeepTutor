@@ -1563,3 +1563,51 @@ async def generate_from_reading(book_id: str, body: GenerateFromReadingRequest):
             records=[NotebookRecordInput(**record) for record in records],
         ),
     )
+
+
+class ReplyFeedbackRequest(BaseModel):
+    liked: bool = True
+    session_id: str = Field("", max_length=200)
+    knowledge_point_id: str = Field("", max_length=300)
+    excerpt: str = Field("", max_length=280)
+
+
+@router.get("/topics/{path_id}/replies/likes")
+async def list_liked_replies(path_id: str, session_id: str = ""):
+    """Message ids this learner has liked on this path (for the toggle state)."""
+    _validate_book_id(path_id)
+    store = LearningStore()
+    message_ids = await asyncio.to_thread(store.liked_message_ids, path_id, session_id)
+    return {"message_ids": message_ids}
+
+
+@router.get("/topics/{path_id}/replies/feedback")
+async def get_reply_feedback(path_id: str):
+    """How many replies were liked, and the most recent few."""
+    _validate_book_id(path_id)
+    store = LearningStore()
+    return await asyncio.to_thread(store.reply_feedback_summary, path_id)
+
+
+@router.post("/topics/{path_id}/replies/{message_id}/like")
+async def set_reply_like(
+    path_id: str,
+    message_id: int,
+    body: ReplyFeedbackRequest | None = None,
+):
+    """Like or un-like one tutor reply."""
+    _validate_book_id(path_id)
+    request = body or ReplyFeedbackRequest()
+    store = LearningStore()
+    try:
+        return await asyncio.to_thread(
+            store.set_reply_feedback,
+            path_id,
+            message_id,
+            liked=request.liked,
+            session_id=request.session_id,
+            knowledge_point_id=request.knowledge_point_id,
+            excerpt=request.excerpt,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
