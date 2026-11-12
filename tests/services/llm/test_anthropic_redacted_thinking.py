@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 from pathlib import Path
+from threading import Thread
 from types import SimpleNamespace
 
 import pytest
@@ -134,16 +136,14 @@ async def test_encrypted_private_state_survives_sqlite_but_is_removed_from_publi
 @pytest.mark.asyncio
 @pytest.mark.parametrize("streaming", [False, True])
 async def test_real_sdk_tool_followup_keeps_encrypted_data(streaming: bool) -> None:
-    anthropic = pytest.importorskip("anthropic")
-    import httpx
+    pytest.importorskip("anthropic")
 
     from deeptutor.runtime.agentic.messages import assistant_message_with_tool_calls
 
     requests = []
     blocks = _blocks() + [{"type": "tool_use", "id": "tool-1", "name": "lookup", "input": {}}]
 
-    def respond(request):
-        payload = json.loads(request.content)
+    def respond(payload):
         requests.append(payload)
         content = blocks if len(requests) == 1 else [{"type": "text", "text": "Complete"}]
         message = {
@@ -157,7 +157,7 @@ async def test_real_sdk_tool_followup_keeps_encrypted_data(streaming: bool) -> N
             "usage": {"input_tokens": 10, "output_tokens": 3},
         }
         if not payload.get("stream"):
-            return httpx.Response(200, json=message)
+            return "application/json", json.dumps(message).encode()
         frames = [
             {"type": "message_start", "message": {**message, "content": [], "stop_reason": None}}
         ]
@@ -178,20 +178,30 @@ async def test_real_sdk_tool_followup_keeps_encrypted_data(streaming: bool) -> N
                 {"type": "message_stop"},
             ]
         )
-        return httpx.Response(
-            200,
-            headers={"content-type": "text/event-stream"},
-            text="".join(
-                f"event: {frame['type']}\ndata: {json.dumps(frame)}\n\n" for frame in frames
-            ),
-        )
+        return "text/event-stream", "".join(
+            f"event: {frame['type']}\ndata: {json.dumps(frame)}\n\n" for frame in frames
+        ).encode()
 
-    provider = AnthropicProvider(api_key="fixture", supports_prompt_caching=False)
-    await provider._client.close()
-    provider._client = anthropic.AsyncAnthropic(
+    class Handler(BaseHTTPRequestHandler):
+        def do_POST(self) -> None:
+            payload = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+            content_type, body = respond(payload)
+            self.send_response(200)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, format: str, *args: object) -> None:
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    worker = Thread(target=server.serve_forever, daemon=True)
+    worker.start()
+    provider = AnthropicProvider(
         api_key="fixture",
-        max_retries=0,
-        http_client=httpx.AsyncClient(transport=httpx.MockTransport(respond)),
+        api_base=f"http://127.0.0.1:{server.server_port}",
+        supports_prompt_caching=False,
     )
     tools = [
         {
@@ -224,3 +234,6 @@ async def test_real_sdk_tool_followup_keeps_encrypted_data(streaming: bool) -> N
         assert len(requests) == 2
     finally:
         await provider._client.close()
+        server.shutdown()
+        server.server_close()
+        worker.join(timeout=2)
