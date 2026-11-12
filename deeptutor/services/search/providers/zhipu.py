@@ -5,6 +5,12 @@ API: https://open.bigmodel.cn/api/paas/v4/web_search
 This is Zhipu's standalone search endpoint, not the ``web_search`` tool bolted
 onto chat completions -- it returns ranked rows and never a model-written
 answer, so consolidation supplies the answer.
+
+The request engine is configurable instead of pinned to ``search_std``: set
+``search_engine`` (or ``engine``) on the provider config -- what the search
+profile in Settings > Search flows in through ``web_search()`` -- or pass it
+per call. ``search_pro`` recalls more at three times ``search_std``'s price,
+so it stays opt-in.
 """
 
 from __future__ import annotations
@@ -18,8 +24,10 @@ from ..base import BaseSearchProvider
 from ..types import Citation, SearchResult, WebSearchResponse
 from . import register_provider
 
-# Four back-ends with different quality/price points; `search_std` is cheapest.
-_ENGINES = ("search_std", "search_pro", "search_pro_sogou", "search_pro_quark")
+# Engines surfaced through configuration; anything else warns and falls back
+# to the default rather than failing the whole query.
+ALLOWED_SEARCH_ENGINES = ("search_std", "search_pro")
+DEFAULT_SEARCH_ENGINE = "search_std"
 _RECENCY = ("noLimit", "oneDay", "oneWeek", "oneMonth", "oneYear")
 # The API rejects longer queries outright rather than truncating them.
 _QUERY_LIMIT = 70
@@ -33,11 +41,37 @@ class ZhipuProvider(BaseSearchProvider):
     BASE_URL = "https://open.bigmodel.cn/api/paas/v4/web_search"
     API_KEY_ENV_VARS = ("ZHIPU_API_KEY", "ZHIPUAI_API_KEY", "SEARCH_API_KEY")
 
+    def _resolve_engine(self, search_engine: str | None) -> str:
+        """Pick the engine for this request: call-time value, then config.
+
+        The provider config accepts ``search_engine`` or ``engine`` -- that is
+        the path user settings take (a search profile field reaches here as a
+        constructor kwarg). Only ``search_std`` / ``search_pro`` are allowed;
+        unknown values fall back to the default with a warning instead of
+        raising, so a mistyped setting cannot break search entirely.
+        """
+        configured = (
+            search_engine
+            or self.config.get("search_engine")
+            or self.config.get("engine")
+            or DEFAULT_SEARCH_ENGINE
+        )
+        engine = str(configured).strip() or DEFAULT_SEARCH_ENGINE
+        if engine not in ALLOWED_SEARCH_ENGINES:
+            self.logger.warning(
+                "Zhipu search_engine %r is not one of %s; falling back to %r.",
+                engine,
+                list(ALLOWED_SEARCH_ENGINES),
+                DEFAULT_SEARCH_ENGINE,
+            )
+            engine = DEFAULT_SEARCH_ENGINE
+        return engine
+
     def search(
         self,
         query: str,
         max_results: int = 5,
-        search_engine: str = "search_std",
+        search_engine: str | None = None,
         content_size: str = "medium",
         search_recency_filter: str = "noLimit",
         timeout: int = 30,
@@ -48,8 +82,9 @@ class ZhipuProvider(BaseSearchProvider):
         Args:
             query: Search query. Truncated to 70 chars, which the API enforces.
             max_results: Result cap (1-50).
-            search_engine: One of ``search_std``, ``search_pro``,
-                ``search_pro_sogou``, ``search_pro_quark``.
+            search_engine: ``search_std`` or ``search_pro``. ``None`` inherits
+                the provider config's ``search_engine``/``engine`` field, then
+                defaults to ``search_std``; unknown values warn and fall back.
             content_size: ``medium`` or ``high`` -- how much body text each row
                 carries.
             search_recency_filter: Time window; one of ``noLimit``/``oneDay``/
@@ -61,10 +96,7 @@ class ZhipuProvider(BaseSearchProvider):
         Returns:
             WebSearchResponse: Standardized search response.
         """
-        if search_engine not in _ENGINES:
-            raise ValueError(
-                f"Zhipu search_engine must be one of {list(_ENGINES)}, got {search_engine!r}."
-            )
+        engine = self._resolve_engine(search_engine)
         if search_recency_filter not in _RECENCY:
             raise ValueError(
                 f"Zhipu search_recency_filter must be one of {list(_RECENCY)}, got {search_recency_filter!r}."
@@ -72,7 +104,7 @@ class ZhipuProvider(BaseSearchProvider):
         endpoint = str(kwargs.get("base_url") or self.BASE_URL)
         payload: dict[str, Any] = {
             "search_query": query[:_QUERY_LIMIT],
-            "search_engine": search_engine,
+            "search_engine": engine,
             "search_intent": False,
             "count": max(1, min(int(max_results), 50)),
             "search_recency_filter": search_recency_filter,
@@ -135,7 +167,7 @@ class ZhipuProvider(BaseSearchProvider):
             answer="",
             provider="zhipu",
             timestamp=datetime.now().isoformat(),
-            model=search_engine,
+            model=engine,
             citations=citations,
             search_results=search_results,
             metadata={"finish_reason": "stop", "request_id": data.get("request_id", "")},

@@ -722,6 +722,9 @@ class ResolvedSearchConfig:
     base_url: str = ""
     max_results: int = 5
     proxy: str | None = None
+    # Engine the active profile pins, consumed by providers whose API has one
+    # (Zhipu). ``None`` lets each provider use its own default.
+    search_engine: str | None = None
     unsupported_provider: bool = False
     deprecated_provider: bool = False
     missing_credentials: bool = False
@@ -1510,6 +1513,33 @@ def _resolve_search_max_results(catalog: dict[str, Any], default: int = 5) -> in
         return default
 
 
+def _resolve_search_engine(catalog: dict[str, Any]) -> str | None:
+    """Engine the active search profile pins, for providers that take one.
+
+    Mirrors :func:`_resolve_search_max_results`: the active search profile
+    wins, then ``tools.web_search`` in main.yaml. Only the value is resolved
+    here -- validating it is the provider's job, since only it knows which
+    engines its API accepts.
+    """
+    profile = get_model_catalog_service().get_active_profile(catalog, "search") or {}
+    for key in ("search_engine", "engine"):
+        raw = _as_str(profile.get(key))
+        if raw:
+            return raw
+    try:
+        settings = load_config_with_main("main.yaml")
+    except Exception:
+        return None
+    tools = settings.get("tools", {}) if isinstance(settings, dict) else {}
+    web_search = tools.get("web_search", {}) if isinstance(tools, dict) else {}
+    if isinstance(web_search, dict):
+        for key in ("search_engine", "engine"):
+            raw = _as_str(web_search.get(key))
+            if raw:
+                return raw
+    return None
+
+
 def _search_profiles(catalog: dict[str, Any]) -> list[dict[str, Any]]:
     profiles = catalog.get("services", {}).get("search", {}).get("profiles", [])
     return [
@@ -1642,6 +1672,7 @@ def resolve_search_runtime_config(
         base_url=base_url,
         max_results=max_results,
         proxy=proxy,
+        search_engine=_resolve_search_engine(loaded),
         unsupported_provider=False,
         deprecated_provider=False,
         missing_credentials=bool(missing) and not spec.soft_fallback,
