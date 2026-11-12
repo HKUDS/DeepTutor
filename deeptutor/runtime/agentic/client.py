@@ -133,6 +133,55 @@ def AsyncAzureOpenAI(**kwargs: Any) -> Any:
     return Client(**kwargs)
 
 
+def strip_internal_message_fields(messages: Any) -> Any:
+    """Drop DeepTutor-internal top-level message fields before a raw wire.
+
+    Messages carry underscore-prefixed keys for DeepTutor's own bookkeeping and
+    provider-state replay (``_provider_response_state``, legacy
+    ``_responses_output_items``, ``_context_snapshot``, ``_lesson_packet``,
+    …). Provider-backed adapters consume and strip those themselves — the
+    Responses wire replays native output items and Anthropic replays signed
+    thinking blocks from them — but a raw Chat Completions client serializes
+    message dicts verbatim, and strict providers (e.g. Fireworks) answer any
+    unknown field with 400 "Extra inputs are not permitted" (#2622). No Chat
+    Completions message field starts with an underscore, so the raw boundary
+    strips them all. The input list is never mutated; a copy is built only
+    when a message actually carries an internal field.
+    """
+    if not isinstance(messages, list):
+        return messages
+    cleaned: list[Any] | None = None
+    for index, message in enumerate(messages):
+        if not isinstance(message, dict):
+            continue
+        kept = {key: value for key, value in message.items() if not str(key).startswith("_")}
+        if len(kept) == len(message):
+            continue
+        if cleaned is None:
+            cleaned = list(messages)
+        cleaned[index] = kept
+    return cleaned if cleaned is not None else messages
+
+
+def _wire_sanitized_client(client: Any) -> Any:
+    """Wrap a raw SDK client so internal fields never reach the request body.
+
+    Only the raw AsyncOpenAI/AsyncAzureOpenAI Chat Completions clients are
+    wrapped: provider-backed adapters (Responses wire, Anthropic, Codex, …)
+    must keep receiving the replay state and sanitize per their own contract.
+    """
+
+    async def create_without_internal_fields(**kwargs: Any) -> Any:
+        messages = kwargs.get("messages")
+        if isinstance(messages, list) and messages:
+            kwargs = {**kwargs, "messages": strip_internal_message_fields(messages)}
+        return await create(**kwargs)
+
+    create = client.chat.completions.create
+    client.chat.completions.create = create_without_internal_fields
+    return client
+
+
 def _build_openai_client(
     config: LLMClientConfig,
     *,
@@ -187,12 +236,14 @@ def _build_openai_client(
     )
     if config.binding == "azure_openai" or (config.binding == "openai" and config.api_version):
         sdk_kwargs.pop("base_url", None)
-        return AsyncAzureOpenAI(
-            azure_endpoint=config.base_url,
-            api_version=config.api_version,
-            **sdk_kwargs,
+        return _wire_sanitized_client(
+            AsyncAzureOpenAI(
+                azure_endpoint=config.base_url,
+                api_version=config.api_version,
+                **sdk_kwargs,
+            )
         )
-    return AsyncOpenAI(**sdk_kwargs)
+    return _wire_sanitized_client(AsyncOpenAI(**sdk_kwargs))
 
 
 class _KeyRotatingCompletions:
