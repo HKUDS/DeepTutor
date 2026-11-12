@@ -3424,8 +3424,8 @@ def _normalized_module_tree(
     return entries
 
 
-#: Waypoints one module may hold, matching
-#: ``topic_generation._MAX_OBJECTIVES_PER_MODULE``. A module the tutor keeps
+#: Waypoints one module may hold, matching the default of
+#: ``topic_generation.DEFAULT_OBJECTIVES_PER_MODULE``. A module the tutor keeps
 #: adding to stops being a module.
 _MAX_POINTS_PER_MODULE = 7
 
