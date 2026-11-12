@@ -4,7 +4,7 @@ import { watch } from 'node:fs';
 import { mkdir, readFile, writeFile, rename, cp, appendFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { installBundle, bundleConfig, verifyManifest } from './bundles.mjs';
+import { installBundle, bundleConfig, startupRuntime } from './bundles.mjs';
 import { externalURL } from './config.mjs';
 import { resolveLanguage, translate } from './i18n.mjs';
 import { WINDOWS, agentMarker, edition, targetId } from './platform.mjs';
@@ -223,25 +223,69 @@ async function logStartupFailure(error) {
   } catch (logError) { console.error(logError); }
 }
 
+async function startupManifest() {
+  const saved = await readJSON(activeFile);
+  if (!saved) return { manifestFile: seed };
+  // A missing or unreadable seed must not stop the installed core from starting.
+  const bundled = await readJSON(seed).catch(error => { console.error(error); return null; });
+  const { current, upgrade, seedError } = startupRuntime({
+    saved, seed: bundled, transaction: await readJSON(transactionFile), publicKey,
+  });
+  if (seedError) console.error(seedError);
+  const installed = path.join(userRoot, 'runtimes', current.runtimeId, 'installed.json');
+  return upgrade ? { manifestFile: seed, previous: current, installed } : { manifestFile: installed };
+}
+
 async function boot() {
   if (busy || quitting) return;
   busy = true;
+  let transaction;
   try {
     status({ phase: 'starting', step: 'starting' });
     await stopWorker();
     await recoverInterruptedUpgrade();
-    const saved = await readJSON(activeFile);
-    const manifestFile = saved ? path.join(userRoot, 'runtimes', verifyManifest(saved, publicKey).runtimeId, 'installed.json') : seed;
-    active = await installBundle(manifestFile, userRoot, publicKey, step => status({ step }));
+    const { manifestFile, previous, installed } = await startupManifest();
+    try { active = await installBundle(manifestFile, userRoot, publicKey, step => status({ step })); }
+    catch (error) {
+      if (!previous) throw error;
+      // The bundled core could not be unpacked; keep starting the installed one.
+      await logStartupFailure(error);
+      active = await installBundle(installed, userRoot, publicKey, step => status({ step }));
+    }
     if (quitting) return;
+    if (previous && active.manifest.runtimeId !== previous.runtimeId) {
+      // The app was installed over an older core: switch to the bundled one with the
+      // same backup and rollback as a manual update.
+      status({ phase: 'starting', step: 'updating' });
+      let backup = path.join(userRoot, 'backups', `before-${active.manifest.runtimeId}-${Date.now()}`);
+      await mkdir(path.dirname(backup), { recursive: true });
+      try { await cp(runtimeHome, backup, { recursive: true }); }
+      catch (error) {
+        // No workspace yet means nothing to restore on rollback.
+        if (error.code !== 'ENOENT') throw error;
+        backup = undefined;
+      }
+      transaction = { phase: 'testing', previous, candidate: active.manifest, backup };
+      await writeJSON(transactionFile, transaction);
+    }
     const ready = await launchRuntime(active);
     if (quitting) return;
     await writeJSON(activeFile, active.manifest);
+    if (transaction) await writeJSON(transactionFile, { ...transaction, phase: 'complete' });
     watchInterface();
     await refreshInterface();
     await openContent(ready.url);
   } catch (error) {
     await logStartupFailure(error);
+    if (transaction) {
+      // Restore the previous core and workspace; the next start uses them again.
+      await stopWorker();
+      try {
+        await writeJSON(transactionFile, { ...transaction, failed: true });
+        await recoverInterruptedUpgrade();
+      }
+      catch (recoveryError) { await logStartupFailure(recoveryError); }
+    }
     status({ phase: 'error', step: null, message: error.message });
     await stopWorker();
   } finally { busy = false; }

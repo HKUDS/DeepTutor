@@ -147,6 +147,12 @@ starts the candidate. A failed or interrupted trial restores the previous
 runtime and workspace. Backups are kept. Automatic update discovery is not
 connected yet.
 
+Installing a newer app over an older one works the same way: on the next start,
+a bundled core whose `coreVersion` is newer than the active one is installed and
+trialled with the same backup and rollback. A bundled core that fails its trial
+is not tried again, and an older bundled core never replaces a newer one that
+was installed by hand.
+
 ## Verification
 
 `npm test` covers edition names, language resolution, config validation,
