@@ -8,9 +8,12 @@ import pytest
 
 from deeptutor.learning.models import TopicSource, TopicSourceKind
 from deeptutor.learning.topic_generation import (
+    DEFAULT_OBJECTIVES_PER_MODULE,
+    MAX_OBJECTIVES_ENV_VAR,
     TopicGenerationError,
     generate_topic_draft,
     materialize_modules,
+    max_objectives_per_module,
 )
 
 
@@ -109,6 +112,91 @@ def test_new_draft_regions_keep_the_generation_limit() -> None:
     points = [(f"kp{index}", f"Objective {index}") for index in range(8)]
     modules = materialize_modules("topic", [_module("draft", *points)])
     assert len(modules[0].knowledge_points) == 7
+
+
+def test_default_waypoint_ceiling_is_seven() -> None:
+    assert max_objectives_per_module() == DEFAULT_OBJECTIVES_PER_MODULE == 7
+    points = [(f"kp{index}", f"Objective {index}") for index in range(8)]
+    with pytest.raises(TopicGenerationError, match="at most 7 waypoints"):
+        materialize_modules("topic", [_module("topic_m0", *points)], strict=True)
+
+
+def test_authored_structure_may_pass_a_higher_waypoint_ceiling() -> None:
+    # The POST /topics confirm path accepts fully caller-authored structures;
+    # a textbook chapter with 24 knowledge points is not a model draft that
+    # needs bounding at seven.
+    points = [(f"kp{index}", f"Objective {index}") for index in range(24)]
+    modules = materialize_modules(
+        "topic",
+        [_module("topic_m0", *points)],
+        strict=True,
+        objective_limit=60,
+    )
+    assert len(modules[0].knowledge_points) == 24
+
+
+def test_authored_course_with_many_dense_modules_is_accepted() -> None:
+    # Reporter's course: 12 modules, ~24 points each, rejected wholesale
+    # before the fix. module_limit mirrors the API's MAX_MODULE_LIMIT.
+    raw = [
+        _module(
+            f"topic_m{module_index}",
+            *[
+                (f"topic_m{module_index}_kp{point_index}", f"Objective {point_index}")
+                for point_index in range(24)
+            ],
+        )
+        for module_index in range(12)
+    ]
+    modules = materialize_modules(
+        "topic",
+        raw,
+        strict=True,
+        module_limit=20,
+        objective_limit=60,
+    )
+    assert len(modules) == 12
+    assert all(len(module.knowledge_points) == 24 for module in modules)
+
+
+def test_env_var_raises_the_waypoint_ceiling(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(MAX_OBJECTIVES_ENV_VAR, "60")
+    assert max_objectives_per_module() == 60
+
+    points = [(f"kp{index}", f"Objective {index}") for index in range(24)]
+    modules = materialize_modules(
+        "topic",
+        [_module("topic_m0", *points)],
+        strict=True,
+    )
+    assert len(modules[0].knowledge_points) == 24
+
+
+def test_invalid_env_var_value_falls_back_to_default(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    monkeypatch.setenv(MAX_OBJECTIVES_ENV_VAR, "lots")
+    with caplog.at_level(logging.WARNING, logger="deeptutor.learning.topic_generation"):
+        assert max_objectives_per_module() == DEFAULT_OBJECTIVES_PER_MODULE
+    assert "Ignoring invalid" in caplog.text
+
+    points = [(f"kp{index}", f"Objective {index}") for index in range(8)]
+    with pytest.raises(TopicGenerationError, match="at most 7 waypoints"):
+        materialize_modules("topic", [_module("topic_m0", *points)], strict=True)
+
+
+def test_edit_budget_still_raises_a_configured_ceiling(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(MAX_OBJECTIVES_ENV_VAR, "60")
+    points = [(f"kp{index}", f"Objective {index}") for index in range(24)]
+    modules = materialize_modules(
+        "topic",
+        [_module("topic_m0", *points)],
+        strict=True,
+        existing_module_ids={"topic_m0"},
+        existing_objective_ids={point_id for point_id, _ in points},
+        existing_objective_counts={"topic_m0": 8},
+    )
+    assert len(modules[0].knowledge_points) == 24
 
 
 def test_new_objective_never_reuses_an_existing_or_deleted_position_id() -> None:
