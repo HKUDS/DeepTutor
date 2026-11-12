@@ -536,7 +536,7 @@ def _profile_status(
                 "materials yourself."
             ),
         }
-    from deeptutor.learning.teaching import teaching_guidance
+    from deeptutor.learning.teaching import strategy_outcomes, teaching_guidance
 
     objective_id = (
         next_objective(progress).knowledge_point_id
@@ -553,6 +553,7 @@ def _profile_status(
             "notes": profile.notes,
             **teaching_guidance(profile, objective_id, include_history=include_teaching_history),
         },
+        "strategy_outcomes": strategy_outcomes(profile),
         "intake_needed": profile.is_empty(),
     }
 
@@ -946,6 +947,24 @@ class MasteryStatusTool(BaseTool):
                 reply_feedback = await asyncio.to_thread(feedback_reader, path_id)
             except Exception:
                 reply_feedback = None
+        strategy_notes: list[dict[str, Any]] = []
+        notes_reader = getattr(service.store, "list_strategy_notes", None)
+        if callable(notes_reader):
+            try:
+                strategy_notes = [
+                    {
+                        "note_id": note.get("note_id", ""),
+                        "body": note.get("body", ""),
+                        "status": note.get("status", "active"),
+                        "created_by": note.get("created_by", "agent"),
+                        "pinned": bool(note.get("pinned")),
+                        "revision": note.get("revision", 1),
+                        "updated_at": note.get("updated_at", 0.0),
+                    }
+                    for note in await asyncio.to_thread(notes_reader, path_id)
+                ]
+            except Exception:
+                strategy_notes = []
         # Which goal this is, in the learner's own words. The tutor had no way
         # to see it before: the map carries a name, and the sentence the
         # learner actually wrote when they created the goal lived only in the
@@ -981,6 +1000,7 @@ class MasteryStatusTool(BaseTool):
                     **_profile_status(progress, include_teaching_history=include_history),
                     "question_profile": question_profile,
                     "reply_feedback": reply_feedback,
+                    "strategy_notes": strategy_notes,
                 },
                 meta_key="mastery_status",
             )
@@ -1006,6 +1026,7 @@ class MasteryStatusTool(BaseTool):
             ),
             "question_profile": question_profile,
             "reply_feedback": reply_feedback,
+            "strategy_notes": strategy_notes,
             "learning_stages": {
                 kp.id: learning_stage(progress, kp.id)
                 for module in progress.modules

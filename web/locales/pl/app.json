@@ -6362,5 +6362,12 @@
   "If the draft is not good, regenerate it — the tutor reads your study conversation again and reorganizes the lecture. Discarding alone leaves this point without this draft.": "Jeśli szkic jest słaby, wygeneruj go ponownie — tutor ponownie przeczyta Twoją rozmowę i uporządkuje wykład. Samo odrzucenie zostawi ten punkt bez tego szkicu.",
   "Like": "Lubię",
   "Like this reply": "Polub tę odpowiedź",
-  "Unlike this reply": "Cofnij polubienie"
+  "Unlike this reply": "Cofnij polubienie",
+  "Learning strategy": "Strategia nauki",
+  "How the tutor has learned to teach you. Edit or remove any note; removing archives it and you can restore it.": "Jak tutor nauczył się Cię uczyć. Edytuj lub usuń dowolną notatkę; usunięcie archiwizuje ją i możesz ją przywrócić.",
+  "No strategy notes yet. Notes the tutor learns from your questions and likes will appear here.": "Brak notatek o strategii. Notatki, których tutor uczy się z Twoich pytań i polubień, pojawią się tutaj.",
+  "Revision": "Wersja",
+  "Add a note about how you want to be taught": "Dodaj notatkę o tym, jak chcesz być uczony",
+  "Added by you": "Dodane przez Ciebie",
+  "Learned by the tutor": "Nauczone przez tutora"
 }

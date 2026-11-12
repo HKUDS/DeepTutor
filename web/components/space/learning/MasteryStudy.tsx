@@ -39,6 +39,7 @@ import {
   OutlineDecisionDialog,
 } from "@/components/space/learning/OutlineDecisionDialog";
 import { OutlineChatDialog } from "@/components/space/learning/OutlineChatDialog";
+import { MasteryStrategyPanel } from "@/components/space/learning/MasteryStrategyPanel";
 import { latestOpenMasteryQuestion, type MasteryQuestion } from "@/lib/mastery-question";
 import { localizedRejectionReason } from "@/lib/submission-rejection";
 import { ChatViewerBridges } from "@/components/chat/home/ChatViewerBridges";
@@ -420,6 +421,7 @@ export function MasteryStudy({
   );
   const [viewerOpen, setViewerOpen] = useState(false);
   const [showSaveModal, setShowSaveModal] = useState(false);
+  const [strategyOpen, setStrategyOpen] = useState(false);
   // A reply opened in the focus-reading overlay: full text, read-along, one signal.
   const [readAlong, setReadAlong] = useState<{
     content: string;
@@ -1283,6 +1285,16 @@ export function MasteryStudy({
         />
 
         <div className="flex shrink-0 items-center gap-1.5 pl-2">
+          <Tooltip label={t("Learning strategy")}>
+            <button
+              type="button"
+              onClick={() => setStrategyOpen(true)}
+              className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)]/60 hover:text-[var(--foreground)]"
+              aria-label={t("Learning strategy")}
+            >
+              <Compass className="h-4 w-4" />
+            </button>
+          </Tooltip>
           <Tooltip label={t("Save to Notebook")}>
             <button
               type="button"
@@ -2063,6 +2075,12 @@ export function MasteryStudy({
             // reflect what the tutor just agreed to.
             refreshTopic();
           }}
+        />
+      )}
+      {strategyOpen && (
+        <MasteryStrategyPanel
+          pathId={pathId}
+          onClose={() => setStrategyOpen(false)}
         />
       )}
     </main>

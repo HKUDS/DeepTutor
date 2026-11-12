@@ -6347,5 +6347,12 @@
   "If the draft is not good, regenerate it — the tutor reads your study conversation again and reorganizes the lecture. Discarding alone leaves this point without this draft.": "If the draft is not good, regenerate it — the tutor reads your study conversation again and reorganizes the lecture. Discarding alone leaves this point without this draft.",
   "Like": "Like",
   "Like this reply": "Like this reply",
-  "Unlike this reply": "Unlike this reply"
+  "Unlike this reply": "Unlike this reply",
+  "Learning strategy": "Learning strategy",
+  "How the tutor has learned to teach you. Edit or remove any note; removing archives it and you can restore it.": "How the tutor has learned to teach you. Edit or remove any note; removing archives it and you can restore it.",
+  "No strategy notes yet. Notes the tutor learns from your questions and likes will appear here.": "No strategy notes yet. Notes the tutor learns from your questions and likes will appear here.",
+  "Revision": "Revision",
+  "Add a note about how you want to be taught": "Add a note about how you want to be taught",
+  "Added by you": "Added by you",
+  "Learned by the tutor": "Learned by the tutor"
 }

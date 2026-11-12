@@ -1611,3 +1611,118 @@ async def set_reply_like(
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+class StrategyNoteRequest(BaseModel):
+    body: str = Field(..., min_length=1, max_length=400)
+    note_id: str = Field("", max_length=64)
+    pinned: bool | None = None
+
+
+class StrategyNoteEditRequest(BaseModel):
+    body: str = Field(..., min_length=1, max_length=400)
+    pinned: bool | None = None
+
+
+class StrategyRollbackRequest(BaseModel):
+    revision: int = Field(..., ge=1)
+
+
+@router.get("/topics/{path_id}/strategy")
+async def list_strategy_notes(path_id: str, include_archived: bool = False):
+    """The teaching-strategy notes the tutor has learned for this learner."""
+    _validate_book_id(path_id)
+    store = LearningStore()
+    notes = await asyncio.to_thread(
+        store.list_strategy_notes, path_id, include_archived=include_archived
+    )
+    return {"notes": notes}
+
+
+@router.post("/topics/{path_id}/strategy")
+async def create_strategy_note(path_id: str, body: StrategyNoteRequest):
+    """A learner-authored strategy note; automation never overwrites it."""
+    _validate_book_id(path_id)
+    store = LearningStore()
+    try:
+        return await asyncio.to_thread(
+            store.save_strategy_note,
+            path_id,
+            body.note_id,
+            body.body,
+            created_by="learner",
+            pinned=body.pinned,
+            actor="learner",
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.patch("/topics/{path_id}/strategy/{note_id}")
+async def edit_strategy_note(path_id: str, note_id: str, body: StrategyNoteEditRequest):
+    """Edit a strategy note; the edit is attributed to the learner."""
+    _validate_book_id(path_id)
+    store = LearningStore()
+    existing = await asyncio.to_thread(store.get_strategy_note, path_id, note_id)
+    if existing is None:
+        raise HTTPException(status_code=404, detail="strategy note not found")
+    try:
+        return await asyncio.to_thread(
+            store.save_strategy_note,
+            path_id,
+            note_id,
+            body.body,
+            created_by="learner",
+            pinned=body.pinned,
+            actor="learner",
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.delete("/topics/{path_id}/strategy/{note_id}")
+async def archive_strategy_note(path_id: str, note_id: str):
+    """Archive a note; nothing is deleted and it can be restored."""
+    _validate_book_id(path_id)
+    store = LearningStore()
+    note = await asyncio.to_thread(
+        store.set_strategy_note_status, path_id, note_id, "archived", actor="learner"
+    )
+    if note is None:
+        raise HTTPException(status_code=404, detail="strategy note not found")
+    return note
+
+
+@router.post("/topics/{path_id}/strategy/{note_id}/restore")
+async def restore_strategy_note(path_id: str, note_id: str):
+    """Bring an archived note back to active."""
+    _validate_book_id(path_id)
+    store = LearningStore()
+    note = await asyncio.to_thread(
+        store.set_strategy_note_status, path_id, note_id, "active", actor="learner"
+    )
+    if note is None:
+        raise HTTPException(status_code=404, detail="strategy note not found")
+    return note
+
+
+@router.get("/topics/{path_id}/strategy/{note_id}/history")
+async def strategy_note_history(path_id: str, note_id: str):
+    """Every applied revision of a note, newest first."""
+    _validate_book_id(path_id)
+    store = LearningStore()
+    history = await asyncio.to_thread(store.strategy_note_history, path_id, note_id)
+    return {"history": history}
+
+
+@router.post("/topics/{path_id}/strategy/{note_id}/rollback")
+async def rollback_strategy_note(path_id: str, note_id: str, body: StrategyRollbackRequest):
+    """Restore a note to an earlier revision, recorded as a new revision."""
+    _validate_book_id(path_id)
+    store = LearningStore()
+    note = await asyncio.to_thread(
+        store.rollback_strategy_note, path_id, note_id, body.revision, actor="learner"
+    )
+    if note is None:
+        raise HTTPException(status_code=404, detail="strategy revision not found")
+    return note

@@ -860,6 +860,124 @@ export function setReplyLike(
   );
 }
 
+export interface StrategyNote {
+  path_id: string;
+  note_id: string;
+  body: string;
+  status: "active" | "stale" | "archived";
+  created_by: "agent" | "learner";
+  pinned: boolean;
+  evidence: unknown[];
+  revision: number;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface StrategyNoteRevision {
+  revision: number;
+  body: string;
+  status: string;
+  created_by: string;
+  pinned: boolean;
+  actor: string;
+  created_at: number;
+}
+
+/** The teaching-strategy notes learned for this learner. */
+export function fetchStrategyNotes(
+  pathId: string,
+  includeArchived = false,
+): Promise<{ notes: StrategyNote[] }> {
+  const query = includeArchived ? "?include_archived=true" : "";
+  return masteryJson(
+    `/api/mastery-paths/topics/${encodeURIComponent(pathId)}/strategy${query}`,
+    undefined,
+    "load strategy notes",
+  );
+}
+
+/** A learner-authored strategy note; automation never overwrites it. */
+export function createStrategyNote(
+  pathId: string,
+  body: { body: string; note_id?: string; pinned?: boolean },
+): Promise<StrategyNote> {
+  return masteryJson(
+    `/api/mastery-paths/topics/${encodeURIComponent(pathId)}/strategy`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+    "create strategy note",
+  );
+}
+
+export function editStrategyNote(
+  pathId: string,
+  noteId: string,
+  body: { body: string; pinned?: boolean },
+): Promise<StrategyNote> {
+  return masteryJson(
+    `/api/mastery-paths/topics/${encodeURIComponent(pathId)}/strategy/${encodeURIComponent(noteId)}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+    "edit strategy note",
+  );
+}
+
+/** Archive a note; nothing is deleted and it can be restored. */
+export function archiveStrategyNote(
+  pathId: string,
+  noteId: string,
+): Promise<StrategyNote> {
+  return masteryJson(
+    `/api/mastery-paths/topics/${encodeURIComponent(pathId)}/strategy/${encodeURIComponent(noteId)}`,
+    { method: "DELETE" },
+    "archive strategy note",
+  );
+}
+
+export function restoreStrategyNote(
+  pathId: string,
+  noteId: string,
+): Promise<StrategyNote> {
+  return masteryJson(
+    `/api/mastery-paths/topics/${encodeURIComponent(pathId)}/strategy/${encodeURIComponent(noteId)}/restore`,
+    { method: "POST" },
+    "restore strategy note",
+  );
+}
+
+export function fetchStrategyNoteHistory(
+  pathId: string,
+  noteId: string,
+): Promise<{ history: StrategyNoteRevision[] }> {
+  return masteryJson(
+    `/api/mastery-paths/topics/${encodeURIComponent(pathId)}/strategy/${encodeURIComponent(noteId)}/history`,
+    undefined,
+    "load strategy note history",
+  );
+}
+
+export function rollbackStrategyNote(
+  pathId: string,
+  noteId: string,
+  revision: number,
+): Promise<StrategyNote> {
+  return masteryJson(
+    `/api/mastery-paths/topics/${encodeURIComponent(pathId)}/strategy/${encodeURIComponent(noteId)}/rollback`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ revision }),
+    },
+    "roll back strategy note",
+  );
+}
+
 /** Ask for a change in the learner's own words; the result needs applying. */
 export function proposePointLectureRevision(
   pathId: string,

@@ -127,6 +127,10 @@ playbook: |-
   **记录策略效果：** 每讲完一个连贯小块，用 `mastery_profile` 的 `teaching_updates` 记一条观察：`key` 用策略名（如 `framework_first` / `question_driven` / `detail_first` / `term_trio` / `worked_example` / `fill_in_template`），`text` 写这条策略在本知识点上的效果（`helped` / `not_helped` / `unknown`），`evidence` 逐字引用学习者的当前消息。一次困难只标 `tentative`，不给他贴全局标签；这些记录不授予掌握分。
 
   **回复点赞（`mastery_status.reply_feedback`）：** 它给出学习者点赞过的导师回复数量、最近几条（含知识点与摘录）以及按知识点的分布。把它当作“哪种讲法他认可”的正向信号：被点赞过的讲法（结构、例子粒度、密度、节奏）优先沿用；某个知识点上有赞，说明那一节的讲法有效，后续同类型知识点的讲解可以复用。没有赞不代表负面；点赞也不证明掌握，不改变门槛判定。
+
+  **策略效果聚合（`mastery_status.strategy_outcomes`）：** 它按策略名统计本路径上记录到的结果（`helped` / `not_helped` 次数）。某个策略多次记为 `not_helped` 时，换讲法而不是重复；多次 `helped` 且情境相近时优先沿用。它是证据不是命令，不授予掌握分。
+
+  **路径策略笔记（`mastery_status.strategy_notes`）：** 这是学习者可见的、关于「怎样教这个人最有效」的持久笔记，可能由导师从证据里沉淀、也可能由学习者自己写。把它当作这位学习者的长期教学约定，优先级低于当前明确请求：冲突时听当前的，没有冲突时按它调整讲法。`created_by` 为 `learner` 的笔记是学习者本人写的，必须遵守、绝不覆盖；`pinned` 表示已固定，同样要遵守。笔记为空就按上面的原则判断，不要凭空发明约定。
   目标包含原图理解时，在对应提纲目标声明 `required_visual_tasks`（identification、relationship、table_graph、comparison）。通用文字题高分不能替代这些任务。查看 `mastery_status.visual_requirements` 和 `learning_stages`，解释下一步来自缺少独立证据、此前困难还是到期复习。
   视觉题先通过 `rag` 读取并检查原始像素，再给 `mastery_quiz` 传 `visual`：精确来源、来源中的参考引文以及已核验的等价术语（包含学习者语言）。练习应判断真实编号标签、可见关系、图表数据或有证据支持的比较。保留原图及位置，不能用生成图替代，也不能虚构遮罩或分割目标。仅凭不确定图像理解得到的答案键标为 unverified，保留未评分。
   如实记录可见答案线索：带答案标签或直接读取表格/页面是辅助练习，不是独立回忆；即时重复刚获帮助的题目也会按现有复习时间边界降权。未知表述应澄清而不是模糊打分；需要可靠区分实质性错误时使用来源明确的选择题。答错后对照原图讲解，提供其他有依据的例子，不要立即循环相同问题。

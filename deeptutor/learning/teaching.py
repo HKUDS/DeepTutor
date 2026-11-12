@@ -168,3 +168,44 @@ def teaching_guidance(
             "Teaching feedback gives no mastery credit. Update only relevant changed keys."
         ),
     }
+
+
+def strategy_outcomes(profile: LearnerProfile) -> dict:
+    """Aggregate recorded strategy outcomes across this path's observations.
+
+    A deterministic sidecar (mirrors Hermes' ``.usage.json``): per strategy, how
+    often it was followed by a ``helped`` result versus ``not_helped``. It is
+    derived only from the observations the tutor already recorded, never an LLM
+    judgement, and it never rewrites the raw notes or awards mastery.
+    """
+    tally: dict[str, dict] = {}
+    for item in profile.teaching_observations.values():
+        strategy = (item.strategy or "").strip()
+        if not strategy or item.outcome == "unknown":
+            continue
+        entry = tally.setdefault(
+            strategy, {"helped": 0, "not_helped": 0, "points": []}
+        )
+        entry[item.outcome] += 1
+        if item.knowledge_point_id and item.knowledge_point_id not in entry["points"]:
+            entry["points"].append(item.knowledge_point_id)
+    strategies = [
+        {
+            "strategy": strategy,
+            "helped": entry["helped"],
+            "not_helped": entry["not_helped"],
+            "total": entry["helped"] + entry["not_helped"],
+            "knowledge_point_ids": entry["points"][:5],
+        }
+        for strategy, entry in tally.items()
+    ]
+    strategies.sort(key=lambda row: (row["total"], row["helped"]), reverse=True)
+    return {
+        "total": sum(row["total"] for row in strategies),
+        "strategies": strategies[:8],
+        "note": (
+            "Counts of recorded strategy results on this path. A strategy that "
+            "repeatedly lands as not_helped should be changed, not repeated; "
+            "these counts are evidence, not a command, and grant no mastery."
+        ),
+    }

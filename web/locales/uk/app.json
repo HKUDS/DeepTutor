@@ -6317,5 +6317,12 @@
   "If the draft is not good, regenerate it — the tutor reads your study conversation again and reorganizes the lecture. Discarding alone leaves this point without this draft.": "Якщо чернетка невдала, згенеруйте її заново — викладач перечитає вашу навчальну розмову й упорядкує лекцію. Саме лише відхилення залишить цей пункт без цієї чернетки.",
   "Like": "Вподобати",
   "Like this reply": "Вподобати цю відповідь",
-  "Unlike this reply": "Прибрати вподобання"
+  "Unlike this reply": "Прибрати вподобання",
+  "Learning strategy": "Стратегія навчання",
+  "How the tutor has learned to teach you. Edit or remove any note; removing archives it and you can restore it.": "Як викладач навчився вас навчати. Редагуйте або видаляйте будь-яку нотатку; видалення лише архівує її, і ви можете її відновити.",
+  "No strategy notes yet. Notes the tutor learns from your questions and likes will appear here.": "Ще немає нотаток про стратегію. Нотатки, яких викладач навчається з ваших запитань і вподобань, з'являться тут.",
+  "Revision": "Версія",
+  "Add a note about how you want to be taught": "Додати нотатку про те, як ви хочете, щоб вас навчали",
+  "Added by you": "Додано вами",
+  "Learned by the tutor": "Засвоєно викладачем"
 }

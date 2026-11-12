@@ -6443,5 +6443,12 @@
   "If the draft is not good, regenerate it — the tutor reads your study conversation again and reorganizes the lecture. Discarding alone leaves this point without this draft.": "Si le brouillon ne convient pas, régénérez-le — le tuteur relit votre conversation d'étude et réorganise le cours. Le simple abandon laisse ce point sans ce brouillon.",
   "Like": "J'aime",
   "Like this reply": "J'aime cette réponse",
-  "Unlike this reply": "Retirer mon j'aime"
+  "Unlike this reply": "Retirer mon j'aime",
+  "Learning strategy": "Stratégie d'apprentissage",
+  "How the tutor has learned to teach you. Edit or remove any note; removing archives it and you can restore it.": "Comment le tuteur a appris à vous enseigner. Modifiez ou supprimez une note ; la suppression l'archive et vous pouvez la restaurer.",
+  "No strategy notes yet. Notes the tutor learns from your questions and likes will appear here.": "Pas encore de notes de stratégie. Les notes que le tuteur apprend de vos questions et de vos j'aime apparaîtront ici.",
+  "Revision": "Révision",
+  "Add a note about how you want to be taught": "Ajouter une note sur la façon dont vous voulez être enseigné",
+  "Added by you": "Ajouté par vous",
+  "Learned by the tutor": "Appris par le tuteur"
 }

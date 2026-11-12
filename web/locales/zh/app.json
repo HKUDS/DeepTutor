@@ -6347,5 +6347,12 @@
   "If the draft is not good, regenerate it — the tutor reads your study conversation again and reorganizes the lecture. Discarding alone leaves this point without this draft.": "如果草稿内容不行，建议重新生成——导师会重新看一遍你的学习对话并重新整理讲义。只丢弃的话，这个知识点就没有这份草稿了。",
   "Like": "点赞",
   "Like this reply": "给这条回复点赞",
-  "Unlike this reply": "取消点赞"
+  "Unlike this reply": "取消点赞",
+  "Learning strategy": "学习策略",
+  "How the tutor has learned to teach you. Edit or remove any note; removing archives it and you can restore it.": "导师学到的、适合你的讲法。你可以编辑或删除任意一条；删除只是归档，之后还能恢复。",
+  "No strategy notes yet. Notes the tutor learns from your questions and likes will appear here.": "还没有策略笔记。导师从你的提问和点赞中学到的讲法会出现在这里。",
+  "Revision": "版本",
+  "Add a note about how you want to be taught": "添加一条关于你希望被怎么教的笔记",
+  "Added by you": "你添加的",
+  "Learned by the tutor": "导师学到的"
 }

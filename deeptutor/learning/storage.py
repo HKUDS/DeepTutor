@@ -531,6 +531,42 @@ class LearningStore:
                     CREATE INDEX IF NOT EXISTS idx_mastery_reply_feedback_path
                         ON mastery_reply_feedback(path_id, updated_at DESC);
 
+                    -- A durable statement about how this learner is best taught.
+                    -- Authored either by the tutor (from accumulated evidence) or
+                    -- by the learner. Automation only ever touches agent-authored
+                    -- notes, and archive is the strongest move it may make.
+                    CREATE TABLE IF NOT EXISTS mastery_strategy_notes (
+                        path_id TEXT NOT NULL REFERENCES mastery_paths(path_id) ON DELETE CASCADE,
+                        note_id TEXT NOT NULL,
+                        body TEXT NOT NULL DEFAULT '',
+                        status TEXT NOT NULL DEFAULT 'active',
+                        created_by TEXT NOT NULL DEFAULT 'agent',
+                        pinned INTEGER NOT NULL DEFAULT 0,
+                        evidence_json TEXT NOT NULL DEFAULT '[]',
+                        revision INTEGER NOT NULL DEFAULT 1,
+                        created_at REAL NOT NULL,
+                        updated_at REAL NOT NULL,
+                        PRIMARY KEY(path_id, note_id)
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_mastery_strategy_notes_path
+                        ON mastery_strategy_notes(path_id, updated_at DESC);
+
+                    -- Every applied revision of a note, so a change can be
+                    -- reviewed after the fact and rolled back.
+                    CREATE TABLE IF NOT EXISTS mastery_strategy_versions (
+                        path_id TEXT NOT NULL REFERENCES mastery_paths(path_id) ON DELETE CASCADE,
+                        note_id TEXT NOT NULL,
+                        revision INTEGER NOT NULL,
+                        body TEXT NOT NULL DEFAULT '',
+                        status TEXT NOT NULL DEFAULT 'active',
+                        created_by TEXT NOT NULL DEFAULT 'agent',
+                        pinned INTEGER NOT NULL DEFAULT 0,
+                        evidence_json TEXT NOT NULL DEFAULT '[]',
+                        actor TEXT NOT NULL DEFAULT '',
+                        created_at REAL NOT NULL,
+                        PRIMARY KEY(path_id, note_id, revision)
+                    );
+
                     CREATE TABLE IF NOT EXISTS mastery_interactions (
                         interaction_id TEXT PRIMARY KEY,
                         path_id TEXT NOT NULL REFERENCES mastery_paths(path_id) ON DELETE CASCADE,
@@ -2406,6 +2442,217 @@ class LearningStore:
                     (path_id,),
                 ).fetchall()
         return [int(row["message_id"]) for row in rows]
+
+    @staticmethod
+    def _strategy_note_from_row(row: sqlite3.Row | None) -> dict[str, Any] | None:
+        if row is None:
+            return None
+        try:
+            evidence = json.loads(row["evidence_json"] or "[]")
+        except (TypeError, ValueError, json.JSONDecodeError):
+            evidence = []
+        return {
+            "path_id": str(row["path_id"]),
+            "note_id": str(row["note_id"]),
+            "body": str(row["body"] or ""),
+            "status": str(row["status"] or "active"),
+            "created_by": str(row["created_by"] or "agent"),
+            "pinned": bool(row["pinned"]),
+            "evidence": evidence if isinstance(evidence, list) else [],
+            "revision": int(row["revision"] or 1),
+            "created_at": float(row["created_at"] or 0),
+            "updated_at": float(row["updated_at"] or 0),
+        }
+
+    def list_strategy_notes(
+        self,
+        path_id: str,
+        *,
+        include_archived: bool = False,
+    ) -> list[dict[str, Any]]:
+        """The path's teaching-strategy notes, newest first."""
+        path_id = self._validate_id(path_id)
+        query = "SELECT * FROM mastery_strategy_notes WHERE path_id = ?"
+        params: list[Any] = [path_id]
+        if not include_archived:
+            query += " AND status = 'active'"
+        query += " ORDER BY pinned DESC, updated_at DESC"
+        with self._connect() as conn:
+            rows = conn.execute(query, params).fetchall()
+        return [
+            note
+            for note in (self._strategy_note_from_row(row) for row in rows)
+            if note is not None
+        ]
+
+    def get_strategy_note(self, path_id: str, note_id: str) -> dict[str, Any] | None:
+        path_id = self._validate_id(path_id)
+        key = str(note_id or "").strip()
+        if not key:
+            return None
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM mastery_strategy_notes WHERE path_id = ? AND note_id = ?",
+                (path_id, key),
+            ).fetchone()
+        return self._strategy_note_from_row(row)
+
+    def save_strategy_note(
+        self,
+        path_id: str,
+        note_id: str,
+        body: str,
+        *,
+        created_by: str = "agent",
+        evidence: list[Any] | None = None,
+        pinned: bool | None = None,
+        actor: str = "",
+    ) -> dict[str, Any]:
+        """Create or revise one note, recording the revision for rollback."""
+        path_id = self._validate_id(path_id)
+        text = str(body or "").strip()
+        if not text:
+            raise ValueError("A strategy note needs a body")
+        key = str(note_id or "").strip() or f"note-{uuid.uuid4().hex[:10]}"
+        origin = "learner" if str(created_by) == "learner" else "agent"
+        payload = json.dumps(list(evidence or []), ensure_ascii=False, allow_nan=False)
+        now = time.time()
+        with self._connect() as conn:
+            existing = conn.execute(
+                "SELECT revision, pinned, created_at FROM mastery_strategy_notes WHERE path_id = ? AND note_id = ?",
+                (path_id, key),
+            ).fetchone()
+            revision = int(existing["revision"] or 0) + 1 if existing else 1
+            pinned_value = int(existing["pinned"]) if existing else 0
+            if pinned is not None:
+                pinned_value = 1 if pinned else 0
+            created_at = float(existing["created_at"]) if existing else now
+            conn.execute(
+                """
+                INSERT INTO mastery_strategy_notes (
+                    path_id, note_id, body, status, created_by, pinned,
+                    evidence_json, revision, created_at, updated_at
+                ) VALUES (?, ?, ?, 'active', ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(path_id, note_id) DO UPDATE SET
+                    body = excluded.body,
+                    status = 'active',
+                    created_by = excluded.created_by,
+                    pinned = excluded.pinned,
+                    evidence_json = excluded.evidence_json,
+                    revision = excluded.revision,
+                    updated_at = excluded.updated_at
+                """,
+                (path_id, key, text, origin, pinned_value, payload, revision, created_at, now),
+            )
+            conn.execute(
+                """
+                INSERT INTO mastery_strategy_versions (
+                    path_id, note_id, revision, body, status, created_by,
+                    pinned, evidence_json, actor, created_at
+                ) VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?, ?)
+                """,
+                (path_id, key, revision, text, origin, pinned_value, payload, str(actor or ""), now),
+            )
+        return self.get_strategy_note(path_id, key) or {}
+
+    def set_strategy_note_status(
+        self,
+        path_id: str,
+        note_id: str,
+        status: str,
+        *,
+        actor: str = "",
+    ) -> dict[str, Any] | None:
+        """Archive or reactivate a note; the body and revisions are kept."""
+        path_id = self._validate_id(path_id)
+        key = str(note_id or "").strip()
+        target = "archived" if str(status) == "archived" else "active"
+        now = time.time()
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM mastery_strategy_notes WHERE path_id = ? AND note_id = ?",
+                (path_id, key),
+            ).fetchone()
+            if row is None:
+                return None
+            revision = int(row["revision"] or 0) + 1
+            conn.execute(
+                """
+                UPDATE mastery_strategy_notes
+                SET status = ?, revision = ?, updated_at = ?
+                WHERE path_id = ? AND note_id = ?
+                """,
+                (target, revision, now, path_id, key),
+            )
+            conn.execute(
+                """
+                INSERT INTO mastery_strategy_versions (
+                    path_id, note_id, revision, body, status, created_by,
+                    pinned, evidence_json, actor, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    path_id,
+                    key,
+                    revision,
+                    str(row["body"] or ""),
+                    target,
+                    str(row["created_by"] or "agent"),
+                    int(row["pinned"] or 0),
+                    str(row["evidence_json"] or "[]"),
+                    str(actor or ""),
+                    now,
+                ),
+            )
+        return self.get_strategy_note(path_id, key)
+
+    def strategy_note_history(self, path_id: str, note_id: str) -> list[dict[str, Any]]:
+        path_id = self._validate_id(path_id)
+        key = str(note_id or "").strip()
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM mastery_strategy_versions
+                WHERE path_id = ? AND note_id = ?
+                ORDER BY revision DESC
+                """,
+                (path_id, key),
+            ).fetchall()
+        return [
+            {
+                "revision": int(row["revision"] or 0),
+                "body": str(row["body"] or ""),
+                "status": str(row["status"] or "active"),
+                "created_by": str(row["created_by"] or "agent"),
+                "pinned": bool(row["pinned"]),
+                "actor": str(row["actor"] or ""),
+                "created_at": float(row["created_at"] or 0),
+            }
+            for row in rows
+        ]
+
+    def rollback_strategy_note(
+        self,
+        path_id: str,
+        note_id: str,
+        revision: int,
+        *,
+        actor: str = "",
+    ) -> dict[str, Any] | None:
+        """Restore a note to an earlier revision (recorded as a new revision)."""
+        history = {entry["revision"]: entry for entry in self.strategy_note_history(path_id, note_id)}
+        target = history.get(int(revision))
+        if target is None:
+            return None
+        return self.save_strategy_note(
+            path_id,
+            note_id,
+            target["body"],
+            created_by=target["created_by"],
+            evidence=[],
+            pinned=target["pinned"],
+            actor=f"rollback:{int(revision)}:{actor}",
+        )
 
     def path_id_for_session(self, session_id: str) -> str:
         """The one path this conversation is on, or ``""`` when it is on none."""
