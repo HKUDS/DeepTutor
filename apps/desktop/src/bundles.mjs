@@ -45,6 +45,25 @@ export function newerRuntime(candidate, current) {
   return false;
 }
 
+/**
+ * Decide what boot() starts from the saved runtime, the bundled seed and the last
+ * upgrade transaction. Without a saved runtime the seed is installed as before.
+ * An unusable seed never blocks the saved runtime, and a seed whose first start
+ * already failed is not tried again.
+ */
+export function startupRuntime({ saved, seed, transaction, publicKey }) {
+  if (!saved) return {};
+  const current = verifyManifest(saved, publicKey);
+  let bundled = null;
+  let seedError;
+  if (seed) {
+    try { bundled = verifyManifest(seed, publicKey); }
+    catch (error) { seedError = error; }
+  }
+  const failed = Boolean(transaction?.failed) && transaction.candidate?.runtimeId === bundled?.runtimeId;
+  return { current, upgrade: newerRuntime(bundled, current) && !failed, seedError };
+}
+
 export async function sha256(filename) {
   const hash = createHash('sha256');
   for await (const chunk of createReadStream(filename)) hash.update(chunk);

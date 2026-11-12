@@ -4,7 +4,7 @@ import { watch } from 'node:fs';
 import { mkdir, readFile, writeFile, rename, cp, appendFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { installBundle, bundleConfig, verifyManifest, newerRuntime } from './bundles.mjs';
+import { installBundle, bundleConfig, startupRuntime } from './bundles.mjs';
 import { externalURL } from './config.mjs';
 import { resolveLanguage, translate } from './i18n.mjs';
 import { WINDOWS, agentMarker, edition, targetId } from './platform.mjs';
@@ -223,30 +223,17 @@ async function logStartupFailure(error) {
   } catch (logError) { console.error(logError); }
 }
 
-async function readSeed() {
-  // A missing or unusable seed must not stop the installed core from starting.
-  try {
-    const manifest = await readJSON(seed);
-    return manifest && verifyManifest(manifest, publicKey);
-  } catch (error) {
-    console.error(error);
-    return null;
-  }
-}
-
 async function startupManifest() {
   const saved = await readJSON(activeFile);
   if (!saved) return { manifestFile: seed };
-  const current = verifyManifest(saved, publicKey);
+  // A missing or unreadable seed must not stop the installed core from starting.
+  const bundled = await readJSON(seed).catch(error => { console.error(error); return null; });
+  const { current, upgrade, seedError } = startupRuntime({
+    saved, seed: bundled, transaction: await readJSON(transactionFile), publicKey,
+  });
+  if (seedError) console.error(seedError);
   const installed = path.join(userRoot, 'runtimes', current.runtimeId, 'installed.json');
-  const bundled = await readSeed();
-  if (!newerRuntime(bundled, current)) return { manifestFile: installed };
-  // A bundled core that failed its first start was rolled back; do not retry it on every launch.
-  const transaction = await readJSON(transactionFile);
-  if (transaction?.failed && transaction.candidate?.runtimeId === bundled.runtimeId) {
-    return { manifestFile: installed };
-  }
-  return { manifestFile: seed, previous: current, installed };
+  return upgrade ? { manifestFile: seed, previous: current, installed } : { manifestFile: installed };
 }
 
 async function boot() {
