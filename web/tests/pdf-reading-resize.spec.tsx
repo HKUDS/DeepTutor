@@ -18,6 +18,7 @@ vi.mock("@/lib/pdfjs-loader", () => ({
       destroy: async () => undefined,
       promise: Promise.resolve({
         getPage: async (locator: number) => ({
+          cleanup: () => undefined,
           getViewport: ({ scale }: { scale: number }) => ({
             width: 600 * scale,
             height: 600 * (pdf.ratios.get(locator) ?? 1.414) * scale,
