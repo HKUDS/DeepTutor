@@ -3,6 +3,7 @@
 A batch of ops is validated as a whole and applied only if all ops pass.
 Conflicting ops (e.g. ``delete`` and ``edit`` on the same id within one
 batch) reject the entire batch — the LLM doesn't get to self-contradict.
+Text, section names and refs must fit on one physical line in the document.
 
 Pure functions; no I/O, no LLM.
 """
@@ -65,6 +66,11 @@ class OpValidationError(Exception):
     """Raised when a batch fails pre-flight validation."""
 
 
+def _validate_single_line(value: str, field_name: str) -> None:
+    if value.splitlines() != [value]:
+        raise OpValidationError(f"{field_name} must be a single line")
+
+
 def _validate(doc: Document, ops: list[Op]) -> None:
     edits: set[str] = set()
     deletes: set[str] = set()
@@ -75,13 +81,16 @@ def _validate(doc: Document, ops: list[Op]) -> None:
                 raise OpValidationError(
                     f"add: text length must be 1..{_MAX_TEXT_LEN} (got {len(op.text)})"
                 )
+            _validate_single_line(op.text, "add: text")
             if not op.section or len(op.section) > _MAX_SECTION_LEN:
                 raise OpValidationError(f"add: invalid section {op.section!r}")
+            _validate_single_line(op.section, "add: section")
             if not op.refs:
                 raise OpValidationError("add: refs must be non-empty")
             for ref in op.refs:
                 if not is_valid_ref(ref):
                     raise OpValidationError(f"add: malformed ref {ref!r}")
+                _validate_single_line(ref, "add: ref")
         elif isinstance(op, EditOp):
             if not is_entry_id(op.target_id):
                 raise OpValidationError(f"edit: malformed target_id {op.target_id!r}")
@@ -91,11 +100,13 @@ def _validate(doc: Document, ops: list[Op]) -> None:
                 raise OpValidationError(
                     f"edit: text length must be 1..{_MAX_TEXT_LEN} (got {len(op.new_text)})"
                 )
+            _validate_single_line(op.new_text, "edit: text")
             if not op.new_refs:
                 raise OpValidationError("edit: refs must be non-empty")
             for ref in op.new_refs:
                 if not is_valid_ref(ref):
                     raise OpValidationError(f"edit: malformed ref {ref!r}")
+                _validate_single_line(ref, "edit: ref")
             if op.target_id in deletes:
                 raise OpValidationError(
                     f"batch conflict: edit and delete on same id {op.target_id}"

@@ -95,6 +95,72 @@ def test_write_preference_add(tmp_memory: Path) -> None:
     assert doc.all_entries()[0].text == "prefers concise answers"
 
 
+@pytest.mark.parametrize("op", ["add", "edit"])
+def test_multiline_preference_preserves_saved_doc(tmp_memory: Path, op: str) -> None:
+    s = MemoryStore()
+    initial = _run(
+        s.write_preference(op="add", text="original", trace_id="chat:01HZK4AAAAAAAAAAAAAAAAAAAA")
+    )
+    before = s.read_raw("L3", "preferences")
+
+    report = _run(
+        s.write_preference(
+            op=op,
+            text="first\nsecond",
+            target_id=initial.results[0].entry_id if op == "edit" else None,
+            trace_id="chat:01HZK4BBBBBBBBBBBBBBBBBBBB",
+        )
+    )
+
+    assert not report.accepted
+    assert s.read_raw("L3", "preferences") == before
+    assert [entry.text for entry in s.read_doc("L3", "preferences").all_entries()] == ["original"]
+
+
+@pytest.mark.parametrize(
+    ("op", "field"),
+    [
+        ("add", "text"),
+        ("add", "section"),
+        ("add", "refs"),
+        ("edit", "new_text"),
+        ("edit", "new_refs"),
+    ],
+)
+def test_multiline_batch_preserves_saved_doc(tmp_memory: Path, op: str, field: str) -> None:
+    s = MemoryStore()
+    ref = "chat:01HZK4AAAAAAAAAAAAAAAAAAAA"
+    initial = _run(
+        s.apply_ops_payload(
+            "L2", "chat", [{"op": "add", "section": "Notes", "text": "original", "refs": [ref]}]
+        )
+    )
+    before = s.read_raw("L2", "chat")
+    bad_op = (
+        {"op": "add", "section": "Notes", "text": "valid", "refs": [ref]}
+        if op == "add"
+        else {
+            "op": "edit",
+            "target_id": initial.results[0].entry_id,
+            "new_text": "valid",
+            "new_refs": [ref],
+        }
+    )
+    bad_op[field] = [ref + "\n"] if field in {"refs", "new_refs"} else "first\nsecond"
+
+    report = _run(
+        s.apply_ops_payload(
+            "L2",
+            "chat",
+            [{"op": "add", "section": "Notes", "text": "would be added", "refs": [ref]}, bad_op],
+        )
+    )
+
+    assert not report.accepted
+    assert report.results == []
+    assert s.read_raw("L2", "chat") == before
+
+
 def test_write_preference_add_is_idempotent(tmp_memory: Path) -> None:
     # Issue #647: re-adding an identical preference (even with different case /
     # whitespace) must not create a duplicate record, since preferences.md is
