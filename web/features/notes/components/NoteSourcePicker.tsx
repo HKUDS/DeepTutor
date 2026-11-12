@@ -30,6 +30,11 @@ export default function NoteSourcePicker({
   const items = [...library.drafts, ...library.chats, ...library.knowledgeBases].filter(
     row => row.available && row.label.toLowerCase().includes(query.toLowerCase())
   )
+  // Only these three kinds feed this picker, so wait on them rather than the
+  // slow question-bank request the shared hook also fires.
+  const pending = library.loadingKinds
+    ? library.loadingKinds.some(kind => ['drafts', 'chats', 'knowledgeBases'].includes(kind))
+    : loading
   const select = async (row: SourceCandidate) => {
     setBusy(true)
     try {
@@ -85,7 +90,7 @@ export default function NoteSourcePicker({
           onChange={e => setQuery(e.target.value)}
         />
         <div className="max-h-96 overflow-y-auto">
-          {loading ? (
+          {pending && items.length === 0 ? (
             <p>…</p>
           ) : (
             items.map(row => (
