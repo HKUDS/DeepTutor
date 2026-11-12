@@ -24,6 +24,27 @@ export function verifyManifest(manifest, publicKey, architecture = process.arch,
   return manifest;
 }
 
+function versionParts(value) {
+  const match = /^(\d+)(?:\.(\d+))?(?:\.(\d+))?/.exec(String(value ?? ''));
+  return match ? match.slice(1).map(part => Number(part ?? 0)) : null;
+}
+
+// An installer that overwrites the app ships a newer seed, but the saved runtime
+// would otherwise keep winning. Only a strictly newer core replaces it, so a core
+// the user installed by hand is never downgraded to an older bundled one.
+export function newerRuntime(candidate, current) {
+  if (!candidate) return false;
+  if (!current) return true;
+  if (candidate.runtimeId === current.runtimeId) return false;
+  const next = versionParts(candidate.coreVersion);
+  const installed = versionParts(current.coreVersion);
+  if (!next || !installed) return false;
+  for (let index = 0; index < next.length; index += 1) {
+    if (next[index] !== installed[index]) return next[index] > installed[index];
+  }
+  return false;
+}
+
 export async function sha256(filename) {
   const hash = createHash('sha256');
   for await (const chunk of createReadStream(filename)) hash.update(chunk);

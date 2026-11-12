@@ -4,7 +4,7 @@ import { watch } from 'node:fs';
 import { mkdir, readFile, writeFile, rename, cp, appendFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { installBundle, bundleConfig, verifyManifest } from './bundles.mjs';
+import { installBundle, bundleConfig, verifyManifest, newerRuntime } from './bundles.mjs';
 import { externalURL } from './config.mjs';
 import { resolveLanguage, translate } from './i18n.mjs';
 import { WINDOWS, agentMarker, edition, targetId } from './platform.mjs';
@@ -223,25 +223,77 @@ async function logStartupFailure(error) {
   } catch (logError) { console.error(logError); }
 }
 
+async function readSeed() {
+  // A missing or unusable seed must not stop the installed core from starting.
+  try {
+    const manifest = await readJSON(seed);
+    return manifest && verifyManifest(manifest, publicKey);
+  } catch (error) {
+    console.error(error);
+    return null;
+  }
+}
+
+async function startupManifest() {
+  const saved = await readJSON(activeFile);
+  if (!saved) return { manifestFile: seed };
+  const current = verifyManifest(saved, publicKey);
+  const installed = path.join(userRoot, 'runtimes', current.runtimeId, 'installed.json');
+  const bundled = await readSeed();
+  if (!newerRuntime(bundled, current)) return { manifestFile: installed };
+  // A bundled core that failed its first start was rolled back; do not retry it on every launch.
+  const transaction = await readJSON(transactionFile);
+  if (transaction?.failed && transaction.candidate?.runtimeId === bundled.runtimeId) {
+    return { manifestFile: installed };
+  }
+  return { manifestFile: seed, previous: current, installed };
+}
+
 async function boot() {
   if (busy || quitting) return;
   busy = true;
+  let transaction;
   try {
     status({ phase: 'starting', step: 'starting' });
     await stopWorker();
     await recoverInterruptedUpgrade();
-    const saved = await readJSON(activeFile);
-    const manifestFile = saved ? path.join(userRoot, 'runtimes', verifyManifest(saved, publicKey).runtimeId, 'installed.json') : seed;
-    active = await installBundle(manifestFile, userRoot, publicKey, step => status({ step }));
+    const { manifestFile, previous, installed } = await startupManifest();
+    try { active = await installBundle(manifestFile, userRoot, publicKey, step => status({ step })); }
+    catch (error) {
+      if (!previous) throw error;
+      // The bundled core could not be unpacked; keep starting the installed one.
+      await logStartupFailure(error);
+      active = await installBundle(installed, userRoot, publicKey, step => status({ step }));
+    }
     if (quitting) return;
+    if (previous && active.manifest.runtimeId !== previous.runtimeId) {
+      // The app was installed over an older core: switch to the bundled one with the
+      // same backup and rollback as a manual update.
+      status({ phase: 'starting', step: 'updating' });
+      const backup = path.join(userRoot, 'backups', `before-${active.manifest.runtimeId}-${Date.now()}`);
+      await mkdir(path.dirname(backup), { recursive: true });
+      await cp(runtimeHome, backup, { recursive: true });
+      transaction = { phase: 'testing', previous, candidate: active.manifest, backup };
+      await writeJSON(transactionFile, transaction);
+    }
     const ready = await launchRuntime(active);
     if (quitting) return;
     await writeJSON(activeFile, active.manifest);
+    if (transaction) await writeJSON(transactionFile, { ...transaction, phase: 'complete' });
     watchInterface();
     await refreshInterface();
     await openContent(ready.url);
   } catch (error) {
     await logStartupFailure(error);
+    if (transaction) {
+      // Restore the previous core and workspace; the next start uses them again.
+      await stopWorker();
+      try {
+        await writeJSON(transactionFile, { ...transaction, failed: true });
+        await recoverInterruptedUpgrade();
+      }
+      catch (recoveryError) { await logStartupFailure(recoveryError); }
+    }
     status({ phase: 'error', step: null, message: error.message });
     await stopWorker();
   } finally { busy = false; }
