@@ -302,14 +302,14 @@ class AnthropicProvider(LLMProvider):
         tool_choice: str | dict[str, Any] | None,
         thinking_enabled: bool = False,
     ) -> dict[str, Any] | None:
+        if tool_choice == "none":
+            return {"type": "none"}
         if thinking_enabled:
             return {"type": "auto"}
         if tool_choice is None or tool_choice == "auto":
             return {"type": "auto"}
         if tool_choice == "required":
             return {"type": "any"}
-        if tool_choice == "none":
-            return None
         if isinstance(tool_choice, dict):
             name = tool_choice.get("function", {}).get("name")
             if name:
