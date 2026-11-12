@@ -438,11 +438,15 @@ def validate_question(store, progress, question):
 
     evidence = question.source_evidence
     binding = evidence.get("assessment_contract", {})
-    if binding:
-        validate_evidence(
-            store, progress, question.knowledge_point_id, evidence, allow_partial=True
-        )
-    else:
-        validate_evidence(store, progress, question.knowledge_point_id, evidence)
+    # An issued question keeps its own source snapshot; only its cited pages
+    # must still be published unchanged, not the whole index (#2650).
+    validate_evidence(
+        store,
+        progress,
+        question.knowledge_point_id,
+        evidence,
+        allow_partial=bool(binding),
+        pinned_pages=True,
+    )
     if binding and binding.get("fingerprint") != fingerprint(question_contract(question)):
         raise LessonUnavailable("The question or answer key changed since source verification.")
