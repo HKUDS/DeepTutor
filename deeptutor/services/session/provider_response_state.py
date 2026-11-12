@@ -48,25 +48,32 @@ def _normalized_output_items(value: Any) -> list[dict[str, Any]]:
 
 
 def _normalized_thinking_blocks(value: Any) -> list[dict[str, Any]]:
-    """Bound Anthropic's signed thinking blocks for persistence and replay.
+    """Bound Anthropic's signed and encrypted blocks for persistence and replay.
 
-    Only ``thinking`` blocks are accepted, and only with the two fields the
-    provider replays. A block is useless without its signature, so one that
-    lost it is dropped rather than sent back: Anthropic rejects an unsigned
-    replay, which would turn a missing signature into a failed turn.
+    Keep signed text and opaque ``redacted_thinking`` data in provider order.
+    Reject the whole sequence if a block loses required protocol fields;
+    replaying a partial sequence can invalidate a tool continuation.
     """
     if not isinstance(value, list) or len(value) > MAX_THINKING_BLOCKS:
         return []
     normalized: list[dict[str, Any]] = []
     total_bytes = 0
     for item in value:
-        if not isinstance(item, dict) or item.get("type") != "thinking":
+        if not isinstance(item, dict):
             return []
-        thinking = item.get("thinking")
-        signature = item.get("signature")
-        if not isinstance(thinking, str) or not isinstance(signature, str) or not signature:
+        if item.get("type") == "thinking":
+            thinking = item.get("thinking")
+            signature = item.get("signature")
+            if not isinstance(thinking, str) or not isinstance(signature, str) or not signature:
+                return []
+            block = {"type": "thinking", "thinking": thinking, "signature": signature}
+        elif item.get("type") == "redacted_thinking":
+            data = item.get("data")
+            if not isinstance(data, str) or not data:
+                return []
+            block = {"type": "redacted_thinking", "data": data}
+        else:
             return []
-        block = {"type": "thinking", "thinking": thinking, "signature": signature}
         try:
             encoded = json.dumps(
                 block,

@@ -193,6 +193,8 @@ class AnthropicProvider(LLMProvider):
                         "signature": tb.get("signature", ""),
                     }
                 )
+            elif isinstance(tb, dict) and tb.get("type") == "redacted_thinking":
+                blocks.append({"type": "redacted_thinking", "data": tb["data"]})
 
         if isinstance(content, str) and content:
             blocks.append({"type": "text", "text": content})
@@ -481,6 +483,8 @@ class AnthropicProvider(LLMProvider):
                         "signature": getattr(block, "signature", ""),
                     }
                 )
+            elif block.type == "redacted_thinking":
+                thinking_blocks.append({"type": "redacted_thinking", "data": block.data})
 
         stop_map = {"tool_use": "tool_calls", "end_turn": "stop", "max_tokens": "length"}
         finish_reason = stop_map.get(response.stop_reason or "", response.stop_reason or "stop")
@@ -509,7 +513,9 @@ class AnthropicProvider(LLMProvider):
             # provider-agnostic consumer reads, including the trace. Without
             # it a non-streaming call reported no reasoning at all.
             reasoning_content="\n".join(
-                str(block.get("thinking") or "") for block in thinking_blocks
+                str(block.get("thinking") or "")
+                for block in thinking_blocks
+                if block["type"] == "thinking"
             ).strip()
             or None,
             thinking_blocks=thinking_blocks or None,
