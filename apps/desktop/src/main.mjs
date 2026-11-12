@@ -257,9 +257,14 @@ async function boot() {
       // The app was installed over an older core: switch to the bundled one with the
       // same backup and rollback as a manual update.
       status({ phase: 'starting', step: 'updating' });
-      const backup = path.join(userRoot, 'backups', `before-${active.manifest.runtimeId}-${Date.now()}`);
+      let backup = path.join(userRoot, 'backups', `before-${active.manifest.runtimeId}-${Date.now()}`);
       await mkdir(path.dirname(backup), { recursive: true });
-      await cp(runtimeHome, backup, { recursive: true });
+      try { await cp(runtimeHome, backup, { recursive: true }); }
+      catch (error) {
+        // No workspace yet means nothing to restore on rollback.
+        if (error.code !== 'ENOENT') throw error;
+        backup = undefined;
+      }
       transaction = { phase: 'testing', previous, candidate: active.manifest, backup };
       await writeJSON(transactionFile, transaction);
     }
