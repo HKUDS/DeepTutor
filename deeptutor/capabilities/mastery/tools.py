@@ -16,6 +16,7 @@ race on a shared object.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import random
@@ -107,6 +108,7 @@ MASTERY_TOOL_NAMES: tuple[str, ...] = (
     "mastery_build",
     "mastery_mode",
     "mastery_profile",
+    "mastery_observe",
     "mastery_revise",
     "mastery_lecture",
     "mastery_paths",
@@ -3039,6 +3041,196 @@ class MasteryProfileTool(BaseTool):
         )
 
 
+def _observation_key(strategy: str, knowledge_point_id: str) -> str:
+    """A stable, schema-legal observation key for one strategy on one point."""
+    slug = re.sub(r"[^A-Za-z0-9_-]+", "_", strategy).strip("_")[:40] or "observation"
+    digest = hashlib.sha1(knowledge_point_id.encode("utf-8")).hexdigest()[:6]
+    return f"{slug}_{digest}"[:64]
+
+
+class MasteryObserveTool(BaseTool):
+    """Record how one teaching strategy went, as evidence the tutor reads back.
+
+    A flat alternative to the nested ``teaching_updates`` array on
+    ``mastery_profile``: one strategy, one outcome, one verbatim quote. This is
+    the evidence layer the per-turn principle reasons from — it grants no
+    mastery and never rewrites an earlier observation. Reuse ``key`` to correct
+    the same attempt; the outcome stays ``unknown`` until learner evidence
+    shows ``helped`` or ``not_helped``.
+    """
+
+    def get_definition(self) -> ToolDefinition:
+        return ToolDefinition(
+            name="mastery_observe",
+            description=(
+                "Record one teaching-strategy observation for this mastery path. "
+                "Use it after a connected teaching block: name the strategy you "
+                "used, how it went, and (for helped/not_helped) a verbatim quote "
+                "from the learner's current message. Keep the outcome 'unknown' "
+                "until the learner actually shows it worked. This is evidence for "
+                "how to teach next, never an assessment — it grants no mastery."
+            ),
+            parameters=[
+                ToolParameter(
+                    name="knowledge_point_id",
+                    type="string",
+                    required=True,
+                    description=(
+                        "The current path objective this observation belongs to "
+                        "(a knowledge_point_id from the mastery snapshot)."
+                    ),
+                ),
+                ToolParameter(
+                    name="strategy",
+                    type="string",
+                    required=True,
+                    description=(
+                        "The short name of the approach you used, e.g. "
+                        "framework_first, question_driven, detail_first, term_trio, "
+                        "worked_example, fill_in_template."
+                    ),
+                ),
+                ToolParameter(
+                    name="outcome",
+                    type="string",
+                    required=False,
+                    enum=["unknown", "helped", "not_helped"],
+                    description=(
+                        "How it went. 'unknown' (default) until the learner shows "
+                        "helped/not_helped; helped/not_helped need evidence."
+                    ),
+                ),
+                ToolParameter(
+                    name="evidence",
+                    type="string",
+                    required=False,
+                    description=(
+                        "A literal quote from the learner's current message that "
+                        "shows the outcome. Required for helped/not_helped. Never "
+                        "your own explanation or their silence."
+                    ),
+                ),
+                ToolParameter(
+                    name="text",
+                    type="string",
+                    required=False,
+                    description="One short sentence describing this attempt.",
+                ),
+                ToolParameter(
+                    name="key",
+                    type="string",
+                    required=False,
+                    description=(
+                        "Stable key for this attempt; reuse it to correct the same "
+                        "observation. Derived from strategy and objective when omitted."
+                    ),
+                ),
+                ToolParameter(
+                    name="expected_revision",
+                    type="integer",
+                    required=False,
+                    description=(
+                        "path_revision from the current mastery snapshot. Read "
+                        "automatically when omitted."
+                    ),
+                ),
+            ],
+        )
+
+    async def execute(self, **kwargs: Any) -> ToolResult:
+        path_id = _resolve_path_id(kwargs)
+        if not path_id:
+            return _no_path_result()
+
+        from deeptutor.learning.storage import LearningStoreError
+        from deeptutor.learning.teaching import parse_teaching_updates
+
+        knowledge_point_id = str(kwargs.get("knowledge_point_id") or "").strip()
+        strategy = str(kwargs.get("strategy") or "").strip()
+        if not knowledge_point_id:
+            return ToolResult(
+                content=(
+                    "mastery_observe needs the knowledge_point_id this observation "
+                    "belongs to — take it from the mastery snapshot."
+                ),
+                success=False,
+            )
+        if not strategy:
+            return ToolResult(
+                content=(
+                    "mastery_observe needs the strategy name you used, for example "
+                    "framework_first or term_trio."
+                ),
+                success=False,
+            )
+
+        outcome = str(kwargs.get("outcome") or "unknown").strip().lower()
+        if outcome not in ("unknown", "helped", "not_helped"):
+            outcome = "unknown"
+        evidence = str(kwargs.get("evidence") or "").strip()
+        basis = str(kwargs.get("basis") or "").strip().lower()
+        if basis not in ("learner_report", "tentative"):
+            # A recorded result needs a learner report; an unattributed attempt
+            # is a tentative hypothesis, never a label on the learner.
+            basis = "learner_report" if (outcome != "unknown" or evidence) else "tentative"
+
+        text = str(kwargs.get("text") or "").strip() or f"{strategy}: {outcome}"
+        key = str(kwargs.get("key") or "").strip() or _observation_key(strategy, knowledge_point_id)
+        update = {
+            "kind": "observation",
+            "op": "upsert",
+            "key": key,
+            "text": text,
+            "knowledge_point_id": knowledge_point_id,
+            "strategy": strategy,
+            "outcome": outcome,
+            "evidence": evidence,
+            "basis": basis,
+        }
+        learner_message = str(kwargs.get("_learner_message") or "")
+        try:
+            parse_teaching_updates([update], learner_message)
+        except ValueError as exc:
+            return ToolResult(content=str(exc), success=False)
+
+        service = _new_service()
+        expected_revision = kwargs.get("expected_revision")
+        if type(expected_revision) is not int or expected_revision < 0:
+            # The turn holds the path lease, so reading the revision here is a
+            # faithful compare-and-swap baseline; requiring the model to copy it
+            # is where a weak model drops the write entirely.
+            current = service.store.load(path_id)
+            expected_revision = current.version if current is not None else None
+        try:
+            progress, changed = service.record_learner_profile(
+                path_id,
+                fields={},
+                session_id=_resolve_session_id(kwargs),
+                turn_id=_resolve_turn_id(kwargs),
+                teaching_updates=[update],
+                expected_revision=expected_revision,
+                learner_message=learner_message,
+            )
+        except (ValueError, LearningStoreError) as exc:
+            return ToolResult(content=str(exc), success=False)
+        except KeyError:
+            return ToolResult(
+                content="The bound mastery path no longer exists. Refresh the current path.",
+                success=False,
+            )
+        return _json_result(
+            {
+                "status": "recorded",
+                "path_revision": progress.version,
+                "updated_fields": changed,
+                "strategy": strategy,
+                "outcome": outcome,
+                **_profile_status(progress),
+            },
+            meta_key="mastery_observe",
+        )
+
+
 class MasteryReviseTool(BaseTool):
     """Reshape one module's knowledge points without moving its goalposts.
 
@@ -4182,6 +4374,7 @@ MASTERY_TOOL_TYPES: tuple[type[BaseTool], ...] = (
     MasteryBuildTool,
     MasteryModeTool,
     MasteryProfileTool,
+    MasteryObserveTool,
     MasteryReviseTool,
     MasteryLectureTool,
     MasteryPathsTool,
@@ -4203,6 +4396,7 @@ __all__ = [
     "MasteryModeTool",
     "MasteryNoteExplainedTool",
     "MasteryProfileTool",
+    "MasteryObserveTool",
     "MasteryQuizTool",
     "MasteryRepairQuestionTool",
     "MasteryReviseTool",

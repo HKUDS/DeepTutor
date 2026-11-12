@@ -42,6 +42,7 @@
           "mastery_build",
           "mastery_mode",
           "mastery_profile",
+          "mastery_observe",
           "mastery_revise",
           "mastery_lecture",
           "mastery_paths",
@@ -127,6 +128,10 @@
     "mastery_profile": {
       "class_path": "deeptutor.capabilities.mastery.tools:MasteryProfileTool",
       "order": 55
+    },
+    "mastery_observe": {
+      "class_path": "deeptutor.capabilities.mastery.tools:MasteryObserveTool",
+      "order": 55.5
     },
     "mastery_revise": {
       "class_path": "deeptutor.capabilities.mastery.tools:MasteryReviseTool",

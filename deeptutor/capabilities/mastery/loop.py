@@ -187,21 +187,22 @@ class MasteryLoopCapability:
             )
             updated["_session_id"] = str(context.session_id or "").strip()
             updated["_turn_id"] = str(context.metadata.get("turn_id") or "").strip()
-            if tool_name == "mastery_profile":
+            if tool_name in ("mastery_profile", "mastery_observe"):
                 updated["_learner_message"] = context.user_message or ""
-                selection = int(state.get("profile_selection", 0)) + 1
-                state["profile_selection"] = selection
-                state["profile_write_pending"] = True
+                if tool_name == "mastery_profile":
+                    selection = int(state.get("profile_selection", 0)) + 1
+                    state["profile_selection"] = selection
+                    state["profile_write_pending"] = True
 
-                def profile_recorded(receipt):
-                    if (
-                        state.get("profile_selection") == selection
-                        and context.metadata.get("mastery_path_id") == path_id
-                    ):
-                        state["profile_write_pending"] = False
-                        state["profile_receipt"] = receipt
+                    def profile_recorded(receipt):
+                        if (
+                            state.get("profile_selection") == selection
+                            and context.metadata.get("mastery_path_id") == path_id
+                        ):
+                            state["profile_write_pending"] = False
+                            state["profile_receipt"] = receipt
 
-                updated["_profile_recorded"] = profile_recorded
+                    updated["_profile_recorded"] = profile_recorded
 
             if tool_name == "mastery_note_explained":
                 session_id = str(context.session_id or "").strip()
