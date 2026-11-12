@@ -3143,7 +3143,7 @@ class MasteryObserveTool(BaseTool):
             return _no_path_result()
 
         from deeptutor.learning.storage import LearningStoreError
-        from deeptutor.learning.teaching import parse_teaching_updates
+        from deeptutor.learning.teaching import MAX_TEACHING_OBSERVATIONS, parse_teaching_updates
 
         knowledge_point_id = str(kwargs.get("knowledge_point_id") or "").strip()
         strategy = str(kwargs.get("strategy") or "").strip()
@@ -3194,20 +3194,33 @@ class MasteryObserveTool(BaseTool):
             return ToolResult(content=str(exc), success=False)
 
         service = _new_service()
+        current = service.store.load(path_id)
         expected_revision = kwargs.get("expected_revision")
         if type(expected_revision) is not int or expected_revision < 0:
             # The turn holds the path lease, so reading the revision here is a
             # faithful compare-and-swap baseline; requiring the model to copy it
             # is where a weak model drops the write entirely.
-            current = service.store.load(path_id)
             expected_revision = current.version if current is not None else None
+
+        updates: list[dict[str, Any]] = []
+        profile = getattr(current, "learner_profile", None) if current is not None else None
+        observations = dict(getattr(profile, "teaching_observations", {}) or {})
+        if len(observations) >= MAX_TEACHING_OBSERVATIONS and key not in observations:
+            # Teaching state is bounded on purpose, and the tutor will not
+            # always prune by hand. Drop the least recently touched observation
+            # so the newest evidence still lands instead of the write failing
+            # at the ceiling — the same reason ``mastery_profile`` tells the
+            # model to remove obsolete entries, done deterministically here.
+            oldest = min(observations.items(), key=lambda pair: pair[1].updated_at)[0]
+            updates.append({"kind": "observation", "op": "remove", "key": oldest})
+        updates.append(update)
         try:
             progress, changed = service.record_learner_profile(
                 path_id,
                 fields={},
                 session_id=_resolve_session_id(kwargs),
                 turn_id=_resolve_turn_id(kwargs),
-                teaching_updates=[update],
+                teaching_updates=updates,
                 expected_revision=expected_revision,
                 learner_message=learner_message,
             )

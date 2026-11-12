@@ -136,3 +136,38 @@ async def test_derives_revision_and_key_when_omitted(store):
     keys = list(profile.teaching_observations.keys())
     assert len(keys) == 1
     assert keys[0].startswith("term_trio_")
+
+
+@pytest.mark.asyncio
+async def test_evicts_the_oldest_when_the_cap_is_reached(store):
+    import asyncio
+
+    kp = await _build("observe_cap")
+    for index in range(12):
+        result = await MasteryObserveTool().execute(
+            _mastery_path_id="observe_cap",
+            _learner_message="你先讲吧",
+            knowledge_point_id=kp,
+            strategy=f"strategy_{index:02d}",
+            key=f"strategy_{index:02d}",
+        )
+        assert result.success, result.content
+        await asyncio.sleep(0.01)  # distinct updated_at ordering
+
+    profile = store.load("observe_cap").learner_profile
+    assert len(profile.teaching_observations) == 12
+    assert "strategy_00" in profile.teaching_observations
+
+    # The thirteenth must land: the oldest makes room instead of the write failing.
+    result = await MasteryObserveTool().execute(
+        _mastery_path_id="observe_cap",
+        _learner_message="你先讲吧",
+        knowledge_point_id=kp,
+        strategy="strategy_new",
+        key="strategy_new",
+    )
+    assert result.success, result.content
+    profile = store.load("observe_cap").learner_profile
+    assert len(profile.teaching_observations) == 12
+    assert "strategy_new" in profile.teaching_observations
+    assert "strategy_00" not in profile.teaching_observations

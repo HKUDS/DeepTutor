@@ -1,6 +1,6 @@
 "use client";
 
-import { masterySessionRoute as existingMasterySessionRoute } from "@/lib/learning-routes";
+import { masterySessionRoute as existingMasterySessionRoute, masterySessionsRoute } from "@/lib/learning-routes";
 
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -17,6 +17,7 @@ import {
   fetchMasteryTopicSessions,
   type MasteryTopic,
 } from "@/lib/learning-api";
+import { getSession } from "@/lib/session-api";
 import {
   isMasteryDraftSessionReady,
   isMasteryDraftSendReady,
@@ -175,18 +176,38 @@ export function useMasteryStudySession(
     sessionLoadRef.current = controller;
 
     void fetchMasteryTopicSessions(pathId, { cache: "no-store" })
-      .then((topicSessions) => {
+      .then(async (topicSessions) => {
         if (controller.signal.aborted) return;
         if (
           !topicSessions.some(
             (candidate) => candidate.session_id === routeSessionId,
           )
         ) {
-          throw new Error(
-            t(
-              "This session belongs to a different topic. Open a session from this topic instead.",
-            ),
+          // The route names a conversation this topic does not list. Two very
+          // different situations look identical here and only one is the
+          // learner's mistake. If the conversation still exists it belongs to
+          // another topic, and opening it here would show this screen a
+          // transcript it must not show. If it is gone — deleted in another
+          // tab, or reached through a stale link — refusing leaves the learner
+          // at a dead end for a conversation nobody can open, so open a fresh
+          // one on this topic instead.
+          const existing = await getSession(routeSessionId).catch(() => null);
+          if (controller.signal.aborted) return;
+          if (existing) {
+            throw new Error(
+              t(
+                "This session belongs to a different topic. Open a session from this topic instead.",
+              ),
+            );
+          }
+          const point = new URLSearchParams(window.location.search).get("point");
+          const query = new URLSearchParams();
+          if (point) query.set("point", point);
+          router.replace(
+            masterySessionsRoute(pathId, query.size ? query : undefined),
+            { scroll: false },
           );
+          return;
         }
         const cached = showCachedSession(routeSessionId);
         if (cached) {
@@ -225,6 +246,7 @@ export function useMasteryStudySession(
     newSession,
     pathId,
     routeSessionId,
+    router,
     sessionConfiguration,
     showCachedSession,
     state.sessionId,

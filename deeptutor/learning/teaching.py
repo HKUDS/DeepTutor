@@ -10,6 +10,11 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from deeptutor.learning.models import LearnerProfile, TeachingObservation, TeachingPreference
 
+#: Teaching state is bounded on purpose: a profile that grows without limit is
+#: a profile nobody reads. These are the ceilings the write path enforces.
+MAX_TEACHING_PREFERENCES = 6
+MAX_TEACHING_OBSERVATIONS = 12
+
 
 class TeachingUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
@@ -93,7 +98,7 @@ def apply_teaching_updates(
         if old and old.model_dump(exclude={"session_id", "turn_id", "updated_at"}) == values:
             continue
         target[item.key] = cls(**values, session_id=session_id, turn_id=turn_id)
-    if len(preferences) > 6 or len(observations) > 12:
+    if len(preferences) > MAX_TEACHING_PREFERENCES or len(observations) > MAX_TEACHING_OBSERVATIONS:
         raise ValueError(
             "teaching state limit: 6 preferences and 12 observations; remove obsolete entries"
         )
