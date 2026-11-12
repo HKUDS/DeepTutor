@@ -752,20 +752,48 @@ def _reading_references(value: Any) -> list[dict[str, Any]]:
     return normalize_reading_references(value)
 
 
+# One reading unit's own cap, for all attached units together: up to 24 units
+# of 60k chars each would otherwise be inlined into a single message.
+READING_SECTIONS_MAX_CHARS = 60_000
+
+
 def _reading_sections_context(references: list[dict[str, Any]]) -> str:
     """Text of the reading units attached to a turn, for capabilities that
     cannot call ``read_source`` (chat reaches them through the source
-    inventory)."""
+    inventory).
+
+    Units are kept in order until ``READING_SECTIONS_MAX_CHARS`` is used up; the
+    unit that crosses it is cut with a marker, and the ones after it are named
+    but left out."""
 
     if not references:
         return ""
     from deeptutor.reading.references import resolve_reading_sources
 
-    return "\n\n---\n\n".join(
-        source.full_text
-        for source in resolve_reading_sources(references)
-        if source.full_text.strip()
-    )
+    sections: list[str] = []
+    omitted: list[str] = []
+    remaining = READING_SECTIONS_MAX_CHARS
+    for source in resolve_reading_sources(references):
+        text = source.full_text.strip()
+        if not text:
+            continue
+        if remaining <= 0:
+            omitted.append(source.name)
+            continue
+        if len(text) > remaining:
+            text = (
+                text[:remaining].rstrip()
+                + f"\n… [{source.name}: truncated, {remaining:,} of {len(text):,}"
+                " characters shown]"
+            )
+        remaining -= len(text)
+        sections.append(text)
+    if omitted:
+        sections.append(
+            f"[{len(omitted)} more attached reading section(s) left out, over the "
+            f"{READING_SECTIONS_MAX_CHARS:,}-character limit: " + "; ".join(omitted) + "]"
+        )
+    return "\n\n---\n\n".join(sections)
 
 
 def _llm_selection_dict(value: Any) -> dict[str, str] | None:
