@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  type MouseEvent as ReactMouseEvent,
   Fragment,
   useCallback,
   useEffect,
@@ -46,9 +47,18 @@ import {
   imageMarkerNames,
   MarkdownLine,
 } from "@/lib/reading-inline-markdown";
+import { collectLightboxImages } from "@/lib/reading-images";
 import { toRecogitoTextAnnotation } from "@/lib/reading-w3c-annotations";
 import type { JumpRequest, SelectionPayload } from "./PdfDocumentView";
 import { PreferenceButton, ReaderDisplayControls } from "./ReaderDisplayControls";
+import dynamic from "next/dynamic";
+
+import type { LightboxImage } from "./ReaderImageLightbox";
+
+const ReaderImageLightbox = dynamic(
+  () => import("./ReaderImageLightbox").then((module) => module.ReaderImageLightbox),
+  { ssr: false },
+);
 
 const COLOR_INK: Record<string, string> = {
   yellow: "250 220 90",
@@ -125,6 +135,42 @@ export function TextUnitView({
   const [readerTheme, setReaderTheme] = useState<ReaderTheme>("auto");
   const [spreadMode, setSpreadMode] = useState<EpubSpreadMode>("none");
   const isWebMarkdown = contentFormat === "web_markdown";
+  const [lightbox, setLightbox] = useState<{
+    images: LightboxImage[];
+    index: number;
+  } | null>(null);
+
+  /**
+   * One capture-phase handler covers every picture the article can hold:
+   * extracted-media figures, inline picture markers and Markdown images.
+   * Patching the three render paths separately would leave the next one out.
+   */
+  const openImageFromClick = useCallback((event: ReactMouseEvent) => {
+    // A drag that ends on a picture is a selection, not an "open this".
+    if ((window.getSelection()?.toString() ?? "").trim()) return;
+    const target = event.target as Element | null;
+    // React portals bubble through the React tree, not the DOM one, so a click
+    // inside the viewer arrives here as if it were a click on the page. Acting
+    // on it rebuilt the list from the page and reset the index — with duplicate
+    // pictures the counter jumped from 3/3 to 1/3 — and `preventDefault` then
+    // suppressed the viewer's own click handling.
+    const scope = containerRef.current ?? articleRef.current;
+    if (scope && target && !scope.contains(target)) return;
+    const image = target?.closest("img") as HTMLImageElement | null;
+    // A picture inside a link still belongs to the link.
+    if (!image || image.closest("a[href]")) return;
+    const src = image.currentSrc || image.getAttribute("src") || "";
+    if (!src) return;
+    event.preventDefault();
+    // Every picture in this unit, in reading order, so the viewer can step
+    // between them. Built from the DOM rather than from `media`: the three
+    // render paths (extracted media, inline markers, Markdown) put their
+    // pictures here, and only the DOM knows what is actually on the page. The
+    // container, not the article: the fallback picture strip renders AFTER
+    // `</article>`, so scoping to the article missed the very ones this reader
+    // most often has.
+    setLightbox(collectLightboxImages(scope, image));
+  }, []);
   // Sepia and Night are whole-surface paper: a sheet drawn on top of them
   // would be a second, differently coloured page inside the first.
   const paperSheet = readerTheme === "auto";
@@ -465,9 +511,16 @@ export function TextUnitView({
     <div
       ref={readerRootRef}
       tabIndex={-1}
-      onPointerDown={() =>
-        readerRootRef.current?.focus({ preventScroll: true })
-      }
+      onClickCapture={openImageFromClick}
+      onPointerDown={(event) => {
+        // Lightbox is a React child through a portal, although its DOM lives
+        // under <body>. Its pointer events must not refocus the reader behind
+        // the modal: only pointerdowns *inside* this reader's DOM do that.
+        const root = readerRootRef.current;
+        if (root?.contains(event.target as Node)) {
+          root.focus({ preventScroll: true });
+        }
+      }}
       className="flex h-full flex-col"
       style={
         readerTheme === "sepia"
@@ -620,6 +673,16 @@ export function TextUnitView({
           </>
         )}
       </div>
+      {lightbox && (
+        <ReaderImageLightbox
+          images={lightbox.images}
+          index={lightbox.index}
+          onIndexChange={(index) =>
+            setLightbox((current) => (current ? { ...current, index } : current))
+          }
+          onClose={() => setLightbox(null)}
+        />
+      )}
     </div>
   );
 }
