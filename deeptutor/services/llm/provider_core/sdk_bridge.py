@@ -26,11 +26,15 @@ async def _consume_messages(
 ) -> LLMResponse:
     chunks: list[str] = []
     pending_result_text = ""
+    usage: dict[str, int] = {}
     async for message in messages:
+        if _is_result_message(message):
+            usage = _result_usage(message)
         if _is_error_result(message):
             return LLMResponse(
                 content=f"Error calling {label}: {_result_text(message)}",
                 finish_reason="error",
+                usage=usage,
             )
         if _is_result_message(message):
             pending_result_text = _result_text(message)
@@ -54,26 +58,28 @@ async def _consume_messages(
                         type(exc).__name__,
                     )
                 else:
-                    await _drain_interrupted_response(messages, label=label)
+                    drained = await _drain_interrupted_response(messages, label=label)
+                    usage = _result_usage(drained)
             return LLMResponse(
                 content="".join(chunks),
                 tool_calls=tool_calls,
                 finish_reason="tool_calls",
+                usage=usage,
             )
 
     if not chunks and pending_result_text:
         chunks.append(pending_result_text)
         if on_content_delta:
             await on_content_delta(pending_result_text)
-    return LLMResponse(content="".join(chunks), finish_reason="stop")
+    return LLMResponse(content="".join(chunks), finish_reason="stop", usage=usage)
 
 
-async def _drain_interrupted_response(messages: Any, *, label: str = "CodeBuddy") -> None:
+async def _drain_interrupted_response(messages: Any, *, label: str = "CodeBuddy") -> Any:
     """Consume the SDK's interrupt result so it cannot leak into the next turn."""
     try:
         async for message in messages:
             if _is_result_message(message) or type(message).__name__ == "ErrorMessage":
-                return
+                return message
     except Exception as exc:
         logger.warning(
             "%s interrupted response drain failed (%s); "
@@ -81,6 +87,41 @@ async def _drain_interrupted_response(messages: Any, *, label: str = "CodeBuddy"
             label,
             type(exc).__name__,
         )
+
+
+def _result_usage(message: Any) -> dict[str, int]:
+    """Normalize the per-query usage of a consumed local SDK result.
+
+    Input tokens exclude cache reads/writes in the SDK's Anthropic-shaped
+    report. Absent usage or malformed counters remain unknown rather than being
+    reconstructed from text or the SDK's dollar estimate.
+    """
+    raw = message.get("usage") if isinstance(message, dict) else getattr(message, "usage", None)
+    if not isinstance(raw, dict) or not raw:
+        return {}
+    keys = (
+        "input_tokens",
+        "output_tokens",
+        "cache_read_input_tokens",
+        "cache_creation_input_tokens",
+    )
+    values = {key: raw.get(key, 0) for key in keys}
+    if any(type(value) is not int or value < 0 for value in values.values()):
+        return {}
+    if not any(key in raw for key in keys):
+        return {}
+    prompt = (
+        values["input_tokens"]
+        + values["cache_read_input_tokens"]
+        + values["cache_creation_input_tokens"]
+    )
+    return {
+        "prompt_tokens": prompt,
+        "completion_tokens": values["output_tokens"],
+        "total_tokens": prompt + values["output_tokens"],
+        "cache_read_input_tokens": values["cache_read_input_tokens"],
+        "cache_creation_input_tokens": values["cache_creation_input_tokens"],
+    }
 
 
 def _assistant_tool_calls(message: Any) -> list[ToolCallRequest]:
