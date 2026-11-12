@@ -350,8 +350,20 @@ def scope_snapshot(
 
 
 def validate_evidence(
-    store: Any, progress: Any, kp_id: str, evidence: dict[str, Any], *, allow_partial: bool = False
+    store: Any,
+    progress: Any,
+    kp_id: str,
+    evidence: dict[str, Any],
+    *,
+    allow_partial: bool = False,
+    pinned_pages: bool = False,
 ) -> None:
+    """Fail closed unless ``evidence`` still authorizes this objective.
+
+    ``pinned_pages`` is for an already issued question: it is bound to the
+    exact pages it cites, so a re-index that leaves those pages unchanged
+    (e.g. another document added to the same KB) does not strand it (#2650).
+    """
     topic = store.get_topic(progress.book_id, progress=progress)
     scope = selected_scope(topic, progress, kp_id)
     if not scope:
@@ -368,11 +380,32 @@ def validate_evidence(
         )
     if evidence.get("objective_fingerprint") != objective_fingerprint(progress, kp_id):
         raise LessonUnavailable("The objective changed since this lesson or question was prepared.")
-    scope_key, _ = scope_snapshot(topic, progress, kp_id)
+    scope_key, indices = scope_snapshot(topic, progress, kp_id)
     if scope_key != evidence.get("scope_fingerprint"):
-        raise LessonUnavailable(
-            "The selected sources or their index changed. Prepare the lesson again."
-        )
+        if not pinned_pages:
+            raise LessonUnavailable(
+                "The selected sources or their index changed. Prepare the lesson again."
+            )
+        published = {
+            (kb, page.get("document_key"), page.get("page_index"), page.get("source_digest"))
+            for kb, snapshot in indices.items()
+            for page in snapshot["pages"]
+        }
+        for entry in evidence.get("sources", []):
+            ref = entry.get("ref") or {}
+            cited = (
+                ref.get("kb_ref"),
+                ref.get("document_key"),
+                ref.get("page_index"),
+                ref.get("source_digest"),
+            )
+            if cited not in published:
+                raise LessonUnavailable(
+                    "This question's cited source pages changed after it was asked, so its "
+                    "answer key can no longer be verified; the answer was not graded. Tell the "
+                    "learner, close the question with mastery_skip_question, then call "
+                    "mastery_prepare_lesson and ask a new question."
+                )
     from deeptutor.services.workspace.knowledge import learning_source_access
 
     try:

@@ -1341,8 +1341,9 @@ def test_stale_source_blocks_grading_without_erasing_history(material, monkeypat
         pdf.saveIncr()
         pdf.close()
     elif change == "index":
+        # The re-index no longer publishes the page the question cites.
         catalog = json.loads((material.storage / "source_pages.json").read_text())
-        catalog["pages"][0]["parser_signature"] = "replacement"
+        catalog["pages"] = [p for p in catalog["pages"] if p.get("page_index") != 70]
         (material.storage / "source_pages.json").write_text(json.dumps(catalog))
     else:
         material.store.put_topic(TopicMetadata(path_id="path"), [])
@@ -1351,6 +1352,78 @@ def test_stale_source_blocks_grading_without_erasing_history(material, monkeypat
         service.grade_interaction("path", question_id="q", answer="lipids")
     after = material.store.load("path").model_dump()
     assert after == before
+
+
+def _reindex_with_added_document(material, monkeypatch):
+    """Publish a new index version whose catalog also covers another document."""
+    catalog = json.loads((material.storage / "source_pages.json").read_text())
+    added = {**catalog["pages"][0], "document_key": "week-2.pdf", "source_digest": "f" * 64}
+    catalog["pages"].append(added)
+    storage = material.storage.parent / "version-2"
+    storage.mkdir()
+    (storage / "source_pages.json").write_text(json.dumps(catalog))
+    monkeypatch.setattr(
+        "deeptutor.services.rag.index_versioning.resolve_storage_dir_for_read",
+        lambda *args: storage,
+    )
+    return storage
+
+
+def _whole_kb_topic(material):
+    material.store.put_topic(
+        TopicMetadata(path_id="path"),
+        [
+            TopicSource(
+                id="s",
+                kind=TopicSourceKind.KNOWLEDGE_BASE,
+                label="Course KB",
+                source_id="selected",
+            )
+        ],
+    )
+
+
+def test_issued_question_survives_reindex_that_keeps_its_cited_pages(material, monkeypatch):
+    # #2650: adding material to the KB re-indexes it; a pending card whose
+    # cited pages are unchanged must still be gradable, and the answer kept.
+    _whole_kb_topic(material)
+    _install_preparation(material, monkeypatch)
+    asyncio.run(lessons.prepare_lesson(material.store, "path", "kp", material.config))
+    service = LearningService(material.store)
+    service.register_question(
+        "path", PendingQuestion(question_id="q", knowledge_point_id="kp", expected_answer="lipids")
+    )
+    _reindex_with_added_document(material, monkeypatch)
+    progress = material.store.load("path")
+    # Teaching packets still re-prepare against the new index ...
+    with pytest.raises(lessons.LessonUnavailable, match="index changed"):
+        lessons.validate_evidence(material.store, progress, "kp", progress.lesson_evidence["kp"])
+    # ... but the issued question is bound to its own pages and is graded.
+    progress, interaction, replayed = service.grade_interaction(
+        "path", question_id="q", answer="lipids"
+    )
+    assert not replayed and interaction.result["is_correct"] is True
+    assert [a.user_answer for a in progress.quiz_attempts] == ["lipids"]
+
+
+def test_reindexed_changed_cited_page_names_the_recovery_tool(material, monkeypatch):
+    _whole_kb_topic(material)
+    _install_preparation(material, monkeypatch)
+    asyncio.run(lessons.prepare_lesson(material.store, "path", "kp", material.config))
+    service = LearningService(material.store)
+    service.register_question(
+        "path", PendingQuestion(question_id="q", knowledge_point_id="kp", expected_answer="lipids")
+    )
+    storage = _reindex_with_added_document(material, monkeypatch)
+    catalog = json.loads((storage / "source_pages.json").read_text())
+    for page in catalog["pages"]:
+        if page.get("page_index") == 70 and page["document_key"] == "lesson.pdf":
+            page["source_digest"] = "e" * 64
+    (storage / "source_pages.json").write_text(json.dumps(catalog))
+    before = material.store.load("path").model_dump()
+    with pytest.raises(MasteryInteractionError, match="mastery_skip_question"):
+        service.grade_interaction("path", question_id="q", answer="lipids")
+    assert material.store.load("path").model_dump() == before
 
 
 def test_outline_reorder_keeps_evidence_identity(material):
