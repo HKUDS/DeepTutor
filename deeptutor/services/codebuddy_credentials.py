@@ -112,7 +112,9 @@ def find_auth_file() -> Path | None:
         path = Path(override)
         return path if path.is_file() else None
     for directory in _auth_search_dirs():
-        for name in _AUTH_FILE_NAMES:
+        # WorkBuddy 5.9.3+ writes workbuddy-desktop.info; check it first.
+        # The legacy file may still exist but be stale.
+        for name in reversed(_AUTH_FILE_NAMES):
             candidate = directory / name
             if candidate.is_file():
                 return candidate

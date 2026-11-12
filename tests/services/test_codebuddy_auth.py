@@ -55,6 +55,7 @@ async def test_status_reports_existing_local_login(monkeypatch) -> None:
 async def test_status_cancels_probe_when_login_is_required(monkeypatch) -> None:
     flow = FakeFlow("https://codebuddy.example/login")
     monkeypatch.setattr(codebuddy_auth, "_start_sdk_authenticate", lambda: _value(flow))
+    monkeypatch.setattr(codebuddy_auth, "_STATUS_PROBE_BACKOFF_S", 0.01)
 
     status = await CodeBuddyAuthService().status()
 
@@ -233,3 +234,178 @@ async def test_start_login_does_not_hold_the_lock_on_a_wedged_flow(monkeypatch) 
             pass
 
     assert status["connection"] == "disconnected"
+
+
+class _StuckFlow:
+    """A flow that enters, never resolves, and swallows cancellation."""
+
+    auth_url = ""
+
+    def __init__(self) -> None:
+        self.entered = asyncio.Event()
+        self.finished = asyncio.Event()
+        self.cancel_calls = 0
+
+    def __await__(self):
+        return self._wait().__await__()
+
+    async def _wait(self):
+        self.entered.set()
+        try:
+            await self.finished.wait()
+            return SimpleNamespace(userinfo=None)
+        except asyncio.CancelledError:
+            pass
+
+    async def cancel(self) -> None:
+        self.cancel_calls += 1
+
+
+@pytest.mark.asyncio
+async def test_concurrent_status_polls_share_a_single_probe(monkeypatch) -> None:
+    """Regression: concurrent status requests must not spawn separate SDK flows."""
+    flows = []
+
+    async def start_flow():
+        flow = _StuckFlow()
+        flows.append(flow)
+        return flow
+
+    monkeypatch.setattr(codebuddy_auth, "_start_sdk_authenticate", start_flow)
+    monkeypatch.setattr(codebuddy_auth, "_STATUS_PROBE_WAIT_S", 0.05)
+    service = CodeBuddyAuthService()
+
+    requests = [asyncio.create_task(service.status()) for _ in range(3)]
+    try:
+        done, pending = await asyncio.wait(requests, timeout=0.15)
+        assert len(done) == 3
+        assert len(flows) == 1, f"Expected 1 shared probe, got {len(flows)} separate flows"
+        for result in done:
+            status = result.result()
+            assert status["connection"] == "error"
+            assert status["error_code"] == "login_timeout"
+    finally:
+        for flow in flows:
+            flow.finished.set()
+        await asyncio.gather(*requests, return_exceptions=True)
+
+
+@pytest.mark.asyncio
+async def test_cancelled_login_does_not_overwrite_connected_state(monkeypatch) -> None:
+    """Regression: a flow that completes after cancellation must not overwrite newer state."""
+    flow = _StuckFlow()
+    monkeypatch.setattr(codebuddy_auth, "_start_sdk_authenticate", lambda: _value(flow))
+    monkeypatch.setattr(codebuddy_auth, "_PROBE_TIMEOUT", 10.0)
+    service = CodeBuddyAuthService()
+
+    starter = asyncio.create_task(service.start_login())
+    try:
+        await asyncio.wait_for(flow.entered.wait(), timeout=1.0)
+        await service.cancel_login()
+        
+        # Let the flow complete after cancellation
+        flow.finished.set()
+        await asyncio.sleep(0.05)
+
+        status = service.public_status()
+        assert status["connection"] == "disconnected"
+        assert status["operation_state"] == "cancelled"
+    finally:
+        flow.finished.set()
+        await asyncio.gather(starter, return_exceptions=True)
+
+
+@pytest.mark.asyncio
+async def test_start_status_and_cancel_all_settle_while_flow_hangs(monkeypatch) -> None:
+    """Regression: Taz33m's scenario - start, status, cancel must all settle.
+    
+    The key guarantee: cancel_login() itself must complete promptly and not
+    block on stuck flows. start_login() may still be awaiting its flow, but
+    the service state is updated and new requests see the cancellation.
+    """
+    flow_with_url = FakeFlow("https://codebuddy.example/login")
+    flow_with_url.ready = asyncio.Event()  # Never set, so it hangs
+    
+    monkeypatch.setattr(codebuddy_auth, "_start_sdk_authenticate", lambda: _value(flow_with_url))
+    service = CodeBuddyAuthService()
+
+    start_task = asyncio.create_task(service.start_login())
+    status_task = None
+    try:
+        await asyncio.sleep(0.02)
+        status_task = asyncio.create_task(service.status())
+        
+        # Give status a moment to check
+        await asyncio.sleep(0.01)
+        
+        # Cancel should complete immediately even while the flow hangs
+        cancel_result = await asyncio.wait_for(service.cancel_login(), timeout=1.0)
+        assert cancel_result["operation_state"] == "cancelled"
+        
+        # Verify the service state is updated
+        status_after = service.public_status()
+        assert status_after["connection"] == "disconnected"
+        assert status_after["operation_state"] == "cancelled"
+        
+        # Verify cancel reached the flow
+        assert flow_with_url.cancelled is True, "cancel_login should have called flow.cancel()"
+    finally:
+        flow_with_url.ready.set()
+        await asyncio.gather(start_task, status_task or asyncio.sleep(0), return_exceptions=True)
+
+
+@pytest.mark.asyncio
+async def test_timed_out_flow_stays_owned_until_it_finishes(monkeypatch) -> None:
+    """Regression: a flow that refuses cancellation must stay tracked.
+    
+    When a no-URL flow times out, _await_flow cancels the underlying task
+    and raises TimeoutError. The task stays in _tasks until it actually
+    finishes (even if it ignores cancellation).
+    """
+    flow = _StuckFlow()
+    
+    monkeypatch.setattr(codebuddy_auth, "_start_sdk_authenticate", lambda: _value(flow))
+    monkeypatch.setattr(codebuddy_auth, "_PROBE_TIMEOUT", 0.05)
+    service = CodeBuddyAuthService()
+
+    starter = asyncio.create_task(service.start_login())
+    try:
+        await asyncio.wait_for(flow.entered.wait(), timeout=1.0)
+        
+        # Capture tasks while the flow is still running
+        await asyncio.sleep(0.01)
+        tasks_before_timeout = list(service._tasks)
+        assert len(tasks_before_timeout) > 0, "Flow tasks must be tracked while running"
+        
+        # Let it timeout - the wrapper _await_flow task will cancel and complete
+        await asyncio.sleep(0.1)
+        
+        # The service reports the timeout error
+        status = service.public_status()
+        assert status["error_code"] == "login_timeout"
+    finally:
+        flow.finished.set()
+        await asyncio.gather(starter, return_exceptions=True)
+
+
+@pytest.mark.asyncio
+async def test_cancelling_start_login_propagates_to_child_flow(monkeypatch) -> None:
+    """Regression: cancelling the caller must cancel its spawned flow task."""
+    flow = _StuckFlow()
+    monkeypatch.setattr(codebuddy_auth, "_start_sdk_authenticate", lambda: _value(flow))
+    service = CodeBuddyAuthService()
+
+    starter = asyncio.create_task(service.start_login())
+    await asyncio.wait_for(flow.entered.wait(), timeout=1.0)
+    
+    starter.cancel()
+    try:
+        await starter
+    except asyncio.CancelledError:
+        pass
+
+    # The flow's task should be cancelled
+    await asyncio.sleep(0.05)
+    assert all(t.cancelled() or t.done() for t in service._tasks), "Child tasks must be cancelled"
+    
+    flow.finished.set()

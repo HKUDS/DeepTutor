@@ -11,6 +11,9 @@ from typing import Any
 #: matches the 300 s the SDK passes to ``authenticate``.
 _PROBE_TIMEOUT = 45.0
 _LOGIN_TIMEOUT = 300.0
+#: Status poll probe timeout and backoff to prevent repeated SDK spawns
+_STATUS_PROBE_WAIT_S = 20.0
+_STATUS_PROBE_BACKOFF_S = 120.0
 
 
 class CodeBuddyAuthService:
@@ -25,6 +28,10 @@ class CodeBuddyAuthService:
         self._authorize_url: str | None = None
         self._user_label: str | None = None
         self._error_code: str | None = None
+        self._generation = 0
+        self._probe_task: asyncio.Task[Any] | None = None
+        self._probe_generation = 0
+        self._tasks: set[asyncio.Task[Any]] = set()
 
     def public_status(self) -> dict[str, Any]:
         return {
@@ -40,15 +47,31 @@ class CodeBuddyAuthService:
         async with self._lock:
             if self._task and not self._task.done():
                 return self.public_status()
+            
+            # Share one probe across concurrent status polls
+            if self._probe_task and not self._probe_task.done():
+                probe_task = self._probe_task
+                probe_gen = self._probe_generation
+            else:
+                probe_gen = self._probe_generation + 1
+                self._probe_generation = probe_gen
+                probe_task = asyncio.create_task(self._run_probe())
+                self._probe_task = probe_task
+                self._track_task(probe_task)
 
-        # Probing spawns a process and may await a flow, so it must not run
-        # under the lock: a wedged probe would then block every other caller,
-        # including the status polls the frontend issues every few seconds.
-        probe = await self._probe()
+        try:
+            probe = await asyncio.wait_for(probe_task, timeout=_STATUS_PROBE_WAIT_S)
+        except asyncio.TimeoutError:
+            async with self._lock:
+                if self._probe_generation == probe_gen:
+                    self._mark_error(TimeoutError("login check timed out"))
+                return self.public_status()
+
         async with self._lock:
             if self._task and not self._task.done():
                 return self.public_status()
-            self._apply_probe(probe)
+            if self._probe_generation == probe_gen:
+                self._apply_probe(probe)
             return self.public_status()
 
     async def start_login(self) -> dict[str, Any]:
@@ -56,15 +79,27 @@ class CodeBuddyAuthService:
         async with self._lock:
             if self._task and not self._task.done():
                 return self.public_status()
+        
         label = await self._probe_local_login()
         if label is not None:
             async with self._lock:
                 self._apply_probe(("local", label))
                 return self.public_status()
+        
+        async with self._lock:
+            generation = self._generation + 1
+            self._generation = generation
+        
         try:
             flow = await _start_sdk_authenticate()
             if getattr(flow, "auth_url", ""):
                 async with self._lock:
+                    if self._generation != generation:
+                        try:
+                            await flow.cancel()
+                        except Exception:  # noqa: BLE001 - cancellation is advisory
+                            pass
+                        return self.public_status()
                     if self._task and not self._task.done():
                         try:
                             await flow.cancel()
@@ -77,22 +112,39 @@ class CodeBuddyAuthService:
                     self._authorize_url = str(flow.auth_url)
                     self._user_label = None
                     self._error_code = None
-                    self._task = asyncio.create_task(self._wait_for_login(flow))
+                    task = asyncio.create_task(self._wait_for_login(flow, generation))
+                    self._task = task
+                    self._track_task(task)
                     return self.public_status()
             # The SDK can report success while handing back a flow with no
             # auth_url that never resolves. Bound the await so a wedged flow
             # surfaces as a timeout instead of freezing the settings API.
-            result = await _await_flow(flow, _PROBE_TIMEOUT)
+            flow_task = asyncio.create_task(_await_flow(flow, _PROBE_TIMEOUT))
             async with self._lock:
-                self._mark_connected(result)
+                self._track_task(flow_task)
+            try:
+                result = await flow_task
+            except asyncio.CancelledError:
+                async with self._lock:
+                    if self._generation == generation:
+                        self._connection = "disconnected"
+                        self._operation_state = "cancelled"
+                raise
+            async with self._lock:
+                if self._generation == generation:
+                    self._mark_connected(result)
                 return self.public_status()
+        except asyncio.CancelledError:
+            raise
         except Exception as exc:  # noqa: BLE001 - converted to stable public state
             async with self._lock:
-                self._mark_error(exc)
+                if self._generation == generation:
+                    self._mark_error(exc)
                 return self.public_status()
 
     async def cancel_login(self) -> dict[str, Any]:
         async with self._lock:
+            self._generation += 1
             flow = self._flow
             task = self._task
             self._flow = None
@@ -108,7 +160,8 @@ class CodeBuddyAuthService:
                 await flow.cancel()
             except Exception:
                 pass
-        return self.public_status()
+        async with self._lock:
+            return self.public_status()
 
     async def logout(self) -> dict[str, Any]:
         """Disconnect DeepTutor from the CodeBuddy session on this host.
@@ -117,6 +170,7 @@ class CodeBuddyAuthService:
         created it, and only they can end it.
         """
         async with self._lock:
+            self._generation += 1
             flow = self._flow
             task = self._task
             self._flow = None
@@ -152,7 +206,7 @@ class CodeBuddyAuthService:
             self._error_code = None
             return self.public_status()
 
-    async def _probe(self) -> tuple[str, Any]:
+    async def _run_probe(self) -> tuple[str, Any]:
         """Probe for an existing login without holding the lock.
 
         Returns ``(state, payload)`` for ``_apply_probe``: ``("local", label)``,
@@ -168,8 +222,13 @@ class CodeBuddyAuthService:
                     await flow.cancel()
                 except Exception:  # noqa: BLE001 - cancellation is advisory
                     pass
+                # Back off after confirming auth is available
+                await asyncio.sleep(_STATUS_PROBE_BACKOFF_S)
                 return "available", None
-            result = await _await_flow(flow, _PROBE_TIMEOUT)
+            flow_task = asyncio.create_task(_await_flow(flow, _PROBE_TIMEOUT))
+            async with self._lock:
+                self._track_task(flow_task)
+            result = await flow_task
             return "connected", result
         except Exception as exc:  # noqa: BLE001 - converted to stable public state
             return "error", exc
@@ -205,24 +264,33 @@ class CodeBuddyAuthService:
         except Exception:  # noqa: BLE001 - fall through to the SDK probe
             return None
 
-    async def _wait_for_login(self, flow: Any) -> None:
+    async def _wait_for_login(self, flow: Any, generation: int) -> None:
+        flow_task = asyncio.create_task(_await_flow(flow, _LOGIN_TIMEOUT))
+        async with self._lock:
+            self._track_task(flow_task)
+        
         try:
-            result = await _await_flow(flow, _LOGIN_TIMEOUT)
+            result = await flow_task
         except asyncio.CancelledError:
             return
         except Exception as exc:  # noqa: BLE001 - converted to stable public state
             async with self._lock:
-                if self._flow is flow:
+                if self._generation == generation and self._flow is flow:
                     self._flow = None
                     self._task = None
                     self._mark_error(exc)
             return
 
         async with self._lock:
-            if self._flow is flow:
+            if self._generation == generation and self._flow is flow:
                 self._flow = None
                 self._task = None
                 self._mark_connected(result)
+
+    def _track_task(self, task: asyncio.Task[Any]) -> None:
+        """Track a task so it stays owned until it finishes."""
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
 
     def _mark_connected(self, result: Any) -> None:
         userinfo = getattr(result, "userinfo", None)

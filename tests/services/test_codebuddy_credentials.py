@@ -208,3 +208,31 @@ def test_an_encrypted_workbuddy_token_is_never_sent_as_a_bearer(tmp_path, monkey
     monkeypatch.setenv("DEEPTUTOR_CODEBUDDY_AUTH_FILE", str(path))
 
     assert creds.load_credentials() is None
+
+
+def test_find_auth_file_prefers_workbuddy_desktop_over_legacy(tmp_path, monkeypatch) -> None:
+    """Regression: workbuddy-desktop.info should be checked before the legacy file.
+    
+    Both files may exist; the legacy one might be stale while the desktop file
+    is current. The desktop file must win.
+    """
+    from deeptutor.services import codebuddy_credentials as creds
+
+    auth_dir = tmp_path / "CodeBuddyExtension" / "Data" / "Public" / "auth"
+    auth_dir.mkdir(parents=True)
+    
+    legacy = auth_dir / "Tencent-Cloud.coding-copilot.info"
+    legacy.write_text(json.dumps({"auth": {"accessToken": "legacy-token"}}), encoding="utf-8")
+    
+    desktop = auth_dir / "workbuddy-desktop.info"
+    desktop.write_text(json.dumps({"access_token": "desktop-token"}), encoding="utf-8")
+    
+    monkeypatch.delenv("DEEPTUTOR_CODEBUDDY_AUTH_FILE", raising=False)
+    monkeypatch.setattr(creds, "_auth_search_dirs", lambda: [auth_dir])
+    
+    found = creds.find_auth_file()
+    assert found == desktop, "Desktop file should be preferred over legacy"
+    
+    credentials = creds.load_credentials()
+    assert credentials is not None
+    assert credentials.access_token == "desktop-token"
