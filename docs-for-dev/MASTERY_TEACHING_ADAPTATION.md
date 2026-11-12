@@ -1,6 +1,7 @@
 # Mastery teaching adaptation — design
 
-Status: design (not implemented beyond layer 1 evidence)
+Status: M1–M3 implemented (principle over lookup; strategy outcomes; durable
+strategy notes). M4 (proposal + review gate) and M5 (ablation) are still design.
 Scope: how the mastery tutor decides *how* to teach — depth, framing, examples —
 from what the learner actually does, and how that adapts over time.
 
