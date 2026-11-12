@@ -1861,3 +1861,83 @@ async def test_side_chat_persists_its_structured_source_on_the_assistant_row(
         "message_id": source,
         "role": "assistant",
     }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("capability", ["deep_solve", "visualize"])
+async def test_attached_reading_sections_reach_non_chat_capabilities(
+    monkeypatch, tmp_path, capability
+) -> None:
+    """Chat reads attached Reading units through ``read_source``; capabilities
+    without that tool get them inline, like attached documents and books."""
+    store = SQLiteSessionStore(tmp_path / "chat_history.db")
+    runtime = TurnRuntimeManager(store)
+    captured: dict[str, object] = {}
+
+    class FakeOrchestrator:
+        async def handle(self, context):
+            captured["message"] = context.user_message
+            yield StreamEvent(type=StreamEventType.DONE, source=capability)
+
+    _patch_turn_services(monkeypatch, FakeOrchestrator)
+    resolved: list[object] = []
+
+    def fake_resolve(references):
+        resolved.append(references)
+        return [
+            SimpleNamespace(
+                name="Lecture 3 — Page 2",
+                full_text="Lecture 3, page 2\n\nA sequence converges if ...",
+            )
+        ]
+
+    monkeypatch.setattr("deeptutor.reading.references.resolve_reading_sources", fake_resolve)
+    _session, turn = await runtime.start_turn(
+        {
+            "type": "start_turn",
+            "content": "Solve exercise 4",
+            "session_id": None,
+            "capability": capability,
+            "tools": [],
+            "knowledge_bases": [],
+            "attachments": [],
+            "reading_references": [
+                {"material_id": "0123456789abcdef", "revision": 1, "locators": [2]}
+            ],
+            "language": "en",
+            "config": {},
+        }
+    )
+    async for _event in runtime.subscribe_turn(turn["id"], after_seq=0):
+        pass
+
+    message = str(captured["message"])
+    assert "[Reading Sections]\nLecture 3, page 2\n\nA sequence converges if ..." in message
+    assert message.rstrip().endswith("[User Question]\nSolve exercise 4")
+    assert resolved == [[{"material_id": "0123456789abcdef", "revision": 1, "locators": [2]}]]
+
+
+def test_reading_sections_context_keeps_attached_units_within_budget(monkeypatch) -> None:
+    """24 units of 60k chars each stay within one budget: the unit that crosses
+    it is cut with a marker, and the rest are named but not inlined."""
+    from deeptutor.services.session import _turn_runtime_shared as shared
+
+    sources = [
+        SimpleNamespace(name=f"Lecture — Page {page}", full_text=f"Page {page}\n\n" + "x" * 60_000)
+        for page in range(1, 25)
+    ]
+    monkeypatch.setattr(
+        "deeptutor.reading.references.resolve_reading_sources", lambda _references: sources
+    )
+
+    context = shared._reading_sections_context([{"material_id": "0123456789abcdef"}])
+
+    assert len(context) < shared.READING_SECTIONS_MAX_CHARS + 2_000
+    assert context.startswith("Page 1\n\n")
+    assert "[Lecture — Page 1: truncated, 60,000 of 60,008 characters shown]" in context
+    assert "Page 2\n" not in context
+    assert context.endswith(
+        "[23 more attached reading section(s) left out, over the 60,000-character limit: "
+        + "; ".join(f"Lecture — Page {page}" for page in range(2, 25))
+        + "]"
+    )
