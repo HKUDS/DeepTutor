@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { loadPdfjs, outputScale, type PdfDocument } from "@/lib/pdfjs-loader";
 import type { AnnotationItem } from "@/lib/reading-api";
@@ -26,6 +26,27 @@ export interface PdfPageProps {
   /** Transient highlight from `reader_goto`, as normalised rects. */
   flashRects?: Array<[number, number, number, number]>;
   onAnnotationClick?: (annotation: AnnotationItem) => void;
+}
+
+/** Debounce before the single final repaint once a resize settles. */
+const FINAL_REPAINT_DELAY_MS = 150;
+/** Set on the text layer root by React rather than pdf.js. */
+const REACT_OWNED_TEXT_STYLES = new Set(["--total-scale-factor", "pointer-events"]);
+
+function copyPdfjsRootMetadata(source: HTMLElement, target: HTMLElement) {
+  for (let index = 0; index < source.style.length; index += 1) {
+    const name = source.style.item(index);
+    if (!name || REACT_OWNED_TEXT_STYLES.has(name)) continue;
+    target.style.setProperty(
+      name,
+      source.style.getPropertyValue(name),
+      source.style.getPropertyPriority(name),
+    );
+  }
+  for (const attribute of source.attributes) {
+    if (!attribute.name.startsWith("data-")) continue;
+    target.setAttribute(attribute.name, attribute.value);
+  }
 }
 
 /**
@@ -61,122 +82,153 @@ export function PdfPage({
   const textLayerRef = useRef<HTMLDivElement | null>(null);
   // Whether this page was ever drawn, so only those are handed back.
   const renderedRef = useRef(false);
+  const paintedWidthRef = useRef<number | null>(null);
   const [ratio, setRatio] = useState<number | null>(null);
-  const [failed, setFailed] = useState(false);
+  const [baseWidth, setBaseWidth] = useState(0);
+  const [canvasFailed, setCanvasFailed] = useState(false);
+  const [textFailed, setTextFailed] = useState(false);
 
   const height = Math.round(width * (ratio ?? fallbackRatio));
+  const textScale = baseWidth > 0 ? width / baseWidth : 1;
 
   useEffect(() => {
     if (!active || width <= 0) return;
     let cancelled = false;
     let renderTask: { cancel: () => void } | null = null;
-    let textLayer: { cancel: () => void } | null = null;
+    let cancelSchedule: (() => void) | null = null;
 
     (async () => {
       try {
-        const pdfjs = await loadPdfjs();
         const page = await doc.getPage(locator);
         renderedRef.current = true;
         if (cancelled) return;
-
         const base = page.getViewport({ scale: 1 });
         if (base.width > 0) {
           setRatio(base.height / base.width);
+          setBaseWidth(base.width);
         }
-        const scale = width / base.width;
-        const viewport = page.getViewport({ scale });
 
-        // Canvas and text layer are rendered CONCURRENTLY and independently.
-        // The text layer needs only the viewport and the page's text content —
-        // it has no dependency on the bitmap being finished — so chaining it
-        // behind the canvas render promise only made selection and quote
-        // highlighting hostage to that promise settling. Some embedded browsers
-        // paint the page but never settle it, which produced a document that
-        // looked perfect and could not be selected at all.
         const paintCanvas = async () => {
           const canvas = canvasRef.current;
           if (!canvas) return;
           const dpr = outputScale();
-          canvas.width = Math.floor(viewport.width * dpr);
-          canvas.height = Math.floor(viewport.height * dpr);
-          canvas.style.width = `${Math.floor(viewport.width)}px`;
-          canvas.style.height = `${Math.floor(viewport.height)}px`;
-          // `canvas` only, never alongside `canvasContext`: pdf.js documents the
-          // context parameter as backwards-compatibility requiring
-          // `canvas: null`, and passing both is an unsupported combination.
-          renderTask = page.render({
-            canvas,
-            viewport,
-            transform: dpr !== 1 ? [dpr, 0, 0, dpr, 0, 0] : undefined,
-          });
-          await (renderTask as unknown as { promise: Promise<void> }).promise;
+          try {
+            const base = page.getViewport({ scale: 1 });
+            const viewport = page.getViewport({ scale: width / base.width });
+            canvas.width = Math.floor(viewport.width * dpr);
+            canvas.height = Math.floor(viewport.height * dpr);
+            canvas.style.width = `${Math.floor(viewport.width)}px`;
+            canvas.style.height = `${Math.floor(viewport.height)}px`;
+            // `canvas` only, never alongside `canvasContext`: pdf.js documents the
+            // context parameter as backwards-compatibility requiring
+            // `canvas: null`, and passing both is an unsupported combination.
+            renderTask = page.render({
+              canvas,
+              viewport,
+              transform: dpr !== 1 ? [dpr, 0, 0, dpr, 0, 0] : undefined,
+            });
+            await (renderTask as unknown as { promise: Promise<void> }).promise;
+            if (cancelled) return;
+            paintedWidthRef.current = width;
+            setCanvasFailed(false);
+          } catch (error) {
+            // pdf.js throws RenderingCancelledException on a cancelled task —
+            // that is the normal path when scrolling, not a failure to report.
+            const name = (error as { name?: string } | null)?.name ?? "";
+            if (!cancelled && name !== "RenderingCancelledException") {
+              setCanvasFailed(true);
+            }
+          }
         };
 
-        const buildTextLayer = async () => {
-          const textContent = await page.getTextContent();
-          // Re-checked after the await: two runs of this effect (a resize
-          // mid-render) would otherwise both reach `render()` on the same
-          // container and the loser would wipe the winner's spans.
-          if (cancelled) return;
-          const container = textLayerRef.current;
-          if (!container) return;
-          container.replaceChildren();
-          // pdf.js positions the spans with `--total-scale-factor`; without it
-          // every run collapses to the same tiny size and selection is useless.
-          container.style.setProperty("--total-scale-factor", String(scale));
-          const layer = new pdfjs.TextLayer({
-            textContentSource: textContent,
-            container,
-            viewport,
-          });
-          textLayer = layer as unknown as { cancel: () => void };
-          await layer.render();
-        };
-
-        // allSettled: a canvas failure must not cost the page its text layer,
-        // and vice versa. Failures are reported below only if BOTH sides failed,
-        // since either one alone still leaves a usable page.
-        const outcomes = await Promise.allSettled([
-          paintCanvas(),
-          buildTextLayer(),
-        ]);
-        if (cancelled) return;
-        const fatal = outcomes.every(
-          (outcome) =>
-            outcome.status === "rejected" &&
-            (outcome.reason as { name?: string } | null)?.name !==
-              "RenderingCancelledException",
-        );
-        setFailed(fatal);
+        if (paintedWidthRef.current == null) {
+          void paintCanvas();
+        } else if (paintedWidthRef.current !== width) {
+          // Resize: keep the CSS-scaled bitmap until the width settles, then
+          // repaint once at the final size.
+          const handle = window.setTimeout(
+            () => void paintCanvas(),
+            FINAL_REPAINT_DELAY_MS,
+          );
+          cancelSchedule = () => window.clearTimeout(handle);
+        }
       } catch (error) {
         // pdf.js throws RenderingCancelledException on a cancelled task — that
         // is the normal path when scrolling, not a failure to report.
         const name = (error as { name?: string } | null)?.name ?? "";
         if (!cancelled && name !== "RenderingCancelledException") {
-          setFailed(true);
+          setCanvasFailed(true);
+          setTextFailed(true);
         }
       }
     })();
 
     return () => {
       cancelled = true;
+      cancelSchedule?.();
       try {
         renderTask?.cancel();
       } catch {
         // Already settled.
       }
+    };
+  }, [active, doc, locator, width]);
+
+  // Build the text layer once per active period, independently of bitmap
+  // completion. Resizing changes only --total-scale-factor.
+  useEffect(() => {
+    const container = textLayerRef.current;
+    if (!active || !container) return;
+
+    let cancelled = false;
+    let textLayer: { cancel: () => void } | null = null;
+    container.replaceChildren();
+    const buildTextLayer = async () => {
+      try {
+        const [pdfjs, page] = await Promise.all([loadPdfjs(), doc.getPage(locator)]);
+        renderedRef.current = true;
+        if (cancelled) return;
+        const textContent = await page.getTextContent();
+        if (cancelled) return;
+
+        const staged = document.createElement("div");
+        staged.className = "textLayer";
+        staged.style.setProperty("--total-scale-factor", "1");
+        const layer = new pdfjs.TextLayer({
+          textContentSource: textContent,
+          container: staged,
+          viewport: page.getViewport({ scale: 1 }),
+        });
+        textLayer = layer;
+        await layer.render();
+        if (cancelled) return;
+
+        copyPdfjsRootMetadata(staged, container);
+        container.replaceChildren(...staged.childNodes);
+        setTextFailed(false);
+      } catch (error) {
+        const name = (error as { name?: string } | null)?.name ?? "";
+        if (!cancelled && name !== "AbortException") setTextFailed(true);
+      }
+    };
+
+    void buildTextLayer();
+
+    return () => {
+      cancelled = true;
       try {
         textLayer?.cancel();
       } catch {
         // Already settled.
       }
     };
-  }, [doc, locator, width, active]);
+  }, [active, doc, locator]);
 
   // Free the canvas bitmap when the page scrolls far away. Without this a
   // 600-page document accumulates every page it ever showed.
   useEffect(() => {
     if (active) return;
+    paintedWidthRef.current = null;
     const canvas = canvasRef.current;
     if (canvas) {
       canvas.width = 0;
@@ -196,6 +248,7 @@ export function PdfPage({
 
   useEffect(
     () => () => {
+      paintedWidthRef.current = null;
       if (renderedRef.current) releasePage(doc, locator);
     },
     [doc, locator],
@@ -218,7 +271,12 @@ export function PdfPage({
         className="textLayer"
         // The text layer is the selection surface; annotations sit above it but
         // must not swallow drags, so only this layer takes pointer events.
-        style={{ pointerEvents: "auto" }}
+        style={
+          {
+            pointerEvents: "auto",
+            "--total-scale-factor": String(textScale),
+          } as CSSProperties
+        }
       />
       <AnnotationLayer
         annotations={pageAnnotations}
@@ -231,7 +289,7 @@ export function PdfPage({
           <span className="font-mono text-[11px] text-black/25">{locator}</span>
         </div>
       )}
-      {failed && (
+      {canvasFailed && textFailed && (
         <div className="absolute inset-0 flex items-center justify-center bg-white/90 px-6 text-center">
           <span className="text-[12px] text-[var(--muted-foreground)]">
             {t("This page could not be rendered.")}
