@@ -190,6 +190,10 @@ def web_search(
     provider_kwargs.setdefault("max_results", resolved.max_results)
     if resolved.proxy and "proxy" not in provider_kwargs:
         provider_kwargs["proxy"] = resolved.proxy
+    # Providers without an engine concept just ignore the kwarg; an explicit
+    # request-level value keeps winning over the profile's.
+    if resolved.search_engine:
+        provider_kwargs.setdefault("search_engine", resolved.search_engine)
 
     # A rate-limited or unreachable engine costs the query its first choice, not
     # the whole turn: fall through the user's other configured search profiles
@@ -279,6 +283,7 @@ def get_current_config() -> dict[str, Any]:
         "base_url": resolved.base_url,
         "max_results": resolved.max_results,
         "proxy": resolved.proxy,
+        "search_engine": resolved.search_engine,
         "providers": get_providers_info(),
         "supported_providers": sorted(SUPPORTED_SEARCH_PROVIDERS),
         "deprecated_providers": sorted(DEPRECATED_SEARCH_PROVIDERS),
