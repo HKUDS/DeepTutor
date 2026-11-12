@@ -20,6 +20,7 @@ from deeptutor.api.contracts.turn_protocol import (
     ClientCommand,
     StartTurnCommand,
 )
+from deeptutor.services.session.protocol import NoLlmAccess
 from deeptutor.services.workspace.models import WorkspaceError
 
 router = APIRouter()
@@ -226,6 +227,13 @@ async def unified_websocket(ws: WebSocket) -> None:
                             if key not in {"type", "protocol_version"}
                         }
                     )
+                except NoLlmAccess as exc:
+                    await send_protocol_error(
+                        str(exc),
+                        error_code="no_llm_access",
+                        session_id=str(msg.get("session_id") or ""),
+                    )
+                    continue
                 except (RuntimeError, WorkspaceError) as exc:
                     await send_error(
                         str(exc),

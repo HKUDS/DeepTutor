@@ -241,6 +241,7 @@ function Harness() {
       <div data-testid="submissionFailed">
         {String(state.submissionFailed)}
       </div>
+      <div data-testid="submissionNoLlmAccess">{String(state.submissionNoLlmAccess)}</div>
       <div data-testid="lastTurnFailed">{String(state.lastTurnFailed)}</div>
       <div data-testid="capability">{state.activeCapability}</div>
       <div data-testid="submissionNeedsReview">{String(state.submissionNeedsReview)}</div>
@@ -1039,6 +1040,36 @@ it("keeps a start_turn_rejected submission as an unsent user row across reload",
     role: "user", content: "Hello offline", failed: true,
   });
   expect(screen.getByTestId("lastTurnFailed").textContent).toBe("true");
+});
+
+it("keeps a model-access rejection non-retryable across reload without a second alert", async () => {
+  const notify = vi.spyOn(notifications, "notify");
+  fixture.connected = true;
+  fixture.session = completedServerSession();
+  const first = render(<ChatStateAdapterProvider><Harness /></ChatStateAdapterProvider>);
+  await act(async () => fireEvent.click(screen.getByText("Load")));
+  await act(async () => fireEvent.click(screen.getByText("Send")));
+  await act(async () => {
+    fixture.emit?.({
+      type: "error", source: "transport", stage: "", content: "Ask an administrator",
+      timestamp: Date.now() / 1000,
+      metadata: { reason: "no_llm_access", retryable: false, turn_terminal: true, status: "failed" },
+    });
+  });
+  expect(readMessages().at(-1)).toEqual({
+    role: "user", content: "Hello offline", failed: true,
+  });
+  expect(screen.getByTestId("submissionNoLlmAccess").textContent).toBe("true");
+  expect(notify).not.toHaveBeenCalledWith("Ask an administrator", expect.anything());
+  first.unmount();
+
+  fixture.sent = [];
+  render(<ChatStateAdapterProvider><Harness /></ChatStateAdapterProvider>);
+  await act(async () => fireEvent.click(screen.getByText("Load")));
+  expect(screen.getByTestId("submissionNoLlmAccess").textContent).toBe("true");
+  await act(async () => fireEvent.click(screen.getByText("Resend")));
+  await act(async () => fireEvent.click(screen.getByText("Retry first unsent")));
+  expect(fixture.sent.filter(message => message.type === "start_turn")).toHaveLength(0);
 });
 
 it("retries the original wire request after reload even when the transcript advances", async () => {
