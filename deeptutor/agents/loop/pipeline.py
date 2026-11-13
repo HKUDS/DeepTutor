@@ -564,17 +564,7 @@ class AgenticLoopPipeline:
             snapshots[name] = (
                 f"[Runtime context: {name}]\nThis section is now empty; earlier values no longer apply."
             )
-        # A changed runtime section replaces its old version in this request.
-        # The archive remains intact; actual dialogue/tool evidence is untouched.
-        messages = [
-            item
-            for item in messages
-            if not (
-                item.get("role") == "user"
-                and isinstance(item.get("_context_snapshot"), str)
-                and snapshots.get(item["_context_snapshot"]) != item.get("content")
-            )
-        ]
+        # Already-sent snapshots belong to the cache prefix; append their updates.
         self._model_turn_start = len(messages)
         for name, snapshot in snapshots.items():
             if previous_snapshots.get(name) != snapshot:

@@ -560,24 +560,17 @@ async def test_persisted_tool_turn_extends_request_prefix_after_resume(monkeypat
     await _run(pipeline(), second)
     previous, resumed = client.calls[1], client.calls[2]
     assert previous["tools"] == resumed["tools"]
-    # The fresh workspace slot replaces its obsolete runtime snapshot while
-    # durable dialogue, reasoning, and tool protocol remain an exact prefix.
-    retained = [
-        message
-        for message in previous["messages"]
-        if not str(message.get("content", "")).startswith("[Runtime context: workspace]")
-    ]
-    assert resumed["messages"][: len(retained)] == retained
+    assert resumed["messages"][: len(previous["messages"])] == previous["messages"]
     assert "outputs/turn-1" not in resumed["messages"][0]["content"]
-    assert "outputs/turn-2" in resumed["messages"][-2]["content"]
-    assert resumed["messages"][-3]["reasoning_content"] == "private finish"
+    assert "outputs/turn-2" not in str(resumed["messages"])
+    assert resumed["messages"][-2]["reasoning_content"] == "private finish"
     assert all("_context_snapshot" not in m for m in resumed["messages"])
     updates = [
         m["_context_snapshot"]
         for m in second.runtime.model_turn["messages"]
         if "_context_snapshot" in m
     ]
-    assert updates == ["workspace"]
+    assert updates == []
 
 
 def test_runtime_sections_are_updated_and_cleared_independently(monkeypatch):
@@ -602,6 +595,7 @@ def test_runtime_sections_are_updated_and_cleared_independently(monkeypatch):
     assert cleared[-2]["_context_snapshot"] == "memory"
     assert "empty" in cleared[-2]["content"]
     assert cleared[-3]["content"] == "Hi"
+    assert cleared[: len(same) - 1] == same[:-1]
 
 
 def _contents(events: list[StreamEvent]) -> list[str]:
