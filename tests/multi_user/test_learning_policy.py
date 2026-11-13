@@ -4,7 +4,12 @@ from __future__ import annotations
 
 import pytest
 
-from deeptutor.multi_user.grants import normalize_grant, save_grant, validate_grant
+from deeptutor.multi_user.grants import (
+    LEARNING_CAPABILITIES,
+    normalize_grant,
+    save_grant,
+    validate_grant,
+)
 from deeptutor.multi_user.identity import set_preset
 from deeptutor.multi_user.learning_access import (
     allowed_reading_extensions,
@@ -56,6 +61,60 @@ def test_learning_policy_validation_rejects_unsafe_values(mu_isolated_root):
 
     with pytest.raises(ValueError, match="unsupported values"):
         validate_grant(grant)
+
+
+def test_mastery_path_is_a_grantable_learning_capability(mu_isolated_root):
+    """#2638: the mastery session mode is a valid grantable capability.
+
+    Without ``mastery_path`` in the vocabulary an admin can never hand a
+    learner the mode the mastery session page sends (``capability:
+    "mastery_path"``), so the learner composer fails with
+    "cannot use this mode". Adding it to the enum makes the grant valid.
+    """
+    assert "mastery_path" in LEARNING_CAPABILITIES
+
+    grant = _policy_grant()
+    grant["learning_policy"]["allowed_capabilities"] = [
+        "chat",
+        "immersive_reading",
+        "mastery_path",
+    ]
+    grant["learning_policy"]["default_capability"] = "chat"
+
+    error: ValueError | None = None
+    try:
+        validate_grant(normalize_grant("u_mastery", grant))
+    except ValueError as exc:  # pragma: no cover - exercised on the original code
+        error = exc
+    assert error is None, f"mastery_path must be a valid learning capability: {error}"
+
+
+def test_learner_granted_mastery_path_can_run_a_mastery_turn(mu_isolated_root, seed_user, as_user):
+    learner = _seed_learner(seed_user, "student")
+    grant = _policy_grant()
+    grant["learning_policy"]["allowed_capabilities"] = [
+        "chat",
+        "immersive_reading",
+        "mastery_path",
+    ]
+    grant["learning_policy"]["default_capability"] = "chat"
+
+    saved: dict | None = None
+    error: ValueError | None = None
+    try:
+        saved = save_grant(learner["id"], grant)
+    except ValueError as exc:  # pragma: no cover - exercised on the original code
+        error = exc
+    assert error is None, f"a mastery_path grant must validate: {error}"
+    assert saved is not None
+    assert "mastery_path" in saved["learning_policy"]["allowed_capabilities"]
+
+    with as_user(learner["id"], username="student"):
+        result = apply_learning_policy({"capability": "mastery_path"})
+
+    assert result["capability"] == "mastery_path"
+    assert result["tools"] == []
+    assert result["enabled_tools"] == []
 
 
 def test_apply_policy_keeps_allowed_modes_and_strips_the_turn_surface(
