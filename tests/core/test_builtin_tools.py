@@ -268,7 +268,10 @@ async def test_brainstorm_tool_passes_llm_arguments(monkeypatch: pytest.MonkeyPa
     assert "Test idea" in result.content
     assert captured["topic"] == "agent-native tutoring"
     assert captured["context"] == "Focus on fast ideation"
-    assert captured["model"] == "gpt-test"
+    # ``model`` is server-owned (issue #2610): the model may not choose which
+    # configured model a server-side LLM call uses, so its value is dropped
+    # before the implementation runs.
+    assert "model" not in captured
 
 
 @pytest.mark.asyncio
@@ -451,7 +454,12 @@ async def test_web_search_tool_wraps_sync_function(monkeypatch: pytest.MonkeyPat
 
     assert result.content == "web summary"
     assert captured["query"] == "latest benchmark"
-    assert captured["output_dir"] == "/tmp/out"
+    # The model-facing ``output_dir`` is server-owned (issue #2610): model
+    # output may not choose where results are written, so it is stripped
+    # before the service runs. Only the private augmentation channel
+    # (``_web_search_output_dir``, plain-assigned by the pipelines) carries it.
+    assert "output_dir" not in captured
+    assert "_web_search_output_dir" not in captured
     assert result.sources[0]["url"] == "https://example.com"
 
 
@@ -608,8 +616,14 @@ async def test_reason_tool_passes_llm_arguments(monkeypatch: pytest.MonkeyPatch)
     )
 
     assert result.content == "reasoned"
-    assert captured["model"] == "gpt-test"
     assert captured["context"] == "prior work"
+    # ``api_key`` / ``base_url`` / ``model`` are server-owned (issue #2610):
+    # model output may neither pick the endpoint a server-side call talks to
+    # nor spend a credential of its choosing, so all three are dropped before
+    # the implementation runs.
+    assert "model" not in captured
+    assert "api_key" not in captured
+    assert "base_url" not in captured
 
 
 @pytest.mark.asyncio

@@ -37,6 +37,46 @@ class _PromptHintsMixin:
         return load_prompt_hints(self.name, language=language)
 
 
+#: Tool arguments the model is never allowed to set. They decide where
+#: server-side calls send their data and which credentials they spend, so
+#: no tool schema declares them and model-supplied values are dropped before
+#: any tool implementation sees them (issue #2610). The only source for
+#: these values is the server-side configuration layer — the configured LLM
+#: profile for ``api_key``/``base_url``/``model``, the search settings for
+#: ``web_search``'s storage. Not applied globally: some tools legitimately
+#: expose same-named parameters to the model (``zotero_search`` asks the
+#: user for its own ``api_key`` and sends it to Zotero's API, not to an
+#: LLM endpoint), so stripping happens in the tools whose server-side
+#: calls these arguments could redirect.
+SERVER_OWNED_TOOL_ARG_NAMES = frozenset({"api_key", "base_url", "model", "output_dir"})
+
+
+def _drop_server_owned_args(args: dict[str, Any], *, tool_name: str = "") -> dict[str, Any]:
+    """Strip server-owned arguments from model-supplied tool-call kwargs.
+
+    Tool-call arguments are model output and therefore untrusted. A smuggled
+    ``api_key``/``base_url``/``model`` would point a server-side LLM call at
+    an endpoint and credential of the model's choosing, and an ``output_dir``
+    turns a search tool into an arbitrary-directory write. The keys in
+    :data:`SERVER_OWNED_TOOL_ARG_NAMES` are removed here so the underlying
+    implementations fall back to — and therefore resolve exclusively from —
+    the server-side configuration. Attempted smuggles are logged, names only,
+    never values.
+    """
+    if not isinstance(args, dict) or not args:
+        return args
+    dropped = SERVER_OWNED_TOOL_ARG_NAMES.intersection(args)
+    if not dropped:
+        return args
+    logger.warning(
+        "Dropped server-owned tool args %s%s — model output may not set "
+        "them; values resolve from server configuration only.",
+        sorted(dropped),
+        f" on '{tool_name}'" if tool_name else "",
+    )
+    return {key: value for key, value in args.items() if key not in SERVER_OWNED_TOOL_ARG_NAMES}
+
+
 class BrainstormTool(_PromptHintsMixin, BaseTool):
     def get_definition(self) -> ToolDefinition:
         return ToolDefinition(
@@ -60,12 +100,10 @@ class BrainstormTool(_PromptHintsMixin, BaseTool):
     async def execute(self, **kwargs: Any) -> ToolResult:
         from deeptutor.tools.brainstorm import brainstorm
 
+        kwargs = _drop_server_owned_args(kwargs, tool_name=self.name)
         result = await brainstorm(
             topic=kwargs.get("topic", ""),
             context=kwargs.get("context", ""),
-            api_key=kwargs.get("api_key"),
-            base_url=kwargs.get("base_url"),
-            model=kwargs.get("model"),
             max_tokens=kwargs.get("max_tokens"),
             temperature=kwargs.get("temperature"),
         )
@@ -650,15 +688,13 @@ class KnowledgeFrontierTool(_PromptHintsMixin, BaseTool):
         if manifest is None:
             raise ValueError(f"Knowledge base '{kb_name}' is not accessible.")
 
+        kwargs = _drop_server_owned_args(kwargs, tool_name=self.name)
         result = await discover_frontier(
             kb_name=kb_name,
             manifest=manifest,
             focus=kwargs.get("focus", ""),
             max_papers=kwargs.get("max_papers", 5),
             years_limit=kwargs.get("years_limit", 3),
-            api_key=kwargs.get("api_key"),
-            base_url=kwargs.get("base_url"),
-            model=kwargs.get("model"),
         )
         paper_sources = [
             {
@@ -690,15 +726,19 @@ class WebSearchTool(_PromptHintsMixin, BaseTool):
     async def execute(self, **kwargs: Any) -> ToolResult:
         from deeptutor.tools.web_search import web_search
 
+        kwargs = _drop_server_owned_args(kwargs, tool_name=self.name)
         query = kwargs.get("query", "")
-        output_dir = kwargs.get("output_dir")
         verbose = kwargs.get("verbose", False)
-        result = await asyncio.to_thread(
-            web_search,
-            query=query,
-            output_dir=output_dir,
-            verbose=verbose,
-        )
+        # Storage location arrives only on the server-owned private channel
+        # (pipeline augmentation plain-assigns it, so a model-supplied value
+        # cannot survive there either); the model-facing ``output_dir`` is
+        # stripped above (issue #2610). It is forwarded only when present, so
+        # a model-supplied value can never appear in the service call.
+        output_dir = kwargs.get("_web_search_output_dir")
+        service_kwargs: dict[str, Any] = {"query": query, "verbose": verbose}
+        if output_dir:
+            service_kwargs["output_dir"] = output_dir
+        result = await asyncio.to_thread(web_search, **service_kwargs)
 
         if isinstance(result, dict):
             answer = result.get("answer", "")
@@ -743,12 +783,10 @@ class ReasonTool(_PromptHintsMixin, BaseTool):
     async def execute(self, **kwargs: Any) -> ToolResult:
         from deeptutor.tools.reason import reason
 
+        kwargs = _drop_server_owned_args(kwargs, tool_name=self.name)
         result = await reason(
             query=kwargs.get("query", ""),
             context=kwargs.get("context", ""),
-            api_key=kwargs.get("api_key"),
-            base_url=kwargs.get("base_url"),
-            model=kwargs.get("model"),
             max_tokens=kwargs.get("max_tokens"),
             temperature=kwargs.get("temperature"),
         )

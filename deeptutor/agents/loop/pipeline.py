@@ -1494,7 +1494,11 @@ class AgenticLoopPipeline:
         elif tool_name == "web_search":
             kwargs.setdefault("query", context.user_message)
             if task_dir is not None:
-                kwargs.setdefault("output_dir", str(task_dir / "web_search"))
+                # Server-owned storage location on a private channel: plain
+                # assignment overwrites anything the model supplied, while
+                # ``_drop_server_owned_args`` strips the model-facing
+                # ``output_dir`` before the tool runs (issue #2610).
+                kwargs["_web_search_output_dir"] = str(task_dir / "web_search")
         elif tool_name == "save_favorite":
             kwargs["conversation_history"] = list(context.conversation_history or [])
             kwargs["current_user_message"] = context.user_message or ""
