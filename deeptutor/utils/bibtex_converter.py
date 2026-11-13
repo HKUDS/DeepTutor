@@ -204,7 +204,10 @@ def _read_fields(body: str) -> dict[str, str]:
                     raise ValueError("empty BibTeX value")
                 value = body[index:end]
                 index = end
-            parts.append(value.strip())
+            # Whitespace inside a quoted/braced fragment belongs to the value:
+            # trimming before concatenation would turn "Jane " # "Doe" into
+            # "JaneDoe". Display formatting normalizes the completed value.
+            parts.append(value)
             index = _skip_whitespace(body, index)
             if index < len(body) and body[index] == "#":
                 index = _skip_whitespace(body, index + 1)
