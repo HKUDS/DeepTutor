@@ -111,6 +111,68 @@ def test_new_draft_regions_keep_the_generation_limit() -> None:
     assert len(modules[0].knowledge_points) == 7
 
 
+def test_strict_model_routes_still_raise_on_the_generation_limit() -> None:
+    points = [(f"kp{index}", f"Objective {index}") for index in range(8)]
+    with pytest.raises(TopicGenerationError, match="at most 7 waypoints"):
+        materialize_modules("topic", [_module("draft", *points)], strict=True)
+
+
+def test_caller_authored_confirm_accepts_more_than_seven_waypoints() -> None:
+    """The #2636 import shape: a caller-authored region is not model output.
+
+    Confirm callers lift the per-region waypoint cap, so an externally-authored
+    module with ten knowledge points is admitted whole instead of rejected.
+    """
+    points = [(f"kp{index}", f"Objective {index}") for index in range(10)]
+    modules = materialize_modules(
+        "topic",
+        [_module("topic_m0", *points)],
+        strict=True,
+        objective_cap=None,
+    )
+    assert len(modules[0].knowledge_points) == 10
+
+
+def test_confirm_payload_keeps_a_whole_curriculum_module() -> None:
+    """Real curricula run ~24 waypoints per region; none of them may be lost."""
+    points = [(f"kp{index}", f"Objective {index}") for index in range(24)]
+    modules = materialize_modules(
+        "topic",
+        [_module("topic_m0", *points)],
+        strict=True,
+        objective_cap=None,
+    )
+    kept = modules[0].knowledge_points
+    assert len(kept) == 24
+    assert [point.name for point in kept] == [name for _, name in points]
+
+
+def test_edited_map_grows_a_region_beyond_the_generation_limit() -> None:
+    """With the cap lifted, an edit that adds waypoints loses nothing.
+
+    The confirm-caller capability lives on ``materialize_modules``; today only
+    the create path passes ``objective_cap=None`` — map edits keep the
+    generation-time growth cap (see the API-level legacy budget tests).
+    """
+    stored = [(f"kp{index}", f"Objective {index}") for index in range(7)]
+    added = stored + [("kp7", "Objective 7"), ("kp8", "Objective 8")]
+    modules = materialize_modules(
+        "topic",
+        [_module("topic_m0", *added)],
+        strict=True,
+        existing_module_ids={"topic_m0"},
+        existing_objective_ids={point_id for point_id, _ in stored},
+        existing_objective_counts={"topic_m0": 7},
+        objective_cap=None,
+    )
+    kept = modules[0].knowledge_points
+    # The stored waypoints keep their identity; the two additions arrive with
+    # fresh durable ids rather than the caller's unproven ones.
+    assert [point.id for point in kept[:7]] == [point_id for point_id, _ in stored]
+    assert len(kept) == 9
+    assert [point.name for point in kept[7:]] == ["Objective 7", "Objective 8"]
+
+
 def test_new_objective_never_reuses_an_existing_or_deleted_position_id() -> None:
     raw = [
         _module(
