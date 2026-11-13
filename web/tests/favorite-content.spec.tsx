@@ -99,3 +99,48 @@ it('keeps unknown favorites readable and source navigation available while colla
   fireEvent.click(screen.getByRole('button', { name: /Saved original/ }))
   expect(screen.queryByText('Original text')).not.toBeInTheDocument()
 })
+
+it.each([
+  ['backtick info', '```text', '```javascript', '```', '\n'],
+  ['tilde info', '~~~text', '~~~javascript', '~~~', '\n'],
+  ['spaced info', '```text', '``` \tjavascript', '``` \t', '\n'],
+  ['nonbreaking space', '```text', '```\u00a0', '```', '\n'],
+  ['indented fence', '   ```text', '  ```javascript', '   ```\t ', '\n'],
+  ['longer closing fence', '````text', '````javascript', '````` \t', '\n'],
+  ['shorter apparent fence', '````text', '```', '````', '\n'],
+  ['different marker', '```text', '~~~', '```', '\n'],
+  ['longer tilde closing fence', '~~~~text', '~~~', '~~~~~\t', '\n'],
+  ['CRLF closing fence', '```text', '```javascript', '``` \t', '\r\n'],
+])(
+  'keeps fenced favorite content intact with %s',
+  (_label, opening, apparent, closing, newline) => {
+    const prefix = [
+      '## User',
+      'Question',
+      opening,
+      apparent,
+      '## Assistant',
+      '## Answer',
+      '### Inside code',
+      'still code',
+      closing,
+      '## Assistant',
+      'Outside',
+      '',
+    ].join(newline)
+    const answer = `## Answer${newline}Real`
+    const markdown = prefix + answer
+    const turns = favoriteTranscript(markdown)
+    expect(turns).toHaveLength(2)
+    expect(turns[0].content.replace(/\r\n/g, '\n')).toContain(
+      '## Assistant\n## Answer\n### Inside code\nstill code'
+    )
+    expect(turns[1].content.replace(/\r\n/g, '\n')).toBe('Outside\n## Answer\nReal\n')
+    expect(favoriteHeadings(markdown).map(heading => heading.trim())).toEqual([
+      'User',
+      'Assistant',
+      'Answer',
+    ])
+    expect(favoriteAnswer(markdown)).toEqual({ question: prefix, answer })
+  }
+)
