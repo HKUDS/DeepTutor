@@ -179,3 +179,39 @@ def test_learner_preset_falls_back_to_the_conservative_policy(mu_isolated_root, 
         "material_ids": [],
         "extensions": [],
     }
+
+
+def test_mastery_vocabulary_is_grantable_and_admitted(mu_isolated_root, seed_user, as_user):
+    """#2638: the mastery surface and capability must be expressible in a
+    learner grant, and a granted mastery_path turn must pass admission."""
+    learner = _seed_learner(seed_user, "student")
+    save_grant(
+        learner["id"],
+        {
+            "enabled_tools": [],
+            "mcp_tools": [],
+            "cli_apps": [],
+            "exec_enabled": False,
+            "learning_policy": {
+                "age_band": "9-12",
+                "locked_persona": "teacher",
+                "allowed_capabilities": [
+                    "chat",
+                    "immersive_reading",
+                    "mastery_path",
+                ],
+                "default_capability": "chat",
+                "allowed_surfaces": ["chat", "reading", "learning"],
+                "reading": {
+                    "allow_upload": False,
+                    "material_ids": [],
+                    "extensions": [],
+                },
+            },
+        },
+    )
+
+    with as_user(learner["id"], username="student"):
+        assert_learning_surface("learning")
+        payload = apply_learning_policy({"capability": "mastery_path"})
+        assert payload["capability"] == "mastery_path"
