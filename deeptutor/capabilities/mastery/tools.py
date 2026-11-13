@@ -554,6 +554,14 @@ def _profile_status(
     }
 
 
+def _open_partial(progress: LearningProgress, kp_id: str, question_id: str) -> bool:
+    """Whether *question_id* is a live partial attempt on *kp_id* awaiting completion."""
+    attempts = [a for a in progress.quiz_attempts if a.knowledge_point_id == kp_id and not a.voided]
+    return any(
+        a.question_id == question_id and a.result == "partial" and a.independent for a in attempts
+    ) and not any(a.completes_question_id == question_id for a in attempts)
+
+
 def _review_scope_refusal(
     kwargs: dict[str, Any],
     progress: LearningProgress | None,
@@ -1215,6 +1223,20 @@ class MasteryQuizTool(BaseTool):
             ],
         )
         leaf_parameters = {p.name: p.to_schema() for p in definition.parameters}
+        definition.parameters.append(
+            ToolParameter(
+                name="completes_question_id",
+                type="string",
+                required=False,
+                description=(
+                    "Only when this card asks for the part a PARTIAL grade reported "
+                    "missing: the question_id of that partial attempt (from the "
+                    "mastery_grade result). The answer corrects that assessment and "
+                    "is practice, not new independent evidence. Omit it for a fresh "
+                    "question, which is a new independent attempt."
+                ),
+            )
+        )
         from deeptutor.learning.visual_practice import visual_request_schema
 
         leaf_parameters["visual"].update(visual_request_schema())
@@ -1595,6 +1617,15 @@ class MasteryQuizTool(BaseTool):
                 content=f"Unknown objective {kp_id!r}; call mastery_status for valid ids.",
                 success=False,
             )
+        completes_id = str(kwargs.get("completes_question_id") or "").strip()
+        if completes_id and not _open_partial(progress, kp_id, completes_id):
+            return ToolResult(
+                content=(
+                    "completes_question_id must name a partial attempt on this objective "
+                    "that has not been completed yet; omit it for a fresh question."
+                ),
+                success=False,
+            )
         visual_context: dict[str, Any] = {}
         accepted_answers: list[str] = []
         # A visual that names no source is a forced placeholder; the card is text-only.
@@ -1636,6 +1667,7 @@ class MasteryQuizTool(BaseTool):
             difficulty=_normalize_difficulty(kwargs.get("difficulty")),
             visual_context=visual_context,
             accepted_answers=accepted_answers,
+            completes_question_id=completes_id,
         )
         return pending, echoed_options, kp
 
@@ -1838,6 +1870,19 @@ class MasteryGradeTool(BaseTool):
                 "going on the same objective — teach the gap this attempt "
                 "exposed, and when you pose the next question with "
                 "mastery_quiz put that call last, since it ends the turn."
+            )
+        graded_result = str(interaction.result.get("result") or "")
+        if graded_result == "partial" and interaction.result.get("independent", True):
+            next_move += (
+                " This answer was PARTIAL: name the missing part. To ask only for that part, "
+                "call mastery_quiz with completes_question_id set to this question_id; its "
+                "answer corrects this assessment and is practice, not new independent "
+                "evidence. A fresh question is a new independent attempt instead."
+            )
+        elif pending.completes_question_id and not mastered:
+            next_move += (
+                " This answer only completed an earlier partial one, so it did not count as "
+                "independent evidence: pose a fresh question to demonstrate the objective."
             )
         if interaction.result.get("result") == "ungraded":
             next_move = "going with source clarification or an explanation. This was ungraded, created no negative evidence and did not change mastery. Do not turn uncertainty into a wrong answer."

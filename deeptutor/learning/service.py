@@ -112,7 +112,11 @@ def _apply_source_assistance(progress: LearningProgress, question: PendingQuesti
 
 
 def _question_independent(question: PendingQuestion) -> bool:
-    return not (question.assistance_used or question.visual_context.get("hints_used"))
+    return not (
+        question.assistance_used
+        or question.completes_question_id
+        or question.visual_context.get("hints_used")
+    )
 
 
 def _objective_fingerprint(kp: KnowledgePoint) -> tuple[str, str]:
@@ -521,12 +525,9 @@ class LearningService:
 
     def calculate_mastery(self, progress: LearningProgress, kp_id: str) -> float:
         """Mastery 0..1 for *kp_id* from its attempt history (policy in mastery.py)."""
-        correctness = [
-            0.5 if a.result == "partial" else a.is_correct
-            for a in progress.quiz_attempts
-            if a.knowledge_point_id == kp_id and not a.voided and a.independent
-        ]
-        return compute_mastery(correctness)
+        from deeptutor.learning.policy import independent_outcomes
+
+        return compute_mastery(independent_outcomes(progress, kp_id))
 
     def update_mastery(self, progress: LearningProgress, kp_id: str, level: float) -> None:
         progress.mastery_levels[kp_id] = level
@@ -588,6 +589,7 @@ class LearningService:
         visual_context: dict[str, Any] | None = None,
         assistance_used: bool = False,
         verdict: dict[str, Any] | None = None,
+        completes_question_id: str = "",
     ) -> bool:
         """Mutate one aggregate with a grade without performing I/O."""
         is_correct = (
@@ -617,8 +619,11 @@ class LearningService:
                 error_type=None
                 if is_correct or verdict and verdict["result"] == "partial"
                 else classify_error(user_answer),
-                independent=not assistance_used and not (visual_context or {}).get("hints_used"),
+                independent=not assistance_used
+                and not completes_question_id
+                and not (visual_context or {}).get("hints_used"),
                 visual_context=visual_context or {},
+                completes_question_id=completes_question_id,
             ),
         )
         evidence = None
@@ -650,21 +655,14 @@ class LearningService:
                 evidence.feedback = verdict.get("feedback", "")
                 if evidence.hints_used and is_correct:
                     evidence.quality = min(evidence.quality, 0.6)
-            prior_level = progress.mastery_levels.get(knowledge_point_id)
+            # The recent quality always follows the evidence. A pass that
+            # independent evidence already earned is kept by the policy
+            # (``gate_was_cleared``), so a later partial or wrong review only
+            # moves the schedule below instead of reopening the gate (#2458).
             self.update_mastery(
                 progress, knowledge_point_id, self.calculate_mastery(progress, knowledge_point_id)
             )
             kp_type = progress.knowledge_types.get(knowledge_point_id)
-            if not is_correct and prior_level is not None and kp_type is not None:
-                from deeptutor.learning.policy import gate_threshold
-
-                if prior_level >= gate_threshold(kp_type):
-                    # A failed review repairs the spaced-repetition decay
-                    # model (the scheduler still shortens the next interval
-                    # below); it must not demote an objective the learner
-                    # already passed — review exists to refresh memory, not
-                    # to re-run the mastery gate (#2458).
-                    self.update_mastery(progress, knowledge_point_id, prior_level)
             if kp_type is not None and scheduler is not None:
                 state = progress.repetition_states.get(
                     knowledge_point_id
@@ -1685,6 +1683,7 @@ class LearningService:
                 visual_context=pending.visual_context,
                 assistance_used=pending.assistance_used,
                 verdict=verdict,
+                completes_question_id=pending.completes_question_id,
             )
         )
         if verdict:

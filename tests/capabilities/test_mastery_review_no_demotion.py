@@ -2,7 +2,13 @@
 
 import time
 
-from deeptutor.learning.models import KnowledgeType, LearningProgress
+from deeptutor.learning.models import (
+    KnowledgePoint,
+    KnowledgeType,
+    LearningModule,
+    LearningProgress,
+)
+from deeptutor.learning.policy import is_assessed_mastered
 from deeptutor.learning.scheduler import SpacedRepetitionScheduler
 from deeptutor.learning.service import LearningService
 from deeptutor.learning.storage import LearningStore
@@ -13,6 +19,17 @@ SEVEN_DAYS_AGO = time.time() - 7 * 86400
 def _progress_with_knowledge(kinds: dict[str, KnowledgeType]) -> LearningProgress:
     progress = LearningProgress(book_id="synthetic")
     progress.knowledge_types.update(kinds)
+    progress.modules = [
+        LearningModule(
+            id="m",
+            name="Module",
+            order=0,
+            knowledge_points=[
+                KnowledgePoint(id=kp, name=kp, type=kind, module_id="m")
+                for kp, kind in kinds.items()
+            ],
+        )
+    ]
     return progress
 
 
@@ -35,13 +52,15 @@ def test_failed_review_does_not_demote_mastered_objective(tmp_path):
     service = LearningService(LearningStore(tmp_path))
     for _ in range(5):
         assert _grade(service, progress, "kp", True)
-    assert progress.mastery_levels["kp"] >= 0.9
+    assert is_assessed_mastered(progress, progress.modules[0].knowledge_points[0])
     state = progress.repetition_states["kp"]
     state.last_review_at = SEVEN_DAYS_AGO
     review_count = state.review_count
 
     assert not _grade(service, progress, "kp", False)
-    assert progress.mastery_levels["kp"] >= 0.9
+    # Recent quality reports the miss; the pass already earned is kept.
+    assert progress.mastery_levels["kp"] < 0.9
+    assert is_assessed_mastered(progress, progress.modules[0].knowledge_points[0])
     assert progress.repetition_states["kp"].review_count > review_count
 
 
