@@ -555,11 +555,15 @@ def _profile_status(
 
 
 def _open_partial(progress: LearningProgress, kp_id: str, question_id: str) -> bool:
-    """Whether *question_id* is a live partial attempt on *kp_id* awaiting completion."""
+    """Whether *question_id* is the latest attempt on *kp_id* and a partial one."""
     attempts = [a for a in progress.quiz_attempts if a.knowledge_point_id == kp_id and not a.voided]
-    return any(
-        a.question_id == question_id and a.result == "partial" and a.independent for a in attempts
-    ) and not any(a.completes_question_id == question_id for a in attempts)
+    # Only the objective's most recent attempt can be completed: a card posed
+    # after fresh attempts is a new question, not the missing part.
+    return bool(attempts) and (
+        attempts[-1].question_id == question_id
+        and attempts[-1].result == "partial"
+        and attempts[-1].independent
+    )
 
 
 def _review_scope_refusal(
@@ -1358,6 +1362,13 @@ class MasteryQuizTool(BaseTool):
         # An empty optional group carries no contracts; use the single question.
         if isinstance(raw_questions, list) and not raw_questions:
             raw_questions = None
+        if kwargs.get("completes_question_id") and (
+            raw_questions is not None or pending_action != "retain"
+        ):
+            return ToolResult(
+                content="completes_question_id applies to one new single question only.",
+                success=False,
+            )
         if pending_action == "resume":
             pending, echoed_options = None, False
         elif raw_questions is None:
@@ -1622,7 +1633,7 @@ class MasteryQuizTool(BaseTool):
             return ToolResult(
                 content=(
                     "completes_question_id must name a partial attempt on this objective "
-                    "that has not been completed yet; omit it for a fresh question."
+                    "that is the objective's latest attempt; omit it for a fresh question."
                 ),
                 success=False,
             )
@@ -1879,7 +1890,7 @@ class MasteryGradeTool(BaseTool):
                 "answer corrects this assessment and is practice, not new independent "
                 "evidence. A fresh question is a new independent attempt instead."
             )
-        elif pending.completes_question_id and not mastered:
+        elif pending.completes_question_id and is_correct and not mastered:
             next_move += (
                 " This answer only completed an earlier partial one, so it did not count as "
                 "independent evidence: pose a fresh question to demonstrate the objective."

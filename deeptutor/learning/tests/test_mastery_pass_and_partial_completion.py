@@ -309,7 +309,7 @@ async def test_a_fresh_question_after_a_partial_is_independent_evidence(path_id)
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("target", ["unknown", "correct", "second"])
+@pytest.mark.parametrize("target", ["unknown", "correct", "second", "stale"])
 async def test_completion_link_is_refused_unless_it_names_an_open_partial(path_id, target):
     kp_id = await _build(path_id)
     await _ask(path_id, kp_id)
@@ -318,6 +318,10 @@ async def test_completion_link_is_refused_unless_it_names_an_open_partial(path_i
     if target == "correct":
         await _ask(path_id, kp_id, expected="9")
         question_id = (await _answer(path_id, "9"))["question_id"]
+    elif target == "stale":
+        # A fresh attempt came in between: the old partial is no longer "the missing part".
+        await _ask(path_id, kp_id, expected="9")
+        await _answer(path_id, "9")
     elif target == "second":
         # A completion already exists: the same partial cannot be completed twice.
         await _ask(path_id, kp_id, expected="7", completes_question_id=question_id)
@@ -327,3 +331,54 @@ async def test_completion_link_is_refused_unless_it_names_an_open_partial(path_i
 
     assert refused.success is False
     assert "completes_question_id" in refused.content
+
+
+@pytest.mark.asyncio
+async def test_a_wrong_or_partial_completion_is_still_independent_evidence(path_id):
+    """The completion label must never hide a failure from the gate."""
+    kp_id = await _build(path_id)
+    await _ask(path_id, kp_id)
+    first = await _answer(path_id, "PARTIAL: 42 but no annual comparison")
+    await _ask(path_id, kp_id, expected="7", completes_question_id=first["question_id"])
+    wrong = await _answer(path_id, "nonsense")
+
+    assert wrong["is_correct"] is False
+    assert wrong["result"]["independent"] is True
+    attempts = _load(path_id).quiz_attempts
+    assert [a.independent for a in attempts] == [True, True]
+
+
+@pytest.mark.asyncio
+async def test_a_correct_completion_is_assisted_evidence_for_every_gate(path_id):
+    """Visual-task achievements read ``hints_used``; a completion must not open them."""
+    kp_id = await _build(path_id)
+    await _ask(path_id, kp_id)
+    first = await _answer(path_id, "PARTIAL: 42 but no annual comparison")
+    await _ask(path_id, kp_id, expected="7", completes_question_id=first["question_id"])
+    await _answer(path_id, "7")
+
+    assert _load(path_id).learning_evidence[-1].hints_used == 1
+
+
+@pytest.mark.asyncio
+async def test_completion_is_refused_for_question_groups(path_id):
+    from deeptutor.tools.mastery_tool import MasteryQuizTool
+
+    kp_id = await _build(path_id)
+    await _ask(path_id, kp_id)
+    first = await _answer(path_id, "PARTIAL: 42 but no annual comparison")
+    leaf = {"knowledge_point_id": kp_id, "expected_answer": "1"}
+    group = await MasteryQuizTool().execute(
+        _mastery_path_id=path_id,
+        completes_question_id=first["question_id"],
+        questions=[{**leaf, "question": "first part"}, {**leaf, "question": "second part"}],
+    )
+    leaf_label = await MasteryQuizTool().execute(
+        _mastery_path_id=path_id,
+        questions=[
+            {**leaf, "question": "first part", "completes_question_id": first["question_id"]},
+            {**leaf, "question": "second part"},
+        ],
+    )
+
+    assert group.success is False and leaf_label.success is False

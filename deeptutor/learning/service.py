@@ -111,10 +111,16 @@ def _apply_source_assistance(progress: LearningProgress, question: PendingQuesti
         question.assistance_used = True
 
 
-def _question_independent(question: PendingQuestion) -> bool:
+def _question_independent(question: PendingQuestion, *, correct: bool = False) -> bool:
+    """Whether the answer counts as independent evidence.
+
+    A *correct* completion of an earlier partial answer is practice that
+    repairs that assessment. A wrong or partial one is real evidence, so a
+    completion label can never hide a failure from the gate.
+    """
     return not (
         question.assistance_used
-        or question.completes_question_id
+        or (question.completes_question_id and correct)
         or question.visual_context.get("hints_used")
     )
 
@@ -597,6 +603,8 @@ class LearningService:
             if verdict
             else bool(expected_answer) and grade_answer(user_answer, expected_answer, question_type)
         )
+        completion = bool(completes_question_id) and is_correct
+        assistance_used = assistance_used or completion
         # Capture the active retry before recording this answer graduates it.
         # Past retries on this or another question must not weaken later reviews.
         retrying = any(
@@ -619,9 +627,7 @@ class LearningService:
                 error_type=None
                 if is_correct or verdict and verdict["result"] == "partial"
                 else classify_error(user_answer),
-                independent=not assistance_used
-                and not completes_question_id
-                and not (visual_context or {}).get("hints_used"),
+                independent=not assistance_used and not (visual_context or {}).get("hints_used"),
                 visual_context=visual_context or {},
                 completes_question_id=completes_question_id,
             ),
@@ -1278,7 +1284,7 @@ class LearningService:
                 "is_correct": is_correct,
                 "knowledge_point_id": pending.knowledge_point_id,
                 **receipt,
-                "independent": _question_independent(pending),
+                "independent": _question_independent(pending, correct=bool(is_correct)),
             }
             if pending.visual_context:
                 interaction.result.update(
@@ -1286,7 +1292,7 @@ class LearningService:
                         "result": visual_result,
                         "diagnosis": visual_diagnosis,
                         "visual_context": pending.visual_context,
-                        "independent": _question_independent(pending),
+                        "independent": _question_independent(pending, correct=bool(is_correct)),
                     }
                 )
             tx.put_interaction(interaction)
