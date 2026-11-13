@@ -60,7 +60,7 @@ class ConfigManager:
                 return {}
 
             current_mtime = self.config_path.stat().st_mtime
-            if not self._config_cache or force_reload or current_mtime > self._last_mtime:
+            if not self._config_cache or force_reload or current_mtime != self._last_mtime:
                 self._config_cache = self._read_yaml()
                 self._last_mtime = current_mtime
 
