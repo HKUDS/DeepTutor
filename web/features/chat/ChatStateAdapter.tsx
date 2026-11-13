@@ -259,6 +259,9 @@ export interface ChatState {
   submissionNeedsReview: boolean;
   /** No browser storage accepted even the text. Copy before leaving this tab. */
   submissionNotSaved: boolean;
+  /** The server's own rejection text for the flagged submission, when it
+   *  provided one (#2637). Falls back to the transport copy in the banner. */
+  submissionErrorMessage: string;
   /** Messages sent while a turn ran, oldest first. */
   queuedMessages: QueuedMessage[];
 }
@@ -383,6 +386,9 @@ export interface MessageItem {
   failedSubmissionNeedsReview?: boolean;
   failedSubmissionNotSaved?: boolean;
   failedSubmissionId?: string;
+  /** The server's own rejection text for this submission (start_turn_rejected
+   *  carries a reason; the banner renders it instead of a connection claim). */
+  failedSubmissionMessage?: string;
   /** A backend failure with a saved user row and no assistant reply (#1570). */
   orphanedFailedTurn?: OrphanedFailedTurn;
 }
@@ -572,6 +578,7 @@ function createSessionEntry(
     selectedBranches: {},
     lastTurnFailed: false,
     submissionFailed: false,
+    submissionErrorMessage: "",
     submissionNeedsReview: false,
     submissionNotSaved: false,
     queuedMessages: [],
@@ -1229,6 +1236,12 @@ function reduce(state: ProviderState, action: Action): ProviderState {
           messages[messages.length - 1] = {
             ...candidate,
             failedSubmission: true,
+            // Admission rejections carry the server's own explanation
+            // (#2637): the banner shows it instead of the generic
+            // connection copy, which is for transport failures only.
+            ...(action.errorMessage
+              ? { failedSubmissionMessage: action.errorMessage }
+              : {}),
           };
           return {
             ...state,
@@ -2462,6 +2475,9 @@ export function ChatStateAdapterProvider({
           status: status as SessionRuntimeStatus,
           turnId: event.turn_id || null,
           submissionFailed: submissionRejected,
+          // The server's rejection text belongs on the flagged row (#2637),
+          // not only in a 10-second toast.
+          errorMessage: submissionRejected ? event.content : undefined,
         });
       }
     },
@@ -3813,6 +3829,12 @@ export function ChatStateAdapterProvider({
       submissionNotSaved: (() => {
         const tail = current.messages[current.messages.length - 1];
         return tail?.role === "user" && tail.failedSubmissionNotSaved === true;
+      })(),
+      submissionErrorMessage: (() => {
+        const tail = current.messages[current.messages.length - 1];
+        return tail?.role === "user" && tail.failedSubmissionMessage
+          ? tail.failedSubmissionMessage
+          : "";
       })(),
     };
   }, [state]);
