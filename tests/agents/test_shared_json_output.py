@@ -78,8 +78,16 @@ def test_extract_json_object_preserves_fenced_example_inside_valid_json() -> Non
         '<think>{"draft": true}</think>',
         '<think>```json\n{"draft": true}\n```</think>Not a JSON answer',
         '<think>{"draft": true}</think>{"value": broken}',
+        '<think>Still drafting {"draft": true}',
+        '<THINK>Draft:\n```json\n{"draft": true}\n```',
     ],
-    ids=["reasoning-only", "non-json-answer", "invalid-json-answer"],
+    ids=[
+        "reasoning-only",
+        "non-json-answer",
+        "invalid-json-answer",
+        "unfinished",
+        "unfinished-fenced",
+    ],
 )
 def test_extract_json_object_does_not_fall_back_to_reasoning(text: str) -> None:
     with pytest.raises(json.JSONDecodeError, match="No JSON object found"):
