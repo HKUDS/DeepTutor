@@ -62,6 +62,7 @@ class FileTypeRouter:
         ".log",
         ".md",
         ".markdown",
+        ".mdx",
         ".rst",
         ".asciidoc",
         # Data / config
