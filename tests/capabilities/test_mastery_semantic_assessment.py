@@ -35,6 +35,109 @@ async def test_qualitative_bank_preserves_typed_result(monkeypatch, result, qual
     assert captured[0].quality == quality
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "reference",
+    ["A complete explanation covers capture, conversion and storage.", ""],
+)
+async def test_qualitative_bank_persists_reference_answer(monkeypatch, reference):
+    """The bank entry must carry the scoring step's produced expected answer.
+
+    Written practice is self-assessed, so the reference is the baseline the
+    learner compares their answer against; an empty reference leaves the
+    practice page with nothing to show (HKUDS/DeepTutor#2658).
+    """
+    from deeptutor.capabilities.mastery.tools import _sync_qualitative_to_question_bank
+
+    captured = []
+
+    async def record(value):
+        captured.append(value)
+
+    monkeypatch.setattr("deeptutor.learning.assessment.record_assessment", record)
+    await _sync_qualitative_to_question_bank(
+        path_id="p",
+        session_id="s",
+        turn_id="t",
+        knowledge_point_id="kp",
+        knowledge_point_name="Explain",
+        passed=True,
+        evidence="Actual learner reply",
+        reference_answer=reference,
+        result="correct",
+        quality=1.0,
+    )
+    assert captured[0].correct_answer == reference
+    assert captured[0].question_type == "written"
+
+
+@pytest.mark.asyncio
+async def test_assess_persists_judge_feedback_as_bank_reference(service, monkeypatch):
+    """mastery_assess routes the judge receipt's feedback into correct_answer."""
+    from deeptutor.capabilities.mastery import tools
+    from deeptutor.learning import semantic_assessment as semantic
+    from deeptutor.learning.models import KnowledgeType
+
+    def concept(tx):
+        tx.progress.modules[0].knowledge_points[0].type = KnowledgeType.CONCEPT
+        tx.touch()
+
+    service.store.mutate("p", concept)
+
+    async def judge(config, items):
+        return {
+            "kp1": semantic.Verdict(
+                result="correct",
+                confidence=0.99,
+                feedback="A complete explanation says alpha is the first letter.",
+            )
+        }
+
+    monkeypatch.setattr(semantic, "judge_answers", judge)
+    monkeypatch.setattr(tools, "_new_service", lambda: service)
+    captured = []
+
+    async def record(value):
+        captured.append(value)
+
+    monkeypatch.setattr("deeptutor.learning.assessment.record_assessment", record)
+    result = await tools.MasteryAssessTool().execute(
+        _mastery_path_id="p",
+        knowledge_point_id="kp1",
+        _session_id="session-1",
+        _turn_id="turn-1",
+        _learner_message="alpha is the first letter",
+    )
+    assert result.success
+    assert captured[0].question_type == "written"
+    assert captured[0].user_answer == "alpha is the first letter"
+    assert captured[0].correct_answer == "A complete explanation says alpha is the first letter."
+
+
+@pytest.mark.asyncio
+async def test_quiz_bank_still_persists_expected_answer(monkeypatch):
+    """The quiz sync keeps saving the registered answer key (no regression)."""
+    from deeptutor.capabilities.mastery.tools import _sync_mastery_attempt_to_question_bank
+
+    captured = []
+
+    async def record(value):
+        captured.append(value)
+
+    monkeypatch.setattr("deeptutor.learning.assessment.record_assessment", record)
+    await _sync_mastery_attempt_to_question_bank(
+        path_id="p",
+        session_id="s",
+        turn_id="t",
+        pending=leaf(),
+        user_answer="alpha",
+        is_correct=True,
+        result="correct",
+    )
+    assert captured[0].correct_answer == "alpha"
+    assert captured[0].question_type == "short_answer"
+
+
 @pytest.mark.parametrize("grouped", [False, True])
 def test_loop_seed_preserves_partial_and_clarification_receipts(grouped):
     from deeptutor.capabilities.mastery.loop import MasteryLoopCapability
