@@ -84,6 +84,10 @@ class LessonWriterAgent(BaseAgent):
         user = template.format(user_input=user_input.strip(), history=history.strip() or "-")
         self._messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
 
+    def share_conversation(self, other: "LessonWriterAgent") -> None:
+        """Use ``other``'s conversation (same list), so either agent can write the next draft."""
+        self._messages = other._messages
+
     def add_feedback(self, *, previous: str, stage: str, errors: list[str]) -> None:
         """Keep the failed reply in the conversation and ask for a fix."""
         template = self.get_prompt("retry_template") or "{stage}\n{errors}"

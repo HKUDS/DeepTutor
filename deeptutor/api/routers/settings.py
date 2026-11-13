@@ -18,7 +18,7 @@ from typing import Any, List, Literal, Optional
 
 from fastapi import APIRouter, HTTPException, Query, Request, status
 from fastapi.responses import Response, StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +72,7 @@ from deeptutor.services.settings.interface_settings import (
 from deeptutor.services.settings.interface_settings import (
     UiLanguage,
     atomic_update,
+    resolve_display_settings,
     resolve_languages,
     sanitize_enabled_tools,
 )
@@ -116,6 +117,8 @@ ResponseLanguage = Literal[
     "pl",
     "uk",
     "ms",
+    "vi",
+    "tr",
 ]
 
 
@@ -176,7 +179,22 @@ class SidebarNavOrder(BaseModel):
     learnResearch: List[str]
 
 
-class UISettings(BaseModel):
+class DisplaySettings(BaseModel):
+    """Account-scoped learning text preferences; no interface chrome settings."""
+
+    content_font_scale: Literal[90, 100, 110, 125, 150] = 100
+    content_line_spacing: Literal["compact", "normal", "relaxed"] = "normal"
+
+    @field_validator("content_font_scale", mode="before")
+    @classmethod
+    def validate_font_scale(cls, value: Any) -> Any:
+        """Reject coerced strings, floats and booleans as preference values."""
+        if type(value) is not int:
+            raise ValueError("content_font_scale must be an integer percentage")
+        return value
+
+
+class UISettings(DisplaySettings):
     theme: Literal["system", "light", "dark", "glass", "snow"] = "system"
     language: UiLanguage = "en"
     response_language: ResponseLanguage = "en"
@@ -187,11 +205,11 @@ class UISettings(BaseModel):
     code_block_wrap_long_lines: Optional[bool] = None
 
 
-class UISettingsUpdate(BaseModel):
+class UISettingsUpdate(DisplaySettings):
     """Partial UI settings for user-initiated PATCH/PUT updates via /api/settings/ui.
 
-    All fields have None defaults so `model_dump(exclude_unset=True)` naturally
-    excludes fields not provided in the frontend payload, while explicitly provided
+    `model_dump(exclude_unset=True)` excludes fields not provided in the
+    frontend payload, while explicitly provided
     defaults (e.g., `theme: "snow"`) still update the backend. This separates
     the semantic contract: `/ui` endpoint only merges whatever explicitly arrives
     from the frontend.
@@ -208,6 +226,9 @@ class UISettingsUpdate(BaseModel):
     code_block_theme: str | None = None
     code_block_show_line_numbers: bool | None = None
     code_block_wrap_long_lines: bool | None = None
+    # Optional by omission, never nullable: null is not a saved preference.
+    content_font_scale: Literal[90, 100, 110, 125, 150] = 100
+    content_line_spacing: Literal["compact", "normal", "relaxed"] = "normal"
 
 
 class VoiceAutoplayUpdate(BaseModel):
@@ -392,13 +413,17 @@ class ChatAttachmentSettingsUpdate(BaseModel):
 
 
 class ChatStarterSettingsUpdate(BaseModel):
-    """How much recent activity shapes the home screen's starting points.
+    """How much recent activity shapes the home screen's starting points, and
+    whether the chat composer offers a predicted next line.
 
     Bounds mirror ``starter_settings.TRACE_COUNT_RANGE`` so the API rejects
-    loudly what the file layer would silently clamp.
+    loudly what the file layer would silently clamp. ``ask_hint_enabled`` left
+    out (``None``) keeps the stored value, so a client that only knows
+    ``trace_count`` cannot switch the hint back on by accident.
     """
 
     trace_count: int = Field(ge=STARTER_TRACE_COUNT_RANGE[0], le=STARTER_TRACE_COUNT_RANGE[1])
+    ask_hint_enabled: Optional[bool] = None
 
 
 class MinerUSettingsUpdate(BaseModel):
@@ -546,7 +571,12 @@ def load_ui_settings() -> dict[str, Any]:
                 saved = json.load(handle)
                 # resolve_languages owns the legacy migration (a file predating
                 # the UI/response split inherits its one language into both).
-                merged = {**DEFAULT_UI_SETTINGS, **saved, **resolve_languages(saved)}
+                merged = {
+                    **DEFAULT_UI_SETTINGS,
+                    **saved,
+                    **resolve_languages(saved),
+                    **resolve_display_settings(saved),
+                }
                 # Filter persisted enabled_optional_tools to current
                 # toggleable set so retired tool names can't leak into
                 # the per-turn payload.
@@ -1127,11 +1157,12 @@ async def get_chat_attachment_settings():
 
 @router.get("/chat-starters")
 async def get_chat_starter_settings():
-    """How many recent activities shape the home screen's starting points.
+    """How many recent activities shape the home screen's starting points, and
+    whether the chat composer offers a predicted next line.
 
-    Per user and not admin-gated, unlike the attachment caps next door: this
-    changes the size of one prompt built from the caller's own memory, not any
-    resource other people share.
+    Per user and not admin-gated, unlike the attachment caps next door: these
+    change one prompt built from the caller's own memory, or skip one call, not
+    any resource other people share.
     """
     from deeptutor.services.settings.starter_settings import (
         TRACE_COUNT_RANGE,
@@ -1148,7 +1179,7 @@ async def update_chat_starter_settings(payload: ChatStarterSettingsUpdate):
         save_starter_settings,
     )
 
-    saved = save_starter_settings({"trace_count": payload.trace_count})
+    saved = save_starter_settings(payload.model_dump(exclude_none=True))
     return {"settings": saved, "bounds": {"trace_count": TRACE_COUNT_RANGE}}
 
 
@@ -1510,11 +1541,11 @@ def _normalize_engine_name(name: str) -> str:
 
 @router.post("/document-parsing/install")
 async def start_document_parsing_install(payload: DocumentParsingInstall):
-    """Kick off a one-click ``pip install`` of an optional engine's package(s).
+    """Return offline Docker/source/wheel guidance; never install into a live server.
 
-    Returns ``{ok, message}`` immediately; progress is polled via the shared job
-    status endpoint. Only one job runs at a time (process-wide singleton). The
-    engine must be in the install allow-list (``ENGINE_PIP_SPECS``)."""
+    Keeps the existing ``{ok, message}`` response and engine allow-list for
+    compatibility. Model downloads use their separate background-job endpoint.
+    """
     _require_settings_admin()
     from deeptutor.services.parsing.engines._install import (
         ENGINE_PIP_SPECS,
@@ -2191,6 +2222,12 @@ async def update_chat_page_customization(update: ChatPageCustomization):
 @router.put("/page-customization/learning")
 async def update_learning_page_customization(update: LearningPageCustomization):
     return _save_page_section("learning", update)
+
+
+@router.get("/display", response_model=DisplaySettings)
+async def get_display_settings() -> DisplaySettings:
+    """Read learning typography through the authenticated, request-scoped router."""
+    return DisplaySettings(**resolve_display_settings(load_ui_settings()))
 
 
 @router.put("/ui")

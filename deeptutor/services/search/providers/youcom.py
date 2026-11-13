@@ -32,7 +32,8 @@ class YouComProvider(BaseSearchProvider):
         if not self.api_key:
             raise ValueError("You.com requires an API key in Settings > Catalog > Search.")
         root = str(kwargs.get("base_url") or self.BASE_URL).rstrip("/")
-        params = {"query": query, "count": max(1, min(int(max_results), 100))}
+        count = max(1, min(int(max_results), 100))
+        params = {"query": query, "count": count}
         headers = {
             "Accept": "application/json",
             "User-Agent": "deeptutor youdotcom-integration/hkuds-deeptutor",
@@ -50,7 +51,7 @@ class YouComProvider(BaseSearchProvider):
         payload = response.json()
         results = payload.get("results")
         rows = results.get("web") if isinstance(results, dict) else None
-        rows = [row for row in rows or [] if isinstance(row, dict)][: params["count"]]
+        rows = [row for row in rows or [] if isinstance(row, dict)][:count]
 
         search_results = [_parse_row(row) for row in rows]
         citations = [

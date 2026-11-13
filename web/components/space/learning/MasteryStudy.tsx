@@ -23,9 +23,9 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { ChatMessageList } from "@/features/chat/messages";
+import { SelectionSpeechToolbar } from "@/components/voice/SelectionSpeechToolbar";
 import { ChatViewerBridges } from "@/components/chat/home/ChatViewerBridges";
-import { buildSessionActivity } from "@/components/chat/home/SessionActivityPanel";
+import { buildSessionActivity } from "@/lib/session-activity";
 import { TurnNavigator } from "@/components/chat/home/TurnNavigator";
 import SessionViewerPanel, {
   type SessionViewerPanelHandle,
@@ -61,8 +61,8 @@ import { ModeSwitch } from "./ModeSwitch";
 import { MasteryPathCrumb } from "@/components/layout/instance-crumbs";
 import { PageBarSlot, usePageBarOffers } from "@/components/layout/PageChrome";
 import { topicDisplayName, type Translate } from "./format";
-import { LevelUpCelebration } from "./LevelUpCelebration";
-import { MasteryComposer } from "./MasteryComposer";
+
+
 import { ProgressRing } from "./ProgressRing";
 import { StudyOutline } from "./StudyOutline";
 
@@ -110,6 +110,18 @@ const MODE_PRESENTATION: Record<
       "Review re-tests what you have already mastered. Due items come first, but you can revisit anything.",
   },
 };
+
+const MasteryComposer = dynamic(
+  () => import("./MasteryComposer").then(module => module.MasteryComposer),
+);
+const LevelUpCelebration = dynamic(
+  () => import("./LevelUpCelebration").then(module => module.LevelUpCelebration),
+  { ssr: false },
+);
+
+const ChatMessageList = dynamic(
+  () => import("@/features/chat/messages").then(module => module.ChatMessageList),
+);
 
 const SaveToNotebookModal = dynamic(
   () => import("@/components/notebook/SaveToNotebookModal"),
@@ -870,6 +882,7 @@ export function MasteryStudy({
               onJump={jumpToTurn}
               onJumpToBottom={resumeFollowingLatest}
             />
+            <SelectionSpeechToolbar rootRef={messagesContainerRef} />
           </div>
 
           {!sessionError && (
@@ -896,12 +909,12 @@ export function MasteryStudy({
           onDone={() => setCelebration(null)}
         />
       )}
-      <SaveToNotebookModal
+      {showSaveModal && <SaveToNotebookModal
         open={showSaveModal}
         payload={notebookSavePayload}
         messages={notebookSaveMessages}
         onClose={() => setShowSaveModal(false)}
-      />
+      />}
       <SessionViewerPanel
         ref={viewerPanelRef}
         open={viewerOpen}

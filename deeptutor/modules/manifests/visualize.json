@@ -35,7 +35,10 @@
         "cli_aliases": [
           "visualize",
           "viz"
-        ]
+        ],
+        "config_defaults": {
+          "enable_visual_review": false
+        }
       },
       "order": 7
     }

@@ -42,6 +42,7 @@ class MathAnimatorCapability(TurnCapability):
             base_url=llm_config.base_url,
             api_version=llm_config.api_version,
             language=context.language,
+            enable_visual_review=request_config.enable_visual_review,
             trace_callback=self._build_trace_bridge(stream, i18n=i18n),
             workspace_output_dir=workspace.output_dir if workspace else None,
             workspace_root=workspace.root if workspace else None,

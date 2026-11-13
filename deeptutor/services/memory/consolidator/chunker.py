@@ -21,9 +21,9 @@ Boundary = Literal["paragraph", "sentence"]
 
 # Paragraph boundary: one or more blank lines.
 _PARA_BOUNDARY = re.compile(r"\n\s*\n+")
-# Sentence boundary: terminal punctuation followed by space/newline.
-# Covers ASCII (.!?) and CJK (。！？).
-_SENT_BOUNDARY = re.compile(r"[.!?。！？](?:[\")»」』]+)?(?=\s|$)")
+# ASCII sentence punctuation needs whitespace/end-of-text (not e.g. a decimal point).
+# CJK sentences commonly follow 。！？ immediately, without intervening whitespace.
+_SENT_BOUNDARY = re.compile(r'[.!?][")»」』]*(?=\s|$)|[。！？][")»」』]*')
 
 
 @dataclass(frozen=True)

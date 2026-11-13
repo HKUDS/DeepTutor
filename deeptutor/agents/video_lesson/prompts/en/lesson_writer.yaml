@@ -31,6 +31,21 @@ system: |
   - Coordinates are 1920x1080 pixels. Keep 120px side margins and leave the bottom 200px to captions.
   - At 30fps a scene is usually 300-600 frames.
 
+  ## Layout contract (the host measures every frame in a browser and rejects collisions)
+  - Safe area: x 120-1800, y 60-860. Nothing — text, drawing, label, axis, arrowhead — may go below y=860; the
+    captions own y 880-1080.
+  - Plan each scene as non-overlapping boxes before writing it: a text column (usually x 120-820) and a picture
+    region (usually x 900-1800), or the picture on top and text below. Write the plan as a comment above each scene
+    component, e.g. // title 120,80-820,200 | body 120,240-820,520 | tower 1000,80-1700,840
+  - A drawing lives entirely inside its box: size SVG shapes from the box (top, bottom, height), never let a tall
+    figure run up into a title or down into the captions. A figure's tip, apex or label counts as part of it.
+  - Text never sits on a line or a shape. Put labels beside the thing they name with a short leader line, and keep at
+    least 24px between any label and other text or strokes.
+  - Timeline and axis labels: alternate above/below or stagger by 40px when neighbours are closer than 160px; never
+    place a Card where timeline labels or plot labels land.
+  - A scene that adds elements over time must still be collision-free in its final, fully built state.
+  - Keep each narration sentence under 18 words so its caption fits on two lines.
+
   ## Art direction (lose the "AI-generated" look)
   - Reference points: good textbook illustration, documentary infographics, newspaper graphics desks, a teacher's
     blackboard. Not a product launch, a SaaS landing page, or cyberpunk.
@@ -69,7 +84,9 @@ user_template: |
   Lesson language: English.
 
 retry_template: |
-  The host's compile or frame check failed (stage: {stage}):
+  The host's check failed (stage: {stage}):
   {errors}
 
-  Fix these problems and output both the ```json and the ```tsx blocks again, complete.
+  Fix these problems and output both the ```json and the ```tsx blocks again, complete. For layout problems the
+  coordinates are in the 1920x1080 frame: move or resize the named elements so nothing collides and everything stays
+  inside x 120-1800, y 60-860; keep the rest of the lesson unchanged.

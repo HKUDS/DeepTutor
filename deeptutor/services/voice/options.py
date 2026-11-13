@@ -20,7 +20,7 @@ def is_qwen_audio_tts(model: str) -> bool:
     return model.startswith("qwen-audio-") and "-tts-" in model
 
 
-ISO_LANGUAGES = choices("zh en ja ko de fr es pt it ru ar id".split())
+ISO_LANGUAGES = choices("zh en ja ko de fr es pt it ru ar id tr".split())
 VOLC_LANGUAGES = choices(
     "zh-CN en-US ja-JP id-ID es-MX pt-BR de-DE fr-FR ko-KR fil-PH ms-MY th-TH ar-SA it-IT bn-BD el-GR nl-NL ru-RU tr-TR vi-VN pl-PL ro-RO ne-NP uk-UA yue-CN".split()
 )
@@ -189,6 +189,27 @@ def _tts_models(provider: str) -> tuple[list[dict], str]:
                 language_note="Language follows the text and selected voice. Custom speech: voice IDs are accepted.",
             )
         ], "https://docs.siliconflow.cn/cn/userguide/capabilities/text-to-speech"
+    if provider == "mistral":
+        return [
+            preset(
+                "voxtral-mini-tts-2603",
+                languages=ISO_LANGUAGES,
+                formats=["mp3", "wav", "pcm", "flac", "opus"],
+                language_note="Language follows the text; a reference voice can be supplied as voice_id.",
+            )
+        ], "https://docs.mistral.ai/capabilities/audio/"
+    if provider == "xai":
+        return [
+            preset(
+                "grok-tts",
+                languages=choices(
+                    ["auto", "fr", "en", "de", "es", "it", "pt", "nl", "pl", "ru", "tr"]
+                ),
+                formats=["mp3", "wav", "pcm"],
+                voices=choices(["eve", "ara", "leo", "rex", "sal"]),
+                language_note="xAI auto-detects the language when set to auto.",
+            )
+        ], "https://docs.x.ai/developers/model-capabilities/audio/text-to-speech"
     return [], ""
 
 
@@ -215,6 +236,14 @@ def voice_options(provider: str, service: str) -> dict:
             fallback = preset("", formats=["wav", "pcm"], instructions=True)
         elif provider == "edge":
             fallback = {**deepcopy(models[0]), "id": ""}
+        elif provider == "xai":
+            fallback = preset(
+                "",
+                formats=["mp3", "wav", "pcm"],
+                voices=choices(["eve", "ara", "leo", "rex", "sal"]),
+            )
+        elif provider == "mistral":
+            fallback = preset("", formats=["mp3", "wav", "pcm", "flac", "opus"])
     else:
         ids = {
             "openai": ["gpt-4o-mini-transcribe", "gpt-4o-transcribe", "whisper-1"],
@@ -224,6 +253,8 @@ def voice_options(provider: str, service: str) -> dict:
             "siliconflow": ["FunAudioLLM/SenseVoiceSmall"],
             "dashscope": ["paraformer-realtime-v2"],
             "volcengine_speech": ["bigmodel"],
+            "mistral": ["voxtral-mini-latest", "voxtral-small-latest"],
+            "xai": ["grok-voice-transcribe-2.0"],
         }.get(provider, [])
         languages = VOLC_LANGUAGES if provider == "volcengine_speech" else ISO_LANGUAGES
         if provider == "siliconflow":

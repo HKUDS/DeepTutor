@@ -107,6 +107,9 @@ export interface SessionPreferences {
   mastery_session_mode?: string;
   /** Note page a notebook companion conversation is held beside. */
   note_document_id?: string;
+  /** Create mode: the artifact kind ("skill" | "persona") every turn of this
+   *  conversation authors towards; "" / absent when not in create mode. */
+  create_target?: string;
   /** Session-level persona preference; "" / absent = Default (no persona). */
   persona?: string;
   /** Who the conversation is handed to — `partner:<id>` / `subagent:<name>`;
@@ -127,6 +130,18 @@ export interface SessionPreferences {
   /** The partner group a side chat convenes; a partner or an agent answering
    *  one is ``answer_by``. Written by the backend on each turn. */
   side_chat_group_id?: string;
+  /** ``selection`` tutored one passage; ``conversation`` is about the whole
+   *  parent conversation. Written by the backend on each side-chat turn. */
+  tutor_scope?: "selection" | "conversation";
+  /** The passage a ``selection`` thread was opened from, clipped by the server. */
+  tutor_selected_text?: string;
+  /** The message a side chat was opened from; absent for a bare side chat and
+   *  for threads created before this was recorded. Drives the message-level
+   *  Little Tutor entry. */
+  tutor_source_message_id?: number | string | null;
+  /** Internal: the legacy-thread backfill has already run for this row, so a
+   *  detached thread is not attached again. */
+  tutor_source_backfill_attempted?: boolean;
   /** Owning Immersive Reading workspace, present only for reading sessions. */
   reading_workspace_id?: string;
   /** Material active when the reading conversation was created. */
@@ -425,6 +440,8 @@ export type SessionOrganizationPatch = Partial<{
   session_kind: "chat" | "selection_tutor";
   pinned: boolean;
   archived: boolean;
+  /** Which message a Little Tutor thread is filed under; null detaches it. */
+  tutor_source_message_id: number | string | null;
 }>;
 
 export async function updateSessionOrganization(
@@ -501,17 +518,44 @@ export async function recordQuizResults(
   await expectJson<{ recorded: boolean }>(response);
 }
 
+export interface DeleteMessageResult {
+  /** Little Tutor threads the server detached from the deleted messages. */
+  detachedThreadIds: string[];
+  /** Every message row the delete removed (a turn's user + assistant rows). */
+  deletedMessageIds: number[];
+}
+
 export async function deleteMessage(
   sessionId: string,
   messageId: number,
-): Promise<void> {
+): Promise<DeleteMessageResult> {
   const response = await apiFetch(
     apiUrl(`/api/sessions/${sessionId}/messages/${messageId}`),
     {
       method: "DELETE",
     },
   );
-  await expectJson<{ deleted: boolean }>(response);
+  const payload = await expectJson<{
+    deleted: boolean;
+    detached_thread_ids?: string[];
+    deleted_message_ids?: number[];
+  }>(response);
+  // Older servers omit both lists. Keep the caller's own id as the only known
+  // deleted row; never invent thread ids for a response that has none.
+  return {
+    detachedThreadIds: Array.isArray(payload.detached_thread_ids)
+      ? payload.detached_thread_ids.filter(
+          (threadId): threadId is string =>
+            typeof threadId === "string" && threadId.length > 0,
+        )
+      : [],
+    deletedMessageIds: Array.isArray(payload.deleted_message_ids)
+      ? payload.deleted_message_ids.filter(
+          (deletedId): deletedId is number =>
+            typeof deletedId === "number" && Number.isFinite(deletedId),
+        )
+      : [messageId],
+  };
 }
 
 export async function updateBranchSelection(

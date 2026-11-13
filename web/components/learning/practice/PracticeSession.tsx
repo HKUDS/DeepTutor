@@ -252,6 +252,7 @@ function PracticeTurn({
           </div>
           <div className="text-base leading-relaxed">
             <Markdown
+              learningTextSize={16}
               content={practiceQuestionMarkdown(entry.question)}
               allowHtml={false}
               className="[overflow-wrap:anywhere] [&_pre]:max-w-full [&_pre]:overflow-x-auto"
@@ -291,7 +292,7 @@ function PracticeTurn({
                     />
                     <span className="font-semibold">{key}</span>
                     <div className="min-w-0">
-                      <Markdown content={practiceMarkdown(text)} allowHtml={false} />
+                      <Markdown learningTextSize={16} content={practiceMarkdown(text)} allowHtml={false} />
                     </div>
                   </label>
                 )
@@ -350,6 +351,7 @@ function PracticeTurn({
                 </p>
                 <div className="text-sm">
                   <Markdown
+                    learningTextSize={16}
                     content={
                       entry.correct_answer ||
                       t(
@@ -359,7 +361,7 @@ function PracticeTurn({
                   />
                   {entry.explanation && (
                     <div className="mt-3 border-t border-border pt-3">
-                      <Markdown content={entry.explanation} />
+                      <Markdown learningTextSize={16} content={entry.explanation} />
                     </div>
                   )}
                 </div>

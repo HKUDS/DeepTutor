@@ -1506,3 +1506,45 @@ a[href^="#dt-locator-"]:hover {
   visibility: hidden;
   pointer-events: none;
 }
+
+/* Learning typography is opt-in. Absolute baseline sizes avoid compounded scaling
+   in nested content. No preferences are attached to the document font size. */
+.learning-text {
+  font-size: calc(var(--learning-text-base, 16px) * var(--learning-font-scale, 1)) !important;
+  line-height: var(--learning-line-height, 1.75) !important;
+}
+.learning-text p,
+.learning-text li,
+.learning-text blockquote,
+.learning-text table {
+  line-height: var(--learning-line-height, 1.75);
+}
+.learning-text table {
+  font-size: calc(14px * var(--learning-font-scale, 1));
+}
+.learning-text h1 {
+  font-size: calc(24px * var(--learning-font-scale, 1));
+  line-height: calc(32px * var(--learning-font-scale, 1) * var(--learning-line-height, 1.75) / 1.75);
+}
+.learning-text h2 {
+  font-size: calc(20px * var(--learning-font-scale, 1));
+  line-height: calc(28px * var(--learning-font-scale, 1) * var(--learning-line-height, 1.75) / 1.75);
+}
+.learning-text h3 {
+  font-size: calc(18px * var(--learning-font-scale, 1));
+  line-height: calc(28px * var(--learning-font-scale, 1) * var(--learning-line-height, 1.75) / 1.75);
+}
+.learning-text h4 {
+  font-size: calc(16px * var(--learning-font-scale, 1));
+  line-height: calc(24px * var(--learning-font-scale, 1) * var(--learning-line-height, 1.75) / 1.75);
+}
+.learning-text h5,
+.learning-text h6 {
+  font-size: calc(14px * var(--learning-font-scale, 1));
+  line-height: calc(20px * var(--learning-font-scale, 1) * var(--learning-line-height, 1.75) / 1.75);
+}
+.learning-text .md-code-block,
+.learning-text .learning-text-excluded {
+  font-size: 16px;
+  line-height: 1.5;
+}

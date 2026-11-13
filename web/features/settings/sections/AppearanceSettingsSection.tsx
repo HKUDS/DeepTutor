@@ -1,6 +1,13 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import type { CSSProperties } from "react";
+import {
+  CONTENT_FONT_SCALES,
+  CONTENT_LINE_SPACING,
+  type ContentFontScale,
+  type ContentLineSpacing,
+} from "@/lib/learning-display";
 import { useTranslation } from "react-i18next";
 
 import type { CodeBlockThemeId } from "@/components/common/code-block-themes";
@@ -40,6 +47,11 @@ export default function AppearanceSettingsPage() {
   const { t } = useTranslation();
   const {
     theme,
+    contentFontScale,
+    contentLineSpacing,
+    updateContentFontScale,
+    updateContentLineSpacing,
+    resetLearningText,
     codeBlockTheme,
     codeBlockShowLineNumbers,
     codeBlockWrapLongLines,
@@ -65,7 +77,7 @@ export default function AppearanceSettingsPage() {
       <SettingsPageHeader
         title={t("Appearance")}
         description={t(
-          "Customize the visual theme and code blocks. Apply changes using the bar below.",
+          "Customize the visual theme, learning text, and code blocks. Apply changes using the bar below.",
         )}
       />
 
@@ -100,13 +112,101 @@ export default function AppearanceSettingsPage() {
             ))}
           </div>
           <p className="mt-4 text-[11.5px] leading-relaxed text-[var(--muted-foreground)]/80">
-            {t(
-              "System follows the device's light or dark appearance.",
-            )}{" "}
+            {t("System follows the device's light or dark appearance.")}{" "}
             {t(
               "Default is a clean pure-white theme with a blue accent. Cream is warm and paper-like with a terracotta accent. Dark keeps Cream's warmth on near-black. Glass adds translucent purple panels on a deep gradient.",
             )}
           </p>
+        </div>
+      </SettingSection>
+
+      <SettingSection
+        title={t("Learning text")}
+        description={t(
+          "Adjust messages, lessons, and practice text. Your changes stay in this preview until you apply them. Immersive Reading has its own display controls.",
+        )}
+      >
+        <SettingRow
+          title={t("Text size")}
+          description={t(
+            "Scale learning content while keeping navigation and controls the same size.",
+          )}
+          control={
+            <select
+              aria-label={t("Learning text size")}
+              value={contentFontScale}
+              onChange={(event) =>
+                void updateContentFontScale(
+                  Number(event.target.value) as ContentFontScale,
+                )
+              }
+              className={selectClass}
+            >
+              {CONTENT_FONT_SCALES.map((scale) => (
+                <option key={scale} value={scale} className={selectOptionClass}>
+                  {scale}%
+                </option>
+              ))}
+            </select>
+          }
+        />
+        <SettingRow
+          title={t("Line spacing")}
+          description={t("Choose the space between lines of learning text.")}
+          control={
+            <select
+              aria-label={t("Learning line spacing")}
+              value={contentLineSpacing}
+              onChange={(event) =>
+                void updateContentLineSpacing(
+                  event.target.value as ContentLineSpacing,
+                )
+              }
+              className={selectClass}
+            >
+              <option value="compact" className={selectOptionClass}>
+                {t("Compact")}
+              </option>
+              <option value="normal" className={selectOptionClass}>
+                {t("Normal")}
+              </option>
+              <option value="relaxed" className={selectOptionClass}>
+                {t("Relaxed")}
+              </option>
+            </select>
+          }
+        />
+        <div className="border-t border-[var(--border)]/50 py-4">
+          <div className="mb-3 text-[13.5px] font-medium">
+            {t("Learning text preview")}
+          </div>
+          <div
+            data-testid="learning-text-preview"
+            className="learning-text space-y-3 rounded-lg bg-[var(--muted)]/40 p-4 font-serif [overflow-wrap:anywhere]"
+            style={
+              {
+                "--learning-text-base": "16px",
+                "--learning-font-scale": contentFontScale / 100,
+                "--learning-line-height":
+                  CONTENT_LINE_SPACING[contentLineSpacing],
+              } as CSSProperties
+            }
+          >
+            <p lang="en">
+              Learning starts with a question. Explore an idea, connect it to
+              what you know, and explain it in your own words.
+            </p>
+            <p lang="zh">
+              学习从一个问题开始。探索新的想法，将它与已有的知识联系起来，再用自己的语言解释。
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void resetLearningText()}
+            className="mt-4 rounded-md border border-[var(--border)] px-3 py-2 text-[13px] font-medium transition-colors hover:bg-[var(--muted)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ring)]"
+          >
+            {t("Reset learning text")}
+          </button>
         </div>
       </SettingSection>
 

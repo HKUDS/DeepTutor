@@ -958,6 +958,19 @@
           "title": "Content",
           "type": "string"
         },
+        "create_target": {
+          "anyOf": [
+            {
+              "pattern": "^$|^[a-z][a-z0-9_]{0,31}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Create Target"
+        },
         "followup_question_context": {
           "anyOf": [
             {

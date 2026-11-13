@@ -207,6 +207,20 @@ def test_direct_chat_output_file_actions_preserve_the_attachment(chat_output_api
     assert client.get(item.url).content == b"<html>next-key-lock</html>"
 
 
+def test_exec_turn_output_file_actions_preserve_the_attachment(chat_output_api):
+    client, service, _, _ = chat_output_api
+    binding = service.current_binding()
+    relative = "outputs/chat/session/turn_run-456/exec/lp-replay-simulator.html"
+    output = service.resolve(binding, relative, write=True)
+    output.parent.mkdir(parents=True)
+    output.write_text("<html>LP replay</html>")
+    item = service.publish(binding, [{"path": relative}])[0]
+    item = replace(item, url=urlsplit(item.url).path)
+    response = client.get(item.url + "/file-storage")
+    assert response.status_code == 200, response.json()
+    assert response.json()["file_path"] == str(output)
+
+
 def test_chat_output_removal_refuses_changed_files(chat_output_api):
     client, _, item, output = chat_output_api
     preview = client.get(item.url + "/file-storage").json()

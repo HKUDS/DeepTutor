@@ -29,7 +29,8 @@
         "config_defaults": {
           "output_mode": "video",
           "quality": "medium",
-          "style_hint": ""
+          "style_hint": "",
+          "enable_visual_review": false
         }
       },
       "validator": "deeptutor.agents.math_animator.request_config:validate_math_animator_request_config",

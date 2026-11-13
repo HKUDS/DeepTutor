@@ -1,19 +1,8 @@
-"""One-click background jobs for optional parser engines.
+"""Offline installation guidance and background model downloads for parsers.
 
-The Document Parsing settings page runs two kinds of background job without the
-user dropping to a shell:
-
-* **install** — ``pip install`` an engine's optional PyPI package.
-* **models**  — download an engine's model weights (e.g. Docling's layout/table
-  models via ``docling-tools models download``).
-
-Both mirror the MinerU model-download job (``mineru/models.py``): a single
-background subprocess with a cursor-based line log the UI starts, polls, and
-cancels. Commands come from fixed allow-lists (pip specs / downloader argv),
-never user input, so the subprocess argv can't be injected. Package installs use
-the bare package specs (the same strings as the ``[parse-*]`` extras) so pip
-never re-resolves DeepTutor itself; after a successful install we invalidate the
-import caches so the engine reports available in the same process (no restart).
+Optional packages must be installed while DeepTutor is stopped, using the
+installation path appropriate to the deployment. Only model downloads run as
+background subprocesses, with fixed downloader arguments and cursor-based logs.
 """
 
 from __future__ import annotations
@@ -35,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 # Engine id -> pip requirement specifiers. Mirrors the optional extras in
 # pyproject.toml. Engines absent here (text_only built-in, mineru external
-# CLI/API) have no one-click install.
+# CLI/API) have no optional-package installation guidance.
 from deeptutor.modules.catalog import manifests
 
 ENGINE_PIP_SPECS: dict[str, list[str]] = {
@@ -57,7 +46,7 @@ _LINE_MIN_INTERVAL = 0.2
 
 
 def installable_engines() -> frozenset[str]:
-    """Engine ids that support one-click pip install."""
+    """Engine ids with supported optional-package installation guidance."""
     return frozenset(ENGINE_PIP_SPECS)
 
 
@@ -134,9 +123,19 @@ class BackgroundJobManager:
         return {
             "ok": False,
             "message": (
-                "Stop DeepTutor, then run `deeptutor module install parser-"
+                "Live package installation is disabled. Docker: add parse-"
                 + engine
-                + "` in this environment and restart. User data is preserved."
+                + " to DEEPTUTOR_EXTRAS in your existing deployment configuration, "
+                "preserving other extras; recreate the same service with its existing "
+                "configuration and mounts. Startup reapplies extras; inspect startup "
+                "logs for installation failures, then recheck availability. "
+                "Source checkout: stop DeepTutor, run `python scripts/install_extras.py parse-"
+                + engine
+                + "` from the checkout in the server's Python environment, then restart. "
+                "Wheel installation: stop DeepTutor, run `deeptutor module install parser-"
+                + engine
+                + "` in the server's Python environment, then restart. "
+                "Data mounts preserve user data, not installed Python packages."
             ),
         }
 
@@ -188,13 +187,19 @@ class BackgroundJobManager:
                     "message": f"A {self._kind or 'job'} is already running ({self._engine}).",
                 }
             try:
+                # Downloaders are Python console scripts whose tqdm bars use
+                # block characters. Have them write UTF-8 and read it as UTF-8:
+                # an ANSI code page such as cp936 cannot decode those bytes, and
+                # a dead pump leaves the child blocked on a full pipe.
                 process = subprocess.Popen(  # nosec B603 - argv from fixed allow-lists
                     cmd,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
                     text=True,
+                    encoding="utf-8",
+                    errors="replace",
                     shell=False,
-                    env={**os.environ, **(env or {})},
+                    env={**os.environ, **(env or {}), "PYTHONUTF8": "1"},
                 )
             except Exception as exc:  # noqa: BLE001
                 self._state = "failed"

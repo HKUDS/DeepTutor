@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { ChatMessageList } from '@/features/chat/messages'
 import type { StreamEvent } from '@/features/chat/model/protocol'
+import type { SessionSummary } from '@/lib/session-api'
 import { initI18n } from '@/i18n/init'
 
 initI18n('en')
@@ -314,5 +315,48 @@ describe('unsent message recovery actions', () => {
       onRetryFailedSubmission={vi.fn()} onDiscardFailedSubmission={vi.fn()} />);
     expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Discard unsent draft' })).toBeEnabled();
+  });
+
+  it('puts the Little Tutor entry under the message its thread was opened from', async () => {
+    const onOpen = vi.fn();
+    const thread: SessionSummary = {
+      id: 't1',
+      session_id: 't1',
+      title: 'Why twice?',
+      created_at: 1,
+      updated_at: 0,
+      message_count: 2,
+      last_message: '',
+      status: 'idle',
+      preferences: {
+        session_kind: 'selection_tutor',
+        tutor_source_message_id: 2,
+      },
+    };
+    const { container } = render(
+      <ChatMessageList
+        messages={[
+          { id: 1, role: 'user', content: 'Question', parentMessageId: null },
+          { id: 2, role: 'assistant', content: 'Answer', parentMessageId: 1 },
+        ]}
+        isStreaming={false}
+        onCopyAssistantMessage={vi.fn()}
+        onRegenerateMessage={vi.fn()}
+        threadsByMessageId={new Map([['2', [thread]]])}
+        onOpenThread={onOpen}
+        onDeleteThread={vi.fn(async () => {})}
+      />,
+    );
+
+    const markers = container.querySelectorAll('[data-message-thread-marker]');
+    expect(markers).toHaveLength(1);
+    expect(
+      markers[0].closest('[data-chat-message-id]')?.getAttribute('data-chat-message-id'),
+    ).toBe('2');
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Tutor threads on this message' }));
+    await user.click(screen.getByRole('button', { name: 'Open tutor thread: Why twice?' }));
+    expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ session_id: 't1' }));
   });
 });

@@ -100,6 +100,17 @@ async def test_an_offline_workspace_does_not_hide_other_history(account):
     assert offline["workspace_id"] in index["unavailable_workspaces"]
 
 
+@pytest.mark.asyncio
+async def test_an_archived_workspace_is_not_polled(account):
+    from pathlib import Path
+
+    archived = account.create_workspace("Archived")
+    Path(archived["path"]).rename(Path(archived["path"]).with_name("archived-moved"))
+    account.update_workspace(archived["workspace_id"], archived=True)
+    index = await session_index(50, 0)
+    assert archived["workspace_id"] not in index["unavailable_workspaces"]
+
+
 def test_move_rejects_combined_changes_before_mutating_either_store(account, scoped_client):
     target = account.create_workspace("Target")["workspace_id"]
     with workspace_context(""):

@@ -54,6 +54,7 @@ test("a side chat names its parent and who answers it", () => {
       selection_tutor_context: {
         parent_session_id: "parent-1",
         source_message_id: 9,
+        quoted_message_id: null,
       },
       answer_by: "",
     },
@@ -74,9 +75,41 @@ test("a side chat names its parent and who answers it", () => {
       selection_tutor_context: {
         parent_session_id: "parent-1",
         source_message_id: 9,
+        quoted_message_id: null,
       },
       answer_by: "",
       partner_discussion_group_id: "g1",
+    },
+  );
+});
+
+test("a side chat records the message its quote came from", () => {
+  const base = {
+    parentSessionId: "parent-1",
+    leafMessageId: 9,
+    responder: { kind: "dito" as const },
+  };
+  assert.deepEqual(
+    sideChatTurnConfig({ ...base, sourceMessageId: 4 }),
+    {
+      selection_tutor_context: {
+        parent_session_id: "parent-1",
+        source_message_id: 9,
+        quoted_message_id: 4,
+      },
+      answer_by: "",
+    },
+  );
+  // PocketBase ids are opaque strings; they must survive untouched.
+  assert.deepEqual(
+    sideChatTurnConfig({ ...base, sourceMessageId: "pb_msg_42" }),
+    {
+      selection_tutor_context: {
+        parent_session_id: "parent-1",
+        source_message_id: 9,
+        quoted_message_id: "pb_msg_42",
+      },
+      answer_by: "",
     },
   );
 });

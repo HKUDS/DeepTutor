@@ -76,7 +76,7 @@ async def test_ui_languages_are_persisted_independently(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("language", ["fr", "uk", "pl"])
+@pytest.mark.parametrize("language", ["fr", "uk", "pl", "pt", "vi", "ja", "tr"])
 async def test_ui_settings_persist_supported_languages_independently(
     monkeypatch: pytest.MonkeyPatch, tmp_path, language: str
 ) -> None:
@@ -127,6 +127,42 @@ async def test_ui_accepts_extended_response_languages(
     )
     assert response["response_language"] == "ms"
     assert settings_router.load_ui_settings()["response_language"] == "ms"
+
+    response = await settings_router.update_ui_settings(
+        settings_router.UISettingsUpdate(response_language="vi")
+    )
+    assert response["response_language"] == "vi"
+    assert settings_router.load_ui_settings()["response_language"] == "vi"
+
+
+@pytest.mark.asyncio
+async def test_changing_ui_language_to_vietnamese_keeps_an_existing_response_preference(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    settings_file = tmp_path / "interface.json"
+    monkeypatch.setattr(settings_router, "_settings_file", lambda: settings_file)
+
+    await settings_router.update_ui_settings(
+        settings_router.UISettingsUpdate(language="en", response_language="ja")
+    )
+    response = await settings_router.update_ui_settings(
+        settings_router.UISettingsUpdate(language="vi")
+    )
+
+    assert response["language"] == "vi"
+    assert response["response_language"] == "ja"
+
+    response = await settings_router.update_ui_settings(
+        settings_router.UISettingsUpdate(response_language="vi")
+    )
+    assert response["language"] == "vi"
+    assert response["response_language"] == "vi"
+
+    response = await settings_router.update_ui_settings(
+        settings_router.UISettingsUpdate(language="en")
+    )
+    assert response["language"] == "en"
+    assert response["response_language"] == "vi"
 
 
 class _FakeEmbeddingAdapter:
@@ -409,6 +445,33 @@ async def test_chat_attachment_settings_roundtrip(
     stored = service.load_system(include_process_overrides=False)
     assert stored["backend_port"] == 8001
     assert stored["chat_attachment_max_chars_per_doc"] == 400_000
+
+
+@pytest.mark.asyncio
+async def test_chat_starter_settings_keep_ask_hint_when_omitted(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    from deeptutor.services.settings import starter_settings
+
+    monkeypatch.setattr(
+        starter_settings,
+        "get_path_service",
+        lambda: SimpleNamespace(get_settings_file=lambda name: tmp_path / f"{name}.json"),
+    )
+
+    initial = await settings_router.get_chat_starter_settings()
+    assert initial["settings"]["ask_hint_enabled"] is True
+
+    turned_off = await settings_router.update_chat_starter_settings(
+        settings_router.ChatStarterSettingsUpdate(trace_count=20, ask_hint_enabled=False)
+    )
+    assert turned_off["settings"]["ask_hint_enabled"] is False
+
+    # A client that predates the switch only sends trace_count.
+    legacy = await settings_router.update_chat_starter_settings(
+        settings_router.ChatStarterSettingsUpdate(trace_count=30)
+    )
+    assert legacy["settings"] == {"version": 1, "trace_count": 30, "ask_hint_enabled": False}
 
 
 @pytest.mark.asyncio
@@ -724,6 +787,13 @@ def test_llm_provider_choices_include_runcrate() -> None:
 
     assert llm["runcrate"]["label"] == "Runcrate"
     assert llm["runcrate"]["base_url"] == "https://api.runcrate.ai/v1"
+
+
+def test_llm_provider_choices_include_llmtr() -> None:
+    llm = {item["value"]: item for item in settings_router._provider_choices()["llm"]}
+
+    assert llm["llmtr"]["label"] == "LLMTR"
+    assert llm["llmtr"]["base_url"] == "https://llmtr.com/v1"
 
 
 def test_llm_provider_choices_include_novita() -> None:
@@ -2020,3 +2090,121 @@ def test_llm_provider_choices_include_opper() -> None:
 
     assert llm["opper"]["label"] == "Opper"
     assert llm["opper"]["base_url"] == "https://api.opper.ai/v3/compat"
+
+
+@pytest.mark.parametrize("value", [None, True, 100.0, "150", 80, 200, {}, []])
+def test_learning_font_scale_rejects_invalid_values(value):
+    """Only integer percentages from the supported set may be written."""
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        settings_router.UISettingsUpdate(content_font_scale=value)
+
+
+@pytest.mark.parametrize("value", [None, 1.5, "wide", True, {}])
+def test_learning_line_spacing_rejects_invalid_values(value):
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        settings_router.UISettingsUpdate(content_line_spacing=value)
+
+
+@pytest.mark.asyncio
+async def test_learning_display_partial_updates_preserve_legacy_and_unrelated_fields(
+    monkeypatch, tmp_path
+):
+    """Old clients and parked drafts must not reset newer display preferences."""
+    settings_file = tmp_path / "interface.json"
+    monkeypatch.setattr(settings_router, "_settings_file", lambda: settings_file)
+    monkeypatch.setattr(interface_settings, "_interface_settings_file", lambda: settings_file)
+    settings_file.write_text(json.dumps({"language": "zh", "unrelated": {"keep": True}}))
+    assert (await settings_router.get_display_settings()).model_dump() == {
+        "content_font_scale": 100,
+        "content_line_spacing": "normal",
+    }
+    await settings_router.update_ui_settings(
+        settings_router.UISettingsUpdate(
+            content_font_scale=150,
+            content_line_spacing="relaxed",
+        )
+    )
+    await settings_router.update_ui_settings(settings_router.UISettingsUpdate(theme="system"))
+    await settings_router.update_ui_settings(
+        settings_router.UISettingsUpdate(content_line_spacing="compact")
+    )
+    saved = json.loads(settings_file.read_text())
+    assert saved["unrelated"] == {"keep": True}
+    assert saved["content_font_scale"] == 150
+    assert saved["content_line_spacing"] == "compact"
+    assert saved["language"] == "zh"
+    assert interface_settings.get_ui_settings()["content_font_scale"] == 150
+    public = await settings_router.get_ui_settings()
+    assert set(public) == {"theme", "language", "response_language"}
+
+
+@pytest.mark.parametrize(
+    "saved",
+    [
+        {},
+        {"content_font_scale": "150", "content_line_spacing": "bad"},
+        {"content_font_scale": True, "content_line_spacing": None},
+        {"content_font_scale": 999, "content_line_spacing": []},
+    ],
+)
+def test_both_display_readers_default_malformed_or_legacy_settings(monkeypatch, tmp_path, saved):
+    settings_file = tmp_path / "interface.json"
+    settings_file.write_text(json.dumps(saved))
+    monkeypatch.setattr(settings_router, "_settings_file", lambda: settings_file)
+    monkeypatch.setattr(interface_settings, "_interface_settings_file", lambda: settings_file)
+    for settings in (settings_router.load_ui_settings(), interface_settings.get_ui_settings()):
+        assert settings["content_font_scale"] == 100
+        assert settings["content_line_spacing"] == "normal"
+
+
+def test_display_read_is_not_on_public_settings_router():
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    app = FastAPI()
+    app.include_router(settings_router.public_router, prefix="/api/settings")
+    assert TestClient(app).get("/api/settings/display").status_code == 404
+
+
+def test_display_read_requires_auth_and_returns_only_display_fields(monkeypatch, tmp_path):
+    """Mount through the real authentication and learner-surface dependency."""
+    from fastapi import Depends, FastAPI
+    from fastapi.testclient import TestClient
+
+    from deeptutor.api.routers import auth as auth_router
+
+    settings_file = tmp_path / "interface.json"
+    settings_file.write_text(
+        json.dumps({"content_font_scale": 125, "sidebar_description": "private"})
+    )
+    monkeypatch.setattr(settings_router, "_settings_file", lambda: settings_file)
+    monkeypatch.setattr(auth_router, "AUTH_ENABLED", True)
+    app = FastAPI()
+    app.include_router(
+        settings_router.router,
+        prefix="/api/settings",
+        dependencies=[Depends(auth_router.require_learning_surface)],
+    )
+    client = TestClient(app)
+    assert client.get("/api/settings/display").status_code == 401
+    assert (
+        client.get(
+            "/api/settings/display", headers={"Authorization": "Bearer invalid-display-token"}
+        ).status_code
+        == 401
+    )
+    monkeypatch.setattr(auth_router, "AUTH_ENABLED", False)
+    response = client.get("/api/settings/display")
+    assert response.status_code == 200
+    assert response.json() == {"content_font_scale": 125, "content_line_spacing": "normal"}
+
+
+def test_llm_provider_choices_include_cloudgpu() -> None:
+    llm = {item["value"]: item for item in settings_router._provider_choices()["llm"]}
+
+    assert llm["cloudgpu"]["label"] == "CloudGPU"
+    assert llm["cloudgpu"]["base_url"] == "https://cloudgpu.app/v1"

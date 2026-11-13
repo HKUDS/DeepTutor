@@ -14,12 +14,19 @@ export function supportsGeneratedOutputActions(attachment: GeneratedOutputAttach
     parts[0] === 'outputs' &&
     parts[1] === 'chat' &&
     parts[3].startsWith('turn_')
+  const directExecOutput =
+    parts.length === 6 &&
+    parts[0] === 'outputs' &&
+    parts[1] === 'chat' &&
+    parts[3].startsWith('turn_') &&
+    parts[4] === 'exec'
   return Boolean(
     attachment.generated &&
     /^\/files\/workspace-items\/ws_[0-9a-f]{32}\/wsi_[0-9a-f]{32}(?:\?[^#]*)?$/.test(
       attachment.url || ''
     ) &&
     (directChatOutput ||
+      directExecOutput ||
       (parts.length >= 10 &&
         parts[0] === 'outputs' &&
         parts[1] === 'chat' &&

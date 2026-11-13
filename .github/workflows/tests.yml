@@ -18,6 +18,7 @@ on:
       - "pyproject.toml"
       - "web/**"
       - "packages/chat-engine/**"
+      - "apps/desktop/**"
       - ".github/workflows/tests.yml"
   pull_request:
     branches:
@@ -33,10 +34,40 @@ on:
       - "pyproject.toml"
       - "web/**"
       - "packages/chat-engine/**"
+      - "apps/desktop/**"
       - ".github/workflows/tests.yml"
+
+# A new push supersedes every earlier run for the same PR/branch. Without this,
+# each fix-up commit leaves the previous full matrix running to completion,
+# delaying feedback for the author and every other PR in the queue.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 # Keep Linux runners on the LTS supported by the pinned browser toolchain.
 jobs:
+  desktop:
+    name: Desktop Shell (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        # Windows exercises taskkill-based shutdown; the others process groups.
+        os: [ubuntu-24.04, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+      - name: Check and test the shell
+        working-directory: apps/desktop
+        shell: bash
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+        run: npm ci && npm run check && npm test
+
   chat-engine:
     name: Experimental TypeScript Chat Engine
     runs-on: ubuntu-24.04
@@ -269,11 +300,11 @@ jobs:
         env:
           PYTHONPATH: ${{ github.workspace }}
 
-      - name: Verify MinerU process ownership on Windows
+      - name: Verify native process ownership and hidden launch on Windows
         if: runner.os == 'Windows'
         run: |
           python -m pip install pytest pytest-asyncio pywin32
-          python -m pytest -q tests/services/parsing/test_mineru_process_lifecycle.py
+          python -m pytest -q tests/services/parsing/test_mineru_process_lifecycle.py tests/runtime/test_launcher.py::test_detached_venv_launcher_has_no_console
         env:
           PYTHONPATH: ${{ github.workspace }}
           DEEPTUTOR_HOME: ${{ runner.temp }}/mineru-process-tests
@@ -380,7 +411,7 @@ jobs:
   test-summary:
     name: Test Summary
     runs-on: ubuntu-24.04
-    needs: [chat-engine, lint, web-tests, multi-worker-web, import-check, python-tests, video-lesson-sandbox]
+    needs: [desktop, chat-engine, lint, web-tests, multi-worker-web, import-check, python-tests, video-lesson-sandbox]
     if: always()
 
     steps:
@@ -390,6 +421,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
           echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| macOS desktop shell | ${{ needs.desktop.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| TypeScript chat engine | ${{ needs.chat-engine.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Video lesson isolation | ${{ needs.video-lesson-sandbox.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Lint and format | ${{ needs.lint.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
@@ -399,5 +431,5 @@ jobs:
           echo "| Python tests (3.11/3.12/3.13/3.14) | ${{ needs.python-tests.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
 
       - name: Fail if tests failed
-        if: needs.video-lesson-sandbox.result != 'success' || needs.chat-engine.result == 'failure' || needs.lint.result == 'failure' || needs.web-tests.result == 'failure' || needs.multi-worker-web.result == 'failure' || needs.import-check.result == 'failure' || needs.python-tests.result == 'failure'
+        if: needs.video-lesson-sandbox.result != 'success' || needs.desktop.result == 'failure' || needs.chat-engine.result == 'failure' || needs.lint.result == 'failure' || needs.web-tests.result == 'failure' || needs.multi-worker-web.result == 'failure' || needs.import-check.result == 'failure' || needs.python-tests.result == 'failure'
         run: exit 1

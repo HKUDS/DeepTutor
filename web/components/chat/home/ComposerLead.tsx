@@ -11,6 +11,9 @@ export interface LeadToken {
   label: string;
   /** What sort of thing it is, for the remove hint: "Skills", "MCP". */
   kind: string;
+  /** Shown before the label in a different type treatment — only create
+   *  mode's "Create Skill" / "Create Persona" chip uses this today. */
+  prefix?: string;
   onRemove: () => void;
 }
 
@@ -78,6 +81,9 @@ export function ComposerLead({
               <token.icon size={15} strokeWidth={1.8} />
               <X size={14} strokeWidth={2.2} />
             </span>
+            {token.prefix ? (
+              <span className="dt-lead-prefix">{token.prefix}</span>
+            ) : null}
             <span className="dt-lead-label">{token.label}</span>
           </button>
         </Tooltip>

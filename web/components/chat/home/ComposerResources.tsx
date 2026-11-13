@@ -11,6 +11,7 @@ import ToolbarLabel from "./ToolbarLabel";
 import { useLingerExpand } from "@/hooks/use-linger-expand";
 import { ResourceReuseControl } from "./ResourceReuse";
 import { RESOURCE_KINDS, type ResourceKind } from "@/lib/resource-reuse";
+import { createPortal } from "react-dom";
 import {
   useEffect,
   useId,
@@ -41,6 +42,14 @@ export interface ComposerResourceItem {
   node: ReactNode;
   onClear?: () => void;
   resetLabel?: string;
+}
+
+function ViewportPopover({ children }: { children: ReactNode }) {
+  if (typeof document === "undefined") return null;
+  // The composer surface is a container query. Firefox and Safari use that
+  // as the containing block for position:fixed, so a viewport `top` paints
+  // this panel below the window (#2053). Body has no such ancestor.
+  return createPortal(children, document.body);
 }
 
 export default function ComposerResources({
@@ -97,7 +106,7 @@ export default function ComposerResources({
     setSelectedKey(null);
     setQuery("");
   };
-  useOutsideClick(rootRef, open, close);
+  useOutsideClick(rootRef, open, close, panelRef);
   useLayoutEffect(() => {
     if (!open) return;
     let anchor: { left: number; top: number } | null = null;
@@ -266,66 +275,69 @@ export default function ComposerResources({
       </button>
       <AnimatePresence>
         {open && (
-          <motion.div
-            key="resource-overlay"
-            className="contents"
-            exit={{ opacity: 0 }}
-            transition={{ duration: reduceMotion ? 0 : 0.12 }}
-          >
-            <div
-              className="fixed inset-0 z-[59] bg-black/20 md:hidden"
-              onClick={close}
-              aria-hidden="true"
-            />
+          <ViewportPopover key="resource-overlay">
             <motion.div
-              initial={{ opacity: 0 }}
-              animate={surfaceControls}
+              // Fixed to the viewport, not the document flow: a transform on
+              // this exit wrapper must not become a containing block parked
+              // under the page. Hits pass through except on the scrim and panel.
+              className="pointer-events-none fixed inset-0 z-[69]"
               exit={{ opacity: 0 }}
-              transition={{ duration: reduceMotion ? 0 : 0.14 }}
-              ref={panelRef}
-              id={id}
-              role="dialog"
-              aria-label={t("Resources")}
-              style={{
-                ...position,
-                visibility: position ? "visible" : "hidden",
-              }}
-              className="fixed left-3 top-3 z-[60] flex w-[calc(100vw-24px)] max-h-[calc(100dvh-24px)] flex-col overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--popover)] shadow-[0_8px_40px_rgba(0,0,0,0.14)] md:w-[336px]"
-              onKeyDown={(event) => {
-                if (event.key === "Escape") {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  if (current) back();
-                  else {
-                    close();
-                    triggerRef.current?.focus();
-                  }
-                }
-                if (event.key === "Tab") {
-                  const elements = Array.from(
-                    event.currentTarget.querySelectorAll<HTMLElement>("*"),
-                  );
-                  const focusable = elements.filter(
-                    (element) =>
-                      element.tabIndex >= 0 &&
-                      !element.matches(":disabled") &&
-                      !element.hidden,
-                  );
-                  const first = focusable[0];
-                  const last = focusable[focusable.length - 1];
-                  if (event.shiftKey && document.activeElement === first) {
-                    event.preventDefault();
-                    last?.focus();
-                  } else if (
-                    !event.shiftKey &&
-                    document.activeElement === last
-                  ) {
-                    event.preventDefault();
-                    first?.focus();
-                  }
-                }
-              }}
+              transition={{ duration: reduceMotion ? 0 : 0.12 }}
             >
+              <div
+                className="pointer-events-auto fixed inset-0 bg-black/20 md:hidden"
+                onClick={close}
+                aria-hidden="true"
+              />
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={surfaceControls}
+                exit={{ opacity: 0 }}
+                transition={{ duration: reduceMotion ? 0 : 0.14 }}
+                ref={panelRef}
+                id={id}
+                role="dialog"
+                aria-label={t("Resources")}
+                style={{
+                  ...position,
+                  visibility: position ? "visible" : "hidden",
+                }}
+                className="pointer-events-auto fixed left-3 top-3 z-[1] flex w-[calc(100vw-24px)] max-h-[calc(100dvh-24px)] flex-col overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--popover)] shadow-[0_8px_40px_rgba(0,0,0,0.14)] md:w-[336px]"
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    if (current) back();
+                    else {
+                      close();
+                      triggerRef.current?.focus();
+                    }
+                  }
+                  if (event.key === "Tab") {
+                    const elements = Array.from(
+                      event.currentTarget.querySelectorAll<HTMLElement>("*"),
+                    );
+                    const focusable = elements.filter(
+                      (element) =>
+                        element.tabIndex >= 0 &&
+                        !element.matches(":disabled") &&
+                        !element.hidden,
+                    );
+                    const first = focusable[0];
+                    const last = focusable[focusable.length - 1];
+                    if (event.shiftKey && document.activeElement === first) {
+                      event.preventDefault();
+                      last?.focus();
+                    } else if (
+                      !event.shiftKey &&
+                      document.activeElement === last
+                    ) {
+                      event.preventDefault();
+                      first?.focus();
+                    }
+                  }
+                }}
+              >
               <motion.div
                 animate={contentControls}
                 className="flex h-10 shrink-0 items-center gap-2 border-b border-[var(--border)] px-2"
@@ -468,8 +480,9 @@ export default function ComposerResources({
                   )}
                 </motion.div>
               </div>
+              </motion.div>
             </motion.div>
-          </motion.div>
+          </ViewportPopover>
         )}
       </AnimatePresence>
     </div>

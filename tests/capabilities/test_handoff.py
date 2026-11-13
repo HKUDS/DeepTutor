@@ -49,6 +49,16 @@ def test_answer_by_names_a_kind_and_a_target() -> None:
         TurnRequest(content="hi", answer_by="everyone")
 
 
+def test_a_blank_answer_by_hands_the_thread_back() -> None:
+    # The web client sends "" when Dito answers, e.g. in an "Ask Dito" side chat.
+    for blank in ("", "  "):
+        request = TurnRequest.model_validate({"content": "hi", "answer_by": blank})
+        assert request.answer_by is None
+        # Still restated, so the preparer clears a stored hand-off.
+        assert request.to_payload()["answer_by"] is None
+    assert "answer_by" not in TurnRequest(content="hi").to_payload()
+
+
 @pytest.mark.asyncio
 async def test_an_agent_run_is_written_as_rounds_and_tool_rows(monkeypatch) -> None:
     """Running text becomes deltas; a tool closes the round it interrupts; the

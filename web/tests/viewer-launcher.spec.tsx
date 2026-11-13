@@ -224,3 +224,13 @@ it("brings an earlier side chat back with its history and who answered it", asyn
   await waitFor(() => expect(api.listSessionThreads).toHaveBeenCalledTimes(2));
   expect(screen.queryByRole("button", { name: /Why fork returns twice/ })).toBeNull();
 });
+
+it("reuses the page's thread list instead of reading it again", async () => {
+  renderPanel({ conversation, threads: [] });
+  await entered();
+
+  fireEvent.click(screen.getByRole("button", { name: "New tab" }));
+  await screen.findByRole("textbox", { name: "Open URL" });
+
+  expect(api.listSessionThreads).not.toHaveBeenCalled();
+});

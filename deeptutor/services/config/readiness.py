@@ -27,10 +27,13 @@ from __future__ import annotations
 import asyncio
 from collections import Counter
 import importlib.util
+import logging
 from typing import Any, Literal
 
 from deeptutor.services.config.model_catalog import SERVICE_NAMES
 from deeptutor.tools.builtin import USER_TOGGLEABLE_TOOL_NAMES
+
+logger = logging.getLogger(__name__)
 
 ReadinessState = Literal[
     "enabled_verified",
@@ -933,6 +936,10 @@ async def build_settings_readiness() -> dict[str, Any]:
                     engine_id, parser, config
                 )
         except Exception:
+            # Keep the row fail-closed, but leave a trail: without this the
+            # UI only ever says "parser_probe_failed" and the real cause
+            # (permissions, import errors, ...) is unrecoverable.
+            logger.warning("Parser readiness probe failed for %r", engine_id, exc_info=True)
             parser_readiness[engine_id] = {
                 "ready": False,
                 "reason": "parser_probe_failed",

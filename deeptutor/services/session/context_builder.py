@@ -19,6 +19,7 @@ from deeptutor.services.llm.context_window import (
 )
 from deeptutor.services.llm.image_replay import deduplicate_user_images
 from deeptutor.services.llm.types import StreamOutcome
+from deeptutor.services.prompt import get_prompt_manager
 from deeptutor.services.prompt.language import language_label
 
 from .ask_user_trace import (
@@ -426,6 +427,7 @@ class ContextBuilder:
         if not source_text.strip():
             return "", events
 
+        system_prompt = self._summary_instruction(language)
         agent = _ContextSummaryAgent(language=language)
         trace_meta = build_trace_metadata(
             call_id=new_call_id("context-summary"),
@@ -522,7 +524,6 @@ class ContextBuilder:
         # turns it condensed have scrolled out. Unstated, a summary of a
         # foreign-language session comes back in the default language and the
         # reply follows it — #1511's drift "after a few rounds".
-        system_prompt = self._summary_instruction(language)
         user_prompt = (
             f"Update the summary using the material below. "
             f"Keep the total under {target_tokens} tokens.\n\n{source_text}"
@@ -561,6 +562,8 @@ class ContextBuilder:
                 **replay_kwargs,
             ):
                 _chunks.append(_c)
+            if outcome.finish_reason == "error":
+                raise RuntimeError("Context summarization stream failed")
             summary = sanitize_summary("".join(_chunks))
             return self._finalize_summary(summary, summary_budget, outcome), events
         finally:
@@ -583,43 +586,11 @@ class ContextBuilder:
 
     def _summary_instruction(self, language: str) -> str:
         """The summary task's policy, independently of a tutor's large prompt."""
-        summary_language = language_label(language)
-        system_prompt = (
-            "You maintain a running summary of a conversation so future turns can "
-            "continue seamlessly. Rewrite the summary from the material provided, "
-            "organized under these headings (omit any heading with no content):\n"
-            "- Goals: what the user wants to accomplish, and why if stated\n"
-            "- Key facts & context: stable facts, definitions, data points, names, "
-            "references (files, links, IDs)\n"
-            "- Decisions & preferences: choices made, options rejected, style or "
-            "format preferences, capability/mode switches\n"
-            "- Progress: what has been produced or completed so far\n"
-            "- Open items: unanswered questions, pending tasks, known blockers\n"
-            "Carry forward still-relevant entries from the existing summary unchanged "
-            "unless new information contradicts them; drop only what is obsolete. "
-            "Prefer concrete details (numbers, identifiers, exact terms) over "
-            "abstract restatement. Never invent information. "
-            "Output the summary body only: no preamble, no drafting notes, no "
-            "step-by-step reasoning, and no <think> blocks — start directly at "
-            "the first heading. "
-            f"Write the summary itself in {summary_language}."
-        )
-        if language.startswith("zh"):
-            system_prompt = (
-                "你负责维护一份对话的滚动摘要，供后续轮次无缝衔接。请基于给定材料重写摘要，"
-                "按以下小节组织（无内容的小节直接省略）：\n"
-                "- 目标：用户想完成什么，以及（如有说明）原因\n"
-                "- 关键事实与上下文：稳定的事实、定义、数据、名称、引用（文件、链接、ID）\n"
-                "- 决定与偏好：已做的选择、被否决的方案、风格/格式偏好、能力或模式切换\n"
-                "- 进展：目前已经产出或完成的内容\n"
-                "- 待办事项：未回答的问题、未完成的任务、已知阻塞\n"
-                "已有摘要中仍然有效的条目应原样保留，仅在新信息与之矛盾时修改，只删除确已过时"
-                "的内容。优先保留具体细节（数字、标识符、确切措辞），不要抽象转述，绝不虚构。"
-                "只输出摘要正文：不要输出任何思考过程或 <think> 标记，不要写草稿、不要写"
-                "「Let me…」「Draft:」之类的推演，直接从第一个小节标题开始。"
-                f"摘要正文本身请使用{summary_language}撰写。"
-            )
-        return system_prompt
+        prompts = get_prompt_manager().load_prompts("chat", "context_summary_agent", language)
+        system_prompt = prompts.get("system")
+        if not isinstance(system_prompt, str) or not system_prompt.strip():
+            raise ValueError("Context summary system prompt is not configured")
+        return system_prompt.format(summary_language=language_label(language)).strip()
 
     async def build(
         self,

@@ -22,9 +22,11 @@ export function initI18n(language?: unknown) {
     fallbackLng: "en",
     // Use a single default namespace to keep lookups simple.
     // We intentionally keep keySeparator disabled so keys like "Generating..." remain valid.
+    // nsSeparator too: keys like "Query:" or "http://localhost:8080" would otherwise split as ns:key.
     defaultNS: "app",
     ns: ["app"],
     keySeparator: false,
+    nsSeparator: false,
     interpolation: {
       escapeValue: false,
     },
@@ -63,4 +65,28 @@ export async function ensureLanguage(language: AppLanguage) {
     const plApp = (await import("@/locales/pl/app.json")).default;
     i18n.addResourceBundle("pl", "app", plApp, true, true);
   }
+
+  if (language === "pt") {
+    const ptApp = (await import("@/locales/pt/app.json")).default;
+    i18n.addResourceBundle("pt", "app", ptApp, true, true);
+  }
+
+  if (language === "vi") {
+    const viApp = (await import("@/locales/vi/app.json")).default;
+    i18n.addResourceBundle("vi", "app", viApp, true, true);
+  }
+
+  if (language === "ja") {
+    const jaApp = (await import("@/locales/ja/app.json")).default;
+    i18n.addResourceBundle("ja", "app", jaApp, true, true);
+  }
+  if (language === "tr") {
+    const trApp = (await import("@/locales/tr/app.json")).default;
+    i18n.addResourceBundle("tr", "app", trApp, true, true);
+  }
+  if (language === "ko") {
+    const koApp = (await import("@/locales/ko/app.json")).default;
+    i18n.addResourceBundle("ko", "app", koApp, true, true);
+  }
+
 }

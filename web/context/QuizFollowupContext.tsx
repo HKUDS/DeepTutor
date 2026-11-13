@@ -28,6 +28,7 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import { updateNotebookEntry } from "@/lib/notebook-api";
+import { notifySessionsChanged } from "@/lib/session-events";
 import { shouldAppendEventContent } from "@/lib/stream";
 import { hasPendingAskUser } from "@/lib/ask-user-state";
 import {
@@ -250,6 +251,9 @@ export function QuizFollowupProvider({ children }: ProviderProps) {
   // ``session`` event handler can persist ``followup_session_id`` on the
   // matching entry once the backend assigns one.
   const entryIdsRef = useRef<Map<string, number | null>>(new Map());
+  // Questions asked as a side chat. Only those sessions show up as Little
+  // Tutor threads, so only they need to wake the session lists on a turn.
+  const sideChatKeysRef = useRef<Set<string>>(new Set());
   const openTabHandlerRef = useRef<
     ((ctx: QuizFollowupTabContext) => void) | null
   >(null);
@@ -324,6 +328,10 @@ export function QuizFollowupProvider({ children }: ProviderProps) {
         if (entryId) {
           persistFollowupSessionId(key, entryId, nextSessionId);
         }
+        // A side chat is its own session; the conversation's message-level
+        // Little Tutor entry and the sidebar both list sessions, so they must
+        // hear about the new thread now rather than after a reload.
+        if (sideChatKeysRef.current.has(key)) notifySessionsChanged();
         return;
       }
 
@@ -334,6 +342,9 @@ export function QuizFollowupProvider({ children }: ProviderProps) {
           currentStage: "",
           activeTurnId: null,
         }));
+        // The first turn usually names the thread; refresh the lists so the
+        // marker's popover shows the question instead of "Side chat".
+        if (sideChatKeysRef.current.has(key)) notifySessionsChanged();
         const runner = runnersRef.current.get(key);
         runner?.client.disconnect();
         runnersRef.current.delete(key);
@@ -494,6 +505,9 @@ export function QuizFollowupProvider({ children }: ProviderProps) {
         auto_route: autoRoute,
         ...capabilityConfig
       } = input.config ?? {};
+      // A side chat is the only follow-up kind that becomes a message-level
+      // Little Tutor thread; remember it before the server names its session.
+      if (selectionTutorContext) sideChatKeysRef.current.add(input.questionKey);
       sendThroughRunner(input.questionKey, {
         type: "start_turn",
         content,

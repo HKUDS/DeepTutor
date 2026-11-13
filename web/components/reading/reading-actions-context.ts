@@ -7,6 +7,8 @@ import type {
   ReadingExtensionResult,
 } from "@/lib/reading-api";
 
+export const READER_ASK_EVENT = "dt:reader-ask";
+
 /** One runnable extension action, with its label already resolved. */
 export interface ReadingActionEntry {
   key: string;

@@ -184,6 +184,14 @@ def test_dockerfile_is_json_driven_without_bundle_sed() -> None:
     assert "export_runtime_settings_to_env" in content
 
 
+def test_dockerfile_pins_node_to_security_fixed_version() -> None:
+    root = Path(__file__).resolve().parents[2]
+    content = (root / "Dockerfile").read_text(encoding="utf-8")
+
+    assert content.count("node:22.23.4-slim") == 2
+    assert "node:22-slim" not in content
+
+
 def test_supervisord_runs_as_root_with_unprivileged_children() -> None:
     """supervisord itself must run as root so it can open the container's
     stdout/stderr (``/dev/fd/1,2`` — root-owned pipes under a rootful daemon

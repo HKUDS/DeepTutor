@@ -46,6 +46,7 @@ def rejects_absent_encoding_format(status_code: int, body: str) -> bool:
 
 class OpenAICompatibleEmbeddingAdapter(BaseEmbeddingAdapter):
     NO_KEY_SENTINEL = "sk-no-key-required"
+    PROVIDER_NAME = "openai_compat"
 
     MODELS_INFO = {
         "text-embedding-3-large": {"default": 3072, "dimensions": [256, 512, 1024, 3072]},
@@ -168,14 +169,8 @@ class OpenAICompatibleEmbeddingAdapter(BaseEmbeddingAdapter):
             send_dimensions=self.send_dimensions,
         )
 
-    async def embed(self, request: EmbeddingRequest) -> EmbeddingResponse:
-        import asyncio
-
-        headers = {"Content-Type": "application/json"}
-        api_key = self._auth_api_key()
-        self._set_auth_header(headers, api_key)
-        headers.update({str(k): str(v) for k, v in self.extra_headers.items()})
-
+    def _build_payload(self, request: EmbeddingRequest) -> dict[str, Any]:
+        """Build provider parameters independently of the shared HTTP transport."""
         # Multimodal: pass `contents` through as `input` only for model names
         # that clearly advertise image/vision embedding support. This prevents
         # image indexing from accidentally hitting ordinary text-embedding
@@ -209,6 +204,17 @@ class OpenAICompatibleEmbeddingAdapter(BaseEmbeddingAdapter):
         dim_value = request.dimensions or self.dimensions
         if dim_value and self._should_send_dimensions(model):
             payload["dimensions"] = dim_value
+        return payload
+
+    async def embed(self, request: EmbeddingRequest) -> EmbeddingResponse:
+        import asyncio
+
+        headers = {"Content-Type": "application/json"}
+        api_key = self._auth_api_key()
+        self._set_auth_header(headers, api_key)
+        headers.update({str(k): str(v) for k, v in self.extra_headers.items()})
+        model = request.model or self.model
+        payload = self._build_payload(request)
 
         # URL transparency: hit `base_url` verbatim. Azure's `?api-version=...`
         # is a query param (not a path component) so we still append it.
@@ -269,7 +275,7 @@ class OpenAICompatibleEmbeddingAdapter(BaseEmbeddingAdapter):
                             status=429,
                             model=model,
                             url=url,
-                            provider="openai_compat",
+                            provider=self.PROVIDER_NAME,
                         )
 
                     if response.status_code >= 400:
@@ -291,7 +297,7 @@ class OpenAICompatibleEmbeddingAdapter(BaseEmbeddingAdapter):
                             body=body_text,
                             model=model,
                             url=url,
-                            provider="openai_compat",
+                            provider=self.PROVIDER_NAME,
                         )
 
                     # A 2xx response with non-JSON body usually means the
@@ -328,7 +334,7 @@ class OpenAICompatibleEmbeddingAdapter(BaseEmbeddingAdapter):
                             body=body_text,
                             model=model,
                             url=url,
-                            provider="openai_compat",
+                            provider=self.PROVIDER_NAME,
                         ) from exc
                 break
             except httpx.TransportError as exc:

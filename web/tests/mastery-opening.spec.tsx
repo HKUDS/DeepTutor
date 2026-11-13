@@ -9,6 +9,9 @@ import { useMasteryStudySession } from "@/hooks/useMasteryStudySession";
 import { useMasteryOpening } from "@/hooks/useMasteryOpening";
 import { isMasteryDraftSendReady } from "@/lib/mastery-study-route";
 import { setPendingPrompt } from "@/lib/pending-prompt";
+import {
+  setPendingLLMSelection,
+} from "@/lib/pending-llm-selection";
 import { MASTERY_OPENING_SCOPE } from "@/lib/mastery-mode";
 import { initI18n } from "@/i18n/init";
 
@@ -311,6 +314,76 @@ describe("mastery opening binding", () => {
     );
     expect(starts()).toHaveLength(1);
     expect(screen.getByTestId("error")).toBeEmptyDOMElement();
+  });
+
+  it("sends a picked llm_selection on the very first start_turn once", async () => {
+    mocks.topic.mockResolvedValue(topic("topic_llm_pick"));
+    setPendingPrompt("Design my outline", MASTERY_OPENING_SCOPE);
+    setPendingLLMSelection(
+      "mastery.outline.topic_llm_pick",
+      { profile_id: "profile_pick", model_id: "model_m" },
+    );
+    render(view("topic_llm_pick"));
+    await waitFor(() => expect(starts()).toHaveLength(1));
+    expect(starts()[0].llm_selection).toEqual({
+      profile_id: "profile_pick",
+      model_id: "model_m",
+    });
+    expect(starts()).toHaveLength(1);
+  });
+
+  it("keeps llm_selection null without a pending pick", async () => {
+    mocks.topic.mockResolvedValue(topic("topic_llm_none"));
+    setPendingPrompt("Design my outline", MASTERY_OPENING_SCOPE);
+    render(view("topic_llm_none"));
+    await waitFor(() => expect(starts()).toHaveLength(1));
+    expect(starts()[0].llm_selection).toBeNull();
+    expect(starts()).toHaveLength(1);
+  });
+
+  it("does not leak a pending model into another topic's first request", async () => {
+    const old = deferred<ReturnType<typeof topic>>();
+    const next = deferred<ReturnType<typeof topic>>();
+    mocks.topic.mockImplementation((id: string) =>
+      id === "topic_llm_old" ? old.promise : next.promise,
+    );
+    setPendingPrompt("Design my outline", MASTERY_OPENING_SCOPE);
+    setPendingLLMSelection(
+      "mastery.outline.topic_llm_old",
+      { profile_id: "profile_old", model_id: "model_m" },
+    );
+    const rendered = render(view("topic_llm_old"));
+    rendered.rerender(view("topic_llm_next"));
+    await act(async () => old.resolve(topic("topic_llm_old")));
+    expect(starts()).toHaveLength(0);
+    await act(async () => next.resolve(topic("topic_llm_next")));
+    await waitFor(() => expect(starts()).toHaveLength(1));
+    expect(starts()[0].llm_selection).toBeNull();
+    expect(starts()).toHaveLength(1);
+  });
+
+  it("keeps an existing outline session's persisted llm_selection", async () => {
+    mocks.topic.mockResolvedValue(topic("topic_llm_saved"));
+    mocks.sessions.mockResolvedValue([{ session_id: "session_llm_saved" }]);
+    mocks.getSession.mockResolvedValue({
+      session_id: "session_llm_saved",
+      messages: [],
+      preferences: {
+        workspace_mode: "mastery_path",
+        mastery_path_id: "topic_llm_saved",
+        mastery_session_mode: "outline",
+        llm_selection: { profile_id: "profile_saved", model_id: "model_n" },
+      },
+    });
+    setPendingPrompt("Design my outline", MASTERY_OPENING_SCOPE);
+    setPendingLLMSelection(
+      "mastery.outline.topic_llm_saved",
+      { profile_id: "profile_saved", model_id: "model_m" },
+    );
+    render(view("topic_llm_saved", "session_llm_saved"));
+    await waitFor(() => expect(starts()).toHaveLength(1));
+    expect(starts()[0].llm_selection).toEqual({ profile_id: "profile_saved", model_id: "model_n" });
+    expect(starts()).toHaveLength(1);
   });
 });
 

@@ -110,6 +110,7 @@ function AnswerBlock({
       <div className="text-[13px] text-[var(--foreground)]">
         {body ? (
           <MarkdownRenderer
+            learningTextSize={16}
             content={
               isCode && !body.trimStart().startsWith("```") ? `\`\`\`python\n${body}\n\`\`\`` : body
             }
@@ -308,6 +309,7 @@ export default function QuestionCard({
         data-testid="question-stem"
       >
         <MarkdownRenderer
+          learningTextSize={16}
           content={practiceQuestionMarkdown(entry.question)}
           variant="prose"
           className="text-[14px] leading-relaxed [overflow-wrap:anywhere] [&_pre]:max-w-full [&_pre]:overflow-x-auto"
@@ -355,6 +357,7 @@ export default function QuestionCard({
                     }`}
                   >
                     <MarkdownRenderer
+                      learningTextSize={16}
                       content={practiceMarkdown(text)}
                       variant="compact"
                       className="font-sans text-[13px] [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 [&_p]:my-0"
@@ -413,6 +416,7 @@ export default function QuestionCard({
               </div>
               <div className="text-[13px] leading-relaxed text-[var(--foreground)]">
                 <MarkdownRenderer
+                  learningTextSize={16}
                   content={entry.explanation}
                   variant="prose"
                   className="text-[13px] leading-relaxed"

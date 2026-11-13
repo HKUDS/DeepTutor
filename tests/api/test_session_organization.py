@@ -9,22 +9,33 @@ from deeptutor.services.session.organization import validate_parent_assignment
 
 
 class _ReorderingStore:
-    def __init__(self, rows: list[dict[str, Any]]) -> None:
+    def __init__(
+        self,
+        rows: list[dict[str, Any]],
+        messages: dict[str, list[dict[str, Any]]] | None = None,
+    ) -> None:
         self.rows = {row["session_id"]: row for row in rows}
+        self.messages = messages or {}
         self.clock = max((float(row.get("updated_at") or 0) for row in rows), default=0)
 
     async def get_session(self, session_id: str):
         return self.rows.get(session_id)
 
+    async def get_messages(self, session_id: str):
+        return list(self.messages.get(session_id, []))
+
     async def list_sessions(self, *, limit: int, offset: int):
         ordered = sorted(self.rows.values(), key=lambda row: -float(row["updated_at"]))
         return ordered[offset : offset + limit]
 
-    async def update_session_preferences(self, session_id: str, updates: dict[str, Any]):
+    async def update_session_preferences(
+        self, session_id: str, updates: dict[str, Any], *, touch: bool = True
+    ):
         row = self.rows[session_id]
         row.setdefault("preferences", {}).update(updates)
-        self.clock += 1
-        row["updated_at"] = self.clock
+        if touch:
+            self.clock += 1
+            row["updated_at"] = self.clock
         return True
 
 
@@ -121,6 +132,47 @@ async def test_threads_lists_only_this_conversations_tutor_threads(
     assert [row["session_id"] for row in result["threads"]] == ["newer-thread", "older-thread"]
 
 
+class _ThreadsStore(_ReorderingStore):
+    """The threads endpoint also reads messages and writes recovered anchors."""
+
+    def __init__(
+        self, rows: list[dict[str, Any]], messages: dict[str, list[dict[str, Any]]]
+    ) -> None:
+        super().__init__(rows)
+        self.messages = messages
+
+    async def get_messages(self, session_id: str):
+        return list(self.messages.get(session_id, []))
+
+
+@pytest.mark.asyncio
+async def test_threads_recover_a_legacy_threads_source_message(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = _ThreadsStore(
+        [
+            {"session_id": "root", "updated_at": 10, "preferences": {}},
+            {
+                "session_id": "legacy-thread",
+                "updated_at": 9,
+                "preferences": {
+                    "parent_session_id": "root",
+                    "session_kind": "selection_tutor",
+                    "tutor_selected_text": "fork call returns twice",
+                },
+            },
+        ],
+        {"root": [{"id": 7, "role": "assistant", "content": "The fork call returns twice."}]},
+    )
+    monkeypatch.setattr(sessions_router, "get_session_store", lambda: store)
+
+    result = await sessions_router.list_session_threads("root")
+
+    preferences = result["threads"][0]["preferences"]
+    assert preferences["tutor_source_message_id"] == 7
+    assert preferences["tutor_source_backfill_attempted"] is True
+
+
 @pytest.mark.asyncio
 async def test_organization_read_skips_the_transcript(monkeypatch: pytest.MonkeyPatch) -> None:
     store = _ReorderingStore(
@@ -133,3 +185,86 @@ async def test_organization_read_skips_the_transcript(monkeypatch: pytest.Monkey
     assert result["session"]["preferences"] == {"pinned": True}
     with pytest.raises(sessions_router.HTTPException):
         await sessions_router.get_session_organization("missing")
+
+
+@pytest.mark.asyncio
+async def test_a_thread_anchor_can_be_cleared_or_moved_from_organization(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = _ReorderingStore(
+        [
+            {"session_id": "root", "updated_at": 2, "preferences": {}},
+            {
+                "session_id": "thread",
+                "updated_at": 1,
+                "preferences": {
+                    "parent_session_id": "root",
+                    "session_kind": "selection_tutor",
+                    "tutor_source_message_id": 7,
+                },
+            },
+        ],
+        {
+            "root": [
+                {"id": 7, "role": "assistant", "content": "It returns twice."},
+                {"id": 9, "role": "assistant", "content": "It skips the parent path."},
+            ]
+        },
+    )
+    monkeypatch.setattr(sessions_router, "get_session_store", lambda: store)
+
+    moved = await sessions_router.update_session_organization(
+        "thread", sessions_router.SessionOrganizationRequest(tutor_source_message_id=9)
+    )
+    assert moved["session"]["preferences"]["tutor_source_message_id"] == 9
+
+    cleared = await sessions_router.update_session_organization(
+        "thread", sessions_router.SessionOrganizationRequest(tutor_source_message_id=None)
+    )
+    preferences = cleared["session"]["preferences"]
+    assert preferences["tutor_source_message_id"] == ""
+    # A deliberate detach must survive the legacy-thread backfill.
+    assert preferences["tutor_source_backfill_attempted"] is True
+
+
+@pytest.mark.asyncio
+async def test_a_source_message_must_belong_to_the_threads_conversation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = _ReorderingStore(
+        [
+            {"session_id": "root", "updated_at": 2, "preferences": {}},
+            {
+                "session_id": "thread",
+                "updated_at": 1,
+                "preferences": {
+                    "parent_session_id": "root",
+                    "session_kind": "selection_tutor",
+                },
+            },
+        ],
+        {"root": [{"id": 7, "role": "assistant", "content": "It returns twice."}]},
+    )
+    monkeypatch.setattr(sessions_router, "get_session_store", lambda: store)
+
+    with pytest.raises(sessions_router.HTTPException) as excinfo:
+        await sessions_router.update_session_organization(
+            "thread", sessions_router.SessionOrganizationRequest(tutor_source_message_id=99)
+        )
+    assert excinfo.value.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_only_a_tutor_thread_can_carry_a_source_message(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = _ReorderingStore(
+        [{"session_id": "chat", "updated_at": 1, "preferences": {"session_kind": "chat"}}]
+    )
+    monkeypatch.setattr(sessions_router, "get_session_store", lambda: store)
+
+    with pytest.raises(sessions_router.HTTPException) as excinfo:
+        await sessions_router.update_session_organization(
+            "chat", sessions_router.SessionOrganizationRequest(tutor_source_message_id=7)
+        )
+    assert excinfo.value.status_code == 400

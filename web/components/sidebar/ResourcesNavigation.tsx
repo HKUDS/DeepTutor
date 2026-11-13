@@ -12,15 +12,15 @@ import { useCapabilityFilter } from '@/features/capabilities/useCapabilityCatalo
 import { navVisibleUnderPolicy } from './nav-entries'
 
 function Shelf({ groups, titled }: { groups: DashboardGroup[]; titled: boolean }) {
-  const { i18n } = useTranslation()
+  const { t, i18n } = useTranslation()
   const available = useCapabilityFilter()
   const zh = i18n.language.startsWith('zh')
   return visibleGroups(groups, available).map(group => {
     const rows = group.items.map(row => (
-      <NavigationRow key={row.key} href={row.href} label={zh ? row.title.zh : row.title.en} icon={row.icon} />
+      <NavigationRow key={row.key} href={row.href} label={zh ? row.title.zh : t(row.title.en)} icon={row.icon} />
     ))
     return titled ? (
-      <Section key={group.label.en} title={zh ? group.label.zh : group.label.en}>
+      <Section key={group.label.en} title={zh ? group.label.zh : t(group.label.en)}>
         {rows}
       </Section>
     ) : (

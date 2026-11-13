@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 
-test("only captured web snapshots use the safe rich Markdown renderer", () => {
+test("web snapshots and uploaded Markdown use the safe rich Markdown renderer", () => {
   const reader = fs.readFileSync(
     path.join(process.cwd(), "components/reading/TextUnitView.tsx"),
     "utf8",
@@ -16,7 +16,8 @@ test("only captured web snapshots use the safe rich Markdown renderer", () => {
   assert.match(reader, /contentFormat === "web_markdown"/);
   assert.match(reader, /<RichMarkdownRenderer/);
   assert.match(reader, /allowHtml=\{false\}/);
-  assert.match(reader, /enableImages/);
+  assert.match(reader, /enableImages=\{sourceType !== "upload"\}/);
   assert.match(reader, /whitespace-pre-wrap/);
   assert.match(pane, /contentFormat=\{material\.content_format\}/);
+  assert.match(pane, /sourceType=\{material\.source_type\}/);
 });

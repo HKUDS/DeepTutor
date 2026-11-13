@@ -73,6 +73,9 @@ export function useReadingWorkspace(
   const [organizedNotes, setOrganizedNotes] =
     useState<OrganizedReadingNotes | null>(null);
   const sessionBootRef = useRef("");
+  // The conversation that was open when this collection started a new one; it
+  // belongs to wherever the learner came from, never to this collection.
+  const inheritedSessionRef = useRef<string | null>(null);
   const transcriptRequestRef = useRef(0);
 
   const refreshConversations = useCallback(async () => {
@@ -202,6 +205,7 @@ export function useReadingWorkspace(
           await loadSession(sessionIdParam);
           configureSession(sessionConfiguration, sessionIdParam);
         } else {
+          inheritedSessionRef.current = state.sessionId;
           newSession({ ...sessionConfiguration, capability: null });
         }
       } catch (caught) {
@@ -440,8 +444,16 @@ export function useReadingWorkspace(
   // named. So the address bar is corrected in place and `usePathname` — which
   // does follow the native API — keeps `sessionIdParam` honest for refreshes,
   // links and the back button.
+  //
+  // Only once this collection has started its own draft. Until the boot above
+  // runs, `state.sessionId` is still whatever conversation was open before the
+  // learner came here (a /chat thread, say); naming it in the URL made the boot
+  // take it for this collection's conversation and keep it, so the reader's
+  // questions went to that unrelated thread without the page or selection.
   useEffect(() => {
     if (!state.sessionId || sessionIdParam) return;
+    if (sessionBootRef.current !== `${workspaceId}:new`) return;
+    if (state.sessionId === inheritedSessionRef.current) return;
     window.history.replaceState(
       null,
       "",

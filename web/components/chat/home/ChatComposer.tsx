@@ -11,9 +11,11 @@ import {
   type RefObject,
 } from "react";
 import {
+  currentWorkspaceDraftLocation,
   saveWorkspaceDraft,
   readWorkspaceDraft,
   type WorkspaceDraft,
+  type WorkspaceDraftLocation,
 } from "@/lib/workspace-drafts";
 import {
   ArrowUp,
@@ -30,6 +32,7 @@ import {
   MessageSquare,
   Mic,
   Paperclip,
+  PencilRuler,
   Plug,
   Sparkles,
   Square,
@@ -60,12 +63,13 @@ import ComposerResources, {
 import KnowledgeSelector from "./KnowledgeSelector";
 import ModelSelector from "./ModelSelector";
 import styles from "./ChatComposer.module.css";
-import { ComposerTray, type TrayMode } from "./ComposerTray";
+import { ComposerTray, type TrayCreate, type TrayMode } from "./ComposerTray";
 import type { AnswerModeProps, PartnerLinkProps } from "./AnswerModeMenu";
 import type { LeadToken } from "./ComposerLead";
 import { modeIcon } from "./ComposerIcons";
 import type { ComposerResourceCatalog } from "@/hooks/useComposerResources";
 import type { ResourceSelection } from "@/features/chat/ChatStateAdapter";
+import { CREATE_KINDS, isCreationKind } from "@/lib/creations";
 
 import TaskLinkSelector from "@/components/tasks/TaskLinkSelector";
 import { useTaskBoard } from "@/lib/task-board-store";
@@ -275,6 +279,8 @@ export default memo(function ChatComposer({
   resourceCatalog,
   resourceSelection,
   onResourceSelectionChange,
+  createTarget = null,
+  onCreateTargetChange,
   agentsAvailable = true,
   onToggleMemoryFile,
   onSend,
@@ -426,6 +432,10 @@ export default memo(function ChatComposer({
   resourceCatalog?: ComposerResourceCatalog;
   resourceSelection?: ResourceSelection;
   onResourceSelectionChange?: (selection: ResourceSelection) => void;
+  /** Create mode: the artifact kind this conversation is authoring, or null.
+   *  Rendered (and its tray entry shown) only when a parent supplies both. */
+  createTarget?: string | null;
+  onCreateTargetChange?: (value: string | null) => void;
   /** Hide the My Agents reference entry (e.g. the quiz follow-up surface). */
   agentsAvailable?: boolean;
   onToggleMemoryFile: (file: SpaceMemoryFile) => void;
@@ -526,19 +536,112 @@ export default memo(function ChatComposer({
   }, [onAddFiles]);
   const restoredDraftRef = useRef(false);
   const restoreFailedRef = useRef(false);
+  const draftSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const draftDirtyRef = useRef(false);
+  const draftRevisionRef = useRef(0);
+  const draftLocationRef = useRef<WorkspaceDraftLocation | null>(null);
+  const draftTextRef = useRef("");
+  const interactedBeforeRestoreRef = useRef(false);
+  const restoreBaseRef = useRef<WorkspaceDraft | undefined | null>(null);
+  const suppressDraftSaveRef = useRef(false);
+
+  const draftWritesRef = useRef<Promise<void>>(Promise.resolve());
+  const enqueueDraftWrite = useCallback((write: () => Promise<void>) => {
+    const pending = draftWritesRef.current.catch(() => {}).then(write);
+    draftWritesRef.current = pending;
+    return pending;
+  }, []);
+
+  const collectDraft = useCallback(
+    (): WorkspaceDraft => ({
+      // Keep the last value in a ref: the imperative handle may already be
+      // detached when the unmount cleanup runs.
+      text: draftTextRef.current,
+      attachments: draftAttachmentsRef.current.map(
+        ({ filename, base64, mimeType }) => ({ filename, base64, mimeType }),
+      ),
+    }),
+    [],
+  );
+
+  const cancelDraftSave = useCallback(() => {
+    if (draftSaveTimerRef.current) {
+      clearTimeout(draftSaveTimerRef.current);
+      draftSaveTimerRef.current = null;
+    }
+    draftDirtyRef.current = false;
+  }, []);
+
+  const saveDraftInBackground = useCallback(async () => {
+    if (!draftDirtyRef.current) return;
+    const location = draftLocationRef.current;
+    if (!location) return;
+    const draft = collectDraft();
+    draftDirtyRef.current = false;
+    try {
+      await enqueueDraftWrite(async () => {
+      if (restoreFailedRef.current) {
+        // The stored draft never reached the composer; merge instead of
+        // overwriting it with only what was typed after the failure.
+        if (restoreBaseRef.current === null) {
+          restoreBaseRef.current = await readWorkspaceDraft(
+            location.workspaceId,
+            location.pathname,
+          );
+        }
+        const base = restoreBaseRef.current;
+        await saveWorkspaceDraft(
+          {
+            text: [base?.text, draft.text].filter(Boolean).join("\n"),
+            attachments: [...(base?.attachments ?? []), ...draft.attachments],
+          },
+          location.workspaceId,
+          location.pathname,
+        );
+      } else {
+        await saveWorkspaceDraft(draft, location.workspaceId, location.pathname);
+      }
+      });
+    } catch (error) {
+      draftDirtyRef.current = true;
+      console.warn("[ChatComposer] workspace draft autosave failed", error);
+    }
+  }, [collectDraft, enqueueDraftWrite]);
+
+  const scheduleDraftSave = useCallback(() => {
+    if (!restoredDraftRef.current && !restoreFailedRef.current) return;
+    draftDirtyRef.current = true;
+    if (draftSaveTimerRef.current) clearTimeout(draftSaveTimerRef.current);
+    draftSaveTimerRef.current = setTimeout(() => {
+      draftSaveTimerRef.current = null;
+      void saveDraftInBackground();
+    }, 500);
+  }, [saveDraftInBackground]);
   useEffect(() => {
     let alive = true;
-    const restore = readWorkspaceDraft();
+    const location = currentWorkspaceDraftLocation();
+    draftLocationRef.current = location;
+    const restore = readWorkspaceDraft(location.workspaceId, location.pathname);
     if (!restoredDraftRef.current) {
       void restore
         .then((draft) => {
           if (!alive || restoredDraftRef.current) return;
           restoredDraftRef.current = true;
-          if (!draft) return;
+          if (!draft) {
+            if (interactedBeforeRestoreRef.current) scheduleDraftSave();
+            return;
+          }
           const current = inputHandleRef.current?.getValue() || "";
-          inputHandleRef.current?.setValue(
-            current ? `${draft.text}\n${current}` : draft.text,
-          );
+          const restoredText = current ? `${draft.text}\n${current}` : draft.text;
+          draftTextRef.current = restoredText;
+          // Restoring is not user input; don't queue a save that would write
+          // the draft straight back to storage.
+          suppressDraftSaveRef.current = true;
+          inputHandleRef.current?.setValue(restoredText);
+          queueMicrotask(() => {
+            suppressDraftSaveRef.current = false;
+          });
+          if (interactedBeforeRestoreRef.current) scheduleDraftSave();
           const files = draft.attachments
             .filter((item) => item.base64)
             .map((item) => {
@@ -560,17 +663,10 @@ export default memo(function ChatComposer({
           );
         });
     }
-    const collectDraft = () => ({
-      text: inputHandleRef.current?.getValue() || "",
-      attachments: draftAttachmentsRef.current.map(
-        ({ filename, base64, mimeType }) => ({ filename, base64, mimeType }),
-      ),
-    });
     // The stored draft never made it into the composer, so saving the composer
     // as-is could clobber it. Skip when nothing new was typed; otherwise merge
     // the new input on top of the stored draft. If even the re-read fails,
     // reject the switch (as on main) instead of losing the new input.
-    let storedDraft: WorkspaceDraft | undefined | null = null;
     const saveAfterFailedRestore = () => {
       restoreFailedRef.current = true;
       const draft = collectDraft();
@@ -579,31 +675,91 @@ export default memo(function ChatComposer({
         saveWorkspaceDraft({
           text: [stored?.text, draft.text].filter(Boolean).join("\n"),
           attachments: [...(stored?.attachments ?? []), ...draft.attachments],
-        });
+        }, location.workspaceId, location.pathname);
       // Re-read only once per mount so a retried switch merges the original
-      // stored draft instead of re-appending the composer to itself.
-      if (storedDraft !== null) return merge(storedDraft);
-      return readWorkspaceDraft().then((stored) => {
-        storedDraft = stored ?? { text: "", attachments: [] };
-        return merge(stored);
+      // stored draft instead of re-appending the composer to itself. Autosave
+      // shares the same cache: it may already have written base + typed text.
+      if (restoreBaseRef.current !== null) return merge(restoreBaseRef.current);
+      return readWorkspaceDraft(location.workspaceId, location.pathname).then((stored) => {
+        restoreBaseRef.current = stored ?? { text: "", attachments: [] };
+        return merge(restoreBaseRef.current);
       });
     };
     const save = (event: Event) => {
       (event as CustomEvent<Promise<void>[]>).detail.push(
-        restoreFailedRef.current
-          ? saveAfterFailedRestore()
-          : restore.then(
-              () => saveWorkspaceDraft(collectDraft()),
-              saveAfterFailedRestore,
-            ),
+        enqueueDraftWrite(async () => {
+          // The switch (and any draft transfer before navigation) must wait
+          // for older autosaves, including their asynchronous identity reads.
+          await restore.catch(() => { restoreFailedRef.current = true; });
+          const revision = draftRevisionRef.current;
+          if (restoreFailedRef.current) {
+            await saveAfterFailedRestore();
+          } else {
+            await saveWorkspaceDraft(collectDraft(), location.workspaceId, location.pathname);
+          }
+          // A successful switch already persisted this revision. Do not let
+          // unmount restore a source draft that beforeNavigate just moved.
+          // If the user typed while the save ran, keep that newer input dirty.
+          if (draftRevisionRef.current === revision) cancelDraftSave();
+        }),
       );
     };
     window.addEventListener("deeptutor:before-workspace-switch", save);
     return () => {
       alive = false;
       window.removeEventListener("deeptutor:before-workspace-switch", save);
+      if (draftSaveTimerRef.current) {
+        clearTimeout(draftSaveTimerRef.current);
+        draftSaveTimerRef.current = null;
+      }
+      if (!draftDirtyRef.current) return;
+      if (restoredDraftRef.current || restoreFailedRef.current) {
+        void saveDraftInBackground();
+        return;
+      }
+      // The composer unmounted before the stored draft arrived. Merge it with
+      // whatever was typed so neither side is lost.
+      void enqueueDraftWrite(async () => {
+        let draft: WorkspaceDraft | undefined;
+        try {
+          draft = await restore;
+        } catch {
+          if (draftDirtyRef.current) await saveAfterFailedRestore();
+          return;
+        }
+        if (!draftDirtyRef.current) return;
+        const current = collectDraft();
+        await saveWorkspaceDraft({
+          text: [draft?.text, current.text].filter(Boolean).join("\n"),
+          attachments: [...(draft?.attachments ?? []), ...current.attachments],
+        }, location.workspaceId, location.pathname);
+      }).catch((error) => {
+        console.warn("[ChatComposer] could not preserve draft after unmount", error);
+      });
     };
-  }, []);
+  }, [cancelDraftSave, collectDraft, enqueueDraftWrite, saveDraftInBackground, scheduleDraftSave]);
+
+  // Attachments are part of the same draft. Their signature is a cheap way to
+  // react to add/remove without re-saving on every parent render.
+  const attachmentSignature = attachments
+    .map((item) => `${item.filename}:${item.base64?.length ?? 0}:${item.mimeType ?? ""}`)
+    .join("|");
+  const attachmentsInitializedRef = useRef(false);
+  useEffect(() => {
+    if (!attachmentsInitializedRef.current) {
+      attachmentsInitializedRef.current = true;
+      return;
+    }
+    if (suppressDraftSaveRef.current) return;
+    draftRevisionRef.current += 1;
+    if (!restoredDraftRef.current && !restoreFailedRef.current) {
+      interactedBeforeRestoreRef.current = true;
+      draftDirtyRef.current = true;
+      return;
+    }
+    draftLocationRef.current = currentWorkspaceDraftLocation();
+    scheduleDraftSave();
+  }, [attachmentSignature, scheduleDraftSave]);
   if (lastCapMenuOpen !== capMenuOpen) {
     setLastCapMenuOpen(capMenuOpen);
     if (!capMenuOpen) setMoreCapsOpen(false);
@@ -694,9 +850,19 @@ export default memo(function ChatComposer({
   // every keystroke (no `hasContent` in deps), so the memoized ComposerInput
   // doesn't get re-rendered just because we observed a content-empty toggle.
   const handleInputChange = useCallback((val: string) => {
+    draftTextRef.current = val;
     const next = !!val.trim();
     setHasContent((prev) => (prev === next ? prev : next));
-  }, []);
+    if (suppressDraftSaveRef.current) return;
+    draftRevisionRef.current += 1;
+    if (!restoredDraftRef.current && !restoreFailedRef.current) {
+      interactedBeforeRestoreRef.current = true;
+      draftDirtyRef.current = true;
+      return;
+    }
+    draftLocationRef.current = currentWorkspaceDraftLocation();
+    scheduleDraftSave();
+  }, [scheduleDraftSave]);
 
   const doSend = useCallback(
     (content: string) => {
@@ -708,11 +874,24 @@ export default memo(function ChatComposer({
         return false;
       }
       onSend(content);
-      if (!restoreFailedRef.current) {
-        void saveWorkspaceDraft({ text: "", attachments: [] }).catch(() => {});
+      if (restoredDraftRef.current && !restoreFailedRef.current) {
+        const location = draftLocationRef.current ?? currentWorkspaceDraftLocation();
+        void enqueueDraftWrite(() => saveWorkspaceDraft(
+          { text: "", attachments: [] },
+          location.workspaceId,
+          location.pathname,
+        )).catch(() => {});
       }
       setHasContent(false);
+      // Suppress the draft save that the clear below would otherwise queue:
+      // the message is sent, so there is nothing left to restore.
+      suppressDraftSaveRef.current = true;
       inputHandleRef.current?.clear();
+      draftTextRef.current = "";
+      queueMicrotask(() => {
+        suppressDraftSaveRef.current = false;
+      });
+      cancelDraftSave();
       // Sending can move focus to the button or rerender the empty-state
       // composer into the conversation layout. Restore it after that update
       // so the user can keep typing, including after switching back to the tab.
@@ -720,7 +899,7 @@ export default memo(function ChatComposer({
       return true;
     },
     [awaitingUserReply, capabilityConfigConfirmed, capabilityNeedsConfig,
-      focusTextarea, isStreaming, onRequestConfigConfirm, onSend],
+      cancelDraftSave, enqueueDraftWrite, focusTextarea, isStreaming, onRequestConfigConfirm, onSend],
   );
 
   const { board: taskBoard } = useTaskBoard();
@@ -881,7 +1060,37 @@ export default memo(function ChatComposer({
   const trayMode: TrayMode | undefined = modeInTray
     ? { capabilities, value: activeCap.value, onChange: handleSelectCapability }
     : undefined;
+  // Create mode's own chip reads "Create Skill" / "Create Persona" and comes
+  // before even the mode token: picking a kind already forced the mode back
+  // to plain chat (see `trayCreate.onChange`), so the two never coexist, but
+  // this keeps the ordering right the instant a mode is chosen afterwards —
+  // which itself clears create mode (`onSelectCapability` in the parent).
+  const createKindDef = isCreationKind(createTarget) ? CREATE_KINDS[createTarget] : null;
+  const createToken: LeadToken[] =
+    onCreateTargetChange && createKindDef
+      ? [
+          {
+            key: `create:${createKindDef.kind}`,
+            icon: PencilRuler,
+            kind: t("Create"),
+            prefix: t("Create"),
+            label: t(createKindDef.labelKey),
+            onRemove: () => onCreateTargetChange(null),
+          },
+        ]
+      : [];
+  const trayCreate: TrayCreate | undefined = onCreateTargetChange
+    ? {
+        value: createTarget,
+        onChange: (kind) => {
+          onCreateTargetChange(kind);
+          // Create mode only makes sense on the plain chat loop.
+          if (kind) handleSelectCapability("");
+        },
+      }
+    : undefined;
   const leadTokens: LeadToken[] = [
+    ...createToken,
     ...modeToken,
     ...(resourceSelection && onResourceSelectionChange
       ? [
@@ -1154,7 +1363,7 @@ export default memo(function ChatComposer({
             replyLanguageDisabled={replyLanguageDisabled}
             onReplyLanguageChange={onReplyLanguageChange}
             languagePickerBelow={!hasMessages && !docked}
-            placeholder={inputPlaceholder}
+            placeholder={inputPlaceholder ?? (createKindDef ? t(createKindDef.placeholderKey) : undefined)}
             placeholderCompletion={inputPlaceholderCompletion}
             minHeight={hasMessages || docked ? 28 : 64}
             lead={leadTokens}
@@ -1443,7 +1652,7 @@ export default memo(function ChatComposer({
             </div>
           </div>
         </div>
-        {trayMode || (resourceCatalog && resourceSelection && onResourceSelectionChange) || answerMode || partnerLinks || trayEnd ? (
+        {trayMode || (resourceCatalog && resourceSelection && onResourceSelectionChange) || trayCreate || answerMode || partnerLinks || trayEnd ? (
           <ComposerTray
             controls={controls}
             placement={hasMessages || docked ? "up" : "down"}
@@ -1453,6 +1662,7 @@ export default memo(function ChatComposer({
                 ? { catalog: resourceCatalog, selection: resourceSelection, onChange: onResourceSelectionChange }
                 : undefined
             }
+            create={trayCreate}
             partners={partnerLinks}
             answer={answerMode}
             end={trayEnd}

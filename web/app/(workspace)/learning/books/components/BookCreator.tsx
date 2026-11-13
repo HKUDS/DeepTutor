@@ -1,13 +1,14 @@
 'use client'
 
 import { PageContainer, PageHeader } from '@/components/layout/FeaturePage'
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { ChevronUp, Database, Loader2, Pencil, Sparkles } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useAppShell } from '@/context/AppShellContext'
 import type { Book, BookDepth, BookProposal } from '@/lib/book-types'
 import type { TopicSourceInput } from '@/lib/learning-api'
 import {
+  catalogTranslate,
   useTopicSourceLibrary,
   hydrateTopicSource,
   toggleSourceSelection,
@@ -38,6 +39,8 @@ const BOOK_LANGUAGES: Array<{ code: string; label: string }> = [
   { code: 'ru', label: 'Русский' },
   { code: 'pt', label: 'Português' },
   { code: 'it', label: 'Italiano' },
+  { code: 'tr', label: 'Türkçe' },
+  { code: 'vi', label: 'Tiếng Việt' },
 ]
 
 const DEPTH_OPTIONS: Array<{ value: BookDepth; label: string; hint: string }> = [
@@ -90,7 +93,9 @@ export default function BookCreator({
   onConfirmProposal,
   confirmLoading = false,
 }: BookCreatorProps) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const zh = i18n.language?.toLowerCase().startsWith('zh') ?? false
+  const sourceTr = useMemo(() => catalogTranslate(t, zh), [t, zh])
   const { language: appLanguage } = useAppShell()
   const [intent, setIntent] = useState('')
   const [language, setLanguage] = useState<string>('auto')
@@ -101,7 +106,7 @@ export default function BookCreator({
     candidates,
     childLists,
     loadChildren,
-  } = useTopicSourceLibrary(t)
+  } = useTopicSourceLibrary(sourceTr)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [sourceError, setSourceError] = useState('')
   const [preparing, setPreparing] = useState(false)

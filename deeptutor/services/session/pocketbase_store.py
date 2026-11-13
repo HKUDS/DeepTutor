@@ -22,8 +22,9 @@ from functools import wraps
 import json
 import logging
 import re
+import threading
 import time
-from typing import Any
+from typing import Any, Sequence
 import uuid
 
 from deeptutor.services.session.protocol import ActiveTurnConflict
@@ -173,9 +174,27 @@ class PocketBaseSessionStore:
     def __init__(self) -> None:
         self._closed = False
         self.store_scope: StoreScope | None = None
+        # Preference writes are read-merge-write over one JSON field. PB has no
+        # compare-and-set, so serialize them inside this process (per
+        # user+session). The lock is a threading lock held inside the worker
+        # thread: unlike asyncio.Lock it also serializes two event loops that
+        # share this store, which is how concurrent backfill/turn/detach used
+        # to lose one another's JSON document. Multi-instance deployments
+        # still need a single writer for the legacy backfill.
+        self._prefs_locks: dict[tuple[str, str], threading.Lock] = {}
+        self._prefs_locks_guard = threading.Lock()
         from deeptutor.services.workspace.context import get_workspace_scope
 
         self._workspace_scope = get_workspace_scope()
+
+    def _prefs_lock(self, session_id: str, uid: str) -> threading.Lock:
+        key = (uid, session_id)
+        with self._prefs_locks_guard:
+            lock = self._prefs_locks.get(key)
+            if lock is None:
+                lock = threading.Lock()
+                self._prefs_locks[key] = lock
+        return lock
 
     @_captured_store_context
     async def close(self) -> None:
@@ -821,37 +840,72 @@ class PocketBaseSessionStore:
         self, session_id: str, preferences: dict[str, Any], *, touch: bool = True
     ) -> bool:
         sid = _validate_id(session_id, "session_id")
+        uid = _current_user_id()
+        lock = self._prefs_lock(sid, uid)
 
-        async def _merge():
-            session = await self.get_session(sid)
-            if session is None:
-                return False
-            merged = upgrade_workspace_preferences(
-                {**session.get("preferences", {}), **(preferences or {})}
-            )
-            uid = _current_user_id()
-
-            def _update():
-                record = _find_session_record(_pb(), sid, uid)
-                if record is None:
-                    return False
-                current = _json_loads(getattr(record, "preferences_json", None), {})
-                if isinstance(current, dict) and _SUMMARY_CURSOR_PREFERENCE_KEY in current:
-                    merged[_SUMMARY_CURSOR_PREFERENCE_KEY] = current[_SUMMARY_CURSOR_PREFERENCE_KEY]
-                _pb().collection("sessions").update(
-                    record.id,
-                    {"preferences_json": merged, "session_updated_at": time.time()}
-                    if touch
-                    else {"preferences_json": merged},
-                )
-                return True
-
-            return await asyncio.to_thread(_update)
+        def _write() -> bool:
+            # The lock spans the read and the write, and lives in this worker
+            # thread, so it serializes callers from different event loops too.
+            with lock:
+                return self._merge_session_preferences_sync(sid, preferences, uid=uid, touch=touch)
 
         try:
-            return await _merge()
+            return await asyncio.to_thread(_write)
         except Exception as exc:
             logger.warning(f"update_session_preferences failed: {exc}")
+            return False
+
+    def _merge_session_preferences_sync(
+        self,
+        sid: str,
+        preferences: dict[str, Any],
+        *,
+        uid: str,
+        touch: bool,
+        unset: Sequence[str] = (),
+    ) -> bool:
+        record = _find_session_record(_pb(), sid, uid, recycled=False)
+        if record is None:
+            return False
+        current = _json_loads(getattr(record, "preferences_json", None), {})
+        if not isinstance(current, dict):
+            current = {}
+        if any(current.get(key) for key in unset):
+            return False
+        merged = upgrade_workspace_preferences({**current, **(preferences or {})})
+        if _SUMMARY_CURSOR_PREFERENCE_KEY in current:
+            merged[_SUMMARY_CURSOR_PREFERENCE_KEY] = current[_SUMMARY_CURSOR_PREFERENCE_KEY]
+        _pb().collection("sessions").update(
+            record.id,
+            {"preferences_json": merged, "session_updated_at": time.time()}
+            if touch
+            else {"preferences_json": merged},
+        )
+        return True
+
+    @_captured_store_context
+    async def update_session_preferences_if_unset(
+        self,
+        session_id: str,
+        preferences: dict[str, Any],
+        *,
+        unset: Sequence[str],
+        touch: bool = True,
+    ) -> bool:
+        sid = _validate_id(session_id, "session_id")
+        uid = _current_user_id()
+        lock = self._prefs_lock(sid, uid)
+
+        def _write() -> bool:
+            with lock:
+                return self._merge_session_preferences_sync(
+                    sid, preferences, uid=uid, touch=touch, unset=unset
+                )
+
+        try:
+            return await asyncio.to_thread(_write)
+        except Exception as exc:
+            logger.warning(f"update_session_preferences_if_unset failed: {exc}")
             return False
 
     @_captured_store_context
@@ -927,12 +981,54 @@ class PocketBaseSessionStore:
             logger.warning(f"add_message failed: {exc}")
             return 0
 
+    def _detach_message_threads_sync(self, session_id: str, message_id: str, uid: str) -> None:
+        from .thread_attribution import BACKFILL_ATTEMPTED_KEY, TUTOR_SOURCE_KEY
+
+        sessions = _pb().collection("sessions")
+        rows = sessions.get_full_list(
+            query_params={"filter": _workspace_filter(f'user_id="{uid}"')}
+        )
+        for row in rows:
+            sid = str(getattr(row, "session_id", ""))
+            if not sid or sid == session_id:
+                continue
+            with self._prefs_lock(sid, uid):
+                # Re-read under the same lock used by preference writes; a
+                # thread moved while the list was loading must keep its anchor.
+                # Recycled threads can be restored later and need the same
+                # detach as active threads when their source is removed.
+                current = _find_session_record(_pb(), sid, uid)
+                if current is None:
+                    continue
+                prefs = _json_loads(getattr(current, "preferences_json", None), {})
+                if not isinstance(prefs, dict):
+                    continue
+                if prefs.get("parent_session_id") != session_id:
+                    continue
+                if str(prefs.get(TUTOR_SOURCE_KEY) or "") != message_id:
+                    continue
+                sessions.update(
+                    current.id,
+                    {
+                        "preferences_json": {
+                            **prefs,
+                            TUTOR_SOURCE_KEY: "",
+                            BACKFILL_ATTEMPTED_KEY: True,
+                        }
+                    },
+                )
+
     @_captured_store_context
     async def delete_message(self, message_id: int | str) -> bool:
         def _delete():
             row = _pb().collection("messages").get_one(_validate_id(str(message_id)))
             if _find_session_record(_pb(), str(row.session_id), _current_user_id()) is None:
                 return False
+            # Detach before deletion: failed preference writes must not leave
+            # a deleted message as the only way to reach its tutor threads.
+            self._detach_message_threads_sync(
+                str(row.session_id), str(message_id), _current_user_id()
+            )
             _pb().collection("messages").delete(str(message_id))
             return True
 
@@ -941,6 +1037,29 @@ class PocketBaseSessionStore:
         except Exception as exc:
             logger.warning(f"delete_message failed: {exc}")
             return False
+
+    @_captured_store_context
+    async def get_message_role(self, session_id: str, message_id: int | str) -> str | None:
+        sid = _validate_id(session_id, "session_id")
+        mid = _validate_id(str(message_id), "message_id")
+
+        def _read() -> str | None:
+            try:
+                record = _pb().collection("messages").get_one(mid)
+            except Exception:
+                return None
+            if str(getattr(record, "session_id", "")) != sid:
+                return None
+            if _find_session_record(_pb(), sid, _current_user_id()) is None:
+                return None
+            role = str(getattr(record, "role", "") or "")
+            return role if role in {"user", "assistant"} else None
+
+        try:
+            return await asyncio.to_thread(_read)
+        except Exception as exc:
+            logger.warning(f"get_message_role failed: {exc}")
+            return None
 
     @_captured_store_context
     async def get_last_message(

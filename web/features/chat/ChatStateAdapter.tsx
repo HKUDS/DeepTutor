@@ -41,6 +41,7 @@ import type {
 } from "@/features/chat/model/protocol";
 import { UnifiedTurnClient } from "@/features/chat/transport/UnifiedTurnClient";
 import { buildStartTurnInput } from "@/features/chat/controllers/buildStartTurnInput";
+import { notifySessionsChanged } from "@/lib/session-events";
 import {
   getSession,
   replaceSubmission,
@@ -52,6 +53,7 @@ import {
   type MessageTracePage,
   type SessionMessage,
   type OrphanedFailedTurn,
+  type DeleteMessageResult,
 } from "@/lib/session-api";
 import {
   TraceCache,
@@ -215,6 +217,11 @@ export interface ChatState {
   /** Note page this conversation is held beside (the notebook's companion);
    *  sent with every turn so the notes tools read and propose against it. */
   noteDocumentId: string | null;
+  /** Create mode: the artifact kind ("skill" | "persona") this conversation
+   *  is authoring, or null outside create mode. Sent on every turn (never
+   *  reset after send — only an explicit removal or mode change clears it)
+   *  and persisted on the session like `noteDocumentId`. */
+  createTarget: string | null;
   /** What this mastery conversation is for — "outline" | "study" | "review".
    *  Durable like the path id and decided when the conversation is opened: it
    *  picks the tutor's prompt block and narrows its tool surface, so a session
@@ -257,12 +264,14 @@ export interface ChatState {
 }
 
 export interface SessionConfiguration {
+  llmSelection?: LLMSelection | null;
   capability?: string | null;
   workspaceMode?: WorkspaceMode | null;
   knowledgeBases?: string[];
   masteryPathId?: string | null;
   masterySessionMode?: string | null;
   noteDocumentId?: string | null;
+  createTarget?: string | null;
   workspaceId?: string | null;
   enabledTools?: string[];
 }
@@ -331,6 +340,7 @@ export interface MessageRequestSnapshot {
   masterySkip?: { question_id: string };
   timedMediaId?: string;
   persona?: string;
+  createTarget?: string | null;
   memoryReferences?: MemoryReferencePayload;
   llmSelection?: LLMSelection | null;
   /** Stable identity of the material open for this turn. */
@@ -415,6 +425,7 @@ interface SessionSnapshot {
   masteryPathId?: string | null;
   masterySessionMode?: string | null;
   noteDocumentId?: string | null;
+  createTarget?: string | null;
   workspaceId?: string | null;
   personaSelection?: string;
   answerBy?: string | null;
@@ -438,6 +449,7 @@ type Action =
   | { type: "SET_PERSONA_SELECTION"; persona: string }
   | { type: "SET_ANSWER_BY"; answerBy: string | null }
   | { type: "SET_RESOURCE_SELECTION"; selection: ResourceSelection }
+  | { type: "SET_CREATE_TARGET"; createTarget: string | null }
   | { type: "SET_LANGUAGE"; lang: string }
   | { type: "SET_REPLY_LANGUAGE_OVERRIDE"; key: string; language: string | null }
   | {
@@ -541,6 +553,7 @@ function createSessionEntry(
     masteryPathId: null,
     masterySessionMode: null,
     noteDocumentId: null,
+    createTarget: null,
     workspaceId: activeWorkspaceId() || null,
     personaSelection: "",
     answerBy: null,
@@ -675,6 +688,10 @@ function applySessionConfiguration(
   if (!configuration) return session;
   return {
     ...session,
+    llmSelection:
+      configuration.llmSelection !== undefined
+        ? configuration.llmSelection
+        : session.llmSelection,
     activeCapability:
       configuration.capability !== undefined
         ? configuration.capability
@@ -861,6 +878,11 @@ function reduce(state: ProviderState, action: Action): ProviderState {
       return updateSelectedSession(state, (session) => ({
         ...session,
         resourceSelection: action.selection,
+      }));
+    case "SET_CREATE_TARGET":
+      return updateSelectedSession(state, (session) => ({
+        ...session,
+        createTarget: action.createTarget,
       }));
     case "SET_LANGUAGE":
       return updateSelectedSession(state, (session) => ({
@@ -1382,6 +1404,10 @@ function reduce(state: ProviderState, action: Action): ProviderState {
               action.noteDocumentId !== undefined
                 ? action.noteDocumentId
                 : existing.noteDocumentId,
+            createTarget:
+              action.createTarget !== undefined
+                ? action.createTarget
+                : existing.createTarget,
             workspaceId: action.workspaceId !== undefined ? action.workspaceId : existing.workspaceId,
             personaSelection:
               action.personaSelection !== undefined
@@ -1695,6 +1721,9 @@ interface ChatContextValue {
   setPersonaSelection: (persona: string) => void;
   setAnswerBy: (answerBy: string | null) => void;
   setResourceSelection: (selection: ResourceSelection) => void;
+  /** Create mode: the artifact kind this conversation authors towards, or
+   *  null to leave it. */
+  setCreateTarget: (createTarget: string | null) => void;
   setLanguage: (lang: string) => void;
   setReplyLanguageOverride: (language: string | null) => Promise<void>;
   sendMessage: (
@@ -1750,7 +1779,7 @@ interface ChatContextValue {
    *  now; an unconfirmed submission is replayed with its own parameters so
    *  its idempotency key still matches. */
   resendLastMessage: () => void;
-  deleteTurn: (messageId: number) => Promise<void>;
+  deleteTurn: (messageId: number) => Promise<DeleteMessageResult>;
   /** Forget only this browser's unsent recovery copy; never mutate a server turn. */
   discardFailedSubmission: (messageId: number) => boolean;
   /** Re-send a user message under a new branch (sibling of the original).
@@ -2822,6 +2851,10 @@ export function ChatStateAdapterProvider({
           typeof session.preferences?.note_document_id === "string"
             ? session.preferences.note_document_id || null
             : null,
+        createTarget:
+          typeof session.preferences?.create_target === "string"
+            ? session.preferences.create_target || null
+            : null,
         workspaceId: session.preferences?.workspace_id || null,
         personaSelection:
           typeof session.preferences?.persona === "string"
@@ -3051,6 +3084,12 @@ export function ChatStateAdapterProvider({
       const effectiveResources =
         exactReplay ? (replaySnapshot?.resourceSelection ?? emptyResourceSelection()) :
         replaySnapshot?.resourceSelection ?? session.resourceSelection ?? emptyResourceSelection();
+      // Create mode: a replay restates the exact kind it ran with (the chip
+      // may have been removed, or the session moved on, since); a live turn
+      // sends the session's current choice.
+      const effectiveCreateTarget =
+        exactReplay ? (replaySnapshot?.createTarget ?? null) :
+        replaySnapshot?.createTarget ?? session.createTarget ?? null;
       const effectiveMemoryReferences =
         exactReplay ? replaySnapshot?.memoryReferences :
         replaySnapshot?.memoryReferences ?? memoryReferences;
@@ -3183,6 +3222,7 @@ export function ChatStateAdapterProvider({
         ...(options?.noteGeneration ? { noteGeneration: options.noteGeneration } : {}),
         ...(options?.masterySkip ? { masterySkip: options.masterySkip } : {}),
         ...(effectivePersona ? { persona: effectivePersona } : {}),
+        ...(effectiveCreateTarget ? { createTarget: effectiveCreateTarget } : {}),
         ...(effectiveMemoryReferences?.length
           ? { memoryReferences: [...effectiveMemoryReferences] }
           : {}),
@@ -3350,6 +3390,8 @@ export function ChatStateAdapterProvider({
         // turn, regenerations included: the binding is the session's, not the
         // request's.
         noteDocumentId: session.noteDocumentId || null,
+        // Always sent, string or null — the wire contract for create mode.
+        createTarget: effectiveCreateTarget,
         noteGeneration: options?.noteGeneration ?? replaySnapshot?.noteGeneration ?? null,
         masteryAnswer: options?.masteryAnswer ?? replaySnapshot?.masteryAnswer ?? null,
         masterySkip: options?.masterySkip ?? replaySnapshot?.masterySkip ?? null,
@@ -3457,33 +3499,35 @@ export function ChatStateAdapterProvider({
     if (!key) return;
     const session = currentState.sessions[key];
     if (!session) return;
-    const turnId = session.activeTurnId;
     const runner = runnersRef.current.get(key);
     if (runner) {
-      if (turnId) {
-        try {
-          if (!await runner.client.sendAwaitingAck({ type: "cancel_turn", turn_id: turnId })) {
-            notify(i18n.t("Couldn't reach the server. Please check your connection and retry."), { tone: "error" });
-            return;
-          }
-          if (generation !== runtimeGeneration.current) return;
-        } catch {
+      notify(i18n.t("Cancelling…"), { tone: "info" });
+      try {
+        if (!await runner.client.cancelCurrentTurn()) {
           notify(i18n.t("Couldn't reach the server. Please check your connection and retry."), { tone: "error" });
           return;
         }
+        if (generation !== runtimeGeneration.current) return;
+      } catch {
+        notify(i18n.t("Couldn't reach the server. Please check your connection and retry."), { tone: "error" });
+        return;
       }
       runner.client.disconnect();
-      runnersRef.current.delete(key);
+      runnersRef.current.delete(runner.key);
     }
-    if (session.isStreaming) {
+    // Admission may have moved the draft while Stop was waiting.
+    const stoppedKey = runner?.key ?? key;
+    const stoppedSession = stateRef.current.sessions[stoppedKey] ?? session;
+    const turnId = stoppedSession.activeTurnId;
+    if (stoppedSession.isStreaming) {
       // Stop is not proof that the server accepted the user row. In
       // particular, before a turn ID exists another tab may have stored a
       // newer attempt with this same logical submission ID. Keep the record
       // until a server transcript or DONE proves acceptance.
-      const pendingSubmission = pendingSubmissionIdsRef.current.get(key);
-      if (pendingSubmission) pendingSubmissionIdsRef.current.delete(key);
+      const pendingSubmission = pendingSubmissionIdsRef.current.get(stoppedKey);
+      if (pendingSubmission) pendingSubmissionIdsRef.current.delete(stoppedKey);
       dispatch({
-        type: "STREAM_END", key,
+        type: "STREAM_END", key: stoppedKey,
         status: pendingSubmission && !turnId ? "failed" : "cancelled",
         submissionFailed: Boolean(pendingSubmission && !turnId),
       });
@@ -3735,6 +3779,7 @@ export function ChatStateAdapterProvider({
       masteryPathId: current.masteryPathId,
       masterySessionMode: current.masterySessionMode,
       noteDocumentId: current.noteDocumentId,
+      createTarget: current.createTarget,
       workspaceId: current.workspaceId,
       personaSelection: current.personaSelection,
       answerBy: current.answerBy,
@@ -3824,6 +3869,9 @@ export function ChatStateAdapterProvider({
 
   const setResourceSelection = useCallback((selection: ResourceSelection) => {
     dispatch({ type: "SET_RESOURCE_SELECTION", selection });
+  }, []);
+  const setCreateTarget = useCallback((createTarget: string | null) => {
+    dispatch({ type: "SET_CREATE_TARGET", createTarget });
   }, []);
 
   const setLanguage = useCallback((lang: string) => {
@@ -4081,14 +4129,18 @@ export function ChatStateAdapterProvider({
   );
 
   const deleteTurn = useCallback(
-    async (messageId: number) => {
+    async (messageId: number): Promise<DeleteMessageResult> => {
       const generation = runtimeGeneration.current;
       const currentState = stateRef.current;
       const key = currentState.selectedKey;
-      if (!key) return;
+      const empty = (): DeleteMessageResult => ({
+        detachedThreadIds: [],
+        deletedMessageIds: [],
+      });
+      if (!key) return empty();
       const session = currentState.sessions[key];
-      if (!session || !session.sessionId) return;
-      if (session.isStreaming) return;
+      if (!session || !session.sessionId) return empty();
+      if (session.isStreaming) return empty();
       // Same optimistic-id race as editMessage (#739): after loadSession
       // dispatches, stateRef can still hold the negative sentinel until
       // React commits. Resolve from the returned snapshot instead.
@@ -4104,15 +4156,28 @@ export function ChatStateAdapterProvider({
               : undefined,
         );
       } catch {
-        return;
+        return empty();
       }
-      if (!target || typeof target.id !== "number" || target.id < 0 || generation !== runtimeGeneration.current) return;
+      if (
+        !target ||
+        typeof target.id !== "number" ||
+        target.id < 0 ||
+        generation !== runtimeGeneration.current
+      ) {
+        return empty();
+      }
       const effectiveId = target.id;
       try {
-        await deleteMessage(session.sessionId, effectiveId);
+        const result = await deleteMessage(session.sessionId, effectiveId);
         dispatch({ type: "DELETE_TURN", key, messageId: effectiveId });
+        // The server detached any Little Tutor thread filed under the deleted
+        // message. Both the thread list and the open side-chat tabs subscribe
+        // to this bus, so marker/popover/context state refresh together.
+        notifySessionsChanged();
+        return result;
       } catch (err) {
         console.error("Failed to delete turn:", err);
+        return empty();
       }
     },
     [loadSession],
@@ -4218,6 +4283,7 @@ export function ChatStateAdapterProvider({
       setPersonaSelection,
       setAnswerBy,
       setResourceSelection,
+      setCreateTarget,
       setLanguage,
       setReplyLanguageOverride,
       sendMessage,
@@ -4254,6 +4320,7 @@ export function ChatStateAdapterProvider({
       setPersonaSelection,
       setAnswerBy,
       setResourceSelection,
+      setCreateTarget,
       setLanguage,
       setReplyLanguageOverride,
       sendMessage,

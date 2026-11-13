@@ -1350,7 +1350,9 @@ function defaultModelLabel(language: AppLanguage, index: number): string {
       ? `Modèle ${safeIndex}`
       : language === "de"
         ? `Modell ${safeIndex}`
-        : `Model ${safeIndex}`;
+        : language === "vi"
+          ? `Mô hình ${safeIndex}`
+          : `Model ${safeIndex}`;
 }
 
 function formatCompactTokens(value: string | number | undefined): string {

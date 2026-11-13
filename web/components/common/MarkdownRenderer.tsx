@@ -31,6 +31,7 @@ function detectHtmlContent(content: string): boolean {
 
 export default function MarkdownRenderer({
   content,
+  learningTextSize,
   className = "",
   variant = "default",
   enableMath,
@@ -66,6 +67,7 @@ export default function MarkdownRenderer({
     return (
       <SimpleMarkdownRenderer
         content={content}
+        learningTextSize={learningTextSize}
         className={className}
         variant={variant}
       />
@@ -75,6 +77,7 @@ export default function MarkdownRenderer({
   return (
     <RichMarkdownRenderer
       content={content}
+      learningTextSize={learningTextSize}
       className={className}
       variant={variant}
       enableMath={resolvedEnableMath}

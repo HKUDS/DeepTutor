@@ -57,14 +57,15 @@ export default function SettingsMain({ children }: { children: React.ReactNode }
   )
 
   return (
-    <div className="fixed inset-0 flex h-dvh overflow-hidden bg-[var(--background)]" data-settings-shell>
+    <div
+      className="fixed inset-0 flex h-dvh overflow-hidden bg-[var(--background)]"
+      data-settings-shell
+    >
       <aside className="hidden w-[248px] shrink-0 flex-col border-r border-border/60 bg-[color-mix(in_srgb,var(--muted)_25%,var(--background))] md:flex">
         <div className="px-2.5 pb-1.5 pt-4">{returnButton}</div>
         <SettingsNav />
       </aside>
-      <main
-        className="flex min-w-0 flex-1 flex-col overflow-hidden"
-      >
+      <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <div className="flex h-14 shrink-0 items-center justify-between border-b border-border/50 px-3 md:hidden">
           {returnButton}
           <button
@@ -82,11 +83,7 @@ export default function SettingsMain({ children }: { children: React.ReactNode }
           data-settings-scroll
           className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden [scrollbar-gutter:stable]"
         >
-          <PageContainer
-            ref={content}
-            tabIndex={-1}
-            className="pb-20 outline-none"
-          >
+          <PageContainer ref={content} tabIndex={-1} className="pb-20 outline-none">
             <SettingsLoadStatusBanner />
             {children}
           </PageContainer>
@@ -135,7 +132,9 @@ export default function SettingsMain({ children }: { children: React.ReactNode }
               type="button"
               disabled={saving}
               onClick={async () => {
-                if (await saveDraft()) returnToApp()
+                const saved = await saveDraft()
+                if (saved === null) return
+                if (saved) returnToApp()
                 else setLeaveFailed(true)
               }}
               className="rounded-lg bg-[var(--foreground)] px-3 py-2 text-sm text-[var(--background)] disabled:opacity-40"

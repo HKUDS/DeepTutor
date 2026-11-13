@@ -20,7 +20,7 @@ instead of file paths so the server never touches disk.
 from __future__ import annotations
 
 import base64
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from html.parser import HTMLParser
 import io
@@ -39,6 +39,8 @@ from deeptutor.utils.document_images import (
     extract_pdf_images,
     extract_pptx_rich,
     image_index_from_name,
+    ordered_pptx_slide_members,
+    render_docx_text,
 )
 from deeptutor.utils.file_types import FileTypeRouter
 
@@ -126,6 +128,8 @@ _EPUB_BLOCK_TAGS: frozenset[str] = frozenset(
         "h6",
         "li",
         "blockquote",
+        "td",
+        "th",
         "tr",
         "table",
         "section",
@@ -484,7 +488,11 @@ def _extract_docx(data: bytes, filename: str) -> str:
             logger.info("python-docx failed on %s; falling back to raw OOXML: %s", filename, exc)
 
     fallback = _extract_docx_ooxml(data, filename)
-    if fallback.strip() and (not primary_text.strip() or len(fallback) > len(primary_text) * 1.2):
+    # The raw OOXML path shares the namespace-aware renderer used by rich
+    # extraction, so it preserves native math and table content that
+    # python-docx's ``Paragraph.text`` can silently flatten or omit. Prefer it
+    # whenever it succeeds; length is not a correctness signal for equations.
+    if fallback.strip():
         return fallback
     if primary_text.strip():
         return primary_text
@@ -1112,17 +1120,19 @@ def _collect_ooxml_text(node: Any) -> str:
     return "".join(parts).strip()
 
 
-def _extract_paragraph_text(root: Any) -> list[str]:
+def _extract_paragraph_text(
+    root: Any, *, renderer: Callable[[Any], str] = _collect_ooxml_text
+) -> list[str]:
     paragraphs: list[str] = []
     for node in root.iter():
         if _local_name(node.tag) != "p":
             continue
-        text = _collect_ooxml_text(node)
+        text = renderer(node).strip()
         if text:
             paragraphs.append(text)
     if paragraphs:
         return paragraphs
-    text = _collect_ooxml_text(root)
+    text = renderer(root).strip()
     return [text] if text else []
 
 
@@ -1143,7 +1153,7 @@ def _extract_docx_ooxml(data: bytes, filename: str) -> str:
             root = _parse_xml_member(zf, member, filename)
             if root is None:
                 continue
-            chunks.extend(_extract_paragraph_text(root))
+            chunks.extend(_extract_paragraph_text(root, renderer=render_docx_text))
         return "\n\n".join(chunks)
 
 
@@ -1214,11 +1224,23 @@ def _extract_xlsx_ooxml(data: bytes, filename: str) -> str:
             for row in root.iter():
                 if _local_name(row.tag) != "row":
                     continue
-                cells = [
-                    _xlsx_cell_text(cell, shared_strings)
-                    for cell in row
-                    if _local_name(cell.tag) == "c"
-                ]
+                cells: list[str] = []
+                for cell in row:
+                    if _local_name(cell.tag) != "c":
+                        continue
+                    reference = re.fullmatch(r"([A-Za-z]{1,3})[1-9]\d*", cell.get("r", ""))
+                    column = 0
+                    if reference:
+                        for letter in reference.group(1).upper():
+                            column = column * 26 + ord(letter) - ord("A") + 1
+                    text = _xlsx_cell_text(cell, shared_strings)
+                    # XFD is the final Excel column. Invalid/missing references
+                    # keep the legacy sequential fallback without huge padding.
+                    if 1 <= column <= 16384:
+                        cells.extend([""] * max(0, column - len(cells)))
+                        cells[column - 1] = text
+                    else:
+                        cells.append(text)
                 row_text = "\t".join(cells)
                 if row_text.strip():
                     rows.append(row_text)
@@ -1230,12 +1252,7 @@ def _extract_xlsx_ooxml(data: bytes, filename: str) -> str:
 
 def _extract_pptx_ooxml(data: bytes, filename: str) -> str:
     with _open_ooxml(data, filename) as zf:
-        slide_members = sorted(
-            (name for name in zf.namelist() if re.match(r"ppt/slides/slide\d+\.xml$", name)),
-            key=lambda name: [
-                int(part) if part.isdigit() else part for part in re.split(r"(\d+)", name)
-            ],
-        )
+        slide_members = ordered_pptx_slide_members(zf)
         slides: list[str] = []
         for index, member in enumerate(slide_members, 1):
             root = _parse_xml_member(zf, member, filename)

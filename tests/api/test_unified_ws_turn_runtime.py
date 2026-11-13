@@ -1779,3 +1779,85 @@ async def test_a_message_sent_mid_turn_waits_in_the_turn_inbox(monkeypatch, tmp_
 async def _drain(stream) -> None:
     async for _event in stream:
         pass
+
+
+@pytest.mark.asyncio
+async def test_side_chat_persists_its_structured_source_on_the_assistant_row(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    from deeptutor.services.session.model_history import SOURCE_MESSAGE_METADATA_KEY
+
+    store = SQLiteSessionStore(tmp_path / "chat_history.db")
+    runtime = TurnRuntimeManager(store)
+    parent = await store.create_session("Parent")
+    source = await store.add_message(parent["id"], "assistant", "It returns twice.")
+
+    class FakeContextBuilder:
+        def __init__(self, *_args, **_kwargs) -> None:
+            pass
+
+        async def build(self, **_kwargs):
+            return SimpleNamespace(
+                conversation_history=[],
+                conversation_summary="",
+                context_text="",
+                token_count=0,
+                budget=0,
+            )
+
+    class FakeOrchestrator:
+        async def handle(self, context):
+            yield StreamEvent(
+                type=StreamEventType.CONTENT,
+                source="chat",
+                stage="responding",
+                content="Because both processes continue.",
+                metadata={"call_kind": "llm_final_response"},
+            )
+            yield StreamEvent(type=StreamEventType.DONE, source="chat")
+
+    async def title_after_done(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr("deeptutor.services.llm.config.get_llm_config", lambda: SimpleNamespace())
+    monkeypatch.setattr(
+        "deeptutor.services.session.context_builder.ContextBuilder", FakeContextBuilder
+    )
+    monkeypatch.setattr("deeptutor.runtime.orchestrator.ChatOrchestrator", FakeOrchestrator)
+    monkeypatch.setattr(runtime, "_maybe_generate_session_title", title_after_done)
+    monkeypatch.setattr(
+        "deeptutor.services.memory.get_memory_store",
+        lambda: SimpleNamespace(read_l3_concat=lambda: "", emit=_noop_async),
+    )
+    monkeypatch.setattr("deeptutor.services.skill.get_skill_service", _fake_skill_service)
+    monkeypatch.setattr("deeptutor.services.persona.get_persona_service", _fake_persona_service)
+
+    session, turn = await runtime.start_turn(
+        {
+            "type": "start_turn",
+            "content": "Why twice?",
+            "session_id": None,
+            "capability": None,
+            "tools": [],
+            "knowledge_bases": [],
+            "attachments": [],
+            "language": "en",
+            "config": {
+                "selection_tutor_context": {
+                    "scope": "conversation",
+                    "parent_session_id": parent["id"],
+                    "quoted_message_id": source,
+                }
+            },
+        }
+    )
+    async for _event in runtime.subscribe_turn(turn["id"], after_seq=0):
+        pass
+
+    messages = await store.get_messages(session["id"])
+    assistant = messages[-1]
+    assert assistant["metadata"][SOURCE_MESSAGE_METADATA_KEY] == {
+        "message_id": source,
+        "role": "assistant",
+    }

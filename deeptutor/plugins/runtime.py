@@ -28,6 +28,7 @@ from deeptutor.core.tool_protocol import (
     ToolParameter,
     ToolResult,
 )
+from deeptutor.plugins.environment import plugin_environment
 from deeptutor.plugins.manifest import PluginManifestData
 from deeptutor.plugins.registry import (
     PluginInstallation,
@@ -513,8 +514,7 @@ def _stream_event(raw: Any, *, source: str) -> StreamEvent:
 
 
 def _clean_env() -> dict[str, str]:
-    keep = ("PATH", "HOME", "LANG", "LC_ALL", "TMPDIR", "SSL_CERT_FILE", "SSL_CERT_DIR")
-    return {key: os.environ[key] for key in keep if key in os.environ}
+    return plugin_environment()
 
 
 def _http_response(raw: Any) -> PluginHttpResponse:

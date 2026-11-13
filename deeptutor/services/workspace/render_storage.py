@@ -19,10 +19,17 @@ def _chat_exec_output(
     direct_chat_output = (
         len(parts) == 5 and parts[:2] == ("outputs", "chat") and parts[3].startswith("turn_")
     )
+    direct_exec_output = (
+        len(parts) == 6
+        and parts[:2] == ("outputs", "chat")
+        and parts[3].startswith("turn_")
+        and parts[4] == "exec"
+    )
     if (
         not item.generated
         or not (
             direct_chat_output
+            or direct_exec_output
             or (
                 len(parts) >= 10
                 and parts[:2] == ("outputs", "chat")

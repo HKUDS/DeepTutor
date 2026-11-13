@@ -237,6 +237,14 @@ deeptutor run chat "Reply with a short greeting." --format json
 This also uses the configured model. Check for a successful response and turn
 completion, not merely a zero exit code or the first streamed event.
 
+Keep one turn-owning process per runtime home. While a detached
+`deeptutor start` instance is running, do not execute CLI turns
+(`deeptutor run chat`, the REPL) against the same `DEEPTUTOR_HOME`: in the
+default memory-coordinator mode the server's recovery scan cannot see the
+CLI process's lease and fails the live turn as `worker_lost`, surfacing in
+the CLI as `Turn event conflict` (#2168). Stop the app first with
+`deeptutor stop`, or run this verification turn before starting the Web app.
+
 Finish with the checkout/environment, runtime home, provider/model without
 credentials, passed checks, Web URL or CLI invocation, and any remaining user
 action. Include `deeptutor stop` with the same home for a detached app. If

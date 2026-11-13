@@ -13,6 +13,10 @@ from typing import Any
 
 MODEL_TURN_KEY = "model_turn"
 MODEL_TURN_VERSION = 1
+# Structured Little Tutor source, written beside ``model_turn`` on the
+# assistant row. Unlike the prompt text, it is a stable identity: the backfill
+# can read it without parsing localized instructions.
+SOURCE_MESSAGE_METADATA_KEY = "selection_source"
 # Exact legacy runtime envelope, not a general delimiter in user text.
 _MASTERY_SNAPSHOT_NOTICE = (
     "[Current-turn mastery_status snapshot]\n"

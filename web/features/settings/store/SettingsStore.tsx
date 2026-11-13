@@ -13,6 +13,17 @@ import {
 import { useRouter } from "next/navigation";
 import { useTranslation } from "react-i18next";
 
+import {
+  recoveryPrincipal,
+  RECOVERY_PRINCIPAL_CHANGED,
+} from "@/lib/recovery-principal";
+import {
+  DEFAULT_LEARNING_DISPLAY,
+  normalizeLearningDisplay,
+  publishLearningDisplay,
+  type LearningDisplay,
+} from "@/lib/learning-display";
+
 import type { CodeBlockThemeId } from "@/components/common/code-block-themes";
 import {
   normalizeCodeBlockTheme,
@@ -35,9 +46,11 @@ import {
 } from "@/lib/theme";
 import {
   detachProfileConnection,
+  firstIncompleteModel,
   modelTestKey,
   reconcileProviderSave,
   modelTestFingerprint,
+  type IncompleteModel,
   type ModelTestState,
 } from "@/lib/model-settings";
 import {
@@ -90,7 +103,7 @@ export type {
 
 // ─── Domain types ─────────────────────────────────────────────────────────
 
-export type UiSettings = {
+export type UiSettings = LearningDisplay & {
   theme: "system" | "light" | "dark" | "glass" | "snow";
   language: AppLanguage;
   response_language: ResponseLanguage;
@@ -99,28 +112,10 @@ export type UiSettings = {
   code_block_wrap_long_lines: boolean;
 };
 
-export type ResponseLanguageOption = {
-  value: ResponseLanguage;
-  label: string;
-};
-
-export const RESPONSE_LANGUAGE_OPTIONS: readonly ResponseLanguageOption[] = [
-  { value: "en", label: "English" },
-  { value: "zh", label: "简体中文" },
-  { value: "zh-tw", label: "繁體中文" },
-  { value: "ja", label: "日本語" },
-  { value: "ko", label: "한국어" },
-  { value: "es", label: "Español" },
-  { value: "fr", label: "Français" },
-  { value: "de", label: "Deutsch" },
-  { value: "ru", label: "Русский" },
-  { value: "pt", label: "Português" },
-  { value: "it", label: "Italiano" },
-  { value: "ar", label: "العربية" },
-  { value: "pl", label: "Polski" },
-  { value: "uk", label: "Українська" },
-  { value: "ms", label: "Bahasa Melayu" },
-];
+export {
+  RESPONSE_LANGUAGE_OPTIONS,
+  type ResponseLanguageOption,
+} from "./response-language-options";
 
 type CodeBlockUiSettings = Pick<
   UiSettings,
@@ -477,8 +472,13 @@ export type SettingsContextValue = {
   codeBlockTheme: UiSettings["code_block_theme"];
   codeBlockShowLineNumbers: UiSettings["code_block_show_line_numbers"];
   codeBlockWrapLongLines: UiSettings["code_block_wrap_long_lines"];
+  contentFontScale: LearningDisplay["content_font_scale"];
+  contentLineSpacing: LearningDisplay["content_line_spacing"];
   toast: string;
   setToast: (value: string) => void;
+  /** A blank model Apply refused, so its own page can open that row. */
+  focusModel: IncompleteModel | null;
+  clearFocusModel: () => void;
 
   // UI prefs
   updateTheme: (next: UiSettings["theme"]) => Promise<void>;
@@ -489,6 +489,14 @@ export type SettingsContextValue = {
   updateCodeBlockTheme: (next: CodeBlockThemeId) => Promise<void>;
   updateCodeBlockShowLineNumbers: (next: boolean) => Promise<void>;
   updateCodeBlockWrapLongLines: (next: boolean) => Promise<void>;
+
+  updateContentFontScale: (
+    next: LearningDisplay["content_font_scale"],
+  ) => Promise<void>;
+  updateContentLineSpacing: (
+    next: LearningDisplay["content_line_spacing"],
+  ) => Promise<void>;
+  resetLearningText: () => Promise<void>;
 
   // Catalog mutation
   mutateCatalog: (mutator: (next: Catalog) => void) => void;
@@ -571,7 +579,7 @@ export type SettingsContextValue = {
   // Save / apply
   saving: boolean;
   applying: boolean;
-  saveDraft: () => Promise<boolean>;
+  saveDraft: () => Promise<boolean | null>;
   applyCatalog: () => Promise<void>;
   /** Promote one model service without applying unrelated Settings drafts. */
   applyService: (service: ServiceName) => Promise<boolean>;
@@ -650,6 +658,22 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   // Stays false until GET /api/settings returns a theme. The "system"
   // placeholder above must not be written over a palette this browser chose.
   const serverThemeLoadedRef = useRef(false);
+  const serverDisplayLoadedRef = useRef(false);
+  // An ownership epoch also rejects Alice → Bob → Alice stale responses.
+  const settingsGenerationRef = useRef(0);
+  const captureSettingsOwnership = useCallback(() => {
+    const owner = recoveryPrincipal();
+    const generation = settingsGenerationRef.current;
+    return () =>
+      generation === settingsGenerationRef.current &&
+      owner === recoveryPrincipal();
+  }, []);
+  const initialSettingsSettledRef = useRef(false);
+  const awaitingInitialPrincipalRef = useRef(recoveryPrincipal() === null);
+  const displayOwnerRef = useRef<string | null | undefined>(undefined);
+  const [learningDisplay, setLearningDisplay] = useState(
+    DEFAULT_LEARNING_DISPLAY,
+  );
   // Latest stageUi, so a confirmed load can rebuild a draft that omitted theme.
   const stageUiRef = useRef<(patch: Partial<UiSettings>) => Promise<void>>(
     async () => {},
@@ -683,6 +707,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const [toast, setToast] = useState("");
   const [saving, setSaving] = useState(false);
   const [applying, setApplying] = useState(false);
+  const [focusModel, setFocusModel] = useState<IncompleteModel | null>(null);
+  const clearFocusModel = useCallback(() => setFocusModel(null), []);
   // Empty string is the "no diagnostics yet" sentinel; the editor renders
   // a localized placeholder when logs is falsy. Don't seed an English
   // literal here — older code did, then read it back via .startsWith.
@@ -764,23 +790,29 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       }
     }
     syncPendingKeys();
-  }, [syncPendingKeys]);
+  }, [syncPendingKeys],
+  );
 
   const [settingsError, setSettingsError] = useState<string | null>(null);
 
   // Single load step. Kept separate from the mount effect so a "Retry" action
   // can re-run it without remounting the provider.
   const loadSettings = useCallback(async () => {
+    const displayOwner = recoveryPrincipal();
+    if (displayOwner) awaitingInitialPrincipalRef.current = false;
+    const isCurrent = captureSettingsOwnership();
     setSettingsError(null);
     let settingsLoaded = false;
     try {
       const settingsResponse = await apiFetch(apiUrl("/api/settings"));
+      if (!isCurrent()) return;
       if (!settingsResponse.ok) {
         throw new Error(
           `Settings fetch failed: HTTP ${settingsResponse.status}`,
         );
       }
       const payload = (await settingsResponse.json()) as SettingsPayload;
+      if (!isCurrent()) return;
       if (payload.catalog) {
         setCatalog(payload.catalog);
         setDraft(cloneCatalog(payload.catalog));
@@ -788,7 +820,15 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       } else {
         setCatalogEditable(false);
       }
+      initialSettingsSettledRef.current = true;
       const loadedTheme = payload.ui.theme;
+      const loadedDisplay = normalizeLearningDisplay(payload.ui);
+      if (displayOwner === recoveryPrincipal()) {
+        serverDisplayLoadedRef.current = true;
+        displayOwnerRef.current = displayOwner;
+        setLearningDisplay(loadedDisplay);
+        publishLearningDisplay(loadedDisplay, displayOwner);
+      }
       serverThemeLoadedRef.current = true;
       setTheme(loadedTheme);
       setLanguage(payload.ui.language);
@@ -817,10 +857,12 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       // otherwise "Save Draft" would look like it had done nothing at all.
       try {
         const draftResponse = await apiFetch(apiUrl("/api/settings/draft"));
+        if (!isCurrent()) return;
         if (draftResponse.ok) {
           const stored = (await draftResponse.json()) as {
             draft: StoredDraft | null;
           };
+          if (!isCurrent()) return;
           if (stored.draft) {
             setStoredDraft(stored.draft);
             if (stored.draft.catalog)
@@ -852,6 +894,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
           }
         }
       } catch {
+        if (!isCurrent()) return;
         // No draft is the normal case and a failed read must not block the
         // page; the live settings above are already in hand.
       }
@@ -859,6 +902,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       // placeholder could not be saved. Once the server confirms a theme,
       // put that value on the draft; Apply otherwise keeps the closed-over
       // payload and leaves localStorage and the document unchanged.
+      if (!isCurrent()) return;
       const pendingUi = pendingRef.current.get("ui");
       if (
         loadedTheme &&
@@ -869,21 +913,28 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       ) {
         await stageUiRef.current({ theme: loadedTheme });
       }
+      if (!isCurrent()) return;
       settingsLoaded = true;
     } catch (err) {
+      if (!isCurrent()) return;
       console.error("Failed to load settings:", err);
       const message = err instanceof Error ? err.message : String(err);
       setSettingsError(message);
       // Resolve the loading gate so the page can render the error UI instead
       // of staying in an infinite skeleton state.
       setCatalogEditable((current) => (current === null ? false : current));
+      initialSettingsSettledRef.current = true;
     }
     try {
       const statusResponse = await apiFetch(apiUrl("/api/system/status"));
+      if (!isCurrent()) return;
       if (statusResponse.ok) {
-        setStatus((await statusResponse.json()) as SystemStatus);
+        const payload = (await statusResponse.json()) as SystemStatus;
+        if (!isCurrent()) return;
+        setStatus(payload);
       }
     } catch (err) {
+      if (!isCurrent()) return;
       console.error("Failed to load system status:", err);
       // Only surface this when settings itself loaded; otherwise the
       // settings-fetch error already explains the disconnect.
@@ -899,25 +950,9 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         );
       }
     }
-  }, [syncPendingKeys, t]);
-
-  // Load settings + status once on mount. Subsequent navigations between
-  // settings sub-pages share this state via the layout-level provider.
-  // Code-block switch hydration lives in AppShellContext (the single source),
-  // so no separate post-mount re-read is needed here.
-  //
-  // Guarded because `loadSettings` closes over `t`, whose identity changes
-  // once i18n resolves: without this the load ran a second time a moment
-  // after mount and re-cloned `draft` from the server, silently discarding
-  // anything edited in between. `reloadSettings` is the deliberate way to
-  // re-read.
-  const loadedOnce = useRef(false);
-  useEffect(() => {
-    if (!loadedOnce.current) {
-      loadedOnce.current = true;
-      loadSettings();
-    }
-  }, [loadSettings]);
+  }, [captureSettingsOwnership, syncPendingKeys, t]);
+  const loadSettingsRef = useRef(loadSettings);
+  loadSettingsRef.current = loadSettings;
 
   // Paint a stored palette while the server theme is still unknown. A missing
   // key stays on the placeholder and is not persisted.
@@ -951,11 +986,16 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   // Preferences are drafts too. Browser-wide appearance/language changes only
   // when Apply succeeds, so Discard has no global side effects to undo.
   const liveUi = useMemo<UiSettings>(() => ({
-    theme, language, response_language: responseLanguage,
+      ...learningDisplay,
+      theme, language, response_language: responseLanguage,
     code_block_theme: codeBlockTheme,
     code_block_show_line_numbers: codeBlockShowLineNumbers,
     code_block_wrap_long_lines: codeBlockWrapLongLines,
-  }), [theme, language, responseLanguage, codeBlockTheme, codeBlockShowLineNumbers, codeBlockWrapLongLines]);
+  }), [
+      learningDisplay,
+      theme, language, responseLanguage, codeBlockTheme, codeBlockShowLineNumbers, codeBlockWrapLongLines,
+    ],
+  );
   const applyUi = useCallback((ui: Partial<UiSettings>) => {
     if (serverThemeLoadedRef.current && ui.theme) {
       setTheme(ui.theme);
@@ -978,21 +1018,116 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       ...patch,
     };
     // Do not stage or apply a theme until the server has confirmed one.
-    const next = serverThemeLoadedRef.current ? merged : withoutUnconfirmedTheme(merged);
-    const baseline = serverThemeLoadedRef.current ? liveUi : withoutUnconfirmedTheme(liveUi);
-    registerExtension("ui", {
+    const next: Partial<UiSettings> = serverThemeLoadedRef.current ? merged : withoutUnconfirmedTheme(merged);
+    const baseline: Partial<UiSettings> = serverThemeLoadedRef.current ? { ...liveUi }
+        : withoutUnconfirmedTheme(liveUi);
+      if (!serverDisplayLoadedRef.current) {
+        const pending = pendingRef.current.get("ui") as
+          Partial<UiSettings> | undefined;
+        for (const key of [
+          "content_font_scale",
+          "content_line_spacing",
+        ] as const) {
+          // A failed GET must not turn placeholder defaults into a preference.
+          if (!(key in patch) && !(pending && key in pending)) delete next[key];
+          delete baseline[key];
+        }
+      }
+      registerExtension("ui", {
       dirty: JSON.stringify(next) !== JSON.stringify(baseline),
       payload: next,
-      save: async () => { await applyExtensionPayload("ui", next); applyUi(next); },
+      save: async () => { await applyExtensionPayload("ui", next);
+        },
     });
-  }, [liveUi, registerExtension, applyUi]);
+  }, [liveUi, registerExtension],
+  );
   stageUiRef.current = stageUi;
-  const updateTheme = useCallback(async (theme: UiSettings["theme"]) => stageUi({ theme }), [stageUi]);
-  const updateLanguage = useCallback(async (language: UiSettings["language"]) => stageUi({ language }), [stageUi]);
-  const updateResponseLanguage = useCallback(async (response_language: UiSettings["response_language"]) => stageUi({ response_language }), [stageUi]);
-  const updateCodeBlockTheme = useCallback(async (code_block_theme: CodeBlockThemeId) => stageUi({ code_block_theme }), [stageUi]);
-  const updateCodeBlockShowLineNumbers = useCallback(async (code_block_show_line_numbers: boolean) => stageUi({ code_block_show_line_numbers }), [stageUi]);
-  const updateCodeBlockWrapLongLines = useCallback(async (code_block_wrap_long_lines: boolean) => stageUi({ code_block_wrap_long_lines }), [stageUi]);
+  const updateTheme = useCallback(async (theme: UiSettings["theme"]) => stageUi({ theme }), [stageUi],
+  );
+  const updateLanguage = useCallback(async (language: UiSettings["language"]) => stageUi({ language }), [stageUi],
+  );
+  const updateResponseLanguage = useCallback(async (response_language: UiSettings["response_language"]) => stageUi({ response_language }), [stageUi],
+  );
+  const updateCodeBlockTheme = useCallback(async (code_block_theme: CodeBlockThemeId) => stageUi({ code_block_theme }), [stageUi],
+  );
+  const updateCodeBlockShowLineNumbers = useCallback(async (code_block_show_line_numbers: boolean) => stageUi({ code_block_show_line_numbers }), [stageUi],
+  );
+  const updateCodeBlockWrapLongLines = useCallback(async (code_block_wrap_long_lines: boolean) => stageUi({ code_block_wrap_long_lines }), [stageUi],
+  );
+
+  const updateContentFontScale = useCallback(
+    async (content_font_scale: LearningDisplay["content_font_scale"]) =>
+      stageUi({ content_font_scale }),
+    [stageUi],
+  );
+  const updateContentLineSpacing = useCallback(
+    async (content_line_spacing: LearningDisplay["content_line_spacing"]) =>
+      stageUi({ content_line_spacing }),
+    [stageUi],
+  );
+  const resetLearningText = useCallback(
+    async () => stageUi(DEFAULT_LEARNING_DISPLAY),
+    [stageUi],
+  );
+
+  useEffect(() => {
+    let request = 0;
+    const onBoundary = () => {
+      settingsGenerationRef.current += 1;
+      setApplying(false);
+      setSaving(false);
+      const generation = ++request;
+      const owner = recoveryPrincipal();
+      serverDisplayLoadedRef.current = false;
+      displayOwnerRef.current = owner;
+      setLearningDisplay(DEFAULT_LEARNING_DISPLAY);
+      // Display drafts belong to the account that authored them. Preserve
+      // other settings while removing this account's unsaved typography.
+      const pending = pendingRef.current.get("ui") as
+        Partial<UiSettings> | undefined;
+      if (pending) {
+        const next = { ...pending };
+        delete next.content_font_scale;
+        delete next.content_line_spacing;
+        pendingRef.current.set("ui", next);
+        void stageUiRef.current({});
+      }
+      if (!owner) return;
+      if (
+        awaitingInitialPrincipalRef.current ||
+        !initialSettingsSettledRef.current
+      ) {
+        // Replace an invalidated initial read, including its parked draft,
+        // until a current response or error has settled the core settings gate.
+        awaitingInitialPrincipalRef.current = false;
+        void loadSettingsRef.current();
+        return;
+      }
+      void (async () => {
+        try {
+          const response = await apiFetch(apiUrl("/api/settings/display"), {
+            skipAuthRedirect: true,
+          });
+          if (!response.ok) return;
+          const display = normalizeLearningDisplay(await response.json());
+          if (generation !== request || recoveryPrincipal() !== owner) return;
+          serverDisplayLoadedRef.current = true;
+          setLearningDisplay(display);
+        } catch {
+          /* An unavailable account starts at defaults. */
+        }
+      })();
+    };
+    window.addEventListener(RECOVERY_PRINCIPAL_CHANGED, onBoundary);
+    // Tie the initial attempt to this lifecycle, not to the translated callback.
+    // StrictMode cleanup invalidates an unfinished read; replay starts its replacement.
+    if (!initialSettingsSettledRef.current) void loadSettingsRef.current();
+    return () => {
+      request += 1;
+      settingsGenerationRef.current += 1;
+      window.removeEventListener(RECOVERY_PRINCIPAL_CHANGED, onBoundary);
+    };
+  }, []);
 
   // ── Catalog mutators ────────────────────────────────────────────────────
   const mutateCatalog = useCallback((mutator: (next: Catalog) => void) => {
@@ -1528,7 +1663,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
    * the catalog too; previously this button only ever wrote the catalog and
    * reported success for edits it had not touched.
    */
-  const saveDraft = useCallback(async () => {
+  const saveDraft = useCallback(async (): Promise<boolean | null> => {
+    const isCurrent = captureSettingsOwnership();
     setSaving(true);
     const signature = envelopeSignatureRef.current;
     try {
@@ -1537,15 +1673,18 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(draftEnvelope()),
       });
+      if (!isCurrent()) return null;
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const payload = (await response.json()) as {
         draft: StoredDraft | null;
       };
+      if (!isCurrent()) return null;
       setStoredDraft(payload.draft ?? null);
       setSavedSignature(signature);
       setToast(t("Draft saved — not applied yet"));
       return true;
     } catch (err) {
+      if (!isCurrent()) return null;
       setToast(
         t("Could not save the draft: {{message}}", {
           message: err instanceof Error ? err.message : String(err),
@@ -1553,9 +1692,9 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       );
       return false;
     } finally {
-      setSaving(false);
+      if (isCurrent()) setSaving(false);
     }
-  }, [draftEnvelope, t]);
+  }, [captureSettingsOwnership, draftEnvelope, t]);
 
   /** Apply one model-service editor without promoting unrelated settings. */
   const applyService = useCallback(
@@ -1787,28 +1926,55 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
 
   /** Apply — move everything into the live files and clear the draft. */
   const applyCatalog = useCallback(async () => {
+    const displayOwner = recoveryPrincipal();
+    const isCurrent = captureSettingsOwnership();
+    // Name the culprit and take the user to the field that can fix it. The
+    // old check only threw a generic message, so a blank model created on
+    // another page blocked Apply with nothing on screen to act on.
+    if (catalogEditable) {
+      const incomplete = firstIncompleteModel(draft);
+      if (incomplete) {
+        setToast(
+          t(
+            "Add a model ID for {{name}} on the {{page}} page before applying changes.",
+            {
+              name: incomplete.name || t("New model"),
+              page: t(incomplete.page.labelKey),
+            },
+          ),
+        );
+        setFocusModel(incomplete);
+        router.push(
+          `${incomplete.page.path}?profile=${encodeURIComponent(incomplete.profileId)}&model=${encodeURIComponent(incomplete.modelId)}`,
+        );
+        return;
+      }
+    }
+
     setApplying(true);
     // Save the payloads and callbacks represented by this Apply. Edits made
     // during a request remain a new draft, including on the same page.
     const applyingExtensions = Array.from(pendingRef.current, ([key, payload]) => {
       const ext = extensionsRef.current.get(key);
       return { key, payload, save: ext?.dirty ? ext.save : null };
-    });
+    },
+    );
     try {
-      if (catalogEditable) {
-        for (const [service, bucket] of Object.entries(draft.services)) {
-          for (const profile of bucket.profiles) {
-            for (const model of profile.models) {
-              const original = catalog.services[service as ServiceName].profiles
-                .find((item) => item.id === profile.id)?.models.find((item) => item.id === model.id);
-              if (JSON.stringify(original) !== JSON.stringify(model) && !model.model.trim()) {
-                throw new Error(t("Enter a model ID before applying changes."));
-              }
-            }
-          }
-        }
+      const uiPayload = applyingExtensions.find(({ key }) => key === "ui")
+        ?.payload as Partial<UiSettings> | undefined;
+      if (
+        uiPayload &&
+        ("content_font_scale" in uiPayload ||
+          "content_line_spacing" in uiPayload) &&
+        displayOwnerRef.current !== undefined &&
+        displayOwnerRef.current !== displayOwner
+      ) {
+        throw new Error(
+          t(
+            "Your account changed. Reload settings before applying learning text.",
+          ),
+        );
       }
-
       // Park the current state server-side first so Apply promotes exactly
       // what is on screen, and so credentials typed into a draft never have
       // to round-trip through the browser as placeholders.
@@ -1818,23 +1984,30 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         body: JSON.stringify(draftEnvelope()),
       });
 
+      if (!isCurrent()) return;
       await asJsonOrThrow(draftResponse);
+      if (!isCurrent()) return;
 
       // Pages still on screen save themselves — they refresh their own local
       // state and surface their own errors. Everything else pending is
       // written straight to the endpoint that owns it.
       for (const { key, payload, save } of applyingExtensions) {
+        if (!isCurrent()) return;
         if (save) await save();
         else await applyExtensionPayload(key, payload);
+        if (!isCurrent()) return;
         if (key === "ui") applyUi(payload as UiSettings);
       }
 
+      if (!isCurrent()) return;
       if (catalogEditable) {
         const response = await apiFetch(apiUrl("/api/settings/apply"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
         });
+        if (!isCurrent()) return;
         const payload = await asJsonOrThrow(response);
+        if (!isCurrent()) return;
         if (!payload.catalog)
           throw new Error("Missing catalog in apply response");
         setCatalog(payload.catalog);
@@ -1842,17 +2015,49 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         invalidateLLMOptionsCache();
         try {
           const statusResponse = await apiFetch(apiUrl("/api/system/status"));
-          if (statusResponse.ok)
-            setStatus((await statusResponse.json()) as SystemStatus);
+          if (!isCurrent()) return;
+          if (statusResponse.ok) {
+            const status = (await statusResponse.json()) as SystemStatus;
+            if (!isCurrent()) return;
+            setStatus(status);
+        }
         } catch {
+          if (!isCurrent()) return;
           /* Applying succeeded; diagnostics can be retried independently. */
         }
       } else {
         const response = await apiFetch(apiUrl("/api/settings/draft"), {
           method: "DELETE",
         });
+        if (!isCurrent()) return;
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
       }
+      if (!isCurrent()) return;
+      const appliedUi = applyingExtensions.find(({ key }) => key === "ui")
+        ?.payload as Partial<UiSettings> | undefined;
+      if (
+        displayOwner === recoveryPrincipal() &&
+        appliedUi &&
+        ("content_font_scale" in appliedUi ||
+          "content_line_spacing" in appliedUi)
+      ) {
+        let display = normalizeLearningDisplay({
+          ...learningDisplay,
+          ...appliedUi,
+        });
+        if (!serverDisplayLoadedRef.current) {
+          // A partial edit after a failed settings load must inherit the
+          // omitted field from the server, never from a placeholder default.
+          const response = await apiFetch(apiUrl("/api/settings/display"));
+          if (!isCurrent()) return;
+          display = normalizeLearningDisplay(await asJsonOrThrow(response));
+          if (!isCurrent()) return;
+          serverDisplayLoadedRef.current = true;
+        }
+        setLearningDisplay(display);
+        publishLearningDisplay(display, displayOwner);
+      }
+      if (!isCurrent()) return;
       clearPending(
         new Map(applyingExtensions.map(({ key, payload }) => [key, payload])),
       );
@@ -1861,19 +2066,31 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       setDraftRevision((value) => value + 1);
       setToast(t("Applied"));
     } catch (err) {
+      if (!isCurrent()) return;
       setToast(
         t("Could not apply: {{message}}", {
           message: err instanceof Error ? err.message : String(err),
         }),
       );
     } finally {
-      setApplying(false);
+      if (isCurrent()) setApplying(false);
     }
-  }, [catalog, draft, catalogEditable, clearPending, draftEnvelope, applyUi, t]);
+  }, [
+    captureSettingsOwnership,
+    draft,
+    catalogEditable,
+    clearPending,
+    draftEnvelope,
+    applyUi,
+    learningDisplay,
+    router,
+    t,
+  ]);
 
   /** Stage a named preset over the current draft without applying anything. */
   const stagePreset = useCallback(
     async (presetId: string): Promise<boolean> => {
+      const isCurrent = captureSettingsOwnership();
       setSaving(true);
       try {
         const response = await apiFetch(
@@ -1884,14 +2101,15 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
             body: JSON.stringify(draftEnvelope()),
           },
         );
+        if (!isCurrent()) return false;
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const payload = (await response.json()) as {
           draft: StoredDraft | null;
         };
+        if (!isCurrent()) return false;
         const stored = payload.draft;
         const pending = new Map(
-          Object.entries(stored?.extensions ?? {}),
-        );
+          Object.entries(stored?.extensions ?? {}));
 
         pendingRef.current.clear();
         for (const [key, value] of pending.entries()) {
@@ -1912,6 +2130,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         setToast(t("Preset loaded as a draft — review before applying"));
         return true;
       } catch (err) {
+        if (!isCurrent()) return false;
         setToast(
           t("Could not load the preset: {{message}}", {
             message: err instanceof Error ? err.message : String(err),
@@ -1919,19 +2138,24 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         );
         return false;
       } finally {
-        setSaving(false);
+        if (isCurrent()) setSaving(false);
       }
     },
-    [catalogEditable, draft, draftEnvelope, syncPendingKeys, t],
+    [
+      captureSettingsOwnership,
+      catalogEditable, draft, draftEnvelope, syncPendingKeys, t,
+    ],
   );
 
   /** Throw the draft away and go back to what is actually live. */
   const discardDraft = useCallback(async () => {
+    const isCurrent = captureSettingsOwnership();
     setApplying(true);
     try {
       const response = await apiFetch(apiUrl("/api/settings/draft"), {
         method: "DELETE",
       });
+      if (!isCurrent()) return;
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       clearPending();
       setStoredDraft(null);
@@ -1941,15 +2165,16 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       // Pages holding their own copy of a discarded payload have to re-read.
       setDraftRevision((value) => value + 1);
     } catch (err) {
+      if (!isCurrent()) return;
       setToast(
         t("Could not discard the draft: {{message}}", {
           message: err instanceof Error ? err.message : String(err),
         }),
       );
     } finally {
-      setApplying(false);
+      if (isCurrent()) setApplying(false);
     }
-  }, [catalog, clearPending, t]);
+  }, [captureSettingsOwnership, catalog, clearPending, t]);
 
   // ── Diagnostics ─────────────────────────────────────────────────────────
   // Reset capability snapshot when switching embedding profile/model so a
@@ -2219,7 +2444,9 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
 
   const settingsLoading = catalogEditable === null;
 
-  const editedUi = useMemo(() => ({ ...liveUi, ...(JSON.parse(pendingSignature).ui as Partial<UiSettings> | undefined) }), [liveUi, pendingSignature]);
+  const editedUi = useMemo(() => ({ ...liveUi, ...(JSON.parse(pendingSignature).ui as Partial<UiSettings> | undefined),
+    }), [liveUi, pendingSignature],
+  );
   const value = useMemo<SettingsContextValue>(
     () => ({
       catalog,
@@ -2237,8 +2464,15 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       codeBlockTheme: editedUi.code_block_theme,
       codeBlockShowLineNumbers: editedUi.code_block_show_line_numbers,
       codeBlockWrapLongLines: editedUi.code_block_wrap_long_lines,
+      contentFontScale: editedUi.content_font_scale,
+      contentLineSpacing: editedUi.content_line_spacing,
+      updateContentFontScale,
+      updateContentLineSpacing,
+      resetLearningText,
       toast,
       setToast,
+      focusModel,
+      clearFocusModel,
       updateTheme,
       updateLanguage,
       updateResponseLanguage,
@@ -2349,6 +2583,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       status,
       testRunning,
       toast,
+      focusModel,
+      clearFocusModel,
       tourStepIndex,
       updateCodeBlockShowLineNumbers,
       updateCodeBlockTheme,
@@ -2361,6 +2597,9 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       updateModelBoolField,
       updateModelField,
       updateProfileField,
+      updateContentFontScale,
+      updateContentLineSpacing,
+      resetLearningText,
       updateTheme,
     ],
   );

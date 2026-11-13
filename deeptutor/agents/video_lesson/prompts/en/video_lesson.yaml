@@ -4,5 +4,7 @@ status:
   narrating: "Recording the narration."
   checking: "Compiling the animation and checking its frames."
   retry: "Check {attempt} failed, fixing: {error}"
+  layout: "Checking each scene's layout for overlaps."
+  layout_retry: "Layout check found {count} overlap(s); repositioning."
   ready: "Video lesson ready ({seconds} s)."
   llm_call_failed: "LLM call failed."

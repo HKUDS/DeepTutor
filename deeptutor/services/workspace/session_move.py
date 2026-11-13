@@ -58,7 +58,7 @@ def migrate_legacy_bindings() -> int:
     would sever learning references. Preserve the original binding for audit
     and normalize once; users can move complete bundles with migration preview.
     """
-    from deeptutor.services.file_io import atomic_write_json
+    from deeptutor.services.file_io import atomic_write_json, read_text
     from deeptutor.services.workspace.activity import data_activity
     from deeptutor.services.workspace.data_migration import _backend
 
@@ -78,7 +78,7 @@ def migrate_legacy_bindings() -> int:
         def save_original(rows):
             # A PocketBase retry must preserve entries already normalized by
             # the previous attempt, including their original preferences.
-            previous = json.loads(backup.read_text()) if backup.exists() else []
+            previous = json.loads(read_text(backup)) if backup.exists() else []
             merged = {row["id"]: row for row in rows}
             merged.update({row["id"]: row for row in previous})
             atomic_write_json(backup, list(merged.values()))

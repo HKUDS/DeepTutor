@@ -290,7 +290,10 @@ async def unified_websocket(ws: WebSocket) -> None:
                 if not turn_id:
                     await send_error("Missing turn_id.", error_code="missing_turn_id")
                     continue
-                accepted = await turns.cancel_turn(turn_id, command_id=str(msg["command_id"]))
+                # A successful Stop ACK must mean ownership has been released.
+                accepted = await turns.cancel_turn_and_wait(
+                    turn_id, command_id=str(msg["command_id"])
+                )
                 if not accepted:
                     await send_command_ack(
                         msg,

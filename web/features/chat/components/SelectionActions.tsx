@@ -3,7 +3,8 @@
 /**
  * What a passage selected in a reply can become.
  *
- * Two actions, kept apart because they go to different places: "Add to chat"
+ * Listening plays only the selection. The two conversation actions go to
+ * different places: "Add to chat"
  * quotes the passage into the main composer (it rides the next message as an
  * attachment), and "Ask" opens a side chat about it — with Dito unless the
  * learner picks a partner, a partner group, or a connected agent from the
@@ -16,6 +17,7 @@ import { ChevronDown, MessagesSquare, TextQuote } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import ResponderList from "@/components/chat/home/ResponderList";
 import { DITO, type SideChatResponder } from "@/lib/side-chat";
+import { PlayAudioButton } from "@/components/voice/SpeechButton";
 
 export interface SelectionAnchor {
   left: number;
@@ -24,7 +26,7 @@ export interface SelectionAnchor {
   bottom: number;
 }
 
-const BAR_WIDTH = 232;
+const BAR_WIDTH = 272;
 const BAR_HEIGHT = 36;
 const MENU_WIDTH = 248;
 const MENU_MAX_HEIGHT = 320;
@@ -46,12 +48,14 @@ function place(anchor: SelectionAnchor) {
 
 export default function SelectionActions({
   anchor,
+  text,
   agents,
   onAddToChat,
   onAsk,
   onDismiss,
 }: {
   anchor: SelectionAnchor;
+  text: string;
   /** Connected agents (not partners) this account can talk to. */
   agents: { name: string; kind?: string }[];
   onAddToChat: () => void;
@@ -89,6 +93,15 @@ export default function SelectionActions({
         className="flex items-stretch overflow-hidden rounded-xl bg-[var(--foreground)] text-[var(--background)] shadow-lg"
         style={{ height: BAR_HEIGHT }}
       >
+        <PlayAudioButton
+          key={text}
+          content={text}
+          autoPlayFresh={false}
+          selection
+
+          className={`${segment} w-10 justify-center`}
+        />
+        <span aria-hidden="true" className="my-2 w-px bg-[color-mix(in_srgb,var(--background)_22%,transparent)]" />
         <button
           type="button"
           onClick={onAddToChat}

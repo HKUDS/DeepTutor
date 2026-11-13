@@ -12,6 +12,9 @@ export interface ComposerControls {
   partners: boolean
   preferences: boolean
   voice: boolean
+  /** Optional: absent (older saved customizations, or the backend schema
+   *  before this control existed) behaves as `true`. */
+  create?: boolean
 }
 export interface ChatPageCustomization {
   hidden_modes: string[]

@@ -4,6 +4,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { initI18n } from '@/i18n/init'
 import type { ChatState, MessageItem } from '@/features/chat/ChatStateAdapter'
 import type { StreamEvent } from '@/features/chat/model/protocol'
+import { updateSessionOrganization } from '@/lib/session-api'
+import type { SessionSummary } from '@/lib/session-api'
 
 initI18n('en')
 
@@ -39,7 +41,10 @@ const fixture = vi.hoisted(() => ({
     submitUserReply: vi.fn(async () => true),
     regenerateLastMessage: vi.fn(),
     resendLastMessage: vi.fn(),
-    deleteTurn: vi.fn(),
+    deleteTurn: vi.fn(async () => ({
+      detachedThreadIds: [] as string[],
+      deletedMessageIds: [] as number[],
+    })),
     editMessage: vi.fn(),
     switchBranch: vi.fn(),
     newSession: vi.fn(() => 'draft:general'),
@@ -55,8 +60,23 @@ const fixture = vi.hoisted(() => ({
     messages: MessageItem[]
     isStreaming: boolean
     canResendLastTurn: boolean
+    onDetachThread?: (thread: SessionSummary) => Promise<void>
+    onDeleteTurn?: (messageId: number) => void | Promise<void>
   } | null,
   setActiveSessionId: vi.fn(),
+  viewer: {
+    openFileTab: vi.fn(),
+    openWebTab: vi.fn(),
+    openMarkdownNoteTab: vi.fn(),
+    openQuizFollowupTab: vi.fn(),
+    openSideChatTab: vi.fn(),
+    openSideChatThread: vi.fn(),
+    closeSideChatThread: vi.fn(),
+    clearSideChatSource: vi.fn(),
+    openGeogebraTab: vi.fn(),
+    openSubagentTab: vi.fn(),
+    focusActivityHome: vi.fn(),
+  },
 }))
 
 vi.mock('@/features/chat/ChatStateAdapter', () => ({
@@ -83,6 +103,18 @@ vi.mock('next/dynamic', () => ({
   // stub keeps their trees out of the smoke run without touching the shell.
   default: () => () => null,
 }))
+
+// The viewer is a separate surface with its own suite; here its imperative
+// handle is a spy so ChatWorkspace's calls into it stay observable.
+vi.mock('@/components/chat/home/LazySessionViewerPanel', async () => {
+  const { forwardRef, useImperativeHandle } = await import('react')
+  return {
+    default: forwardRef(function StubViewer(_props: unknown, ref) {
+      useImperativeHandle(ref, () => fixture.viewer as never, [])
+      return null
+    }),
+  }
+})
 
 vi.mock('@/features/capabilities/useCapabilityCatalog', () => ({
   useCapabilityCatalog: () => ({
@@ -147,6 +179,7 @@ vi.mock('@/lib/session-api', () => ({
     preferences: {},
   })),
   deleteSession: vi.fn(async () => undefined),
+  listSessionThreads: vi.fn(async () => []),
 }))
 
 vi.mock('@/features/knowledge/api/catalog', () => ({
@@ -193,6 +226,7 @@ vi.mock('@/features/chat/messages', () => ({
     messages: MessageItem[]
     isStreaming: boolean
     canResendLastTurn: boolean
+    onDeleteTurn?: (messageId: number) => void | Promise<void>
   }) => {
     fixture.listProps = props
     return (
@@ -244,6 +278,7 @@ function emptyChatState(): ChatState {
     masteryPathId: null,
     masterySessionMode: null,
     noteDocumentId: null,
+    createTarget: null,
     workspaceId: null,
     personaSelection: '',
     answerBy: null,
@@ -474,6 +509,69 @@ describe('ChatWorkspace smoke', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
     })
     await waitFor(() => expect(fixture.adapter.loadSession).toHaveBeenCalledTimes(2))
+    view.unmount()
+  })
+
+  it('clears an open side chat when its thread is detached from a message', async () => {
+    const view = renderWorkspace()
+    await waitFor(() => expect(fixture.adapter.newSession).toHaveBeenCalled())
+
+    applyState({
+      sessionId: 's-1',
+      messages: [{ id: 1, role: 'user', content: 'Explain photosynthesis' }],
+    })
+    view.rerender(<ChatWorkspace />)
+    await waitFor(() => expect(fixture.listProps?.onDetachThread).toBeTypeOf('function'))
+
+    const thread = {
+      id: 'thread-1',
+      session_id: 'thread-1',
+      title: 'Why fork returns twice',
+      created_at: 1,
+      updated_at: 1,
+      message_count: 2,
+      last_message: '',
+      preferences: { tutor_source_message_id: 7 },
+    } satisfies SessionSummary
+
+    await act(async () => {
+      await fixture.listProps!.onDetachThread!(thread)
+    })
+
+    expect(updateSessionOrganization).toHaveBeenCalledWith(
+      'thread-1',
+      { tutor_source_message_id: null },
+      undefined
+    )
+    // The tab must forget the anchor too, or its next send would file the
+    // thread back under the message the learner just detached.
+    expect(fixture.viewer.clearSideChatSource).toHaveBeenCalledWith('thread-1', 7)
+    view.unmount()
+  })
+
+  it('clears deleted-source tabs after deleting a turn', async () => {
+    const view = renderWorkspace()
+    await waitFor(() => expect(fixture.adapter.newSession).toHaveBeenCalled())
+
+    fixture.adapter.deleteTurn.mockResolvedValue({
+      detachedThreadIds: ['thread-1'],
+      deletedMessageIds: [1],
+    })
+    applyState({
+      sessionId: 's-1',
+      messages: [{ id: 1, role: 'user', content: 'Explain photosynthesis' }],
+    })
+    view.rerender(<ChatWorkspace />)
+    await waitFor(() => expect(fixture.listProps?.onDeleteTurn).toBeTypeOf('function'))
+
+    await act(async () => {
+      await fixture.listProps!.onDeleteTurn!(1)
+    })
+
+    expect(fixture.adapter.deleteTurn).toHaveBeenCalledWith(1)
+    // The open tab only forgets the deleted message's anchor; a newer pending
+    // selection is preserved by the id comparison inside the panel.
+    expect(fixture.viewer.clearSideChatSource).toHaveBeenCalledWith('thread-1', 1)
     view.unmount()
   })
 })

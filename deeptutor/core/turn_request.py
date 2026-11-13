@@ -180,6 +180,10 @@ class TurnRequest(BaseModel):
     mcp: list[str] = Field(default_factory=list)
 
     persona: str | None = None
+    # What this conversation is authoring ("skill", "persona", ...). Durable
+    # session state like ``persona``: null/empty clears it. Unknown kinds are
+    # ignored by the creator extension (see deeptutor.services.creations).
+    create_target: str | None = Field(default=None, pattern=r"^$|^[a-z][a-z0-9_]{0,31}$")
     llm_selection: LLMSelection | None = None
     workspace_mode: str | None = None
     # Content workspace ownership; omitted means inherit, null/empty means the general workspace.
@@ -232,6 +236,15 @@ class TurnRequest(BaseModel):
     @classmethod
     def _validate_reply_language_override(cls, value: str | None) -> str | None:
         return validate_reply_language_override(value)
+
+    @field_validator("answer_by", mode="before")
+    @classmethod
+    def _blank_answer_by_hands_back(cls, value: Any) -> Any:
+        # Clients restate ``answer_by`` every turn and send "" to hand the
+        # thread back to DeepTutor; the field stays set, so that still clears it.
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
 
     @model_validator(mode="before")
     @classmethod

@@ -43,6 +43,20 @@ def _muted_progress_config() -> PartnerConfig:
 
 class TestTurnExecution:
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("language", ["pt", "pt-BR", "pt_PT", "Português"])
+    async def test_feishu_turn_announces_thinking_in_portuguese(
+        self, partners_root, fake_orchestrator, language
+    ):
+        fake_orchestrator.script = finish("Pronto")
+        runner = _runner(partners_root, PartnerConfig(name="Ada", language=language))
+
+        await runner.process_message(_msg(channel="feishu"))
+
+        notice = await runner.bus.outbound.get()
+        assert notice.content == "🤔 Pensando…"
+        assert notice.metadata["_thinking_notice"] is True
+
+    @pytest.mark.asyncio
     async def test_feishu_turn_announces_thinking_before_any_output(
         self, partners_root, fake_orchestrator
     ):
@@ -56,6 +70,63 @@ class TestTurnExecution:
         assert notice.content == "🤔 正在思考…"
         assert notice.metadata["_thinking_notice"] is True
         assert notice.metadata["_progress"] is True
+
+    @pytest.mark.asyncio
+    async def test_feishu_thinking_notice_uses_the_partner_language(
+        self, partners_root, fake_orchestrator
+    ):
+        fake_orchestrator.script = finish("done")
+        runner = _runner(partners_root, PartnerConfig(name="Ada", language="fr"))
+
+        await runner.process_message(_msg(channel="feishu"))
+
+        notice = await runner.bus.outbound.get()
+        assert notice.content == "🤔 Réflexion…"
+
+    def test_auto_reply_language_follows_the_account_response_language(
+        self, partners_root, monkeypatch
+    ):
+        from deeptutor.services.settings import interface_settings
+
+        monkeypatch.setattr(
+            interface_settings,
+            "get_response_language",
+            lambda default="en": "fr",
+        )
+        runner = _runner(partners_root, PartnerConfig(name="Ada"))
+
+        assert runner._language() == "fr"
+
+    def test_explicit_reply_language_wins_over_the_account_default(
+        self, partners_root, monkeypatch
+    ):
+        from deeptutor.services.settings import interface_settings
+
+        monkeypatch.setattr(
+            interface_settings,
+            "get_response_language",
+            lambda default="en": "fr",
+        )
+        runner = _runner(partners_root, PartnerConfig(name="Ada", language="uk"))
+
+        assert runner._language() == "uk"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("language", ["tr", "tr-TR", "tr_TR", "turkish", "Türkçe", ""])
+    async def test_turkish_thinking_notice_follows_explicit_or_account_language(
+        self, partners_root, monkeypatch, language
+    ):
+        from deeptutor.services.settings import interface_settings
+
+        monkeypatch.setattr(
+            interface_settings, "get_response_language", lambda default="en": "tr_TR"
+        )
+        runner = _runner(partners_root, PartnerConfig(name="Ada", language=language))
+        assert runner._language() == "tr"
+        await runner._publish_thinking_notice(_msg(channel="feishu"))
+        notice = await runner.bus.outbound.get()
+        assert notice.content == "🤔 Düşünüyorum…"
+        assert notice.metadata["_thinking_notice"] is True
 
     @pytest.mark.asyncio
     async def test_web_turn_never_announces_thinking(self, partners_root, fake_orchestrator):

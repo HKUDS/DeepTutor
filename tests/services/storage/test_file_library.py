@@ -539,3 +539,23 @@ def test_reset_clears_singleton() -> None:
     reset_file_library_store()
     s2 = get_file_library_store()
     assert s1 is not s2
+
+
+def test_restore_does_not_hide_unrelated_database_failure(
+    rooted_store: FileLibraryStore,
+    tmp_db_path: Path,
+) -> None:
+    import sqlite3
+
+    first = asyncio.run(rooted_store.add_file(data=b"same", filename="first.txt"))
+    asyncio.run(rooted_store.delete_file(first["id"]))
+    second = asyncio.run(rooted_store.add_file(data=b"same", filename="second.txt"))
+    with sqlite3.connect(tmp_db_path) as connection:
+        connection.execute(
+            "CREATE TRIGGER fail_restore BEFORE UPDATE OF is_deleted ON library_files "
+            "WHEN NEW.is_deleted = 0 BEGIN SELECT RAISE(ABORT, 'unrelated failure'); END"
+        )
+    with pytest.raises(sqlite3.IntegrityError, match="unrelated failure"):
+        asyncio.run(rooted_store.restore_file(first["id"]))
+    assert asyncio.run(rooted_store.get_file(first["id"]))["is_deleted"] is True
+    assert asyncio.run(rooted_store.get_file(second["id"]))["is_deleted"] is False

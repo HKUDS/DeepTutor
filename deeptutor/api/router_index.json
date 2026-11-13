@@ -1,5 +1,5 @@
 {
-  "fingerprint": "1d7765445b3314164a65e42f387e370bdc1c789f8aa4c53e56f0876cf9fb570c",
+  "fingerprint": "299722f6671698cf56d8d5b4f93ca55bc4596d99071909bbb56e4a39fc216409",
   "routers": {
     "deeptutor.api.routers.auth:router": [
       {
@@ -131,6 +131,14 @@
         ]
       },
       {
+        "path": "/profile/password",
+        "name": "change_password",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
         "path": "/devices",
         "name": "list_devices",
         "kind": "http",
@@ -229,6 +237,14 @@
       {
         "path": "/users/{username}/role",
         "name": "update_user_role",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/users/{username}/password",
+        "name": "admin_reset_password",
         "kind": "http",
         "methods": [
           "PUT"
@@ -3964,6 +3980,14 @@
         ]
       },
       {
+        "path": "/display",
+        "name": "get_display_settings",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
         "path": "/ui",
         "name": "update_ui_settings",
         "kind": "http",
@@ -5848,6 +5872,24 @@
         "name": "websocket_quiz_judge",
         "kind": "websocket",
         "methods": []
+      }
+    ],
+    "deeptutor.api.routers.creations:router": [
+      {
+        "path": "/drafts/{draft_id}",
+        "name": "get_creation_draft",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/drafts/{draft_id}/approve",
+        "name": "approve_creation_draft",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
       }
     ],
     "deeptutor.api.routers.modules:router": [

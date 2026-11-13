@@ -95,6 +95,11 @@ const initialPage = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // A failed test may leave an unconsumed one-shot history response.
+  // Reset implementations as well as call counts before the next mount.
+  api.historyPage.mockReset();
+  api.sessions.mockReset();
+  api.commands.mockReset();
   sockets.instances.length = 0;
   composer.current = null;
   api.historyPage.mockResolvedValue(initialPage);
@@ -108,6 +113,9 @@ beforeEach(() => {
 
 async function ready() {
   await waitFor(() => expect(composer.current?.disabled).toBe(false));
+  // The enabled composer commits before the history-key-dependent focus
+  // listener is replaced. Flush that passive effect before dispatching focus.
+  await act(async () => {});
   return sockets.instances[0];
 }
 

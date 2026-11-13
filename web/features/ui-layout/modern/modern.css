@@ -371,6 +371,8 @@ button.dt-record-toggle:focus-visible { outline: 2px solid var(--ring); outline-
 .dt-lead-token:is(:hover, :focus-visible, [data-armed]) .dt-lead-icon > svg:first-child { opacity: 0; transform: scale(0.6); }
 .dt-lead-token:is(:hover, :focus-visible, [data-armed]) .dt-lead-icon > svg:last-child { opacity: 1; transform: none; }
 .dt-lead-label { min-width: 0; max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
+/* Match the tray's Create label, followed by the kind in the primary colour. */
+.dt-lead-prefix { font-weight: 400; color: var(--foreground); }
 .dt-lead-more { font-variant-numeric: tabular-nums; cursor: default; }
 @keyframes dt-lead-in { from { opacity: 0; transform: translateX(-4px) scale(0.92); } }
 

@@ -27,6 +27,13 @@ from deeptutor.utils.document_extractor import (
     is_document_extension,
     normalize_epub_archive,
 )
+from tests.docx_math_fixture import (
+    EXPECTED_CHAIN_PARAGRAPHS,
+    EXPECTED_EQUATION_PARAGRAPHS,
+    _fraction,
+    equation_chain_docx_bytes,
+    native_equation_docx_bytes,
+)
 
 # ---------------------------------------------------------------------------
 # Fixtures — generate office docs on the fly
@@ -192,6 +199,45 @@ class TestExtractDocx:
         assert "Fallback paragraph" in text
         assert "第二段" in text
 
+    def test_raw_ooxml_fallback_preserves_equation_structure(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def fail_rich_extraction(_data: bytes) -> None:
+            raise ValueError("force raw OOXML fallback")
+
+        monkeypatch.setattr(document_extractor_module, "extract_docx_rich", fail_rich_extraction)
+        monkeypatch.setattr(document_extractor_module, "DocxDocument", None)
+
+        text = extract_text_from_bytes("equations.docx", equation_chain_docx_bytes())
+
+        for paragraph in EXPECTED_CHAIN_PARAGRAPHS:
+            assert paragraph in text
+        assert "Inline before 12 after." not in text
+        assert "Cell power: y2" not in text
+
+    def test_raw_ooxml_math_wins_over_flattened_python_docx_text(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from docx.oxml import OxmlElement
+
+        def fail_rich_extraction(_data: bytes) -> None:
+            raise ValueError("force fallback selection")
+
+        monkeypatch.setattr(document_extractor_module, "extract_docx_rich", fail_rich_extraction)
+
+        doc = DocxDocument()
+        paragraph = doc.add_paragraph("Context " + "word " * 200 + "Equation: ")
+        math = OxmlElement("m:oMath")
+        math.append(_fraction("1", "2"))
+        paragraph._p.append(math)
+        buffer = io.BytesIO()
+        doc.save(buffer)
+
+        text = extract_text_from_bytes("equations.docx", buffer.getvalue())
+
+        assert "Equation: 1/2" in text
+        assert "Equation: 12" not in text
+
 
 class TestExtractXlsx:
     def test_multiple_sheets(self) -> None:
@@ -260,6 +306,21 @@ class TestExtractEpub:
         text = extract_text_from_bytes("book.epub", data)
 
         assert "Hello world. Nice day." in text
+
+    def test_minified_table_cells_are_not_glued_together(self) -> None:
+        # Commercially produced EPUBs often ship whitespace-free XHTML. Without
+        # a separator after each cell, "Revenue" / "100" / "Q1" merge into one
+        # unreadable token.
+        data = _make_epub(
+            {"c.xhtml": "<table><tr><td>Revenue</td><td>100</td><td>Q1</td></tr></table>"}
+        )
+
+        text = extract_text_from_bytes("book.epub", data)
+
+        assert "Revenue100Q1" not in text
+        assert "Revenue" in text
+        assert "100" in text
+        assert "Q1" in text
 
     def test_scripts_and_styles_are_dropped(self) -> None:
         data = _make_epub(
@@ -538,6 +599,27 @@ class TestTruncation:
 
 
 class TestExtractDocumentsFromRecords:
+    def test_native_word_equations_reach_chat_attachment_text(self) -> None:
+        records = [
+            {
+                "type": "file",
+                "filename": "equations.docx",
+                "base64": base64.b64encode(native_equation_docx_bytes()).decode(),
+                "mime_type": (
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                ),
+                "url": "",
+            }
+        ]
+
+        doc_texts, updated = extract_documents_from_records(records)
+
+        assert len(doc_texts) == 1
+        for paragraph in EXPECTED_EQUATION_PARAGRAPHS:
+            assert paragraph in doc_texts[0]
+        assert "Fraction: 12 + 13." not in doc_texts[0]
+        assert updated[0]["extracted_text"] == "\n\n".join(EXPECTED_EQUATION_PARAGRAPHS)
+
     def test_mixed_image_and_doc(self) -> None:
         docx_bytes = _make_docx(["hello there"])
         docx_b64 = base64.b64encode(docx_bytes).decode()

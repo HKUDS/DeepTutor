@@ -294,3 +294,41 @@ def test_recovers_context_budget_and_original_per_model_report(tmp_path, monkeyp
     metadata["output_dir"] = str(tmp_path)
     (tmp_path / "cost_report.json").write_text(json.dumps(report))
     assert not summaries_from_events([event])[0].get("by_model")
+
+
+def test_cost_report_is_read_as_utf8_regardless_of_locale(tmp_path, monkeypatch):
+    import json
+    from pathlib import Path
+
+    from deeptutor.multi_user import paths
+    from deeptutor.services.session.usage_recovery import recover_summary
+
+    real = Path.read_text
+
+    def read_text(self, encoding=None, errors=None, *args, **kwargs):
+        return real(self, encoding=encoding or "cp1252", errors=errors, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", read_text)
+    root = tmp_path / "account"
+    root.mkdir()
+    monkeypatch.setattr(paths, "get_current_path_service", lambda: NS(get_user_root=lambda: root))
+    output = root / "outputs"
+    output.mkdir()
+    (output / "cost_report.json").write_text(
+        json.dumps(
+            {
+                "summary": {
+                    "total_tokens": 120,
+                    "by_model": {"model-a": {"prompt_tokens": 60, "completion_tokens": 60}},
+                    "note": "\u00c1LGEBRA \u6570\u5b66",
+                }
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    event = {"type": "result", "metadata": {"metadata": {"output_dir": str(output)}}}
+
+    recovered = recover_summary({"total_tokens": 120, "total_calls": 2}, [event])
+    assert "by_model" in recovered
+    assert recovered["by_model"] == {"model-a": {"prompt_tokens": 60, "completion_tokens": 60}}

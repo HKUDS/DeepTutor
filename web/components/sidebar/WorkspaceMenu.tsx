@@ -9,6 +9,7 @@ import { useMenuPopover } from '@/shared/ui/useMenuPopover'
 import Tooltip from '@/shared/ui/Tooltip'
 import { useWorkspaceChoices } from '@/components/workspaces/useWorkspaceChoices'
 import { VersionBadge } from '@/components/sidebar/VersionBadge'
+import { clientEditionLabel } from '@/lib/version'
 
 const GLYPH_TINTS = ['#e3655b', '#d9822b', '#c9a227', '#4f9d69', '#3d8fb8', '#6c6fd1', '#a35fc0', '#c25b8a']
 
@@ -129,7 +130,12 @@ export function WorkspaceMenu({
           {accountSlot ? <div className="dt-menu-slot">{accountSlot}</div> : null}
           <div className="dt-menu-divider" />
           <div className="dt-menu-footer">
-            <span>DeepTutor</span>
+            <span
+              className="min-w-0 truncate"
+              title={clientEditionLabel(process.env.NEXT_PUBLIC_APP_VERSION)}
+            >
+              {clientEditionLabel(process.env.NEXT_PUBLIC_APP_VERSION, undefined, 'short')}
+            </span>
             <VersionBadge onNavigate={close} />
           </div>
         </div>

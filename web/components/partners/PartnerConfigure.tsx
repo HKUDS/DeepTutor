@@ -10,6 +10,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Loader2, Plus, Save, Trash2, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import PartnerModelSelect from "@/components/partners/PartnerModelSelect";
+import PartnerReplyLanguageSelect from "@/components/partners/PartnerReplyLanguageSelect";
 import { listLLMOptions, type LLMOption } from "@/lib/llm-options";
 import type { LLMSelection } from "@/features/chat/model/protocol";
 import {
@@ -355,15 +356,11 @@ export default function PartnerConfigure({
             <label className="mb-1 block text-[12px] font-medium">
               {t("Reply language")}
             </label>
-            <select
+            <PartnerReplyLanguageSelect
               value={language}
-              onChange={(e) => setLanguage(e.target.value)}
+              onChange={setLanguage}
               className="w-full rounded-lg border border-[var(--border)] bg-transparent px-3 py-1.5 text-[13px] outline-none focus:border-[var(--ring)]"
-            >
-              <option value="">{t("Auto (English)")}</option>
-              <option value="en">English</option>
-              <option value="zh">中文</option>
-            </select>
+            />
           </div>
           <div className="sm:col-span-2">
             <label className="mb-1 block text-[12px] font-medium">

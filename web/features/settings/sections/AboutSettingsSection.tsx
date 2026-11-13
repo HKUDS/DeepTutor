@@ -14,6 +14,8 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { normalizeLanguage } from "@/i18n/languages";
+import { formatDate } from "@/lib/datetime";
 
 import { Toggle } from "@/components/settings/Toggle";
 import {
@@ -34,7 +36,11 @@ import {
   type UpdateJob,
   type UpdateJobStatus,
 } from "@/lib/app-update";
-import { normalizeVersionTag } from "@/lib/version";
+import {
+  clientEdition,
+  normalizeVersionTag,
+  type ClientEdition,
+} from "@/lib/version";
 
 const POLL_INTERVAL_MS = 800;
 const POLL_TIMEOUT_MS = 120_000;
@@ -168,14 +174,19 @@ export default function AboutSettingsPage() {
     normalizeVersionTag(process.env.NEXT_PUBLIC_APP_VERSION) ??
     "—";
   const latestVersion = normalizeVersionTag(status?.release?.version);
+  // The user agent only exists in the browser; start from the server's view.
+  const [edition, setEdition] = useState<ClientEdition>(() =>
+    clientEdition(""),
+  );
+  useEffect(() => setEdition(clientEdition()), []);
   const checkedAt = useMemo(() => {
     if (!status?.checked_at) return "";
     const parsed = new Date(status.checked_at);
     if (Number.isNaN(parsed.getTime())) return "";
-    return parsed.toLocaleString(
-      i18n.language?.toLowerCase().startsWith("zh") ? "zh-CN" : "en-US",
-      { dateStyle: "medium", timeStyle: "short" },
-    );
+    return formatDate(parsed, normalizeLanguage(i18n.language), {
+      dateStyle: "medium",
+      timeStyle: "short",
+    });
   }, [i18n.language, status?.checked_at]);
 
   const installMode = status?.installation.mode ?? "unknown";
@@ -210,7 +221,10 @@ export default function AboutSettingsPage() {
               {t("Running version")}
             </div>
             <div className="font-serif text-[38px] font-semibold leading-none tracking-[-0.035em] text-[var(--foreground)]">
-              {currentVersion}
+              {edition.short} {currentVersion}
+            </div>
+            <div className="mt-2 text-[13px] text-[var(--muted-foreground)]">
+              {edition.full} {currentVersion}
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">

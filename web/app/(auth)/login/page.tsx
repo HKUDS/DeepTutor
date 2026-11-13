@@ -53,7 +53,11 @@ function LoginPageContent() {
     const result = await login(username, password);
 
     if (result.ok) {
-      router.replace(resolvedNext());
+      // A password an admin assigned is temporary by definition — send the
+      // owner straight to the form rather than letting them settle in with it.
+      router.replace(
+        result.mustChangePassword ? "/profile?change=1" : resolvedNext(),
+      );
     } else {
       setError(result.error ?? t("Login failed"));
       setLoading(false);

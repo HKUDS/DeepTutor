@@ -744,6 +744,9 @@ export const ComposerInput = memo(
         <div className="relative">
           <textarea
             ref={textareaRef}
+            // Each message takes the direction of what is typed, so Arabic and
+            // Hebrew lines start on the right without a setting.
+            dir="auto"
             value={input}
             onChange={handleInputChange}
             onKeyDown={handleKeyDown}

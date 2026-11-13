@@ -254,6 +254,17 @@
       "order": 763
     },
     {
+      "reference": "deeptutor.api.routers.creations:router",
+      "options": {
+        "prefix": "/api/creations",
+        "tags": [
+          "creations"
+        ]
+      },
+      "auth": "learning",
+      "order": 845
+    },
+    {
       "reference": "deeptutor.api.routers.plugins:router",
       "options": {
         "prefix": "/api/plugins",

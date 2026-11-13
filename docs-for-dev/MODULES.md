@@ -35,6 +35,31 @@ build script, without requiring `.git`. Optional source dependencies can be
 added with `python scripts/install_extras.py <extra>`; this resolves module
 requirements without installing duplicate feature wheels over the source tree.
 
+## Optional document parsers
+
+For Docling, LiteParse, MarkItDown, or PyMuPDF4LLM, replace `<engine>` below
+with `docling`, `liteparse`, `markitdown`, or `pymupdf4llm`. The Document Parsing
+settings page does not install packages into a running server.
+
+- **Docker:** add `parse-<engine>` to `DEEPTUTOR_EXTRAS` in the existing
+  deployment's environment configuration, preserving any other declared extras.
+  Recreate the same service with its existing configuration and mounts (for
+  Compose, use the same project and Compose files with `docker compose up -d`).
+  The entrypoint reapplies these extras on each startup. Installation failures
+  are nonfatal: inspect the service's startup logs before rechecking availability.
+  Data mounts preserve user data, not Python packages in the container.
+- **Source:** stop DeepTutor, then run
+  `python scripts/install_extras.py parse-<engine>` from the checkout using the
+  server's Python environment. Restart the same instance.
+- **Wheels:** stop DeepTutor, then run
+  `deeptutor module install parser-<engine>` in the server's Python environment.
+  Restart with the same runtime home. Do not use this command over a source tree.
+
+Return to Document Parsing settings and choose **Recheck availability**. This
+only refreshes engine availability; it does not install packages. Docling's
+remote-server mode remains usable without the local package. Model downloads
+are a separate action after the local package becomes available.
+
 ## Independent wheel installation
 
 ```sh

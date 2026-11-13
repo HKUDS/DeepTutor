@@ -77,7 +77,7 @@ import {
 } from "@/features/chat/ChatStateAdapter";
 import { useAppShell } from "@/context/AppShellContext";
 import { readStoredResponseLanguage } from "@/context/app-shell-storage";
-import { RESPONSE_LANGUAGE_OPTIONS } from "@/features/settings/store";
+import { RESPONSE_LANGUAGE_OPTIONS } from "@/features/settings/store/response-language-options";
 
 import type { FilePreviewSource } from "@/components/chat/preview/previewerFor";
 import type { LLMSelection, StreamEvent } from "@/features/chat/model/protocol";
@@ -104,12 +104,15 @@ import { copyText } from "@/lib/clipboard";
 import { useChatAutoScroll } from "@/hooks/useChatAutoScroll";
 import { useContextBudget } from "@/hooks/useContextBudget";
 import { useMeasuredHeight } from "@/hooks/useMeasuredHeight";
+import { useSessionThreads } from "@/hooks/useSessionThreads";
 import { useSetupSync } from "@/hooks/useSetupSync";
 import { consumePendingPrompt } from "@/lib/pending-prompt";
 import {
+  deleteSession,
   fetchSessionAskHint,
   updateSessionOrganization,
   type SessionDetail,
+  type SessionSummary,
 } from "@/lib/session-api";
 import {
   DEFAULT_QUIZ_CONFIG,
@@ -289,6 +292,7 @@ export default function ChatWorkspace() {
     setPersonaSelection,
     setAnswerBy,
     setResourceSelection,
+    setCreateTarget,
     setReplyLanguageOverride,
     sendMessage,
     queueMessage,
@@ -401,10 +405,13 @@ export default function ChatWorkspace() {
   // Single right-side panel: the Activity/Viewer. Its home view is the
   // session activity; files and web pages open as tabs alongside it.
   const [viewerPanelOpen, setViewerPanelOpen] = useState(false);
-  // A passage selected in a reply, and where its actions float.
+  // A passage selected in a reply, and where its actions float. The message
+  // it came from rides along: it is what files a Little Tutor thread under
+  // the message that prompted it.
   const [selectedPassage, setSelectedPassage] = useState<{
     text: string;
     anchor: SelectionAnchor;
+    messageId: number | string | null;
   } | null>(null);
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -929,6 +936,85 @@ export default function ChatWorkspace() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  // Little Tutor threads filed under this conversation's messages. The hook
+  // refreshes on session-list changes, so a thread's first turn shows up under
+  // its message without a reload.
+  const { threads, byMessageId: threadsByMessageId } = useSessionThreads(
+    state.sessionId,
+    state.workspaceId,
+  );
+
+  const openMessageThread = useCallback((thread: SessionSummary) => {
+    viewerPanelRef.current?.openSideChatThread(thread);
+  }, []);
+
+  const deleteMessageThread = useCallback(
+    async (thread: SessionSummary) => {
+      try {
+        await deleteSession(thread.session_id, state.workspaceId || undefined);
+        viewerPanelRef.current?.closeSideChatThread(thread.session_id);
+      } catch (error) {
+        notify(
+          error instanceof Error
+            ? error.message
+            : t("The tutor thread could not be deleted."),
+          { tone: "error" },
+        );
+        throw error;
+      }
+    },
+    [state.workspaceId, t],
+  );
+
+  /** Remove a thread from this message without deleting the conversation. */
+  const detachMessageThread = useCallback(
+    async (thread: SessionSummary) => {
+      try {
+        await updateSessionOrganization(
+          thread.session_id,
+          { tutor_source_message_id: null },
+          state.workspaceId || undefined,
+        );
+        // The tab showing this thread may still hold the old anchor; left
+        // alone, its next send would file the thread back under the message
+        // the learner just detached. A tab already moved by a newer selection
+        // keeps that anchor.
+        viewerPanelRef.current?.clearSideChatSource(
+          thread.session_id,
+          thread.preferences?.tutor_source_message_id ?? null,
+        );
+      } catch (error) {
+        notify(
+          error instanceof Error
+            ? error.message
+            : t("The tutor thread could not be detached."),
+          { tone: "error" },
+        );
+        throw error;
+      }
+    },
+    [state.workspaceId, t],
+  );
+  /** Delete a turn and release any side-chat tab the server detached from it. */
+  const handleDeleteTurn = useCallback(
+    async (messageId: number) => {
+      const { detachedThreadIds, deletedMessageIds } = await deleteTurn(messageId);
+      for (const threadSessionId of detachedThreadIds) {
+        // A turn delete removes a user row and its assistant row. Only forget
+        // a tab still filed under one of those rows: a learner may already
+        // have selected a newer passage, and that pending anchor must survive.
+        for (const deletedMessageId of deletedMessageIds) {
+          viewerPanelRef.current?.clearSideChatSource(
+            threadSessionId,
+            deletedMessageId,
+          );
+        }
+      }
+    },
+    [deleteTurn],
+  );
+
   const cancelSessionTitleEdit = useCallback(() => {
     skipTitleCommitRef.current = true;
     setSessionTitleDraft(displaySessionTitle);
@@ -1466,8 +1552,13 @@ export default function ChatWorkspace() {
       // the new capability has its own form that needs explicit confirm.
       setCapabilityConfigConfirmed(false);
       setCapMenuOpen(false);
+      // Create mode only makes sense on the plain chat loop (`cap.value`
+      // empty); any other mode drops it. Picking Create itself goes through
+      // `setCreateTarget` → the tray's `onChange`, which calls back here
+      // with `""` — a no-op for this guard.
+      if (cap.value) setCreateTarget(null);
     },
-    [capabilities, setCapability, setTools, userEnabledTools],
+    [capabilities, setCapability, setTools, setCreateTarget, userEnabledTools],
   );
 
   const fileToAttachment = fileToPendingAttachment;
@@ -1704,9 +1795,25 @@ export default function ChatWorkspace() {
       rects.length > 0
         ? rects[rects.length - 1]
         : range.getBoundingClientRect();
+    // The selection may span messages; the anchor is where the learner
+    // started, so that is the message the follow-up is filed under.
+    const anchorElement =
+      selection.anchorNode instanceof HTMLElement
+        ? selection.anchorNode
+        : selection.anchorNode?.parentElement;
+    const rawMessageId =
+      anchorElement
+        ?.closest("[data-chat-message-id]")
+        ?.getAttribute("data-chat-message-id") ?? "";
+    const messageId = /^-?\d+$/.test(rawMessageId)
+      ? Number(rawMessageId) > 0
+        ? Number(rawMessageId)
+        : null
+      : rawMessageId || null;
     setSelectedPassage({
       text,
       anchor: { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom },
+      messageId,
     });
   }, [messagesContainerRef]);
 
@@ -1749,7 +1856,11 @@ export default function ChatWorkspace() {
   const askAboutSelectedPassage = useCallback(
     (responder: SideChatResponder) => {
       if (selectedPassage) {
-        viewerPanelRef.current?.openSideChatTab({ responder, quote: selectedPassage.text });
+        viewerPanelRef.current?.openSideChatTab({
+          responder,
+          quote: selectedPassage.text,
+          sourceMessageId: selectedPassage.messageId,
+        });
       }
       dismissSelectedPassage();
     },
@@ -2511,6 +2622,7 @@ export default function ChatWorkspace() {
                       />
                     ) : (
                       <Tooltip
+                        className="min-w-0 max-w-full"
                         label={canRenameSession
                           ? t("Click to rename session")
                           : t("Start a conversation to rename")}
@@ -2684,7 +2796,7 @@ export default function ChatWorkspace() {
                             key, String(meta.subagent_name || t("Subagent")), events, true,
                           );
                         }}
-                        onDeleteTurn={deleteTurn}
+                        onDeleteTurn={handleDeleteTurn}
                         onDiscardFailedSubmission={discardFailedSubmission}
                         onRetryFailedSubmission={retryFailedSubmission}
                         selectedBranches={state.selectedBranches}
@@ -2710,6 +2822,10 @@ export default function ChatWorkspace() {
                         kbDisplayNames={
                           knowledgeBasesLoaded ? kbDisplayNames : undefined
                         }
+                        threadsByMessageId={threadsByMessageId}
+                        onOpenThread={openMessageThread}
+                        onDeleteThread={deleteMessageThread}
+                        onDetachThread={detachMessageThread}
                       />
                       <div
                         ref={messagesEndRef}
@@ -2719,6 +2835,7 @@ export default function ChatWorkspace() {
                   </div>
                   {selectedPassage ? (
                     <SelectionActions
+                      text={selectedPassage.text}
                       anchor={selectedPassage.anchor}
                       agents={agentOptions}
                       onAddToChat={addSelectedPassageToChat}
@@ -2854,6 +2971,8 @@ export default function ChatWorkspace() {
                 resourceCatalog={resourceCatalog}
                 resourceSelection={state.resourceSelection}
                 onResourceSelectionChange={setResourceSelection}
+                createTarget={state.createTarget}
+                onCreateTargetChange={setCreateTarget}
                 onToggleMemoryFile={handleToggleMemoryFile}
                 onSend={handleSend}
                 awaitingUserReply={awaitingUserReply}
@@ -2992,6 +3111,7 @@ export default function ChatWorkspace() {
               reboundFromKey={state.boundFromKey ?? null}
               conversation={viewerConversation}
               workspaceId={sessionStoreId}
+              threads={threads}
               resourceCatalog={resourceCatalog}
               agents={agentOptions}
               activity={sessionActivity}

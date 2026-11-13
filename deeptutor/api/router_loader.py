@@ -17,6 +17,8 @@ from typing import Any
 from fastapi import APIRouter, FastAPI
 from starlette.routing import BaseRoute, Match, Route, WebSocketRoute
 
+from deeptutor.services.file_io import read_text
+
 INDEX_PATH = Path(__file__).with_name("router_index.json")
 
 
@@ -94,7 +96,7 @@ class RouterLoader:
         self.index: dict[str, list[dict]] = {}
         if lazy:
             try:
-                index = json.loads(INDEX_PATH.read_text())
+                index = json.loads(read_text(INDEX_PATH))
                 if index["fingerprint"] == source_fingerprint():
                     self.index = index["routers"]
             except (OSError, ValueError, KeyError):

@@ -67,7 +67,24 @@ _TOOL_HINT_MAX_CHARS = 120
 # Channels that post the "thinking…" notice and retract it when the answer
 # starts arriving. Opt-in: a channel that cannot retract would leave it behind.
 _THINKING_NOTICE_CHANNELS = frozenset({"feishu"})
-_THINKING_NOTICES = {"zh": "🤔 正在思考…", "en": "🤔 Thinking…"}
+_THINKING_NOTICES = {
+    "tr": "🤔 Düşünüyorum…",
+    "ar": "🤔 أفكر…",
+    "de": "🤔 Denke nach…",
+    "en": "🤔 Thinking…",
+    "es": "🤔 Pensando…",
+    "fr": "🤔 Réflexion…",
+    "it": "🤔 Sto pensando…",
+    "ja": "🤔 考え中…",
+    "ko": "🤔 생각 중…",
+    "ms": "🤔 Sedang berfikir…",
+    "pl": "🤔 Myślę…",
+    "pt": "🤔 Pensando…",
+    "ru": "🤔 Думаю…",
+    "uk": "🤔 Думаю…",
+    "zh": "🤔 正在思考…",
+    "zh-tw": "🤔 正在思考…",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -918,8 +935,29 @@ class PartnerRunner:
             return []
 
     def _language(self) -> str:
+        """Return the partner's reply language.
+
+        An explicit partner language wins. An empty value means "Auto": follow
+        the account's model output language, so a user who selected French gets
+        French replies instead of the historical English fallback.
+        """
+        from deeptutor.services.settings.interface_settings import (
+            _normalize_response_language,
+            get_response_language,
+        )
+
         lang = str(getattr(self.config, "language", "") or "").strip().lower()
-        return "zh" if lang.startswith("zh") else "en"
+        if not lang:
+            try:
+                lang = get_response_language(default="en")
+            except Exception:
+                logger.warning(
+                    "Could not read the account response language for partner %s",
+                    self.partner_id,
+                    exc_info=True,
+                )
+                lang = "en"
+        return _normalize_response_language(lang, default="en")
 
     def _channel_delivery_flag(self, channel_name: str, name: str, *, default: bool) -> bool:
         channels = getattr(self.config, "channels", None) or {}
@@ -1118,7 +1156,11 @@ class PartnerRunner:
         are targeted, so a channel that would leave the notice behind is
         unaffected.
         """
-        notice = _THINKING_NOTICES[self._language()]
+        language = self._language()
+        notice = _THINKING_NOTICES.get(
+            language,
+            _THINKING_NOTICES.get(language.split("-", 1)[0], _THINKING_NOTICES["en"]),
+        )
         await self.bus.publish_outbound(
             OutboundMessage(
                 channel=msg.channel,

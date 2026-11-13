@@ -86,6 +86,22 @@ def is_response_format_unsupported(exc: Exception) -> bool:
     drop-and-retry behaves the same wherever the request was made.
     """
     text = error_text(exc)
+    # Value-specific markers name a response_format value directly, so they
+    # stand on their own — DashScope's rejection ("'json_object' is not
+    # supported by this model") never mentions ``response_format`` itself.
+    if any(
+        marker in text
+        for marker in (
+            "json_object",
+            "json_schema",
+            "must be 'json_schema' or 'text'",
+            "specified for 'response_format.type' is not valid",
+        )
+    ):
+        return True
+    # Generic markers ("unsupported", "not valid") are gated behind an explicit
+    # response_format mention so an unrelated unsupported-parameter error (e.g.
+    # stream_options) does not spuriously drop response_format.
     if "response_format" not in text and "response format" not in text:
         return False
     return any(
@@ -93,11 +109,7 @@ def is_response_format_unsupported(exc: Exception) -> bool:
         for marker in (
             "not supported",
             "unsupported",
-            "json_object",
-            "json_schema",
             "not valid",
-            "must be 'json_schema' or 'text'",
-            "specified for 'response_format.type' is not valid",
         )
     )
 

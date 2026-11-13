@@ -28,6 +28,13 @@ def build_update_command(target_version: str) -> list[str]:
             "created_at": "validation",
         }
     ).target_version
+    from deeptutor.modules.catalog import installed_distributions
+
+    # 1.7 split features into separately versioned distributions. Upgrading
+    # core alone leaves every installed module pinned to the old version, so
+    # the restarted app cannot import its own server/web modules (#2330).
+    specs = [f"deeptutor=={validated}"]
+    specs.extend(f"{name}=={validated}" for name in installed_distributions())
     return [
         sys.executable,
         "-m",
@@ -36,7 +43,7 @@ def build_update_command(target_version: str) -> list[str]:
         "--no-input",
         "--disable-pip-version-check",
         "--upgrade",
-        f"deeptutor=={validated}",
+        *specs,
     ]
 
 
@@ -78,10 +85,13 @@ def _run_logged(command: list[str], *, cwd: Path, log_path: Path) -> int:
     return completed.returncode
 
 
-def _launch_restart(job: UpdateJob, *, log_path: Path) -> None:
+def _launch_restart(job: UpdateJob, *, log_path: Path) -> subprocess.Popen[bytes]:
     command, home = build_restart_command(job)
+    env = os.environ.copy()
+    env["PYTHONSAFEPATH"] = "1"
     kwargs: dict[str, object] = {
         "cwd": str(home),
+        "env": env,
         "stdin": subprocess.DEVNULL,
         "stderr": subprocess.STDOUT,
         "close_fds": True,
@@ -95,9 +105,23 @@ def _launch_restart(job: UpdateJob, *, log_path: Path) -> None:
     else:
         kwargs["start_new_session"] = True
     with log_path.open("a", encoding="utf-8") as log:
-        subprocess.Popen(  # type: ignore[arg-type,call-overload] # nosec B603
+        return subprocess.Popen(  # type: ignore[arg-type,call-overload] # nosec B603
             command, stdout=log, **kwargs
         )
+
+
+# A launcher that cannot even import the new package exits almost immediately.
+# Waiting briefly lets the worker record that failure instead of leaving the job
+# stuck in ``restarting`` with nothing listening (see #2330).
+RESTART_STARTUP_GRACE_SECONDS = 5.0
+
+
+def _wait_for_launcher_start(process: subprocess.Popen[bytes]) -> None:
+    try:
+        exit_code = process.wait(timeout=RESTART_STARTUP_GRACE_SECONDS)
+    except subprocess.TimeoutExpired:
+        return
+    raise RuntimeError(f"Restarted launcher exited with status {exit_code}")
 
 
 def _log_aborted_recovery(
@@ -126,11 +150,12 @@ def run_update_worker(
     parent_pid: int,
     wait_for_parent: Callable[[int], None] = wait_for_process_exit,
     command_runner: Callable[[list[str], Path, Path], int] | None = None,
-    restart_launcher: Callable[[UpdateJob, Path], None] | None = None,
+    restart_launcher: Callable[[UpdateJob, Path], subprocess.Popen[bytes] | None] | None = None,
 ) -> int:
     """Install the target, then restore the application on either outcome."""
 
     store = UpdateJobStore(store_root)
+    restart_attempted = False
     try:
         job = store.load()
         if job.status != "handoff":
@@ -146,10 +171,15 @@ def run_update_worker(
         if exit_code != 0:
             raise RuntimeError(f"pip exited with status {exit_code}")
         job = store.mark_restarting(job.id)
-        (restart_launcher or (lambda value, path: _launch_restart(value, log_path=path)))(
+        restart_attempted = True
+        launched = (
+            restart_launcher or (lambda value, path: _launch_restart(value, log_path=path))
+        )(
             job,
             store.log_path,
         )
+        if launched is not None:
+            _wait_for_launcher_start(launched)
         return 0
     except Exception as exc:
         try:
@@ -163,7 +193,9 @@ def run_update_worker(
         try:
             if current.status not in {"succeeded", "failed"}:
                 current = store.mark_failed(current.id, str(exc) or type(exc).__name__)
-            if current.restart_home and current.restart_argv:
+            # A launcher that already failed to start will fail again; leave
+            # the durable error instead of spawning another broken process.
+            if not restart_attempted and current.restart_home and current.restart_argv:
                 (restart_launcher or (lambda value, path: _launch_restart(value, log_path=path)))(
                     current,
                     store.log_path,

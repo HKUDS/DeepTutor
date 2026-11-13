@@ -224,3 +224,216 @@ async def test_markdown_discussion_preserves_existing_card(service, monkeypatch)
     assert result.metadata["mastery_question"]["question_id"] == "parent"
     assert capability.finish_instruction(context, "The questions are on your card.") is None
     assert service.store.load("path").quiz_attempts == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("resume_id", [None, "", " \t"])
+@pytest.mark.parametrize("questions", [None, []])
+async def test_blank_optional_arguments_allow_single_question(
+    service, monkeypatch, resume_id, questions
+):
+    from deeptutor.capabilities.mastery import tools
+
+    monkeypatch.setattr(tools, "_new_service", lambda: service)
+    progress = service.store.load("path").model_copy(deep=True)
+    progress.book_id = "new-path"
+    progress.version = 0
+    progress.pending_question = None
+    service.save(progress)
+    ended = []
+    result = await tools.MasteryQuizTool().execute(
+        _mastery_path_id="new-path",
+        knowledge_point_id="one",
+        question="What is one plus one?",
+        expected_answer="2",
+        question_type="open",
+        options=[],
+        questions=questions,
+        pending_action="retain",
+        resume_question_id=resume_id,
+        replace_question_id="",
+        replacement_request="",
+        _end_turn_on_card=lambda: ended.append(True),
+    )
+    assert result.success, result.content
+    question_id = result.metadata["mastery_question"]["question_id"]
+    assert service.store.get_active_interaction("new-path").interaction_id == question_id
+    assert service.store.load("new-path").quiz_attempts == []
+    assert ended == [True]
+    assert "expected_answer" not in json.dumps(result.metadata)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("resume_id", ["parent", False, 0, [], {}])
+async def test_nonblank_or_malformed_resume_id_still_requires_resume(
+    service, monkeypatch, resume_id
+):
+    from deeptutor.capabilities.mastery import tools
+
+    monkeypatch.setattr(tools, "_new_service", lambda: service)
+    before = service.store.load("path").model_dump()
+    interaction = service.store.get_active_interaction("path").model_dump()
+    result = await tools.MasteryQuizTool().execute(
+        _mastery_path_id="path", pending_action="retain", resume_question_id=resume_id
+    )
+    assert not result.success
+    assert "requires pending_action='resume'" in result.content
+    assert service.store.load("path").model_dump() == before
+    assert service.store.get_active_interaction("path").model_dump() == interaction
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("questions", [[{}], [{}, {}, {}, {}, {}], {}])
+async def test_nonempty_malformed_groups_are_not_treated_as_single_questions(
+    service, monkeypatch, questions
+):
+    from deeptutor.capabilities.mastery import tools
+
+    monkeypatch.setattr(tools, "_new_service", lambda: service)
+    before = service.store.load("path").model_dump()
+    result = await tools.MasteryQuizTool().execute(
+        _mastery_path_id="path",
+        knowledge_point_id="one",
+        question="What is one plus one?",
+        expected_answer="2",
+        questions=questions,
+    )
+    assert not result.success
+    assert "two to four" in result.content
+    assert service.store.load("path").model_dump() == before
+
+
+def _placeholder_visual(hints_used=0):
+    """What a strict-normalizing endpoint makes the model send for a card with no figure."""
+    return {
+        "task": "identification",
+        "sources": [
+            {
+                "kb_name": "",
+                "asset_id": "",
+                "source_path": "",
+                "page": 1,
+                "source_hash": "",
+                "figure": "",
+                "region": [0, 0, 1, 1],
+            }
+        ],
+        "reference_quote": "",
+        "accepted_answers": [],
+        "key_status": "unverified",
+        "answer_cues": "none",
+        "hints_used": hints_used,
+    }
+
+
+def _no_source_lookup(*args, **kwargs):
+    pytest.fail("a placeholder visual must not reach source lookup")
+
+
+def _fresh_path(service):
+    progress = service.store.load("path").model_copy(deep=True)
+    progress.book_id = "new-path"
+    progress.version = 0
+    progress.pending_question = None
+    service.save(progress)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "visual",
+    [
+        _placeholder_visual(0),
+        _placeholder_visual([]),
+        _placeholder_visual(None),
+        {},
+        {"sources": []},
+    ],
+)
+async def test_placeholder_visual_allows_text_only_question(service, monkeypatch, visual):
+    from deeptutor.capabilities.mastery import tools
+
+    monkeypatch.setattr(tools, "_new_service", lambda: service)
+    monkeypatch.setattr("deeptutor.learning.visual_practice.prepare_visual", _no_source_lookup)
+    _fresh_path(service)
+    ended = []
+    result = await tools.MasteryQuizTool().execute(
+        _mastery_path_id="new-path",
+        _attached_kb_names=[],
+        knowledge_point_id="one",
+        question="What is one plus one?",
+        expected_answer="2",
+        question_type="short",
+        options=[],
+        explanation="",
+        difficulty="easy",
+        visual=visual,
+        questions=[],
+        pending_action="retain",
+        resume_question_id="",
+        replace_question_id="",
+        replacement_request="",
+        _end_turn_on_card=lambda: ended.append(True),
+    )
+    assert result.success, result.content
+    assert service.store.get_active_interaction("new-path").question.visual_context == {}
+    assert service.store.load("new-path").quiz_attempts == []
+    assert ended == [True]
+
+
+@pytest.mark.asyncio
+async def test_group_leaves_with_placeholder_visual_register(service, monkeypatch):
+    from deeptutor.capabilities.mastery import tools
+
+    monkeypatch.setattr(tools, "_new_service", lambda: service)
+    monkeypatch.setattr("deeptutor.learning.visual_practice.prepare_visual", _no_source_lookup)
+    _fresh_path(service)
+    leaf = {
+        "question_type": "short",
+        "options": [],
+        "explanation": "",
+        "difficulty": "easy",
+        "visual": _placeholder_visual([]),
+    }
+    result = await tools.MasteryQuizTool().execute(
+        _mastery_path_id="new-path",
+        _attached_kb_names=[],
+        knowledge_point_id="",
+        question="",
+        expected_answer="",
+        visual=_placeholder_visual(),
+        questions=[
+            {**leaf, "knowledge_point_id": "one", "question": "1 + 1?", "expected_answer": "2"},
+            {**leaf, "knowledge_point_id": "two", "question": "2 + 2?", "expected_answer": "4"},
+        ],
+        pending_action="retain",
+        resume_question_id="",
+        replace_question_id="",
+        replacement_request="",
+    )
+    assert result.success, result.content
+    group = service.store.get_active_interaction("new-path").question
+    assert [leaf.visual_context for leaf in group.questions] == [{}, {}]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("reference", [{"kb_name": "other-kb"}, {"asset_id": "figure-1"}])
+async def test_visual_naming_a_source_still_fails(service, monkeypatch, reference):
+    from deeptutor.capabilities.mastery import tools
+
+    monkeypatch.setattr(tools, "_new_service", lambda: service)
+    _fresh_path(service)
+    before = service.store.load("new-path").model_dump()
+    visual = _placeholder_visual()
+    visual["sources"][0].update(reference)
+    result = await tools.MasteryQuizTool().execute(
+        _mastery_path_id="new-path",
+        _attached_kb_names=[],
+        knowledge_point_id="one",
+        question="What is one plus one?",
+        expected_answer="2",
+        visual=visual,
+    )
+    assert not result.success
+    assert "Visual practice is unavailable" in result.content
+    assert service.store.load("new-path").model_dump() == before
+    assert service.store.get_active_interaction("new-path") is None

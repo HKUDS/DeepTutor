@@ -3,6 +3,8 @@ from __future__ import annotations
 import builtins
 from pathlib import Path
 import subprocess
+import sys
+import time
 import zipfile
 
 import httpx
@@ -12,6 +14,10 @@ from deeptutor.services.parsing.engines import factory
 from deeptutor.services.parsing.engines.docling.config import DoclingConfig
 from deeptutor.services.parsing.engines.tika.config import TikaConfig
 from deeptutor.services.parsing.types import ParserError
+from tests.docx_math_fixture import (
+    EXPECTED_EQUATION_PARAGRAPHS,
+    native_equation_docx_bytes,
+)
 
 
 def test_known_engines() -> None:
@@ -76,6 +82,20 @@ def test_text_only_parser_extracts_docx_text(tmp_path) -> None:
     parser.parse(docx, workdir, config={})
 
     assert (workdir / "lesson.md").read_text(encoding="utf-8") == "Hello DeepTutor"
+
+
+def test_text_only_parser_preserves_native_word_equations(tmp_path) -> None:
+    parser = factory.get_parser("text_only")
+    docx = tmp_path / "equations.docx"
+    docx.write_bytes(native_equation_docx_bytes())
+    workdir = tmp_path / "parsed"
+    workdir.mkdir()
+
+    parser.parse(docx, workdir, config={})
+
+    markdown = (workdir / "equations.md").read_text(encoding="utf-8")
+    assert markdown == "\n\n".join(EXPECTED_EQUATION_PARAGRAPHS)
+    assert "Fraction: 12 + 13." not in markdown
 
 
 def test_text_only_parser_converts_bibtex_to_structured_markdown(tmp_path) -> None:
@@ -215,6 +235,33 @@ def test_mineru_models_ready_ignores_unrelated_modelscope_repositories(
     misleading.mkdir()
     (misleading / "model.safetensors").write_bytes(b"weights")
     monkeypatch.setenv("MODELSCOPE_CACHE", str(cache))
+
+    assert rd.mineru_models_ready() is False
+
+
+def test_mineru_models_ready_is_fail_closed_when_cache_root_is_unreadable(
+    tmp_path, monkeypatch
+) -> None:
+    """An unreadable HOME must read as "models missing", not crash the probe.
+
+    The container backend runs as ``deeptutor`` while supervisor leaves HOME
+    pointing at root's home; probing ``/root/.cache`` then raises
+    PermissionError, which the readiness matrix used to surface as the
+    unactionable ``parser_probe_failed`` instead of ``models_missing``.
+    """
+    from deeptutor.services.parsing.engines.mineru import readiness as rd
+
+    monkeypatch.setenv("HF_HOME", str(tmp_path / "empty-huggingface"))
+
+    class _UnreadableModels:
+        def is_dir(self) -> bool:
+            raise PermissionError(13, "Permission denied", "/root/.cache/modelscope/hub/models")
+
+    class _UnreadableRoot:
+        def __truediv__(self, _part: str) -> _UnreadableModels:
+            return _UnreadableModels()
+
+    monkeypatch.setattr(rd, "_modelscope_dir", lambda: _UnreadableRoot())
 
     assert rd.mineru_models_ready() is False
 
@@ -954,22 +1001,78 @@ def test_install_manager_spec_allowlist() -> None:
     assert ENGINE_PIP_SPECS["liteparse"] == ["liteparse>=2.14.2"]
     assert ENGINE_PIP_SPECS["docling"] == [
         "docling[xbrl]>=2.123.1",
-        "docling-slim[format-iwork,format-opendocument,format-video]>=2.123.1",
+        "docling-slim[format-iwork,format-opendocument]>=2.123.1",
     ]
     assert "text_only" not in ENGINE_PIP_SPECS
     assert "mineru" not in ENGINE_PIP_SPECS
 
 
-def test_install_manager_requires_offline_module_change(monkeypatch) -> None:
+@pytest.mark.parametrize("engine", ["docling", "markitdown", "pymupdf4llm", "liteparse"])
+def test_install_manager_requires_offline_module_change(monkeypatch, engine) -> None:
     from deeptutor.services.parsing.engines import _install
 
     manager = _install.BackgroundJobManager()
     monkeypatch.setattr(
-        manager, "_launch", lambda **kwargs: pytest.fail("mutated live environment")
+        _install.subprocess,
+        "Popen",
+        lambda *args, **kwargs: pytest.fail("mutated live environment"),
     )
-    result = manager.start_install(engine="docling", specs=_install.ENGINE_PIP_SPECS["docling"])
+    result = manager.start_install(engine=engine, specs=_install.ENGINE_PIP_SPECS[engine])
     assert result["ok"] is False
-    assert "deeptutor module install parser-docling" in result["message"]
+    assert f"parse-{engine} to DEEPTUTOR_EXTRAS" in result["message"]
+    assert f"python scripts/install_extras.py parse-{engine}" in result["message"]
+    assert f"deeptutor module install parser-{engine}" in result["message"]
+    assert "preserving other extras" in result["message"]
+    assert "inspect startup logs" in result["message"]
+    assert "not installed Python packages" in result["message"]
+    assert manager.status()["state"] == "idle"
+
+
+@pytest.mark.parametrize(
+    "engine,specs", [("unknown", ["docling"]), ("docling", ["untrusted-package"])]
+)
+def test_install_manager_rejects_unknown_or_changed_specs(monkeypatch, engine, specs) -> None:
+    from deeptutor.services.parsing.engines import _install
+
+    monkeypatch.setattr(
+        _install.subprocess,
+        "Popen",
+        lambda *args, **kwargs: pytest.fail("mutated live environment"),
+    )
+    result = _install.BackgroundJobManager().start_install(engine=engine, specs=specs)
+    assert result == {"ok": False, "message": "Unknown parser installation request."}
+
+
+def test_model_download_job_reads_utf8_progress_bars_under_any_locale(monkeypatch) -> None:
+    # ``deeptutor start`` gives the backend PYTHONIOENCODING=utf-8 but not
+    # UTF-8 mode, so docling-tools wrote UTF-8 while a cp936/cp932 server
+    # decoded the pipe with its ANSI code page and the pump died on the first
+    # tqdm bar. A single undecodable byte must not end the log either.
+    from deeptutor.services.parsing.engines import _install
+
+    child = (
+        "import sys\n"
+        "print('model.safetensors:  50%|\\u2588\\u2588\\u258d       | 1/2', flush=True)\n"
+        "sys.stdout.buffer.write(b'stray \\xff byte\\n')\n"
+        "sys.stdout.buffer.flush()\n"
+        "print('Models downloaded.', flush=True)\n"
+    )
+    monkeypatch.setenv("PYTHONIOENCODING", "utf-8:replace")
+    monkeypatch.setattr(_install, "_LINE_MIN_INTERVAL", 0.0)
+    manager = _install.BackgroundJobManager()
+
+    assert manager.start_model_download(engine="docling", cmd=[sys.executable, "-c", child])["ok"]
+    deadline = time.monotonic() + 30
+    while manager.status()["state"] == "running" and time.monotonic() < deadline:
+        time.sleep(0.01)
+
+    status = manager.status()
+    assert status["state"] == "done"
+    assert status["lines"] == [
+        "model.safetensors:  50%|██▍       | 1/2",
+        "stray � byte",
+        "Models downloaded.",
+    ]
 
 
 def test_model_download_allowlist() -> None:

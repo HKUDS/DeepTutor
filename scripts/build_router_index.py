@@ -40,6 +40,7 @@ for reference, router in _router_loader.records.items():
         )
     routers[reference] = patterns
 INDEX_PATH.write_text(
-    json.dumps({"fingerprint": source_fingerprint(), "routers": routers}, indent=2) + "\n"
+    json.dumps({"fingerprint": source_fingerprint(), "routers": routers}, indent=2) + "\n",
+    encoding="utf-8",
 )
 print(f"Indexed {len(routers)} routers; {sum(map(len, routers.values()))} routes")

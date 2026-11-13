@@ -4,5 +4,7 @@ status:
   narrating: "正在录制旁白配音。"
   checking: "正在编译并逐帧检查动画。"
   retry: "第 {attempt} 次检查未通过，正在修复：{error}"
+  layout: "正在检查各场景的布局重叠。"
+  layout_retry: "布局检查发现 {count} 处重叠，正在调整位置。"
   ready: "讲解动画已生成（{seconds} 秒）。"
   llm_call_failed: "LLM 调用失败。"

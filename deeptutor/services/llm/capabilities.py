@@ -194,6 +194,16 @@ PROVIDER_CAPABILITIES: dict[str, dict[str, object]] = {
         "supports_vision": True,
         "system_in_messages": True,
     },
+    # xAI Grok: the OpenAI-compatible endpoint supports tools, structured
+    # output and image input across the current Grok families.
+    "xai": {
+        "supports_response_format": True,
+        "supports_streaming": True,
+        "supports_tools": True,
+        "supports_vision": True,
+        "system_in_messages": True,
+        "has_thinking_tags": False,
+    },
     # DashScope / Alibaba Cloud (Qwen family)
     # Uses OpenAI-compatible API with native function calling support.
     "dashscope": {

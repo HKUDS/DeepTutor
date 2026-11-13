@@ -21,7 +21,7 @@ import uuid
 import zipfile
 
 from deeptutor.multi_user.paths import get_account_path_service
-from deeptutor.services.file_io import atomic_write_json
+from deeptutor.services.file_io import atomic_write_json, read_text
 from deeptutor.services.path_service import get_path_service
 from deeptutor.services.workspace.activity import data_activity
 from deeptutor.services.workspace.context import workspace_context
@@ -495,7 +495,7 @@ def _selected_artifact_files(paths, session_ids: set[str]) -> dict[str, list[str
     root = _feature_path(paths, "presentations")
     presented = set()
     for path in root.glob("*/items/*.json"):
-        item = json.loads(path.read_text())
+        item = json.loads(read_text(path))
         if identifiers.intersection(Path(item.get("relative_path", "")).parts) or any(
             path.stem in url for url in referenced_urls
         ):
@@ -766,7 +766,7 @@ def _pocketbase_rebind(snapshot: Path, target_id: str | None) -> None:
     from deeptutor.services.session.pocketbase_store import _json_loads, _pb
     from deeptutor.services.workspace.references import rebind_local_urls
 
-    saved = json.loads(snapshot.read_text())
+    saved = json.loads(read_text(snapshot))
     collection = _pb().collection("sessions")
     for row in saved["sessions"]:
         prefs = _json_loads(row.get("preferences_json"), {})
@@ -913,7 +913,7 @@ def _restore_sessions(root: Path, source, target) -> None:
 
 def _read_journal(path: Path) -> dict:
     """Validate recovery control data before it can authorize filesystem changes."""
-    row = json.loads(path.read_text())
+    row = json.loads(read_text(path))
     terminal = {"completed", "exported", "recovered"}
     pending = {
         "preparing",
@@ -1051,7 +1051,7 @@ def recover_operation(operation_id: str) -> dict:
                 original = _feature_path(source, feature)
                 snapshot = root / "snapshot" / feature
                 if original.exists() and snapshot.exists():
-                    manifest = json.loads((root / "manifest.json").read_text())[feature]
+                    manifest = json.loads(read_text(root / "manifest.json"))[feature]
                     # Back up databases through SQLite again: byte hashes of
                     # a source with WAL pages cannot match the backup file.
                     check = root / "cleanup-check" / feature

@@ -545,11 +545,11 @@ class SpacedRepetitionScheduler:
 
         for kp_id in list(progress.repetition_states):
             knowledge_type = progress.knowledge_types.get(kp_id, KnowledgeType.MEMORY)
-            evidence = evidence_by_kp.get(kp_id, [])
-            if evidence:
+            kp_evidence = evidence_by_kp.get(kp_id, [])
+            if kp_evidence:
                 progress.repetition_states[kp_id] = self.replay(
                     knowledge_type,
-                    evidence,
+                    kp_evidence,
                     now=moment,
                     desired_retention=desired,
                 )

@@ -1,0 +1,95 @@
+:root {
+  color-scheme: light;
+  --bg: #ffffff; --fg: #111113; --muted: #86868b; --faint: #b8b8be;
+  --line: rgba(0, 0, 0, .08); --track: rgba(0, 0, 0, .07); --well: #f5f5f7;
+  --ink: #111113; --on-ink: #ffffff;
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #161618; --fg: #f2f2f4; --muted: #8e8e93; --faint: #5a5a5f;
+  --line: rgba(255, 255, 255, .09); --track: rgba(255, 255, 255, .1); --well: #212124;
+  --ink: #f2f2f4; --on-ink: #111113;
+}
+/* The brand artwork is black; dark mode turns it white. */
+:root[data-theme="dark"] img { filter: invert(1); }
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0; display: flex; flex-direction: column; overflow: hidden;
+  background: var(--bg); color: var(--fg);
+  font: 13px/1.5 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", "Helvetica Neue", sans-serif;
+  -webkit-font-smoothing: antialiased; user-select: none; cursor: default;
+  transition: background-color .3s ease, color .3s ease;
+}
+
+.titlebar {
+  flex: none; height: 44px; display: flex; align-items: center; justify-content: center;
+  border-bottom: 1px solid transparent; -webkit-app-region: drag;
+  transition: border-color .3s ease;
+}
+.titlebar-name {
+  display: flex; align-items: center; gap: 7px; opacity: 0;
+  font-size: 13px; font-weight: 600; letter-spacing: -.01em;
+  transition: opacity .3s ease;
+}
+.titlebar-name img { width: 14px; height: 14px; }
+:root[data-phase="ready"] .titlebar { border-bottom-color: var(--line); }
+/* Windows keeps its native title bar, so the shell draws none. */
+:root[data-platform="win32"] .titlebar { display: none; }
+:root[data-phase="ready"] .titlebar-name { opacity: .88; }
+
+.stage {
+  flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 0 32px 44px; text-align: center;
+}
+.brand { display: flex; flex-direction: column; align-items: center; animation: rise .9s cubic-bezier(.2, .8, .2, 1) both; }
+.mark { width: 56px; height: 56px; margin-bottom: 24px; }
+.wordmark { width: 184px; height: auto; }
+.tagline { margin: 18px 0 0; font-size: 13px; color: var(--muted); letter-spacing: .005em; }
+
+.loading { margin-top: 56px; display: flex; flex-direction: column; align-items: center; gap: 14px; animation: fade 1s .3s both; }
+.track { position: relative; width: 132px; height: 2px; border-radius: 2px; background: var(--track); overflow: hidden; }
+.track span {
+  position: absolute; inset: 0 auto 0 0; width: 38%; border-radius: 2px; background: var(--ink);
+  animation: sweep 1.5s cubic-bezier(.45, 0, .2, 1) infinite;
+}
+.step { margin: 0; min-height: 18px; font-size: 12px; color: var(--muted); transition: opacity .18s ease; }
+.step.is-swapping { opacity: 0; }
+:root[data-phase="ready"] .loading { visibility: hidden; }
+
+.problem { margin-top: 44px; width: min(460px, 100%); display: flex; flex-direction: column; align-items: center; animation: fade .4s both; }
+.problem h1 { margin: 0; font-size: 17px; font-weight: 600; letter-spacing: -.015em; }
+.problem p { margin: 8px 0 0; color: var(--muted); }
+.problem pre {
+  margin: 18px 0 0; width: 100%; max-height: 120px; overflow: auto; padding: 10px 12px;
+  border-radius: 10px; background: var(--well); color: var(--muted); text-align: left;
+  font: 11px/1.55 ui-monospace, "SF Mono", Menlo, Consolas, monospace; white-space: pre-wrap; word-break: break-word;
+  user-select: text; cursor: text;
+}
+.problem pre:empty { display: none; }
+.actions { margin-top: 22px; display: flex; gap: 10px; }
+button {
+  border: 0; border-radius: 999px; padding: 8px 18px; cursor: pointer;
+  font-family: inherit; font-size: 13px; font-weight: 500; line-height: 1;
+  transition: opacity .2s ease, background-color .2s ease, transform .12s ease;
+}
+button:active { transform: scale(.97); }
+button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.primary { background: var(--ink); color: var(--on-ink); }
+.primary:hover { opacity: .85; }
+.ghost { background: transparent; color: var(--fg); box-shadow: inset 0 0 0 1px var(--line); }
+.ghost:hover { background: var(--well); }
+
+.foot {
+  flex: none; padding: 0 24px 22px; text-align: center;
+  font-size: 11px; color: var(--faint); font-variant-numeric: tabular-nums; animation: fade 1s .45s both;
+}
+
+[hidden] { display: none !important; }
+@keyframes rise { from { opacity: 0; transform: translateY(8px) scale(.985); } to { opacity: 1; transform: none; } }
+@keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes sweep { from { transform: translateX(-100%); } to { transform: translateX(265%); } }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+  .track span { width: 100%; }
+}

@@ -63,6 +63,7 @@ export interface TextUnitViewProps {
   unit: UnitKind;
   unitCount: number;
   contentFormat?: "plain_text" | "web_markdown";
+  sourceType?: string;
   annotations: AnnotationItem[];
   jump: JumpRequest | null;
   highlightedAnnotationId?: string | null;
@@ -88,6 +89,7 @@ export function TextUnitView({
   unit,
   unitCount,
   contentFormat = "plain_text",
+  sourceType,
   annotations,
   jump,
   highlightedAnnotationId,
@@ -577,7 +579,9 @@ export function TextUnitView({
                 enableMath
                 enableCode
                 enableMermaid={false}
-                enableImages
+                // Web snapshots store their images locally. An uploaded file's
+                // image links point anywhere, so they stay unrendered.
+                enableImages={sourceType !== "upload"}
                 variant="prose"
               />
             ) : (

@@ -342,6 +342,7 @@ class CalendarStore:
                     ):
                         if master.all_day:
                             delta = parse_date(changes["start"]) - parse_date(key)
+                            day_delta = delta.days
                             duration = parse_date(changes.get("end", master.end)) - parse_date(
                                 changes["start"]
                             )
@@ -354,6 +355,8 @@ class CalendarStore:
                             target = parse_instant(changes["start"]).astimezone(tz)
                             origin = parse_instant(key).astimezone(tz)
                             delta = target.replace(tzinfo=None) - origin.replace(tzinfo=None)
+                            # timedelta.days floors negative sub-day shifts to -1.
+                            day_delta = (target.date() - origin.date()).days
                             duration = parse_instant(
                                 changes.get("end", master.end)
                             ) - parse_instant(changes["start"])
@@ -363,7 +366,7 @@ class CalendarStore:
                                 end=format_instant(start.astimezone(timezone.utc) + duration),
                             )
                         if "rrule" not in changes:
-                            changes["rrule"] = shift_weekdays(master.rrule, delta.days)
+                            changes["rrule"] = shift_weekdays(master.rrule, day_delta)
                     reset = any(k in changes for k in ("start", "all_day", "tzid", "rrule"))
                     if reset:
                         db.execute("DELETE FROM events WHERE series_id=?", (master.id,))

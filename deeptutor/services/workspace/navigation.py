@@ -23,7 +23,14 @@ async def read_workspace_indexes(
 ) -> tuple[list[dict[str, Any]], list[str]]:
     catalog = get_content_workspace_service().list_workspaces()
     names = {row["workspace_id"]: row["display_name"] for row in catalog}
-    ids = [""] + [row["workspace_id"] for row in catalog if row["kind"] == "workspace"]
+    # Archived workspaces are hidden everywhere else (the picker and the
+    # catalog resolve path both skip them), so polling them here only reports
+    # a folder the learner has already retired.
+    ids = [""] + [
+        row["workspace_id"]
+        for row in catalog
+        if row["kind"] == "workspace" and not row.get("archived")
+    ]
     rows: list[dict[str, Any]] = []
     unavailable: list[str] = []
     for workspace_id in dict.fromkeys(ids):

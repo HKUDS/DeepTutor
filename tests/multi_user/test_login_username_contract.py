@@ -103,3 +103,19 @@ def test_authenticate_round_trip_with_plain_username(
 
     assert auth_service.authenticate("plainuser", "wrong-password") is None
     assert auth_service.authenticate("ghost", "password1234") is None
+
+
+# ---------------------------------------------------------------------------
+# CJK usernames — staff rosters use real names, not transliterations
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("username", ["于冬阳", "李雷", "欧阳娜娜"])
+def test_register_accepts_chinese_username(username: str) -> None:
+    assert RegisterRequest(username=username, password="password1234").username == username
+
+
+@pytest.mark.parametrize("username", ["张", "于冬阳!", "李 雷"])
+def test_register_rejects_malformed_chinese_username(username: str) -> None:
+    with pytest.raises(ValidationError):
+        RegisterRequest(username=username, password="password1234")

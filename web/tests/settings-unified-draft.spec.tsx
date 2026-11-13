@@ -20,12 +20,18 @@ import Appearance from "@/features/settings/sections/AppearanceSettingsSection";
 import { UiSettingsProvider } from "@/features/settings/store/UiSettingsProvider";
 import { stageRegistryAction } from "@/lib/provider-registry";
 
-const mocks = vi.hoisted(() => ({ fetch: vi.fn(), theme: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  fetch: vi.fn(),
+  theme: vi.fn(),
+  push: vi.fn(),
+}));
 vi.mock("@/lib/api", () => ({
   apiUrl: (s: string) => s,
   apiFetch: (...args: unknown[]) => mocks.fetch(...args),
 }));
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: mocks.push }),
+}));
 const t = (key: string, values?: Record<string, unknown>) => key.replace(/{{(.*?)}}/g, (_, name) => String(values?.[name] ?? name));
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t, i18n: { language: "en" } }),
@@ -60,6 +66,7 @@ const reply = (value: unknown, ok = true) => ({
 beforeEach(() => {
   live = defaultCatalog();
   stored = null;
+  mocks.push.mockReset();
   resources = {
     workspace: { path: "/original" },
     "video-learning": { provider: "youtube" },
@@ -481,6 +488,17 @@ it("allows incomplete model drafts but blocks Apply before writing any live sett
   expect(stored.catalog.services.llm.profiles[0].models[0].model).toBe("");
   await act(() => settings.applyCatalog());
   expect(settings.draftState).toBe("saved");
+  // Apply names the model and opens the editor that can fix it, instead of
+  // failing with a message that points at no visible field.
+  expect(mocks.push).toHaveBeenCalledWith(
+    "/settings/llm?profile=new&model=new",
+  );
+  expect(settings.toast).toContain(
+    "Add a model ID for new on the Language models page before applying changes.",
+  );
+  expect(
+    mocks.fetch.mock.calls.filter(([url]) => url === "/api/settings/apply"),
+  ).toHaveLength(0);
   expect(writes("/api/settings/workspace")).toHaveLength(0);
   expect(live.services.llm.profiles).toHaveLength(0);
 });
@@ -525,4 +543,78 @@ it("keeps edits made while Apply is pending for the next Apply", async () => {
   await act(() => settings.applyCatalog());
   expect(resources.workspace.path).toBe("/second");
   expect(settings.draftState).toBe("clean");
+});
+
+function parserResource(engine: string, available = false) {
+  return {
+    engine,
+    engines: { docling: { mode: "local" } },
+    available_engines: [
+      { id: "text_only", name: "Text-only", available: true },
+      ...["docling", "markitdown", "liteparse", "pymupdf4llm"].map((id) => ({
+        id, name: id, available: id === engine && available,
+      })),
+    ],
+    readiness: {},
+    installable: ["docling", "markitdown", "liteparse", "pymupdf4llm"],
+    mineru: { api_token_set: false },
+  };
+}
+
+it.each(["docling", "markitdown", "liteparse", "pymupdf4llm"])(
+  "shows deployment instructions and rechecks %s without installing packages",
+  async (engine) => {
+    resources["document-parsing"] = parserResource(engine);
+    render(<App page="document-parsing" />);
+    await ready();
+    const recheck = await screen.findByRole("button", { name: "Recheck availability" });
+    expect(screen.getByText(`parse-${engine}`)).toBeInTheDocument();
+    expect(screen.getByText(`python scripts/install_extras.py parse-${engine}`)).toBeInTheDocument();
+    expect(screen.getByText(`deeptutor module install parser-${engine}`)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Download & install" })).not.toBeInTheDocument();
+    resources["document-parsing"] = parserResource(engine, true);
+    fireEvent.click(recheck);
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Recheck availability" })).not.toBeInTheDocument());
+    expect(mocks.fetch.mock.calls.filter(([url]) => String(url).includes("document-parsing/install"))).toHaveLength(0);
+    expect(writes("/api/settings/document-parsing")).toHaveLength(0);
+  },
+);
+
+it("refreshes availability without replacing the pending parser selection", async () => {
+  resources["document-parsing"] = parserResource("text_only");
+  render(<App page="document-parsing" />);
+  await ready();
+  fireEvent.click(await screen.findByRole("button", { name: /^markitdown\s*Not installed/ }));
+  const recheck = await screen.findByRole("button", { name: "Recheck availability" });
+  const refreshed = parserResource("markitdown", true);
+  resources["document-parsing"] = { ...refreshed, engine: "text_only" };
+  fireEvent.click(recheck);
+  await waitFor(() => expect(screen.queryByRole("button", { name: "Recheck availability" })).not.toBeInTheDocument());
+  expect(settings.pendingExtensionPayload("document-parsing")).toHaveProperty("engine", "markitdown");
+  expect(screen.getByRole("button", { name: /^markitdown\s*Active/ })).toBeInTheDocument();
+  expect(writes("/api/settings/document-parsing")).toHaveLength(0);
+});
+
+it("reports a failed recheck, retains guidance, and allows retry when still missing", async () => {
+  resources["document-parsing"] = parserResource("markitdown");
+  render(<App page="document-parsing" />);
+  await ready();
+  const recheck = await screen.findByRole("button", { name: "Recheck availability" });
+  const fetch = mocks.fetch.getMockImplementation()!;
+  let resolve: (value: unknown) => void = () => {};
+  mocks.fetch.mockImplementation((url: string, init?: RequestInit) =>
+    url === "/api/settings/document-parsing"
+      ? new Promise((done) => { resolve = done; })
+      : fetch(url, init),
+  );
+  fireEvent.click(recheck);
+  expect(screen.getByRole("button", { name: "Checking availability…" })).toBeDisabled();
+  await act(async () => resolve(reply({ detail: "Parser server unavailable" }, false)));
+  expect(await screen.findByRole("alert")).toHaveTextContent("Parser server unavailable");
+  expect(screen.getByText("python scripts/install_extras.py parse-markitdown")).toBeInTheDocument();
+  mocks.fetch.mockImplementation(fetch);
+  fireEvent.click(screen.getByRole("button", { name: "Recheck availability" }));
+  await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
+  expect(screen.getByRole("status")).toHaveTextContent("This parser is still unavailable");
+  expect(mocks.fetch.mock.calls.filter(([url]) => String(url).includes("document-parsing/install"))).toHaveLength(0);
 });

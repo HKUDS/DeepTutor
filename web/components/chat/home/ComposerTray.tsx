@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { m, type MotionStyle } from "framer-motion";
 import { createElement, useEffect, useId, useMemo, useState, type ReactNode } from "react";
-import { ArrowUpRight, Plug, Plus, Shapes, Wand2 } from "lucide-react";
+import { ArrowUpRight, PencilRuler, Plug, Plus, Shapes, UserRound, Wand2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Tooltip } from "@/shared/ui/Tooltip";
 import { SPACE_MCP_SURFACE, loadMcpSurface } from "@/components/mcp/surface";
@@ -26,6 +26,7 @@ import AnswerModeMenu, { PartnerLinkMenu, type AnswerModeProps, type PartnerLink
 import { ConnectorHubIcon, SkillDeckIcon, modeIcon } from "./ComposerIcons";
 import type { ComposerControls } from "@/lib/page-customization";
 import { useTrayFold } from "./ComposerTrayFold";
+import { CREATE_KINDS, CREATION_KIND_ORDER, type CreationKind } from "@/lib/creations";
 
 const STATUS_DOT: Record<McpServerStatus, string> = {
   connected: "bg-emerald-500",
@@ -101,6 +102,12 @@ export interface TrayMode {
   onChange: (value: string) => void;
 }
 
+/** Create mode: which artifact kind this conversation is authoring, if any. */
+export interface TrayCreate {
+  value: string | null;
+  onChange: (value: CreationKind | null) => void;
+}
+
 /**
  * The layer under the composer: how Dito works this turn, what it can reach
  * in this conversation, and who answers.
@@ -125,6 +132,7 @@ export function ComposerTray({
   placement,
   mode,
   resources,
+  create,
   partners,
   answer,
   end,
@@ -134,6 +142,7 @@ export function ComposerTray({
   controls?: ComposerControls;
   mode?: TrayMode;
   resources?: TrayResources;
+  create?: TrayCreate;
   partners?: PartnerLinkProps;
   answer?: AnswerModeProps;
   /** A surface's own control for the far end, where who answers sits. */
@@ -171,6 +180,7 @@ export function ComposerTray({
         {mode && <ModeMenu {...mode} placement={placement} />}
         {resources && controls?.skills !== false && <SkillsMenu {...resources} placement={placement} />}
         {resources && controls?.mcp !== false && <ConnectorsMenu {...resources} placement={placement} />}
+        {create && controls?.create !== false && <CreateMenu {...create} placement={placement} />}
         {partners && controls?.partners !== false && <PartnerLinkMenu {...partners} placement={placement} />}
         {answer && controls?.preferences !== false && <AnswerModeMenu {...answer} placement={placement} />}
         {end}
@@ -383,6 +393,52 @@ function ConnectorsMenu({ catalog, selection, onChange, placement }: TrayResourc
             </Link>
           </TrayFoot>
         </>
+      )}
+    </TrayMenu>
+  );
+}
+
+/**
+ * Create mode: picking Skill or Persona drops a lead chip ("create skill" /
+ * "create persona") that turns every following turn into authoring that
+ * artifact — see `ComposerLead` and `ChatComposer`'s `createToken`. Picking
+ * the kind already chosen clears it, the same toggle `ModeMenu` uses.
+ */
+function CreateMenu({ value, onChange, placement }: TrayCreate & { placement: TrayPlacement }) {
+  const { t } = useTranslation();
+  const chosen = value && value in CREATE_KINDS ? (value as CreationKind) : null;
+  const ChosenIcon = chosen && CREATE_KINDS[chosen].icon;
+  return (
+    <TrayMenu
+      icon={<PencilRuler size={14} strokeWidth={1.7} className="shrink-0" />}
+      label={t("Create")}
+      value={chosen ? t(CREATE_KINDS[chosen].labelKey) : undefined}
+      valueIcon={ChosenIcon && <ChosenIcon size={15} strokeWidth={1.7} className="shrink-0" />}
+      active={Boolean(chosen)}
+      fold
+      placement={placement}
+    >
+      {(close) => (
+        <TrayList label={t("Create")} bare>
+          {CREATION_KIND_ORDER.map((kind) => {
+            const def = CREATE_KINDS[kind];
+            const Icon = def.icon;
+            const selected = kind === chosen;
+            return (
+              <TrayOption
+                key={kind}
+                selected={selected}
+                onSelect={() => {
+                  onChange(selected ? null : kind);
+                  close();
+                }}
+                leading={<Icon size={22} strokeWidth={1.5} />}
+                title={t(def.labelKey)}
+                meta={t(def.hintKey)}
+              />
+            );
+          })}
+        </TrayList>
       )}
     </TrayMenu>
   );

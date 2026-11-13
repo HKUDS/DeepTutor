@@ -58,6 +58,7 @@ import SaveToNotebookModal, {
   type NotebookSavePayload,
 } from "@/components/notebook/SaveToNotebookModal";
 import { useAuthStatus } from "@/hooks/useAuthStatus";
+import { decodeResourceSegment } from "@/lib/resource-routes";
 
 type Tab = "chat" | "configure" | "channels" | "archive";
 
@@ -66,7 +67,7 @@ function PartnerDetail() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { t } = useTranslation();
-  const partnerId = params.partnerId;
+  const partnerId = decodeResourceSegment(params.partnerId) ?? params.partnerId;
   const auth = useAuthStatus();
 
   const initialTab = (searchParams.get("tab") as Tab) || "chat";

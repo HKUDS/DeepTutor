@@ -39,6 +39,12 @@ beforeEach(() => mocks.fetch.mockReset())
 it('offers actions only for generated chat exec outputs', () => {
   expect(supportsGeneratedOutputActions(attachment)).toBe(true)
   expect(supportsGeneratedOutputActions(directAttachment)).toBe(true)
+  expect(
+    supportsGeneratedOutputActions({
+      ...directAttachment,
+      relative_path: 'outputs/chat/session/turn_run-123/exec/lp-replay-simulator.html',
+    })
+  ).toBe(true)
   expect(supportsGeneratedOutputActions({ ...attachment, generated: false })).toBe(false)
   expect(
     supportsGeneratedOutputActions({

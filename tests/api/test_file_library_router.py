@@ -334,3 +334,32 @@ def test_upload_and_list_are_isolated_between_users(library_app: LibraryAppFacto
     assert bob_list.json() == []
     assert bob_get.status_code == 404
     assert bob_download.status_code == 404
+
+
+def test_restore_duplicate_content_reports_conflict_and_can_be_retried(
+    library_app: LibraryAppFactory,
+) -> None:
+    client, _ = library_app()
+    first = client.post(
+        "/files/library/",
+        data={"filename": "first.txt"},
+        files={"file": ("first.txt", b"preserve both records", "text/plain")},
+    ).json()["id"]
+    assert client.delete(f"/files/library/{first}").status_code == 200
+    second = client.post(
+        "/files/library/",
+        data={"filename": "second.txt"},
+        files={"file": ("second.txt", b"preserve both records", "text/plain")},
+    ).json()["id"]
+    assert second != first
+
+    response = client.post(f"/files/library/{first}/restore")
+    assert response.status_code == 409
+    assert "same content" in response.json()["detail"]
+    assert client.get(f"/files/library/{first}").json()["is_deleted"] is True
+    assert client.get(f"/files/library/{second}").json()["is_deleted"] is False
+    assert client.get(f"/files/library/{second}/download").content == b"preserve both records"
+
+    assert client.delete(f"/files/library/{second}").status_code == 200
+    assert client.post(f"/files/library/{first}/restore").status_code == 200
+    assert client.get(f"/files/library/{first}/download").content == b"preserve both records"

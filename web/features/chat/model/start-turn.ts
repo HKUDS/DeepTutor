@@ -41,6 +41,10 @@ export interface StartTurnInput {
   masterySessionMode?: string | null;
   noteDocumentId?: string | null;
   noteGeneration?: { block_id: string; kind?: string } | null;
+  /** Create mode: the artifact kind this turn authors towards, or null when
+   *  off. Sent on every turn, unlike most fields here which are omitted to
+   *  preserve the session's value. */
+  createTarget?: string | null;
   masteryPathLeaseManaged?: boolean;
   masteryAnswer?: MasteryCardAnswer | null;
   masterySkip?: MasteryCardSkip | null;

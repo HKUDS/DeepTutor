@@ -22,6 +22,7 @@ import {
   masterySessionRoute,
 } from "@/lib/mastery-mode";
 import { setPendingPrompt } from "@/lib/pending-prompt";
+import { setPendingLLMSelection } from "@/lib/pending-llm-selection";
 
 function MasteryPathRoute() {
   const router = useRouter();
@@ -73,7 +74,7 @@ function MasteryPathRoute() {
         <CreateTopicWizard
           returnFocusRef={wizardTriggerRef}
           onClose={() => setWizardOpen(false)}
-          onCreated={async (topic) => {
+          onCreated={async (topic, selection) => {
             setWizardOpen(false);
             // Straight into the goal's outline session: a goal is created
             // without an outline, and that kind of session is the one that
@@ -84,6 +85,10 @@ function MasteryPathRoute() {
             setPendingPrompt(
               masteryOpeningMessage("outline", t),
               MASTERY_OPENING_SCOPE,
+            );
+            setPendingLLMSelection(
+              `mastery.outline.${topic.path_id}`,
+              selection,
             );
             router.push(masterySessionRoute(topic.path_id, "outline"));
           }}

@@ -97,6 +97,14 @@ test("fenced code is never rewritten", () => {
   assert.equal(normalizeMathMarkup(input), input);
 });
 
+test("an info-bearing inner fence line does not close the block", () => {
+  // The inner ```tex line carries an info string, so per CommonMark it is code
+  // content, not a closing fence. The whole input is one code block and must
+  // pass through untouched.
+  const input = "```text\n```tex\n\\(x+y\\)\n```";
+  assert.equal(normalizeMathMarkup(input), input);
+});
+
 // ---------------------------------------------------------------------------
 // delimiters the model chose instead of $
 // ---------------------------------------------------------------------------

@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { fromMarkdown } from "mdast-util-from-markdown";
 
@@ -161,10 +161,11 @@ it("renders assistant Markdown with the real chat renderer and keeps user text l
   expect(user).toHaveClass("whitespace-pre-wrap");
   expect(user.querySelector("strong")).toBeNull();
   expect(container.querySelectorAll("table")).toHaveLength(1);
-  expect(onMessagesChange).toHaveBeenLastCalledWith([
+  // Export messages are reported by an effect after the history request settles.
+  await waitFor(() => expect(onMessagesChange).toHaveBeenLastCalledWith([
     { role: "user", content: userText },
     { role: "assistant", content: markdown },
-  ]);
+  ]));
 });
 
 it.each([

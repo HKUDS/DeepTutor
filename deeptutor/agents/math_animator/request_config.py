@@ -13,6 +13,10 @@ class MathAnimatorRequestConfig(BaseModel):
     output_mode: Literal["video", "image"] = "video"
     quality: Literal["low", "medium", "high"] = "medium"
     style_hint: str = Field(default="", max_length=500)
+    enable_visual_review: bool = Field(
+        default=False,
+        description="Inspect rendered frames and repair visual issues. Adds model calls and render time.",
+    )
 
 
 def validate_math_animator_request_config(

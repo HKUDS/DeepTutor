@@ -13,6 +13,7 @@ from the repository root unless a page says otherwise.
 | Install and configure the app | [Agent setup](AGENT_SETUP.md) → [Storage](DATA_STORAGE.md) | Dependencies, module readiness, actual model response, reachable app |
 | Fix an existing installation | [Setup troubleshooting](AGENT_SETUP.md#6-troubleshooting) → the relevant topic below | Original failing action works in the same instance and workspace |
 | Develop a change | [Development](DEVELOPMENT.md) → [Architecture](ARCHITECTURE.md) → [Testing](TESTING.md) | Focused regression and applicable project checks |
+| Add or complete a UI language | [Languages](I18N.md) → [Testing](TESTING.md) | Catalog parity, typecheck, locale and surface tests |
 | Add a tool or capability | [Tool and capability contracts](TOOLS_AND_CAPABILITIES.md) → [Modules](MODULES.md) | Registration, availability, execution and terminal-result tests |
 | Build a third-party extension | [Plugins](PLUGINS.md) → [Runnable Learning Echo example](examples/learning_echo/README.md) | Wheel, manifest, approval, worker and frontend checks |
 | Investigate streaming or memory | [Events and progress](EVENTS_AND_PROGRESS.md) → [Runtime design](RUNTIME_DESIGN.md) | Persistence/replay and cancellation evidence |
@@ -43,6 +44,8 @@ installation before deciding to reinstall it.
   model history and prompt-cache observability.
 - [Claude model synchronization](CLAUDE_MODEL_SYNC.md): SDK discovery, model
   catalogs and isolated provider sessions.
+- [Languages](I18N.md): interface versus reply languages, catalog rules and
+  every seam a new locale must pass through.
 - [Remote Hermes backend](remote-hermes-backend.md): gateway protocol and
   Connected Agents integration.
 

@@ -222,13 +222,19 @@ class RegisterRequest(BaseModel):
 
         v = v.strip()
         if not v:
-            raise ValueError("Email cannot be empty")
+            raise ValueError("Username or email cannot be empty")
         # Accept standard email addresses (used by PocketBase mode) or plain
         # usernames (used by the built-in SQLite/JSON auth mode).
+        #
+        # Usernames may be written in Chinese: deployments that create
+        # accounts from a staff roster use real names like "于冬阳", and the
+        # ASCII-only charset rejected every one of them. CJK-only names allow
+        # two characters (张伟) where Latin usernames require three (abc).
         email_re = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
         plain_re = re.compile(r"^[A-Za-z0-9_\-.]{3,64}$")
-        if not email_re.match(v) and not plain_re.match(v):
-            raise ValueError("Enter a valid email address")
+        cjk_re = re.compile(r"^[\u4e00-\u9fff]{2,64}$")
+        if not (email_re.match(v) or plain_re.match(v) or cjk_re.match(v)):
+            raise ValueError("Enter a valid email address or username")
         return v
 
     @field_validator("password")
@@ -255,6 +261,33 @@ class SessionHandoffCompleteRequest(BaseModel):
     """Public request that trades a JWE ticket for the normal cookie."""
 
     ticket: str = Field(min_length=32, max_length=8192)
+
+
+class ChangePasswordRequest(BaseModel):
+    """Payload for the PUT /profile/password endpoint."""
+
+    current_password: str
+    new_password: str
+
+    @field_validator("new_password")
+    @classmethod
+    def new_password_valid(cls, v: str) -> str:
+        if len(v) < 8:
+            raise ValueError("Password must be at least 8 characters")
+        return v
+
+
+class AdminResetPasswordRequest(BaseModel):
+    """Payload for the admin PUT /users/{username}/password endpoint."""
+
+    new_password: str
+
+    @field_validator("new_password")
+    @classmethod
+    def new_password_valid(cls, v: str) -> str:
+        if len(v) < 8:
+            raise ValueError("Password must be at least 8 characters")
+        return v
 
 
 class SetRoleRequest(BaseModel):
@@ -328,6 +361,8 @@ class UserInfo(BaseModel):
     disabled: bool = False
     avatar: str = ""
     preset: AccountPreset = "standard"
+    must_change_password: bool = False
+    can_change_password: bool = False
 
 
 class LearnerProfileRequest(BaseModel):
@@ -626,6 +661,7 @@ _LEARNER_KB_READ_ROUTES = frozenset(
 
 _PERSONAL_PAGE_ROUTES = frozenset(
     {
+        ("GET", "/api/settings/display"),
         ("GET", "/api/settings/page-customization"),
         ("PUT", "/api/settings/page-customization/chat"),
         ("PUT", "/api/settings/page-customization/learning"),
@@ -731,7 +767,7 @@ async def require_learning_surface(
 
     route_path = _resolved_route_path(request)
     # Personal presentation does not grant a learning surface. Any authenticated
-    # learner may customize these two pages, including reading-only accounts.
+    # learner may read typography and customize these pages, including reading-only accounts.
     if (request.method, route_path) in _PERSONAL_PAGE_ROUTES:
         return
     # The landing page combines independent learning surfaces (#1987). Admit
@@ -914,6 +950,9 @@ async def login(body: LoginRequest, request: Request, response: Response) -> dic
         "username": result.username,
         "role": result.role,
         "is_admin": result.role == "admin",
+        "must_change_password": bool(
+            (get_user_info(result.username) or {}).get("must_change_password", False)
+        ),
     }
 
 
@@ -1310,7 +1349,7 @@ async def get_profile(
             role=current.role,
             created_at="",
         )
-    return UserInfo(**info)
+    return UserInfo(**info, can_change_password=not POCKETBASE_ENABLED)
 
 
 @router.put("/profile")
@@ -1435,6 +1474,58 @@ async def get_avatar_image(
 # ---------------------------------------------------------------------------
 # Admin-only endpoints
 # ---------------------------------------------------------------------------
+
+
+def _require_local_password_auth() -> None:
+    if not AUTH_ENABLED or POCKETBASE_ENABLED:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password changes are only available for local authenticated accounts.",
+        )
+
+
+@router.put("/profile/password", status_code=status.HTTP_200_OK)
+async def change_password(
+    body: ChangePasswordRequest,
+    payload: TokenPayload | None = Depends(require_auth),
+) -> dict:
+    """Change the current user's own password.
+
+    The current password is required so that a stolen session alone cannot
+    take the account over. Existing JWTs remain valid until they expire —
+    tokens are stateless, which is the same trade-off the rest of the app
+    already makes.
+    """
+    current = _require_profile_identity(payload)
+    _require_local_password_auth()
+
+    from deeptutor.multi_user.identity import get_user
+    from deeptutor.multi_user.identity import set_password as _set_password
+    from deeptutor.services.auth import hash_password, verify_password
+
+    record = get_user(current.username)
+    if record is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    if not verify_password(body.current_password, record.get("hash", "")):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Current password is incorrect",
+        )
+    if body.current_password == body.new_password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="New password must differ from the current password",
+        )
+
+    if _set_password(current.username, hash_password(body.new_password)) is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    from deeptutor.multi_user.identity import set_must_change_password
+
+    set_must_change_password(current.username, False)
+    logger.info(f"User '{current.username}' changed their password")
+    return {"ok": True}
 
 
 @router.get("/devices")
@@ -1701,6 +1792,9 @@ def _create_admin_user(
                 detail="The learner preset could not be initialized.",
             ) from exc
 
+    from deeptutor.multi_user.identity import set_must_change_password
+
+    set_must_change_password(body.username, True)
     logger.info(
         "Admin '%s' created user '%s' (role=%r, preset=%r)",
         actor,
@@ -1715,6 +1809,7 @@ def _create_admin_user(
         "role": role,
         "is_admin": False,
         "preset": preset,
+        "must_change_password": True,
     }
 
 
@@ -1935,3 +2030,30 @@ async def update_user_role(
         f"Admin '{current.username if current else 'local'}' set '{username}' role to {body.role!r}"
     )
     return {"ok": True, "username": username, "role": body.role}
+
+
+@router.put("/users/{username}/password", status_code=status.HTTP_200_OK)
+async def admin_reset_password(
+    username: str,
+    body: AdminResetPasswordRequest,
+    current: TokenPayload = Depends(require_admin),
+) -> dict:
+    """Reset another account's password (admin only).
+
+    Intended for colleagues who forgot theirs. An admin changing their own
+    password should use PUT /profile/password, which also checks the old one.
+    """
+    _require_local_password_auth()
+
+    from deeptutor.multi_user.identity import set_must_change_password
+    from deeptutor.multi_user.identity import set_password as _set_password
+    from deeptutor.services.auth import hash_password
+
+    if _set_password(username, hash_password(body.new_password)) is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    set_must_change_password(username, True)
+    logger.info(
+        f"Admin '{current.username if current else 'local'}' reset the password for '{username}'"
+    )
+    return {"ok": True, "username": username}

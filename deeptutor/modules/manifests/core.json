@@ -66,6 +66,9 @@
     },
     "setup": {
       "class_path": "deeptutor.capabilities.setup.capability:SetupCapability"
+    },
+    "creator": {
+      "class_path": "deeptutor.capabilities.creator.capability:CreatorCapability"
     }
   },
   "tools": {
@@ -172,6 +175,10 @@
     "run_setup_job": {
       "class_path": "deeptutor.capabilities.setup.tools:RunSetupJobTool",
       "order": 96
+    },
+    "propose_creation": {
+      "class_path": "deeptutor.capabilities.creator.tools:ProposeCreationTool",
+      "order": 102
     }
   },
   "routes": [],

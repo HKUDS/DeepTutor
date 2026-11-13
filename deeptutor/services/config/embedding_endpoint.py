@@ -98,7 +98,9 @@ EMBEDDING_PROVIDER_ALIASES = {
 }
 
 EMBEDDING_PROVIDER_LABELS = {
+    "nvidia_nim": "NVIDIA NIM",
     "openai": "OpenAI",
+    "mistral": "Mistral",
     "gemini": "Gemini",
     "openrouter": "OpenRouter",
     "opper": "Opper",
@@ -111,7 +113,9 @@ EMBEDDING_PROVIDER_LABELS = {
 }
 
 EMBEDDING_PROVIDER_DEFAULT_ENDPOINTS = {
+    "nvidia_nim": "https://integrate.api.nvidia.com/v1/embeddings",
     "openai": "https://api.openai.com/v1/embeddings",
+    "mistral": "https://api.mistral.ai/v1/embeddings",
     "gemini": gemini_embedding_endpoint(GEMINI_DEFAULT_EMBEDDING_MODEL),
     "openrouter": "https://openrouter.ai/api/v1/embeddings",
     "opper": "https://api.opper.ai/v3/compat/embeddings",
@@ -128,7 +132,9 @@ EMBEDDING_PROVIDER_DEFAULT_ENDPOINTS = {
 }
 
 EMBEDDING_PROVIDERS_REQUIRING_EMBEDDINGS_PATH = {
+    "nvidia_nim",
     "openai",
+    "mistral",
     "openrouter",
     "opper",
     "jina",

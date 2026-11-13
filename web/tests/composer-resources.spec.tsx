@@ -109,6 +109,37 @@ it("closes on outside click and traps tab within the panel", async () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
   );
 });
+it("flips above a bottom trigger and escapes the composer container query", () => {
+  // Issue #2053: the composer surface is `container-type: inline-size`.
+  // Firefox 129 (and any engine that still treats a query container as a
+  // containing block) resolves this position:fixed panel against that
+  // surface, so a viewport `top` drops the dialog below the window.
+  const viewportHeight = window.innerHeight;
+  const triggerTop = viewportHeight - 55;
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
+    function (this: HTMLElement) {
+      return this.tagName === "BUTTON" &&
+        this.getAttribute("aria-label") === "Resources"
+        ? new DOMRect(80, triggerTop, 72, 32)
+        : new DOMRect();
+    },
+  );
+  vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(531);
+  const { container } = render(
+    <div style={{ containerType: "inline-size" }}>
+      <Harness />
+    </div>,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Resources" }));
+  const panel = screen.getByRole("dialog", { name: "Resources" });
+  expect(container.contains(panel)).toBe(false);
+  expect(document.body.contains(panel)).toBe(true);
+  const top = Number.parseFloat(panel.style.top);
+  const maxHeight = Number.parseFloat(panel.style.maxHeight);
+  expect(top).toBeGreaterThanOrEqual(12);
+  expect(top).toBeLessThan(triggerTop);
+  expect(top + maxHeight).toBeLessThanOrEqual(viewportHeight);
+});
 it("keeps the measured anchor when a smaller submenu replaces the overview", () => {
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
     function (this: HTMLElement) {

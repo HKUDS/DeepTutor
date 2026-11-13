@@ -26,6 +26,9 @@ export interface SideChatContext {
   parentSessionId: string | null;
   /** The tip of the branch the learner was looking at; null before a reply. */
   leafMessageId: number | null;
+  /** The message the quoted passage came from, when this thread was opened
+   *  from a selection. Null for a side chat about the whole conversation. */
+  sourceMessageId?: number | string | null;
   /** Shown on the side chat's context card; never sent. */
   parentTitle?: string;
   responder: SideChatResponder;
@@ -59,6 +62,11 @@ export function sideChatTurnConfig(
           selection_tutor_context: {
             parent_session_id: context.parentSessionId,
             source_message_id: context.leafMessageId,
+            // Which message the quote came from. The branch tip above is a
+            // reading bound; this is what the message-level entry point files
+            // the thread under. Sent every turn, like ``create_target``: null
+            // is an explicit detach, and a new id moves the thread.
+            quoted_message_id: context.sourceMessageId ?? null,
           },
         }
       : {}),

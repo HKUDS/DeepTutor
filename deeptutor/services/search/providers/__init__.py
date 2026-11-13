@@ -149,7 +149,7 @@ def get_providers_info() -> list[dict]:
 
 def get_default_provider(**kwargs) -> BaseSearchProvider:
     """
-    Get the default provider from Settings > Catalog.
+    Get the default provider from Settings > Search.
 
     Args:
         **kwargs: Arguments to pass to provider constructor.

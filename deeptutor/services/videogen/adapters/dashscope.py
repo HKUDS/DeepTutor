@@ -15,7 +15,7 @@ from deeptutor.services.generation_http import (
     join_api_path,
     raise_for_provider,
 )
-from deeptutor.services.videogen.base import BaseVideogenAdapter, ProgressFn
+from deeptutor.services.videogen.base import BaseVideogenAdapter, ProgressFn, video_poll_budget
 from deeptutor.services.videogen.config import VideogenConfig
 
 logger = logging.getLogger(__name__)
@@ -190,6 +190,17 @@ class DashScopeVideogenAdapter(BaseVideogenAdapter):
         raise GenerationProviderError("DashScope video submission returned no task id.")
 
     async def _poll(
+        self,
+        client: httpx.AsyncClient,
+        config: VideogenConfig,
+        headers: dict[str, str],
+        task_id: str,
+        progress: ProgressFn | None,
+    ) -> str:
+        async with video_poll_budget(config.poll_timeout, task_id):
+            return await self._poll_until_complete(client, config, headers, task_id, progress)
+
+    async def _poll_until_complete(
         self,
         client: httpx.AsyncClient,
         config: VideogenConfig,

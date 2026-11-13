@@ -12,6 +12,10 @@ import {
   readPosedQuestion,
   type MasteryQuestion,
 } from "@/lib/mastery-question";
+import {
+  presentedPagesOfToolResult,
+  type PresentedPage,
+} from "@/lib/mastery-source-pages";
 import { shouldAppendEventContent } from "@/lib/stream";
 import { hasRenderableCallTrace } from "@/features/chat/trace/selectors";
 import type { StreamEvent } from "@/features/chat/model/protocol";
@@ -287,6 +291,18 @@ export type MessageSegment =
       key: string;
     }
   /**
+   * Source pages the tutor presented with a `rag` call, shown right under the
+   * text that was being written when it made that call. A card, not trace
+   * material: the page is part of the lesson and must not fold away with the
+   * working-out around it.
+   */
+  | {
+      kind: "source_view";
+      pages: PresentedPage[];
+      toolCallId: string | null;
+      key: string;
+    }
+  /**
    * One run of work — tool calls, their results, the reasoning around them —
    * rendered exactly where it happened, between the text that introduced it
    * and the text that followed. This is what makes the message read like a
@@ -480,6 +496,31 @@ export function extractMessageSegments(
         if (typeof meta.assistant_content_offset === "number") {
           answerOffsets.set(masteryIdx, meta.assistant_content_offset);
         }
+        continue;
+      }
+      const presentedPages = presentedPagesOfToolResult(event);
+      if (presentedPages.length > 0) {
+        // The call stays a row of working-out; the page it showed is a card
+        // placed at the call's own position in the answer.
+        appendTraceEvent(event);
+        const callOffset =
+          typeof meta.assistant_content_offset === "number"
+            ? meta.assistant_content_offset
+            : pendingTraceIdx !== null
+              ? answerOffsets.get(pendingTraceIdx)
+              : undefined;
+        pendingTextIdx = null;
+        pendingTraceIdx = null;
+        const viewIdx = segments.length;
+        segments.push({
+          kind: "source_view",
+          pages: presentedPages,
+          toolCallId:
+            (event as { tool_call_id?: string }).tool_call_id ??
+            (typeof meta.tool_call_id === "string" ? meta.tool_call_id : null),
+          key: `s${seq++}`,
+        });
+        if (callOffset !== undefined) answerOffsets.set(viewIdx, callOffset);
         continue;
       }
       const toolMetadata = meta.tool_metadata;

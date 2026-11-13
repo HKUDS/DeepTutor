@@ -151,6 +151,7 @@ def _save_selection(enabled: dict[str, bool]) -> None:
 
 def change(action: str, name: str, *, wheelhouse: Path | None = None) -> dict:
     from deeptutor.__version__ import __version__
+    from deeptutor.services.file_io import read_text
 
     with environment_lease(exclusive=True):
         # Refuse malformed state before any package mutation, including uninstall.
@@ -194,7 +195,7 @@ def change(action: str, name: str, *, wheelhouse: Path | None = None) -> dict:
                 report = stage / "plan.json"
                 source = ["--find-links", str(wheelhouse.resolve())] if wheelhouse else []
                 _pip([*base, "install", "--dry-run", "--report", str(report), *source, *targets])
-                resolved = json.loads(report.read_text())["install"]
+                resolved = json.loads(read_text(report))["install"]
                 replacements = [
                     row["metadata"]["name"]
                     for row in resolved

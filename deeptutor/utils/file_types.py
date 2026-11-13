@@ -6,6 +6,7 @@ Centralized file type classification and routing for the RAG pipeline.
 Determines the appropriate processing method for each document type.
 """
 
+import codecs
 from dataclasses import dataclass
 from enum import Enum
 import logging
@@ -215,11 +216,14 @@ class FileTypeRouter:
         try:
             with open(file_path, "rb") as f:
                 chunk = f.read(sample_size)
-
-            if b"\x00" in chunk:
-                return False
-
-            chunk.decode("utf-8")
+                if b"\x00" in chunk:
+                    return False
+                decoder = codecs.getincrementaldecoder("utf-8")()
+                decoder.decode(chunk, final=False)
+                # Finish only a code point cut by the sample, never ignore bad bytes.
+                while decoder.getstate()[0]:
+                    extra = f.read(1)
+                    decoder.decode(extra, final=not extra)
             return True
         except (UnicodeDecodeError, IOError, OSError):
             return False

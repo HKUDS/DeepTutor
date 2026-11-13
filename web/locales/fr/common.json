@@ -35,5 +35,11 @@
   "admin": "administrateur",
   "Account library": "Bibliothèque du compte",
   "{{count}} resources selected_one": "{{count}} ressource sélectionnée",
-  "{{count}} resources selected_other": "{{count}} ressources sélectionnées"
+  "{{count}} resources selected_other": "{{count}} ressources sélectionnées",
+  "Workspace instructions": "Instructions de l’espace de travail",
+  "Set learning goals, teaching style and response preferences for this workspace. Leave blank to use the default behavior.": "Définissez les objectifs d’apprentissage, le style d’enseignement et les préférences de réponse pour cet espace de travail. Laissez vide pour utiliser le comportement par défaut.",
+  "For example: I am learning linear algebra. Explain the geometric intuition before introducing formulas, and give hints before complete solutions.": "Par exemple : j’apprends l’algèbre linéaire. Expliquez l’intuition géométrique avant d’introduire les formules, et donnez des indices avant les solutions complètes.",
+  "Applies to Chat, Solve, Ask Questions, Guided Learning, Reading and standard visualizations. Changes take effect on the next turn.": "S’applique à Conversation, Résolution, Questions, Apprentissage guidé, Lecture et visualisations standard. Les modifications prennent effet au tour suivant.",
+  "Clear instructions": "Effacer les instructions",
+  "{{used}} / {{limit}} characters": "{{used}} / {{limit}} caractères"
 }

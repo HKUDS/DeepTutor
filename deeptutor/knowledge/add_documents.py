@@ -325,13 +325,119 @@ class DocumentAdder:
 
         if self.rag_provider == LIGHTRAG_PROVIDER:
             return await self._process_lightrag_batch(new_files)
+        # LlamaIndex publishes a full snapshot on every add_documents call.
+        # One call for the whole staged list keeps folder sync at one version
+        # instead of one version per file (#2173). A single file stays on the
+        # per-file path, and a batch that throws falls back there so one bad
+        # file does not discard the others.
+        if self.rag_provider == DEFAULT_PROVIDER and len(new_files) > 1:
+            return await self._process_llamaindex_batch(new_files)
+        return await self._process_provider_files_one_by_one(new_files)
 
+    async def _process_llamaindex_batch(self, new_files: List[Path]) -> DocumentIndexResult:
+        """Index every staged file in one LlamaIndex publish."""
+        requested = {str(path.resolve()): path for path in new_files}
+        confirmed: list[Path] = []
+        seen: set[str] = set()
+        callback_fired = False
+
+        def on_indexed(paths: list[str]) -> None:
+            nonlocal callback_fired
+            callback_fired = True
+            for raw in paths:
+                try:
+                    key = str(Path(raw).resolve())
+                except OSError:
+                    continue
+                path = requested.get(key)
+                if path is None or key in seen:
+                    continue
+                seen.add(key)
+                confirmed.append(path)
+
+        rag_service = RAGService(kb_base_dir=str(self.base_dir), provider=self.rag_provider)
+        total_files = len(new_files)
+        if self.progress_tracker is not None:
+            from deeptutor.knowledge.progress_tracker import ProgressStage
+
+            self.progress_tracker.update(
+                ProgressStage.PROCESSING_FILE,
+                message_key="Queued {{count}} files for indexing.",
+                message_params={"count": total_files},
+                current=0,
+                total=total_files,
+            )
+        try:
+            success = await rag_service.add_documents(
+                self.kb_name,
+                [str(path) for path in new_files],
+                indexed_file_callback=on_indexed,
+            )
+        except PermissionError as exc:
+            logger.exception("Permission denied while indexing a LlamaIndex batch: %s", exc)
+            raise DataVolumePermissionError(
+                format_data_volume_permission_error(self.kb_dir, cause=exc)
+            ) from exc
+        except Exception as exc:
+            logger.warning(
+                "LlamaIndex batch of %d file(s) failed (%s); retrying one file at a time",
+                total_files,
+                exc,
+            )
+            return await self._process_provider_files_one_by_one(new_files)
+
+        if not success:
+            return DocumentIndexResult(
+                processed_files=[],
+                failures=[
+                    DocumentIndexFailure(path, "Provider returned failure without details.")
+                    for path in new_files
+                ],
+            )
+        # Pipelines that do not report per-file receipts still indexed the
+        # batch. A receipt that omits a file means that file was skipped.
+        processed = list(new_files) if not callback_fired else confirmed
+        failures = [
+            DocumentIndexFailure(path, "Provider skipped this file.")
+            for path in new_files
+            if path not in processed
+        ]
+        recorded: list[Path] = []
+        for path in processed:
+            try:
+                await asyncio.to_thread(self._record_successful_hash, path)
+            except Exception as exc:
+                logger.exception("Failed %s: %s", path.name, exc)
+                failures.append(DocumentIndexFailure(path, str(exc)))
+                continue
+            recorded.append(path)
+            logger.info("Processed: %s", path.name)
+        if self.progress_tracker is not None:
+            from deeptutor.knowledge.progress_tracker import ProgressStage
+
+            self.progress_tracker.update(
+                ProgressStage.PROCESSING_FILE,
+                message_key="Successfully processed {{count}} files!",
+                message_params={"count": len(recorded)},
+                current=len(recorded),
+                total=total_files,
+            )
+        return DocumentIndexResult(processed_files=recorded, failures=failures)
+
+    async def _process_provider_files_one_by_one(
+        self, new_files: List[Path]
+    ) -> DocumentIndexResult:
+        """Index each staged file with its own provider call.
+
+        PageIndex and GraphRAG stay on this path. LlamaIndex uses it for a
+        single file, and as the fallback when a multi-file publish throws.
+        """
         rag_service = RAGService(kb_base_dir=str(self.base_dir), provider=self.rag_provider)
         processed_files: list[Path] = []
         failures: list[DocumentIndexFailure] = []
         total_files = len(new_files)
 
-        for idx, doc_file in enumerate(new_files, 1):
+        for doc_file in new_files:
             try:
                 if self.progress_tracker is not None:
                     from deeptutor.knowledge.progress_tracker import ProgressStage

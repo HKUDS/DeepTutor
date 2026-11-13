@@ -175,7 +175,7 @@ def web_search(
         spec = search_provider_spec(provider_name)
         if spec is not None and not spec.soft_fallback:
             raise ValueError(
-                f"{provider_name} requires {missing} (profile.{missing} in Settings > Catalog)."
+                f"{provider_name} requires {missing} (profile.{missing} in Settings > Search)."
             )
         _logger.warning(
             f"{provider_name} missing {missing}, falling back to {SEARCH_FALLBACK_PROVIDER}."

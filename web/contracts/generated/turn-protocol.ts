@@ -34,6 +34,7 @@ export type CapabilityOnce = boolean;
 export type ClientSubmissionId = string | null;
 export type ConsultPartnerId = string | null;
 export type Content = string;
+export type CreateTarget = string | null;
 export type FollowupQuestionContext = {
   [k: string]: unknown;
 } | null;
@@ -293,6 +294,7 @@ export interface StartTurnCommand {
   config?: Config;
   consult_partner_id?: ConsultPartnerId;
   content: Content;
+  create_target?: CreateTarget;
   followup_question_context?: FollowupQuestionContext;
   history_references?: HistoryReferences;
   knowledge_bases?: KnowledgeBases;

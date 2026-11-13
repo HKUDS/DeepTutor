@@ -667,3 +667,63 @@ test("a reloaded reply puts the mid-turn message back at its offset", () => {
   );
   assert.equal(segments[3].kind === "text" && segments[3].text, "The DFT is…");
 });
+
+const PAGE_URL = "/api/knowledge-bases/course/source-page?document=lecture.pdf&page=7&digest=abc";
+const presentedPage = (presentation: string, preview_url = PAGE_URL) =>
+  event("tool_result", {
+    call_id: "t1",
+    tool_call_id: "call-1",
+    tool_metadata: {
+      presented_sources: [{ title: "Lecture page 7", preview_url, presentation }],
+    },
+  });
+
+test("a presented source page is placed under the text written before the call", () => {
+  const segments = extractMessageSegments([
+    event("content", { call_id: "r1", call_kind: "agent_loop_round" }, "Look at the formula in the middle."),
+    event("tool_call", { call_id: "t1" }, "rag"),
+    presentedPage("teaching"),
+    event("content", { call_id: "r2", call_kind: "agent_loop_round" }, "It gives the area."),
+  ]);
+
+  assert.deepEqual(
+    segments.map((segment) => segment.kind),
+    ["text", "trace", "source_view", "text"],
+  );
+  const view = segments[2];
+  assert.deepEqual(view.kind === "source_view" && view.pages, [
+    { title: "Lecture page 7", preview_url: PAGE_URL },
+  ]);
+  assert.equal(view.kind === "source_view" && view.toolCallId, "call-1");
+  // The call itself stays a row of working-out.
+  assert.equal(segments[1].kind === "trace" && segments[1].events.length, 2);
+});
+
+test("a reloaded reply puts the presented page back at its call's offset", () => {
+  const answer = "Look at the formula.\nIt gives the area.";
+  const segments = extractMessageSegments(
+    [
+      event("tool_call", { call_id: "t1", assistant_content_offset: 21 }, "rag"),
+      presentedPage("reveal"),
+    ],
+    answer,
+  );
+
+  assert.deepEqual(
+    segments.map((segment) => segment.kind),
+    ["text", "trace", "source_view", "text"],
+  );
+  assert.equal(segments[0].kind === "text" && segments[0].text, "Look at the formula.\n");
+  assert.equal(segments[3].kind === "text" && segments[3].text, "It gives the area.");
+});
+
+test("private inspection and unsafe preview URLs never become a page", () => {
+  for (const result of [
+    presentedPage("inspect"),
+    presentedPage("teaching", "https://tracker.invalid/pixel"),
+    presentedPage("teaching", "/api/knowledge-bases/course/../source-page?page=1"),
+  ]) {
+    const segments = extractMessageSegments([event("tool_call", { call_id: "t1" }, "rag"), result]);
+    assert.ok(segments.every((segment) => segment.kind !== "source_view"));
+  }
+});

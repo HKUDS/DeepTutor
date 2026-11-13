@@ -173,3 +173,11 @@ test("a note companion turn names its page and, when generating, the block", () 
   assert.equal("note_document_id" in plain, false);
   assert.equal("note_generation" in plain, false);
 });
+
+test("create mode's kind is sent on every turn, string or explicitly null", () => {
+  const authoring = buildStartTurnInput({ content: "call it ada-helper", createTarget: "skill" });
+  assert.equal(authoring.create_target, "skill");
+  const off = buildStartTurnInput({ content: "hello" });
+  assert.equal(off.create_target, null);
+  assert.equal("create_target" in off, true);
+});

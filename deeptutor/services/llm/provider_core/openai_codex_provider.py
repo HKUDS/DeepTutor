@@ -36,9 +36,14 @@ class CodexHTTPError(RuntimeError):
 class OpenAICodexProvider(LLMProvider):
     """Use OpenAI Codex OAuth tokens to call the Responses API."""
 
-    def __init__(self, default_model: str = CODEX_DEFAULT_MODEL_ID):
+    def __init__(
+        self,
+        default_model: str = CODEX_DEFAULT_MODEL_ID,
+        extra_headers: dict[str, str] | None = None,
+    ):
         super().__init__(api_key=None, api_base=None)
         self.default_model = default_model
+        self.extra_headers = dict(extra_headers or {})
 
     async def _load_token(self) -> CodexToken:
         return await get_codex_oauth_service().get_token()
@@ -52,6 +57,7 @@ class OpenAICodexProvider(LLMProvider):
         tool_choice: str | dict[str, Any] | None,
         on_content_delta: Callable[[str], Awaitable[None]] | None = None,
         session_id: str | None = None,
+        extra_headers: dict[str, str] | None = None,
     ) -> LLMResponse:
         model_name = model or self.default_model
         model_slug = _strip_model_prefix(model_name)
@@ -74,14 +80,25 @@ class OpenAICodexProvider(LLMProvider):
             body["reasoning"] = {"effort": reasoning_effort}
         if tools:
             body["tools"] = convert_tools(tools)
+            # Preserve optional parameters instead of letting Responses normalize
+            # every field into a required strict-schema argument.
+            for tool in body["tools"]:
+                if tool.get("type") == "function":
+                    tool.setdefault("strict", False)
 
         service = get_codex_oauth_service()
         async with service.inference_guard():
             try:
                 token = await self._load_token()
                 service.validate_runtime_profile(token, model_slug, reasoning_effort)
+                resolved_effort = _runtime_reasoning_effort(model_slug, reasoning_effort)
+                if resolved_effort:
+                    body["reasoning"] = {"effort": resolved_effort}
                 headers = _build_headers(
-                    token.account_id, token.access_token, session_id=prompt_cache_key
+                    token.account_id,
+                    token.access_token,
+                    session_id=prompt_cache_key,
+                    extra_headers={**self.extra_headers, **(extra_headers or {})},
                 )
                 try:
                     content, tool_calls, finish_reason = await _request_codex(
@@ -152,7 +169,13 @@ class OpenAICodexProvider(LLMProvider):
         del max_tokens, temperature
         session_id = _pop_session_id(kwargs)
         return await self._call_codex(
-            messages, tools, model, reasoning_effort, tool_choice, session_id=session_id
+            messages,
+            tools,
+            model,
+            reasoning_effort,
+            tool_choice,
+            session_id=session_id,
+            extra_headers=kwargs.pop("extra_headers", None),
         )
 
     async def chat_stream(
@@ -178,10 +201,42 @@ class OpenAICodexProvider(LLMProvider):
             tool_choice,
             on_content_delta,
             session_id=session_id,
+            extra_headers=kwargs.pop("extra_headers", None),
         )
 
     def get_default_model(self) -> str:
         return self.default_model
+
+
+def _normalize_reasoning_effort(requested: str | None, supported_levels: object) -> str | None:
+    """Honor low-reasoning callers without sending an unsupported off switch."""
+    if requested not in {"none", "minimal"} or not isinstance(supported_levels, (list, tuple)):
+        return requested
+    if requested in supported_levels:
+        return requested
+    for effort in ("none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"):
+        if effort in supported_levels:
+            return effort
+    return requested
+
+
+def _runtime_reasoning_effort(model_slug: str, requested: str | None) -> str | None:
+    # Book blocks request "none" to favor visible output. Codex model support
+    # varies; use the owner's advertised capabilities after account validation.
+    if requested not in {"none", "minimal"}:
+        return requested
+    from deeptutor.multi_user.personal_models import owner_catalog_service
+
+    catalog = owner_catalog_service().load()
+    for profile in catalog.get("services", {}).get("llm", {}).get("profiles", []):
+        if profile.get("managed_by") != "openai_codex_oauth":
+            continue
+        for model in profile.get("models", []):
+            if model.get("model") == model_slug:
+                return _normalize_reasoning_effort(
+                    requested, model.get("codex_supported_reasoning_levels")
+                )
+    return requested
 
 
 def _strip_model_prefix(model: str) -> str:
@@ -190,7 +245,12 @@ def _strip_model_prefix(model: str) -> str:
     return model
 
 
-def _build_headers(account_id: str, token: str, session_id: str | None = None) -> dict[str, str]:
+def _build_headers(
+    account_id: str,
+    token: str,
+    session_id: str | None = None,
+    extra_headers: dict[str, str] | None = None,
+) -> dict[str, str]:
     if not token:
         raise RuntimeError(
             "OpenAI Codex is not logged in. Run `deeptutor provider login openai-codex`."
@@ -207,6 +267,29 @@ def _build_headers(account_id: str, token: str, session_id: str | None = None) -
         headers["chatgpt-account-id"] = str(account_id)
     if session_id:
         headers["session-id"] = session_id
+    # OAuth identity and the request's transport/session contract belong to
+    # this adapter. Other profile/call headers follow HTTP's case-insensitive
+    # override rules, matching the SDK-backed providers.
+    managed = {
+        "authorization",
+        "chatgpt-account-id",
+        "cookie",
+        "cookie2",
+        "host",
+        "content-length",
+        "connection",
+        "transfer-encoding",
+        "accept",
+        "content-type",
+        "session-id",
+    }
+    for name, value in (extra_headers or {}).items():
+        if name.lower() in managed:
+            continue
+        for existing in list(headers):
+            if existing.lower() == name.lower():
+                del headers[existing]
+        headers[name] = value
     return headers
 
 

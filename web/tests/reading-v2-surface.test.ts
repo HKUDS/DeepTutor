@@ -230,6 +230,22 @@ test("naming the first turn's conversation does not remount the reader", () => {
   assert.doesNotMatch(page, /params\.sessionId/);
 });
 
+test("a conversation left open elsewhere is never named as the collection's", () => {
+  const hook = source(`${WORKSPACE_DIR}/useReadingWorkspace.ts`);
+
+  // The chat state is shared app-wide, so a /chat thread is still loaded when
+  // the learner opens a collection. Writing that id into the URL before the
+  // collection had started its own draft made the boot keep the /chat thread,
+  // and Explain / Translate / Guide went to it without the page or selection.
+  const binding = /if \(!state\.sessionId \|\| sessionIdParam\) return;[\s\S]{0,400}?\}, \[/.exec(
+    hook,
+  );
+  assert.ok(binding, "the session-id binding effect should still be here");
+  assert.match(binding[0], /sessionBootRef\.current !== `\$\{workspaceId\}:new`/);
+  assert.match(binding[0], /state\.sessionId === inheritedSessionRef\.current/);
+  assert.match(hook, /inheritedSessionRef\.current = state\.sessionId;\s*newSession\(/);
+});
+
 test("material hydration owns its loading state from the first request tick", () => {
   const hook = source(`${WORKSPACE_DIR}/useReadingWorkspace.ts`);
 

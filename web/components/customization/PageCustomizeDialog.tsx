@@ -228,7 +228,7 @@ export default function PageCustomizeDialog({
                     <ChoiceRow
                       key={key}
                       label={t(`customize.control.${key}`)}
-                      checked={draft.chat.controls[key]}
+                      checked={draft.chat.controls[key] ?? true}
                       onChange={() =>
                         setDraft(previous => ({
                           ...previous,

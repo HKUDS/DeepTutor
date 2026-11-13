@@ -99,6 +99,10 @@ export function buildStartTurnInput(input: StartTurnInput): StartTurnCommand {
     mastery_session_mode: input.masterySessionMode ?? null,
     ...(input.noteDocumentId ? { note_document_id: input.noteDocumentId } : {}),
     ...(input.noteGeneration ? { note_generation: input.noteGeneration } : {}),
+    // Always sent, string or null: this is the wire contract (see
+    // CreateTarget in turn-protocol.ts) — the kind of artifact this turn
+    // authors towards, or explicitly none.
+    create_target: input.createTarget ?? null,
     mastery_path_lease_managed: input.masteryPathLeaseManaged ?? false,
     mastery_answer: input.masteryAnswer ?? null,
     mastery_skip: input.masterySkip ?? null,

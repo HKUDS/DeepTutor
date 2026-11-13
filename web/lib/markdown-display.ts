@@ -761,12 +761,22 @@ function repairChineseEmphasisLine(line: string): string {
     );
 }
 
+// Japanese and Korean set punctuation flush against the next word just as
+// Chinese does — 「…」**です, 「…」**는 — so a closing marker after a bracket
+// fails CommonMark's flanking rule in all three, not only in Chinese.
+const CJK_EMPHASIS_LANGUAGES = ["zh", "ja", "ko"];
+
+function needsCjkEmphasisRepair(language: string | undefined): boolean {
+  const code = language?.toLowerCase() ?? "";
+  return CJK_EMPHASIS_LANGUAGES.some((prefix) => code.startsWith(prefix));
+}
+
 /** Repair CJK emphasis delimiter boundaries for display without mutating source content. */
 export function repairChineseEmphasis(
   content: string,
   language?: string,
 ): string {
-  if (!content || !language?.toLowerCase().startsWith("zh")) return content;
+  if (!content || !needsCjkEmphasisRepair(language)) return content;
   const fenced = maskProtectedSpans(
     content,
     FENCED_CODE_BLOCK_REGEX,
@@ -808,7 +818,7 @@ export function appendWithEmphasisRepair(
   rawContent: string,
   language?: string,
 ): string {
-  if (!language?.toLowerCase().startsWith("zh")) return rawContent;
+  if (!needsCjkEmphasisRepair(language)) return rawContent;
   if (delta.includes("\n")) return repairChineseEmphasis(rawContent, language);
   return repairedSoFar + delta;
 }

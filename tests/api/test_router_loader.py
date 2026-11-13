@@ -106,3 +106,40 @@ def test_repository_index_matches_router_sources():
         ]
         actual = [(r["path"], r["name"], r["methods"]) for r in index["routers"][reference]]
         assert expected == actual, reference
+
+
+def test_router_index_is_read_as_utf8_regardless_of_locale(tmp_path, monkeypatch):
+    from pathlib import Path
+
+    real = Path.read_text
+
+    def read_text(self, encoding=None, errors=None, *args, **kwargs):
+        return real(self, encoding=encoding or "cp1252", errors=errors, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", read_text)
+    index_path = tmp_path / "router_index.json"
+    index_path.write_text(
+        json.dumps(
+            {
+                "fingerprint": "fixture",
+                "routers": {
+                    "fixture:router": [
+                        {
+                            "kind": "http",
+                            "path": "/x",
+                            "name": "\u00c1LGEBRA",
+                            "methods": ["GET"],
+                        }
+                    ]
+                },
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(module, "INDEX_PATH", index_path)
+    monkeypatch.setattr(module, "source_fingerprint", lambda: "fixture")
+
+    loader = module.RouterLoader(FastAPI(), lazy=True)
+    assert "fixture:router" in loader.index
+    assert loader.index["fixture:router"][0]["name"] == "\u00c1LGEBRA"

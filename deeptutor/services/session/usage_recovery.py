@@ -6,6 +6,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from deeptutor.services.file_io import read_text
+
 
 def model_evidence(
     events: list[dict[str, Any]], metadata: dict[str, Any] | None = None
@@ -65,7 +67,7 @@ def recover_summary(
             if not path.is_relative_to(root):
                 continue
             try:
-                data = json.loads(path.read_text())
+                data = json.loads(read_text(path))
                 report = data.get("summary", data)
                 by_model = report.get("by_model")
                 if (

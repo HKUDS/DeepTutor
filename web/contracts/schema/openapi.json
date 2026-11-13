@@ -225,6 +225,20 @@
         "title": "AdminCreateUserRequest",
         "type": "object"
       },
+      "AdminResetPasswordRequest": {
+        "description": "Payload for the admin PUT /users/{username}/password endpoint.",
+        "properties": {
+          "new_password": {
+            "title": "New Password",
+            "type": "string"
+          }
+        },
+        "required": [
+          "new_password"
+        ],
+        "title": "AdminResetPasswordRequest",
+        "type": "object"
+      },
       "AnchorThreadRequest": {
         "properties": {
           "block_id": {
@@ -522,6 +536,60 @@
           "snapshot_digest"
         ],
         "title": "ApprovalRequest",
+        "type": "object"
+      },
+      "ApproveCreationRequest": {
+        "description": "Editable fields accepted by the explicit draft-approval step.",
+        "properties": {
+          "content": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "tags": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tags"
+          }
+        },
+        "title": "ApproveCreationRequest",
         "type": "object"
       },
       "AssetAddRequest": {
@@ -2157,6 +2225,25 @@
         "title": "ChangeBlockTypeRequest",
         "type": "object"
       },
+      "ChangePasswordRequest": {
+        "description": "Payload for the PUT /profile/password endpoint.",
+        "properties": {
+          "current_password": {
+            "title": "Current Password",
+            "type": "string"
+          },
+          "new_password": {
+            "title": "New Password",
+            "type": "string"
+          }
+        },
+        "required": [
+          "current_password",
+          "new_password"
+        ],
+        "title": "ChangePasswordRequest",
+        "type": "object"
+      },
       "ChannelOnboardingStartRequest": {
         "properties": {
           "channel": {
@@ -2417,8 +2504,19 @@
         "type": "object"
       },
       "ChatStarterSettingsUpdate": {
-        "description": "How much recent activity shapes the home screen's starting points.\n\nBounds mirror ``starter_settings.TRACE_COUNT_RANGE`` so the API rejects\nloudly what the file layer would silently clamp.",
+        "description": "How much recent activity shapes the home screen's starting points, and\nwhether the chat composer offers a predicted next line.\n\nBounds mirror ``starter_settings.TRACE_COUNT_RANGE`` so the API rejects\nloudly what the file layer would silently clamp. ``ask_hint_enabled`` left\nout (``None``) keeps the stored value, so a client that only knows\n``trace_count`` cannot switch the hint back on by accident.",
         "properties": {
+          "ask_hint_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ask Hint Enabled"
+          },
           "trace_count": {
             "maximum": 100.0,
             "minimum": 3.0,
@@ -4022,6 +4120,35 @@
           "pin"
         ],
         "title": "DeviceLoginRequest",
+        "type": "object"
+      },
+      "DisplaySettings": {
+        "description": "Account-scoped learning text preferences; no interface chrome settings.",
+        "properties": {
+          "content_font_scale": {
+            "default": 100,
+            "enum": [
+              90,
+              100,
+              110,
+              125,
+              150
+            ],
+            "title": "Content Font Scale",
+            "type": "integer"
+          },
+          "content_line_spacing": {
+            "default": "normal",
+            "enum": [
+              "compact",
+              "normal",
+              "relaxed"
+            ],
+            "title": "Content Line Spacing",
+            "type": "string"
+          }
+        },
+        "title": "DisplaySettings",
         "type": "object"
       },
       "DocWriteRequest": {
@@ -6035,7 +6162,11 @@
               "fr",
               "de",
               "uk",
-              "pl"
+              "pl",
+              "pt",
+              "vi",
+              "ja",
+              "tr"
             ],
             "title": "Language",
             "type": "string"
@@ -11183,6 +11314,20 @@
             ],
             "title": "Session Kind"
           },
+          "tutor_source_message_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tutor Source Message Id"
+          },
           "workspace_id": {
             "anyOf": [
               {
@@ -12749,6 +12894,19 @@
             "title": "Content",
             "type": "string"
           },
+          "create_target": {
+            "anyOf": [
+              {
+                "pattern": "^$|^[a-z][a-z0-9_]{0,31}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Create Target"
+          },
           "followup_question_context": {
             "anyOf": [
               {
@@ -13284,7 +13442,7 @@
         "type": "object"
       },
       "UISettingsUpdate": {
-        "description": "Partial UI settings for user-initiated PATCH/PUT updates via /api/settings/ui.\n\nAll fields have None defaults so `model_dump(exclude_unset=True)` naturally\nexcludes fields not provided in the frontend payload, while explicitly provided\ndefaults (e.g., `theme: \"snow\"`) still update the backend. This separates\nthe semantic contract: `/ui` endpoint only merges whatever explicitly arrives\nfrom the frontend.",
+        "description": "Partial UI settings for user-initiated PATCH/PUT updates via /api/settings/ui.\n\n`model_dump(exclude_unset=True)` excludes fields not provided in the\nfrontend payload, while explicitly provided\ndefaults (e.g., `theme: \"snow\"`) still update the backend. This separates\nthe semantic contract: `/ui` endpoint only merges whatever explicitly arrives\nfrom the frontend.",
         "properties": {
           "code_block_show_line_numbers": {
             "anyOf": [
@@ -13319,6 +13477,28 @@
             ],
             "title": "Code Block Wrap Long Lines"
           },
+          "content_font_scale": {
+            "default": 100,
+            "enum": [
+              90,
+              100,
+              110,
+              125,
+              150
+            ],
+            "title": "Content Font Scale",
+            "type": "integer"
+          },
+          "content_line_spacing": {
+            "default": "normal",
+            "enum": [
+              "compact",
+              "normal",
+              "relaxed"
+            ],
+            "title": "Content Line Spacing",
+            "type": "string"
+          },
           "language": {
             "anyOf": [
               {
@@ -13328,7 +13508,11 @@
                   "fr",
                   "de",
                   "uk",
-                  "pl"
+                  "pl",
+                  "pt",
+                  "vi",
+                  "ja",
+                  "tr"
                 ],
                 "type": "string"
               },
@@ -13356,7 +13540,9 @@
                   "ar",
                   "pl",
                   "uk",
-                  "ms"
+                  "ms",
+                  "vi",
+                  "tr"
                 ],
                 "type": "string"
               },
@@ -14717,6 +14903,11 @@
             "title": "Avatar",
             "type": "string"
           },
+          "can_change_password": {
+            "default": false,
+            "title": "Can Change Password",
+            "type": "boolean"
+          },
           "created_at": {
             "title": "Created At",
             "type": "string"
@@ -14730,6 +14921,11 @@
             "default": "",
             "title": "Id",
             "type": "string"
+          },
+          "must_change_password": {
+            "default": false,
+            "title": "Must Change Password",
+            "type": "boolean"
           },
           "preset": {
             "default": "standard",
@@ -16641,6 +16837,84 @@
         ]
       }
     },
+    "/api/auth/profile/password": {
+      "put": {
+        "description": "Change the current user's own password.\n\nThe current password is required so that a stolen session alone cannot\ntake the account over. Existing JWTs remain valid until they expire —\ntokens are stateless, which is the same trade-off the rest of the app\nalready makes.",
+        "operationId": "change_password_api_auth_profile_password_put",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangePasswordRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Change Password Api Auth Profile Password Put",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Change Password",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
     "/api/auth/register": {
       "post": {
         "description": "Bootstrap-only registration.\n\nPublic endpoint that creates the *first* admin account when the user store\nis empty. Once an admin exists, this endpoint is closed; further accounts\nmust be created by an admin via ``POST /api/auth/users``.\n\nOnly available when AUTH_ENABLED=true.",
@@ -17452,6 +17726,93 @@
           }
         },
         "summary": "Put Learner Profile",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/users/{username}/password": {
+      "put": {
+        "description": "Reset another account's password (admin only).\n\nIntended for colleagues who forgot theirs. An admin changing their own\npassword should use PUT /profile/password, which also checks the old one.",
+        "operationId": "admin_reset_password_api_auth_users__username__password_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "username",
+            "required": true,
+            "schema": {
+              "title": "Username",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminResetPasswordRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Admin Reset Password Api Auth Users  Username  Password Put",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Admin Reset Password",
         "tags": [
           "auth"
         ]
@@ -21557,6 +21918,168 @@
         "summary": "Put Capabilities Settings",
         "tags": [
           "capabilities"
+        ]
+      }
+    },
+    "/api/creations/drafts/{draft_id}": {
+      "get": {
+        "operationId": "get_creation_draft_api_creations_drafts__draft_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "draft_id",
+            "required": true,
+            "schema": {
+              "title": "Draft Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Creation Draft Api Creations Drafts  Draft Id  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Creation Draft",
+        "tags": [
+          "creations"
+        ]
+      }
+    },
+    "/api/creations/drafts/{draft_id}/approve": {
+      "post": {
+        "operationId": "approve_creation_draft_api_creations_drafts__draft_id__approve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "draft_id",
+            "required": true,
+            "schema": {
+              "title": "Draft Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApproveCreationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Approve Creation Draft Api Creations Drafts  Draft Id  Approve Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Approve Creation Draft",
+        "tags": [
+          "creations"
         ]
       }
     },
@@ -53873,7 +54396,7 @@
     },
     "/api/sessions/{session_id}/threads": {
       "get": {
-        "description": "Little Tutor threads opened from this conversation, newest first.",
+        "description": "Little Tutor threads opened from this conversation, newest first.\n\nThreads from before the source message was recorded are attributed here\nonce, when their passage can be found unambiguously in the parent\ntranscript (see ``thread_attribution``).",
         "operationId": "list_session_threads_api_sessions__session_id__threads_get",
         "parameters": [
           {
@@ -54655,7 +55178,7 @@
     },
     "/api/settings/chat-starters": {
       "get": {
-        "description": "How many recent activities shape the home screen's starting points.\n\nPer user and not admin-gated, unlike the attachment caps next door: this\nchanges the size of one prompt built from the caller's own memory, not any\nresource other people share.",
+        "description": "How many recent activities shape the home screen's starting points, and\nwhether the chat composer offers a predicted next line.\n\nPer user and not admin-gated, unlike the attachment caps next door: these\nchange one prompt built from the caller's own memory, or skip one call, not\nany resource other people share.",
         "operationId": "get_chat_starter_settings_api_settings_chat_starters_get",
         "parameters": [
           {
@@ -54783,6 +55306,72 @@
           }
         },
         "summary": "Update Chat Starter Settings",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/settings/display": {
+      "get": {
+        "description": "Read learning typography through the authenticated, request-scoped router.",
+        "operationId": "get_display_settings_api_settings_display_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DisplaySettings"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Display Settings",
         "tags": [
           "settings"
         ]
@@ -54998,7 +55587,7 @@
     },
     "/api/settings/document-parsing/install": {
       "post": {
-        "description": "Kick off a one-click ``pip install`` of an optional engine's package(s).\n\nReturns ``{ok, message}`` immediately; progress is polled via the shared job\nstatus endpoint. Only one job runs at a time (process-wide singleton). The\nengine must be in the install allow-list (``ENGINE_PIP_SPECS``).",
+        "description": "Return offline Docker/source/wheel guidance; never install into a live server.\n\nKeeps the existing ``{ok, message}`` response and engine allow-list for\ncompatibility. Model downloads use their separate background-job endpoint.",
         "operationId": "start_document_parsing_install_api_settings_document_parsing_install_post",
         "parameters": [
           {
