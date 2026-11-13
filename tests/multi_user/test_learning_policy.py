@@ -89,9 +89,7 @@ def test_mastery_path_is_a_grantable_learning_capability(mu_isolated_root):
     assert error is None, f"mastery_path must be a valid learning capability: {error}"
 
 
-def test_learner_granted_mastery_path_can_run_a_mastery_turn(
-    mu_isolated_root, seed_user, as_user
-):
+def test_learner_granted_mastery_path_can_run_a_mastery_turn(mu_isolated_root, seed_user, as_user):
     learner = _seed_learner(seed_user, "student")
     grant = _policy_grant()
     grant["learning_policy"]["allowed_capabilities"] = [
