@@ -286,11 +286,18 @@ def test_record_qualitative_pass_and_fail_drive_display_mastery(tmp_path):
     assert progress.learning_evidence[-1].result == "correct"
     assert progress.learning_evidence[-1].quality == 1.0
 
+    # A failed re-assessment is recorded as evidence but keeps an earned pass (#2458).
     service.record_qualitative(progress, "kp1", passed=False)
-    assert progress.qualitative_mastery["kp1"] is False
-    assert progress.mastery_levels["kp1"] <= 0.4
+    assert progress.qualitative_mastery["kp1"] is True
+    assert progress.mastery_levels["kp1"] == 1.0
     assert progress.learning_evidence[-1].result == "partial"
     assert progress.learning_evidence[-1].quality == 0.2
+
+    # Without an earlier pass a failure still shows as not passed.
+    fresh = _make_progress("book2")
+    service.record_qualitative(fresh, "kp1", passed=False)
+    assert fresh.qualitative_mastery["kp1"] is False
+    assert fresh.mastery_levels["kp1"] <= 0.4
 
 
 @pytest.mark.parametrize(

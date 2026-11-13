@@ -21,6 +21,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import time
 
+from deeptutor.learning.mastery import compute_mastery
 from deeptutor.learning.models import (
     KnowledgePoint,
     KnowledgeType,
@@ -79,17 +80,49 @@ def gate_threshold(kp_type: KnowledgeType) -> float:
     return QUANTITATIVE_GATE.get(kp_type, 0.9)
 
 
+def independent_outcomes(progress: LearningProgress, kp_id: str) -> list[float]:
+    """Chronological credit of the independent, non-voided attempts on *kp_id*.
+
+    Only this evidence can open a quantitative gate: assisted attempts and
+    targeted completions of a partial answer are practice, not proof.
+    """
+    return [
+        0.5 if attempt.result == "partial" else float(attempt.is_correct)
+        for attempt in progress.quiz_attempts
+        if attempt.knowledge_point_id == kp_id and not attempt.voided and attempt.independent
+    ]
+
+
+def gate_was_cleared(progress: LearningProgress, kp: KnowledgePoint) -> bool:
+    """Whether independent evidence has ever cleared *kp*'s quantitative gate.
+
+    ``mastery_levels`` is the recent quality and keeps moving with every
+    attempt; the pass is a fact about evidence already given (#2458). A later
+    partial or wrong review shortens the review interval through the
+    scheduler instead of sending the learner back to re-learn the objective.
+    Voiding the attempts that earned the pass withdraws it again.
+    """
+    threshold = gate_threshold(kp.type)
+    outcomes = independent_outcomes(progress, kp.id)
+    return any(
+        compute_mastery(outcomes[:count]) >= threshold for count in range(1, len(outcomes) + 1)
+    )
+
+
 def is_assessed_mastered(progress: LearningProgress, kp: KnowledgePoint) -> bool:
     """Whether ``kp`` clears its mastery gate.
 
-    * MEMORY / PROCEDURE: recency-weighted accuracy ≥ the type's threshold.
+    * MEMORY / PROCEDURE: recency-weighted accuracy ≥ the type's threshold,
+      now or at any earlier point of its independent attempt history.
     * CONCEPT / DESIGN: a recorded qualitative pass (``mastery_assess``).
     """
     if not set(kp.required_visual_tasks).issubset(visual_achievements(progress, kp.id)):
         return False
     if kp.type in QUALITATIVE_TYPES:
         return bool(progress.qualitative_mastery.get(kp.id, False))
-    return progress.mastery_levels.get(kp.id, 0.0) >= gate_threshold(kp.type)
+    return progress.mastery_levels.get(kp.id, 0.0) >= gate_threshold(kp.type) or gate_was_cleared(
+        progress, kp
+    )
 
 
 def visual_achievements(progress: LearningProgress, kp_id: str) -> list[str]:

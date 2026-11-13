@@ -139,6 +139,14 @@ class QuizAttempt(BaseModel):
     void_reason: str = ""
     independent: bool = True
     visual_context: dict[str, Any] = Field(default_factory=dict)
+    # Set when this attempt only completed the missing part of an earlier
+    # partial answer. It corrects that assessment in place of a new one: the
+    # partial grade stays, and the completion is practice, not independent
+    # evidence for the mastery gate (#2458).
+    completes_question_id: str = ""
+    # Actual assistance, distinct from the result-dependent completion mark,
+    # so correcting a grade can restore independence without erasing help.
+    assistance_used: bool = False
 
     @model_validator(mode="after")
     def _legacy_result(self):
@@ -409,6 +417,9 @@ class PendingQuestion(BaseModel):
     created_at: float = Field(default_factory=time.time)
     visual_context: dict[str, Any] = Field(default_factory=dict)
     accepted_answers: list[str] = Field(default_factory=list)
+    # The partial answer this card asks the learner to complete; validated at
+    # registration and copied to the resulting attempt. Server-side only.
+    completes_question_id: str = ""
     # One active interaction can present multiple independent questions. The
     # parent owns lifecycle only; answer keys and credit remain on its leaves.
     questions: list[PendingQuestion] = Field(default_factory=list)
