@@ -2024,10 +2024,16 @@ class AgenticLoopPipeline:
             return ""
         from deeptutor.agents._shared.workspace_prompt import workspace_system_note
 
+        # The note is replayed as the "workspace" runtime snapshot inside the
+        # cached prompt prefix, so it must stay byte-identical for the whole
+        # session (issue #2621). The per-turn output folder therefore rides in
+        # the trailing user message instead — see LoopPromptAssembler
+        # .user_message — where fresh bytes cannot invalidate the prefix.
         return workspace_system_note(
             context,
             language=self.language,
             allow_export=True,
+            state_turn_path=False,
         )
 
     def _t(self, key: str, default: str = "", **kwargs: Any) -> str:
