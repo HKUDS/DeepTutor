@@ -712,6 +712,37 @@ class TestHistory:
             client.post("/api/partners/ada/sessions/delete", json={"session_key": "web-a"})
         ).status_code == 404
 
+    def test_image_only_history_is_paged_and_redacts_private_metadata(self, client):
+        from deeptutor.api.routers import partners as router_mod
+
+        _create(client)
+        store = router_mod.get_partner_manager().session_store("ada")
+        store.append("web-image", "user", "before")
+        attachment = {"type": "image", "filename": "photo.png", "path": "/tmp/photo.png"}
+        store.append("web-image", "user", "", attachments=[attachment])
+        store.append("web-image", "assistant", "saw it", metadata={"model_turn": {"private": True}})
+
+        history = client.get("/api/partners/ada/history?session_key=web-image").json()
+        assert [row["role"] for row in history] == ["user", "user", "assistant"]
+        assert history[1]["attachments"] == [attachment]
+        assert history[2]["metadata"] == {}
+        summary = client.get("/api/partners/ada/sessions").json()[0]
+        assert (summary["message_count"], summary["title"], summary["last_message"]) == (
+            3,
+            "before",
+            "saw it",
+        )
+        page = client.get("/api/partners/ada/history/page?session_key=web-image&limit=2").json()
+        assert page["messages"] == history[1:]
+        assert (page["start"], page["next_before"], page["total"]) == (1, 1, 3)
+
+        store.append("web-image", "user", "later")
+        older = client.get(
+            "/api/partners/ada/history/page?session_key=web-image&limit=2&before=1"
+        ).json()
+        assert older["messages"] == history[:1]
+        assert (older["start"], older["next_before"], older["total"]) == (0, None, 4)
+
     def test_history_pages_reach_the_beginning_with_stable_cursor(self, client):
         from deeptutor.api.routers import partners as router_mod
 
