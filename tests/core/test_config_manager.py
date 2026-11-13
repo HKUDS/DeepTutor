@@ -1,8 +1,10 @@
+import os
 from pathlib import Path
 
 import pytest
 import yaml
 
+from deeptutor.services.memory.settings import load_memory_settings
 from deeptutor.utils.config_manager import ConfigManager
 
 
@@ -92,3 +94,31 @@ def test_env_info_reads_project_model_catalog(tmp_path: Path):
     cm = ConfigManager(project_root=project)
     env = cm.get_env_info()
     assert env["model"] == "Base"
+
+
+@pytest.mark.parametrize(
+    ("mtime", "force_reload", "expected_budget"),
+    [(1000, False, 40), (3000, False, 40), (2000, False, 20), (2000, True, 40)],
+)
+def test_reload_tracks_timestamp_changes_and_force(tmp_path, mtime, force_reload, expected_budget):
+    manager = ConfigManager(project_root=tmp_path)
+    write_yaml(manager.config_path, {"memory": {"update": {"l2_budget": 20}}})
+    os.utime(manager.config_path, (2000, 2000))
+    assert load_memory_settings().update.l2_budget == 20
+
+    write_yaml(manager.config_path, {"memory": {"update": {"l2_budget": 40}}})
+    os.utime(manager.config_path, (mtime, mtime))
+
+    loaded = manager.load_config(force_reload=force_reload)
+    assert loaded["memory"]["update"]["l2_budget"] == expected_budget
+    assert load_memory_settings().update.l2_budget == expected_budget
+
+
+def test_removing_config_clears_cached_values(tmp_path):
+    manager = ConfigManager(project_root=tmp_path)
+    write_yaml(manager.config_path, {"enabled": True})
+    assert manager.load_config() == {"enabled": True}
+
+    manager.config_path.unlink()
+
+    assert manager.load_config() == {}
