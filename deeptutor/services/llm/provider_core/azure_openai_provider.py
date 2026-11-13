@@ -21,6 +21,7 @@ from deeptutor.services.llm.provider_core.openai_responses import (
     convert_tools,
     parse_response_output,
 )
+from deeptutor.services.llm.provider_core.openai_stream import managed_openai_stream
 
 _ENDPOINT_SUFFIXES = (
     "/chat/completions",
@@ -215,28 +216,36 @@ class AzureOpenAIProvider(LLMProvider):
         try:
             stream = await self._client.responses.create(**body)
 
-            async def _timed_stream():
-                stream_iter = stream.__aiter__()
-                while True:
-                    try:
-                        yield await asyncio.wait_for(
-                            stream_iter.__anext__(), timeout=idle_timeout_s
-                        )
-                    except StopAsyncIteration:
-                        break
+            async with managed_openai_stream(stream):
 
-            content, tool_calls, finish_reason, usage, reasoning_content = await consume_sdk_stream(
-                _timed_stream(),
-                on_content_delta,
-                on_reasoning_delta=on_reasoning_delta,
-            )
-            return LLMResponse(
-                content=content or None,
-                tool_calls=tool_calls,
-                finish_reason=finish_reason,
-                usage=usage,
-                reasoning_content=reasoning_content,
-            )
+                async def _timed_stream():
+                    stream_iter = stream.__aiter__()
+                    while True:
+                        try:
+                            yield await asyncio.wait_for(
+                                stream_iter.__anext__(), timeout=idle_timeout_s
+                            )
+                        except StopAsyncIteration:
+                            break
+
+                (
+                    content,
+                    tool_calls,
+                    finish_reason,
+                    usage,
+                    reasoning_content,
+                ) = await consume_sdk_stream(
+                    _timed_stream(),
+                    on_content_delta,
+                    on_reasoning_delta=on_reasoning_delta,
+                )
+                return LLMResponse(
+                    content=content or None,
+                    tool_calls=tool_calls,
+                    finish_reason=finish_reason,
+                    usage=usage,
+                    reasoning_content=reasoning_content,
+                )
         except asyncio.TimeoutError:
             return LLMResponse(
                 content=f"Error calling Azure OpenAI: stream stalled for more than {idle_timeout_s} seconds",
