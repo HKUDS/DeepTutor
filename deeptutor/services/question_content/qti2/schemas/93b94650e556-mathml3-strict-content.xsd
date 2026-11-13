@@ -1,0 +1,186 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+   xmlns:m="http://www.w3.org/2010/Math/MathML"
+           elementFormDefault="qualified"
+           targetNamespace="http://www.w3.org/2010/Math/MathML">
+   <xs:group name="ContExp">
+      <xs:choice>
+<!--Ambiguous content model altered (ContExp)-->
+         <xs:element ref="m:apply"/>
+         <xs:element ref="m:bind"/>
+         <xs:element ref="m:ci"/>
+         <xs:element ref="m:cn"/>
+         <xs:element ref="m:csymbol"/>
+         <xs:element ref="m:cbytes"/>
+         <xs:element ref="m:cerror"/>
+         <xs:element ref="m:cs"/>
+         <xs:element ref="m:share"/>
+         <xs:element ref="m:piecewise"/>
+         <xs:element ref="m:DeprecatedContExp"/>
+         <xs:element ref="m:interval.class"/>
+         <xs:element ref="m:unary-functional.class"/>
+         <xs:element ref="m:lambda.class"/>
+         <xs:element ref="m:nary-functional.class"/>
+         <xs:group ref="m:binary-arith.class"/>
+         <xs:group ref="m:unary-arith.class"/>
+         <xs:element ref="m:nary-minmax.class"/>
+         <xs:element ref="m:nary-arith.class"/>
+         <xs:element ref="m:nary-logical.class"/>
+         <xs:element ref="m:unary-logical.class"/>
+         <xs:element ref="m:binary-logical.class"/>
+         <xs:element ref="m:quantifier.class"/>
+         <xs:element ref="m:nary-reln.class"/>
+         <xs:element ref="m:binary-reln.class"/>
+         <xs:element ref="m:int.class"/>
+         <xs:element ref="m:Differential-Operator.class"/>
+         <xs:element ref="m:partialdiff.class"/>
+         <xs:element ref="m:unary-veccalc.class"/>
+         <xs:element ref="m:nary-setlist-constructor.class"/>
+         <xs:element ref="m:nary-set.class"/>
+         <xs:element ref="m:binary-set.class"/>
+         <xs:element ref="m:nary-set-reln.class"/>
+         <xs:element ref="m:unary-set.class"/>
+         <xs:element ref="m:sum.class"/>
+         <xs:element ref="m:product.class"/>
+         <xs:element ref="m:limit.class"/>
+         <xs:element ref="m:unary-elementary.class"/>
+         <xs:element ref="m:nary-stats.class"/>
+         <xs:element ref="m:nary-constructor.class"/>
+         <xs:element ref="m:unary-linalg.class"/>
+         <xs:element ref="m:nary-linalg.class"/>
+         <xs:element ref="m:binary-linalg.class"/>
+         <xs:element ref="m:constant-set.class"/>
+         <xs:element ref="m:constant-arith.class"/>
+      </xs:choice>
+   </xs:group>
+   <xs:element name="cn">
+      <xs:complexType>
+         <xs:complexContent>
+            <xs:extension base="m:cn.content">
+               <xs:attributeGroup ref="m:cn.attributes"/>
+            </xs:extension>
+         </xs:complexContent>
+      </xs:complexType>
+   </xs:element>
+   <xs:group name="semantics-ci">
+      <xs:sequence>
+         <xs:element name="semantics">
+            <xs:complexType>
+               <xs:sequence>
+                  <xs:choice>
+                     <xs:element ref="m:ci"/>
+                     <xs:group ref="m:semantics-ci"/>
+                  </xs:choice>
+                  <xs:choice minOccurs="0" maxOccurs="unbounded">
+                     <xs:element ref="m:annotation"/>
+                     <xs:element ref="m:annotation-xml"/>
+                  </xs:choice>
+               </xs:sequence>
+               <xs:attributeGroup ref="m:semantics.attributes"/>
+            </xs:complexType>
+         </xs:element>
+      </xs:sequence>
+   </xs:group>
+   <xs:group name="semantics-contexp">
+      <xs:sequence>
+         <xs:element name="semantics">
+            <xs:complexType>
+               <xs:sequence>
+                  <xs:group ref="m:ContExp"/>
+                  <xs:choice minOccurs="0" maxOccurs="unbounded">
+                     <xs:element ref="m:annotation"/>
+                     <xs:element ref="m:annotation-xml"/>
+                  </xs:choice>
+               </xs:sequence>
+               <xs:attributeGroup ref="m:semantics.attributes"/>
+            </xs:complexType>
+         </xs:element>
+      </xs:sequence>
+   </xs:group>
+   <xs:element name="ci">
+      <xs:complexType>
+         <xs:complexContent>
+            <xs:extension base="m:ci.content">
+               <xs:attributeGroup ref="m:ci.attributes"/>
+            </xs:extension>
+         </xs:complexContent>
+      </xs:complexType>
+   </xs:element>
+   <xs:element name="csymbol">
+      <xs:complexType>
+         <xs:complexContent>
+            <xs:extension base="m:csymbol.content">
+               <xs:attributeGroup ref="m:csymbol.attributes"/>
+            </xs:extension>
+         </xs:complexContent>
+      </xs:complexType>
+   </xs:element>
+   <xs:simpleType name="SymbolName">
+      <xs:restriction base="xs:NCName"/>
+   </xs:simpleType>
+   <xs:group name="BvarQ">
+      <xs:sequence>
+         <xs:element minOccurs="0" maxOccurs="unbounded" ref="m:bvar"/>
+      </xs:sequence>
+   </xs:group>
+   <xs:element name="apply">
+      <xs:complexType>
+         <xs:complexContent>
+            <xs:extension base="m:apply.content">
+               <xs:attributeGroup ref="m:CommonAtt"/>
+            </xs:extension>
+         </xs:complexContent>
+      </xs:complexType>
+   </xs:element>
+   <xs:element name="bind">
+      <xs:complexType>
+         <xs:complexContent>
+            <xs:extension base="m:bind.content">
+               <xs:attributeGroup ref="m:CommonAtt"/>
+            </xs:extension>
+         </xs:complexContent>
+      </xs:complexType>
+   </xs:element>
+   <xs:element name="share">
+      <xs:complexType>
+         <xs:attributeGroup ref="m:CommonAtt"/>
+         <xs:attributeGroup ref="m:src"/>
+      </xs:complexType>
+   </xs:element>
+   <xs:element name="cerror">
+      <xs:complexType>
+         <xs:sequence>
+            <xs:element ref="m:csymbol"/>
+            <xs:group minOccurs="0" maxOccurs="unbounded" ref="m:ContExp"/>
+         </xs:sequence>
+         <xs:attributeGroup ref="m:cerror.attributes"/>
+      </xs:complexType>
+   </xs:element>
+   <xs:attributeGroup name="cerror.attributes">
+      <xs:attributeGroup ref="m:CommonAtt"/>
+   </xs:attributeGroup>
+   <xs:element name="cbytes">
+      <xs:complexType>
+         <xs:simpleContent>
+            <xs:extension base="m:base64">
+               <xs:attributeGroup ref="m:cbytes.attributes"/>
+            </xs:extension>
+         </xs:simpleContent>
+      </xs:complexType>
+   </xs:element>
+   <xs:simpleType name="base64">
+      <xs:restriction base="xs:base64Binary"/>
+   </xs:simpleType>
+   <xs:element name="cs">
+      <xs:complexType mixed="true">
+         <xs:attributeGroup ref="m:cs.attributes"/>
+      </xs:complexType>
+   </xs:element>
+   <xs:group name="MathExpression">
+      <xs:choice>
+         <xs:group ref="m:ContExp"/>
+         <xs:element ref="m:PresentationExpression"/>
+         <xs:group ref="m:semantics"/>
+      </xs:choice>
+   </xs:group>
+</xs:schema>

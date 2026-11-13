@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<xs:schema 
+  xmlns:xs="http://www.w3.org/2001/XMLSchema"
+  xmlns="http://www.w3.org/1998/Math/MathML"
+  targetNamespace="http://www.w3.org/1998/Math/MathML"
+  elementFormDefault="qualified"
+ >
+<xs:annotation>
+  <xs:documentation>
+  This is an XML Schema for MathML.
+  Author: St&#233;phane Dalmas, INRIA.
+  </xs:documentation>
+</xs:annotation>
+
+<!-- common stuff -->
+
+<xs:include schemaLocation="common/math.xsd"/>
+<xs:include schemaLocation="common/common-attribs.xsd"/>
+
+<!-- Presentation -->
+<xs:include schemaLocation="presentation/common-types.xsd"/>
+<xs:include schemaLocation="presentation/common-attribs.xsd"/>
+<xs:include schemaLocation="presentation/characters.xsd"/>
+<xs:include schemaLocation="presentation/tokens.xsd"/>
+<xs:include schemaLocation="presentation/scripts.xsd"/>
+<xs:include schemaLocation="presentation/space.xsd"/>
+<xs:include schemaLocation="presentation/layout.xsd"/>
+<xs:include schemaLocation="presentation/table.xsd"/>
+<xs:include schemaLocation="presentation/style.xsd"/>
+<xs:include schemaLocation="presentation/error.xsd"/>
+<xs:include schemaLocation="presentation/action.xsd"/>
+
+<!-- Content -->
+
+<xs:include schemaLocation="content/common-attrib.xsd"/>
+<xs:include schemaLocation="content/tokens.xsd"/>
+<xs:include schemaLocation="content/arith.xsd"/>
+<xs:include schemaLocation="content/functions.xsd"/>
+<xs:include schemaLocation="content/logic.xsd"/>
+<xs:include schemaLocation="content/constructs.xsd"/>
+<xs:include schemaLocation="content/constants.xsd"/>
+<xs:include schemaLocation="content/elementary-functions.xsd"/>
+<xs:include schemaLocation="content/relations.xsd"/>
+<xs:include schemaLocation="content/semantics.xsd"/>
+<xs:include schemaLocation="content/sets.xsd"/>
+<xs:include schemaLocation="content/linear-algebra.xsd"/>
+<xs:include schemaLocation="content/calculus.xsd"/>
+<xs:include schemaLocation="content/vector-calculus.xsd"/>
+<xs:include schemaLocation="content/statistics.xsd"/>
+
+
+</xs:schema>
+<!--
+  Copyright &#251; 2002 World Wide Web Consortium, (Massachusetts Institute
+  of Technology, Institut National de Recherche en Informatique et en
+  Automatique, Keio University). All Rights Reserved. See
+  http://www.w3.org/Consortium/Legal/.
+  -->

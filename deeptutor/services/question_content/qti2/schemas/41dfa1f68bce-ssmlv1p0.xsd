@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns="http://www.w3.org/2001/10/synthesis" targetNamespace="http://www.w3.org/2001/10/synthesis" elementFormDefault="qualified">
+    <xsd:annotation>
+        <xsd:documentation>SSML 1.0 Schema (20040615)</xsd:documentation>
+    </xsd:annotation>
+    <xsd:annotation>
+        <xsd:documentation>
+            Copyright 1998-2004 W3C (MIT, ERCIM, Keio), All Rights Reserved. Permission to use, copy, modify and distribute the SSML schema and its accompanying documentation for any purpose and without fee is hereby granted in perpetuity, provided that the above copyright notice and this paragraph appear in all copies. The copyright holders make no representation about the suitability of the schema for any purpose. It is provided "as is" without expressed or implied warranty.
+        </xsd:documentation>
+    </xsd:annotation>
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" schemaLocation="http://www.imsglobal.org/xsd/w3/2001/xml.xsd"/>
+    <xsd:redefine schemaLocation="synthesis-core.xsd">
+        <xsd:annotation>
+            <xsd:documentation>
+                restriction: version and attributes on speak mandatory
+            </xsd:documentation>
+        </xsd:annotation>
+        <xsd:complexType name="speak" mixed="true">
+            <xsd:complexContent>
+                <xsd:restriction base="speak">
+                    <xsd:group ref="speak.class"/>
+                    <xsd:attribute name="version" type="version.datatype" use="required"/>
+                    <xsd:attribute ref="xml:lang" use="required"/>
+                </xsd:restriction>
+            </xsd:complexContent>
+        </xsd:complexType>
+        <xsd:annotation>
+            <xsd:documentation>restriction: src attribute on audio is mandatory</xsd:documentation>
+        </xsd:annotation>
+        <xsd:complexType name="audio" mixed="true">
+            <xsd:complexContent>
+                <xsd:restriction base="audio">
+                    <xsd:group ref="descAndSentenceAndStructure.class"/>
+                    <xsd:attribute name="src" type="xsd:anyURI" use="required"/>
+                </xsd:restriction>
+            </xsd:complexContent>
+        </xsd:complexType>
+        <xsd:annotation>
+            <xsd:documentation>restriction: name attribute on mark is mandatory</xsd:documentation>
+        </xsd:annotation>
+        <xsd:complexType name="mark">
+            <xsd:complexContent>
+                <xsd:restriction base="mark">
+                    <xsd:attribute name="name" type="xsd:token" use="required"/>
+                </xsd:restriction>
+            </xsd:complexContent>
+        </xsd:complexType>
+    </xsd:redefine>
+</xsd:schema>

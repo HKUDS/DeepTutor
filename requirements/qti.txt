@@ -1,0 +1,4 @@
+# QTI item-bank exchange (import/export). Mirrors the `qti` extra in
+# pyproject.toml. The XSD bundles ship inside the package; lxml is the only
+# external dependency.
+lxml>=5.0.0,<7.0.0

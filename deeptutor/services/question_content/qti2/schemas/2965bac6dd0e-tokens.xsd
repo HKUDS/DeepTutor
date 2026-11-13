@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<xs:schema 
+  xmlns:xs="http://www.w3.org/2001/XMLSchema"
+  xmlns="http://www.w3.org/1998/Math/MathML"
+  targetNamespace="http://www.w3.org/1998/Math/MathML"
+  elementFormDefault="qualified"
+ >
+
+<xs:annotation>
+  <xs:documentation>
+  This is the XML schema module for the token elements of the 
+  content part of MathML.
+  Author: St&#233;phane Dalmas, INRIA.
+  </xs:documentation>
+</xs:annotation>
+
+<!-- common content for the token elements -->
+
+<xs:group name="Content-token.content">
+  <xs:sequence>
+    <xs:group ref="Presentation-expr.class"/>
+  </xs:sequence>
+</xs:group>
+
+<!-- "cn" -->
+
+<xs:attributeGroup name="cn.attlist">
+  <xs:attribute name="base">
+    <xs:simpleType>
+      <xs:restriction base="xs:positiveInteger">
+         <xs:minInclusive value="2"/>
+         <xs:maxInclusive value="36"/>
+      </xs:restriction>
+    </xs:simpleType>
+  </xs:attribute>  
+  <xs:attribute name="type">
+    <xs:simpleType>
+      <xs:restriction base="xs:NMTOKEN">
+        <xs:enumeration value="e-notation"/>
+        <xs:enumeration value="integer"/>
+        <xs:enumeration value="rational"/>
+        <xs:enumeration value="real"/>
+        <xs:enumeration value="complex-cartesian"/>
+        <xs:enumeration value="complex-polar"/>
+        <xs:enumeration value="constant"/>
+      </xs:restriction>
+     </xs:simpleType>
+  </xs:attribute>
+  <xs:attributeGroup ref="Definition.attrib"/>
+  <xs:attributeGroup ref="Common.attrib"/>
+</xs:attributeGroup>
+
+<!-- the content of "cn" may have <sep> elements in it -->
+
+<xs:complexType name="sep.type">
+</xs:complexType>
+
+<xs:element name="sep" type="sep.type"/>
+
+<xs:group name="cn.content">
+  <xs:choice>
+    <xs:group ref="Presentation-expr.class"/>
+    <xs:element ref="sep"/>
+  </xs:choice>
+</xs:group>
+
+<xs:complexType name="cn.type" mixed="true">
+  <xs:group ref="cn.content" minOccurs="0" maxOccurs="unbounded"/>
+  <xs:attributeGroup ref="cn.attlist"/>
+</xs:complexType>
+
+<xs:element name="cn" type="cn.type"/>
+
+<!-- "ci" -->
+
+<xs:attributeGroup name="ci.attlist">
+  <xs:attribute name="type" type="xs:string"/>
+  <xs:attributeGroup ref="Definition.attrib"/>
+  <xs:attributeGroup ref="Common.attrib"/>
+</xs:attributeGroup>
+
+<xs:complexType name="ci.type" mixed="true">
+  <xs:group ref="Content-token.content" minOccurs="0"/>
+  <xs:attributeGroup ref="ci.attlist"/>
+</xs:complexType>
+
+<xs:element name="ci" type="ci.type"/>
+
+<!-- "csymbol" -->
+
+<xs:attributeGroup name="csymbol.attlist">
+  <xs:attributeGroup ref="Definition.attrib"/>
+  <xs:attributeGroup ref="Common.attrib"/>
+</xs:attributeGroup>
+
+<xs:complexType name="csymbol.type" mixed="true">
+  <xs:group ref="Content-token.content" minOccurs="0"/>
+  <xs:attributeGroup ref="csymbol.attlist"/>
+</xs:complexType>
+
+<xs:element name="csymbol" type="csymbol.type"/>
+
+<!-- And the group of everything -->
+
+<xs:group name="Content-tokens.class">
+  <xs:choice>
+    <xs:element ref="cn"/>
+    <xs:element ref="ci"/>
+    <xs:element ref="csymbol"/>
+  </xs:choice>
+</xs:group>
+
+</xs:schema>
+<!--
+  Copyright &#251; 2002 World Wide Web Consortium, (Massachusetts Institute
+  of Technology, Institut National de Recherche en Informatique et en
+  Automatique, Keio University). All Rights Reserved. See
+  http://www.w3.org/Consortium/Legal/.
+  -->

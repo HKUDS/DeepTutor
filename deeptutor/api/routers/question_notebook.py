@@ -56,6 +56,8 @@ class NotebookEntryItem(BaseModel):
     question: str
     question_type: str = ""
     options: dict[str, str] = {}
+    fill_spec: dict[str, Any] | None = None
+    question_content: dict[str, Any] | None = None
     correct_answer: str = ""
     explanation: str = ""
     difficulty: str = ""
@@ -164,6 +166,10 @@ class UpsertEntryRequest(BaseModel):
     question: str
     question_type: str = ""
     options: dict[str, str] | None = None
+    # Optional canonical payloads. Importers that already own a validated
+    # document (QTI) may send it; chat clients keep sending only flat fields.
+    fill_spec: dict[str, Any] | None = None
+    question_content: dict[str, Any] | None = None
     correct_answer: str = ""
     explanation: str = ""
     difficulty: str = ""

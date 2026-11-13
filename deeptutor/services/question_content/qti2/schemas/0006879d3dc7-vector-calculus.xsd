@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<xs:schema 
+  xmlns:xs="http://www.w3.org/2001/XMLSchema"
+  xmlns="http://www.w3.org/1998/Math/MathML"
+  targetNamespace="http://www.w3.org/1998/Math/MathML"
+  elementFormDefault="qualified"
+ >
+
+<xs:annotation>
+  <xs:documentation>
+  This is an XML Schema module for the vector calculs operators of content
+  MathML. 
+  Author: St&#233;phane Dalmas, INRIA.
+  </xs:documentation>
+</xs:annotation>
+
+<!-- "divergence" -->
+
+<xs:attributeGroup name="divergence.attlist">
+  <xs:attributeGroup ref="Definition.attrib"/>
+  <xs:attributeGroup ref="Common.attrib"/>
+</xs:attributeGroup>
+
+<xs:complexType name="divergence.type">
+  <xs:attributeGroup ref="divergence.attlist"/>
+</xs:complexType>
+
+<xs:element name="divergence" type="divergence.type"/>
+
+<!-- "grad" -->
+
+<xs:attributeGroup name="grad.attlist">
+  <xs:attributeGroup ref="Definition.attrib"/>
+  <xs:attributeGroup ref="Common.attrib"/>
+</xs:attributeGroup>
+
+<xs:complexType name="grad.type">
+  <xs:attributeGroup ref="grad.attlist"/>
+</xs:complexType>
+
+<xs:element name="grad" type="grad.type"/>
+
+<!-- "curl" -->
+
+<xs:attributeGroup name="curl.attlist">
+  <xs:attributeGroup ref="Definition.attrib"/>
+  <xs:attributeGroup ref="Common.attrib"/>
+</xs:attributeGroup>
+
+<xs:complexType name="curl.type">
+  <xs:attributeGroup ref="curl.attlist"/>
+</xs:complexType>
+
+<xs:element name="curl" type="curl.type"/>
+
+<!-- "laplacian" -->
+
+<xs:attributeGroup name="laplacian.attlist">
+  <xs:attributeGroup ref="Definition.attrib"/>
+  <xs:attributeGroup ref="Common.attrib"/>
+</xs:attributeGroup>
+
+<xs:complexType name="laplacian.type">
+  <xs:attributeGroup ref="laplacian.attlist"/>
+</xs:complexType>
+
+<xs:element name="laplacian" type="laplacian.type"/>
+
+<!-- And the group of everything -->
+
+<xs:group name="Content-vector-calculus.class">
+  <xs:choice>
+    <xs:element ref="divergence"/>
+    <xs:element ref="grad"/>
+    <xs:element ref="curl"/>
+    <xs:element ref="laplacian"/>
+  </xs:choice>
+</xs:group>
+
+
+</xs:schema>
+<!--
+  Copyright &#251; 2002 World Wide Web Consortium, (Massachusetts Institute
+  of Technology, Institut National de Recherche en Informatique et en
+  Automatique, Keio University). All Rights Reserved. See
+  http://www.w3.org/Consortium/Legal/.
+  -->

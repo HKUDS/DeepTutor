@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<xs:schema 
+  xmlns:xs="http://www.w3.org/2001/XMLSchema"
+  xmlns="http://www.w3.org/1998/Math/MathML"
+  targetNamespace="http://www.w3.org/1998/Math/MathML"
+  elementFormDefault="qualified"
+ >
+
+<xs:annotation>
+  <xs:documentation>
+  This is the XML Schema module for the MathML "mglyph" element.
+  Author: St&#233;phane Dalmas, INRIA.
+  </xs:documentation>
+</xs:annotation>
+
+<xs:attributeGroup name="mglyph.attlist">
+  <xs:attribute name="alt" type="xs:string"/>
+  <xs:attribute name="fontfamily" type="xs:string"/>
+  <xs:attribute name="index" type="xs:positiveInteger"/>
+</xs:attributeGroup>
+
+<xs:complexType name="mglyph.type">
+  <xs:attributeGroup ref="mglyph.attlist"/>
+</xs:complexType>
+
+<xs:element name="mglyph" type="mglyph.type"/>
+
+</xs:schema>
+
+
+<!--
+  Copyright &#251; 2002 World Wide Web Consortium, (Massachusetts Institute
+  of Technology, Institut National de Recherche en Informatique et en
+  Automatique, Keio University). All Rights Reserved. See
+  http://www.w3.org/Consortium/Legal/.
+  -->

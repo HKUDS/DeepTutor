@@ -1,0 +1,216 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<xs:schema 
+  xmlns:xs="http://www.w3.org/2001/XMLSchema"
+  xmlns="http://www.w3.org/1998/Math/MathML"
+  targetNamespace="http://www.w3.org/1998/Math/MathML"
+  elementFormDefault="qualified"
+  >
+
+<xs:annotation>
+  <xs:documentation>
+  This is an XML Schema module for tables in MathML presentation.
+  Author: St&#233;phane Dalmas, INRIA.
+  </xs:documentation>
+</xs:annotation>
+
+<!-- Common attributes -->
+
+<xs:attributeGroup name="Table-alignment.attrib">
+  <xs:attribute name="rowalign" default="baseline">
+    <xs:simpleType> 
+      <xs:restriction base="xs:string">
+        <xs:pattern value="(top|bottom|center|baseline|axis)( top| bottom| center| baseline| axis)*"/>
+      </xs:restriction>
+    </xs:simpleType>
+  </xs:attribute>
+  <xs:attribute name="columnalign" default="center">
+    <xs:simpleType> 
+      <xs:restriction base="xs:string">
+        <xs:pattern value="(left|center|right)( left| center| right)*"/>
+      </xs:restriction>
+    </xs:simpleType>
+  </xs:attribute>
+  <xs:attribute name="groupalign" type="xs:string"/>
+</xs:attributeGroup>
+
+<!-- "mtr" -->
+
+<xs:attributeGroup name="mtr.attlist">
+  <xs:attributeGroup ref="Table-alignment.attrib"/>
+  <xs:attributeGroup ref="Common.attrib"/>
+</xs:attributeGroup>
+
+<xs:group name="mtr.content">
+  <xs:sequence>
+    <xs:element ref="mtd"/>
+  </xs:sequence>
+</xs:group>
+
+<xs:complexType name="mtr.type">
+  <xs:group ref="mtr.content"  minOccurs="1" maxOccurs="unbounded"/>
+  <xs:attributeGroup ref="mtr.attlist"/>
+</xs:complexType>
+
+<xs:element name="mtr" type="mtr.type"/>
+
+<!-- "labeledtr" -->
+
+<xs:attributeGroup name="mlabeledtr.attlist">
+  <xs:attributeGroup ref="Table-alignment.attrib"/>
+  <xs:attributeGroup ref="Common.attrib"/>
+</xs:attributeGroup>
+
+<xs:group name="mlabeledtr.content">
+  <xs:sequence>
+    <xs:element ref="mtd"/>
+  </xs:sequence>
+</xs:group>
+
+<xs:complexType name="mlabeledtr.type">
+  <xs:group ref="mlabeledtr.content" minOccurs="1" maxOccurs="unbounded"/>
+  <xs:attributeGroup ref="mlabeledtr.attlist"/>
+</xs:complexType>
+
+<xs:element name="mlabeledtr" type="mlabeledtr.type"/>
+
+<!-- "mtd" -->
+
+<xs:attributeGroup name="mtd.attlist">
+  <xs:attributeGroup ref="Table-alignment.attrib"/>
+  <xs:attribute name="columnspan" type="xs:positiveInteger" default="1"/>
+  <xs:attribute name="rowspan" type="xs:positiveInteger" default="1"/>
+  <xs:attributeGroup ref="Common.attrib"/>
+</xs:attributeGroup>
+
+<xs:group name="mtd.content">
+  <xs:sequence>
+    <xs:group ref="Presentation-expr.class" minOccurs="0" maxOccurs="1"/>
+  </xs:sequence>
+</xs:group>
+
+<xs:complexType name="mtd.type">
+  <xs:group ref="mtd.content"  minOccurs="1" maxOccurs="unbounded"/>
+  <xs:attributeGroup ref="mtd.attlist"/>
+</xs:complexType>
+
+<xs:element name="mtd" type="mtd.type"/>
+
+<!-- "mtable" -->
+
+<xs:attributeGroup name="mtable.attlist">
+  <xs:attributeGroup ref="Table-alignment.attrib"/>
+  <xs:attribute name="align" type="xs:string" default="axis"/>
+  <xs:attribute name="alignmentscope" default="true">
+   <xs:simpleType>
+      <xs:restriction base="xs:string">
+         <xs:pattern value="(true|false)( true| false)*"/>
+      </xs:restriction>
+    </xs:simpleType>
+  </xs:attribute>
+  <xs:attribute name="columnwidth" type="xs:string" default="auto"/>
+  <xs:attribute name="width" type="xs:string" default="auto"/>
+  <xs:attribute name="rowspacing" type="xs:string" default="1.0ex"/>
+  <xs:attribute name="columnspacing" type="xs:string" default="0.8em"/>
+  <xs:attribute name="rowlines" type="xs:string" default="none"/>
+  <xs:attribute name="columnlines" type="xs:string" default="none"/>
+  <xs:attribute name="frame" default="none">
+    <xs:simpleType>
+      <xs:restriction base="xs:string">
+         <xs:enumeration value="none"/>
+         <xs:enumeration value="solid"/>
+         <xs:enumeration value="dashed"/>
+      </xs:restriction>
+    </xs:simpleType>
+  </xs:attribute>
+  <xs:attribute name="framespacing" type="xs:string" default="0.4em 0.5ex"/>
+  <xs:attribute name="equalrows" type="xs:boolean" default="false"/>
+  <xs:attribute name="equalcolumns" type="xs:boolean" default="false"/>
+  <xs:attribute name="displaystyle" type="xs:boolean" default="false"/>
+  <xs:attribute name="side" default="right">
+    <xs:simpleType>
+      <xs:restriction base="xs:string">
+         <xs:enumeration value="left"/>
+         <xs:enumeration value="right"/>
+         <xs:enumeration value="leftoverlap"/>
+         <xs:enumeration value="rightoverlap"/>
+      </xs:restriction>
+    </xs:simpleType>
+  </xs:attribute>
+  <xs:attribute name="minlabelspacing" type="length-with-unit" default="0.8em"/>
+  <xs:attributeGroup ref="Common.attrib"/>
+</xs:attributeGroup>
+
+<xs:group name="mtable.content">
+  <xs:choice>
+    <xs:element ref="mtr"/>
+    <xs:element ref="mlabeledtr"/>
+  </xs:choice>
+</xs:group>
+
+<xs:complexType name="mtable.type">
+  <xs:group ref="mtable.content"  minOccurs="1" maxOccurs="unbounded"/>
+  <xs:attributeGroup ref="mtable.attlist"/>
+</xs:complexType>
+
+<xs:element name="mtable" type="mtable.type"/>
+
+<!-- "maligngroup" -->
+
+<xs:attributeGroup name="maligngroup.attlist">
+  <xs:attribute name="groupalign">
+     <xs:simpleType>
+        <xs:restriction base="xs:string">
+          <xs:enumeration value="left"/>
+          <xs:enumeration value="center"/>
+          <xs:enumeration value="right"/>
+          <xs:enumeration value="decimalpoint"/>
+      </xs:restriction>
+     </xs:simpleType>    
+  </xs:attribute>
+  <xs:attributeGroup ref="Common.attrib"/>
+</xs:attributeGroup>
+
+<xs:complexType name="maligngroup.type">
+  <xs:attributeGroup ref="maligngroup.attlist"/>
+</xs:complexType>
+
+<xs:element name="maligngroup" type="maligngroup.type"/>
+
+<!-- "malignmark" -->
+
+<xs:attributeGroup name="malignmark.attlist">
+  <xs:attribute name="edge" default="left">
+     <xs:simpleType>
+        <xs:restriction base="xs:string">
+          <xs:enumeration value="left"/>
+          <xs:enumeration value="right"/>
+        </xs:restriction>
+     </xs:simpleType>
+  </xs:attribute>
+  <xs:attributeGroup ref="Common.attrib"/>
+</xs:attributeGroup>
+
+<xs:complexType name="malignmark.type">
+  <xs:attributeGroup ref="malignmark.attlist"/>
+</xs:complexType>
+
+<xs:element name="malignmark" type="malignmark.type"/>
+
+<!-- The group of everything -->
+
+<xs:group name="Presentation-table.class">
+  <xs:choice>
+     <xs:element ref="mtable"/>
+     <xs:element ref="maligngroup"/>
+     <xs:element ref="malignmark"/>
+  </xs:choice>  
+</xs:group>
+
+</xs:schema>
+<!--
+  Copyright &#251; 2002 World Wide Web Consortium, (Massachusetts Institute
+  of Technology, Institut National de Recherche en Informatique et en
+  Automatique, Keio University). All Rights Reserved. See
+  http://www.w3.org/Consortium/Legal/.
+  -->

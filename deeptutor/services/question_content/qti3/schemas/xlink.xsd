@@ -1,0 +1,270 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xlink="http://www.w3.org/1999/xlink" targetNamespace="http://www.w3.org/1999/xlink">
+ 
+ <xs:annotation>
+  <xs:documentation>This schema document provides attribute declarations and
+attribute group, complex type and simple type definitions which can be used in
+the construction of user schemas to define the structure of particular linking
+constructs, e.g.
+
+&lt;xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:xl="http://www.w3.org/1999/xlink"&gt;
+
+ &lt;xs:import namespace="http://www.w3.org/1999/xlink"
+            location="http://www.w3.org/1999/xlink.xsd"&gt;
+
+ &lt;xs:element name="mySimple"&gt;
+  &lt;xs:complexType&gt;
+   ...
+   &lt;xs:attributeGroup ref="xl:simpleAttrs"/&gt;
+   ...
+  &lt;/xs:complexType&gt;
+ &lt;/xs:element&gt;
+ ...
+&lt;/xs:schema&gt;</xs:documentation>
+ </xs:annotation>
+
+ <xs:import namespace="http://www.w3.org/XML/1998/namespace" schemaLocation="xml.xsd"/>
+
+ <xs:attribute name="type" type="xlink:typeType"/>
+
+ <xs:simpleType name="typeType">
+  <xs:restriction base="xs:token">
+   <xs:enumeration value="simple"/>
+   <xs:enumeration value="extended"/>
+   <xs:enumeration value="title"/>
+   <xs:enumeration value="resource"/>
+   <xs:enumeration value="locator"/>
+   <xs:enumeration value="arc"/>
+  </xs:restriction>
+ </xs:simpleType>
+
+ <xs:attribute name="href" type="xlink:hrefType"/>
+
+ <xs:simpleType name="hrefType">
+  <xs:restriction base="xs:anyURI"/>
+ </xs:simpleType>
+
+ <xs:attribute name="role" type="xlink:roleType"/>
+
+ <xs:simpleType name="roleType">
+  <xs:restriction base="xs:anyURI">
+   <xs:minLength value="1"/>
+  </xs:restriction>
+ </xs:simpleType>
+
+ <xs:attribute name="arcrole" type="xlink:arcroleType"/>
+
+ <xs:simpleType name="arcroleType">
+  <xs:restriction base="xs:anyURI">
+   <xs:minLength value="1"/>
+  </xs:restriction>
+ </xs:simpleType>
+
+ <xs:attribute name="title" type="xlink:titleAttrType"/>
+
+ <xs:simpleType name="titleAttrType">
+  <xs:restriction base="xs:string"/>
+ </xs:simpleType>
+
+ <xs:attribute name="show" type="xlink:showType"/>
+
+ <xs:simpleType name="showType">
+  <xs:restriction base="xs:token">
+   <xs:enumeration value="new"/>
+   <xs:enumeration value="replace"/>
+   <xs:enumeration value="embed"/>
+   <xs:enumeration value="other"/>
+   <xs:enumeration value="none"/>
+  </xs:restriction>
+ </xs:simpleType>
+
+ <xs:attribute name="actuate" type="xlink:actuateType"/>
+
+ <xs:simpleType name="actuateType">
+  <xs:restriction base="xs:token">
+   <xs:enumeration value="onLoad"/>
+   <xs:enumeration value="onRequest"/>
+   <xs:enumeration value="other"/>
+   <xs:enumeration value="none"/>
+  </xs:restriction>
+ </xs:simpleType>
+
+ <xs:attribute name="label" type="xlink:labelType"/>
+
+ <xs:simpleType name="labelType">
+  <xs:restriction base="xs:NCName"/>
+ </xs:simpleType>
+
+ <xs:attribute name="from" type="xlink:fromType"/>
+
+ <xs:simpleType name="fromType">
+  <xs:restriction base="xs:NCName"/>
+ </xs:simpleType>
+
+ <xs:attribute name="to" type="xlink:toType"/>
+
+ <xs:simpleType name="toType">
+  <xs:restriction base="xs:NCName"/>
+ </xs:simpleType>
+
+ <xs:attributeGroup name="simpleAttrs">
+  <xs:attribute ref="xlink:type" fixed="simple"/>
+  <xs:attribute ref="xlink:href"/>
+  <xs:attribute ref="xlink:role"/>
+  <xs:attribute ref="xlink:arcrole"/>
+  <xs:attribute ref="xlink:title"/>
+  <xs:attribute ref="xlink:show"/>
+  <xs:attribute ref="xlink:actuate"/>
+ </xs:attributeGroup>
+
+ <xs:group name="simpleModel">
+  <xs:sequence>
+   <xs:any processContents="lax" minOccurs="0" maxOccurs="unbounded"/>
+  </xs:sequence>
+ </xs:group>
+
+ <xs:complexType mixed="true" name="simple">
+  <xs:annotation>
+   <xs:documentation>
+    Intended for use as the type of user-declared elements to make them
+    simple links.
+   </xs:documentation>
+  </xs:annotation>
+  <xs:group ref="xlink:simpleModel"/>
+  <xs:attributeGroup ref="xlink:simpleAttrs"/>
+ </xs:complexType>
+
+ <xs:attributeGroup name="extendedAttrs">
+  <xs:attribute ref="xlink:type" fixed="extended" use="required"/>
+  <xs:attribute ref="xlink:role"/>
+  <xs:attribute ref="xlink:title"/>
+ </xs:attributeGroup>
+
+ <xs:group name="extendedModel">
+   <xs:choice>
+    <xs:element ref="xlink:title"/>
+    <xs:element ref="xlink:resource"/>
+    <xs:element ref="xlink:locator"/>
+    <xs:element ref="xlink:arc"/>
+  </xs:choice>
+ </xs:group>
+
+ <xs:complexType name="extended">
+  <xs:annotation>
+   <xs:documentation>
+    Intended for use as the type of user-declared elements to make them
+    extended links.
+    Note that the elements referenced in the content model are all abstract.
+    The intention is that by simply declaring elements with these as their
+    substitutionGroup, all the right things will happen.
+   </xs:documentation>
+  </xs:annotation>
+  <xs:group ref="xlink:extendedModel" minOccurs="0" maxOccurs="unbounded"/>
+  <xs:attributeGroup ref="xlink:extendedAttrs"/>
+ </xs:complexType>
+
+ <xs:element name="title" type="xlink:titleEltType" abstract="true"/>
+
+ <xs:attributeGroup name="titleAttrs">
+  <xs:attribute ref="xlink:type" fixed="title" use="required"/>
+  <xs:attribute ref="xml:lang">
+   <xs:annotation>
+    <xs:documentation>
+     xml:lang is not required, but provides much of the
+     motivation for title elements in addition to attributes, and so
+     is provided here for convenience.
+    </xs:documentation>
+   </xs:annotation>
+  </xs:attribute>
+ </xs:attributeGroup>
+
+ <xs:group name="titleModel">
+  <xs:sequence>
+   <xs:any processContents="lax" minOccurs="0" maxOccurs="unbounded"/>
+  </xs:sequence>
+ </xs:group>
+
+ <xs:complexType mixed="true" name="titleEltType">
+  <xs:group ref="xlink:titleModel"/>
+  <xs:attributeGroup ref="xlink:titleAttrs"/>
+ </xs:complexType>
+
+ <xs:element name="resource" type="xlink:resourceType" abstract="true"/>
+
+ <xs:attributeGroup name="resourceAttrs">
+  <xs:attribute ref="xlink:type" fixed="resource" use="required"/>
+  <xs:attribute ref="xlink:role"/>
+  <xs:attribute ref="xlink:title"/>
+  <xs:attribute ref="xlink:label"/>
+ </xs:attributeGroup>
+
+ <xs:group name="resourceModel">
+  <xs:sequence>
+   <xs:any processContents="lax" minOccurs="0" maxOccurs="unbounded"/>
+  </xs:sequence>
+ </xs:group>
+
+ <xs:complexType mixed="true" name="resourceType">
+  <xs:group ref="xlink:resourceModel"/>
+  <xs:attributeGroup ref="xlink:resourceAttrs"/>
+ </xs:complexType>
+
+ <xs:element name="locator" type="xlink:locatorType" abstract="true"/>
+
+ <xs:attributeGroup name="locatorAttrs">
+  <xs:attribute ref="xlink:type" fixed="locator" use="required"/>
+  <xs:attribute ref="xlink:href" use="required"/>
+  <xs:attribute ref="xlink:role"/>
+  <xs:attribute ref="xlink:title"/>
+  <xs:attribute ref="xlink:label">
+   <xs:annotation>
+    <xs:documentation>
+     label is not required, but locators have no particular
+     XLink function if they are not labeled.
+    </xs:documentation>
+   </xs:annotation>
+  </xs:attribute>
+ </xs:attributeGroup>
+
+ <xs:group name="locatorModel">
+  <xs:sequence>
+   <xs:element ref="xlink:title" minOccurs="0" maxOccurs="unbounded"/>
+  </xs:sequence>
+ </xs:group>
+
+ <xs:complexType name="locatorType">
+  <xs:group ref="xlink:locatorModel"/>
+  <xs:attributeGroup ref="xlink:locatorAttrs"/>
+ </xs:complexType>
+
+ <xs:element name="arc" type="xlink:arcType" abstract="true"/>
+
+ <xs:attributeGroup name="arcAttrs">
+  <xs:attribute ref="xlink:type" fixed="arc" use="required"/>
+  <xs:attribute ref="xlink:arcrole"/>
+  <xs:attribute ref="xlink:title"/>
+  <xs:attribute ref="xlink:show"/>
+  <xs:attribute ref="xlink:actuate"/>
+  <xs:attribute ref="xlink:from"/>
+  <xs:attribute ref="xlink:to">
+   <xs:annotation>
+    <xs:documentation>
+     from and to have default behavior when values are missing
+    </xs:documentation>
+   </xs:annotation>
+  </xs:attribute>
+ </xs:attributeGroup>
+
+ <xs:group name="arcModel">
+  <xs:sequence>
+   <xs:element ref="xlink:title" minOccurs="0" maxOccurs="unbounded"/>
+  </xs:sequence>
+ </xs:group>
+
+ <xs:complexType name="arcType">
+  <xs:group ref="xlink:arcModel"/>
+  <xs:attributeGroup ref="xlink:arcAttrs"/>
+ </xs:complexType>
+
+</xs:schema>

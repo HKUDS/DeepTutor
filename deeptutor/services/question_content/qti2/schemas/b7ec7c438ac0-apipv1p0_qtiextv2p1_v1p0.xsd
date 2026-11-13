@@ -1,0 +1,1001 @@
+<?xml version = "1.0" encoding = "UTF-8"?>
+<xs:schema xmlns="http://www.imsglobal.org/xsd/apip/apipv1p0/imsapip_qtiv1p0"
+     targetNamespace="http://www.imsglobal.org/xsd/apip/apipv1p0/imsapip_qtiv1p0"
+     xmlns:xs="http://www.w3.org/2001/XMLSchema"
+     xmlns:sch="http://purl.oclc.org/dsdl/schematron"
+     version="IMS QTI APIP EXT V1.0"
+     elementFormDefault="qualified"
+     attributeFormDefault="unqualified">
+    <xs:import namespace="http://www.w3.org/XML/1998/namespace" schemaLocation="http://www.imsglobal.org/xsd/w3/2001/xml.xsd" />
+
+    <xs:annotation>
+        <xs:documentation>
+            XSD Data File Information
+            =========================
+            Author:         Colin Smythe
+            Date:           30th April, 2012
+            Version:        1.0
+            Status:         Final Release
+            Description:    This is the data model for the Accessible Portable Item Protocol (APIP) v1.0 .
+                            This defines the set of QTIv2.1 extensions.
+
+            History:        Version 1.0 - the first release of this APIP v1.0 PSM data model extensions for QTIv2.1.
+
+            License:        IPR, License and Distribution Notices
+
+                            This machine readable file is derived from IMS Global specification IMS Accessible Portable Item Protocol (APIP) Version 1.0
+                            found at http://www.imsglobal.org/apip and the original IMS Global schema binding or code base
+                            http://www.imsglobal.org/apip.
+
+                            Recipients of this document are requested to submit, with their comments, notification of any
+                            relevant patent claims or other intellectual property rights of which they may be aware that might be
+                            infringed by the schema binding contained in this document.
+
+                            IMS Global takes no position regarding the validity or scope of any intellectual property or other
+                            rights that might be claimed to pertain to the implementation or use of the technology described in this
+                            document or the extent to which any license under such rights might or might not be available; neither
+                            does it represent that it has made any effort to identify any such rights. Information on IMS Global
+                            procedures with respect to rights in IMS Global specifications can be found at the IMS Global Intellectual Property
+                            Rights web page: http://www.imsglobal.org/ipr/imsipr_policyFinal.pdf.
+
+                            Copyright (c) IMS Global Learning Consortium 1999-2013. All Rights Reserved.
+
+                            License Notice for Users
+
+                            Users of products or services that include this document are hereby granted a worldwide, royalty-free, 
+                            non-exclusive license to use this document. 
+
+                            Distribution Notice for Developers
+
+                            Developers of products or services that are not original incorporators of this document and 
+                            have not changed this document, that is, are distributing a software product that incorporates this 
+                            document as is from a third-party source other than IMS, are hereby granted permission to copy,
+                            display and distribute the contents of this document in any medium for any purpose without fee or 
+                            royalty provided that you include this IPR, License and Distribution notice in its entirety on ALL
+                            copies, or portions thereof.
+
+                            Developers of products or services that are original incorporators of this document and wish 
+                            to provide distribution of this document as is or with modifications and developers of products and 
+                            services that are not original incorporators of this document and have changed this document, are
+                            required to register with the IMS Global community on the IMS Global website as described in the following two
+                            paragraphs:-
+
+                            *  If you wish to distribute this document as is, with no modifications, you are hereby granted 
+                               permission to copy, display and distribute the contents of this document in any medium for any 
+                               purpose without fee or royalty provided that you include this IPR, License and Distribution notice in
+                               its entirety on ALL copies, or portions thereof, that you make and you complete a valid license 
+                               registration with IMS and receive an email from IMS granting the license. To register, follow the 
+                               instructions on the IMS website: http://www.imsglobal.org/specificationdownload.cfm. Once 
+                               registered you are granted permission to transfer unlimited distribution rights of this document for the 
+                               purposes of third-party or other distribution of your product or service that incorporates this 
+                               document as long as this IPR, License and Distribution notice remains in place in its entirety; 
+
+                            *  If you wish to create and distribute a derived work from this document, you are hereby 
+                               granted permission to copy, display and distribute the contents of the derived work in any medium for 
+                               any purpose without fee or royalty provided that you include this IPR, License and Distribution 
+                               notice in its entirety on ALL copies, or portions thereof, that you make and you complete a valid 
+                               profile registration with IMS Global and receive an email from IMS Global granting the license. To register, follow
+                               the instructions on the IMS Global website: http://www.imsglobal.org/profile/. Once registered you are 
+                               granted permission to transfer unlimited distribution rights of the derived work for the purposes of 
+                               third-party or other distribution of your product or service that incorporates the derived work as long 
+                               as this IPR, License and Distribution notice remains in place in its entirety. 
+
+                            The limited permissions granted above are perpetual and will not be revoked by IMS Global or its 
+                            successors or assigns.
+
+                            THIS SPECIFICATION IS BEING OFFERED WITHOUT ANY WARRANTY WHATSOEVER, AND IN PARTICULAR, ANY WARRANTY OF NONINFRINGEMENT IS
+                            EXPRESSLY DISCLAIMED. ANY USE OF THIS SPECIFICATION SHALL BE MADE ENTIRELY AT THE IMPLEMENTERS OWN RISK, AND NEITHER THE CONSORTIUM
+                            NOR ANY OF ITS MEMBERS OR SUBMITTERS, SHALL HAVE ANY LIABILITY WHATSOEVER TO ANY IMPLEMENTER OR THIRD PARTY FOR ANY DAMAGES OF
+                            ANY NATURE WHATSOEVER, DIRECTLY OR INDIRECTLY, ARISING FROM THE USE OF THIS SPECIFICATION.
+
+            Source UML File Information
+            ===========================
+            The source file information must be supplied as an XMI file (without diagram layout information).
+            The supported UML authoring tools are:
+            (a) Poseidon - v6 (and later)
+
+            Source XSLT File Information
+            ============================
+            XSL Generator:    Specificationv1p0_GenerationToolv1.xsl
+            XSLT Processor:   Saxon-HE-9.4.0.4
+            Release:          1.0
+            Date:             31st January, 2013
+            Autogen Engineer: Colin Smythe (IMS Global, UK)
+            Autogen Date:     2013-03-22Z
+
+            IMS Global Auto-generation Binding Tool-kit (I-BAT)
+            ===================================================
+            This file was auto-generated using the IMS Global Binding Auto-generation Tool-kit (I-BAT).  While every
+            attempt has been made to ensure that this tool auto-generates the files correctly, users should be aware
+            that this is an experimental tool.  Permission is given to make use of this tool.  IMS Global makes no
+            claim on the materials created by third party users of this tool.  Details on how to use this tool
+            are contained in the IMS Global "I-BAT" documentation available at the IMS Global web-site:
+            http://www.imsglobal.org.
+
+            Tool Copyright:  2012-2013  (c) IMS Global Learning Consortium Inc.  All Rights Reserved.
+        </xs:documentation>
+    </xs:annotation>
+
+    <xs:annotation>
+        <xs:documentation>
+            Schematron Strict Selection Validation Rules
+            ============================================
+            This is the set of Schematron rules that have been created to enforce the use of the "Unordered" stereotype.
+            These rules ensure that the number of entries in an unordered complexType of an element obey the multiplicity constraints.
+            This is required so that any-order/any-multiplicity complexTypes can be constructed and validated.
+        </xs:documentation>
+        <xs:appinfo>
+            <sch:ns uri="http://www.imsglobal.org/xsd/apip/apipv1p0/imsapip_qtiv1p0" prefix="apip" />
+            <sch:title>Schematron validation rules for the enforcement of the Unordered stereotype.</sch:title>
+
+            <!-- RULESET ******************************************************************* -->
+            <sch:pattern abstract="false" id="CompanionMaterialsInfo.Type">
+                <sch:title>[RULESET] For the CompanionMaterialsInfo.Type complexType.</sch:title>
+
+                <sch:rule abstract="false" context="apip:apipAccessibility/apip:companionMaterialsInfo">
+
+                    <sch:assert test="count(apip:calculator) = 0 or count(apip:calculator) = 1">
+                        [RULE for Local Attribute 1] Invalid number of "calculator" elements: <sch:value-of select="count(apip:calculator)" />.
+                    </sch:assert>
+
+                </sch:rule>
+
+            </sch:pattern>
+            <!-- *************************************************************************** -->
+
+            <!-- RULESET ******************************************************************* -->
+            <sch:pattern abstract="false" id="InclusionOrder.Type">
+                <sch:title>[RULESET] For the InclusionOrder.Type complexType.</sch:title>
+
+                <sch:rule abstract="false" context="apip:apipAccessibility/apip:inclusionOrder">
+
+                    <sch:assert test="count(apip:brailleDefaultOrder) = 0 or count(apip:brailleDefaultOrder) = 1">
+                        [RULE for Local Attribute 1] Invalid number of "brailleDefaultOrder" elements: <sch:value-of select="count(apip:brailleDefaultOrder)" />.
+                    </sch:assert>
+
+                    <sch:assert test="count(apip:textOnlyDefaultOrder) = 0 or count(apip:textOnlyDefaultOrder) = 1">
+                        [RULE for Local Attribute 2] Invalid number of "textOnlyDefaultOrder" elements: <sch:value-of select="count(apip:textOnlyDefaultOrder)" />.
+                    </sch:assert>
+
+                    <sch:assert test="count(apip:textOnlyOnDemandOrder) = 0 or count(apip:textOnlyOnDemandOrder) = 1">
+                        [RULE for Local Attribute 3] Invalid number of "textOnlyOnDemandOrder" elements: <sch:value-of select="count(apip:textOnlyOnDemandOrder)" />.
+                    </sch:assert>
+
+                    <sch:assert test="count(apip:textGraphicsDefaultOrder) = 0 or count(apip:textGraphicsDefaultOrder) = 1">
+                        [RULE for Local Attribute 4] Invalid number of "textGraphicsDefaultOrder" elements: <sch:value-of select="count(apip:textGraphicsDefaultOrder)" />.
+                    </sch:assert>
+
+                    <sch:assert test="count(apip:textGraphicsOnDemandOrder) = 0 or count(apip:textGraphicsOnDemandOrder) = 1">
+                        [RULE for Local Attribute 5] Invalid number of "textGraphicsOnDemandOrder" elements: <sch:value-of select="count(apip:textGraphicsOnDemandOrder)" />.
+                    </sch:assert>
+
+                    <sch:assert test="count(apip:graphicsOnlyOnDemandOrder) = 0 or count(apip:graphicsOnlyOnDemandOrder) = 1">
+                        [RULE for Local Attribute 6] Invalid number of "graphicsOnlyOnDemandOrder" elements: <sch:value-of select="count(apip:graphicsOnlyOnDemandOrder)" />.
+                    </sch:assert>
+
+                    <sch:assert test="count(apip:nonVisualDefaultOrder) = 0 or count(apip:nonVisualDefaultOrder) = 1">
+                        [RULE for Local Attribute 7] Invalid number of "nonVisualDefaultOrder" elements: <sch:value-of select="count(apip:nonVisualDefaultOrder)" />.
+                    </sch:assert>
+
+                    <sch:assert test="count(apip:aslDefaultOrder) = 0 or count(apip:aslDefaultOrder) = 1">
+                        [RULE for Local Attribute 8] Invalid number of "aslDefaultOrder" elements: <sch:value-of select="count(apip:aslDefaultOrder)" />.
+                    </sch:assert>
+
+                    <sch:assert test="count(apip:aslOnDemandOrder) = 0 or count(apip:aslOnDemandOrder) = 1">
+                        [RULE for Local Attribute 9] Invalid number of "aslOnDemandOrder" elements: <sch:value-of select="count(apip:aslOnDemandOrder)" />.
+                    </sch:assert>
+
+                    <sch:assert test="count(apip:signedEnglishDefaultOrder) = 0 or count(apip:signedEnglishDefaultOrder) = 1">
+                        [RULE for Local Attribute 10] Invalid number of "signedEnglishDefaultOrder" elements: <sch:value-of select="count(apip:signedEnglishDefaultOrder)" />.
+                    </sch:assert>
+
+                    <sch:assert test="count(apip:signedEnglishOnDemandOrder) = 0 or count(apip:signedEnglishOnDemandOrder) = 1">
+                        [RULE for Local Attribute 11] Invalid number of "signedEnglishOnDemandOrder" elements: <sch:value-of select="count(apip:signedEnglishOnDemandOrder)" />.
+                    </sch:assert>
+
+                </sch:rule>
+
+            </sch:pattern>
+            <!-- *************************************************************************** -->
+
+            <!-- RULESET ******************************************************************* -->
+            <sch:pattern abstract="false" id="RelatedElementInfo.Type">
+                <sch:title>[RULESET] For the RelatedElementInfo.Type complexType.</sch:title>
+
+                <sch:rule abstract="false" context="apip:apipAccessibility/apip:accessibilityInfo/apip:accessElement/apip:relatedElementInfo">
+
+                    <sch:assert test="count(apip:spoken) = 0 or count(apip:spoken) = 1">
+                        [RULE for Local Attribute 1] Invalid number of "spoken" elements: <sch:value-of select="count(apip:spoken)" />.
+                    </sch:assert>
+
+                    <sch:assert test="count(apip:brailleText) = 0 or count(apip:brailleText) = 1">
+                        [RULE for Local Attribute 2] Invalid number of "brailleText" elements: <sch:value-of select="count(apip:brailleText)" />.
+                    </sch:assert>
+
+                    <sch:assert test="count(apip:tactileFile) = 0 or count(apip:tactileFile) = 1">
+                        [RULE for Local Attribute 3] Invalid number of "tactileFile" elements: <sch:value-of select="count(apip:tactileFile)" />.
+                    </sch:assert>
+
+                    <sch:assert test="count(apip:signing) = 0 or count(apip:signing) = 1">
+                        [RULE for Local Attribute 4] Invalid number of "signing" elements: <sch:value-of select="count(apip:signing)" />.
+                    </sch:assert>
+
+                    <sch:assert test="count(apip:keyWordTranslation) = 0 or count(apip:keyWordTranslation) = 1">
+                        [RULE for Local Attribute 5] Invalid number of "keyWordTranslation" elements: <sch:value-of select="count(apip:keyWordTranslation)" />.
+                    </sch:assert>
+
+                    <sch:assert test="count(apip:revealAlternativeRepresentation) = 0 or count(apip:revealAlternativeRepresentation) = 1">
+                        [RULE for Local Attribute 6] Invalid number of "revealAlternativeRepresentation" elements: <sch:value-of select="count(apip:revealAlternativeRepresentation)" />.
+                    </sch:assert>
+
+                    <sch:assert test="count(apip:guidance) = 0 or count(apip:guidance) = 1">
+                        [RULE for Local Attribute 7] Invalid number of "guidance" elements: <sch:value-of select="count(apip:guidance)" />.
+                    </sch:assert>
+
+                    <sch:assert test="count(apip:structuredMask) = 0 or count(apip:structuredMask) = 1">
+                        [RULE for Local Attribute 8] Invalid number of "structuredMask" elements: <sch:value-of select="count(apip:structuredMask)" />.
+                    </sch:assert>
+
+                    <sch:assert test="count(apip:scaffold) = 0 or count(apip:scaffold) = 1">
+                        [RULE for Local Attribute 9] Invalid number of "scaffold" elements: <sch:value-of select="count(apip:scaffold)" />.
+                    </sch:assert>
+
+                    <sch:assert test="count(apip:chunk) = 0 or count(apip:chunk) = 1">
+                        [RULE for Local Attribute 10] Invalid number of "chunk" elements: <sch:value-of select="count(apip:chunk)" />.
+                    </sch:assert>
+
+                    <sch:assert test="count(apip:answerReduction) = 0 or count(apip:answerReduction) = 1">
+                        [RULE for Local Attribute 11] Invalid number of "answerReduction" elements: <sch:value-of select="count(apip:answerReduction)" />.
+                    </sch:assert>
+
+                    <sch:assert test="count(apip:keyWordEmphasis) = 0 or count(apip:keyWordEmphasis) = 1">
+                        [RULE for Local Attribute 12] Invalid number of "keyWordEmphasis" elements: <sch:value-of select="count(apip:keyWordEmphasis)" />.
+                    </sch:assert>
+
+                </sch:rule>
+
+            </sch:pattern>
+            <!-- *************************************************************************** -->
+
+        </xs:appinfo>
+    </xs:annotation>
+
+    <!-- Generate Global Attributes (non-assigned) ******************************************************** -->
+
+    <!-- ================================================================================================== -->
+
+    <!-- Generate Global Attributes *********************************************************************** -->
+
+    <!-- ================================================================================================== -->
+
+    <!-- Generate Global List Types *********************************************************************** -->
+
+    <!-- ================================================================================================== -->
+
+    <!-- Generate Namespaced extension Group  ************************************************************* -->
+
+    <xs:group name="grpStrict.any">
+        <xs:annotation>
+            <xs:documentation>
+                Any namespaced element from any namespace may be included within an "any" element.
+                The namespace for the imported element must be defined in the instance, and the schema must be imported.
+                The extension has a definition of "strict" i.e. they must have their own namespace.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+            <xs:any namespace = "##other" processContents = "strict" minOccurs = "0" maxOccurs = "unbounded" />
+        </xs:sequence>
+    </xs:group>
+
+    <xs:group name="grpLax.any">
+        <xs:annotation>
+            <xs:documentation>
+                Any namespaced element from any namespace may be included within an "any" element.
+                The namespace for the imported element must be defined in the instance, and the schema must be imported.
+                The extension has a definition of "lax" i.e. they can reuse elements from the target namespace.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+            <xs:any namespace = "##other" processContents = "lax" minOccurs = "0" maxOccurs = "unbounded" />
+        </xs:sequence>
+    </xs:group>
+
+    <!-- ================================================================================================== -->
+
+    <!-- Generate Special DataTypes  ********************************************************************** -->
+
+    <xs:complexType name="EmptyPrimitiveType.Type">
+        <xs:complexContent>
+            <xs:restriction base="xs:anyType" />
+        </xs:complexContent>
+    </xs:complexType>
+
+    <!-- ================================================================================================== -->
+
+    <!-- Generate the enumerated simpleType declarations ************************************************** -->
+
+    <!-- ================================================================================================== -->
+
+    <!-- Generate the simpleType elements based on IMS data-types (Parameter) ***************************** -->
+
+    <!-- ================================================================================================== -->
+
+    <!-- Generate the simpleType elements based on IMS data-types (Derived) ******************************* -->
+
+    <!-- ================================================================================================== -->
+
+    <!-- Generate the simpleType elements based on IMS data-types (Union) ********************************* -->
+
+    <!-- ================================================================================================== -->
+
+    <!-- Generate the simpleType elements based on IMS data-types (Complex) ******************************* -->
+
+    <!-- ================================================================================================== -->
+
+    <!-- Generate the derived data-type elements based upon simpleType ************************************ -->
+
+    <xs:simpleType name="FileHref.Type">
+        <xs:restriction base="xs:anyURI" />
+    </xs:simpleType>
+
+    <!-- ================================================================================================== -->
+
+    <!-- Generate the derived data-type elements based upon derived simpleType **************************** -->
+
+    <!-- ================================================================================================== -->
+
+    <!-- Generate the ComplexTypes ************************************************************************ -->
+
+    <xs:complexType name="AccessElement.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The AccessElement complexType is the container for the accessibility information defined as an access element i.e. the atomic unity for the new accessibility content. Each access element has a unique identifier and points to the source content (either in the original QTI content or to another access element). An access element can refer to more than one source content structure.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+            <xs:element name="contentLinkInfo" type="ContentLinkInfo.Type" minOccurs="1" maxOccurs="unbounded" />
+            <xs:element name="relatedElementInfo" type="RelatedElementInfo.Type" minOccurs="1" maxOccurs="1" />
+        </xs:sequence>
+        <xs:attribute name="identifier" use="required" type="xs:ID" />
+    </xs:complexType>
+
+    <xs:complexType name="AccessibilityInfo.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The AccessibilityInfo complexType is the container for all of the new content defined for teh set of accessibility features.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+            <xs:element name="accessElement" type="AccessElement.Type" minOccurs="1" maxOccurs="unbounded" />
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:complexType name="AnswerReduction.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The AnswerReduction complexType is the container for the instructions on how answer reduction is to be achieved. The reduction process is defined in terms of groups that are handled separately.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+            <xs:element name="removeTagGroup" type="RemoveTagGroup.Type" minOccurs="1" maxOccurs="unbounded" />
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:complexType name="APIPAccessibility.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The APIPAccessibility complexType is the top level container for all of the APIP information used to describe the accessibility features to be added to a QTI XML description of a QTI Item. This optional information consists of: companion materials, the inclusion orders to be used rendering the content in trems of the new accessibility information, and the set of accessibility information itself.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+            <xs:element name="companionMaterialsInfo" type="CompanionMaterialsInfo.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="inclusionOrder" type="InclusionOrder.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="accessibilityInfo" type="AccessibilityInfo.Type" minOccurs="0" maxOccurs="1" />
+            <xs:group ref="grpStrict.any" />
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:complexType name="AudioFileInfo.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The AudioFileInfo complexType is the container for the accessibility content contained in an external audio file. The start and durations are supplied so that one audio file can be used to support more than one accessibility element.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+            <xs:element name="fileHref" type="FileHref.Type" minOccurs="1" maxOccurs="1" />
+            <xs:element name="voiceType" default="Synthetic" minOccurs="0" maxOccurs="1">
+                <xs:simpleType>
+                    <xs:restriction base="xs:string">
+                        <xs:enumeration value="Human" />
+                        <xs:enumeration value="Synthetic" />
+                    </xs:restriction>
+                </xs:simpleType>
+            </xs:element>
+            <xs:element name="voiceSpeed" default="Standard" minOccurs="0" maxOccurs="1">
+                <xs:simpleType>
+                    <xs:restriction base="xs:string">
+                        <xs:enumeration value="Slow" />
+                        <xs:enumeration value="Standard" />
+                        <xs:enumeration value="Fast" />
+                    </xs:restriction>
+                </xs:simpleType>
+            </xs:element>
+            <xs:element name="startTime" type="xs:time" minOccurs="0" maxOccurs="1" />
+            <xs:element name="duration" type="xs:time" minOccurs="0" maxOccurs="1" />
+        </xs:sequence>
+        <xs:attribute name="contentLinkIdentifier" use="required" type="xs:ID" />
+        <xs:attribute name="mimeType" use="required" type="xs:normalizedString" />
+    </xs:complexType>
+
+    <xs:complexType name="BrailleText.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The BrailleText complexType is the container for the text string that is to be passed to a Braile reader.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+            <xs:element name="brailleTextString" type="LabelledString.Type" minOccurs="1" maxOccurs="1" />
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:complexType name="Calculator.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The Calculator complexType is the container for the information on the permitted type of calculator available for use with the APIP Items. A human readable description of the calculator should also be available.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+            <xs:element name="calculatorType" minOccurs="1" maxOccurs="1">
+                <xs:simpleType>
+                    <xs:restriction base="xs:string">
+                        <xs:enumeration value="Basic" />
+                        <xs:enumeration value="Standard" />
+                        <xs:enumeration value="Scientific" />
+                        <xs:enumeration value="Graphing" />
+                    </xs:restriction>
+                </xs:simpleType>
+            </xs:element>
+            <xs:element name="description" type="xs:normalizedString" minOccurs="1" maxOccurs="1" />
+            <xs:element name="calculatorInfo" type="ItemFileInfo.Type" minOccurs="0" maxOccurs="1" />
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:complexType name="CharacterStringLink.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The CharacterStringLink is the container for the identification of the start and stop characters to which the text link refers.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+            <xs:element name="startCharacter" type="xs:integer" minOccurs="1" maxOccurs="1" />
+            <xs:element name="stopCharacter" type="xs:integer" minOccurs="1" maxOccurs="1" />
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:complexType name="CompanionMaterialsInfo.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The CompanionMaterialsInfo complexType is the container for information about materials and tools that the examinee is expected to work with while performing the relevant QTI Item(s). These materials and tools may include a reading passage, rule, protractor, calculator, etc.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:choice minOccurs = "0" maxOccurs = "unbounded">
+            <xs:element name="calculator" type="Calculator.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="rule" type="Rule.Type" minOccurs="0" maxOccurs="unbounded" />
+            <xs:element name="protractor" type="Protractor.Type" minOccurs="0" maxOccurs="unbounded" />
+            <xs:element name="readingPassage" type="ItemFileInfo.Type" minOccurs="0" maxOccurs="unbounded" />
+            <xs:element name="digitalMaterial" type="ItemFileInfo.Type" minOccurs="0" maxOccurs="unbounded" />
+            <xs:element name="physicalMaterial" type="xs:normalizedString" minOccurs="0" maxOccurs="unbounded" />
+            <xs:group ref="grpStrict.any" />
+        </xs:choice>
+    </xs:complexType>
+
+    <xs:complexType name="ContentLinkInfo.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The ContentLinkInfo complexType is the container for the link information between the new accessibility information and the original content (this can be in the original QTI or another piece of accessibility information). The link can refer to a string, a word, a character or an object.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:choice>
+            <xs:element name="textLink" type="TextLink.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="objectLink" type="EmptyPrimitiveType.Type" minOccurs="0" maxOccurs="1" />
+        </xs:choice>
+        <xs:attribute name="apipLinkIdentifierRef" use="optional" type="xs:IDREF" />
+        <xs:attribute name="qtiLinkIdentifierRef" use="optional" type="xs:normalizedString" />
+    </xs:complexType>
+
+    <xs:complexType name="DefinitionId.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The DefinitionId complexType is the container for the keyword translation for a specific language for the associated text.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+            <xs:element name="textString" type="LabelledString.Type" minOccurs="1" maxOccurs="1" />
+        </xs:sequence>
+        <xs:attribute ref="xml:lang" use="required" />
+    </xs:complexType>
+
+    <xs:complexType name="ElementOrder.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The ElementOrder complexType is the container for the identification of the order in which the associated accessibility element (identified by the 'identifierRef' value).
+            </xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+            <xs:element name="order" type="xs:integer" minOccurs="1" maxOccurs="1" />
+        </xs:sequence>
+        <xs:attribute name="identifierRef" use="required" type="xs:IDREF" />
+    </xs:complexType>
+
+    <xs:complexType name="ElementOrderList.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The ElementOrderList is the complexType container for the definition of the order in which the set of accessibility elements are to be applied for the associated accessibility support.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+            <xs:element name="elementOrder" type="ElementOrder.Type" minOccurs="1" maxOccurs="unbounded" />
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:complexType name="Guidance.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The Guidance complexType is the container for the content to provide guidance through the original material. The gidance takes the form of supporting language learners and those requiring cognitive guidance.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+            <xs:element name="languageLearnerSupport" type="GuidanceSupport.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="cognitiveGuidanceSupport" type="GuidanceSupport.Type" minOccurs="0" maxOccurs="1" />
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:complexType name="GuidanceSupport.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The GuidanceSupport complexType is the container for the definition of the order in which the guidance is to be presented and the text string used as part of the guidance.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+            <xs:element name="supportOrder" type="xs:integer" minOccurs="1" maxOccurs="1" />
+            <xs:element name="textString" type="LabelledString.Type" minOccurs="1" maxOccurs="1" />
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:complexType name="InclusionOrder.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The InclusionOrder complexType is the container for the inclusion order for the set of accessibility elements for each of the accessibility capabilities. Only those accessibility capabilities addressed in the instance are provided i.e. an instace is NOT required to provide information for all of these capabilities. Note that there is no preferred order for this set of inclusion order descriptions.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:choice minOccurs = "0" maxOccurs = "unbounded">
+            <xs:element name="brailleDefaultOrder" type="ElementOrderList.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="textOnlyDefaultOrder" type="ElementOrderList.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="textOnlyOnDemandOrder" type="ElementOrderList.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="textGraphicsDefaultOrder" type="ElementOrderList.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="textGraphicsOnDemandOrder" type="ElementOrderList.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="graphicsOnlyOnDemandOrder" type="ElementOrderList.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="nonVisualDefaultOrder" type="ElementOrderList.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="aslDefaultOrder" type="ElementOrderList.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="aslOnDemandOrder" type="ElementOrderList.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="signedEnglishDefaultOrder" type="ElementOrderList.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="signedEnglishOnDemandOrder" type="ElementOrderList.Type" minOccurs="0" maxOccurs="1" />
+            <xs:group ref="grpStrict.any" />
+        </xs:choice>
+    </xs:complexType>
+
+    <xs:complexType name="IncrementSI.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The IncrementSI complexType is the container for the simple specification of the Protractor, using SI units, to be used with the set of APIP Items. The Protractor is defined in terms of its increment resolutions.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+            <xs:element name="minorIncrement" type="RadialSIValue.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="majorIncrement" type="RadialSIValue.Type" minOccurs="1" maxOccurs="1" />
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:complexType name="IncrementUS.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The IncrementUS complexType is the container for the simple specification of the Protractor, using US units, to be used with the set of APIP Items. The Protractor is defined in terms of its increment resolutions.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+            <xs:element name="minorIncrement" type="RadialUSValue.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="majorIncrement" type="RadialUSValue.Type" minOccurs="1" maxOccurs="1" />
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:complexType name="ItemFileInfo.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The ItemFileInfo complexType is the for the 'href' pointer to an external file. The 'href' should contain sufficient information for the correct location of the file within the associated Content Package (all files must be contained within the content package that is used to contained the APIP Item).
+            </xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+            <xs:element name="fileHref" type="FileHref.Type" minOccurs="1" maxOccurs="1" />
+        </xs:sequence>
+        <xs:attribute name="mimeType" use="optional" type="xs:normalizedString" />
+    </xs:complexType>
+
+    <xs:complexType name="KeyWordTranslation.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The KeyWordTranslation complexType is the container for the keyword translation text content. Support for multiple languages is provided.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+            <xs:element name="definitionId" type="DefinitionId.Type" minOccurs="1" maxOccurs="unbounded" />
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:complexType name="MarkupFileEmbedded.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The MarkupFileEmbedded complexType is the container for the alternative markup content i.e.the markup is embedded in the instance file.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+            <xs:group ref="grpLax.any" />
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:complexType name="ObjectFileInfo.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The ObjectFileInfo complexType is the container for the file reference to the external object.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+            <xs:element name="fileHref" type="FileHref.Type" minOccurs="1" maxOccurs="1" />
+        </xs:sequence>
+        <xs:attribute name="contentLinkIdentifier" use="required" type="xs:ID" />
+        <xs:attribute name="mimeType" use="optional" type="xs:normalizedString" />
+    </xs:complexType>
+
+    <xs:complexType name="Protractor.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The Protractor complexType is the container for the specification of the protractor tool that is to be used to support the APIP Items. The Protractor is defined in terms of its radial resolution. A human readable description of the tool should also be available..
+            </xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+            <xs:element name="description" type="xs:normalizedString" minOccurs="1" maxOccurs="1" />
+            <xs:choice minOccurs="1" maxOccurs="1">
+                <xs:element name="incrementSI" type="IncrementSI.Type" minOccurs="1" maxOccurs="1"/>
+                <xs:element name="incrementUS" type="IncrementUS.Type" minOccurs="1" maxOccurs="1"/>
+            </xs:choice>
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:complexType name="RelatedElementInfo.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The RelatedElementInfo complexType is the container for the accessibility information for a specific access element. Only those accessibility capabilities supported for an instance are included. Note that there is no preferred order for this information.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:choice minOccurs = "0" maxOccurs = "unbounded">
+            <xs:element name="spoken" type="Spoken.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="brailleText" type="BrailleText.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="tactileFile" type="TactileFile.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="signing" type="Signing.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="keyWordTranslation" type="KeyWordTranslation.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="revealAlternativeRepresentation" type="RevealAlternativeRepresentation.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="guidance" type="Guidance.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="structuredMask" type="StructuredMask.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="scaffold" type="Scaffold.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="chunk" type="EmptyPrimitiveType.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="answerReduction" type="AnswerReduction.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="keyWordEmphasis" type="EmptyPrimitiveType.Type" minOccurs="0" maxOccurs="1" />
+            <xs:group ref="grpStrict.any" />
+        </xs:choice>
+    </xs:complexType>
+
+    <xs:complexType name="RemoveTagGroup.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The RemoveTagGroup complexType is the container for the answer reduction instructions for the associated group.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+            <xs:element name="removeTagGroupOrder" type="xs:integer" minOccurs="1" maxOccurs="1" />
+            <xs:element name="removeTagIdRef" type="xs:normalizedString" minOccurs="1" maxOccurs="unbounded" />
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:complexType name="RevealAlternativeRepresentation.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The RevealAlternativeRepresentation complexType is the container for the alternative representation that is to be rendered. Note that each alternative representation must be defined as its own access element.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:choice>
+            <xs:element name="audioFileInfo" type="AudioFileInfo.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="videoFileInfo" type="VideoFileInfo.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="graphicFileInfo" type="ObjectFileInfo.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="textFileInfo" type="ObjectFileInfo.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="textString" type="LabelledString.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="markupFileInfo" type="ObjectFileInfo.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="markupFileEmbedded" type="MarkupFileEmbedded.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="executableFileInfo" type="ObjectFileInfo.Type" minOccurs="0" maxOccurs="1" />
+            <xs:group ref="grpStrict.any" />
+        </xs:choice>
+    </xs:complexType>
+
+    <xs:complexType name="Rule.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The Rule complexType is the container for the simple specification of the Rule to be used with the set of APIP Items.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+            <xs:element name="description" type="xs:normalizedString" minOccurs="1" maxOccurs="1" />
+            <xs:choice minOccurs="1" maxOccurs="1">
+                <xs:element name="ruleSystemSI" type="SIRuleSystem.Type" minOccurs="1" maxOccurs="1"/>
+                <xs:element name="ruleSystemUS" type="USRuleSystem.Type" minOccurs="1" maxOccurs="1"/>
+            </xs:choice>
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:complexType name="Scaffold.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The Scaffold complexType is the container for the scaffolding accessibility content. Each piece of scaffolding has an associated order of revelation for the alternative content..
+            </xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+            <xs:element name="revealOrder" type="xs:integer" minOccurs="1" maxOccurs="1" />
+            <xs:element name="scaffoldBehavior" type="ScaffoldBehavior.Type" minOccurs="0" maxOccurs="1" />
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:complexType name="ScaffoldBehavior.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The ScaffoldBehavior complexType is the container for the scaffolding. This content can take the form of audio, text and verbal materials.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+            <xs:element name="audioFileInfo" type="AudioFileInfo.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="textString" type="LabelledString.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="spokenText" type="LabelledString.Type" minOccurs="0" maxOccurs="1" />
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:complexType name="SignFile.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The SignFile complexType is the container for the links to the external signing files. Signing is available as video or bone animation files.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+            <xs:element name="videoFileInfo" type="VideoFileInfo.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="boneAnimationVideoFile" type="ObjectFileInfo.Type" minOccurs="0" maxOccurs="1" />
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:complexType name="Signing.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The Signing complexType is the container for the instructions for the provision of signing. ASL and Signed English are the supported modes for signing.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+            <xs:element name="signFileASL" type="SignFile.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="signFileSignedEnglish" type="SignFile.Type" minOccurs="0" maxOccurs="1" />
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:complexType name="SIRuleSystem.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The SIRuleSystem complexType is the container for the simple specification of the Rule, using SI units, to be used with the set of APIP Items. The Rule is defined in terms of its length and increment resolution.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+            <xs:element name="minimumLength" type="xs:integer" minOccurs="1" maxOccurs="1" />
+            <xs:element name="minorIncrement" type="SILinearValue.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="majorIncrement" type="SILinearValue.Type" minOccurs="1" maxOccurs="1" />
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:complexType name="Spoken.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The Spoken complexType is the container for the spoken accessibility content as an alternative to visual content.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+            <xs:element name="audioFileInfo" type="AudioFileInfo.Type" minOccurs="0" maxOccurs="unbounded" />
+            <xs:element name="spokenText" type="LabelledString.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="textToSpeechPronunciation" type="LabelledString.Type" minOccurs="0" maxOccurs="1" />
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:complexType name="StructuredMask.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The StructuredMask complexType is the container for the settings to be aplied to a structured mask usage. The settings are the order of revelation for this object and whether or not it is to be applied to the answer fields of a question..
+            </xs:documentation>
+        </xs:annotation>
+        <xs:choice>
+            <xs:element name="revealOrder" type="xs:integer" minOccurs="0" maxOccurs="1" />
+            <xs:element name="answerOption" type="xs:boolean" default="true" minOccurs="0" maxOccurs="1" />
+        </xs:choice>
+    </xs:complexType>
+
+    <xs:complexType name="TactileFile.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The TactileFile complexType is the container for the audio/Braille accessibility content as an alternative to tactile content.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+            <xs:element name="tactileAudioFile" type="AudioFileInfo.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="tactileAudioText" type="LabelledString.Type" minOccurs="1" maxOccurs="1" />
+            <xs:element name="tactileBrailleText" type="LabelledString.Type" minOccurs="0" maxOccurs="1" />
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:complexType name="TextLink.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The TextLink complexType is the container for the information that is used to identify the object in the original content that the new accessibility content is to replace.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:choice>
+            <xs:element name="fullString" type="EmptyPrimitiveType.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="wordLink" type="xs:integer" minOccurs="0" maxOccurs="1" />
+            <xs:element name="characterLink" type="xs:integer" minOccurs="0" maxOccurs="1" />
+            <xs:element name="characterStringLink" type="CharacterStringLink.Type" minOccurs="0" maxOccurs="1" />
+        </xs:choice>
+    </xs:complexType>
+
+    <xs:complexType name="USRuleSystem.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The USRuleSystem complexType is the container for the simple specification of the Rule, using US units, to be used with the set of APIP Items. The Rule is defined in terms of its length and increment resolution.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+            <xs:element name="minimumLength" type="xs:integer" minOccurs="1" maxOccurs="1" />
+            <xs:element name="minorIncrement" type="USLinearValue.Type" minOccurs="0" maxOccurs="1" />
+            <xs:element name="majorIncrement" type="USLinearValue.Type" minOccurs="1" maxOccurs="1" />
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:complexType name="VideoFileInfo.Type" abstract="false" mixed="false">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The VideoFileInfo complexType is the container for the accessibility content contained in an external video file. The start and end points are supplied so that one video file can be used to support more than one accessibility element.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+            <xs:element name="fileHref" type="FileHref.Type" minOccurs="1" maxOccurs="1" />
+            <xs:element name="startCue" type="xs:time" minOccurs="0" maxOccurs="1" />
+            <xs:element name="endCue" type="xs:time" minOccurs="0" maxOccurs="1" />
+        </xs:sequence>
+        <xs:attribute name="contentLinkIdentifier" use="required" type="xs:ID" />
+        <xs:attribute name="mimeType" use="required" type="xs:normalizedString" />
+    </xs:complexType>
+
+    <!-- ================================================================================================== -->
+
+    <!-- Generate the derived ComplexTypes **************************************************************** -->
+
+    <xs:complexType name="LabelledString.Type">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The LabelledString derivedType is the container for the text string labels that have their own content link identifier.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:simpleContent>
+            <xs:extension base="xs:string">
+                <xs:attribute name="contentLinkIdentifier" use="required" type="xs:ID" />
+            </xs:extension>
+        </xs:simpleContent>
+    </xs:complexType>
+
+    <xs:complexType name="RadialSIValue.Type">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The RadialSIValue derivedType is the container for the radial measurements in terms of SI units.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:simpleContent>
+            <xs:extension base="xs:decimal">
+                <xs:attribute name="unit" use="required">
+                    <xs:simpleType>
+                        <xs:restriction base="xs:string">
+                            <xs:enumeration value="Radian" />
+                        </xs:restriction>
+                    </xs:simpleType>
+                </xs:attribute>
+            </xs:extension>
+        </xs:simpleContent>
+    </xs:complexType>
+
+    <xs:complexType name="RadialUSValue.Type">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The RadialUSValue derivedType is the container for the radial measurements in terms of US units.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:simpleContent>
+            <xs:extension base="xs:decimal">
+                <xs:attribute name="unit" use="required">
+                    <xs:simpleType>
+                        <xs:restriction base="xs:string">
+                            <xs:enumeration value="Degree" />
+                            <xs:enumeration value="Minute" />
+                            <xs:enumeration value="Second" />
+                        </xs:restriction>
+                    </xs:simpleType>
+                </xs:attribute>
+            </xs:extension>
+        </xs:simpleContent>
+    </xs:complexType>
+
+    <xs:complexType name="SILinearValue.Type">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The SILinearValue derivedType is the container for the linear measurements in terms of an SI unit.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:simpleContent>
+            <xs:extension base="xs:decimal">
+                <xs:attribute name="unit" use="required">
+                    <xs:simpleType>
+                        <xs:restriction base="xs:string">
+                            <xs:enumeration value="Millimeter" />
+                            <xs:enumeration value="Centimeter" />
+                            <xs:enumeration value="Meter" />
+                            <xs:enumeration value="Kilometer" />
+                        </xs:restriction>
+                    </xs:simpleType>
+                </xs:attribute>
+            </xs:extension>
+        </xs:simpleContent>
+    </xs:complexType>
+
+    <xs:complexType name="USLinearValue.Type">
+        <xs:annotation>
+            <xs:documentation source="documentation">
+                The USLinearValue derivedType is the container for the linear measurements in terms of US units.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:simpleContent>
+            <xs:extension base="xs:decimal">
+                <xs:attribute name="unit" use="required">
+                    <xs:simpleType>
+                        <xs:restriction base="xs:string">
+                            <xs:enumeration value="Inch" />
+                            <xs:enumeration value="Foot" />
+                            <xs:enumeration value="Yard" />
+                            <xs:enumeration value="Mile" />
+                        </xs:restriction>
+                    </xs:simpleType>
+                </xs:attribute>
+            </xs:extension>
+        </xs:simpleContent>
+    </xs:complexType>
+
+    <!-- ================================================================================================== -->
+
+    <!-- Declaration of the elements (Complex) ************************************************************ -->
+
+    <!-- ================================================================================================== -->
+
+    <!-- Declaration of the elements (Derived) ************************************************************ -->
+
+    <!-- ================================================================================================== -->
+
+    <!-- Declaration of the root element(s) *************************************************************** -->
+
+    <xs:element name="apipAccessibility" type="APIPAccessibility.Type" />
+
+    <!-- ================================================================================================== -->
+
+</xs:schema>

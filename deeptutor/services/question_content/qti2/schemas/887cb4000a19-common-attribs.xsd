@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<xs:schema 
+  xmlns:xs="http://www.w3.org/2001/XMLSchema"
+  xmlns="http://www.w3.org/1998/Math/MathML"
+  targetNamespace="http://www.w3.org/1998/Math/MathML"
+  elementFormDefault="qualified"
+ >
+
+<xs:annotation>
+  <xs:documentation>
+  This schema module defines sets of attributes common to several elements
+  of presentation MathML.
+  Author: St&#233;phane Dalmas, INRIA.
+  </xs:documentation>
+</xs:annotation>
+
+<!-- The mathematics style attributes. These attributes are valid on all
+     presentation token elements except "mspace" and "mglyph", and on no
+     other elements except "mstyle". -->
+
+<xs:attributeGroup name="Token-style.attrib">
+   <xs:attribute name="mathvariant">
+     <xs:simpleType>
+       <xs:restriction base="xs:string">
+           <xs:enumeration value="normal"/>
+           <xs:enumeration value="bold"/>
+           <xs:enumeration value="italic"/>
+           <xs:enumeration value="bold-italic"/>
+           <xs:enumeration value="double-struck"/>
+           <xs:enumeration value="bold-fraktur"/>
+           <xs:enumeration value="script"/>
+           <xs:enumeration value="bold-script"/>
+           <xs:enumeration value="fraktur"/>
+           <xs:enumeration value="sans-serif"/>
+           <xs:enumeration value="bold-sans-serif"/>
+           <xs:enumeration value="sans-serif-italic"/>
+           <xs:enumeration value="sans-serif-bold-italic"/>
+           <xs:enumeration value="monospace"/>
+       </xs:restriction>
+     </xs:simpleType>
+   </xs:attribute>
+   <xs:attribute name="mathsize">
+     <xs:simpleType>
+       <xs:union memberTypes="simple-size length-with-unit"/>
+     </xs:simpleType>
+   </xs:attribute>
+   <!-- For both of the following attributes the types should be
+        more restricted -->
+   <xs:attribute name="mathcolor" type="xs:string"/>
+   <xs:attribute name="mathbackground" type="xs:string"/>
+</xs:attributeGroup>
+
+<!-- These operators are all related to operators. They are valid on "mo" 
+     and "mstyle". -->
+
+<xs:attributeGroup name="Operator.attrib">
+   <!-- this attribute value is normally inferred from the position of
+    the operator in its "<mrow"> -->
+   <xs:attribute name="form">
+      <xs:simpleType>
+        <xs:restriction base="xs:string">
+          <xs:enumeration value="prefix"/>
+          <xs:enumeration value="infix"/>
+          <xs:enumeration value="postfix"/>
+        </xs:restriction>
+      </xs:simpleType>
+   </xs:attribute>
+   <!-- set by dictionnary, else it is "thickmathspace" -->
+   <xs:attribute name="lspace">
+      <xs:simpleType>
+         <xs:union memberTypes="length-with-unit named-space"/>
+      </xs:simpleType>
+   </xs:attribute>    
+   <!-- set by dictionnary, else it is "thickmathspace" -->
+   <xs:attribute name="rspace">
+      <xs:simpleType>
+         <xs:union memberTypes="length-with-unit named-space"/>
+      </xs:simpleType>
+   </xs:attribute>
+   <!-- set by dictionnary, else it is "false" -->
+   <xs:attribute name="fence" type="xs:boolean"/>
+   <!-- set by dictionnary, else it is "false" -->
+   <xs:attribute name="separator" type="xs:boolean"/>
+   <!-- set by dictionnary, else it is "false" -->
+   <xs:attribute name="stretchy" type="xs:boolean"/>
+   <!-- set by dictionnary, else it is "true" -->
+   <xs:attribute name="symmetric" type="xs:boolean"/>
+   <!-- set by dictionnary, else it is "false" -->
+   <xs:attribute name="movablelimits" type="xs:boolean"/>
+   <!-- set by dictionnary, else it is "false" -->
+   <xs:attribute name="accent" type="xs:boolean"/>
+   <!-- set by dictionnary, else it is "false" -->
+   <xs:attribute name="largeop" type="xs:boolean"/>
+   <xs:attribute name="minsize">
+      <xs:simpleType>
+         <xs:union memberTypes="length-with-unit named-space"/>
+      </xs:simpleType>
+   </xs:attribute>
+   <xs:attribute name="maxsize">
+      <xs:simpleType>
+         <xs:union memberTypes="length-with-unit named-space infinity xs:float"/>
+      </xs:simpleType>
+   </xs:attribute>
+</xs:attributeGroup>
+
+</xs:schema>
+<!--
+  Copyright &#251; 2002 World Wide Web Consortium, (Massachusetts Institute
+  of Technology, Institut National de Recherche en Informatique et en
+  Automatique, Keio University). All Rights Reserved. See
+  http://www.w3.org/Consortium/Legal/.
+  -->

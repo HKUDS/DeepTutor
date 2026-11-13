@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<xs:schema
+  xmlns:xs="http://www.w3.org/2001/XMLSchema"
+  xmlns="http://www.w3.org/1998/Math/MathML"
+  targetNamespace="http://www.w3.org/1998/Math/MathML"
+  elementFormDefault="qualified"
+ >
+
+<xs:annotation>
+  <xs:documentation>
+  This is an XML Schema module defining the "math" element of MathML.
+  Author: St&#233;phane Dalmas, INRIA.
+  </xs:documentation>
+</xs:annotation>
+
+<!-- The four groups that govern a lot of things -->
+
+<!-- currently very lax. Should be tightened from Chapter 5 -->
+
+<xs:group name="Presentation-expr.class">
+  <xs:choice>
+    <xs:group ref="PresExpr.class"/>
+    <xs:group ref="ContExpr.class"/>
+  </xs:choice>
+</xs:group>
+
+<xs:group name="Content-expr.class">
+  <xs:choice>
+    <xs:group ref="ContExpr.class"/>
+    <xs:group ref="PresExpr.class"/>
+  </xs:choice>
+</xs:group>
+
+<xs:group name="PresExpr.class">
+  <xs:choice>
+    <xs:group ref="Presentation-token.class"/>
+    <xs:group ref="Presentation-layout.class"/>
+    <xs:group ref="Presentation-script.class"/>
+    <xs:group ref="Presentation-table.class"/>
+    <xs:element ref="mspace"/>
+    <xs:element ref="maction"/>
+    <xs:element ref="merror"/>
+    <xs:element ref="mstyle"/>
+  </xs:choice>
+</xs:group>
+
+<xs:group name="ContExpr.class">
+  <xs:choice>
+    <xs:group ref="Content-tokens.class"/>
+    <xs:group ref="Content-arith.class"/>
+    <xs:group ref="Content-functions.class"/>
+    <xs:group ref="Content-logic.class"/>
+    <xs:group ref="Content-constants.class"/>
+    <xs:group ref="Content-sets.class"/>
+    <xs:group ref="Content-relations.class"/>
+    <xs:group ref="Content-elementary-functions.class"/>
+    <xs:group ref="Content-calculus.class"/>
+    <xs:group ref="Content-linear-algebra.class"/>
+    <xs:group ref="Content-vector-calculus.class"/>
+    <xs:group ref="Content-statistics.class"/>
+    <xs:group ref="Content-constructs.class"/>
+    <xs:element ref="semantics"/>
+  </xs:choice>
+</xs:group>
+
+<!-- "math" -->
+
+<xs:attributeGroup name="Browser-interface.attrib">
+  <xs:attribute name="baseline" type="xs:string"/>
+  <xs:attribute name="overflow" default="scroll">
+    <xs:simpleType>
+      <xs:restriction base="xs:string">
+        <xs:enumeration value="scroll"/>
+        <xs:enumeration value="elide"/>
+        <xs:enumeration value="truncate"/>
+        <xs:enumeration value="scale"/>
+      </xs:restriction>
+    </xs:simpleType>
+  </xs:attribute>
+  <xs:attribute name="altimg" type="xs:anyURI"/>
+  <xs:attribute name="alttext" type="xs:string"/>
+  <xs:attribute name="type" type="xs:string"/>
+  <xs:attribute name="name" type="xs:string"/>
+  <xs:attribute name="height" type="xs:string"/>
+  <xs:attribute name="width" type="xs:string"/>
+</xs:attributeGroup>
+
+<xs:attributeGroup name="math.attlist">
+  <xs:attributeGroup ref="Browser-interface.attrib"/>
+  <xs:attribute name="macros" type="xs:string"/>
+<!-- deprecated
+  <xs:attribute name="mode" type="xs:string"/>
+-->
+  <xs:attribute name="display" default="inline">
+    <xs:simpleType>
+      <xs:restriction base="xs:string">
+        <xs:enumeration value="block"/>
+        <xs:enumeration value="inline"/>
+      </xs:restriction>
+    </xs:simpleType>
+  </xs:attribute>
+  <xs:attributeGroup ref="Common.attrib"/>
+</xs:attributeGroup>
+
+<xs:group name="math.content">
+  <xs:choice>
+    <xs:group ref="PresExpr.class"/>
+    <xs:group ref="ContExpr.class"/>
+  </xs:choice>
+</xs:group>
+
+<xs:complexType name="math.type">
+  <xs:group ref="math.content" minOccurs="0" maxOccurs="unbounded"/>
+  <xs:attributeGroup ref="math.attlist"/>
+</xs:complexType>
+
+<xs:element name="math" type="math.type"/>
+
+</xs:schema>
+<!--
+  Copyright &#251; 2002 World Wide Web Consortium, (Massachusetts Institute
+  of Technology, Institut National de Recherche en Informatique et en
+  Automatique, Keio University). All Rights Reserved. See
+  http://www.w3.org/Consortium/Legal/.
+  -->

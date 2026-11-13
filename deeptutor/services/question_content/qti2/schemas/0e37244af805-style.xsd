@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<xs:schema 
+  xmlns:xs="http://www.w3.org/2001/XMLSchema"
+  xmlns="http://www.w3.org/1998/Math/MathML"
+  targetNamespace="http://www.w3.org/1998/Math/MathML"
+  elementFormDefault="qualified"
+ >
+
+<xs:annotation>
+  <xs:documentation>
+  This is an XML Schema for the "mstyle" element of MathML.
+  Author: St&#233;phane Dalmas, INRIA.
+  </xs:documentation>
+</xs:annotation>
+
+<!-- "mstyle" -->
+
+<xs:attributeGroup name="mstyle.attlist">
+  <xs:attribute name="scriptlevel" type="xs:integer"/>
+  <xs:attribute name="displaystyle" type="xs:boolean"/>
+  <xs:attribute name="scriptsizemultiplier" type="xs:decimal" default="0.71"/>
+  <xs:attribute name="scriptminsize" type="length-with-unit" default="8pt"/>
+  <xs:attribute name="color" type="xs:string"/>
+  <xs:attribute name="background" type="xs:string" default="transparent"/>
+  <xs:attribute name="veryverythinmathspace" type="length-with-unit"
+                default="0.0555556em"/>
+  <xs:attribute name="verythinmathspace" type="length-with-unit"
+                default="0.111111em"/>
+  <xs:attribute name="thinmathspace" type="length-with-unit"
+                default="0.166667em"/>
+  <xs:attribute name="mediummathspace" type="length-with-unit"
+                default="0.222222em"/>
+  <xs:attribute name="thickmathspace" type="length-with-unit"
+                default="0.277778em"/>
+  <xs:attribute name="verythickmathspace" type="length-with-unit"
+                default="0.333333em"/>
+  <xs:attribute name="veryverythickmathspace" type="length-with-unit"
+                default="0.388889em"/>
+  <xs:attribute name="linethickness" default="1">
+    <xs:simpleType>
+      <xs:union memberTypes="length-with-optional-unit thickness"/>
+    </xs:simpleType> 
+  </xs:attribute>
+  <xs:attributeGroup ref="Operator.attrib"/>
+  <xs:attributeGroup ref="Token-style.attrib"/>
+  <xs:attributeGroup ref="Common.attrib"/>
+</xs:attributeGroup>
+
+<xs:group name="mstyle.content">
+  <xs:sequence>
+    <xs:group ref="Presentation-expr.class"/>
+  </xs:sequence>
+</xs:group>
+
+<xs:complexType name="mstyle.type">
+  <xs:group ref="mstyle.content" minOccurs="1" maxOccurs="unbounded"/>
+  <xs:attributeGroup ref="mstyle.attlist"/>
+</xs:complexType>
+
+<xs:element name="mstyle" type="mstyle.type"/>
+
+</xs:schema>
+<!--
+  Copyright &#251; 2002 World Wide Web Consortium, (Massachusetts Institute
+  of Technology, Institut National de Recherche en Informatique et en
+  Automatique, Keio University). All Rights Reserved. See
+  http://www.w3.org/Consortium/Legal/.
+  -->

@@ -68,11 +68,16 @@ tutorbot = ["deeptutor[partners]=={version}"]
 matrix = ["matrix-nio>=0.25.2,<1.0.0", "mistune>=3.0.0,<4.0.0", "nh3>=0.2.18,<1.0.0"]
 matrix-e2e = ["deeptutor[matrix]=={version}", "matrix-nio[e2e]>=0.25.2,<1.0.0"]
 math-animator = ["deeptutor-renderer-manim=={version}"]
+
+# QTI item-bank exchange. Mirrors requirements/qti.txt. ``lxml`` powers the
+# offline XSD validation and the QTI serializer; the schema bundles themselves
+# ship as package data, so no network access is needed at runtime.
+qti = ["lxml>=5.0.0,<7.0.0"]
 graphrag = ["graphrag>=3.0.1,<4.0.0; python_version < '3.14'"]
 rag-lightrag = ["lightrag-hku==1.5.7"]
 rag-rerank = ["sentence-transformers>=3.0.0,<6.0.0; python_version < '3.14'"]
 guard = ["fastapi-guard>=8.1.1,<9.0.0"]
-dev = ["deeptutor[server]=={version}", "pytest>=7.0.0", "pytest-asyncio>=0.23.0", "pre-commit>=3.0.0", "safety<3.0.0", "bandit>=1.8.0", "import-linter>=2.1.0,<3.0.0", "python-docx>=1.1.0", "openpyxl>=3.1.0", "python-pptx>=1.0.0", "pypdf>=4.0.0", "defusedxml>=0.7.1"]
+dev = ["deeptutor[server]=={version}", "deeptutor[qti]=={version}", "pytest>=7.0.0", "pytest-asyncio>=0.23.0", "pre-commit>=3.0.0", "safety<3.0.0", "bandit>=1.8.0", "import-linter>=2.1.0,<3.0.0", "python-docx>=1.1.0", "openpyxl>=3.1.0", "python-pptx>=1.0.0", "pypdf>=4.0.0", "defusedxml>=0.7.1"]
 all = ["deeptutor[full,math-animator,dev]=={version}"]
 audio-overview = ["deeptutor-audio-overview=={version}"]
 solve = ["deeptutor-solve=={version}"]
@@ -120,6 +125,9 @@ deeptutor = [
     "**/*.ts",
     "**/*.tsx",
     "**/*.mjs",
+    # Offline QTI schema bundles, validated in place by qti*/xml.py.
+    "services/question_content/qti2/schemas/*.xsd",
+    "services/question_content/qti3/schemas/*.xsd",
 ]
 deeptutor_cli = ["**/*.md"]
 deeptutor_web = ["**/*", ".next/**/*"]

@@ -1,0 +1,236 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<xs:schema 
+  xmlns:xs="http://www.w3.org/2001/XMLSchema"
+  xmlns="http://www.w3.org/1998/Math/MathML"
+  targetNamespace="http://www.w3.org/1998/Math/MathML"
+  elementFormDefault="qualified"
+ >
+
+<xs:annotation>
+  <xs:documentation>
+  This is an XML Schema module for the part of content MathML dealing with
+  sets and lists.
+  Author: St&#233;phane Dalmas, INRIA.
+  </xs:documentation>
+</xs:annotation>
+
+<!-- "set" -->
+
+<!-- "type" could be "multiset" or "normal" or anything else -->
+<xs:attributeGroup name="set.attlist">
+  <xs:attribute name="type" type="xs:string"/>
+  <xs:attributeGroup ref="Common.attrib"/>
+</xs:attributeGroup>
+
+<xs:group name="set.content">
+  <xs:sequence>
+     <xs:group ref="Content-expr.class"/>
+  </xs:sequence>
+</xs:group>
+
+<xs:complexType name="set.type">
+  <xs:group ref="set.content"  minOccurs="0" maxOccurs="unbounded"/>
+  <xs:attributeGroup ref="set.attlist"/>
+</xs:complexType>
+
+<xs:element name="set" type="set.type"/>
+
+<!-- "list" -->
+
+<xs:attributeGroup name="list.attlist">
+  <xs:attribute name="order">
+    <xs:simpleType>
+       <xs:restriction base="xs:string">
+          <xs:enumeration value="lexicographic"/>
+          <xs:enumeration value="numeric"/>
+       </xs:restriction>
+    </xs:simpleType>
+  </xs:attribute>
+  <xs:attributeGroup ref="Common.attrib"/>
+</xs:attributeGroup>
+
+<xs:group name="list.content">
+  <xs:sequence>
+     <xs:group ref="Content-expr.class"/>
+  </xs:sequence>
+</xs:group>
+
+<xs:complexType name="list.type">
+  <xs:group ref="list.content"  minOccurs="0" maxOccurs="unbounded"/>
+  <xs:attributeGroup ref="list.attlist"/>
+</xs:complexType>
+
+<xs:element name="list" type="list.type"/>
+
+<!-- "union" -->
+
+<xs:attributeGroup name="union.attlist">
+  <xs:attributeGroup ref="Definition.attrib"/>
+  <xs:attributeGroup ref="Common.attrib"/>
+</xs:attributeGroup>
+
+<xs:complexType name="union.type">
+  <xs:attributeGroup ref="union.attlist"/>
+</xs:complexType>
+
+<xs:element name="union" type="union.type"/>
+
+<!-- "intersect" -->
+
+<xs:attributeGroup name="intersect.attlist">
+  <xs:attributeGroup ref="Definition.attrib"/>
+  <xs:attributeGroup ref="Common.attrib"/>
+</xs:attributeGroup>
+
+<xs:complexType name="intersect.type">
+  <xs:attributeGroup ref="intersect.attlist"/>
+</xs:complexType>
+
+<xs:element name="intersect" type="intersect.type"/>
+
+<!-- "in" -->
+
+<xs:attributeGroup name="in.attlist">
+  <xs:attributeGroup ref="Definition.attrib"/>
+  <xs:attributeGroup ref="Common.attrib"/>
+</xs:attributeGroup>
+
+<xs:complexType name="in.type">
+  <xs:attributeGroup ref="in.attlist"/>
+</xs:complexType>
+
+<xs:element name="in" type="in.type"/>
+
+<!-- "notin" -->
+
+<xs:attributeGroup name="notin.attlist">
+  <xs:attributeGroup ref="Definition.attrib"/>
+  <xs:attributeGroup ref="Common.attrib"/>
+</xs:attributeGroup>
+
+<xs:complexType name="notin.type">
+  <xs:attributeGroup ref="notin.attlist"/>
+</xs:complexType>
+
+<xs:element name="notin" type="notin.type"/>
+
+<!-- "subset" -->
+
+<xs:attributeGroup name="subset.attlist">
+  <xs:attributeGroup ref="Definition.attrib"/>
+  <xs:attributeGroup ref="Common.attrib"/>
+</xs:attributeGroup>
+
+<xs:complexType name="subset.type">
+  <xs:attributeGroup ref="subset.attlist"/>
+</xs:complexType>
+
+<xs:element name="subset" type="subset.type"/>
+
+<!-- "prsubset" -->
+
+<xs:attributeGroup name="prsubset.attlist">
+  <xs:attributeGroup ref="Definition.attrib"/>
+  <xs:attributeGroup ref="Common.attrib"/>
+</xs:attributeGroup>
+
+<xs:complexType name="prsubset.type">
+  <xs:attributeGroup ref="prsubset.attlist"/>
+</xs:complexType>
+
+<xs:element name="prsubset" type="prsubset.type"/>
+
+<!-- "notsubset" -->
+
+<xs:attributeGroup name="notsubset.attlist">
+  <xs:attributeGroup ref="Definition.attrib"/>
+  <xs:attributeGroup ref="Common.attrib"/>
+</xs:attributeGroup>
+
+<xs:complexType name="notsubset.type">
+  <xs:attributeGroup ref="notsubset.attlist"/>
+</xs:complexType>
+
+<xs:element name="notsubset" type="notsubset.type"/>
+
+<!-- "notprsubset" -->
+
+<xs:attributeGroup name="notprsubset.attlist">
+  <xs:attributeGroup ref="Definition.attrib"/>
+  <xs:attributeGroup ref="Common.attrib"/>
+</xs:attributeGroup>
+
+<xs:complexType name="notprsubset.type">
+  <xs:attributeGroup ref="notprsubset.attlist"/>
+</xs:complexType>
+
+<xs:element name="notprsubset" type="notprsubset.type"/>
+
+<!-- "setdiff" -->
+
+<xs:attributeGroup name="setdiff.attlist">
+  <xs:attributeGroup ref="Definition.attrib"/>
+  <xs:attributeGroup ref="Common.attrib"/>
+</xs:attributeGroup>
+
+<xs:complexType name="setdiff.type">
+  <xs:attributeGroup ref="setdiff.attlist"/>
+</xs:complexType>
+
+<xs:element name="setdiff" type="setdiff.type"/>
+
+<!-- "card" -->
+
+<xs:attributeGroup name="card.attlist">
+  <xs:attributeGroup ref="Definition.attrib"/>
+  <xs:attributeGroup ref="Common.attrib"/>
+</xs:attributeGroup>
+
+<xs:complexType name="card.type">
+  <xs:attributeGroup ref="card.attlist"/>
+</xs:complexType>
+
+<xs:element name="card" type="card.type"/>
+
+<!-- "cartesianproduct" -->
+
+<xs:attributeGroup name="cartesianproduct.attlist">
+  <xs:attributeGroup ref="Definition.attrib"/>
+  <xs:attributeGroup ref="Common.attrib"/>
+</xs:attributeGroup>
+
+<xs:complexType name="cartesianproduct.type">
+  <xs:attributeGroup ref="cartesianproduct.attlist"/>
+</xs:complexType>
+
+<xs:element name="cartesianproduct" type="cartesianproduct.type"/>
+
+<!-- And the group of everything -->
+
+<xs:group name="Content-sets.class">
+  <xs:choice>
+    <xs:element ref="set"/>
+    <xs:element ref="list"/>
+    <xs:element ref="union"/>
+    <xs:element ref="intersect"/>
+    <xs:element ref="in"/>
+    <xs:element ref="notin"/>
+    <xs:element ref="subset"/>
+    <xs:element ref="prsubset"/>
+    <xs:element ref="notsubset"/>
+    <xs:element ref="notprsubset"/>
+    <xs:element ref="setdiff"/>
+    <xs:element ref="card"/>
+    <xs:element ref="cartesianproduct"/>
+  </xs:choice>
+</xs:group>
+
+</xs:schema>
+
+<!--
+  Copyright &#251; 2002 World Wide Web Consortium, (Massachusetts Institute
+  of Technology, Institut National de Recherche en Informatique et en
+  Automatique, Keio University). All Rights Reserved. See
+  http://www.w3.org/Consortium/Legal/.
+  -->

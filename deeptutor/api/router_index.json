@@ -1,5 +1,5 @@
 {
-  "fingerprint": "b3ff4a2963d642a226ba3b8fd034f616c878ec27cdb071e720e82674dabd3b75",
+  "fingerprint": "299722f6671698cf56d8d5b4f93ca55bc4596d99071909bbb56e4a39fc216409",
   "routers": {
     "deeptutor.api.routers.auth:router": [
       {
@@ -3448,6 +3448,48 @@
       {
         "path": "/import/commit",
         "name": "import_commit",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.practice_qti:router": [
+      {
+        "path": "/import/qti/preview",
+        "name": "qti_import_preview",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/import/qti/previews/{token}",
+        "name": "qti_preview_report",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/import/qti/previews/{token}/source",
+        "name": "qti_preview_source",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/import/qti/commit",
+        "name": "qti_import_commit",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/export/qti",
+        "name": "qti_export",
         "kind": "http",
         "methods": [
           "POST"

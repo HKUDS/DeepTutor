@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<xs:schema 
+  xmlns:xs="http://www.w3.org/2001/XMLSchema"
+  xmlns="http://www.w3.org/1998/Math/MathML"
+  targetNamespace="http://www.w3.org/1998/Math/MathML"
+  elementFormDefault="qualified"
+ >
+
+<xs:annotation>
+  <xs:documentation>
+  This is an XML Schema module for the statistical operators of content MathML.
+  Author: St&#233;phane Dalmas, INRIA.
+  </xs:documentation>
+</xs:annotation>
+
+<!-- "mean" -->
+
+<xs:attributeGroup name="mean.attlist">
+  <xs:attributeGroup ref="Definition.attrib"/>
+  <xs:attributeGroup ref="Common.attrib"/>
+</xs:attributeGroup>
+
+<xs:complexType name="mean.type">
+  <xs:attributeGroup ref="mean.attlist"/>
+</xs:complexType>
+
+<xs:element name="mean" type="mean.type"/>
+
+<!-- "sdev" -->
+
+<xs:attributeGroup name="sdev.attlist">
+  <xs:attributeGroup ref="Definition.attrib"/>
+  <xs:attributeGroup ref="Common.attrib"/>
+</xs:attributeGroup>
+
+<xs:complexType name="sdev.type">
+  <xs:attributeGroup ref="sdev.attlist"/>
+</xs:complexType>
+
+<xs:element name="sdev" type="sdev.type"/>
+
+<!-- "variance" -->
+
+<xs:attributeGroup name="variance.attlist">
+  <xs:attributeGroup ref="Definition.attrib"/>
+  <xs:attributeGroup ref="Common.attrib"/>
+</xs:attributeGroup>
+
+<xs:complexType name="variance.type">
+  <xs:attributeGroup ref="variance.attlist"/>
+</xs:complexType>
+
+<xs:element name="variance" type="variance.type"/>
+
+<!-- "median" -->
+
+<xs:attributeGroup name="median.attlist">
+  <xs:attributeGroup ref="Definition.attrib"/>
+  <xs:attributeGroup ref="Common.attrib"/>
+</xs:attributeGroup>
+
+<xs:complexType name="median.type">
+  <xs:attributeGroup ref="median.attlist"/>
+</xs:complexType>
+
+<xs:element name="median" type="median.type"/>
+
+<!-- "mode" -->
+
+<xs:attributeGroup name="mode.attlist">
+  <xs:attributeGroup ref="Definition.attrib"/>
+  <xs:attributeGroup ref="Common.attrib"/>
+</xs:attributeGroup>
+
+<xs:complexType name="mode.type">
+  <xs:attributeGroup ref="mode.attlist"/>
+</xs:complexType>
+
+<xs:element name="mode" type="mode.type"/>
+
+<!-- "moment" -->
+
+<xs:attributeGroup name="moment.attlist">
+  <xs:attributeGroup ref="Definition.attrib"/>
+  <xs:attributeGroup ref="Common.attrib"/>
+</xs:attributeGroup>
+
+<xs:complexType name="moment.type">
+  <xs:attributeGroup ref="moment.attlist"/>
+</xs:complexType>
+
+<xs:element name="moment" type="moment.type"/>
+
+<!-- "momentabout" -->
+
+<xs:attributeGroup name="momentabout.attlist">
+  <xs:attributeGroup ref="Definition.attrib"/>
+  <xs:attributeGroup ref="Common.attrib"/>
+</xs:attributeGroup>
+
+<xs:group name="momentabout.content">
+  <xs:sequence>
+    <xs:group ref="Content-expr.class"/>
+  </xs:sequence>
+</xs:group>
+
+<xs:complexType name="momentabout.type">
+  <xs:group ref="momentabout.content"  minOccurs="1" maxOccurs="unbounded"/>
+  <xs:attributeGroup ref="momentabout.attlist"/>
+</xs:complexType>
+
+<xs:element name="momentabout" type="momentabout.type"/>
+
+<!-- And the group of everything -->
+
+<xs:group name="Content-statistics.class">
+  <xs:choice>
+    <xs:element ref="mean"/>
+    <xs:element ref="sdev"/>
+    <xs:element ref="variance"/>
+    <xs:element ref="median"/>
+    <xs:element ref="mode"/>
+    <xs:element ref="moment"/>
+    <xs:element ref="momentabout"/>
+  </xs:choice>
+</xs:group>
+
+
+</xs:schema>
+<!--
+  Copyright &#251; 2002 World Wide Web Consortium, (Massachusetts Institute
+  of Technology, Institut National de Recherche en Informatique et en
+  Automatique, Keio University). All Rights Reserved. See
+  http://www.w3.org/Consortium/Legal/.
+  -->
