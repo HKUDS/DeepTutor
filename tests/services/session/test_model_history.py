@@ -66,7 +66,7 @@ def test_replay_preserves_exact_protocol_without_duplicating_the_display_rows():
     assert source[-1]["metadata"] == {}
 
 
-def test_replay_replaces_only_marked_runtime_snapshots_and_keeps_dialogue():
+def test_replay_preserves_all_runtime_snapshots_and_dialogue_in_order():
     first = turn_record()
     first["messages"].insert(
         0,
@@ -88,8 +88,7 @@ def test_replay_replaces_only_marked_runtime_snapshots_and_keeps_dialogue():
     original = rows(first) + rows(second, start=3)
     before = deepcopy(original)
     result = replay_history(original)
-    assert sum(m.get("_context_snapshot") == "memory" for m in result) == 1
-    assert result[4]["content"] == "new runtime state"
+    assert result == first["messages"] + second["messages"]
     assert sum(m.get("content") == "Original answer" for m in result) == 2
     assert original == before
 
