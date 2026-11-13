@@ -825,8 +825,9 @@ class LearningService:
     ) -> tuple[LearningProgress, MasteryInteraction, bool]:
         """Atomically register one outstanding question.
 
-        Retrying ``mastery_quiz`` while a question is active returns the
-        existing interaction instead of overwriting its expected answer.
+        Retrying within the same session returns the existing interaction.
+        A validated question from a different session archives the old pending
+        interaction. Previously committed answers must be assessed first.
         """
 
         if pending_action not in {"retain", "replace", "resume"}:
@@ -906,7 +907,23 @@ class LearningService:
                 except LessonUnavailable as exc:
                     raise MasteryInteractionError(str(exc)) from exc
                 return active, False
-            if active is not None and pending_action == "retain":
+            new_session = bool(
+                active is not None
+                and session_id
+                and active.session_id
+                and active.session_id != session_id
+            )
+            if active is not None and new_session:
+                reviewed_ids = {
+                    row["question_id"] for row in (active.result or {}).get("results", [])
+                }
+                if (set(active.answers) - reviewed_ids) or (
+                    not active.question.questions and active.status == InteractionStatus.ANSWERED
+                ):
+                    raise MasteryInteractionError(
+                        "Assess the previous session's committed answers before starting a new question."
+                    )
+            if active is not None and pending_action == "retain" and not new_session:
                 if bool(pending.questions) != bool(active.question.questions):
                     raise MasteryInteractionError(
                         "An incompatible question is already pending; retain it or explicitly "
@@ -957,7 +974,7 @@ class LearningService:
                     "interaction.abandoned",
                     {
                         "interaction_id": active.interaction_id,
-                        "reason": "explicit_replacement",
+                        "reason": "new_session" if new_session else "explicit_replacement",
                         "replacement_id": pending.question_id,
                     },
                     session_id=session_id,

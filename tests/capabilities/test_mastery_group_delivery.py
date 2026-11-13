@@ -437,3 +437,102 @@ async def test_visual_naming_a_source_still_fails(service, monkeypatch, referenc
     assert "Visual practice is unavailable" in result.content
     assert service.store.load("new-path").model_dump() == before
     assert service.store.get_active_interaction("new-path") is None
+
+
+def _assign_pending_session(service, session_id):
+    def update(tx):
+        interaction = tx.get_interaction("parent")
+        interaction.session_id = session_id
+        tx.put_interaction(interaction)
+
+    service.store.mutate("path", update)
+
+
+@pytest.mark.parametrize("session_id,created", [("old", False), ("new", True), ("", False)])
+def test_question_registration_respects_session_boundary(service, session_id, created):
+    _assign_pending_session(service, "old")
+    previous = service.store.get_active_interaction("path")
+    replacement = previous.question.model_copy(deep=True)
+    replacement.question_id = "fresh"
+    _, interaction, actual_created = service.register_question(
+        "path", replacement, session_id=session_id
+    )
+    assert actual_created is created
+    assert interaction.interaction_id == ("fresh" if created else "parent")
+    old = service.store.get_interaction("path", "parent")
+    assert old.status.value == ("abandoned" if created else "awaiting_input")
+    assert old.question == previous.question
+    assert service.store.load("path").quiz_attempts == []
+
+
+def test_new_session_preserves_committed_ungraded_answers(service):
+    _assign_pending_session(service, "old")
+    service.record_question_answer("path", "", interaction_id="parent", answers={"one": "answer"})
+    before = service.store.get_active_interaction("path")
+    replacement = before.question.model_copy(deep=True)
+    replacement.question_id = "fresh"
+    with pytest.raises(MasteryInteractionError, match="committed answers"):
+        service.register_question("path", replacement, session_id="new")
+    assert service.store.get_active_interaction("path").model_dump() == before.model_dump()
+
+
+@pytest.mark.asyncio
+async def test_new_session_quiz_does_not_silently_replay_the_old_card(service, monkeypatch):
+    from deeptutor.capabilities.mastery import tools
+
+    _assign_pending_session(service, "old")
+    monkeypatch.setattr(tools, "_new_service", lambda: service)
+    result = await tools.MasteryQuizTool().execute(
+        _mastery_path_id="path",
+        _session_id="new",
+        _learner_message="Start practice",
+        knowledge_point_id="one",
+        question="What is one plus one?",
+        expected_answer="2",
+        question_type="open",
+        pending_action="replace",
+        replace_question_id="parent",
+        replacement_request="not a learner request",
+    )
+    assert result.success, result.content
+    new_id = result.metadata["mastery_question"]["question_id"]
+    assert new_id != "parent"
+    assert service.store.get_active_interaction("path").session_id == "new"
+    assert service.store.get_interaction("path", "parent").status.value == "abandoned"
+
+
+@pytest.mark.asyncio
+async def test_status_explains_cross_session_pending_card(service, monkeypatch):
+    from deeptutor.capabilities.mastery import tools
+
+    _assign_pending_session(service, "old")
+    monkeypatch.setattr(tools, "_new_service", lambda: service)
+    result = await tools.MasteryStatusTool().execute(_mastery_path_id="path", _session_id="new")
+    payload = json.loads(result.content)
+    assert payload["pending_interaction"]["session_id"] == "old"
+    assert "earlier conversation" in payload["pending_interaction"]["instruction"]
+
+
+def test_invalid_new_session_question_leaves_old_card_untouched(service):
+    _assign_pending_session(service, "old")
+    before = service.store.get_active_interaction("path")
+    replacement = before.question.model_copy(deep=True)
+    replacement.question_id = "fresh"
+    replacement.questions[0].knowledge_point_id = "missing-objective"
+    with pytest.raises(MasteryInteractionError, match="Unknown objective"):
+        service.register_question("path", replacement, session_id="new")
+    assert service.store.get_active_interaction("path").model_dump() == before.model_dump()
+
+
+def test_new_session_keeps_partial_group_grades_in_history(service):
+    _assign_pending_session(service, "old")
+    service.grade_interaction("path", answer="", question_id="parent", answers={"one": "answer"})
+    attempts = service.store.load("path").quiz_attempts
+    before = service.store.get_active_interaction("path")
+    replacement = before.question.model_copy(deep=True)
+    replacement.question_id = "fresh"
+    service.register_question("path", replacement, session_id="new")
+    old = service.store.get_interaction("path", "parent")
+    assert old.result == before.result
+    assert old.answers == before.answers
+    assert service.store.load("path").quiz_attempts == attempts
