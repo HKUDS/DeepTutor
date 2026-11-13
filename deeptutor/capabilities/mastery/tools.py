@@ -418,6 +418,7 @@ async def _sync_qualitative_to_question_bank(
     knowledge_point_name: str,
     passed: bool,
     evidence: str,
+    reference_answer: str = "",
     material_title: str = "",
     quality: float | None = None,
     result: str = "",
@@ -437,6 +438,12 @@ async def _sync_qualitative_to_question_bank(
         question=knowledge_point_name,
         question_type="written",
         user_answer=evidence,
+        # Written practice is self-assessed: check_answer deliberately returns
+        # None for written types, so this is the reference the learner compares
+        # their own answer against, never a grading key. Persist the scoring
+        # step's produced expected answer (the semantic judge's receipt
+        # feedback) so the bank entry has that baseline (HKUDS/DeepTutor#2658).
+        correct_answer=reference_answer,
         is_correct=passed,
         result=result or ("correct" if passed else "partial"),
         source="mastery_path",
@@ -2088,6 +2095,7 @@ class MasteryAssessTool(BaseTool):
             knowledge_point_name=kp.name,
             passed=passed,
             evidence=assessed_answer,
+            reference_answer=feedback,
             result=receipt["result"],
             quality={"correct": 1.0, "partial": 0.5, "incorrect": 0.0}[receipt["result"]],
             material_title=progress.name,

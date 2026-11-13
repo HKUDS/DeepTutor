@@ -499,7 +499,52 @@ async def test_mastery_sync_carries_provenance_to_question_bank(tmp_path, monkey
     assert entry["material_title"] == "Path A"
     assert entry["section_id"] == "kp-1"
     assert entry["section_title"] == "Primary colours"
+    assert entry["correct_answer"] == "B"
     assert entry["resolved"] is False
+
+
+@pytest.mark.asyncio
+async def test_qualitative_bank_entry_carries_reference_answer(tmp_path, monkeypatch) -> None:
+    """A qualitative gate's bank entry persists the judge's reference answer.
+
+    Written practice self-assessment reads ``correct_answer`` as the baseline
+    to compare against; an empty one renders "No reference answer was saved"
+    and makes the practice page useless (HKUDS/DeepTutor#2658).
+    """
+    from deeptutor.capabilities.mastery.tools import _sync_qualitative_to_question_bank
+    import deeptutor.services.session as session_package
+    from deeptutor.services.session.sqlite_store import SQLiteSessionStore
+
+    _use_store_root(monkeypatch, tmp_path)
+    store = SQLiteSessionStore(db_path=tmp_path / "sessions.db")
+    monkeypatch.setattr(session_package, "get_sqlite_session_store", lambda: store)
+    await store.create_session(session_id="session-1", title="Mastery")
+
+    await _sync_qualitative_to_question_bank(
+        path_id="path-1",
+        session_id="session-1",
+        turn_id="turn-1",
+        knowledge_point_id="kp-1",
+        knowledge_point_name="Explain photosynthesis",
+        passed=True,
+        evidence="Plants turn light into stored chemical energy.",
+        reference_answer=(
+            "A complete explanation covers light capture, chlorophyll and "
+            "glucose synthesis."
+        ),
+        material_title="Path A",
+    )
+
+    entries = await store.list_notebook_entries(
+        source="mastery_path", assessment_type="qualitative"
+    )
+    assert entries["total"] == 1
+    entry = entries["items"][0]
+    assert entry["question_type"] == "written"
+    assert entry["user_answer"] == "Plants turn light into stored chemical energy."
+    assert entry["correct_answer"] == (
+        "A complete explanation covers light capture, chlorophyll and glucose synthesis."
+    )
 
 
 @pytest.mark.asyncio
