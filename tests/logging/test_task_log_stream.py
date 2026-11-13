@@ -228,3 +228,42 @@ def test_task_buffer_has_approximate_byte_ceiling():
 
     assert manager._buffer_bytes["large-task"] <= manager._MAX_BYTES_PER_TASK
     assert len(manager._buffers["large-task"]) < 20
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("terminal", ["complete", "failed"])
+@pytest.mark.parametrize("log_count", [3, 200, 205])
+async def test_subscribed_streams_finish_after_a_log_burst(terminal, log_count, monkeypatch):
+    manager = KnowledgeTaskStreamManager()
+    monkeypatch.setattr(manager, "_schedule_memory_reclaim", lambda: None)
+    manager.emit("task-burst", "started", {})
+    streams = [manager.stream("task-burst"), manager.stream("task-burst")]
+
+    async def collect(stream):
+        return [chunk async for chunk in stream]
+
+    try:
+        for stream in streams:
+            assert (await anext(stream)).startswith("event: started\n")
+        for index in range(log_count):
+            manager.emit("task-burst", "process_log", {"index": index})
+        if terminal == "complete":
+            manager.emit_complete("task-burst", "Finished")
+        else:
+            manager.emit_failed("task-burst", "Finished")
+        # Deliver the scheduled callbacks before either subscriber drains its queue.
+        await asyncio.sleep(0)
+
+        for stream in streams:
+            chunks = await asyncio.wait_for(collect(stream), timeout=1)
+            assert chunks[-1].startswith(f"event: {terminal}\n")
+            payloads = [
+                json.loads(chunk.splitlines()[1].removeprefix("data: ")) for chunk in chunks
+            ]
+            assert payloads[-1] == {"detail": "Finished", "task_id": "task-burst"}
+            # A full subscriber sacrifices only its oldest log to fit the terminal.
+            indices = list(range(1, 200)) if log_count >= 200 else list(range(log_count))
+            assert [payload["index"] for payload in payloads[:-1]] == indices
+    finally:
+        for stream in streams:
+            await stream.aclose()
