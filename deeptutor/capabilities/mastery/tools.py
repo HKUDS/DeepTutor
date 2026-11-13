@@ -1886,7 +1886,7 @@ class MasteryGradeTool(BaseTool):
         if graded_result == "partial" and interaction.result.get("independent", True):
             next_move += (
                 " This answer was PARTIAL: name the missing part. To ask only for that part, "
-                "call mastery_quiz with completes_question_id set to this question_id; its "
+                f"call mastery_quiz with completes_question_id='{pending.question_id}'; its "
                 "answer corrects this assessment and is practice, not new independent "
                 "evidence. A fresh question is a new independent attempt instead."
             )

@@ -440,3 +440,19 @@ def test_native_registration_refuses_completion_groups(service):
     )
     with pytest.raises(MasteryInteractionError, match="not supported for groups"):
         service.register_question("synthetic", group)
+
+
+@pytest.mark.asyncio
+async def test_pregraded_card_seed_keeps_partial_completion_guidance(path_id):
+    from deeptutor.capabilities.mastery.loop import MasteryLoopCapability
+    from deeptutor.core.context import UnifiedContext
+
+    kp_id = await _build(path_id)
+    await _ask(path_id, kp_id)
+    graded = await _answer(path_id, "PARTIAL: 42 but no annual comparison")
+    # The card adapter supplies this grade before the model starts its loop.
+    # The model must see the completion guidance even without calling grade.
+    context = UnifiedContext(user_message="partial answer")
+    context.metadata["mastery_card_grade"] = graded
+    seed = MasteryLoopCapability()._grade_seed(context)
+    assert "completes_question_id" in seed and graded["question_id"] in seed
