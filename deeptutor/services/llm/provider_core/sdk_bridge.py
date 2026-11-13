@@ -24,17 +24,28 @@ async def _consume_messages(
     interrupt: Callable[[], Awaitable[None]] | None = None,
     label: str = "CodeBuddy",
 ) -> LLMResponse:
+    tracked = _SDKResultMessages(messages)
+    response = await _consume_sdk_messages(
+        tracked, on_content_delta=on_content_delta, interrupt=interrupt, label=label
+    )
+    response.usage = tracked.usage
+    return response
+
+
+async def _consume_sdk_messages(
+    messages: Any,
+    *,
+    on_content_delta: Callable[[str], Awaitable[None]] | None,
+    interrupt: Callable[[], Awaitable[None]] | None = None,
+    label: str = "CodeBuddy",
+) -> LLMResponse:
     chunks: list[str] = []
     pending_result_text = ""
-    usage: dict[str, int] = {}
     async for message in messages:
-        if _is_result_message(message):
-            usage = _result_usage(message)
         if _is_error_result(message):
             return LLMResponse(
                 content=f"Error calling {label}: {_result_text(message)}",
                 finish_reason="error",
-                usage=usage,
             )
         if _is_result_message(message):
             pending_result_text = _result_text(message)
@@ -58,28 +69,26 @@ async def _consume_messages(
                         type(exc).__name__,
                     )
                 else:
-                    drained = await _drain_interrupted_response(messages, label=label)
-                    usage = _result_usage(drained)
+                    await _drain_interrupted_response(messages, label=label)
             return LLMResponse(
                 content="".join(chunks),
                 tool_calls=tool_calls,
                 finish_reason="tool_calls",
-                usage=usage,
             )
 
     if not chunks and pending_result_text:
         chunks.append(pending_result_text)
         if on_content_delta:
             await on_content_delta(pending_result_text)
-    return LLMResponse(content="".join(chunks), finish_reason="stop", usage=usage)
+    return LLMResponse(content="".join(chunks), finish_reason="stop")
 
 
-async def _drain_interrupted_response(messages: Any, *, label: str = "CodeBuddy") -> Any:
+async def _drain_interrupted_response(messages: Any, *, label: str = "CodeBuddy") -> None:
     """Consume the SDK's interrupt result so it cannot leak into the next turn."""
     try:
         async for message in messages:
             if _is_result_message(message) or type(message).__name__ == "ErrorMessage":
-                return message
+                return
     except Exception as exc:
         logger.warning(
             "%s interrupted response drain failed (%s); "
@@ -87,6 +96,23 @@ async def _drain_interrupted_response(messages: Any, *, label: str = "CodeBuddy"
             label,
             type(exc).__name__,
         )
+
+
+class _SDKResultMessages:
+    """Observe result snapshots without adding reads or owning SDK cleanup."""
+
+    def __init__(self, messages: Any) -> None:
+        self._messages = messages.__aiter__()
+        self.usage: dict[str, int] = {}
+
+    def __aiter__(self) -> _SDKResultMessages:
+        return self
+
+    async def __anext__(self) -> Any:
+        message = await self._messages.__anext__()
+        if _is_result_message(message):
+            self.usage = _result_usage(message)
+        return message
 
 
 def _result_usage(message: Any) -> dict[str, int]:
