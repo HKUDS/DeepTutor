@@ -382,3 +382,61 @@ async def test_completion_is_refused_for_question_groups(path_id):
     )
 
     assert group.success is False and leaf_label.success is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("initial_correct", [True, False])
+async def test_repair_completion_rederives_independence_and_replay(path_id, initial_correct):
+    kp_id = await _build(path_id)
+    await _ask(path_id, kp_id)
+    partial = await _answer(path_id, "PARTIAL: 42 but no annual comparison")
+    await _ask(path_id, kp_id, expected="7", completes_question_id=partial["question_id"])
+    graded = await _answer(path_id, "7" if initial_correct else "nonsense")
+    service = LearningService(LearningStore())
+    # Native correction, not a direct mutation: a correction toggles correctness
+    # without the completion mark becoming assistance that never happened.
+    corrected, _ = await service.repair_question_semantic(
+        path_id,
+        graded["question_id"],
+        action="correct",
+        reason="Correct the synthetic answer key",
+        expected_answer="different" if initial_correct else "nonsense",
+        scheduler=SpacedRepetitionScheduler(),
+    )
+    attempt = corrected.quiz_attempts[-1]
+    assert attempt.is_correct is not initial_correct
+    assert attempt.independent is initial_correct
+    evidence = corrected.learning_evidence[-1]
+    assert evidence.hints_used == (0 if initial_correct else 1)
+    # The exact same receipt is replayed, no extra attempt.
+    replay = await service.grade_interaction_semantic(
+        path_id, answer="ignored", question_id=graded["question_id"]
+    )
+    assert replay[2] is True
+    assert replay[1].result["independent"] is initial_correct
+    assert len(replay[0].quiz_attempts) == 2
+
+
+def test_native_registration_refuses_completion_groups(service):
+    from deeptutor.learning.models import PendingQuestion
+    from deeptutor.learning.service import MasteryInteractionError
+
+    service.save(_progress())
+    leaves = [
+        PendingQuestion(
+            question_id=f"g-{i}",
+            knowledge_point_id="kp",
+            prompt=f"part {i}",
+            expected_answer="1",
+            completes_question_id="partial" if i == 0 else "",
+        )
+        for i in range(2)
+    ]
+    group = PendingQuestion(
+        question_id="g",
+        knowledge_point_id="kp",
+        question_type="group",
+        questions=leaves,
+    )
+    with pytest.raises(MasteryInteractionError, match="not supported for groups"):
+        service.register_question("synthetic", group)

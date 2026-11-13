@@ -242,6 +242,8 @@ def _update_quiz_evidence_for_attempts(
             continue
         attempt = unmatched.pop(match_index)
         event.result = attempt.result or ("correct" if attempt.is_correct else "incorrect")
+        if attempt.completes_question_id:
+            event.hints_used = int(attempt.assistance_used or attempt.is_correct)
         event.quality = {"correct": 1.0, "partial": 0.5, "incorrect": 0.0}[event.result]
         if event.hints_used and attempt.is_correct:
             event.quality = min(event.quality, 0.6)
@@ -603,8 +605,9 @@ class LearningService:
             if verdict
             else bool(expected_answer) and grade_answer(user_answer, expected_answer, question_type)
         )
+        actual_assistance = assistance_used or bool((visual_context or {}).get("hints_used"))
         completion = bool(completes_question_id) and is_correct
-        assistance_used = assistance_used or completion
+        assistance_used = actual_assistance or completion
         # Capture the active retry before recording this answer graduates it.
         # Past retries on this or another question must not weaken later reviews.
         retrying = any(
@@ -630,6 +633,7 @@ class LearningService:
                 independent=not assistance_used and not (visual_context or {}).get("hints_used"),
                 visual_context=visual_context or {},
                 completes_question_id=completes_question_id,
+                assistance_used=actual_assistance,
             ),
         )
         evidence = None
@@ -942,6 +946,26 @@ class LearningService:
                 )
 
             leaves = pending.questions or [pending]
+            if pending.questions and (
+                pending.completes_question_id or any(q.completes_question_id for q in leaves)
+            ):
+                raise MasteryInteractionError("completes_question_id is not supported for groups")
+            for question in leaves:
+                if not question.completes_question_id:
+                    continue
+                attempts = [
+                    a
+                    for a in tx.progress.quiz_attempts
+                    if a.knowledge_point_id == question.knowledge_point_id and not a.voided
+                ]
+                if not attempts or not (
+                    attempts[-1].question_id == question.completes_question_id
+                    and attempts[-1].result == "partial"
+                    and attempts[-1].independent
+                ):
+                    raise MasteryInteractionError(
+                        "completes_question_id must name the objective's latest partial attempt"
+                    )
             known_ids = {kp.id for module in tx.progress.modules for kp in module.knowledge_points}
             for question in leaves:
                 if question.knowledge_point_id not in known_ids:
@@ -1518,7 +1542,7 @@ class LearningService:
                 final=correct is not None,
                 needs_clarification=correct is None,
                 feedback=diagnosis,
-                independent=_question_independent(question),
+                independent=_question_independent(question, correct=bool(correct)),
             )
             result["is_correct"] = correct
             result.update((verdicts or {}).get(question.question_id, {}))
@@ -2587,6 +2611,8 @@ class LearningService:
                             if is_correct or attempt.result == "partial"
                             else classify_error(str(attempt.user_answer or ""))
                         )
+                        if attempt.completes_question_id:
+                            attempt.independent = not (attempt.assistance_used or is_correct)
                         repaired_correct = is_correct
                         if is_correct:
                             for record in tx.progress.error_records:
@@ -2630,6 +2656,10 @@ class LearningService:
                         "reason": note,
                         **repair_receipt,
                     }
+                    if question and question.completes_question_id:
+                        interaction.result["independent"] = _question_independent(
+                            question, correct=bool(repaired_correct)
+                        )
                     tx.put_interaction(interaction)
                 _update_quiz_evidence_for_attempts(
                     tx.progress,

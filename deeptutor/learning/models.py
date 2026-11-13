@@ -144,6 +144,9 @@ class QuizAttempt(BaseModel):
     # partial grade stays, and the completion is practice, not independent
     # evidence for the mastery gate (#2458).
     completes_question_id: str = ""
+    # Actual assistance, distinct from the result-dependent completion mark,
+    # so correcting a grade can restore independence without erasing help.
+    assistance_used: bool = False
 
     @model_validator(mode="after")
     def _legacy_result(self):
