@@ -4,8 +4,13 @@ from __future__ import annotations
 
 import json
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
+
+import pytest
 
 from deeptutor.agents.research.utils.citation_manager import CitationManager
+from deeptutor.services.rag.pipelines.pageindex.storage import CLOUD_PROVIDER, OSS_PROVIDER
+from deeptutor.services.rag.pipelines.pageindex.tools import PageIndexSDKTool
 
 
 def _trace() -> SimpleNamespace:
@@ -103,3 +108,70 @@ def test_rag_citation_falls_back_to_the_answer_without_metadata(tmp_path) -> Non
 
     assert citation["kb_name"] == "kb"
     assert citation["total_sources"] == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("provider", [CLOUD_PROVIDER, OSS_PROVIDER])
+@pytest.mark.parametrize(
+    ("query", "kb_name", "filename", "expected"),
+    [
+        (
+            "What is gravity?",
+            "Physics",
+            "Gravitation.pdf",
+            "RAG: What is gravity? [KB: Physics] [Sources: Gravitation.pdf]",
+        ),
+        (
+            "<gravity> & mass",
+            "Physics & <lab>",
+            "A&B <notes>.pdf",
+            "RAG: &lt;gravity&gt; &amp; mass [KB: Physics &amp; &lt;lab&gt;] "
+            "[Sources: A&amp;B &lt;notes&gt;.pdf]",
+        ),
+    ],
+)
+async def test_pageindex_report_citation_preserves_tool_sources(
+    tmp_path, provider, query, kb_name, filename, expected
+):
+    sdk_tool = SimpleNamespace(
+        name="get_page_content",
+        description="Read pages",
+        params_json_schema={},
+        on_invoke_tool=AsyncMock(
+            return_value=json.dumps(
+                {
+                    "success": True,
+                    "doc_name": filename,
+                    "content": [{"page": 3, "text": "Grounded answer"}],
+                }
+            )
+        ),
+    )
+    tool = PageIndexSDKTool(
+        sdk_tool, provider=provider, kb_name=kb_name, doc_ids={filename: "doc-1"}
+    )
+    result = await tool.execute(doc_name=filename, pages="3")
+    manager = CitationManager("research-pageindex", cache_dir=tmp_path)
+    trace = SimpleNamespace(query=query, summary="Retrieved sources", timestamp="now")
+
+    assert manager.add_citation("CIT-1-01", tool.name, trace, result.content, result.metadata)
+    assert manager.format_citation_for_report("CIT-1-01") == expected
+
+
+@pytest.mark.parametrize("tool_type", ["rag", "rag_naive", "rag_hybrid"])
+def test_existing_rag_report_citation_keeps_sources(tmp_path, tool_type):
+    manager = CitationManager("research-rag", cache_dir=tmp_path)
+    metadata = {"kb_name": "Notes", "sources": [{"title": "Document"}]}
+    assert manager.add_citation("CIT-1-01", tool_type, _trace(), "Answer", metadata)
+    assert manager.format_citation_for_report("CIT-1-01") == (
+        "RAG: What is RAG? [KB: Notes] [Sources: Document]"
+    )
+
+
+def test_web_report_citation_keeps_escaped_links(tmp_path):
+    manager = CitationManager("research-web", cache_dir=tmp_path)
+    metadata = {"citations": [{"title": "A & B", "url": "https://example.com/?a=1&b=2"}]}
+    assert manager.add_citation("CIT-1-01", "web_search", _trace(), "Answer", metadata)
+    assert manager.format_citation_for_report("CIT-1-01") == (
+        'Web Search: What is RAG?<br><a href="https://example.com/?a=1&amp;b=2">A &amp; B</a>'
+    )

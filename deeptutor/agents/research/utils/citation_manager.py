@@ -17,6 +17,12 @@ from deeptutor.utils.json_parser import parse_json_response
 _RAG_SOURCE_FIELDS = ("chunks", "documents", "sources", "context", "retrieved_docs")
 
 
+def _is_rag_tool(tool_type: str) -> bool:
+    return tool_type in ("rag", "rag_naive", "rag_hybrid") or tool_type.startswith(
+        ("pageindex_cloud_", "pageindex_oss_")
+    )
+
+
 def _as_text(value: Any) -> str:
     """Normalize optional source metadata without leaking ``None`` values."""
     if value is None:
@@ -302,9 +308,7 @@ class CitationManager:
         try:
             tool_type_lower = tool_type.lower()
 
-            if tool_type_lower in ("rag", "rag_naive", "rag_hybrid") or tool_type_lower.startswith(
-                ("pageindex_cloud_", "pageindex_oss_")
-            ):
+            if _is_rag_tool(tool_type_lower):
                 citation_info = self._extract_rag_citation(
                     citation_id, tool_type, raw_answer, tool_trace, tool_metadata
                 )
@@ -584,7 +588,7 @@ class CitationManager:
         if tool_type == "paper_search":
             return self._format_paper_search_apa(citation)
 
-        if tool_type in ("rag", "rag_naive", "rag_hybrid"):
+        if _is_rag_tool(tool_type):
             query = html.escape(str(citation.get("query", "")))
             kb_name = citation.get("kb_name", "")
             sources = citation.get("sources", []) or []
