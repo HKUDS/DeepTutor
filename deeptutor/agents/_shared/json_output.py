@@ -17,6 +17,8 @@ def extract_json_object(text: str) -> dict[str, Any]:
     # are payload data. Never fall back to JSON drafts from stripped reasoning.
     while match := re.match(r"<think\b[^>]*>.*?</think>\s*", raw, re.DOTALL | re.IGNORECASE):
         raw = raw[match.end() :]
+    if re.match(r"<think\b[^>]*>", raw, re.IGNORECASE):
+        raise json.JSONDecodeError("No JSON object found: unfinished reasoning block", raw, 0)
 
     # Preserve a complete object before looking for fenced examples in its
     # string values, including after a reasoning prelude has been removed.
