@@ -281,6 +281,17 @@ class LoopPromptAssembler:
             content = context.user_message
         if kb_seed:
             content = f"{content}\n\n{kb_seed}"
+        # Turn-level workspace state may only travel after the cached prompt
+        # prefix (issue #2621): the exact per-turn output folder changes every
+        # turn, and a replayed snapshot carrying it would be cut out of the
+        # middle of the rebuilt history, invalidating the cache from that
+        # point. The trailing user message is fresh bytes on every turn, so
+        # the path rides there instead of in the workspace system note.
+        from deeptutor.agents._shared.workspace_prompt import workspace_turn_note
+
+        turn_note = workspace_turn_note(context, language=self.language)
+        if turn_note:
+            content = f"{content}\n\n{turn_note}"
         return content
 
     def finish_exhausted_instruction(self) -> str:

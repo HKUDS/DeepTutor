@@ -530,7 +530,11 @@ async def test_persisted_tool_turn_extends_request_prefix_after_resume(monkeypat
         "tool",
         "assistant",
     ]
-    assert record["messages"][-4] == {"role": "user", "content": "Question"}
+    # The prepared input keeps the learner's words plus this turn's writable
+    # path (the one turn-level byte that must sit after the cached prefix).
+    assert record["messages"][-4]["role"] == "user"
+    assert record["messages"][-4]["content"].startswith("Question")
+    assert "outputs/turn-1" in record["messages"][-4]["content"]
     store = SQLiteSessionStore(db_path=tmp_path / "history.db")
     session = await store.create_session()
     sid = session["id"]
@@ -560,24 +564,23 @@ async def test_persisted_tool_turn_extends_request_prefix_after_resume(monkeypat
     await _run(pipeline(), second)
     previous, resumed = client.calls[1], client.calls[2]
     assert previous["tools"] == resumed["tools"]
-    # The fresh workspace slot replaces its obsolete runtime snapshot while
-    # durable dialogue, reasoning, and tool protocol remain an exact prefix.
-    retained = [
-        message
-        for message in previous["messages"]
-        if not str(message.get("content", "")).startswith("[Runtime context: workspace]")
-    ]
-    assert resumed["messages"][: len(retained)] == retained
+    # The workspace snapshot is byte-stable now (issue #2621), so the resumed
+    # request is an exact prefix extension of the stored one — no runtime
+    # section was cut out or re-appended, and durable dialogue, reasoning,
+    # and tool protocol remain byte-identical.
+    assert resumed["messages"][: len(previous["messages"])] == previous["messages"]
     assert "outputs/turn-1" not in resumed["messages"][0]["content"]
-    assert "outputs/turn-2" in resumed["messages"][-2]["content"]
-    assert resumed["messages"][-3]["reasoning_content"] == "private finish"
+    # The turn-scoped output path rides in the trailing user message, never
+    # in the replayed workspace snapshot.
+    assert "outputs/turn-2" in resumed["messages"][-1]["content"]
+    assert resumed["messages"][-2]["reasoning_content"] == "private finish"
     assert all("_context_snapshot" not in m for m in resumed["messages"])
     updates = [
         m["_context_snapshot"]
         for m in second.runtime.model_turn["messages"]
         if "_context_snapshot" in m
     ]
-    assert updates == ["workspace"]
+    assert updates == []
 
 
 def test_runtime_sections_are_updated_and_cleared_independently(monkeypatch):
