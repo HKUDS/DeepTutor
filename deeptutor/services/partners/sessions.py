@@ -142,6 +142,7 @@ class PartnerSessionStore:
         """Copy *source_key*'s full history into *new_key* and archive the source.
 
         Returns the new session's summary, or ``None`` if the source is empty.
+        Raises ``FileExistsError`` if the destination already exists.
         The new key keeps the conversation going with the same context while the
         original is preserved (archived) and still resumable.
         """
@@ -150,7 +151,7 @@ class PartnerSessionStore:
             return None
         dest = self._path(new_key)
         with self._write_lock:
-            with open(dest, "a", encoding="utf-8") as f:
+            with open(dest, "x", encoding="utf-8") as f:
                 for record in records:
                     f.write(json.dumps(record, ensure_ascii=False) + "\n")
         self.set_archived(source_key, True)
