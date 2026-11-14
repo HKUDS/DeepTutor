@@ -6,7 +6,7 @@ import type {
   ToolSchema,
 } from "../native/types.js";
 import { record } from "../native/types.js";
-import { sse } from "./sse.js";
+import { sse, ProviderProgressPause } from "./sse.js";
 import { withProviderLimit } from "./limits.js";
 import { readBody } from "./body.js";
 import { post } from "./http.js";
@@ -27,6 +27,7 @@ export class ProviderFailure extends Error {
   constructor(
     message: string,
     readonly partialResponse: boolean,
+    readonly paused = false,
   ) {
     super(message);
     this.name = "ProviderFailure";
@@ -80,6 +81,9 @@ async function request(
   while (true) {
     signal.throwIfAborted();
     let observed = false;
+    let retrySafe = false;
+    let progressAt = Date.now();
+    let sequence = -1;
     const controller = new AbortController();
     const abort = () => controller.abort(signal.reason);
     signal.addEventListener("abort", abort, { once: true });
@@ -96,6 +100,7 @@ async function request(
       );
       clearTimeout(connectTimeout);
       if (!response.ok) {
+        retrySafe = true;
         // Bound and inspect error bodies, but never send endpoint credentials or
         // a provider's echoed private request into diagnostics.
         const text = (
@@ -178,6 +183,7 @@ async function request(
           bytes += value.length;
           if (bytes > 16_777_216)
             throw new Error("Provider output exceeds turn limit");
+          progressAt = Date.now();
           if (kind === "content") result.text += value;
           else result.reasoning += value;
           await emit(kind, value);
@@ -199,19 +205,24 @@ async function request(
           if (call.arguments.length > 4_194_304)
             throw new Error("Tool arguments exceed limit");
           calls.set(index, call);
-          if (args) await emit("tool_arguments", args, { ...call });
+          if (args) { progressAt = Date.now(); await emit("tool_arguments", args, { ...call }); }
         }
       };
       if (config.stream && response.contentType.includes("text/event-stream")) {
         if (!response.body)
           throw new Error("Model provider returned no stream");
         let done = false;
-        for await (const data of sse(response.body, controller.signal)) {
+        for await (const data of sse(response.body, controller.signal, 90_000, 300_000, () => progressAt)) {
           if (data.trim() === "[DONE]") {
             done = true;
             break;
           }
-          await ingest(JSON.parse(data));
+          const frame = JSON.parse(data);
+          if (Number.isSafeInteger(frame.sequence_number)) {
+            if (frame.sequence_number <= sequence) continue;
+            sequence = frame.sequence_number;
+          }
+          await ingest(frame);
         }
         if (!done && !result.finishReason)
           throw new Error("Model stream closed before completion");
@@ -233,6 +244,8 @@ async function request(
       return result;
     } catch (error) {
       signal.throwIfAborted();
+      if (error instanceof ProviderProgressPause) throw new ProviderFailure(error.message, true, true);
+      if (!retrySafe && !(error instanceof ProviderFailure)) throw new ProviderFailure("Provider operation paused: create or stream outcome is uncertain. No replacement was submitted; the remote operation may still be running.", true, true);
       if (
         observed ||
         error instanceof ProviderFailure ||

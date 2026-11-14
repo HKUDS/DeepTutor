@@ -212,9 +212,15 @@ async def test_timeout_closes_stream_before_returning_the_stall_error(kind):
             chat=SimpleNamespace(completions=SimpleNamespace(create=create)),
         ),
     )
-    result = await provider.chat_stream(messages=[])
-    assert result.finish_reason == "error"
-    assert "stream stalled" in result.content
+    if kind == "responses":
+        from deeptutor.services.llm.exceptions import LLMOperationPaused
+
+        with pytest.raises(LLMOperationPaused):
+            await provider.chat_stream(messages=[])
+    else:
+        result = await provider.chat_stream(messages=[])
+        assert result.finish_reason == "error"
+        assert "stream stalled" in result.content
     stream.close.assert_awaited_once()
 
 

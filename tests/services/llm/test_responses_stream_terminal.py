@@ -159,7 +159,7 @@ async def test_truncated_sdk_response_cannot_dispatch_tools_or_emit_a_successful
             model="fixture", messages=[{"role": "user", "content": "hello"}], stream=True
         )
         seen = []
-        with pytest.raises(LLMProviderError, match="without a terminal response event"):
+        with pytest.raises(LLMProviderError, match="Provider operation paused"):
             async for chunk in stream:
                 seen.append(chunk)
         assert len(requests) == 1

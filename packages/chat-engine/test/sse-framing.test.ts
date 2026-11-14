@@ -188,3 +188,24 @@ test("the native HTTP completion preserves CR-framed text, tool identity and usa
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 });
+
+test("comment-only heartbeats cannot renew effective progress indefinitely", async () => {
+  let timer: ReturnType<typeof setInterval>;
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      timer = setInterval(() => controller.enqueue(new TextEncoder().encode(": keepalive\n\n")), 2);
+    },
+    cancel() { clearInterval(timer); },
+  });
+  await assert.rejects(sse(body, new AbortController().signal, 100, 20).next(), /operation paused/);
+});
+
+test("data events with an unchanged semantic cursor also pause", async () => {
+  let timer: ReturnType<typeof setInterval>;
+  const started = Date.now();
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) { timer = setInterval(() => controller.enqueue(new TextEncoder().encode('data: {"status":"in_progress"}\n\n')), 2); },
+    cancel() { clearInterval(timer); },
+  });
+  await assert.rejects(async () => { for await (const _ of sse(body, new AbortController().signal, 100, 20, () => started)) { /* lifecycle only */ } }, /operation paused/);
+});

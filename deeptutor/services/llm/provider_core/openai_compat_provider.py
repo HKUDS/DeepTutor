@@ -28,7 +28,7 @@ from deeptutor.services.llm.capabilities import (
     disable_response_format_at_runtime,
     is_forced_tool_choice_disabled_at_runtime,
 )
-from deeptutor.services.llm.exceptions import LLMConfigError
+from deeptutor.services.llm.exceptions import LLMConfigError, LLMOperationPaused
 from deeptutor.services.llm.openai_http_client import openai_sdk_client_kwargs
 from deeptutor.services.llm.provider_core.base import LLMProvider, LLMResponse, ToolCallRequest
 from deeptutor.services.llm.provider_core.openai_responses import (
@@ -43,6 +43,7 @@ from deeptutor.services.llm.provider_core.openai_responses import (
     supports_explicit_prompt_cache,
 )
 from deeptutor.services.llm.provider_core.openai_stream import managed_openai_stream
+from deeptutor.services.llm.provider_core.response_recovery import guarded_responses
 from deeptutor.services.llm.reasoning_params import (
     build_openai_compatible_reasoning_kwargs,
 )
@@ -1210,6 +1211,8 @@ class OpenAICompatProvider(LLMProvider):
                     )
                     self._record_responses_success(model, reasoning_effort)
                     return result
+                except LLMOperationPaused:
+                    raise
                 except Exception as responses_error:
                     if self._spec and self._spec.name == "github_copilot":
                         raise
@@ -1318,44 +1321,76 @@ class OpenAICompatProvider(LLMProvider):
                     )
                     body.update(adapt_chat_kwargs_to_responses(extra_kwargs))
                     body["stream"] = True
-                    stream = await self._create_responses_with_status_retry(body)
+                    try:
+                        stream = await self._create_responses_with_status_retry(body)
+                    except Exception as exc:
+                        from deeptutor.services.llm.request_compat import (
+                            is_transient_transport_error,
+                        )
+
+                        if is_transient_transport_error(exc):
+                            raise LLMOperationPaused("the create outcome is unknown") from None
+                        raise
 
                     async with managed_openai_stream(stream):
                         progress = _SemanticProgress()
 
+                        # The acquired provider lease and current account own this operation.
+                        # Stored official Responses alone support the first recovery adapter.
+                        from deeptutor.multi_user.paths import get_account_path_service
+                        from deeptutor.services.workspace.context import current_workspace_id
+
+                        def owner():
+                            return (
+                                str(get_account_path_service().get_user_root()),
+                                current_workspace_id(),
+                                id(self._client),
+                                str(getattr(self._client, "base_url", self._effective_base)),
+                                getattr(self._client, "api_key", None),
+                            )
+
+                        endpoint = str(
+                            getattr(self._client, "base_url", self._effective_base) or ""
+                        ).rstrip("/")
+                        retrieve = (
+                            getattr(self._client.responses, "retrieve", None)
+                            if body.get("store") is True and endpoint == "https://api.openai.com/v1"
+                            else None
+                        )
+
                         async def _timed_stream():
-                            stream_iter = stream.__aiter__()
-                            while True:
-                                # Reached after the previous event's callbacks, so a
-                                # semantic event has already reset the silence.
+                            async for event in guarded_responses(
+                                stream,
+                                progress=progress,
+                                retrieve=retrieve,
+                                owner=owner,
+                                idle_s=idle_timeout_s,
+                            ):
                                 progress.report_if_silent(_SEMANTIC_SILENCE_REPORT_S)
-                                try:
-                                    event = await asyncio.wait_for(
-                                        stream_iter.__anext__(),
-                                        timeout=idle_timeout_s,
-                                    )
-                                except StopAsyncIteration:
-                                    break
-                                progress.note_event(getattr(event, "type", None))
                                 yield event
 
                         native_output_items: list[dict[str, Any]] = []
                         native_citations: list[dict[str, Any]] = []
+                        last_tool_args: dict[str, tuple[str, str]] = {}
 
                         async def _progress_content(text: str) -> None:
-                            progress.note_output()
+                            if text:
+                                progress.note_output()
                             if on_content_delta:
                                 await on_content_delta(text)
 
                         async def _progress_reasoning(text: str) -> None:
-                            progress.note_output()
+                            if text:
+                                progress.note_output()
                             if on_reasoning_delta:
                                 await on_reasoning_delta(text)
 
                         async def _progress_tool_args(
                             call_id: str, name: str, arguments: str
                         ) -> None:
-                            progress.note_output()
+                            if last_tool_args.get(call_id) != (name, arguments):
+                                last_tool_args[call_id] = (name, arguments)
+                                progress.note_output()
                             if on_tool_args_delta:
                                 await on_tool_args_delta(call_id, name, arguments)
 
@@ -1363,11 +1398,18 @@ class OpenAICompatProvider(LLMProvider):
                             kind: str,
                             payload: dict[str, Any],
                         ) -> None:
-                            progress.note_output()
                             if kind == "output_item":
-                                native_output_items.append(payload)
+                                if not any(
+                                    item.get("id") and item.get("id") == payload.get("id")
+                                    for item in native_output_items
+                                ):
+                                    if payload not in native_output_items:
+                                        progress.note_output()
+                                        native_output_items.append(payload)
                             elif kind == "citation":
-                                native_citations.append(payload)
+                                if payload not in native_citations:
+                                    progress.note_output()
+                                    native_citations.append(payload)
 
                         (
                             content,
@@ -1404,6 +1446,8 @@ class OpenAICompatProvider(LLMProvider):
                                 else {}
                             ),
                         )
+                except LLMOperationPaused:
+                    raise
                 except Exception as responses_error:
                     if self._spec and self._spec.name == "github_copilot":
                         raise
@@ -1472,6 +1516,8 @@ class OpenAICompatProvider(LLMProvider):
                                         buffered["arguments"],
                                     )
                 return self._parse_chunks(chunks)
+        except LLMOperationPaused:
+            raise
         except asyncio.TimeoutError:
             return LLMResponse(
                 content=f"Error calling LLM: stream stalled for more than {idle_timeout_s} seconds",

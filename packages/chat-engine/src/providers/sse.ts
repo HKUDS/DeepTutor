@@ -1,10 +1,18 @@
+export class ProviderProgressPause extends Error {
+  readonly retryable = false;
+  constructor() { super("Provider operation paused: no effective progress. Retrieval is unsupported; no replacement was submitted. The remote operation may still be running."); }
+}
+
 /** Incremental UTF-8 SSE parsing with bounded buffering and per-read idle timeout. */
 export async function* sse(
   body: ReadableStream<Uint8Array>,
   signal: AbortSignal,
   idleMs = 90_000,
+  progressMs = 300_000,
+  lastProgress?: () => number,
 ): AsyncGenerator<string> {
   const reader = body.getReader();
+  let lastEvent = Date.now();
   const decoder = new TextDecoder("utf-8", { fatal: true });
   let pending = "",
     data: string[] = [],
@@ -17,6 +25,8 @@ export async function* sse(
   try {
     while (true) {
       signal.throwIfAborted();
+      const remaining = progressMs - (Date.now() - (lastProgress?.() ?? lastEvent));
+      if (remaining <= 0) throw new ProviderProgressPause();
       let timer: ReturnType<typeof setTimeout> | undefined;
       let part: ReadableStreamReadResult<Uint8Array>;
       try {
@@ -24,8 +34,8 @@ export async function* sse(
           reader.read(),
           new Promise<never>((_, reject) => {
             timer = setTimeout(
-              () => reject(new Error("Provider stream idle timeout")),
-              idleMs,
+              () => reject(remaining <= idleMs ? new ProviderProgressPause() : new Error("Provider stream idle timeout")),
+              Math.min(idleMs, remaining),
             );
           }),
         ]);
@@ -59,7 +69,7 @@ export async function* sse(
         if (line.length > 4_194_304)
           throw new Error("Provider SSE line exceeds limit");
         if (!line) {
-          if (data.length) yield data.join("\n");
+          if (data.length) { lastEvent = Date.now(); yield data.join("\n"); }
           data = [];
           eventBytes = 0;
         } else if (line.startsWith("data:")) {
@@ -81,7 +91,7 @@ export async function* sse(
             throw new Error("Provider SSE event exceeds limit");
           data.push(value);
         }
-        if (data.length) yield data.join("\n");
+        if (data.length) { lastEvent = Date.now(); yield data.join("\n"); }
         break;
       }
     }

@@ -7,6 +7,8 @@ from contextlib import asynccontextmanager
 import logging
 from typing import Any
 
+from deeptutor.services.llm.provider_core.response_recovery import CLOSE_TIMEOUT_S, bounded
+
 logger = logging.getLogger(__name__)
 
 
@@ -19,7 +21,7 @@ async def managed_openai_stream(stream: Any) -> AsyncIterator[Any]:
         close = getattr(stream, "close", None)
         if callable(close):
             try:
-                await close()
+                await bounded(close(), CLOSE_TIMEOUT_S)
             except Exception as exc:
                 # Cleanup must not replace a provider/callback error or cancellation.
                 logger.warning("OpenAI stream cleanup failed (%s)", type(exc).__name__)

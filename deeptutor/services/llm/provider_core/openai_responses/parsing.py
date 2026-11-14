@@ -649,6 +649,52 @@ async def consume_sdk_stream(
             if on_reasoning_delta and delta_text:
                 await on_reasoning_delta(delta_text)
         elif event_type in {"response.completed", "response.incomplete"}:
+            if getattr(event, "recovered", False):
+                from deeptutor.services.llm.exceptions import LLMOperationPaused
+
+                recovered = parse_response_output(getattr(event, "response"))
+                final_content = recovered.content or ""
+                final_reasoning = recovered.reasoning_content or ""
+                final_calls = {call.id: call for call in recovered.tool_calls}
+                if (
+                    not final_content.startswith(content)
+                    or not final_reasoning.startswith(reasoning_content or "")
+                    or any(final_calls.get(call.id) != call for call in tool_calls)
+                ):
+                    raise LLMOperationPaused("retrieved output does not match the observed prefix")
+                items = _response_field(getattr(event, "response"), "output") or []
+                raw_calls = {
+                    _response_field(item, "call_id"): item
+                    for item in items
+                    if _response_field(item, "type") == "function_call"
+                }
+                for buf in tool_call_buffers._by_identity.values():
+                    item = raw_calls.get(buf.call_id)
+                    if (
+                        item is None
+                        or _response_field(item, "name") != buf.name
+                        or not str(_response_field(item, "arguments") or "").startswith(
+                            buf.arguments
+                        )
+                    ):
+                        raise LLMOperationPaused("retrieved tool identity or arguments changed")
+                if on_content_delta and final_content[len(content) :]:
+                    await on_content_delta(final_content[len(content) :])
+                if on_reasoning_delta and final_reasoning[len(reasoning_content or "") :]:
+                    await on_reasoning_delta(final_reasoning[len(reasoning_content or "") :])
+                content, reasoning_content, tool_calls = (
+                    final_content,
+                    final_reasoning or None,
+                    recovered.tool_calls,
+                )
+                if on_provider_event:
+                    for item in items:
+                        payload = _dump_model(item)
+                        if (
+                            isinstance(payload, dict)
+                            and payload.get("type") in _REPLAYABLE_OUTPUT_ITEM_TYPES
+                        ):
+                            on_provider_event("output_item", payload)
             terminal_received = True
             response = getattr(event, "response", None) or event
             status = _response_field(response, "status")
