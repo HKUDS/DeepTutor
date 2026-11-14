@@ -39,3 +39,10 @@ test('Turkish shell follows regional interface codes and formats runtime details
   assert.equal(translate('tr', 'retry'), 'Yeniden dene');
   assert.match(translate('tr', 'workerExited', { code: 3 }), /3/);
 });
+
+test('Greek shell follows regional interface codes and formats runtime details', () => {
+  assert.equal(resolveLanguage('el-GR'), 'el');
+  assert.equal(resolveLanguage('el_CY'), 'el');
+  assert.equal(translate('el', 'retry'), 'Δοκιμάστε ξανά');
+  assert.match(translate('el', 'workerExited', { code: 3 }), /3/);
+});

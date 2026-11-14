@@ -15,6 +15,7 @@ export function getLocale(lang: Language): string {
   if (lang === "ko") return "ko-KR";
   if (lang === "it") return "it-IT";
   if (lang === "hu") return "hu-HU";
+  if (lang === "el") return "el-GR";
   return "en-US";
 }
 

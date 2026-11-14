@@ -44,7 +44,7 @@ const RichCodeBlockPreview = dynamic(
 );
 
 export default function AppearanceSettingsPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const {
     theme,
     contentFontScale,
@@ -192,13 +192,23 @@ export default function AppearanceSettingsPage() {
               } as CSSProperties
             }
           >
-            <p lang="en">
-              Learning starts with a question. Explore an idea, connect it to
-              what you know, and explain it in your own words.
-            </p>
-            <p lang="zh">
-              学习从一个问题开始。探索新的想法，将它与已有的知识联系起来，再用自己的语言解释。
-            </p>
+            {/* Greek readers preview their own script; the default sample pairs Latin and CJK. */}
+            {i18n?.language?.startsWith("el") ? (
+              <p lang="el">
+                Η μάθηση ξεκινά με μια ερώτηση. Εξερευνήστε μια ιδέα, συνδέστε
+                τη με όσα ήδη γνωρίζετε και εξηγήστε τη με δικά σας λόγια.
+              </p>
+            ) : (
+              <>
+                <p lang="en">
+                  Learning starts with a question. Explore an idea, connect it
+                  to what you know, and explain it in your own words.
+                </p>
+                <p lang="zh">
+                  学习从一个问题开始。探索新的想法，将它与已有的知识联系起来，再用自己的语言解释。
+                </p>
+              </>
+            )}
           </div>
           <button
             type="button"

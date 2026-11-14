@@ -10,7 +10,7 @@ import ts from 'typescript'
 
 const root = process.cwd()
 const SOURCE_ROOTS = ['app', 'components', 'context', 'features', 'hooks', 'lib', 'shared']
-const LOCALES = ['en', 'zh', 'de', 'fr', 'ja', 'pl', 'pt', 'tr', 'uk', 'vi']
+const LOCALES = ['en', 'zh', 'de', 'fr', 'ja', 'pl', 'pt', 'tr', 'uk', 'vi', 'el']
 // Legacy settings editors with no importers, pending removal.
 const UNUSED_FILES = new Set([
   'components/settings/ConnectionsEditor.tsx',

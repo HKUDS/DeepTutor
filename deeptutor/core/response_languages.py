@@ -20,6 +20,7 @@ SUPPORTED_RESPONSE_LANGUAGES: tuple[str, ...] = (
     "tr",
     "hi",
     "hu",
+    "el",
 )
 
 

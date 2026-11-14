@@ -19,6 +19,8 @@ def _parse_language(language: str | None) -> str:
         return "it"
     if raw.replace("_", "-").split("-", 1)[0] == "hu" or raw in {"hungarian", "magyar"}:
         return "hu"
+    if raw.replace("_", "-").split("-", 1)[0] == "el" or raw in {"greek", "ελληνικά"}:
+        return "el"
     return "en"
 
 
@@ -85,6 +87,59 @@ _MESSAGES: dict[str, dict[str, str]] = {
         ),
         "sandbox.disabled_for_account": "L’esecuzione del codice è disabilitata per il tuo account.",
         "sandbox.no_backend": "Nessun backend sandbox disponibile",
+    },
+    "el": {
+        "api.content_required": "Το περιεχόμενο είναι υποχρεωτικό",
+        "api.invalid_channels_config": "Μη έγκυρη ρύθμιση καναλιών",
+        "api.partner_already_exists": "Ο Partner '{name}' υπάρχει ήδη",
+        "api.partner_not_found": "Ο Partner δεν βρέθηκε",
+        "api.partner_not_found_or_not_running": "Ο Partner δεν βρέθηκε ή δεν εκτελείται",
+        "api.partner_not_running": "Ο Partner δεν εκτελείται",
+        "api.partner_stopped_start_required": "Ο Partner έχει σταματήσει. Ξεκινήστε τον πριν από τη συνομιλία.",
+        "api.persona_already_exists": "Η περσόνα υπάρχει ήδη: {name}",
+        "api.persona_name_required": "Το όνομα της περσόνας είναι υποχρεωτικό",
+        "api.persona_not_found": "Η περσόνα δεν βρέθηκε: {name}",
+        "api.soul_already_exists": "Το Soul '{name}' υπάρχει ήδη",
+        "api.soul_content_empty": "Το περιεχόμενο του προσαρμοσμένου Soul είναι κενό",
+        "api.soul_library_not_found": "Το Soul '{name}' δεν βρέθηκε στη βιβλιοθήκη",
+        "api.soul_not_found": "Το Soul δεν βρέθηκε",
+        "api.tool_not_found": "Το εργαλείο '{name}' δεν βρέθηκε",
+        "cli_apps.abi_mismatch": (
+            "Η εφαρμογή CLI {app!r} εγκαταστάθηκε για {installed}, αλλά αυτό το περιβάλλον "
+            "εκτέλεσης είναι {current}. Πρέπει να την επανεγκαταστήσει ένας διαχειριστής."
+        ),
+        "cli_apps.args_required": (
+            "Το {tool} χρειάζεται έναν πίνακα 'args' — ένα όρισμα γραμμής εντολών ανά στοιχείο."
+        ),
+        "cli_apps.entry_admin_only": (
+            "Τις εφαρμογές CLI τις εγκαθιστά ένας διαχειριστής· ζητήστε του να προσθέσει αυτήν."
+        ),
+        "cli_apps.install_in_progress": "Η εφαρμογή αυτή εγκαθίσταται ήδη.",
+        "cli_apps.not_in_catalog": "Δεν υπάρχει εφαρμογή CLI με όνομα {id!r} στον κατάλογο.",
+        "cli_apps.not_installed": (
+            "Η εφαρμογή CLI {app!r} δεν είναι πλέον εγκατεστημένη σε αυτήν την εγκατάσταση."
+        ),
+        "cli_apps.still_running": "Το {app} εκτελείται ακόμη ({seconds} δευτ.)",
+        "mcp.configure_command_or_url": "Διακομιστής {name!r}: ορίστε είτε μια εντολή (stdio) είτε ένα URL.",
+        "mcp.configure_before_testing": "Ορίστε είτε μια εντολή (stdio) είτε ένα URL πριν από τον έλεγχο.",
+        "mcp.server_error": "Διακομιστής {name!r}: {error}",
+        "mcp.server_missing": "Δεν υπάρχει διακομιστής με όνομα {name!r} στη λίστα σας.",
+        "mcp.not_oauth": "Αυτός ο διακομιστής δεν χρησιμοποιεί OAuth· δώστε του διαπιστευτήρια.",
+        "mcp.oauth_callback_incomplete": "Η απάντηση εξουσιοδότησης ήταν ελλιπής.",
+        "mcp.oauth_callback_unknown": "Αυτή η εξουσιοδότηση έχει λήξει ή έχει ήδη ολοκληρωθεί. Ξεκινήστε την ξανά.",
+        "mcp.oauth_done": "Η εξουσιοδότηση ολοκληρώθηκε. Μπορείτε να κλείσετε αυτήν την καρτέλα.",
+        "mcp.oauth_failed": "Η εξουσιοδότηση απέτυχε.",
+        "mcp.catalog_entry_missing": "Δεν υπάρχει υπηρεσία MCP με όνομα {id!r} στον κατάλογο.",
+        "mcp.entry_admin_only": (
+            "Αυτή η υπηρεσία εκτελείται ως τοπική εντολή και μπορεί να προστεθεί μόνο από διαχειριστή."
+        ),
+        "mcp.tool_not_available": (
+            "Αυτό το εργαλείο δεν είναι διαθέσιμο σε αυτή τη συνομιλία. "
+            "Μπορούν να κληθούν μόνο τα εργαλεία που αναφέρονται στο prompt."
+        ),
+        "sandbox.command_blocked": "Σφάλμα: η εντολή αποκλείστηκε από τον έλεγχο ασφαλείας (επικίνδυνο μοτίβο).",
+        "sandbox.disabled_for_account": "Η εκτέλεση κώδικα είναι απενεργοποιημένη για τον λογαριασμό σας.",
+        "sandbox.no_backend": "δεν υπάρχει διαθέσιμο backend για sandbox",
     },
     "tr": {
         "api.content_required": "İçerik gereklidir",
