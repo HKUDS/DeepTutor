@@ -3134,6 +3134,15 @@ class LearningService:
                 ],
             )
         except (semantic.AssessmentUnavailable, LessonUnavailable) as exc:
+            # An infrastructure/source failure is not a learner verdict. Keep
+            # the actual explanation for a later clarification or retry (#2249).
+            if session_id:
+                self._store.mutate(
+                    book_id,
+                    lambda tx: tx.record_pending_explanation(
+                        kp_id, answer, base=pending, session_id=session_id, turn_id=turn_id
+                    ),
+                )
             raise MasteryInteractionError(str(exc)) from exc
         receipt = decisions[kp_id].receipt()
         if not receipt["final"]:

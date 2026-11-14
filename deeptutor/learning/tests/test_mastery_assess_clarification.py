@@ -124,3 +124,32 @@ async def test_another_session_or_a_finished_assessment_starts_fresh(path_id, ju
 
     await _assess(path_id, kp, CLARIFICATION, turn="t3")
     assert judged[2] == CLARIFICATION
+
+
+@pytest.mark.asyncio
+async def test_failed_assessment_retains_explanation_without_grading_or_duplicate_retry(
+    path_id, monkeypatch
+):
+    from deeptutor.learning.service import LearningService, MasteryInteractionError
+
+    kp = await _build(path_id)
+    answers = []
+
+    async def judge(_config, items):
+        answers.append(items[0]["answer"])
+        if len(answers) <= 2:
+            raise semantic_assessment.AssessmentUnavailable("Provider timed out")
+        return {
+            kp: semantic_assessment.Verdict(result="correct", confidence=0.95, feedback="Complete")
+        }
+
+    monkeypatch.setattr(semantic_assessment, "judge_answers", judge)
+    service = LearningService()
+    for _ in range(2):
+        with pytest.raises(MasteryInteractionError, match="timed out"):
+            await service.assess_qualitative_semantic(
+                path_id, kp, learner_answer=EXPLANATION, session_id="s1", turn_id="t1"
+            )
+    assert not LearningStore().load(path_id).learning_evidence
+    await _assess(path_id, kp, CLARIFICATION, turn="t2")
+    assert answers == [EXPLANATION, EXPLANATION, EXPLANATION + "\n\n" + CLARIFICATION]
