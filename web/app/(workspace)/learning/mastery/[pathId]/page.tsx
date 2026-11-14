@@ -437,7 +437,7 @@ export default function MasteryTopicPage() {
     // no second column to balance, and a fixed-height stack there would just
     // be three tiny scrollers.
     <main className="mastery-shell flex h-full flex-col overflow-y-auto [scrollbar-gutter:stable]">
-      <PageContainer className="flex min-h-0 flex-1 flex-col pb-40 sm:pb-10">
+      <PageContainer className="flex flex-none flex-col pb-40 sm:pb-10 lg:min-h-0 lg:flex-1">
         <MasteryPathCrumb id={pathId} label={displayName} />
         <div className="flex items-center justify-between gap-3">
           <Link
@@ -487,7 +487,7 @@ export default function MasteryTopicPage() {
         </div>
 
         <header className="dt-page-header mt-2 mb-6 flex flex-col gap-4">
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <div className="flex items-center gap-3">
               <div className="min-w-0">
                 <PathTitle
@@ -513,7 +513,7 @@ export default function MasteryTopicPage() {
               </div>
             )}
           </div>
-          <div className="flex shrink-0 items-center gap-3">
+          <div className="flex shrink-0 flex-wrap items-center gap-3">
             <span className="text-[13px] tabular-nums text-[var(--muted-foreground)]">
               {topic.map.counts.mastered}/{topic.map.counts.total}{" "}
               {t("knowledge points")}
@@ -599,7 +599,7 @@ export default function MasteryTopicPage() {
           )}
         </section>
 
-        <div className="mt-6 grid min-h-0 flex-1 grid-cols-1 items-start gap-7 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-stretch">
+        <div className="mt-6 grid flex-none grid-cols-1 items-start gap-7 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-stretch">
           {needsRouteRepair ? (
             // A goal starts without an outline: the first session is where the
             // tutor asks about the learner and designs one with them. Writing
