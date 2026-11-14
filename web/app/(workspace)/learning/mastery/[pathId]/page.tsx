@@ -437,7 +437,7 @@ export default function MasteryTopicPage() {
     // no second column to balance, and a fixed-height stack there would just
     // be three tiny scrollers.
     <main className="mastery-shell flex h-full flex-col overflow-y-auto [scrollbar-gutter:stable]">
-      <PageContainer className="flex flex-none flex-col pb-40 sm:pb-10 lg:min-h-0 lg:flex-1">
+      <PageContainer className="flex flex-none flex-col pb-10 lg:min-h-0 lg:flex-1">
         <MasteryPathCrumb id={pathId} label={displayName} />
         <div className="flex items-center justify-between gap-3">
           <Link
@@ -533,7 +533,7 @@ export default function MasteryTopicPage() {
           </div>
         </header>
 
-        <section className="dt-next-up fixed bottom-3 left-4 right-4 z-20 shadow-lg sm:static sm:mt-2 sm:shadow-none">
+        <section className="dt-next-up mt-2">
           <div className="flex min-w-0 items-baseline gap-3">
             <span className="shrink-0 text-[12px] text-[var(--muted-foreground)]">
               {t("Next up")}
