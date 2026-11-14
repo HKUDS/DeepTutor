@@ -104,6 +104,7 @@ SEARCH_PROVIDERS: dict[str, SearchProviderSpec] = {
     ),
     "serper": SearchProviderSpec(label="Serper", requires_api_key=True, soft_fallback=False),
     "serply": SearchProviderSpec(label="Serply", requires_api_key=True, soft_fallback=False),
+    "searchapi": SearchProviderSpec(label="SearchApi", requires_api_key=True, soft_fallback=False),
     "firecrawl": SearchProviderSpec(label="Firecrawl", requires_api_key=True, soft_fallback=False),
     # China-hosted engines. Doubao is the one that writes its own answer: Ark
     # exposes web search only as a tool on a Doubao model, never standalone.
