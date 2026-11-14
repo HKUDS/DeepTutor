@@ -611,7 +611,7 @@ def test_broad_objective_can_use_more_pages_but_remains_bounded(material, monkey
         return {
             "sources": [
                 {**d.metadata, "chunk_id": f"n{i}", "evidence_text": d.text}
-                for i, d in enumerate(material.documents[:count])
+                for i, d in enumerate(material.documents[10 : 10 + count])
             ]
         }
 
@@ -627,8 +627,10 @@ def test_broad_objective_can_use_more_pages_but_remains_bounded(material, monkey
                 "selected": [
                     {
                         "id": f"c{i}",
-                        "quote": f"Unrelated section {i}.",
+                        "quote": f"Unrelated section {i + 10}.",
                         "reason": "Part of objective",
+                        # The top pick's context-only neighbour goes first over the cap.
+                        "neighbor": -1 if i == 0 else 0,
                     }
                     for i in range(count)
                 ],
@@ -640,16 +642,12 @@ def test_broad_objective_can_use_more_pages_but_remains_bounded(material, monkey
         "deeptutor.services.rag.pipelines.llamaindex.pipeline.LlamaIndexPipeline.search", search
     )
     monkeypatch.setattr(lessons, "_ask", ask)
-    if count > lessons.MAX_LESSON_PAGES:
-        with pytest.raises(lessons.LessonUnavailable, match="selection count"):
-            asyncio.run(lessons.prepare_lesson(material.store, "path", "kp", material.config))
-        assert not material.store.load("path").lesson_evidence
-    else:
-        evidence = asyncio.run(
-            lessons.prepare_lesson(material.store, "path", "kp", material.config)
-        )
-        assert len(evidence["sources"]) == count
-        assert batches == [2, 2]
+    evidence = asyncio.run(lessons.prepare_lesson(material.store, "path", "kp", material.config))
+    # An over-long selection keeps the model's top-ranked pages within the cap.
+    kept = min(count + 1, lessons.MAX_LESSON_PAGES)
+    assert len(evidence["sources"]) == kept
+    assert all(source["quote"] for source in evidence["sources"]) == (count >= kept)
+    assert batches == [2] * (kept // 2) + [1] * (kept % 2)
 
 
 @pytest.mark.parametrize("action", ["neighbor", "crop", "search"])
