@@ -2707,6 +2707,8 @@
   "Environment variables": "Ortam değişkenleri",
   "Remote (SSE / streamable HTTP)": "Uzak (SSE / streamable HTTP)",
   "HTTP headers": "HTTP üst bilgileri",
+  "Authentication": "Kimlik doğrulama",
+  "OAuth": "OAuth",
   "Tool timeout (seconds)": "Araç zaman aşımı (saniye)",
   "Enabled tools (one per line, * = all)": "Etkin araçlar (satır başına bir tane, * = tümü)",
   "Connected — {{count}} tools detected": "Bağlandı: {{count}} araç algılandı",

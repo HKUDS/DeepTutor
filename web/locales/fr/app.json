@@ -3180,6 +3180,8 @@
   "Environment variables": "Variables d'environnement",
   "Remote (SSE / streamable HTTP)": "Distant (SSE / HTTP en flux)",
   "HTTP headers": "En-têtes HTTP",
+  "Authentication": "Authentification",
+  "OAuth": "OAuth",
   "Tool timeout (seconds)": "Délai d'attente des outils (secondes)",
   "LLM timeout (seconds)": "Délai d'attente du LLM (secondes)",
   "Maximum time per LightRAG LLM call": "Durée maximale par appel LLM de LightRAG",

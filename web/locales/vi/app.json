@@ -2706,6 +2706,8 @@
   "Environment variables": "Biến môi trường",
   "Remote (SSE / streamable HTTP)": "Từ xa (SSE / streamable HTTP)",
   "HTTP headers": "Header HTTP",
+  "Authentication": "Xác thực",
+  "OAuth": "OAuth",
   "Tool timeout (seconds)": "Thời gian chờ của công cụ (giây)",
   "Enabled tools (one per line, * = all)": "Công cụ được bật (mỗi dòng một công cụ, * = tất cả)",
   "Connected — {{count}} tools detected": "Đã kết nối — phát hiện {{count}} công cụ",

@@ -2632,6 +2632,8 @@
   "Environment variables": "Змінні середовища",
   "Remote (SSE / streamable HTTP)": "Віддалений (SSE / streamable HTTP)",
   "HTTP headers": "HTTP-заголовки",
+  "Authentication": "Аутентифікація",
+  "OAuth": "OAuth",
   "Tool timeout (seconds)": "Таймаут інструменту (секунди)",
   "Enabled tools (one per line, * = all)": "Увімкнені інструменти (по одному в рядку, * = усі)",
   "Connected — {{count}} tools detected": "Підключено — виявлено інструментів: {{count}}",
