@@ -8,6 +8,7 @@ passed `proxies`) and Jina used to return every result it got.
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 import pytest
@@ -1107,3 +1108,55 @@ def test_gbs_metadata_comes_from_the_spec_table() -> None:
     assert GoogleBrowserScraperProvider.requires_api_key is False
     assert GoogleBrowserScraperProvider.supports_answer is False
     assert search_missing_credential("google_browser_scraper", "", "") == "base_url"
+
+
+# --------------------------------------------------------------------------
+# Zhipu's request engine is configurable (issue #2617): the search profile's
+# `search_engine`/`engine` field flows in through the constructor kwargs.
+# Preserve all previously supported engine IDs; only unknown values fall back.
+# --------------------------------------------------------------------------
+
+
+def test_zhipu_defaults_to_search_std(new_calls) -> None:
+    """No configuration anywhere: the payload carries the historical engine."""
+    provider = _provider_class("zhipu", "ZhipuProvider")(api_key="k")
+    response = provider.search("q", max_results=3)
+    assert new_calls[-1]["json"]["search_engine"] == "search_std"
+    assert response.model == "search_std"
+
+
+def test_zhipu_provider_config_selects_search_pro(new_calls) -> None:
+    zhipu = _provider_class("zhipu", "ZhipuProvider")
+    # What the Settings > Search profile flows in as a constructor kwarg.
+    response = zhipu(api_key="k", search_engine="search_pro").search("q")
+    assert new_calls[-1]["json"]["search_engine"] == "search_pro"
+    assert response.model == "search_pro"
+    # `engine` is accepted as the config alias...
+    zhipu(api_key="k", engine="search_pro").search("q")
+    assert new_calls[-1]["json"]["search_engine"] == "search_pro"
+    # ...and an explicit call-time value wins over the config.
+    zhipu(api_key="k", search_engine="search_pro").search("q", search_engine="search_std")
+    assert new_calls[-1]["json"]["search_engine"] == "search_std"
+
+
+@pytest.mark.parametrize("engine", ["search_pro_sogou", "search_pro_quark"])
+def test_zhipu_preserves_existing_engine_profiles_and_request_overrides(new_calls, engine) -> None:
+    zhipu = _provider_class("zhipu", "ZhipuProvider")
+    for config in ({"search_engine": engine}, {"engine": engine}):
+        response = zhipu(api_key="k", **config).search("q")
+        assert new_calls[-1]["json"]["search_engine"] == engine
+        assert response.model == engine
+    zhipu(api_key="k", search_engine="search_std").search("q", search_engine=engine)
+    assert new_calls[-1]["json"]["search_engine"] == engine
+
+
+def test_zhipu_invalid_engine_warns_and_falls_back(new_calls, caplog) -> None:
+    zhipu = _provider_class("zhipu", "ZhipuProvider")
+    with caplog.at_level(logging.WARNING):
+        zhipu(api_key="k").search("q", search_engine="totally-bogus")
+    assert new_calls[-1]["json"]["search_engine"] == "search_std"
+    warnings = [
+        record.getMessage() for record in caplog.records if "search_engine" in record.getMessage()
+    ]
+    assert len(warnings) == 1
+    assert "totally-bogus" in warnings[0]
