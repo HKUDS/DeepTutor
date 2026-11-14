@@ -145,17 +145,29 @@ export class SourceRuntime extends EventEmitter {
           if (this.state.phase === 'ready') void this.fail(new Error('A core process exited. Restart the core.'));
         });
       }
-      this.monitor = setInterval(async () => {
-        if (this.checking || this.state.phase !== 'ready') return;
-        this.checking = true;
-        try {
-          this.misses = await probe(`${backendURL}/health/ready`) ? 0 : (this.misses ?? 0) + 1;
-          if (this.misses >= 3 && this.state.phase === 'ready') await this.fail(new Error('The core failed three health checks in a row. Restart the core.'));
-        } finally { this.checking = false; }
-      }, 10000);
+      this.monitor = setInterval(() => void this.checkHealth(backendURL), 10000);
     } catch (error) {
       if (this.state.phase !== 'stopping' && this.state.phase !== 'stopped') await this.fail(error);
     }
+  }
+
+  async checkHealth(backendURL) {
+    if (this.checking || this.state.phase !== 'ready') return;
+    this.checking = true;
+    try {
+      const healthy = await probe(`${backendURL}/health/ready`, { timeout: 10000 });
+      if (this.state.phase !== 'ready') return;
+      if (healthy) {
+        if (this.unhealthySince !== undefined) this.group.log('[desktop] Core health recovered.\n');
+        this.unhealthySince = undefined;
+        return;
+      }
+      // Readiness can stall during local work; a missed deadline is not a process exit.
+      this.unhealthySince ??= Date.now();
+      const elapsed = Date.now() - this.unhealthySince;
+      this.group.log(`[desktop] Core health probe failed; recovery wait ${Math.floor(elapsed / 1000)}/90 seconds.\n`);
+      if (elapsed >= 90000) await this.fail(new Error('The core remained unresponsive for 90 seconds. Restart the core.'));
+    } finally { this.checking = false; }
   }
 
   async fail(error) {
