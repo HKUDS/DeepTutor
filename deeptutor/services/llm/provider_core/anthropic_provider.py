@@ -7,6 +7,7 @@ prompt caching, extended thinking, tool calls, and streaming.
 from __future__ import annotations
 
 import asyncio
+import base64
 from collections.abc import Awaitable, Callable
 import re
 import secrets
@@ -148,11 +149,22 @@ class AnthropicProvider(LLMProvider):
         return system, self._merge_consecutive(raw)
 
     @staticmethod
+    def _tool_id(raw: Any) -> str:
+        # Preserve native IDs, but encode foreign IDs without collapsing distinct
+        # calls ("a|b" and "a_b"). Reserve the prefix by also encoding raw IDs
+        # that start with it, so a native ID cannot collide with an encoded one.
+        value = str(raw or "")
+        prefix = "dt_encoded_"
+        if not value or (re.fullmatch(r"[a-zA-Z0-9_-]+", value) and not value.startswith(prefix)):
+            return value
+        return prefix + base64.urlsafe_b64encode(value.encode("utf-8")).decode("ascii").rstrip("=")
+
+    @staticmethod
     def _tool_result_block(msg: dict[str, Any]) -> dict[str, Any]:
         content = msg.get("content")
         block: dict[str, Any] = {
             "type": "tool_result",
-            "tool_use_id": msg.get("tool_call_id", ""),
+            "tool_use_id": AnthropicProvider._tool_id(msg.get("tool_call_id", "")),
         }
         if isinstance(content, (str, list)):
             block["content"] = content
@@ -214,7 +226,7 @@ class AnthropicProvider(LLMProvider):
             blocks.append(
                 {
                     "type": "tool_use",
-                    "id": tc.get("id") or _gen_tool_id(),
+                    "id": AnthropicProvider._tool_id(tc.get("id")) or _gen_tool_id(),
                     "name": func.get("name", ""),
                     "input": args,
                 }
