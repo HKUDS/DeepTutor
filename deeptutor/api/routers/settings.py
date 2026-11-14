@@ -120,6 +120,7 @@ ResponseLanguage = Literal[
     "vi",
     "tr",
     "hi",
+    "hu",
 ]
 
 

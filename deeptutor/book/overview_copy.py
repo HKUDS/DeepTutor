@@ -179,6 +179,28 @@ _COPY: dict[str, dict[str, Any]] = {
         "chapter_index_title": "Indice dei capitoli",
         "chapter_index_heading": "## Indice dei capitoli",
     },
+    "hu": {
+        "chapter_title": "Így olvassa ezt a könyvet",
+        "chapter_summary": (
+            "A könyv fogalomgráfjából és fejezetjegyzékéből automatikusan készült áttekintés."
+        ),
+        "objectives": [
+            "Egy pillantással lássa a teljes fejezettérképet",
+            "Értse meg, hogyan függenek össze a fogalmak",
+            "Válassza ki a céljaihoz illő olvasási útvonalat",
+        ],
+        "intro_title": "Így olvassa ezt a könyvet",
+        "intro_body": (
+            "Az alábbi ábra a könyv {concepts} fő fogalmát és azok egymásra épülését mutatja. "
+            "A következő fejezetjegyzék mind a {chapters} fejezetet felsorolja — haladjon "
+            "fentről lefelé az ajánlott sorrendhez, vagy ugorjon egyenesen arra, ami a "
+            "leginkább érdekli."
+        ),
+        "untitled_book": "Ez a könyv",
+        "concept_map_title": "Fogalomtérkép",
+        "chapter_index_title": "Fejezetjegyzék",
+        "chapter_index_heading": "## Fejezetjegyzék",
+    },
 }
 
 

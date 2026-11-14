@@ -32,6 +32,7 @@ const SUPPORTED_RESPONSE_LANGUAGE_CODES: readonly ResponseLanguage[] = [
   "vi",
   "tr",
   "hi",
+  "hu",
 ];
 
 export function isResponseLanguage(value: unknown): value is ResponseLanguage {
@@ -66,6 +67,8 @@ const RESPONSE_LANGUAGE_ALIASES: Record<string, ResponseLanguage> = {
   "हिन्दी": "hi",
   "हिंदी": "hi",
   "zh-cn": "zh",
+  hungarian: "hu",
+  magyar: "hu",
 };
 
 export const ACTIVE_SESSION_STORAGE_KEY = "deeptutor.activeSessionId.tab";

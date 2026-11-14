@@ -6630,5 +6630,6 @@
   "Failed to load web fetch settings.": "Impossibile caricare le impostazioni di recupero web.",
   "Reading material {{id}}": "Materiale di lettura {{id}}",
   "Showing {{shown}} of {{total}} help records": "Visualizzati {{shown}} di {{total}} registri degli aiuti",
-  "Reading position and quiz results do not establish independent mastery.": "La posizione di lettura e i risultati dei quiz non attestano la padronanza autonoma."
+  "Reading position and quiz results do not establish independent mastery.": "La posizione di lettura e i risultati dei quiz non attestano la padronanza autonoma.",
+  "language.hungarian": "Magyar"
 }

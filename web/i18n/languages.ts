@@ -12,6 +12,7 @@ export const APP_LANGUAGES = [
   { code: "tr", labelKey: "language.turkish" },
   { code: "ko", labelKey: "language.korean" },
   { code: "it", labelKey: "language.italian" },
+  { code: "hu", labelKey: "language.hungarian" },
 ] as const;
 
 export type AppLanguage = (typeof APP_LANGUAGES)[number]["code"];
@@ -39,6 +40,7 @@ export function normalizeLanguage(value: unknown): AppLanguage {
   if (base === "tr" || code === "turkish" || code === "türkçe") return "tr";
   if (base === "ko" || code === "korean" || code === "한국어") return "ko";
   if (base === "it" || code === "italian" || code === "italiano") return "it";
+  if (base === "hu" || code === "hungarian" || code === "magyar") return "hu";
   return "en";
 }
 
@@ -61,4 +63,5 @@ export type ResponseLanguage =
   | "ms"
   | "vi"
   | "tr"
-  | "hi";
+  | "hi"
+  | "hu";
