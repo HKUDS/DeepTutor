@@ -165,6 +165,9 @@ class TurnApplicationService:
             if not session_id or not await self._reclaim_unowned_active_turn(session_id):
                 raise
             session, turn = await runtime.start_turn(payload)
+        # Admission resolved inherited defaults and durable explicit choices.
+        # Do not overwrite them with absent fields from the transport envelope.
+        session = await store.get_session(session["id"]) or session
         await store.update_session_preferences(
             session["id"],
             {
@@ -176,7 +179,6 @@ class TurnApplicationService:
                 "question_notebook_references": list(
                     payload.get("question_notebook_references") or []
                 ),
-                "knowledge_bases": list(payload.get("knowledge_bases") or []),
                 "partner_group_references": list(payload.get("partner_group_references") or []),
             },
         )

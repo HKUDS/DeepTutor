@@ -281,6 +281,18 @@ class TurnRequestPreparer:
                 binding.workspace_id
             )
 
+        if "knowledge_bases" not in payload:
+            if "knowledge_bases" in preferences:
+                payload["knowledge_bases"] = list(preferences["knowledge_bases"] or [])
+            else:
+                from deeptutor.services.workspace.context import workspace_context
+                from deeptutor.services.workspace.knowledge import inherited_chat_knowledge_bases
+
+                with workspace_context(content_workspace_id):
+                    payload["knowledge_bases"] = await asyncio.to_thread(
+                        inherited_chat_knowledge_bases
+                    )
+
         legacy_watching = (
             payload.get("workspace_mode") == "immersive_watching"
             or payload.get("capability") == "immersive_watching"

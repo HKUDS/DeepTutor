@@ -167,6 +167,43 @@ def knowledge_catalog() -> list[dict]:
     return items
 
 
+def inherited_chat_knowledge_bases() -> list[str]:
+    """Ready workspace attachments, or its default KB, for an untouched chat.
+
+    This runs inside the caller's authenticated workspace scope. Qualified IDs
+    preserve origin when a workspace selects same-name resources from elsewhere.
+    Explicit conversation selections (including []) never call this helper.
+    """
+    from deeptutor.modules.catalog import module_enabled
+
+    if not module_enabled("knowledge"):
+        return []
+    from deeptutor.multi_user.knowledge_access import (
+        list_visible_knowledge_bases,
+        manager_for_resource,
+        resolve_kb,
+    )
+    from deeptutor.services.workspace.context import current_workspace_id
+    from deeptutor.services.workspace.resources import current_resources
+
+    attached = current_resources().knowledge_bases is not None
+    candidates = []
+    for entry in list_visible_knowledge_bases():
+        if entry.get("available") is False:
+            continue
+        resource = resolve_kb(entry["id"])
+        info = manager_for_resource(resource).get_info(resource.name, refresh_config=False)
+        if info.get("status") != "ready" or info.get("metadata", {}).get("type") == "subagent":
+            continue
+        if not attached and not info.get("is_default"):
+            continue
+        rid = entry["id"]
+        if not entry.get("assigned") and parse_kb_id(rid) is None:
+            rid = qualified_kb_id(resource.name, current_workspace_id())
+        candidates.append((not bool(info.get("is_default")), rid))
+    return [rid for _, rid in sorted(set(candidates))]
+
+
 def resolve_selected(kb_ref: str, selected: list[str], *, require_write=False):
     from deeptutor.multi_user.knowledge_access import DEFAULT_KB_ALIASES, _strip_resource_prefix
 

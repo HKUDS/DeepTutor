@@ -82,6 +82,7 @@ def submission_service(monkeypatch, tmp_path):
     class Orchestrator:
         async def handle(self, context):
             calls["count"] += 1
+            calls["knowledge_bases"] = context.knowledge_bases
             if calls["fail"]:
                 from deeptutor.services.llm.exceptions import LLMProviderTransportError
 
@@ -830,3 +831,42 @@ async def test_interrupted_worker_loss_recovery_replays_failure(
     assert events[-1]["seq"] == events[-2]["seq"] + 1
     if after_seq == 0:
         assert events[0]["content"] == "Partial answer"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("choice", [None, [], ["user-picked"]])
+async def test_workspace_default_only_fills_an_absent_conversation_choice(
+    submission_service, monkeypatch, choice
+):
+    from unittest.mock import Mock
+
+    from deeptutor.services.workspace import knowledge
+
+    defaults = Mock(return_value=["account:kb:physics"])
+    monkeypatch.setattr(knowledge, "inherited_chat_knowledge_bases", defaults)
+    service, store, _, _, calls = submission_service
+    payload = {"content": "Explain gravity", "client_submission_id": "default-first"}
+    if choice is not None:
+        payload["knowledge_bases"] = choice
+    session, turn = await service.start_turn(payload)
+    _ = [event async for event in service.subscribe_turn(turn["id"])]
+    expected = ["account:kb:physics"] if choice is None else choice
+    assert (await store.get_session(session["id"]))["preferences"]["knowledge_bases"] == expected
+    assert calls["knowledge_bases"] == expected
+    assert defaults.call_count == (1 if choice is None else 0)
+    # An explicit detach persists even if a later producer omits the field.
+    _, turn = await service.start_turn(
+        {
+            "session_id": session["id"],
+            "content": "Next",
+            "knowledge_bases": [],
+            "client_submission_id": "detach",
+        }
+    )
+    _ = [event async for event in service.subscribe_turn(turn["id"])]
+    _, turn = await service.start_turn(
+        {"session_id": session["id"], "content": "Next again", "client_submission_id": "omitted"}
+    )
+    _ = [event async for event in service.subscribe_turn(turn["id"])]
+    assert (await store.get_session(session["id"]))["preferences"]["knowledge_bases"] == []
+    assert defaults.call_count == (1 if choice is None else 0)
