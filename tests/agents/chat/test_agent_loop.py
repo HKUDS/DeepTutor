@@ -3693,6 +3693,12 @@ async def test_ask_user_pause_resumes_and_streams_interleaved(
         ),
     )
 
+    pauses = [event for event in events if event.type == StreamEventType.WAIT_FOR_INPUT]
+    assert len(pauses) == 1
+    assert "Which topic?" in pauses[0].content
+    assert pauses[0].metadata["tool_call_id"] == "call-1"
+    assert pauses[0].metadata["ask_user"]["questions"][0]["id"] == "q1"
+    assert events.index(pauses[0]) < events.index(_result(events))
     assert client.call_count == 2
     assert _contents(events) == ["Let me check one thing.", "The answer."]
     assert _call_roles(events) == ["narration", "finish"]

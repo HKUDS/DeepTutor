@@ -21,6 +21,30 @@ class _FixedStoreProvider:
         return self.store
 
 
+@pytest.mark.asyncio
+async def test_history_budget_failure_is_terminal_before_answer_execution(
+    submission_service, monkeypatch
+):
+    from deeptutor.services.session import context_builder
+    from deeptutor.services.session.context_builder import HistoryBudgetExceeded
+
+    async def reject_history(self, **kwargs):
+        raise HistoryBudgetExceeded(150002, 131072)
+
+    monkeypatch.setattr(context_builder.ContextBuilder, "build", reject_history)
+    service, store, _, _, calls = submission_service
+    session, turn = await service.start_turn(
+        {"content": "Continue", "client_submission_id": "oversized-history"}
+    )
+    events = [event async for event in service.subscribe_turn(turn["id"])]
+    error = next(event for event in events if event["type"] == "error")
+    done = next(event for event in events if event["type"] == "done")
+    assert error["metadata"]["error_code"] == "history_budget_exceeded"
+    assert done["metadata"]["status"] == "failed"
+    assert done["metadata"]["retryable"] is False
+    assert calls["count"] == 0
+
+
 def _service(
     store: SQLiteSessionStore,
     coordinator: MemoryCoordinator,

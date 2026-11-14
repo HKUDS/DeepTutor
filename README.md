@@ -402,6 +402,8 @@ capabilities:
 
 The recovery limit must exceed the normal output limit and be at most 131072; choose a value supported by your model. It applies to one recovery call only, retains the existing round and request-timeout bounds, and leaves reasoning effort unchanged. The trace records the policy, old/new limits, effective per-call budgets, and accumulated usage. Visible answer truncation keeps its normal continuation. With the experimental `typescript-native` runtime, explicit `stop` or `increase_output_budget` policies select the shared Python effects host with the TypeScript scheduler before the turn begins; the result reports that compatibility reason.
 
+The Python history builder also enforces its history plan after condensation. If a complete retained exchange still exceeds that budget, the turn stops with `history_budget_exceeded` before answer generation. Stored messages and tool-call/result pairs remain intact; start a new conversation or shorten the oversized earlier exchange to continue. This history allowance is separate from the model's full context-window capacity.
+
 With the full profile, Home keeps **Chat**, **Ask Questions**, **Quiz**, **Visualize**, and **Video Lesson** one click away; **Research** for cited reports and **Solve** for worked reasoning sit under *More Capabilities*. Select text in an answer to open **Little Tutor**, a focused sidebar thread that stays nested under the source conversation. With at least three sent messages, the left gutter shows a tick for each question when space allows; hover to preview, click to jump back, or use **Alt/Option + ↑/↓** to move between questions.
 
 </details>
