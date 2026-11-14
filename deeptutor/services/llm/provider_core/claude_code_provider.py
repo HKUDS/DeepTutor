@@ -57,6 +57,7 @@ class _SessionTurn:
     prompt: _Prompt
     on_content_delta: Callable[[str], Awaitable[None]] | None
     future: asyncio.Future[LLMResponse]
+    tool_names: frozenset[str] = frozenset()
 
 
 @dataclass
@@ -119,6 +120,7 @@ class _ClaudeCodeSession:
                         on_content_delta=turn.on_content_delta,
                         interrupt=_no_interrupt,
                         label=_LABEL,
+                        tool_names=turn.tool_names,
                     )
                     if not turn.future.done():
                         turn.future.set_result(response)
@@ -143,12 +145,18 @@ class _ClaudeCodeSession:
         self,
         prompt: _Prompt,
         on_content_delta: Callable[[str], Awaitable[None]] | None,
+        tool_names: frozenset[str] = frozenset(),
     ) -> LLMResponse:
         if not self.alive:
             raise RuntimeError("Claude Code session owner is not running")
         future: asyncio.Future[LLMResponse] = asyncio.get_running_loop().create_future()
         await self._ops.put(
-            _SessionTurn(prompt=prompt, on_content_delta=on_content_delta, future=future)
+            _SessionTurn(
+                prompt=prompt,
+                on_content_delta=on_content_delta,
+                future=future,
+                tool_names=tool_names,
+            )
         )
         return await future
 
@@ -248,7 +256,10 @@ class ClaudeCodeProvider(LLMProvider):
             stream = sdk.query(prompt=_sdk_prompt(_prompt_input(conversation)), options=options)
             try:
                 return await _consume_messages(
-                    stream, on_content_delta=on_content_delta, label=_LABEL
+                    stream,
+                    on_content_delta=on_content_delta,
+                    label=_LABEL,
+                    tool_names=_offered_tool_names(tools),
                 )
             finally:
                 close = getattr(stream, "aclose", None)
@@ -293,7 +304,9 @@ class ClaudeCodeProvider(LLMProvider):
                     )
                 prompt = _prompt_input(_incremental_messages(session, conversation))
                 session.messages = deepcopy(conversation)
-                response = await session.run_turn(prompt, on_content_delta)
+                response = await session.run_turn(
+                    prompt, on_content_delta, _offered_tool_names(tools)
+                )
                 session.last_response = response.content or ""
                 return response
         except BaseException:
@@ -540,6 +553,17 @@ def _build_options(
         **_reasoning_options(reasoning_effort),
         **_build_tool_options(sdk, tools),
     )
+
+
+def _offered_tool_names(tools: list[dict[str, Any]] | None) -> frozenset[str]:
+    names: set[str] = set()
+    for schema in tools or []:
+        function = schema.get("function") if isinstance(schema, dict) else None
+        if isinstance(function, dict):
+            name = str(function.get("name") or "").strip()
+            if name:
+                names.add(name)
+    return frozenset(names)
 
 
 def _build_tool_options(sdk: ModuleType, tools: list[dict[str, Any]] | None) -> dict[str, Any]:
