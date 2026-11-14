@@ -187,19 +187,56 @@ def clean_thinking_tags(
     if not content:
         return ""
 
-    closed_pattern = re.compile(
-        r"`?<\s*(?P<tag>think(?:ing)?)\b[^>]*>`?.*?`?<\s*/\s*(?P=tag)\s*>`?",
+    # Mask Markdown code before recognizing protocol tags. Keep offsets intact
+    # so stripping a real reasoning block can still discard its entire body,
+    # including any code inside that block, without rewriting literal examples.
+    masked = list(content)
+    fenced: list[tuple[int, int]] = []
+    cursor = 0
+    opening_fence = re.compile(r"(?m)^[ \t]{0,3}(`{3,}|~{3,})[^\n]*\n")
+    while opening := opening_fence.search(content, cursor):
+        marker = opening[1]
+        closing = re.compile(
+            rf"(?m)^[ \t]{{0,3}}{re.escape(marker[0])}{{{len(marker)},}}[ \t]*(?:\n|$)"
+        ).search(content, opening.end())
+        end = closing.end() if closing else len(content)
+        fenced.append((opening.start(), end))
+        cursor = end
+
+    inline = re.compile(r"(?<!`)(`+)(?!`).*?(?<!`)\1(?!`)", re.DOTALL)
+    wrapped = re.match(
+        r"\s*`<\s*think(?:ing)?\b[^>]*>`.*?`<\s*/\s*think(?:ing)?\s*>`",
+        content,
         re.DOTALL | re.IGNORECASE,
     )
-    cleaned = re.sub(closed_pattern, "", content)
-    # Streaming providers can surface a final partial block if the request is
-    # interrupted after reasoning has started. Never expose that scratchpad.
-    unclosed_pattern = re.compile(
-        r"`?<\s*think(?:ing)?\b[^>]*>`?.*$",
+    ranges = list(fenced)
+    for match in inline.finditer(content):
+        if any(a <= match.start() < b for a, b in fenced):
+            continue
+        # Some adapters wrap individual protocol markers in backticks. Retain
+        # that legacy leading-block form, while protecting whole inline examples.
+        if (
+            wrapped
+            and match.end() <= wrapped.end()
+            and re.fullmatch(r"`<\s*/?\s*think(?:ing)?\b[^>]*>`", match[0], re.IGNORECASE)
+        ):
+            continue
+        ranges.append(match.span())
+    for start, end in ranges:
+        masked[start:end] = ["\n" if char == "\n" else " " for char in content[start:end]]
+
+    # Either spelling closes a real block. An unclosed scratchpad must begin
+    # a line; mentioning an opening marker in ordinary prose is not reasoning.
+    tags = re.compile(
+        r"`?<\s*think(?:ing)?\b[^>]*>`?.*?`?<\s*/\s*think(?:ing)?\s*>`?"
+        r"|(?:\A|\n)[ \t]*`?<\s*think(?:ing)?\b[^>]*>`?"
+        r"(?!.*?<\s*/\s*think(?:ing)?\s*>).*\Z"
+        r"|`?<\s*/\s*think(?:ing)?\s*>`?",
         re.DOTALL | re.IGNORECASE,
     )
-    cleaned = re.sub(unclosed_pattern, "", cleaned)
-    cleaned = re.sub(r"`?<\s*/\s*think(?:ing)?\s*>`?", "", cleaned, flags=re.IGNORECASE)
+    cleaned = content
+    for match in reversed(list(tags.finditer("".join(masked)))):
+        cleaned = cleaned[: match.start()] + cleaned[match.end() :]
     return cleaned.strip()
 
 
