@@ -277,7 +277,9 @@ class KnowledgeTaskStreamManager:
         try:
             queue.put_nowait(payload)
         except asyncio.QueueFull:
-            pass
+            if payload.get("event") in {"complete", "failed"}:
+                queue.get_nowait()
+                queue.put_nowait(payload)
 
 
 class _TaskScopedLogHandler(logging.Handler):
