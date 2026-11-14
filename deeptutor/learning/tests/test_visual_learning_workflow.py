@@ -12,10 +12,12 @@ import pytest
 
 from deeptutor.capabilities.mastery import tools
 from deeptutor.learning.models import (
+    InteractionStatus,
     KnowledgePoint,
     KnowledgeType,
     LearningModule,
     LearningProgress,
+    PendingQuestion,
 )
 from deeptutor.learning.policy import is_assessed_mastered, visual_achievements
 from deeptutor.learning.scheduler import SpacedRepetitionScheduler
@@ -541,15 +543,139 @@ async def test_help_after_question_is_assisted_and_deferral_never_claims_mastery
 
 
 @pytest.mark.asyncio
-async def test_declared_vision_or_a_url_without_matching_accepted_pixels_is_guided(lesson):
-    card = await pose(lesson, _inspected_image_hashes=["some_other_image"])
-    assert card["visual"]["answer_cues"] == "unverified"
-    progress, interaction, _replayed = lesson.service.grade_interaction(
-        "visual", answer="artery", question_id=card["question_id"]
+@pytest.mark.parametrize("hashes", [[], ["some_other_image"]])
+async def test_source_without_inspected_pixels_is_not_registered(lesson, hashes):
+    """A resolved source the model never saw must not become an answer card (#2494)."""
+    from deeptutor.learning.visual_practice import prepare_visual
+
+    before = lesson.store.load("visual").model_dump()
+    with pytest.raises(ValueError, match="No matching source pixels were verified"):
+        prepare_visual(
+            visual(lesson),
+            expected_answer="artery",
+            options={},
+            attached_kbs=["kb"],
+            inspected_image_hashes=hashes,
+        )
+    result = await tools.MasteryQuizTool().execute(
+        _mastery_path_id="visual",
+        _attached_kb_names=["kb"],
+        _inspected_image_hashes=hashes,
+        knowledge_point_id="identify",
+        question="Identify numbered structure 1 in the original figure.",
+        expected_answer="artery",
+        explanation="The source explains that structure 1 is an artery.",
+        visual=visual(lesson),
     )
-    assert interaction.result["result"] == "ungraded"
+    assert not result.success
+    assert result.content.startswith("Visual practice is unavailable:")
+    assert "No matching source pixels were verified" in result.content
+    assert "no assessment was created" in result.content
+    grouped = await tools.MasteryQuizTool().execute(
+        _mastery_path_id="visual",
+        _attached_kb_names=["kb"],
+        _inspected_image_hashes=hashes,
+        questions=[
+            {
+                "knowledge_point_id": "identify",
+                "question": "Identify numbered structure 1.",
+                "expected_answer": "artery",
+                "visual": visual(lesson),
+            },
+            {
+                "knowledge_point_id": "identify",
+                "question": "Identify numbered structure 2.",
+                "expected_answer": "vein",
+                "visual": visual(lesson),
+            },
+        ],
+    )
+    assert not grouped.success
+    assert "Visual practice is unavailable" in grouped.content
+    assert lesson.store.load("visual").model_dump() == before
+    assert lesson.store.get_active_interaction("visual") is None
+
+
+def _legacy_uninspected_card() -> PendingQuestion:
+    """A visual card stored before uninspected sources were refused."""
+    return PendingQuestion(
+        question_id="legacy-visual",
+        knowledge_point_id="identify",
+        module_id="m1",
+        prompt="Trace the automaton using the rule on the cited page.",
+        expected_answer="accept",
+        explanation="The transition table in the stem is enough; the page was only a citation.",
+        visual_context={
+            "task": "relationship",
+            "sources": [
+                {
+                    "kb_name": "kb",
+                    "source_path": "anatomy.pdf",
+                    "page": 1,
+                    "region": [0, 0, 1, 1],
+                    "asset_id": "",
+                }
+            ],
+            "answer_cues": "unverified",
+            "key_status": "unverified",
+            "pixels_inspected": False,
+            "reference_quote": "tracing rule",
+            "reference_answer": "accept",
+            "hints_used": 0,
+        },
+    )
+
+
+@pytest.mark.asyncio
+async def test_legacy_uninspected_visual_stays_ungraded_and_correct_asks_to_void(lesson):
+    """Cards already stored without inspected pixels can be voided, not re-keyed (#2494)."""
+    lesson.service.register_question("visual", _legacy_uninspected_card())
+    graded = await tools.MasteryGradeTool().execute(
+        _mastery_path_id="visual",
+        question_id="legacy-visual",
+        answer="accept",
+    )
+    assert graded.success
+    receipt = graded.metadata["mastery_grade"]["result"]
+    assert receipt["result"] == "ungraded"
+    assert receipt["is_correct"] is None
+    assert "No matching source pixels were verified" in receipt["feedback"]
+    progress = lesson.store.load("visual")
     assert not progress.quiz_attempts
+    assert not progress.learning_evidence
+    assert progress.mastery_levels.get("identify", 0) == 0
     assert not visual_achievements(progress, "identify")
+
+    corrected = await tools.MasteryRepairQuestionTool().execute(
+        _mastery_path_id="visual",
+        question_id="legacy-visual",
+        action="correct",
+        expected_answer="accept",
+        reason="The learner's trace matches the transition table.",
+    )
+    assert not corrected.success
+    assert "Void it and pose a supported replacement" in corrected.content
+    assert "No matching source pixels" not in corrected.content
+    held = lesson.store.get_interaction("visual", "legacy-visual")
+    assert held.status == InteractionStatus.ANSWERED
+    assert lesson.store.load("visual").pending_question is not None
+    assert lesson.store.load("visual").mastery_levels.get("identify", 0) == 0
+
+    voided = await tools.MasteryRepairQuestionTool().execute(
+        _mastery_path_id="visual",
+        question_id="legacy-visual",
+        action="void",
+        reason="The visual was never inspected, so the card cannot be graded.",
+    )
+    assert voided.success, voided.content
+    fresh = lesson.store.load("visual")
+    assert fresh.pending_question is None
+    assert not fresh.quiz_attempts
+    assert fresh.mastery_levels.get("identify", 0) == 0
+    assert (
+        lesson.store.get_interaction("visual", "legacy-visual").status
+        == InteractionStatus.ABANDONED
+    )
 
 
 @pytest.mark.asyncio
