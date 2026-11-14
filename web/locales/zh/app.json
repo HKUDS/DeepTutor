@@ -6619,5 +6619,15 @@
   "Which service fetches and extracts pages for web_fetch calls.": "选择为 web_fetch 调用抓取并提取网页的服务。",
   "DEEPTUTOR_FETCH_BACKEND is overriding the saved choice for this deployment.": "此部署中的 DEEPTUTOR_FETCH_BACKEND 正在覆盖已保存的选择。",
   "Failed to save web fetch settings.": "保存网页抓取设置失败。",
-  "Failed to load web fetch settings.": "加载网页抓取设置失败。"
+  "Failed to load web fetch settings.": "加载网页抓取设置失败。",
+  "Zoom image": "放大图片",
+  "Drag to pan, scroll to zoom": "拖动平移，滚轮缩放",
+  "Image preview": "图片预览",
+  "This image could not be rendered.": "无法渲染这张图片。",
+  "Zoom level": "缩放比例",
+  "Fit page": "适应页面",
+  "Fit text": "适应文字",
+  "Loading image…": "正在加载图片…",
+  "Page {{n}}": "第 {{n}} 页",
+  "Reset zoom": "重置缩放"
 }

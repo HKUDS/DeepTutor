@@ -6641,5 +6641,15 @@
   "Which service fetches and extracts pages for web_fetch calls.": "Служба, яка отримує та видобуває сторінки для викликів web_fetch.",
   "DEEPTUTOR_FETCH_BACKEND is overriding the saved choice for this deployment.": "DEEPTUTOR_FETCH_BACKEND має пріоритет над збереженим вибором для цього розгортання.",
   "Failed to save web fetch settings.": "Не вдалося зберегти параметри веб-отримання.",
-  "Failed to load web fetch settings.": "Не вдалося завантажити параметри веб-отримання."
+  "Failed to load web fetch settings.": "Не вдалося завантажити параметри веб-отримання.",
+  "Zoom image": "Збільшити зображення",
+  "Drag to pan, scroll to zoom": "Перетягніть, щоб перемістити; прокрутіть, щоб масштабувати",
+  "Image preview": "Перегляд зображення",
+  "This image could not be rendered.": "Не вдалося відтворити це зображення.",
+  "Zoom level": "Рівень масштабу",
+  "Fit page": "За розміром сторінки",
+  "Fit text": "За розміром тексту",
+  "Loading image…": "Завантаження зображення…",
+  "Page {{n}}": "Сторінка {{n}}",
+  "Reset zoom": "Скинути масштаб"
 }

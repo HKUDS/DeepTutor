@@ -6637,5 +6637,15 @@
   "Which service fetches and extracts pages for web_fetch calls.": "Serviço que busca e extrai páginas para chamadas web_fetch.",
   "DEEPTUTOR_FETCH_BACKEND is overriding the saved choice for this deployment.": "DEEPTUTOR_FETCH_BACKEND está substituindo a escolha salva para esta implantação.",
   "Failed to save web fetch settings.": "Falha ao salvar as configurações de busca web.",
-  "Failed to load web fetch settings.": "Falha ao carregar as configurações de busca web."
+  "Failed to load web fetch settings.": "Falha ao carregar as configurações de busca web.",
+  "Zoom image": "Ampliar imagem",
+  "Drag to pan, scroll to zoom": "Arraste para mover, role para ampliar",
+  "Image preview": "Pré-visualização da imagem",
+  "This image could not be rendered.": "Não foi possível renderizar esta imagem.",
+  "Zoom level": "Nível de zoom",
+  "Fit page": "Ajustar à página",
+  "Fit text": "Ajustar ao texto",
+  "Loading image…": "Carregando imagem…",
+  "Page {{n}}": "Página {{n}}",
+  "Reset zoom": "Redefinir zoom"
 }

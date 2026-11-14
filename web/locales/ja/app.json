@@ -6619,5 +6619,15 @@
   "Which service fetches and extracts pages for web_fetch calls.": "web_fetch 呼び出しでページを取得・抽出するサービス。",
   "DEEPTUTOR_FETCH_BACKEND is overriding the saved choice for this deployment.": "DEEPTUTOR_FETCH_BACKEND がこのデプロイの保存済み選択を上書きしています。",
   "Failed to save web fetch settings.": "ウェブフェッチ設定の保存に失敗しました。",
-  "Failed to load web fetch settings.": "ウェブフェッチ設定の読み込みに失敗しました。"
+  "Failed to load web fetch settings.": "ウェブフェッチ設定の読み込みに失敗しました。",
+  "Zoom image": "画像を拡大",
+  "Drag to pan, scroll to zoom": "ドラッグで移動、スクロールでズーム",
+  "Image preview": "画像プレビュー",
+  "This image could not be rendered.": "この画像を表示できませんでした。",
+  "Zoom level": "ズーム倍率",
+  "Fit page": "ページに合わせる",
+  "Fit text": "テキストに合わせる",
+  "Loading image…": "画像を読み込み中…",
+  "Page {{n}}": "{{n}} ページ",
+  "Reset zoom": "ズームをリセット"
 }

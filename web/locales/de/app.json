@@ -6619,5 +6619,15 @@
   "Which service fetches and extracts pages for web_fetch calls.": "Welcher Dienst Seiten für web_fetch-Aufrufe lädt und extrahiert.",
   "DEEPTUTOR_FETCH_BACKEND is overriding the saved choice for this deployment.": "DEEPTUTOR_FETCH_BACKEND überschreibt die gespeicherte Auswahl für diese Bereitstellung.",
   "Failed to save web fetch settings.": "Speichern der Web-Fetch-Einstellungen fehlgeschlagen.",
-  "Failed to load web fetch settings.": "Laden der Web-Fetch-Einstellungen fehlgeschlagen."
+  "Failed to load web fetch settings.": "Laden der Web-Fetch-Einstellungen fehlgeschlagen.",
+  "Zoom image": "Bild vergrößern",
+  "Drag to pan, scroll to zoom": "Ziehen zum Verschieben, scrollen zum Zoomen",
+  "Image preview": "Bildvorschau",
+  "This image could not be rendered.": "Dieses Bild konnte nicht gerendert werden.",
+  "Zoom level": "Zoomstufe",
+  "Fit page": "An Seite anpassen",
+  "Fit text": "An Text anpassen",
+  "Loading image…": "Bild wird geladen…",
+  "Page {{n}}": "Seite {{n}}",
+  "Reset zoom": "Zoom zurücksetzen"
 }

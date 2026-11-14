@@ -633,5 +633,10 @@
   "Failed to load web fetch settings.": "웹 페치 설정을 불러오지 못했습니다.",
   "Loading web fetch settings...": "웹 페치 설정을 불러오는 중...",
   "Failed to save web fetch settings.": "웹 페치 설정을 저장하지 못했습니다.",
-  "Which service fetches and extracts pages for web_fetch calls.": "web_fetch 호출 시 페이지를 가져와 추출하는 서비스."
+  "Which service fetches and extracts pages for web_fetch calls.": "web_fetch 호출 시 페이지를 가져와 추출하는 서비스.",
+  "Fit": "맞춤",
+  "Zoom in": "확대",
+  "Zoom out": "축소",
+  "Reset zoom": "확대/축소 초기화",
+  "Zoom level": "확대/축소 수준"
 }

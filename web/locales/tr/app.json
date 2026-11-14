@@ -6619,5 +6619,15 @@
   "Which service fetches and extracts pages for web_fetch calls.": "web_fetch çağrıları için sayfaları getiren ve çıkaran hizmet.",
   "DEEPTUTOR_FETCH_BACKEND is overriding the saved choice for this deployment.": "DEEPTUTOR_FETCH_BACKEND, bu dağıtım için kayıtlı seçimi geçersiz kılıyor.",
   "Failed to save web fetch settings.": "Web getirme ayarları kaydedilemedi.",
-  "Failed to load web fetch settings.": "Web getirme ayarları yüklenemedi."
+  "Failed to load web fetch settings.": "Web getirme ayarları yüklenemedi.",
+  "Zoom image": "Görseli büyüt",
+  "Drag to pan, scroll to zoom": "Taşımak için sürükleyin, yakınlaştırmak için kaydırın",
+  "Image preview": "Görsel önizlemesi",
+  "This image could not be rendered.": "Bu görsel oluşturulamadı.",
+  "Zoom level": "Yakınlaştırma düzeyi",
+  "Fit page": "Sayfaya sığdır",
+  "Fit text": "Metne sığdır",
+  "Loading image…": "Görsel yükleniyor…",
+  "Page {{n}}": "Sayfa {{n}}",
+  "Reset zoom": "Yakınlaştırmayı sıfırla"
 }
