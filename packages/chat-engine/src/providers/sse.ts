@@ -63,7 +63,8 @@ export async function* sse(
     }
   } finally {
     signal.removeEventListener("abort", aborted);
-    await reader.cancel().catch(() => {});
+    // Release local ownership even if the source never finishes cancelling.
+    void reader.cancel().catch(() => {});
     reader.releaseLock();
   }
 }
