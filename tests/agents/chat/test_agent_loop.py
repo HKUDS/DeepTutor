@@ -4620,3 +4620,204 @@ async def test_public_answer_with_capability_notice_is_preserved_once(monkeypatc
     assert answer.count(notice) == 1
     assert answer.startswith(explanation)
     assert _result(events).metadata["response"] == answer
+
+
+@pytest.mark.asyncio
+async def test_indexed_anonymous_preview_keeps_id_after_anonymous_continuation(monkeypatch):
+    client = _ScriptedChatClient(
+        [
+            [
+                _llm_chunk(
+                    tool_calls=[
+                        {"index": 1, "name": "ask_user", "arguments": '{"intro":"Which path?"'}
+                    ]
+                ),
+                _llm_chunk(
+                    tool_calls=[
+                        {
+                            "index": None,
+                            "arguments": ',"questions":[{"id":"q","prompt":"Choose?","options":[{"label":"Yes"},{"label":"No"}]}]}',
+                        }
+                    ]
+                ),
+            ]
+        ]
+    )
+    pipeline = AgenticChatPipeline(language="en")
+    pipeline.registry = registry = _Registry()
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _context: ["ask_user"])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+    events = await _run(
+        pipeline,
+        UnifiedContext(session_id="synthetic", user_message="test", enabled_tools=["ask_user"]),
+    )
+    drafts = [e for e in events if isinstance(e.metadata.get("ask_user_draft"), dict)]
+    assert len(drafts) >= 2
+    assert {e.metadata["draft_call_id"] for e in drafts} == {"call_1"}
+    assert registry.executed[0]["name"] == "ask_user"
+    call_events = [e for e in events if e.type == StreamEventType.TOOL_CALL]
+    assert any(e.metadata.get("tool_call_id") == "call_1" for e in call_events)
+
+
+@pytest.mark.asyncio
+async def test_indexless_parallel_calls_replay_and_link_signatures(monkeypatch):
+    signatures = [
+        {"google": {"thought_signature": "one"}},
+        {"google": {"thought_signature": "two"}},
+    ]
+    client = _ScriptedChatClient(
+        [
+            [
+                _llm_chunk(
+                    tool_calls=[
+                        {
+                            "index": 0,
+                            "id": "a",
+                            "name": "web_search",
+                            "arguments": '{"query":"one"}',
+                            "extra_content": signatures[0],
+                        },
+                        {
+                            "index": None,
+                            "id": "b",
+                            "name": "web_search",
+                            "arguments": '{"query":"two"}',
+                            "extra_content": signatures[1],
+                        },
+                    ]
+                )
+            ],
+            [_llm_chunk(content="Done.")],
+        ]
+    )
+    pipeline = AgenticChatPipeline(language="en")
+    pipeline.registry = registry = _Registry()
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _context: ["web_search"])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+    await _run(
+        pipeline,
+        UnifiedContext(session_id="synthetic", user_message="test", enabled_tools=["web_search"]),
+    )
+    assert [c["kwargs"]["query"] for c in registry.executed] == ["one", "two"]
+    messages = client.calls[1]["messages"]
+    calls = next(m["tool_calls"] for m in messages if m.get("tool_calls"))
+    assert [c["id"] for c in calls] == ["a", "b"]
+    assert [c["extra_content"] for c in calls] == signatures
+    assert [m["tool_call_id"] for m in messages if m.get("role") == "tool"] == ["a", "b"]
+
+
+@pytest.mark.asyncio
+async def test_indexless_ask_user_drafts_keep_each_identity(monkeypatch):
+    args_a = json.dumps({"question": "First question?", "options": ["Yes", "No"]})
+    args_b = json.dumps({"question": "Second question?", "options": ["Yes", "No"]})
+    client = _ScriptedChatClient(
+        [
+            [
+                _llm_chunk(
+                    tool_calls=[
+                        {"index": None, "id": "a", "name": "ask_user", "arguments": args_a[:25]}
+                    ]
+                ),
+                _llm_chunk(
+                    tool_calls=[
+                        {"index": None, "id": "b", "name": "ask_user", "arguments": args_b[:25]}
+                    ]
+                ),
+                _llm_chunk(tool_calls=[{"index": None, "id": "a", "arguments": args_a[25:]}]),
+                _llm_chunk(tool_calls=[{"index": None, "id": "b", "arguments": args_b[25:]}]),
+            ],
+            [_llm_chunk(content="Done.")],
+        ]
+    )
+    pipeline = AgenticChatPipeline(language="en")
+    pipeline.registry = registry = _Registry()
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _context: ["ask_user"])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+    events = await _run(
+        pipeline,
+        UnifiedContext(session_id="synthetic", user_message="test", enabled_tools=["ask_user"]),
+    )
+    drafts = [e for e in events if isinstance(e.metadata.get("ask_user_draft"), dict)]
+    assert {e.metadata["draft_call_id"] for e in drafts} == {"a", "b"}
+    # Dispatch intentionally skips additional parallel ask_user calls.
+    assert [c["kwargs"]["question"] for c in registry.executed] == ["First question?"]
+    messages = client.calls[1]["messages"]
+    calls = next(m["tool_calls"] for m in messages if m.get("tool_calls"))
+    assert [json.loads(c["function"]["arguments"])["question"] for c in calls] == [
+        "First question?",
+        "Second question?",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_truncated_second_streamed_document_does_not_dispatch_batch(monkeypatch):
+    client = _ScriptedChatClient(
+        [
+            [
+                _llm_chunk(
+                    tool_calls=[
+                        {
+                            "index": None,
+                            "id": "a",
+                            "name": "web_search",
+                            "arguments": '{"query":"alpha"}',
+                        },
+                        {"index": None, "arguments": '{"query":"beta"'},
+                    ]
+                )
+            ]
+        ]
+    )
+    pipeline = AgenticChatPipeline(language="en")
+    pipeline.registry = registry = _Registry()
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _context: ["web_search"])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+    bus = StreamBus()
+    events, consumer = await _collect_bus_events(bus)
+    try:
+        with pytest.raises(ValueError, match="Ambiguous"):
+            await pipeline.run(
+                UnifiedContext(
+                    session_id="synthetic", user_message="test", enabled_tools=["web_search"]
+                ),
+                bus,
+            )
+    finally:
+        await bus.close()
+        await consumer
+    assert registry.executed == []
+
+
+@pytest.mark.asyncio
+async def test_ambiguous_indexless_continuation_does_not_dispatch_batch(monkeypatch):
+    client = _ScriptedChatClient(
+        [
+            [
+                _llm_chunk(
+                    tool_calls=[
+                        {"index": None, "id": "a", "name": "web_search", "arguments": '{"query":'},
+                        {"index": None, "id": "b", "name": "web_search", "arguments": '{"query":'},
+                        {"index": None, "arguments": '"x"}'},
+                    ]
+                )
+            ]
+        ]
+    )
+    pipeline = AgenticChatPipeline(language="en")
+    pipeline.registry = registry = _Registry()
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _context: ["web_search"])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+    bus = StreamBus()
+    events, consumer = await _collect_bus_events(bus)
+    try:
+        with pytest.raises(ValueError, match="Ambiguous"):
+            await pipeline.run(
+                UnifiedContext(
+                    session_id="synthetic", user_message="test", enabled_tools=["web_search"]
+                ),
+                bus,
+            )
+    finally:
+        await bus.close()
+        await consumer
+    assert registry.executed == []
