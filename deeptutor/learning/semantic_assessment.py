@@ -46,6 +46,7 @@ class Verdict(BaseModel):
     result: Literal["correct", "partial", "incorrect", "ungraded"]
     confidence: float = Field(ge=0, le=1)
     feedback: str = Field(min_length=1, max_length=2000)
+    reference_answer: str = Field(default="", max_length=6000)
 
     def receipt(self):
         final = self.result != "ungraded" and self.confidence >= 0.8
@@ -57,6 +58,7 @@ class Verdict(BaseModel):
             "is_correct": True if result == "correct" else False if result == "incorrect" else None,
             "feedback": self.feedback,
             "confidence": self.confidence,
+            **({"reference_answer": self.reference_answer} if self.reference_answer else {}),
         }
 
 
@@ -207,8 +209,13 @@ async def judge_answers(config, items):
         "confidence is your probability that the verdict is right: 0.9 or above when the answer clearly "
         "satisfies the rubric, 0.8-0.89 when it does with a minor reservation, and below 0.8 only when a "
         "careful grader could reasonably disagree. "
+        "For assessment_type=qualitative, also provide reference_answer: a complete, correct "
+        "standalone explanation of the objective in the learner's language, grounded in the "
+        "rubric and available sources. It is a future practice reference, not feedback on the "
+        "learner or a copy of their answer. If evidence cannot support a reference, use ungraded. "
         'Return JSON {"verdicts":[{"question_id":"...","result":"correct|partial|incorrect|ungraded",'
-        '"confidence":0.0,"feedback":"specific concise explanation in the learner answer language"}]}.',
+        '"confidence":0.0,"feedback":"specific concise explanation in the learner answer language",'
+        '"reference_answer":"required for a final qualitative assessment; otherwise optional"}]}.',
         public_items,
         native_images=native_images,
         sources=[
@@ -229,6 +236,14 @@ async def judge_answers(config, items):
         }
         if set(result) != {item["question_id"] for item in items}:
             raise ValueError()
+        for item in items:
+            verdict = result[item["question_id"]]
+            if (
+                item.get("assessment_type") == "qualitative"
+                and verdict.receipt()["final"]
+                and not verdict.reference_answer.strip()
+            ):
+                raise ValueError("Qualitative assessment omitted its reference answer")
         return result
     except (KeyError, TypeError, ValueError) as exc:
         raise AssessmentUnavailable(

@@ -201,7 +201,7 @@ def _decode_json_options(raw_options: str) -> Any:
         if isinstance(decoded, (list, dict)):
             return decoded
     raise ValueError(
-        "mastery_quiz.options must be a JSON array, not a string — send "
+        "mastery_quiz.options must be an array, not a string — send "
         "[{'label': 'A', 'body': 'first answer'}, …] directly instead of "
         "encoding it as text."
     )
@@ -445,6 +445,7 @@ async def _sync_qualitative_to_question_bank(
     knowledge_point_name: str,
     passed: bool,
     evidence: str,
+    reference_answer: str = "",
     material_title: str = "",
     quality: float | None = None,
     result: str = "",
@@ -464,6 +465,7 @@ async def _sync_qualitative_to_question_bank(
         question=knowledge_point_name,
         question_type="written",
         user_answer=evidence,
+        correct_answer=reference_answer,
         is_correct=passed,
         result=result or ("correct" if passed else "partial"),
         source="mastery_path",
@@ -2167,6 +2169,7 @@ class MasteryAssessTool(BaseTool):
             knowledge_point_name=kp.name,
             passed=passed,
             evidence=assessed_answer,
+            reference_answer=receipt.get("reference_answer", ""),
             result=receipt["result"],
             quality={"correct": 1.0, "partial": 0.5, "incorrect": 0.0}[receipt["result"]],
             material_title=progress.name,

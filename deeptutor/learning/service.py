@@ -2954,6 +2954,7 @@ class LearningService:
             confidence=verdict.get("confidence") if verdict else None,
             learner_answer=evidence,
             feedback=verdict.get("feedback", "") if verdict else "",
+            reference_answer=verdict.get("reference_answer", "") if verdict else "",
             attempt_count=1,
             session_id=session_id,
             turn_id=turn_id,
@@ -3098,6 +3099,7 @@ class LearningService:
                     result=existing.result,
                     confidence=existing.confidence if existing.confidence is not None else 1.0,
                     feedback=existing.feedback or "Previously saved assessment.",
+                    reference_answer=existing.reference_answer,
                 ).receipt()
         # A reply to a clarification request or to a partial grade completes
         # the earlier explanation in this session; grading it alone would
@@ -3121,6 +3123,7 @@ class LearningService:
                 [
                     {
                         "question_id": kp_id,
+                        "assessment_type": "qualitative",
                         "prompt": "Explain this objective in your own words: " + kp.name,
                         "expected_answer": "A complete, accurate explanation of the objective and its relationships; do not infer mastery from acknowledgements or requests.",
                         "objective": kp.model_dump(),

@@ -41,7 +41,7 @@ def test_json_string_of_plain_strings_reads_like_the_array() -> None:
 
 @pytest.mark.parametrize("raw", ["A: red, B: blue", "[not json", '"just a string"', ""])
 def test_a_string_that_is_not_an_encoded_array_says_to_send_a_real_array(raw: str) -> None:
-    with pytest.raises(ValueError, match="must be a JSON array, not a string"):
+    with pytest.raises(ValueError, match="must be an array, not a string"):
         _read_choice_options(raw)
 
 
