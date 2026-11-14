@@ -560,10 +560,23 @@ def _install_request_workspace(request) -> None:
             raise WorkspaceError("Restore this workspace before changing its data.")
         # Management/migration requests acquire their own exclusive lease.
         task_board_request = path == "/api/task-board" or path.startswith("/api/task-board/")
-        if getattr(request, "method", None) is not None and (
-            not management
-            or (task_board_request and path != "/api/task-board/events")
-            or (path.startswith("/api/calendar/") and path != "/api/calendar/stream")
+        # A progress stream can outlive the work it reports: a queued indexing
+        # task that never starts keeps the SSE open indefinitely. Holding the
+        # request's shared lease for the stream's whole lifetime then answers
+        # "Workspace data is busy" to every exclusive workspace operation
+        # (move, registration update, migration) until the tab is closed, so
+        # this read-only observer opts out.
+        progress_stream = path.startswith("/api/knowledge-bases/tasks/") and path.endswith(
+            "/stream"
+        )
+        if (
+            getattr(request, "method", None) is not None
+            and not progress_stream
+            and (
+                not management
+                or (task_board_request and path != "/api/task-board/events")
+                or (path.startswith("/api/calendar/") and path != "/api/calendar/stream")
+            )
         ):
             from deeptutor.services.workspace.activity import acquire_activity
 

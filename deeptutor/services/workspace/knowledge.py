@@ -22,11 +22,19 @@ def qualified_kb_id(name: str, workspace_id: str = "") -> str:
 
 
 def workspace_id_for_kb_base_dir(base_dir: str | Path) -> str | None:
-    """Find the owned storage scope for a KB directory used by a background job."""
+    """Find the owned storage scope for a KB directory used by a background job.
+
+    A registration can outlive its folder (archived leftovers, a directory the
+    user moved or deleted). Entering such a scope raises ``WorkspaceError``;
+    skip it and keep scanning, because this lookup runs on every upload/sync
+    and one dead registration must not break the write path of the workspaces
+    that are healthy.
+    """
     from deeptutor.multi_user.paths import get_account_path_service
     from deeptutor.services.path_service import get_path_service
     from deeptutor.services.workspace import get_content_workspace_service
     from deeptutor.services.workspace.context import workspace_context
+    from deeptutor.services.workspace.models import WorkspaceError
 
     root = Path(base_dir).resolve()
     if root == get_account_path_service().get_knowledge_bases_root().resolve():
@@ -34,9 +42,12 @@ def workspace_id_for_kb_base_dir(base_dir: str | Path) -> str | None:
     for row in get_content_workspace_service()._catalog():
         if row.get("kind") != "workspace":
             continue
-        with workspace_context(row["workspace_id"]):
-            if root == get_path_service().get_knowledge_bases_root().resolve():
-                return str(row["workspace_id"])
+        try:
+            with workspace_context(row["workspace_id"]):
+                if root == get_path_service().get_knowledge_bases_root().resolve():
+                    return str(row["workspace_id"])
+        except WorkspaceError:
+            continue
     return None
 
 
