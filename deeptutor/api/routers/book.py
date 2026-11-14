@@ -1146,7 +1146,6 @@ async def quiz_attempt(req: QuizAttemptRequest) -> dict[str, Any]:
             page_sessions = metadata.get("page_chat_sessions")
             session_id = str(
                 (page_sessions.get(req.page_id) if isinstance(page_sessions, dict) else "")
-                or book.chat_session_id
                 or ""
             ).strip()
             has_session = bool(session_id and await store.get_session(session_id) is not None)
