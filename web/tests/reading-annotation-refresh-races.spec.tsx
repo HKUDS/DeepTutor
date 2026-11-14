@@ -175,4 +175,3 @@ describe("a remote refresh racing a local write or another refresh", () => {
     expect(result.current.annotations).toEqual([]);
   });
 });
-
