@@ -190,3 +190,77 @@ def test_permission_error_never_confirms_group_cleanup(monkeypatch):
 
     monkeypatch.setattr(_process.os, "killpg", denied)
     assert _process._process_group_alive(12345)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX process groups")
+@pytest.mark.parametrize("backend", ["darwin", "linux"])
+@pytest.mark.parametrize("reaped", [True, False])
+def test_empty_member_snapshot_rechecks_group_existence(monkeypatch, backend, reaped):
+    """Distinguish a group reaped during enumeration from one hidden by it."""
+    from deeptutor.services.parsing.engines.mineru import _process
+
+    monkeypatch.setattr(_process, "sys", SimpleNamespace(platform=backend))
+    process = subprocess.Popen(
+        [sys.executable, "-c", "import time; time.sleep(30)"], start_new_session=True
+    )
+    snapshots = []
+
+    def before_snapshot():
+        snapshots.append(process.pid)
+        if reaped:
+            process.kill()
+            process.wait(timeout=5)
+
+    if backend == "darwin":
+        original = subprocess.check_output
+
+        def snapshot(*args, **kwargs):
+            before_snapshot()
+            return original(*args, **kwargs) if reaped else ""
+
+        monkeypatch.setattr(_process.subprocess, "check_output", snapshot)
+    else:
+        original = psutil.process_iter
+
+        def snapshot(*args, **kwargs):
+            before_snapshot()
+            return original(*args, **kwargs) if reaped else iter(())
+
+        monkeypatch.setattr(psutil, "process_iter", snapshot)
+
+    try:
+        assert _process._process_group_alive(process.pid) is not reaped
+        assert snapshots == [process.pid], "must exercise the signal/enumeration race"
+    finally:
+        process.kill()
+        process.wait(timeout=5)
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="Darwin reports EPERM for zombie groups")
+def test_cleanup_accepts_zombie_group_reaped_during_snapshot(tmp_path, monkeypatch):
+    """Exercise real EPERM recovery without inventing a permission error."""
+    from deeptutor.services.parsing.engines.mineru import _process
+
+    snapshots = []
+    original = subprocess.check_output
+    process = None
+
+    def snapshot(*args, **kwargs):
+        snapshots.append(process.pid)
+        # Reap the zombie only after the group's signal-0 probe. The real ps
+        # snapshot then contains no members, and signal 0 will report ESRCH.
+        process.wait(timeout=5)
+        return original(*args, **kwargs)
+
+    try:
+        with _process.cli_process(
+            [sys.executable, "-c", "import time; time.sleep(30)"], tmp_path / "child.log", {}
+        ) as process:
+            process.kill()
+            assert _await_settled(process.pid, timeout=2)
+            monkeypatch.setattr(_process.subprocess, "check_output", snapshot)
+        assert snapshots == [process.pid]
+    finally:
+        if process is not None:
+            process.kill()
+            process.wait(timeout=5)
