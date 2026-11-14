@@ -114,3 +114,50 @@ def test_ws_requires_command_ids_for_retryable_mutations(protocol_client) -> Non
     assert frame["error_code"] == "invalid_command"
     assert frame["protocol_version"] == "2.0"
     assert turns.cancelled == []
+
+
+@pytest.mark.parametrize("selected", [False, True])
+def test_ws_reports_missing_llm_access(protocol_client, monkeypatch, tmp_path, selected):
+    from deeptutor.multi_user.context import set_current_user
+    from deeptutor.multi_user.models import CurrentUser, UserScope
+    from deeptutor.services.session.sqlite_store import SQLiteSessionStore
+    from deeptutor.services.session.turn_runtime import TurnRuntimeManager
+
+    client, turns = protocol_client
+    runtime = TurnRuntimeManager(SQLiteSessionStore(tmp_path / "chat.db"))
+    monkeypatch.setattr(turns, "start_turn", runtime.start_turn, raising=False)
+
+    async def authenticate(_ws):
+        return set_current_user(
+            CurrentUser(
+                id="learner",
+                username="learner",
+                role="user",
+                scope=UserScope(kind="user", user_id="learner", root=tmp_path),
+            )
+        )
+
+    monkeypatch.setattr(auth, "ws_require_auth", authenticate)
+    monkeypatch.setattr(
+        "deeptutor.multi_user.model_access.redacted_model_access",
+        lambda _user_id: {"llm": []},
+    )
+    with client.websocket_connect("/ws") as socket:
+        socket.send_json(
+            {
+                "type": "start_turn",
+                "protocol_version": "2.0",
+                "content": "Explain photosynthesis",
+                "language": "en",
+                "auto_route": False,
+                **({"llm_selection": {"profile_id": "p", "model_id": "m"}} if selected else {}),
+            }
+        )
+        frame = socket.receive_json()
+        socket.send_json({"type": "ping", "protocol_version": "2.0"})
+        assert socket.receive_json()["type"] == "pong"
+
+    assert frame["type"] == "protocol_error"
+    assert frame["error_code"] == "no_llm_access"
+    assert frame["retryable"] is False
+    assert "administrator" in frame["message"]

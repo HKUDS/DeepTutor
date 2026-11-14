@@ -242,6 +242,7 @@ function Harness() {
         {String(state.submissionFailed)}
       </div>
       <div data-testid="submissionError">{state.submissionErrorMessage}</div>
+      <div data-testid="submissionNoLlmAccess">{String(state.submissionNoLlmAccess)}</div>
       <div data-testid="lastTurnFailed">{String(state.lastTurnFailed)}</div>
       <div data-testid="capability">{state.activeCapability}</div>
       <div data-testid="submissionNeedsReview">{String(state.submissionNeedsReview)}</div>
@@ -1072,6 +1073,41 @@ it("carries the server's rejection text into the submission banner state (#2637)
     "Couldn't reach the server. Please check your connection and retry.",
   );
   vi.useRealTimers();
+});
+
+it.each(["Resend", "Retry first unsent"])("keeps model-access failure across reload and rechecks on explicit %s", async (retryLabel) => {
+  const notify = vi.spyOn(notifications, "notify");
+  fixture.connected = true;
+  fixture.session = completedServerSession();
+  const first = render(<ChatStateAdapterProvider><Harness /></ChatStateAdapterProvider>);
+  await act(async () => fireEvent.click(screen.getByText("Load")));
+  await act(async () => fireEvent.click(screen.getByText("Send")));
+  await act(async () => {
+    fixture.emit?.({
+      type: "error", source: "transport", stage: "", content: "Ask an administrator",
+      timestamp: Date.now() / 1000,
+      metadata: { reason: "no_llm_access", retryable: false, turn_terminal: true, status: "failed" },
+    });
+  });
+  expect(readMessages().at(-1)).toEqual({
+    role: "user", content: "Hello offline", failed: true,
+  });
+  expect(screen.getByTestId("submissionNoLlmAccess").textContent).toBe("true");
+  expect(notify).not.toHaveBeenCalledWith("Ask an administrator", expect.anything());
+  first.unmount();
+
+  fixture.sent = [];
+  render(<ChatStateAdapterProvider><Harness /></ChatStateAdapterProvider>);
+  await act(async () => fireEvent.click(screen.getByText("Load")));
+  expect(screen.getByTestId("submissionNoLlmAccess").textContent).toBe("true");
+  expect(readFailedSubmissions("s1")[0].noLlmAccess).toBe(true);
+  // Reload never automatically resubmits an authorization failure. A manual
+  // retry reaches the server, which may now have a restored model assignment.
+  expect(fixture.sent.filter(message => message.type === "start_turn")).toHaveLength(0);
+  await act(async () => fireEvent.click(screen.getByText(retryLabel)));
+  expect(fixture.sent.filter(message => message.type === "start_turn")).toHaveLength(1);
+  expect(screen.getByTestId("submissionNoLlmAccess").textContent).toBe("false");
+  expect(readFailedSubmissions("s1").some(record => record.noLlmAccess)).toBe(false);
 });
 
 it("retries the original wire request after reload even when the transcript advances", async () => {

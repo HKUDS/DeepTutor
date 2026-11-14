@@ -5,6 +5,7 @@ import { supportsSubmissionReplacement } from "@/lib/session-api";
 import { activeWorkspaceId } from "@/lib/workspace-scope";
 import {
   clearFailedSubmission,
+  markFailedSubmissionNoLlmAccess,
   moveFailedSubmissions,
   readFailedSubmissions,
   serverContainsFailedSubmission,
@@ -34,10 +35,11 @@ import {
   resolveResponseLanguage,
   writeStoredActiveSessionId,
 } from "@/context/app-shell-storage";
-import type {
-  StreamEvent,
-  ChatMessage,
-  LLMSelection,
+import {
+  NO_LLM_ACCESS,
+  type StreamEvent,
+  type ChatMessage,
+  type LLMSelection,
 } from "@/features/chat/model/protocol";
 import { UnifiedTurnClient } from "@/features/chat/transport/UnifiedTurnClient";
 import { buildStartTurnInput } from "@/features/chat/controllers/buildStartTurnInput";
@@ -264,6 +266,7 @@ export interface ChatState {
    *  accepted (#1594). Drives the composer-adjacent error banner; the
    *  error must not render as an assistant reply. */
   submissionFailed: boolean;
+  submissionNoLlmAccess: boolean;
   /** The text was recovered without its attachments or other request context. */
   submissionNeedsReview: boolean;
   /** No browser storage accepted even the text. Copy before leaving this tab. */
@@ -392,6 +395,7 @@ export interface MessageItem {
   /** This submission never reached the server (#1594). Rendered with an
    *  "unsent" marker; its requestSnapshot drives the retry. */
   failedSubmission?: boolean;
+  failedSubmissionNoLlmAccess?: boolean;
   failedSubmissionNeedsReview?: boolean;
   failedSubmissionNotSaved?: boolean;
   failedSubmissionId?: string;
@@ -495,6 +499,7 @@ type Action =
       /** The turn never left this tab: the WebSocket could not connect, so
        *  the server never saw the user's message (#1594). */
       submissionFailed?: boolean;
+      submissionNoLlmAccess?: boolean;
     }
   | {
       type: "BIND_SERVER_SESSION";
@@ -588,6 +593,7 @@ function createSessionEntry(
     lastTurnFailed: false,
     submissionFailed: false,
     submissionErrorMessage: "",
+    submissionNoLlmAccess: false,
     submissionNeedsReview: false,
     submissionNotSaved: false,
     queuedMessages: [],
@@ -643,6 +649,7 @@ function restoredFailedMessage(
     ...(snapshot.attachments?.length ? { attachments: snapshot.attachments } : {}),
     requestSnapshot: snapshot,
     failedSubmission: true,
+    failedSubmissionNoLlmAccess: record.noLlmAccess === true,
     failedSubmissionNeedsReview: record.retryRequiresReview,
     failedSubmissionId: record.submissionId,
   };
@@ -1251,6 +1258,7 @@ function reduce(state: ProviderState, action: Action): ProviderState {
             ...(action.errorMessage
               ? { failedSubmissionMessage: action.errorMessage }
               : {}),
+            failedSubmissionNoLlmAccess: action.submissionNoLlmAccess,
           };
           return {
             ...state,
@@ -2456,14 +2464,20 @@ export function ChatStateAdapterProvider({
       const reason = terminalError
         ? String((event.metadata as { reason?: string } | undefined)?.reason || "")
         : "";
+      const submissionNoLlmAccess = reason === NO_LLM_ACCESS;
+      const pendingSubmission = pendingSubmissionIdsRef.current.get(effectiveKey);
       const submissionRejected = new Set([
-        "start_turn_rejected", "invalid_command", "invalid_json",
+        "start_turn_rejected", NO_LLM_ACCESS, "invalid_command", "invalid_json",
         "unsupported_protocol_version", "unknown_message_type",
       ]).has(reason);
       // An admission rejection is not an assistant reply. Keep the
       // placeholder empty so STREAM_END can flag the optimistic user row.
       if (!submissionRejected) {
         dispatch({ type: "STREAM_EVENT", key: effectiveKey, event });
+      } else if (submissionNoLlmAccess && pendingSubmission) {
+        const { storageKey, sourceStorageKey, submissionId } = pendingSubmission;
+        markFailedSubmissionNoLlmAccess(storageKey, submissionId);
+        if (sourceStorageKey) markFailedSubmissionNoLlmAccess(sourceStorageKey, submissionId);
       } else {
         notify(event.content, { tone: "error", durationMs: 10_000 });
       }
@@ -2475,7 +2489,8 @@ export function ChatStateAdapterProvider({
           reason === "regenerate_busy" ||
           reason === "regenerate_rejected" ||
           reason === "nothing_to_regenerate" ||
-          reason === "start_turn_rejected"
+          reason === "start_turn_rejected" ||
+          submissionNoLlmAccess
         ) {
           const stash =
             pendingRegenerateRef.current.get(effectiveKey) ??
@@ -2508,6 +2523,7 @@ export function ChatStateAdapterProvider({
           // The server's rejection text belongs on the flagged row (#2637),
           // not only in a 10-second toast.
           errorMessage: submissionRejected ? event.content : undefined,
+          submissionNoLlmAccess,
         });
       }
     },
@@ -3819,6 +3835,9 @@ export function ChatStateAdapterProvider({
 
   const derivedState = useMemo<ChatState>(() => {
     const current = ensureSelectedSession(state);
+    const tail = current.messages.at(-1);
+    const submissionNoLlmAccess = tail?.failedSubmission === true &&
+      tail.failedSubmissionNoLlmAccess === true;
     return {
       sessionKey: current.key,
       boundFromKey: current.boundFromKey ?? null,
@@ -3852,13 +3871,13 @@ export function ChatStateAdapterProvider({
       ),
       submissionFailed: (() => {
         if (current.isStreaming) return false;
-        const tail = current.messages[current.messages.length - 1];
         return (
           (current.status === "failed" || current.status === "rejected") &&
           tail?.role === "user" &&
           tail.failedSubmission === true
         );
       })(),
+      submissionNoLlmAccess,
       submissionNeedsReview: (() => {
         const tail = current.messages[current.messages.length - 1];
         return tail?.role === "user" && tail.failedSubmissionNeedsReview === true;

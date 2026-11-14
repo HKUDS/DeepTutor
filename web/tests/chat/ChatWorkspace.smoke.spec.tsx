@@ -292,6 +292,7 @@ function emptyChatState(): ChatState {
     lastTurnFailed: false,
     submissionFailed: false,
     submissionErrorMessage: '',
+    submissionNoLlmAccess: false,
     submissionNeedsReview: false,
     submissionNotSaved: false,
     queuedMessages: [],
@@ -482,9 +483,14 @@ describe('ChatWorkspace smoke', () => {
     })
     expect(fixture.adapter.resendLastMessage).toHaveBeenCalledTimes(1)
 
+    applyState({ submissionNoLlmAccess: true })
+    view.rerender(<ChatWorkspace />)
+    expect(screen.getByRole('alert')).toHaveTextContent('Please contact your administrator')
+    expect(screen.getByRole('button', { name: 'Resend' })).toBeEnabled()
+
     // The degraded variant (recovered text, lost context) explains itself
     // and offers no resend that would drop the missing context.
-    applyState({ submissionNeedsReview: true })
+    applyState({ submissionNoLlmAccess: false, submissionNeedsReview: true })
     view.rerender(<ChatWorkspace />)
     expect(screen.getByRole('alert')).toHaveTextContent(
       'Message text was saved, but its attachments or settings could not be restored. Copy it and send again.'
