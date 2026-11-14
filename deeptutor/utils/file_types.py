@@ -367,6 +367,12 @@ class FileTypeRouter:
         return cls.PARSER_EXTENSIONS | set(known_parser_formats())
 
     @classmethod
+    def accepted_upload_extensions(cls) -> set[str]:
+        from deeptutor.services.parsing.service import get_parse_service
+
+        return get_parse_service().accepted_extensions()
+
+    @classmethod
     def active_parser_accepts_any_format(cls) -> bool:
         """Whether the selected engine delegates format detection at runtime."""
         try:

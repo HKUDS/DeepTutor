@@ -2074,8 +2074,9 @@ async def set_rag_active_model(payload: ActiveModelUpdate):
 @router.get("/knowledge-bases/supported-file-types", response_model=SupportedFileTypesInfo)
 async def get_supported_file_types():
     """Return the current upload policy so the web client stays in sync."""
-    allow_any_extension = FileTypeRouter.active_parser_accepts_any_format()
-    extensions = [] if allow_any_extension else sorted(FileTypeRouter.get_supported_extensions())
+    accepted = FileTypeRouter.accepted_upload_extensions()
+    allow_any_extension = not accepted
+    extensions = sorted(accepted)
     accept_items = (
         []
         if allow_any_extension
@@ -3521,11 +3522,7 @@ async def upload_files(
                 kb_name, kb_base_dir, kb_provider, image_analysis
             )
         _enforce_provider_formats(kb_provider, files)
-        allowed_extensions = (
-            set()
-            if FileTypeRouter.active_parser_accepts_any_format()
-            else FileTypeRouter.get_supported_extensions()
-        )
+        allowed_extensions = FileTypeRouter.accepted_upload_extensions()
         # ``.zip`` is accepted as an upload container; its members are
         # validated against ``allowed_extensions`` during extraction and the
         # archive itself is never indexed (``safe_extract_zip`` skips ``.zip``).
@@ -3731,11 +3728,7 @@ async def _create_knowledge_base_owned(
                     ),
                 )
         _enforce_provider_formats(rag_provider, files)
-        allowed_extensions = (
-            set()
-            if FileTypeRouter.active_parser_accepts_any_format()
-            else FileTypeRouter.get_supported_extensions()
-        )
+        allowed_extensions = FileTypeRouter.accepted_upload_extensions()
         _validate_upload_batch(files, allowed_extensions=allowed_extensions, rel_paths=rel_paths)
 
         logger.info(f"Creating KB: {name} (provider={rag_provider})")

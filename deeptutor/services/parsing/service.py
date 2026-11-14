@@ -46,7 +46,9 @@ def _display_extension(source_path: str | Path, supported: frozenset[str]) -> st
 # plus .txt/.md notes) must not hard-fail the whole ingest batch on the files
 # the chosen engine was never built for (#1502). ``text_only`` leads because
 # it is lossless for text files and needs no model.
-_FALLBACK_ENGINE_PREFERENCE = ("text_only", "markitdown", "tika")
+# A remote Tika server is selected explicitly; its default localhost URL
+# does not prove one exists and must not admit arbitrary uploads (#2338).
+_FALLBACK_ENGINE_PREFERENCE = ("text_only", "markitdown")
 
 
 def _find_fallback_engine(
@@ -63,6 +65,8 @@ def _find_fallback_engine(
             continue
         try:
             parser = get_parser(name)
+            if not parser.is_available():
+                continue
         except Exception:
             continue
         supported = parser.supported_formats()
@@ -90,6 +94,31 @@ class ParseService:
         return str(
             load_document_parsing_settings().get("engine") or _DEFAULT_DOCUMENT_PARSING_ENGINE
         )
+
+    def accepted_extensions(self) -> set[str]:
+        """Upload policy matching implicit parse routing; empty means sniff all.
+
+        Inspect only the selected engine and installed fallback engines, never
+        the union of optional engines that happen to be known to the catalog.
+        """
+        primary = self.active_engine()
+        supported = set(get_parser(primary).supported_formats())
+        if not supported:
+            return set()
+        for name in _FALLBACK_ENGINE_PREFERENCE:
+            if name == primary:
+                continue
+            try:
+                parser = get_parser(name)
+                if not parser.is_available():
+                    continue
+                fallback = parser.supported_formats()
+                if not fallback:
+                    return set()
+                supported.update(fallback)
+            except (ImportError, ParserError):
+                continue
+        return supported
 
     def supports(self, source_path: str | Path, *, engine: Optional[str] = None) -> bool:
         """Return whether the selected engine advertises support for this path.
