@@ -76,6 +76,16 @@ installed core. This does not remove runtime-home data. You can then add
 compatibility alias. For CLI-only migration, install `deeptutor-cli==1.7.0`
 after removing the old CLI, and add any feature modules you need.
 
+The update button in an already-installed 1.6.x release runs that old worker;
+a new release cannot change its install plan retroactively. Use the manual
+migration above. To restore a full app with optional parsing after a core-only
+update, install `"deeptutor[full,parse]==<target-version>"` in the same Python
+environment, preserve the runtime home, and run the readiness checks before
+starting again. Do not add native Manim dependencies unless explicitly needed.
+The current updater pins core and every installed feature distribution together
+and records restart readiness failures; it does not automatically expand a
+core-only installation into the full app.
+
 In 1.7.0, upgrading bare `deeptutor` selects only core; use `[full]` to retain
 the full-app feature set. Do not reset settings or change the runtime-home
 directory during this upgrade. For an existing checkout, inspect its branch,
