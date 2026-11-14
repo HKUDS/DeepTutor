@@ -328,3 +328,13 @@ For mixed-language legacy collections, convert files to UTF-8 before uploading;
 Python callers may pass a strict `encoding="cp1254"` or `encoding="gbk"` to
 `FileTypeRouter.decode_bytes` / `read_text_file`. No decoding step rewrites the
 original uploaded file.
+
+### Side chats and independent questions
+
+Side chats remain attached to their parent conversation. Open side-chat tabs
+with saved messages are restored on reload for the same account; the command
+palette also discovers side chats from other conversations. For an independent
+image/file question without parent-conversation context, create a normal new
+chat and attach the material there. An empty side tab has no saved server thread
+until its first message and is not restored. Move a side chat by moving its
+parent conversation.

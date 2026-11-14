@@ -64,6 +64,8 @@ interface QuizFollowupTabBodyProps {
   agents?: { name: string; kind?: string }[];
   /** Hand a side chat to someone else from its composer. */
   onResponderChange?: (responder: SideChatResponder) => void;
+  /** The first turn bound this thread to a server session; persist that id. */
+  onThreadSessionBound?: (sessionId: string) => void;
 }
 
 export default function QuizFollowupTabBody({
@@ -71,6 +73,7 @@ export default function QuizFollowupTabBody({
   resourceCatalog,
   agents,
   onResponderChange,
+  onThreadSessionBound,
 }: QuizFollowupTabBodyProps) {
   const { t } = useTranslation();
   const controller = useQuizFollowupController();
@@ -141,6 +144,12 @@ export default function QuizFollowupTabBody({
     thread.messages.length,
     thread.sessionId,
   ]);
+
+  // A fresh side chat gets its server session id on the first turn. The
+  // parent needs that id to persist the tab across reloads.
+  useEffect(() => {
+    if (thread.sessionId) onThreadSessionBound?.(thread.sessionId);
+  }, [onThreadSessionBound, thread.sessionId]);
 
   const visibleMessages = thread.messages.filter((m) => m.role !== "system");
   const isCoding = context.question.question_type === "coding";
