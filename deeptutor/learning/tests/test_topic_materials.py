@@ -51,7 +51,13 @@ def two_chapter_book(monkeypatch: pytest.MonkeyPatch) -> None:
         _chapter("ch_a", "Beyond the Linear Pipeline", 0, ["p1"], summary="Why static RAG fails."),
         _chapter("ch_b", "The Agent OS", 1, ["p2", "p3"]),
     ]
-    monkeypatch.setattr("deeptutor.book.storage.get_book_storage", lambda: _book_storage(chapters))
+    storage = _book_storage(chapters)
+    monkeypatch.setattr(
+        "deeptutor.multi_user.book_access.resolve_book",
+        lambda book_id: SimpleNamespace(
+            engine=SimpleNamespace(storage=storage, load_book=storage.load_book)
+        ),
+    )
     monkeypatch.setattr(
         "deeptutor.book.context.build_book_context",
         lambda refs, **kwargs: SimpleNamespace(
@@ -72,6 +78,41 @@ def test_each_book_chapter_becomes_its_own_readable_source(two_chapter_book: Non
     # reading all of them first.
     assert "Why static RAG fails." in manifest
     assert "1. Beyond the Linear Pipeline" in manifest
+
+
+def test_shared_book_uses_storage_selected_by_access_resolver(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A learner's assigned admin book lives outside their personal store."""
+    chapters = [_chapter("ch_shared", "Shared chapter", 0, ["p_shared"])]
+    shared_storage = _book_storage(chapters)
+    resolved_ids: list[str] = []
+    context_storages: list[object] = []
+    monkeypatch.setattr(
+        "deeptutor.multi_user.book_access.resolve_book",
+        lambda book_id: (
+            resolved_ids.append(book_id)
+            or SimpleNamespace(
+                engine=SimpleNamespace(
+                    storage=shared_storage,
+                    load_book=shared_storage.load_book,
+                )
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        "deeptutor.book.context.build_book_context",
+        lambda refs, storage, **kwargs: (
+            context_storages.append(storage)
+            or SimpleNamespace(text="SHARED CONTENT", references=[], warnings=[])
+        ),
+    )
+
+    materials = build_topic_materials([_source(TopicSourceKind.BOOK, "bk_shared", "Shared")])
+
+    assert resolved_ids == ["bk_shared"]
+    assert context_storages == [shared_storage]
+    assert materials.source_index() == {"bk-bk_shared-ch_shared": "SHARED CONTENT"}
 
 
 def test_goal_source_is_not_offered_as_readable_material() -> None:
@@ -115,7 +156,13 @@ def test_chapter_without_pages_is_listed_as_not_written_yet(
     """'This chapter exists but is unwritten' is a fact the tutor must be able
     to state instead of inventing its contents."""
     chapters = [_chapter("ch_a", "Planned chapter", 0, [], summary="Coming soon.")]
-    monkeypatch.setattr("deeptutor.book.storage.get_book_storage", lambda: _book_storage(chapters))
+    storage = _book_storage(chapters)
+    monkeypatch.setattr(
+        "deeptutor.multi_user.book_access.resolve_book",
+        lambda book_id: SimpleNamespace(
+            engine=SimpleNamespace(storage=storage, load_book=storage.load_book)
+        ),
+    )
     materials = build_topic_materials([_source(TopicSourceKind.BOOK, "bk_1", "Agentic RAG")])
     manifest, index = render_topic_manifest(materials)
 
