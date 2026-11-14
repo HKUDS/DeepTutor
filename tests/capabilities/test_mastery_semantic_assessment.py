@@ -748,7 +748,7 @@ async def test_scoped_group_clarification_resume_and_exactly_once_credit(service
         ],
     }
 
-    def source_check(store, progress, kp_id, evidence, *, allow_partial=False):
+    def source_check(store, progress, kp_id, evidence, *, allow_partial=False, **_flags):
         assert evidence["id"] == "scoped-source"
         if not allow_partial:
             raise lesson_evidence.LessonUnavailable("Only this focused teaching slice is covered")
