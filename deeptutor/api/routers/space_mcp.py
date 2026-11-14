@@ -263,12 +263,27 @@ async def test_server(name: str, payload: ServerPayload) -> dict[str, Any]:
     Deliberately side-effect free: nothing is written, so the incoming config is
     probed as given (any literal credential in it is used in memory only). That
     also means a caller may probe under a scratch name the store would refuse,
-    which is how the UI tests a draft before it has one.
+    which is how the UI tests a draft before it has one — with one exception:
+    an OAuth-backed server's grant lives under the name it is saved under, so
+    its probe addresses the OAuth store by the path name. A scratch name no
+    grant could live under is answered the way an unauthorized server is, not
+    with the store's refusal.
     """
-    _ = name  # part of the path for symmetry with PUT; the probe is stateless
     owner = current_owner_id()
     resolved = _resolve_for_probe(owner, payload.config)
-    return await probe_server(resolved, owner=owner)
+    server_name = ""
+    if resolved.auth == "oauth":
+        if not oauth.usable_store_name(name):
+            # No OAuth grant can exist under a name the store refuses (the
+            # save-time name rule rejects the same names), so the honest probe
+            # result is the missing authorization, not a raised ValueError.
+            return {
+                "ok": False,
+                "tools": [],
+                "error": describe_connect_failure(oauth.AuthorizationRequired(name)),
+            }
+        server_name = name
+    return await probe_server(resolved, owner=owner, server_name=server_name)
 
 
 def _resolve_for_probe(owner: str, config: MCPServerConfig) -> MCPServerConfig:

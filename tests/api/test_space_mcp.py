@@ -6,11 +6,16 @@ because of what it refuses. Each test below pins one of those refusals.
 
 from __future__ import annotations
 
+import asyncio
+from contextlib import asynccontextmanager
+import json
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+import httpx
 import pytest
 
 from deeptutor.api.routers import space_mcp
@@ -395,3 +400,218 @@ def test_testing_a_draft_writes_nothing(client: TestClient, tmp_path: Path) -> N
     assert response.status_code == 200
     assert not (tmp_path / "data" / "system" / "user-mcp" / "u_ada.json").exists()
     _ = manager_module
+
+
+# ── Test on an OAuth server (#2587) ─────────────────────────────────────────
+#
+# The OAuth grant for a server lives under the name it is saved under, so the
+# probe has to address the token store by the path name. Before that plumbing
+# existed, every Test on an OAuth server built the store with '' and answered
+# ``ValueError: Unsafe MCP server name for an OAuth store: ''`` — including for
+# a server that was authorized and connected.
+
+_SYNTHETIC_URL = "https://mcp.example.com/mcp"
+_SYNTHETIC_BEARER = "synthetic-access-token"
+
+
+class _SyntheticOAuthServer:
+    """Answers the probe's transport from memory: no network, real OAuth.
+
+    Everything below the address policy is the production path — the router
+    resolves the draft, ``probe_server`` opens the transport, and the transport
+    builds its own httpx client with the OAuth provider attached. Only the
+    far end is synthetic: the connect POST, RFC 9728/8414 discovery and dynamic
+    client registration are answered by :meth:`handle`, and the requests it saw
+    are kept so a test can assert on what the probe actually sent.
+    """
+
+    def __init__(self) -> None:
+        self.requests: list[httpx.Request] = []
+
+    def handle(self, request: httpx.Request) -> httpx.Response:
+        self.requests.append(request)
+        path = request.url.path
+        if path == "/mcp":
+            if request.headers.get("Authorization") == f"Bearer {_SYNTHETIC_BEARER}":
+                return httpx.Response(200, json={"jsonrpc": "2.0", "result": {}})
+            # The challenge every hosted OAuth MCP server answers an empty
+            # connect with: 401 naming its protected-resource metadata.
+            return httpx.Response(
+                401,
+                headers={
+                    "WWW-Authenticate": (
+                        "Bearer resource_metadata="
+                        f'"{_SYNTHETIC_URL.rsplit("/", 1)[0]}'
+                        '/.well-known/oauth-protected-resource/mcp"'
+                    )
+                },
+            )
+        if path == "/.well-known/oauth-protected-resource/mcp":
+            return httpx.Response(
+                200,
+                json={
+                    "resource": _SYNTHETIC_URL,
+                    "authorization_servers": ["https://mcp.example.com"],
+                },
+            )
+        if path == "/.well-known/oauth-authorization-server":
+            return httpx.Response(
+                200,
+                json={
+                    "issuer": "https://mcp.example.com/",
+                    "authorization_endpoint": "https://mcp.example.com/authorize",
+                    "token_endpoint": "https://mcp.example.com/token",
+                    "registration_endpoint": "https://mcp.example.com/register",
+                    "response_types_supported": ["code"],
+                    "grant_types_supported": ["authorization_code", "refresh_token"],
+                    "code_challenge_methods_supported": ["S256"],
+                    "token_endpoint_auth_methods_supported": ["none", "client_secret_post"],
+                },
+            )
+        if path == "/register":
+            return httpx.Response(
+                200,
+                json={
+                    "client_id": "synthetic-client",
+                    "client_secret": "synthetic-secret",
+                    "redirect_uris": ["http://localhost:3782/api/space/mcp/oauth/callback"],
+                    "token_endpoint_auth_method": "client_secret_post",
+                },
+            )
+        return httpx.Response(404)
+
+
+class _SyntheticSession:
+    """The SDK session over the synthetic transport: one synthetic tool."""
+
+    def __init__(self, read: Any, write: Any) -> None:
+        pass
+
+    async def __aenter__(self) -> "_SyntheticSession":
+        return self
+
+    async def __aexit__(self, *exc: object) -> bool:
+        return False
+
+    async def initialize(self) -> None:
+        return None
+
+    async def list_tools(self) -> Any:
+        return SimpleNamespace(tools=[SimpleNamespace(name="echo", description="synthetic")])
+
+
+@pytest.fixture
+def oauth_server(monkeypatch: pytest.MonkeyPatch) -> _SyntheticOAuthServer:
+    from mcp.client import streamable_http
+
+    server = _SyntheticOAuthServer()
+
+    @asynccontextmanager
+    async def _transport(url: str, *, http_client: httpx.AsyncClient):
+        # The opening POST is what runs the OAuth provider, so that is what is
+        # stood in for; afterwards the synthetic session speaks for the tools.
+        http_client._transport = httpx.MockTransport(server.handle)
+        if http_client.auth is not None:
+            await http_client.post(url)
+        yield None, None, None
+
+    monkeypatch.setattr(streamable_http, "streamable_http_client", _transport)
+    monkeypatch.setattr("mcp.ClientSession", _SyntheticSession)
+    return server
+
+
+def _oauth_payload() -> dict[str, Any]:
+    return {"config": {"url": _SYNTHETIC_URL, "auth": "oauth"}, "secrets": {}}
+
+
+def test_an_authorized_oauth_server_tests_successfully_under_its_saved_name(
+    client: TestClient, oauth_server: _SyntheticOAuthServer
+) -> None:
+    """The grant is addressed by the path name; with '' the store refused and
+    Test failed for a server that was authorized and connected."""
+    from mcp.shared.auth import OAuthToken
+
+    from deeptutor.services.mcp import oauth
+
+    assert client.put("/api/space/mcp/servers/svc-oauth", json=_oauth_payload()).status_code == 200
+    # The state the callback route leaves behind: a completed consent.
+    asyncio.run(
+        oauth.OwnerTokenStorage("u_ada", "svc-oauth").set_tokens(
+            OAuthToken(
+                access_token=_SYNTHETIC_BEARER,
+                token_type="Bearer",
+                refresh_token="synthetic-refresh",
+                scope="read",
+            )
+        )
+    )
+
+    response = client.post("/api/space/mcp/servers/svc-oauth/test", json=_oauth_payload())
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["ok"] is True
+    assert [tool["name"] for tool in body["tools"]] == ["echo"]
+    assert "Unsafe MCP server name" not in body["error"]
+    # The probe authenticated with the grant stored under that name...
+    assert any(
+        request.headers.get("Authorization") == f"Bearer {_SYNTHETIC_BEARER}"
+        for request in oauth_server.requests
+    )
+    # ...and the Test wrote nothing back: no re-registration, token untouched.
+    stored = json.loads(oauth._store_path("u_ada", "svc-oauth").read_text(encoding="utf-8"))
+    assert "client" not in stored
+    assert stored["tokens"]["access_token"] == _SYNTHETIC_BEARER
+
+
+def test_an_unauthorized_oauth_server_reports_that_it_needs_authorization(
+    client: TestClient, oauth_server: _SyntheticOAuthServer
+) -> None:
+    """Not the empty-name ValueError: a clear needs-auth failure, the same one
+    a background reconnect reports."""
+    from deeptutor.services.mcp import oauth
+
+    assert client.put("/api/space/mcp/servers/svc-oauth", json=_oauth_payload()).status_code == 200
+
+    response = client.post("/api/space/mcp/servers/svc-oauth/test", json=_oauth_payload())
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["ok"] is False
+    assert "needs to be authorized" in body["error"]
+    assert "Unsafe MCP server name" not in body["error"]
+    # Discovery registered a client, exactly as a reconnect would — but a Test
+    # must never mint a token.
+    store = oauth._store_path("u_ada", "svc-oauth")
+    stored = json.loads(store.read_text(encoding="utf-8")) if store.exists() else {}
+    assert "tokens" not in stored
+
+
+def test_an_unnamed_oauth_draft_reports_needs_auth_not_a_store_refusal(
+    client: TestClient, oauth_server: _SyntheticOAuthServer
+) -> None:
+    """The UI tests a draft before it has a name, under a scratch name the
+    store refuses. No grant can live under such a name, so the honest answer
+    is the missing authorization, not a raised ValueError."""
+    response = client.post("/api/space/mcp/servers/_draft/test", json=_oauth_payload())
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["ok"] is False
+    assert "needs to be authorized" in body["error"]
+    assert "Unsafe MCP server name" not in body["error"]
+    # Answered from the name alone: no connection was attempted.
+    assert oauth_server.requests == []
+
+
+def test_a_non_oauth_draft_is_probed_exactly_as_before(
+    client: TestClient, oauth_server: _SyntheticOAuthServer
+) -> None:
+    """Only the OAuth store is addressed by name; a plain server still tests
+    namelessly, so a draft under a scratch name keeps working."""
+    response = client.post("/api/space/mcp/servers/_draft/test", json=_remote())
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["ok"] is True
+    assert [tool["name"] for tool in body["tools"]] == ["echo"]
