@@ -4862,3 +4862,28 @@ async def test_ambiguous_indexless_continuation_does_not_dispatch_batch(monkeypa
         await bus.close()
         await consumer
     assert registry.executed == []
+
+
+@pytest.mark.asyncio
+async def test_kb_seed_denial_is_visible_without_citable_content(monkeypatch):
+    pipeline = AgenticChatPipeline()
+
+    async def execute(*args, **kwargs):
+        return {
+            "success": True,
+            "metadata": {"error_type": "content_access_denied", "answer": "private transport text"},
+        }
+
+    monkeypatch.setattr(pipeline, "_execute_tool_call", execute)
+    stream = StreamBus()
+    events, consumer = await _collect_bus_events(stream)
+    result = await pipeline._seed_search_one_kb("Subscribed", "question", stream)
+    await stream.close()
+    await consumer
+    assert result and result[1] == []
+    assert "IMA restricts" in result[0]
+    assert "private transport text" not in result[0]
+    assert any(
+        e.type == StreamEventType.OBSERVATION and e.metadata.get("call_state") == "error"
+        for e in events
+    )

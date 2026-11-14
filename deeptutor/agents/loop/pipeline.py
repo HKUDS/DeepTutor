@@ -1684,11 +1684,29 @@ class AgenticLoopPipeline:
             stream=stream,
             retrieve_meta=retrieve_meta,
         )
-        if not result.get("success"):
-            return None
         metadata = result.get("metadata") or {}
-        if metadata.get("error_type") or metadata.get("needs_reindex"):
-            return None
+        if not result.get("success") or metadata.get("error_type") or metadata.get("needs_reindex"):
+            # Keep retrieval failures visible in both the replayable trace and
+            # the model context. Never let an error become a citable passage.
+            error_type = str(
+                metadata.get("error_type")
+                or ("needs_reindex" if metadata.get("needs_reindex") else "retrieval_failed")
+            )
+            note = f"Knowledge base {kb_name}: retrieval unavailable ({error_type}). No source content was obtained; do not claim this library was consulted successfully."
+            if error_type == "content_access_denied":
+                note += " IMA restricts subscribed-library files to its own client."
+            await stream.observation(
+                note,
+                source=self.event_source,
+                stage=self.event_stage,
+                metadata={
+                    **retrieve_meta,
+                    "call_state": "error",
+                    "trace_layer": "summary",
+                    "error_type": error_type,
+                },
+            )
+            return note, []
         text = str(metadata.get("content") or metadata.get("answer") or "").strip()
         if not text:
             return None
