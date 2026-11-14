@@ -911,6 +911,17 @@ class MasteryStatusTool(BaseTool):
                     "re-poses it verbatim, so what you pass is ignored, and that "
                     "call ends the turn."
                 )
+            pending_interaction["session_id"] = interaction.session_id
+            session_id = _resolve_session_id(kwargs)
+            if session_id and interaction.session_id and interaction.session_id != session_id:
+                pending_interaction["instruction"] = (
+                    "This pending card belongs to an earlier conversation. For fresh practice "
+                    "in this conversation, submit a new source-supported mastery_quiz with "
+                    "pending_action='retain'; once it validates the old card is archived. "
+                    "Use resume only when the learner requests that previous card. "
+                    "Previously committed answers must be assessed before archiving. "
+                    "Never grade an unanswered question or copy its answer key as a reply."
+                )
             payload["pending_interaction"] = pending_interaction
         if kwargs.get("_working_brief"):
             payload = self._working_brief(payload, progress)
@@ -1328,10 +1339,15 @@ class MasteryQuizTool(BaseTool):
                 or not isinstance(learner_message, str)
                 or request not in learner_message
             ):
-                return ToolResult(
-                    content="Replacement needs a literal request from the current learner message.",
-                    success=False,
-                )
+                active = service.store.get_active_interaction(path_id)
+                session_id = _resolve_session_id(kwargs)
+                if active and session_id and active.session_id and active.session_id != session_id:
+                    pending_action = "retain"
+                else:
+                    return ToolResult(
+                        content="Replacement needs a literal request from the current learner message.",
+                        success=False,
+                    )
         raw_questions = kwargs.get("questions")
         # An empty optional group carries no contracts; use the single question.
         if isinstance(raw_questions, list) and not raw_questions:

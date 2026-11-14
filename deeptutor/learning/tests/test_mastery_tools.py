@@ -1203,6 +1203,7 @@ async def test_status_recovers_answered_interaction_without_exposing_answer_key(
         "question_id": quiz["question_id"],
         "status": "answered",
         "learner_answer": "4",
+        "session_id": "",
     }
     assert "expected_answer" not in json.dumps(recovered)
 
