@@ -6,7 +6,7 @@ translates prompts, streamed messages and DeepTutor-owned MCP tool calls.
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Collection
 import logging
 from typing import Any
 
@@ -23,10 +23,15 @@ async def _consume_messages(
     on_content_delta: Callable[[str], Awaitable[None]] | None,
     interrupt: Callable[[], Awaitable[None]] | None = None,
     label: str = "CodeBuddy",
+    tool_names: Collection[str] | None = None,
 ) -> LLMResponse:
     tracked = _SDKResultMessages(messages)
     response = await _consume_sdk_messages(
-        tracked, on_content_delta=on_content_delta, interrupt=interrupt, label=label
+        tracked,
+        on_content_delta=on_content_delta,
+        interrupt=interrupt,
+        label=label,
+        tool_names=tool_names,
     )
     response.usage = tracked.usage
     return response
@@ -38,6 +43,7 @@ async def _consume_sdk_messages(
     on_content_delta: Callable[[str], Awaitable[None]] | None,
     interrupt: Callable[[], Awaitable[None]] | None = None,
     label: str = "CodeBuddy",
+    tool_names: Collection[str] | None = None,
 ) -> LLMResponse:
     chunks: list[str] = []
     pending_result_text = ""
@@ -53,7 +59,7 @@ async def _consume_sdk_messages(
             continue
 
         rejected_tool_errors.extend(_tool_result_errors(message))
-        tool_calls = _assistant_tool_calls(message)
+        tool_calls = _assistant_tool_calls(message, tool_names)
         text = _assistant_text(message)
         if text:
             chunks.append(text)
@@ -152,7 +158,9 @@ def _result_usage(message: Any) -> dict[str, int]:
     }
 
 
-def _assistant_tool_calls(message: Any) -> list[ToolCallRequest]:
+def _assistant_tool_calls(
+    message: Any, tool_names: Collection[str] | None = None
+) -> list[ToolCallRequest]:
     content = getattr(message, "content", None)
     if content is None and isinstance(message, dict):
         content = message.get("content")
@@ -173,9 +181,12 @@ def _assistant_tool_calls(message: Any) -> list[ToolCallRequest]:
             arguments = getattr(block, "input", None)
         if block_type not in {"tool_use", "tooluse"} and not block_type.endswith("tooluseblock"):
             continue
-        if not name.startswith(_MCP_TOOL_PREFIX):
+        if name.startswith(_MCP_TOOL_PREFIX):
+            tool_name = name[len(_MCP_TOOL_PREFIX) :]
+        elif tool_names and name in tool_names:
+            tool_name = name
+        else:
             continue
-        tool_name = name[len(_MCP_TOOL_PREFIX) :]
         if not tool_name:
             continue
         calls.append(
