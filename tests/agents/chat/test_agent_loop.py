@@ -605,6 +605,7 @@ def test_runtime_sections_are_updated_and_cleared_independently(monkeypatch):
     assert cleared[-2]["_context_snapshot"] == "memory"
     assert "empty" in cleared[-2]["content"]
     assert cleared[-3]["content"] == "Hi"
+    assert cleared[: len(same) - 1] == same[:-1]
 
 
 def _contents(events: list[StreamEvent]) -> list[str]:

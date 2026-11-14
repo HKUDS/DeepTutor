@@ -426,11 +426,15 @@ class ContextBuilder:
             # only when it differs from the revision already replayed with the
             # history. Count what the request will actually carry.
             pending = summary_snapshot(summary)
-            if pending is not None and not any(
-                item.get("_context_snapshot") == SUMMARY_SNAPSHOT_NAME
-                and item.get("content") == pending["content"]
-                for item in replayed
-            ):
+            previous_summary = next(
+                (
+                    item.get("content")
+                    for item in reversed(replayed)
+                    if item.get("_context_snapshot") == SUMMARY_SNAPSHOT_NAME
+                ),
+                None,
+            )
+            if pending is not None and previous_summary != pending["content"]:
                 tokens += _count_model_context_tokens(pending)
             return tokens
         return count_tokens(build_history_text(self._build_history(summary, messages))) + sum(
