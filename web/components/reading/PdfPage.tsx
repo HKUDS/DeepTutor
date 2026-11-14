@@ -150,7 +150,7 @@ export function PdfPage({
 
   const pageRatio = ratio ?? fallbackRatio
   const layout = useMemo(
-    () => cropLayout(width, ratio ?? fallbackRatio, cropMargins ? (inkBox ?? null) : null),
+    () => cropLayout(width, pageRatio, cropMargins ? (inkBox ?? null) : null),
     [width, pageRatio, cropMargins, inkBox]
   )
 

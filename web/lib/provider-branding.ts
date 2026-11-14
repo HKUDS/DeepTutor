@@ -56,6 +56,7 @@ export const PROVIDER_ICONS: Readonly<Record<string, ProviderIconSpec>> = {
   qianfan: { file: "baiducloud-color.svg" },
   requesty: { file: "requesty.png" },
   runcrate: { file: "runcrate.png" },
+  searchapi: { file: "searchapi.svg" },
   searxng: { file: "searxng.svg" },
   serper: { file: "serper.png" },
   serply: { file: "serply.png" },

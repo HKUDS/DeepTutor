@@ -171,6 +171,11 @@
       "url": "https://specstream.ai/favicon.ico",
       "sha256": "c2b68886b5e696508b40203a6779bb01d0709d225b4bfbe933714f2d6bd00578",
       "source": "Official website asset"
+    },
+    "searchapi.svg": {
+      "url": "https://www.searchapi.io/favicon.svg",
+      "sha256": "5ef13fedc55abb407621cb0219a563ab400735b8ba6228b52d0629990d922ca0",
+      "source": "Official website favicon; verified 2026-11-14"
     }
   },
   "chinese_names": {

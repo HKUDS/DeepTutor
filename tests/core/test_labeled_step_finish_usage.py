@@ -190,9 +190,6 @@ async def test_stream_options_unsupported_retries_without_usage_request() -> Non
         ["<thi", "nk>reason</thi", "nk>``FINISH``"],
         ["``FINISH``\n<thi", "nk>reason</thi", "nk>"],
         "``FINISH``\n \t",
-        "``FINISH``\n`<think>reason</think>`",
-        ["``FINISH``\n`<thi", "nk>reason</thi", "nk>`"],
-        "``FINISH``\n<think>reason</thinking>discarded",
         ["``FINISH``\n<think " + " " * 25, ">reason</think>"],
     ],
     ids=[
@@ -206,9 +203,6 @@ async def test_stream_options_unsupported_retries_without_usage_request() -> Non
         "fragmented-prelude",
         "fragmented-final-thinking",
         "whitespace-final",
-        "quoted-thinking-only-final",
-        "fragmented-quoted-thinking",
-        "mismatched-thinking-close",
         "long-fragmented-thinking-opener",
     ],
 )
@@ -290,15 +284,21 @@ async def test_incomplete_stream_resets_idle_timeout_for_each_chunk(
         ("<think>reason</think>``FINISH``\nDone.", "Done."),
         ("``FINISH``\n<think>reason</think>Done.", "Done."),
         ("``FINISH``\n`Done.`", "`Done.`"),
+        # Markdown examples are visible answers, even when they name the
+        # reasoning protocol. Both accepted closing spellings end reasoning.
+        ("``FINISH``\n`<think>reason</think>`", "`<think>reason</think>`"),
+        (["``FINISH``\n`<thi", "nk>reason</thi", "nk>`"], "`<think>reason</think>`"),
+        ("``FINISH``\n<think>reason</thinking>Answer.", "Answer."),
     ],
 )
 async def test_final_answer_keeps_its_short_idle_settlement(
     monkeypatch: pytest.MonkeyPatch,
-    content: str,
+    content: str | list[str],
     expected_text: str,
 ) -> None:
     monkeypatch.setattr(labeled_step_module, "_FINAL_LABEL_IDLE_TIMEOUT_S", 0.01)
-    stream = _Stream([_chunk(content)], stall_after_chunks=True)
+    texts = content if isinstance(content, list) else [content]
+    stream = _Stream([_chunk(text) for text in texts], stall_after_chunks=True)
 
     result = await asyncio.wait_for(
         _run_step(_Client([stream]), UsageTracker(model="gpt-test")), timeout=0.5
