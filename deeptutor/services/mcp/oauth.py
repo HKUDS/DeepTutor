@@ -45,6 +45,7 @@ import stat
 import time
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlsplit
+from uuid import uuid4
 
 if TYPE_CHECKING:  # pragma: no cover - import-time typing only
     import httpx
@@ -164,6 +165,15 @@ def oauth_state(owner_id: str, server: str) -> OAuthState:
     if not isinstance(tokens, dict) or not tokens.get("access_token"):
         return OAuthState(authorized=False)
     return OAuthState(authorized=True, scope=str(tokens.get("scope") or ""))
+
+
+def authorization_revision(owner_id: str, server: str) -> str:
+    """Identify completed consent without exposing tokens or changing on refresh."""
+    data = _read(owner_id, server)
+    tokens = data.get("tokens")
+    if not isinstance(tokens, dict) or not tokens.get("access_token"):
+        return ""
+    return str(data.get("grant_id") or "legacy")
 
 
 class OwnerTokenStorage:
@@ -467,6 +477,7 @@ async def begin_authorization(
     import asyncio
 
     forget(owner_id, server_name)
+    _write(owner_id, server_name, {"grant_id": uuid4().hex})
     loop = asyncio.get_running_loop()
     url_ready: asyncio.Future[str] = loop.create_future()
     flow = _PendingFlow(owner_id=owner_id, server=server_name, result=loop.create_future())

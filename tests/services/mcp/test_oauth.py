@@ -465,3 +465,39 @@ def test_the_client_registration_declares_exactly_one_redirect(monkeypatch) -> N
     ]
     assert "refresh_token" in metadata.grant_types, "without it every session needs re-consent"
     assert metadata.client_name == "DeepTutor"
+
+
+def test_completed_consent_reconnects_only_its_owner_and_refresh_stays_stable(roots, monkeypatch):
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+
+    from deeptutor.services.mcp.config import MCPConfig, MCPServerConfig
+    from deeptutor.services.mcp.manager import MCPConnectionManager
+
+    async def exercise():
+        manager = MCPConnectionManager()
+        cfg = MCPServerConfig(
+            transport="streamable_http", url="https://resource.example/mcp", auth="oauth"
+        )
+        config = MCPConfig(servers={"fixture": cfg})
+        pending = SimpleNamespace(signature=manager._signature(cfg, "u_ada", "fixture"))
+        other = SimpleNamespace(signature=manager._signature(cfg, "u_bob", "fixture"))
+        manager._connections[("u_ada", "fixture")] = pending
+        manager._connections[("u_bob", "fixture")] = other
+        disconnect = AsyncMock()
+        connect = AsyncMock()
+        monkeypatch.setattr(manager, "_disconnect", disconnect)
+        monkeypatch.setattr(manager, "_connect", connect)
+        oauth._write("u_ada", "fixture", {"grant_id": "consent-1"})
+        await _store("u_ada", "fixture", "synthetic-token")
+        signature = manager._signature(cfg, "u_ada", "fixture")
+        assert signature != pending.signature
+        assert "synthetic-token" not in signature
+        await manager._sync_to_config(config, owner="u_ada")
+        disconnect.assert_awaited_once_with(pending)
+        connect.assert_awaited_once_with("fixture", cfg, owner="u_ada")
+        assert manager._connections[("u_bob", "fixture")] is other
+        await _store("u_ada", "fixture", "rotated-token")
+        assert manager._signature(cfg, "u_ada", "fixture") == signature
+
+    asyncio.run(exercise())
