@@ -10,6 +10,7 @@ import sys
 import time
 from typing import Callable
 
+from deeptutor.runtime.launcher import BACKEND_READY_TIMEOUT, FRONTEND_READY_TIMEOUT
 from deeptutor.runtime.process import is_process_alive
 from deeptutor.services.app_update import UpdateJob, UpdateJobStore
 
@@ -112,7 +113,7 @@ def _launch_restart(job: UpdateJob, *, log_path: Path) -> subprocess.Popen[bytes
 
 # The launcher owns readiness and marks this job succeeded only after both
 # services pass its probes. A live process alone is not successful startup.
-RESTART_STARTUP_GRACE_SECONDS = 180.0
+RESTART_STARTUP_GRACE_SECONDS = float(BACKEND_READY_TIMEOUT + FRONTEND_READY_TIMEOUT + 30)
 
 
 def _wait_for_launcher_start(
