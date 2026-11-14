@@ -20,6 +20,7 @@ from urllib.parse import quote
 import pytest
 
 from deeptutor.services.llm.multimodal import (
+    PRIOR_IMAGE_NOTE,
     has_image_parts,
     prepare_multimodal_messages,
     should_degrade_to_text,
@@ -164,6 +165,82 @@ def test_anthropic_url_only_attachment_is_dropped_not_sent_empty(caplog) -> None
         if p.get("type") == "image":
             data = p.get("source", {}).get("data", "")
             assert data, "Anthropic image part must not have empty base64"
+
+
+# ---------------------------------------------------------------------------
+# Stage 1: prior-turn image origin note (#2632)
+#
+# Prior-turn images are re-attached by the turn executor with
+# ``historical=True``; without an origin note the model reads them as fresh
+# uploads of the current message ("in the screenshot you sent...").
+# ---------------------------------------------------------------------------
+def _note_indexes(parts: list[dict]) -> list[int]:
+    return [
+        i for i, p in enumerate(parts) if p.get("type") == "text" and p["text"] == PRIOR_IMAGE_NOTE
+    ]
+
+
+def test_prior_turn_image_is_preceded_by_origin_note() -> None:
+    att = SimpleNamespace(type="image", base64="QUJD", mime_type="image/png", historical=True)
+    result = prepare_multimodal_messages(_msgs(), [att], binding="openai", model="gpt-4o")
+    parts = result.messages[0]["content"]
+    notes = _note_indexes(parts)
+    assert notes == [1], "exactly one note, between the message text and the image"
+    assert parts[0]["text"] == "describe"
+    assert parts[2]["type"] == "image_url"
+
+
+def test_current_turn_upload_gets_no_origin_note() -> None:
+    # No ``historical`` attribute at all — every pre-#2632 caller shape.
+    att = SimpleNamespace(type="image", base64="QUJD", mime_type="image/png")
+    result = prepare_multimodal_messages(_msgs(), [att], binding="openai", model="gpt-4o")
+    parts = result.messages[0]["content"]
+    assert _note_indexes(parts) == []
+    assert [p["type"] for p in parts] == ["text", "image_url"]
+
+
+def test_current_turn_upload_with_explicit_historical_false_gets_no_note() -> None:
+    att = SimpleNamespace(type="image", base64="QUJD", mime_type="image/png", historical=False)
+    result = prepare_multimodal_messages(_msgs(), [att], binding="openai", model="gpt-4o")
+    assert _note_indexes(result.messages[0]["content"]) == []
+
+
+def test_mixed_uploads_note_only_the_prior_turn_image() -> None:
+    """Current-turn uploads first (executor order), prior images after: the
+    note must precede only the historical image."""
+    fresh = SimpleNamespace(type="image", base64="QUJD", mime_type="image/png")
+    prior = SimpleNamespace(type="image", base64="Q0FB", mime_type="image/png", historical=True)
+    result = prepare_multimodal_messages(_msgs(), [fresh, prior], binding="openai", model="gpt-4o")
+    parts = result.messages[0]["content"]
+    img_idx = [i for i, p in enumerate(parts) if p["type"] == "image_url"]
+    assert img_idx == [1, 3]
+    assert _note_indexes(parts) == [2], "note sits directly before the prior image only"
+    assert parts[1]["image_url"]["url"].startswith("data:image/png;base64,QUJD")
+    assert parts[3]["image_url"]["url"].startswith("data:image/png;base64,Q0FB")
+
+
+def test_anthropic_prior_turn_image_also_gets_origin_note() -> None:
+    att = SimpleNamespace(type="image", base64="QUJD", mime_type="image/png", historical=True)
+    result = prepare_multimodal_messages(
+        _msgs(), [att], binding="anthropic", model="claude-3-5-sonnet"
+    )
+    parts = result.messages[0]["content"]
+    assert _note_indexes(parts) == [1]
+    assert parts[2]["type"] == "image"
+
+
+def test_dropped_prior_turn_image_leaves_no_orphan_note() -> None:
+    """A url-only image that cannot be resolved for a base64-only provider
+    is dropped — its origin note must not survive alone."""
+    att = SimpleNamespace(
+        type="image",
+        url="https://example.com/old.png",
+        base64="",
+        historical=True,
+    )
+    result = prepare_multimodal_messages(_msgs(), [att], binding="moonshot", model="kimi-k2.6")
+    assert result.url_images_dropped == 1
+    assert _note_indexes(result.messages[0]["content"]) == []
 
 
 # ---------------------------------------------------------------------------
