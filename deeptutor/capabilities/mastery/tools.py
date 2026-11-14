@@ -3207,12 +3207,17 @@ class MasteryObserveTool(BaseTool):
         observations = dict(getattr(profile, "teaching_observations", {}) or {})
         if len(observations) >= MAX_TEACHING_OBSERVATIONS and key not in observations:
             # Teaching state is bounded on purpose, and the tutor will not
-            # always prune by hand. Drop the least recently touched observation
-            # so the newest evidence still lands instead of the write failing
-            # at the ceiling — the same reason ``mastery_profile`` tells the
-            # model to remove obsolete entries, done deterministically here.
-            oldest = min(observations.items(), key=lambda pair: pair[1].updated_at)[0]
-            updates.append({"kind": "observation", "op": "remove", "key": oldest})
+            # always prune by hand. Drop the least valuable observation first: an
+            # unattributed "unknown" attempt is worth less than a recorded
+            # helped/not_helped result, and among equals the oldest goes first.
+            # Evicting purely by age would churn out real signals while keeping
+            # guesses, which is exactly what a strategy note must not be built on.
+            def _eviction_rank(pair: tuple[str, Any]) -> tuple[bool, float]:
+                item = pair[1]
+                return (item.outcome != "unknown", item.updated_at)
+
+            victim = min(observations.items(), key=_eviction_rank)[0]
+            updates.append({"kind": "observation", "op": "remove", "key": victim})
         updates.append(update)
         try:
             progress, changed = service.record_learner_profile(

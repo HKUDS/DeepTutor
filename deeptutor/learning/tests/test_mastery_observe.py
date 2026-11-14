@@ -171,3 +171,45 @@ async def test_evicts_the_oldest_when_the_cap_is_reached(store):
     assert len(profile.teaching_observations) == 12
     assert "strategy_new" in profile.teaching_observations
     assert "strategy_00" not in profile.teaching_observations
+
+
+@pytest.mark.asyncio
+async def test_eviction_prefers_unknown_over_a_recorded_result(store):
+    import asyncio
+
+    kp = await _build("observe_cap_signal")
+    # One old *signal*, then enough newer unknowns to reach the cap.
+    signal = await MasteryObserveTool().execute(
+        _mastery_path_id="observe_cap_signal",
+        _learner_message="还是没懂",
+        knowledge_point_id=kp,
+        strategy="old_signal",
+        key="old_signal",
+        outcome="not_helped",
+        evidence="还是没懂",
+    )
+    assert signal.success, signal.content
+    for index in range(11):
+        result = await MasteryObserveTool().execute(
+            _mastery_path_id="observe_cap_signal",
+            _learner_message="你先讲吧",
+            knowledge_point_id=kp,
+            strategy=f"filler_{index:02d}",
+            key=f"filler_{index:02d}",
+        )
+        assert result.success, result.content
+        await asyncio.sleep(0.01)
+
+    result = await MasteryObserveTool().execute(
+        _mastery_path_id="observe_cap_signal",
+        _learner_message="你先讲吧",
+        knowledge_point_id=kp,
+        strategy="newest",
+        key="newest",
+    )
+    assert result.success, result.content
+    profile = store.load("observe_cap_signal").learner_profile
+    assert len(profile.teaching_observations) == 12
+    # The recorded result survives; an unknown filler made room for it.
+    assert "old_signal" in profile.teaching_observations
+    assert "filler_00" not in profile.teaching_observations
