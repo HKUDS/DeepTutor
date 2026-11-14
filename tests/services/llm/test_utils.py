@@ -20,6 +20,12 @@ def test_sanitize_url_normalizes_local_host() -> None:
     assert url == "http://localhost:11434/v1"
 
 
+@pytest.mark.parametrize("scheme", ["HTTP", "HTTPS", "hTtP", "hTtPs"])
+def test_sanitize_url_accepts_case_insensitive_http_schemes(scheme: str) -> None:
+    url = f"{scheme}://api.example.com/CasePath?token=AbCd"
+    assert sanitize_url(url) == url
+
+
 def test_build_chat_url_handles_provider_paths() -> None:
     """Provider-specific endpoints should resolve correctly."""
     assert build_chat_url("https://api.anthropic.com", binding="anthropic") == (
