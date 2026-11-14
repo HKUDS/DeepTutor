@@ -2872,7 +2872,11 @@ export default function ChatWorkspace() {
                         ? t("This unsent message could not be saved in your browser. Copy it before leaving this page.")
                         : state.submissionNeedsReview
                         ? t("Message text was saved, but its attachments or settings could not be restored. Copy it and send again.")
-                        : t("Couldn't reach the server. Please check your connection and retry.")}
+                        // An admission rejection carries the server's own
+                        // reason (#2637): show it rather than claiming a
+                        // network failure the server never reported.
+                        : state.submissionErrorMessage ||
+                          t("Couldn't reach the server. Please check your connection and retry.")}
                     </span>
                     {!state.submissionNeedsReview ? (
                       <button

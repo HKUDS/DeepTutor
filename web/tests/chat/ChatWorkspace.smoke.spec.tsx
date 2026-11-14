@@ -291,6 +291,7 @@ function emptyChatState(): ChatState {
     selectedBranches: {},
     lastTurnFailed: false,
     submissionFailed: false,
+    submissionErrorMessage: '',
     submissionNeedsReview: false,
     submissionNotSaved: false,
     queuedMessages: [],
