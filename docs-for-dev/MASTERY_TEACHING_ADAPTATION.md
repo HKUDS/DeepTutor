@@ -1,7 +1,9 @@
 # Mastery teaching adaptation — design
 
-Status: M1–M3 implemented (principle over lookup; strategy outcomes; durable
-strategy notes). M4 (proposal + review gate) and M5 (ablation) are still design.
+Status: M1–M4 implemented (principle over lookup; strategy outcomes; durable
+strategy notes; evidence-gated proposal + independent review gate + versions
+and rollback). M5 (ablation) is still design. The proposal is learner-triggered
+today; the background/idle triggers from §7.2 are not wired yet.
 Scope: how the mastery tutor decides *how* to teach — depth, framing, examples —
 from what the learner actually does, and how that adapts over time.
 
