@@ -1344,3 +1344,60 @@ def test_llm_cloudgpu_base_url_detection_preserves_openai_binding_compatibility(
     assert resolved.provider_name == "cloudgpu"
     assert resolved.provider_mode == "gateway"
     assert resolved.effective_url == "https://cloudgpu.app/v1"
+
+
+def test_llm_standardcompute_binding_uses_default_openai_compatible_endpoint() -> None:
+    catalog = _build_catalog(
+        llm_profile={
+            "id": "llm-p",
+            "name": "Standard Compute",
+            "binding": "standardcompute",
+            "base_url": "",
+            "api_key": "standardcompute-key",
+            "api_version": "",
+            "extra_headers": {},
+            "models": [
+                {
+                    "id": "llm-m",
+                    "name": "Standard Compute router",
+                    "model": "StandardCompute",
+                }
+            ],
+        }
+    )
+
+    resolved = resolve_llm_runtime_config(catalog=catalog)
+
+    assert resolved.provider_name == "standardcompute"
+    assert resolved.provider_mode == "gateway"
+    assert resolved.binding == "standardcompute"
+    assert resolved.model == "StandardCompute"
+    assert resolved.api_key == "standardcompute-key"
+    assert resolved.effective_url == "https://api.stdcmpt.com/v1"
+
+
+def test_llm_standardcompute_base_url_detection_preserves_openai_binding_compatibility() -> None:
+    catalog = _build_catalog(
+        llm_profile={
+            "id": "llm-p",
+            "name": "OpenAI Compatible",
+            "binding": "openai",
+            "base_url": "https://api.stdcmpt.com/v1",
+            "api_key": "standardcompute-key",
+            "api_version": "",
+            "extra_headers": {},
+            "models": [
+                {
+                    "id": "llm-m",
+                    "name": "Standard Compute router",
+                    "model": "StandardCompute",
+                }
+            ],
+        }
+    )
+
+    resolved = resolve_llm_runtime_config(catalog=catalog)
+
+    assert resolved.provider_name == "standardcompute"
+    assert resolved.provider_mode == "gateway"
+    assert resolved.effective_url == "https://api.stdcmpt.com/v1"
