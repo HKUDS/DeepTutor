@@ -95,10 +95,15 @@ class DoclingParser:
     def signature(self, config: DoclingConfig) -> ParserSignature:
         version = package_version("docling")
         if config.is_remote:
-            version = f"remote-{MIN_DOCLING_VERSION}:{config.api_base_url}"
+            from .remote import remote_version
+
+            version = f"remote-{remote_version(config)}:{config.api_base_url}"
         params: dict[str, object] = {
             "do_ocr": config.do_ocr,
             "do_table_structure": config.do_table_structure,
+            "do_formula_enrichment": config.do_formula_enrichment,
+            "do_picture_classification": config.do_picture_classification,
+            "do_picture_description": config.do_picture_description,
         }
         if config.is_local:
             # The local worker emits content_list blocks; the schema version

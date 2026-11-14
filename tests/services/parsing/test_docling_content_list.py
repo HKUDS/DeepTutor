@@ -894,6 +894,9 @@ def test_local_signature_tracks_content_list_schema(monkeypatch: pytest.MonkeyPa
 
     assert docling_engine.CONTENT_LIST_SCHEMA_VERSION == 4
     local_before = parser.signature(DoclingConfig(mode="local")).hash()
+    monkeypatch.setattr(
+        "deeptutor.services.parsing.engines.docling.remote.remote_version", lambda _: "server-test"
+    )
     remote_config = DoclingConfig(mode="remote", api_base_url="http://host:5001")
     remote_before = parser.signature(remote_config).hash()
 

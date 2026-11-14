@@ -231,6 +231,9 @@ _DEFAULT_DOCLING_ENGINE: dict[str, Any] = {
     "do_ocr": False,
     "do_table_structure": True,
     "allow_local_model_download": False,
+    "do_formula_enrichment": False,
+    "do_picture_classification": False,
+    "do_picture_description": False,
 }
 
 # markitdown engine slice. Pure-Python, no model downloads. Optionally uses
@@ -1322,6 +1325,11 @@ class RuntimeSettingsService:
             "api_token": _string(settings.get("api_token")),
             "do_ocr": _coerce_bool(settings.get("do_ocr"), False),
             "do_table_structure": _coerce_bool(settings.get("do_table_structure"), True),
+            "do_formula_enrichment": _coerce_bool(settings.get("do_formula_enrichment"), False),
+            "do_picture_classification": _coerce_bool(
+                settings.get("do_picture_classification"), False
+            ),
+            "do_picture_description": _coerce_bool(settings.get("do_picture_description"), False),
             "allow_local_model_download": _coerce_bool(
                 settings.get("allow_local_model_download"), False
             ),

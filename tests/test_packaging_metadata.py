@@ -76,8 +76,8 @@ def test_docling_parser_avoids_source_only_build_dependencies():
         ("parser-markitdown", "markitdown[all]>=0.1.7"),
         ("parser-pymupdf4llm", "pymupdf4llm>=1.28.2"),
         ("parser-liteparse", "liteparse>=2.14.2"),
-        ("parser-docling", "docling[xbrl]>=2.123.1"),
-        ("parser-docling", "docling-slim[format-iwork,format-opendocument]>=2.123.1"),
+        ("parser-docling", "docling[xbrl]>=2.148.0"),
+        ("parser-docling", "docling-slim[format-iwork,format-opendocument]>=2.148.0"),
     ],
 )
 def test_dependency_floor_belongs_to_its_module(module, requirement):

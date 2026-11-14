@@ -47,7 +47,13 @@ def parse_local(
     if config.do_table_structure:
         command.append("--do-table-structure")
 
+    for name in ("do_formula_enrichment", "do_picture_classification", "do_picture_description"):
+        if getattr(config, name):
+            command.append("--" + name.replace("_", "-"))
     env = os.environ.copy()
+    if not config.allow_local_model_download:
+        env["HF_HUB_OFFLINE"] = "1"
+        env["TRANSFORMERS_OFFLINE"] = "1"
     env["PYTHONUNBUFFERED"] = "1"
     try:
         process = subprocess.Popen(  # noqa: S603 - argv is fixed and shell=False
@@ -94,7 +100,14 @@ def _stop_worker(process: subprocess.Popen) -> None:
         process.wait()
 
 
-def _build_converter(*, do_ocr: bool, do_table_structure: bool):
+def _build_converter(
+    *,
+    do_ocr: bool,
+    do_table_structure: bool,
+    do_formula_enrichment: bool = False,
+    do_picture_classification: bool = False,
+    do_picture_description: bool = False,
+):
     """Import and configure Docling inside the isolated worker only.
 
     Docling's option API moves between compatible releases, so a configuration
@@ -114,6 +127,9 @@ def _build_converter(*, do_ocr: bool, do_table_structure: bool):
         pipeline_options = PdfPipelineOptions()
         pipeline_options.do_ocr = do_ocr
         pipeline_options.do_table_structure = do_table_structure
+        pipeline_options.do_formula_enrichment = do_formula_enrichment
+        pipeline_options.do_picture_classification = do_picture_classification
+        pipeline_options.do_picture_description = do_picture_description
         # Picture crops feed the image blocks of the content_list IR. Guarded
         # attribute-by-attribute so a Docling release that renames an option
         # keeps converting (same contract as the fallback below).
@@ -124,7 +140,13 @@ def _build_converter(*, do_ocr: bool, do_table_structure: bool):
         return DocumentConverter(
             format_options={InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)}
         )
-    except Exception as exc:  # noqa: BLE001 - degrade to upstream defaults, loudly
+    except ImportError:
+        raise
+    except (AttributeError, TypeError, ValueError, RuntimeError) as exc:
+        if do_formula_enrichment or do_picture_classification or do_picture_description:
+            raise ParserError(
+                "Docling cannot apply the requested enrichments; upgrade the parser or disable those options."
+            ) from exc
         # The worker runs under ``python -m`` and the parent relays stderr through
         # ``on_output``, so a single line here reaches the parse log.
         print(
@@ -144,10 +166,16 @@ def _convert(
     *,
     do_ocr: bool,
     do_table_structure: bool,
+    do_formula_enrichment: bool = False,
+    do_picture_classification: bool = False,
+    do_picture_description: bool = False,
 ) -> None:
     converter = _build_converter(
         do_ocr=do_ocr,
         do_table_structure=do_table_structure,
+        do_formula_enrichment=do_formula_enrichment,
+        do_picture_classification=do_picture_classification,
+        do_picture_description=do_picture_description,
     )
     result = converter.convert(str(source_path))
     document = result.document
@@ -169,6 +197,9 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--workdir", required=True, type=Path)
     parser.add_argument("--do-ocr", action="store_true")
     parser.add_argument("--do-table-structure", action="store_true")
+    parser.add_argument("--do-formula-enrichment", action="store_true")
+    parser.add_argument("--do-picture-classification", action="store_true")
+    parser.add_argument("--do-picture-description", action="store_true")
     return parser
 
 
@@ -180,6 +211,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             args.workdir,
             do_ocr=args.do_ocr,
             do_table_structure=args.do_table_structure,
+            do_formula_enrichment=args.do_formula_enrichment,
+            do_picture_classification=args.do_picture_classification,
+            do_picture_description=args.do_picture_description,
         )
     except Exception as exc:  # noqa: BLE001 - forwarded to the parent process
         print(f"{type(exc).__name__}: {exc}", file=sys.stderr, flush=True)

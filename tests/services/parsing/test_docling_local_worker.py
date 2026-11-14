@@ -143,23 +143,11 @@ def test_missing_docling_install_propagates(
         local_worker._build_converter(do_ocr=False, do_table_structure=False)
 
 
-def test_older_docling_without_pipeline_options_still_degrades_loudly(
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    """The option modules live inside the ``try``, so older releases still convert.
-
-    This preserves the pre-#2518 behaviour; only the silence changes.
-    """
-
+def test_missing_pipeline_options_require_a_compatible_docling_install(monkeypatch):
     _install_docling_stubs(monkeypatch)
     monkeypatch.setitem(sys.modules, "docling.datamodel.pipeline_options", None)
-
-    converter = local_worker._build_converter(do_ocr=False, do_table_structure=False)
-
-    assert isinstance(converter, _StubConverter)
-    err = capsys.readouterr().err
-    assert "Docling option setup failed" in err
+    with pytest.raises(ImportError):
+        local_worker._build_converter(do_ocr=False, do_table_structure=False)
 
 
 def test_fallback_warning_is_a_single_line(
@@ -177,3 +165,31 @@ def test_fallback_warning_is_a_single_line(
 
     err = capsys.readouterr().err
     assert len([line for line in err.splitlines() if line.strip()]) == 1
+
+
+def test_requested_enrichments_reach_the_converter(monkeypatch):
+    _install_docling_stubs(monkeypatch)
+    converter = local_worker._build_converter(
+        do_ocr=False,
+        do_table_structure=True,
+        do_formula_enrichment=True,
+        do_picture_classification=True,
+        do_picture_description=True,
+    )
+    options = converter.format_options["pdf"].pipeline_options
+    assert (
+        options.do_formula_enrichment
+        and options.do_picture_classification
+        and options.do_picture_description
+    )
+
+
+def test_enrichment_setup_failure_never_silently_changes_requested_output(monkeypatch):
+    def broken():
+        raise ValueError("unsupported option API")
+
+    _install_docling_stubs(monkeypatch, pipeline_options_factory=broken)
+    with pytest.raises(local_worker.ParserError, match="requested enrichments"):
+        local_worker._build_converter(
+            do_ocr=False, do_table_structure=True, do_formula_enrichment=True
+        )
