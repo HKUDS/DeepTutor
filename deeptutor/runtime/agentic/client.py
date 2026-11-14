@@ -542,29 +542,43 @@ class _ProviderOpenAIStream:
         self._extra_kwargs = extra_kwargs
         self._queue: asyncio.Queue[Any] | None = None
         self._task: asyncio.Task[None] | None = None
+        self._closed = False
         self._emitted_content = False
         self._emitted_reasoning = False
 
     def __aiter__(self) -> "_ProviderOpenAIStream":
-        if self._queue is None:
+        if self._queue is None and not self._closed:
             self._queue = asyncio.Queue()
             self._task = asyncio.create_task(self._run())
         return self
 
     async def __anext__(self) -> Any:
+        if self._closed:
+            raise StopAsyncIteration
         if self._queue is None:
             self.__aiter__()
         assert self._queue is not None
         item = await self._queue.get()
-        if item is None:
+        if self._closed or item is None:
+            self._closed = True
+            # Keep the terminal marker available to other pending readers.
+            self._queue.put_nowait(None)
             raise StopAsyncIteration
         if isinstance(item, Exception):
+            self._closed = True
+            self._queue.put_nowait(None)
             raise item
         return item
 
     async def close(self) -> None:
+        already_closed = self._closed
+        self._closed = True
+        if self._queue is not None:
+            # Cancellation before _run starts cannot execute its finally block.
+            self._queue.put_nowait(None)
         if self._task and not self._task.done():
-            self._task.cancel()
+            if not already_closed:
+                self._task.cancel()
             await asyncio.gather(self._task, return_exceptions=True)
 
     def _raise_for_error_response(self, response: Any) -> None:
