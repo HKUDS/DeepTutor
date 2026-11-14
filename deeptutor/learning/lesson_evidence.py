@@ -475,11 +475,12 @@ def _json_response(text: str) -> dict[str, Any]:
 
 
 async def _complete_json(config: Any, **request: Any) -> dict[str, Any]:
-    """Request one JSON object, retrying once with reasoning turned down.
+    """Request one JSON object, allowing reasoning and JSON on one bounded retry.
 
     A reasoning model pays for hidden tokens out of ``max_tokens``. At a high
-    effort it can spend the budget before the JSON is complete (#2367). The
-    retry follows the project rule in ``services.llm.structured_retry``.
+    effort it can spend the budget before the JSON is complete (#2367).
+    Low effort can still exhaust a small budget, so the retry also gives the
+    answer room and preserves an explicit thinking-off setting.
     """
     from deeptutor.services.llm.factory import complete_with_config
     from deeptutor.services.llm.reasoning_params import RETRY_REASONING_EFFORT
@@ -488,8 +489,16 @@ async def _complete_json(config: Any, **request: Any) -> dict[str, Any]:
     try:
         return _json_response(response)
     except LessonUnavailable:
-        retry = config.model_copy(update={"reasoning_effort": RETRY_REASONING_EFFORT})
-        return _json_response(await complete_with_config(config=retry, prompt="", **request))
+        effort = config.reasoning_effort
+        retry = config.model_copy(
+            update={
+                "reasoning_effort": (
+                    effort if effort in {"none", "minimal", "minimum"} else RETRY_REASONING_EFFORT
+                )
+            }
+        )
+        retry_request = {**request, "max_tokens": max(request.get("max_tokens") or 0, 8192)}
+        return _json_response(await complete_with_config(config=retry, prompt="", **retry_request))
 
 
 async def _ask(
