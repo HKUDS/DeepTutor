@@ -308,7 +308,9 @@ def _with_book_sources(function):
         book_id = bound.get("book_id")
         book = self.storage.load_book(book_id) if book_id else None
         refs = book.knowledge_bases if book else bound.get("knowledge_bases") or []
-        with learning_source_access(refs):
+        from deeptutor.book.generation_context import book_instruction_scope
+
+        with learning_source_access(refs), book_instruction_scope():
             return await function(self, *args, **kwargs)
 
     return guarded

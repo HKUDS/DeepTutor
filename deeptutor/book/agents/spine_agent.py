@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from deeptutor.agents.base_agent import BaseAgent
+from deeptutor.book.generation_context import BookAgent
 from deeptutor.utils.json_parser import parse_json_response
 
 from ..models import BookProposal, Chapter, ContentType, SourceAnchor, Spine
@@ -24,7 +24,7 @@ def _clip(text: str, limit: int) -> str:
     return text[:limit].rstrip() + "…"
 
 
-class SpineAgent(BaseAgent):
+class SpineAgent(BookAgent):
     """LLM call that designs the chapter tree of a book."""
 
     def __init__(
