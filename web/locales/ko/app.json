@@ -597,5 +597,8 @@
   "starters.research.3": "쟁점의 양쪽 입장 비교하기",
   "starters.research.3.prompt": "한 쟁점의 양쪽 입장에서 주요 주장과 근거, 각각의 전제를 정리하고 종합적인 판단을 제시해 주세요. 쟁점이 무엇인지 말하지 않았다면 먼저 물어봐 주세요.",
   "starters.research.4": "문헌 검토 개요 작성하기",
-  "starters.research.4.prompt": "한 주제의 문헌 검토 개요를 작성해 주세요. 배경, 연구를 분류할 틀, 절별 핵심 내용, 인용할 만한 자료 유형을 포함해 주세요. 주제와 목적을 말하지 않았다면 먼저 물어봐 주세요."
+  "starters.research.4.prompt": "한 주제의 문헌 검토 개요를 작성해 주세요. 배경, 연구를 분류할 틀, 절별 핵심 내용, 인용할 만한 자료 유형을 포함해 주세요. 주제와 목적을 말하지 않았다면 먼저 물어봐 주세요.",
+  "Recorded help: {{count}}": "기록된 도움: {{count}}회",
+  "Select text from this question's reading section first.": "먼저 이 문제의 읽기 섹션에서 텍스트를 선택하세요.",
+  "Failed to record help. Please try again.": "도움을 기록하지 못했습니다. 다시 시도해 주세요."
 }
