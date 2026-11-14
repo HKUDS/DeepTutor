@@ -93,6 +93,19 @@ _LABELS: dict[str, dict[str, str]] = {
         "not_generated": "(Bu bölüm henüz oluşturulmadı.)",
         "omitted": "({kind} atlandı: metin karşılığı yok.)",
     },
+    "it": {
+        "takeaway": "Concetto chiave",
+        "answer": "Risposta",
+        "front": "Fronte",
+        "back": "Retro",
+        "sources": "Fonti",
+        "chapters": "Capitoli",
+        "note": "Nota",
+        "untitled_book": "Libro senza titolo",
+        "untitled_chapter": "Capitolo senza titolo",
+        "not_generated": "(Questo capitolo non è ancora stato generato.)",
+        "omitted": "({kind} omesso — nessuna rappresentazione testuale.)",
+    },
 }
 
 

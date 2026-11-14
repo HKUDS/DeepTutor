@@ -54,6 +54,7 @@ const RESPONSE_LANGUAGE_ALIASES: Record<string, ResponseLanguage> = {
   turkish: "tr",
   "türkçe": "tr",
   italian: "it",
+  italiano: "it",
   arabic: "ar",
   polish: "pl",
   ukrainian: "uk",

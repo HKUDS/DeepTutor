@@ -136,6 +136,7 @@ _LANGUAGE_CHOICES: tuple[tuple[str, str, str], ...] = (
     ("vi", "Tiếng Việt", "Interface and replies in Vietnamese."),
     ("ja", "日本語", "Interface and replies in Japanese."),
     ("tr", "Türkçe", "Interface and replies in Turkish."),
+    ("it", "Italiano", "Interface and replies in Italian."),
 )
 
 _RESPONSE_LANGUAGE_CHOICES: tuple[tuple[str, str, str], ...] = (
