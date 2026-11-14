@@ -2543,6 +2543,37 @@ async def test_truncated_round_with_visible_text_still_continues(
     assert _answer_text(events) == "答案的前半段和后半段。"
 
 
+@pytest.mark.parametrize("language, notice", [("en", "context window"), ("zh", "上下文上限")])
+@pytest.mark.asyncio
+async def test_context_full_round_is_reported_not_continued(
+    monkeypatch: pytest.MonkeyPatch,
+    language: str,
+    notice: str,
+) -> None:
+    """A full input context ends the round with a notice instead of a futile continuation."""
+    client = _ScriptedChatClient(
+        [
+            [_llm_chunk(content="Partial answer", finish_reason="context_length_exceeded")],
+            [_llm_chunk(content=" and a continuation that must never be requested.")],
+        ]
+    )
+    pipeline = AgenticChatPipeline(language=language)
+    pipeline.registry = _Registry()
+    monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _context: [])
+    monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+
+    events = await _run(pipeline, UnifiedContext(session_id="s1", user_message="explain"))
+
+    assert client.call_count == 1
+    warnings = [
+        str(event.content)
+        for event in events
+        if (event.metadata or {}).get("trace_kind") == "warning"
+    ]
+    assert any(notice in text for text in warnings)
+    assert _answer_text(events) == "Partial answer"
+
+
 @pytest.mark.asyncio
 async def test_forced_tool_round_keeps_inline_reasoning_in_the_trace(
     monkeypatch: pytest.MonkeyPatch,

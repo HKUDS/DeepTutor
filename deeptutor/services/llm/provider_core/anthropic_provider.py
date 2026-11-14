@@ -18,6 +18,7 @@ import json_repair
 
 from deeptutor.services.llm.provider_core.base import LLMProvider, LLMResponse, ToolCallRequest
 from deeptutor.services.llm.reasoning_params import minimax_reasoning_kwargs
+from deeptutor.services.llm.types import CONTEXT_LENGTH_EXCEEDED_FINISH
 from deeptutor.services.provider_registry import ANTHROPIC_EFFORT_BASED_FAMILIES
 from deeptutor.services.session.provider_response_state import (
     normalize_provider_response_state,
@@ -498,7 +499,17 @@ class AnthropicProvider(LLMProvider):
             elif block.type == "redacted_thinking":
                 thinking_blocks.append({"type": "redacted_thinking", "data": block.data})
 
-        stop_map = {"tool_use": "tool_calls", "end_turn": "stop", "max_tokens": "length"}
+        stop_map = {
+            "tool_use": "tool_calls",
+            "end_turn": "stop",
+            "stop_sequence": "stop",
+            "max_tokens": "length",
+            # The *input* context filled up. This is not an output cap, so it must
+            # not map to "length": callers read that as "continue the answer",
+            # which would resend the same full history.
+            "model_context_window_exceeded": CONTEXT_LENGTH_EXCEEDED_FINISH,
+            "refusal": "content_filter",
+        }
         finish_reason = stop_map.get(response.stop_reason or "", response.stop_reason or "stop")
 
         usage: dict[str, int] = {}
