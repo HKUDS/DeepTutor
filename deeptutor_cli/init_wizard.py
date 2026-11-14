@@ -183,6 +183,13 @@ SEARCH_PROVIDERS: tuple[SearchProviderSpec, ...] = (
         hint="answer-style search",
     ),
     SearchProviderSpec(
+        name="specstream",
+        label="SpecStream",
+        requires_api_key=True,
+        env_keys=("SPECSTREAM_API_KEY", "SEARCH_API_KEY"),
+        hint="answer-style search · paid",
+    ),
+    SearchProviderSpec(
         name="firecrawl",
         label="Firecrawl",
         requires_api_key=True,
