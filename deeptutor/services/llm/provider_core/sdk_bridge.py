@@ -6,7 +6,7 @@ translates prompts, streamed messages and DeepTutor-owned MCP tool calls.
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Collection
 import logging
 from typing import Any
 
@@ -23,20 +23,21 @@ async def _consume_messages(
     on_content_delta: Callable[[str], Awaitable[None]] | None,
     interrupt: Callable[[], Awaitable[None]] | None = None,
     label: str = "CodeBuddy",
+    tool_names: Collection[str] | None = None,
 ) -> LLMResponse:
     chunks: list[str] = []
     pending_result_text = ""
     async for message in messages:
         if _is_error_result(message):
             return LLMResponse(
-                content=f"Error calling {label}: {_result_text(message)}",
+                content=f"Error calling {label}: {_error_detail(message)}",
                 finish_reason="error",
             )
         if _is_result_message(message):
             pending_result_text = _result_text(message)
             continue
 
-        tool_calls = _assistant_tool_calls(message)
+        tool_calls = _assistant_tool_calls(message, tool_names)
         text = _assistant_text(message)
         if text:
             chunks.append(text)
@@ -83,7 +84,15 @@ async def _drain_interrupted_response(messages: Any, *, label: str = "CodeBuddy"
         )
 
 
-def _assistant_tool_calls(message: Any) -> list[ToolCallRequest]:
+def _assistant_tool_calls(
+    message: Any, tool_names: Collection[str] | None = None
+) -> list[ToolCallRequest]:
+    """Translate tool-use blocks into DeepTutor tool calls.
+
+    The model normally calls ``mcp__deeptutor__<name>``, but sometimes uses the
+    bare ``<name>``. A bare name is accepted only when it is one of the
+    ``tool_names`` DeepTutor offered, so the CLI's own native tools stay ignored.
+    """
     content = getattr(message, "content", None)
     if content is None and isinstance(message, dict):
         content = message.get("content")
@@ -104,9 +113,12 @@ def _assistant_tool_calls(message: Any) -> list[ToolCallRequest]:
             arguments = getattr(block, "input", None)
         if block_type not in {"tool_use", "tooluse"} and not block_type.endswith("tooluseblock"):
             continue
-        if not name.startswith(_MCP_TOOL_PREFIX):
+        if name.startswith(_MCP_TOOL_PREFIX):
+            tool_name = name[len(_MCP_TOOL_PREFIX) :]
+        elif tool_names and name in tool_names:
+            tool_name = name
+        else:
             continue
-        tool_name = name[len(_MCP_TOOL_PREFIX) :]
         if not tool_name:
             continue
         calls.append(
@@ -231,6 +243,17 @@ def _is_error_result(message: Any) -> bool:
     if isinstance(message, dict):
         return bool(message.get("is_error") or message.get("error"))
     return bool(getattr(message, "is_error", False) or getattr(message, "error", None))
+
+
+def _error_detail(message: Any) -> str:
+    """Error text for a failed result; fall back to the subtype when it is empty."""
+    text = _result_text(message)
+    if text:
+        return text
+    subtype = (
+        message.get("subtype") if isinstance(message, dict) else getattr(message, "subtype", None)
+    )
+    return str(subtype) if subtype else "unknown error"
 
 
 def _result_text(message: Any) -> str:

@@ -258,6 +258,67 @@ async def test_session_tool_call_drains_without_interrupt_and_sends_only_new_tai
 
 
 @pytest.mark.asyncio
+async def test_bare_name_tool_call_matching_an_offered_tool_is_executed(monkeypatch) -> None:
+    _install_fake_sdk(monkeypatch)
+    FakeClient.script = [
+        [
+            FakeAssistantMessage([FakeToolUseBlock("toolu_1", "get_weather", {"city": "Hanoi"})]),
+            FakeResultMessage("max turns", is_error=True),
+        ],
+    ]
+
+    provider = ClaudeCodeProvider()
+    messages = [
+        {"role": "system", "content": "Use tools."},
+        {"role": "user", "content": "Weather in Hanoi?"},
+    ]
+    response = await provider.chat(messages, tools=[WEATHER_TOOL], deeptutor_session_id="s1")
+
+    assert response.finish_reason == "tool_calls"
+    assert [(c.name, c.arguments) for c in response.tool_calls] == [
+        ("get_weather", {"city": "Hanoi"})
+    ]
+    await provider.aclose()
+
+
+@pytest.mark.asyncio
+async def test_bare_name_that_was_not_offered_is_still_ignored(monkeypatch) -> None:
+    _install_fake_sdk(monkeypatch)
+    FakeClient.script = [
+        [
+            FakeAssistantMessage([FakeToolUseBlock("toolu_1", "Bash", {"command": "ls"})]),
+            FakeResultMessage("max turns", is_error=True),
+        ],
+    ]
+
+    provider = ClaudeCodeProvider()
+    messages = [{"role": "user", "content": "Weather in Hanoi?"}]
+    response = await provider.chat(messages, tools=[WEATHER_TOOL], deeptutor_session_id="s1")
+
+    assert not response.tool_calls
+    assert response.finish_reason == "error"
+    await provider.aclose()
+
+
+@pytest.mark.asyncio
+async def test_error_result_without_text_names_the_subtype(monkeypatch) -> None:
+    _install_fake_sdk(monkeypatch)
+    result = FakeResultMessage(None, is_error=True)
+    result.result = None
+    result.subtype = "error_max_turns"
+    FakeClient.script = [[result]]
+
+    provider = ClaudeCodeProvider()
+    response = await provider.chat(
+        [{"role": "user", "content": "hi"}], tools=[WEATHER_TOOL], deeptutor_session_id="s1"
+    )
+
+    assert response.finish_reason == "error"
+    assert response.content == "Error calling Claude Code: error_max_turns"
+    await provider.aclose()
+
+
+@pytest.mark.asyncio
 async def test_missing_login_is_reported_as_error_response(monkeypatch) -> None:
     async def fake_query(**kwargs):
         raise RuntimeError("Invalid API key · Please run /login")
