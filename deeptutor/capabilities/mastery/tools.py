@@ -2029,16 +2029,15 @@ class MasteryAssessTool(BaseTool):
             return ToolResult(content="mastery_assess needs a knowledge_point_id.", success=False)
         learner_answer = str(kwargs.get("_learner_message") or "").strip()
 
+        service = _new_service()
+        progress = _load_path(service, path_id)
+        if progress is None:
+            return _no_built_path_result("mastery_assess")
         if not learner_answer or len(learner_answer) > 10000:
             return ToolResult(
                 content="Assessment needs the actual learner explanation, at most 10000 characters.",
                 success=False,
             )
-
-        service = _new_service()
-        progress = _load_path(service, path_id)
-        if progress is None:
-            return _no_built_path_result("mastery_assess")
         scope = _review_scope_refusal(kwargs, progress, kp_id)
         if scope is not None:
             return scope
@@ -2170,7 +2169,7 @@ def _assess_next_move(mastered: bool, next_step: dict) -> str:
         return (
             "The gate is not cleared. Name only the missing or incorrect part. "
             "Keep the correct parts and ask one targeted follow-up, not a full restatement. "
-            "Assess the missing-part reply together with the retained explanation. "
+            "Assess the missing-part reply together with the retained explanation using mastery_assess. "
             "Do not add requirements beyond this objective and its stated level."
         )
     if next_step.get("action") == "complete":

@@ -181,14 +181,23 @@ async def test_provider_failure_preserves_answer_without_paid_source_retry(servi
 
 
 @pytest.mark.asyncio
-async def test_empty_input_does_not_claim_that_an_answer_was_retained(service, monkeypatch):
+@pytest.mark.parametrize("answer", ["", " \n ", "x" * 10001], ids=["empty", "blank", "too-long"])
+async def test_invalid_input_does_not_claim_that_an_answer_was_retained(
+    service, monkeypatch, answer
+):
     preparation = AsyncMock()
+    judge = AsyncMock()
     monkeypatch.setattr(lesson_evidence, "prepare_lesson", preparation)
-    ctx = context("")
+    monkeypatch.setattr(semantic_assessment, "judge_answers", judge)
+    ctx = context(answer)
     result = await assess(ctx)
     assert not result.success
+    assert "actual learner explanation" in result.content
     assert "assessment_blocked" not in ctx.extension("mastery")
     preparation.assert_not_awaited()
+    judge.assert_not_awaited()
+    progress = service.store.load("p")
+    assert not progress.learning_evidence and not progress.qualitative_mastery
 
 
 def test_old_callback_cannot_block_a_rebound_path():
@@ -205,6 +214,7 @@ def test_old_callback_cannot_block_a_rebound_path():
 
 def test_partial_feedback_requests_only_the_gap():
     instruction = tools._assess_next_move(False, {})
+    assert "mastery_assess" in instruction
     assert "targeted follow-up" in instruction
     assert "retained explanation" in instruction
     assert "not a full restatement" in instruction
