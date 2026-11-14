@@ -700,6 +700,38 @@ class TestHistory:
         sessions = {s["session_key"]: s for s in client.get("/api/partners/ada/sessions").json()}
         assert sessions["web-a"]["archived"] is True
 
+    @pytest.mark.parametrize("existing_content", ["target text", ""])
+    def test_branch_rejects_existing_destination_and_keeps_active_session(
+        self, client, existing_content
+    ):
+        from deeptutor.api.routers import partners as router_mod
+
+        _create(client)
+        store = router_mod.get_partner_manager().session_store("ada")
+        store.append("web-a", "user", "source text")
+        if existing_content:
+            store.append("web-b", "user", existing_content)
+        else:
+            store._path("web-b").touch()
+        store.set_archived("web-b", True)
+        client.put(
+            "/api/partners/ada/web-continuity",
+            json={"enabled": True, "session_key": "web-a"},
+        )
+        paths = [store._path("web-a"), store._path("web-b"), store._index_path]
+        before = [path.read_bytes() for path in paths]
+
+        response = client.post(
+            "/api/partners/ada/sessions/branch",
+            json={"source_key": "web-a", "new_key": "web-b"},
+        )
+
+        assert response.status_code == 409
+        assert [path.read_bytes() for path in paths] == before
+        assert store.is_archived("web-a") is False
+        assert store.is_archived("web-b") is True
+        assert client.get("/api/partners/ada/web-continuity").json()["session_key"] == "web-a"
+
     def test_delete_session_endpoint(self, client, isolated_root):
         _create(client)
         self._seed_session(isolated_root, "web-a", "bye")

@@ -1211,6 +1211,27 @@ class TestSessionStoreOps:
         assert store.messages_page("bad")["total"] == 0
         assert store.model_history("bad") == []
 
+    @pytest.mark.parametrize("existing_content", ["target text", ""])
+    def test_branch_rejects_existing_destination_without_changing_sessions(
+        self, partners_root, existing_content
+    ):
+        store = _shared_store()
+        store.append("web-a", "user", "source text")
+        if existing_content:
+            store.append("web-b", "user", existing_content)
+        else:
+            store._path("web-b").touch()
+        store.set_archived("web-b", True)
+        paths = [store._path("web-a"), store._path("web-b"), store._index_path]
+        before = [path.read_bytes() for path in paths]
+
+        with pytest.raises(FileExistsError):
+            store.branch("web-a", "web-b")
+
+        assert [path.read_bytes() for path in paths] == before
+        assert store.is_archived("web-a") is False
+        assert store.is_archived("web-b") is True
+
     def test_delete_removes_file_and_index(self, partners_root):
         store = _shared_store()
         store.append("web-a", "user", "hi")
