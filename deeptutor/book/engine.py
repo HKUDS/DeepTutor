@@ -1677,6 +1677,20 @@ class BookEngine:
             return {"book_id": book_id, "has_drift": False, "missing": True}
         return report.to_dict()
 
+    def check_refresh_kb_fingerprints(self, book_id: str, *, force: bool = False) -> bool:
+        """Raise ``ValueError`` when ``refresh_kb_fingerprints`` would refuse.
+
+        Read-only preflight: the API layer must reject a "mark as seen"
+        *before* claiming the book's canonical revision, or the refused call
+        bumps the revision and the client's ``expected_revision`` loses a
+        race its own failed attempt created. Returns ``False`` when the book
+        does not exist.
+        """
+        from .kb_health import ensure_can_refresh_fingerprints
+
+        book = ensure_can_refresh_fingerprints(book_id, storage=self.storage, force=force)
+        return book is not None
+
     def refresh_kb_fingerprints(
         self, book_id: str, *, force: bool = False
     ) -> dict[str, Any] | None:
