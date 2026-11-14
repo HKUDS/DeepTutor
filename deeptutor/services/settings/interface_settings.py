@@ -62,6 +62,9 @@ _RESPONSE_LANGUAGE_ALIASES: dict[str, str] = {
     "vietnamese": "vi",
     "tiếng việt": "vi",
     "tieng viet": "vi",
+    "hindi": "hi",
+    "हिन्दी": "hi",
+    "हिंदी": "hi",
 }
 
 

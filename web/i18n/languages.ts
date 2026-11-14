@@ -58,4 +58,5 @@ export type ResponseLanguage =
   | "uk"
   | "ms"
   | "vi"
-  | "tr";
+  | "tr"
+  | "hi";
