@@ -1684,6 +1684,11 @@ def start(
         "-m",
         "uvicorn",
         "deeptutor.api.main:app",
+        # Uvicorn adds its app-dir to sys.path even with PYTHONSAFEPATH=1.
+        # The runtime home may contain stale source files after an upgrade;
+        # import the backend from the same installation as this launcher.
+        "--app-dir",
+        str(PACKAGE_ROOT),
         "--host",
         "0.0.0.0",
         "--port",
