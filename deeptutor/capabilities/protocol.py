@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Any, Iterable, Protocol
 
 from deeptutor.core.context import UnifiedContext
 
@@ -152,6 +152,16 @@ class KnowledgeCapability:
 
     exclusive_tools: bool = True
 
+    #: Chat built-ins that stay mounted alongside :attr:`owned_tools` when this
+    #: capability owns the turn. Exclusivity is the capability's policy, so the
+    #: exceptions are declared here rather than hardcoded in the pipeline
+    #: (issue #2612, mirroring the KB coexistence of issue #650). Each name
+    #: still passes its usual gate in
+    #: :func:`~deeptutor.agents._shared.tool_composition.compose_enabled_tools`
+    #: — the user's composer toggle (``web_search``), the always-on rule
+    #: (``web_fetch``) — and the partner ``builtin_whitelist``. Default: none.
+    coexisting_tools: tuple[str, ...] = ()
+
     def owned_kbs(self, context: UnifiedContext) -> set[str]:
         """Selected KB refs this capability consumes through its own tools.
 
@@ -162,6 +172,45 @@ class KnowledgeCapability:
         """
         _ = context
         return set()
+
+    def coexisting_tools_block(
+        self,
+        context: UnifiedContext,
+        *,
+        language: str,
+        mounted_tools: Iterable[str],
+    ) -> PromptBlock | None:
+        """System block naming the :attr:`coexisting_tools` that actually mounted.
+
+        The pipeline calls this with the turn's composed tool list, so the
+        mention can never advertise a tool that failed its gate (a
+        ``web_search`` the user toggled off). Returns ``None`` when nothing
+        declared mounted. Mounting without mentioning leaves the model
+        assuming the turn has no web access (issue #2612), so the two halves
+        are a pair. Copy is inline bilingual, like the subagent system block.
+        """
+        _ = context
+        mounted = [
+            str(name).strip()
+            for name in self.coexisting_tools
+            if str(name).strip() and str(name).strip() in set(mounted_tools)
+        ]
+        if not mounted:
+            return None
+        listed = ", ".join(f"`{name}`" for name in mounted)
+        if str(language or "en").lower().startswith("zh"):
+            content = (
+                f"除本能力自己的工具外，本轮还保留了这些聊天工具：{listed}。"
+                "当回答需要它们各自的用途时（例如一般主题搜索、读取用户给出的具体链接），照常使用。"
+            )
+        else:
+            content = (
+                f"Alongside this capability's own tools, these chat tools are "
+                f"also mounted this turn: {listed}. Use them as usual when the "
+                "answer calls for what they each do (e.g. a general topic "
+                "search, or reading a specific URL the user shared)."
+            )
+        return PromptBlock(f"{self.name}_coexisting_tools", content)
 
 
 __all__ = [

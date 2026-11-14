@@ -67,6 +67,19 @@ _CONDITIONAL_MOUNT_FLAGS: dict[str, str] = {
     "mastery_new_session": "has_mastery_nav",
 }
 
+# Built-ins that are the non-exclusive surface's always-on auto-mounts: they
+# ride on every chat turn unless the partner ``builtin_whitelist`` denies
+# them. ``ask_user`` is additionally the floor of the exclusive branch.
+_ALWAYS_ON_TOOLS: tuple[str, ...] = (
+    "write_memory",
+    "learning_status",
+    "learning_update",
+    "web_fetch",
+    "github",
+    "ask_user",
+    "cron",
+)
+
 # Built-ins that survive an exclusive knowledge capability when other KBs are
 # co-selected: retrieval over them, and enumeration of what they hold.
 _KB_COEXISTING_TOOLS: tuple[str, ...] = ("rag", "kb_files", "knowledge_frontier")
@@ -183,6 +196,7 @@ def compose_enabled_tools(
     capability_owned: Iterable[str] = (),
     exclusive: bool = False,
     builtin_whitelist: set[str] | None = None,
+    coexisting: Iterable[str] = (),
     forced: Iterable[str] = (),
     suppressed: Iterable[str] = (),
 ) -> list[str]:
@@ -208,11 +222,19 @@ def compose_enabled_tools(
     ``exclusive=True`` flips that for the *knowledge* category (an active
     :class:`~deeptutor.capabilities.protocol.KnowledgeCapability`): the turn
     runs on ``capability_owned`` plus the ``ask_user`` floor — no other
-    built-ins, no composer toggles. The one exception is ``rag`` when
-    ``mount_flags.has_kb`` is set: it serves co-selected KBs the capability does
-    not own (e.g. LlamaIndex KBs alongside an Obsidian vault), so it coexists
-    with the owned surface instead of being dropped (issue #650). The capability
-    otherwise owns the surface.
+    built-ins, no composer toggles. Two exceptions:
+
+    * ``rag`` when ``mount_flags.has_kb`` is set: it serves co-selected KBs the
+      capability does not own (e.g. LlamaIndex KBs alongside an Obsidian
+      vault), so it coexists with the owned surface instead of being dropped
+      (issue #650).
+    * ``coexisting`` — built-ins the capability itself declares as surviving
+      its exclusivity (issue #2612). Each name keeps its usual gate: the
+      user's composer toggle (``web_search``), the always-on rule
+      (``web_fetch``), or its conditional flag. The ``builtin_whitelist``
+      subtracts on top.
+
+    The capability otherwise owns the surface.
 
     ``builtin_whitelist`` gates the *built-in* auto-mounts (steps 2 and 4 —
     the :data:`AUTO_MOUNTED_TOOLS` members). ``None`` (the product-chat default)
@@ -250,8 +272,24 @@ def compose_enabled_tools(
             if mount_flags.has_kb
             else []
         )
+        coexisting_mounts = _coexisting_mounts(
+            coexisting,
+            registry=registry,
+            requested_tools=requested_tools,
+            optional_whitelist=optional_whitelist,
+            mount_flags=mount_flags,
+            builtin_whitelist=builtin_whitelist,
+        )
         return _finalize(
-            [*WORKSPACE_BASELINE_TOOLS, *owned, *extra, "ask_user"], forced, suppressed
+            [
+                *WORKSPACE_BASELINE_TOOLS,
+                *owned,
+                *extra,
+                *coexisting_mounts,
+                "ask_user",
+            ],
+            forced,
+            suppressed,
         )
 
     def _builtin_allowed(name: str) -> bool:
@@ -266,18 +304,53 @@ def compose_enabled_tools(
         if getattr(mount_flags, flag) and _builtin_allowed(tool_name):
             composed.append(tool_name)
     composed.extend(str(name) for name in capability_owned if str(name).strip())
-    for always_on in (
-        "write_memory",
-        "learning_status",
-        "learning_update",
-        "web_fetch",
-        "github",
-        "ask_user",
-        "cron",
-    ):
+    for always_on in _ALWAYS_ON_TOOLS:
         if _builtin_allowed(always_on):
             composed.append(always_on)
     return _finalize([*WORKSPACE_BASELINE_TOOLS, *composed], forced, suppressed)
+
+
+def _coexisting_mounts(
+    declared: Iterable[str],
+    *,
+    registry: Any,
+    requested_tools: list[str] | None,
+    optional_whitelist: list[str],
+    mount_flags: ToolMountFlags,
+    builtin_whitelist: set[str] | None,
+) -> list[str]:
+    """Which declared coexisting built-ins keep their usual gates (#2612).
+
+    A name the capability declared mounts only if it would have mounted on a
+    plain chat turn: the user's composer toggle for user-toggleable tools
+    (``web_search``), the ``ToolMountFlags`` gate for conditional built-ins,
+    or the always-on rule (``web_fetch``). The partner ``builtin_whitelist``
+    subtracts on top, so a denied built-in can never ride in through a
+    capability declaration.
+    """
+    toggled = {
+        tool.name
+        for tool in registry.get_enabled(requested_tools or [])
+        if tool.name in optional_whitelist
+    }
+    mounted: list[str] = []
+    for raw in declared:
+        name = str(raw).strip()
+        if not name or name in mounted:
+            continue
+        if builtin_whitelist is not None and name not in builtin_whitelist:
+            continue
+        if name in toggled:
+            mounted.append(name)
+            continue
+        flag = _CONDITIONAL_MOUNT_FLAGS.get(name)
+        if flag is not None:
+            if getattr(mount_flags, flag, False):
+                mounted.append(name)
+            continue
+        if name in _ALWAYS_ON_TOOLS:
+            mounted.append(name)
+    return mounted
 
 
 def _finalize(names: Iterable[str], forced: Iterable[str], suppressed: Iterable[str]) -> list[str]:
