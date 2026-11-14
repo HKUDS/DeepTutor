@@ -338,3 +338,31 @@ image/file question without parent-conversation context, create a normal new
 chat and attach the material there. An empty side tab has no saved server thread
 until its first message and is not restored. Move a side chat by moving its
 parent conversation.
+
+
+### Provider progress and book editing
+
+A live Responses stream now has a 300-second effective-progress limit, separate
+from the 90-second read timeout. Repeated lifecycle events/sequence numbers do
+not extend it. The first same-operation adapter supports the official OpenAI
+Responses endpoint only when the request already opted into `store=true`.
+DeepTutor still defaults to `store=false`; recovery never enables retention.
+Lookup is bounded to 30 seconds total (8 seconds per query), and local stream
+cleanup is bounded to 2 seconds. Completed output is reconciled against the
+observed prefix and original tool identities. Unknown create outcomes,
+unsupported retrieval, pending or inaccessible results stop the turn with
+`provider_operation_paused`, without an automatic replacement or forced teaching
+continuation. Remote cancellation is not claimed. This first slice only recovers
+within the active call; it does not reopen provider jobs after a process restart.
+The experimental TypeScript adapter has the same progress stop and no retrieval
+adapter. These contracts are covered by synthetic transports, not live model runs.
+
+In a generated book, **Edit book structure** previews chapter/section changes;
+new empty sections generate when opened. The page chat can use
+`propose_book_edit` to propose a section or text block. It cannot apply edits.
+The reader reviews the diff and selects **Apply reviewed edit**. Every proposal
+keeps its source session/turn and revision under the book's access policy.
+The most recent unchanged edit can be undone; subsequent edits or generation
+require a new preview instead of overwriting newer content. Interrupted applies
+retain a rollback journal and recover before the next authoring operation.
+Pause ongoing book generation before structural editing.

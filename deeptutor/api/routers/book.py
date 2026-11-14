@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 
 from deeptutor.api.utils.http_headers import content_disposition
 from deeptutor.book import progress as progress_ops
+from deeptutor.book.authoring import BookEdit
 from deeptutor.book.errors import BookPausedError
 from deeptutor.book.export import export_filename, render_book_markdown
 from deeptutor.book.models import (
@@ -2004,3 +2005,58 @@ async def book_websocket(ws: WebSocket) -> None:
                 reset_current_user(user_token)
             except Exception:
                 logger.debug("Could not reset Book WebSocket user context", exc_info=True)
+
+
+# Book authoring is deliberately proposal-only until an authenticated UI apply.
+class ApplyBookEditRequest(BaseModel):
+    expected_revision: int = Field(ge=1)
+
+
+@router.post("/books/{book_id}/edits/preview")
+async def preview_book_edit(book_id: str, req: BookEdit) -> dict[str, Any]:
+    from deeptutor.book.authoring import preview_edit
+
+    resolved = _resolve_book_or_404(book_id, edit=True)
+    try:
+        return preview_edit(resolved.engine.storage, book_id, req)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.get("/books/{book_id}/edits")
+async def get_book_edits(book_id: str, page_id: str | None = None) -> dict[str, Any]:
+    from deeptutor.book.authoring import list_edits
+
+    resolved = _resolve_book_or_404(book_id, edit=True)
+    try:
+        return {"edits": list_edits(resolved.engine.storage, book_id, page_id)}
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post("/books/{book_id}/edits/{edit_id}/apply")
+async def apply_book_edit(book_id: str, edit_id: str, req: ApplyBookEditRequest) -> dict[str, Any]:
+    from deeptutor.book.authoring import apply_edit
+
+    resolved = _resolve_book_or_404(book_id, edit=True)
+    try:
+        result = apply_edit(resolved.engine.storage, book_id, edit_id, req.expected_revision)
+        log_admin_action("book.edit.apply", summary={"book_id": book_id, "edit_id": edit_id})
+        return result
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post("/books/{book_id}/edits/{edit_id}/undo")
+async def undo_book_edit(book_id: str, edit_id: str, req: ApplyBookEditRequest) -> dict[str, Any]:
+    from deeptutor.book.authoring import apply_edit
+
+    resolved = _resolve_book_or_404(book_id, edit=True)
+    try:
+        result = apply_edit(
+            resolved.engine.storage, book_id, edit_id, req.expected_revision, undo=True
+        )
+        log_admin_action("book.edit.undo", summary={"book_id": book_id, "edit_id": edit_id})
+        return result
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc

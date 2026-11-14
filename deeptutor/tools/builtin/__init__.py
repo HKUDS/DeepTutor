@@ -2435,6 +2435,7 @@ CONFIGURABLE_BUILTIN_TOOL_NAMES: tuple[str, ...] = (
     "kb_files",
     "knowledge_frontier",
     "read_source",
+    "propose_book_edit",
     "read_memory",
     "write_memory",
     "learning_status",

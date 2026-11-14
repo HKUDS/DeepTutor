@@ -930,11 +930,13 @@ class BookEngine:
         # ── Inject Overview chapter (idempotent) ─────────────────────
         spine = await self._ensure_overview_chapter(spine, book, stream=stream)
 
-        existing = {p.chapter_id: p for p in self.storage.list_pages(book_id)}
+        existing: dict[str, list[Page]] = {}
+        for saved in self.storage.list_pages(book_id):
+            existing.setdefault(saved.chapter_id, []).append(saved)
         pages: list[Page] = []
         for chapter in spine.chapters:
-            page = existing.get(chapter.id)
-            if page is None:
+            chapter_pages = existing.get(chapter.id, [])
+            if not chapter_pages:
                 page = Page(
                     book_id=book_id,
                     chapter_id=chapter.id,
@@ -945,24 +947,25 @@ class BookEngine:
                     status=PageStatus.PENDING,
                 )
                 self.storage.save_page(page)
-                chapter.page_ids = [page.id]
-            elif (
-                page.order != chapter.order
-                or page.title != chapter.title
-                or page.content_type != chapter.content_type
-            ):
-                # A re-confirm after editing the spine has to carry the edits
-                # onto pages that already exist, or reordering and renaming
-                # chapters changes nothing the reader can see: pages are sorted
-                # by ``order`` (storage.list_pages) and titled from the page.
+                chapter_pages = [page]
+            for page in chapter_pages:
+                # User-authored sections have their own titles and goals. A
+                # re-confirm must not collapse a chapter back to one page.
+                independent = bool(getattr(page, "section", False))
+                changed = page.order != chapter.order
                 page.order = chapter.order
-                page.title = chapter.title
-                page.content_type = chapter.content_type
-                page.learning_objectives = list(chapter.learning_objectives)
-                page.updated_at = time.time()
-                self.storage.save_page(page)
-            pages.append(page)
-        pages.sort(key=lambda p: (p.order, p.created_at))
+                if not independent and (
+                    page.title != chapter.title or page.content_type != chapter.content_type
+                ):
+                    page.title = chapter.title
+                    page.content_type = chapter.content_type
+                    page.learning_objectives = list(chapter.learning_objectives)
+                    changed = True
+                if changed:
+                    page.updated_at = time.time()
+                    self.storage.save_page(page)
+            chapter.page_ids = [page.id for page in chapter_pages]
+            pages.extend(chapter_pages)
         # Persist assigned page ids once. Previously the growing spine was
         # rewritten after every new chapter shell.
         self.storage.save_spine(spine)
@@ -1319,6 +1322,14 @@ class BookEngine:
         if chapter is None:
             raise ValueError(f"Page {page_id} references unknown chapter {page.chapter_id}")
 
+        if getattr(page, "section", False) or len(chapter.page_ids) > 1:
+            chapter = chapter.model_copy(
+                update={
+                    "title": page.title,
+                    "learning_objectives": list(page.learning_objectives),
+                    "summary": f"Section of {chapter.title}. {chapter.summary}",
+                }
+            )
         bus = stream or get_book_bus(book_id)
         bstream = BookStream(bus)
 
@@ -2113,10 +2124,10 @@ class BookEngine:
             if page is None:
                 continue
             changed = False
-            if title is not None and page.title != chapter.title:
+            if title is not None and not getattr(page, "section", False):
                 page.title = chapter.title
                 changed = True
-            if learning_objectives is not None:
+            if learning_objectives is not None and not getattr(page, "section", False):
                 page.learning_objectives = list(chapter.learning_objectives)
                 changed = True
             if changed:

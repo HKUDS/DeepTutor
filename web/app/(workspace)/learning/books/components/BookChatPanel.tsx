@@ -53,6 +53,7 @@ import type {
 import { UnifiedTurnClient } from "@/features/chat/transport/UnifiedTurnClient";
 import type { MessageAttachment } from "@/features/chat/ChatStateAdapter";
 import type { Page, Book } from "@/lib/book-types";
+import BookEditReview from "./BookEditReview";
 import Tooltip from "@/shared/ui/Tooltip";
 
 interface ChatMessage {
@@ -77,6 +78,7 @@ export interface BookChatPanelProps {
   page: Page | null;
   open: boolean;
   onClose: () => void;
+  onBookChanged?: () => Promise<void> | void;
   initialSessionId?: string | null;
   onSessionResolved?: (sessionId: string) => void;
 }
@@ -149,6 +151,7 @@ export default function BookChatPanel({
   onClose,
   initialSessionId = null,
   onSessionResolved,
+  onBookChanged,
 }: BookChatPanelProps) {
   const { t } = useTranslation();
   const { language: appLanguage } = useAppShell();
@@ -583,6 +586,7 @@ export default function BookChatPanel({
         className="flex-1 overflow-y-auto px-4 py-3"
         style={{ overflowAnchor: "none" }}
       >
+          {book && page && book.can_edit !== false && onBookChanged && <BookEditReview key={`${book.id}:${page.id}`} bookId={book.id} pageId={page.id} revision={book.revision || 1} refreshKey={busy} onChanged={onBookChanged} />}
         {messages.length === 0 ? (
           <div className="rounded-2xl bg-[var(--background)] p-4 text-xs leading-5 text-[var(--muted-foreground)]">
             {t(

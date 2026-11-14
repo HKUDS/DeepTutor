@@ -1,5 +1,5 @@
 {
-  "fingerprint": "03dd5ab26773a586e727019b43f5da6ceced2301ac1da4f249ecf20f78171a63",
+  "fingerprint": "c3b938e1a6af4378a012f1f6faa1887d8c8d2b37042f8f01885deabebeef625a",
   "routers": {
     "deeptutor.api.routers.auth:router": [
       {
@@ -2406,6 +2406,38 @@
       {
         "path": "/books/rebuild",
         "name": "rebuild_book",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/books/{book_id}/edits/preview",
+        "name": "preview_book_edit",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/books/{book_id}/edits",
+        "name": "get_book_edits",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/books/{book_id}/edits/{edit_id}/apply",
+        "name": "apply_book_edit",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/books/{book_id}/edits/{edit_id}/undo",
+        "name": "undo_book_edit",
         "kind": "http",
         "methods": [
           "POST"
