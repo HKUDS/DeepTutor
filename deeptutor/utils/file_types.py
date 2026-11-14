@@ -275,38 +275,53 @@ class FileTypeRouter:
         "gbk",
         "gb2312",
         "gb18030",
-        "latin-1",
         "cp1252",
+        "latin-1",
     )
 
     @classmethod
-    def decode_bytes(cls, data: bytes) -> str:
-        """Decode raw bytes using the same fallback chain as read_text_file.
+    def decode_bytes(
+        cls, data: bytes, *, encoding: str | None = None, language_hint: str | None = None
+    ) -> str:
+        """Decode uploaded text, using an explicit encoding or the user's locale.
 
-        Used by the chat-attachment extractor so path-based and bytes-based
-        callers share one source of truth for supported encodings.
+        Short cp1254 strings can be valid GBK (#2132, #2133); bytes alone cannot
+        disambiguate them. UTF-8 always wins by default. Turkish UI users then
+        prefer their Windows ANSI encoding; other users retain Chinese fallback
+        order. An explicit encoding is strict and never silently substituted.
         """
-        for encoding in cls.TEXT_DECODING_CANDIDATES:
+        if encoding is not None:
+            return data.decode(encoding)
+        try:
+            return data.decode("utf-8")
+        except UnicodeDecodeError:
+            pass
+        if language_hint is None:
+            from deeptutor.services.settings.interface_settings import get_ui_language
+
+            language_hint = get_ui_language()
+        candidates = cls.TEXT_DECODING_CANDIDATES[2:]
+        if language_hint.lower().replace("_", "-").split("-")[0] == "tr":
+            candidates = ("cp1254", *candidates)
+        for candidate in candidates:
             try:
-                return data.decode(encoding)
+                return data.decode(candidate)
             except UnicodeDecodeError:
                 continue
         return data.decode("utf-8", errors="replace")
 
     @classmethod
-    async def read_text_file(cls, file_path: str) -> str:
-        """Read a text file with automatic encoding detection."""
-        for encoding in cls.TEXT_DECODING_CANDIDATES:
-            try:
-                with open(file_path, "r", encoding=encoding) as f:
-                    text = f.read()
-                break
-            except UnicodeDecodeError:
-                continue
-
-        else:
-            with open(file_path, "rb") as f:
-                text = f.read().decode("utf-8", errors="replace")
+    async def read_text_file(
+        cls, file_path: str, *, encoding: str | None = None, language_hint: str | None = None
+    ) -> str:
+        """Read text with the same decoding policy as in-memory uploads."""
+        text = (
+            cls.decode_bytes(
+                Path(file_path).read_bytes(), encoding=encoding, language_hint=language_hint
+            )
+            .replace("\r\n", "\n")
+            .replace("\r", "\n")
+        )
 
         if Path(file_path).suffix.lower() == ".bib":
             from deeptutor.utils.bibtex_converter import bibtex_to_markdown

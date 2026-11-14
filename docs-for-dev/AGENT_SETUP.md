@@ -305,3 +305,16 @@ based on evidence; there is no need to run every command for every problem.
 - [deeptutor_cli/setup_config.py](../deeptutor_cli/setup_config.py)
 - [deeptutor_cli/doctor.py](../deeptutor_cli/doctor.py)
 - [tests/cli/test_agent_setup.py](../tests/cli/test_agent_setup.py)
+
+
+### Legacy text encodings
+
+Prefer UTF-8 for knowledge-base text and chat attachments. For legacy Windows
+ANSI files, the importer uses the account's interface language: Turkish prefers
+Windows-1254 after UTF-8; other locales preserve the GBK/GB18030 fallback and use
+Windows-1252 before Latin-1. This fixes Turkish text such as `Çiçek` whose bytes
+are also valid Chinese text. The bytes alone cannot distinguish those encodings.
+For mixed-language legacy collections, convert files to UTF-8 before uploading;
+Python callers may pass a strict `encoding="cp1254"` or `encoding="gbk"` to
+`FileTypeRouter.decode_bytes` / `read_text_file`. No decoding step rewrites the
+original uploaded file.
