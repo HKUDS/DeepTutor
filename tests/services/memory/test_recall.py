@@ -185,13 +185,16 @@ def _write_trace(root: Path, surface: str, events: list[dict]) -> None:
         (directory / f"{day}.jsonl").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def _query_event(query: str, ts: str) -> dict:
+def _query_event(query: str, ts: str, surface: str = "kb") -> dict:
+    payload = {"query": query}
+    if surface == "kb":
+        payload.update({"kb_name": "Physics", "answer_chars": 120})
     return {
-        "id": f"kb:{query}",
+        "id": f"{surface}:{query}",
         "ts": ts,
-        "surface": "kb",
+        "surface": surface,
         "kind": "query",
-        "payload": {"query": query, "kb_name": "Physics", "answer_chars": 120},
+        "payload": payload,
         "session_id": None,
         "turn_id": None,
     }
@@ -211,6 +214,18 @@ def test_recent_queries_reads_the_learners_own_words(memory_root: Path) -> None:
 
     assert [h.label for h in hits] == ["how does backprop work", "what is an eigenvalue"]
     assert {h.surface for h in hits} == {"kb"}
+
+
+def test_recent_queries_reads_chat_turns(memory_root: Path) -> None:
+    _write_trace(
+        memory_root,
+        "chat",
+        [_query_event("what is an eigenvalue", _iso(1), surface="chat")],
+    )
+
+    hits = recall.recent_queries()
+
+    assert [(hit.surface, hit.label) for hit in hits] == [("chat", "what is an eigenvalue")]
 
 
 def test_recent_queries_ignores_other_event_kinds(memory_root: Path) -> None:
