@@ -9,6 +9,7 @@ interface ChatBranchMessage extends BranchMessage {
   failedSubmission?: boolean;
   /** A quota fallback kept the text but not enough context for safe resend. */
   failedSubmissionNeedsReview?: boolean;
+  failedSubmissionNoLlmAccess?: boolean;
   orphanedFailedTurn?: { retryable: boolean };
 }
 
@@ -25,7 +26,8 @@ export function isFailedTurnVisible<T extends ChatBranchMessage>(
   if (tail?.role === "assistant") {
     return buildVisiblePath(messages, selectedBranches).messages.at(-1) === tail;
   }
-  if (tail?.role === "user" && tail.failedSubmission && !tail.failedSubmissionNeedsReview) {
+  if (tail?.role === "user" && tail.failedSubmission &&
+      !tail.failedSubmissionNeedsReview && !tail.failedSubmissionNoLlmAccess) {
     return buildVisiblePath(messages, selectedBranches).messages.at(-1) === tail;
   }
   if (tail?.role === "user" && tail.orphanedFailedTurn?.retryable) {

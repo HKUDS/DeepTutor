@@ -101,6 +101,7 @@ import {
 } from "@/lib/ask-user-state";
 import { notify } from "@/lib/notifications";
 import { copyText } from "@/lib/clipboard";
+import { CAPABILITY_LABEL } from "@/lib/capability-routes";
 import { useChatAutoScroll } from "@/hooks/useChatAutoScroll";
 import { useContextBudget } from "@/hooks/useContextBudget";
 import { useMeasuredHeight } from "@/hooks/useMeasuredHeight";
@@ -2868,13 +2869,23 @@ export default function ChatWorkspace() {
                       aria-hidden="true"
                     />
                     <span className="min-w-0 flex-1 text-[12px] leading-[1.5] text-[var(--foreground)]">
+                      {state.submissionNoLlmAccess
+                        ? t(
+                            "Your account doesn't have {{model}} assigned yet. Please contact your administrator to get access.",
+                            { model: t(CAPABILITY_LABEL.llm) },
+                          )
+                        : null}
+                      {state.submissionNoLlmAccess &&
+                        (state.submissionNotSaved || state.submissionNeedsReview) ? " " : null}
                       {state.submissionNotSaved
                         ? t("This unsent message could not be saved in your browser. Copy it before leaving this page.")
                         : state.submissionNeedsReview
                         ? t("Message text was saved, but its attachments or settings could not be restored. Copy it and send again.")
+                        : state.submissionNoLlmAccess
+                        ? null
                         : t("Couldn't reach the server. Please check your connection and retry.")}
                     </span>
-                    {!state.submissionNeedsReview ? (
+                    {!state.submissionNeedsReview && !state.submissionNoLlmAccess ? (
                       <button
                         type="button"
                         onClick={handleResendMessage}

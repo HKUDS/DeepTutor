@@ -17,6 +17,7 @@ from deeptutor.services.session.protocol import (
     SUBMISSION_PREVIOUS_TURN_FIELD,
     SUBMISSION_REPLAY_FIELD,
     SUBMISSION_USER_FIELD,
+    NoLlmAccess,
 )
 from deeptutor.services.session.thread_attribution import (
     BACKFILL_ATTEMPTED_KEY,
@@ -524,33 +525,31 @@ class TurnRequestPreparer:
             llm_selection = _llm_selection_dict(raw_llm_selection)
         except ValueError as exc:
             raise RuntimeError(str(exc)) from exc
+        from deeptutor.multi_user.model_access import (
+            apply_allowed_llm_selection,
+            has_capability_access,
+            redacted_model_access,
+        )
+
         if llm_selection:
             try:
-                from deeptutor.multi_user.model_access import apply_allowed_llm_selection
-
                 llm_selection = apply_allowed_llm_selection(llm_selection) or {}
             except PermissionError as exc:
+                if not has_capability_access("llm"):
+                    raise NoLlmAccess() from exc
                 raise RuntimeError(str(exc)) from exc
         else:
             # Non-admin users MUST end up with a concrete llm_selection so we
             # never silently fall through to the global LLM client (which is
             # configured from admin runtime settings). Admin keeps the existing behavior
             # (None llm_selection → default config from admin scope).
-            from deeptutor.multi_user.context import get_current_user
-            from deeptutor.multi_user.model_access import (
-                has_capability_access,
-                redacted_model_access,
-            )
-
             current_user = get_current_user()
             if not current_user.is_admin:
                 # Single gate, shared with the frontend lock and any HTTP
                 # surface: no usable LLM grant → a clear terminal error here
                 # instead of a silent fall-through to the global client.
                 if not has_capability_access("llm"):
-                    raise RuntimeError(
-                        "No LLM model is assigned to your account. Please contact an administrator."
-                    )
+                    raise NoLlmAccess()
                 # Pin the first granted-and-available model as the selection.
                 assigned_llms = [
                     item
