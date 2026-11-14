@@ -346,8 +346,10 @@ async def test_run_clips_oversized_seed_passages(monkeypatch: pytest.MonkeyPatch
     assert "...[truncated]" in turn_context
     # The block contributes at most the per-KB budget plus the header,
     # section title, truncation marker, and the trailing template line.
+    # The trailing user message may also carry this turn's workspace output
+    # path (issue #2621), so the slack covers that fixed-size note too.
     seed_block = turn_context.split("[Knowledge Base Context]", 1)[1]
-    assert len(seed_block) < KB_SEED_CHARS_PER_KB + 400
+    assert len(seed_block) < KB_SEED_CHARS_PER_KB + 400 + 300
 
 
 class _SeedPolicyCapability:
