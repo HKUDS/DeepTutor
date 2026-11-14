@@ -1,9 +1,11 @@
 """Docling engine adapter implementing the ``Parser`` protocol.
 
-Docling's structured conversion is exported to Markdown for the canonical IR.
-Structured ``content_list`` mapping is intentionally deferred — markdown is a
-valid IR (consumers fall back to it), and a faithful block mapping depends on
-the Docling document API, which is best pinned when we wire LightRAG.
+Docling's structured conversion is exported both as Markdown (the canonical
+lowest-common-denominator IR) and as MinerU-shaped ``content_list`` blocks
+written by ``content_list.write_content_list`` in the local worker, so
+structured consumers (LightRAG/LlamaIndex indexing) get equation, table,
+and image blocks with picture crops instead of markdown only. Remote mode
+still converts to Markdown only.
 """
 
 from __future__ import annotations
@@ -18,6 +20,7 @@ from ...signature import ParserSignature
 from ...types import ParserError
 from .._versions import package_version
 from .config import DoclingConfig, resolve_docling_config
+from .content_list import CONTENT_LIST_SCHEMA_VERSION
 from .formats import (
     MIN_DOCLING_VERSION,
     docling_supported_formats,
@@ -93,11 +96,16 @@ class DoclingParser:
         version = package_version("docling")
         if config.is_remote:
             version = f"remote-{MIN_DOCLING_VERSION}:{config.api_base_url}"
-        return ParserSignature.build(
-            "docling",
-            version,
-            {"do_ocr": config.do_ocr, "do_table_structure": config.do_table_structure},
-        )
+        params: dict[str, object] = {
+            "do_ocr": config.do_ocr,
+            "do_table_structure": config.do_table_structure,
+        }
+        if config.is_local:
+            # The local worker emits content_list blocks; the schema version
+            # invalidates caches written before a mapping change (including
+            # the pre-block markdown-only artifacts).
+            params["content_list"] = CONTENT_LIST_SCHEMA_VERSION
+        return ParserSignature.build("docling", version, params)
 
     def is_ready(self, config: DoclingConfig) -> ReadinessReport:
         # Remote mode needs no local package or models.
