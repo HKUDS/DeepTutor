@@ -131,6 +131,7 @@ _EMPTY_BODY: dict[str, Any] = {
     "references": [],  # qianfan
     "pageItems": [],  # aliyun_iqs
     "output": [],  # doubao
+    "results": [],  # deepseek
 }
 
 
@@ -148,6 +149,7 @@ _NEW_PROVIDERS = [
     # aliyun_iqs has no count parameter at all — it caps client-side, which
     # `test_aliyun_iqs_caps_results_client_side` covers instead.
     ("aliyun_iqs", "AliyunIQSProvider", None),
+    ("deepseek", "DeepSeekProvider", _limit_in_json("count")),
 ]
 
 
@@ -622,6 +624,167 @@ def test_youcom_surfaces_http_errors(monkeypatch) -> None:
 
     with pytest.raises(Exception, match="429 - rate limit exceeded"):
         YouComProvider(api_key="k").search("q")
+
+
+# --------------------------------------------------------------------------
+# DeepSeek: the standalone SERP engine (`POST /v1/tools/search`), separate
+# from DeepSeek's model-side web_search tool. Billed per request, so a missing
+# key raises instead of falling through to DuckDuckGo.
+# --------------------------------------------------------------------------
+
+_DEEPSEEK_BODY: dict[str, Any] = {
+    "results": [
+        {
+            "rerank_score": 2.4,
+            "title": "DeepSeek V4 model released",
+            "url": "https://example.com/deepseek-v4",
+            "snippet": "DeepSeek V4 is now available, with tool calling support.",
+            "summary": "DeepSeek has released the V4 model. The release adds improved tool calling.",
+            "content": "",
+            "site_name": "Example News",
+            "site_icon": "https://example.com/favicon.ico",
+            "date": "2026-06-01T00:00:00+00:00",
+            "authority": 3,
+        },
+        # Bare row: no summary, no site_name — the model-facing blurb falls
+        # back to `snippet` and the source to the URL host.
+        {
+            "title": "Bare row",
+            "url": "https://example.org/bare",
+            "snippet": "Snippet only",
+        },
+    ]
+}
+
+
+@pytest.fixture
+def deepseek_calls(monkeypatch):
+    captured: list[dict[str, Any]] = []
+
+    def _post(url: str, **kwargs: Any) -> _FakeResponse:
+        captured.append({"method": "POST", "url": url, **kwargs})
+        return _FakeResponse(_DEEPSEEK_BODY)
+
+    class _FakeRequests:
+        post = staticmethod(_post)
+
+    monkeypatch.setattr("deeptutor.services.search.providers.deepseek.requests", _FakeRequests)
+    return captured
+
+
+def test_deepseek_rejects_missing_key_before_network(deepseek_calls, monkeypatch) -> None:
+    from deeptutor.services.search.providers.deepseek import DeepSeekProvider
+
+    monkeypatch.setattr(DeepSeekProvider, "_get_api_key", lambda self: "")
+    with pytest.raises(ValueError, match="requires an API key"):
+        DeepSeekProvider(proxy=PROXY).search("attention")
+    assert deepseek_calls == []
+
+
+def test_deepseek_posts_bearer_query_count_and_need_content(deepseek_calls) -> None:
+    from deeptutor.services.search.providers.deepseek import DeepSeekProvider
+
+    DeepSeekProvider(api_key="k").search("attention", max_results=3)
+    DeepSeekProvider(api_key="k").search("attention", max_results=3, need_content=True)
+
+    default_call, content_call = deepseek_calls[-2:]
+    assert default_call["url"] == "https://api.deepseek.com/v1/tools/search"
+    assert default_call["headers"]["Authorization"] == "Bearer k"
+    assert default_call["json"] == {"query": "attention", "count": 3, "need_content": False}
+    assert content_call["json"]["need_content"] is True
+
+
+def test_deepseek_prefers_summary_and_carries_ranking_attributes(deepseek_calls) -> None:
+    from deeptutor.services.search.providers.deepseek import DeepSeekProvider
+
+    response = DeepSeekProvider(api_key="k").search("attention", max_results=2)
+
+    assert response.provider == "deepseek"
+    assert response.answer == ""
+    assert response.model == "deepseek-search"
+    first, second = response.search_results
+    assert first.title == "DeepSeek V4 model released"
+    assert (
+        first.snippet
+        == "DeepSeek has released the V4 model. The release adds improved tool calling."
+    )
+    assert first.source == "Example News"
+    assert first.date == "2026-06-01T00:00:00+00:00"
+    assert first.attributes == {"authority": 3, "rerank_score": 2.4}
+    assert second.snippet == "Snippet only"
+    assert second.source == "example.org"
+    assert second.attributes == {}
+    citation = response.citations[0]
+    assert citation.reference == "[1]"
+    assert citation.icon == "https://example.com/favicon.ico"
+    assert citation.website == "Example News"
+
+
+def test_deepseek_keeps_page_markdown_when_present(monkeypatch) -> None:
+    body = {
+        "results": [
+            {
+                "title": "Page",
+                "url": "https://e/1",
+                "snippet": "s",
+                "summary": "long summary",
+                "content": "# Page\n\nbody markdown",
+            }
+        ]
+    }
+
+    class _FakeRequests:
+        @staticmethod
+        def post(url: str, **kwargs: Any) -> _FakeResponse:
+            return _FakeResponse(body)
+
+    monkeypatch.setattr("deeptutor.services.search.providers.deepseek.requests", _FakeRequests)
+
+    from deeptutor.services.search.providers.deepseek import DeepSeekProvider
+
+    response = DeepSeekProvider(api_key="k").search("q", need_content=True)
+    (row,) = response.search_results
+    assert row.snippet == "long summary"
+    assert row.content == "# Page\n\nbody markdown"
+    assert response.citations[0].content == "# Page\n\nbody markdown"
+
+
+def test_deepseek_metadata_comes_from_the_spec_table() -> None:
+    from deeptutor.services.config import SEARCH_PROVIDERS
+    from deeptutor.services.search.providers import list_providers
+    from deeptutor.services.search.providers.deepseek import DeepSeekProvider
+
+    spec = SEARCH_PROVIDERS["deepseek"]
+    assert "deepseek" in list_providers()
+    assert DeepSeekProvider.display_name == spec.label
+    assert DeepSeekProvider.requires_api_key is True
+    assert DeepSeekProvider.supports_answer is False
+    # Paid per-request engine: never quietly turn a billed key into DuckDuckGo.
+    assert spec.soft_fallback is False
+
+
+@pytest.mark.parametrize("status", [401, 402, 429])
+def test_deepseek_surfaces_http_errors(monkeypatch, status) -> None:
+    class _ErrorResponse:
+        text = "error body"
+
+        def __init__(self) -> None:
+            self.status_code = status
+
+        def json(self) -> dict[str, Any]:
+            return {}
+
+    class _FakeRequests:
+        @staticmethod
+        def post(url: str, **kwargs: Any) -> _ErrorResponse:
+            return _ErrorResponse()
+
+    monkeypatch.setattr("deeptutor.services.search.providers.deepseek.requests", _FakeRequests)
+
+    from deeptutor.services.search.providers.deepseek import DeepSeekProvider
+
+    with pytest.raises(Exception, match=f"{status} - error body"):
+        DeepSeekProvider(api_key="k").search("q")
 
 
 def test_perplexity_client_sends_integration_header() -> None:

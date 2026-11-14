@@ -121,6 +121,9 @@ SEARCH_PROVIDERS: dict[str, SearchProviderSpec] = {
     "aliyun_iqs": SearchProviderSpec(
         label="Aliyun IQS", requires_api_key=True, soft_fallback=False
     ),
+    # DeepSeek's standalone SERP engine (``POST /v1/tools/search``) — usable
+    # with any chat LLM, unlike the model-side web_search tool mapping.
+    "deepseek": SearchProviderSpec(label="DeepSeek", requires_api_key=True, soft_fallback=False),
 }
 
 # The credential-free provider every soft fallback lands on.
