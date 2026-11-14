@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { StrictMode, useRef } from "react";
 import { act, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { useAutoSizedTextarea } from "@/lib/use-auto-sized-textarea";
@@ -82,4 +82,40 @@ it("remeasures after a hidden panel reopens at the same width", () => {
   contentHeight = 208;
   resize(400);
   expect(screen.getByRole("textbox")).toHaveStyle({ height: "200px", overflowY: "auto" });
+});
+
+it("reuses one out-of-flow measurement node across edits and removes it on unmount", () => {
+  const append = vi.spyOn(document.body, "appendChild");
+  const { rerender, unmount } = render(<Input value="first" />);
+  const mirror = document.querySelector('textarea[aria-hidden="true"]');
+  for (let index = 0; index < 45; index += 1) {
+    rerender(<Input value={`edit ${index}`} />);
+  }
+  expect(append.mock.calls.filter(([node]) => node instanceof HTMLTextAreaElement)).toHaveLength(1);
+  expect(mirror).not.toBeNull();
+  expect(document.querySelector('textarea[aria-hidden="true"]')).toBe(mirror);
+  unmount();
+  expect(mirror?.isConnected).toBe(false);
+  expect(document.querySelector('textarea[aria-hidden="true"]')).toBeNull();
+});
+
+it("keeps separate measurement nodes for simultaneous composers", () => {
+  const { rerender, unmount } = render(<><Input value="left" /><Input value="right" /></>);
+  const mirrors = [...document.querySelectorAll('textarea[aria-hidden="true"]')];
+  expect(mirrors).toHaveLength(2);
+  expect(mirrors.map(node => (node as HTMLTextAreaElement).value)).toEqual(["left", "right"]);
+  rerender(<><Input value="left edited" /><Input value="right" /></>);
+  expect([...document.querySelectorAll('textarea[aria-hidden="true"]')]).toEqual(mirrors);
+  expect((mirrors[0] as HTMLTextAreaElement).value).toBe("left edited");
+  unmount();
+  expect(document.querySelector('textarea[aria-hidden="true"]')).toBeNull();
+});
+
+it("cleans up the Strict Mode trial mount without losing the active mirror", () => {
+  const { rerender, unmount } = render(<StrictMode><Input value="first" /></StrictMode>);
+  expect(document.querySelectorAll('textarea[aria-hidden="true"]')).toHaveLength(1);
+  rerender(<StrictMode><Input value="edited" /></StrictMode>);
+  expect(document.querySelectorAll('textarea[aria-hidden="true"]')).toHaveLength(1);
+  unmount();
+  expect(document.querySelector('textarea[aria-hidden="true"]')).toBeNull();
 });
