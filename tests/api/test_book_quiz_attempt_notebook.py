@@ -192,3 +192,35 @@ def test_book_submission_retry_is_idempotent_but_new_submission_is_evidence(
     attempts = asyncio.run(store.list_assessment_attempts("page-chat-1", question_id="q1"))
     assert len(attempts) == 2
     assert [item["attempt_count"] for item in attempts] == [1, 2]
+
+
+def test_quiz_attempt_tolerates_book_entity_without_chat_session_id(
+    tmp_path, monkeypatch
+) -> None:
+    """The persisted Book model has no ``chat_session_id``; the attempt sync
+    must not touch that legacy attribute when no page session is bound."""
+    store = SQLiteSessionStore(db_path=tmp_path / "sessions.db")
+    resolved = _FakeResolvedBook()
+    # Mirror the real entity: no chat_session_id attribute at all, and the
+    # attempted page has no bound chat session.
+    del resolved.book.chat_session_id
+    resolved.book.metadata = {"page_chat_sessions": {}}
+    monkeypatch.setattr(book_router, "_resolve_book_or_404", lambda _: resolved)
+    monkeypatch.setattr(session_package, "get_sqlite_session_store", lambda: store)
+
+    app = FastAPI()
+    app.include_router(book_router.router, prefix="/api")
+
+    payload = {
+        "book_id": "book-1",
+        "page_id": "page-1",
+        "block_id": "block-1",
+        "question_id": "q1",
+        "user_answer": "A",
+        "is_correct": False,
+    }
+    with TestClient(app) as client:
+        response = client.post("/api/books/quiz-attempt", json=payload)
+
+    assert response.status_code == 200
+    assert len(resolved.learning.saved) == 1
