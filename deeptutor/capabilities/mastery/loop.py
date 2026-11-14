@@ -160,6 +160,20 @@ class MasteryLoopCapability:
             return updated
         if tool_name in MASTERY_TOOL_NAMES:
             updated = dict(kwargs)
+            if tool_name == "mastery_assess":
+                session_id = str(context.session_id or "")
+                turn_id = str(context.metadata.get("turn_id") or "")
+
+                def assessment_blocked(reason):
+                    if (
+                        context.metadata.get("mastery_path_id") == path_id
+                        and str(context.session_id or "") == session_id
+                        and str(context.metadata.get("turn_id") or "") == turn_id
+                    ):
+                        state["assessment_blocked"] = {"path_id": path_id, "reason": reason}
+
+                updated["_assessment_blocked"] = assessment_blocked
+                updated["_language"] = context.language
             if tool_name == "mastery_quiz":
                 state["quiz_requested"] = True
                 state["quiz_awaiting_grade"] = True
@@ -379,9 +393,19 @@ class MasteryLoopCapability:
         if not self.is_active(context):
             return None
         state = context.extension("mastery")
+        blocked = state.get("assessment_blocked")
+        assessment_notice = ""
+        if blocked and blocked["path_id"] == context.metadata.get("mastery_path_id"):
+            from deeptutor.services.prompt import get_prompt_manager
+            from deeptutor.services.prompt.lookup import prompt_text
+
+            pack = get_prompt_manager().load_prompts("mastery", "mastery_loop", context.language)
+            assessment_notice = prompt_text(
+                pack, ("notices", f"assessment_blocked_{blocked['reason']}")
+            )
         notice = ""
         if state.get("profile_write_pending"):
-            if not final_text.strip() and not state.get("card_posted"):
+            if not final_text.strip() and not state.get("card_posted") and not assessment_notice:
                 # This hook also runs after every tool batch. An optional
                 # storage notice cannot end work still in progress; append it
                 # only to a real final answer or an accepted question card.
@@ -403,6 +427,8 @@ class MasteryLoopCapability:
             content = final_text if override is None else override
             return notice + ("\n\n" + content if content.strip() else "")
 
+        if assessment_notice:
+            return with_notice(assessment_notice)
         if not state.get("card_posted"):
             return with_notice(None)
         if final_text.strip():
