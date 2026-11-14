@@ -626,5 +626,12 @@
   "Showing {{shown}} of {{total}} help records": "도움 기록 {{total}}개 중 {{shown}}개 표시",
   "Showing {{shown}} of {{total}} reading records": "읽기 기록 {{total}}개 중 {{shown}}개 표시",
   "No question-linked help recorded": "문제에 연결된 도움 기록 없음",
-  "Help may occur before or after an answer; it does not change earlier attempt records.": "도움은 답변 전후에 받을 수 있으며 이전 답변 기록을 변경하지 않습니다."
+  "Help may occur before or after an answer; it does not change earlier attempt records.": "도움은 답변 전후에 받을 수 있으며 이전 답변 기록을 변경하지 않습니다.",
+  "Applies from the next web_fetch onwards.": "다음 web_fetch부터 적용됩니다.",
+  "Web fetch backend": "웹 페치 백엔드",
+  "DEEPTUTOR_FETCH_BACKEND is overriding the saved choice for this deployment.": "DEEPTUTOR_FETCH_BACKEND가 이 배포의 저장된 선택을 재정의합니다.",
+  "Failed to load web fetch settings.": "웹 페치 설정을 불러오지 못했습니다.",
+  "Loading web fetch settings...": "웹 페치 설정을 불러오는 중...",
+  "Failed to save web fetch settings.": "웹 페치 설정을 저장하지 못했습니다.",
+  "Which service fetches and extracts pages for web_fetch calls.": "web_fetch 호출 시 페이지를 가져와 추출하는 서비스."
 }

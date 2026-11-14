@@ -6612,5 +6612,12 @@
   "Reading records have not been initialized.": "Dữ liệu đọc chưa được khởi tạo.",
   "{{count}} recorded hints": "{{count}} gợi ý đã ghi nhận",
   "Showing {{shown}} of {{total}} reading records": "Hiển thị {{shown}} trong {{total}} bản ghi đọc",
-  "Help may occur before or after an answer; it does not change earlier attempt records.": "Trợ giúp có thể diễn ra trước hoặc sau câu trả lời; việc này không thay đổi bản ghi các lần làm bài trước."
+  "Help may occur before or after an answer; it does not change earlier attempt records.": "Trợ giúp có thể diễn ra trước hoặc sau câu trả lời; việc này không thay đổi bản ghi các lần làm bài trước.",
+  "Applies from the next web_fetch onwards.": "Có hiệu lực từ lần gọi web_fetch tiếp theo.",
+  "Web fetch backend": "Backend tải trang web",
+  "Loading web fetch settings...": "Đang tải cài đặt tải trang web...",
+  "Which service fetches and extracts pages for web_fetch calls.": "Dịch vụ tải và trích xuất trang cho các lượt gọi web_fetch.",
+  "DEEPTUTOR_FETCH_BACKEND is overriding the saved choice for this deployment.": "DEEPTUTOR_FETCH_BACKEND đang ghi đè lựa chọn đã lưu của bản triển khai này.",
+  "Failed to save web fetch settings.": "Không lưu được cài đặt tải trang web.",
+  "Failed to load web fetch settings.": "Không tải được cài đặt tải trang web."
 }

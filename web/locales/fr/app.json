@@ -7517,5 +7517,12 @@
   "Reading records have not been initialized.": "Les données de lecture n’ont pas encore été initialisées.",
   "{{count}} recorded hints": "{{count}} indices enregistrés",
   "Showing {{shown}} of {{total}} reading records": "Affichage de {{shown}} enregistrements de lecture sur {{total}}",
-  "Help may occur before or after an answer; it does not change earlier attempt records.": "Une aide peut précéder ou suivre une réponse ; elle ne modifie pas les tentatives précédentes."
+  "Help may occur before or after an answer; it does not change earlier attempt records.": "Une aide peut précéder ou suivre une réponse ; elle ne modifie pas les tentatives précédentes.",
+  "Applies from the next web_fetch onwards.": "S'applique à partir du prochain web_fetch.",
+  "Web fetch backend": "Backend de récupération web",
+  "Loading web fetch settings...": "Chargement des paramètres de récupération web...",
+  "Which service fetches and extracts pages for web_fetch calls.": "Service qui récupère et extrait les pages pour les appels web_fetch.",
+  "DEEPTUTOR_FETCH_BACKEND is overriding the saved choice for this deployment.": "DEEPTUTOR_FETCH_BACKEND remplace le choix enregistré pour ce déploiement.",
+  "Failed to save web fetch settings.": "Échec de l'enregistrement des paramètres de récupération web.",
+  "Failed to load web fetch settings.": "Échec du chargement des paramètres de récupération web."
 }

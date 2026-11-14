@@ -426,6 +426,17 @@ class ChatStarterSettingsUpdate(BaseModel):
     ask_hint_enabled: Optional[bool] = None
 
 
+class WebFetchSettingsUpdate(BaseModel):
+    """Web fetch backend selection — the ``web_fetch.backend`` settings row.
+
+    The value names an entry in the backend's ``FETCH_PROVIDERS`` spec table;
+    the endpoint validates against it because the choice set is owned by the
+    backend, not by this schema.
+    """
+
+    backend: str
+
+
 class MinerUSettingsUpdate(BaseModel):
     """MinerU document-parsing backend settings.
 
@@ -1115,6 +1126,66 @@ async def update_network_settings(payload: NetworkSettingsUpdate):
         }
     )
     return _network_settings_payload()
+
+
+def _web_fetch_settings_payload() -> dict[str, Any]:
+    """State for the web fetch backend select: the stored choice, the
+    effective choice (a deployment ``DEEPTUTOR_FETCH_BACKEND`` override is
+    visible but never saved through), and the backend's own provider table so
+    the dropdown keeps a single source of names — the same derivation
+    ``_provider_choices`` uses for the search providers."""
+    from deeptutor.services.config.provider_runtime import DEFAULT_FETCH_PROVIDER, FETCH_PROVIDERS
+
+    service = get_runtime_settings_service()
+    stored = str(
+        service.load_system(include_process_overrides=False).get("web_fetch_backend")
+        or DEFAULT_FETCH_PROVIDER
+    )
+    effective = str(
+        service.load_system(include_process_overrides=True).get("web_fetch_backend")
+        or DEFAULT_FETCH_PROVIDER
+    )
+    return {
+        "settings": {"backend": stored},
+        "effective": {"backend": effective},
+        "choices": [
+            {
+                "value": name,
+                "label": spec.label,
+                "requires_api_key": spec.requires_api_key,
+            }
+            for name, spec in FETCH_PROVIDERS.items()
+        ],
+    }
+
+
+@router.get("/web-fetch")
+async def get_web_fetch_settings():
+    _require_settings_admin()
+    return _web_fetch_settings_payload()
+
+
+@router.put("/web-fetch")
+async def update_web_fetch_settings(payload: WebFetchSettingsUpdate):
+    _require_settings_admin()
+    from deeptutor.services.config.provider_runtime import (
+        SUPPORTED_FETCH_PROVIDERS,
+        supported_fetch_providers_hint,
+    )
+
+    backend = payload.backend.strip().lower()
+    if backend not in SUPPORTED_FETCH_PROVIDERS:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Unknown web fetch backend: {payload.backend!r} "
+                f"(expected one of: {supported_fetch_providers_hint()})."
+            ),
+        )
+    service = get_runtime_settings_service()
+    current = service.load_system(include_process_overrides=False)
+    service.save_system({**current, "web_fetch_backend": backend})
+    return _web_fetch_settings_payload()
 
 
 def _chat_attachments_payload() -> dict[str, Any]:

@@ -6612,5 +6612,12 @@
   "Reading records have not been initialized.": "Reading records have not been initialized.",
   "{{count}} recorded hints": "{{count}} recorded hints",
   "Showing {{shown}} of {{total}} reading records": "Showing {{shown}} of {{total}} reading records",
-  "Help may occur before or after an answer; it does not change earlier attempt records.": "Help may occur before or after an answer; it does not change earlier attempt records."
+  "Help may occur before or after an answer; it does not change earlier attempt records.": "Help may occur before or after an answer; it does not change earlier attempt records.",
+  "Applies from the next web_fetch onwards.": "Applies from the next web_fetch onwards.",
+  "Web fetch backend": "Web fetch backend",
+  "Loading web fetch settings...": "Loading web fetch settings...",
+  "Which service fetches and extracts pages for web_fetch calls.": "Which service fetches and extracts pages for web_fetch calls.",
+  "DEEPTUTOR_FETCH_BACKEND is overriding the saved choice for this deployment.": "DEEPTUTOR_FETCH_BACKEND is overriding the saved choice for this deployment.",
+  "Failed to save web fetch settings.": "Failed to save web fetch settings.",
+  "Failed to load web fetch settings.": "Failed to load web fetch settings."
 }

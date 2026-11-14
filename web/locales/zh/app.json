@@ -6612,5 +6612,12 @@
   "Reading records have not been initialized.": "尚未建立阅读记录。",
   "{{count}} recorded hints": "已记录 {{count}} 次提示",
   "Showing {{shown}} of {{total}} reading records": "显示 {{total}} 条阅读记录中的 {{shown}} 条",
-  "Help may occur before or after an answer; it does not change earlier attempt records.": "帮助可能发生在作答前或作答后，不会改写之前的作答记录。"
+  "Help may occur before or after an answer; it does not change earlier attempt records.": "帮助可能发生在作答前或作答后，不会改写之前的作答记录。",
+  "Applies from the next web_fetch onwards.": "从下一次 web_fetch 调用开始生效。",
+  "Web fetch backend": "网页抓取后端",
+  "Loading web fetch settings...": "正在加载网页抓取设置…",
+  "Which service fetches and extracts pages for web_fetch calls.": "选择为 web_fetch 调用抓取并提取网页的服务。",
+  "DEEPTUTOR_FETCH_BACKEND is overriding the saved choice for this deployment.": "此部署中的 DEEPTUTOR_FETCH_BACKEND 正在覆盖已保存的选择。",
+  "Failed to save web fetch settings.": "保存网页抓取设置失败。",
+  "Failed to load web fetch settings.": "加载网页抓取设置失败。"
 }

@@ -3,6 +3,7 @@ from __future__ import annotations
 from copy import deepcopy
 from dataclasses import dataclass
 import json
+import logging
 import os
 from pathlib import Path
 from typing import Any, Callable
@@ -12,6 +13,8 @@ from deeptutor.services.path_service import get_path_service
 
 from .image_description import normalize_image_description_model
 from .origins import normalize_origins
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_SYSTEM_SETTINGS: dict[str, Any] = {
     "version": 1,
@@ -38,6 +41,12 @@ DEFAULT_SYSTEM_SETTINGS: dict[str, Any] = {
     # Conservative chat -> deep_question routing. Explicit requests only, and
     # callers can still pass config.auto_route=false for a single turn.
     "capability_routing_enabled": False,
+    # Which backend serves web_fetch calls (issue #2448): "local" (the
+    # in-process extractor, default) or a registered remote backend such as
+    # "deepseek". Read at call time so a change applies to the next fetch;
+    # validated against the FETCH_PROVIDERS table in _normalize_system.
+    # DEEPTUTOR_FETCH_BACKEND is the deployment override.
+    "web_fetch_backend": "local",
     # Reference policy applied after every web-search provider. This belongs in
     # runtime JSON so packaged installs and the settings service share one
     # source of truth; project main.yaml is intentionally not an operator
@@ -502,8 +511,31 @@ def _host_list(value: Any) -> list[str]:
 
 def _string_or_list(value: Any) -> str | list[str]:
     if isinstance(value, list):
-        return [item for raw in value if (item := _string(raw))]
+        return [_string(raw) for raw in value if (item := _string(raw))]
     return _string(value)
+
+
+def _normalize_web_fetch_backend(value: Any) -> str:
+    """Validate the web_fetch backend against the FETCH_PROVIDERS table.
+
+    Unknown or missing values resolve to the default ("local") rather than
+    failing the whole system-settings load — a bad value must never break
+    web_fetch — and a non-empty unknown value warns so the operator sees the
+    setting was ignored. Imported lazily: provider_runtime pulls a wide
+    dependency chain that runtime_settings, loaded very early, must not drag
+    in.
+    """
+    from .provider_runtime import DEFAULT_FETCH_PROVIDER, SUPPORTED_FETCH_PROVIDERS
+
+    backend = _string(value).lower()
+    if backend and backend not in SUPPORTED_FETCH_PROVIDERS:
+        logger.warning(
+            "Ignoring unknown web_fetch_backend=%r; using the %r fetch backend.",
+            backend,
+            DEFAULT_FETCH_PROVIDER,
+        )
+        return DEFAULT_FETCH_PROVIDER
+    return backend if backend in SUPPORTED_FETCH_PROVIDERS else DEFAULT_FETCH_PROVIDER
 
 
 class RuntimeSettingsService:
@@ -929,6 +961,8 @@ class RuntimeSettingsService:
             payload["sandbox_allow_subprocess"] = value
         if value := self._process_env_value("DEEPTUTOR_CAPABILITY_ROUTING_ENABLED"):
             payload["capability_routing_enabled"] = value
+        if value := self._process_env_value("DEEPTUTOR_FETCH_BACKEND"):
+            payload["web_fetch_backend"] = value
         if value := self._process_env_value("CHAT_ATTACHMENT_MAX_FILE_MB"):
             payload["chat_attachment_max_file_mb"] = value
         if value := self._process_env_value("CHAT_ATTACHMENT_MAX_TOTAL_MB"):
@@ -1385,6 +1419,7 @@ class RuntimeSettingsService:
             "capability_routing_enabled": _coerce_bool(
                 settings.get("capability_routing_enabled"), False
             ),
+            "web_fetch_backend": _normalize_web_fetch_backend(settings.get("web_fetch_backend")),
             "web_search_source_filtering": {
                 "enabled": _coerce_bool(source_filter.get("enabled"), True),
                 "blocked_domains": _string_or_list(source_filter.get("blocked_domains")),

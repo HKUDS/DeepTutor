@@ -6634,5 +6634,12 @@
   "Reading records have not been initialized.": "Записи читання ще не ініціалізовано.",
   "{{count}} recorded hints": "Записані підказки: {{count}}",
   "Showing {{shown}} of {{total}} reading records": "Показано {{shown}} із {{total}} записів читання",
-  "Help may occur before or after an answer; it does not change earlier attempt records.": "Допомогу можна отримати до або після відповіді; вона не змінює записи попередніх спроб."
+  "Help may occur before or after an answer; it does not change earlier attempt records.": "Допомогу можна отримати до або після відповіді; вона не змінює записи попередніх спроб.",
+  "Applies from the next web_fetch onwards.": "Застосовується починаючи з наступного web_fetch.",
+  "Web fetch backend": "Сервер веб-отримання",
+  "Loading web fetch settings...": "Завантаження параметрів веб-отримання...",
+  "Which service fetches and extracts pages for web_fetch calls.": "Служба, яка отримує та видобуває сторінки для викликів web_fetch.",
+  "DEEPTUTOR_FETCH_BACKEND is overriding the saved choice for this deployment.": "DEEPTUTOR_FETCH_BACKEND має пріоритет над збереженим вибором для цього розгортання.",
+  "Failed to save web fetch settings.": "Не вдалося зберегти параметри веб-отримання.",
+  "Failed to load web fetch settings.": "Не вдалося завантажити параметри веб-отримання."
 }

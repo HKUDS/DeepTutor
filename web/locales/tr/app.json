@@ -6612,5 +6612,12 @@
   "Reading records have not been initialized.": "Okuma kayıtları henüz başlatılmadı.",
   "{{count}} recorded hints": "{{count}} kayıtlı ipucu",
   "Showing {{shown}} of {{total}} reading records": "{{total}} okuma kaydından {{shown}} tanesi gösteriliyor",
-  "Help may occur before or after an answer; it does not change earlier attempt records.": "Yardım, yanıttan önce veya sonra alınabilir; önceki deneme kayıtlarını değiştirmez."
+  "Help may occur before or after an answer; it does not change earlier attempt records.": "Yardım, yanıttan önce veya sonra alınabilir; önceki deneme kayıtlarını değiştirmez.",
+  "Applies from the next web_fetch onwards.": "Bir sonraki web_fetch çağrısından itibaren geçerlidir.",
+  "Web fetch backend": "Web getirme arka ucu",
+  "Loading web fetch settings...": "Web getirme ayarları yükleniyor...",
+  "Which service fetches and extracts pages for web_fetch calls.": "web_fetch çağrıları için sayfaları getiren ve çıkaran hizmet.",
+  "DEEPTUTOR_FETCH_BACKEND is overriding the saved choice for this deployment.": "DEEPTUTOR_FETCH_BACKEND, bu dağıtım için kayıtlı seçimi geçersiz kılıyor.",
+  "Failed to save web fetch settings.": "Web getirme ayarları kaydedilemedi.",
+  "Failed to load web fetch settings.": "Web getirme ayarları yüklenemedi."
 }

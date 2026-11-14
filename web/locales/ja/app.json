@@ -6612,5 +6612,12 @@
   "Reading records have not been initialized.": "読書記録はまだ初期化されていません。",
   "{{count}} recorded hints": "記録されたヒント：{{count}} 件",
   "Showing {{shown}} of {{total}} reading records": "読書記録 {{total}} 件中 {{shown}} 件を表示",
-  "Help may occur before or after an answer; it does not change earlier attempt records.": "ヘルプは回答の前後に利用できます。過去の回答記録は変更されません。"
+  "Help may occur before or after an answer; it does not change earlier attempt records.": "ヘルプは回答の前後に利用できます。過去の回答記録は変更されません。",
+  "Applies from the next web_fetch onwards.": "次回の web_fetch から適用されます。",
+  "Web fetch backend": "ウェブフェッチバックエンド",
+  "Loading web fetch settings...": "ウェブフェッチ設定を読み込み中...",
+  "Which service fetches and extracts pages for web_fetch calls.": "web_fetch 呼び出しでページを取得・抽出するサービス。",
+  "DEEPTUTOR_FETCH_BACKEND is overriding the saved choice for this deployment.": "DEEPTUTOR_FETCH_BACKEND がこのデプロイの保存済み選択を上書きしています。",
+  "Failed to save web fetch settings.": "ウェブフェッチ設定の保存に失敗しました。",
+  "Failed to load web fetch settings.": "ウェブフェッチ設定の読み込みに失敗しました。"
 }

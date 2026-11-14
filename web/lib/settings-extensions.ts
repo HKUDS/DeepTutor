@@ -28,6 +28,7 @@ export const EXTENSION_ENDPOINTS = {
   capabilities: "/api/capabilities/settings",
   memory: "/api/memory/settings",
   network: "/api/settings/network",
+  "web-fetch": "/api/settings/web-fetch",
 } as const;
 
 export type ExtensionKey = keyof typeof EXTENSION_ENDPOINTS;
