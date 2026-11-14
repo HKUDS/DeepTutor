@@ -21,6 +21,8 @@ class TestExtensionClassification:
             ("DOC.PDF", DocumentType.PDF),  # case-insensitive
             ("notes.md", DocumentType.TEXT),
             ("readme.MARKDOWN", DocumentType.TEXT),
+            ("guide.mdx", DocumentType.TEXT),
+            ("GUIDE.MDX", DocumentType.TEXT),
             ("data.json", DocumentType.TEXT),
             ("references.bib", DocumentType.TEXT),
             ("REFERENCES.BIB", DocumentType.TEXT),

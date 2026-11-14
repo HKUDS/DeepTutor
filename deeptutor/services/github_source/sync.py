@@ -1,4 +1,4 @@
-"""Core sync logic: pull Markdown from a GitHub repo into a KB's raw/ dir."""
+"""Core sync logic: pull Markdown and MDX from a GitHub repo into a KB's raw/ dir."""
 
 from __future__ import annotations
 
@@ -18,7 +18,8 @@ from deeptutor.services.github_source.client import (
 logger = logging.getLogger(__name__)
 
 SYNC_INTERVAL_HOURS = 24
-MARKDOWN_EXTENSIONS = (".md", ".markdown")
+# MDX is Markdown plus JSX. Keep the component tags and index the file as text.
+MARKDOWN_EXTENSIONS = (".md", ".markdown", ".mdx")
 
 
 @dataclass
