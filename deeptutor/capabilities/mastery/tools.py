@@ -2029,6 +2029,12 @@ class MasteryAssessTool(BaseTool):
             return ToolResult(content="mastery_assess needs a knowledge_point_id.", success=False)
         learner_answer = str(kwargs.get("_learner_message") or "").strip()
 
+        if not learner_answer or len(learner_answer) > 10000:
+            return ToolResult(
+                content="Assessment needs the actual learner explanation, at most 10000 characters.",
+                success=False,
+            )
+
         service = _new_service()
         progress = _load_path(service, path_id)
         if progress is None:
@@ -2053,8 +2059,8 @@ class MasteryAssessTool(BaseTool):
         from deeptutor.learning.review_strategy import scheduler_for_path
         from deeptutor.learning.service import MasteryInteractionError
 
-        try:
-            progress, receipt = await service.assess_qualitative_semantic(
+        async def assess():
+            return await service.assess_qualitative_semantic(
                 path_id,
                 kp_id,
                 learner_answer=learner_answer,
@@ -2062,8 +2068,54 @@ class MasteryAssessTool(BaseTool):
                 session_id=_resolve_session_id(kwargs),
                 turn_id=_resolve_turn_id(kwargs),
             )
+
+        def blocked(exc):
+            from deeptutor.learning.lesson_evidence import LessonUnavailable
+
+            reason = (
+                "sources"
+                if isinstance(exc, LessonUnavailable)
+                or isinstance(exc.__cause__, LessonUnavailable)
+                else "service"
+            )
+            callback = kwargs.get("_assessment_blocked")
+            if callable(callback):
+                callback(reason)
+            return ToolResult(
+                content=(
+                    f"{exc} The learner explanation is retained without a grade. "
+                    "Do not repeat this assessment or ask the learner to restate the same answer. "
+                    "Resolve the source/service failure before assessing again."
+                ),
+                success=False,
+            )
+
+        try:
+            progress, receipt = await assess()
         except MasteryInteractionError as exc:
-            return ToolResult(content=str(exc), success=False)
+            from deeptutor.learning.lesson_evidence import LessonUnavailable, prepare_lesson
+
+            if not isinstance(exc.__cause__, LessonUnavailable):
+                return blocked(exc)
+            # A focus packet cannot authorize a whole-objective explanation.
+            # Repair that scope once, without changing the objective or verdict.
+            from deeptutor.runtime.stream_bus import get_bus
+            from deeptutor.services.llm.config import get_llm_config
+
+            try:
+                await prepare_lesson(
+                    service.store,
+                    path_id,
+                    kp_id,
+                    get_llm_config(),
+                    stream=get_bus(_resolve_turn_id(kwargs)),
+                    language=kwargs.get("_language") or "en",
+                    focus="",
+                    learner_request=str(kwargs.get("_learner_message") or "")[:1500],
+                )
+                progress, receipt = await assess()
+            except (LessonUnavailable, MasteryInteractionError) as repair_error:
+                return blocked(repair_error)
         if not receipt["final"]:
             return _json_result({"knowledge_point_id": kp_id, **receipt}, meta_key="mastery_assess")
         passed = receipt["result"] == "correct"
@@ -2116,9 +2168,10 @@ def _assess_next_move(mastered: bool, next_step: dict) -> str:
     """
     if not mastered:
         return (
-            "The gate is not cleared. Explain the gap this explanation left "
-            "(for a partial result, name the missing part), then ask the "
-            "learner to explain it again and record that with mastery_assess."
+            "The gate is not cleared. Name only the missing or incorrect part. "
+            "Keep the correct parts and ask one targeted follow-up, not a full restatement. "
+            "Assess the missing-part reply together with the retained explanation. "
+            "Do not add requirements beyond this objective and its stated level."
         )
     if next_step.get("action") == "complete":
         return (
@@ -3868,7 +3921,7 @@ class MasteryPrepareLessonTool(BaseTool):
     def get_definition(self) -> ToolDefinition:
         return ToolDefinition(
             name="mastery_prepare_lesson",
-            description="Privately prepare source evidence for the next teaching or practice step within an objective; this does not display source pages to the learner. To intentionally show a teaching image, use rag with an exact source view and presentation=teaching; use presentation=reveal after an answer. Reuses validated evidence. A partial packet supports teaching only its covered material; use a specific focus to resolve the evidence needed for a question and its key. For requested exam questions, focus on actual questions and solutions in the selected question bank, not merely topic summaries. Administrative discussion does not require preparation. Uses only the path's selected materials.",
+            description="Privately prepare source evidence for teaching or assessment; this does not display source pages to the learner. For whole-objective concept/design assessment with mastery_assess, omit focus to prepare objective-scoped evidence. A specific focus prepares only a teaching slice or a registered quiz's question and key; it cannot authorize whole-objective assessment. To show a teaching image, use rag with an exact source view and presentation=teaching; use presentation=reveal after an answer. Reuses validated evidence. For exam questions, focus on actual questions and solutions in the selected question bank. Administrative discussion does not require preparation. Uses only the path's selected materials.",
             parameters=[
                 ToolParameter(
                     name="knowledge_point_id",
@@ -3880,7 +3933,7 @@ class MasteryPrepareLessonTool(BaseTool):
                     type="string",
                     required=False,
                     sensitive=True,
-                    description="Optional next teaching step or assessment task within this objective, at most 600 characters. Include the requested source/task when relevant. Do not widen the objective or invent examination requirements.",
+                    description="Optional teaching slice or registered quiz task within this objective, at most 600 characters. Omit for whole-objective mastery_assess. Include the requested source/task when relevant. Do not widen the objective or invent examination requirements.",
                 ),
                 ToolParameter(
                     name="refresh",
