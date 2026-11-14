@@ -6631,5 +6631,13 @@
   "Loading image…": "Đang tải hình ảnh…",
   "Page {{n}}": "Trang {{n}}",
   "Reset zoom": "Đặt lại thu phóng",
-  "language.italian": "Italiano"
+  "language.italian": "Italiano",
+  "Previous image": "Ảnh trước",
+  "Next image": "Ảnh tiếp theo",
+  "Docling enrichments": "Docling enrichments",
+  "Recognize formulas": "Recognize formulas",
+  "Classify pictures": "Classify pictures",
+  "Describe pictures with Docling": "Describe pictures with Docling",
+  "Optional Docling models for formulas and pictures. Local mode respects automatic model download settings; prefetch required models when downloads are disabled.": "Optional Docling models for formulas and pictures. Local mode respects automatic model download settings; prefetch required models when downloads are disabled.",
+  "Docling Serve returns Markdown only here. Use local Docling for structured table, equation and image blocks.": "Docling Serve returns Markdown only here. Use local Docling for structured table, equation and image blocks."
 }

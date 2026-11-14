@@ -7536,5 +7536,13 @@
   "Loading image…": "Chargement de l'image…",
   "Page {{n}}": "Page {{n}}",
   "Reset zoom": "Réinitialiser le zoom",
-  "language.italian": "Italiano"
+  "language.italian": "Italiano",
+  "Previous image": "Image précédente",
+  "Next image": "Image suivante",
+  "Docling enrichments": "Docling enrichments",
+  "Recognize formulas": "Recognize formulas",
+  "Classify pictures": "Classify pictures",
+  "Describe pictures with Docling": "Describe pictures with Docling",
+  "Optional Docling models for formulas and pictures. Local mode respects automatic model download settings; prefetch required models when downloads are disabled.": "Optional Docling models for formulas and pictures. Local mode respects automatic model download settings; prefetch required models when downloads are disabled.",
+  "Docling Serve returns Markdown only here. Use local Docling for structured table, equation and image blocks.": "Docling Serve returns Markdown only here. Use local Docling for structured table, equation and image blocks."
 }

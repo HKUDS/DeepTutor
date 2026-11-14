@@ -6649,5 +6649,13 @@
   "{{count}} files_many": "{{count}} file",
   "{{count}} subpages_many": "Sottopagine {{count}}",
   "{{count}} left_many": "{{count}} rimanenti",
-  "{{count}} items_many": "Elementi {{count}}"
+  "{{count}} items_many": "Elementi {{count}}",
+  "Docling enrichments": "Docling enrichments",
+  "Recognize formulas": "Recognize formulas",
+  "Classify pictures": "Classify pictures",
+  "Describe pictures with Docling": "Describe pictures with Docling",
+  "Optional Docling models for formulas and pictures. Local mode respects automatic model download settings; prefetch required models when downloads are disabled.": "Optional Docling models for formulas and pictures. Local mode respects automatic model download settings; prefetch required models when downloads are disabled.",
+  "Docling Serve returns Markdown only here. Use local Docling for structured table, equation and image blocks.": "Docling Serve returns Markdown only here. Use local Docling for structured table, equation and image blocks.",
+  "Previous image": "Immagine precedente",
+  "Next image": "Immagine successiva"
 }
