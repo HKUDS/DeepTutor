@@ -182,6 +182,31 @@ def _duplicate_option_body(options: dict[str, str]) -> str:
     return ""
 
 
+def _decode_json_options(raw_options: str) -> Any:
+    """Unwrap ``options`` a model sent as a JSON-encoded string.
+
+    The schema declares ``options`` as an array, but models intermittently
+    serialise the array into a string (``'[{"label": "A", "body": …}]'``).
+    Rejecting that cost whole turns: a model that sent the string once often
+    sent it again on every retry until the round budget was gone. A string
+    that decodes to an array or object is read as that value; anything else
+    is rejected with a message that names the actual mistake.
+    """
+    text = raw_options.strip()
+    if text[:1] in ("[", "{"):
+        try:
+            decoded = json.loads(text)
+        except ValueError:
+            decoded = None
+        if isinstance(decoded, (list, dict)):
+            return decoded
+    raise ValueError(
+        "mastery_quiz.options must be a JSON array, not a string — send "
+        "[{'label': 'A', 'body': 'first answer'}, …] directly instead of "
+        "encoding it as text."
+    )
+
+
 def _read_choice_options(raw_options: Any) -> list[dict[str, str]]:
     """The options as sent, read into ``[{label, body}]`` order.
 
@@ -194,6 +219,8 @@ def _read_choice_options(raw_options: Any) -> list[dict[str, str]]:
     """
     if raw_options is None:
         return []
+    if isinstance(raw_options, str):
+        raw_options = _decode_json_options(raw_options)
 
     read = read_option_objects(raw_options)
     if read is not None:
