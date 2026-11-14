@@ -24,6 +24,21 @@ async def _consume_messages(
     interrupt: Callable[[], Awaitable[None]] | None = None,
     label: str = "CodeBuddy",
 ) -> LLMResponse:
+    tracked = _SDKResultMessages(messages)
+    response = await _consume_sdk_messages(
+        tracked, on_content_delta=on_content_delta, interrupt=interrupt, label=label
+    )
+    response.usage = tracked.usage
+    return response
+
+
+async def _consume_sdk_messages(
+    messages: Any,
+    *,
+    on_content_delta: Callable[[str], Awaitable[None]] | None,
+    interrupt: Callable[[], Awaitable[None]] | None = None,
+    label: str = "CodeBuddy",
+) -> LLMResponse:
     chunks: list[str] = []
     pending_result_text = ""
     async for message in messages:
@@ -81,6 +96,58 @@ async def _drain_interrupted_response(messages: Any, *, label: str = "CodeBuddy"
             label,
             type(exc).__name__,
         )
+
+
+class _SDKResultMessages:
+    """Observe result snapshots without adding reads or owning SDK cleanup."""
+
+    def __init__(self, messages: Any) -> None:
+        self._messages = messages.__aiter__()
+        self.usage: dict[str, int] = {}
+
+    def __aiter__(self) -> _SDKResultMessages:
+        return self
+
+    async def __anext__(self) -> Any:
+        message = await self._messages.__anext__()
+        if _is_result_message(message):
+            self.usage = _result_usage(message)
+        return message
+
+
+def _result_usage(message: Any) -> dict[str, int]:
+    """Normalize the per-query usage of a consumed local SDK result.
+
+    Input tokens exclude cache reads/writes in the SDK's Anthropic-shaped
+    report. Absent usage or malformed counters remain unknown rather than being
+    reconstructed from text or the SDK's dollar estimate.
+    """
+    raw = message.get("usage") if isinstance(message, dict) else getattr(message, "usage", None)
+    if not isinstance(raw, dict) or not raw:
+        return {}
+    keys = (
+        "input_tokens",
+        "output_tokens",
+        "cache_read_input_tokens",
+        "cache_creation_input_tokens",
+    )
+    values = {key: raw.get(key, 0) for key in keys}
+    if any(type(value) is not int or value < 0 for value in values.values()):
+        return {}
+    if not any(key in raw for key in keys):
+        return {}
+    prompt = (
+        values["input_tokens"]
+        + values["cache_read_input_tokens"]
+        + values["cache_creation_input_tokens"]
+    )
+    return {
+        "prompt_tokens": prompt,
+        "completion_tokens": values["output_tokens"],
+        "total_tokens": prompt + values["output_tokens"],
+        "cache_read_input_tokens": values["cache_read_input_tokens"],
+        "cache_creation_input_tokens": values["cache_creation_input_tokens"],
+    }
 
 
 def _assistant_tool_calls(message: Any) -> list[ToolCallRequest]:
