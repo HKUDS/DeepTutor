@@ -157,7 +157,7 @@ async def _request(config, instruction, payload, sources=None, native_images=Non
         # Do not impose a shorter assessment timeout on a reasoning provider.
         return await _complete_json(
             config or get_llm_config(),
-            max_tokens=2200,
+            max_tokens=8192,
             messages=messages,
             allow_image_fallback=False,
         )
