@@ -430,14 +430,17 @@ export default function MasteryTopicPage() {
     // what is next", and that answer stops being an answer the moment it is
     // below the fold — the review plan used to sit under a full outline, and a
     // goal with many sessions pushed everything else off balance as its list
-    // grew. So the page itself never scrolls: identity and next step are
-    // pinned, and each panel below scrolls inside its own frame.
+    // grew. From `lg` up the page itself never scrolls: identity stays put and
+    // each panel below scrolls inside its own frame.
     //
     // Under `lg` the columns stack and the page scrolls normally — a phone has
     // no second column to balance, and a fixed-height stack there would just
-    // be three tiny scrollers.
+    // be three tiny scrollers. Every `flex-1` / `min-h-0` below is therefore
+    // `lg:`-only: with them the container takes the viewport height, and the
+    // outline — which has no scroller of its own under `lg` — overflows its
+    // box and paints over the panels that follow it.
     <main className="mastery-shell flex h-full flex-col overflow-y-auto [scrollbar-gutter:stable]">
-      <PageContainer className="flex min-h-0 flex-1 flex-col pb-40 sm:pb-10">
+      <PageContainer className="flex flex-col pb-40 sm:pb-10 lg:min-h-0 lg:flex-1">
         <MasteryPathCrumb id={pathId} label={displayName} />
         <div className="flex items-center justify-between gap-3">
           <Link
@@ -533,7 +536,7 @@ export default function MasteryTopicPage() {
           </div>
         </header>
 
-        <section className="dt-next-up fixed bottom-3 left-4 right-4 z-20 shadow-lg sm:static sm:mt-2 sm:shadow-none">
+        <section className="dt-next-up mt-2">
           <div className="flex min-w-0 items-baseline gap-3">
             <span className="shrink-0 text-[12px] text-[var(--muted-foreground)]">
               {t("Next up")}
@@ -599,7 +602,7 @@ export default function MasteryTopicPage() {
           )}
         </section>
 
-        <div className="mt-6 grid min-h-0 flex-1 grid-cols-1 items-start gap-7 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-stretch">
+        <div className="mt-6 grid grid-cols-1 items-start gap-7 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-stretch">
           {needsRouteRepair ? (
             // A goal starts without an outline: the first session is where the
             // tutor asks about the learner and designs one with them. Writing
@@ -638,7 +641,7 @@ export default function MasteryTopicPage() {
               </button>
             </section>
           ) : (
-            <div className="flex min-h-0 min-w-0 flex-col gap-5 lg:h-full">
+            <div className="flex min-w-0 flex-col gap-5 lg:h-full lg:min-h-0">
               {/* The three things a mastery goal owns — outline, review plan,
                   sessions — are named the same way and sit at the same level,
                   so the page reads as one goal's assets rather than a map with
@@ -683,7 +686,7 @@ export default function MasteryTopicPage() {
               {/* The outline is the tall thing on this page, so it is the one
                   that scrolls. Everything else keeps its place. */}
               <div
-                className={`min-h-0 min-w-0 lg:min-h-[260px] lg:flex-1 ${
+                className={`min-w-0 lg:min-h-[260px] lg:flex-1 ${
                   topicView === "board"
                     ? "flex flex-col"
                     : "lg:overflow-y-auto lg:pr-1"
@@ -755,7 +758,7 @@ export default function MasteryTopicPage() {
               />
             </div>
           )}
-          <div className="flex min-h-0 min-w-0 flex-col gap-5 lg:h-full">
+          <div className="flex min-w-0 flex-col gap-5 lg:h-full lg:min-h-0">
             <LearnerProfileCard profile={topic.learner_profile} />
             <SessionCamp
               pathId={pathId}
