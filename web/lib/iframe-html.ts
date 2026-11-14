@@ -2,6 +2,9 @@
  * Helpers for rendering AI-generated HTML inside a sandboxed `<iframe>`:
  * - {@link injectKaTeX} ensures the page can render `$...$` / `$$...$$`
  *   even if the model didn't include KaTeX itself.
+ * - {@link injectColorScheme} themes the widget canvas to match the app's
+ *   resolved palette, so an HTML widget is never an opaque light panel
+ *   inside a dark card (#2600).
  * - {@link sanitizeIframeHtml} strips navigation escapes while leaving
  *   interactive scripts isolated by the caller's sandboxed iframe.
  *
@@ -80,6 +83,60 @@ export function sanitizeIframeHtml(html: string): string {
       "",
     )
     .replace(/\starget\s*=\s*(['"])_(top|parent)\1/gi, ' target="_self"');
+}
+
+/**
+ * The scheme the host resolves for the widget canvas:
+ * - `light` / `dark` — the app shows an explicit palette (Snow / Dark / Glass).
+ * - `system` — the app follows the OS, so the canvas supports both and the
+ *   browser picks per `prefers-color-scheme`, exactly like the app does.
+ */
+export type WidgetColorScheme = "light" | "dark" | "system";
+
+const COLOR_SCHEME_CONTENT: Record<WidgetColorScheme, string> = {
+  light: "light",
+  dark: "dark",
+  system: "dark light",
+};
+
+/** True when the document declares its own color-scheme — the host must not override it. */
+function declaresColorScheme(html: string): boolean {
+  const lower = html.toLowerCase();
+  if (
+    lower.includes('name="color-scheme"') ||
+    lower.includes("name='color-scheme'")
+  ) {
+    return true;
+  }
+  return /color-scheme\s*:/.test(lower);
+}
+
+/**
+ * Declare the iframe document's color-scheme so the browser gives the widget
+ * a canvas matching the app's palette. Without it the srcdoc document has no
+ * declared scheme and renders an opaque light canvas in dark themes, whatever
+ * the app shows around it (#2600). A document that declares a scheme itself
+ * wins — the host only fills the gap.
+ */
+export function injectColorScheme(
+  html: string,
+  scheme: WidgetColorScheme,
+): string {
+  if (declaresColorScheme(html)) return html;
+  const meta = `<meta name="color-scheme" content="${COLOR_SCHEME_CONTENT[scheme]}">`;
+  if (html.includes("</head>")) {
+    return html.replace("</head>", `${meta}\n</head>`);
+  }
+  if (/<head[^>]*>/i.test(html)) {
+    return html.replace(/(<head[^>]*>)/i, `$1\n  ${meta}`);
+  }
+  if (/<html[^>]*>/i.test(html)) {
+    return html.replace(
+      /(<html[^>]*>)/i,
+      `$1\n<head>\n  ${meta}\n</head>`,
+    );
+  }
+  return `<!DOCTYPE html>\n<html lang="en">\n<head>\n  <meta charset="UTF-8">\n  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n  ${meta}\n</head>\n<body>\n${html}\n</body>\n</html>`;
 }
 
 /**
@@ -181,9 +238,17 @@ function injectBridge(html: string): string {
 }
 
 /**
- * Convenience: inject KaTeX, sanitize, then add the host bridge. Suitable for a
- * one-shot iframe `srcdoc` write.
+ * Convenience: inject KaTeX, sanitize, optionally declare the color-scheme,
+ * then add the host bridge. Suitable for a one-shot iframe `srcdoc` write.
+ * `colorScheme` is omitted for callers that don't theme (or that want the
+ * widget's own declaration to stand alone).
  */
-export function prepareIframeHtml(html: string): string {
-  return injectBridge(sanitizeIframeHtml(injectKaTeX(html)));
+export function prepareIframeHtml(
+  html: string,
+  colorScheme?: WidgetColorScheme,
+): string {
+  const sanitized = sanitizeIframeHtml(injectKaTeX(html));
+  return injectBridge(
+    colorScheme ? injectColorScheme(sanitized, colorScheme) : sanitized,
+  );
 }

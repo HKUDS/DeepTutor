@@ -88,6 +88,31 @@ vi.mock("@/components/Geogebra", async () => {
   };
 });
 
+// The HTML widget canvas follows the resolved palette; the fixture keeps it
+// controllable so tests can flip the app theme without touching storage.
+const themeFixture = vi.hoisted(() => {
+  type Palette = "snow" | "dark" | "glass";
+  let palette: Palette = "snow";
+  const listeners = new Set<(theme: Palette) => void>();
+  return {
+    get: () => palette,
+    set(next: Palette) {
+      palette = next;
+      listeners.forEach((listener) => listener(palette));
+    },
+    subscribe(listener: (theme: Palette) => void) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+  };
+});
+
+vi.mock("@/lib/theme", () => ({
+  getStoredThemePreference: () => null,
+  resolveTheme: () => themeFixture.get(),
+  subscribeToThemeChanges: themeFixture.subscribe,
+}));
+
 // The Mermaid child debounces renders by 600ms; fake timers let tests step
 // past it deterministically.
 const MERMAID_DEBOUNCE_MS = 700;
@@ -475,6 +500,73 @@ it("renders html in a sandboxed iframe and opens it in a new tab", () => {
     "_blank",
     "noopener,noreferrer",
   );
+});
+
+it("themes the html widget canvas with the resolved palette (#2600)", () => {
+  const rendered = render(
+    <VisualizationViewer
+      result={canvasResult({
+        render_type: "html",
+        renderer: {
+          id: "html",
+          version: "1.0.0",
+          target: "native",
+          native_renderer: "html",
+          entry_url: "",
+        },
+        code: { language: "html", content: "<p>hello figure</p>" },
+      })}
+    />,
+  );
+  const iframe = screen.getByTitle("HTML visualization") as HTMLIFrameElement;
+  expect(iframe.getAttribute("srcdoc")).toContain(
+    '<meta name="color-scheme" content="light">',
+  );
+
+  // the app resolves to Dark: the host re-prepares and the canvas follows
+  act(() => themeFixture.set("dark"));
+  expect(iframe.getAttribute("srcdoc")).toContain(
+    '<meta name="color-scheme" content="dark">',
+  );
+
+  // Glass is dark too; Snow flips back to light
+  act(() => themeFixture.set("glass"));
+  expect(iframe.getAttribute("srcdoc")).toContain(
+    '<meta name="color-scheme" content="dark">',
+  );
+  act(() => themeFixture.set("snow"));
+  expect(iframe.getAttribute("srcdoc")).toContain(
+    '<meta name="color-scheme" content="light">',
+  );
+  rendered.unmount();
+
+  // a widget that declares its own scheme is never overridden
+  const declared = render(
+    <VisualizationViewer
+      result={canvasResult({
+        render_type: "html",
+        renderer: {
+          id: "html",
+          version: "1.0.0",
+          target: "native",
+          native_renderer: "html",
+          entry_url: "",
+        },
+        code: {
+          language: "html",
+          content:
+            '<!doctype html><html><head><meta name="color-scheme" content="dark"></head><body><p>x</p></body></html>',
+        },
+      })}
+    />,
+  );
+  const declaredFrame = screen
+    .getByTitle("HTML visualization")
+    .getAttribute("srcdoc");
+  expect(declaredFrame).not.toBeNull();
+  expect(declaredFrame!).toContain('content="dark"');
+  expect(declaredFrame!.match(/name="color-scheme"/g)!.length).toBe(1);
+  declared.unmount();
 });
 
 it("grows the html iframe via bridge height reports and ignores foreign sources", () => {
