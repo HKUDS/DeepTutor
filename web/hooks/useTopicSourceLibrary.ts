@@ -3,7 +3,7 @@
 import type { LearningOrigin } from '@/lib/learning-library'
 import { apiFetch, apiUrl } from '@/lib/api'
 import { scopedUrl } from '@/lib/workspace-scope'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { SUBAGENT_KB_TYPE } from '@/lib/knowledge-helpers'
 import type { TopicSourceInput, TopicSourceKind } from '@/lib/learning-api'
@@ -61,6 +61,7 @@ export interface SourceLibrary {
   chats: SourceCandidate[]
   /** Questions from every workspace, each carrying its origin. */
   questionSets: SourceCandidate[]
+  questionPage?: { hasMore: boolean; loading: boolean; search: (query: string) => void; more: () => void }
   /** Co-Writer drafts — the learner's own writing on the subject. */
   drafts: SourceCandidate[]
   /** Study partners and partner groups; their transcripts load on open. */
@@ -157,12 +158,40 @@ export function catalogTranslate(
     zh ? cn.replace(/\{\{(\w+)\}\}/g, (_, name: string) => String(vars?.[name] ?? '')) : t(en, vars)
 }
 
+function questionCandidate(row: Record<string, unknown>, tr: Translate): SourceCandidate {
+  return { key: JSON.stringify([row.content_workspace_id ?? '', 'question_bank', row.id]), kind: 'question_bank', sourceId: String(row.id), label: String(row.question || tr('未命名', 'Untitled')), detail: '', excerpt: String(row.question || ''), content_workspace_id: String(row.content_workspace_id ?? ''), content_workspace_name: String(row.content_workspace_name ?? ''), available: row.available !== false && !row.unreadable }
+}
+
 export function useTopicSourceLibrary(tr: Translate) {
   const [library, setLibrary] = useState<SourceLibrary>(INITIAL_LIBRARY)
   const [loading, setLoading] = useState(true)
+  const [questionPage, setQuestionPage] = useState({ query: '', offset: 0, total: 0, loading: false })
+  const [questionSeen, setQuestionSeen] = useState<Record<string, SourceCandidate>>({})
+  const questionEpoch = useRef(0)
+  const loadQuestions = useCallback(async (query: string, offset = 0) => {
+    const epoch = ++questionEpoch.current
+    setQuestionPage(previous => ({ ...previous, query, loading: true }))
+    try {
+      const params = new URLSearchParams({ search: query, offset: String(offset), limit: '50' })
+      const value = await sourceRequest<{ items: Record<string, unknown>[]; total: number }>(`/api/dashboard/source-library/practice?${params}`)
+      if (epoch !== questionEpoch.current) return
+      const rows = value.items.map(row => questionCandidate(row, tr))
+      setQuestionSeen(previous => ({ ...previous, ...Object.fromEntries(rows.map(row => [row.key, row])) }))
+      setLibrary(previous => ({ ...previous, loadingKinds: (previous.loadingKinds ?? []).filter(kind => kind !== 'questionSets'), questionSets: offset ? [...previous.questionSets, ...rows.filter(row => !previous.questionSets.some(old => old.key === row.key))] : rows, failures: previous.failures.filter(value => value !== 'practice') }))
+      setQuestionPage({ query, offset: offset + rows.length, total: value.total, loading: false })
+    } catch {
+      if (epoch !== questionEpoch.current) return
+      setLibrary(previous => ({ ...previous, loadingKinds: (previous.loadingKinds ?? []).filter(kind => kind !== 'questionSets'), failures: [...new Set([...previous.failures, 'practice'])] }))
+      setQuestionPage(previous => ({ ...previous, loading: false }))
+    }
+  }, [tr])
+  const searchQuestions = useCallback((query: string) => { void loadQuestions(query) }, [loadQuestions])
+  const moreQuestions = useCallback(() => { if (!questionPage.loading) void loadQuestions(questionPage.query, questionPage.offset) }, [loadQuestions, questionPage])
 
   useEffect(() => {
     let disposed = false
+    const questionVersion = ++questionEpoch.current
+    setQuestionSeen({})
     setLibrary(INITIAL_LIBRARY)
     setLoading(true)
 
@@ -207,10 +236,7 @@ export function useTopicSourceLibrary(tr: Translate) {
             excerpt: String(row.last_message || ''),
           }))
         case 'practice':
-          return items.map(row => ({
-            ...candidate(row, 'question_bank', row.id, row.question),
-            excerpt: String(row.question || ''),
-          }))
+          return items.map(row => questionCandidate(row, tr))
         case 'drafts':
           return items.map(row => ({
             ...candidate(row, 'cowriter', row.id, row.title),
@@ -239,16 +265,18 @@ export function useTopicSourceLibrary(tr: Translate) {
     }
 
     const tasks: Promise<void>[] = SOURCE_REQUEST_KINDS.map(kind =>
-      sourceRequest<{ items: Record<string, unknown>[]; unavailable_workspaces: string[] }>(
+      sourceRequest<{ items: Record<string, unknown>[]; unavailable_workspaces: string[]; total?: number }>(
         `/api/dashboard/source-library/${kind}`
       )
-        .then(value =>
-          land(
-            KIND_FIELD[kind],
-            mapRows(kind, value.items),
-            value.unavailable_workspaces.length ? kind : undefined
-          )
-        )
+        .then(value => {
+          if (disposed || (kind === 'practice' && questionVersion !== questionEpoch.current)) return
+          const rows = mapRows(kind, value.items)
+          if (kind === 'practice') {
+            setQuestionPage({ query: '', offset: rows.length, total: value.total ?? rows.length, loading: false })
+            setQuestionSeen(Object.fromEntries(rows.map(row => [row.key, row])))
+          }
+          land(KIND_FIELD[kind], rows, value.unavailable_workspaces.length ? kind : undefined)
+        })
         .catch(() => land(KIND_FIELD[kind], [], kind))
     )
 
@@ -288,6 +316,7 @@ export function useTopicSourceLibrary(tr: Translate) {
 
     return () => {
       disposed = true
+      questionEpoch.current += 1
     }
   }, [tr])
 
@@ -337,16 +366,16 @@ export function useTopicSourceLibrary(tr: Translate) {
         ...library.notebooks,
         ...library.knowledgeBases,
         ...library.chats,
-        ...library.questionSets,
+        ...Object.values(questionSeen),
         ...library.drafts,
         ...library.partners,
         ...Object.values(childLists).flatMap(entry => entry.candidates),
         // Containers are opened, never chosen — keeping them out here means
         // neither the selection nor hydration has to know about them.
       ].filter(candidate => candidate.selectable !== false),
-    [library, childLists]
+    [library, childLists, questionSeen]
   )
-  return { library, loading, candidates, childLists, loadChildren }
+  return { library: { ...library, questionPage: { hasMore: questionPage.offset < questionPage.total, loading: questionPage.loading, search: searchQuestions, more: moreQuestions } }, loading, candidates, childLists, loadChildren }
 }
 
 /** One expandable row's children, by kind. Throws so the caller can show why. */

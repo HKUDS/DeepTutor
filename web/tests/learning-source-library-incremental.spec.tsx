@@ -115,3 +115,29 @@ it('renders the ready KB tab while the question bank tab is still loading', () =
   expect(screen.queryByText('No matching materials')).not.toBeInTheDocument()
   expect(document.querySelector('.animate-spin')).toBeTruthy()
 })
+it('loads question pages on demand, searches server-side, and retains selected-page candidates', async () => {
+  const paths: URL[] = []
+  vi.mocked(apiFetch).mockImplementation(async url => {
+    const parsed = new URL(String(url), 'http://localhost')
+    if (parsed.pathname.endsWith('/practice')) {
+      paths.push(parsed)
+      const search = parsed.searchParams.get('search')
+      const offset = Number(parsed.searchParams.get('offset') || 0)
+      const items = search ? [{id: 'needle', question: 'Remote match'}] : [{id: String(offset), question: `Page ${offset}`}]
+      return new Response(JSON.stringify({items, total: search ? 1 : 3, unavailable_workspaces: []}))
+    }
+    return new Response(JSON.stringify({items: [], unavailable_workspaces: []}))
+  })
+  const { result } = renderHook(() => useTopicSourceLibrary(translate))
+  await waitFor(() => expect(result.current.loading).toBe(false))
+  expect(paths).toHaveLength(1)
+  expect(result.current.library.questionPage?.hasMore).toBe(true)
+  act(() => result.current.library.questionPage?.more())
+  await waitFor(() => expect(result.current.library.questionSets).toHaveLength(2))
+  expect(paths[1].searchParams.get('offset')).toBe('1')
+  act(() => result.current.library.questionPage?.search('needle'))
+  await waitFor(() => expect(result.current.library.questionSets[0].sourceId).toBe('needle'))
+  expect(paths).toHaveLength(3)
+  expect(result.current.library.questionPage?.hasMore).toBe(false)
+  expect(result.current.candidates.map(row => row.sourceId)).toEqual(['0', '1', 'needle'])
+})
