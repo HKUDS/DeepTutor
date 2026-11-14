@@ -48,6 +48,13 @@ const EMBLEMS: { value: string; Icon: typeof Compass }[] = [
   { value: '🌌', Icon: Orbit },
 ]
 
+// library.failures records the dashboard request kind; two tabs are named
+// differently from the kind that feeds them. Everything else is identity.
+const FIELD_REQUEST_KIND: Record<string, string> = {
+  knowledgeBases: 'knowledge',
+  questionSets: 'practice',
+}
+
 export function GoalStep({
   goal,
   emoji,
@@ -155,6 +162,11 @@ export function SourcesStep({
   const visible = library[group.key].filter(item =>
     `${item.label} ${item.detail}`.toLowerCase().includes(search.toLowerCase())
   )
+  // Gate on the active tab's own request, not the whole library: a ready KB
+  // renders while a large question bank is still loading. Falls back to the
+  // aggregate for a library built without per-kind loading info.
+  const groupLoading = library.loadingKinds?.includes(tab) ?? loading
+  const tabFailed = library.failures.includes(FIELD_REQUEST_KIND[tab] ?? tab)
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -219,7 +231,7 @@ export function SourcesStep({
             </button>
           ))}
       </div>
-      {library.failures.length > 0 && (
+      {tabFailed && (
         <p role="alert" className="text-xs text-destructive">
           {t('navigation.loadError')}
         </p>
@@ -234,7 +246,7 @@ export function SourcesStep({
         aria-labelledby={`${tabId}-${tab}`}
         className="min-h-40 pr-1"
       >
-        {loading ? (
+        {groupLoading ? (
           <div className="flex justify-center py-14">
             <Loader2 className="animate-spin" size={20} />
           </div>
