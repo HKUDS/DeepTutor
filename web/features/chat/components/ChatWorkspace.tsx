@@ -248,8 +248,11 @@ const ResearchConfigPanel = dynamic(
 /* ------------------------------------------------------------------ */
 
 interface KnowledgeBase {
+  id?: string;
   name: string;
   is_default?: boolean;
+  available?: boolean;
+  status?: string;
   metadata?: {
     /** Connected-source kind, e.g. "obsidian" | "subagent". */
     type?: string;
@@ -288,6 +291,7 @@ export default function ChatWorkspace() {
     setTools,
     setCapability,
     setKBs,
+    initializeKBs,
     setLLMSelection,
     setPersonaSelection,
     setAnswerBy,
@@ -339,6 +343,9 @@ export default function ChatWorkspace() {
   const resourceReuse = useResourceReusePolicy(state.sessionKey || "draft", state.messages[0]?.id);
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
   const [knowledgeBasesLoaded, setKnowledgeBasesLoaded] = useState(false);
+  const [knowledgeBasesFailed, setKnowledgeBasesFailed] = useState(false);
+  const [knowledgeBasesWorkspace, setKnowledgeBasesWorkspace] = useState<string | null>(null);
+  const knowledgeBasesRequest = useRef(0);
   const availableKbNames = useMemo(
     () => new Set(knowledgeBases.map(knowledgeBaseRef)),
     [knowledgeBases],
@@ -1392,16 +1399,23 @@ export default function ChatWorkspace() {
 
   const refreshKnowledgeBases = useCallback(
     async (options?: { force?: boolean }) => {
+      const request = ++knowledgeBasesRequest.current;
+      setKnowledgeBasesLoaded(false);
+      setKnowledgeBasesFailed(false);
       try {
         const list = await listKnowledgeBases({ force: options?.force });
+        if (request !== knowledgeBasesRequest.current) return;
         setKnowledgeBases(list);
+        setKnowledgeBasesWorkspace(requestedWorkspaceId);
         setKnowledgeBasesLoaded(true);
       } catch {
+        if (request !== knowledgeBasesRequest.current) return;
         setKnowledgeBasesLoaded(false);
+        setKnowledgeBasesFailed(true);
         setKnowledgeBases([]);
       }
     },
-    [],
+    [requestedWorkspaceId],
   );
 
   /* Load KBs.
@@ -1418,15 +1432,30 @@ export default function ChatWorkspace() {
     void refreshKnowledgeBases();
   }, [refreshKnowledgeBases]);
 
+  useEffect(() => {
+    if (!knowledgeBasesLoaded || sessionIdParam || state.sessionId ||
+        state.knowledgeBasesInitialized || state.workspaceId !== requestedWorkspaceId ||
+        knowledgeBasesWorkspace !== requestedWorkspaceId) return;
+    const candidates = knowledgeBases.filter((kb) => kb.available !== false &&
+      kb.metadata?.type !== "subagent");
+    const selected = candidates.length === 1 && candidates[0].is_default &&
+      candidates[0].status === "ready" ? [knowledgeBaseRef(candidates[0])] : [];
+    initializeKBs(state.sessionKey, state.workspaceId, selected);
+  }, [knowledgeBases, knowledgeBasesLoaded, knowledgeBasesWorkspace, requestedWorkspaceId,
+    sessionIdParam, state.sessionId, state.sessionKey, state.workspaceId,
+    state.knowledgeBasesInitialized, initializeKBs]);
+
   // A physical KB delete does not cascade into persisted session preferences.
   // Reconcile only after a successful fetch: an empty result then means every
   // KB was deleted, while a failed request must keep the existing selection.
   useEffect(() => {
-    if (!knowledgeBasesLoaded) return;
+    if (!knowledgeBasesLoaded || knowledgeBasesWorkspace !== requestedWorkspaceId ||
+        state.workspaceId !== requestedWorkspaceId) return;
     const selected = state.knowledgeBases;
     const pruned = selected.filter((name) => availableKbNames.has(name));
     if (pruned.length !== selected.length) setKBs(pruned);
-  }, [availableKbNames, knowledgeBasesLoaded, state.knowledgeBases, setKBs]);
+  }, [availableKbNames, knowledgeBasesLoaded, knowledgeBasesWorkspace, requestedWorkspaceId,
+    state.workspaceId, state.knowledgeBases, setKBs]);
 
   const refreshUserEnabledTools = useCallback(
     async (options?: { force?: boolean }) => {
@@ -2012,6 +2041,12 @@ export default function ChatWorkspace() {
         content,
         (draft) => prefillInputRef.current?.(draft),
       ))) return;
+      if (!state.sessionId && !state.knowledgeBasesInitialized) {
+        prefillInputRef.current?.(content);
+        if (knowledgeBasesFailed) void refreshKnowledgeBases();
+        notify(t(knowledgeBasesFailed ? "guidedLearning.loadKbFailed" : "Loading..."), { tone: "error" });
+        return;
+      }
       // A turn paused on a question: what the user typed is their answer, not
       // a new message. Routing it here means the card is one way to answer,
       // not the only one — and a card that never rendered no longer strands
@@ -2222,6 +2257,9 @@ export default function ChatWorkspace() {
       shouldAutoScrollRef,
       state.isStreaming,
       state.sessionKey,
+      state.knowledgeBasesInitialized,
+      knowledgeBasesFailed,
+      refreshKnowledgeBases,
       subagentBudget,
       selectedPartnerGroup,
       selectedPartner,
