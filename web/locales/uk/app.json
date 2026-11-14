@@ -6324,5 +6324,13 @@
   "Revision": "Версія",
   "Add a note about how you want to be taught": "Додати нотатку про те, як ви хочете, щоб вас навчали",
   "Added by you": "Додано вами",
-  "Learned by the tutor": "Засвоєно викладачем"
+  "Learned by the tutor": "Засвоєно викладачем",
+  "Learn a strategy from my evidence": "Вивчити стратегію з моїх даних",
+  "Reviewing your evidence…": "Аналіз ваших даних…",
+  "Added a strategy note from your evidence.": "Додано нотатку про стратегію на основі ваших даних.",
+  "Your evidence is already covered by the current notes.": "Ваші дані вже охоплені поточними нотатками.",
+  "Not enough recorded evidence yet. Keep studying and try again later.": "Ще недостатньо збережених даних. Продовжуйте навчатися й спробуйте пізніше.",
+  "This path already has the most tutor notes it can hold.": "Цей шлях уже містить максимум нотаток викладача.",
+  "The change was not accepted:": "Зміну не прийнято:",
+  "The change was not accepted.": "Зміну не прийнято."
 }

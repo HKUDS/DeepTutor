@@ -6354,5 +6354,13 @@
   "Revision": "版本",
   "Add a note about how you want to be taught": "添加一条关于你希望被怎么教的笔记",
   "Added by you": "你添加的",
-  "Learned by the tutor": "导师学到的"
+  "Learned by the tutor": "导师学到的",
+  "Learn a strategy from my evidence": "从我的证据里学一条策略",
+  "Reviewing your evidence…": "正在看你的证据…",
+  "Added a strategy note from your evidence.": "已根据你的证据新增一条策略笔记。",
+  "Your evidence is already covered by the current notes.": "现有笔记已经覆盖了你的证据。",
+  "Not enough recorded evidence yet. Keep studying and try again later.": "记录的证据还不够。先继续学习，过段时间再试。",
+  "This path already has the most tutor notes it can hold.": "这条路径的导师笔记已达上限。",
+  "The change was not accepted:": "这条改动没有被采纳：",
+  "The change was not accepted.": "这条改动没有被采纳。"
 }

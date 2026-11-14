@@ -1726,3 +1726,24 @@ async def rollback_strategy_note(path_id: str, note_id: str, body: StrategyRollb
     if note is None:
         raise HTTPException(status_code=404, detail="strategy revision not found")
     return note
+
+
+class EvolveStrategyRequest(BaseModel):
+    language: str = Field("zh", max_length=16)
+
+
+@router.post("/topics/{path_id}/strategy/evolve")
+async def evolve_strategy_note(path_id: str, body: EvolveStrategyRequest | None = None):
+    """Run one evidence-gated, independently-reviewed strategy-note change.
+
+    Learner-triggered. The result is a receipt: applied, rejected, or gated for
+    lack of evidence. Automation never touches a learner-authored note.
+    """
+    _validate_book_id(path_id)
+    from deeptutor.learning.strategy_evolution import evolve_strategy
+
+    store = LearningStore()
+    if not await asyncio.to_thread(store.exists, path_id):
+        raise HTTPException(status_code=404, detail="Mastery topic not found")
+    request = body or EvolveStrategyRequest()
+    return await evolve_strategy(path_id, store=store, actor="learner", language=request.language)

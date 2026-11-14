@@ -22,13 +22,48 @@ import {
   archiveStrategyNote,
   createStrategyNote,
   editStrategyNote,
+  evolveStrategy,
   fetchStrategyNoteHistory,
   fetchStrategyNotes,
   restoreStrategyNote,
   rollbackStrategyNote,
+  type StrategyEvolutionReceipt,
   type StrategyNote,
   type StrategyNoteRevision,
 } from "@/lib/learning-api";
+
+/**
+ * The learner-visible surface for the tutor's teaching strategy.
+ *
+ * A mastery path accumulates short notes about how *this* learner is best
+ * taught — learned from their questions, their likes and the tutor's own
+ * observations. This panel shows them, attributes each one (tutor-learned or
+ * learner-written), and lets the learner edit, pin, archive, restore or roll
+ * back. Nothing here is ever deleted; archiving keeps the history.
+ */
+function evolutionMessage(
+  receipt: StrategyEvolutionReceipt,
+  t: (key: string) => string,
+): string {
+  switch (receipt.status) {
+    case "applied":
+      return t("Added a strategy note from your evidence.");
+    case "no_change":
+      return t("Your evidence is already covered by the current notes.");
+    case "gated":
+      return t(
+        "Not enough recorded evidence yet. Keep studying and try again later.",
+      );
+    case "capped":
+      return t("This path already has the most tutor notes it can hold.");
+    case "rejected":
+      return receipt.review?.reason
+        ? `${t("The change was not accepted:")} ${receipt.review.reason}`
+        : t("The change was not accepted.");
+    default:
+      return "";
+  }
+}
 
 /**
  * The learner-visible surface for the tutor's teaching strategy.
@@ -46,13 +81,17 @@ export function MasteryStrategyPanel({
   pathId: string;
   onClose: () => void;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const dialogRef = useModalDialog(onClose);
 
   const [notes, setNotes] = useState<StrategyNote[]>([]);
   const [archived, setArchived] = useState<StrategyNote[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [evolving, setEvolving] = useState(false);
+  const [evolution, setEvolution] = useState<StrategyEvolutionReceipt | null>(
+    null,
+  );
   const [error, setError] = useState("");
   const [draft, setDraft] = useState("");
   const [editing, setEditing] = useState<{ noteId: string; body: string } | null>(
@@ -129,6 +168,22 @@ export function MasteryStrategyPanel({
     [pathId],
   );
 
+  const runEvolution = useCallback(() => {
+    if (evolving) return;
+    setEvolving(true);
+    setError("");
+    setEvolution(null);
+    void evolveStrategy(pathId, i18n.language)
+      .then(async (receipt) => {
+        setEvolution(receipt);
+        await load();
+      })
+      .catch((err: unknown) => {
+        setError(err instanceof Error ? err.message : String(err));
+      })
+      .finally(() => setEvolving(false));
+  }, [evolving, i18n.language, load, pathId]);
+
   return (
     <div
       ref={dialogRef}
@@ -174,6 +229,29 @@ export function MasteryStrategyPanel({
               {error}
             </p>
           ) : null}
+
+          <div className="mb-3 flex flex-col gap-2">
+            <button
+              type="button"
+              onClick={runEvolution}
+              disabled={evolving}
+              className="flex items-center justify-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 py-2 text-[12.5px] font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--accent)] disabled:opacity-50"
+            >
+              {evolving ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Sparkles className="h-3.5 w-3.5" />
+              )}
+              {evolving
+                ? t("Reviewing your evidence…")
+                : t("Learn a strategy from my evidence")}
+            </button>
+            {evolution ? (
+              <p className="rounded-lg bg-[var(--muted)]/50 px-3 py-2 text-[12px] leading-5 text-[var(--muted-foreground)]">
+                {evolutionMessage(evolution, (key) => t(key))}
+              </p>
+            ) : null}
+          </div>
 
           {loading ? (
             <div className="flex items-center justify-center py-16">

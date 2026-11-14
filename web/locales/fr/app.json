@@ -6450,5 +6450,13 @@
   "Revision": "Révision",
   "Add a note about how you want to be taught": "Ajouter une note sur la façon dont vous voulez être enseigné",
   "Added by you": "Ajouté par vous",
-  "Learned by the tutor": "Appris par le tuteur"
+  "Learned by the tutor": "Appris par le tuteur",
+  "Learn a strategy from my evidence": "Apprendre une stratégie à partir de mes données",
+  "Reviewing your evidence…": "Analyse de vos données…",
+  "Added a strategy note from your evidence.": "Une note de stratégie a été ajoutée à partir de vos données.",
+  "Your evidence is already covered by the current notes.": "Vos données sont déjà couvertes par les notes actuelles.",
+  "Not enough recorded evidence yet. Keep studying and try again later.": "Pas encore assez de données enregistrées. Continuez à étudier et réessayez plus tard.",
+  "This path already has the most tutor notes it can hold.": "Ce parcours contient déjà le maximum de notes du tuteur.",
+  "The change was not accepted:": "La modification n'a pas été acceptée :",
+  "The change was not accepted.": "La modification n'a pas été acceptée."
 }

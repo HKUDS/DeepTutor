@@ -978,6 +978,53 @@ export function rollbackStrategyNote(
   );
 }
 
+export type StrategyEvolutionStatus =
+  | "no_path"
+  | "gated"
+  | "capped"
+  | "no_change"
+  | "rejected"
+  | "applied";
+
+export interface StrategyEvolutionReceipt {
+  status: StrategyEvolutionStatus;
+  path_id: string;
+  message?: string;
+  note?: StrategyNote;
+  proposal?: {
+    action?: string;
+    note_id?: string;
+    body?: string;
+    strategies?: string[];
+    reason?: string;
+  };
+  review?: { decision?: string; reason?: string };
+  evidence?: {
+    gate?: {
+      met?: boolean;
+      decisive_signals?: number;
+      likes?: number;
+      requirement?: string;
+    };
+  };
+}
+
+/** Ask the tutor to propose one reviewed strategy note from the evidence. */
+export function evolveStrategy(
+  pathId: string,
+  language = "zh",
+): Promise<StrategyEvolutionReceipt> {
+  return masteryJson(
+    `/api/mastery-paths/topics/${encodeURIComponent(pathId)}/strategy/evolve`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ language }),
+    },
+    "evolve strategy",
+  );
+}
+
 /** Ask for a change in the learner's own words; the result needs applying. */
 export function proposePointLectureRevision(
   pathId: string,

@@ -6354,5 +6354,13 @@
   "Revision": "Revision",
   "Add a note about how you want to be taught": "Add a note about how you want to be taught",
   "Added by you": "Added by you",
-  "Learned by the tutor": "Learned by the tutor"
+  "Learned by the tutor": "Learned by the tutor",
+  "Learn a strategy from my evidence": "Learn a strategy from my evidence",
+  "Reviewing your evidence…": "Reviewing your evidence…",
+  "Added a strategy note from your evidence.": "Added a strategy note from your evidence.",
+  "Your evidence is already covered by the current notes.": "Your evidence is already covered by the current notes.",
+  "Not enough recorded evidence yet. Keep studying and try again later.": "Not enough recorded evidence yet. Keep studying and try again later.",
+  "This path already has the most tutor notes it can hold.": "This path already has the most tutor notes it can hold.",
+  "The change was not accepted:": "The change was not accepted:",
+  "The change was not accepted.": "The change was not accepted."
 }

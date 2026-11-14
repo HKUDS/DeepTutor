@@ -6369,5 +6369,13 @@
   "Revision": "Wersja",
   "Add a note about how you want to be taught": "Dodaj notatkę o tym, jak chcesz być uczony",
   "Added by you": "Dodane przez Ciebie",
-  "Learned by the tutor": "Nauczone przez tutora"
+  "Learned by the tutor": "Nauczone przez tutora",
+  "Learn a strategy from my evidence": "Naucz się strategii z moich danych",
+  "Reviewing your evidence…": "Analizowanie Twoich danych…",
+  "Added a strategy note from your evidence.": "Dodano notatkę o strategii na podstawie Twoich danych.",
+  "Your evidence is already covered by the current notes.": "Twoje dane są już objęte obecnymi notatkami.",
+  "Not enough recorded evidence yet. Keep studying and try again later.": "Za mało zapisanych danych. Ucz się dalej i spróbuj ponownie później.",
+  "This path already has the most tutor notes it can hold.": "Ta ścieżka ma już maksymalną liczbę notatek tutora.",
+  "The change was not accepted:": "Zmiana nie została zaakceptowana:",
+  "The change was not accepted.": "Zmiana nie została zaakceptowana."
 }
