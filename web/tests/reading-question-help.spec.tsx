@@ -21,7 +21,7 @@ const context: QuizHelpContext = {
 };
 const quiz: ReadingExtensionResult = {
   type: "quiz", title: "", message: "", payload: {
-    questions: ["one", "two"].map((id) => ({ id, prompt: `Question ${id}`, choices: ["A", "B"], correct_choice_index: 1 })),
+    questions: ["one", "two"].map((id) => ({ id, prompt: `Question ${id}`, choices: ["A", "B"], can_answer: true })),
   },
 };
 const help: ReadingExtensionResult = {
@@ -80,7 +80,7 @@ it("ignores a late response after the quiz is replaced", async () => {
   vi.mocked(runReadingExtension).mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
   const view = render(panel());
   fireEvent.click(screen.getAllByRole("button", { name: "Guide me" })[0]);
-  view.rerender(panel(context, { ...quiz, payload: { questions: [{ id: "new", prompt: "New question", choices: ["A", "B"], correct_choice_index: 0 }] } }));
+  view.rerender(panel(context, { ...quiz, payload: { questions: [{ id: "new", prompt: "New question", choices: ["A", "B"], can_answer: true }] } }));
   await act(async () => { finish(help); });
   expect(screen.getByText("New question")).toBeInTheDocument();
   expect(screen.queryByText("Look at the evidence.")).not.toBeInTheDocument();
