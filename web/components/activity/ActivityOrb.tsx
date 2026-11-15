@@ -76,6 +76,7 @@ export function ActivityOrb({
   box = ORB_BOX,
   tone = "brand",
   className = "",
+  paused = false,
 }: {
   state: OrbState;
   /** Multiplier on the preset's own speed. Below 1 for resting states. */
@@ -84,6 +85,8 @@ export function ActivityOrb({
   box?: number;
   tone?: OrbTone;
   className?: string;
+  /** Keep a static frame for completed or visually hidden marks. */
+  paused?: boolean;
 }) {
   const pickerOpen = usePickerOpen();
 
@@ -96,7 +99,7 @@ export function ActivityOrb({
         box === ORB_BOX ? ORB_SUPERSAMPLE : superSampleFor(box)
       }
       speed={speed}
-      paused={pickerOpen}
+      paused={paused || pickerOpen}
       // Callers pair the orb with a live region that spells the phase out in
       // words; the orb is the decorative half of that.
       aria-hidden
