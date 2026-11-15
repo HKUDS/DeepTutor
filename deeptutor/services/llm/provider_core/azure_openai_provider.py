@@ -212,6 +212,15 @@ class AzureOpenAIProvider(LLMProvider):
         body["stream"] = True
         idle_timeout_s = 90
 
+        native_output_items: list[dict[str, Any]] = []
+        native_citations: list[dict[str, Any]] = []
+
+        def _collect_provider_event(kind: str, payload: dict[str, Any]) -> None:
+            if kind == "output_item":
+                native_output_items.append(payload)
+            elif kind == "citation":
+                native_citations.append(payload)
+
         try:
             stream = await self._client.responses.create(**body)
 
@@ -229,13 +238,27 @@ class AzureOpenAIProvider(LLMProvider):
                 _timed_stream(),
                 on_content_delta,
                 on_reasoning_delta=on_reasoning_delta,
+                on_provider_event=_collect_provider_event,
             )
+            # Match parse_response_output: only reasoning turns need verbatim
+            # message/function items replayed alongside their private state.
+            if not any(item.get("type") == "reasoning" for item in native_output_items):
+                native_output_items = [
+                    item
+                    for item in native_output_items
+                    if item.get("type") in {"web_search_call", "web_search"}
+                ]
             return LLMResponse(
                 content=content or None,
                 tool_calls=tool_calls,
                 finish_reason=finish_reason,
                 usage=usage,
                 reasoning_content=reasoning_content,
+                provider_specific_fields=(
+                    {"native_output_items": native_output_items, "citations": native_citations}
+                    if native_output_items or native_citations
+                    else {}
+                ),
             )
         except asyncio.TimeoutError:
             return LLMResponse(
