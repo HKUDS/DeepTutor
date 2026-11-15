@@ -21,6 +21,13 @@ _ALLOWED_RESPONSE_OUTPUT_TYPES = frozenset(
 _PRIVATE_MESSAGE_METADATA_KEYS = frozenset({"provider_response_state", "model_turn"})
 
 
+def portable_tool_call_id(value: Any) -> Any:
+    """Drop the provider-private item ID from a compound tool call ID."""
+    if isinstance(value, str):
+        return value.split("|", 1)[0]
+    return value
+
+
 def _normalized_output_items(value: Any) -> list[dict[str, Any]]:
     if not isinstance(value, list) or len(value) > MAX_RESPONSE_OUTPUT_ITEMS:
         return []

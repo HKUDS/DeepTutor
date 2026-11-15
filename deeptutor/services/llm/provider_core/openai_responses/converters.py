@@ -70,13 +70,15 @@ def convert_messages(messages: list[dict[str, Any]]) -> tuple[str, list[dict[str
                         "id": f"msg_{idx}",
                     }
                 )
-            for tool_call in msg.get("tool_calls", []) or []:
+            for call_idx, tool_call in enumerate(msg.get("tool_calls", []) or []):
                 fn = tool_call.get("function") or {}
                 call_id, item_id = split_tool_call_id(tool_call.get("id"))
+                # Portable history can contain parallel calls in one message.
+                fallback_item_id = f"fc_{idx}_{call_idx}" if call_idx else f"fc_{idx}"
                 input_items.append(
                     {
                         "type": "function_call",
-                        "id": item_id or f"fc_{idx}",
+                        "id": item_id or fallback_item_id,
                         "call_id": call_id or f"call_{idx}",
                         "name": fn.get("name"),
                         "arguments": fn.get("arguments") or "{}",

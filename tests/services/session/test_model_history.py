@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import re
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -142,6 +143,131 @@ def test_model_switch_keeps_tool_evidence_but_drops_provider_private_state():
     assert "_provider_response_state" not in switched[1]
     assert switched[1]["tool_calls"] == same[1]["tool_calls"]
     assert switched[2]["content"] == "tool evidence"
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("call_1|provider-item", "call_1"),
+        ("call_1|fc_123", "call_1"),
+        ("call_1|", "call_1"),
+        ("call_1", "call_1"),
+        ("", ""),
+        (None, None),
+        (42, 42),
+    ],
+)
+def test_portable_tool_call_id_removes_only_the_provider_item_id(value, expected):
+    from deeptutor.services.session.provider_response_state import portable_tool_call_id
+
+    assert portable_tool_call_id(value) == expected
+
+
+def test_same_route_replay_preserves_compound_tool_call_ids():
+    record = turn_record()
+    record["messages"][1]["tool_calls"][0]["id"] = "call_1|provider-item"
+    record["messages"][2]["tool_call_id"] = "call_1|provider-item"
+    source = rows(record)
+    before = deepcopy(source)
+
+    replayed = replay_history(source, route=record["route"])
+
+    assert replayed[1]["tool_calls"][0]["id"] == "call_1|provider-item"
+    assert replayed[2]["tool_call_id"] == "call_1|provider-item"
+    assert source == before
+
+
+@pytest.mark.parametrize(
+    ("source_route", "target_route"),
+    [
+        (
+            {"provider": "deepseek", "model": "deepseek-test"},
+            {"provider": "openai", "model": "gpt-test"},
+        ),
+        (
+            {"provider": "openai", "model": "gpt-test"},
+            {"provider": "deepseek", "model": "deepseek-test"},
+        ),
+        (
+            {"provider": "openai", "model": "gpt-test"},
+            {"provider": "openai", "model": "gpt-other"},
+        ),
+        (
+            {"provider": "openai", "model": "gpt-test"},
+            {"provider": "anthropic", "model": "claude-test"},
+        ),
+    ],
+)
+def test_route_switch_replays_portable_paired_tool_call_ids(source_route, target_route):
+    from deeptutor.services.llm.provider_core.anthropic_provider import AnthropicProvider
+    from deeptutor.services.llm.provider_core.openai_responses.converters import convert_messages
+
+    record = turn_record()
+    record["route"] = source_route
+    second_round = deepcopy(record["messages"][1:3])
+    record["messages"][1]["tool_calls"][0]["id"] = "call_1|provider-item-1"
+    record["messages"][2]["tool_call_id"] = "call_1|provider-item-1"
+    second_round[0]["tool_calls"][0]["id"] = "call_2|fc_previous_2"
+    second_round[1]["tool_call_id"] = "call_2|fc_previous_2"
+    record["messages"][3:3] = second_round
+    source = rows(record)
+    before = deepcopy(source)
+
+    replayed = replay_history(source, route=target_route)
+
+    call_ids = [call["id"] for msg in replayed for call in msg.get("tool_calls", [])]
+    result_ids = [msg["tool_call_id"] for msg in replayed if msg["role"] == "tool"]
+    assert call_ids == result_ids == ["call_1", "call_2"]
+    assert all("|" not in call_id for call_id in call_ids)
+    assert normalize_model_turn({"version": 1, "messages": replayed}) is not None
+    assert source == before
+
+    _, response_items = convert_messages(replayed)
+    response_calls = [item for item in response_items if item.get("type") == "function_call"]
+    response_results = [
+        item for item in response_items if item.get("type") == "function_call_output"
+    ]
+    assert [item["id"] for item in response_calls] == ["fc_1", "fc_3"]
+    assert [item["call_id"] for item in response_calls] == ["call_1", "call_2"]
+    assert [item["call_id"] for item in response_results] == ["call_1", "call_2"]
+
+    provider = object.__new__(AnthropicProvider)
+    _, anthropic_messages = provider._convert_messages(replayed)
+    blocks = [
+        block
+        for msg in anthropic_messages
+        if isinstance(msg["content"], list)
+        for block in msg["content"]
+    ]
+    tool_uses = [block for block in blocks if block["type"] == "tool_use"]
+    tool_results = [block for block in blocks if block["type"] == "tool_result"]
+    assert [block["id"] for block in tool_uses] == ["call_1", "call_2"]
+    assert [block["tool_use_id"] for block in tool_results] == ["call_1", "call_2"]
+    assert all(re.fullmatch(r"[a-zA-Z0-9_-]+", block["id"]) for block in tool_uses)
+
+
+def test_route_switch_keeps_parallel_responses_tool_call_item_ids_unique():
+    from deeptutor.services.llm.provider_core.openai_responses.converters import convert_messages
+
+    record = turn_record()
+    first_call = record["messages"][1]["tool_calls"][0]
+    first_call["id"] = "call_1|fc_previous_1"
+    second_call = deepcopy(first_call)
+    second_call["id"] = "call_2|fc_previous_2"
+    record["messages"][1]["tool_calls"].append(second_call)
+    record["messages"][2]["tool_call_id"] = first_call["id"]
+    record["messages"].insert(
+        3, {"role": "tool", "tool_call_id": second_call["id"], "content": "second evidence"}
+    )
+
+    replayed = replay_history(rows(record), route={"provider": "openai", "model": "gpt-other"})
+    _, items = convert_messages(replayed)
+    calls = [item for item in items if item.get("type") == "function_call"]
+    results = [item for item in items if item.get("type") == "function_call_output"]
+
+    assert [item["id"] for item in calls] == ["fc_1", "fc_1_1"]
+    assert [item["call_id"] for item in calls] == ["call_1", "call_2"]
+    assert [item["call_id"] for item in results] == ["call_1", "call_2"]
 
 
 def test_image_and_resolved_user_reply_survive_the_private_history_projection():
