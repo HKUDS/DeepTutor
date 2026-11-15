@@ -54,7 +54,7 @@ if (!assembleOnly) {
   await writeFile(path.join(build, 'BUILD_COMMIT'), commit + '\n');
   run('uv', ['python', 'install', target.python.build, '--install-dir', path.join(target.local, 'python-downloads'), '--no-bin']);
   run('uv', ['pip', 'install', '--break-system-packages', '--python', python, ...(target.pip ?? []), '-r', path.join(build, 'requirements/full.txt')]);
-  npm(['ci', '--legacy-peer-deps'], path.join(build, 'web'));
+  npm(['ci'], path.join(build, 'web'));
   npm(['run', 'build'], path.join(build, 'web'));
 }
 if (await sha256(nodeArchive) !== target.node.sha256) throw new Error('Node runtime checksum mismatch');

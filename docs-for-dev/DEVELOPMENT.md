@@ -13,7 +13,7 @@ python -m pip install -r requirements/full.txt
 python -m pip install -e . --no-deps
 python scripts/install_extras.py dev
 cd web
-npm ci --legacy-peer-deps
+npm ci
 cd ..
 ```
 

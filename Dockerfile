@@ -30,7 +30,7 @@ COPY web/package.json web/package-lock.json* ./
 # Install dependencies with generous timeout for CI environments
 RUN npm config set fetch-timeout 600000 && \
     npm config set fetch-retries 5 && \
-    npm ci --legacy-peer-deps
+    npm ci
 
 # Copy frontend source code
 COPY web/ ./
