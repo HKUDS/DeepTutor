@@ -4,12 +4,14 @@
 <h1 align="center">DeepTutor：終身個人化學習導師</h1>
 
 <p align="center">
-  <a href="https://deeptutor.info" target="_blank"><img alt="文件 — deeptutor.info" src="https://img.shields.io/badge/Docs-deeptutor.info%20%E2%86%97-0A0A0A?style=for-the-badge&labelColor=F5F5F4" height="36"></a>&nbsp;
-  <a href="https://deeptutor.info/collaborate/" target="_blank"><img alt="合作 — 與我們攜手" src="https://img.shields.io/badge/Collaborate-work%20with%20us%20%E2%86%97-0A0A0A?style=for-the-badge&labelColor=F5F5F4" height="36"></a>
+<a href="https://www.star-history.com/hkuds/deeptutor"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending&amp;theme=dark" /><source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending" /><img alt="GitHub 今日熱門儲存庫" src="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending" height="55" /></picture></a>&#32;<a href="https://trendshift.io/repositories/17099"><img src="https://trendshift.io/api/badge/trendshift/repositories/17099/daily" alt="HKUDS/DeepTutor | Trendshift" width="250" height="55"></a>&#32;<a href="https://www.star-history.com/hkuds/deeptutor"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;theme=dark"><source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor"><img alt="Star History 排名" src="https://api.star-history.com/badge?repo=HKUDS/DeepTutor" width="185" height="55"></picture></a>
 </p>
 
 <p align="center">
-<a href="https://www.star-history.com/hkuds/deeptutor"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending&amp;theme=dark" /><source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending" /><img alt="GitHub 今日熱門儲存庫" src="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending" height="55" /></picture></a>&#32;<a href="https://trendshift.io/repositories/17099"><img src="https://trendshift.io/api/badge/trendshift/repositories/17099/daily" alt="HKUDS/DeepTutor | Trendshift" width="250" height="55"></a>&#32;<a href="https://www.star-history.com/hkuds/deeptutor"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;theme=dark"><source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor"><img alt="Star History 排名" src="https://api.star-history.com/badge?repo=HKUDS/DeepTutor" width="185" height="55"></picture></a>
+  <a href="https://github.com/HKUDS/DeepTutor/releases/latest/download/Open-DeepTutor-MacOS-Apple-Silicon.dmg"><img alt="下載 macOS 版（Apple Silicon）" src="../../assets/figs/badges/download-macos-apple-silicon.svg" height="32"></a>&nbsp;
+  <a href="https://github.com/HKUDS/DeepTutor/releases/latest/download/Open-DeepTutor-MacOS-Intel.dmg"><img alt="下載 macOS 版（Intel）" src="../../assets/figs/badges/download-macos-intel.svg" height="32"></a>&nbsp;
+  <a href="https://github.com/HKUDS/DeepTutor/releases/latest/download/Open-DeepTutor-Windows-Setup.exe"><img alt="下載 Windows 版（x64）" src="../../assets/figs/badges/download-windows.svg" height="32"></a>&nbsp;
+  <a href="https://deeptutor.info" target="_blank"><img alt="文件 — deeptutor.info" src="../../assets/figs/badges/docs.svg" height="32"></a>
 </p>
 
 <p align="center">
@@ -27,15 +29,7 @@
   <a href="README_PL.md"><img alt="Polski" height="40" src="https://img.shields.io/badge/Polski-CDCFD4"></a>
 </p>
 
-[![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/downloads/)
-[![Next.js 16](https://img.shields.io/badge/Next.js-16-000000?style=flat-square&logo=next.js&logoColor=white)](https://nextjs.org/)
-[![License](https://img.shields.io/badge/License-Apache_2.0-blue?style=flat-square)](../../LICENSE)
-[![GitHub release](https://img.shields.io/github/v/release/HKUDS/DeepTutor?style=flat-square&color=brightgreen)](https://github.com/HKUDS/DeepTutor/releases)
-[![arXiv](https://img.shields.io/badge/arXiv-2604.26962-b31b1b?style=flat-square&logo=arxiv&logoColor=white)](https://arxiv.org/abs/2604.26962)
-
-[![Discord](https://img.shields.io/badge/Discord-Community-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/eRsjPgMU4t)
-[![Feishu](https://img.shields.io/badge/Feishu-Group-00D4AA?style=flat-square&logo=feishu&logoColor=white)](../../Communication.md)
-[![WeChat](https://img.shields.io/badge/WeChat-Group-07C160?style=flat-square&logo=wechat&logoColor=white)](https://github.com/HKUDS/DeepTutor/issues/78)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue?style=flat-square)](../../LICENSE) [![GitHub release](https://img.shields.io/github/v/release/HKUDS/DeepTutor?style=flat-square&color=brightgreen)](https://github.com/HKUDS/DeepTutor/releases) [![arXiv](https://img.shields.io/badge/arXiv-2604.26962-b31b1b?style=flat-square&logo=arxiv&logoColor=white)](https://arxiv.org/abs/2604.26962) [![Discord](https://img.shields.io/badge/Discord-Community-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/eRsjPgMU4t) [![Feishu](https://img.shields.io/badge/Feishu-Group-00D4AA?style=flat-square&logo=feishu&logoColor=white)](../../Communication.md) [![WeChat](https://img.shields.io/badge/WeChat-Group-07C160?style=flat-square&logo=wechat&logoColor=white)](https://github.com/HKUDS/DeepTutor/issues/78)
 
 [主要功能](#-主要功能) · [開始使用](#-開始使用) · [探索](#-探索-deeptutor) · [CLI](#️-deeptutor-cli--代理程式原生介面) · [生態系](#-生態系--eduhub-與技能社群) · [社群](#-社群)
 
@@ -43,7 +37,11 @@
 
 ---
 
-> 🤝 **我們歡迎任何形式的貢獻！** 歡迎在 [`Roadmap`](https://github.com/HKUDS/DeepTutor/issues/498) 為規劃項目投票或提出新構想，並參閱[貢獻指南](../../CONTRIBUTING.md)，了解分支策略、程式碼規範與參與方式。
+> 🤝 **我們正在積極招募維護者！** 請參閱[貢獻指南](../../CONTRIBUTING.md#join-the-team)，了解職責、要求與申請方式。
+
+<div align="center">
+<img src="../../assets/figs/web-dev/overview.png" alt="DeepTutor 首頁與工作區導覽" width="900">
+</div>
 
 ### 📰 最新消息
 
@@ -73,9 +71,9 @@ DeepTutor 是代理程式原生的學習工作區，在同一個可擴充系統�
 <details>
 <summary><b>桌面版 — macOS 與 Windows（預覽）</b></summary>
 
-**Open DeepTutor** 內含 Python、Node.js 與完整學習工作區，因此無須使用終端機或另外安裝執行環境。桌面預覽版可在 `dev` 取得；**v1.7.0 Release 不包含桌面安裝程式**。
+**Open DeepTutor** 內含 Python、Node.js 與完整學習工作區，因此無須使用終端機或另外安裝執行環境。請從[最新 GitHub Release](https://github.com/HKUDS/DeepTutor/releases/latest) 下載已發布的桌面版本，並依下表選擇適合你電腦的安裝程式。
 
-開啟一次成功完成的 [Desktop Release 工作流程執行記錄](https://github.com/HKUDS/DeepTutor/actions/workflows/desktop-release.yml?query=branch%3Adev)，捲動至 **Artifacts**，下載符合你電腦的目標版本。需要登入 GitHub，且構建產物會在七天後過期。
+若要取得開發預覽版，請開啟一次成功完成的 [Desktop Release 工作流程執行記錄](https://github.com/HKUDS/DeepTutor/actions/workflows/desktop-release.yml?query=branch%3Adev)，下載符合你電腦的 **Artifact**。這些預覽版需要登入 GitHub，且會在七天後過期；已發布的版本下載則不受此限制。
 
 | 你的電腦 | 下載目標 | 安裝程式 |
 | --- | --- | --- |
@@ -172,10 +170,6 @@ deeptutor chat
 | **Partners** | 帳號 | 持續型夥伴、Partner Groups、資源存取權與 IM 頻道 |
 | **Personalization** | 帳號 | My Agents、Personas、Skills、MCP Services、CLI Apps、Memory 與 Settings |
 
-<div align="center">
-<img src="../../assets/figs/web-dev/overview.png" alt="DeepTutor 首頁與工作區導覽" width="900">
-</div>
-
 <details>
 <summary><b>🏗️ 系統架構</b></summary>
 
@@ -207,7 +201,23 @@ Chat 是預設能力，也是大多數工作的起點。單一對話可以進行
 
 使用者可切換的工具包括 `brainstorm`、`web_search`、`paper_search`、`zotero_search`、`reason` 與 `geogebra_analysis`；設定對應的生成模型後，還會有 `imagegen` 與 `videogen`。`rag`、`kb_files`、`knowledge_frontier`、`read_source`、`read_memory`、`write_memory`、`read_skill`、`load_tools`、`exec`、`web_fetch`、`ask_user`、`list_favorites`、`save_favorite`、`write_note`、`search_notes`、`question_bank`、`github`、`consult_subagent`、`workspace_list`、`workspace_read`、`workspace_search`、`workspace_present` 與 `workspace_export` 等情境式工具，會在回合具有相符情境時自動掛載。
 
-情境分成兩類：**固定的工作階段情境**（能力、工作區或課程、工具、知識庫、角色設定、模型，以及 Reading／Mastery 狀態）會延續到後續回合；**參照**（檔案、聊天記錄、書籍、閱讀章節、筆記本、選定的題庫題目、匯入的代理程式）則從 `+` 選單加入，預設只用於單一回合，固定後則用於每一回合。語音按鈕只會轉錄目前的訊息。
+情境分成兩類：**固定的工作階段情境**（能力、工作區或課程、工具、知識庫、角色設定、模型及其支援的推理強度，以及 Reading／Mastery 狀態）會延續到後續回合；**參照**（檔案、聊天記錄、書籍、閱讀章節、筆記本、選定的題庫題目、匯入的代理程式）則從 `+` 選單加入，預設只用於單一回合，固定後則用於每一回合。語音按鈕只會轉錄目前的訊息。
+
+**僅輸出推理時的額度限制。** 當內部推理耗盡輸出額度，卻未產生回答或工具操作時，共用代理程式迴圈會重試一次。預設的 `prompt` 策略會維持原額度。若要立即停止，請在執行環境的 `settings/agents.yaml` 中，於 `capabilities.chat.reasoning_budget_recovery` 下設定 `strategy: stop`。明確提高額度可協助需要更多空間的模型，但也可能增加延遲與用量：
+
+```yaml
+capabilities:
+  chat:
+    responding:
+      max_tokens: 8000
+    reasoning_budget_recovery:
+      strategy: increase_output_budget
+      max_tokens: 16000
+```
+
+恢復額度必須高於一般輸出上限，且不得超過 131072；請選擇模型支援的數值。此設定只套用於一次恢復呼叫，保留既有的回合數與請求逾時限制，也不改變推理強度。軌跡會記錄策略、舊／新上限、每次呼叫的實際額度與累計用量。可見回答遭截斷時仍沿用一般的續寫流程。使用實驗性的 `typescript-native` 執行階段時，明確設定 `stop` 或 `increase_output_budget` 策略，會在回合開始前選用共用的 Python effects host 搭配 TypeScript 排程器；結果中會說明此相容性原因。
+
+Python 歷史記錄建構器也會在濃縮後執行歷史記錄預算計畫。若保留的完整往返對話仍超過額度，該回合會在生成回答前以 `history_budget_exceeded` 停止。已儲存的訊息與工具呼叫／結果配對會保持完整；請開始新對話，或縮短先前過大的往返對話後繼續。此歷史記錄額度與模型完整的情境視窗容量分開計算。
 
 在完整安裝組合中，Home 讓 **Chat**、**Ask Questions**、**Quiz**、**Visualize** 與 **Video Lesson** 一鍵可達；用於建立附引用報告的 **Research** 與提供完整推理解題的 **Solve**，則位於 *More Capabilities* 之下。選取回答中的文字即可開啟 **Little Tutor**，這個專注的側邊欄對話會保持巢狀依附於來源對話。至少傳送三則訊息後，空間允許時左側邊界會為每個問題顯示一個刻度；將游標懸停可預覽、點擊可跳回，或使用 **Alt/Option + ↑/↓** 在問題之間移動。
 
@@ -276,7 +286,7 @@ Book 會將選定來源轉換成互動式**活書**；它不是靜態 PDF，而�
 <img src="../../assets/figs/web-dev/book-widget.png" alt="Book 互動式元件區塊" width="31%">
 </p>
 
-每章都會編譯成可編輯的具型別區塊：文字、提示框、測驗、單字卡、時間軸、程式碼、圖表、互動式 HTML、動畫、概念圖、深入探討與使用者筆記，並有自己的 Page Chat。你可以插入、移動、重新生成、重寫區塊或切換其型別；選取的段落會進入可供檢視的學習摘錄收件匣。即使管理員將書籍以唯讀或共同編輯方式共享，每位讀者的進度、書籤、測驗嘗試、學習摘錄與 Page Chat 仍為私有；共享書籍仍只能由管理員刪除。任何書籍皆可匯出為 Markdown，長時間的編譯可暫停並續行，`deeptutor book health` 會標記來源漂移，`deeptutor book refresh-fingerprints` 則會更新來源基準。
+每章都會編譯成可編輯的具型別區塊：文字、提示框、測驗、單字卡、時間軸、程式碼、圖表、互動式 HTML、動畫、概念圖、深入探討與使用者筆記，並有自己的 Page Chat。你可以檢視並復原章或節的編輯，插入、移動、重新生成、重寫或切換區塊；選取的段落會進入學習摘錄收件匣。即使管理員將書籍以唯讀或共同編輯方式共享，每位讀者的進度、書籤、測驗嘗試、學習摘錄與 Page Chat 仍為私有；共享書籍仍只能由管理員刪除。任何書籍皆可匯出為 Markdown，長時間的編譯可暫停並續行，`deeptutor book health` 會標記來源漂移，`deeptutor book refresh-fingerprints` 則會更新來源基準。
 
 </details>
 
@@ -307,6 +317,8 @@ Resources 是目前工作區中可重複使用的資源庫。在這裡保留原�
 內建的 LightRAG 引擎可透過 `pip install 'deeptutor[rag-lightrag]'` 安裝；此額外套件包含明確支援的 LightRAG SDK，但不會安裝 MinerU。若需要結構化解析，請在 Document Parsing 中另行選擇 MinerU，並設定其雲端模式，或安裝目前的本機 CLI。MinerU 支援 PDF、常見點陣圖格式、DOCX、PPTX 與 XLSX；舊版 `magic-pdf` 仍僅支援 PDF。Text-only 與其他解析引擎不需要 MinerU。
 
 原生 LightRAG 的查詢與增量索引，需要已發布索引所記錄的 embedding 設定，包括模型、維度與端點身分。若該設定有變更，請還原原始設定，或以目前的 embedding 重建索引；未記錄 embedding 身分的索引則必須重建。知識庫詳細資料與索引版本檢視會顯示恢復指引，檔案仍可正常檢視與下載。
+
+帶有明確向量索引的 OpenAI 相容 HTTP embedding 回應，會還原為輸入順序。重複、缺漏或無效的索引會在向量進入索引建立流程前遭到拒絕；不含索引的代理回應則保留位置順序。若閘道先前曾回傳順序變動且帶有索引的向量，請重建受影響的索引，以取代舊的文字／向量對應關係。既有索引檔案會予以保留。
 
 **評估知識庫。** 有多種引擎可選擇時，「哪個引擎在這裡檢索得最好？」需要實際測量，而 `deeptutor kb eval` 就能回答這個問題。建立 QA 資料集（每行一個 JSON 物件，包含 `query` 與理想檢索應回傳的 `gold` 段落），再使用 `deeptutor kb eval <name> --dataset qa.jsonl --top-k 5 [--mode hybrid] [--save baseline.json]` 評估知識庫。每個案例都透過與聊天回合相同的路徑檢索，依完全相同的文字或詞彙重疊程度，將排序後的引用與標準段落配對（可用 `--min-ratio` 調整門檻；不評估語意等價性），並回報 **Recall@k／Precision@k／nDCG@k／MRR／MAP／Hit@k**。指標是依排序計算的純函式，無須模型評判輸出。使用 `deeptutor kb eval-diff baseline.json candidate.json` 比較已儲存的報告，查看各指標與各案例的變化。在 `kb eval` 中使用 `--rewrite off` 或 `--rewrite standalone`，可比較原始查詢與改寫後的查詢；報告會保留查詢改寫紀錄。搜尋失敗的案例（例如缺少索引或憑證錯誤）不會計分，而是另外回報，避免拉低平均值。PageIndex 透過推理進行檢索，不回傳已排序的區塊，因此不納入評估。
 
@@ -375,7 +387,7 @@ Personalization 會隨帳號跨工作區沿用。你可以選擇導師應如何�
 <img src="../../assets/figs/web-dev/agents.png" alt="DeepTutor My Agents 工作區" width="900">
 </div>
 
-**連接即時代理程式** — Claude Code、Codex、Grok CLI、Antigravity、Kimi、opencode、MiMo Code、Hermes Agent、OpenClaw、DeepSeek Harness 或一位 Partner — 並從 Chat 回合中諮詢它。DeepTutor 會執行選定的代理程式，透過 `consult_subagent` 將其工作即時串流至 Activity 面板；Agent chip 或 `@` 會讓此連線持續附著於工作階段。本機代理程式執行框架使用各自的驗證、工作目錄與工作階段儲存機制。
+**連接即時代理程式** — Claude Code、Codex、Grok CLI、Antigravity、Kimi、opencode、MiMo Code、Hermes Agent、OpenClaw、DeepSeek Harness、已設定的 ACP 代理程式或一位 Partner — 並從 Chat 回合中諮詢它。DeepTutor 會執行選定的代理程式，透過 `consult_subagent` 將其工作即時串流至 Activity 面板；Agent chip 或 `@` 會讓此連線持續附著於工作階段。本機代理程式執行框架使用各自的驗證、工作目錄與工作階段儲存機制。
 
 **匯入過往對話** — 將 ChatGPT、Claude Code 與 Codex 的對話匯入為可搜尋、可繼續的參照。ChatGPT 使用官方的 `conversations.json` 匯出檔；Claude 記錄依專案或工作目錄選取，Codex 記錄則依日期選取。透過 `+` → My Agents 參照匯入的對話，而不會將其變成 DeepTutor 自己的口吻。
 
@@ -422,10 +434,14 @@ Settings 是操作控制中心，開啟時會顯示用於設定介面與模型�
 
 **越南語：** 在 **Settings → General** 中，將 **Interface language** 設為 **Tiếng Việt**，然後選擇 **Apply changes**。**Model output language** 可獨立設定：若要取得越南語回答，請在該處選擇 **Tiếng Việt**；也可以在使用越南語介面的同時保留其他回答語言。回答品質取決於所選模型對越南語的支援。
 
+**NVIDIA NIM 嵌入：** 在 **Settings → Embedding** 選擇 **NVIDIA NIM**，即可使用 `nvidia/nemotron-3.5-embed-8b` 進行文字檢索。預設端點為 `https://integrate.api.nvidia.com/v1/embeddings`；自訂的完整端點會依輸入原樣使用。建立索引時傳送 `input_type=passage`，檢索時傳送 `input_type=query`，連線檢查則預設使用 passage。託管模型預設為 4096 維，並接受 1 至 4096 的維度設定。此介接器僅支援文字；影像嵌入與自架模型專屬選項不在支援範圍內。既有 OpenAI 相容設定檔會保留原先的請求行為；若要切換既有知識庫，請選擇 NIM 介接器並重新建立索引。請參閱 [NVIDIA API 規格](https://docs.api.nvidia.com/nim/reference/nvidia-nemotron-3_5-embed-8b-infer)。
+
 **Xiaomi MiMo 語音。** 新增 Xiaomi MiMo 供應商，輸入 `https://api.xiaomimimo.com/v1` 與其 API 金鑰，再到 Settings → Voice 新增 `mimo-v2.5-tts`。選擇 `mimo_default`、`冰糖` 或 `苏打` 等預設音色，使用 `wav` 或 `pcm16` 輸出，並在套用前試聽。語音指示可控制風格與語速。此介接器只支援預設音色的語音合成；音色設計與聲音複製需要獨立模型，目前不受支援。若舊的 MiMo 語音模型是透過通用的 OpenAI 相容介接器設定，請使用 Xiaomi MiMo 供應商重新建立語音項目，以採用 chat-completions 協定。請參閱 [MiMo 官方語音指南](https://mimo.mi.com/docs/zh-CN/quick-start/usage-guide/audio/speech-synthesis-v2.5)。
 
 **MiniMax 語音** — 在 Settings → Voice 中，為文字轉語音選擇 MiniMax，並選用 `speech-2.8-hd`。設定 MiniMax API 金鑰，並明確選擇系統音色或輸入自訂音色 ID。API base 預設為 `https://api.minimax.io/v1`；中國地區請使用 `https://api.minimaxi.com/v1`。朗讀與音色預覽使用原生語音端點，支援 MP3、WAV、FLAC 或 PCM 輸出，以及取樣率、語速與語言控制。音色 ID 與帳號可用性請參閱 [MiniMax 語音 API](https://platform.minimax.io/docs/api-reference/speech-t2a-http)。
 
+
+**選取文字朗讀：** 在 Chat、Mastery Path 或 Reading 中選取單字或段落，再點擊附近工具列中的 **Read aloud**。點擊 **Stop** 可取消合成或播放。此功能只朗讀選取內容，使用 **Settings → Voice** 中設定的目前 TTS 供應商與音色，不會傳送聊天回合。單純選取文字不會開始播放。你必須先備妥可用的語音服務；此功能不會代為安裝或選擇服務。
 
 **Video Learning** 位於 Settings → Learning & conversation，可設定 Reading 使用的 YouTube 字幕與 Invidious 存取。若要使用 Invidious，請設定由管理員管理的後端 API 來源（例如 `http://127.0.0.1:3000`）與瀏覽器可存取的公開來源、測試連線、選擇 Invidious 並儲存。Reading 新增素材對話框中的 **Browse Invidious** 可搜尋影片，並存取已連接的訂閱與播放清單。YouTube 播放使用官方隱私強化版播放器；缺少字幕的狀態會明確顯示，並限制導師可用的證據，但不會阻擋原生播放。在原始碼 checkout 中，執行 `python scripts/install_extras.py video-learning` 可使用預設的 YouTube 字幕載入器。既有的 Watching 連結會遷移至 Reading，保留對話記錄、相容的逐字稿、筆記與進度；新的時間戳筆記則是 Reading 註解。Bilibili 使用自己的播放與字幕路徑。
 

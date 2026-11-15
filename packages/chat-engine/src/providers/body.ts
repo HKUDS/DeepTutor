@@ -37,7 +37,9 @@ export async function readBody(
     return chunks.join("");
   } finally {
     signal.removeEventListener("abort", cancel);
-    await reader.cancel().catch(() => {});
+    // Cancellation closes the local stream immediately, but the source's
+    // cleanup promise can outlive the request's timeout or cancellation.
+    void reader.cancel().catch(() => {});
     reader.releaseLock();
   }
 }

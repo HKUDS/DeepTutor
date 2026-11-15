@@ -172,3 +172,32 @@ def test_models_prefix_does_not_change_other_vendor_verdicts() -> None:
     assert supports_vision("custom", "openai/gpt-3.5-turbo") is False
     # The bare id keeps resolving exactly as before.
     assert supports_vision("custom", "gemini-2.5-flash") is True
+
+
+def test_deepseek_v41_flash_is_vision_capable() -> None:
+    """DeepSeek-V4.1-Flash is natively multimodal under each of its published ids."""
+    for model in (
+        "deepseek-flash",
+        "deepseek-v4.1-flash",
+        "deepseek-v4.1-flash-1017",
+        "DeepSeek-V4.1-Flash-1017",
+        "deepseek-v4-flash-vision-exp",
+        # Gateways namespace the id; resolution must survive the prefix.
+        "deepseek/deepseek-flash",
+        "deepseek/deepseek-v4.1-flash-1017",
+        "vanchin/deepseek-v4.1-flash-1017",
+    ):
+        assert supports_vision("dashscope", model) is True, model
+        assert supports_vision("deepseek", model) is True, model
+
+
+def test_deepseek_text_models_stay_fail_closed() -> None:
+    """The vision overrides must not leak to other DeepSeek models."""
+    for model in ("deepseek-chat", "deepseek-reasoner", "deepseek-v3.2"):
+        assert supports_vision("deepseek", model) is False, model
+
+
+def test_deepseek_vision_override_keeps_sibling_capabilities() -> None:
+    """Vision-only overrides still fall through to the broader ``deepseek`` entry."""
+    assert has_thinking_tags("deepseek", "deepseek-v4.1-flash-1017") is True
+    assert supports_response_format("deepseek", "deepseek-v4.1-flash-1017") is False

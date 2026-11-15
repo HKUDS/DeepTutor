@@ -181,6 +181,8 @@ async def _run_with_stall_guard(
 class LlamaIndexPipeline:
     """Pipeline that indexes and retrieves KB content via LlamaIndex."""
 
+    supports_document_scope = True
+
     def __init__(
         self,
         kb_base_dir: Optional[str] = None,
@@ -394,11 +396,21 @@ class LlamaIndexPipeline:
         try:
             loop = asyncio.get_running_loop()
             top_k = kwargs.get("top_k") or default_top_k()
+            # Plain-text nodes carry no document_key; the scoped matcher also
+            # needs the raw root to recognise them by location (#2374).
+            scope_kwargs = (
+                {"document_keys": document_keys, "raw_root": kb_dir / "raw"}
+                if document_keys is not None
+                else {}
+            )
             nodes = await loop.run_in_executor(
                 None,
                 copy_context().run,
                 lambda: storage.retrieve_nodes(
-                    storage_dir, query, top_k=top_k, document_keys=kwargs.get("document_keys")
+                    storage_dir,
+                    query,
+                    top_k=top_k,
+                    **scope_kwargs,
                 ),
             )
 

@@ -228,6 +228,8 @@ def is_transient_transport_error(exc: Exception) -> bool:
     intentionally excluded. OpenAI-compatible clients wrap httpx/httpcore
     failures, so the complete exception chain is inspected.
     """
+    if getattr(exc, "retryable", None) is False:
+        return False
     for current in _exception_chain(exc):
         if isinstance(
             current,

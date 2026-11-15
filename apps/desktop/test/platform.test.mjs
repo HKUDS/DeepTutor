@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { generateKeyPairSync, sign } from 'node:crypto';
 import { readdir } from 'node:fs/promises';
-import { agentMarker, edition, runtimeLayout, targetId } from '../src/platform.mjs';
+import { agentMarker, edition, runtimeLayout, runtimePath, targetId } from '../src/platform.mjs';
 import { canonicalManifest, verifyManifest } from '../src/bundles.mjs';
 
 test('each build target is named in full and in short', () => {
@@ -35,4 +35,17 @@ test('a core bundle only installs on the platform it was built for', () => {
   manifest.signature = sign(null, Buffer.from(canonicalManifest(manifest)), privateKey).toString('base64');
   assert.equal(verifyManifest(manifest, publicKey, 'x64', 'win32'), manifest);
   assert.throws(() => verifyManifest(manifest, publicKey, 'x64', 'darwin'), /not compatible/);
+});
+
+
+test('Finder launch discovers host CLI paths after the bundled runtimes', () => {
+  const delimiter = process.platform === 'win32' ? ';' : ':';
+  const paths = runtimePath('/bundle/node/node', '/bundle/python/python').split(delimiter);
+  assert.deepEqual(paths.slice(0, 2), ['/bundle/node', '/bundle/python']);
+  assert.equal(paths.length, new Set(paths).size);
+  if (process.platform === 'darwin') {
+    assert.ok(paths.includes('/opt/homebrew/bin'));
+    assert.ok(paths.includes('/usr/local/bin'));
+    assert.ok(paths.some(p => p.endsWith('/.local/bin')));
+  }
 });

@@ -1090,3 +1090,27 @@ class TestFactoryRouting:
 
     def test_factory_builds_the_ima_pipeline(self) -> None:
         assert isinstance(get_pipeline("ima"), ImaPipeline)
+
+
+def test_subscribed_content_denial_is_actionable_and_never_cited(tmp_path):
+    from deeptutor.services.rag.pipelines.ima.envelope import unwrap
+
+    base = _kb_config(tmp_path, {"client_id": "cid", "api_key": "key", "knowledge_base_id": "kb-1"})
+
+    class Denied(_SearchStub):
+        async def get_media_content(self, media_id):
+            unwrap(
+                {"code": 99, "msg": "没有权限通过skill获取订阅知识库的文件，请前往ima客户端尝试"},
+                status_code=200,
+            )
+
+    result = asyncio.run(
+        ImaPipeline(
+            kb_base_dir=base,
+            client_factory=lambda _: Denied([{"media_id": "pdf_1", "title": "News"}]),
+        ).search("q", "IMA")
+    )
+    assert result["error_type"] == "content_access_denied"
+    assert result["sources"] == []
+    assert "IMA client" in result["answer"]
+    assert result["diagnostics"]["hydration_failures"][0]["error_type"] == "content_access_denied"

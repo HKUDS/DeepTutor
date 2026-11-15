@@ -41,6 +41,7 @@ from .._turn_runtime_shared import (
     _reading_material_id,
     _reading_material_revision,
     _reading_references,
+    _reading_sections_context,
     _reading_viewport,
     _reading_viewport_image_attachments,
     _reading_workspace_id,
@@ -535,6 +536,11 @@ class TurnExecutor:
                         filename=rec.get("filename", ""),
                         mime_type=rec.get("mime_type", ""),
                         id=rec.get("id", ""),
+                        # Prior-turn images are labelled for the model (#2632):
+                        # without the marker the multimodal layer presents them
+                        # like current-turn uploads.
+                        historical=bool(rec.get("historical", False)),
+                        source_message_id=str(rec.get("source_message_id", "") or ""),
                     )
                     for rec in prior_images
                 )
@@ -793,6 +799,12 @@ class TurnExecutor:
                     context_parts.append("[Attached Documents]\n" + "\n\n".join(document_texts))
                 if book_context:
                     context_parts.append(f"[Book Context]\n{book_context}")
+                if reading_references:
+                    reading_context = await asyncio.to_thread(
+                        _reading_sections_context, reading_references
+                    )
+                    if reading_context:
+                        context_parts.append(f"[Reading Sections]\n{reading_context}")
                 if notebook_context:
                     context_parts.append(f"[Notebook Context]\n{notebook_context}")
                 if history_context:
@@ -944,6 +956,37 @@ class TurnExecutor:
                     },
                     **parent_kwargs,
                 )
+
+            # The main chat surface is the learner's primary source of
+            # questions. Record it as an L1 trace so the memory backlog and
+            # ``recall.recent_queries`` see ordinary conversation, not only KB
+            # searches. Side chats stay isolated from global memory, regenerate
+            # turns do not persist a user row, and trace capture must never
+            # break the turn.
+            if new_user_message_id is not None and not side_chat_context:
+                trace_text = raw_user_content.strip()
+                if trace_text:
+                    try:
+                        from deeptutor.modules.catalog import module_enabled
+
+                        if module_enabled("memory"):
+                            from deeptutor.services.memory import get_memory_store
+                            from deeptutor.services.memory.trace import TraceEvent
+
+                            await get_memory_store().emit(
+                                TraceEvent.new(
+                                    "chat",
+                                    "query",
+                                    {
+                                        "query": trace_text[:2000],
+                                        "capability": capability_name,
+                                    },
+                                    session_id=session_id,
+                                    turn_id=turn_id,
+                                )
+                            )
+                    except Exception:
+                        logger.warning("chat trace emit failed for turn %s", turn_id, exc_info=True)
 
             if not side_chat_context:
                 from deeptutor.services.task_board import get_task_board_store

@@ -560,10 +560,23 @@ def _install_request_workspace(request) -> None:
             raise WorkspaceError("Restore this workspace before changing its data.")
         # Management/migration requests acquire their own exclusive lease.
         task_board_request = path == "/api/task-board" or path.startswith("/api/task-board/")
-        if getattr(request, "method", None) is not None and (
-            not management
-            or (task_board_request and path != "/api/task-board/events")
-            or (path.startswith("/api/calendar/") and path != "/api/calendar/stream")
+        # A progress stream can outlive the work it reports: a queued indexing
+        # task that never starts keeps the SSE open indefinitely. Holding the
+        # request's shared lease for the stream's whole lifetime then answers
+        # "Workspace data is busy" to every exclusive workspace operation
+        # (move, registration update, migration) until the tab is closed, so
+        # this read-only observer opts out.
+        progress_stream = path.startswith("/api/knowledge-bases/tasks/") and path.endswith(
+            "/stream"
+        )
+        if (
+            getattr(request, "method", None) is not None
+            and not progress_stream
+            and (
+                not management
+                or (task_board_request and path != "/api/task-board/events")
+                or (path.startswith("/api/calendar/") and path != "/api/calendar/stream")
+            )
         ):
             from deeptutor.services.workspace.activity import acquire_activity
 
@@ -692,6 +705,15 @@ _LEARNER_SETTINGS_WRITE_ROUTES = frozenset(
 )
 
 
+_LEARNER_VOICE_ROUTES = frozenset(
+    {
+        # Chat composer: record a message, then read an answer aloud.
+        ("POST", "/api/voice/stt"),
+        ("POST", "/api/voice/tts"),
+    }
+)
+
+
 def _learning_surface_for_path(
     path: str, method: str = "GET", *, route_path: str | None = None
 ) -> str:
@@ -731,6 +753,13 @@ def _learning_surface_for_path(
     # admin-grade operations (catalog apply, data migration), so a plain
     # prefix match would open too much.
     if route_path and (method.upper(), route_path) in _LEARNER_SETTINGS_WRITE_ROUTES:
+        return "chat"
+    # Recording a question and reading an answer aloud run through the shared
+    # voice router, whose module contract is "any authenticated user may call
+    # it". Both endpoints belong to the chat composer, so map them to "chat" on
+    # the resolved route template like the settings writes above: matching the
+    # /api/voice prefix would also admit the admin voice-catalog routes (#2437).
+    if route_path and (method.upper(), route_path) in _LEARNER_VOICE_ROUTES:
         return "chat"
     # Choosing the model for a chat turn is part of chat. The handler is
     # already grant-filtered. Match this exact path only: a prefix of

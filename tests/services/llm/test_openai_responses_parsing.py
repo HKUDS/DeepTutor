@@ -65,6 +65,7 @@ async def test_sse_arguments_can_be_correlated_by_item_id() -> None:
         ]
     )
 
+    response._events.append({"type": "response.completed"})
     _, tool_calls, _ = await consume_sse(response)  # type: ignore[arg-type]
 
     assert len(tool_calls) == 1
@@ -96,6 +97,7 @@ async def test_sdk_arguments_can_be_correlated_by_item_id() -> None:
         SimpleNamespace(type="response.output_item.done", item=function_call),
     ]
 
+    events.append(SimpleNamespace(type="response.completed"))
     _, tool_calls, _, _, _ = await consume_sdk_stream(_sdk_events(events))
 
     assert len(tool_calls) == 1
@@ -127,6 +129,7 @@ async def test_sdk_preserves_deepseek_reasoning_text_for_next_tool_round() -> No
         SimpleNamespace(type="response.output_item.done", item=function_call),
     ]
     provider_events: list[tuple[str, dict]] = []
+    events.append(SimpleNamespace(type="response.completed"))
 
     _, tool_calls, _, _, reasoning = await consume_sdk_stream(
         _sdk_events(events),
@@ -328,6 +331,7 @@ async def test_argument_deltas_are_preserved_without_a_done_event(consumer: str)
             "delta": '"calculus"}',
         },
         {"type": "response.output_item.done", "item": item},
+        {"type": "response.completed"},
     ]
 
     if consumer == "sse":
@@ -411,6 +415,7 @@ async def test_a_call_without_an_item_id_does_not_inherit_another_calls_identity
         },
     ]
 
+    events.append({"type": "response.completed"})
     _, tool_calls, _ = await consume_sse(_SSEFixture(events))
 
     assert [(call.name, call.arguments) for call in tool_calls] == [
@@ -455,6 +460,7 @@ async def test_sse_reports_arguments_as_they_stream() -> None:
         ]
     )
     seen: list[tuple[str, str, str]] = []
+    response._events.append({"type": "response.completed"})
 
     async def _on_tool_args_delta(call_id: str, name: str, arguments: str) -> None:
         seen.append((call_id, name, arguments))
@@ -499,6 +505,7 @@ async def test_sdk_stream_reports_arguments_as_they_stream() -> None:
         ),
     ]
     seen: list[str] = []
+    events.append(SimpleNamespace(type="response.completed"))
 
     async def _on_tool_args_delta(call_id: str, name: str, arguments: str) -> None:
         seen.append(arguments)
@@ -524,6 +531,7 @@ async def test_unnamed_call_is_not_previewed() -> None:
         ]
     )
     seen: list[str] = []
+    response._events.append({"type": "response.completed"})
 
     async def _on_tool_args_delta(call_id: str, name: str, arguments: str) -> None:
         seen.append(arguments)

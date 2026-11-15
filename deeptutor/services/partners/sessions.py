@@ -47,6 +47,25 @@ def conversation_scope(channel: str, chat_type: str) -> str:
     )
 
 
+def _is_message_record(record: Any) -> bool:
+    if not isinstance(record, dict) or not record.get("role"):
+        return False
+    if record.get("content"):
+        return True
+    attachments = record.get("attachments")
+    return (
+        isinstance(record.get("content"), str)
+        and isinstance(attachments, list)
+        and any(
+            isinstance(item, dict)
+            and item.get("type") == "image"
+            and isinstance(item.get("filename"), str)
+            and bool(item["filename"])
+            for item in attachments
+        )
+    )
+
+
 class PartnerSessionStore:
     """Append-only JSONL persistence for one partner's conversations."""
 
@@ -142,6 +161,7 @@ class PartnerSessionStore:
         """Copy *source_key*'s full history into *new_key* and archive the source.
 
         Returns the new session's summary, or ``None`` if the source is empty.
+        Raises ``FileExistsError`` if the destination already exists.
         The new key keeps the conversation going with the same context while the
         original is preserved (archived) and still resumable.
         """
@@ -150,7 +170,7 @@ class PartnerSessionStore:
             return None
         dest = self._path(new_key)
         with self._write_lock:
-            with open(dest, "a", encoding="utf-8") as f:
+            with open(dest, "x", encoding="utf-8") as f:
                 for record in records:
                     f.write(json.dumps(record, ensure_ascii=False) + "\n")
         self.set_archived(source_key, True)
@@ -259,7 +279,7 @@ class PartnerSessionStore:
                         data = json.loads(line)
                     except json.JSONDecodeError:
                         continue
-                    if isinstance(data, dict) and data.get("role") and data.get("content"):
+                    if _is_message_record(data):
                         records.append(data)
         except OSError:
             logger.exception("Failed to read partner session %s", session_key)
@@ -273,7 +293,7 @@ class PartnerSessionStore:
         max_chars: int = _HISTORY_MAX_CHARS,
     ) -> list[dict[str, str]]:
         """Return trailing history in OpenAI message format, budget-capped."""
-        records = self._read_records(session_key)
+        records = [record for record in self._read_records(session_key) if record.get("content")]
         window = [
             {"role": str(r["role"]), "content": str(r["content"])}
             for r in records[-max_messages:]
@@ -324,11 +344,7 @@ class PartnerSessionStore:
                             record = json.loads(line)
                         except json.JSONDecodeError:
                             continue
-                        if (
-                            not isinstance(record, dict)
-                            or not record.get("role")
-                            or not record.get("content")
-                        ):
+                        if not _is_message_record(record):
                             continue
                         if cursor is None or total < cursor:
                             window.append(record)

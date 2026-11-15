@@ -134,6 +134,23 @@ class OpenAICompatibleEmbeddingAdapter(BaseEmbeddingAdapter):
             first = c[0]
             # list of {"embedding":[...]}
             if isinstance(first, dict) and "embedding" in first:
+                if any(isinstance(item, dict) and "index" in item for item in c):
+                    # An explicit provider index identifies the input, not the
+                    # position of this row in the response array. Do not let a
+                    # partial/duplicate mapping silently attach vectors to the
+                    # wrong documents. Index-free proxy schemas retain their
+                    # historical positional behavior.
+                    indices = [item.get("index") if isinstance(item, dict) else None for item in c]
+                    if any(type(index) is not int for index in indices) or set(indices) != set(
+                        range(len(c))
+                    ):
+                        raise ValueError(
+                            "Embedding response indices must identify each input exactly once."
+                        )
+                    return [
+                        item.get("embedding") or []
+                        for item in sorted(c, key=lambda item: item["index"])
+                    ]
                 return [item.get("embedding") or [] for item in c if isinstance(item, dict)]
             # list of vectors [[...], ...]
             if isinstance(first, list):

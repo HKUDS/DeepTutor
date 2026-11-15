@@ -69,6 +69,20 @@ class LLMCircuitBreakerError(LLMError):
     pass
 
 
+class LLMOperationPaused(LLMProviderTransportError):
+    """An uncertain operation must not be replaced by an automatic retry."""
+
+    error_code = "provider_operation_paused"
+    retryable = False
+
+    def __init__(self, reason: str):
+        super().__init__(
+            f"Provider operation paused: {reason}. No replacement was submitted; "
+            "the remote operation may still be running.",
+            partial_response=True,
+        )
+
+
 class LLMAPIError(LLMError):
     """
     Raised when an API call to an LLM provider fails.

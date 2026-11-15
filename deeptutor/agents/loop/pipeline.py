@@ -52,6 +52,7 @@ from deeptutor.capabilities import (
 )
 from deeptutor.capabilities.protocol import END_LOOP
 from deeptutor.core.context import UnifiedContext
+from deeptutor.core.stream import StreamEvent, StreamEventType
 from deeptutor.core.tool_protocol import ToolLookup
 from deeptutor.core.trace import (
     build_trace_metadata,
@@ -185,6 +186,22 @@ def _merge_prompt_packs(base: dict[str, Any], override: dict[str, Any]) -> dict[
         else:
             merged[key] = value
     return merged
+
+
+def _format_ask_user_prompt(ask_user_payload: dict[str, Any]) -> str:
+    """Render the ask_user payload as a prompt event-stream clients can show."""
+    intro = str(ask_user_payload.get("intro") or "").strip()
+    lines: list[str] = []
+    for index, question in enumerate(ask_user_payload.get("questions") or [], 1):
+        if not isinstance(question, dict):
+            continue
+        header = str(question.get("header") or "").strip()
+        prompt = str(question.get("prompt") or "").strip()
+        lines.append(f"{index}. {header + ': ' if header else ''}{prompt}")
+    body = "\n".join(lines)
+    if intro and body:
+        return f"{intro}\n\n{body}"
+    return body or intro or _flatten_ask_user_summary(ask_user_payload)
 
 
 def _flatten_ask_user_summary(ask_user_payload: dict[str, Any]) -> str:
@@ -479,7 +496,7 @@ class AgenticLoopPipeline:
             ),
             notebook_manifest=self._build_notebook_manifest(),
             workspace_note=self._workspace_system_note(context),
-            capability_blocks=self._capability_system_blocks(context),
+            capability_blocks=self._capability_system_blocks(context, enabled_tools),
             include_tool_manifest=include_tool_manifest,
         )
         stable_blocks, self._runtime_snapshots = self._prompt_assembler.split_for_replay(
@@ -564,17 +581,7 @@ class AgenticLoopPipeline:
             snapshots[name] = (
                 f"[Runtime context: {name}]\nThis section is now empty; earlier values no longer apply."
             )
-        # A changed runtime section replaces its old version in this request.
-        # The archive remains intact; actual dialogue/tool evidence is untouched.
-        messages = [
-            item
-            for item in messages
-            if not (
-                item.get("role") == "user"
-                and isinstance(item.get("_context_snapshot"), str)
-                and snapshots.get(item["_context_snapshot"]) != item.get("content")
-            )
-        ]
+        # Already-sent snapshots belong to the cache prefix; append their updates.
         self._model_turn_start = len(messages)
         for name, snapshot in snapshots.items():
             if previous_snapshots.get(name) != snapshot:
@@ -791,6 +798,15 @@ class AgenticLoopPipeline:
                 context.user_message, context.active_capability, context.enabled_tools or []
             )
 
+        def has_book_authoring():
+            from deeptutor.modules.catalog import module_enabled
+
+            if not module_enabled("books") or not context.metadata.get("book_references"):
+                return False
+            from deeptutor.book.authoring_tool import authoring_scope
+
+            return bool(authoring_scope(context))
+
         composed = compose_enabled_tools(
             registry=self.tool_lookup,
             requested_tools=context.enabled_tools,
@@ -807,6 +823,7 @@ class AgenticLoopPipeline:
                 # the investigation over attached sources), not the answer loop.
                 # Keep it off the answer surface even when sources are present.
                 has_sources=False,
+                has_book_authoring=has_book_authoring(),
                 has_memory=user_has_memory(),
                 has_notebooks=user_has_notebooks(),
                 # A partner turn mounts the bank even when it is still empty:
@@ -830,6 +847,7 @@ class AgenticLoopPipeline:
             ),
             capability_owned=self._capability_owned_tools(context),
             exclusive=self._exclusive_capability_active(context),
+            coexisting=self._capability_coexisting_tools(context),
             builtin_whitelist=(
                 set(context.allowed_builtin_tools)
                 if context.allowed_builtin_tools is not None
@@ -882,6 +900,19 @@ class AgenticLoopPipeline:
             names.extend(cap.owned_tools)
         return tuple(names)
 
+    def _capability_coexisting_tools(self, context: UnifiedContext) -> tuple[str, ...]:
+        """Built-ins the active exclusive capability declares as coexisting.
+
+        Honoured only in the exclusive branch of
+        :func:`~deeptutor.agents._shared.tool_composition.compose_enabled_tools`
+        (issue #2612): each name still passes its usual gate there, so a
+        declaration never forces anything on.
+        """
+        names: list[str] = []
+        for cap in self._active_loop_capabilities(context):
+            names.extend(getattr(cap, "coexisting_tools", ()) or ())
+        return tuple(names)
+
     def _capability_rebinding_tools(self, context: UnifiedContext) -> frozenset[str]:
         """Tools that repoint the rest of the round at a different target.
 
@@ -895,7 +926,11 @@ class AgenticLoopPipeline:
             names.extend(getattr(cap, "rebinding_tools", ()) or ())
         return frozenset(names)
 
-    def _capability_system_blocks(self, context: UnifiedContext):
+    def _capability_system_blocks(
+        self,
+        context: UnifiedContext,
+        enabled_tools: list[str] | None = None,
+    ):
         blocks = []
         for cap in self._active_loop_capabilities(context):
             block = cap.system_block(
@@ -905,6 +940,22 @@ class AgenticLoopPipeline:
             )
             if block is not None:
                 blocks.append(block)
+            # An exclusive capability that keeps coexisting built-ins mounted
+            # (e.g. the web pair, #2612) must also say so in its own prompt —
+            # otherwise the model reads the exclusive playbook as "no web this
+            # turn" and disclaims tools that are actually mounted. The mention
+            # is filtered through the composed list, so a tool whose gate
+            # closed (web_search toggled off) is never advertised.
+            coexisting_block = getattr(cap, "coexisting_tools_block", None)
+            if not callable(coexisting_block):
+                continue
+            extra_block = coexisting_block(
+                context,
+                language=self.language,
+                mounted_tools=enabled_tools or [],
+            )
+            if extra_block is not None:
+                blocks.append(extra_block)
         return blocks
 
     def _capability_pre_loop_seed(self, context: UnifiedContext) -> str:
@@ -1289,6 +1340,22 @@ class AgenticLoopPipeline:
             )
             return False
 
+        # The turn is about to park in ``waiting_input`` until the reply queue
+        # yields. Executor-side state is not visible to clients that only read
+        # the event stream, so announce the pause here: without it such clients
+        # see no events at all and cannot tell a pending question from a hang.
+        await stream.emit(
+            StreamEvent(
+                type=StreamEventType.WAIT_FOR_INPUT,
+                source=self.event_source,
+                stage=self.event_stage,
+                content=_format_ask_user_prompt(ask_user),
+                metadata={
+                    "ask_user": ask_user,
+                    "tool_call_id": dispatch.pause_tool_call_id,
+                },
+            )
+        )
         raw_reply = await waiter()
         if raw_reply is None:
             return False
@@ -1413,6 +1480,15 @@ class AgenticLoopPipeline:
         args: dict[str, Any],
         context: UnifiedContext,
     ) -> dict[str, Any]:
+        if tool_name == "propose_book_edit":
+            from deeptutor.book.authoring_tool import authoring_scope
+
+            return {
+                **args,
+                "_book_scope": authoring_scope(context),
+                "_source_session_id": context.session_id,
+                "_source_turn_id": str(context.metadata.get("turn_id", "")),
+            }
         runtime_workspace = context.runtime.workspace
         if runtime_workspace is not None:
             task_dir = None
@@ -1627,11 +1703,29 @@ class AgenticLoopPipeline:
             stream=stream,
             retrieve_meta=retrieve_meta,
         )
-        if not result.get("success"):
-            return None
         metadata = result.get("metadata") or {}
-        if metadata.get("error_type") or metadata.get("needs_reindex"):
-            return None
+        if not result.get("success") or metadata.get("error_type") or metadata.get("needs_reindex"):
+            # Keep retrieval failures visible in both the replayable trace and
+            # the model context. Never let an error become a citable passage.
+            error_type = str(
+                metadata.get("error_type")
+                or ("needs_reindex" if metadata.get("needs_reindex") else "retrieval_failed")
+            )
+            note = f"Knowledge base {kb_name}: retrieval unavailable ({error_type}). No source content was obtained; do not claim this library was consulted successfully."
+            if error_type == "content_access_denied":
+                note += " IMA restricts subscribed-library files to its own client."
+            await stream.observation(
+                note,
+                source=self.event_source,
+                stage=self.event_stage,
+                metadata={
+                    **retrieve_meta,
+                    "call_state": "error",
+                    "trace_layer": "summary",
+                    "error_type": error_type,
+                },
+            )
+            return note, []
         text = str(metadata.get("content") or metadata.get("answer") or "").strip()
         if not text:
             return None
@@ -1761,7 +1855,7 @@ class AgenticLoopPipeline:
         Returns ``None`` when the measurement fails, so the turn is unaffected.
         """
         loaded = self._deferred_loader.loaded_names if self._deferred_loader is not None else set()
-        return build_context_budget(
+        budget = build_context_budget(
             blocks=self._last_prompt_blocks,
             request=request,
             model=str(self.model or ""),
@@ -1770,6 +1864,12 @@ class AgenticLoopPipeline:
             loaded_deferred_names=loaded,
             deferred_tool_count=self._unloaded_deferred_tool_count(loaded),
         )
+        # The composer's runtime readout shows the model; the effective
+        # reasoning effort rides along when one was resolved for the turn
+        # (#641) — a provider default (``None`` here) stays implicit.
+        if budget is not None and self.reasoning_effort:
+            budget["reasoning_effort"] = str(self.reasoning_effort)
+        return budget
 
     def _unloaded_deferred_tool_count(self, loaded: set[str]) -> int:
         """Extended tools whose full schemas never entered the window.
@@ -2024,10 +2124,16 @@ class AgenticLoopPipeline:
             return ""
         from deeptutor.agents._shared.workspace_prompt import workspace_system_note
 
+        # The note is replayed as the "workspace" runtime snapshot inside the
+        # cached prompt prefix, so it must stay byte-identical for the whole
+        # session (issue #2621). The per-turn output folder therefore rides in
+        # the trailing user message instead — see LoopPromptAssembler
+        # .user_message — where fresh bytes cannot invalidate the prefix.
         return workspace_system_note(
             context,
             language=self.language,
             allow_export=True,
+            state_turn_path=False,
         )
 
     def _t(self, key: str, default: str = "", **kwargs: Any) -> str:

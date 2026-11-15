@@ -310,7 +310,7 @@ test("provider never retries a broken stream after visible output", async () => 
         new AbortController().signal,
         async () => {},
       ),
-      /closed before completion/,
+      /operation paused/,
     );
     assert.equal(fixture.requests.length, 1);
   } finally {

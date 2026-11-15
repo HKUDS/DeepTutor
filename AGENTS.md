@@ -174,3 +174,13 @@ wheel environments also support `module install/uninstall`. Upgrading a legacy
 `deeptutor-cli` installation requires uninstalling it before installing the new
 packages, preserving the same `DEEPTUTOR_HOME`; see the setup guide. Validate
 with `python -m pip check`, `deeptutor module list`, and the setup readiness checks.
+
+## Desktop Release Requirement
+
+Starting with the release after v1.7.1, publish the Intel Mac (`macos-x64`)
+DMG together with the Apple Silicon (`macos-arm64`) DMG and Windows installer
+and portable ZIP for every version. Wait for the Desktop Release workflow,
+including `verify-release`, and verify the downloads on the actual GitHub
+Release before reporting completion. If any platform fails, fix and rerun it;
+do not silently omit Intel Mac or treat a partial desktop release as complete.
+See `apps/desktop/README.md` for the build and publication flow.

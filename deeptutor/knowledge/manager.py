@@ -692,7 +692,15 @@ class KnowledgeBaseManager:
                 continue
             rel_path = (kb_entry or {}).get("path", kb_name)
             kb_dir = self.base_dir / rel_path
-            if base_exists and not kb_dir.exists():
+            try:
+                directory_missing = base_exists and not kb_dir.exists()
+            except OSError as exc:
+                # An unreadable directory is not evidence that the KB is gone.
+                # Keep the entry and let version probing degrade it instead.
+                logger.warning("Cannot inspect knowledge base '%s': %s", kb_name, exc)
+                kb_list.add(kb_name)
+                continue
+            if directory_missing:
                 if _entry_updated_after(kb_entry, grace_cutoff):
                     kb_list.add(kb_name)
                     continue
@@ -709,8 +717,18 @@ class KnowledgeBaseManager:
         # Also scan directory for KBs that may not be registered yet
         # This ensures backward compatibility and auto-discovery
         if base_exists:
-            for item in self.base_dir.iterdir():
-                if not item.is_dir() or item.name.startswith(("__", ".")):
+            try:
+                entries = list(self.base_dir.iterdir())
+            except OSError as exc:
+                logger.warning("Failed to scan knowledge bases in %s: %s", self.base_dir, exc)
+                entries = []
+            for item in entries:
+                try:
+                    is_directory = item.is_dir()
+                except OSError as exc:
+                    logger.warning("Cannot inspect knowledge base path '%s': %s", item, exc)
+                    continue
+                if not is_directory or item.name.startswith(("__", ".")):
                     continue
 
                 # Skip if already in config
@@ -721,11 +739,18 @@ class KnowledgeBaseManager:
                 rag_storage = item / "rag_storage"
                 from deeptutor.services.rag.index_versioning import list_kb_versions
 
-                versions = list_kb_versions(item)
-                detected_provider = _detect_provider_from_versions(versions)
-                is_valid_kb = has_ready_provider_index(item, detected_provider) or (
-                    rag_storage.exists() and rag_storage.is_dir()
-                )
+                try:
+                    versions = list_kb_versions(item)
+                    detected_provider = _detect_provider_from_versions(versions)
+                    is_valid_kb = has_ready_provider_index(item, detected_provider) or (
+                        rag_storage.exists() and rag_storage.is_dir()
+                    )
+                except OSError as exc:
+                    # One unreadable KB must not take the whole catalogue down;
+                    # skip it, leave it unregistered, and let the next listing
+                    # retry once the filesystem is readable again.
+                    logger.warning("Skipping unreadable knowledge base '%s': %s", item.name, exc)
+                    continue
 
                 if is_valid_kb:
                     # Auto-register this KB to kb_config.json

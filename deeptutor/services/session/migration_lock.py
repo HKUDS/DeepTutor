@@ -33,7 +33,7 @@ def exclusive_lock(lock_path: Path) -> Iterator[None]:
             # Keep waiting, as flock does on POSIX.
             while True:
                 try:
-                    msvcrt.locking(lock_file.fileno(), msvcrt.LK_LOCK, 1)
+                    msvcrt.locking(lock_file.fileno(), msvcrt.LK_LOCK, 1)  # type: ignore[attr-defined]  # Windows-only API
                     break
                 except OSError as exc:
                     if exc.errno != errno.EDEADLK:
@@ -45,4 +45,4 @@ def exclusive_lock(lock_path: Path) -> Iterator[None]:
                 fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
             elif msvcrt is not None:
                 lock_file.seek(0)
-                msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
+                msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)  # type: ignore[attr-defined]  # Windows-only API
