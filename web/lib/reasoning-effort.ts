@@ -114,6 +114,10 @@ function tableReasoningEffortOptions(
   }
 
   if (provider === "gemini" || modelName.includes("gemini")) {
+    if (modelName.includes("gemini-3.8")) {
+      // Accepts "none" but rejects "minimal" (#2702).
+      return options(["none", "low", "medium", "high"], current);
+    }
     if (
       modelName.includes("gemini-3") ||
       modelName.includes("gemini-2.5-pro")

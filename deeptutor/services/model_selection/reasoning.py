@@ -60,7 +60,10 @@ def supported_reasoning_efforts(
     name = model.lower()
     levels: list[str] = []
     if provider == "gemini" or "gemini" in name:
-        if "gemini-3" in name or "gemini-2.5-pro" in name:
+        if "gemini-3.8" in name:
+            # Accepts "none" but rejects "minimal" (#2702).
+            levels = ["none", "low", "medium", "high"]
+        elif "gemini-3" in name or "gemini-2.5-pro" in name:
             levels = ["minimal", "low", "medium", "high"]
         elif "gemini-2.5" in name:
             levels = ["none", "low", "medium", "high"]

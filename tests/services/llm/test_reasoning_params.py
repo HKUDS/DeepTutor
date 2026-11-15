@@ -142,3 +142,52 @@ def test_qwen_thinking_models_keep_native_controls(binding, effort, enabled) -> 
     assert build_openai_compatible_reasoning_kwargs(
         spec=None, binding=binding, model="qwen3-235b-a22b", reasoning_effort=effort
     ) == {"extra_body": {"enable_thinking": enabled}}
+
+
+@pytest.mark.parametrize("model", ["gemini-3.8-flash", "models/gemini-3.8-flash"])
+@pytest.mark.parametrize("effort", [None, "none", "minimal", "minimum"])
+def test_gemini_3_8_never_sends_rejected_minimal(model: str, effort: str | None) -> None:
+    """gemini-3.8-flash accepts "none" and rejects "minimal" with a 400 (#2702).
+
+    The ``gemini-3`` prefix rule (#734) must not narrow its off value to
+    ``"minimal"``: not for the implicit default, not for an explicit "none",
+    and a saved "minimal" is sent as the accepted off value instead.
+    """
+    from deeptutor.services.llm.reasoning_params import thinking_off_effort_for
+
+    kwargs = build_openai_compatible_reasoning_kwargs(
+        spec=None, binding="gemini", model=model, reasoning_effort=effort
+    )
+    assert kwargs.get("reasoning_effort") == "none"
+    assert default_reasoning_effort_for("gemini", model) == "none"
+    assert thinking_off_effort_for("gemini", model) == "none"
+
+
+def test_gemini_3_8_keeps_real_effort_levels() -> None:
+    for level in ("low", "medium", "high"):
+        kwargs = build_openai_compatible_reasoning_kwargs(
+            spec=None, binding="gemini", model="gemini-3.8-flash", reasoning_effort=level
+        )
+        assert kwargs.get("reasoning_effort") == level
+    # Siblings that reject "none" keep the #734 narrowing.
+    kwargs = build_openai_compatible_reasoning_kwargs(
+        spec=None, binding="gemini", model="gemini-3.6-flash", reasoning_effort="none"
+    )
+    assert kwargs.get("reasoning_effort") == "minimal"
+
+
+def test_gemini_3_8_selector_offers_none_not_minimal() -> None:
+    from deeptutor.services.model_selection.reasoning import supported_reasoning_efforts
+
+    assert supported_reasoning_efforts("gemini", "models/gemini-3.8-flash") == [
+        "none",
+        "low",
+        "medium",
+        "high",
+    ]
+    assert supported_reasoning_efforts("gemini", "gemini-3.6-flash") == [
+        "minimal",
+        "low",
+        "medium",
+        "high",
+    ]
