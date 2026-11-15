@@ -88,25 +88,19 @@ def test_shared_book_uses_storage_selected_by_access_resolver(
     shared_storage = _book_storage(chapters)
     resolved_ids: list[str] = []
     context_storages: list[object] = []
-    monkeypatch.setattr(
-        "deeptutor.multi_user.book_access.resolve_book",
-        lambda book_id: (
-            resolved_ids.append(book_id)
-            or SimpleNamespace(
-                engine=SimpleNamespace(
-                    storage=shared_storage,
-                    load_book=shared_storage.load_book,
-                )
-            )
-        ),
-    )
-    monkeypatch.setattr(
-        "deeptutor.book.context.build_book_context",
-        lambda refs, storage, **kwargs: (
-            context_storages.append(storage)
-            or SimpleNamespace(text="SHARED CONTENT", references=[], warnings=[])
-        ),
-    )
+
+    def resolve_book(book_id):
+        resolved_ids.append(book_id)
+        return SimpleNamespace(
+            engine=SimpleNamespace(storage=shared_storage, load_book=shared_storage.load_book)
+        )
+
+    def build_context(refs, storage, **kwargs):
+        context_storages.append(storage)
+        return SimpleNamespace(text="SHARED CONTENT", references=[], warnings=[])
+
+    monkeypatch.setattr("deeptutor.multi_user.book_access.resolve_book", resolve_book)
+    monkeypatch.setattr("deeptutor.book.context.build_book_context", build_context)
 
     materials = build_topic_materials([_source(TopicSourceKind.BOOK, "bk_shared", "Shared")])
 

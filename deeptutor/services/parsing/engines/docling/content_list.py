@@ -123,10 +123,11 @@ def _box_bounds(box: Any, page: Any) -> Optional[_Bounds]:
         return None
     left, right = sorted((left, right))
     top, bottom = sorted((top, bottom))
-    return tuple(
+    normalized = tuple(
         max(0.0, min(1000.0, coordinate * (1000.0 / extent)))
         for coordinate, extent in ((left, width), (right, width), (top, height), (bottom, height))
     )
+    return normalized[0], normalized[1], normalized[2], normalized[3]
 
 
 def _union_bounds(bounds: list[_Bounds]) -> _Bounds:
@@ -392,12 +393,15 @@ def build_content_list(
             name = f"{prefix}_{picture_seq:03d}.{_picture_extension(image)}"
             if _save_picture_crop(image, save_images_to / name):
                 picture_seq += 1
-                block: dict[str, Any] = {"type": "image", "img_path": f"{IMAGES_DIRNAME}/{name}"}
+                image_block: dict[str, Any] = {
+                    "type": "image",
+                    "img_path": f"{IMAGES_DIRNAME}/{name}",
+                }
                 captions = _caption_texts(node, document)
                 if captions:
-                    block["image_caption"] = captions
-                block.update(base)
-                blocks.append(block)
+                    image_block["image_caption"] = captions
+                image_block.update(base)
+                blocks.append(image_block)
             continue
 
         text = _item_text(node)

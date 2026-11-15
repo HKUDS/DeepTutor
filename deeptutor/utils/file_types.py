@@ -300,7 +300,7 @@ class FileTypeRouter:
             from deeptutor.services.settings.interface_settings import get_ui_language
 
             language_hint = get_ui_language()
-        candidates = cls.TEXT_DECODING_CANDIDATES[2:]
+        candidates: tuple[str, ...] = cls.TEXT_DECODING_CANDIDATES[2:]
         if language_hint.lower().replace("_", "-").split("-")[0] == "tr":
             candidates = ("cp1254", *candidates)
         for candidate in candidates:

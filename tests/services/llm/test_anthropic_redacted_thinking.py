@@ -135,8 +135,13 @@ async def test_encrypted_private_state_survives_sqlite_but_is_removed_from_publi
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("streaming", [False, True])
-async def test_real_sdk_tool_followup_keeps_encrypted_data(streaming: bool) -> None:
+async def test_real_sdk_tool_followup_keeps_encrypted_data(
+    streaming: bool, monkeypatch: pytest.MonkeyPatch
+) -> None:
     pytest.importorskip("anthropic")
+    # The real SDK must reach the fixture server directly even on proxied hosts.
+    monkeypatch.setenv("NO_PROXY", "127.0.0.1,localhost,::1")
+    monkeypatch.setenv("no_proxy", "127.0.0.1,localhost,::1")
 
     from deeptutor.runtime.agentic.messages import assistant_message_with_tool_calls
 

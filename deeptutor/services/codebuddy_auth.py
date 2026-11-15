@@ -24,7 +24,7 @@ class CodeBuddyAuthService:
     def __init__(self) -> None:
         self._lock = asyncio.Lock()
         self._flow: Any | None = None
-        self._task: asyncio.Task[None] | None = None
+        self._task: asyncio.Task[Any] | None = None
         self._connection = "disconnected"
         self._operation_state: str | None = None
         self._authorize_url: str | None = None
@@ -110,6 +110,7 @@ class CodeBuddyAuthService:
                 stale = self._generation != generation
                 if not stale:
                     self._flow = flow
+                    task: asyncio.Task[Any]
                     if getattr(flow, "auth_url", ""):
                         self._authorize_url = str(flow.auth_url)
                         task = asyncio.create_task(self._wait_for_login(flow, generation))

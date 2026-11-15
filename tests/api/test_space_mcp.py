@@ -510,9 +510,18 @@ def oauth_server(monkeypatch: pytest.MonkeyPatch) -> _SyntheticOAuthServer:
     async def _transport(url: str, *, http_client: httpx.AsyncClient):
         # The opening POST is what runs the OAuth provider, so that is what is
         # stood in for; afterwards the synthetic session speaks for the tools.
-        http_client._transport = httpx.MockTransport(server.handle)
-        if http_client.auth is not None:
-            await http_client.post(url)
+        # Replacing _transport alone leaves environment-proxy mounts active.
+        # Keep the real OAuth and request guards on an entirely offline client.
+        async with httpx.AsyncClient(
+            auth=http_client.auth,
+            headers=http_client.headers,
+            event_hooks=http_client.event_hooks,
+            follow_redirects=http_client.follow_redirects,
+            transport=httpx.MockTransport(server.handle),
+            trust_env=False,
+        ) as offline_client:
+            if offline_client.auth is not None:
+                await offline_client.post(url)
         yield None, None, None
 
     monkeypatch.setattr(streamable_http, "streamable_http_client", _transport)

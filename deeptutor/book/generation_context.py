@@ -2,8 +2,10 @@
 
 from contextlib import contextmanager
 from contextvars import ContextVar
+from typing import Any, AsyncGenerator
 
 from deeptutor.agents.base_agent import BaseAgent
+from deeptutor.services.llm import StreamOutcome
 
 _snapshot: ContextVar[tuple[tuple[str, str], str] | None] = ContextVar(
     "book_instructions", default=None
@@ -57,17 +59,65 @@ def with_workspace_instructions(prompt: str) -> str:
 class BookAgent(BaseAgent):
     """The shared generation boundary for ideation, sources and spine agents."""
 
-    async def stream_llm(self, user_prompt: str, system_prompt: str, **kwargs):
+    async def stream_llm(
+        self,
+        user_prompt: str,
+        system_prompt: str,
+        messages: list[dict[str, Any]] | None = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+        model: str | None = None,
+        response_format: dict[str, Any] | None = None,
+        stage: str | None = None,
+        attachments: list[Any] | None = None,
+        trace_meta: dict[str, Any] | None = None,
+        reasoning_effort: str | None = None,
+        tools: list[dict[str, Any]] | None = None,
+        outcome: StreamOutcome | None = None,
+    ) -> AsyncGenerator[str, None]:
         async for chunk in super().stream_llm(
             user_prompt=user_prompt,
             system_prompt=with_workspace_instructions(system_prompt),
-            **kwargs,
+            messages=messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            model=model,
+            response_format=response_format,
+            stage=stage,
+            attachments=attachments,
+            trace_meta=trace_meta,
+            reasoning_effort=reasoning_effort,
+            tools=tools,
+            outcome=outcome,
         ):
             yield chunk
 
-    async def call_llm(self, user_prompt: str, system_prompt: str, **kwargs):
+    async def call_llm(
+        self,
+        user_prompt: str,
+        system_prompt: str,
+        messages: list[dict[str, Any]] | None = None,
+        response_format: dict[str, str] | None = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+        model: str | None = None,
+        verbose: bool = True,
+        stage: str | None = None,
+        attachments: list[Any] | None = None,
+        trace_meta: dict[str, Any] | None = None,
+        reasoning_effort: str | None = None,
+    ) -> str:
         return await super().call_llm(
             user_prompt=user_prompt,
             system_prompt=with_workspace_instructions(system_prompt),
-            **kwargs,
+            messages=messages,
+            response_format=response_format,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            model=model,
+            verbose=verbose,
+            stage=stage,
+            attachments=attachments,
+            trace_meta=trace_meta,
+            reasoning_effort=reasoning_effort,
         )

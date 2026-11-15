@@ -145,11 +145,13 @@ def _read_report(paths: Any) -> dict[str, Any]:
                 where = "n.source = ? AND NOT EXISTS (SELECT 1 FROM sessions s WHERE s.id = n.session_id AND s.deleted_at IS NOT NULL)"
                 result["quiz_status"] = "available"
                 result["quiz_total"] = conn.execute(
-                    "SELECT COUNT(*) FROM notebook_entries n WHERE " + where,
+                    # Only the constant predicate above is interpolated; values are bound.
+                    "SELECT COUNT(*) FROM notebook_entries n WHERE " + where,  # nosec B608
                     ("immersive_reading",),
                 ).fetchone()[0]
                 rows = conn.execute(
-                    "SELECT "
+                    # Column names and predicate are module constants; values are bound.
+                    "SELECT "  # nosec B608
                     + ", ".join("n." + field for field in _QUIZ_FIELDS)
                     + " FROM notebook_entries n WHERE "
                     + where

@@ -150,6 +150,7 @@ class KnowledgeCapability:
     ``is_active`` / ``system_block`` / ``augment_kwargs`` / ``pre_loop_seed``).
     """
 
+    name: str
     exclusive_tools: bool = True
 
     #: Chat built-ins that stay mounted alongside :attr:`owned_tools` when this

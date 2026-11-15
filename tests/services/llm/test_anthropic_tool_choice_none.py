@@ -48,9 +48,12 @@ def test_auto_and_default_keep_their_existing_choice(thinking: bool) -> None:
 @pytest.mark.parametrize("streaming", [False, True])
 @pytest.mark.parametrize("effort", [None, "high"])
 async def test_default_sdk_sends_explicit_none_on_the_wire(
-    streaming: bool, effort: str | None
+    streaming: bool, effort: str | None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     pytest.importorskip("anthropic")
+    # Exercise the SDK's actual transport against this local server, not a host proxy.
+    monkeypatch.setenv("NO_PROXY", "127.0.0.1,localhost,::1")
+    monkeypatch.setenv("no_proxy", "127.0.0.1,localhost,::1")
     requests = []
 
     class Handler(BaseHTTPRequestHandler):

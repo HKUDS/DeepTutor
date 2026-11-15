@@ -201,7 +201,7 @@ Chat 是預設能力，也是大多數工作的起點。單一對話可以進行
 
 使用者可切換的工具包括 `brainstorm`、`web_search`、`paper_search`、`zotero_search`、`reason` 與 `geogebra_analysis`；設定對應的生成模型後，還會有 `imagegen` 與 `videogen`。`rag`、`kb_files`、`knowledge_frontier`、`read_source`、`read_memory`、`write_memory`、`read_skill`、`load_tools`、`exec`、`web_fetch`、`ask_user`、`list_favorites`、`save_favorite`、`write_note`、`search_notes`、`question_bank`、`github`、`consult_subagent`、`workspace_list`、`workspace_read`、`workspace_search`、`workspace_present` 與 `workspace_export` 等情境式工具，會在回合具有相符情境時自動掛載。
 
-情境分成兩類：**固定的工作階段情境**（能力、工作區或課程、工具、知識庫、角色設定、模型，以及 Reading／Mastery 狀態）會延續到後續回合；**參照**（檔案、聊天記錄、書籍、閱讀章節、筆記本、選定的題庫題目、匯入的代理程式）則從 `+` 選單加入，預設只用於單一回合，固定後則用於每一回合。語音按鈕只會轉錄目前的訊息。
+情境分成兩類：**固定的工作階段情境**（能力、工作區或課程、工具、知識庫、角色設定、模型及其支援的推理強度，以及 Reading／Mastery 狀態）會延續到後續回合；**參照**（檔案、聊天記錄、書籍、閱讀章節、筆記本、選定的題庫題目、匯入的代理程式）則從 `+` 選單加入，預設只用於單一回合，固定後則用於每一回合。語音按鈕只會轉錄目前的訊息。
 
 **僅輸出推理時的額度限制。** 當內部推理耗盡輸出額度，卻未產生回答或工具操作時，共用代理程式迴圈會重試一次。預設的 `prompt` 策略會維持原額度。若要立即停止，請在執行環境的 `settings/agents.yaml` 中，於 `capabilities.chat.reasoning_budget_recovery` 下設定 `strategy: stop`。明確提高額度可協助需要更多空間的模型，但也可能增加延遲與用量：
 
@@ -216,6 +216,8 @@ capabilities:
 ```
 
 恢復額度必須高於一般輸出上限，且不得超過 131072；請選擇模型支援的數值。此設定只套用於一次恢復呼叫，保留既有的回合數與請求逾時限制，也不改變推理強度。軌跡會記錄策略、舊／新上限、每次呼叫的實際額度與累計用量。可見回答遭截斷時仍沿用一般的續寫流程。使用實驗性的 `typescript-native` 執行階段時，明確設定 `stop` 或 `increase_output_budget` 策略，會在回合開始前選用共用的 Python effects host 搭配 TypeScript 排程器；結果中會說明此相容性原因。
+
+Python 歷史記錄建構器也會在濃縮後執行歷史記錄預算計畫。若保留的完整往返對話仍超過額度，該回合會在生成回答前以 `history_budget_exceeded` 停止。已儲存的訊息與工具呼叫／結果配對會保持完整；請開始新對話，或縮短先前過大的往返對話後繼續。此歷史記錄額度與模型完整的情境視窗容量分開計算。
 
 在完整安裝組合中，Home 讓 **Chat**、**Ask Questions**、**Quiz**、**Visualize** 與 **Video Lesson** 一鍵可達；用於建立附引用報告的 **Research** 與提供完整推理解題的 **Solve**，則位於 *More Capabilities* 之下。選取回答中的文字即可開啟 **Little Tutor**，這個專注的側邊欄對話會保持巢狀依附於來源對話。至少傳送三則訊息後，空間允許時左側邊界會為每個問題顯示一個刻度；將游標懸停可預覽、點擊可跳回，或使用 **Alt/Option + ↑/↓** 在問題之間移動。
 
@@ -284,7 +286,7 @@ Book 會將選定來源轉換成互動式**活書**；它不是靜態 PDF，而�
 <img src="../../assets/figs/web-dev/book-widget.png" alt="Book 互動式元件區塊" width="31%">
 </p>
 
-每章都會編譯成可編輯的具型別區塊：文字、提示框、測驗、單字卡、時間軸、程式碼、圖表、互動式 HTML、動畫、概念圖、深入探討與使用者筆記，並有自己的 Page Chat。你可以插入、移動、重新生成、重寫區塊或切換其型別；選取的段落會進入可供檢視的學習摘錄收件匣。即使管理員將書籍以唯讀或共同編輯方式共享，每位讀者的進度、書籤、測驗嘗試、學習摘錄與 Page Chat 仍為私有；共享書籍仍只能由管理員刪除。任何書籍皆可匯出為 Markdown，長時間的編譯可暫停並續行，`deeptutor book health` 會標記來源漂移，`deeptutor book refresh-fingerprints` 則會更新來源基準。
+每章都會編譯成可編輯的具型別區塊：文字、提示框、測驗、單字卡、時間軸、程式碼、圖表、互動式 HTML、動畫、概念圖、深入探討與使用者筆記，並有自己的 Page Chat。你可以檢視並復原章或節的編輯，插入、移動、重新生成、重寫或切換區塊；選取的段落會進入學習摘錄收件匣。即使管理員將書籍以唯讀或共同編輯方式共享，每位讀者的進度、書籤、測驗嘗試、學習摘錄與 Page Chat 仍為私有；共享書籍仍只能由管理員刪除。任何書籍皆可匯出為 Markdown，長時間的編譯可暫停並續行，`deeptutor book health` 會標記來源漂移，`deeptutor book refresh-fingerprints` 則會更新來源基準。
 
 </details>
 
@@ -315,6 +317,8 @@ Resources 是目前工作區中可重複使用的資源庫。在這裡保留原�
 內建的 LightRAG 引擎可透過 `pip install 'deeptutor[rag-lightrag]'` 安裝；此額外套件包含明確支援的 LightRAG SDK，但不會安裝 MinerU。若需要結構化解析，請在 Document Parsing 中另行選擇 MinerU，並設定其雲端模式，或安裝目前的本機 CLI。MinerU 支援 PDF、常見點陣圖格式、DOCX、PPTX 與 XLSX；舊版 `magic-pdf` 仍僅支援 PDF。Text-only 與其他解析引擎不需要 MinerU。
 
 原生 LightRAG 的查詢與增量索引，需要已發布索引所記錄的 embedding 設定，包括模型、維度與端點身分。若該設定有變更，請還原原始設定，或以目前的 embedding 重建索引；未記錄 embedding 身分的索引則必須重建。知識庫詳細資料與索引版本檢視會顯示恢復指引，檔案仍可正常檢視與下載。
+
+帶有明確向量索引的 OpenAI 相容 HTTP embedding 回應，會還原為輸入順序。重複、缺漏或無效的索引會在向量進入索引建立流程前遭到拒絕；不含索引的代理回應則保留位置順序。若閘道先前曾回傳順序變動且帶有索引的向量，請重建受影響的索引，以取代舊的文字／向量對應關係。既有索引檔案會予以保留。
 
 **評估知識庫。** 有多種引擎可選擇時，「哪個引擎在這裡檢索得最好？」需要實際測量，而 `deeptutor kb eval` 就能回答這個問題。建立 QA 資料集（每行一個 JSON 物件，包含 `query` 與理想檢索應回傳的 `gold` 段落），再使用 `deeptutor kb eval <name> --dataset qa.jsonl --top-k 5 [--mode hybrid] [--save baseline.json]` 評估知識庫。每個案例都透過與聊天回合相同的路徑檢索，依完全相同的文字或詞彙重疊程度，將排序後的引用與標準段落配對（可用 `--min-ratio` 調整門檻；不評估語意等價性），並回報 **Recall@k／Precision@k／nDCG@k／MRR／MAP／Hit@k**。指標是依排序計算的純函式，無須模型評判輸出。使用 `deeptutor kb eval-diff baseline.json candidate.json` 比較已儲存的報告，查看各指標與各案例的變化。在 `kb eval` 中使用 `--rewrite off` 或 `--rewrite standalone`，可比較原始查詢與改寫後的查詢；報告會保留查詢改寫紀錄。搜尋失敗的案例（例如缺少索引或憑證錯誤）不會計分，而是另外回報，避免拉低平均值。PageIndex 透過推理進行檢索，不回傳已排序的區塊，因此不納入評估。
 
@@ -383,7 +387,7 @@ Personalization 會隨帳號跨工作區沿用。你可以選擇導師應如何�
 <img src="../../assets/figs/web-dev/agents.png" alt="DeepTutor My Agents 工作區" width="900">
 </div>
 
-**連接即時代理程式** — Claude Code、Codex、Grok CLI、Antigravity、Kimi、opencode、MiMo Code、Hermes Agent、OpenClaw、DeepSeek Harness 或一位 Partner — 並從 Chat 回合中諮詢它。DeepTutor 會執行選定的代理程式，透過 `consult_subagent` 將其工作即時串流至 Activity 面板；Agent chip 或 `@` 會讓此連線持續附著於工作階段。本機代理程式執行框架使用各自的驗證、工作目錄與工作階段儲存機制。
+**連接即時代理程式** — Claude Code、Codex、Grok CLI、Antigravity、Kimi、opencode、MiMo Code、Hermes Agent、OpenClaw、DeepSeek Harness、已設定的 ACP 代理程式或一位 Partner — 並從 Chat 回合中諮詢它。DeepTutor 會執行選定的代理程式，透過 `consult_subagent` 將其工作即時串流至 Activity 面板；Agent chip 或 `@` 會讓此連線持續附著於工作階段。本機代理程式執行框架使用各自的驗證、工作目錄與工作階段儲存機制。
 
 **匯入過往對話** — 將 ChatGPT、Claude Code 與 Codex 的對話匯入為可搜尋、可繼續的參照。ChatGPT 使用官方的 `conversations.json` 匯出檔；Claude 記錄依專案或工作目錄選取，Codex 記錄則依日期選取。透過 `+` → My Agents 參照匯入的對話，而不會將其變成 DeepTutor 自己的口吻。
 

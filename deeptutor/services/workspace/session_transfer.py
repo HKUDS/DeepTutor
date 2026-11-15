@@ -181,9 +181,11 @@ def _conflicts(conn, selected: str) -> list[str]:
         for key in keys:
             if not key or (table == "turn_events" and key == ("id",)):
                 continue
-            join = " AND ".join(f'a."{k}"=b."{k}"' for k in key)
+            quoted_keys = [k.replace('"', '""') for k in key]
+            join = " AND ".join(f'a."{k}"=b."{k}"' for k in quoted_keys)
             rows = conn.execute(
-                f'SELECT a.* FROM (SELECT * FROM main."{table}" WHERE {where}) a '
+                # Fixed table/predicate, quoted schema identifiers, bound selection values.
+                f'SELECT a.* FROM (SELECT * FROM main."{table}" WHERE {where}) a '  # nosec B608
                 f'JOIN target."{table}" b ON {join} LIMIT 5'
             ).fetchall()
             for row in rows:

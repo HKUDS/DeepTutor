@@ -138,6 +138,12 @@ def _make_pipeline(
     pipeline.registry = registry
     monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _context: ["rag"])
     monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
+
+    async def prepare_deferred_tools(_context):
+        # This fixture owns the complete tool registry; never discover local MCPs.
+        pass
+
+    monkeypatch.setattr(pipeline, "_prepare_deferred_tools", prepare_deferred_tools)
     return pipeline
 
 
@@ -275,8 +281,7 @@ async def test_run_skips_seed_without_kb(monkeypatch: pytest.MonkeyPatch) -> Non
 async def test_run_degrades_gracefully_when_seed_retrieval_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A broken retrieval backend must not break the turn — the loop runs
-    exactly as before the seed seam existed."""
+    """A broken backend keeps the turn running with an explicit grounding failure."""
     registry = _SeedRegistry(raise_exc=True)
     client = _ScriptedChatClient([[_llm_chunk(content="Ungrounded answer.")]])
     pipeline = _make_pipeline(monkeypatch, registry, client)
@@ -294,7 +299,10 @@ async def test_run_degrades_gracefully_when_seed_retrieval_fails(
     first_call_text = "\n".join(
         m["content"] for m in client.calls[0]["messages"] if isinstance(m.get("content"), str)
     )
-    assert "[Knowledge Base Context]" not in first_call_text
+    assert "retrieval unavailable (retrieval_failed)" in first_call_text
+    assert "No source content was obtained" in first_call_text
+    assert _PASSAGE not in first_call_text
+    assert any(e.metadata.get("error_type") == "retrieval_failed" for e in events)
     result = [e for e in events if e.type == StreamEventType.RESULT][-1]
     assert result.metadata["completed"] is True
 
@@ -317,12 +325,15 @@ async def test_run_skips_seed_result_that_needs_reindex(
         language="en",
         metadata={"turn_id": "t1"},
     )
-    await _run(pipeline, context)
+    events = await _run(pipeline, context)
 
     first_call_text = "\n".join(
         m["content"] for m in client.calls[0]["messages"] if isinstance(m.get("content"), str)
     )
-    assert "[Knowledge Base Context]" not in first_call_text
+    assert "retrieval unavailable (needs_reindex)" in first_call_text
+    assert "do not claim this library was consulted successfully" in first_call_text
+    assert "This knowledge base has no index." not in first_call_text
+    assert any(e.metadata.get("error_type") == "needs_reindex" for e in events)
 
 
 @pytest.mark.asyncio
