@@ -13222,6 +13222,8 @@ export interface components {
     };
     /** CodexReasoningEffortUpdate */
     readonly CodexReasoningEffortUpdate: {
+      /** Enabled Reasoning Efforts */
+      readonly enabled_reasoning_efforts?: readonly string[] | null;
       /** Model */
       readonly model: string;
       /** Reasoning Effort */

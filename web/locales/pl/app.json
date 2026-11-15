@@ -6683,5 +6683,9 @@
   "Position": "Position",
   "Action": "Action",
   "Conversation IDs (optional)": "Conversation IDs (optional)",
-  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle."
+  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.",
+  "Enabled reasoning levels": "Włączone poziomy rozumowania",
+  "Enable the levels your model accepts, then choose one in chat. No selection uses the provider default.": "Włącz poziomy obsługiwane przez model, a następnie wybierz jeden na czacie. Bez wyboru używane jest ustawienie domyślne dostawcy.",
+  "Provider reasoning mode": "Tryb rozumowania dostawcy",
+  "Other tasks: default reasoning": "Inne zadania: domyślne rozumowanie"
 }

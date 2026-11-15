@@ -161,3 +161,9 @@ def test_llm_selection_to_dict_round_trips_reasoning_effort():
 def test_llm_selection_to_dict_omits_reasoning_effort_when_unset():
     selection = LLMSelection(profile_id="p1", model_id="m1")
     assert "reasoning_effort" not in selection.to_dict()
+
+
+def test_enabled_reasoning_levels_reach_chat_options():
+    catalog = _catalog()
+    catalog["services"]["llm"]["profiles"][0]["models"][0]["enabled_reasoning_efforts"] = ["low"]
+    assert list_llm_options(catalog)["options"][0]["enabled_reasoning_efforts"] == ["low"]

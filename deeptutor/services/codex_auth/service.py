@@ -234,6 +234,25 @@ def _managed_reasoning_levels(model: Mapping[str, Any]) -> list[str]:
     return list(normalize_codex_reasoning_levels(slug if isinstance(slug, str) else "", levels))
 
 
+def _preserve_enabled_efforts(source: Mapping[str, Any], target: dict[str, Any]) -> None:
+    """Copy user choices only for existing models, bounded by the live catalog."""
+    choices = {
+        model.get("model"): model.get("enabled_reasoning_efforts")
+        for model in source.get("models", [])
+        if isinstance(model, dict) and isinstance(model.get("enabled_reasoning_efforts"), list)
+    }
+    for model in target.get("models", []):
+        if not isinstance(model, dict):
+            continue
+        if model.get("model") not in choices:
+            model.pop("enabled_reasoning_efforts", None)
+            continue
+        enabled = choices[model["model"]]
+        model["enabled_reasoning_efforts"] = [
+            level for level in _managed_reasoning_levels(model) if level in enabled
+        ]
+
+
 def reconcile_codex_catalog_update(
     current_catalog: Mapping[str, Any],
     proposed_catalog: Mapping[str, Any],
@@ -312,6 +331,9 @@ def reconcile_codex_catalog_update(
         if effort in supported:
             model["reasoning_effort"] = effort
 
+    if same_bound_account and isinstance(proposed_profile, Mapping):
+        _preserve_enabled_efforts(proposed_profile, current_profile)
+
     insert_at = proposed_indexes[0] if proposed_indexes else current_indexes[0]
     unmanaged = [
         profile
@@ -362,6 +384,7 @@ def sync_codex_catalog(
             account_binding=account_binding,
         )
         if preserve_overrides and isinstance(existing_profile, Mapping):
+            _preserve_enabled_efforts(existing_profile, profile)
             label = existing_profile.get("user_name")
             if isinstance(label, str) and label.strip():
                 profile["name"] = profile["user_name"] = label.strip()
@@ -895,6 +918,8 @@ class CodexOAuthService:
         self,
         model_slug: str,
         reasoning_effort: str | None,
+        *,
+        enabled_reasoning_efforts: list[str] | None = None,
     ) -> dict[str, Any]:
         async with self._catalog_sync_lock:
 
@@ -931,6 +956,24 @@ class CodexOAuthService:
                             422,
                         )
                     model["codex_supported_reasoning_levels"] = supported
+                    if enabled_reasoning_efforts is not None:
+                        from deeptutor.core.reasoning_efforts import VALID_REASONING_EFFORTS
+
+                        if any(
+                            level not in supported or level not in VALID_REASONING_EFFORTS
+                            for level in enabled_reasoning_efforts
+                        ):
+                            raise CodexAuthError(
+                                "reasoning_effort_unsupported",
+                                "The selected levels are not supported.",
+                                422,
+                            )
+                        model["enabled_reasoning_efforts"] = list(
+                            dict.fromkeys(enabled_reasoning_efforts)
+                        )
+                        return
+                    # The legacy API explicitly selects a fixed default again.
+                    model.pop("enabled_reasoning_efforts", None)
                     if reasoning_effort is None:
                         model.pop("reasoning_effort", None)
                     else:
@@ -1074,6 +1117,11 @@ class CodexOAuthService:
                     "name": name if isinstance(name, str) and name else slug,
                     "supported_reasoning_levels": levels,
                     "reasoning_effort": effort if isinstance(effort, str) else None,
+                    **(
+                        {"enabled_reasoning_efforts": model["enabled_reasoning_efforts"]}
+                        if isinstance(model.get("enabled_reasoning_efforts"), list)
+                        else {}
+                    ),
                 }
             )
         return result

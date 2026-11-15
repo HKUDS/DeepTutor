@@ -6661,5 +6661,9 @@
   "Position": "Position",
   "Action": "Action",
   "Conversation IDs (optional)": "Conversation IDs (optional)",
-  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle."
+  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.",
+  "Enabled reasoning levels": "有効な推論レベル",
+  "Enable the levels your model accepts, then choose one in chat. No selection uses the provider default.": "モデルが対応するレベルを有効にして、チャットで選択します。選択しない場合は提供元の既定値を使用します。",
+  "Provider reasoning mode": "提供元の推論モード",
+  "Other tasks: default reasoning": "その他のタスクの既定の推論"
 }

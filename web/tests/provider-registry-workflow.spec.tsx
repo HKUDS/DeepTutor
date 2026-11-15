@@ -867,3 +867,26 @@ it("does not automatically retry a failed discovery and retains manual retry", a
     expect(mocks.fetch).toHaveBeenCalledTimes(2);
   } finally { view.unmount(); vi.useRealTimers(); }
 });
+
+it('stores multiple enabled reasoning levels instead of a fixed chat default', () => {
+  live.services.llm.profiles[0].models[1].enabled_reasoning_efforts = [];
+  render(<Harness page="llm" />)
+  fireEvent.click(screen.getByRole('button', { name: /My account.*Two/ }))
+  const editor = screen.getByRole('region', { name: 'Model settings' })
+  fireEvent.click(within(editor).getByRole('checkbox', { name: 'Low' }))
+  fireEvent.click(within(editor).getByRole('checkbox', { name: 'High' }))
+  const model = mocks.settings.draft.services.llm.profiles[0].models[1]
+  expect(model.enabled_reasoning_efforts).toEqual(['low', 'high'])
+  expect(model.reasoning_effort).toBeUndefined()
+})
+
+it("retains a provider's adaptive mode when enabling chat levels", () => {
+  live.services.llm.profiles[0].models[1].reasoning_effort = "adaptive";
+  render(<Harness page="llm" />);
+  fireEvent.click(screen.getByRole("button", { name: /My account.*Two/ }));
+  const editor = screen.getByRole("region", { name: "Model settings" });
+  fireEvent.click(within(editor).getByText("Other tasks: default reasoning"));
+  expect(within(editor).getByRole("combobox", { name: "Provider reasoning mode" })).toHaveValue("adaptive");
+  fireEvent.click(within(editor).getByRole("checkbox", { name: "Low" }));
+  expect(mocks.settings.draft.services.llm.profiles[0].models[1].reasoning_effort).toBe("adaptive");
+});

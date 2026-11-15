@@ -246,6 +246,7 @@ class _KeyRotatingCompletions:
 
 class _KeyRotatingClient:
     def __init__(self, key_pool: KeyPool, clients: dict[str, Any]) -> None:
+        self._key_pool = key_pool
         self._clients = clients
         self.chat = SimpleNamespace(completions=_KeyRotatingCompletions(key_pool, clients))
 
@@ -268,6 +269,30 @@ def _schedule_client_close(client: Any, loop: asyncio.AbstractEventLoop) -> None
             await _close_client(client)
 
     loop.create_task(_close())
+
+
+def _client_for_turn(client: Any, config: LLMClientConfig) -> Any:
+    """Share pooled transports and key cooldowns with turn-local native defaults."""
+
+    from deeptutor.services.llm.provider_core.anthropic_provider import AnthropicProvider
+
+    def bind(current: Any) -> Any:
+        if isinstance(current, _KeyRotatingClient):
+            return _KeyRotatingClient(
+                current._key_pool, {key: bind(inner) for key, inner in current._clients.items()}
+            )
+        if isinstance(current, _ProviderOpenAIAdapter) and isinstance(
+            current._provider, AnthropicProvider
+        ):
+            return _ProviderOpenAIAdapter(current._provider, config.reasoning_effort)
+        return current
+
+    view = bind(client)
+    if view is client:
+        return client
+    from deeptutor.services.llm.metrics import instrument_client
+
+    return instrument_client(view, model=config.model or "", provider=config.binding)
 
 
 def build_openai_client(config: LLMClientConfig) -> Any:
@@ -294,7 +319,7 @@ def build_openai_client(config: LLMClientConfig) -> Any:
         cached = _agentic_client_pool.get(key)
         if cached is not None:
             _agentic_client_pool.move_to_end(key)
-            return cached
+            return _client_for_turn(cached, config)
         client = instrument_client(
             _build_openai_client(config, disable_ssl_verify=disable_ssl_verify),
             model=config.model or "",
@@ -305,7 +330,7 @@ def build_openai_client(config: LLMClientConfig) -> Any:
         while len(_agentic_client_pool) > _AGENTIC_CLIENT_POOL_MAXSIZE:
             _, evicted = _agentic_client_pool.popitem(last=False)
             _schedule_client_close(evicted, loop)
-        return client
+        return _client_for_turn(client, config)
 
 
 async def close_agentic_client_pool() -> None:
@@ -349,7 +374,7 @@ def _build_anthropic_adapter(config: LLMClientConfig, spec: Any) -> Any:
         supports_prompt_caching=spec.supports_prompt_caching,
         binding=spec.name,
     )
-    return _ProviderOpenAIAdapter(anthropic_provider)
+    return _ProviderOpenAIAdapter(anthropic_provider, config.reasoning_effort)
 
 
 def _build_codex_adapter(config: LLMClientConfig, spec: Any) -> Any:
@@ -445,8 +470,9 @@ def _build_native_provider_adapter(
 class _ProviderOpenAIAdapter:
     """OpenAI chat-completions facade backed by a native provider."""
 
-    def __init__(self, provider: Any):
+    def __init__(self, provider: Any, reasoning_effort: str | None = None):
         self._provider = provider
+        self._reasoning_effort = reasoning_effort
         self.chat = SimpleNamespace(completions=SimpleNamespace(create=self._create_completion))
 
     async def close(self) -> None:
@@ -477,6 +503,8 @@ class _ProviderOpenAIAdapter:
                 reasoning_effort = "none" if thinking.get("type") == "disabled" else "adaptive"
             if extra_body:
                 kwargs["extra_body"] = extra_body
+        if reasoning_effort is None:
+            reasoning_effort = self._reasoning_effort
         kwargs.pop("stream_options", None)
 
         if stream:

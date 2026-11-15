@@ -81,7 +81,7 @@ test("ordinary users can edit only their owner-scoped Codex reasoning overrides"
   assert.match(card, /status\.models\.map\(\(model\)/);
   assert.match(
     card,
-    /reasoningEffortOptionsFromSupportedLevels\(\s*model\.supported_reasoning_levels/,
+    /codex_supported_reasoning_levels: model\.supported_reasoning_levels/,
   );
   assert.match(
     card,

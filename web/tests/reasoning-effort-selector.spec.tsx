@@ -124,3 +124,57 @@ it("drops a stored value the selected model no longer supports (#641)", () => {
   fireEvent.click(screen.getByRole("button", { name: "Low" }));
   expect(onChange).toHaveBeenLastCalledWith("low");
 });
+
+it('offers only enabled levels and closes with Escape', () => {
+  render(
+    <ReasoningEffortSelector
+      option={option({ model: 'new-model', enabled_reasoning_efforts: ['low', 'high'] })}
+      value="high"
+      onChange={vi.fn()}
+    />
+  )
+  const trigger = screen.getByRole('button', { name: 'Reasoning effort' })
+  expect(trigger).toHaveTextContent('High')
+  fireEvent.click(trigger)
+  expect(screen.getByRole('button', { name: 'Low' })).toBeTruthy()
+  expect(screen.queryByRole('button', { name: 'Medium' })).toBeNull()
+  fireEvent.keyDown(trigger, { key: 'Escape' })
+  expect(screen.queryByRole('dialog')).toBeNull()
+  expect(trigger).toHaveFocus()
+})
+
+it('never reoffers an enabled level rejected by the managed model catalog', () => {
+  render(
+    <ReasoningEffortSelector
+      option={option({
+        enabled_reasoning_efforts: ['low', 'max'],
+        supported_reasoning_efforts: ['low', 'high'],
+      })}
+      value="max"
+      onChange={vi.fn()}
+    />
+  )
+  fireEvent.click(screen.getByRole('button', { name: 'Reasoning effort' }))
+  expect(screen.queryByRole('button', { name: 'Maximum' })).toBeNull()
+  expect(screen.getByRole('button', { name: 'Low' })).toBeTruthy()
+})
+
+it('hides the selector when all levels are disabled', () => {
+  const { container } = render(
+    <ReasoningEffortSelector
+      option={option({ enabled_reasoning_efforts: [] })}
+      value="high"
+      onChange={vi.fn()}
+    />
+  )
+  expect(container.firstChild).toBeNull()
+})
+
+it("ArrowUp from the trigger focuses the last enabled level", () => {
+  render(<ReasoningEffortSelector option={option({ enabled_reasoning_efforts: ["low", "high"] })} value="low" onChange={vi.fn()} />);
+  const trigger = screen.getByRole("button", { name: "Reasoning effort" });
+  fireEvent.click(trigger);
+  trigger.focus();
+  fireEvent.keyDown(trigger, { key: "ArrowUp" });
+  expect(screen.getByRole("button", { name: "High" })).toHaveFocus();
+});

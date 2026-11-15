@@ -22,9 +22,11 @@ import ProviderIcon from "@/components/common/ProviderIcon";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { apiFetch, apiUrl } from "@/lib/api";
 import {
+  configuredReasoningLevels,
   reasoningEffortOptions,
   reasoningEffortOptionsFromSupportedLevels,
 } from "@/lib/reasoning-effort";
+import ReasoningLevelSettings from "./ReasoningLevelSettings";
 import { CodexOAuthCard } from "./CodexOAuthCard";
 import { CodeBuddyAuthCard } from "./CodeBuddyAuthCard";
 import {
@@ -127,7 +129,6 @@ export function ServiceConfigEditor({
     updateModelField: setModelField,
     updateModelBoolField: setModelBoolField,
     updateContextWindowField: setContextWindowField,
-    updateReasoningEffort: setReasoningEffort,
     updateModelCapability: setModelCapability,
     setToast,
   } = useSettings();
@@ -245,11 +246,19 @@ export function ServiceConfigEditor({
       setContextWindowField(value, activeProfile?.id, activeModel?.id),
     [setContextWindowField, activeProfile?.id, activeModel?.id],
   );
-  const updateReasoningEffort = useCallback(
-    (value: string) =>
-      setReasoningEffort(value, activeProfile?.id, activeModel?.id),
-    [setReasoningEffort, activeProfile?.id, activeModel?.id],
-  );
+  const toggleReasoningLevel = (level: string) => {
+    if (!activeProfile || !activeModel) return
+    mutateCatalog(next => {
+      const model = next.services[service].profiles
+        .find(profile => profile.id === activeProfile.id)
+        ?.models.find(item => item.id === activeModel.id)
+      if (!model) return
+      const enabled = configuredReasoningLevels(model, activeProfile.binding)
+      model.enabled_reasoning_efforts = enabled.includes(level)
+        ? enabled.filter(item => item !== level)
+        : [...enabled, level]
+    })
+  }
   const updateModelCapability = useCallback(
     (key: ModelCapabilityKey, value: boolean | null) =>
       setModelCapability(
@@ -962,50 +971,7 @@ export function ServiceConfigEditor({
                                               </div>
                                             </>
                                           )}
-                                          {reasoningOptions.length > 0 && (
-                                            <div>
-                                              <div className="mb-1.5 text-[12px] text-[var(--muted-foreground)]">
-                                                {t("Reasoning effort")}
-                                              </div>
-                                              <div className="relative">
-                                                <select
-                                                  className={selectClass}
-                                                  value={
-                                                    activeModel.reasoning_effort ||
-                                                    ""
-                                                  }
-                                                  onChange={(event) =>
-                                                    updateReasoningEffort(
-                                                      event.target.value,
-                                                    )
-                                                  }
-                                                >
-                                                  {reasoningOptions.map(
-                                                    (option) => (
-                                                      <option
-                                                        className={
-                                                          selectOptionClass
-                                                        }
-                                                        key={
-                                                          option.value ||
-                                                          "auto"
-                                                        }
-                                                        value={option.value}
-                                                      >
-                                                        {t(option.label)}
-                                                      </option>
-                                                    ),
-                                                  )}
-                                                </select>
-                                                <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--muted-foreground)]" />
-                                              </div>
-                                              <p className="mt-1.5 text-[11px] leading-relaxed text-[var(--muted-foreground)]">
-                                                {t(
-                                                  "Sets this model's default reasoning depth. Auto leaves the choice to the provider.",
-                                                )}
-                                              </p>
-                                            </div>
-                                          )}
+                                          {service === "llm" && (<ReasoningLevelSettings binding={activeProfile?.binding} onDefaultChange={(value) => setModelField(service, "reasoning_effort", value, activeProfile?.id, activeModel.id)} model={activeModel} onToggle={toggleReasoningLevel} />)}
                                         </>
                                       )}
                                       {LLM_SHAPED.has(service) &&

@@ -571,7 +571,21 @@ class TurnExecutor:
                         capability=capability_name or "chat",
                     )
 
-            llm_config, llm_scope_token = activate_llm_selection(payload.get("llm_selection"))
+            from deeptutor.services.config.provider_runtime import resolve_llm_runtime_config
+
+            selection = payload.get("llm_selection")
+            background_selection = (
+                {key: value for key, value in selection.items() if key != "reasoning_effort"}
+                if isinstance(selection, dict)
+                else None
+            )
+            background_reasoning_effort = resolve_llm_runtime_config(
+                llm_selection=background_selection,
+            ).reasoning_effort
+
+            llm_config, llm_scope_token = activate_llm_selection(
+                payload.get("llm_selection"), conversation_reasoning=True
+            )
             builder = (
                 self._create_context_builder(tutoring=True)
                 if workspace_mode == WORKSPACE_MODE_MASTERY
@@ -1362,11 +1376,26 @@ class TurnExecutor:
                 try:
                     current_usage.reset(usage_token)
                     usage_token = None
-                    await self._maybe_generate_session_title(
-                        execution=execution,
-                        session_id=session_id,
-                        ui_language=str(payload.get("language", "en") or "en"),
+                    from copy import copy
+
+                    from deeptutor.services.llm.config import (
+                        reset_scoped_llm_config,
+                        set_scoped_llm_config,
                     )
+
+                    # Inherited title generation uses this model's background
+                    # default, not the interactive turn's effort (including Auto).
+                    background = copy(llm_config)
+                    background.reasoning_effort = background_reasoning_effort
+                    title_token = set_scoped_llm_config(background)
+                    try:
+                        await self._maybe_generate_session_title(
+                            execution=execution,
+                            session_id=session_id,
+                            ui_language=str(payload.get("language", "en") or "en"),
+                        )
+                    finally:
+                        reset_scoped_llm_config(title_token)
                 except Exception:
                     # Not debug: this step is the only thing that names a
                     # conversation, and it has no other error surface. Hiding

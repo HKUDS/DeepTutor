@@ -285,7 +285,8 @@ export function setModelReasoningEffort(
 export interface ReasoningEffortModelOption {
   provider?: string | null;
   model?: string | null;
-  supported_reasoning_efforts?: string[];
+  supported_reasoning_efforts?: string[] | null;
+  enabled_reasoning_efforts?: string[] | null;
   declared_reasoning?: boolean | null;
 }
 
@@ -303,8 +304,17 @@ export function supportedReasoningEffortValues(
   option: ReasoningEffortModelOption | null | undefined,
 ): string[] {
   if (!option) return [];
+  if (Array.isArray(option.enabled_reasoning_efforts)) {
+    if (option.declared_reasoning === false) return []
+    const declared = option.supported_reasoning_efforts
+    return [...VALID_REASONING_EFFORTS].filter(
+      level =>
+        option.enabled_reasoning_efforts!.includes(level) &&
+        (!Array.isArray(declared) || declared.includes(level))
+    )
+  }
   const offered =
-    option.supported_reasoning_efforts !== undefined
+    Array.isArray(option.supported_reasoning_efforts)
       ? reasoningEffortOptionsFromSupportedLevels(
           option.supported_reasoning_efforts,
         )
@@ -361,4 +371,20 @@ export function dropUnvalidatedReasoningEffort<
   }
   const { reasoning_effort: _unvalidated, ...rest } = selection;
   return rest as T;
+}
+
+/** Settings and chat must show the same choices before a legacy catalog is edited. */
+export function configuredReasoningLevels(model: {
+  model: string;
+  enabled_reasoning_efforts?: string[];
+  codex_supported_reasoning_levels?: string[];
+  capabilities?: { reasoning?: boolean | null };
+}, binding?: string): string[] {
+  return supportedReasoningEffortValues({
+    model: model.model,
+    provider: binding,
+    enabled_reasoning_efforts: model.enabled_reasoning_efforts,
+    supported_reasoning_efforts: model.codex_supported_reasoning_levels,
+    declared_reasoning: model.capabilities?.reasoning,
+  });
 }

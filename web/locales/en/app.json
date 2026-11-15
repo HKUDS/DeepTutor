@@ -6661,5 +6661,9 @@
   "Position": "Position",
   "Action": "Action",
   "Conversation IDs (optional)": "Conversation IDs (optional)",
-  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle."
+  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.",
+  "Enabled reasoning levels": "Enabled reasoning levels",
+  "Enable the levels your model accepts, then choose one in chat. No selection uses the provider default.": "Enable the levels your model accepts, then choose one in chat. No selection uses the provider default.",
+  "Provider reasoning mode": "Provider reasoning mode",
+  "Other tasks: default reasoning": "Other tasks: default reasoning"
 }

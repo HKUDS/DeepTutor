@@ -6679,5 +6679,9 @@
   "Position": "Posição",
   "Action": "Ação",
   "Conversation IDs (optional)": "IDs das conversas (opcional)",
-  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Deixe em branco para selecionar todas as conversas. Separe os IDs por vírgulas; a prévia inclui suas dependências. A exportação continua incluindo o pacote completo de funcionalidades."
+  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Deixe em branco para selecionar todas as conversas. Separe os IDs por vírgulas; a prévia inclui suas dependências. A exportação continua incluindo o pacote completo de funcionalidades.",
+  "Enabled reasoning levels": "Níveis de raciocínio ativados",
+  "Enable the levels your model accepts, then choose one in chat. No selection uses the provider default.": "Ative os níveis aceitos pelo modelo e escolha um no chat. Sem uma seleção, será usado o padrão do provedor.",
+  "Provider reasoning mode": "Modo de raciocínio do provedor",
+  "Other tasks: default reasoning": "Outras tarefas: raciocínio padrão"
 }

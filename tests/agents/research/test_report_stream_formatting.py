@@ -366,10 +366,13 @@ async def test_report_step_rejects_missing_label_for_a_different_section_heading
     assert not [event for event in stream._history if event.type.value == "content"]
 
 
-async def test_report_step_turns_reasoning_off_for_prose(
+@pytest.mark.parametrize("effort", ["low", "high", ""])
+async def test_report_step_uses_conversation_reasoning_for_prose(
     monkeypatch: pytest.MonkeyPatch,
+    effort: str,
 ) -> None:
     pipeline = _make_pipeline(monkeypatch)
+    pipeline.reasoning_effort = effort
     stream = StreamBus()
     seen: dict[str, object] = {}
 
@@ -395,4 +398,4 @@ async def test_report_step_turns_reasoning_off_for_prose(
         expected_section_number=2,
     )
 
-    assert seen["reasoning_effort"] == "none"
+    assert seen["reasoning_effort"] == effort

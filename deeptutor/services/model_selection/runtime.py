@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from contextvars import Token
+from copy import copy
 from typing import Any
 
 from deeptutor.services.config.provider_runtime import ResolvedLLMConfig, resolve_llm_runtime_config
@@ -36,9 +37,15 @@ def resolve_llm_config_for_selection(selection: Any) -> LLMConfig:
     return llm_config_from_resolved(resolve_llm_runtime_config(llm_selection=selection))
 
 
-def activate_llm_selection(selection: Any) -> tuple[LLMConfig, Token[LLMConfig | None]]:
+def activate_llm_selection(
+    selection: Any, *, conversation_reasoning: bool = False
+) -> tuple[LLMConfig, Token[LLMConfig | None]]:
     """Resolve and install a scoped LLM config for the current async context."""
     config = resolve_llm_config_for_selection(selection)
+    if conversation_reasoning:
+        resolved = resolve_llm_runtime_config(llm_selection=selection, conversation_reasoning=True)
+        config = copy(config)
+        config.reasoning_effort = resolved.reasoning_effort
     token = llm_config_module.set_scoped_llm_config(config)
     return config, token
 

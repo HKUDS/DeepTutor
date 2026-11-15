@@ -184,6 +184,8 @@ def build_openai_compatible_reasoning_kwargs(
     ``custom`` bindings need model-family inference because their endpoint is
     user supplied and therefore cannot be identified by provider name alone.
     """
+    if reasoning_effort == "":
+        return {}
     provider_name = _spec_name(spec, binding)
     model_name = model or ""
     if provider_name == "minimax":
@@ -195,8 +197,6 @@ def build_openai_compatible_reasoning_kwargs(
         and model_name.lower() == "minimax/minimax-m3.1-flash:free"
         and reasoning_effort in {"none", "minimal", "minimum"}
     ):
-        return {}
-    if reasoning_effort == "":
         return {}
     thinking_style = str(getattr(spec, "thinking_style", "") or "")
     patterns = tuple(getattr(spec, "reasoning_model_patterns", ()) or ())

@@ -62,3 +62,10 @@ it("omits an override that cannot be validated against the catalog (#641)", () =
     model_id: "m-alt",
   });
 });
+
+it('drops a saved conversation effort after it is disabled in settings', () => {
+  const selected = { profile_id: 'p-alt', model_id: 'm-alt', reasoning_effort: 'high' }
+  expect(
+    sanitizeOutgoingLLMSelection(selected, [option({ enabled_reasoning_efforts: ['low'] })])
+  ).toEqual({ profile_id: 'p-alt', model_id: 'm-alt' })
+})

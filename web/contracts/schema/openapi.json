@@ -2712,6 +2712,21 @@
       },
       "CodexReasoningEffortUpdate": {
         "properties": {
+          "enabled_reasoning_efforts": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 7,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enabled Reasoning Efforts"
+          },
           "model": {
             "minLength": 1,
             "title": "Model",

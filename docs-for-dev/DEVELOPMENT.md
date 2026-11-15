@@ -98,3 +98,17 @@ Update the relevant handbook topic and README links when a public behavior
 changes. Put reusable executable examples under this handbook's
 [`examples/`](examples/learning_echo/README.md). Keep command examples usable
 from the repository root and avoid personal machine paths.
+
+### Conversation reasoning levels
+
+Language-model settings can store `enabled_reasoning_efforts` on each model.
+This list controls choices in the conversation composer, including Chat, Deep
+Research, Question Generation, and Deep Solve; it does not set a fixed effort
+for every request. An empty list leaves requests on the provider default. Interactive capability turns use provider defaults when no effort is selected;
+background and indexing callers retain the legacy default. A conversation's explicit choice is checked against
+the enabled list and any managed catalog declaration before dispatch. Manually
+selecting a level is not evidence that an API endpoint supports it.
+
+Research and question-generation pipelines inherit the turn-scoped model config.
+Existing step-specific recovery calls may lower reasoning when recovering from
+an exhausted output budget; the conversation preference remains unchanged.

@@ -432,7 +432,8 @@ class AnthropicProvider(LLMProvider):
 
         minimax = (
             minimax_reasoning_kwargs(model_name, effort, anthropic=True)
-            if getattr(self, "_binding", "anthropic") in {"minimax", "minimax_anthropic"}
+            if reasoning_effort != ""
+            and getattr(self, "_binding", "anthropic") in {"minimax", "minimax_anthropic"}
             else None
         )
         if minimax is not None:

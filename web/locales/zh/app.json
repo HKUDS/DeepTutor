@@ -6661,5 +6661,9 @@
   "Position": "位置",
   "Action": "操作",
   "Conversation IDs (optional)": "指定对话 ID（可选）",
-  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "留空选择全部对话；多个 ID 用逗号分隔。预览包含关联依赖。导出仍包含完整功能数据。"
+  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "留空选择全部对话；多个 ID 用逗号分隔。预览包含关联依赖。导出仍包含完整功能数据。",
+  "Enabled reasoning levels": "启用的推理强度",
+  "Enable the levels your model accepts, then choose one in chat. No selection uses the provider default.": "勾选模型支持的档位，在聊天中选择。未选择时使用提供方默认设置。",
+  "Provider reasoning mode": "提供方推理模式",
+  "Other tasks: default reasoning": "其他任务的默认推理强度"
 }

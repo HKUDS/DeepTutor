@@ -5,6 +5,7 @@ export type CodexReasoningModel = {
   name: string;
   supported_reasoning_levels: string[];
   reasoning_effort: string | null;
+  enabled_reasoning_efforts?: string[];
 };
 
 export type CodexOAuthStatus = {
@@ -203,14 +204,16 @@ export function refreshCodexModels(): Promise<CodexOAuthStatus> {
 
 export function setCodexReasoningEffort(
   model: string,
-  reasoningEffort: string | null,
+  reasoningEffort: string | string[] | null,
   fetchImpl: typeof apiFetch = apiFetch,
 ): Promise<CodexOAuthStatus> {
   return requestCodex<CodexOAuthStatus>(
     "/models/reasoning-effort",
     "POST",
     fetchImpl,
-    { model, reasoning_effort: reasoningEffort },
+    Array.isArray(reasoningEffort)
+      ? { model, enabled_reasoning_efforts: reasoningEffort }
+      : { model, reasoning_effort: reasoningEffort },
   );
 }
 
