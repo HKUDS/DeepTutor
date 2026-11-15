@@ -1,5 +1,9 @@
 name: Desktop Release
 
+# Temporary v1.7.3 recovery branch: rebuild only Apple Silicon while Intel
+# finishes notarizing in run 43745973695. Product sources still come from the
+# unchanged release tag; final verification requires that run's other builds.
+
 # Builds Open DeepTutor for MacOS (Apple Silicon and Intel) and Windows from
 # the release tag and attaches the downloads to the same GitHub Release that
 # pypi-release.yml publishes. Each platform's build lives in
@@ -52,12 +56,13 @@ permissions:
   contents: write
 
 concurrency:
-  group: desktop-release-${{ inputs.tag || github.event.release.tag_name || github.ref }}
+  group: desktop-release-arm64-recovery-${{ inputs.tag || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build:
     name: ${{ matrix.name }}
+    if: github.event_name == 'workflow_dispatch' && inputs.publish && inputs.tag == 'v1.7.3'
     strategy:
       fail-fast: false
       matrix:
@@ -65,12 +70,6 @@ jobs:
           - target: macos-arm64
             name: Open DeepTutor for MacOS with Apple Silicon
             runner: macos-15
-          - target: macos-x64
-            name: Open DeepTutor for MacOS with Intel Silicon
-            runner: macos-15-intel
-          - target: windows-x64
-            name: Open DeepTutor for Windows
-            runner: windows-2025
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 120
     env:
@@ -246,6 +245,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      actions: read
     steps:
       - name: Require successful builds and all release assets
         uses: actions/github-script@v7
@@ -258,6 +258,25 @@ jobs:
               return;
             }
             const tag = process.env.RELEASE_TAG;
+            const { data: commit } = await github.rest.repos.getCommit({
+              ...context.repo, ref: tag,
+            });
+            const { data: original } = await github.rest.actions.getWorkflowRun({
+              ...context.repo, run_id: 43745973695,
+            });
+            if (original.head_sha !== commit.sha) {
+              core.setFailed('Original desktop builds do not match the release commit.');
+              return;
+            }
+            const originalJobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, {
+              ...context.repo, run_id: 43745973695, filter: 'latest', per_page: 100,
+            });
+            for (const name of ['Open DeepTutor for MacOS with Intel Silicon', 'Open DeepTutor for Windows']) {
+              if (!originalJobs.some(job => job.name === name && job.conclusion === 'success')) {
+                core.setFailed(`Required original desktop build has not succeeded: ${name}`);
+                return;
+              }
+            }
             const { data: release } = await github.rest.repos.getReleaseByTag({
               ...context.repo, tag,
             });
