@@ -47,6 +47,11 @@ DEFAULT_SYSTEM_SETTINGS: dict[str, Any] = {
     # validated against the FETCH_PROVIDERS table in _normalize_system.
     # DEEPTUTOR_FETCH_BACKEND is the deployment override.
     "web_fetch_backend": "local",
+    # Per-owner "bring your own key" provider credentials (#1927). Off by
+    # default: an ordinary user may store their own provider API key only when
+    # an administrator opts the deployment in. The key lives in the owner's
+    # private secrets store, never in a model catalog.
+    "allow_personal_providers": False,
     # Reference policy applied after every web-search provider. This belongs in
     # runtime JSON so packaged installs and the settings service share one
     # source of truth; project main.yaml is intentionally not an operator
@@ -1428,6 +1433,9 @@ class RuntimeSettingsService:
                 settings.get("capability_routing_enabled"), False
             ),
             "web_fetch_backend": _normalize_web_fetch_backend(settings.get("web_fetch_backend")),
+            "allow_personal_providers": _coerce_bool(
+                settings.get("allow_personal_providers"), False
+            ),
             "web_search_source_filtering": {
                 "enabled": _coerce_bool(source_filter.get("enabled"), True),
                 "blocked_domains": _string_or_list(source_filter.get("blocked_domains")),

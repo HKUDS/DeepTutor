@@ -65,6 +65,10 @@ from deeptutor.services.config.settings_profile import (
 from deeptutor.services.llm.config import clear_llm_config_cache
 from deeptutor.services.model_selection import list_llm_options
 from deeptutor.services.path_service import get_path_service
+from deeptutor.services.personal_providers import (
+    PersonalProviderError,
+    get_personal_provider_service,
+)
 from deeptutor.services.session.usage_statistics import UsageStatistics
 from deeptutor.services.settings.interface_settings import (
     DEFAULT_UI_SETTINGS as INTERFACE_DEFAULTS,
@@ -352,6 +356,13 @@ class SettingsPresetDraftRequest(SettingsDraftPayload):
 class CodexReasoningEffortUpdate(BaseModel):
     model: str = Field(min_length=1)
     reasoning_effort: str | None = None
+
+
+class PersonalProviderUpdate(BaseModel):
+    api_key: str
+    base_url: str
+    binding: str = "openai_compat"
+    label: str = ""
 
 
 class FetchModelsPayload(BaseModel):
@@ -658,6 +669,34 @@ def _require_codex_oauth_actor() -> None:
 
 
 def _codex_http_exception(error: CodexAuthError) -> HTTPException:
+    return HTTPException(
+        status_code=error.http_status,
+        detail={
+            "code": error.code,
+            "message": error.public_message,
+        },
+    )
+
+
+def _require_personal_provider_actor() -> None:
+    """Gate personal-provider credentials: the caller's own, never a partner's.
+
+    ``get_personal_provider_service()`` resolves the store from owner scope,
+    and a partner resolves to the account that owns it (#1927). Letting a
+    partner write here would overwrite that person's provider key, so — like
+    the Codex lifecycle — a partner is refused. Ordinary users manage their
+    own key without administrator rights.
+    """
+    from deeptutor.core.identities import is_partner_user_id
+
+    if is_partner_user_id(get_current_user().id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="A partner uses the provider credentials of the account that owns it.",
+        )
+
+
+def _personal_provider_http_exception(error: PersonalProviderError) -> HTTPException:
     return HTTPException(
         status_code=error.http_status,
         detail={
@@ -1098,6 +1137,41 @@ async def update_openai_codex_reasoning_effort(
         except CodexAuthError as exc:
             raise _codex_http_exception(exc) from None
     return status_payload
+
+
+@router.get("/providers/personal")
+async def list_personal_providers() -> dict[str, Any]:
+    _require_personal_provider_actor()
+    try:
+        return {"providers": get_personal_provider_service().list_public()}
+    except PersonalProviderError as exc:
+        raise _personal_provider_http_exception(exc) from None
+
+
+@router.put("/providers/personal/{provider_id}")
+async def save_personal_provider(
+    provider_id: str, payload: PersonalProviderUpdate
+) -> dict[str, Any]:
+    _require_personal_provider_actor()
+    try:
+        return await get_personal_provider_service().save(
+            provider_id,
+            api_key=payload.api_key,
+            base_url=payload.base_url,
+            binding=payload.binding,
+            label=payload.label,
+        )
+    except PersonalProviderError as exc:
+        raise _personal_provider_http_exception(exc) from None
+
+
+@router.delete("/providers/personal/{provider_id}")
+async def delete_personal_provider(provider_id: str) -> dict[str, Any]:
+    _require_personal_provider_actor()
+    try:
+        return get_personal_provider_service().delete(provider_id)
+    except PersonalProviderError as exc:
+        raise _personal_provider_http_exception(exc) from None
 
 
 @router.get("/catalog")

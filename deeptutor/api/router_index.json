@@ -1,5 +1,5 @@
 {
-  "fingerprint": "c3b938e1a6af4378a012f1f6faa1887d8c8d2b37042f8f01885deabebeef625a",
+  "fingerprint": "6f2254383027f4537ad4b0db433279f09883f78231826ec7ee1563469eaeb546",
   "routers": {
     "deeptutor.api.routers.auth:router": [
       {
@@ -3623,6 +3623,30 @@
         "kind": "http",
         "methods": [
           "POST"
+        ]
+      },
+      {
+        "path": "/providers/personal",
+        "name": "list_personal_providers",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/providers/personal/{provider_id}",
+        "name": "save_personal_provider",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/providers/personal/{provider_id}",
+        "name": "delete_personal_provider",
+        "kind": "http",
+        "methods": [
+          "DELETE"
         ]
       },
       {
