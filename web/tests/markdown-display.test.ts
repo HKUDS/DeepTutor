@@ -7,6 +7,7 @@ import {
   hasVisibleMarkdownContent,
   markdownUrlTransform,
   normalizeMarkdownForDisplay,
+  normalizeNoteHref,
   repairChineseEmphasis,
   repairMalformedStrongEmphasis,
   safeDecodeURIComponent,
@@ -447,6 +448,39 @@ test("markdownUrlTransform only allows data images on img src", () => {
       tagName: "a",
     }),
     "",
+  );
+});
+
+test("normalizeNoteHref routes bare notebook ids to the co-writer page", () => {
+  assert.equal(normalizeNoteHref("/506b85121232"), "/co-writer/506b85121232");
+  assert.equal(
+    normalizeNoteHref("/506b85121232?dt_workspace=ws_a#block-1"),
+    "/co-writer/506b85121232?dt_workspace=ws_a#block-1",
+  );
+  assert.equal(normalizeNoteHref("506b85121232"), "/co-writer/506b85121232");
+});
+
+test("normalizeNoteHref leaves ordinary paths untouched", () => {
+  for (const href of [
+    "/co-writer/506b85121232",
+    "/learning/books/506b8512",
+    "/506b8512123",
+    "/506b85121232x",
+    "https://example.com/506b85121232",
+    "#section",
+  ]) {
+    assert.equal(normalizeNoteHref(href), href);
+  }
+});
+
+test("markdownUrlTransform normalises bare note ids only on href", () => {
+  assert.equal(
+    markdownUrlTransform("/506b85121232", "href", { tagName: "a" }),
+    "/co-writer/506b85121232",
+  );
+  assert.equal(
+    markdownUrlTransform("/506b85121232", "src", { tagName: "img" }),
+    "/506b85121232",
   );
 });
 

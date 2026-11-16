@@ -35,6 +35,15 @@ it.each([SimpleMarkdownRenderer, RichMarkdownRenderer])(
     expect(view.container.querySelector('.md-renderer')).not.toHaveClass('learning-text')
   }
 )
+it.each([SimpleMarkdownRenderer, RichMarkdownRenderer])(
+  'routes note links saved as bare document ids to the co-writer page',
+  Renderer => {
+    const view = render(<Renderer content="[Conditioning](/506b85121232)" />)
+    expect(view.container.querySelector('a')?.getAttribute('href')).toBe(
+      '/co-writer/506b85121232'
+    )
+  }
+)
 it('scopes mastery stems, option bodies and explanations without resizing controls', () => {
   const view = render(
     <MasteryQuestionCard
