@@ -6665,5 +6665,13 @@
   "Enabled reasoning levels": "Enabled reasoning levels",
   "Enable the levels your model accepts, then choose one in chat. No selection uses the provider default.": "Enable the levels your model accepts, then choose one in chat. No selection uses the provider default.",
   "Provider reasoning mode": "Provider reasoning mode",
-  "Other tasks: default reasoning": "Other tasks: default reasoning"
+  "Other tasks: default reasoning": "Other tasks: default reasoning",
+  "Supported reasoning levels": "Supported reasoning levels",
+  "Use detected levels": "Use detected levels",
+  "No configurable reasoning levels reported.": "No configurable reasoning levels reported.",
+  "Managed model catalog": "Managed model catalog",
+  "Provider model metadata": "Provider model metadata",
+  "Enable reasoning in model capabilities to use these levels.": "Enable reasoning in model capabilities to use these levels.",
+  "Reasoning levels could not be determined. Keep your manual selection.": "Reasoning levels could not be determined. Keep your manual selection.",
+  "Selectable through this connection: {{levels}}": "Selectable through this connection: {{levels}}"
 }

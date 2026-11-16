@@ -95,6 +95,7 @@ export function modelTestFingerprint(
     context_window_detected_at: _date,
     dimension: _dimension,
     supported_dimensions: _dimensions,
+    enabled_reasoning_efforts: _enabledReasoning,
     ...requestModel
   } = model ?? {};
   const providerSource = profile
@@ -139,6 +140,12 @@ export type ModelTestState = {
   };
   dimension?: number;
   supportedDimensions?: number[];
+  reasoning?: {
+    levels: string[] | null;
+    selectableLevels?: string[] | null;
+    source: "provider_metadata" | "managed_catalog" | "unknown";
+    detectedAt?: string;
+  };
 };
 
 /** Preserve IDs, names, per-model overrides, and the current default. */

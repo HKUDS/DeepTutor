@@ -672,5 +672,13 @@
   "Action": "Action",
   "Chapter": "Chapter",
   "Conversation IDs (optional)": "Conversation IDs (optional)",
-  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle."
+  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.",
+  "Supported reasoning levels": "지원되는 추론 강도",
+  "Use detected levels": "감지된 단계 적용",
+  "No configurable reasoning levels reported.": "설정 가능한 추론 단계가 보고되지 않았습니다.",
+  "Managed model catalog": "관리형 모델 목록",
+  "Provider model metadata": "제공업체 모델 메타데이터",
+  "Enable reasoning in model capabilities to use these levels.": "이 단계를 사용하려면 모델 기능에서 추론을 활성화하세요.",
+  "Reasoning levels could not be determined. Keep your manual selection.": "추론 단계를 확인할 수 없습니다. 수동 선택을 유지하세요.",
+  "Selectable through this connection: {{levels}}": "이 연결에서 선택 가능한 단계: {{levels}}"
 }

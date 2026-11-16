@@ -6683,5 +6683,13 @@
   "Enabled reasoning levels": "Livelli di ragionamento abilitati",
   "Enable the levels your model accepts, then choose one in chat. No selection uses the provider default.": "Abilita i livelli supportati dal modello, poi scegline uno nella chat. Senza una selezione viene usata l’impostazione predefinita del fornitore.",
   "Provider reasoning mode": "Modalità di ragionamento del fornitore",
-  "Other tasks: default reasoning": "Altre attività: ragionamento predefinito"
+  "Other tasks: default reasoning": "Altre attività: ragionamento predefinito",
+  "Supported reasoning levels": "Livelli di ragionamento supportati",
+  "Use detected levels": "Usa i livelli rilevati",
+  "No configurable reasoning levels reported.": "Nessun livello di ragionamento configurabile segnalato.",
+  "Managed model catalog": "Catalogo modelli gestito",
+  "Provider model metadata": "Metadati del modello del fornitore",
+  "Enable reasoning in model capabilities to use these levels.": "Abilita il ragionamento nelle capacità del modello per usare questi livelli.",
+  "Reasoning levels could not be determined. Keep your manual selection.": "Impossibile determinare i livelli di ragionamento. Mantieni la selezione manuale.",
+  "Selectable through this connection: {{levels}}": "Livelli selezionabili tramite questa connessione: {{levels}}"
 }

@@ -95,6 +95,18 @@ class TestGetAgentParamsLlmProbe:
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture(autouse=True)
+def _stub_reasoning_metadata(monkeypatch):
+    """Connection-probe tests must never contact their synthetic provider URL."""
+    from deeptutor.services.config import test_runner
+    from deeptutor.services.config.reasoning_detection import ReasoningDetection
+
+    async def unknown_metadata(*_args):
+        return ReasoningDetection(None, "unknown", "2026-11-16T00:00:00Z")
+
+    monkeypatch.setattr(test_runner, "detect_reasoning_levels", unknown_metadata)
+
+
 @pytest.fixture()
 def _patch_project_root(tmp_path: Path, monkeypatch):
     """Create a minimal agents.yaml and point PROJECT_ROOT at tmp_path."""
@@ -300,6 +312,14 @@ class TestLlmProbeUsesAgentsYaml:
             "detect_context_window",
             _stub_metadata_context_window_detection,
         )
+        from deeptutor.services.config.reasoning_detection import ReasoningDetection
+
+        async def _fake_reasoning_detection(*_args):
+            return ReasoningDetection(["low", "high"], "provider_metadata", "2026-11-16T00:00:00Z")
+
+        monkeypatch.setattr(
+            test_runner_module, "detect_reasoning_levels", _fake_reasoning_detection
+        )
         monkeypatch.setattr(llm_module, "get_token_limit_kwargs", _real_get_token_limit_kwargs)
         monkeypatch.setattr(llm_factory, "complete_with_config", _fake_llm_complete)
         monkeypatch.setattr(llm_module, "clear_llm_config_cache", lambda: None)
@@ -313,6 +333,10 @@ class TestLlmProbeUsesAgentsYaml:
         assert "context_window" not in saved_model
         assert "context_window_source" not in saved_model
         assert "context_window_detected_at" not in saved_model
+        assert "enabled_reasoning_efforts" not in saved_model
+        reasoning_event = next(event for event in run.events if event["type"] == "reasoning_levels")
+        assert reasoning_event["levels"] == ["low", "high"]
+        assert reasoning_event["source"] == "provider_metadata"
         context_event = next(event for event in run.events if event["type"] == "context_window")
         assert context_event["context_window"] == 128000
         assert context_event["source"] == "metadata"

@@ -9,6 +9,10 @@ import {
   type ServiceName,
 } from '@/features/settings/store/SettingsStore'
 import { modelTestFingerprint, modelTestKey } from '@/lib/model-settings'
+import {
+  reasoningEffortOptionsFromSupportedLevels,
+  VALID_REASONING_EFFORTS,
+} from '@/lib/reasoning-effort'
 import { formatContextWindowSource, subPanelClass } from './shared'
 
 /** Tests the model on screen, never the runtime default. Results survive
@@ -31,6 +35,41 @@ export function ModelTestPanel({
   const usable = service === 'search' || Boolean(model?.model.trim())
   const context = current ? result?.context : undefined
   const dimension = current ? result?.dimension : undefined
+  const reasoning = current ? result?.reasoning : undefined
+  const levels = reasoning?.levels
+  const selectable = reasoning?.selectableLevels === undefined ? levels : reasoning.selectableLevels
+  const limited =
+    Array.isArray(levels) &&
+    Array.isArray(selectable) &&
+    levels.some(level => !selectable.includes(level))
+  const reasoningApplied =
+    Array.isArray(selectable) &&
+    selectable.length === model?.enabled_reasoning_efforts?.length &&
+    selectable.every(level => model?.enabled_reasoning_efforts?.includes(level))
+  const adoptReasoning = () =>
+    mutateCatalog(next => {
+      if (
+        !result ||
+        result.state === 'running' ||
+        !Array.isArray(selectable) ||
+        (selectable.length === 0 && Boolean(levels?.length)) ||
+        result.fingerprint !== modelTestFingerprint(next, service, profile.id, model?.id)
+      )
+        return
+      const target = next.services[service].profiles
+        .find(item => item.id === profile.id)
+        ?.models.find(item => item.id === model?.id)
+      if (
+        !target ||
+        profile.read_only ||
+        target.managed_by ||
+        target.capabilities?.reasoning === false
+      )
+        return
+      target.enabled_reasoning_efforts = selectable.filter(level =>
+        VALID_REASONING_EFFORTS.has(level)
+      )
+    })
   const adopt = () =>
     mutateCatalog(next => {
       // A late response or a deleted model must never write into a different selection.
@@ -165,6 +204,77 @@ export function ModelTestPanel({
                       ? t('Already applied')
                       : t('Use detected value')}
                 </button>
+              </div>
+            )}
+            {reasoning && (
+              <div className="space-y-2 rounded-lg bg-[var(--background)] p-3 text-xs">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p className="font-medium">{t('Supported reasoning levels')}</p>
+                  {Array.isArray(levels) && (
+                    <button
+                      type="button"
+                      onClick={adoptReasoning}
+                      disabled={
+                        !Array.isArray(selectable) ||
+                        (selectable.length === 0 && levels.length > 0) ||
+                        reasoningApplied ||
+                        result.state === 'running' ||
+                        Boolean(
+                          profile.read_only ||
+                          model?.managed_by ||
+                          model?.capabilities?.reasoning === false
+                        )
+                      }
+                      className="min-h-8 rounded-md border border-[var(--border)] px-2.5 py-1.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--ring)] disabled:opacity-50"
+                    >
+                      {t(reasoningApplied ? 'Already applied' : 'Use detected levels')}
+                    </button>
+                  )}
+                </div>
+                {Array.isArray(levels) ? (
+                  <>
+                    <div className="flex flex-wrap gap-1.5">
+                      {reasoningEffortOptionsFromSupportedLevels(levels)
+                        .filter(item => item.value)
+                        .map(item => (
+                          <span
+                            key={item.value}
+                            className="rounded-md border border-[var(--border)] px-2 py-1"
+                          >
+                            {VALID_REASONING_EFFORTS.has(item.value) ? t(item.label) : item.value}
+                          </span>
+                        ))}
+                    </div>
+                    {!levels.length && <p>{t('No configurable reasoning levels reported.')}</p>}
+                    {limited && (
+                      <p className="text-[var(--muted-foreground)]">
+                        {t('Selectable through this connection: {{levels}}', {
+                          levels:
+                            reasoningEffortOptionsFromSupportedLevels(selectable ?? [])
+                              .filter(item => item.value)
+                              .map(item => t(item.label))
+                              .join(', ') || t('None'),
+                        })}
+                      </p>
+                    )}
+                    <p className="text-[var(--muted-foreground)]">
+                      {t(
+                        reasoning.source === 'managed_catalog'
+                          ? 'Managed model catalog'
+                          : 'Provider model metadata'
+                      )}
+                    </p>
+                    {model?.capabilities?.reasoning === false && (
+                      <p className="text-[var(--muted-foreground)]">
+                        {t('Enable reasoning in model capabilities to use these levels.')}
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-[var(--muted-foreground)]">
+                    {t('Reasoning levels could not be determined. Keep your manual selection.')}
+                  </p>
+                )}
               </div>
             )}
           </div>

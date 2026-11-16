@@ -6665,5 +6665,13 @@
   "Enabled reasoning levels": "Aktivierte Denkstufen",
   "Enable the levels your model accepts, then choose one in chat. No selection uses the provider default.": "Aktiviere die vom Modell unterstützten Stufen und wähle eine im Chat. Ohne Auswahl gilt die Vorgabe des Anbieters.",
   "Provider reasoning mode": "Denkmodus des Anbieters",
-  "Other tasks: default reasoning": "Andere Aufgaben: standardmäßige Denkstufe"
+  "Other tasks: default reasoning": "Andere Aufgaben: standardmäßige Denkstufe",
+  "Supported reasoning levels": "Unterstützte Denkstufen",
+  "Use detected levels": "Erkannte Stufen übernehmen",
+  "No configurable reasoning levels reported.": "Keine konfigurierbaren Denkstufen gemeldet.",
+  "Managed model catalog": "Verwalteter Modellkatalog",
+  "Provider model metadata": "Modellmetadaten des Anbieters",
+  "Enable reasoning in model capabilities to use these levels.": "Aktivieren Sie das Denken in den Modellfähigkeiten, um diese Stufen zu verwenden.",
+  "Reasoning levels could not be determined. Keep your manual selection.": "Die Denkstufen konnten nicht ermittelt werden. Behalten Sie Ihre manuelle Auswahl bei.",
+  "Selectable through this connection: {{levels}}": "Über diese Verbindung wählbare Stufen: {{levels}}"
 }
