@@ -326,16 +326,25 @@ class MasteryLoopPipeline(AgenticLoopPipeline):
         import asyncio
 
         from deeptutor.learning.storage import LearningStore
-        from deeptutor.services.workspace.knowledge import learning_source_access
+        from deeptutor.services.workspace.knowledge import (
+            knowledge_base_ref_available,
+            learning_source_access,
+        )
 
         path_id = str(context.metadata.get("mastery_path_id") or "")
         topic = await asyncio.to_thread(LearningStore().get_topic, path_id) if path_id else None
-        refs = []
+        candidates = []
         for source in topic.sources if topic else []:
             if source.kind.value == "knowledge_base":
-                refs.append(source.source_id)
+                candidates.append(source.source_id)
             elif source.kind.value == "file" and source.metadata.get("kb_name"):
-                refs.append(source.metadata["kb_name"])
+                candidates.append(str(source.metadata["kb_name"]))
+        # A source row outlives the knowledge base it names; only mount a
+        # reference that still resolves. Resolving config and filesystem state
+        # is blocking, so the whole batch runs off the event loop.
+        refs = await asyncio.to_thread(
+            lambda: [ref for ref in candidates if knowledge_base_ref_available(ref)]
+        )
         context.knowledge_bases = list(dict.fromkeys([*context.knowledge_bases, *refs]))
         with learning_source_access(refs):
             return await super().run(context, stream)
