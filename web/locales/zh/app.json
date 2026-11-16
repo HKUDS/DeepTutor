@@ -6661,5 +6661,10 @@
   "Position": "位置",
   "Action": "操作",
   "Conversation IDs (optional)": "指定对话 ID（可选）",
-  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "留空选择全部对话；多个 ID 用逗号分隔。预览包含关联依赖。导出仍包含完整功能数据。"
+  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "留空选择全部对话；多个 ID 用逗号分隔。预览包含关联依赖。导出仍包含完整功能数据。",
+  "Skip this knowledge point for now": "暂时跳过这个知识点",
+  "Deferred for now": "已暂时跳过",
+  "Confirming mastery counts toward progress and keeps the original assessment unchanged.": "确认掌握会计入学习进度，并保留原始判分结果。",
+  "Skipping does not count as mastery. You can return to this knowledge point later.": "跳过不会计为已掌握，你可以稍后回来学习这个知识点。",
+  "Optional note": "备注（可选）"
 }

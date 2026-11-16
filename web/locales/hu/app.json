@@ -6661,5 +6661,10 @@
   "Position": "Position",
   "Action": "Action",
   "Conversation IDs (optional)": "Conversation IDs (optional)",
-  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle."
+  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.",
+  "Skip this knowledge point for now": "E tudáspont kihagyása egyelőre",
+  "Deferred for now": "Egyelőre elhalasztva",
+  "Confirming mastery counts toward progress and keeps the original assessment unchanged.": "Az elsajátítás megerősítése beleszámít a haladásba, az eredeti értékelés változatlan marad.",
+  "Skipping does not count as mastery. You can return to this knowledge point later.": "A kihagyás nem számít elsajátításnak. Később visszatérhetsz ehhez a tudásponthoz.",
+  "Optional note": "Megjegyzés (opcionális)"
 }

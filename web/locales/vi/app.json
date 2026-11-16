@@ -6661,5 +6661,10 @@
   "Position": "Position",
   "Action": "Action",
   "Conversation IDs (optional)": "Conversation IDs (optional)",
-  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle."
+  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.",
+  "Skip this knowledge point for now": "Tạm bỏ qua điểm kiến thức này",
+  "Deferred for now": "Đã tạm hoãn",
+  "Confirming mastery counts toward progress and keeps the original assessment unchanged.": "Xác nhận nắm vững được tính vào tiến độ và giữ nguyên đánh giá ban đầu.",
+  "Skipping does not count as mastery. You can return to this knowledge point later.": "Bỏ qua không được tính là đã nắm vững. Bạn có thể quay lại điểm kiến thức này sau.",
+  "Optional note": "Ghi chú (không bắt buộc)"
 }

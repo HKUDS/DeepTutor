@@ -6679,5 +6679,10 @@
   "Position": "Position",
   "Action": "Action",
   "Conversation IDs (optional)": "Conversation IDs (optional)",
-  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle."
+  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.",
+  "Skip this knowledge point for now": "Salta questo argomento per ora",
+  "Deferred for now": "Rimandato per ora",
+  "Confirming mastery counts toward progress and keeps the original assessment unchanged.": "Confermare la padronanza contribuisce ai progressi e mantiene invariata la valutazione originale.",
+  "Skipping does not count as mastery. You can return to this knowledge point later.": "Saltare non conta come padronanza. Puoi tornare a questo argomento in seguito.",
+  "Optional note": "Nota facoltativa"
 }

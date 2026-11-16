@@ -295,6 +295,10 @@ class LearnerOverrideRequest(BaseModel):
     note: str = Field(default="", max_length=500)
 
 
+class DeferObjectiveRequest(BaseModel):
+    note: str = Field(default="", max_length=500)
+
+
 def _topic_sources(items: list[TopicSourceRequest]) -> list[TopicSource]:
     return [
         TopicSource(
@@ -945,6 +949,30 @@ async def set_learner_override(
             if isinstance(exc, MasteryInteractionError):
                 raise HTTPException(status_code=404, detail=str(exc)) from exc
             raise
+    return {
+        "status": "ok",
+        "path_revision": progress.version,
+        "map": learning_policy.map_summary(progress),
+    }
+
+
+@router.post("/topics/{path_id}/objectives/{kp_id}/defer")
+async def defer_learner_objective(path_id: str, kp_id: str, body: DeferObjectiveRequest):
+    """Let the learner move on even when the tutor failed to produce a usable card."""
+    from deeptutor.learning.service import MasteryInteractionError
+
+    _validate_book_id(path_id)
+    store = LearningStore()
+    progress = await asyncio.to_thread(store.load, path_id)
+    if progress is None or learning_policy.find_knowledge_point(progress, kp_id)[0] is None:
+        raise HTTPException(status_code=404, detail="Objective not found")
+    async with _exclusive_path_mutation(path_id):
+        try:
+            progress, _ = await asyncio.to_thread(
+                LearningService(store).defer_objective, path_id, kp_id, note=body.note
+            )
+        except MasteryInteractionError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
     return {
         "status": "ok",
         "path_revision": progress.version,

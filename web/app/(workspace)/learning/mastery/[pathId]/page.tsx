@@ -53,6 +53,7 @@ import {
   redoProgress,
   renameProgress,
   setMasteryObjectiveOverride,
+  deferMasteryObjective,
   updateMasteryReviewSettings,
   bindMasteryReviewStrategy,
   createMasteryReviewStrategy,
@@ -230,12 +231,17 @@ export default function MasteryTopicPage() {
     await loadTopic();
   };
 
-  /**
-   * The rest of this page rediscovers changes through the activity feed's
-   * revision counter, which lands a poll interval later. Waiting that long to
-   * see the edit you just made reads as a failed save, so the new name is
-   * applied locally the moment the write returns.
-   */
+  const handleDefer = async (objectiveId: string, note: string) => {
+    const result = await deferMasteryObjective(pathId, objectiveId, note);
+    setTopic((previous) =>
+      previous
+        ? { ...previous, map: result.map, path_revision: result.path_revision }
+        : previous,
+    );
+    await loadTopic();
+  };
+
+  /** Apply the saved name immediately instead of waiting for the next activity poll. */
   const handleRename = async (name: string) => {
     const saved = await renameProgress(pathId, name);
     setTopic((previous) =>
@@ -697,6 +703,7 @@ export default function MasteryTopicPage() {
                   zh={zh}
                   onSelect={setSelectedId}
                   onOverride={handleOverride}
+                  onDefer={handleDefer}
                 />
               ) : board ? (
                 <LearningBoard

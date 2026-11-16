@@ -4110,6 +4110,18 @@
         "title": "DeepDiveRequest",
         "type": "object"
       },
+      "DeferObjectiveRequest": {
+        "properties": {
+          "note": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Note",
+            "type": "string"
+          }
+        },
+        "title": "DeferObjectiveRequest",
+        "type": "object"
+      },
       "DeleteBlockRequest": {
         "properties": {
           "block_id": {
@@ -35060,6 +35072,98 @@
           }
         },
         "summary": "Edit Topic Map",
+        "tags": [
+          "mastery-path"
+        ]
+      }
+    },
+    "/api/mastery-paths/topics/{path_id}/objectives/{kp_id}/defer": {
+      "post": {
+        "description": "Let the learner move on even when the tutor failed to produce a usable card.",
+        "operationId": "defer_learner_objective_api_mastery_paths_topics__path_id__objectives__kp_id__defer_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "path_id",
+            "required": true,
+            "schema": {
+              "title": "Path Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "kp_id",
+            "required": true,
+            "schema": {
+              "title": "Kp Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeferObjectiveRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Defer Learner Objective",
         "tags": [
           "mastery-path"
         ]
