@@ -175,4 +175,22 @@
 
 ## 14. درخواست شروع
 
-اولین مأموریت پس از خواندن این فایل فقط اجرای Phase 0 از docs/darsyar/ROADMAP.md است. هیچ قابلیت نرم‌افزاری جدیدی در Phase 0 پیاده‌سازی نکن.
+Phase 0 طبق گزارش docs/darsyar/PHASE_0_AUDIT_REPORT.md در شاخه arena/17e31fa6-deeptutor و commit 12e6aca56e07fa016a565e81e5a5099a00fd17dd انجام شده و Gate 0 با وضعیت ACCEPTED CONDITIONAL PASS برای شروع Phase 1 پذیرفته شده است. تصمیم‌های D-01 تا D-05 و disposition مربوط به R-12 در docs/darsyar/DECISIONS.md بخش F ثبت شده‌اند. مأموریت بعدی Phase 1 از docs/darsyar/ROADMAP.md است؛ پیش از شروع، شاخه کاری تازه از commit پذیرفته‌شده بساز و فقط Phase 1 را اجرا کن.
+
+
+## 15. بازبینی Phase 0 و مجوز شروع Phase 1 (2026-11-17)
+
+گزارش Phase 0:
+- شاخه: `arena/17e31fa6-deeptutor`
+- commit: `12e6aca56e07fa016a565e81e5a5099a00fd17dd`
+- فایل: `docs/darsyar/PHASE_0_AUDIT_REPORT.md`
+- Gate 0: `ACCEPTED CONDITIONAL PASS` برای ورود به Phase 1، نه Production.
+
+تصمیم‌های D-01 تا D-05 و دامنه دقیق Phase 1 در `DECISIONS.md` بخش F و `ROADMAP.md` ثبت شده‌اند. R-12 باید ابتدا با یک commit و تست regression مستقل رفع شود.
+
+اولین مأموریت:
+1. تأیید کند checkout دارای تصمیم‌های مصوب و گزارش Phase 0 است.
+2. R-12 را در یک commit مستقل اصلاح و تست کند.
+3. سپس Phase 1.1 تا 1.7 را به ترتیب انجام دهد.
+4. در پایان Gate 1 را با شواهد کامل گزارش کند.
+5. به Phase 2 وارد نشود؛ برای ادامه منتظر بازبینی و دستور صاحب محصول بماند.
