@@ -49,3 +49,34 @@ test("a finished point offers the next one without jumping on its own", () => {
   assert.match(study, /rollPointLectureDraft/);
   assert.doesNotMatch(study, /navigateToPlaced\("study", nextPoint\.id\)/);
 });
+
+test("the mastery answer dock resets a re-posed question", () => {
+  const study = source("components/space/learning/MasteryStudy.tsx");
+
+  // Keyed by the question id so a question the tutor poses again gets a fresh
+  // card instead of inheriting the previous submission's in-flight state, and
+  // answering waits for the send so a card that could not be delivered reopens.
+  assert.match(study, /key=\{openQuestion\.questionId\}/);
+  assert.match(study, /answerMasteryQuestion = useCallback\(\s*async/);
+});
+
+test("the tutor's handoff never advances the path for the learner", () => {
+  const study = source("components/space/learning/MasteryStudy.tsx");
+
+  // A `study` handoff that opens a point other than this conversation's own is
+  // the tutor moving the learner on; reaching the next point is the review
+  // page's button, so the handoff is recorded and not followed. The prompt asks
+  // the tutor not to do it; this is the part that makes it deterministic.
+  assert.match(study, /found\.mode === "study"/);
+  assert.match(study, /found\.knowledgePointId !== bound/);
+});
+
+test("the lecture card waits for the section to be mastered", () => {
+  const study = source("components/space/learning/MasteryStudy.tsx");
+
+  // The runtime rolls a draft as soon as the point is taught, so the card is
+  // mounted for the whole study sitting and reads whatever draft exists. But it
+  // must not be offered while the tutor is still asking questions: that reads
+  // as "this section is finished" when it is not.
+  assert.match(study, /viewedPointStatus === "mastered"/);
+});

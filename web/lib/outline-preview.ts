@@ -35,20 +35,63 @@ export function modeHandoffSession(events: StreamEvent[] | undefined): string {
   return sessionId;
 }
 
+/** The knowledge point an ``open_session`` handoff opened, if it named one. */
+export function modeHandoffKnowledgePoint(
+  events: StreamEvent[] | undefined,
+): string {
+  let pointId = "";
+  for (const event of events || []) {
+    if (event.type !== "tool_result") continue;
+    const raw = asRecord(toolResultPayload(event.metadata, "mastery_mode"));
+    if (raw?.status !== "open_session") continue;
+    pointId =
+      typeof raw.knowledge_point_id === "string"
+        ? raw.knowledge_point_id.trim()
+        : "";
+  }
+  return pointId;
+}
+
+/** The mode an ``open_session`` handoff switched into (``study``/``review``/``outline``). */
+export function modeHandoffMode(events: StreamEvent[] | undefined): string {
+  let mode = "";
+  for (const event of events || []) {
+    if (event.type !== "tool_result") continue;
+    const raw = asRecord(toolResultPayload(event.metadata, "mastery_mode"));
+    if (raw?.status !== "open_session") continue;
+    mode = typeof raw.mode === "string" ? raw.mode.trim() : "";
+  }
+  return mode;
+}
+
 export function modeHandoffFingerprint(
   messages: readonly { role?: string; id?: number | string; events?: StreamEvent[] }[],
   sessionId: string | null,
-): { target: string; fingerprint: string } {
+): {
+  target: string;
+  knowledgePointId: string;
+  mode: string;
+  fingerprint: string;
+} {
   let target = "";
+  let knowledgePointId = "";
+  let mode = "";
   let lastId: number | string = "";
   for (const message of messages) {
     if (message.role !== "assistant") continue;
     const next = modeHandoffSession(message.events);
     if (!next) continue;
     target = next;
+    knowledgePointId = modeHandoffKnowledgePoint(message.events);
+    mode = modeHandoffMode(message.events);
     lastId = message.id ?? "";
   }
-  return { target, fingerprint: `${sessionId ?? ""}:${lastId}:${target}` };
+  return {
+    target,
+    knowledgePointId,
+    mode,
+    fingerprint: `${sessionId ?? ""}:${lastId}:${target}`,
+  };
 }
 
 /** Follow a mode handoff only when it appeared after this session was opened. */

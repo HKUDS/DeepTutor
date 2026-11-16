@@ -333,6 +333,19 @@ async def test_submission_key_cannot_be_reused_for_different_content(submission_
 
 
 @pytest.mark.asyncio
+async def test_a_retry_may_restate_an_absent_parent_as_null(submission_service):
+    """The browser omits ``parent_message_id`` on a conversation's first send
+    (a draft has no tip) and sends it as ``null`` on a retry. That restatement
+    is the same request, so the submission key must not be refused for it."""
+    service, store, _coordinator, _registry, _calls = submission_service
+    first = {"content": "Hello", "client_submission_id": "normalized-parent"}
+    session, turn = await service.start_turn(first)
+    [event async for event in service.subscribe_turn(turn["id"])]
+    retried_session, _turn = await service.start_turn({**first, "parent_message_id": None})
+    assert retried_session["id"] == session["id"]
+
+
+@pytest.mark.asyncio
 async def test_second_worker_reads_shared_event_tail_without_mutating_turn(tmp_path) -> None:
     db_path = tmp_path / "chat_history.db"
     owner_store = SQLiteSessionStore(db_path)

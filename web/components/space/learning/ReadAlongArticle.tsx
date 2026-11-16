@@ -22,16 +22,29 @@ import { apiFetch, apiUrl } from "@/lib/api";
 import { useTtsReadiness } from "@/hooks/useTtsReadiness";
 
 /**
- * The markdown body is rendered once and never re-rendered: the read-along
- * annotates its DOM (sentence spans, unit classes), and a re-render would make
- * React reconcile against a tree it no longer recognises. The content is fixed
- * for the lifetime of the overlay, so memoising it is enough to keep React out.
+ * The markdown body is rendered once, then frozen to an HTML string before the
+ * read-along annotates it (see ``frozenHtml`` below). Rendering it directly and
+ * annotating the live tree crashed the page: ``RichMarkdownRenderer`` finishes
+ * asynchronously (it loads the math plugins in an effect, and code/diagram
+ * blocks load as lazy chunks), and React reconciled the annotated DOM on that
+ * later render — ``NotFoundError: Failed to execute 'removeChild'``. Memoising
+ * the body only kept the *parent* from re-rendering it; the renderer's own
+ * re-renders still hit the annotated tree.
  */
 const ArticleBody = memo(function ArticleBody({ content }: { content: string }) {
   return (
     <RichMarkdownRenderer content={content} enableMath enableCode enableMermaid />
   );
 });
+
+/**
+ * How long the measured body must stop changing before it is frozen to HTML.
+ * Long enough to let the async plugin load and the lazy chunks land, short
+ * enough that the learner does not wait on an idle document.
+ */
+const BODY_SETTLE_MS = 250;
+/** Freeze anyway after this, even if something keeps mutating the body. */
+const BODY_SETTLE_MAX_MS = 4000;
 
 type UnitKind = "prose" | "listitem" | "code" | "formula" | "table";
 
@@ -85,16 +98,25 @@ function wrapSentences(block: HTMLElement): void {
 /** Walk the rendered markdown and tag every read-along unit, in document order. */
 function tagUnits(root: HTMLElement): void {
   const blocks = root.querySelectorAll<HTMLElement>(
-    "p, li, pre, .katex-display, table, blockquote, h1, h2, h3, h4",
+    "p, li, pre, .md-code-block, .katex-display, table, blockquote, h1, h2, h3, h4",
   );
   blocks.forEach((block) => {
-    if (block.closest("pre") && block.tagName !== "PRE") return;
+    // A rich code block is a single pause point; its own lines are not.
+    if (
+      block.closest("pre, .md-code-block") &&
+      !block.matches("pre, .md-code-block")
+    )
+      return;
     if (block.closest("table") && block.tagName !== "TABLE") return;
-    if (block.tagName === "LI" && block.querySelector("p, pre, .katex-display, table"))
+    if (
+      block.tagName === "LI" &&
+      block.querySelector("p, pre, .md-code-block, .katex-display, table")
+    )
       return;
 
     let kind: UnitKind = "prose";
-    if (block.tagName === "PRE") kind = "code";
+    if (block.tagName === "PRE" || block.classList.contains("md-code-block"))
+      kind = "code";
     else if (block.classList.contains("katex-display")) kind = "formula";
     else if (block.tagName === "TABLE") kind = "table";
     else if (block.tagName === "LI") kind = "listitem";
@@ -120,7 +142,6 @@ export default function ReadAlongArticle({
 }) {
   const { t } = useTranslation();
   const articleRef = useRef<HTMLDivElement>(null);
-  const [ready, setReady] = useState(false);
   const [index, setIndex] = useState(-1);
   const [playing, setPlaying] = useState(false);
   const [rate, setRate] = useState(1);
@@ -146,6 +167,17 @@ export default function ReadAlongArticle({
   const ttsReady = useTtsReadiness();
 
   const [units, setUnits] = useState<HTMLElement[]>([]);
+  // The markdown body, frozen to an HTML string once the renderer has settled.
+  // The read-along annotates this DOM (sentence spans, unit classes); a
+  // React-managed subtree would be reconciled on the renderer's next async
+  // render and React would throw NotFoundError removing a node the annotation
+  // had already replaced. Injected HTML is opaque to React, so it stays put.
+  // Stored with the content it belongs to, so a new body never shows a stale one.
+  const [frozen, setFrozen] = useState<{ content: string; html: string } | null>(
+    null,
+  );
+  const frozenHtml = frozen && frozen.content === content ? frozen.html : null;
+  const measureRef = useRef<HTMLDivElement>(null);
 
   const clearActive = useCallback(() => {
     unitsRef.current.forEach((el) => el.classList.remove("ra-active"));
@@ -338,22 +370,67 @@ export default function ReadAlongArticle({
     [highlight, index, play, playing],
   );
 
-  // Tag units once the markdown renderer has produced its DOM.
+  // Render the markdown body, let the renderer finish its asynchronous work
+  // (math plugins, lazy code/diagram chunks), then freeze it to HTML. Nothing
+  // is annotated while it is still React-managed, so those late renders
+  // reconcile a plain, untouched tree.
+  useEffect(() => {
+    const root = measureRef.current;
+    if (!root) return;
+    let done = false;
+    let settleTimer: ReturnType<typeof setTimeout> | undefined;
+    let maxTimer: ReturnType<typeof setTimeout> | undefined;
+    let observer: MutationObserver | undefined;
+    const stop = () => {
+      done = true;
+      observer?.disconnect();
+      if (settleTimer) clearTimeout(settleTimer);
+      if (maxTimer) clearTimeout(maxTimer);
+    };
+    const freeze = () => {
+      if (done) return;
+      stop();
+      // Tied to this content, so a later body never renders a stale one.
+      setFrozen({ content, html: root.innerHTML });
+    };
+    observer = new MutationObserver(() => {
+      if (done) return;
+      if (settleTimer) clearTimeout(settleTimer);
+      settleTimer = setTimeout(freeze, BODY_SETTLE_MS);
+    });
+    observer.observe(root, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+      attributes: true,
+    });
+    // A body that never mutates again (no math, chunks already cached) still
+    // has to freeze; start the settle window now and reset it per mutation.
+    settleTimer = setTimeout(freeze, BODY_SETTLE_MS);
+    maxTimer = setTimeout(freeze, BODY_SETTLE_MAX_MS);
+    return stop;
+  }, [content]);
+
+  // Inject the frozen body and tag its units. React renders no children for the
+  // frozen node, so it never reconciles the DOM the annotation rewrites — the
+  // ``dangerouslySetInnerHTML`` version was re-applied on every render and wiped
+  // the annotation.
   useEffect(() => {
     const root = articleRef.current;
-    if (!root) return;
+    if (!root || frozenHtml === null) return;
+    root.innerHTML = frozenHtml;
     tagUnits(root);
     unitsRef.current = Array.from(
       root.querySelectorAll<HTMLElement>(".ra-sentence, .ra-unit[data-kind='code'], .ra-unit[data-kind='formula'], .ra-unit[data-kind='table']"),
     );
     setUnits(unitsRef.current);
-    setReady(true);
-  }, [content]);
+  }, [frozenHtml]);
 
-  // Click a unit: start there (playing) or just position it.
+  // Click a unit: start there (playing) or just position it. Gated on the frozen
+  // body being mounted, not a separate flag: the handler attaches to that node.
   useEffect(() => {
     const root = articleRef.current;
-    if (!root || !ready) return;
+    if (!root || frozenHtml === null) return;
     const onClick = (event: Event) => {
       const target = (event.target as HTMLElement | null)?.closest<HTMLElement>(
         ".ra-sentence, .ra-unit",
@@ -379,7 +456,7 @@ export default function ReadAlongArticle({
     };
     root.addEventListener("click", onClick);
     return () => root.removeEventListener("click", onClick);
-  }, [highlight, play, playing, ready, stop]);
+  }, [frozenHtml, highlight, play, playing, stop]);
 
   // Clean up speech and timers when the overlay closes.
   useEffect(() => () => stop(), [stop]);
@@ -475,9 +552,27 @@ export default function ReadAlongArticle({
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6">
-          <div ref={articleRef} className="ra-article mx-auto max-w-[680px]">
-            <ArticleBody content={content} />
-          </div>
+          {frozenHtml === null ? (
+            // Still being measured: React-managed, and not annotated yet. The
+            // key keeps this node distinct from the frozen one below so React
+            // never reuses a node whose innerHTML it has taken over.
+            <div
+              key="measure"
+              ref={measureRef}
+              className="ra-article mx-auto max-w-[680px]"
+            >
+              <ArticleBody content={content} />
+            </div>
+          ) : (
+            // Frozen: the body is injected imperatively in the effect above.
+            // React renders no children here, so it never reconciles the DOM
+            // the annotation rewrites.
+            <div
+              key="frozen"
+              ref={articleRef}
+              className="ra-article mx-auto max-w-[680px]"
+            />
+          )}
         </div>
 
         <div className="flex shrink-0 items-center justify-between gap-3 border-t border-[color-mix(in_srgb,var(--border)_45%,transparent)] px-4 py-2 text-[11.5px] text-[var(--muted-foreground)]">
@@ -491,7 +586,7 @@ export default function ReadAlongArticle({
               t("Click a sentence to start; click the current one again to mark it as the key point.")
             )}
           </span>
-          {units.length > 0 && index >= 0 ? (
+          {frozenHtml !== null && units.length > 0 && index >= 0 ? (
             <span className="shrink-0 tabular-nums">
               {index + 1} / {units.length}
             </span>

@@ -5,39 +5,60 @@ import { useTranslation } from "react-i18next";
 import { Loader2, Sparkles, X } from "lucide-react";
 
 import { browserStorage } from "@/shared/storage";
-import { shouldAppendEventContent } from "@/lib/stream";
-import { getSession } from "@/lib/session-api";
+import { copyText } from "@/lib/clipboard";
 import { resolveMasterySession } from "@/lib/learning-api";
-import type { StreamEvent } from "@/features/chat/model/protocol";
-import { UnifiedTurnClient } from "@/features/chat/transport/UnifiedTurnClient";
+import { MASTERY_WORKSPACE_MODE } from "@/lib/workspace-mode";
+import { MASTERY_CAPABILITY_VALUE } from "@/features/capabilities/presentation";
+import {
+  ChatStateAdapterProvider,
+  useChatStateAdapter,
+} from "@/features/chat/ChatStateAdapter";
+import { ChatMessageList } from "@/features/chat/messages";
 import StandaloneComposer, {
   type StandaloneComposerSubmission,
 } from "@/components/chat/home/StandaloneComposer";
+import { hasPendingAskUser, REPLY_SENT_AS_NEW_MESSAGE } from "@/lib/ask-user-state";
+import { notify } from "@/lib/notifications";
 import { STUDY_COMPOSER_WIDTH } from "./MasteryComposer";
-import AssistantResponse from "@/components/common/AssistantResponse";
-
-interface DialogMessage {
-  role: "user" | "assistant";
-  content: string;
-  streaming?: boolean;
-  events?: StreamEvent[];
-}
 
 const SESSION_STORAGE_KEY = "dt.mastery.outline.session";
 
+/** Remember the outline conversation so the next open resumes it directly. */
+function rememberOutlineSession(pathId: string, sessionId: string): void {
+  const stored = browserStorage.readRaw("local", SESSION_STORAGE_KEY);
+  let map: Record<string, string> = {};
+  try {
+    map = JSON.parse(stored || "{}");
+  } catch {
+    /* ignore malformed storage */
+  }
+  map[pathId] = sessionId;
+  browserStorage.writeRaw("local", SESSION_STORAGE_KEY, JSON.stringify(map));
+}
+
+/** The outline conversation this path opened last, or "" when none is known. */
+function storedOutlineSession(pathId: string): string {
+  const stored = browserStorage.readRaw("local", SESSION_STORAGE_KEY);
+  try {
+    const map = JSON.parse(stored || "{}") as Record<string, string>;
+    return typeof map[pathId] === "string" ? map[pathId] : "";
+  } catch {
+    return "";
+  }
+}
+
 /**
- * A modal that opens the outline conversation for this path.
+ * The outline conversation, opened in a modal on the session screen.
  *
- * Relies on ``resolveMasterySession`` (which creates / reuses a session
- * bound to the path with mode ``outline``) so the backend always accepts
- * ``start_turn`` commands with ``capability: "mastery_path"`` — a new ad-hoc
- * session without the binding would be rejected by the admission guard.
+ * It is the *same* chat surface the rest of the app uses — ``ChatStateAdapter``
+ * for the turn runtime and ``ChatMessageList`` for the transcript — so the tool
+ * trace, streaming typewriter, failure retry and every card render exactly as
+ * they do in chat. The earlier bespoke mini-chat could not show any of that:
+ * it rendered ``AssistantResponse`` alone, which draws the reply text and
+ * nothing about how the tutor produced it.
  *
- * The session id is persisted in browser storage so re-opening the dialog
- * resumes the same conversation across page visits.
- *
- * Visual style mirrors ``MasteryStudy`` — rounded bubbles, markdown
- * rendering, streaming typewriter, same colour tokens.
+ * The adapter is a *nested* provider, so opening the outline here never
+ * disturbs the study conversation behind the modal.
  */
 export function OutlineChatDialog({
   pathId,
@@ -46,239 +67,160 @@ export function OutlineChatDialog({
   pathId: string;
   onClose: () => void;
 }) {
-  const { t } = useTranslation();
-  const [messages, setMessages] = useState<DialogMessage[]>([]);
-  const [busy, setBusy] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [sessionId, setSessionId] = useState<string | null>(null);
-  const storedSessionIdRef = useRef<string | null>(null);
-  const clientRef = useRef<UnifiedTurnClient | null>(null);
-  const retryTimersRef = useRef<Set<ReturnType<typeof setTimeout>>>(
-    new Set(),
+  return (
+    <ChatStateAdapterProvider>
+      <OutlineChatBody pathId={pathId} onClose={onClose} />
+    </ChatStateAdapterProvider>
   );
+}
+
+function OutlineChatBody({
+  pathId,
+  onClose,
+}: {
+  pathId: string;
+  onClose: () => void;
+}) {
+  const { t } = useTranslation();
+  const {
+    state,
+    loadSession,
+    configureSession,
+    sendMessage,
+    submitUserReply,
+    cancelStreamingTurn,
+    regenerateLastMessage,
+    resendLastMessage,
+    deleteTurn,
+    discardFailedSubmission,
+    retryFailedSubmission,
+    editMessage,
+    switchBranch,
+    loadMessageTrace,
+    releaseMessageTrace,
+    setKBs,
+    setLLMSelection,
+  } = useChatStateAdapter();
+
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const dialogRef = useRef<HTMLDivElement | null>(null);
 
-  // On mount: resolve the outline session and load its messages.
+  // Resolve (create/reuse) the outline session, then load it into this adapter.
+  // The transcript is the shared one; this dialog only owns the shell.
+  //
+  // The conversation this path opened last is reused directly — that is one
+  // round-trip instead of two — and a stale id (deleted in another tab) falls
+  // back to resolving a fresh one.
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-
-    void resolveMasterySession(pathId, "outline")
-      .then((placed) => {
+    setLoadError("");
+    const configure = (sessionId: string) =>
+      configureSession(
+        {
+          workspaceMode: MASTERY_WORKSPACE_MODE,
+          capability: MASTERY_CAPABILITY_VALUE,
+          masteryPathId: pathId,
+          masterySessionMode: "outline",
+        },
+        sessionId,
+      );
+    void (async () => {
+      try {
+        const known = storedOutlineSession(pathId);
+        if (known) {
+          try {
+            await loadSession(known);
+            if (cancelled) return;
+            configure(known);
+            return;
+          } catch {
+            /* stale id — resolve a fresh session below */
+          }
+        }
+        const placed = await resolveMasterySession(pathId, "outline");
         if (cancelled) return;
-        const sid = placed.session_id;
-        setSessionId(sid);
-        storedSessionIdRef.current = sid;
-
-        // Also store in local storage so the session is recoverable after
-        // a page reload.
-        const stored = browserStorage.readRaw("local", SESSION_STORAGE_KEY);
-        let storedMap: Record<string, string> = {};
-        try {
-          storedMap = JSON.parse(stored || "{}");
-        } catch {
-          /* ignore */
-        }
-        storedMap[pathId] = sid;
-        browserStorage.writeRaw(
-          "local",
-          SESSION_STORAGE_KEY,
-          JSON.stringify(storedMap),
-        );
-
-        return getSession(sid);
-      })
-      .then((session) => {
-        if (cancelled || !session) return;
-        const restored = (session.messages || [])
-          .filter((m) => m.role === "user" || m.role === "assistant")
-          .map((m) => ({
-            role: m.role as "user" | "assistant",
-            content: String(m.content || ""),
-            events: m.events || [],
-          }));
-        setMessages(restored);
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setMessages([
-            {
-              role: "assistant" as const,
-              content: t("Could not load the outline conversation."),
-            },
-          ]);
-        }
-      })
-      .finally(() => {
+        rememberOutlineSession(pathId, placed.session_id);
+        await loadSession(placed.session_id);
+        if (cancelled) return;
+        // The server stores these on the session; restating them keeps the
+        // composer and the turn payload pinned to the outline conversation.
+        configure(placed.session_id);
+      } catch {
+        if (!cancelled) setLoadError(t("Could not load the outline conversation."));
+      } finally {
         if (!cancelled) setLoading(false);
-      });
-
+      }
+    })();
     return () => {
       cancelled = true;
     };
-  }, [pathId, t]);
+  }, [configureSession, loadSession, pathId, t]);
 
-  // Cleanup WebSocket + timers on unmount.
-  useEffect(() => {
-    const retryTimers = retryTimersRef.current;
-    return () => {
-      retryTimers.forEach((timer) => clearTimeout(timer));
-      retryTimers.clear();
-      clientRef.current?.disconnect();
-      clientRef.current = null;
-    };
-  }, []);
-
-  // Pin to bottom when messages change.
   useLayoutEffect(() => {
-    if (scrollerRef.current) {
-      scrollerRef.current.scrollTop = scrollerRef.current.scrollHeight;
-    }
-  }, [messages]);
+    const scroller = scrollerRef.current;
+    if (scroller) scroller.scrollTop = scroller.scrollHeight;
+  }, [state.messages]);
 
-  // Focus the dialog on mount.
   useEffect(() => {
-    queueMicrotask(() => {
-      dialogRef.current?.focus();
-    });
+    dialogRef.current?.focus();
   }, [loading]);
 
-  // ---------- WebSocket event handler ----------
-
-  const handleEvent = useCallback(
-    (event: StreamEvent) => {
-      if (event.type === "session") {
-        const meta = (event.metadata || {}) as Record<string, unknown>;
-        const sid =
-          typeof meta.session_id === "string"
-            ? meta.session_id
-            : typeof event.session_id === "string"
-              ? event.session_id
-              : "";
-        if (sid) {
-          setSessionId(sid);
-          storedSessionIdRef.current = sid;
-        }
-        return;
-      }
-      if (event.type === "done") {
-        setMessages((prev) => {
-          const next = [...prev];
-          const last = next[next.length - 1];
-          if (last?.role === "assistant") {
-            next[next.length - 1] = { ...last, streaming: false };
-          }
-          return next;
-        });
-        setBusy(false);
-        return;
-      }
-      if (event.type === "wait_for_input") {
-        setBusy(false);
-        return;
-      }
-      if (event.type === "error") {
-        setMessages((prev) => [
-          ...prev,
-          {
-            role: "assistant" as const,
-            content: event.content || t("Error"),
-            streaming: false,
-          },
-        ]);
-        setBusy(false);
-        return;
-      }
-      // Append content delta.
-      setMessages((prev) => {
-        const next = [...prev];
-        const last = next[next.length - 1];
-        const delta = shouldAppendEventContent(event)
-          ? event.content || ""
-          : "";
-        if (last && last.role === "assistant" && last.streaming) {
-          next[next.length - 1] = {
-            ...last,
-            content: last.content + delta,
-            events: [...(last.events || []), event],
-          };
-        } else if (delta || event.type !== "content") {
-          next.push({
-            role: "assistant" as const,
-            content: delta,
-            streaming: true,
-            events: [event],
-          });
-        }
-        return next;
-      });
-    },
+  const copyAssistantMessage = useCallback(
+    (content: string) => copyText(content),
     [],
   );
 
-  // ---------- send ----------
-
-  const ensureClient = useCallback((): UnifiedTurnClient => {
-    if (clientRef.current) return clientRef.current;
-    const client = new UnifiedTurnClient(
-      (event) => handleEvent(event),
-      () => setBusy(false),
-    );
-    clientRef.current = client;
-    client.connect();
-    return client;
-  }, [handleEvent]);
+  const awaitingUserReply = hasPendingAskUser(
+    state.messages[state.messages.length - 1]?.events,
+  );
 
   const handleSubmit = useCallback(
     (submission: StandaloneComposerSubmission) => {
       const text = submission.content.trim();
-      if (!text || busy) return;
-
-      const sid = storedSessionIdRef.current;
-      if (!sid) {
-        setMessages((prev) => [
-          ...prev,
-          {
-            role: "assistant" as const,
-            content: t("Could not start the outline conversation."),
-            streaming: false,
-          },
-        ]);
+      if (!text && !submission.attachments?.length) return;
+      const sendAsNewMessage = () =>
+        sendMessage(
+          submission.content,
+          submission.attachments,
+          submission.subagentBudget
+            ? {
+                ...(submission.config ?? {}),
+                subagent_consult_budget: submission.subagentBudget,
+              }
+            : submission.config,
+          submission.notebookReferences,
+          submission.historyReferences,
+          { bookReferences: submission.bookReferences },
+          submission.questionNotebookReferences,
+          submission.persona ?? undefined,
+          submission.memoryReferences,
+        );
+      // A turn paused on an ask_user card: what the learner typed is their
+      // answer, not a new message. Same routing as the study composer.
+      if (awaitingUserReply && text) {
+        void submitUserReply({ text })
+          .then((sent) => {
+            if (sent) return;
+            notify(t(REPLY_SENT_AS_NEW_MESSAGE));
+            sendAsNewMessage();
+          })
+          .catch(() => sendAsNewMessage());
         return;
       }
-
-      setMessages((prev) => [...prev, { role: "user" as const, content: text }]);
-      setBusy(true);
-
-      const client = ensureClient();
-      client.send({
-        type: "start_turn",
-        content: text,
-        session_id: sid,
-        capability: "mastery_path",
-        mastery_path_id: pathId,
-        mastery_session_mode: "outline",
-        knowledge_bases: submission.knowledgeBases ?? [],
-      });
+      sendAsNewMessage();
     },
-    [busy, ensureClient, pathId, t],
+    [awaitingUserReply, sendMessage, submitUserReply, t],
   );
 
-  const cancelStreaming = useCallback(() => {
-    clientRef.current?.disconnect();
-    clientRef.current = null;
-    setBusy(false);
-  }, []);
-
-  function handleDialogKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
-    if (e.key === "Escape") {
-      e.preventDefault();
+  function handleDialogKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
+    if (event.key === "Escape") {
+      event.preventDefault();
       onClose();
     }
   }
-
-  // ---------- render ----------
 
   return (
     <div
@@ -302,15 +244,15 @@ export function OutlineChatDialog({
           <button
             type="button"
             onClick={onClose}
-            disabled={busy}
             aria-label={t("Close")}
-            className="rounded-lg p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--accent)] disabled:opacity-40"
+            className="rounded-lg p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--accent)]"
           >
             <X className="h-4 w-4" />
           </button>
         </div>
 
-        {/* Messages */}
+        {/* Transcript — the shared message list, so the tool trace and every
+            card render exactly as they do in chat. */}
         <div
           ref={scrollerRef}
           className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-[var(--background)] px-4 py-4 sm:px-6"
@@ -319,8 +261,11 @@ export function OutlineChatDialog({
             <div className="flex items-center justify-center py-20">
               <Loader2 className="h-6 w-6 animate-spin text-[var(--muted-foreground)]" />
             </div>
-          ) : messages.length === 0 ? (
-            // Empty state — first time the dialog is opened for this path.
+          ) : loadError ? (
+            <div className="flex h-full min-h-48 items-center justify-center px-6 text-center text-sm text-[var(--destructive)]">
+              {loadError}
+            </div>
+          ) : state.messages.length === 0 ? (
             <div className="flex h-full min-h-48 flex-col items-center justify-center gap-3 text-center">
               <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[var(--primary)]/10">
                 <Sparkles className="h-5 w-5 text-[var(--primary)]" />
@@ -335,51 +280,52 @@ export function OutlineChatDialog({
               </p>
             </div>
           ) : (
-            messages.map((msg, index) => (
-              <div key={index} className="mb-3">
-                {msg.role === "user" ? (
-                  <div className="flex justify-end">
-                    <div className="max-w-[85%] rounded-2xl bg-[var(--primary)]/10 px-4 py-2.5 text-sm text-[var(--foreground)]">
-                      <p className="whitespace-pre-wrap">{msg.content}</p>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex justify-start">
-                    <div className="max-w-[85%] rounded-2xl border border-[var(--border)]/30 bg-[var(--card)] px-4 py-2.5 text-sm leading-7 text-[var(--foreground)]">
-                      {msg.content ? (
-                        <AssistantResponse
-                          content={msg.content}
-                          isStreaming={msg.streaming ?? false}
-                          events={msg.events}
-                        />
-                      ) : msg.streaming ? (
-                        <span className="inline-flex items-center gap-1">
-                          <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[var(--muted-foreground)]" />
-                          <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[var(--muted-foreground)] [animation-delay:0.15s]" />
-                          <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[var(--muted-foreground)] [animation-delay:0.3s]" />
-                        </span>
-                      ) : null}
-                    </div>
-                  </div>
-                )}
-              </div>
-            ))
+            <ChatMessageList
+              messages={state.messages}
+              isStreaming={state.isStreaming}
+              sessionId={state.sessionId}
+              language={state.language}
+              onCopyAssistantMessage={copyAssistantMessage}
+              onRegenerateMessage={() => regenerateLastMessage()}
+              canResendLastTurn={state.lastTurnFailed}
+              onResendLastTurn={resendLastMessage}
+              onDeleteTurn={deleteTurn}
+              onDiscardFailedSubmission={discardFailedSubmission}
+              onRetryFailedSubmission={retryFailedSubmission}
+              selectedBranches={state.selectedBranches}
+              onEditMessage={editMessage}
+              onSwitchBranch={switchBranch}
+              onSubmitUserReply={submitUserReply}
+              onLoadMessageTrace={(messageId) =>
+                state.sessionId
+                  ? loadMessageTrace(state.sessionId, messageId)
+                  : Promise.resolve()
+              }
+              onReleaseMessageTrace={(messageId) => {
+                if (state.sessionId) {
+                  releaseMessageTrace(state.sessionId, messageId);
+                }
+              }}
+              showModeBadge={false}
+            />
           )}
         </div>
 
-        {/* Composer — same StandaloneComposer as the learning page */}
         <StandaloneComposer
-          onSubmit={handleSubmit}
-          onCancelStreaming={cancelStreaming}
-          isStreaming={busy}
-          hasMessages={messages.length > 0}
           showCapabilityChip={false}
+          hasMessages={state.messages.length > 0}
           maxWidthClass={STUDY_COMPOSER_WIDTH}
           maxInputHeight={128}
+          isStreaming={state.isStreaming}
+          awaitingUserReply={awaitingUserReply}
+          selectedKnowledgeBases={state.knowledgeBases}
+          onKnowledgeBasesChange={setKBs}
+          llmSelection={state.llmSelection}
+          onLLMSelectionChange={setLLMSelection}
+          onSubmit={handleSubmit}
+          onCancelStreaming={cancelStreamingTurn}
           inputPlaceholder={
-            loading
-              ? ""
-              : t("Describe what to change in the outline\u2026")
+            loading ? "" : t("Describe what to change in the outline\u2026")
           }
         />
       </div>

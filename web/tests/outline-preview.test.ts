@@ -4,6 +4,8 @@ import test from "node:test";
 import type { StreamEvent } from "../features/chat/model/protocol";
 import {
   modeHandoffFingerprint,
+  modeHandoffKnowledgePoint,
+  modeHandoffMode,
   modeHandoffSession,
   outlinePreviewOnMessage,
   shouldFollowModeHandoff,
@@ -46,6 +48,36 @@ test("a mode handoff names the session the page should open", () => {
     modeHandoffSession([toolResult({ mastery_mode: { status: "refused", session_id: "nope" } })]),
     "",
   );
+});
+
+test("a mode handoff names the knowledge point it opened", () => {
+  // The page uses this to tell a same-point mode change (follow) from the tutor
+  // advancing the path to the next point (do not follow).
+  assert.equal(
+    modeHandoffKnowledgePoint([
+      toolResult({
+        mastery_mode: {
+          status: "open_session",
+          session_id: "study-2",
+          knowledge_point_id: "kp2",
+        },
+      }),
+    ]),
+    "kp2",
+  );
+  assert.equal(modeHandoffKnowledgePoint(undefined), "");
+});
+
+test("a mode handoff names the mode it switched into", () => {
+  assert.equal(
+    modeHandoffMode([
+      toolResult({
+        mastery_mode: { status: "open_session", session_id: "study-2", mode: "study" },
+      }),
+    ]),
+    "study",
+  );
+  assert.equal(modeHandoffMode(undefined), "");
 });
 
 test("reopening a knowledge point does not follow a historical mode handoff", () => {

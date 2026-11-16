@@ -523,6 +523,26 @@ def test_naming_an_activity_is_documented_as_a_mode_request(
         assert marker in playbook, language
 
 
+def test_the_next_point_is_the_learner_s_move_not_the_tutor_s(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Mastering a point must not carry the page to the next one.
+
+    The tutor used to open the next point with ``mastery_mode`` as soon as the
+    current one was mastered, so the learner landed in a conversation they had
+    not asked for. Moving on is the review page's button.
+    """
+    monkeypatch.chdir(tmp_path)
+    for language in ("zh", "en"):
+        pack = _pack(language)
+        button = "下一个知识点" if language == "zh" else "Next knowledge point"
+        assert button in pack["session"]["study"], language
+        assert button in pack["session"]["review"], language
+        # The old "open the next point for them" wording is gone.
+        assert "next point's exact id" not in pack["session"]["study"], language
+        assert "下一个知识点的原样 id" not in pack["session"]["study"], language
+
+
 def test_the_outline_metaphor_is_gone_from_learner_facing_copy(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

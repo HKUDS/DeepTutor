@@ -812,20 +812,23 @@ export function MasteryStudy({
   // backend, and returning ``false`` here reopens the card instead of showing
   // the learner that refusal.
   const answerMasteryQuestion = useCallback(
-    (answer: { questionId: string; text: string; answers?: Array<{ questionId: string; text: string }> }) => {
+    async (answer: { questionId: string; text: string; answers?: Array<{ questionId: string; text: string }> }) => {
       const text = answer.text.trim();
       if (!text || state.isStreaming || sessionLoading || sessionError) {
         return false;
       }
-      sendMessage(text, undefined, undefined, undefined, undefined, {
+      shouldAutoScrollRef.current = true;
+      // Wait for the send. The card only closes once the answer is recorded in
+      // the conversation, so a submission that never reached a waiting turn has
+      // to reopen the card — returning ``true`` before the transport answered
+      // left it locked on "sending" with no way back.
+      return sendMessage(text, undefined, undefined, undefined, undefined, {
         masteryAnswer: {
           question_id: answer.questionId,
           text,
           ...(answer.answers ? { answers: Object.fromEntries(answer.answers.map((item) => [item.questionId, item.text])) } : {}),
         },
       });
-      shouldAutoScrollRef.current = true;
-      return true;
     },
     [
       sendMessage,
@@ -839,11 +842,14 @@ export function MasteryStudy({
   // Declining a question is a turn too: the engine holds one open question per
   // path, so a question left open is the one the tutor poses again next round.
   const skipMasteryQuestion = useCallback(
-    (questionId: string) => {
+    async (questionId: string) => {
       if (!questionId || state.isStreaming || sessionLoading || sessionError) {
         return false;
       }
-      sendMessage(
+      shouldAutoScrollRef.current = true;
+      // Same contract as answering: a skip that never reached a turn reopens
+      // the card instead of leaving it stuck on "skipping".
+      return sendMessage(
         t("Let's skip this question."),
         undefined,
         undefined,
@@ -851,8 +857,6 @@ export function MasteryStudy({
         undefined,
         { masterySkip: { question_id: questionId } },
       );
-      shouldAutoScrollRef.current = true;
-      return true;
     },
     [
       sendMessage,
@@ -1009,8 +1013,21 @@ export function MasteryStudy({
     }
     handedOffRef.current = found.target;
     handoffBaselineRef.current = found.fingerprint;
+    // The tutor may open another point (a due review the learner asked for), but
+    // it must not advance the path: a `study` handoff that opens a point other
+    // than this conversation's own is the tutor moving the learner on, and
+    // reaching the next point is the review page's button. Recorded so it cannot
+    // fire again, and not followed.
+    const bound = boundPointId ?? "";
+    if (
+      found.mode === "study" &&
+      bound &&
+      (found.knowledgePointId === "" || found.knowledgePointId !== bound)
+    ) {
+      return;
+    }
     router.push(openPlacedSession(pathId, found.target));
-  }, [pathId, router, sessionReady, state.isStreaming, state.messages, state.sessionId]);
+  }, [boundPointId, pathId, router, sessionReady, state.isStreaming, state.messages, state.sessionId]);
 
   const copyAssistantMessage = useCallback(
     (content: string) => copyText(content),
@@ -1731,13 +1748,16 @@ export function MasteryStudy({
                       }
                       onFollowup={sendMessage}
                     />
-                    {sessionMode === "study" && lecturePoint ? (
-                      // The runtime rolls a draft as the point is taught, so
-                      // the card is mounted for the whole study sitting and
-                      // reads whatever draft exists — waiting for "mastered"
-                      // hid it behind a status refresh and read as "the
-                      // lecture never arrived". The card itself stays empty
-                      // until a draft exists.
+                    {sessionMode === "study" &&
+                    lecturePoint &&
+                    viewedPointStatus === "mastered" ? (
+                      // The lecture is the section's product, so its card waits
+                      // for the section to be done. The runtime rolls a draft as
+                      // soon as the point is taught, but offering it to confirm
+                      // while the tutor is still asking questions reads as "this
+                      // section is finished" when it is not. Mastery refreshes
+                      // the topic after the turn, so the card is already there
+                      // the moment the point clears.
                       <LectureDraftCard
                         key={`draft-${lecturePoint}`}
                         pathId={pathId}
@@ -1924,6 +1944,9 @@ export function MasteryStudy({
                 >
                   <div className="px-3.5 py-2">
                     <MasteryQuestionCard
+                      // Keyed by the question: a re-posed question is a new
+                      // card, not the old one still locked on "sending".
+                      key={openQuestion.questionId}
                       question={openQuestion}
                       grade={null}
                       answered={false}

@@ -30,6 +30,13 @@ class TurnApplicationService:
             for key, value in payload.items()
             if key not in {"session_id", "workspace_id"}
         }
+        # A browser omits ``parent_message_id`` on a conversation's first send
+        # (a draft has no tip to chain under) and restates it as ``null`` on a
+        # retry. Both mean "append at the tip", so the digest must not tell them
+        # apart — otherwise the replay is refused as a different request. A
+        # positive parent is a real claim and still distinguishes the request.
+        if identity.get("parent_message_id") is None:
+            identity.pop("parent_message_id", None)
         return hashlib.sha256(
             json.dumps(identity, sort_keys=True, default=str).encode()
         ).hexdigest()
