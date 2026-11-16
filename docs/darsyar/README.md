@@ -40,7 +40,7 @@
 ## گزارش ممیزی Phase 0
 
 گزارش در شاخه کاری مجزای زیر ثبت شده است:
-- [PHASE_0_AUDIT_REPORT.md](https://github.com/mahakas/DeepTutor/blob/arena/17e31fa6-deeptutor/docs/darsyar/PHASE_0_AUDIT_REPORT.md)
+- [PHASE_0_AUDIT_REPORT.md](https://github.com/mahakas/DeepTutor/blob/darsyar/phase-1/docs/darsyar/PHASE_0_AUDIT_REPORT.md)
 - Commit: [12e6aca56e07fa016a565e81e5a5099a00fd17dd](https://github.com/mahakas/DeepTutor/commit/12e6aca56e07fa016a565e81e5a5099a00fd17dd)
 
 تصمیم‌های بازبینی Phase 0 در `DECISIONS.md` بخش F ثبت شده‌اند.
