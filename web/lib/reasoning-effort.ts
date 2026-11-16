@@ -285,7 +285,7 @@ export function setModelReasoningEffort(
 export interface ReasoningEffortModelOption {
   provider?: string | null;
   model?: string | null;
-  supported_reasoning_efforts?: string[];
+  supported_reasoning_efforts?: string[] | null;
   declared_reasoning?: boolean | null;
 }
 
@@ -304,7 +304,7 @@ export function supportedReasoningEffortValues(
 ): string[] {
   if (!option) return [];
   const offered =
-    option.supported_reasoning_efforts !== undefined
+    Array.isArray(option.supported_reasoning_efforts)
       ? reasoningEffortOptionsFromSupportedLevels(
           option.supported_reasoning_efforts,
         )

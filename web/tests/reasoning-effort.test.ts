@@ -299,6 +299,49 @@ test("supportedReasoningEffortValues never adds a stale stored value (#641)", ()
   assert.deepEqual(supportedReasoningEffortValues(null), []);
 });
 
+test("a null catalog field falls back to the tables instead of crashing (#2732)", () => {
+  // The non-admin /api/settings/llm-options path sends
+  // supported_reasoning_efforts: null for models without
+  // codex_supported_reasoning_levels. null must be treated like a missing
+  // field (table fallback), not fed to values.map where it throws.
+  const geminiNull = supportedReasoningEffortValues({
+    provider: "gemini",
+    model: "gemini-3.6-flash",
+    supported_reasoning_efforts: null,
+  });
+  assert.deepEqual(geminiNull, ["minimal", "low", "medium", "high"]);
+  // Identical to the undefined (missing) path.
+  assert.deepEqual(
+    geminiNull,
+    supportedReasoningEffortValues({
+      provider: "gemini",
+      model: "gemini-3.6-flash",
+    }),
+  );
+  // A published empty list still means "supports nothing" (Auto only),
+  // distinct from null/undefined which fall back to the tables.
+  assert.deepEqual(
+    supportedReasoningEffortValues({
+      provider: "gemini",
+      model: "gemini-3.6-flash",
+      supported_reasoning_efforts: [],
+    }),
+    [],
+  );
+  // effectiveReasoningEffort must not throw on the null field either.
+  assert.equal(
+    effectiveReasoningEffort(
+      {
+        provider: "openai",
+        model: "gpt-5.2",
+        supported_reasoning_efforts: null,
+      },
+      "high",
+    ),
+    "high",
+  );
+});
+
 test("a restored xhigh override never reaches the wire once the model restricts levels (#641)", () => {
   // Restore step: `xhigh` is legal wire vocabulary, so asLLMSelection-style
   // normalization keeps it in the conversation's selection.
