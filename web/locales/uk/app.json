@@ -6683,5 +6683,19 @@
   "Position": "Position",
   "Action": "Action",
   "Conversation IDs (optional)": "Conversation IDs (optional)",
-  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle."
+  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.",
+  "Search annotations…": "Пошук анотацій…",
+  "No matching annotations": "Немає відповідних анотацій",
+  "Try a different word, or clear the search.": "Спробуйте інше слово або очистіть пошук.",
+  "Download annotated PDF": "Завантажити анотований PDF",
+  "Download as Markdown": "Завантажити як Markdown",
+  "Annotated original when available, otherwise the marks": "Оригінал з анотаціями, якщо доступний, інакше самі позначки",
+  "Change colour": "Змінити колір",
+  "Document order": "Порядок документа",
+  "Select annotations": "Вибрати анотації",
+  "Filter by colour": "Фільтр за кольором",
+  "All colours": "Усі кольори",
+  "Could not copy to the clipboard.": "Не вдалося копіювати до буфера обміну.",
+  "Some annotations could not be removed.": "Деякі анотації не вдалося видалити.",
+  "This annotation was removed. Copy your draft before closing.": "Цю анотацію видалено. Скопіюйте чернетку перед закриттям."
 }

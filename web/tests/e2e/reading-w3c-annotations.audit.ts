@@ -205,7 +205,9 @@ test("a rich text annotation reflows and activates its sidebar entry", async ({
   });
   // Since the v1.6.10 reader rework the highlight click only focuses the
   // annotation inside the reader; the sidebar entry reports its own active
-  // state when selected, so activate it directly and assert the ring.
+  // state when selected, so activate it directly and assert that state.
+  // `aria-current` rather than the ring's utility class: the ring is drawn on
+  // the row's container, and a class assertion breaks on any restyle.
   await sidebarEntry.click();
-  await expect(sidebarEntry).toHaveClass(/border-\[var\(--ring\)\]/);
+  await expect(sidebarEntry).toHaveAttribute("aria-current", "true");
 });

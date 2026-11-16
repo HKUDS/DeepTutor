@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useReading } from "@/context/ReadingContext";
+import { applyMarkUpdate } from "@/lib/reading-mark-update";
 import {
   READER_ACTION_EVENT,
   READER_TURN_END_EVENT,
@@ -37,10 +38,10 @@ import {
   saveReadingPosition,
   type AnnotationColor,
   type AnnotationItem,
+  type ExportFormat,
   type MaterialDetail,
   type ReadingBookmark,
 } from "@/lib/reading-api";
-import { AnnotationList } from "./AnnotationList";
 import { AnnotationPopover, type PopoverAiAction } from "./AnnotationPopover";
 import { passagePrompts } from "@/lib/reading-passage-prompts";
 import {
@@ -71,6 +72,11 @@ import {
   type ReadingLocationEntry,
   type ReadingLocationHistory,
 } from "@/lib/reading-location-history";
+
+const AnnotationList = dynamic(
+  () => import("./AnnotationList").then((module) => module.AnnotationList),
+  { ssr: false },
+);
 
 function EpubLoading() {
   const { t } = useTranslation();
@@ -763,6 +769,14 @@ export function ReaderPane({
 
   // -- annotations ---------------------------------------------------------
 
+  const updateMark = useCallback(
+    (
+      annotation: AnnotationItem,
+      changes: { note?: string; color?: string; kind?: AnnotationItem["kind"] },
+    ): Promise<boolean> => applyMarkUpdate(annotation, changes, saveMark),
+    [saveMark],
+  );
+
   const commitSelection = useCallback(
     (
       kind: "highlight" | "underline" | "note" | "citation",
@@ -875,12 +889,12 @@ export function ReaderPane({
 
   // -- export --------------------------------------------------------------
 
-  const runExport = useCallback(async () => {
+  const runExport = useCallback(async (fmt: ExportFormat = "auto") => {
     if (!material || exporting) return;
     setExporting(true);
     dismissError();
     try {
-      const { blob, filename } = await fetchExport(material.material_id);
+      const { blob, filename } = await fetchExport(material.material_id, fmt);
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
@@ -962,14 +976,33 @@ export function ReaderPane({
         onSelect: () => setAnnotationPanel(!showAnnotations),
       });
     }
-    items.push({
-      key: "export",
-      icon: exporting ? Loader2 : Download,
-      label: t("Export annotated file"),
-      spinning: exporting,
-      disabled: exporting,
-      onSelect: () => void runExport(),
-    });
+    // Three rows rather than one: `auto` keeps the historical behaviour, and
+    // the other two let the reader pick the artefact they actually want.
+    items.push(
+      {
+        key: "export",
+        icon: exporting ? Loader2 : Download,
+        label: t("Export annotated file"),
+        hint: t("Annotated original when available, otherwise the marks"),
+        spinning: exporting,
+        disabled: exporting,
+        onSelect: () => void runExport("auto"),
+      },
+      {
+        key: "export-pdf",
+        icon: Download,
+        label: t("Download annotated PDF"),
+        disabled: exporting || !material.has_raw_view,
+        onSelect: () => void runExport("pdf"),
+      },
+      {
+        key: "export-markdown",
+        icon: Download,
+        label: t("Download as Markdown"),
+        disabled: exporting,
+        onSelect: () => void runExport("markdown"),
+      },
+    );
     return items;
   }, [
     autoJump,
@@ -1322,7 +1355,9 @@ export function ReaderPane({
                 setActiveAnnotationId(annotation.annotation_id);
                 requestJump(annotation.locator, annotation.quote || undefined);
               }}
-              onDelete={(annotation) => void removeMark(annotation)}
+              onDelete={removeMark}
+              onEditNote={(annotation, note) => updateMark(annotation, { note })}
+              onChangeMark={updateMark}
             />
           </aside>
         )}

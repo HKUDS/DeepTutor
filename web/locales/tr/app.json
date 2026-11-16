@@ -6661,5 +6661,19 @@
   "Position": "Position",
   "Action": "Action",
   "Conversation IDs (optional)": "Conversation IDs (optional)",
-  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle."
+  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.",
+  "Search annotations…": "Notları ara…",
+  "No matching annotations": "Eşleşen not yok",
+  "Try a different word, or clear the search.": "Farklı bir kelime deneyin veya aramayı temizleyin.",
+  "Download annotated PDF": "Notlanmış PDF indir",
+  "Download as Markdown": "Markdown olarak indir",
+  "Annotated original when available, otherwise the marks": "Mümkünse notlanmış orijinal, aksi halde işaretler",
+  "Change colour": "Rengi değiştir",
+  "Document order": "Belge sırası",
+  "Select annotations": "Notları seç",
+  "Filter by colour": "Renge göre filtrele",
+  "All colours": "Tüm renkler",
+  "Could not copy to the clipboard.": "Panoya kopyalanamadı.",
+  "Some annotations could not be removed.": "Bazı notlar kaldırılamadı.",
+  "This annotation was removed. Copy your draft before closing.": "Bu açıklama silindi. Kapatmadan önce taslağınızı kopyalayın."
 }

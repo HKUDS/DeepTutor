@@ -6661,5 +6661,19 @@
   "Position": "Position",
   "Action": "Action",
   "Conversation IDs (optional)": "Conversation IDs (optional)",
-  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle."
+  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.",
+  "Search annotations…": "注釈を検索…",
+  "No matching annotations": "一致する注釈はありません",
+  "Try a different word, or clear the search.": "別の言葉を試すか、検索をクリアしてください。",
+  "Download annotated PDF": "注釈付き PDF をダウンロード",
+  "Download as Markdown": "Markdown としてダウンロード",
+  "Annotated original when available, otherwise the marks": "可能なら注釈付きの元ファイル、なければ注釈のみ",
+  "Change colour": "色を変更",
+  "Document order": "文書順",
+  "Select annotations": "注釈を選択",
+  "Filter by colour": "色で絞り込む",
+  "All colours": "すべての色",
+  "Could not copy to the clipboard.": "クリップボードにコピーできませんでした。",
+  "Some annotations could not be removed.": "一部の注釈を削除できませんでした。",
+  "This annotation was removed. Copy your draft before closing.": "この注釈は削除されました。閉じる前に下書きをコピーしてください。"
 }

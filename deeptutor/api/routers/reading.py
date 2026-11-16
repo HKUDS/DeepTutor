@@ -61,7 +61,7 @@ from deeptutor.reading.knowledge_capture import (
     organize_workspace_notes,
     send_workspace_to_notebook,
 )
-from deeptutor.reading.models import MAX_TEXT_SELECTOR_CHARS
+from deeptutor.reading.models import MAX_TEXT_SELECTOR_CHARS, AnnotationConflict
 from deeptutor.services.session.workspace_preferences import WORKSPACE_MODE_READING
 from deeptutor.utils.document_validator import DocumentValidator
 
@@ -160,7 +160,7 @@ def _http_error(exc: Exception) -> HTTPException:
         return HTTPException(status_code=403, detail=str(exc))
     if isinstance(exc, MaterialNotFound):
         return HTTPException(status_code=404, detail=str(exc))
-    if isinstance(exc, ReadingUpgradeConflict):
+    if isinstance(exc, (ReadingUpgradeConflict, AnnotationConflict)):
         return HTTPException(status_code=409, detail=str(exc))
     if isinstance(exc, ReadingError):
         return HTTPException(status_code=400, detail=str(exc))
@@ -284,6 +284,7 @@ class AnnotationPayload(BaseModel):
         default_factory=list,
         max_length=2,
     )
+    expected_updated_at: float | None = Field(default=None, ge=0, allow_inf_nan=False)
 
     def to_annotation(self) -> Annotation:
         return Annotation.from_dict(
@@ -297,6 +298,7 @@ class AnnotationPayload(BaseModel):
                 "rects": self.rects,
                 "source_anchor": self.source_anchor,
                 "selectors": [selector.model_dump() for selector in self.selectors],
+                "expected_updated_at": self.expected_updated_at,
                 "author": "user",
             }
         )
@@ -314,6 +316,7 @@ class AnnotationInfo(BaseModel):
     source_anchor: str = ""
     selectors: list[dict[str, Any]] = Field(default_factory=list)
     author: str
+    resolution: str = "resolved"
     created_at: float
     updated_at: float
 
@@ -618,7 +621,8 @@ async def import_zim_article(payload: ZimArticleImportRequest) -> dict[str, Any]
         source_url = f"{client.base_url}/content/{client.zim_name}/" + "/".join(
             quote(segment, safe="") for segment in path.split("/")
         )
-        store.ingest_units(
+        await asyncio.to_thread(
+            store.ingest_units,
             material_id,
             filename=f"{title[:150]}.md",
             units=units,
@@ -1182,8 +1186,8 @@ async def delete_material(material_id: str) -> dict[str, Any]:
     catalog = _catalog()
     record = catalog.get_material(material_id)
     removed_from = catalog.collections_for_material(material_id) if record else []
-    try:
-        assert_learning_material_mutation(material_id)
+
+    def remove_material() -> bool:
         shared = record is not None and catalog.count_materials_for_content(record.content_id) > 1
         if shared and record is not None:
             # A sibling material still reads this content: drop this row and
@@ -1195,6 +1199,11 @@ async def delete_material(material_id: str) -> dict[str, Any]:
                 if staged:
                     catalog.delete_material(material_id)
             removed = staged or bool(record and catalog.delete_material(material_id))
+        return removed
+
+    try:
+        assert_learning_material_mutation(material_id)
+        removed = await asyncio.to_thread(remove_material)
     except Exception as exc:
         raise _http_error(exc) from exc
     if not removed:
@@ -1491,18 +1500,27 @@ async def save_annotation(material_id: str, payload: AnnotationPayload) -> Annot
     store = _store()
     try:
         assert_learning_material(material_id)
-        saved = store.save_annotation(material_id, payload.to_annotation())
+        saved = await asyncio.to_thread(store.save_annotation, material_id, payload.to_annotation())
     except Exception as exc:
         raise _http_error(exc) from exc
     return _annotation_info(saved)
 
 
 @router.delete("/materials/{material_id}/annotations/{annotation_id}")
-async def delete_annotation(material_id: str, annotation_id: str) -> dict[str, Any]:
+async def delete_annotation(
+    material_id: str,
+    annotation_id: str,
+    expected_updated_at: float | None = Query(default=None, ge=0, allow_inf_nan=False),
+) -> dict[str, Any]:
     store = _store()
     try:
         assert_learning_material(material_id)
-        removed = store.delete_annotation(material_id, annotation_id)
+        removed = await asyncio.to_thread(
+            store.delete_annotation,
+            material_id,
+            annotation_id,
+            expected_updated_at=expected_updated_at,
+        )
     except Exception as exc:
         raise _http_error(exc) from exc
     if not removed:

@@ -28,6 +28,7 @@ import {
   setReadingMaterial,
   setReadingViewport,
 } from "@/lib/reading-turn-state";
+import { isApiError } from "@/shared/api/errors";
 
 /**
  * The open document and its annotations, owned above the chat page.
@@ -82,6 +83,22 @@ export interface ReadingContextValue {
 
 const noop = () => {};
 
+/**
+ * What to tell the reader when an annotation write is refused for a newer copy.
+ *
+ * A 409 is not a failure to retry: the row moved on in another tab, and the
+ * list is about to show the version the server holds. The server's own prose
+ * ("this annotation changed or was removed since you loaded it") is accurate
+ * but reads like a fault on the reader's side, so it is replaced here. Every
+ * other failure keeps the message its own call site already chose.
+ */
+function annotationConflictMessage(caught: unknown): string | null {
+  if (isApiError(caught) && caught.status === 409) {
+    return "Another tab changed this annotation first, so this change was not saved.";
+  }
+  return null;
+}
+
 const ReadingContext = createContext<ReadingContextValue>({
   material: null,
   annotations: [],
@@ -112,7 +129,7 @@ export function ReadingProvider({ children }: { children: ReactNode }) {
   // be deleted before the server knows its real id, so `removeMark` awaits the
   // write and then deletes the row the server actually created.
   const pendingResolversRef = useRef<
-    Map<string, Set<(createdId: string | null) => void>>
+    Map<string, Set<(created: AnnotationItem | null) => void>>
   >(new Map());
   // The newest list, for callbacks that must read it after an await without
   // closing over a stale render.
@@ -124,6 +141,9 @@ export function ReadingProvider({ children }: { children: ReactNode }) {
   // that lands while the DELETE is in flight still lists them; without this
   // tombstone the row would come back and stay back.
   const deletedIdsRef = useRef<Set<string>>(new Set());
+  // Keep duplicate protection through failure reconciliation, when the
+  // tombstone must already be cleared so a fresh GET can restore the row.
+  const pendingDeletesRef = useRef<Map<string, symbol>>(new Map());
   // Newest refresh wins. Every GET takes a number; only the response to the
   // highest one issued may apply, or an older list can land last and overwrite
   // a newer one.
@@ -132,10 +152,19 @@ export function ReadingProvider({ children }: { children: ReactNode }) {
   // local write carries a snapshot that predates it, so applying it would drop
   // a mark the reader can see was saved.
   const localMutationSeqRef = useRef(0);
+  const resetPendingWrites = useCallback(() => {
+    for (const listeners of pendingResolversRef.current.values()) {
+      for (const listener of listeners) listener(null);
+    }
+    pendingResolversRef.current.clear();
+    pendingWritesRef.current.clear();
+    pendingDeletesRef.current.clear();
+  }, []);
   useEffect(() => () => {
     openTokenRef.current += 1;
     annotationScopeRef.current += 1;
-  }, []);
+    resetPendingWrites();
+  }, [resetPendingWrites]);
 
   // Mirror the open document into the turn-state cell, which is what the chat
   // reads when it sends. One effect rather than writes scattered through the
@@ -166,7 +195,7 @@ export function ReadingProvider({ children }: { children: ReactNode }) {
         // Tombstones and pending ids belong to the document that was open;
         // carrying them into the next one would hide unrelated rows.
         deletedIdsRef.current.clear();
-        pendingWritesRef.current.clear();
+        resetPendingWrites();
         setMaterial(detail);
         setAnnotations(marks);
         return true;
@@ -182,7 +211,7 @@ export function ReadingProvider({ children }: { children: ReactNode }) {
         if (token === openTokenRef.current) setLoading(false);
       }
     },
-    [],
+    [resetPendingWrites],
   );
 
   const closeMaterial = useCallback(() => {
@@ -190,12 +219,12 @@ export function ReadingProvider({ children }: { children: ReactNode }) {
     openTokenRef.current += 1;
     annotationScopeRef.current += 1;
     deletedIdsRef.current.clear();
-    pendingWritesRef.current.clear();
+    resetPendingWrites();
     setMaterial(null);
     setAnnotations([]);
     setErrorState(null);
     setReadingViewport({ locator: 0, selection: "" });
-  }, []);
+  }, [resetPendingWrites]);
 
   const materialId = material?.material_id ?? null;
 
@@ -260,14 +289,22 @@ export function ReadingProvider({ children }: { children: ReactNode }) {
     async (draft: AnnotationDraft, optimistic: AnnotationItem) => {
       const materialId = material?.material_id;
       if (!materialId) return false;
+      if (pendingWritesRef.current.has(optimistic.annotation_id)) return false;
       const token = openTokenRef.current;
       // From here on this tab's list differs from any GET already in flight.
       localMutationSeqRef.current += 1;
       pendingWritesRef.current.add(optimistic.annotation_id);
       // Registered as a listener rather than a single slot: a delete may join
       // while the write is still in flight, and both must be told how it ended.
-      const listeners = new Set<(createdId: string | null) => void>();
+      const listeners = new Set<(created: AnnotationItem | null) => void>();
       pendingResolversRef.current.set(optimistic.annotation_id, listeners);
+      const settleWrite = (saved: AnnotationItem | null) => {
+        if (pendingResolversRef.current.get(optimistic.annotation_id) === listeners) {
+          pendingWritesRef.current.delete(optimistic.annotation_id);
+          pendingResolversRef.current.delete(optimistic.annotation_id);
+        }
+        for (const listener of listeners) listener(saved);
+      };
       const previous = annotations.find(row => row.annotation_id === optimistic.annotation_id);
       setAnnotations(current => previous
         ? current.map(row => row.annotation_id === optimistic.annotation_id ? optimistic : row)
@@ -275,11 +312,7 @@ export function ReadingProvider({ children }: { children: ReactNode }) {
       try {
         const saved = await saveAnnotation(materialId, draft);
         if (token === openTokenRef.current) setAnnotations(current => current.map(row => row.annotation_id === optimistic.annotation_id ? saved : row));
-        pendingWritesRef.current.delete(optimistic.annotation_id);
-        for (const listener of pendingResolversRef.current.get(optimistic.annotation_id) ?? []) {
-          listener(saved.annotation_id);
-        }
-        pendingResolversRef.current.delete(optimistic.annotation_id);
+        settleWrite(saved);
         // The acknowledged row is now part of this tab's list; a GET that
         // started before the PUT returned may not contain it.
         localMutationSeqRef.current += 1;
@@ -288,14 +321,13 @@ export function ReadingProvider({ children }: { children: ReactNode }) {
       } catch (caught) {
         // The write is no longer pending, so a refresh from here on is allowed
         // to replace the optimistic row with whatever the server holds.
-        pendingWritesRef.current.delete(optimistic.annotation_id);
-        for (const listener of pendingResolversRef.current.get(optimistic.annotation_id) ?? []) {
-          listener(null);
-        }
-        pendingResolversRef.current.delete(optimistic.annotation_id);
+        settleWrite(null);
         localMutationSeqRef.current += 1;
         if (token !== openTokenRef.current) return false;
-        setErrorState(caught instanceof Error ? caught.message : "That annotation could not be saved.");
+        setErrorState(
+          annotationConflictMessage(caught) ??
+            (caught instanceof Error ? caught.message : "That annotation could not be saved."),
+        );
         // The captured row may be stale: another tab can have edited this mark
         // while the PUT was in flight, and a refresh may already have brought
         // the newer copy — hidden here until now by the pending merge. The row
@@ -322,18 +354,18 @@ export function ReadingProvider({ children }: { children: ReactNode }) {
     }, [material, annotations, refreshMarks],
   );
 
-  /** Wait for a create in flight; resolves to the real id, or null on failure. */
+  /** Wait for a create in flight and use its server-assigned id and version. */
   const waitForPendingWrite = useCallback(
-    (optimisticId: string): Promise<string | null> => {
+    (optimisticId: string): Promise<AnnotationItem | null> => {
       if (!pendingWritesRef.current.has(optimisticId)) {
-        return Promise.resolve(optimisticId);
+        return Promise.resolve(annotationsRef.current.find((row) => row.annotation_id === optimisticId) ?? null);
       }
       // `saveMark` resolves every registered write on both paths, so this
       // settles whether the PUT succeeded or failed.
-      return new Promise<string | null>((resolve) => {
+      return new Promise<AnnotationItem | null>((resolve) => {
         const listeners = pendingResolversRef.current.get(optimisticId);
         if (!listeners) {
-          resolve(optimisticId);
+          resolve(null);
           return;
         }
         listeners.add(resolve);
@@ -353,17 +385,15 @@ export function ReadingProvider({ children }: { children: ReactNode }) {
       // write in flight to finish first, so the delete names the real id.
       let target = annotation;
       if (pendingWritesRef.current.has(annotation.annotation_id)) {
-        const createdId = await waitForPendingWrite(annotation.annotation_id);
+        const created = await waitForPendingWrite(annotation.annotation_id);
         if (scope !== annotationScopeRef.current) return false;
-        if (!createdId) return false;
-        const created = annotationsRef.current.find(
-          (row) => row.annotation_id === createdId,
-        );
-        // The write landed but the row is not in the list (a refresh settled
-        // without it): the server may still hold it, so delete by id anyway.
-        target = created ?? { ...annotation, annotation_id: createdId };
+        if (!created) return false;
+        target = created;
       }
       const id = target.annotation_id;
+      if (pendingDeletesRef.current.has(id)) return false;
+      const operation = Symbol(id);
+      pendingDeletesRef.current.set(id, operation);
       // The row is gone from this tab's list before the request even leaves;
       // any GET that overlaps must be told, or it will bring the row back.
       deletedIdsRef.current.add(id);
@@ -372,26 +402,31 @@ export function ReadingProvider({ children }: { children: ReactNode }) {
         (row) => row.annotation_id !== id,
       ));
       try {
-        await deleteAnnotationApi(materialId, id);
+        await deleteAnnotationApi(materialId, id, target.updated_at);
+        if (scope !== annotationScopeRef.current) {
+          publishAnnotationsChange(materialId);
+          return true;
+        }
         // The server has it gone now, so the tombstone has done its job.
         deletedIdsRef.current.delete(id);
         localMutationSeqRef.current += 1;
         publishAnnotationsChange(materialId);
         return true;
-      } catch {
+      } catch (caught) {
+        if (scope !== annotationScopeRef.current) return false;
         // Clear the tombstone first: the re-read below is exactly the request
         // that must be allowed to see this row again.
         deletedIdsRef.current.delete(id);
         localMutationSeqRef.current += 1;
-        if (scope !== annotationScopeRef.current) return false;
-        setErrorState("That annotation could not be removed.");
+        setErrorState(annotationConflictMessage(caught) ?? "That annotation could not be removed.");
         // The captured row may be stale: another tab can have edited this mark
         // while the DELETE was in flight, and a refresh may already have
         // brought the newer copy. Re-reading asks the server what it holds now
         // and lets the normal merge put that back, so the rollback cannot
         // resurrect an old note over a newer one.
         const reconciled = await refreshMarks();
-        if (scope !== annotationScopeRef.current) return false;
+        if (scope !== annotationScopeRef.current ||
+          pendingDeletesRef.current.get(id) !== operation) return false;
         if (!reconciled) {
           // The re-read failed (or was superseded): restore the row we took
           // away, because leaving it missing would hide a mark the server
@@ -402,6 +437,10 @@ export function ReadingProvider({ children }: { children: ReactNode }) {
           ) ? current : [...current, target]);
         }
         return false;
+      } finally {
+        if (pendingDeletesRef.current.get(id) === operation) {
+          pendingDeletesRef.current.delete(id);
+        }
       }
     },
     [materialId, refreshMarks, waitForPendingWrite],

@@ -6661,5 +6661,19 @@
   "Position": "位置",
   "Action": "操作",
   "Conversation IDs (optional)": "指定对话 ID（可选）",
-  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "留空选择全部对话；多个 ID 用逗号分隔。预览包含关联依赖。导出仍包含完整功能数据。"
+  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "留空选择全部对话；多个 ID 用逗号分隔。预览包含关联依赖。导出仍包含完整功能数据。",
+  "Search annotations…": "搜索标注…",
+  "No matching annotations": "没有匹配的标注",
+  "Try a different word, or clear the search.": "换个关键词，或清除搜索。",
+  "Download annotated PDF": "下载带标注的 PDF",
+  "Download as Markdown": "下载为 Markdown",
+  "Annotated original when available, otherwise the marks": "有原件时导出带标注的原件，否则导出标注本身",
+  "Change colour": "更改颜色",
+  "Document order": "按文档顺序",
+  "Select annotations": "选择标注",
+  "Filter by colour": "按颜色筛选",
+  "All colours": "全部颜色",
+  "Could not copy to the clipboard.": "无法复制到剪贴板。",
+  "Some annotations could not be removed.": "部分标注未能删除。",
+  "This annotation was removed. Copy your draft before closing.": "此标注已被删除。关闭前请复制你的草稿。"
 }

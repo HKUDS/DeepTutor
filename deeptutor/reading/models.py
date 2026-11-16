@@ -63,6 +63,10 @@ class ReadingUpgradeConflict(ReadingError):
     """A source-faithful upgrade would invalidate existing annotations."""
 
 
+class AnnotationConflict(ReadingError):
+    """An annotation changed or was removed since it was read."""
+
+
 @dataclass(frozen=True, slots=True)
 class Rect:
     """A normalised rectangle within one unit: 0..1, origin top-left."""
@@ -389,6 +393,9 @@ class Annotation:
     author: str = "user"
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
+    # Request-only precondition; None is an unconditional legacy write, and
+    # zero is a valid version for rows written before timestamps were stored.
+    expected_updated_at: float | None = None
 
     def touched(self, **changes: Any) -> "Annotation":
         return replace(self, updated_at=time.time(), **changes)
@@ -439,6 +446,11 @@ class Annotation:
             author=str(data.get("author") or "user"),
             created_at=float(data.get("created_at") or 0.0),
             updated_at=float(data.get("updated_at") or 0.0),
+            expected_updated_at=(
+                float(data["expected_updated_at"])
+                if data.get("expected_updated_at") is not None
+                else None
+            ),
         )
 
 
