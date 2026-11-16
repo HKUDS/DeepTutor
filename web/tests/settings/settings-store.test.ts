@@ -466,6 +466,7 @@ test('RESPONSE_LANGUAGE_OPTIONS covers the supported response languages exactly 
   const options = settingsContext.RESPONSE_LANGUAGE_OPTIONS
 
   assert.equal(option_label(options, "tr"), "Türkçe")
+  assert.equal(option_label(options, "hi"), "हिन्दी")
   const values = options.map(option => option.value)
   assert.equal(new Set(values).size, values.length, 'no duplicated codes')
   for (const value of values) {

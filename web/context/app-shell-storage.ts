@@ -31,6 +31,8 @@ const SUPPORTED_RESPONSE_LANGUAGE_CODES: readonly ResponseLanguage[] = [
   "ms",
   "vi",
   "tr",
+  "hi",
+  "hu",
 ];
 
 export function isResponseLanguage(value: unknown): value is ResponseLanguage {
@@ -53,6 +55,7 @@ const RESPONSE_LANGUAGE_ALIASES: Record<string, ResponseLanguage> = {
   turkish: "tr",
   "türkçe": "tr",
   italian: "it",
+  italiano: "it",
   arabic: "ar",
   polish: "pl",
   ukrainian: "uk",
@@ -60,7 +63,12 @@ const RESPONSE_LANGUAGE_ALIASES: Record<string, ResponseLanguage> = {
   "bahasa melayu": "ms",
   vietnamese: "vi",
   "tiếng việt": "vi",
+  hindi: "hi",
+  "हिन्दी": "hi",
+  "हिंदी": "hi",
   "zh-cn": "zh",
+  hungarian: "hu",
+  magyar: "hu",
 };
 
 export const ACTIVE_SESSION_STORAGE_KEY = "deeptutor.activeSessionId.tab";

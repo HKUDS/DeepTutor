@@ -70,6 +70,7 @@ def test_fixed_session_selector_disables_conversational_override() -> None:
         ("uk", "Українська"),
         ("ms", "Bahasa Melayu"),
         ("vi", "Tiếng Việt"),
+        ("hi", "हिन्दी"),
     ],
 )
 def test_loop_preserves_requested_output_language_with_english_prompt_assets(

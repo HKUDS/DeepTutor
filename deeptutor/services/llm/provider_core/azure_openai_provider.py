@@ -21,6 +21,7 @@ from deeptutor.services.llm.provider_core.openai_responses import (
     convert_tools,
     parse_response_output,
 )
+from deeptutor.services.llm.provider_core.openai_stream import managed_openai_stream
 
 _ENDPOINT_SUFFIXES = (
     "/chat/completions",
@@ -224,42 +225,50 @@ class AzureOpenAIProvider(LLMProvider):
         try:
             stream = await self._client.responses.create(**body)
 
-            async def _timed_stream():
-                stream_iter = stream.__aiter__()
-                while True:
-                    try:
-                        yield await asyncio.wait_for(
-                            stream_iter.__anext__(), timeout=idle_timeout_s
-                        )
-                    except StopAsyncIteration:
-                        break
+            async with managed_openai_stream(stream):
 
-            content, tool_calls, finish_reason, usage, reasoning_content = await consume_sdk_stream(
-                _timed_stream(),
-                on_content_delta,
-                on_reasoning_delta=on_reasoning_delta,
-                on_provider_event=_collect_provider_event,
-            )
-            # Match parse_response_output: only reasoning turns need verbatim
-            # message/function items replayed alongside their private state.
-            if not any(item.get("type") == "reasoning" for item in native_output_items):
-                native_output_items = [
-                    item
-                    for item in native_output_items
-                    if item.get("type") in {"web_search_call", "web_search"}
-                ]
-            return LLMResponse(
-                content=content or None,
-                tool_calls=tool_calls,
-                finish_reason=finish_reason,
-                usage=usage,
-                reasoning_content=reasoning_content,
-                provider_specific_fields=(
-                    {"native_output_items": native_output_items, "citations": native_citations}
-                    if native_output_items or native_citations
-                    else {}
-                ),
-            )
+                async def _timed_stream():
+                    stream_iter = stream.__aiter__()
+                    while True:
+                        try:
+                            yield await asyncio.wait_for(
+                                stream_iter.__anext__(), timeout=idle_timeout_s
+                            )
+                        except StopAsyncIteration:
+                            break
+
+                (
+                    content,
+                    tool_calls,
+                    finish_reason,
+                    usage,
+                    reasoning_content,
+                ) = await consume_sdk_stream(
+                    _timed_stream(),
+                    on_content_delta,
+                    on_reasoning_delta=on_reasoning_delta,
+                    on_provider_event=_collect_provider_event,
+                )
+                # Match parse_response_output: only reasoning turns need verbatim
+                # message/function items replayed alongside their private state.
+                if not any(item.get("type") == "reasoning" for item in native_output_items):
+                    native_output_items = [
+                        item
+                        for item in native_output_items
+                        if item.get("type") in {"web_search_call", "web_search"}
+                    ]
+                return LLMResponse(
+                    content=content or None,
+                    tool_calls=tool_calls,
+                    finish_reason=finish_reason,
+                    usage=usage,
+                    reasoning_content=reasoning_content,
+                    provider_specific_fields=(
+                        {"native_output_items": native_output_items, "citations": native_citations}
+                        if native_output_items or native_citations
+                        else {}
+                    ),
+                )
         except asyncio.TimeoutError:
             return LLMResponse(
                 content=f"Error calling Azure OpenAI: stream stalled for more than {idle_timeout_s} seconds",

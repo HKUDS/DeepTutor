@@ -411,6 +411,16 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         default_api_base="https://cloudgpu.app/v1",
     ),
     ProviderSpec(
+        name="standardcompute",
+        keywords=("standardcompute",),
+        env_key="STANDARDCOMPUTE_API_KEY",
+        display_name="Standard Compute",
+        backend="openai_compat",
+        is_gateway=True,
+        detect_by_base_keyword="stdcmpt",
+        default_api_base="https://api.stdcmpt.com/v1",
+    ),
+    ProviderSpec(
         name="volcengine",
         keywords=("volcengine", "volces", "ark"),
         env_key="OPENAI_API_KEY",

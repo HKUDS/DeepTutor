@@ -1,7 +1,9 @@
 from __future__ import annotations
 
-from deeptutor.services.memory.document import Document, Entry, parse
-from deeptutor.services.memory.ops import AddOp, ApplyReport, DeleteOp, EditOp, apply
+import pytest
+
+from deeptutor.services.memory.document import Document, Entry, parse, serialize
+from deeptutor.services.memory.ops import AddOp, ApplyReport, DeleteOp, EditOp, Op, apply
 
 _BASE_MD = """\
 # Chat memory
@@ -157,3 +159,55 @@ def test_validation_failure_leaves_doc_untouched() -> None:
     assert not report.accepted
     after = [(e.id, e.text, list(e.refs)) for e in doc.all_entries()]
     assert snapshot_entries == after
+
+
+@pytest.mark.parametrize(
+    "separator",
+    ["\n", "\r", "\r\n", "\v", "\f", "\x1c", "\x1d", "\x1e", "\x85", "\u2028", "\u2029"],
+)
+@pytest.mark.parametrize("field_name", ["add_text", "section", "edit_text"])
+def test_line_break_rejects_whole_batch(separator: str, field_name: str) -> None:
+    value = f"first{separator}second"
+    bad_op: Op
+    if field_name == "add_text":
+        bad_op = AddOp(section="Notes", text=value, refs=[_VALID_REF])
+    elif field_name == "section":
+        bad_op = AddOp(section=value, text="valid", refs=[_VALID_REF])
+    else:
+        bad_op = EditOp(target_id=_EXISTING_ID, new_text=value, new_refs=[_VALID_REF])
+    doc = _fresh_doc()
+    before = serialize(doc)
+    report = apply(
+        doc,
+        [
+            AddOp(section="Valid", text="would be added", refs=[_VALID_REF]),
+            bad_op,
+        ],
+    )
+    assert not report.accepted
+    assert "single line" in report.reason
+    assert report.results == []
+    assert serialize(doc) == before
+
+
+@pytest.mark.parametrize(
+    "bad_op",
+    [
+        AddOp(section="Notes", text="valid", refs=[_VALID_REF + "\n"]),
+        EditOp(target_id=_EXISTING_ID, new_text="valid", new_refs=[_VALID_REF + "\n"]),
+    ],
+)
+def test_ref_with_trailing_newline_rejects_whole_batch(bad_op: Op) -> None:
+    doc = _fresh_doc()
+    before = serialize(doc)
+    report = apply(doc, [AddOp(section="Valid", text="valid", refs=[_VALID_REF]), bad_op])
+    assert not report.accepted
+    assert report.results == []
+    assert serialize(doc) == before
+
+
+def test_single_line_unicode_and_tabs_roundtrip() -> None:
+    doc = _fresh_doc()
+    report = apply(doc, [AddOp(section="概念\tNotes", text="Café\t总结", refs=[_VALID_REF])])
+    assert report.accepted
+    assert parse(serialize(doc)) == doc

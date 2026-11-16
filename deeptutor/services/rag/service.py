@@ -149,6 +149,21 @@ class RAGService:
                 "error_type": "reasoning_as_retrieval_required",
             }
 
+        pipeline = self._get_pipeline(provider)
+        if (
+            kwargs.get("document_keys") is not None
+            and getattr(pipeline, "supports_document_scope", False) is not True
+        ):
+            return {
+                "query": query,
+                "answer": "This backend cannot restrict retrieval to selected documents. "
+                "Use a knowledge base with document-scoped retrieval support.",
+                "content": "",
+                "sources": [],
+                "provider": provider,
+                "error_type": "document_scope_unsupported",
+            }
+
         # Query rewrite layer (fail-open). ``maybe_rewrite`` reads runtime
         # settings when ``rewrite`` is None, honors an explicit True/False
         # override, and returns ``(original, None)`` when the layer is off, so
@@ -177,7 +192,6 @@ class RAGService:
             )
 
             self.logger.info(f"Searching KB '{kb_name}' with query: {query[:50]}...")
-            pipeline = self._get_pipeline(provider)
 
             await self._emit_tool_event(
                 event_sink,

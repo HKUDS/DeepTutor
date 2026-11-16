@@ -118,6 +118,11 @@
       "sha256": "8051137fee486b2a36a7f6744cf86fb48ac17520d5ee8dd712c659feb8adb912",
       "source": "Official website asset"
     },
+    "standardcompute.svg": {
+      "url": "https://standardcompute.com/logo.svg",
+      "sha256": "b8ba9a992247f59bd2af8206354e76e8cebcb5a39a885150366f3cf1aeaad1c9",
+      "source": "Official website asset"
+    },
     "api-route.png": {
       "url": "https://www.api-route.com/apple-touch-icon.png?v=2",
       "sha256": "28866bf8b7c0913c634a34d2839a3201b0eab2019b926e556411a72f4c969e42",
@@ -161,6 +166,16 @@
       "url": "https://unpkg.com/@lobehub/icons-static-svg@1.95.1/icons/microsoft-color.svg",
       "sha256": "5cfb0ffa3231313c2968b5e3fedfcce8e2e96c61bde4572384c3889a77a80350",
       "source": "@lobehub/icons-static-svg 1.95.1 (MIT)"
+    },
+    "specstream.ico": {
+      "url": "https://specstream.ai/favicon.ico",
+      "sha256": "c2b68886b5e696508b40203a6779bb01d0709d225b4bfbe933714f2d6bd00578",
+      "source": "Official website asset"
+    },
+    "searchapi.svg": {
+      "url": "https://www.searchapi.io/favicon.svg",
+      "sha256": "5ef13fedc55abb407621cb0219a563ab400735b8ba6228b52d0629990d922ca0",
+      "source": "Official website favicon; verified 2026-11-14"
     }
   },
   "chinese_names": {

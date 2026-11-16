@@ -9,6 +9,21 @@ import sys
 import time
 from typing import Any
 
+#: How long the tree gets to disappear after the kill signals. Shared by the
+#: Windows job-object loop and the POSIX group poll so both give up at the same
+#: point; a test can shorten it instead of waiting out the real deadline.
+_PROCESS_SETTLE_SECONDS = 5.0
+
+
+class ProcessTreeNotSettled(RuntimeError):
+    """The CLI tree outlived the settle deadline.
+
+    A subclass of :class:`RuntimeError`, so callers that already catch broadly
+    keep working unchanged. It exists so the parse can report "cleanup failed"
+    rather than "the parser crashed": the two call for different handling, and
+    only this one means the artifacts may still be in motion (#2426).
+    """
+
 
 @contextmanager
 def cli_process(cmd: list[str], log_path: Path, env: dict[str, str]):
@@ -63,12 +78,14 @@ def cli_process(cmd: list[str], log_path: Path, env: dict[str, str]):
                     if process is not None and not assigned:
                         process.kill()  # Still suspended; cannot have spawned a child.
                     win32job.TerminateJobObject(job, 1)
-                    deadline = time.monotonic() + 5
+                    deadline = time.monotonic() + _PROCESS_SETTLE_SECONDS
                     while win32job.QueryInformationJobObject(
                         job, win32job.JobObjectBasicAccountingInformation
                     )["ActiveProcesses"]:
                         if time.monotonic() >= deadline:
-                            raise RuntimeError("MinerU process-tree cleanup did not settle")
+                            raise ProcessTreeNotSettled(
+                                "MinerU process-tree cleanup did not settle"
+                            )
                         time.sleep(0.05)
                 finally:
                     job.Close()
@@ -85,22 +102,28 @@ def cli_process(cmd: list[str], log_path: Path, env: dict[str, str]):
             if process is not None:
                 process.wait(timeout=5)
             if sys.platform != "win32" and process is not None:
-                deadline = time.monotonic() + 5
+                deadline = time.monotonic() + _PROCESS_SETTLE_SECONDS
                 while _process_group_alive(process.pid):
                     if time.monotonic() >= deadline:
-                        raise RuntimeError("MinerU process-tree cleanup did not settle")
+                        raise ProcessTreeNotSettled("MinerU process-tree cleanup did not settle")
                     time.sleep(0.05)
 
 
-def _process_group_alive(pgid: int) -> bool:
-    """A killed group may remain visible while init reaps its zombies."""
+def _process_group_exists(pgid: int) -> bool:
+    """Only ESRCH confirms absence; EPERM may hide members or just zombies."""
     try:
         os.killpg(pgid, 0)
     except ProcessLookupError:
         return False
     except PermissionError:
-        # Darwin also reports EPERM on a group containing only zombies.
         pass
+    return True
+
+
+def _process_group_alive(pgid: int) -> bool:
+    """A killed group may remain visible while init reaps its zombies."""
+    if not _process_group_exists(pgid):
+        return False
 
     if sys.platform != "darwin":
         import psutil
@@ -117,7 +140,8 @@ def _process_group_alive(pgid: int) -> bool:
                 continue
             except psutil.AccessDenied:
                 return True
-        return not saw_member
+        # A group can be reaped between signal 0 and member enumeration.
+        return not saw_member and _process_group_exists(pgid)
 
     # On Darwin getpgid(pid) can no longer resolve an unreaped zombie;
     # ps exposes the kernel group and state together on both POSIX targets.
@@ -129,5 +153,10 @@ def _process_group_alive(pgid: int) -> bool:
         for group, state in (line.split() for line in rows.splitlines() if line.strip())
         if group == str(pgid)
     ]
-    # An existing group hidden from inspection must not be declared settled.
-    return not states or any(not state.startswith("Z") for state in states)
+    # Recheck an empty snapshot: the group may have disappeared since signal 0.
+    # An existing group hidden from inspection must still not be declared settled.
+    return (
+        any(not state.startswith("Z") for state in states)
+        if states
+        else _process_group_exists(pgid)
+    )

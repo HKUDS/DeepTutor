@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+from contextlib import closing
+import sqlite3
+
 import pytest
 
 from deeptutor.services.session import get_sqlite_session_store
 from deeptutor.services.workspace.context import workspace_context
 from deeptutor.services.workspace.data_migration import migrate_data
+from deeptutor.services.workspace.session_transfer import _conflicts
 from tests.services.workspace.test_data_scope import account as account
 
 
@@ -38,3 +42,21 @@ async def test_move_renumbers_turn_events_instead_of_colliding(account):
     with workspace_context(target):
         events = await get_sqlite_session_store().get_turn_events(turn["id"])
         assert [event["content"] for event in events] == ["first", "second"]
+
+
+def test_conflict_check_quotes_legacy_unique_column_names():
+    with closing(sqlite3.connect(":memory:")) as conn:
+        conn.row_factory = sqlite3.Row
+        conn.execute("ATTACH DATABASE ':memory:' AS target")
+        conn.execute('CREATE TABLE main.sessions (id TEXT PRIMARY KEY, "legacy""key" TEXT)')
+        conn.execute(
+            'CREATE TABLE target.sessions (id TEXT PRIMARY KEY, "legacy""key" TEXT UNIQUE)'
+        )
+        conn.execute("INSERT INTO main.sessions VALUES (?, ?)", ("moving", "shared"))
+        conn.execute("INSERT INTO target.sessions VALUES (?, ?)", ("existing", "shared"))
+        conn.execute("CREATE TEMP TABLE selected_sessions (id TEXT PRIMARY KEY)")
+        conn.execute("INSERT INTO selected_sessions VALUES (?)", ("moving",))
+
+        assert _conflicts(conn, "SELECT id FROM selected_sessions") == [
+            "Destination conflict in sessions: legacy\"key='shared'."
+        ]

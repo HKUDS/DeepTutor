@@ -239,6 +239,7 @@ class EmbeddingClient:
 
         ``contents`` uses the same simple contract as ``EmbeddingRequest``:
         ``[{"text": "..."}, {"image": "data:...|url"}, {"video": "..."}]``.
+        All batches in one call must return the same vector dimension.
         """
         if not contents:
             return []
@@ -252,6 +253,7 @@ class EmbeddingClient:
         batch_size = max(1, min(self.config.batch_size, provider_max))
         all_embeddings: List[List[float]] = []
         total_batches = (len(contents) + batch_size - 1) // batch_size
+        expected_dim: int | None = None
 
         for i, start in enumerate(range(0, len(contents), batch_size)):
             batch = contents[start : start + batch_size]
@@ -273,6 +275,17 @@ class EmbeddingClient:
                 total_batches=total_batches,
                 start_index=start,
             )
+            batch_dim = len(validated[0]) if validated else 0
+            if expected_dim is None:
+                expected_dim = batch_dim
+            elif batch_dim != expected_dim:
+                raise ValueError(
+                    "Embedding provider returned inconsistent vector dimensions "
+                    f"across batches (binding={self.config.binding}, "
+                    f"model={self.config.model}): expected {expected_dim}, "
+                    f"got {batch_dim} in batch {i + 1}/{total_batches}. "
+                    "Use a single embedding model/dimension and re-index the knowledge base."
+                )
             all_embeddings.extend(validated)
 
             if progress_callback:

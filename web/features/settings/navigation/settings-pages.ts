@@ -4,31 +4,30 @@ import {
   isSettingsCategoryVisible,
   isSettingsLeafVisible,
   resolveSettingsKey,
-  type Lang,
   type SettingsLeaf,
 } from './settings-nav'
 import type { LucideIcon } from 'lucide-react'
 import type { SettingsAccess } from './settings-access'
 
-export const SETTINGS_PAGE_GROUPS: { label: Lang; keys: string[] }[] = [
-  { label: { en: 'Personal', zh: '个人' }, keys: ['general', 'workspace', 'data-migration', 'appearance', 'usage'] },
+export const SETTINGS_PAGE_GROUPS: { label: string; keys: string[] }[] = [
+  { label: 'Personal', keys: ['general', 'workspace', 'data-migration', 'appearance', 'usage'] },
   {
-    label: { en: 'Models & services', zh: '模型与服务' },
+    label: 'Models & services',
     keys: ['connections', 'llm', 'task-models', 'embedding', 'search', 'voice', 'multimodal'],
   },
   {
-    label: { en: 'Learning & conversation', zh: '学习与对话' },
+    label: 'Learning & conversation',
     keys: ['starters', 'attachments', 'video-learning', 'learner-profile', 'progress', 'guardian', 'memory'],
   },
   {
-    label: { en: 'Features & integrations', zh: '功能与集成' },
+    label: 'Features & integrations',
     keys: ['tools', 'capabilities', 'agent-claude-code', 'knowledge'],
   },
   {
-    label: { en: 'System', zh: '系统' },
+    label: 'System',
     keys: ['network', 'status', 'about'],
   },
-  { label: { en: 'Archived', zh: '已归档' }, keys: ['archive'] },
+  { label: 'Archived', keys: ['archive'] },
 ]
 
 /**
@@ -62,57 +61,48 @@ export function settingsPageFamily(key: string): string[] {
 const extraPages: SettingsLeaf[] = [
   {
     key: 'progress',
-    label: { en: 'Learning progress', zh: '学习进度' },
-    blurb: { en: 'Reading progress and recent learning actions', zh: '阅读进度与近期学习操作' },
+    label: 'Learning progress',
+    blurb: 'Reading progress and recent learning actions',
     icon: BarChart3,
     href: '/settings/progress',
     tile: '',
   },
   {
     key: 'data-migration',
-    label: { en: 'Data migration', zh: '数据迁移' },
-    blurb: { en: 'Discover, migrate and export learning data', zh: '查找、迁移和导出学习数据' },
+    label: 'Data migration',
+    blurb: 'Discover, migrate and export learning data',
     icon: Archive,
     href: '/settings/data-migration',
     tile: '',
   },
   {
     key: 'usage',
-    label: { en: 'Usage statistics', zh: '用量统计' },
-    blurb: { en: 'Model usage and conversation activity', zh: '模型用量与对话活跃情况' },
+    label: 'Usage statistics',
+    blurb: 'Model usage and conversation activity',
     icon: BarChart3,
     href: '/settings/usage',
     tile: '',
   },
   {
     key: 'archive',
-    label: { en: 'Archived chats', zh: '已归档的聊天' },
-    blurb: {
-      en: 'Search, unarchive, or permanently delete archived conversations',
-      zh: '搜索、取消归档或永久删除已归档的对话',
-    },
+    label: 'Archived chats',
+    blurb: 'Search, unarchive, or permanently delete archived conversations',
     icon: Archive,
     href: '/settings/archive',
     tile: '',
   },
   {
     key: 'general',
-    label: { en: 'General', zh: '常规' },
-    blurb: {
-      en: 'Interface language, layout, response language, and setup help',
-      zh: '界面语言、布局、回复语言与配置帮助',
-    },
+    label: 'General',
+    blurb: 'Interface language, layout, response language, and setup help',
     icon: Settings2,
     href: '/settings/general',
     tile: '',
   },
   {
     key: 'status',
-    label: { en: 'Runtime status', zh: '运行状态' },
-    blurb: {
-      en: 'Service readiness, diagnostics, and memory usage',
-      zh: '服务就绪情况、诊断与内存占用',
-    },
+    label: 'Runtime status',
+    blurb: 'Service readiness, diagnostics, and memory usage',
     icon: Activity,
     href: '/settings/status',
     tile: '',
@@ -130,12 +120,12 @@ export function visibleSettingsPages(access: SettingsAccess): SettingsLeaf[] {
   ]
 }
 
-export function settingsPageLabel(key: string, fallback: Lang): Lang {
-  if (key === 'llm') return { en: 'Language models', zh: '语言模型' }
-  if (key === 'agent-claude-code') return { en: 'Partners & agents', zh: '伙伴与智能体' }
-  if (key === 'starters') return { en: 'Conversation', zh: '对话' }
-  if (key === 'connections') return { en: 'Providers', zh: '提供方' }
-  if (key === 'knowledge') return { en: 'Knowledge & documents', zh: '知识与文档' }
+export function settingsPageLabel(key: string, fallback: string): string {
+  if (key === 'llm') return 'Language models'
+  if (key === 'agent-claude-code') return 'Partners & agents'
+  if (key === 'starters') return 'Conversation'
+  if (key === 'connections') return 'Providers'
+  if (key === 'knowledge') return 'Knowledge & documents'
   return fallback
 }
 

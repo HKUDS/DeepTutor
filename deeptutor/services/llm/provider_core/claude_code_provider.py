@@ -57,6 +57,7 @@ class _SessionTurn:
     prompt: _Prompt
     on_content_delta: Callable[[str], Awaitable[None]] | None
     future: asyncio.Future[LLMResponse]
+    tool_names: frozenset[str] = frozenset()
 
 
 @dataclass
@@ -119,6 +120,7 @@ class _ClaudeCodeSession:
                         on_content_delta=turn.on_content_delta,
                         interrupt=_no_interrupt,
                         label=_LABEL,
+                        tool_names=turn.tool_names,
                     )
                     if not turn.future.done():
                         turn.future.set_result(response)
@@ -143,12 +145,18 @@ class _ClaudeCodeSession:
         self,
         prompt: _Prompt,
         on_content_delta: Callable[[str], Awaitable[None]] | None,
+        tool_names: frozenset[str] = frozenset(),
     ) -> LLMResponse:
         if not self.alive:
             raise RuntimeError("Claude Code session owner is not running")
         future: asyncio.Future[LLMResponse] = asyncio.get_running_loop().create_future()
         await self._ops.put(
-            _SessionTurn(prompt=prompt, on_content_delta=on_content_delta, future=future)
+            _SessionTurn(
+                prompt=prompt,
+                on_content_delta=on_content_delta,
+                future=future,
+                tool_names=tool_names,
+            )
         )
         return await future
 
@@ -230,6 +238,7 @@ class ClaudeCodeProvider(LLMProvider):
         try:
             sdk = _load_sdk()
             system_prompt, conversation = _split_system(messages)
+            system_prompt = _align_advertised_tools(system_prompt, tools)
             model = model or self.default_model
             if session_id:
                 return await self._run_session(
@@ -248,7 +257,10 @@ class ClaudeCodeProvider(LLMProvider):
             stream = sdk.query(prompt=_sdk_prompt(_prompt_input(conversation)), options=options)
             try:
                 return await _consume_messages(
-                    stream, on_content_delta=on_content_delta, label=_LABEL
+                    stream,
+                    on_content_delta=on_content_delta,
+                    label=_LABEL,
+                    tool_names=_offered_tool_names(tools),
                 )
             finally:
                 close = getattr(stream, "aclose", None)
@@ -293,7 +305,9 @@ class ClaudeCodeProvider(LLMProvider):
                     )
                 prompt = _prompt_input(_incremental_messages(session, conversation))
                 session.messages = deepcopy(conversation)
-                response = await session.run_turn(prompt, on_content_delta)
+                response = await session.run_turn(
+                    prompt, on_content_delta, _offered_tool_names(tools)
+                )
                 session.last_response = response.content or ""
                 return response
         except BaseException:
@@ -542,6 +556,17 @@ def _build_options(
     )
 
 
+def _offered_tool_names(tools: list[dict[str, Any]] | None) -> frozenset[str]:
+    names: set[str] = set()
+    for schema in tools or []:
+        function = schema.get("function") if isinstance(schema, dict) else None
+        if isinstance(function, dict):
+            name = str(function.get("name") or "").strip()
+            if name:
+                names.add(name)
+    return frozenset(names)
+
+
 def _build_tool_options(sdk: ModuleType, tools: list[dict[str, Any]] | None) -> dict[str, Any]:
     sdk_tools: list[Any] = []
     allowed: list[str] = []
@@ -580,6 +605,97 @@ def _build_tool_options(sdk: ModuleType, tools: list[dict[str, Any]] | None) -> 
     }
 
 
+def _mounted_tool_names(tools: list[dict[str, Any]] | None) -> list[str]:
+    """Bare registry names of the tools this call mounts on the MCP server."""
+    names: list[str] = []
+    for schema in tools or []:
+        function = schema.get("function") if isinstance(schema, dict) else None
+        name = str(function.get("name") or "").strip() if isinstance(function, dict) else ""
+        if name:
+            names.append(name)
+    return names
+
+
+def _align_advertised_tools(system_prompt: str, tools: list[dict[str, Any]] | None) -> str:
+    """Make the system prompt's tool advertising match the mounted surface.
+
+    The chat manifest advertises tools by bare registry name, but the CLI can
+    only reach them through the ``deeptutor`` SDK MCP server as
+    ``mcp__deeptutor__<name>`` — a bare-name call is rejected with ``No such
+    tool available`` and, with ``max_turns=1``, the turn dies with no text
+    (#2539). Rewrite each mounted tool's advertised name to the reachable one,
+    drop manifest entries for tools this call did not mount, and when a call
+    mounts no tools at all (e.g. the loop's forced-finish salvage, which sends
+    the manifest-laden prompt without ``tools``), say so instead of leaving
+    the manifest's invitation standing.
+    """
+    if not system_prompt:
+        return system_prompt
+    mounted = _mounted_tool_names(tools)
+    if not mounted:
+        return f"{system_prompt}\n\n{_TOOL_ACCESS_NONE_NOTE}"
+    aligned = _prune_unmounted_tool_entries(system_prompt, set(mounted))
+    for name in mounted:
+        # Backticks give exact-token semantics: `` `rag` `` never matches
+        # inside `` `kb_files` `` or an already-prefixed name.
+        aligned = aligned.replace(f"`{name}`", f"`{_MCP_TOOL_PREFIX}{name}`")
+    return f"{aligned}\n\n{_TOOL_NAMING_NOTE}"
+
+
+_TOOL_MANIFEST_SECTION = "tools"
+# Assembler block headings look like ``## tools``; ``###`` sub-group headings
+# (deferred tools group their providers) do not start a new block.
+_MANIFEST_HEADING_RE = re.compile(r"^##\s+(.+?)\s*$")
+# A manifest entry bullet: ``- `name` — description``. Prose and the ``- none``
+# fallback carry no backticked name and never match.
+_MANIFEST_ENTRY_RE = re.compile(r"^(\s*)[-*]\s+`([^`]+)`")
+
+
+def _prune_unmounted_tool_entries(system_prompt: str, mounted: set[str]) -> str:
+    """Remove ``## tools`` manifest entries this call did not mount.
+
+    The manifest lists every tool enabled for the turn, but a single call may
+    mount only a subset of them; a surviving entry would advertise a bare name
+    the CLI rejects, so its bullet — and the indented ``When to use`` /
+    ``Input`` lines under it — are removed. Other blocks (notebook ids,
+    deferred tools, prose) are left untouched.
+    """
+    kept: list[str] = []
+    in_tool_section = False
+    skipping_indent: int | None = None
+    for line in system_prompt.split("\n"):
+        heading = _MANIFEST_HEADING_RE.match(line)
+        if heading:
+            in_tool_section = heading.group(1) == _TOOL_MANIFEST_SECTION
+            skipping_indent = None
+            kept.append(line)
+            continue
+        indent = len(line) - len(line.lstrip())
+        if skipping_indent is not None:
+            # Continuation lines of a pruned entry are more indented than its
+            # bullet; a blank line or the next entry ends the removal.
+            if line.strip() and indent > skipping_indent:
+                continue
+            skipping_indent = None
+        if in_tool_section:
+            entry = _MANIFEST_ENTRY_RE.match(line)
+            if entry and entry.group(2) not in mounted:
+                skipping_indent = len(entry.group(1))
+                continue
+        kept.append(line)
+    return "\n".join(kept)
+
+
+_TOOL_NAMING_NOTE = (
+    "Tools are reachable only through the `deeptutor` MCP server: call each one by "
+    "its exact `mcp__deeptutor__<name>` name as listed in this prompt. A bare tool "
+    "name without that prefix does not exist, and calling it will be rejected."
+)
+_TOOL_ACCESS_NONE_NOTE = (
+    "No tools are mounted for this response. Do not call any tool; answer in plain text."
+)
+
+
 def _session_signature(
     model: str,
     system_prompt: str,
@@ -596,7 +712,7 @@ def _session_signature(
 
 
 def _friendly_error(exc: Exception) -> str:
-    message = str(exc)
+    message = str(exc).strip()
     lowered = message.lower()
     if "not found" in lowered and "claude" in lowered and "cli" in lowered:
         return (
@@ -606,6 +722,14 @@ def _friendly_error(exc: Exception) -> str:
     if "login" in lowered or "authenticat" in lowered or "401" in message:
         return (
             "Error calling Claude Code: not signed in. Run `claude` and enter `/login`, then retry."
+        )
+    if not message:
+        # An exception with no text used to render as a bare "Error calling
+        # Claude Code: " with nothing after the colon. Name the type so the
+        # report is actionable rather than blank (#2539).
+        return (
+            f"Error calling Claude Code: the SDK raised {type(exc).__name__} "
+            "without a message. Retry, and check the Claude Code CLI log if it persists."
         )
     return f"Error calling Claude Code: {message}"
 

@@ -321,6 +321,50 @@ def anchor_kb_names_exist(anchors: list[Any]) -> bool:
     return any(str(getattr(anchor, "kb_name", "") or "") for anchor in anchors)
 
 
+def _refuse_stale_dismissal(store: BookStorage, book: Book, *, force: bool) -> None:
+    """Refuse "mark as seen" while flagged pages still owe a recompile."""
+    if not book.stale_page_ids or force:
+        return
+    if not book.stale_detected_at:
+        raise ValueError(
+            "Cannot mark KB drift as seen before all stale pages have been recompiled."
+        )
+    not_recompiled = [
+        page_id
+        for page_id in book.stale_page_ids
+        if (page := store.load_page(book.id, page_id)) is None
+        or page.status.value != "ready"
+        or page.updated_at < book.stale_detected_at
+    ]
+    if not_recompiled:
+        raise ValueError(
+            "Cannot mark KB drift as seen before these pages are recompiled: "
+            + ", ".join(not_recompiled)
+        )
+
+
+def ensure_can_refresh_fingerprints(
+    book_id: str,
+    storage: BookStorage | None = None,
+    *,
+    force: bool = False,
+) -> Book | None:
+    """Run :func:`refresh_book_fingerprints`' refusal gate without writing.
+
+    The refresh-fingerprints endpoint claims the book's canonical revision
+    before it mutates anything; a refusal discovered only afterwards would
+    leave the claim behind and strand the client's ``expected_revision``.
+    Callers run this read-only gate first so a rejected "mark as seen" stays
+    side-effect free. Returns the book, or ``None`` when it does not exist.
+    """
+    store = storage or get_book_storage()
+    book = store.load_book(book_id)
+    if book is None:
+        return None
+    _refuse_stale_dismissal(store, book, force=force)
+    return book
+
+
 def refresh_book_fingerprints(
     book_id: str,
     storage: BookStorage | None = None,
@@ -341,23 +385,7 @@ def refresh_book_fingerprints(
     book = store.load_book(book_id)
     if book is None:
         return None
-    if book.stale_page_ids and not force:
-        if not book.stale_detected_at:
-            raise ValueError(
-                "Cannot mark KB drift as seen before all stale pages have been recompiled."
-            )
-        not_recompiled = [
-            page_id
-            for page_id in book.stale_page_ids
-            if (page := store.load_page(book_id, page_id)) is None
-            or page.status.value != "ready"
-            or page.updated_at < book.stale_detected_at
-        ]
-        if not_recompiled:
-            raise ValueError(
-                "Cannot mark KB drift as seen before these pages are recompiled: "
-                + ", ".join(not_recompiled)
-            )
+    _refuse_stale_dismissal(store, book, force=force)
     documents = fingerprint_kb_documents_batch(book.knowledge_bases, manager=manager)
     book.kb_document_fingerprints = documents
     book.kb_fingerprints = {name: digest_documents(docs) for name, docs in documents.items()}
@@ -496,6 +524,7 @@ __all__ = [
     "KBDriftReport",
     "LogHealthReport",
     "detect_kb_drift",
+    "ensure_can_refresh_fingerprints",
     "fingerprint_kb",
     "fingerprint_kbs",
     "mark_drift_on_book",

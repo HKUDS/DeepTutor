@@ -47,6 +47,10 @@ class ImaAuthError(ImaAPIError):
     """Raised when IMA rejects the client id / API key pair."""
 
 
+class ImaContentAccessError(ImaAPIError):
+    """IMA permits search but reserves subscribed-library content for its client."""
+
+
 class ImaRateLimitError(ImaAPIError):
     """Raised when IMA rate-limits the request."""
 
@@ -65,6 +69,10 @@ def unwrap(payload: Any, *, status_code: int) -> dict[str, Any]:
     if _is_success(code):
         data = payload.get("data")
         return data if isinstance(data, dict) else {}
+    if "订阅知识库" in message and "没有权限" in message:
+        raise ImaContentAccessError(
+            "IMA permits searching this subscribed library, but its files can only be read in the IMA client."
+        )
     if code in _CREDENTIAL_CODES:
         raise ImaAuthError(message or "IMA rejected the client ID / API key.")
     if code in _RATE_LIMIT_CODES:

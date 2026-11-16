@@ -132,6 +132,20 @@ test("an inline paren formula never merges two table cells", () => {
   assert.equal(normalizeMathMarkup(input), input);
 });
 
+test("a loose $ pair around LaTeX is tightened, not wrapped again", () => {
+  // A fill-in-the-blank question: the model closes the formula before the
+  // blank, with a space. The bare-LaTeX pass used to wrap the body a second
+  // time, giving `$$\lim … =$ $`, a display block that never closes.
+  assert.equal(
+    normalizeMathMarkup("si ha $\\lim_{n \\to +\\infty} a_n = $ ____."),
+    "si ha $\\lim_{n \\to +\\infty} a_n =$ ____.",
+  );
+  assert.equal(
+    normalizeMathMarkup("Let $a_n = \\frac{1}{n}$, so $ \\lim a_n = $ ____."),
+    "Let $a_n = \\frac{1}{n}$, so $\\lim a_n =$ ____.",
+  );
+});
+
 test("a loose $ pair is tightened rather than dropped", () => {
   assert.equal(
     normalizeMathMarkup("由此 $ x + y $ 成立。"),

@@ -3,7 +3,7 @@
 from copy import deepcopy
 import json
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import httpx
 import openai
@@ -33,10 +33,24 @@ ITEMS = [
 ]
 
 
+class EventBody(httpx.AsyncByteStream):
+    def __init__(self, events):
+        self.events = events
+        self.closed = False
+
+    async def __aiter__(self):
+        for event in self.events:
+            yield ("data: " + json.dumps(event) + "\n\n").encode()
+
+    async def aclose(self):
+        self.closed = True
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("streaming", [False, True])
 async def test_encrypted_reasoning_reaches_the_next_tool_request(streaming):
     requests = []
+    bodies = []
 
     async def handler(request):
         body = json.loads(request.content)
@@ -54,10 +68,12 @@ async def test_encrypted_reasoning_reaches_the_next_tool_request(streaming):
         if body["stream"]:
             events = [{"type": "response.output_item.done", "item": item} for item in output]
             events += [{"type": "response.completed", "response": response}]
+            body_stream = EventBody(events)
+            bodies.append(body_stream)
             return httpx.Response(
                 200,
                 headers={"content-type": "text/event-stream"},
-                content="".join("data: " + json.dumps(event) + "\n\n" for event in events),
+                stream=body_stream,
             )
         return httpx.Response(200, json=response)
 
@@ -103,6 +119,9 @@ async def test_encrypted_reasoning_reaches_the_next_tool_request(streaming):
             (item["type"], item["id"]) for item in ITEMS
         ]
         assert native[0]["encrypted_content"] == "opaque-fixture-state"
+        if streaming:
+            assert bodies[0].closed
+            assert not http_client.is_closed
         state = normalize_provider_response_state({"responses_output_items": native})
         before = deepcopy(state)
         await provider.chat(
@@ -186,8 +205,16 @@ async def test_failed_stream_does_not_publish_partial_replay_state():
             type="response.failed", response={"error": {"message": "fixture failure"}}
         )
 
+    class Stream:
+        close = AsyncMock()
+
+        def __aiter__(self):
+            return events()
+
+    stream = Stream()
+
     async def create(**kwargs):
-        return events()
+        return stream
 
     client = SimpleNamespace(responses=SimpleNamespace(create=create))
     with patch(
@@ -198,3 +225,4 @@ async def test_failed_stream_does_not_publish_partial_replay_state():
     result = await provider.chat_stream(messages=[])
     assert result.finish_reason == "error"
     assert result.provider_specific_fields == {}
+    stream.close.assert_awaited_once()

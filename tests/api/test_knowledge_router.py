@@ -656,42 +656,28 @@ def test_set_rag_provider_mode_persists_validates_and_reflects() -> None:
         )
 
 
-def test_supported_file_types_returns_upload_policy() -> None:
+def test_supported_file_types_returns_upload_policy(monkeypatch) -> None:
+    monkeypatch.setattr(
+        knowledge_router_module.FileTypeRouter,
+        "accepted_upload_extensions",
+        classmethod(lambda cls: {".pdf", ".md", ".docx"}),
+    )
     with TestClient(_build_app()) as client:
         response = client.get("/api/knowledge-bases/supported-file-types")
-
     assert response.status_code == 200
     payload = response.json()
-    assert ".pdf" in payload["extensions"]
-    assert ".docx" in payload["extensions"]
-    assert ".xlsx" in payload["extensions"]
-    assert ".pptx" in payload["extensions"]
-    assert ".md" in payload["extensions"]
-    assert ".png" in payload["extensions"]
-    assert ".pages" in payload["extensions"]
-    assert ".mp4" in payload["extensions"]
-    assert ".dclg.xml" in payload["extensions"]
-    assert ".tar.gz" in payload["extensions"]
-    assert ".ipynb" in payload["extensions"]
-    assert ".cbz" in payload["extensions"]
-    assert ".key" in payload["extensions"]
-    assert ".vsdx" in payload["extensions"]
-    assert ".sqlite3" in payload["extensions"]
+    assert payload["extensions"] == [".docx", ".md", ".pdf"]
     assert payload["max_file_size_bytes"] > 0
-    assert "max_pdf_size_bytes" not in payload
     assert ".pdf" in payload["accept"]
-    assert ".docx" in payload["accept"]
-    assert ".png" in payload["accept"]
-    assert ".tar.gz" in payload["accept"]
-    assert "image/png" in payload["accept"]
+    assert ".doc" not in payload["extensions"]
     assert payload["allow_any_extension"] is False
 
 
 def test_supported_file_types_can_delegate_all_extensions(monkeypatch) -> None:
     monkeypatch.setattr(
         knowledge_router_module.FileTypeRouter,
-        "active_parser_accepts_any_format",
-        classmethod(lambda cls: True),
+        "accepted_upload_extensions",
+        classmethod(lambda cls: set()),
     )
 
     with TestClient(_build_app()) as client:

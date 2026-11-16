@@ -144,6 +144,9 @@ export const bookApi = {
         method: "DELETE",
       },
     ),
+  previewEdit: (bookId: string, edit: BookEditInput) => request<BookEditProposal>(`/books/${encodeURIComponent(bookId)}/edits/preview`, { method: "POST", body: JSON.stringify(edit) }),
+  listEdits: (bookId: string, pageId?: string) => request<{ edits: BookEditProposal[] }>(`/books/${encodeURIComponent(bookId)}/edits${pageId ? `?page_id=${encodeURIComponent(pageId)}` : ""}`),
+  applyEdit: (bookId: string, editId: string, revision: number, undo = false) => request<BookEditProposal>(`/books/${encodeURIComponent(bookId)}/edits/${encodeURIComponent(editId)}/${undo ? "undo" : "apply"}`, { method: "POST", body: JSON.stringify({ expected_revision: revision }) }),
   getSpine: (book_id: string) =>
     request<{ spine: Spine }>(`/books/${encodeURIComponent(book_id)}/spine`),
   getPage: (book_id: string, page_id: string) =>
@@ -497,3 +500,14 @@ export const bookApi = {
 
 // Re-exported so callers can keep importing the event type from book-api.
 export type { BookWsEvent } from "@/lib/book-ws-operation";
+
+
+export interface BookEditInput {
+  action: "add_chapter" | "rename_chapter" | "move_chapter" | "delete_chapter" | "add_page" | "rename_page" | "move_page" | "delete_page" | "insert_block" | "extend_page";
+  chapter_id?: string; page_id?: string; title?: string; body?: string; position?: number;
+  learning_objectives?: string[];
+}
+export interface BookEditProposal {
+  id: string; book_id: string; page_id: string; expected_revision: number; applied_revision?: number;
+  status: string; diff: string; source_session_id: string; source_turn_id: string; edit: BookEditInput;
+}

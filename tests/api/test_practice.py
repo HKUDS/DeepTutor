@@ -101,6 +101,34 @@ def test_server_rejects_incorrect_answer_with_success_rating(bank):
     assert repo.state(entry["id"])["review_count"] == 0
 
 
+@pytest.mark.parametrize("kind", ["concept", "true_false"])
+def test_true_false_checks_and_reviews_use_the_reference_answer(bank, kind):
+    store, repo, client = bank
+    entry = seed(store, question_type=kind, options={}, correct_answer="false", result="ungraded")
+    endpoint = f"/practice/questions/{entry['id']}"
+    assert client.post(endpoint + "/check", json={"answer": "错误"}).json() == {"correct": True}
+    assert client.post(endpoint + "/check", json={"answer": "true"}).json() == {"correct": False}
+    rejected = client.post(
+        endpoint + "/review",
+        json={
+            "request_id": "wrong_true_false",
+            "version": 0,
+            "rating": "good",
+            "answer": "true",
+        },
+    )
+    assert rejected.status_code == 422
+    assert repo.state(entry["id"])["review_count"] == 0
+    payload = {"request_id": "right_true_false", "version": 0, "rating": "good", "answer": "false"}
+    saved = client.post(endpoint + "/review", json=payload)
+    assert saved.status_code == 200 and saved.json()["correct"] is True
+    assert client.post(endpoint + "/review", json=payload).json() == saved.json()
+    assert repo.state(entry["id"])["review_count"] == 1
+    original = asyncio.run(store.get_notebook_entry(entry["id"]))
+    for field in ("user_answer", "result", "is_correct", "correct_answer"):
+        assert original[field] == entry[field]
+
+
 def test_source_key_change_invalidates_open_question(bank):
     store, repo, _ = bank
     entry = seed(store)

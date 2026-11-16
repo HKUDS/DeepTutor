@@ -748,7 +748,7 @@ async def test_scoped_group_clarification_resume_and_exactly_once_credit(service
         ],
     }
 
-    def source_check(store, progress, kp_id, evidence, *, allow_partial=False):
+    def source_check(store, progress, kp_id, evidence, *, allow_partial=False, **_flags):
         assert evidence["id"] == "scoped-source"
         if not allow_partial:
             raise lesson_evidence.LessonUnavailable("Only this focused teaching slice is covered")
@@ -878,3 +878,80 @@ async def test_review_stage_can_repeat_an_answered_question(service, monkeypatch
 
     monkeypatch.setattr(semantic, "_request", support)
     await semantic.bind_question(service.store, progress, leaf("review", expected="alpha"))
+
+
+@pytest.mark.asyncio
+async def test_qualitative_reference_survives_grading_persistence_and_replay(service, monkeypatch):
+    from deeptutor.capabilities.mastery import tools
+    from deeptutor.learning import semantic_assessment as semantic
+    from deeptutor.learning.models import KnowledgeType
+
+    def concept(tx):
+        tx.progress.modules[0].knowledge_points[0].type = KnowledgeType.CONCEPT
+        tx.touch()
+
+    service.store.mutate("p", concept)
+    reference = "Alpha is the first letter of the Greek alphabet."
+
+    async def request(config, instruction, payload, **kwargs):
+        assert payload[0]["assessment_type"] == "qualitative"
+        assert "not feedback" in instruction
+        return {
+            "verdicts": [
+                {
+                    "question_id": "kp1",
+                    "result": "correct",
+                    "confidence": 0.99,
+                    "feedback": "Your explanation is accurate.",
+                    "reference_answer": reference,
+                }
+            ]
+        }
+
+    monkeypatch.setattr(semantic, "_request", request)
+    monkeypatch.setattr(tools, "_new_service", lambda: service)
+    captured = []
+
+    async def record(value):
+        captured.append(value)
+
+    monkeypatch.setattr("deeptutor.learning.assessment.record_assessment", record)
+    kwargs = dict(
+        _mastery_path_id="p",
+        knowledge_point_id="kp1",
+        _session_id="session",
+        _turn_id="turn",
+        _learner_message="alpha comes first",
+    )
+    for _ in range(2):
+        result = await tools.MasteryAssessTool().execute(**kwargs)
+        assert result.success, result.content
+        assert captured[-1].correct_answer == reference
+        assert captured[-1].user_answer == "alpha comes first"
+    evidence = service.store.load("p").learning_evidence
+    assert len(evidence) == 1
+    assert evidence[0].reference_answer == reference
+    assert evidence[0].feedback != reference
+
+
+@pytest.mark.asyncio
+async def test_final_qualitative_grade_without_reference_is_not_saved(monkeypatch):
+    from deeptutor.learning import semantic_assessment as semantic
+
+    async def request(*args, **kwargs):
+        return {
+            "verdicts": [
+                {
+                    "question_id": "objective",
+                    "result": "correct",
+                    "confidence": 0.99,
+                    "feedback": "Correct.",
+                }
+            ]
+        }
+
+    monkeypatch.setattr(semantic, "_request", request)
+    with pytest.raises(semantic.AssessmentUnavailable, match="No grade was saved"):
+        await semantic.judge_answers(
+            None, [{"question_id": "objective", "assessment_type": "qualitative"}]
+        )

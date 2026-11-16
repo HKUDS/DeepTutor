@@ -45,9 +45,12 @@ def dependency_closure(
     *,
     session_ids: set[str] | None = None,
     warnings: list[str] | None = None,
+    target_workspace_id: str | None = None,
 ) -> tuple[set[str], set[str]]:
     """Move connected stores together so sources left behind keep valid links."""
     sessions = _with_historical_references(paths, sessions, warnings)
+    if target_workspace_id is not None and "knowledge_bases" not in features:
+        sessions = _reuse_accessible_knowledge(sessions, target_workspace_id)
     selected, ids = _forward_closure(
         paths, sessions, features, session_ids=session_ids, warnings=warnings
     )
@@ -110,6 +113,53 @@ def dependency_closure(
             ids |= related_ids
         if previous == (selected, ids):
             return selected, ids
+
+
+def _reuse_accessible_knowledge(sessions, target_id):
+    """Omit a copy dependency only when the unchanged reference resolves identically.
+
+    This changes the planning view, never the stored preferences. In particular,
+    matching names in two different catalogs are not interchangeable (#2289).
+    """
+    from deeptutor.core.errors import AccessError
+    from deeptutor.multi_user.knowledge_access import resolve_kb
+    from deeptutor.services.workspace.context import workspace_context
+    from deeptutor.services.workspace.models import WorkspaceError
+
+    reusable = {}
+
+    def can_reuse(ref):
+        if not isinstance(ref, str):
+            return False
+        if ref not in reusable:
+            try:
+                source = resolve_kb(ref)
+                with workspace_context(target_id):
+                    destination = resolve_kb(ref)
+                reusable[ref] = (source.base_dir.resolve(), source.name) == (
+                    destination.base_dir.resolve(),
+                    destination.name,
+                )
+            except (AccessError, WorkspaceError, FileNotFoundError, ValueError):
+                reusable[ref] = False
+        return reusable[ref]
+
+    result = []
+    for row in sessions:
+        prefs = _preferences(row)
+        refs = list(prefs.get("knowledge_bases") or [])
+        if prefs.get("kb_name"):
+            refs.append(prefs["kb_name"])
+        if refs and all(can_reuse(ref) for ref in refs):
+            prefs["knowledge_bases"] = []
+            prefs.pop("kb_name", None)
+            prefs["workspace_dependencies"] = {
+                key: value
+                for key, value in prefs.get("workspace_dependencies", {}).items()
+                if key not in {"knowledge_bases", "kb_name"}
+            }
+        result.append({**row, "preferences_json": json.dumps(prefs)})
+    return result
 
 
 def _forward_closure(

@@ -1310,3 +1310,43 @@ def test_router_graphrag_readiness_does_not_make_a_paid_model_call(monkeypatch) 
     )
 
     assert knowledge._assert_provider_ready(GRAPHRAG_PROVIDER) is None
+
+
+@pytest.mark.parametrize("suffix", [".pdf", ".png"])
+def test_ingestion_parser_keeps_event_loop_responsive(tmp_path, monkeypatch, suffix):
+    import threading
+    from types import SimpleNamespace
+
+    from deeptutor.services import parsing
+
+    source = tmp_path / ("source" + suffix)
+    source.write_bytes(b"synthetic")
+    released = threading.Event()
+    entered = threading.Event()
+
+    class Parser:
+        def supports(self, path):
+            return True
+
+        def parse(self, path):
+            entered.set()
+            assert released.wait(timeout=3), "parser blocked the event loop"
+            return SimpleNamespace(markdown="parsed", blocks=[])
+
+    monkeypatch.setattr(parsing, "get_parse_service", lambda: Parser())
+
+    async def exercise():
+        task = asyncio.create_task(ingestion.prepare_input([str(source)], tmp_path / "kb"))
+        try:
+            for _ in range(100):
+                if entered.is_set():
+                    break
+                await asyncio.sleep(0.01)
+            assert entered.is_set()
+            released.set()
+            assert await task == 1
+        finally:
+            released.set()
+            await task
+
+    asyncio.run(exercise())

@@ -14,7 +14,7 @@ from pathlib import Path
 import re
 import sqlite3
 import time
-from typing import Any
+from typing import Any, Literal
 import uuid
 
 from deeptutor.core.assessment import (
@@ -37,6 +37,7 @@ from .ask_user_trace import select_ask_user_events
 from .event_preview import MAX_TRACE_PREVIEW_EVENTS, compact_trace_preview
 from .migration_lock import exclusive_lock
 from .provider_response_state import redact_private_message_metadata
+from .reading_quiz_help import update_help
 from .search import bounded_search_excerpt, normalize_search_query
 from .thread_attribution import BACKFILL_ATTEMPTED_KEY, TUTOR_SOURCE_KEY
 from .workspace_preferences import upgrade_workspace_preferences
@@ -441,6 +442,19 @@ class SQLiteSessionStore:
                     created_at REAL NOT NULL,
                     PRIMARY KEY (material_id, locator, question_id)
                 );
+
+                CREATE TABLE IF NOT EXISTS reading_quiz_help_events (
+                    material_id TEXT NOT NULL,
+                    locator INTEGER NOT NULL,
+                    question_id TEXT NOT NULL,
+                    request_id TEXT NOT NULL,
+                    help_kind TEXT NOT NULL,
+                    question TEXT NOT NULL,
+                    created_at REAL NOT NULL,
+                    PRIMARY KEY (material_id, locator, question_id, request_id)
+                );
+                CREATE INDEX IF NOT EXISTS idx_reading_quiz_help_events_recent
+                    ON reading_quiz_help_events(created_at DESC);
 
                 CREATE TABLE IF NOT EXISTS reading_quiz_rewards (
                     material_id TEXT NOT NULL,
@@ -3838,6 +3852,9 @@ class SQLiteSessionStore:
             for index, question in enumerate(questions or [], start=1):
                 if not isinstance(question, dict):
                     continue
+                question = {
+                    k: v for k, v in question.items() if k not in {"_help_requests", "_help_count"}
+                }
                 question_id = str(question.get("id") or f"q_{index}").strip()
                 if not question_id:
                     continue
@@ -3901,6 +3918,52 @@ class SQLiteSessionStore:
             material_id,
             locator,
             None if question_ids is None else tuple(question_ids),
+        )
+
+    def _list_reading_quiz_help_events_sync(self, material_id: str) -> list[dict[str, Any]]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT material_id, locator, question_id, request_id, help_kind, question, created_at "
+                "FROM reading_quiz_help_events WHERE material_id = ? "
+                "ORDER BY created_at DESC, rowid DESC LIMIT 50",
+                (material_id,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    async def list_reading_quiz_help_events(self, material_id: str) -> list[dict[str, Any]]:
+        """Recent durable successful help, including questions not yet answered."""
+        return await self._run(self._list_reading_quiz_help_events_sync, material_id)
+
+    def _reading_quiz_help_sync(self, *args):
+        with self._connect() as conn:
+            return update_help(conn, *args)
+
+    async def reading_quiz_help(
+        self,
+        material_id: str,
+        locator: int,
+        question_id: str,
+        request_id: str,
+        fingerprint: str,
+        token: str,
+        operation: Literal["claim", "complete", "abort"],
+        result: dict[str, Any] | None = None,
+        lease_seconds: float = 150,
+        help_kind: str = "",
+    ) -> dict[str, Any] | None:
+        """Claim, persist or release help for this account's current quiz question."""
+        return await self._run(
+            self._reading_quiz_help_sync,
+            material_id,
+            locator,
+            question_id,
+            request_id,
+            fingerprint,
+            token,
+            operation,
+            result,
+            lease_seconds,
+            help_kind,
         )
 
     def _best_reading_quiz_results_sync(
@@ -4287,6 +4350,9 @@ class SQLiteSessionStore:
 
         Uses the same recycle predicate as the Question Bank. No new schema or
         migration: old entry IDs remain the IDs used by practice and review.
+        Every row also names its session, so navigation can collapse the
+        questions recorded in one practice session into a single group;
+        entries without a session keep their own row.
         """
 
         def read() -> list[dict[str, Any]]:
@@ -4295,10 +4361,13 @@ class SQLiteSessionStore:
                     dict(row)
                     for row in conn.execute(
                         # Only a fixed table alias is substituted into the local predicate.
-                        "SELECT id, substr(question, 1, 160) AS question, created_at, updated_at "  # nosec B608
-                        "FROM notebook_entries WHERE "
-                        + _NOT_RECYCLED_ENTRY_SQL.format(entries="notebook_entries")
-                        + " ORDER BY updated_at DESC, id DESC"
+                        "SELECT n.id, substr(n.question, 1, 160) AS question, "
+                        "n.session_id, COALESCE(s.title, '') AS session_title, "
+                        "n.created_at, n.updated_at "  # nosec B608
+                        "FROM notebook_entries n "
+                        "LEFT JOIN sessions s ON s.id = n.session_id WHERE "
+                        + _NOT_RECYCLED_ENTRY_SQL.format(entries="n")
+                        + " ORDER BY n.updated_at DESC, n.id DESC"
                     ).fetchall()
                 ]
 
