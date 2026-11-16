@@ -35,3 +35,12 @@
 ## شروع کار
 
 ابتدا KILOCODE.md و فاز صفر ROADMAP.md را بخوان. در فاز صفر فقط ممیزی و برنامه اجرایی مستند انجام بده؛ هیچ کد یا تنظیم اجرایی را تغییر نده. پس از تکمیل و گزارش فاز صفر، اجرای فاز بعدی باید به‌صورت مستقل و مرحله‌ای پیگیری شود.
+
+
+## گزارش ممیزی Phase 0
+
+گزارش در شاخه کاری مجزای زیر ثبت شده است:
+- [PHASE_0_AUDIT_REPORT.md](https://github.com/mahakas/DeepTutor/blob/arena/17e31fa6-deeptutor/docs/darsyar/PHASE_0_AUDIT_REPORT.md)
+- Commit: [12e6aca56e07fa016a565e81e5a5099a00fd17dd](https://github.com/mahakas/DeepTutor/commit/12e6aca56e07fa016a565e81e5a5099a00fd17dd)
+
+تصمیم‌های بازبینی Phase 0 در `DECISIONS.md` بخش F ثبت شده‌اند.
