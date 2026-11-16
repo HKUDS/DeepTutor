@@ -183,6 +183,7 @@ def region_render_record(material_id: str, locator: int, box: list[float]) -> di
         if raw is None:
             return None
         x0, y0, x1, y1 = region["box"]
+        area_key = "".join(f"{round(v * 1000):03d}" for v in region["box"])
         with pymupdf.open(raw) as doc:
             if not 1 <= locator <= doc.page_count:
                 return None
@@ -210,7 +211,9 @@ def region_render_record(material_id: str, locator: int, box: list[float]) -> di
             "base64": base64.b64encode(image_bytes).decode("ascii"),
             "filename": f"{raw.stem}-page-{locator}-area.jpg",
             "mime_type": "image/jpeg",
-            "id": f"rr-{material_id[:12]}-{locator}",
+            # The box is part of the id: attachments are stored per session
+            # under it, and two areas on one page must not overwrite each other.
+            "id": f"rr-{material_id[:12]}-{locator}-{area_key}",
             "embedded": True,
         }
     except Exception:

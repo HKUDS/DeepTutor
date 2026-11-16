@@ -167,6 +167,9 @@ def test_region_crop_contains_exactly_the_marked_area(reading_home: Path) -> Non
     assert record is not None
     assert record["mime_type"] == "image/jpeg"
     assert record["id"].startswith("rr-")
+    # Two areas on one page are two attachments, not one overwritten file.
+    other = region_render_record(material_id, 1, [0.5, 0.5, 0.9, 0.9])
+    assert other is not None and other["id"] != record["id"]
     assert record["filename"].endswith("-page-1-area.jpg")
     assert record["url"] == "" and record["embedded"] is True
     image = _decode(record)
