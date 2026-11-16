@@ -10,12 +10,46 @@ const dmg = path.join(out, images[0]);
 const auth = ['--apple-id', process.env.APPLE_ID, '--team-id', process.env.APPLE_TEAM_ID,
   '--password', process.env.APPLE_APP_PASSWORD];
 if (auth.some(value => !value)) throw new Error('Missing Apple notarization credentials');
+
+// notarytool reports most submission failures on stderr, and can also exit zero
+// without printing anything. Reading only stdout turned all of those into the
+// same "no notarization result" error with an empty artifact (#2714).
+const secrets = [process.env.APPLE_ID, process.env.APPLE_APP_PASSWORD].filter(Boolean);
+const redact = text => secrets.reduce((acc, secret) => acc.split(secret).join('[redacted]'), String(text ?? ''));
+
 // Capture output instead of throwing execFile errors containing secret arguments.
 const submit = spawnSync('xcrun', ['notarytool', 'submit', dmg, ...auth, '--wait', '--output-format', 'json'], { encoding: 'utf8' });
-await writeFile(path.join(out, 'notarization-submission.json'), submit.stdout || '{}');
+const submitOut = submit.stdout ?? '';
+const submitErr = submit.stderr ?? '';
+// The submission artifact keeps its original shape: the raw stdout, or ``{}``.
+await writeFile(path.join(out, 'notarization-submission.json'), submitOut || '{}');
+
+// Classify why the submission produced no usable result before parsing, so each
+// failure names its own cause instead of collapsing into one message.
 let result;
-try { result = JSON.parse(submit.stdout); }
-catch { throw new Error('Apple returned no notarization result; check the submission artifact'); }
+let problem;
+if (submit.error) {
+  problem = `could not start xcrun (${submit.error.code ?? submit.error.message})`;
+} else if (!submitOut.trim()) {
+  const stderrNote = submitErr.trim()
+    ? ` and reported on stderr: ${redact(submitErr.trim()).split('\n').slice(-3).join(' | ')}`
+    : '';
+  problem = submit.status === 0
+    ? `notarytool printed no result${stderrNote}`
+    : `notarytool exited with status ${submit.status} and printed no result${stderrNote}`;
+} else {
+  try { result = JSON.parse(submitOut); }
+  catch { problem = 'notarytool printed a result that is not JSON'; }
+}
+if (problem) {
+  // Bounded tails keep the artifact small while still carrying the reason.
+  await writeFile(path.join(out, 'notarization-submission.error.json'), JSON.stringify({
+    stage: 'submit', problem, exitCode: submit.status, signal: submit.signal,
+    spawnError: submit.error?.code ?? null,
+    stdout: redact(submitOut).slice(-4000), stderr: redact(submitErr).slice(-8000),
+  }, null, 2));
+  throw new Error(`Apple notarization submission failed: ${problem}; see notarization-submission.error.json`);
+}
 if (result.id) {
   console.log(`Apple notarization ${result.id}: ${result.status}`);
   const log = spawnSync('xcrun', ['notarytool', 'log', result.id, ...auth,
