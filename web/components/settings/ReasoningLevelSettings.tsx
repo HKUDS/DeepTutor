@@ -21,9 +21,16 @@ export default function ReasoningLevelSettings({
   onToggle: (level: string) => void
 }) {
   const { t } = useTranslation()
-  const defaults = Array.isArray(model.codex_supported_reasoning_levels)
+  const providerDefaults = Array.isArray(model.codex_supported_reasoning_levels)
     ? reasoningEffortOptionsFromSupportedLevels(model.codex_supported_reasoning_levels)
     : reasoningEffortOptions(binding, model.model, model.reasoning_effort, model.capabilities?.reasoning)
+  const enabledDefaults = reasoningEffortOptionsFromSupportedLevels(configuredReasoningLevels(model, binding))
+  const defaults = [...providerDefaults, ...enabledDefaults].filter(
+    (item, index, all) => all.findIndex(option => option.value === item.value) === index
+  )
+  if (!defaults.some(item => item.value === '')) {
+    defaults.unshift({ value: '', label: 'Provider default (Auto)' })
+  }
   return (
     <fieldset className="min-w-0">
       <legend className="mb-2 text-[12px] font-medium text-[var(--foreground)]">

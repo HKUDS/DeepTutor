@@ -6683,5 +6683,9 @@
   "Position": "Position",
   "Action": "Action",
   "Conversation IDs (optional)": "Conversation IDs (optional)",
-  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle."
+  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.",
+  "Enabled reasoning levels": "Увімкнені рівні міркування",
+  "Enable the levels your model accepts, then choose one in chat. No selection uses the provider default.": "Увімкніть рівні, які підтримує ваша модель, а потім виберіть один у чаті. Якщо нічого не вибрано, використовується налаштування постачальника за замовчуванням.",
+  "Provider reasoning mode": "Режим міркування постачальника",
+  "Other tasks: default reasoning": "Інші завдання: міркування за замовчуванням"
 }
