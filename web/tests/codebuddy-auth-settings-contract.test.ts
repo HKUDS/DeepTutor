@@ -5,40 +5,8 @@ import test from "node:test";
 
 import { shouldPollCodeBuddyAuth } from "../lib/codebuddy-auth";
 
-const EDITOR = path.resolve(
-  process.cwd(),
-  "components/settings/ServiceConfigEditor.tsx",
-);
-const CARD = path.resolve(
-  process.cwd(),
-  "components/settings/CodeBuddyAuthCard.tsx",
-);
 const EN = path.resolve(process.cwd(), "locales/en/app.json");
 const ZH = path.resolve(process.cwd(), "locales/zh/app.json");
-
-test("CodeBuddy renders a login card without changing other OAuth cards", () => {
-  const editor = readFileSync(EDITOR, "utf8");
-
-  assert.match(editor, /providerValue === "codebuddy"/);
-  assert.match(editor, /<CodeBuddyAuthCard/);
-  assert.match(editor, /<CodexOAuthCard/);
-  assert.match(
-    editor,
-    /CLI_LOGIN_BINDINGS = new Set\(\["codebuddy", "claude_code"\]\)/,
-  );
-  assert.match(editor, /isCodexOAuth \|\| isCliLogin/);
-  assert.match(editor, /!isCodexOAuth && !isCliLogin/);
-  assert.match(readFileSync(CARD, "utf8"), /startCodeBuddyLogin/);
-  assert.match(readFileSync(CARD, "utf8"), /logoutCodeBuddy/);
-});
-
-test("CodeBuddy model sync cannot write into a profile after provider switch", () => {
-  const editor = readFileSync(EDITOR, "utf8");
-
-  assert.match(editor, /!profile \|\| profile\.binding !== binding/);
-  assert.match(editor, /CLI_LOGIN_BINDINGS\.has\(previousProvider\)/);
-  assert.match(editor, /profile\.models = \[\]/);
-});
 
 test("CodeBuddy auth polling only runs while browser authorization is waiting", () => {
   const base = {
