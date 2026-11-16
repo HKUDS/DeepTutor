@@ -31,6 +31,9 @@ const CJK_RE =
   /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]|[，。、；：？！（）《》「」【】…—]/u;
 const LATEX_STRUCTURE_RE = /\\[a-zA-Z]+|[\^_]|\\\\/;
 // Function names a writer may legitimately spell out inside a formula.
+// Statistics notation such as `Var(X)` and `Cov(X, Y)` is ordinary prose to
+// the Latin-word heuristic unless these names are listed, which used to make
+// `escapeStrayDollars` turn `$Var(N)$` back into literal source.
 const MATH_WORDS = new Set([
   "sin",
   "cos",
@@ -39,6 +42,7 @@ const MATH_WORDS = new Set([
   "sec",
   "csc",
   "log",
+  "ln",
   "exp",
   "lim",
   "max",
@@ -51,6 +55,27 @@ const MATH_WORDS = new Set([
   "lcm",
   "mod",
   "arg",
+  "argmax",
+  "argmin",
+  "var",
+  "cov",
+  "corr",
+  "std",
+  "sd",
+  "mean",
+  "median",
+  "mode",
+  "prob",
+  "pdf",
+  "cdf",
+  "pmf",
+  "mgf",
+  "rank",
+  "tr",
+  "trace",
+  "span",
+  "ker",
+  "deg",
 ]);
 
 // ---------------------------------------------------------------------------
