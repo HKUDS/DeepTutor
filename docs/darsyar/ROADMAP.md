@@ -277,3 +277,62 @@ Acceptance:
 ## Definition of Done
 
 فاز فقط وقتی COMPLETE می‌شود که scope کامل، acceptance criteria پاس، regression tests پاس، docs به‌روز، migration قابل بازیابی، گزارش مستند و هیچ blocker بحرانی حل‌نشده باقی نمانده باشد.
+
+
+---
+
+## Phase 1 — تصمیم‌های مصوب صاحب محصول (2026-11-17)
+
+این بخش تکمیل‌کننده دامنه Phase 1 است و بر توضیحات کلی قبلی اولویت دارد.
+
+### ترتیب اجرایی
+
+**1.0 — R-12 import-time configuration fix**
+- فقط refactor لازم برای حذف import-time crash در `co_writer.py`.
+- رفتار با config معتبر بدون تغییر بماند.
+- تست import در runtime home تازه و بدون `deeptutor init` + تست مسیر initialized.
+- commit مستقل و گزارش تست مستقل.
+
+**1.1 — Font foundation**
+- self-host کردن Vazirmatn Variable و فونت‌های محلی موردنیاز.
+- افزودن متن license و attribution فونت.
+- حذف وابستگی `next/font/google` و درخواست شبکه در build.
+- production build واقعی باید از شبکه Google Fonts مستقل شود.
+
+**1.2 — i18n فارسی**
+- افزودن locale key `fa) به‌عنوان زبان چهاردهم.
+- استفاده از `fa-IR` برای formatting و document language.
+- تکمیل کلیدها با parity؛ متن‌های ناقص/انگلیسی در جریان‌های اصلی قابل پذیرش نیستند.
+
+**1.3 — RTL کامل**
+- ابتدا locale و direction metadata، سپس تبدیل کلاس‌های فیزیکی به logical properties.
+- ترتیب i18n پیش از RTL codemod حفظ شود.
+- بصری در موبایل، تبلت و دسکتاپ تست شود.
+
+**1.4 — Darsyar branding**
+- نام نمایشی و metadata قابل مشاهده به درسیار تغییر کند.
+- Python package/import namespace، CLI و runtime internals تغییر نام ندهند.
+- attribution مجوز و upstream حفظ شود.
+
+**1.5 — Functional login presentation**
+- مسیر `/login` و flow فعلی username/password حفظ شود.
+- ظاهر و برند بازطراحی شود؛ ورود OTP تا Phase 2 خارج از scope است.
+
+**1.6 — Full web shell**
+- Shell کامل کاربر و admin طبق `DECISIONS.md` بخش F-1.
+- قابلیت‌های موجود reuse شوند؛ برای قابلیت‌های آینده placeholder شفاف استفاده شود.
+- مسیر `/admin/login` و `/admin` مستقل بمانند؛ احراز هویت/نقش از قرارداد موجود استفاده کند و API ساختگی ایجاد نشود.
+
+**1.7 — Gate 1**
+- اجرای contracts، architecture، typecheck، Node tests، Vitest، lint، i18n checks و build.
+- تست browser E2E برای login، refresh/direct route، non-admin redirect، admin navigation و responsive shell.
+- Build باید با فونت‌های self-host و بدون دسترسی Google Fonts PASS شود.
+- هیچ لینک مرده، action ظاهری بدون رفتار، secret در browser یا regression در مسیرهای فعلی پذیرفته نیست.
+
+### خارج از Phase 1
+
+SMS/OTP، تغییر storage هویت به PostgreSQL، Academic Catalog و import کتاب‌ها، rights workflow، grade/track RAG enforcement، Exam domain/negative marking، wallet/subscription واقعی و media job queue در فازهای بعدی ROADMAP باقی می‌مانند. Phase 1 حق ندارد placeholderها را به‌عنوان قابلیت تکمیل‌شده معرفی کند.
+
+### Gate 0 disposition
+
+Gate 0 = **ACCEPTED CONDITIONAL PASS** برای شروع Phase 1، با شرایط خط پایه ثبت‌شده در DECISIONS.md بخش F-3. این پذیرش به معنی عبور از Gateهای Phase 1 تا 9 یا Production approval نیست.
