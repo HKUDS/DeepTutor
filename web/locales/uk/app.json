@@ -6332,5 +6332,12 @@
   "Not enough recorded evidence yet. Keep studying and try again later.": "Ще недостатньо збережених даних. Продовжуйте навчатися й спробуйте пізніше.",
   "This path already has the most tutor notes it can hold.": "Цей шлях уже містить максимум нотаток викладача.",
   "The change was not accepted:": "Зміну не прийнято:",
-  "The change was not accepted.": "Зміну не прийнято."
+  "The change was not accepted.": "Зміну не прийнято.",
+  "Keep this note at the top of the list.": "Закріпити цю нотатку вгорі списку.",
+  "Let this note move back into the list.": "Повернути цю нотатку до списку.",
+  "Rewrite this note.": "Переписати цю нотатку.",
+  "See earlier versions and restore one.": "Переглянути попередні версії та відновити одну з них.",
+  "Move this note to the archive. Nothing is deleted, and you can restore it later.": "Перемістити цю нотатку до архіву. Нічого не видаляється, ви зможете відновити її пізніше.",
+  "Restore this earlier version.": "Відновити цю попередню версію.",
+  "Put this note back on the list.": "Повернути цю нотатку до списку."
 }

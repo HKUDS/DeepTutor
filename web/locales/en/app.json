@@ -6362,5 +6362,12 @@
   "Not enough recorded evidence yet. Keep studying and try again later.": "Not enough recorded evidence yet. Keep studying and try again later.",
   "This path already has the most tutor notes it can hold.": "This path already has the most tutor notes it can hold.",
   "The change was not accepted:": "The change was not accepted:",
-  "The change was not accepted.": "The change was not accepted."
+  "The change was not accepted.": "The change was not accepted.",
+  "Keep this note at the top of the list.": "Keep this note at the top of the list.",
+  "Let this note move back into the list.": "Let this note move back into the list.",
+  "Rewrite this note.": "Rewrite this note.",
+  "See earlier versions and restore one.": "See earlier versions and restore one.",
+  "Move this note to the archive. Nothing is deleted, and you can restore it later.": "Move this note to the archive. Nothing is deleted, and you can restore it later.",
+  "Restore this earlier version.": "Restore this earlier version.",
+  "Put this note back on the list.": "Put this note back on the list."
 }

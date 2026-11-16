@@ -6362,5 +6362,12 @@
   "Not enough recorded evidence yet. Keep studying and try again later.": "记录的证据还不够。先继续学习，过段时间再试。",
   "This path already has the most tutor notes it can hold.": "这条路径的导师笔记已达上限。",
   "The change was not accepted:": "这条改动没有被采纳：",
-  "The change was not accepted.": "这条改动没有被采纳。"
+  "The change was not accepted.": "这条改动没有被采纳。",
+  "Keep this note at the top of the list.": "把这条策略固定在最上面。",
+  "Let this note move back into the list.": "取消固定，让这条策略回到原来的顺序。",
+  "Rewrite this note.": "修改这条策略的写法。",
+  "See earlier versions and restore one.": "查看这条策略的历史版本，并可恢复其中一版。",
+  "Move this note to the archive. Nothing is deleted, and you can restore it later.": "把这条策略移到归档区。不会真的删除，之后可以随时恢复。",
+  "Restore this earlier version.": "恢复到这个历史版本。",
+  "Put this note back on the list.": "把这条策略恢复到列表里。"
 }

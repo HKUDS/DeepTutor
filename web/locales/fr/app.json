@@ -6458,5 +6458,12 @@
   "Not enough recorded evidence yet. Keep studying and try again later.": "Pas encore assez de données enregistrées. Continuez à étudier et réessayez plus tard.",
   "This path already has the most tutor notes it can hold.": "Ce parcours contient déjà le maximum de notes du tuteur.",
   "The change was not accepted:": "La modification n'a pas été acceptée :",
-  "The change was not accepted.": "La modification n'a pas été acceptée."
+  "The change was not accepted.": "La modification n'a pas été acceptée.",
+  "Keep this note at the top of the list.": "Garder cette note en haut de la liste.",
+  "Let this note move back into the list.": "Laisser cette note revenir dans la liste.",
+  "Rewrite this note.": "Réécrire cette note.",
+  "See earlier versions and restore one.": "Voir les versions précédentes et en restaurer une.",
+  "Move this note to the archive. Nothing is deleted, and you can restore it later.": "Déplacer cette note vers les archives. Rien n'est supprimé, vous pourrez la restaurer plus tard.",
+  "Restore this earlier version.": "Restaurer cette version précédente.",
+  "Put this note back on the list.": "Replacer cette note dans la liste."
 }

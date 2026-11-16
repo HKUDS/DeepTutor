@@ -31,6 +31,7 @@ import {
   type StrategyNote,
   type StrategyNoteRevision,
 } from "@/lib/learning-api";
+import Tooltip from "@/shared/ui/Tooltip";
 
 /**
  * The learner-visible surface for the tutor's teaching strategy.
@@ -333,24 +334,29 @@ export function MasteryStrategyPanel({
                           </span>
                         </div>
                         {index > 0 ? (
-                          <button
-                            type="button"
-                            disabled={busy}
-                            onClick={() =>
-                              void run(async () => {
-                                await rollbackStrategyNote(
-                                  pathId,
-                                  history.noteId,
-                                  entry.revision,
-                                );
-                                setHistory(null);
-                              })
-                            }
-                            className="flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-[11.5px] text-[var(--muted-foreground)] hover:bg-[var(--accent)] disabled:opacity-40"
+                          <Tooltip
+                            label={t("Restore")}
+                            description={t("Restore this earlier version.")}
                           >
-                            <RotateCcw className="h-3 w-3" />
-                            {t("Restore")}
-                          </button>
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() =>
+                                void run(async () => {
+                                  await rollbackStrategyNote(
+                                    pathId,
+                                    history.noteId,
+                                    entry.revision,
+                                  );
+                                  setHistory(null);
+                                })
+                              }
+                              className="flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-[11.5px] text-[var(--muted-foreground)] hover:bg-[var(--accent)] disabled:opacity-40"
+                            >
+                              <RotateCcw className="h-3 w-3" />
+                              {t("Restore")}
+                            </button>
+                          </Tooltip>
                         ) : null}
                       </li>
                     ))}
@@ -372,19 +378,24 @@ export function MasteryStrategyPanel({
                         <span className="min-w-0 truncate text-[12.5px] text-[var(--muted-foreground)] line-through">
                           {note.body}
                         </span>
-                        <button
-                          type="button"
-                          disabled={busy}
-                          onClick={() =>
-                            void run(() =>
-                              restoreStrategyNote(pathId, note.note_id),
-                            )
-                          }
-                          className="flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-[11.5px] text-[var(--muted-foreground)] hover:bg-[var(--accent)] disabled:opacity-40"
+                        <Tooltip
+                          label={t("Restore")}
+                          description={t("Put this note back on the list.")}
                         >
-                          <RotateCcw className="h-3 w-3" />
-                          {t("Restore")}
-                        </button>
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() =>
+                              void run(() =>
+                                restoreStrategyNote(pathId, note.note_id),
+                              )
+                            }
+                            className="flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-[11.5px] text-[var(--muted-foreground)] hover:bg-[var(--accent)] disabled:opacity-40"
+                          >
+                            <RotateCcw className="h-3 w-3" />
+                            {t("Restore")}
+                          </button>
+                        </Tooltip>
                       </li>
                     ))}
                   </ul>
@@ -494,46 +505,66 @@ function StrategyNoteRow({
             </span>
           </div>
           <div className="flex shrink-0 items-center gap-0.5">
-            <button
-              type="button"
-              onClick={onTogglePin}
-              disabled={busy}
-              aria-label={note.pinned ? t("Unpin") : t("Pin")}
-              className="rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--accent)] disabled:opacity-40"
+            <Tooltip
+              label={note.pinned ? t("Unpin") : t("Pin")}
+              description={
+                note.pinned
+                  ? t("Let this note move back into the list.")
+                  : t("Keep this note at the top of the list.")
+              }
             >
-              {note.pinned ? (
-                <PinOff className="h-3.5 w-3.5" />
-              ) : (
-                <Pin className="h-3.5 w-3.5" />
+              <button
+                type="button"
+                onClick={onTogglePin}
+                disabled={busy}
+                aria-label={note.pinned ? t("Unpin") : t("Pin")}
+                className="rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--accent)] disabled:opacity-40"
+              >
+                {note.pinned ? (
+                  <PinOff className="h-3.5 w-3.5" />
+                ) : (
+                  <Pin className="h-3.5 w-3.5" />
+                )}
+              </button>
+            </Tooltip>
+            <Tooltip label={t("Edit")} description={t("Rewrite this note.")}>
+              <button
+                type="button"
+                onClick={onStartEdit}
+                disabled={busy}
+                aria-label={t("Edit")}
+                className="rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--accent)] disabled:opacity-40"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </button>
+            </Tooltip>
+            <Tooltip label={t("History")} description={t("See earlier versions and restore one.")}>
+              <button
+                type="button"
+                onClick={onHistory}
+                disabled={busy}
+                aria-label={t("History")}
+                className="rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--accent)] disabled:opacity-40"
+              >
+                <History className="h-3.5 w-3.5" />
+              </button>
+            </Tooltip>
+            <Tooltip
+              label={t("Archive")}
+              description={t(
+                "Move this note to the archive. Nothing is deleted, and you can restore it later.",
               )}
-            </button>
-            <button
-              type="button"
-              onClick={onStartEdit}
-              disabled={busy}
-              aria-label={t("Edit")}
-              className="rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--accent)] disabled:opacity-40"
             >
-              <Pencil className="h-3.5 w-3.5" />
-            </button>
-            <button
-              type="button"
-              onClick={onHistory}
-              disabled={busy}
-              aria-label={t("History")}
-              className="rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--accent)] disabled:opacity-40"
-            >
-              <History className="h-3.5 w-3.5" />
-            </button>
-            <button
-              type="button"
-              onClick={onArchive}
-              disabled={busy}
-              aria-label={t("Archive")}
-              className="rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--accent)] disabled:opacity-40"
-            >
-              <Archive className="h-3.5 w-3.5" />
-            </button>
+              <button
+                type="button"
+                onClick={onArchive}
+                disabled={busy}
+                aria-label={t("Archive")}
+                className="rounded-md p-1.5 text-[var(--muted-foreground)] hover:bg-[var(--accent)] disabled:opacity-40"
+              >
+                <Archive className="h-3.5 w-3.5" />
+              </button>
+            </Tooltip>
           </div>
         </div>
       )}
