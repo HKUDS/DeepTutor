@@ -46,13 +46,6 @@ def _utcnow_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _url_to_filename(url: str, base_path_prefix: str) -> str:
-    """Stable ``.md`` filename derived from a page URL."""
-    from deeptutor.services.web_source.crawler import _to_filename
-
-    return _to_filename(url, base_path_prefix)
-
-
 def _record_sync_failure(
     kb_name: str,
     source_id: str,

@@ -5,7 +5,6 @@ from __future__ import annotations
 from contextvars import ContextVar
 
 from deeptutor.services.skill.service import (
-    SkillNotFoundError,
     SkillService,
     get_admin_skill_service,
     render_skills_manifest,
@@ -73,10 +72,3 @@ def skill_manifest() -> str:
             if entry.always and entry.available:
                 always.append(service.load_for_context([entry.name]))
     return "\n\n".join(part for part in (*always, render_skills_manifest(entries)) if part)
-
-
-def resolve_runtime_skill(name: str) -> SkillService:
-    service = runtime_skills().get(name)
-    if service is None:
-        raise SkillNotFoundError(name)
-    return service

@@ -282,23 +282,6 @@ class WeixinChannel(BaseChannel):
             return status_code >= 500
         return False
 
-    async def _api_get(
-        self,
-        endpoint: str,
-        params: dict | None = None,
-        *,
-        auth: bool = True,
-        extra_headers: dict[str, str] | None = None,
-    ) -> dict:
-        assert self._client is not None
-        url = f"{self.config.base_url}/{endpoint}"
-        hdrs = self._make_headers(auth=auth)
-        if extra_headers:
-            hdrs.update(extra_headers)
-        resp = await self._client.get(url, params=params, headers=hdrs)
-        resp.raise_for_status()
-        return resp.json()
-
     async def _api_post(
         self,
         endpoint: str,

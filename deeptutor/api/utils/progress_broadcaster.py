@@ -67,7 +67,3 @@ class ProgressBroadcaster:
 
             if not self._connections[kb_name]:
                 del self._connections[kb_name]
-
-    def get_connection_count(self, kb_name: str) -> int:
-        """Get connection count for specified knowledge base"""
-        return len(self._connections.get(kb_name, set()))
