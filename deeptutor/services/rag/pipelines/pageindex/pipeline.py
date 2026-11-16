@@ -73,13 +73,15 @@ class PageIndexPipeline:
             storage.OSS_PROVIDER if provider == storage.OSS_PROVIDER else storage.CLOUD_PROVIDER
         )
 
-    def _get_client(self, storage_dir: Path | None = None) -> PageIndexClient:
+    def _get_client(
+        self, storage_dir: Path | None = None, *, mode: str | None = None
+    ) -> PageIndexClient:
         if self._client is not None:
             return self._client
         if self.provider == storage.OSS_PROVIDER:
             if storage_dir is None:
                 raise RuntimeError("PageIndex OSS requires a resolved Local Library path")
-            return PageIndexClient.local(storage.sdk_storage_path(storage_dir))
+            return PageIndexClient.local(storage.sdk_storage_path(storage_dir), mode=mode)
         return PageIndexClient.cloud(self._config_provider())
 
     def _processing_mode(self, kb_name: str) -> str | None:
@@ -192,7 +194,7 @@ class PageIndexPipeline:
         if not supported:
             return 0
 
-        client = self._get_client(storage_dir)
+        client = self._get_client(storage_dir, mode=mode)
         total = len(supported)
         for idx, fp in enumerate(supported, 1):
             path = Path(fp)

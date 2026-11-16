@@ -82,6 +82,7 @@ export interface RagProviderSummary {
 export interface PageIndexConfig {
   api_key_set: boolean;
   configured: boolean;
+  oss_summary_concurrency: number | null;
 }
 
 /** Account-level Tencent IMA credentials, shared by every `ima` KB. */
@@ -396,6 +397,8 @@ export async function getPageIndexConfig(options?: {
 export async function updatePageIndexConfig(payload: {
   /** Omit to keep the stored key, "" to clear it, any value to replace it. */
   api_key?: string;
+  /** Omit to preserve, null to restore the SDK's Flash default. */
+  oss_summary_concurrency?: number | null;
 }): Promise<PageIndexConfig> {
   const res = await apiFetch(apiUrl(PAGEINDEX_CONFIG_PATH), {
     method: "PUT",

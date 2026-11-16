@@ -48,8 +48,25 @@ count; publishing an updated index loads a new identity and rebuilds as needed.
 Queries leave the old sidecar unchanged; the next successful indexing run
 persists the updated BM25 cache.
 
+## PageIndex OSS Flash concurrency
+
+Knowledge → RAG pipeline settings → PageIndex OSS exposes **Flash concurrency
+per stage**. Values from 1 to 128 are saved as `oss_summary_concurrency` in
+`data/user/settings/pageindex.json`; clearing the field restores the SDK default
+(64). Cloud credentials and this OSS setting can be saved independently.
+
+PageIndex SDK 0.2.20 or newer is required. Its `summary_concurrency` option caps
+each Flash indexing lane, rather than all requests together: summary and
+expansion lanes overlap, allowing up to `limit + min(32, limit)` simultaneous
+calls per indexing run. For example, a value of 1 can still allow two calls.
+Separate indexing runs have separate limits. Standard mode does not support
+this SDK option; DeepTutor omits it when constructing a Standard indexing
+client. This setting therefore cannot enforce a provider-wide request ceiling.
+
 ## Implementation and verification
 
 - [deeptutor/knowledge/indexing_run.py](../deeptutor/knowledge/indexing_run.py)
 - [deeptutor/services/parsing/cache.py](../deeptutor/services/parsing/cache.py)
 - [tests/knowledge/test_indexing_run.py](../tests/knowledge/test_indexing_run.py)
+- [PageIndex SDK adapter](../deeptutor/services/rag/pipelines/pageindex/client.py)
+- [PageIndex OSS configuration tests](../tests/services/rag/test_pageindex_oss_config.py)

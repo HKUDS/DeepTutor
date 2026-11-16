@@ -6683,5 +6683,9 @@
   "Position": "Position",
   "Action": "Action",
   "Conversation IDs (optional)": "Conversation IDs (optional)",
-  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle."
+  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.",
+  "Flash concurrency per stage": "Паралельність Flash на етап",
+  "SDK default (64)": "Типове значення SDK (64)",
+  "Enter a whole number from 1 to 128, or leave blank.": "Введіть ціле число від 1 до 128 або залиште поле порожнім.",
+  "Flash only. Summary and expansion stages each use this limit and may run together. Leave blank for the SDK default.": "Лише Flash. Етапи підсумовування та розширення мають окремі ліміти з цим значенням і можуть виконуватися одночасно. Порожнє поле відновлює типове значення SDK."
 }

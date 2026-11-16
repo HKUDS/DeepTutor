@@ -6679,5 +6679,9 @@
   "Position": "Position",
   "Action": "Action",
   "Conversation IDs (optional)": "Conversation IDs (optional)",
-  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle."
+  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.",
+  "Flash concurrency per stage": "Concorrenza Flash per fase",
+  "SDK default (64)": "Valore predefinito dell’SDK (64)",
+  "Enter a whole number from 1 to 128, or leave blank.": "Inserisci un numero intero da 1 a 128 oppure lascia vuoto.",
+  "Flash only. Summary and expansion stages each use this limit and may run together. Leave blank for the SDK default.": "Solo Flash. Le fasi di riepilogo ed espansione usano ciascuna questo limite e possono essere eseguite insieme. Lascia vuoto per il valore predefinito dell’SDK."
 }

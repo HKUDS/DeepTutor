@@ -6661,5 +6661,9 @@
   "Position": "Position",
   "Action": "Action",
   "Conversation IDs (optional)": "Conversation IDs (optional)",
-  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle."
+  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.",
+  "Flash concurrency per stage": "Số yêu cầu đồng thời mỗi giai đoạn Flash",
+  "SDK default (64)": "Mặc định SDK (64)",
+  "Enter a whole number from 1 to 128, or leave blank.": "Nhập số nguyên từ 1 đến 128 hoặc để trống.",
+  "Flash only. Summary and expansion stages each use this limit and may run together. Leave blank for the SDK default.": "Chỉ áp dụng cho Flash. Mỗi giai đoạn tóm tắt và mở rộng dùng giới hạn này và có thể chạy cùng lúc. Để trống để dùng mặc định SDK."
 }
