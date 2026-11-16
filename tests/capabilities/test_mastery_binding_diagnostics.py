@@ -12,11 +12,24 @@ from deeptutor.learning import semantic_assessment as semantic
 from deeptutor.runtime.agentic.tool_dispatch import dispatch_tool_calls
 from deeptutor.runtime.registry.tool_registry import ToolRegistry
 from deeptutor.runtime.stream_bus import StreamBus
+from tests.capabilities.test_mastery_adapted_source_binding import supported_source_decision
 
 pytest_plugins = ["tests.capabilities.test_mastery_question_groups"]
 
 SECRET_KEY = "SYNTHETIC_PRIVATE_ANSWER"
 GENERIC_ERROR = "The selected source does not support this exact question and answer key."
+SOURCE = "Synthetic source."
+
+
+def unverified_requirement(requirement, *, missing_citations=False, reason_code=None):
+    decision = supported_source_decision(SOURCE)
+    decision["requirements"][requirement] = {
+        "outcome": "supported" if missing_citations else "unsupported",
+        "citations": [],
+        "reason": SECRET_KEY,
+        "reason_code": reason_code,
+    }
+    return decision
 
 
 @pytest.mark.asyncio
@@ -31,17 +44,50 @@ GENERIC_ERROR = "The selected source does not support this exact question and an
         ({"supported": False, "reason_code": {"text": SECRET_KEY}}, GENERIC_ERROR),
         ({"supported": False}, GENERIC_ERROR),
         (
-            {"supported": True, "citations": [], "reason_code": "incorrect_key"},
-            "No supporting citations were returned. Provide a verifiable citation from the selected source.",
+            unverified_requirement("source_supported_requirement", missing_citations=True),
+            "Provide a verifiable citation",
+        ),
+        (
+            unverified_requirement("source_supported_requirement"),
+            "Prepare source evidence for the skill being tested.",
+        ),
+        (
+            unverified_requirement(
+                "source_supported_requirement", reason_code="unsupported_rubric"
+            ),
+            "Check the grading requirements against the selected source.",
+        ),
+        (
+            unverified_requirement("source_supported_requirement", reason_code="incorrect_key"),
+            "Check the proposed answer key against the selected source.",
+        ),
+        (
+            unverified_requirement("source_supported_requirement", reason_code=SECRET_KEY),
+            "Prepare source evidence for the skill being tested.",
+        ),
+        (
+            unverified_requirement("asserted_answer_claim"),
+            "Verify the factual conclusion using the selected source.",
         ),
     ],
-    ids=["known-code", "arbitrary-code", "malformed-code", "legacy", "missing-citations"],
+    ids=[
+        "known-code",
+        "arbitrary-code",
+        "malformed-code",
+        "legacy",
+        "missing-citations",
+        "missing-skill-evidence",
+        "unsupported-rubric",
+        "incorrect-key",
+        "unrecognized-row-code",
+        "unsupported-answer-claim",
+    ],
 )
 async def test_failed_quiz_dispatch_only_relays_safe_binding_diagnostics(
     service, monkeypatch, decision, expected_hint
 ):
     progress = service.store.load("p")
-    progress.lesson_evidence["kp1"] = {"sources": [{"ref": {}, "text": "Synthetic source."}]}
+    progress.lesson_evidence["kp1"] = {"sources": [{"ref": {}, "text": SOURCE}]}
     service.save(progress)
     monkeypatch.setattr(tools, "_new_service", lambda: service)
     monkeypatch.setattr(lesson_evidence, "validate_evidence", lambda *args, **kwargs: None)
