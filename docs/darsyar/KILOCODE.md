@@ -26,19 +26,18 @@
 - اگر معیار پذیرش وابسته به اطلاعات/تصمیم صاحب محصول است، BLOCKED گزارش کن؛ مقدار تجاری، provider، قانون، قیمت یا مجوز را حدس نزن.
 - اگر یک فاز بزرگ است، آن را به زیرفازهای کوچک‌تر تقسیم کن، اما Gate کلی را حفظ کن.
 
-## 3. نقطه شروع اجباری: Phase 0
+## 3. وضعیت Gate 0 و نقطه شروع فعلی
 
-در شروع اولین اجرا:
+Phase 0 طبق گزارش `docs/darsyar/PHASE_0_AUDIT_REPORT.md` انجام شده است. گزارش در شاخه `arena/17e31fa6-deeptutor` و commit `12e6aca56e07fa016a565e81e5a5099a00fd17dd` قرار دارد. Gate 0 با وضعیت `ACCEPTED CONDITIONAL PASS` برای شروع Phase 1 پذیرفته شده است؛ این پذیرش به معنی Production readiness نیست.
+
+قبل از Phase 1:
 1. branch، commit و working tree را ثبت کن.
-2. root AGENTS.md، README و docs-for-dev/ARCHITECTURE.md، DEVELOPMENT.md، TESTING.md، MODULES.md، DATA_STORAGE.md، PLUGINS.md، SECURITY_GUARD.md را بخوان.
-3. structure/tree و manifests و dependency boundaries را بررسی کن.
-4. sourceها و تست‌های Identity/Auth، Multi-user، Knowledge/RAG، Books، Questions/Practice، Mastery/Flashcards، Audio/Video، Providers و Usage را trace کن.
-5. test baseline را با دستورهای واقعی repository اجرا یا اگر environment/credential/service لازم است دقیقاً BLOCKED ثبت کن.
-6. وضعیت fork/upstream و Apache-2.0/THIRD_PARTY_NOTICES را در scope بررسی کن.
-7. docs/darsyar/EXISTING_CAPABILITIES.md را با شواهد به‌روزرسانی و گزارش Phase 0 را ثبت کن.
+2. اطمینان پیدا کن نسخه جاری `docs/darsyar/DECISIONS.md` بخش F، `ROADMAP.md` و این فایل شامل تصمیم‌های مصوب 2026-11-17 باشد.
+3. گزارش Phase 0 را بخوان و محدودیت‌های محیطی، R-06، R-07، R-08، R-10، R-11، R-12 و R-13 را در برنامه Phase 1 لحاظ کن.
+4. یک branch تازه برای Phase 1 از commit مورد تأیید بساز؛ روی main یا branch گزارش Phase 0 توسعه نده.
+5. ابتدا R-12 را به‌عنوان یک اصلاح مستقل و کوچک، مطابق DECISIONS.md بخش F-2 انجام بده؛ سپس subphaseهای 1.1 تا 1.7 را به ترتیب اجرا کن.
 
-در Phase 0 فقط ممیزی و مستندات را انجام بده. کد اجرایی، dependency، config، runtime data یا schema را تغییر نده. اگر تست کامل طولانی/نیازمند سرویس خارجی است، command و blocker را ثبت کن و وانمود نکن PASS شده است.
-
+Phase 0 را بی‌دلیل تکرار نکن؛ فقط baseline مورد نیاز را قبل از تغییر ثبت و تست‌های مربوط را در محیط فعلی بازاجرا کن.
 ## 4. حفظ معماری و source ownership
 
 - ابتدا owner واقعی کد و تست را پیدا کن؛ راه‌حل موازی نساز.
