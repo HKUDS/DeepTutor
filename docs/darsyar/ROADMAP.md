@@ -300,7 +300,7 @@ Acceptance:
 - production build واقعی باید از شبکه Google Fonts مستقل شود.
 
 **1.2 — i18n فارسی**
-- افزودن locale key `fa) به‌عنوان زبان چهاردهم.
+- افزودن locale key `fa` به‌عنوان زبان چهاردهم.
 - استفاده از `fa-IR` برای formatting و document language.
 - تکمیل کلیدها با parity؛ متن‌های ناقص/انگلیسی در جریان‌های اصلی قابل پذیرش نیستند.
 
