@@ -6,9 +6,23 @@ import json
 import re
 
 
+def _true_false(value: object) -> bool | None:
+    text = str(value).strip().casefold()
+    if text in {"true", "t", "对", "正确", "yes", "y", "1"}:
+        return True
+    if text in {"false", "f", "错", "错误", "no", "n", "0"}:
+        return False
+    return None
+
+
 def check_answer(entry: dict, answer: str) -> bool | None:
     kind = entry.get("question_type", "")
     options = entry.get("options") or json.loads(entry.get("options_json") or "{}")
+    if kind in {"concept", "true_false"} and not options:
+        expected_bool = _true_false(entry.get("correct_answer"))
+        if expected_bool is None:
+            return None
+        return _true_false(answer) is expected_bool
     expected = str(entry.get("correct_answer") or "").strip()
     if (
         not options

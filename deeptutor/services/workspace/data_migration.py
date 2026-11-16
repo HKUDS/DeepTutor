@@ -320,11 +320,20 @@ def preview(
     with workspace_context(source_id):
         source = get_path_service()
         sessions = _sessions(source)
+        if session_ids is not None and (
+            not session_ids or session_ids - {row["id"] for row in sessions}
+        ):
+            raise WorkspaceError("Select existing conversations from the source workspace.")
         from deeptutor.services.workspace.dependencies import dependency_closure
 
         closure_warnings: list[str] = []
         selected, session_ids = dependency_closure(
-            source, sessions, features, session_ids=session_ids, warnings=closure_warnings
+            source,
+            sessions,
+            features,
+            session_ids=session_ids,
+            warnings=closure_warnings,
+            target_workspace_id=target_id,
         )
         # Legacy capability artifacts may be keyed by turn IDs. Preserve a
         # copy of the chat/output trees while transferring only selected rows.
@@ -378,22 +387,13 @@ def preview(
             root = _feature_path(source, feature)
             artifacts[feature] = [path.relative_to(root).as_posix() for path in _files(root)]
         if _backend() == "sqlite" and session_ids and target.get_chat_history_db().exists():
-            with closing(sqlite3.connect(source.get_chat_history_db())) as conn, conn:
-                conn.execute("ATTACH DATABASE ? AS target", (str(target.get_chat_history_db()),))
-                placeholders = ",".join("?" for _ in session_ids)
-                for table, owner in (
-                    ("sessions", "id"),
-                    ("messages", "session_id"),
-                    ("notebook_entries", "session_id"),
-                ):
-                    if conn.execute(
-                        f"SELECT 1 FROM main.{table} a JOIN target.{table} b ON a.id=b.id WHERE a.{owner} IN ({placeholders}) LIMIT 1",  # nosec B608 - fixed tables and placeholders
-                        list(session_ids),
-                    ).fetchone():
-                        blockers.append(
-                            "The destination contains conflicting conversation or question IDs. Choose an empty workspace."
-                        )
-                        break
+            from deeptutor.services.workspace.session_transfer import session_conflicts
+
+            blockers.extend(
+                session_conflicts(
+                    source.get_chat_history_db(), target.get_chat_history_db(), session_ids
+                )
+            )
         for row in rows:
             destination = _feature_path(target, row["feature"])
             if row["feature"] in artifacts:

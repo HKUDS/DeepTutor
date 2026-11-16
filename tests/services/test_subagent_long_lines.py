@@ -1,10 +1,13 @@
 """Native subprocess output must survive large, message-granular frames."""
 
 import asyncio
+import json
+from pathlib import Path
 import sys
 
 import pytest
 
+from deeptutor.services.subagent.acp import ACP_COMMAND_ENV, AcpBackend
 from deeptutor.services.subagent.openclaw import OpenClawBackend
 from deeptutor.services.subagent.process import stream_process_lines
 
@@ -48,6 +51,28 @@ async def test_openclaw_receives_large_native_json_answer(monkeypatch):
         events.append(event)
 
     result = await asyncio.wait_for(backend.consult("question", on_event=on_event), timeout=5)
+    assert result.success, result.error
+    assert result.final_text == answer
+    assert any(event.text == answer for event in events)
+
+
+@pytest.mark.asyncio
+async def test_acp_receives_a_large_json_frame(monkeypatch):
+    """An ACP frame carrying a whole tool result must arrive intact.
+
+    The backend pumps newline-delimited JSON itself, so it shares the readline
+    limit that native JSONL backends hit — the same reason the child is left
+    blocked on its pipe when the reader gives up.
+    """
+    answer = "x" * 100_000
+    host = Path(__file__).resolve().parent.parent / "fixtures" / "acp_fake_host.py"
+    monkeypatch.setenv(ACP_COMMAND_ENV, json.dumps([sys.executable, str(host), "large_frame"]))
+    events = []
+
+    async def on_event(event):
+        events.append(event)
+
+    result = await asyncio.wait_for(AcpBackend().consult("question", on_event=on_event), timeout=5)
     assert result.success, result.error
     assert result.final_text == answer
     assert any(event.text == answer for event in events)

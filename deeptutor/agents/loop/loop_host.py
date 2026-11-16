@@ -14,6 +14,7 @@ from deeptutor.runtime.agentic.messages import (
 )
 from deeptutor.runtime.agentic.tool_dispatch import DispatchOutcome
 from deeptutor.services.llm import LLMReasoningBudgetExhausted, finish_was_truncated
+from deeptutor.services.llm.types import CONTEXT_LENGTH_EXCEEDED_FINISH
 
 from . import loop_state as values
 
@@ -165,6 +166,16 @@ class AgentLoopHost:
             defer_visible_output=self.pipeline._capability_buffers_visible_output(self.context),
             tool_choice=self.pipeline.initial_tool_choice if first else None,
         )
+        if str(self.result.finish_reason or "").strip().lower() == CONTEXT_LENGTH_EXCEEDED_FINISH:
+            # The input context is full, so resuming (``continue_truncated``) would
+            # resend the same history. Finish the round and tell the reader why.
+            await self.warning(
+                "notices.context_length_exceeded",
+                (
+                    "The conversation filled the model's context window, so the answer was cut "
+                    "off. Start a new chat or shorten the history and try again."
+                ),
+            )
         rejected = self.recovery_tools is not None and any(
             str(call.get("name") or "").strip() not in self.recovery_tools
             for call in self.result.tool_calls

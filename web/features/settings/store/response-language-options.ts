@@ -27,4 +27,6 @@ export const RESPONSE_LANGUAGE_OPTIONS: readonly ResponseLanguageOption[] = [
   { value: "ms", label: "Bahasa Melayu" },
   { value: "vi", label: "Tiếng Việt" },
   { value: "tr", label: "Türkçe" },
+  { value: "hi", label: "हिन्दी" },
+  { value: "hu", label: "Magyar" },
 ];

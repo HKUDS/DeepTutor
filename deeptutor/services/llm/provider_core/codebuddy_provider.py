@@ -543,7 +543,7 @@ def _options_has_api_key_env(options: Any | None) -> bool:
 
 
 def _friendly_error(exc: Exception) -> str:
-    message = str(exc)
+    message = str(exc).strip()
     if "Authentication required" in message:
         return (
             "Error calling CodeBuddy: authentication required. Run "
@@ -555,6 +555,11 @@ def _friendly_error(exc: Exception) -> str:
             "Error calling CodeBuddy: the SDK session was closed from a different "
             "async task than it was opened on. Retry the message; if it persists, "
             "restart the backend."
+        )
+    if not message:
+        return (
+            f"Error calling CodeBuddy: the SDK raised {type(exc).__name__} "
+            "without a message. Retry, and check the CodeBuddy CLI log if it persists."
         )
     return f"Error calling CodeBuddy: {message}"
 

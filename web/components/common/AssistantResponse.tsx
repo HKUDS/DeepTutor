@@ -5,6 +5,7 @@ import { Fragment, memo, useMemo } from "react";
 import MarkdownRenderer from "@/components/common/MarkdownRenderer";
 import ModelThinkingCard from "@/components/common/ModelThinkingCard";
 import { useReading } from "@/context/ReadingContext";
+import { contentLang } from "@/lib/content-lang";
 import type { StreamEvent } from "@/features/chat/model/protocol";
 import {
   hasVisibleMarkdownContent,
@@ -112,13 +113,16 @@ function AssistantResponseImpl({
   // structured landmark. aria-live="polite" + aria-atomic="false" announces
   // streamed-in content as the user pauses, without re-reading the whole
   // bubble each token. Together this is the minimal pattern that turns a
-  // silent stream into an audible one.
+  // silent stream into an audible one. ``lang`` scopes the reply's language
+  // to the message text so the ``:lang()`` CJK font stacks in globals.css
+  // apply to chat prose without touching surrounding chrome.
   return (
     <div
       role="article"
       aria-live="polite"
       aria-atomic="false"
       className={className}
+      lang={contentLang(language)}
     >
       {segments.map((segment, index) => {
         if (segment.kind === "think") {

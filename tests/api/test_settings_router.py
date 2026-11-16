@@ -134,6 +134,12 @@ async def test_ui_accepts_extended_response_languages(
     assert response["response_language"] == "vi"
     assert settings_router.load_ui_settings()["response_language"] == "vi"
 
+    response = await settings_router.update_ui_settings(
+        settings_router.UISettingsUpdate(response_language="hi")
+    )
+    assert response["response_language"] == "hi"
+    assert settings_router.load_ui_settings()["response_language"] == "hi"
+
 
 @pytest.mark.asyncio
 async def test_changing_ui_language_to_vietnamese_keeps_an_existing_response_preference(
@@ -414,6 +420,42 @@ async def test_network_settings_roundtrip_normalizes_cors_origins(
     ]
     assert response["effective"]["cors_mode"] == "explicit"
     assert response["auth"]["cross_site_cookie_ready"] is True
+
+
+@pytest.mark.asyncio
+async def test_web_fetch_settings_roundtrip_and_validation(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    from fastapi import HTTPException
+
+    from deeptutor.services.config.provider_runtime import FETCH_PROVIDERS
+
+    service = RuntimeSettingsService(
+        tmp_path / "settings", process_env={"DEEPTUTOR_FETCH_BACKEND": "deepseek"}
+    )
+    monkeypatch.setattr(settings_router, "get_runtime_settings_service", lambda: service)
+
+    initial = await settings_router.get_web_fetch_settings()
+    # The dropdown mirrors the backend FETCH_PROVIDERS table, and the env
+    # override shows up as effective without being the stored choice.
+    assert [choice["value"] for choice in initial["choices"]] == list(FETCH_PROVIDERS)
+    assert initial["settings"]["backend"] == "local"
+    assert initial["effective"]["backend"] == "deepseek"
+
+    response = await settings_router.update_web_fetch_settings(
+        settings_router.WebFetchSettingsUpdate(backend="DeepSeek")
+    )
+    assert response["settings"]["backend"] == "deepseek"
+    assert response["effective"]["backend"] == "deepseek"
+    # The write loads without process overrides, so the deployment env value
+    # is never baked into system.json as if the operator had chosen it.
+    assert service.load_system(include_process_overrides=False)["web_fetch_backend"] == ("deepseek")
+
+    with pytest.raises(HTTPException) as excinfo:
+        await settings_router.update_web_fetch_settings(
+            settings_router.WebFetchSettingsUpdate(backend="tarball")
+        )
+    assert excinfo.value.status_code == 400
 
 
 @pytest.mark.asyncio
@@ -2208,3 +2250,10 @@ def test_llm_provider_choices_include_cloudgpu() -> None:
 
     assert llm["cloudgpu"]["label"] == "CloudGPU"
     assert llm["cloudgpu"]["base_url"] == "https://cloudgpu.app/v1"
+
+
+def test_llm_provider_choices_include_standardcompute() -> None:
+    llm = {item["value"]: item for item in settings_router._provider_choices()["llm"]}
+
+    assert llm["standardcompute"]["label"] == "Standard Compute"
+    assert llm["standardcompute"]["base_url"] == "https://api.stdcmpt.com/v1"

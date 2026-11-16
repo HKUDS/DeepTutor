@@ -10,6 +10,7 @@ import sys
 import time
 from typing import Callable
 
+from deeptutor.runtime.launcher import BACKEND_READY_TIMEOUT, FRONTEND_READY_TIMEOUT
 from deeptutor.runtime.process import is_process_alive
 from deeptutor.services.app_update import UpdateJob, UpdateJobStore
 
@@ -110,18 +111,33 @@ def _launch_restart(job: UpdateJob, *, log_path: Path) -> subprocess.Popen[bytes
         )
 
 
-# A launcher that cannot even import the new package exits almost immediately.
-# Waiting briefly lets the worker record that failure instead of leaving the job
-# stuck in ``restarting`` with nothing listening (see #2330).
-RESTART_STARTUP_GRACE_SECONDS = 5.0
+# The launcher owns readiness and marks this job succeeded only after both
+# services pass its probes. A live process alone is not successful startup.
+RESTART_STARTUP_GRACE_SECONDS = float(BACKEND_READY_TIMEOUT + FRONTEND_READY_TIMEOUT + 30)
 
 
-def _wait_for_launcher_start(process: subprocess.Popen[bytes]) -> None:
-    try:
-        exit_code = process.wait(timeout=RESTART_STARTUP_GRACE_SECONDS)
-    except subprocess.TimeoutExpired:
-        return
-    raise RuntimeError(f"Restarted launcher exited with status {exit_code}")
+def _wait_for_launcher_start(
+    process: subprocess.Popen[bytes], store: UpdateJobStore, job_id: str
+) -> None:
+    deadline = time.monotonic() + RESTART_STARTUP_GRACE_SECONDS
+    while True:
+        current = store.load()
+        if current.id != job_id:
+            raise RuntimeError("Update job changed while waiting for restart readiness")
+        if current.status == "succeeded":
+            return
+        if current.status == "failed":
+            raise RuntimeError(current.error or "Restarted launcher failed readiness checks")
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError(
+                "Restart readiness was not confirmed before the timeout; inspect the launcher log before retrying"
+            )
+        try:
+            exit_code = process.wait(timeout=min(0.2, remaining))
+        except subprocess.TimeoutExpired:
+            continue
+        raise RuntimeError(f"Restarted launcher exited with status {exit_code}")
 
 
 def _log_aborted_recovery(
@@ -179,7 +195,7 @@ def run_update_worker(
             store.log_path,
         )
         if launched is not None:
-            _wait_for_launcher_start(launched)
+            _wait_for_launcher_start(launched, store, job.id)
         return 0
     except Exception as exc:
         try:
@@ -191,6 +207,8 @@ def run_update_worker(
             _log_aborted_recovery(store, original=exc, load_error=load_error)
             return 1
         try:
+            if current.id != job.id:
+                return 1
             if current.status not in {"succeeded", "failed"}:
                 current = store.mark_failed(current.id, str(exc) or type(exc).__name__)
             # A launcher that already failed to start will fail again; leave

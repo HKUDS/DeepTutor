@@ -159,6 +159,7 @@ knowledge_base_seed:
     irrelevant; if they are not enough, retrieve more with rag.
 
 notices:
+  context_length_exceeded: "The conversation filled the model's context window, so the answer was cut off. Start a new chat or shorten the history and try again."
   conversation_summary_header: "[Conversation summary]"
   tool_result_snipped: "[earlier tool result snipped to stay within context window; call the same tool again if the content is still needed]"
   ask_user_resolved_directive: "[ask_user resolved. Continue the user's original request using these answers. Do not stop with an acknowledgement.]"

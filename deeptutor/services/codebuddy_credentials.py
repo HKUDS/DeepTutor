@@ -24,6 +24,12 @@ from typing import Any
 from urllib.parse import urlsplit
 
 _AUTH_FILE_NAME = "Tencent-Cloud.coding-copilot.info"
+#: WorkBuddy 5.9.3 renamed the shared session file and moved to an encrypted
+#: envelope. The path is unchanged, so search both names in the same dirs.
+_AUTH_FILE_NAMES = (_AUTH_FILE_NAME, "workbuddy-desktop.info")
+#: Prefix on a token WorkBuddy encrypts at rest. It is not a bearer token and
+#: must never be sent as one.
+_ENCRYPTED_TOKEN_PREFIX = "$wbEncrypted:"
 _AUTH_SUBPATH = ("CodeBuddyExtension", "Data", "Public", "auth")
 
 OVERSEAS_ENDPOINT = "https://www.codebuddy.ai"
@@ -106,9 +112,12 @@ def find_auth_file() -> Path | None:
         path = Path(override)
         return path if path.is_file() else None
     for directory in _auth_search_dirs():
-        candidate = directory / _AUTH_FILE_NAME
-        if candidate.is_file():
-            return candidate
+        # WorkBuddy 5.9.3+ writes workbuddy-desktop.info; check it first.
+        # The legacy file may still exist but be stale.
+        for name in reversed(_AUTH_FILE_NAMES):
+            candidate = directory / name
+            if candidate.is_file():
+                return candidate
     return None
 
 
@@ -119,6 +128,23 @@ def _as_float(value: Any) -> float:
         return 0.0
     # The auth file stores epoch milliseconds.
     return number / 1000.0 if number > 1e11 else number
+
+
+def _extract_auth(payload: dict[str, Any]) -> dict[str, Any] | None:
+    """Return the inner auth mapping for either file layout, or ``None``.
+
+    The IDE/CLI layout nests ``accessToken`` under ``auth``. WorkBuddy 5.9.3
+    writes a flatter envelope whose top-level ``access_token`` may be encrypted
+    at rest; an encrypted value carries no usable bearer token, so it is
+    rejected here rather than sent to the cloud.
+    """
+    auth = payload.get("auth")
+    if isinstance(auth, dict):
+        return auth
+    token = payload.get("access_token")
+    if isinstance(token, str) and token and not token.startswith(_ENCRYPTED_TOKEN_PREFIX):
+        return {"accessToken": token}
+    return None
 
 
 def load_credentials() -> CodeBuddyCredentials | None:
@@ -133,12 +159,14 @@ def load_credentials() -> CodeBuddyCredentials | None:
     if not isinstance(payload, dict):
         return None
 
-    auth = payload.get("auth")
+    auth = _extract_auth(payload)
     account = payload.get("account")
     if not isinstance(auth, dict):
         return None
     token = auth.get("accessToken")
     if not isinstance(token, str) or not token:
+        return None
+    if token.startswith(_ENCRYPTED_TOKEN_PREFIX):
         return None
     account = account if isinstance(account, dict) else {}
 

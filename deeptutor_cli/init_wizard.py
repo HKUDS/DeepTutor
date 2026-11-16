@@ -176,11 +176,25 @@ SEARCH_PROVIDERS: tuple[SearchProviderSpec, ...] = (
         hint="Google SERP · News & Scholar modes · paid",
     ),
     SearchProviderSpec(
+        name="searchapi",
+        label="SearchApi",
+        requires_api_key=True,
+        env_keys=("SEARCHAPI_API_KEY", "SEARCH_API_KEY"),
+        hint="Google SERP · News & Scholar modes · 100 free requests",
+    ),
+    SearchProviderSpec(
         name="perplexity",
         label="Perplexity",
         requires_api_key=True,
         env_keys=("PERPLEXITY_API_KEY", "SEARCH_API_KEY"),
         hint="answer-style search",
+    ),
+    SearchProviderSpec(
+        name="specstream",
+        label="SpecStream",
+        requires_api_key=True,
+        env_keys=("SPECSTREAM_API_KEY", "SEARCH_API_KEY"),
+        hint="answer-style search · paid",
     ),
     SearchProviderSpec(
         name="firecrawl",
@@ -226,6 +240,13 @@ SEARCH_PROVIDERS: tuple[SearchProviderSpec, ...] = (
         requires_api_key=True,
         env_keys=("ALIYUN_IQS_API_KEY", "IQS_API_KEY", "SEARCH_API_KEY"),
         hint="China-hosted · reranked results",
+    ),
+    SearchProviderSpec(
+        name="deepseek",
+        label="DeepSeek (深度求索)",
+        requires_api_key=True,
+        env_keys=("DEEPSEEK_API_KEY", "SEARCH_API_KEY"),
+        hint="own engine · optional page bodies · billed per request",
     ),
     SearchProviderSpec(
         name="duckduckgo",

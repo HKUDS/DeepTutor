@@ -15,7 +15,13 @@ from typing import Any, Dict, List, Protocol, runtime_checkable
 
 @runtime_checkable
 class RAGPipeline(Protocol):
-    """A knowledge-base index/retrieve engine bound to a KB by its provider."""
+    """A knowledge-base index/retrieve engine bound to a KB by its provider.
+
+    An implementation may declare ``supports_document_scope = True`` only if
+    ``search(document_keys=...)`` restricts the corpus before retrieval and
+    answer synthesis. Missing/false means that selected-document calls must
+    fail closed; filtering sources after synthesis does not satisfy this.
+    """
 
     async def initialize(self, kb_name: str, file_paths: List[str], **kwargs: Any) -> bool:
         """Build a fresh index for ``kb_name`` from ``file_paths``."""

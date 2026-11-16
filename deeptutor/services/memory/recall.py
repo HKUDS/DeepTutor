@@ -188,11 +188,11 @@ def recent(
 
 # ── What was asked (trace) ───────────────────────────────────────────────
 
-# The trace kinds that carry a learner-authored question. Knowledge-base
-# queries are the only ones today: the other emitters record system-side facts
-# (a stated preference, a partner turn), not something the learner typed as a
-# question.
-_QUERY_KINDS: dict[Surface, str] = {"kb": "query"}
+# The trace kinds that carry a learner-authored question: knowledge-base
+# searches and ordinary chat turns. The other emitters record system-side
+# facts (a stated preference, a partner turn), not something the learner typed
+# as a question.
+_QUERY_KINDS: dict[Surface, str] = {"chat": "query", "kb": "query"}
 
 
 def recent_queries(

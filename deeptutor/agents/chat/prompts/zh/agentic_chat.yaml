@@ -115,6 +115,7 @@ knowledge_base_seed:
     将它们作为有根据的上下文。它们可能不完整或部分无关；如果仍不够，用 rag 继续检索。
 
 notices:
+  context_length_exceeded: "对话已达到模型的上下文上限，回答因此中断。请新建对话或缩短历史记录后重试。"
   conversation_summary_header: "[对话摘要]"
   tool_result_snipped: "[较早的工具结果已裁剪以保持在上下文窗口内；如果仍需要该内容，请再次调用同一工具]"
   ask_user_resolved_directive: "[ask_user 已解决。请使用这些回答继续处理用户的原始请求。不要只回复确认。]"

@@ -58,7 +58,12 @@ export function favoriteTranscript(markdown: string): { role: string; content: s
     const marker = /^\s*(`{3,}|~{3,})/.exec(line)?.[1]
     if (marker) {
       if (!fence) fence = marker
-      else if (marker[0] === fence[0] && marker.length >= fence.length) fence = ''
+      else if (
+        marker[0] === fence[0] &&
+        marker.length >= fence.length &&
+        /^\s*(?:`{3,}|~{3,})[ \t]*\r?$/.test(line)
+      )
+        fence = ''
     }
     const role = !fence && /^##\s+(User|Assistant|System|用户|助手|系统)\s*$/i.exec(line)?.[1]
     if (role) parts.push({ role, content: '' })
@@ -76,7 +81,12 @@ export function favoriteAnswer(markdown: string): { question: string; answer: st
     const marker = /^\s*(`{3,}|~{3,})/.exec(line)?.[1]
     if (marker) {
       if (!fence) fence = marker
-      else if (marker[0] === fence[0] && marker.length >= fence.length) fence = ''
+      else if (
+        marker[0] === fence[0] &&
+        marker.length >= fence.length &&
+        /^\s*(?:`{3,}|~{3,})[ \t]*\r?$/.test(line)
+      )
+        fence = ''
     }
     if (
       !fence &&
@@ -121,7 +131,12 @@ export function favoriteHeadings(markdown: string): string[] {
     const marker = /^\s*(`{3,}|~{3,})/.exec(line)?.[1]
     if (marker) {
       if (!fence) fence = marker
-      else if (marker[0] === fence[0] && marker.length >= fence.length) fence = ''
+      else if (
+        marker[0] === fence[0] &&
+        marker.length >= fence.length &&
+        /^\s*(?:`{3,}|~{3,})[ \t]*\r?$/.test(line)
+      )
+        fence = ''
     }
     if (!fence && /^#{1,3}\s+/.test(line))
       headings.push(line.replace(/^#+\s+/, '').replace(/\s+#+\s*$/, ''))

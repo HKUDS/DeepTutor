@@ -20,6 +20,12 @@ def test_sanitize_url_normalizes_local_host() -> None:
     assert url == "http://localhost:11434/v1"
 
 
+@pytest.mark.parametrize("scheme", ["HTTP", "HTTPS", "hTtP", "hTtPs"])
+def test_sanitize_url_accepts_case_insensitive_http_schemes(scheme: str) -> None:
+    url = f"{scheme}://api.example.com/CasePath?token=AbCd"
+    assert sanitize_url(url) == url
+
+
 def test_build_chat_url_handles_provider_paths() -> None:
     """Provider-specific endpoints should resolve correctly."""
     assert build_chat_url("https://api.anthropic.com", binding="anthropic") == (
@@ -76,10 +82,43 @@ def test_clean_thinking_tags_handles_backtick_wrapped_tags() -> None:
     assert clean_thinking_tags("`<think>`ignore`</think>`Hello") == "Hello"
 
 
+def test_clean_thinking_tags_keeps_prose_that_names_the_tag() -> None:
+    """A reply explaining the tag is prose, not an unterminated scratchpad."""
+    assert (
+        clean_thinking_tags("Use <think> to start a reasoning block.")
+        == "Use <think> to start a reasoning block."
+    )
+    assert (
+        clean_thinking_tags("The `<think>` tag marks the scratchpad.")
+        == "The `<think>` tag marks the scratchpad."
+    )
+
+
+def test_clean_thinking_tags_closes_on_either_spelling() -> None:
+    """<think>...</thinking> is a closed block, not an unterminated one."""
+    assert clean_thinking_tags("<think>reasoning</thinking>answer") == "answer"
+    assert clean_thinking_tags("<thinking>reasoning</think>answer") == "answer"
+
+
+def test_clean_thinking_tags_keeps_text_after_a_closed_block() -> None:
+    """Only the block is removed; a later literal mention survives intact."""
+    assert (
+        clean_thinking_tags("<think>r</think>The <think> tag is a marker.")
+        == "The <think> tag is a marker."
+    )
+
+
 def test_extract_response_content() -> None:
     """Response content extraction should handle mapping payloads."""
     payload = {"content": [{"text": "Hello"}, {"text": "World"}]}
     assert extract_response_content(payload) == "HelloWorld"
+
+
+def test_extract_response_content_skips_null_text_parts() -> None:
+    """A delta with a null text field must not contribute the word "None"."""
+    assert extract_response_content({"content": [{"text": None}]}) == ""
+    assert extract_response_content({"content": [{"text": None}, {"text": "hi"}]}) == "hi"
+    assert extract_response_content({"content": [{"type": "text"}]}) == ""
 
 
 def test_extract_response_content_from_object_attributes() -> None:
@@ -114,3 +153,28 @@ def test_build_auth_headers() -> None:
     assert build_auth_headers("key", binding="anthropic")["x-api-key"] == "key"
     assert build_auth_headers("key", binding="azure")["api-key"] == "key"
     assert build_auth_headers("key")["Authorization"] == "Bearer key"
+
+
+@pytest.mark.parametrize(
+    "literal",
+    [
+        "Example:\n```xml\n<think>\n```\nThis is literal code.",
+        "Example:\n~~~xml\n<think>private</thinking>\n~~~\nKeep this answer.",
+        "Use `<think>secret</think>` to illustrate the format.",
+        "``<think>`` is an inline marker.",
+        "```xml\n<think>\n````\nAfter the longer closing fence.",
+    ],
+)
+def test_clean_thinking_tags_preserves_literal_code(literal: str) -> None:
+    assert clean_thinking_tags(literal) == literal
+
+
+def test_clean_thinking_tags_discards_code_inside_real_reasoning() -> None:
+    assert (
+        clean_thinking_tags("<think>secret\n```python\nprivate()\n```\n</thinking>Answer")
+        == "Answer"
+    )
+    assert (
+        clean_thinking_tags("```xml\n<think>\n```\n<think>secret</think>Answer")
+        == "```xml\n<think>\n```\nAnswer"
+    )

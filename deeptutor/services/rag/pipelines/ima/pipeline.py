@@ -29,7 +29,7 @@ from deeptutor.services.rag.provider_binding import load_kb_config_entry
 from . import media as media_ops
 from . import sources as source_policy
 from .config import ImaNotConfiguredError, resolve_kb_config
-from .envelope import ImaAuthError, ImaRateLimitError
+from .envelope import ImaAuthError, ImaContentAccessError, ImaRateLimitError
 
 logger = logging.getLogger(__name__)
 
@@ -108,6 +108,16 @@ class ImaPipeline:
                 "retrieval_status": "unverified_sources",
                 "diagnostics": diagnostics,
             }
+        content_denied = any(
+            row["error_type"] == "content_access_denied" for row in hydration_failures
+        )
+        if matched and not sources and content_denied:
+            return {
+                **self._error_result(
+                    query, ImaContentAccessError(), error_type="content_access_denied"
+                ),
+                "diagnostics": diagnostics,
+            }
         if matched and not sources:
             return {
                 "query": query,
@@ -162,7 +172,11 @@ class ImaPipeline:
             return_exceptions=True,
         )
         for index, result in zip(targets, results):
-            if isinstance(result, media_ops.UnsupportedMediaFormat):
+            if isinstance(result, ImaContentAccessError):
+                failures.append(
+                    {"source_id": sources[index]["chunk_id"], "error_type": "content_access_denied"}
+                )
+            elif isinstance(result, media_ops.UnsupportedMediaFormat):
                 failures.append(
                     {"source_id": sources[index]["chunk_id"], "error_type": "unsupported_format"}
                 )
@@ -198,7 +212,10 @@ class ImaPipeline:
         # #1500: preserve observable failure classes without exposing signed
         # media URLs or credentials carried by transport exceptions.
         message = str(exc)
-        if isinstance(exc, ImaAuthError):
+        if isinstance(exc, ImaContentAccessError):
+            error_type = "content_access_denied"
+            message = "IMA permits searching this subscribed library, but its files can only be read in the IMA client. Use readable snippets only, or attach a library whose content is accessible through the OpenAPI."
+        elif isinstance(exc, ImaAuthError):
             error_type = "authentication_error"
             message = "Tencent IMA rejected the credentials or library access. Check this account's IMA connection and permissions."
         elif isinstance(exc, ImaRateLimitError):

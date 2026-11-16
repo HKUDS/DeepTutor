@@ -7,7 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { localURL, externalURL, validateConfig } from '../src/config.mjs';
-import { canonicalManifest, verifyManifest, installBundle, sha256 } from '../src/bundles.mjs';
+import { canonicalManifest, verifyManifest, installBundle, sha256, newerRuntime, startupRuntime } from '../src/bundles.mjs';
 import { runtimeLayout, systemTar } from '../src/platform.mjs';
 import { ProcessGroup, availablePort, probe, waitReady } from '../src/processes.mjs';
 import { SourceRuntime, stageBundledWeb } from '../src/runtime.mjs';
@@ -36,6 +36,42 @@ test('update signatures bind version, checksum and architecture', () => {
   assert.throws(() => verifyManifest(manifest, publicKey, 'x64'));
   assert.throws(() => verifyManifest({ ...manifest, runtimeId: '../outside' }, publicKey, 'arm64'));
   assert.throws(() => verifyManifest({ ...manifest, archive: '../core.tar.gz' }, publicKey, 'arm64'));
+});
+
+test('a newer bundled core replaces the saved one, never an equal or newer one', () => {
+  const runtime = (coreVersion, runtimeId = `${coreVersion}-abc-x64`) => ({ coreVersion, runtimeId });
+  assert.equal(newerRuntime(runtime('1.7.2'), runtime('1.7.1')), true);
+  assert.equal(newerRuntime(runtime('1.10.0'), runtime('1.9.9')), true);
+  assert.equal(newerRuntime(runtime('2.0.0'), runtime('1.99.0')), true);
+  assert.equal(newerRuntime(runtime('1.7.2'), null), true);
+  assert.equal(newerRuntime(runtime('1.7.1'), runtime('1.7.2')), false);
+  assert.equal(newerRuntime(runtime('1.7.2', '1.7.2-def-x64'), runtime('1.7.2')), false);
+  assert.equal(newerRuntime(runtime('1.7.2'), runtime('1.7.2')), false);
+  assert.equal(newerRuntime(runtime('dev'), runtime('1.7.1')), false);
+  assert.equal(newerRuntime(null, runtime('1.7.1')), false);
+});
+
+test('boot keeps the saved core unless the app ships a newer signed one that has not failed', () => {
+  const { privateKey, publicKey } = generateKeyPairSync('ed25519');
+  const signed = (coreVersion, runtimeId) => {
+    const manifest = { formatVersion: 1, protocolVersion: 1, platform: process.platform, arch: process.arch, runtimeId, coreVersion, archive: 'core.tar.gz', sha256: 'a'.repeat(64) };
+    manifest.signature = sign(null, Buffer.from(canonicalManifest(manifest)), privateKey).toString('base64');
+    return manifest;
+  };
+  const saved = signed('1.7.1', '1.7.1-aaa-x64');
+  const seed = signed('1.7.2', '1.7.2-bbb-x64');
+  assert.deepEqual(startupRuntime({ saved: null, seed, publicKey }), {});
+  assert.deepEqual(startupRuntime({ saved, seed, publicKey }), { current: saved, upgrade: true, seedError: undefined });
+  assert.equal(startupRuntime({ saved: seed, seed: saved, publicKey }).upgrade, false);
+  assert.equal(startupRuntime({ saved, seed: null, publicKey }).upgrade, false);
+  const tampered = startupRuntime({ saved, seed: { ...seed, coreVersion: '9.0.0' }, publicKey });
+  assert.equal(tampered.upgrade, false);
+  assert.match(tampered.seedError.message, /signature/);
+  const failed = { phase: 'recovered', failed: true, previous: saved, candidate: seed };
+  assert.equal(startupRuntime({ saved, seed, transaction: failed, publicKey }).upgrade, false);
+  const interrupted = { phase: 'recovered', previous: saved, candidate: seed };
+  assert.equal(startupRuntime({ saved, seed, transaction: interrupted, publicKey }).upgrade, true);
+  assert.throws(() => startupRuntime({ saved: { ...saved, runtimeId: '../outside' }, seed, publicKey }));
 });
 
 test('occupied ports are left alone and an available port is chosen', async t => {

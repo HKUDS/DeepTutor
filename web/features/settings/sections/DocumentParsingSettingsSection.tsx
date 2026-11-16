@@ -452,7 +452,7 @@ function DoclingPanel({
           description={
             isRemote
               ? t(
-                  "Documents are sent to a Docling Serve server for conversion.",
+                  "Docling Serve returns Markdown only here. Use local Docling for structured table, equation and image blocks.",
                 )
               : t(
                   "Parsing runs on this machine using the installed docling package.",
@@ -661,6 +661,15 @@ function DoclingPanel({
           />
         </SettingSection>
       )}
+      <SettingSection title={t("Docling enrichments")} description={t("Optional Docling models for formulas and pictures. Local mode respects automatic model download settings; prefetch required models when downloads are disabled.")}>
+        {([
+          ["do_formula_enrichment", "Recognize formulas"],
+          ["do_picture_classification", "Classify pictures"],
+          ["do_picture_description", "Describe pictures with Docling"],
+        ] as const).map(([key, label]) => (
+          <SettingRow key={key} title={t(label)} control={<Toggle checked={Boolean(slice[key])} disabled={busy} onChange={(value) => onSave({ [key]: value })} />} />
+        ))}
+      </SettingSection>
     </>
   );
 }
