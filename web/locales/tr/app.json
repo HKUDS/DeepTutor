@@ -6661,5 +6661,12 @@
   "Position": "Position",
   "Action": "Action",
   "Conversation IDs (optional)": "Conversation IDs (optional)",
-  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle."
+  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.",
+  "Mark area": "Alan işaretle",
+  "Mark an area on the page to ask about it": "Sayfada bir alanı işaretleyip onun hakkında sorun",
+  "Drag to mark an area": "Bir alanı işaretlemek için sürükleyin",
+  "Ask about this area": "Bu alan hakkında sor",
+  "Explain this area": "Bu alanı açıkla",
+  "Remove marked area": "İşaretli alanı kaldır",
+  "Area on page {{page}}": "Sayfa {{page}} üzerindeki alan"
 }

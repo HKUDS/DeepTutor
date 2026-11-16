@@ -6661,5 +6661,12 @@
   "Position": "Position",
   "Action": "Action",
   "Conversation IDs (optional)": "Conversation IDs (optional)",
-  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle."
+  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.",
+  "Mark area": "範囲を指定",
+  "Mark an area on the page to ask about it": "ページ上の範囲を指定して質問する",
+  "Drag to mark an area": "ドラッグして範囲を指定",
+  "Ask about this area": "この範囲について質問",
+  "Explain this area": "この範囲を説明して",
+  "Remove marked area": "指定した範囲を削除",
+  "Area on page {{page}}": "{{page}} ページの範囲"
 }

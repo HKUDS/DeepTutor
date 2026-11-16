@@ -6683,5 +6683,12 @@
   "Position": "Position",
   "Action": "Action",
   "Conversation IDs (optional)": "Conversation IDs (optional)",
-  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle."
+  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.",
+  "Mark area": "Zaznacz obszar",
+  "Mark an area on the page to ask about it": "Zaznacz obszar strony, aby o niego zapytać",
+  "Drag to mark an area": "Przeciągnij, aby zaznaczyć obszar",
+  "Ask about this area": "Zapytaj o ten obszar",
+  "Explain this area": "Wyjaśnij ten obszar",
+  "Remove marked area": "Usuń zaznaczony obszar",
+  "Area on page {{page}}": "Obszar na stronie {{page}}"
 }

@@ -672,5 +672,12 @@
   "Action": "Action",
   "Chapter": "Chapter",
   "Conversation IDs (optional)": "Conversation IDs (optional)",
-  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle."
+  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.",
+  "Mark area": "영역 표시",
+  "Mark an area on the page to ask about it": "페이지의 영역을 표시하고 질문하기",
+  "Drag to mark an area": "드래그하여 영역 표시",
+  "Ask about this area": "이 영역에 대해 질문",
+  "Explain this area": "이 영역을 설명해 줘",
+  "Remove marked area": "표시한 영역 제거",
+  "Area on page {{page}}": "{{page}}페이지의 영역"
 }

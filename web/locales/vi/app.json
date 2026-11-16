@@ -6661,5 +6661,12 @@
   "Position": "Position",
   "Action": "Action",
   "Conversation IDs (optional)": "Conversation IDs (optional)",
-  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle."
+  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.",
+  "Mark area": "Đánh dấu vùng",
+  "Mark an area on the page to ask about it": "Đánh dấu một vùng trên trang để hỏi về nó",
+  "Drag to mark an area": "Kéo để đánh dấu một vùng",
+  "Ask about this area": "Hỏi về vùng này",
+  "Explain this area": "Giải thích vùng này",
+  "Remove marked area": "Xóa vùng đã đánh dấu",
+  "Area on page {{page}}": "Vùng trên trang {{page}}"
 }

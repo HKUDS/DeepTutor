@@ -29,14 +29,17 @@ import {
   REPLY_SENT_AS_NEW_MESSAGE,
 } from "@/lib/ask-user-state";
 import { notify } from "@/lib/notifications";
-import { setReadingViewport } from "@/lib/reading-turn-state";
+import { setReadingViewport, type ReadingRegion } from "@/lib/reading-turn-state";
+import { MarkedRegionChip } from "./MarkedRegionChip";
 
 export function ReadingComposer({
   placeholder,
   placeholderCompletion,
   selection,
+  region = null,
   onSent,
   onRemoveSelection,
+  onRemoveRegion,
   linkedSessionIds,
   prefillInputRef,
 }: {
@@ -44,6 +47,10 @@ export function ReadingComposer({
   /** Offered question the composer lets the learner take with Tab. */
   placeholderCompletion?: string;
   selection: { quote: string; locator: number } | null;
+  /** A marked page area the message is about; its crop rides the turn. */
+  region?: ReadingRegion | null;
+  /** The learner dropped the marked area before sending. */
+  onRemoveRegion?: () => void;
   /** Clears the pending selection once the message is on its way. */
   onSent: () => void;
   /** The learner dropped the quoted passage before sending. */
@@ -84,6 +91,9 @@ export function ReadingComposer({
             selection: selection.quote,
           });
         }
+        if (region) {
+          setReadingViewport({ locator: region.locator, region });
+        }
         // The composer's own "@ reference an earlier session" picker and this
         // surface's persistent linked-conversations list share one wire slot;
         // union them rather than letting either silently win.
@@ -109,7 +119,10 @@ export function ReadingComposer({
           submission.memoryReferences,
         );
         onSent();
-        window.setTimeout(() => setReadingViewport({ selection: "" }), 0);
+        window.setTimeout(
+          () => setReadingViewport({ selection: "", region: null }),
+          0,
+        );
       };
 
       // A turn paused on a question: what the reader typed is their answer,
@@ -133,6 +146,7 @@ export function ReadingComposer({
       awaitingUserReply,
       linkedSessionIds,
       onSent,
+      region,
       selection,
       sendMessage,
       submitUserReply,
@@ -168,6 +182,11 @@ export function ReadingComposer({
           <QuotedPassage
             quote={selection.quote}
             onRemove={onRemoveSelection}
+          />
+        ) : region ? (
+          <MarkedRegionChip
+            locator={region.locator}
+            onRemove={onRemoveRegion ?? (() => setReadingViewport({ region: null }))}
           />
         ) : null
       }

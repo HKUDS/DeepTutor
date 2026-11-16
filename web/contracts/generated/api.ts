@@ -16785,6 +16785,13 @@ export interface components {
        */
       readonly locator: number | null;
       /**
+       * Region
+       * @default null
+       */
+      readonly region: {
+        readonly [key: string]: unknown;
+      } | null;
+      /**
        * Selection
        * @default null
        */

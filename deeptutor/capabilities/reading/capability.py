@@ -318,6 +318,27 @@ class ReadingCapability:
         except Exception:
             return False
 
+    @staticmethod
+    def _region_attached(material_id: str, region: Any) -> int:
+        """Locator of the marked page area whose crop this turn carries, or 0.
+
+        The session crops the area the reader marked and attaches it first.
+        Mirrors that gate through the shared reading-layer probe, so the model
+        is never told about a crop that is not there. Best-effort and silent on
+        failure, like the other viewport probes.
+        """
+        if not isinstance(region, dict):
+            return 0
+        locator = _as_int(region.get("locator"))
+        if locator <= 0:
+            return 0
+        try:
+            from deeptutor.reading.page_render import region_has_render
+
+            return locator if region_has_render(material_id, locator) else 0
+        except Exception:
+            return 0
+
     # -- tool kwargs ------------------------------------------------------
 
     def augment_kwargs(
@@ -389,6 +410,13 @@ class ReadingCapability:
             captions = self._figure_caption_line(material_id, locator)
             if captions:
                 parts.append(captions)
+        region_locator = self._region_attached(material_id, viewport.get("region"))
+        if region_locator:
+            parts.append(
+                f"The user marked an area on locator {region_locator}; a crop of exactly that "
+                "area is the first image attached to this message. The question refers to that "
+                "area, so read the crop directly and answer about its content."
+            )
         time_seconds = _as_float(viewport.get("time_seconds"))
         if time_seconds >= 0 and "time_seconds" in viewport:
             parts.append(f"Current media time: {_timestamp(time_seconds)} ({time_seconds:.1f}s).")

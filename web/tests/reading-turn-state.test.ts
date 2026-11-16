@@ -5,6 +5,7 @@ import {
   getReadingTurnState,
   normalizeReadingMaterialId,
   normalizeReadingMaterialRevision,
+  normalizeReadingRegion,
   readingTurnFields,
   resetReadingTurnState,
   setReadingMaterial,
@@ -108,6 +109,7 @@ test("closing the document clears its viewport too", () => {
     materialRevision: null,
     locator: 0,
     selection: "",
+    region: null,
     timeSeconds: null,
   });
 });
@@ -129,6 +131,7 @@ test("carries the private workspace and clears it independently", () => {
     materialRevision: null,
     locator: 0,
     selection: "",
+    region: null,
     timeSeconds: null,
   });
 });
@@ -167,4 +170,42 @@ test("carries precise media time, including the beginning", () => {
     readingTurnFields(READING_WORKSPACE_MODE).reading_viewport?.time_seconds,
     0,
   );
+});
+
+test("a marked page area rides the viewport until it is cleared", () => {
+  setReadingMaterial("d138eacaad029843");
+  setReadingViewport({ locator: 3, region: { locator: 2, box: [0.1, 0.2, 0.6, 0.5] } });
+
+  assert.deepEqual(readingTurnFields(READING_WORKSPACE_MODE).reading_viewport, {
+    locator: 3,
+    region: { locator: 2, box: [0.1, 0.2, 0.6, 0.5] },
+  });
+
+  setReadingViewport({ region: null });
+  assert.deepEqual(readingTurnFields(READING_WORKSPACE_MODE).reading_viewport, {
+    locator: 3,
+  });
+});
+
+test("an unusable marked area is never sent", () => {
+  setReadingMaterial("d138eacaad029843");
+  for (const region of [
+    { locator: 0, box: [0.1, 0.2, 0.6, 0.5] },
+    { locator: 2, box: [0.6, 0.2, 0.1, 0.5] },
+    { locator: 2, box: [0.1, 0.2, 1.6, 0.5] },
+    { locator: 2, box: [0.1, 0.2, 0.6] },
+  ]) {
+    setReadingViewport({
+      region: region as unknown as { locator: number; box: [number, number, number, number] },
+    });
+    assert.equal(getReadingTurnState().region, null, JSON.stringify(region));
+  }
+  assert.equal(normalizeReadingRegion(null), null);
+});
+
+test("closing the document drops its marked area", () => {
+  setReadingMaterial("d138eacaad029843");
+  setReadingViewport({ region: { locator: 2, box: [0.1, 0.2, 0.6, 0.5] } });
+  setReadingMaterial(null);
+  assert.equal(getReadingTurnState().region, null);
 });

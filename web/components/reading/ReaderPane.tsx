@@ -830,6 +830,28 @@ export function ReaderPane({
     [selection, selectionText, material, clearSelection],
   );
 
+  // A marked page area goes to the conversation the way a passage does: the
+  // workspace puts it in the composer, or sends `prompt` about it right away.
+  const askAboutRegion = useCallback(
+    (
+      region: { locator: number; box: [number, number, number, number] },
+      prompt?: string,
+    ) => {
+      if (!material) return;
+      window.dispatchEvent(
+        new CustomEvent(READER_ASK_EVENT, {
+          detail: {
+            region,
+            locator: region.locator,
+            unit: material.unit,
+            ...(prompt ? { prompt } : {}),
+          },
+        }),
+      );
+    },
+    [material],
+  );
+
   // Inside a workspace the selection's AI actions sit on the popover, next to
   // the text they act on. Explain, translate and guide are messages in the
   // reading conversation (see reading-passage-prompts); an installed
@@ -1288,6 +1310,8 @@ export function ReaderPane({
                 setActiveAnnotationId(annotation.annotation_id)
               }
               onVisibleLocatorChange={handleVisibleLocator}
+              // Area mode only where a reading conversation takes the question.
+              onAskRegion={readingActions ? askAboutRegion : undefined}
             />
           ) : (
             <TextUnitView

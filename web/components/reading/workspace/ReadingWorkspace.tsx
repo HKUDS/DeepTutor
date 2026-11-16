@@ -25,7 +25,11 @@ import { ReadingActionsProvider } from "@/components/reading/ReadingActionsProvi
 import { focusReadingComposer, READER_ASK_EVENT } from "@/components/reading/reading-actions-context";
 import { useChatStateAdapter } from "@/features/chat/ChatStateAdapter";
 import type { ReaderHeading } from "@/lib/reading-outline";
-import { setReadingViewport } from "@/lib/reading-turn-state";
+import {
+  normalizeReadingRegion,
+  setReadingViewport,
+  type ReadingRegion,
+} from "@/lib/reading-turn-state";
 import { workspaceActionNeedsConfiguration } from "@/lib/workspace-mode";
 import {
   PAGE_QUIZ_CAPABILITY,
@@ -121,6 +125,8 @@ const AddMaterialsDialog = dynamic(
 
 interface ReaderAskDetail {
   quote?: string;
+  /** A marked page area, asked about instead of a passage (#2741). */
+  region?: ReadingRegion;
   locator?: number;
   unit?: string;
   /** Send this about the passage now, instead of waiting for a question. */
@@ -179,6 +185,13 @@ export function ReadingWorkspacePage() {
   const [selection, setSelection] = useState<{
     quote: string;
     locator: number;
+  } | null>(null);
+  // A marked page area waiting in the composer. A passage and an area are
+  // alternatives: picking one drops the other.
+  // Tagged with its material: switching documents drops it by derivation.
+  const [regionState, setRegionState] = useState<{
+    materialId: string;
+    region: ReadingRegion;
   } | null>(null);
   const prefillInputRef = useRef<((text: string) => void) | null>(null);
   const [isDesktopWide, setIsDesktopWide] = useState(false);
@@ -318,10 +331,49 @@ export function ReadingWorkspacePage() {
   useEffect(() => {
     const onAsk = (event: Event) => {
       const detail = (event as CustomEvent<ReaderAskDetail>).detail;
+      const prompt = String(detail?.prompt ?? "").trim();
+      const askedRegion = normalizeReadingRegion(detail?.region);
+      if (askedRegion) {
+        toggleCompanion(true);
+        setSelection(null);
+        if (
+          prompt &&
+          !state.isStreaming &&
+          !workspaceActionNeedsConfiguration(state.activeCapability)
+        ) {
+          setReadingViewport({
+            locator: askedRegion.locator,
+            selection: "",
+            region: askedRegion,
+          });
+          sendMessage(prompt, undefined, undefined, undefined, linkedSessionIds);
+          setRegionState(null);
+          window.setTimeout(() => setReadingViewport({ region: null }), 0);
+          return;
+        }
+        const askedMaterialId = activeTab?.material.material_id;
+        setRegionState(
+          askedMaterialId
+            ? { materialId: askedMaterialId, region: askedRegion }
+            : null,
+        );
+        setReadingViewport({
+          locator: askedRegion.locator,
+          selection: "",
+          region: askedRegion,
+        });
+        if (prompt) {
+          window.requestAnimationFrame(() => prefillInputRef.current?.(prompt));
+          return;
+        }
+        window.requestAnimationFrame(focusReadingComposer);
+        return;
+      }
       const quote = String(detail?.quote ?? "").trim();
       if (!quote) return;
       const locator = Number(detail.locator || activeLocator);
-      const prompt = String(detail?.prompt ?? "").trim();
+      setRegionState(null);
+      setReadingViewport({ region: null });
       toggleCompanion(true);
       // Explain / translate / guide: a message in this conversation, sent
       // now, with the passage attached the same way a typed question gets it.
@@ -354,6 +406,7 @@ export function ReadingWorkspacePage() {
     return () => window.removeEventListener(READER_ASK_EVENT, onAsk);
   }, [
     activeLocator,
+    activeTab?.material.material_id,
     linkedSessionIds,
     sendMessage,
     state.activeCapability,
@@ -550,7 +603,8 @@ export function ReadingWorkspacePage() {
             }));
             if (quote) {
               setSelection({ quote, locator });
-              setReadingViewport({ locator, selection: quote });
+              setRegionState(null);
+              setReadingViewport({ locator, selection: quote, region: null });
             }
           }}
         />
@@ -641,7 +695,20 @@ export function ReadingWorkspacePage() {
             linkedSessionIds={linkedSessionIds}
             activeLocator={activeLocator}
             selection={selection}
-            onClearSelection={() => setSelection(null)}
+            region={
+              regionState &&
+              regionState.materialId === activeTab?.material.material_id
+                ? regionState.region
+                : null
+            }
+            onClearSelection={() => {
+              setSelection(null);
+              setRegionState(null);
+            }}
+            onClearRegion={() => {
+              setRegionState(null);
+              setReadingViewport({ region: null });
+            }}
             onOpenLinker={openLinker}
             prefillInputRef={prefillInputRef}
             head={
