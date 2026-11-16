@@ -13,6 +13,7 @@ export const APP_LANGUAGES = [
   { code: "ko", labelKey: "language.korean" },
   { code: "it", labelKey: "language.italian" },
   { code: "hu", labelKey: "language.hungarian" },
+  { code: "fa", labelKey: "language.persian" },
 ] as const;
 
 export type AppLanguage = (typeof APP_LANGUAGES)[number]["code"];
@@ -23,6 +24,39 @@ const SUPPORTED_CODES: ReadonlySet<string> = new Set(
 
 export function isAppLanguage(value: unknown): value is AppLanguage {
   return typeof value === "string" && SUPPORTED_CODES.has(value);
+}
+
+/**
+ * Text direction per locale. Declared explicitly rather than inferred from a
+ * script or a language list: `DECISIONS.md` D-02 requires the direction to be
+ * a stated property of the locale, so a future right-to-left locale cannot
+ * silently inherit `ltr` just because nobody remembered to add it here.
+ */
+export const RTL_LANGUAGES: ReadonlySet<AppLanguage> = new Set<AppLanguage>(["fa"]);
+
+export type TextDirection = "ltr" | "rtl";
+
+export function textDirection(language: AppLanguage): TextDirection {
+  return RTL_LANGUAGES.has(language) ? "rtl" : "ltr";
+}
+
+/**
+ * The BCP-47 tag used for `Intl` formatting and the document `lang` attribute.
+ *
+ * The interface locale is the short key (`fa`); the *regional* tag is what
+ * dates, numbers and collation need. Persian in Iran is `fa-IR`: calendar
+ * defaults, digit shapes and the date order all follow from the region, not
+ * from the bare language subtag. Kept as a lookup rather than a template so a
+ * locale whose formatting region is not simply its own code can be added
+ * without a special case at every call site.
+ */
+const REGIONAL_LOCALE_TAGS: Partial<Record<AppLanguage, string>> = {
+  fa: "fa-IR",
+  zh: "zh-CN",
+};
+
+export function regionalLocale(language: AppLanguage): string {
+  return REGIONAL_LOCALE_TAGS[language] ?? language;
 }
 
 export function normalizeLanguage(value: unknown): AppLanguage {
@@ -41,6 +75,8 @@ export function normalizeLanguage(value: unknown): AppLanguage {
   if (base === "ko" || code === "korean" || code === "한국어") return "ko";
   if (base === "it" || code === "italian" || code === "italiano") return "it";
   if (base === "hu" || code === "hungarian" || code === "magyar") return "hu";
+  if (base === "fa" || code === "persian" || code === "farsi" || code === "فارسی")
+    return "fa";
   return "en";
 }
 
@@ -64,4 +100,5 @@ export type ResponseLanguage =
   | "vi"
   | "tr"
   | "hi"
-  | "hu";
+  | "hu"
+  | "fa";

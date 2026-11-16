@@ -19,6 +19,12 @@ def _parse_language(language: str | None) -> str:
         return "it"
     if raw.replace("_", "-").split("-", 1)[0] == "hu" or raw in {"hungarian", "magyar"}:
         return "hu"
+    if raw.replace("_", "-").split("-", 1)[0] == "fa" or raw in {
+        "persian",
+        "farsi",
+        "فارسی",
+    }:
+        return "fa"
     return "en"
 
 
@@ -375,6 +381,58 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "sandbox.command_blocked": "Hiba: a parancsot a biztonsági őr blokkolta (veszélyes minta).",
         "sandbox.disabled_for_account": "A kódvégrehajtás ki van kapcsolva az Ön fiókjában.",
         "sandbox.no_backend": "nincs elérhető sandbox-háttér",
+    },
+
+    "fa": {
+        "api.content_required": "محتوا الزامی است",
+        "api.invalid_channels_config": "پیکربندی کانال‌ها نامعتبر است",
+        "api.partner_already_exists": "همکار «{name}» از قبل وجود دارد",
+        "api.partner_not_found": "همکار یافت نشد",
+        "api.partner_not_found_or_not_running": "همکار یافت نشد یا در حال اجرا نیست",
+        "api.partner_not_running": "همکار در حال اجرا نیست",
+        "api.partner_stopped_start_required": "همکار متوقف است. پیش از گفت‌وگو آن را اجرا کنید.",
+        "api.persona_already_exists": "شخصیت از قبل وجود دارد: {name}",
+        "api.persona_name_required": "نام شخصیت الزامی است",
+        "api.persona_not_found": "شخصیت یافت نشد: {name}",
+        "api.soul_already_exists": "روح «{name}» از قبل وجود دارد",
+        "api.soul_content_empty": "محتوای روح سفارشی خالی است",
+        "api.soul_library_not_found": "روح «{name}» در کتابخانه یافت نشد",
+        "api.soul_not_found": "روح یافت نشد",
+        "api.tool_not_found": "ابزار «{name}» یافت نشد",
+        "cli_apps.abi_mismatch": (
+            "برنامهٔ CLI {app!r} برای {installed} نصب شده بود اما این محیط اجرا {current} است. "
+            "مدیر سامانه باید آن را دوباره نصب کند."
+        ),
+        "cli_apps.args_required": (
+            "{tool} به آرایهٔ «args» نیاز دارد — هر عضو، یک آرگومان خط فرمان."
+        ),
+        "cli_apps.entry_admin_only": (
+            "برنامه‌های CLI را مدیر سامانه نصب می‌کند؛ از او بخواهید این مورد را اضافه کند."
+        ),
+        "cli_apps.install_in_progress": "این برنامه از قبل در حال نصب است.",
+        "cli_apps.not_in_catalog": "برنامه‌ای با نام {id!r} در کاتالوگ نیست.",
+        "cli_apps.not_installed": "برنامهٔ CLI {app!r} دیگر روی این استقرار نصب نیست.",
+        "cli_apps.still_running": "{app} هنوز در حال اجراست ({seconds} ثانیه)",
+        "mcp.configure_command_or_url": "سرور {name!r}: یا دستور (stdio) را تنظیم کنید یا یک نشانی.",
+        "mcp.configure_before_testing": "پیش از آزمودن، یا دستور (stdio) را تنظیم کنید یا یک نشانی.",
+        "mcp.server_error": "سرور {name!r}: {error}",
+        "mcp.server_missing": "سروری با نام {name!r} در فهرست شما نیست.",
+        "mcp.not_oauth": "این سرور از OAuth استفاده نمی‌کند؛ به‌جایش یک اعتبارنامه بدهید.",
+        "mcp.oauth_callback_incomplete": "پاسخ مجوز ناقص بود.",
+        "mcp.oauth_callback_unknown": "این مجوز منقضی شده یا قبلاً کامل شده است. دوباره آغاز کنید.",
+        "mcp.oauth_done": "مجوز داده شد. می‌توانید این زبانه را ببندید.",
+        "mcp.oauth_failed": "مجوزدهی ناموفق بود.",
+        "mcp.catalog_entry_missing": "خدمتی با نام {id!r} در کاتالوگ نیست.",
+        "mcp.entry_admin_only": (
+            "این خدمت به‌صورت دستور محلی اجرا می‌شود و تنها مدیر سامانه می‌تواند آن را بیفزاید."
+        ),
+        "mcp.tool_not_available": (
+            "این ابزار در این گفت‌وگو در دسترس نیست. تنها ابزارهای فهرست‌شده در "
+            "راهنما را می‌توان فراخواند."
+        ),
+        "sandbox.command_blocked": "خطا: دستور توسط نگهبان ایمنی مسدود شد (الگوی خطرناک).",
+        "sandbox.disabled_for_account": "اجرای کد برای حساب شما غیرفعال است.",
+        "sandbox.no_backend": "هیچ بک‌اند سندباکسی در دسترس نیست",
     },
 }
 
