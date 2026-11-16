@@ -23,6 +23,15 @@ def _replay_output_item(item: dict[str, Any]) -> dict[str, Any]:
     so an unset status is left out. A status the provider did send is kept.
     """
     replayed = dict(item)
+    if replayed.get("type") == "function_call":
+        # Older SDK dumps persisted Python's reserved-word spelling. Repair
+        # the replay copy, leaving stored history and argument JSON untouched.
+        legacy_async = replayed.pop("async_", None)
+        if "async" not in replayed and isinstance(legacy_async, bool):
+            replayed["async"] = legacy_async
+        for key in ("async", "caller", "namespace", "id"):
+            if replayed.get(key) is None:
+                replayed.pop(key, None)
     if replayed.get("status") is None:
         replayed.pop("status", None)
     return replayed
