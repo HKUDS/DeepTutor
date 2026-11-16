@@ -6,9 +6,9 @@ from dataclasses import replace
 import json
 import os
 from pathlib import Path
+import subprocess
 import sys
 
-from pip._vendor.distlib.scripts import ScriptMaker
 import pytest
 
 from deeptutor.services.parsing.cache import load_ir
@@ -76,15 +76,55 @@ def fake_cli(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("MINERU_FIXTURE_DIR", str(FIXTURE))
 
     def make(name="mineru-kit"):
-        maker = ScriptMaker(None, str(directory))
-        maker.executable = sys.executable
-        maker.variants = {""}
-        paths = maker.make(f"{name} = mineru_fixture:main")
+        # Importing pip switches setuptools to stdlib distutils on Python 3.11.
+        # Generate the same launchers without changing the pytest process.
+        create_launcher = """
+import json
+import sys
+from pip._vendor.distlib.scripts import ScriptMaker
+
+maker = ScriptMaker(None, sys.argv[1])
+maker.executable = sys.executable
+maker.variants = {""}
+print(json.dumps(maker.make(f"{sys.argv[2]} = mineru_fixture:main")))
+"""
+        paths = json.loads(
+            subprocess.check_output(
+                [sys.executable, "-c", create_launcher, str(directory), name],
+                text=True,
+                timeout=30,
+            )
+        )
         return (
             next(str(Path(p)) for p in paths if p.endswith(".exe")) if os.name == "nt" else paths[0]
         )
 
     return make
+
+
+def test_cli_fixture_preserves_packaging_imports(tmp_path: Path) -> None:
+    probe = """
+from pathlib import Path
+import runpy
+import sys
+import pytest
+
+namespace = runpy.run_path(sys.argv[1])
+assert "pip" not in sys.modules, "test collection imported pip"
+with pytest.MonkeyPatch.context() as patch:
+    make = namespace["fake_cli"].__wrapped__(Path(sys.argv[2]), patch)
+    assert Path(make()).is_file()
+assert "pip" not in sys.modules, "launcher creation imported pip"
+from setuptools import Distribution
+Distribution()
+"""
+    completed = subprocess.run(
+        [sys.executable, "-c", probe, str(Path(__file__).resolve()), str(tmp_path)],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
 
 
 def _pdf(path: Path, count: int = 13) -> None:
