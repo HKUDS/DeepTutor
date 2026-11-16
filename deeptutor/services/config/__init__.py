@@ -11,6 +11,7 @@ from .loader import (
     get_path_from_config,
     get_runtime_settings_dir,
     load_config_with_main,
+    load_main_config,
     parse_language,
     resolve_config_path,
 )
@@ -54,6 +55,7 @@ __all__ = [
     "PROJECT_ROOT",
     "get_runtime_settings_dir",
     "load_config_with_main",
+    "load_main_config",
     "resolve_config_path",
     "get_path_from_config",
     "parse_language",

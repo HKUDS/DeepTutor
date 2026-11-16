@@ -15,13 +15,25 @@ from typing import Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from deeptutor.services.config import PROJECT_ROOT, load_config_with_main
+from deeptutor.services.config import load_main_config
 from deeptutor.services.llm import stream as llm_stream
 from deeptutor.services.settings.interface_settings import get_response_language
 from deeptutor.utils.error_utils import format_exception_message
 
 logger = logging.getLogger(__name__)
-_config = load_config_with_main("main.yaml", PROJECT_ROOT)
+
+
+def _main_config() -> dict:
+    """Load ``main.yaml`` on demand instead of at import time (R-12)."""
+    return load_main_config()
+
+
+def _config_default_language() -> str:
+    """UI default reply language, falling back to English if uninitialized."""
+    try:
+        return str(_main_config().get("system", {}).get("language", "en"))
+    except Exception:
+        return "en"
 
 router = APIRouter()
 
@@ -428,7 +440,7 @@ async def websocket_quiz_judge(websocket: WebSocket):
     requested_language = (data.get("language") or "").strip().lower()
     if requested_language not in SUPPORTED_JUDGE_LANGUAGES:
         requested_language = get_response_language(
-            default=_config.get("system", {}).get("language", "en")
+            default=_config_default_language()
         )
         if requested_language not in SUPPORTED_JUDGE_LANGUAGES:
             requested_language = "en"

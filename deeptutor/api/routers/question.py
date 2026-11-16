@@ -16,16 +16,31 @@ from deeptutor.logging import (
     capture_process_logs,
     current_log_context,
 )
-from deeptutor.services.config import PROJECT_ROOT, load_config_with_main
+from deeptutor.services.config import load_main_config
 from deeptutor.services.path_service import get_path_service
 from deeptutor.services.settings.interface_settings import get_response_language
 from deeptutor.utils.document_validator import DocumentValidator
 from deeptutor.utils.error_utils import format_exception_message
 
-# Setup module logger with unified logging system (from config)
-config = load_config_with_main("main.yaml", PROJECT_ROOT)
-log_dir = config.get("paths", {}).get("user_log_dir") or config.get("logging", {}).get("log_dir")
 logger = logging.getLogger(__name__)
+
+
+def _main_config() -> dict:
+    """Load ``main.yaml`` on demand instead of at import time (R-12)."""
+    return load_main_config()
+
+
+def _response_language_default() -> str:
+    """Model reply language: UI setting first, then ``main.yaml``, then English.
+
+    Mirrors the pre-R-12 expression ``get_response_language(default=
+    config["system"]["language"])`` without loading the file at import time.
+    """
+    try:
+        default_language = str(_main_config().get("system", {}).get("language", "en"))
+    except Exception:
+        default_language = "en"
+    return get_response_language(default=default_language)
 
 router = APIRouter()
 ws_router = APIRouter()
@@ -422,7 +437,7 @@ async def websocket_question_generate(websocket: WebSocket):
             base_url=base_url,
             api_version=api_version,
             kb_name=kb_name,
-            language=get_response_language(default=config.get("system", {}).get("language", "en")),
+            language=_response_language_default(),
             output_dir=str(output_base),
         )
 
