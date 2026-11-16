@@ -93,6 +93,33 @@ async def test_a_rejected_status_is_stripped_and_the_call_retried_once() -> None
     assert all("status" in item for item in calls[0]["input"] if item["type"] == "message")
 
 
+async def test_a_rejected_status_on_a_replayed_function_call_is_stripped_too() -> None:
+    provider = _provider()
+    create, calls = _recorder(fail_on={1}, error=_RejectedParameter("input[1].status"))
+    provider._client.responses.create = create
+    body = {
+        "model": "responses-only-model",
+        "input": [
+            {"role": "user", "content": [{"type": "input_text", "text": "hi"}]},
+            {
+                "type": "function_call",
+                "call_id": "c1",
+                "name": "read_material",
+                "arguments": "{}",
+                "status": "completed",
+            },
+            {"type": "function_call_output", "call_id": "c1", "output": "ok"},
+        ],
+    }
+
+    assert await provider._create_responses_with_status_retry(body) == "ok"
+
+    assert len(calls) == 2
+    assert all("status" not in item for item in calls[1]["input"])
+    assert calls[1]["input"][1]["name"] == "read_material"
+    assert body["input"][1]["status"] == "completed"
+
+
 async def test_the_model_is_remembered_so_the_next_turn_costs_one_call() -> None:
     provider = _provider()
     create, calls = _recorder(fail_on={1})

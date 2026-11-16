@@ -193,6 +193,7 @@ class LearningEvidence(BaseModel):
     confidence: float | None = None
     learner_answer: str = ""
     feedback: str = ""
+    reference_answer: str = ""
     response_time: float | None = None
     session_id: str = ""
     turn_id: str = ""

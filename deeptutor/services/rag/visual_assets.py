@@ -105,16 +105,21 @@ def _text(value: Any) -> str:
 
 
 def _block_details(
-    blocks: list[dict[str, Any]] | None, asset: Path
+    blocks: list[dict[str, Any]] | None,
+    asset: Path,
+    *,
+    matched_blocks: list[tuple[int, dict[str, Any]]] | None = None,
 ) -> tuple[str, str, int | None, int | None, list[float] | None, str]:
     if not blocks:
         return "", "", None, None, None, ""
-    for index, block in enumerate(blocks):
+    entries = enumerate(blocks) if matched_blocks is None else matched_blocks
+    for index, block in entries:
         if not isinstance(block, dict):
             continue
-        raw = str(block.get("img_path") or block.get("path") or "")
-        if not raw or Path(raw).resolve() != asset.resolve():
-            continue
+        if matched_blocks is None:
+            raw = str(block.get("img_path") or block.get("path") or "")
+            if not raw or Path(raw).resolve() != asset.resolve():
+                continue
         caption = _text(
             block.get("caption")
             or block.get("image_caption")
@@ -183,6 +188,7 @@ def collect_visual_assets(
     source_key = source_key_for(kb_dir, source)
     source_hash = _sha256_file(source)
     candidates: list[VisualAssetCandidate] = []
+    blocks_by_path: dict[Path, list[tuple[int, dict[str, Any]]]] | None = None
     for path in sorted(asset_dir.iterdir()):
         try:
             loaded = _image_bytes(path)
@@ -193,10 +199,20 @@ def collect_visual_assets(
             continue
         if loaded is None:
             continue
+        if blocks_by_path is None:
+            # Resolve each block path once, and only when there is a valid image.
+            blocks_by_path = {}
+            for index, block in enumerate(parsed.blocks or []):
+                if not isinstance(block, dict):
+                    continue
+                raw = str(block.get("img_path") or block.get("path") or "")
+                if raw:
+                    blocks_by_path.setdefault(Path(raw).resolve(), []).append((index, block))
         image, mime = loaded
         image_hash = sha256(image).hexdigest()
+        matches = blocks_by_path.get(path.resolve(), [])
         caption, context, page_index, page_number, bbox, locator = _block_details(
-            parsed.blocks, path
+            parsed.blocks, path, matched_blocks=matches
         )
         md_caption, md_context, md_locator = _markdown_details(parsed.markdown, path)
         caption = caption or md_caption
@@ -226,15 +242,8 @@ def collect_visual_assets(
         from deeptutor.services.rag.source_visuals import figure_labels
 
         record["figure_labels"] = figure_labels(caption)
-        matching = [
-            block
-            for block in (parsed.blocks or [])
-            if isinstance(block, dict)
-            and str(block.get("img_path") or block.get("path") or "")
-            and Path(str(block.get("img_path") or block.get("path"))).resolve() == path.resolve()
-        ]
-        if matching:
-            block = matching[0]
+        if matches:
+            block = matches[0][1]
             record.update(
                 {
                     "kind": str(block.get("type") or "image"),

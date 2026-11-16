@@ -16,7 +16,9 @@ from deeptutor.tools.workspace import WorkspacePresentTool
 
 def test_pptx_skill_teaches_only_unified_exec_and_logical_output_paths() -> None:
     root = Path(__file__).parents[2]
-    skill = (root / "deeptutor" / "skills" / "builtin" / "pptx" / "SKILL.md").read_text()
+    skill = (root / "deeptutor" / "skills" / "builtin" / "pptx" / "SKILL.md").read_text(
+        encoding="utf-8"
+    )
 
     for removed_tool in ("code_execution", "run_code", "code_execute"):
         assert removed_tool not in skill
@@ -35,8 +37,8 @@ def test_pptx_skill_teaches_only_unified_exec_and_logical_output_paths() -> None
 def test_pptx_dependency_is_packaged_for_pip_source_and_docker_runner() -> None:
     root = Path(__file__).parents[2]
 
-    assert '"python-pptx>=1.0.0"' in (root / "pyproject.toml").read_text()
-    assert "python-pptx" in (root / "Dockerfile.runner").read_text()
+    assert '"python-pptx>=1.0.0"' in (root / "pyproject.toml").read_text(encoding="utf-8")
+    assert "python-pptx" in (root / "Dockerfile.runner").read_text(encoding="utf-8")
 
 
 @pytest.mark.asyncio

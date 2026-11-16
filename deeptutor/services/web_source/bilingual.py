@@ -8,6 +8,7 @@ records for storage and API exposure.
 from __future__ import annotations
 
 import hashlib
+import re
 from typing import Any
 from urllib.parse import urlparse
 
@@ -65,6 +66,21 @@ SUPPORTED_LANGUAGE_PAIRS = frozenset(
     }
 )
 
+#: Every individual language that appears in a supported pairing. Used to
+#: recognize a language-tagged URL segment whose regional variant is not listed
+#: in _CANONICAL_LANGUAGES (e.g. "fr-be" normalizes to "fr").
+_SUPPORTED_LANGUAGES = frozenset().union(*SUPPORTED_LANGUAGE_PAIRS)
+
+
+def _is_url_language(segment: str) -> bool:
+    return segment.lower() in _KNOWN_LANG_CODES or (
+        normalize_language(segment) in _SUPPORTED_LANGUAGES
+        and re.fullmatch(
+            r"[a-z]{2,3}(?:[-_][a-z]{4})?(?:[-_](?:[a-z]{2}|[0-9]{3}))?", segment, re.I | re.ASCII
+        )
+        is not None
+    )
+
 
 def normalize_language(code: str | None) -> str:
     """Normalize a language tag to its canonical primary language code.
@@ -113,13 +129,13 @@ def extract_url_language_and_stem(url: str) -> tuple[str, str]:
         return "", "/"
 
     first_norm = normalize_language(segments[0])
-    if segments[0].lower() in _KNOWN_LANG_CODES or first_norm in SUPPORTED_LANGUAGE_PAIRS:
+    if _is_url_language(segments[0]):
         stem = "/" + "/".join(segments[1:])
         return first_norm, stem or "/"
 
     if len(segments) >= 2:
         second_norm = normalize_language(segments[1])
-        if segments[1].lower() in _KNOWN_LANG_CODES or second_norm in SUPPORTED_LANGUAGE_PAIRS:
+        if _is_url_language(segments[1]):
             stem = f"/{segments[0]}" + ("/" + "/".join(segments[2:]) if len(segments) > 2 else "")
             return second_norm, stem or "/"
 

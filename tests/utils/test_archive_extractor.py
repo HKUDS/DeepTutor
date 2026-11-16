@@ -123,6 +123,53 @@ def test_duplicate_basenames_after_flattening(tmp_path: Path) -> None:
     assert any("duplicate" in reason for _, reason in result.skipped)
 
 
+def _names_ignore_case(directory: Path) -> bool:
+    probe = directory / "Case-Probe"
+    probe.touch()
+    try:
+        return (directory / "case-probe").exists()
+    finally:
+        probe.unlink()
+
+
+def test_case_only_duplicate_basenames_follow_the_filesystem(tmp_path: Path) -> None:
+    src = _make_zip(
+        tmp_path / "a.zip",
+        [("week1/README.md", b"one"), ("week2/readme.md", b"two"), ("notes.txt", b"n")],
+    )
+    out = tmp_path / "out"
+    out.mkdir()
+    case_insensitive = _names_ignore_case(out)
+
+    result = safe_extract_zip(src, out, allowed_extensions=DOC_EXTS)
+
+    if case_insensitive:
+        # Windows/macOS: one file on disk, so the later member is a duplicate.
+        assert [p.name for p in result.extracted] == ["README.md", "notes.txt"]
+        assert (out / "README.md").read_bytes() == b"one"  # first wins
+        assert ("week2/readme.md", "duplicate name after flattening") in result.skipped
+    else:
+        assert [p.name for p in result.extracted] == ["README.md", "readme.md", "notes.txt"]
+        assert result.skipped == []
+
+
+def test_case_only_match_with_existing_file_is_still_refused(tmp_path: Path) -> None:
+    src = _make_zip(tmp_path / "a.zip", [("new.txt", b"new"), ("readme.md", b"replacement")])
+    out = tmp_path / "out"
+    out.mkdir()
+    existing = out / "README.md"
+    existing.write_bytes(b"original")
+
+    if _names_ignore_case(out):
+        with pytest.raises(FileExistsError):
+            safe_extract_zip(src, out, allowed_extensions=DOC_EXTS)
+        assert not (out / "new.txt").exists()
+    else:
+        result = safe_extract_zip(src, out, allowed_extensions=DOC_EXTS)
+        assert [p.name for p in result.extracted] == ["new.txt", "readme.md"]
+    assert existing.read_bytes() == b"original"
+
+
 def test_per_entry_size_cap_raises(tmp_path: Path) -> None:
     src = _make_zip(tmp_path / "a.zip", [("big.txt", b"x" * 100)])
     out = tmp_path / "out"

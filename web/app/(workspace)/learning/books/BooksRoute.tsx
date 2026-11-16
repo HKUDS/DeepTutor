@@ -27,6 +27,7 @@ import { RESET_BOOK_PROGRESS, emptyBookProgress, reduceBookEvent } from '@/lib/b
 import { bookEventKind, bookEventPageId, useBookStream } from '@/lib/use-book-stream'
 
 import BookChatPanel from './components/BookChatPanel'
+import BookStructureEditor from './components/BookStructureEditor'
 import BookCreator from './components/BookCreator'
 import BookHealthBanner from './components/BookHealthBanner'
 import BookLibrary from './components/BookLibrary'
@@ -115,6 +116,7 @@ function BookPageInner() {
   const [booksError, setBooksError] = useState<string | null>(null)
   const [view, setView] = useState<View>(requestedBookId ? 'opening' : requestedLearningCreation() ? 'creator' : 'list')
 
+  const [structureOpen, setStructureOpen] = useState(false)
   const [selectedBookId, setSelectedBookId] = useState<string | null>(null)
   const selectionRequestRef = useRef(0)
   const [detail, setDetail] = useState<BookDetail | null>(null)
@@ -1008,6 +1010,13 @@ function BookPageInner() {
       )
     })
 
+  const refreshAfterEdit = async () => {
+    if (!selectedBookId) return
+    const data = await loadBookDetail(selectedBookId)
+    if (selectedPageId && data.pages.some(page => page.id === selectedPageId)) await hydratePage(selectedPageId)
+    else setSelectedPageId(data.pages[0]?.id || null)
+  }
+
   // ── Render ─────────────────────────────────────────────────────────
 
   // A client-side route change may arrive before the next book's detail.
@@ -1017,11 +1026,15 @@ function BookPageInner() {
 
   const openBook = detail?.book || pendingBook || null
   return (
-    <div className="flex h-full w-full">
+    <div className="flex h-full w-full min-w-0 flex-col">
       {/* 「书 / this book」: the book switches to the others from the bar. */}
       {requestedBookId && openBook && (
-        <BookCrumb id={openBook.id} label={openBook.title || t('Untitled book')} />
+        <div className="flex min-w-0 shrink-0 items-center">
+          <BookCrumb id={openBook.id} label={openBook.title || t('Untitled book')} />
+          {detail?.spine && canEditBook && <button className="ml-auto mr-4 text-sm" onClick={() => setStructureOpen(true)}>{t('Edit book structure')}</button>}
+        </div>
       )}
+      <div className="flex min-h-0 min-w-0 flex-1">
       {displayView !== 'list' && displayView !== 'creator' && displayView !== 'opening' && (
         <BookSidebar
           book={detail?.book || pendingBook || null}
@@ -1036,7 +1049,8 @@ function BookPageInner() {
         />
       )}
 
-      <main className="relative flex flex-1 overflow-hidden bg-[var(--background)]">
+      <main className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden bg-[var(--background)]">
+        {structureOpen && detail?.spine && canEditBook && <BookStructureEditor key={detail.book.id} detail={detail} onChanged={refreshAfterEdit} onClose={() => setStructureOpen(false)} />}
         {/* One slot, one place, every view. The predecessor put a gradient
             progress card *inside* the creator's scrolling content and a
             second chip floating over the corner, so starting generation
@@ -1250,9 +1264,11 @@ function BookPageInner() {
             onClose={() => setChatOpen(false)}
             initialSessionId={selectedPageChatSessionId}
             onSessionResolved={sessionId => void handlePageChatSession(sessionId)}
+            onBookChanged={refreshAfterEdit}
           />
         )}
       </main>
+      </div>
     </div>
   )
 }

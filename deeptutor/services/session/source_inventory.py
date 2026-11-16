@@ -724,6 +724,10 @@ async def collect_prior_image_attachments(
     re-attaches the result (URL-only; the multimodal layer resolves the bytes
     from the attachment store at request time). Text attachments are not
     collected here: they are re-served by the inventory's own historical walk.
+
+    Each record is marked ``historical=True`` with the originating
+    ``source_message_id`` (#2632) so the multimodal assembly can tell the
+    model these images came from earlier messages, not the current one.
     """
     if limit is None:
         from deeptutor.services.config import get_prior_image_reinject_limit
@@ -754,6 +758,8 @@ async def collect_prior_image_attachments(
                     "base64": "",
                     "filename": str(att.get("filename", "") or ""),
                     "mime_type": str(att.get("mime_type", "") or ""),
+                    "historical": True,
+                    "source_message_id": str(msg.get("id", "") or ""),
                 }
             )
             if len(collected) >= limit:

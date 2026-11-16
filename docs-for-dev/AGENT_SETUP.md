@@ -76,6 +76,16 @@ installed core. This does not remove runtime-home data. You can then add
 compatibility alias. For CLI-only migration, install `deeptutor-cli==1.7.0`
 after removing the old CLI, and add any feature modules you need.
 
+The update button in an already-installed 1.6.x release runs that old worker;
+a new release cannot change its install plan retroactively. Use the manual
+migration above. To restore a full app with optional parsing after a core-only
+update, install `"deeptutor[full,parse]==<target-version>"` in the same Python
+environment, preserve the runtime home, and run the readiness checks before
+starting again. Do not add native Manim dependencies unless explicitly needed.
+The current updater pins core and every installed feature distribution together
+and records restart readiness failures; it does not automatically expand a
+core-only installation into the full app.
+
 In 1.7.0, upgrading bare `deeptutor` selects only core; use `[full]` to retain
 the full-app feature set. Do not reset settings or change the runtime-home
 directory during this upgrade. For an existing checkout, inspect its branch,
@@ -305,3 +315,54 @@ based on evidence; there is no need to run every command for every problem.
 - [deeptutor_cli/setup_config.py](../deeptutor_cli/setup_config.py)
 - [deeptutor_cli/doctor.py](../deeptutor_cli/doctor.py)
 - [tests/cli/test_agent_setup.py](../tests/cli/test_agent_setup.py)
+
+
+### Legacy text encodings
+
+Prefer UTF-8 for knowledge-base text and chat attachments. For legacy Windows
+ANSI files, the importer uses the account's interface language: Turkish prefers
+Windows-1254 after UTF-8; other locales preserve the GBK/GB18030 fallback and use
+Windows-1252 before Latin-1. This fixes Turkish text such as `Çiçek` whose bytes
+are also valid Chinese text. The bytes alone cannot distinguish those encodings.
+For mixed-language legacy collections, convert files to UTF-8 before uploading;
+Python callers may pass a strict `encoding="cp1254"` or `encoding="gbk"` to
+`FileTypeRouter.decode_bytes` / `read_text_file`. No decoding step rewrites the
+original uploaded file.
+
+### Side chats and independent questions
+
+Side chats remain attached to their parent conversation. Open side-chat tabs
+with saved messages are restored on reload for the same account; the command
+palette also discovers side chats from other conversations. For an independent
+image/file question without parent-conversation context, create a normal new
+chat and attach the material there. An empty side tab has no saved server thread
+until its first message and is not restored. Move a side chat by moving its
+parent conversation.
+
+
+### Provider progress and book editing
+
+A live Responses stream now has a 300-second effective-progress limit, separate
+from the 90-second read timeout. Repeated lifecycle events/sequence numbers do
+not extend it. The first same-operation adapter supports the official OpenAI
+Responses endpoint only when the request already opted into `store=true`.
+DeepTutor still defaults to `store=false`; recovery never enables retention.
+Lookup is bounded to 30 seconds total (8 seconds per query), and local stream
+cleanup is bounded to 2 seconds. Completed output is reconciled against the
+observed prefix and original tool identities. Unknown create outcomes,
+unsupported retrieval, pending or inaccessible results stop the turn with
+`provider_operation_paused`, without an automatic replacement or forced teaching
+continuation. Remote cancellation is not claimed. This first slice only recovers
+within the active call; it does not reopen provider jobs after a process restart.
+The experimental TypeScript adapter has the same progress stop and no retrieval
+adapter. These contracts are covered by synthetic transports, not live model runs.
+
+In a generated book, **Edit book structure** previews chapter/section changes;
+new empty sections generate when opened. The page chat can use
+`propose_book_edit` to propose a section or text block. It cannot apply edits.
+The reader reviews the diff and selects **Apply reviewed edit**. Every proposal
+keeps its source session/turn and revision under the book's access policy.
+The most recent unchanged edit can be undone; subsequent edits or generation
+require a new preview instead of overwriting newer content. Interrupted applies
+retain a rollback journal and recover before the next authoring operation.
+Pause ongoing book generation before structural editing.

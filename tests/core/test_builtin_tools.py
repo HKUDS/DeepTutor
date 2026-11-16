@@ -250,7 +250,7 @@ async def test_exec_tool_hides_physical_workspace_paths(
 
 
 @pytest.mark.asyncio
-async def test_brainstorm_tool_passes_llm_arguments(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_brainstorm_tool_passes_declared_arguments(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict[str, Any] = {}
 
     async def fake_brainstorm(**kwargs: Any) -> dict[str, Any]:
@@ -262,13 +262,13 @@ async def test_brainstorm_tool_passes_llm_arguments(monkeypatch: pytest.MonkeyPa
     result = await BrainstormTool().execute(
         topic="agent-native tutoring",
         context="Focus on fast ideation",
-        model="gpt-test",
     )
 
     assert "Test idea" in result.content
-    assert captured["topic"] == "agent-native tutoring"
-    assert captured["context"] == "Focus on fast ideation"
-    assert captured["model"] == "gpt-test"
+    assert captured == {
+        "topic": "agent-native tutoring",
+        "context": "Focus on fast ideation",
+    }
 
 
 @pytest.mark.asyncio
@@ -447,11 +447,10 @@ async def test_web_search_tool_wraps_sync_function(monkeypatch: pytest.MonkeyPat
 
     _install_module(monkeypatch, "deeptutor.tools.web_search", web_search=fake_web_search)
 
-    result = await WebSearchTool().execute(query="latest benchmark", output_dir="/tmp/out")
+    result = await WebSearchTool().execute(query="latest benchmark")
 
     assert result.content == "web summary"
-    assert captured["query"] == "latest benchmark"
-    assert captured["output_dir"] == "/tmp/out"
+    assert captured == {"query": "latest benchmark"}
     assert result.sources[0]["url"] == "https://example.com"
 
 
@@ -590,7 +589,7 @@ async def test_exec_tool_rejects_bad_input() -> None:
 
 
 @pytest.mark.asyncio
-async def test_reason_tool_passes_llm_arguments(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_reason_tool_passes_declared_arguments(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict[str, Any] = {}
 
     async def fake_reason(**kwargs: Any) -> dict[str, Any]:
@@ -602,14 +601,10 @@ async def test_reason_tool_passes_llm_arguments(monkeypatch: pytest.MonkeyPatch)
     result = await ReasonTool().execute(
         query="derive the formula",
         context="prior work",
-        api_key="key",
-        base_url="url",
-        model="gpt-test",
     )
 
     assert result.content == "reasoned"
-    assert captured["model"] == "gpt-test"
-    assert captured["context"] == "prior work"
+    assert captured == {"query": "derive the formula", "context": "prior work"}
 
 
 @pytest.mark.asyncio

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from pathlib import Path
+import subprocess
+import sys
 import threading
 import time
 
@@ -174,6 +176,42 @@ def test_manager_rejects_concurrent_start_and_cancels(
 
 def test_manager_cancel_without_job() -> None:
     assert ModelDownloadManager().cancel()["ok"] is False
+
+
+# A tqdm bar (block characters), one byte that is not UTF-8, then the last line.
+_PROGRESS_CHILD = (
+    "import sys\n"
+    "print('model.safetensors:  50%|\\u2588\\u2588\\u258d       | 1/2', flush=True)\n"
+    "sys.stdout.buffer.write(b'stray \\xff byte\\n')\n"
+    "sys.stdout.buffer.flush()\n"
+    "print('Models downloaded.', flush=True)\n"
+)
+
+
+def test_manager_reads_utf8_progress_bars_under_any_locale(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # ``deeptutor start`` gives the backend PYTHONIOENCODING=utf-8 but not
+    # UTF-8 mode, so the downloader wrote UTF-8 while a cp936/cp932 server
+    # decoded the pipe with its ANSI code page and the pump died on the first
+    # tqdm bar. A single undecodable byte must not end the log either.
+    real_popen = subprocess.Popen
+
+    def run_progress_child(_cmd, **kwargs):
+        return real_popen([sys.executable, "-c", _PROGRESS_CHILD], **kwargs)
+
+    monkeypatch.setenv("PYTHONIOENCODING", "utf-8:replace")
+    monkeypatch.setattr(mineru_models.subprocess, "Popen", run_progress_child)
+    monkeypatch.setattr(mineru_models, "_LINE_MIN_INTERVAL", 0.0)
+
+    manager = ModelDownloadManager()
+    assert manager.start(downloader="/x/dl", model_type="pipeline", source="huggingface")["ok"]
+    assert _wait_for_terminal(manager, timeout=30) == "done"
+    assert manager.status()["lines"] == [
+        "model.safetensors:  50%|██▍       | 1/2",
+        "stray � byte",
+        "Models downloaded.",
+    ]
 
 
 def test_render_env_overrides_is_windows_only(monkeypatch) -> None:

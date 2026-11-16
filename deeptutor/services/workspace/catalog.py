@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, Any
 import uuid
 
 from deeptutor.multi_user.context import get_current_user
+from deeptutor.runtime.process import probe_process_liveness
 from deeptutor.services.workspace.models import (
     MAX_WORKSPACE_INSTRUCTIONS_CHARS,
     WorkspaceBinding,
@@ -463,24 +464,40 @@ class WorkspaceCatalogMixin:
         return self.general_binding()
 
     def assert_available(self) -> None:
-        migration = self._catalog_metadata("migration")
-        if not migration:
+        if not self._catalog_file().exists():
             return
-        if migration.get("host") == socket.gethostname():
-            try:
-                os.kill(int(migration["pid"]), 0)
-            except ProcessLookupError:
-                # Copies never replace source data and the catalog commit is
-                # atomic, so an interrupted process can be safely unlocked.
-                with self._catalog_connection() as conn:
-                    conn.execute(
-                        "DELETE FROM metadata WHERE key = 'migration' AND value = ?",
-                        (json.dumps(migration),),
-                    )
-                return
-        raise WorkspaceError(
-            "Workspace storage is being migrated. Try again when migration finishes."
-        )
+        with self._catalog_connection() as conn:
+            row = conn.execute("SELECT value FROM metadata WHERE key = 'migration'").fetchone()
+        if row is None:
+            return
+        raw = row[0]
+        # Compare deletes against the original raw bytes; never reserialize
+        # the marker, which would unlock rows rewritten by another migration.
+        try:
+            migration = json.loads(raw)
+        except ValueError:
+            migration = None
+        blocked = "Workspace storage is being migrated. Try again when migration finishes."
+        pid = migration.get("pid") if isinstance(migration, dict) else None
+        if type(pid) is not int or pid <= 0 or migration.get("host") != socket.gethostname():
+            raise WorkspaceError(blocked)
+        # Probe outside the DB transaction; probe failures stay unknown.
+        try:
+            state = probe_process_liveness(pid)
+        except Exception:
+            state = "unknown"
+        if state != "dead":
+            raise WorkspaceError(blocked)
+        # Copies never replace source data and the catalog commit is atomic,
+        # so an interrupted process can be safely unlocked — but only when
+        # this exact marker is still the one stored.
+        with self._catalog_connection() as conn:
+            cursor = conn.execute(
+                "DELETE FROM metadata WHERE key = 'migration' AND value = ?",
+                (raw,),
+            )
+        if cursor.rowcount != 1:
+            raise WorkspaceError(blocked)
 
     @contextmanager
     def maintenance(self):

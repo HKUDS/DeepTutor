@@ -187,13 +187,19 @@ class BackgroundJobManager:
                     "message": f"A {self._kind or 'job'} is already running ({self._engine}).",
                 }
             try:
+                # Downloaders are Python console scripts whose tqdm bars use
+                # block characters. Have them write UTF-8 and read it as UTF-8:
+                # an ANSI code page such as cp936 cannot decode those bytes, and
+                # a dead pump leaves the child blocked on a full pipe.
                 process = subprocess.Popen(  # nosec B603 - argv from fixed allow-lists
                     cmd,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
                     text=True,
+                    encoding="utf-8",
+                    errors="replace",
                     shell=False,
-                    env={**os.environ, **(env or {})},
+                    env={**os.environ, **(env or {}), "PYTHONUTF8": "1"},
                 )
             except Exception as exc:  # noqa: BLE001
                 self._state = "failed"

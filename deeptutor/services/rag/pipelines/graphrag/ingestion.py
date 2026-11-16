@@ -13,6 +13,7 @@ consumes ``input/*.txt`` regardless of which parser produced the text.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from pathlib import Path
 from typing import Iterable
@@ -82,7 +83,11 @@ async def prepare_input(
 
     for file_path_str in classification.parser_files:
         path = Path(file_path_str)
-        text = _extract_parser_text(path)
+        # The parser call is synchronous and can block for a long time
+        # (MinerU cloud polling, local parser subprocess waits), so it runs in
+        # a worker thread — the same offload the LlamaIndex path made in #847 —
+        # keeping the event loop free to advance other coroutines (#2255).
+        text = await asyncio.to_thread(_extract_parser_text, path)
         written += _write_doc(target_dir, path, text, used, source_for_input)
 
     for file_path_str in classification.text_files:
@@ -101,7 +106,9 @@ async def prepare_input(
         parse_service = get_parse_service()
         supports = getattr(parse_service, "supports", lambda _path: False)
         if supports(path):
-            text = _extract_parser_text(path, parse_service)
+            # Offloaded for the same reason as the parser_files loop above
+            # (#2255, #847): the shared parser's parse() is synchronous.
+            text = await asyncio.to_thread(_extract_parser_text, path, parse_service)
             written += _write_doc(target_dir, path, text, used, source_for_input)
         else:
             logger.warning(

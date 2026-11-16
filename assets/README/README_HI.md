@@ -4,12 +4,14 @@
 <h1 align="center">DeepTutor: लाइफलॉन्ग व्यक्तिगत ट्यूटरिंग</h1>
 
 <p align="center">
-  <a href="https://deeptutor.info" target="_blank"><img alt="दस्तावेज़ — deeptutor.info" src="https://img.shields.io/badge/Docs-deeptutor.info%20%E2%86%97-0A0A0A?style=for-the-badge&labelColor=F5F5F4" height="36"></a>&nbsp;
-  <a href="https://deeptutor.info/collaborate/" target="_blank"><img alt="सहयोग करें — हमारे साथ काम करें" src="https://img.shields.io/badge/Collaborate-work%20with%20us%20%E2%86%97-0A0A0A?style=for-the-badge&labelColor=F5F5F4" height="36"></a>
+<a href="https://www.star-history.com/hkuds/deeptutor"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending&amp;theme=dark" /><source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending" /><img alt="GitHub पर दिन की ट्रेंडिंग रिपॉज़िटरी" src="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending" height="55" /></picture></a>&#32;<a href="https://trendshift.io/repositories/17099"><img src="https://trendshift.io/api/badge/trendshift/repositories/17099/daily" alt="HKUDS/DeepTutor | Trendshift" width="250" height="55"></a>&#32;<a href="https://www.star-history.com/hkuds/deeptutor"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;theme=dark"><source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor"><img alt="स्टार इतिहास रैंक" src="https://api.star-history.com/badge?repo=HKUDS/DeepTutor" width="185" height="55"></picture></a>
 </p>
 
 <p align="center">
-<a href="https://www.star-history.com/hkuds/deeptutor"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending&amp;theme=dark" /><source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending" /><img alt="GitHub पर दिन की ट्रेंडिंग रिपॉज़िटरी" src="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;type=trending" height="55" /></picture></a>&#32;<a href="https://trendshift.io/repositories/17099"><img src="https://trendshift.io/api/badge/trendshift/repositories/17099/daily" alt="HKUDS/DeepTutor | Trendshift" width="250" height="55"></a>&#32;<a href="https://www.star-history.com/hkuds/deeptutor"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor&amp;theme=dark"><source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/badge?repo=HKUDS/DeepTutor"><img alt="स्टार इतिहास रैंक" src="https://api.star-history.com/badge?repo=HKUDS/DeepTutor" width="185" height="55"></picture></a>
+  <a href="https://github.com/HKUDS/DeepTutor/releases/latest/download/Open-DeepTutor-MacOS-Apple-Silicon.dmg"><img alt="macOS (Apple Silicon) के लिए डाउनलोड करें" src="../../assets/figs/badges/download-macos-apple-silicon.svg" height="32"></a>&nbsp;
+  <a href="https://github.com/HKUDS/DeepTutor/releases/latest/download/Open-DeepTutor-MacOS-Intel.dmg"><img alt="macOS (Intel) के लिए डाउनलोड करें" src="../../assets/figs/badges/download-macos-intel.svg" height="32"></a>&nbsp;
+  <a href="https://github.com/HKUDS/DeepTutor/releases/latest/download/Open-DeepTutor-Windows-Setup.exe"><img alt="Windows (x64) के लिए डाउनलोड करें" src="../../assets/figs/badges/download-windows.svg" height="32"></a>&nbsp;
+  <a href="https://deeptutor.info" target="_blank"><img alt="दस्तावेज़ — deeptutor.info" src="../../assets/figs/badges/docs.svg" height="32"></a>
 </p>
 
 <p align="center">
@@ -27,15 +29,7 @@
   <a href="README_PL.md"><img alt="Polski" height="40" src="https://img.shields.io/badge/Polski-CDCFD4"></a>
 </p>
 
-[![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/downloads/)
-[![Next.js 16](https://img.shields.io/badge/Next.js-16-000000?style=flat-square&logo=next.js&logoColor=white)](https://nextjs.org/)
-[![License](https://img.shields.io/badge/License-Apache_2.0-blue?style=flat-square)](../../LICENSE)
-[![GitHub release](https://img.shields.io/github/v/release/HKUDS/DeepTutor?style=flat-square&color=brightgreen)](https://github.com/HKUDS/DeepTutor/releases)
-[![arXiv](https://img.shields.io/badge/arXiv-2604.26962-b31b1b?style=flat-square&logo=arxiv&logoColor=white)](https://arxiv.org/abs/2604.26962)
-
-[![Discord](https://img.shields.io/badge/Discord-Community-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/eRsjPgMU4t)
-[![Feishu](https://img.shields.io/badge/Feishu-Group-00D4AA?style=flat-square&logo=feishu&logoColor=white)](../../Communication.md)
-[![WeChat](https://img.shields.io/badge/WeChat-Group-07C160?style=flat-square&logo=wechat&logoColor=white)](https://github.com/HKUDS/DeepTutor/issues/78)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue?style=flat-square)](../../LICENSE) [![GitHub release](https://img.shields.io/github/v/release/HKUDS/DeepTutor?style=flat-square&color=brightgreen)](https://github.com/HKUDS/DeepTutor/releases) [![arXiv](https://img.shields.io/badge/arXiv-2604.26962-b31b1b?style=flat-square&logo=arxiv&logoColor=white)](https://arxiv.org/abs/2604.26962) [![Discord](https://img.shields.io/badge/Discord-Community-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/eRsjPgMU4t) [![Feishu](https://img.shields.io/badge/Feishu-Group-00D4AA?style=flat-square&logo=feishu&logoColor=white)](../../Communication.md) [![WeChat](https://img.shields.io/badge/WeChat-Group-07C160?style=flat-square&logo=wechat&logoColor=white)](https://github.com/HKUDS/DeepTutor/issues/78)
 
 [विशेषताएं](#-मुख्य-विशेषताएं) · [शुरू करें](#-शुरू-करें) · [एक्सप्लोर करें](#-deeptutor-को-एक्सप्लोर-करें) · [CLI](#️-deeptutor-cli--एजेंट-नेटिव-इंटरफेस) · [इकोसिस्टम](#-इकोसिस्टम--eduhub-और-skills-community) · [समुदाय](#-समुदाय)
 
@@ -43,7 +37,11 @@
 
 ---
 
-> 🤝 **हम किसी भी प्रकार के योगदान का स्वागत करते हैं!** [`Roadmap`](https://github.com/HKUDS/DeepTutor/issues/498) पर roadmap items के लिए वोट करें या नए प्रस्तावित करें, और branching strategy, coding standards और शुरू करने के तरीके के लिए हमारी [Contributing Guide](../../CONTRIBUTING.md) देखें।
+> 🤝 **हम सक्रिय रूप से मेंटेनर्स की तलाश कर रहे हैं!** भूमिकाओं, आवश्यकताओं और आवेदन के तरीके के लिए [Contributing Guide](../../CONTRIBUTING.md#join-the-team) देखें।
+
+<div align="center">
+<img src="../../assets/figs/web-dev/overview.png" alt="DeepTutor Home और workspace नेविगेशन" width="900">
+</div>
 
 ### 📰 समाचार
 
@@ -73,9 +71,9 @@ DeepTutor उपयोग करने के अपने पसंदीदा
 <details>
 <summary><b>Desktop — macOS और Windows (Preview)</b></summary>
 
-**Open DeepTutor** में Python, Node.js, और पूरा learning workspace bundled हैं, इसलिए terminal या अलग runtime installation की जरूरत नहीं है। Desktop previews `dev` पर उपलब्ध हैं; **v1.7.0 Release में desktop installers शामिल नहीं हैं**।
+**Open DeepTutor** में Python, Node.js, और पूरा learning workspace bundled हैं, इसलिए terminal या अलग runtime installation की जरूरत नहीं है। प्रकाशित desktop builds [नवीनतम GitHub Release](https://github.com/HKUDS/DeepTutor/releases/latest) से डाउनलोड करें और नीचे दी गई तालिका से अपने कंप्यूटर के लिए सही installer चुनें।
 
-सफल [Desktop Release workflow run](https://github.com/HKUDS/DeepTutor/actions/workflows/desktop-release.yml?query=branch%3Adev) खोलें, **Artifacts** तक scroll करें, और matching target download करें। GitHub sign-in जरूरी है, और artifacts सात दिनों बाद expire हो जाते हैं।
+Development previews के लिए सफल [Desktop Release workflow run](https://github.com/HKUDS/DeepTutor/actions/workflows/desktop-release.yml?query=branch%3Adev) खोलें और matching **Artifact** डाउनलोड करें। इन previews के लिए GitHub sign-in जरूरी है और ये सात दिनों बाद expire हो जाते हैं; प्रकाशित release downloads पर ये सीमाएं लागू नहीं होतीं।
 
 | आपका कंप्यूटर | Download target | Installer |
 | --- | --- | --- |
@@ -164,10 +162,6 @@ Core में Chat, Ask Questions, CLI, और SDK शामिल हैं; �
 
 हर विषय या project के लिए एक **workspace** से शुरू करें। Home, Learning, और Resources active workspace के साथ बदलते हैं; Partners और Personalization सभी workspaces में उपलब्ध रहते हैं।
 
-<div align="center">
-<img src="../../assets/figs/web-dev/overview.png" alt="DeepTutor Home और workspace नेविगेशन" width="900">
-</div>
-
 | क्षेत्र | Scope | इसमें क्या है |
 | --- | --- | --- |
 | **Home** | Workspace | Chat, Task Board, Calendar, और Learning notebook |
@@ -207,7 +201,23 @@ Tutor जरूरत के अनुसार tools call करता है �
 
 User-toggleable tools हैं `brainstorm`, `web_search`, `paper_search`, `zotero_search`, `reason`, और `geogebra_analysis` — साथ ही `imagegen` और `videogen` जब आप matching generation model configure करें। Contextual tools जैसे `rag`, `kb_files`, `knowledge_frontier`, `read_source`, `read_memory`, `write_memory`, `read_skill`, `load_tools`, `exec`, `web_fetch`, `ask_user`, `list_favorites`, `save_favorite`, `write_note`, `search_notes`, `question_bank`, `github`, `consult_subagent`, `workspace_list`, `workspace_read`, `workspace_search`, `workspace_present`, और `workspace_export` तब automatically mount होते हैं जब turn के पास सही context हो।
 
-Context दो प्रकार की होती है: **sticky session context** (capability, workspace या course, tools, knowledge bases, persona, model, और Reading / Mastery state) turns के पार persist करती है; **references** (files, chat history, books, reading sections, notebooks, चुनी हुई question-bank entries, imported agents) default रूप से एक turn के लिए `+` menu से आते हैं, या pin करने पर हर turn में। Voice button केवल current message को transcribe करता है।
+Context दो प्रकार की होती है: **sticky session context** (capability, workspace या course, tools, knowledge bases, persona, model और supported reasoning effort, और Reading / Mastery state) turns के पार persist करती है; **references** (files, chat history, books, reading sections, notebooks, चुनी हुई question-bank entries, imported agents) default रूप से एक turn के लिए `+` menu से आते हैं, या pin करने पर हर turn में। Voice button केवल current message को transcribe करता है।
+
+**केवल reasoning में output budget खत्म होने पर।** जब internal reasoning पूरा output budget खर्च कर दे, लेकिन कोई answer या tool action न दे, तो साझा agent loop एक बार retry करता है। Default `prompt` strategy वही budget बनाए रखती है। तुरंत रुकने के लिए runtime के `settings/agents.yaml` में `capabilities.chat.reasoning_budget_recovery` के तहत `strategy: stop` सेट करें। जिन models को अधिक जगह चाहिए, उनके लिए स्पष्ट रूप से बड़ा budget मदद कर सकता है, लेकिन इससे latency और usage बढ़ सकते हैं:
+
+```yaml
+capabilities:
+  chat:
+    responding:
+      max_tokens: 8000
+    reasoning_budget_recovery:
+      strategy: increase_output_budget
+      max_tokens: 16000
+```
+
+Recovery limit सामान्य output limit से अधिक और अधिकतम 131072 होनी चाहिए; अपने model द्वारा समर्थित मान चुनें। यह केवल एक recovery call पर लागू होती है, मौजूदा round और request-timeout सीमाएं बनाए रखती है, और reasoning effort नहीं बदलती। Trace में policy, पुरानी/नई limits, हर call का effective budget और accumulated usage दर्ज होते हैं। दिखाई देने वाला answer अधूरा कटने पर सामान्य continuation ही उपयोग होता है। Experimental `typescript-native` runtime में, स्पष्ट `stop` या `increase_output_budget` policy turn शुरू होने से पहले साझा Python effects host और TypeScript scheduler का चयन करती है; result में compatibility के इस कारण की जानकारी मिलती है।
+
+Python history builder condensation के बाद भी अपना history plan लागू करता है। यदि सुरक्षित रखा गया कोई पूरा exchange अब भी उस budget से बड़ा है, तो answer generation से पहले turn `history_budget_exceeded` के साथ रुक जाता है। Stored messages और tool-call/result pairs ज्यों के त्यों रहते हैं; आगे बढ़ने के लिए नई conversation शुरू करें या पहले के बहुत बड़े exchange को छोटा करें। यह history allowance model की पूरी context-window capacity से अलग है।
 
 Full profile में Home से **Chat**, **Ask Questions**, **Quiz**, **Visualize** और **Video Lesson** एक क्लिक में खुलते हैं; cited reports के लिए **Research** और worked reasoning के लिए **Solve**, *More Capabilities* के नीचे रहते हैं। किसी answer में text select करके **Little Tutor** खोलें — एक focused sidebar thread जो source conversation के नीचे nested रहता है। कम से कम तीन messages भेजने पर, जगह होने पर left gutter हर question के लिए एक tick दिखाता है; preview के लिए hover करें, वापस जाने के लिए click करें, या questions के बीच जाने के लिए **Alt/Option + ↑/↓** उपयोग करें।
 
@@ -276,7 +286,7 @@ Book selected sources को एक interactive **living book** में बद
 <img src="../../assets/figs/web-dev/book-widget.png" alt="पुस्तक interactive widget block" width="31%">
 </p>
 
-हर chapter editable typed blocks में compile होता है — text, callouts, quizzes, flash cards, timelines, code, figures, interactive HTML, animations, concept graphs, deep dives, और user notes — और उसका अपना Page Chat होता है। किसी block को insert, move, regenerate, rewrite, या उसका type switch करें; selected passages review की जा सकने वाली learning-capture inbox में जाते हैं। Progress, bookmarks, quiz attempts, captures, और Page Chat हर reader के लिए private रहते हैं, भले admin की book read-only या collaborative editing के लिए share की गई हो; shared deletion admin-only रहता है। कोई भी book Markdown में export हो सकती है, लंबी compiles pause और resume होती हैं, `deeptutor book health` source drift flag करता है, और `deeptutor book refresh-fingerprints` source baseline refresh करता है।
+हर chapter editable typed blocks में compile होता है — text, callouts, quizzes, flash cards, timelines, code, figures, interactive HTML, animations, concept graphs, deep dives, और user notes — और उसका अपना Page Chat होता है। Chapter या section edits की review करें और उन्हें undo करें; blocks को insert, move, regenerate, rewrite या switch करें; selected passages learning-capture inbox में जाते हैं। Progress, bookmarks, quiz attempts, captures, और Page Chat हर reader के लिए private रहते हैं, भले admin की book read-only या collaborative editing के लिए share की गई हो; shared deletion admin-only रहता है। कोई भी book Markdown में export हो सकती है, लंबी compiles pause और resume होती हैं, `deeptutor book health` source drift flag करता है, और `deeptutor book refresh-fingerprints` source baseline refresh करता है।
 
 </details>
 
@@ -307,6 +317,8 @@ KB बनाते समय, आप **नया create** कर सकते �
 Built-in LightRAG engine `pip install 'deeptutor[rag-lightrag]'` से install होता है। उस extra में supported LightRAG SDK शामिल है लेकिन यह MinerU install नहीं करता। Document Parsing में MinerU को स्वतंत्र रूप से चुनें और structured parsing चाहिए हो तो या तो इसका cloud mode configure करें या इसका current local CLI install करें। MinerU PDF, common raster images, DOCX, PPTX, और XLSX स्वीकार करता है; legacy `magic-pdf` command PDF-only रहता है। Text-only और बाकी parsing engines को MinerU की जरूरत नहीं होती।
 
 Native LightRAG queries और incremental indexing को उस embedding configuration की जरूरत होती है जो published index द्वारा record की गई है, जिसमें model, dimension, और endpoint identity शामिल हैं। अगर यह बदल जाती है, तो original configuration restore करें या current embedding के साथ rebuild करें; जिन indexes में recorded embedding identity नहीं है उन्हें rebuild करना जरूरी है। Knowledge-base detail और index-version views recovery guidance दिखाते हैं, जबकि files viewing और download के लिए उपलब्ध रहती हैं।
+
+Explicit vector indices वाली OpenAI-compatible HTTP embedding responses को input order में वापस रखा जाता है। Repeated, missing या invalid indices को vectors की indexing से पहले reject किया जाता है; indices के बिना आने वाली proxy responses positional ordering बनाए रखती हैं। यदि किसी gateway ने पहले indexed vectors को बदले हुए क्रम में लौटाया था, तो प्रभावित indexes को rebuild करें ताकि उनके पुराने text/vector associations बदले जा सकें। Existing index files सुरक्षित रहती हैं।
 
 **Knowledge base का मूल्यांकन।** कई engines उपलब्ध हों, तो “यहां कौन सबसे अच्छा retrieval करता है?” का जवाब परीक्षण से मिलता है — `deeptutor kb eval` यही करता है। एक QA set लिखें (हर line पर एक JSON object: एक `query` और `gold` passages जो आदर्श retrieval में मिलने चाहिए), फिर `deeptutor kb eval <name> --dataset qa.jsonl --top-k 5 [--mode hybrid] [--save baseline.json]` से KB का मूल्यांकन करें। हर case उसी path से retrieve होता है जो chat turn उपयोग करता है; उसके ranked citations को exact text या lexical overlap से gold passages के साथ match किया जाता है (thresholds `--min-ratio` से बदले जा सकते हैं; semantic equivalence का मूल्यांकन नहीं होता), और run **Recall@k / Precision@k / nDCG@k / MRR / MAP / Hit@k** report करता है। Metrics ranking पर pure functions हैं; कोई model output को judge नहीं करता। हर metric और case के बदलाव देखने के लिए saved reports को `deeptutor kb eval-diff baseline.json candidate.json` से compare करें। Original और rewritten queries की तुलना के लिए `kb eval` में `--rewrite off` या `--rewrite standalone` उपयोग करें; reports में rewrite provenance बनी रहती है। जिन cases की search fail हुई (missing index या गलत credentials), उनका score नहीं होता और उन्हें अलग report किया जाता है, जिससे वे averages को नीचे नहीं खींचते। PageIndex retrieval के लिए reasoning उपयोग करता है और ranked chunks नहीं लौटाता, इसलिए उसे शामिल नहीं किया जाता।
 
@@ -375,7 +387,7 @@ Personalization account के साथ सभी workspaces में चल�
 <img src="../../assets/figs/web-dev/agents.png" alt="DeepTutor My Agents कार्यक्षेत्र" width="900">
 </div>
 
-**Live agent connect करें** — Claude Code, Codex, Grok CLI, Antigravity, Kimi, opencode, MiMo Code, Hermes Agent, OpenClaw, DeepSeek Harness, या Partner — और Chat turn से उससे सलाह लें। DeepTutor selected agent चलाता है और `consult_subagent` के जरिए उसके काम को Activity panel में stream करता है; Agent chip या `@` connection को session से जुड़ा रखता है। Local harnesses अपनी authentication, working directory, और session storage उपयोग करते हैं।
+**Live agent connect करें** — Claude Code, Codex, Grok CLI, Antigravity, Kimi, opencode, MiMo Code, Hermes Agent, OpenClaw, DeepSeek Harness, configured ACP agent, या Partner — और Chat turn से उससे सलाह लें। DeepTutor selected agent चलाता है और `consult_subagent` के जरिए उसके काम को Activity panel में stream करता है; Agent chip या `@` connection को session से जुड़ा रखता है। Local harnesses अपनी authentication, working directory, और session storage उपयोग करते हैं।
 
 ChatGPT, Claude Code, और Codex से **पिछली conversations import करें**, searchable, resumable references के रूप में। ChatGPT official `conversations.json` export उपयोग करता है; Claude history project या working directory से, और Codex history date से चुनी जाती है। Imported conversation को `+` → My Agents से reference करें, बिना उसे DeepTutor की अपनी voice में बदले।
 
@@ -422,10 +434,14 @@ Settings operational control plane है, जो interface और model output 
 
 **वियतनामी:** **Settings → General** में **Interface language** के लिए **Tiếng Việt** चुनें और **Apply changes** select करें। **Model output language** स्वतंत्र है: वियतनामी उत्तरों के लिए वहां **Tiếng Việt** चुनें, या वियतनामी interface उपयोग करते हुए कोई दूसरी reply language रखें। उत्तर की गुणवत्ता चुने गए model के वियतनामी support पर निर्भर करती है।
 
+**NVIDIA NIM embeddings:** `nvidia/nemotron-3.5-embed-8b` से text retrieval के लिए **Settings → Embedding** में **NVIDIA NIM** चुनें। Default endpoint `https://integrate.api.nvidia.com/v1/embeddings` है; custom full endpoint जैसा दर्ज किया गया है, वैसा ही उपयोग होता है। Indexing में `input_type=passage`, retrieval में `input_type=query` भेजा जाता है, और connection checks default रूप से passage उपयोग करते हैं। Hosted model का default 4096 dimensions है और 1 से 4096 तक configured dimension स्वीकार करता है। यह binding केवल text support करती है; image embeddings और self-hosted model-specific options इसके दायरे से बाहर हैं। मौजूदा OpenAI-compatible profiles का request behavior पहले जैसा रहता है; किसी मौजूदा knowledge base को बदलते समय NIM binding चुनें और फिर से index करें। [NVIDIA API contract](https://docs.api.nvidia.com/nim/reference/nvidia-nemotron-3_5-embed-8b-infer) देखें।
+
 **Xiaomi MiMo वाक् संश्लेषण।** `https://api.xiaomimimo.com/v1` और उसकी API key के साथ Xiaomi MiMo provider जोड़ें, फिर Settings → Voice में `mimo-v2.5-tts` जोड़ें। `mimo_default`, `冰糖` या `苏打` जैसा preset चुनें, `wav` या `pcm16` output उपयोग करें, और apply करने से पहले उसकी आवाज़ सुनकर जांचें। Voice instructions शैली और बोलने की गति नियंत्रित करते हैं। यह adapter केवल preset speech support करता है; voice design और voice cloning के लिए अलग models चाहिए और वे supported नहीं हैं। अगर पुराना MiMo speech model generic OpenAI-compatible adapter से configure किया गया था, तो Xiaomi MiMo provider से उसकी speech entry फिर बनाएं ताकि वह chat-completions protocol उपयोग करे। [आधिकारिक MiMo वाक् संश्लेषण गाइड](https://mimo.mi.com/docs/zh-CN/quick-start/usage-guide/audio/speech-synthesis-v2.5) देखें।
 
 **MiniMax वाक् संश्लेषण** — Settings → Voice में text-to-speech के लिए MiniMax चुनें और `speech-2.8-hd` select करें। MiniMax API key configure करें और स्पष्ट रूप से कोई system voice चुनें या custom voice ID दर्ज करें। Default API base `https://api.minimax.io/v1` है; China region के लिए `https://api.minimaxi.com/v1` उपयोग करें। Read-aloud और voice previews native speech endpoint उपयोग करते हैं, जिसमें MP3, WAV, FLAC या PCM output, sample rate, speed और language controls उपलब्ध हैं। Voice IDs और account availability के लिए [MiniMax speech API](https://platform.minimax.io/docs/api-reference/speech-t2a-http) देखें।
 
+
+**चुने हुए text को पढ़कर सुनाना:** Chat, Mastery Path या Reading में कोई शब्द या passage चुनें और पास के toolbar में **Read aloud** पर क्लिक करें। Synthesis या playback रद्द करने के लिए **Stop** क्लिक करें। यह केवल selection पढ़ता है, **Settings → Voice** में configured active TTS provider और voice उपयोग करता है, और कोई chat turn नहीं भेजता। केवल text चुनने से playback शुरू नहीं होता। एक काम करने वाली speech service जरूरी है; यह feature आपके लिए service install या select नहीं करता।
 
 Settings → Learning & conversation के तहत **Video Learning**, Reading के लिए YouTube captions और Invidious access configure करता है। Invidious उपयोग करने के लिए administrator द्वारा managed backend API origin (उदाहरण के लिए `http://127.0.0.1:3000`) और browser से accessible public origin set करें, connection test करें, Invidious select करें, और save करें। Reading के add-material dialog में **Browse Invidious** से videos खोजे जा सकते हैं और connected subscriptions तथा playlists खोली जा सकती हैं। YouTube playback official privacy-enhanced player उपयोग करता है; missing captions visible रहते हैं और tutor के evidence को सीमित करते हैं, लेकिन native playback को नहीं रोकते। Source checkout में default YouTube caption loader के लिए `python scripts/install_extras.py video-learning` चलाएं। Existing Watching links conversation history, compatible transcripts, notes और progress को बनाए रखते हुए Reading में migrate होते हैं; नए timestamp notes Reading annotations होते हैं। Bilibili अपनी playback और caption प्रक्रिया उपयोग करता है।
 

@@ -39,6 +39,7 @@ export const TEXT_LIKE_EXTS = [
   ".log",
   ".md",
   ".markdown",
+  ".mdx",
   ".rst",
   ".asciidoc",
   ".html",
@@ -362,6 +363,7 @@ const JSON_EXTS = new Set([".json", ".jsonc", ".json5"]);
 const MARKUP_EXTS = new Set([
   ".md",
   ".markdown",
+  ".mdx",
   ".rst",
   ".asciidoc",
   ".html",

@@ -110,6 +110,14 @@ checkout. `npm start` runs the shell against this computer's bundled core.
 
 ## Releases
 
+Starting with the release after v1.7.1, every release must include both macOS
+architectures: Apple Silicon (`macos-arm64`) and Intel (`macos-x64`), alongside
+the Windows installer and portable ZIP. The `verify-release` job requires all
+three builds to succeed and checks that all four versioned downloads and their
+unversioned aliases are uploaded and nonempty. A missing Intel DMG means the
+desktop release is incomplete; fix and rerun the failed build before reporting
+the release as complete.
+
 `.github/workflows/desktop-release.yml` runs when a DeepTutor GitHub Release is
 published. For each target it verifies the tag matches
 `deeptutor/__version__.py`, builds and smoke-tests the runtime, packages the
@@ -138,6 +146,12 @@ installs into a new version directory, backs up the desktop workspace, then
 starts the candidate. A failed or interrupted trial restores the previous
 runtime and workspace. Backups are kept. Automatic update discovery is not
 connected yet.
+
+Installing a newer app over an older one works the same way: on the next start,
+a bundled core whose `coreVersion` is newer than the active one is installed and
+trialled with the same backup and rollback. A bundled core that fails its trial
+is not tried again, and an older bundled core never replaces a newer one that
+was installed by hand.
 
 ## Verification
 

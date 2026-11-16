@@ -18,6 +18,8 @@ SUPPORTED_RESPONSE_LANGUAGES: tuple[str, ...] = (
     "ms",
     "vi",
     "tr",
+    "hi",
+    "hu",
 )
 
 

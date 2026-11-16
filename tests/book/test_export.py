@@ -64,6 +64,20 @@ def test_flash_cards_become_a_table_with_escaped_pipes() -> None:
     assert r"a\|b" in md
 
 
+def test_flash_card_newlines_stay_inside_the_table_row() -> None:
+    md = render_block(
+        _ready(
+            BlockType.FLASH_CARDS,
+            {"cards": [{"front": "Define X", "back": "First line\nSecond line"}]},
+        )
+    )
+    table_rows = [line for line in md.splitlines() if line.startswith("|")]
+    # The front/back of every card must stay on a single table row; a raw
+    # newline would split the GFM row and corrupt the rest of the table.
+    assert any("First line" in row and "Second line" in row for row in table_rows)
+    assert "First line<br>Second line" in md
+
+
 def test_unrendered_blocks_contribute_nothing() -> None:
     pending = Block(type=BlockType.TEXT, status=BlockStatus.PENDING, payload={"body": "x"})
     assert render_block(pending) == ""

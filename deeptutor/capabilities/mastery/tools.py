@@ -182,6 +182,31 @@ def _duplicate_option_body(options: dict[str, str]) -> str:
     return ""
 
 
+def _decode_json_options(raw_options: str) -> Any:
+    """Unwrap ``options`` a model sent as a JSON-encoded string.
+
+    The schema declares ``options`` as an array, but models intermittently
+    serialise the array into a string (``'[{"label": "A", "body": …}]'``).
+    Rejecting that cost whole turns: a model that sent the string once often
+    sent it again on every retry until the round budget was gone. A string
+    that decodes to an array or object is read as that value; anything else
+    is rejected with a message that names the actual mistake.
+    """
+    text = raw_options.strip()
+    if text[:1] in ("[", "{"):
+        try:
+            decoded = json.loads(text)
+        except ValueError:
+            decoded = None
+        if isinstance(decoded, (list, dict)):
+            return decoded
+    raise ValueError(
+        "mastery_quiz.options must be an array, not a string — send "
+        "[{'label': 'A', 'body': 'first answer'}, …] directly instead of "
+        "encoding it as text."
+    )
+
+
 def _read_choice_options(raw_options: Any) -> list[dict[str, str]]:
     """The options as sent, read into ``[{label, body}]`` order.
 
@@ -194,6 +219,8 @@ def _read_choice_options(raw_options: Any) -> list[dict[str, str]]:
     """
     if raw_options is None:
         return []
+    if isinstance(raw_options, str):
+        raw_options = _decode_json_options(raw_options)
 
     read = read_option_objects(raw_options)
     if read is not None:
@@ -418,6 +445,7 @@ async def _sync_qualitative_to_question_bank(
     knowledge_point_name: str,
     passed: bool,
     evidence: str,
+    reference_answer: str = "",
     material_title: str = "",
     quality: float | None = None,
     result: str = "",
@@ -437,6 +465,7 @@ async def _sync_qualitative_to_question_bank(
         question=knowledge_point_name,
         question_type="written",
         user_answer=evidence,
+        correct_answer=reference_answer,
         is_correct=passed,
         result=result or ("correct" if passed else "partial"),
         source="mastery_path",
@@ -911,6 +940,17 @@ class MasteryStatusTool(BaseTool):
                     "re-poses it verbatim, so what you pass is ignored, and that "
                     "call ends the turn."
                 )
+            pending_interaction["session_id"] = interaction.session_id
+            session_id = _resolve_session_id(kwargs)
+            if session_id and interaction.session_id and interaction.session_id != session_id:
+                pending_interaction["instruction"] = (
+                    "This pending card belongs to an earlier conversation. For fresh practice "
+                    "in this conversation, submit a new source-supported mastery_quiz with "
+                    "pending_action='retain'; once it validates the old card is archived. "
+                    "Use resume only when the learner requests that previous card. "
+                    "Previously committed answers must be assessed before archiving. "
+                    "Never grade an unanswered question or copy its answer key as a reply."
+                )
             payload["pending_interaction"] = pending_interaction
         if kwargs.get("_working_brief"):
             payload = self._working_brief(payload, progress)
@@ -1064,6 +1104,31 @@ class MasteryNoteExplainedTool(BaseTool):
         )
 
 
+_VISUAL_SOURCE_REFERENCES = ("kb_name", "asset_id", "source_path", "source_hash", "figure")
+
+
+def _is_placeholder_visual(visual: Any) -> bool:
+    """Read a visual the model filled only because it had to fill it.
+
+    Endpoints that normalise optional properties into required ones make the
+    model send ``visual`` even for a text-only card, with every source left
+    blank (issue #2427). A visual that names no source can never resolve, so
+    it is absent. ``page``, ``region`` and the enum fields are forced values
+    there, not intent, and are not consulted. A named source, even a wrong
+    one, keeps the request and its error.
+    """
+    if not isinstance(visual, dict):
+        return False
+    sources = visual.get("sources") or []
+    if not isinstance(sources, list):
+        return False
+    return all(
+        isinstance(source, dict)
+        and not any(str(source.get(key) or "").strip() for key in _VISUAL_SOURCE_REFERENCES)
+        for source in sources
+    )
+
+
 class MasteryQuizTool(BaseTool):
     """Register an objective-type question; the engine holds the answer."""
 
@@ -1115,7 +1180,7 @@ class MasteryQuizTool(BaseTool):
                 ToolParameter(
                     name="expected_answer",
                     type="string",
-                    description="The correct answer, used only server-side for grading.",
+                    description="The correct answer, used only server-side for grading. For choice questions, pass the exact full body text of the correct option, never its letter.",
                     # The learner is looking at this question, and the trace
                     # that records the call is theirs to expand.
                     sensitive=True,
@@ -1303,10 +1368,15 @@ class MasteryQuizTool(BaseTool):
                 or not isinstance(learner_message, str)
                 or request not in learner_message
             ):
-                return ToolResult(
-                    content="Replacement needs a literal request from the current learner message.",
-                    success=False,
-                )
+                active = service.store.get_active_interaction(path_id)
+                session_id = _resolve_session_id(kwargs)
+                if active and session_id and active.session_id and active.session_id != session_id:
+                    pending_action = "retain"
+                else:
+                    return ToolResult(
+                        content="Replacement needs a literal request from the current learner message.",
+                        success=False,
+                    )
         raw_questions = kwargs.get("questions")
         # An empty optional group carries no contracts; use the single question.
         if isinstance(raw_questions, list) and not raw_questions:
@@ -1342,7 +1412,11 @@ class MasteryQuizTool(BaseTool):
 
             try:
                 for raw in raw_questions:
-                    if isinstance(raw, dict) and isinstance(raw.get("visual"), dict):
+                    if (
+                        isinstance(raw, dict)
+                        and isinstance(raw.get("visual"), dict)
+                        and not _is_placeholder_visual(raw["visual"])
+                    ):
                         visual_hint_count(raw["visual"].get("hints_used"))
             except ValueError as exc:
                 return ToolResult(content=str(exc), success=False)
@@ -1568,7 +1642,8 @@ class MasteryQuizTool(BaseTool):
             )
         visual_context: dict[str, Any] = {}
         accepted_answers: list[str] = []
-        if kwargs.get("visual") is not None:
+        # A visual that names no source is a forced placeholder; the card is text-only.
+        if kwargs.get("visual") is not None and not _is_placeholder_visual(kwargs["visual"]):
             from deeptutor.learning.visual_practice import prepare_visual
 
             if not isinstance(kwargs["visual"], dict):
@@ -1678,10 +1753,46 @@ class MasteryGradeTool(BaseTool):
             # reply — unless that commit was unreadable clarifying prose on a
             # choice card (#1004), in which case a later readable answer may
             # still recover the gate.
-            from deeptutor.learning.pending import is_readable_choice_answer
+            from deeptutor.learning.pending import (
+                is_readable_choice_answer,
+                supersedes_ungraded_reply,
+            )
 
             stored = str(interaction.user_answer or "")
             question = interaction.question
+            # Revision needs the runtime's key, not the public ``answer``
+            # parameter. ``_learner_message`` is injected from the turn's real
+            # user message and overrides any same-named model argument; the
+            # public ``answer`` is model-authored. Without this check a model
+            # call outside a mastery turn could replace a committed learner
+            # reply with its own text and credit mastery for it.
+            superseded = (
+                supersedes_ungraded_reply(stored, answer, interaction.result)
+                if "_learner_message" in kwargs
+                and question.question_type != "choice"
+                and not question.questions
+                else None
+            )
+            if superseded is not None:
+                # A reply already ruled non-final is a question the learner
+                # asked, not an answer we are holding: they asked for help, the
+                # tutor explained, and they have now answered. Reusing the
+                # stored reply here graded the old help request again — the
+                # judge declined it again as ungraded, and the question could
+                # never be cleared (#2595, the free-text half of #1004).
+                # Revising through the service rewrites ``user_answer`` and
+                # keeps the superseded attempt in the event log as
+                # ``assessment.revised``.
+                revised = service.record_question_answer(
+                    path_id,
+                    superseded,
+                    interaction_id=interaction.interaction_id,
+                    session_id=_resolve_session_id(kwargs),
+                    turn_id=_resolve_turn_id(kwargs),
+                )
+                if revised is not None:
+                    interaction = revised
+                stored = str(interaction.user_answer or "")
             if question.question_type != "choice" or is_readable_choice_answer(
                 stored, question.choice_map
             ):
@@ -2040,6 +2151,16 @@ class MasteryAssessTool(BaseTool):
         feedback = receipt["feedback"]
         kp, _, _ = find_knowledge_point(progress, kp_id)
         assert kp is not None
+        # The graded explanation may include an earlier turn the learner was
+        # asked to clarify, so record what was assessed, not only this message.
+        assessed_answer = next(
+            (
+                item.learner_answer
+                for item in reversed(progress.learning_evidence)
+                if item.knowledge_point_id == kp_id and item.assessment_type == "qualitative"
+            ),
+            learner_answer,
+        )
         await _sync_qualitative_to_question_bank(
             path_id=path_id,
             session_id=_resolve_session_id(kwargs),
@@ -2047,21 +2168,51 @@ class MasteryAssessTool(BaseTool):
             knowledge_point_id=kp_id,
             knowledge_point_name=kp.name,
             passed=passed,
-            evidence=learner_answer,
+            evidence=assessed_answer,
+            reference_answer=receipt.get("reference_answer", ""),
             result=receipt["result"],
             quality={"correct": 1.0, "partial": 0.5, "incorrect": 0.0}[receipt["result"]],
             material_title=progress.name,
         )
+        mastered = is_mastered(progress, kp)
+        next_step = next_objective(progress).to_dict()
         payload = {
             "knowledge_point_id": kp_id,
             "path_revision": progress.version,
             "passed": passed,
             **receipt,
-            "mastered": is_mastered(progress, kp),
+            "mastered": mastered,
             "mastery": round(display_mastery(progress, kp), 3),
-            "next": next_objective(progress).to_dict(),
+            "next": next_step,
+            "instruction": _assess_next_move(mastered, next_step),
         }
         return _json_result(payload, meta_key="mastery_assess")
+
+
+def _assess_next_move(mastered: bool, next_step: dict) -> str:
+    """What to do after a final qualitative verdict.
+
+    ``mastery_grade`` already says this for cards. Without it, a passing
+    explanation tends to end the turn on an announcement of the next topic,
+    which leaves the learner nothing to answer.
+    """
+    if not mastered:
+        return (
+            "The gate is not cleared. Explain the gap this explanation left "
+            "(for a partial result, name the missing part), then ask the "
+            "learner to explain it again and record that with mastery_assess."
+        )
+    if next_step.get("action") == "complete":
+        return (
+            "This cleared the objective's gate and the path is complete. "
+            "Say what the explanation showed and tell the learner the path is done."
+        )
+    return (
+        "This cleared the objective's gate. Say briefly what the explanation "
+        "showed, then continue with `next` in this same reply: start its "
+        "lesson or ask its first question. Do not end the turn on an "
+        "announcement of what comes next."
+    )
 
 
 class MasterySkipQuestionTool(BaseTool):
@@ -2147,7 +2298,7 @@ class MasteryRepairQuestionTool(BaseTool):
                 ToolParameter(
                     name="expected_answer",
                     type="string",
-                    description="The corrected answer key. Required when action is correct.",
+                    description="The corrected answer key. Required when action is correct. For choice questions, pass the exact full body text of the correct option, never its letter.",
                     required=False,
                 ),
             ],

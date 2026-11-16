@@ -92,7 +92,12 @@ def markdown_to_anki_html(text: str) -> str:
     def protect(match: re.Match[str]) -> str:
         raw = match.group()
         if match.lastgroup == "fence":
-            body = html.escape(raw[3:-3].strip("\n")).replace("\n", "<br>")
+            inner = raw[3:-3]
+            # The opening fence line holds the optional info string (language),
+            # which is not code; the body starts after that line's newline.
+            newline = inner.find("\n")
+            code = inner[newline + 1 :] if newline != -1 else inner
+            body = html.escape(code.strip("\n")).replace("\n", "<br>")
             return stash(f"<pre><code>{body}</code></pre>")
         if match.lastgroup == "code":
             return stash(f"<code>{html.escape(raw[1:-1])}</code>")

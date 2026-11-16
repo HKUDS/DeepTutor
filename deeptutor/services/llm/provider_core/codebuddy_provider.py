@@ -543,7 +543,7 @@ def _options_has_api_key_env(options: Any | None) -> bool:
 
 
 def _friendly_error(exc: Exception) -> str:
-    message = str(exc)
+    message = str(exc).strip()
     if "Authentication required" in message:
         return (
             "Error calling CodeBuddy: authentication required. Run "
@@ -555,6 +555,11 @@ def _friendly_error(exc: Exception) -> str:
             "Error calling CodeBuddy: the SDK session was closed from a different "
             "async task than it was opened on. Retry the message; if it persists, "
             "restart the backend."
+        )
+    if not message:
+        return (
+            f"Error calling CodeBuddy: the SDK raised {type(exc).__name__} "
+            "without a message. Retry, and check the CodeBuddy CLI log if it persists."
         )
     return f"Error calling CodeBuddy: {message}"
 
@@ -596,7 +601,10 @@ async def fetch_codebuddy_models(api_key: str | None = None) -> list[str]:
     ]
     process_kwargs: dict[str, Any] = {}
     if os.name == "nt":
-        command = ["cmd.exe", "/d", "/s", "/c", subprocess.list2cmdline(cli_args)]
+        # Windows launches a .cmd shim through cmd.exe on its own. Wrapping the
+        # line in "cmd.exe /d /s /c" quoted it twice, so a CLI path with a space
+        # (C:\Users\John Smith\AppData\Roaming\npm\codebuddy.cmd) reached cmd.exe
+        # as \"...\" and was "not recognized as an internal or external command".
         # Windows-only constants; the stubs omit them off-Windows, and mypy
         # cannot narrow on os.name the way it narrows on sys.platform.
         process_kwargs["creationflags"] = (
@@ -604,8 +612,8 @@ async def fetch_codebuddy_models(api_key: str | None = None) -> list[str]:
             | subprocess.CREATE_NEW_PROCESS_GROUP  # type: ignore[attr-defined]
         )
     else:
-        command = cli_args
         process_kwargs["start_new_session"] = True
+    command = cli_args
 
     env = os.environ.copy()
     if api_key:

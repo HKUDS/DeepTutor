@@ -206,7 +206,16 @@ jobs:
           shopt -s nullglob
           files=(out/*.dmg out/*-Setup.exe out/*-Portable.zip)
           [ ${#files[@]} -gt 0 ] || { echo "No downloads were produced." >&2; exit 1; }
-          gh release upload "$RELEASE_TAG" "${files[@]}" --clobber
+          # Also attach copies without the version in the name, so the README
+          # can link to releases/latest/download/<name> and always get the newest build.
+          mkdir -p out/latest
+          for f in "${files[@]}"; do
+            name="$(basename "$f")"
+            stable="${name/-$RELEASE_TAG/}"
+            [ "$stable" != "$name" ] || { echo "Expected $RELEASE_TAG in $name." >&2; exit 1; }
+            cp "$f" "out/latest/$stable"
+          done
+          gh release upload "$RELEASE_TAG" "${files[@]}" out/latest/* --clobber
 
       - name: Remove the temporary signing keychain
         if: always() && runner.os == 'macOS' && env.HAS_DEVELOPER_ID == 'true' && github.event_name != 'pull_request'
@@ -229,3 +238,45 @@ jobs:
             apps/desktop/.local/${{ matrix.target }}/smoke.log
             apps/desktop/.local/${{ matrix.target }}/smoke-result.json
             apps/desktop/.local/${{ matrix.target }}/installed-app.log
+
+  verify-release:
+    name: Verify all desktop downloads are published
+    needs: build
+    if: always() && (github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.publish))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Require successful builds and all release assets
+        uses: actions/github-script@v7
+        env:
+          BUILD_RESULT: ${{ needs.build.result }}
+        with:
+          script: |
+            if (process.env.BUILD_RESULT !== 'success') {
+              core.setFailed(`Desktop builds did not all succeed: ${process.env.BUILD_RESULT}`);
+              return;
+            }
+            const tag = process.env.RELEASE_TAG;
+            const { data: release } = await github.rest.repos.getReleaseByTag({
+              ...context.repo, tag,
+            });
+            const assets = await github.paginate(github.rest.repos.listReleaseAssets, {
+              ...context.repo, release_id: release.id, per_page: 100,
+            });
+            const versioned = [
+              `Open-DeepTutor-MacOS-Apple-Silicon-${tag}.dmg`,
+              `Open-DeepTutor-MacOS-Intel-${tag}.dmg`,
+              `Open-DeepTutor-Windows-${tag}-Setup.exe`,
+              `Open-DeepTutor-Windows-${tag}-Portable.zip`,
+            ];
+            const expected = [...versioned, ...versioned.map(name => name.replace(`-${tag}`, ''))];
+            const uploaded = new Set(assets
+              .filter(asset => asset.state === 'uploaded' && asset.size > 0)
+              .map(asset => asset.name));
+            const missing = expected.filter(name => !uploaded.has(name));
+            if (missing.length) {
+              core.setFailed(`Desktop release is incomplete. Missing downloads: ${missing.join(', ')}`);
+            } else {
+              core.info(`Verified all ${expected.length} desktop downloads for ${tag}.`);
+            }

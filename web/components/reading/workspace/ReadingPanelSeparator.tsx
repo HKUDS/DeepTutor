@@ -78,7 +78,7 @@ export function ReadingPanelSeparator({
         event.preventDefault()
         resize(next)
       }}
-      className={`group/resize relative z-10 hidden cursor-col-resize touch-none focus-visible:outline-2 focus-visible:outline-[var(--primary)] xl:block ${className}`}
+      className={`group/resize relative z-10 cursor-col-resize touch-none focus-visible:outline-2 focus-visible:outline-[var(--primary)] ${className}`}
     >
       {/* Invisible at rest — the panes' tones mark the edge — and a line
           only while the handle is being found or dragged. */}

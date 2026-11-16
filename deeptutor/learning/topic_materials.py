@@ -109,11 +109,16 @@ def _load_book_materials(source_id: str, label: str, budget: int) -> list[TopicM
 
     require_module("books")
     from deeptutor.book.context import build_book_context
-    from deeptutor.book.storage import get_book_storage
+    from deeptutor.multi_user.book_access import resolve_book
 
-    storage = get_book_storage()
-    book = storage.load_book(source_id)
-    spine = storage.load_spine(source_id)
+    resolved = resolve_book(source_id)
+    if resolved is None:
+        book = None
+        storage = None
+    else:
+        storage = resolved.engine.storage
+        book = resolved.engine.load_book(source_id)
+    spine = storage.load_spine(source_id) if storage is not None else None
     if book is None or spine is None or not spine.chapters:
         return [
             TopicMaterial(

@@ -158,6 +158,49 @@ _COPY: dict[str, dict[str, Any]] = {
         "chapter_index_title": "Bölüm dizini",
         "chapter_index_heading": "## Bölüm dizini",
     },
+    "it": {
+        "chapter_title": "Come leggere questo libro",
+        "chapter_summary": (
+            "Panoramica generata automaticamente della mappa concettuale e dell'indice dei capitoli del libro."
+        ),
+        "objectives": [
+            "Avere una panoramica completa della mappa dei capitoli a colpo d'occhio",
+            "Comprendere le relazioni tra i concetti chiave",
+            "Scegliere il percorso di lettura più adatto ai propri obiettivi",
+        ],
+        "intro_title": "Come leggere questo libro",
+        "intro_body": (
+            "Il diagramma seguente mostra i {concepts} concetti fondamentali di questo libro e le loro "
+            "interconnessioni. L'indice successivo elenca tutti i {chapters} capitoli; puoi leggerli "
+            "in ordine sequenziale oppure passare direttamente al capitolo di tuo interesse."
+        ),
+        "untitled_book": "Questo libro",
+        "concept_map_title": "Mappa concettuale",
+        "chapter_index_title": "Indice dei capitoli",
+        "chapter_index_heading": "## Indice dei capitoli",
+    },
+    "hu": {
+        "chapter_title": "Így olvassa ezt a könyvet",
+        "chapter_summary": (
+            "A könyv fogalomgráfjából és fejezetjegyzékéből automatikusan készült áttekintés."
+        ),
+        "objectives": [
+            "Egy pillantással lássa a teljes fejezettérképet",
+            "Értse meg, hogyan függenek össze a fogalmak",
+            "Válassza ki a céljaihoz illő olvasási útvonalat",
+        ],
+        "intro_title": "Így olvassa ezt a könyvet",
+        "intro_body": (
+            "Az alábbi ábra a könyv {concepts} fő fogalmát és azok egymásra épülését mutatja. "
+            "A következő fejezetjegyzék mind a {chapters} fejezetet felsorolja — haladjon "
+            "fentről lefelé az ajánlott sorrendhez, vagy ugorjon egyenesen arra, ami a "
+            "leginkább érdekli."
+        ),
+        "untitled_book": "Ez a könyv",
+        "concept_map_title": "Fogalomtérkép",
+        "chapter_index_title": "Fejezetjegyzék",
+        "chapter_index_heading": "## Fejezetjegyzék",
+    },
 }
 
 

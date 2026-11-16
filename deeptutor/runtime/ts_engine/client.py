@@ -231,6 +231,12 @@ class EngineClient:
                 if frame.get("kind") == "complete":
                     return frame["state"]
                 if frame.get("kind") == "failed":
+                    if frame.get("operationPaused"):
+                        from deeptutor.services.llm.exceptions import LLMOperationPaused
+
+                        raise LLMOperationPaused(
+                            "native provider operation is uncertain and retrieval is unsupported"
+                        )
                     raise EngineUnavailableError(str(frame.get("message") or "Native turn failed"))
                 if frame.get("kind") != "call":
                     raise EngineUnavailableError("Unknown native engine frame")
@@ -238,6 +244,8 @@ class EngineClient:
                 operations.add(task)
                 task.add_done_callback(operations.discard)
         except Exception as exc:
+            if getattr(exc, "retryable", None) is False:
+                raise
             # A failed native turn may already have visible text or committed
             # tool effects. Never let a partner backup model replay that turn.
             from deeptutor.services.llm.exceptions import LLMProviderTransportError
