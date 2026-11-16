@@ -171,7 +171,7 @@ def _read_quoted(text: str, index: int) -> tuple[str, int]:
     raise ValueError("unterminated quoted BibTeX value")
 
 
-def _read_fields(body: str) -> dict[str, str]:
+def _read_fields(body: str, macros: dict[str, str] | None = None) -> dict[str, str]:
     fields: dict[str, str] = {}
     index = 0
     while index < len(body):
@@ -203,6 +203,8 @@ def _read_fields(body: str) -> dict[str, str]:
                 if end == index:
                     raise ValueError("empty BibTeX value")
                 value = body[index:end]
+                # A bare word naming an ``@string`` abbreviation expands to its value.
+                value = (macros or {}).get(value.lower(), value)
                 index = end
             # Whitespace inside a quoted/braced fragment belongs to the value:
             # trimming before concatenation would turn "Jane " # "Doe" into
@@ -224,7 +226,9 @@ def _read_fields(body: str) -> dict[str, str]:
     return fields
 
 
-def _scan_entry(text: str, match: re.Match[str]) -> tuple[_Entry | None, int] | None:
+def _scan_entry(
+    text: str, match: re.Match[str], macros: dict[str, str] | None = None
+) -> tuple[_Entry | None, int] | None:
     entry_type = match.group(1).lower()
     opener = match.group(2)
     closer = _DELIMITERS[opener]
@@ -267,24 +271,26 @@ def _scan_entry(text: str, match: re.Match[str]) -> tuple[_Entry | None, int] | 
 
         if opener == "{" and brace_depth == 0:
             body_end = index
-            return _make_entry(entry_type, text, match.end(), body_end), index + 1
+            return _make_entry(entry_type, text, match.end(), body_end, macros), index + 1
         if opener == "(" and paren_depth == 0 and brace_depth <= 0:
             body_end = index
-            return _make_entry(entry_type, text, match.end(), body_end), index + 1
+            return _make_entry(entry_type, text, match.end(), body_end, macros), index + 1
         if brace_depth < 0 or paren_depth < 0:
             return None
         index += 1
     return None
 
 
-def _make_entry(entry_type: str, text: str, start: int, end: int) -> _Entry | None:
+def _make_entry(
+    entry_type: str, text: str, start: int, end: int, macros: dict[str, str] | None = None
+) -> _Entry | None:
     body = text[start:end]
     separator = body.find(",")
     if separator < 0:
         return None
     key = body[:separator].strip()
     try:
-        fields = _read_fields(body[separator + 1 :])
+        fields = _read_fields(body[separator + 1 :], macros)
     except ValueError:
         return None
     return _Entry(entry_type=entry_type, key=key, fields=fields)
@@ -292,6 +298,7 @@ def _make_entry(entry_type: str, text: str, start: int, end: int) -> _Entry | No
 
 def _parse_entries(text: str) -> list[_Entry]:
     entries: list[_Entry] = []
+    macros: dict[str, str] = {}
     index = 0
     while index < len(text):
         match = _ENTRY_START_RE.search(text, index)
@@ -299,9 +306,14 @@ def _parse_entries(text: str) -> list[_Entry]:
             break
         if match.group(1).lower() in _METADATA_ENTRY_TYPES:
             scanned = _scan_entry(text, match)
+            if scanned is not None and match.group(1).lower() == "string":
+                try:
+                    macros.update(_read_fields(text[match.end() : scanned[1] - 1], macros))
+                except ValueError:
+                    pass
             index = scanned[1] if scanned is not None else match.start() + 1
             continue
-        scanned = _scan_entry(text, match)
+        scanned = _scan_entry(text, match, macros)
         if scanned is None:
             index = match.start() + 1
             continue
