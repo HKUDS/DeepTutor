@@ -101,9 +101,14 @@ jobs:
         env:
           WEB_BASE_URL: http://localhost:3000
         run: |
+          # Tee so the excerpt can be published below. The step still fails on a
+          # non-zero exit; `|| true` would hide the result we are here to see.
+          set +e
           npx playwright test --project=phase1-shell \
             --grep-invert "signed-in|student|unauthenticated|responsive|Persian chat" \
-            --reporter=list
+            --reporter=list 2>&1 | tee /tmp/public-entries.log
+          echo "PLAYWRIGHT_EXIT=${PIPESTATUS[0]}" >> "$GITHUB_ENV"
+          exit "${PIPESTATUS[0]}"
 
       - name: Gate 1 - full suite
         id: full
@@ -126,6 +131,24 @@ jobs:
       # The full suite needs a backend and seeded accounts. Until those exist in
       # CI it reports skips, not failures, so its exit code is informational -
       # but the public-entry run above is not, and it gates this job.
+      # The run log and the artifact both live on hosts this build sandbox
+      # cannot reach, so the failure text is surfaced through the job summary,
+      # which the API does serve. Without this the CI is unreadable from here.
+      - name: Publish test output
+        if: always()
+        run: |
+          {
+            echo "## Playwright output (public entry points)"
+            echo ""
+            if [ -f /tmp/public-entries.log ]; then
+              echo '```'
+              head -c 12000 /tmp/public-entries.log
+              echo '```'
+            else
+              echo "_no log captured_"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Summarise
         if: always()
         run: |
