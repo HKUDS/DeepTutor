@@ -350,6 +350,28 @@
       },
       "auth": "public",
       "order": 842
+    },
+    {
+      "reference": "deeptutor.api.routers.platform_health:router",
+      "options": {
+        "prefix": "/api/platform",
+        "tags": [
+          "platform-health"
+        ]
+      },
+      "auth": "public",
+      "order": 846
+    },
+    {
+      "reference": "deeptutor.api.routers.platform_health:admin_router",
+      "options": {
+        "prefix": "/api/platform/admin",
+        "tags": [
+          "platform-health-admin"
+        ]
+      },
+      "auth": "admin",
+      "order": 847
     }
   ],
   "commands": [],

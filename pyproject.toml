@@ -72,6 +72,11 @@ graphrag = ["graphrag>=3.0.1,<4.0.0; python_version < '3.14'"]
 rag-lightrag = ["lightrag-hku==1.5.7"]
 rag-rerank = ["sentence-transformers>=3.0.0,<6.0.0; python_version < '3.14'"]
 guard = ["fastapi-guard>=8.1.1,<9.0.0"]
+# Phase 3 product database. Optional on purpose: the data layer is
+# opt-in (DEEPTUTOR_DATABASE_URL) and the default deployment runs on the
+# file stores, so a plain `pip install deeptutor` must not pull a driver
+# it will never open. `psycopg[binary]` avoids requiring libpq headers.
+db = ["psycopg[binary]>=3.1,<4.0", "psycopg-pool>=3.2,<4.0"]
 dev = ["deeptutor[server]=={version}", "pytest>=7.0.0", "pytest-asyncio>=0.23.0", "pre-commit>=3.0.0", "bandit>=1.8.0", "import-linter>=2.1.0,<3.0.0", "python-docx>=1.1.0", "openpyxl>=3.1.0", "python-pptx>=1.0.0", "pypdf>=4.0.0", "defusedxml>=0.7.1"]
 all = ["deeptutor[full,math-animator,dev]=={version}"]
 audio-overview = ["deeptutor-audio-overview=={version}"]
@@ -280,6 +285,7 @@ pythonpath = ["."]
 markers = [
     "asyncio: mark async tests that require pytest-asyncio",
     "integration: requires explicitly configured external services",
+    "db_integration: requires DEEPTUTOR_TEST_DATABASE_URL (a real PostgreSQL)",
     "redis_integration: requires DEEPTUTOR_TEST_REDIS_URL",
     "real_llm_resolver: exercises LLM config resolution itself, so it keeps the real resolver",
 ]

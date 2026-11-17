@@ -100,6 +100,21 @@ def _canonical_record(
     return record
 
 
+def _store_exists() -> bool:
+    """Is there any account state to read?
+
+    The old guard was ``USERS_FILE.exists()``, which was correct when the file
+    was the only store. With a database configured the file may legitimately be
+    absent on a fresh container while the accounts live in Postgres, so "no
+    file" no longer implies "no users". Every early-return that guarded on the
+    file uses this instead, otherwise the first write in a fresh deployment
+    would be silently discarded.
+    """
+    if USERS_FILE.exists():
+        return True
+    return _database_store() is not None
+
+
 def _read_json(path: Path) -> dict[str, Any]:
     try:
         loaded = json.loads(path.read_text(encoding="utf-8"))
@@ -109,9 +124,47 @@ def _read_json(path: Path) -> dict[str, Any]:
         return {}
 
 
+def _database_store():
+    """The Postgres identity store when configured, else ``None``.
+
+    Imported lazily and guarded: the file store is the default, and a deployment
+    without a database must not pay for this import or fail on it.
+    """
+    try:
+        from deeptutor.db.identity_store import active_store
+
+        return active_store()
+    except Exception as exc:  # noqa: BLE001 - a broken DB must not brick the file path
+        logger.warning("identity database unavailable, using file store: %s", exc)
+        return None
+
+
 def _write_users(users: dict[str, dict[str, Any]]) -> None:
+    """Persist the user map.
+
+    **Every** write in this module funnels through here — that is what makes
+    this a safe single seam for the Phase 3 move. The file is always written
+    first (it stays the local source of truth and the rollback path), and when a
+    database is configured the same map is mirrored into it.
+
+    Mirroring is a **full replacement**, not an upsert: ``users`` is the
+    complete user map by construction (every caller does read-modify-write under
+    ``_USERS_WRITE_LOCK``), so pruning rows absent from it is what makes
+    ``delete_user`` actually delete. An upsert-only mirror silently resurrects
+    the account on the next ``load_users``, because the database is the
+    authority and still holds the row.
+    """
     USERS_FILE.parent.mkdir(parents=True, exist_ok=True)
     atomic_write_text(USERS_FILE, json.dumps(users, indent=2, ensure_ascii=False))
+    store = _database_store()
+    if store is None:
+        return
+    try:
+        store.replace_all(users)
+    except Exception as exc:  # noqa: BLE001
+        # The local file is already durable. A mirror failure is logged loudly
+        # but must not fail the request that just succeeded on disk.
+        logger.error("identity mirror to database failed: %s", exc)
 
 
 def _migrate_legacy_users() -> dict[str, dict[str, Any]] | None:
@@ -198,6 +251,21 @@ def load_users(  # nosec B107 - empty defaults mean "no env fallback supplied".
 
     if users is None:
         users = {}
+
+    # When a database is configured it is the authority, not the file: a
+    # revocation or a disable written by another process must be visible here on
+    # the next read, and a stale JSON file must never win over it. The file is
+    # still consulted when the database has no rows, which is what makes the
+    # very first boot (file already seeded, database empty) promote cleanly
+    # through the mirror in ``_write_users``.
+    store = _database_store()
+    if store is not None:
+        try:
+            remote = store.load()
+            if remote:
+                users = remote
+        except Exception as exc:  # noqa: BLE001
+            logger.error("identity database read failed, using file store: %s", exc)
 
     canonical: dict[str, dict[str, Any]] = {}
     changed = False
@@ -336,7 +404,7 @@ def set_learner_profile(username: str, profile: dict[str, Any] | None) -> dict[s
 def set_book_permission(username: str, permission: BookPermission) -> bool:
     """Atomically replace one ordinary user's shared-book permission."""
 
-    if not USERS_FILE.exists():
+    if not _store_exists():
         return False
     with _USERS_WRITE_LOCK:
         users = load_users()
@@ -354,7 +422,7 @@ def remove_book_permission_overrides(book_id: str) -> list[str]:
     Returns affected user ids for the deletion audit summary.
     """
 
-    if not USERS_FILE.exists():
+    if not _store_exists():
         return []
     affected: list[str] = []
     with _USERS_WRITE_LOCK:
@@ -381,7 +449,7 @@ def remove_book_permission_overrides(book_id: str) -> list[str]:
 
 
 def delete_user(username: str) -> bool:
-    if not USERS_FILE.exists():
+    if not _store_exists():
         return False
     with _USERS_WRITE_LOCK:
         users = load_users()
@@ -404,7 +472,7 @@ def delete_user(username: str) -> bool:
 
 def set_password(username: str, hashed_password: str) -> dict[str, Any] | None:
     """Replace one account's password hash without changing its identity fields."""
-    if not USERS_FILE.exists():
+    if not _store_exists():
         return None
     with _USERS_WRITE_LOCK:
         users = load_users()
@@ -422,7 +490,7 @@ def set_must_change_password(username: str, required: bool) -> bool:
     Set when an admin provisions the account, cleared once the owner proves
     they know the password and picks a new one.
     """
-    if not USERS_FILE.exists():
+    if not _store_exists():
         return False
     with _USERS_WRITE_LOCK:
         users = load_users()
@@ -441,7 +509,7 @@ def set_phone(username: str, phone: str) -> bool:
     this refuses to write a number another record already holds, because two
     accounts sharing a number would make OTP sign-in nondeterministic.
     """
-    if not USERS_FILE.exists():
+    if not _store_exists():
         return False
     with _USERS_WRITE_LOCK:
         users = load_users()
@@ -474,7 +542,7 @@ def set_disabled(username: str, disabled: bool) -> bool:
     ``ADR-002``). Before this, ``disabled`` was a field nothing ever read or
     wrote - the admin UI showed it, and it meant nothing.
     """
-    if not USERS_FILE.exists():
+    if not _store_exists():
         return False
     with _USERS_WRITE_LOCK:
         users = load_users()
@@ -499,7 +567,7 @@ def bump_token_version(username: str) -> bool:
     ``auth.json``, which has no mutable record to advance - an admin resetting
     that account's sessions must not be told it worked.
     """
-    if not USERS_FILE.exists():
+    if not _store_exists():
         return False
     with _USERS_WRITE_LOCK:
         users = load_users()
@@ -522,7 +590,7 @@ def token_version_of(username: str) -> int:
 
 def set_avatar(username: str, avatar: str) -> bool:
     """Update the avatar marker for an existing user. Returns True on success."""
-    if not USERS_FILE.exists():
+    if not _store_exists():
         return False
     with _USERS_WRITE_LOCK:
         users = load_users()
@@ -581,7 +649,7 @@ def delete_avatar_file(user_id: str) -> None:
 def set_role(username: str, role: Role) -> bool:
     if role not in VALID_ROLES:
         raise ValueError(f"role must be one of {sorted(VALID_ROLES)}")
-    if not USERS_FILE.exists():
+    if not _store_exists():
         return False
     users = load_users()
     if username not in users:
@@ -597,7 +665,7 @@ def set_preset(
     """Update an account's configuration preset without changing its role."""
     if preset not in {"standard", "learner", "custom"}:
         raise ValueError("preset must be 'standard', 'learner', or 'custom'")
-    if not USERS_FILE.exists():
+    if not _store_exists():
         return False
     with _USERS_WRITE_LOCK:
         users = load_users()
