@@ -179,3 +179,37 @@ sandbox توسعه مرورگر ندارد و **نمی‌تواند داشته �
 تفاوت **«E2E نداریم»** و **«E2E نوشته شده، ولی اجرا نشده»** سه بار دیگر هم ظاهر شد: آزمون‌هایی که خودشان باگ داشتند (`.first()` روی تصویر پنهان، regex `users` در برابر `User Management`، `startsWith("/login")` که `/admin/login` را نمی‌گرفت). **آزمون اجرانشده با آزمون غایب فرقی ندارد** — و این دقیقاً همان چیزی است که F-4 ریسکش را پذیرفته بود. ریسک تحقق یافت و مهار شد.
 
 **وضعیت Gate 1: PASS کامل.** انتشار Production از این جهت مجاز است. F-4 بسته می‌شود.
+
+---
+
+## G. تصمیم‌های مصوب Phase 3 — لایه داده (2026-11-17)
+
+- مرجع: `docs/darsyar/PHASE_3_DATABASE_REPORT.md` و `docs/darsyar/ADR-003-POSTGRES-DATA-LAYER.md`.
+- وضعیت Gate 3: **PASS**.
+
+| ID | تصمیم | وضعیت |
+|---|---|---|
+| D-019 | PostgreSQL (Supabase) به‌عنوان source of truth داده تجاری؛ SQLite فقط برای توسعه محلی و آزمون | CONFIRMED |
+| D-020 | بدون ORM. SQL دست‌نویس + migration اختصاصی (نه Alembic)، چون سبک داده‌ای موجود پروژه SQL خام است | CONFIRMED |
+| D-021 | هویت فاز ۲ مرجع است؛ schema قدیمی Supabase با `ALTER` هم‌تراز می‌شود، نه با `DROP` | CONFIRMED |
+| D-022 | صف کار به‌صورت جدول در دیتابیس، بدون broker (Redis/Celery)؛ `enqueue` بر `dedupe_key` idempotent است | CONFIRMED |
+| D-023 | مرز داده ISO-8601 است (رشته) و فقط در لبهٔ PostgreSQL به `datetime` تبدیل می‌شود | CONFIRMED |
+| D-024 | `identity.py` در یک درز نوشتن (`_write_users`) به دیتابیس وصل می‌شود؛ فایل JSON به‌عنوان مسیر rollback حفظ می‌شود | CONFIRMED |
+
+### D-019 — PostgreSQL به‌عنوان source of truth
+
+**Context:** `.gitignore` و schema موجود نشان می‌داد محصول روی فایل JSON و SQLite محلی رشد کرده است. Supabase از ۱۴–۱۵ نوامبر ۱۶ جدول داشت که هیچ اثری از آن‌ها در ریپو نبود.
+
+**Decision:** PostgreSQL مرجع داده تجاری است. SQLite برای توسعهٔ محلی و آزمون باقی می‌ماند، اما رفتار مرجع نیست.
+
+**Consequences:** همهٔ SQL باید در دو موتور کار کند. این هزینهٔ واقعی داشت: سه باگ که هیچ‌کدام در SQLite پیدا نمی‌شد (ایندکس یکتای گمشده، `timestamptz` در برابر متن ISO، و `%` در psycopg).
+
+**Rollback:** `DEEPTUTOR_DATABASE_URL` خالی ⇒ لایهٔ دیتابیس غیرفعال. محصول به رفتار فایل JSON برمی‌گردد.
+
+### D-021 — فاز ۲ مرجع است، نه schema قدیمی
+
+**Context:** schema موجود Supabase با فاز ۲ ناسازگار بود: `phone_number NOT NULL` در برابر «username همان شماره است»، `is_active` در برابر `disabled`، جدول `otp_codes` در برابر `otp.json`.
+
+**Decision:** مدل فاز ۲ مرجع است. schema با `ALTER` هم‌تراز می‌شود.
+
+**Consequences:** هر ۱۱ کلید خارجی و کل دادهٔ مرجع (۱۲ پایه، ۳ رشته، ۳ طرح، تنظیمات پرداخت) سالم ماند. جدول‌های خالی کاربری حذف و بازساخته شدند.
