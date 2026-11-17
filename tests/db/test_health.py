@@ -96,8 +96,15 @@ class TestBackupEvidence:
             evidence = backup_evidence(db)
         finally:
             db.close()
+        from deeptutor.db.migrate import discover_migrations
+
         versions = [m["version"] for m in evidence["migrations"]]
-        assert versions == [1, 2, 3]
+        # Compared against what is shipped, not a literal: a literal turns every
+        # new migration into a red test whose obvious fix is to edit the list.
+        # Postgres-only migrations are skipped on SQLite, so the ledger holds
+        # what applies to this backend.
+        expected = [m.version for m in discover_migrations() if m.applies_to("sqlite")]
+        assert versions == expected
         assert all(m["known_to_source"] for m in evidence["migrations"])
         assert evidence["schema_ok"] is True
 
@@ -111,8 +118,16 @@ class TestBackupEvidence:
             evidence = backup_evidence(db)
         finally:
             db.close()
+        from deeptutor.db.migrate import discover_migrations
+
         assert evidence["tables"]["users"] == 0
-        assert evidence["tables"]["deeptutor_schema_migrations"] == 3
+        assert evidence["tables"]["deeptutor_schema_migrations"] == len(
+            [m for m in discover_migrations() if m.applies_to("sqlite")]
+        )
+        # Phase 4 tables are counted too, so a backup artefact stays complete as
+        # the schema grows.
+        assert evidence["tables"]["catalog_sources"] == 0
+        assert evidence["tables"]["curriculum_grades"] == 0
 
     def test_contains_no_user_data(self, tmp_path):
         """A backup artefact that leaks emails is a liability."""

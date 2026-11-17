@@ -1,5 +1,5 @@
 {
-  "fingerprint": "f3b2d81b7c41b2f8cc63a684b6373fd1a987b7673ff37a5e217c22149800a09b",
+  "fingerprint": "c5fe50dd1cfd597ab4cae83b40c760123407b661b2834b567ede2d0b945e5440",
   "routers": {
     "deeptutor.api.routers.auth:router": [
       {
@@ -6010,6 +6010,146 @@
       {
         "path": "/health/migrations",
         "name": "migration_status",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.catalog:router": [
+      {
+        "path": "/grades",
+        "name": "get_grades",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/majors",
+        "name": "get_majors",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/subjects",
+        "name": "get_subjects",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/enrolment",
+        "name": "get_enrolment",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.catalog:admin_router": [
+      {
+        "path": "/systems",
+        "name": "create_system",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/systems",
+        "name": "list_systems",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/grades",
+        "name": "create_grade",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/tracks",
+        "name": "create_track",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/majors",
+        "name": "create_major",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/subjects",
+        "name": "create_subject",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/versions",
+        "name": "create_version",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/sources",
+        "name": "create_source",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/sources",
+        "name": "list_sources",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/sources/duplicates",
+        "name": "find_duplicates",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/sources/{source_id}",
+        "name": "get_source",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/sources/{source_id}/review",
+        "name": "review_source",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/sources/{source_id}/history",
+        "name": "source_history",
         "kind": "http",
         "methods": [
           "GET"

@@ -372,6 +372,28 @@
       },
       "auth": "admin",
       "order": 847
+    },
+    {
+      "reference": "deeptutor.api.routers.catalog:router",
+      "options": {
+        "prefix": "/api/catalog",
+        "tags": [
+          "catalog"
+        ]
+      },
+      "auth": "learning",
+      "order": 848
+    },
+    {
+      "reference": "deeptutor.api.routers.catalog:admin_router",
+      "options": {
+        "prefix": "/api/catalog/admin",
+        "tags": [
+          "catalog-admin"
+        ]
+      },
+      "auth": "admin",
+      "order": 849
     }
   ],
   "commands": [],
