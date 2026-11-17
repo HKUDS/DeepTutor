@@ -230,6 +230,27 @@ jobs:
           print("seed complete")
           PYEOF
 
+      # Diagnose the running server the same way the browser will see it.
+      # These commands answer "is this a test problem or an app problem" without
+      # another round trip through a failing assertion.
+      - name: Probe the running server
+        run: |
+          set +e
+          echo "--- /login ---"
+          curl -s -o /dev/null -w "status=%{http_code}\n" http://localhost:3000/login
+          echo "--- /api/auth/login via the Next proxy ---"
+          curl -s -c /tmp/p.jar -X POST http://localhost:3000/api/auth/login \
+            -H 'Content-Type: application/json' \
+            -d '{"username":"phase1-admin","password":"phase1-admin-pass"}' \
+            -w "\nstatus=%{http_code}\n"
+          echo "--- cookie received ---"
+          grep -c dt_token /tmp/p.jar
+          echo "--- /admin/users with that cookie ---"
+          curl -s -b /tmp/p.jar -o /dev/null -w "status=%{http_code}\n" http://localhost:3000/admin/users
+          echo "--- /admin/users without a cookie ---"
+          curl -s -o /dev/null -w "status=%{http_code} redirect=%{redirect_url}\n" http://localhost:3000/admin/users
+          echo "::notice title=probe::login+admin statuses above"
+
       - name: Gate 1 - public entry points
         id: public_entries
         working-directory: web
