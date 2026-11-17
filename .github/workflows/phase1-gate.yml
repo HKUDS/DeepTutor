@@ -216,11 +216,29 @@ jobs:
           code, body = call("POST", "/api/auth/users",
                             {"username": "phase1-student",
                              "password": "phase1-student-pass", "preset": "learner"})
-          note("create-student", f"HTTP {code} {body[:200]}")
+          # 409 means a previous step (or a re-run) already created it, which is
+          # success for our purposes. Anything else is a real failure: without
+          # this account three browser tests fail for a reason that has nothing
+          # to do with the browser.
+          if code not in (200, 201, 409):
+              print(f"::error title=create-student::HTTP {code} {body[:300]}")
+              sys.exit(1)
 
           # 3. Role is assigned separately, which is how the product models it.
           code, body = call("PUT", "/api/auth/users/phase1-student/role", {"role": "student"})
-          note("set-role", f"HTTP {code} {body[:200]}")
+          if code not in (200, 204):
+              print(f"::error title=set-role::HTTP {code} {body[:300]}")
+              sys.exit(1)
+
+          # 4. Prove the student can actually sign in before the tests rely on
+          # it. The admin's session is still in `cookie`, so this uses a plain
+          # request and then checks the answer directly.
+          code, body = call("POST", "/api/auth/login",
+                            {"username": "phase1-student", "password": "phase1-student-pass"})
+          if code != 200 or '"role":"student"' not in body.replace(" ", ""):
+              print(f"::error title=student-login::HTTP {code} {body[:300]}")
+              sys.exit(1)
+          note("seed", "admin + student ready")
 
           # 4. Prove the session is real before the browser tests rely on it.
           code, body = call("GET", "/api/auth/status")

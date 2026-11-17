@@ -206,15 +206,35 @@ test.describe("session and authorisation", () => {
   // browser ends up and what it can see, instead of leaving the next test to
   // report a missing element three steps downstream. It also proves the
   // browser and curl disagree for a reason, if they do.
-  test("the browser can hold a session at all", async ({ page, context }) => {
-    await signIn(page, ADMIN_USER, ADMIN_PASS, "/admin/login");
-    const landed = await expectSignedIn(page, { from: "/admin/login" });
-    const cookies = await context.cookies();
-    const names = cookies.map((c) => `${c.name}@${c.domain}${c.path}`).join(",");
-    const html = await page.evaluate(() => document.body.innerText.slice(0, 200));
-    throw new Error(
-      `landed=${landed} cookies=[${names}] body=${html.replace(/\s+/g, " ").slice(0, 160)}`,
-    );
+  // Diagnostic: when the session tests fail, this says which account is
+  // actually usable from the browser and where each one lands, instead of
+  // leaving three downstream tests to report a missing element each. The
+  // backend seed runs in a separate CI step whose output is not readable from
+  // the sandbox this repo is developed in, so the answer has to come from here.
+  test("both seeded accounts can sign in", async ({ page, context, browser }) => {
+    const report: string[] = [];
+    for (const [label, user, pass, path] of [
+      ["admin", ADMIN_USER, ADMIN_PASS, "/admin/login"],
+      ["student", STUDENT_USER, STUDENT_PASS, "/"],
+    ] as const) {
+      const view = await browser.newContext();
+      const tab = await view.newPage();
+      try {
+        await signIn(tab, user, pass, path);
+        const landed = await expectSignedIn(tab, { from: path });
+        const text = (await tab.locator("body").innerText()).replace(/\s+/g, " ");
+        report.push(`${label} ok -> ${landed} | ${text.slice(0, 120)}`);
+      } catch (e) {
+        const text = (await tab.locator("body").innerText().catch(() => ""))
+          .replace(/\s+/g, " ");
+        report.push(`${label} FAILED: ${(e as Error).message.slice(0, 150)} | page: ${text.slice(0, 120)}`);
+      } finally {
+        await view.close();
+      }
+    }
+    void page;
+    void context;
+    throw new Error(report.join(" // "));
   });
 
   test("a signed-in administrator reaches the admin panel", async ({ page }) => {

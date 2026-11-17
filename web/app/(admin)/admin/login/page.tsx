@@ -41,7 +41,7 @@ function AdminLoginContent() {
     fetchAuthStatus().then((status) => {
       if (!alive) return;
       if (status?.authenticated && status.role === "admin") {
-        router.replace("/admin/users");
+        router.replace("/admin");
         return;
       }
       setChecking(false);
@@ -81,7 +81,11 @@ function AdminLoginContent() {
         return;
       }
 
-      router.replace("/admin/users");
+      // The index, not `/admin/users`. Signing in lands on the panel's front
+      // page so the operator sees what the panel offers before being dropped
+      // into one screen of it - and `/admin` is also the page that carries the
+      // links to everything else.
+      router.replace("/admin");
     },
     [username, password, router, t],
   );
