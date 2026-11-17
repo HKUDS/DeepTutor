@@ -1,0 +1,143 @@
+name: Phase 1 Gate
+
+# Gate 1 of the Darsyar Phase 1 roadmap needs a real browser: rendering,
+# hydration, RTL layout and middleware redirects as the browser experiences
+# them. The sandbox this phase was built in has no browser and cannot get one,
+# so this workflow is the machine that provides it.
+#
+# Read-only on purpose: the job starts the app, drives it with Playwright and
+# uploads the report. It never pushes, comments or publishes.
+#
+# DECISIONS.md F-4 records the exception this closes.
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - "arena/**"
+    paths:
+      - "web/tests/e2e/**"
+      - "web/playwright.config.ts"
+      - "web/scripts/run_phase1_gate.sh"
+      - "web/app/**"
+      - "web/components/**"
+      - "web/lib/**"
+      - "web/locales/**"
+      - ".github/workflows/phase1-gate.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "web/**"
+      - ".github/workflows/phase1-gate.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    name: Browser E2E
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install web dependencies
+        working-directory: web
+        run: npm ci --replace-registry-host=always
+
+      # --with-deps installs libnss3/libnspr4 for us. That is precisely the step
+      # the build sandbox could not perform, and it is why this job exists.
+      - name: Install chromium
+        working-directory: web
+        run: npx playwright install --with-deps chromium
+
+      - name: Build the web app
+        working-directory: web
+        env:
+          # Next's build is memory-hungry; the default heap is not enough.
+          NODE_OPTIONS: --max-old-space-size=4096
+        run: npm run build
+
+      - name: Start the app
+        working-directory: web
+        env:
+          PORT: "3000"
+          HOSTNAME: 0.0.0.0
+        run: |
+          # `output: standalone` is what this app builds, so the standalone
+          # server is the correct entry point - `next start` warns and is not
+          # equivalent.
+          node .next/standalone/server.js > /tmp/web.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -fsS -o /dev/null http://localhost:3000/login; then
+              echo "web is up after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "web did not come up; log follows"
+          cat /tmp/web.log
+          exit 1
+
+      # The public-entry tests (metadata, form, brand panel, RTL attributes,
+      # admin entrance) need only the web app, and they are the ones that carry
+      # most of the visual risk. Run them first so a browser problem or a
+      # layout break is visible even when no backend is available.
+      - name: Gate 1 - public entry points
+        id: public_entries
+        working-directory: web
+        env:
+          WEB_BASE_URL: http://localhost:3000
+        run: |
+          npx playwright test --project=phase1-shell \
+            --grep-invert "signed-in|student|unauthenticated|responsive|Persian chat" \
+            --reporter=list
+
+      - name: Gate 1 - full suite
+        id: full
+        continue-on-error: true
+        working-directory: web
+        env:
+          WEB_BASE_URL: http://localhost:3000
+        run: npx playwright test --project=phase1-shell --reporter=list
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gate1-playwright-report
+          path: |
+            web/playwright-report/
+            web/test-results/
+          retention-days: 14
+
+      # The full suite needs a backend and seeded accounts. Until those exist in
+      # CI it reports skips, not failures, so its exit code is informational -
+      # but the public-entry run above is not, and it gates this job.
+      - name: Summarise
+        if: always()
+        run: |
+          {
+            echo "## Phase 1 Gate 1"
+            echo ""
+            echo "| step | result |"
+            echo "| --- | --- |"
+            echo "| public entry points | ${{ steps.public_entries.outcome }} |"
+            echo "| full suite | ${{ steps.full.outcome }} |"
+            echo ""
+            echo "The full suite skips the authorisation and responsive tests unless"
+            echo "a backend is running and DEEPTUTOR_PHASE1_SEED=1 is set with the two"
+            echo "seed accounts. Skips are not passes."
+          } >> $GITHUB_STEP_SUMMARY
