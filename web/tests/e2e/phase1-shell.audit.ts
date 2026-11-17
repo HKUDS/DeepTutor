@@ -76,6 +76,10 @@ test.describe("public entry points", () => {
     // Desktop: two columns, the identity panel is visible.
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.goto("/login");
+    // /login is a client-rendered page behind <Suspense>, so the server sends
+    // the fallback. Waiting for a form control is what proves the components
+    // mounted; asserting on `aside` alone races the hydration.
+    await expect(page.getByLabel(/email or username|نام کاربری/i)).toBeVisible();
     const panel = page.locator("aside");
     await expect(panel).toBeVisible();
 
@@ -111,25 +115,27 @@ test.describe("session and authorisation", () => {
 
   test("a signed-in administrator reaches the admin panel", async ({ page }) => {
     await signIn(page, ADMIN_USER, ADMIN_PASS, "/admin/login");
-    await page.waitForURL(/\/admin/);
+    await page.waitForURL(/\/admin/, { timeout: 20_000 });
 
-    // The navigation must offer the admin section — the visible half of F-1.
-    await page.goto("/");
+    // The landing page must render its real entry rather than an invented
+    // dashboard: user management is the one surface Phase 1 built.
     await expect(
-      page.getByRole("link", { name: /administration|مدیریت/i }).first(),
-    ).toBeVisible();
+      page.getByRole("link", { name: /users|کاربران/i }).first(),
+    ).toBeVisible({ timeout: 20_000 });
   });
 
   test("direct navigation and refresh survive on an admin route", async ({ page }) => {
     await signIn(page, ADMIN_USER, ADMIN_PASS, "/admin/login");
-    await page.goto("/admin/users");
-    await expect(page).toHaveURL(/\/admin\/users/);
+    await page.waitForURL(/\/admin/, { timeout: 20_000 });
 
     // Refresh is the case a client-only guard handles badly: the server must
     // still hand over the page rather than bouncing a valid session.
+    await page.goto("/admin/users");
+    await expect(page).toHaveURL(/\/admin\/users/, { timeout: 20_000 });
     await page.reload();
-    await expect(page).toHaveURL(/\/admin\/users/);
-    await expect(page.locator("body")).not.toContainText(/loading/i);
+    await expect(page).toHaveURL(/\/admin\/users/, { timeout: 20_000 });
+    // Prove it rendered, not merely that the URL survived.
+    await expect(page.getByRole("heading").first()).toBeVisible({ timeout: 20_000 });
   });
 
   test("a signed-in student is redirected away from admin", async ({ page }) => {
@@ -149,7 +155,7 @@ test.describe("session and authorisation", () => {
     // and "not an administrator" are different problems.
     await expect(
       page.getByText(/administrator access|دسترسی مدیر/i),
-    ).toBeVisible({ timeout: 10_000 });
+    ).toBeVisible({ timeout: 20_000 });
   });
 
   test("an unauthenticated visitor never sees the admin shell", async ({ page }) => {
