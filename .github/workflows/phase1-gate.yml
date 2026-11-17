@@ -111,6 +111,10 @@ jobs:
           # the start step left the middleware pointing at the 8001 default, so
           # every /api call 500'd and the auth tests could never sign in.
           DEEPTUTOR_API_BASE_URL: http://127.0.0.1:3782
+          # Same reason: proxy.ts reads this at module scope too. With auth
+          # unset at build time the admin gate compiled itself out, so
+          # /admin/users was served to anyone - the tests were right to fail.
+          DEEPTUTOR_AUTH_ENABLED: "true"
         run: npm run build
 
       - name: Start the backend
