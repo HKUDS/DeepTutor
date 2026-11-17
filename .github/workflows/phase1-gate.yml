@@ -134,17 +134,22 @@ jobs:
       # A green step means "nothing failed", which is also what an all-skipped
       # run looks like. Print what actually executed so the summary cannot
       # imply coverage that was never measured.
-      - name: List collected tests
+      # Emit the counts as an annotation, not only to the step summary: the
+      # summary is not readable through the API, while annotations are. This is
+      # what makes "did anything actually run?" answerable from a machine.
+      - name: Report counts
         if: always()
         working-directory: web
         run: |
-          {
-            echo "## Collected tests"
-            echo ""
-            echo '```'
-            npx playwright test --project=phase1-shell --list 2>&1 | tail -40
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
+          set +e
+          npx playwright test --project=phase1-shell --list 2>&1 | tee /tmp/list.log
+          TOTAL=$(grep -cE "^  \[phase1-shell\] › " /tmp/list.log)
+          echo "::notice title=Collected tests::${TOTAL} tests collected in the phase1-shell project"
+          echo "## Collected: ${TOTAL}" >> "$GITHUB_STEP_SUMMARY"
+          grep -E "^  \[phase1-shell\] › " /tmp/list.log | sed 's/.*› //' | head -20 | while read -r name; do
+            echo "::notice title=Test::${name}"
+          done
+          test "$TOTAL" -ge 14 || { echo "::error title=Too few tests::expected at least 14, got ${TOTAL}"; exit 1; }
 
       # The run log and the artifact both live on hosts this build sandbox
       # cannot reach, so the failure text is surfaced through the job summary,
