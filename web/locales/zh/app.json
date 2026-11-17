@@ -6662,5 +6662,13 @@
   "Position": "位置",
   "Action": "操作",
   "Conversation IDs (optional)": "指定对话 ID（可选）",
-  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "留空选择全部对话；多个 ID 用逗号分隔。预览包含关联依赖。导出仍包含完整功能数据。"
+  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "留空选择全部对话；多个 ID 用逗号分隔。预览包含关联依赖。导出仍包含完整功能数据。",
+  "Welcome back": "Welcome back",
+  "A learning companion that works the way you do": "A learning companion that works the way you do",
+  "Agent-native learning companion": "Agent-native learning companion",
+  "Study from your own sources": "Study from your own sources",
+  "Practice and track what you have learned": "Practice and track what you have learned",
+  "Always know which source an answer came from": "Always know which source an answer came from",
+  "Darsyar": "Darsyar",
+  "Start learning in a minute": "Start learning in a minute"
 }

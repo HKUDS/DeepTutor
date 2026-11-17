@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useTranslation } from "react-i18next";
 import { productName } from "@/lib/brand";
+import { AuthBrandPanel } from "@/components/auth/AuthBrandPanel";
 import { login, fetchAuthStatus, checkIsFirstUser } from "@/lib/auth";
 import {
   inheritLoginHash,
@@ -66,16 +67,35 @@ function LoginPageContent() {
   }
 
   return (
-    <div className="w-full max-w-sm">
-      {/* Logo / Title */}
-      <div className="text-center mb-8">
-        <h1 className="font-serif text-2xl font-semibold text-[var(--foreground)] tracking-tight">
-          {productName(i18n.language)}
-        </h1>
-        <p className="mt-1 text-sm text-[var(--muted-foreground)]">
-          {t("Sign in to your account")}
-        </p>
-      </div>
+    <>
+      <AuthBrandPanel />
+
+      <div className="flex flex-col justify-center px-6 py-12 sm:px-12">
+        <div className="w-full max-w-sm mx-auto">
+          {/* Below `lg` the panel is hidden, so the wordmark returns here: a
+              phone user still needs to know which product they opened. */}
+          <div className="lg:hidden flex items-center gap-3 mb-8">
+            <img
+              src="/brand/color-logo.png"
+              alt=""
+              aria-hidden="true"
+              width={32}
+              height={32}
+              className="h-8 w-8 rounded-lg"
+            />
+            <span className="font-serif text-lg font-semibold text-[var(--foreground)]">
+              {productName(i18n.language)}
+            </span>
+          </div>
+
+          <div className="mb-8">
+            <h1 className="font-serif text-2xl font-semibold text-[var(--foreground)] tracking-tight">
+              {t("Sign in to your account")}
+            </h1>
+            <p className="mt-1 text-sm text-[var(--muted-foreground)]">
+              {t("Welcome back")}
+            </p>
+          </div>
 
       {/* Registered success notice */}
       {registered && (
@@ -167,10 +187,12 @@ function LoginPageContent() {
         </Link>
       </p>
 
-      <p className="mt-3 text-center text-xs text-[var(--muted-foreground)]">
-        {t("DeepTutor · Agent-Native Learning")}
-      </p>
-    </div>
+          <p className="mt-10 text-center text-xs text-[var(--muted-foreground)]">
+            {t("DeepTutor · Agent-Native Learning")}
+          </p>
+        </div>
+      </div>
+    </>
   );
 }
 

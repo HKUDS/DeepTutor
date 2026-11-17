@@ -6684,5 +6684,13 @@
   "Position": "Position",
   "Action": "Action",
   "Conversation IDs (optional)": "Conversation IDs (optional)",
-  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle."
+  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.",
+  "Welcome back": "Welcome back",
+  "A learning companion that works the way you do": "A learning companion that works the way you do",
+  "Agent-native learning companion": "Agent-native learning companion",
+  "Study from your own sources": "Study from your own sources",
+  "Practice and track what you have learned": "Practice and track what you have learned",
+  "Always know which source an answer came from": "Always know which source an answer came from",
+  "Darsyar": "Darsyar",
+  "Start learning in a minute": "Start learning in a minute"
 }

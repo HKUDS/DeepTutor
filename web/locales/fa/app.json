@@ -672,5 +672,13 @@
   "Zoom level": "سطح بزرگ‌نمایی",
   "Reset zoom": "بازنشانی بزرگ‌نمایی",
   "language.italian": "Italiano",
-  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "برای انتخاب همهٔ گفت‌وگوها خالی بگذارید. شناسه‌ها را با ویرگول جدا کنید؛ پیش‌نمایش وابستگی‌های آن‌ها را هم در بر می‌گیرد. برون‌بر همچنان بستهٔ کامل ویژگی را شامل می‌شود."
+  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "برای انتخاب همهٔ گفت‌وگوها خالی بگذارید. شناسه‌ها را با ویرگول جدا کنید؛ پیش‌نمایش وابستگی‌های آن‌ها را هم در بر می‌گیرد. برون‌بر همچنان بستهٔ کامل ویژگی را شامل می‌شود.",
+  "Welcome back": "خوش آمدید",
+  "A learning companion that works the way you do": "همراهی برای یادگیری، هم‌قدم با شما",
+  "Agent-native learning companion": "همراه یادگیری عامل‌محور",
+  "Study from your own sources": "از منابع خودتان یاد بگیرید",
+  "Practice and track what you have learned": "تمرین کنید و پیشرفتتان را ببینید",
+  "Always know which source an answer came from": "همیشه بدانید پاسخ از کدام منبع آمده",
+  "Darsyar": "درسیار",
+  "Start learning in a minute": "شروع یادگیری در یک دقیقه"
 }

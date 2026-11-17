@@ -6680,5 +6680,13 @@
   "Position": "Posição",
   "Action": "Ação",
   "Conversation IDs (optional)": "IDs das conversas (opcional)",
-  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Deixe em branco para selecionar todas as conversas. Separe os IDs por vírgulas; a prévia inclui suas dependências. A exportação continua incluindo o pacote completo de funcionalidades."
+  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Deixe em branco para selecionar todas as conversas. Separe os IDs por vírgulas; a prévia inclui suas dependências. A exportação continua incluindo o pacote completo de funcionalidades.",
+  "Welcome back": "Bem-vindo de volta",
+  "A learning companion that works the way you do": "Um companheiro de aprendizagem que acompanha o seu ritmo",
+  "Agent-native learning companion": "Companheiro de aprendizagem nativo de agentes",
+  "Study from your own sources": "Estude a partir das suas próprias fontes",
+  "Practice and track what you have learned": "Pratique e acompanhe o que você aprendeu",
+  "Always know which source an answer came from": "Saiba sempre de qual fonte veio uma resposta",
+  "Darsyar": "Darsyar",
+  "Start learning in a minute": "Comece a aprender em um minuto"
 }
