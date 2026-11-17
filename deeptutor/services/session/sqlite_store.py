@@ -36,6 +36,12 @@ from deeptutor.utils.secret_files import ensure_private_directory, ensure_privat
 from .ask_user_trace import select_ask_user_events
 from .event_preview import MAX_TRACE_PREVIEW_EVENTS, compact_trace_preview
 from .migration_lock import exclusive_lock
+from .model_history import (
+    MODEL_TURN_KEY,
+    MODEL_TURN_VERSION,
+    SUMMARY_SNAPSHOT_NAME,
+    summary_snapshot,
+)
 from .provider_response_state import redact_private_message_metadata
 from .reading_quiz_help import update_help
 from .search import bounded_search_excerpt, normalize_search_query
@@ -2399,8 +2405,69 @@ class SQLiteSessionStore:
     async def delete_message(self, message_id: int | str) -> bool:
         return await self._run(self._delete_message_sync, message_id)
 
+    def _invalidate_deleted_turn_summaries(
+        self, conn: sqlite3.Connection, session_id: str, deleted_ids: list[int]
+    ) -> None:
+        session = conn.execute(
+            "SELECT compressed_summary, summary_up_to_msg_id FROM sessions WHERE id = ?",
+            (session_id,),
+        ).fetchone()
+        watermark = session["summary_up_to_msg_id"]
+        # Walk the subtree before reparenting. A lower message id on a sibling
+        # branch need not be part of the summarized prefix.
+        affected = conn.execute(
+            """
+            WITH RECURSIVE subtree(id) AS (
+                SELECT ? UNION
+                SELECT m.id FROM messages m JOIN subtree ON m.parent_message_id = subtree.id
+                WHERE m.session_id = ?
+            )
+            SELECT m.id, m.metadata_json FROM subtree JOIN messages m ON m.id = subtree.id
+            WHERE m.id = ? OR (m.role = 'assistant' AND instr(m.metadata_json, ?) > 0)
+            """,
+            (min(deleted_ids), session_id, watermark, SUMMARY_SNAPSHOT_NAME),
+        ).fetchall()
+        summary = session["compressed_summary"]
+        if any(row["id"] == watermark for row in affected) or (summary and not watermark):
+            conn.execute(
+                "UPDATE sessions SET compressed_summary = '', summary_up_to_msg_id = 0 WHERE id = ?",
+                (session_id,),
+            )
+            summary = ""
+
+        # An assistant turn can also carry a copy of the summary for prompt
+        # replay. Keep the still-valid snapshot and all non-summary messages.
+        valid_snapshot = summary_snapshot(summary)
+        for row in affected:
+            if row["id"] in deleted_ids:
+                continue
+            metadata = _json_loads(row["metadata_json"], {})
+            record = metadata.get(MODEL_TURN_KEY) if isinstance(metadata, dict) else None
+            if not isinstance(record, dict) or record.get("version") != MODEL_TURN_VERSION:
+                continue
+            messages = record.get("messages")
+            if not isinstance(messages, list):
+                continue
+            kept = [
+                msg
+                for msg in messages
+                if not (
+                    isinstance(msg, dict)
+                    and msg.get("role") == "user"
+                    and msg.get("_context_snapshot") == SUMMARY_SNAPSHOT_NAME
+                    and msg != valid_snapshot
+                )
+            ]
+            if len(kept) != len(messages):
+                record["messages"] = kept
+                conn.execute(
+                    "UPDATE messages SET metadata_json = ? WHERE id = ?",
+                    (_json_dumps(metadata), row["id"]),
+                )
+
     def _delete_turn_by_message_sync(self, session_id: str, message_id: int) -> dict[str, Any]:
         with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
             msg = conn.execute(
                 """
                 SELECT id, session_id, role, attachments_json, metadata_json, created_at, parent_message_id
@@ -2537,6 +2604,7 @@ class SQLiteSessionStore:
             ids_to_delete = [int(message_id)]
             if paired_msg is not None:
                 ids_to_delete.append(int(paired_msg["id"]))
+            self._invalidate_deleted_turn_summaries(conn, session_id, ids_to_delete)
 
             # Splice the deleted rows out of the parent-pointer tree: children
             # of a deleted row inherit its parent, in descending id order so a
@@ -2560,18 +2628,6 @@ class SQLiteSessionStore:
             detached_thread_ids = self._detach_threads_for_messages_sync(
                 conn, session_id, ids_to_delete
             )
-
-            session_row = conn.execute(
-                "SELECT summary_up_to_msg_id FROM sessions WHERE id = ?",
-                (session_id,),
-            ).fetchone()
-            if session_row is not None:
-                summary_up_to = int(session_row["summary_up_to_msg_id"])
-                if any(mid <= summary_up_to for mid in ids_to_delete):
-                    conn.execute(
-                        "UPDATE sessions SET summary_up_to_msg_id = 0 WHERE id = ?",
-                        (session_id,),
-                    )
 
             conn.execute(
                 "UPDATE sessions SET updated_at = ? WHERE id = ?",
