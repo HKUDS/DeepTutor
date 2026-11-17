@@ -1,5 +1,5 @@
 {
-  "fingerprint": "d8d6b9ba2b49ea8477ed35001ad5ce5c81d3ba79e639e5463771850dbefc75e0",
+  "fingerprint": "8af28119fdf5145e8e05a83cde87b9c2b6ff807c8295e9386fd66bcdd08ad46a",
   "routers": {
     "deeptutor.api.routers.auth:router": [
       {
@@ -243,11 +243,61 @@
         ]
       },
       {
+        "path": "/users/{username}/disabled",
+        "name": "set_user_disabled",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
+        "path": "/users/{username}/revoke-sessions",
+        "name": "revoke_user_sessions_endpoint",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/profile/phone",
+        "name": "update_profile_phone",
+        "kind": "http",
+        "methods": [
+          "PUT"
+        ]
+      },
+      {
         "path": "/users/{username}/password",
         "name": "admin_reset_password",
         "kind": "http",
         "methods": [
           "PUT"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.auth_otp:router": [
+      {
+        "path": "/otp/request",
+        "name": "request_code",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/otp/resend",
+        "name": "resend_code",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/otp/verify",
+        "name": "verify_code",
+        "kind": "http",
+        "methods": [
+          "POST"
         ]
       }
     ],

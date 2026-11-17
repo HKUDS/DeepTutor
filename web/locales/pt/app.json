@@ -6704,5 +6704,17 @@
   "Plans and usage": "Planos e uso",
   "Billing and quota management are part of Phase 5.": "A gestão de cobrança e cotas faz parte da Fase 5.",
   "Security and audit": "Segurança e auditoria",
-  "Audit trails are part of Phase 6.": "As trilhas de auditoria fazem parte da Fase 6."
+  "Audit trails are part of Phase 6.": "As trilhas de auditoria fazem parte da Fase 6.",
+  "Phone": "Telefone",
+  "Sign-in method": "Método de início de sessão",
+  "Phone number": "Número de telefone",
+  "We will send a code to this number.": "Enviaremos um código para este número.",
+  "Send code": "Enviar código",
+  "Verification code": "Código de verificação",
+  "Change number": "Alterar número",
+  "Resend code": "Reenviar código",
+  "Resend in {{seconds}}s": "Reenviar em {{seconds}} s",
+  "The code is incorrect or has expired.": "O código está incorreto ou expirou.",
+  "We could not send the code. Please try again.": "Não foi possível enviar o código. Tente novamente.",
+  "Could not reach the server.": "Não foi possível contactar o servidor."
 }

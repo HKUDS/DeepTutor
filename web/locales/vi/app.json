@@ -6686,5 +6686,17 @@
   "Plans and usage": "Plans and usage",
   "Billing and quota management are part of Phase 5.": "Billing and quota management are part of Phase 5.",
   "Security and audit": "Security and audit",
-  "Audit trails are part of Phase 6.": "Audit trails are part of Phase 6."
+  "Audit trails are part of Phase 6.": "Audit trails are part of Phase 6.",
+  "Phone": "Điện thoại",
+  "Sign-in method": "Phương thức đăng nhập",
+  "Phone number": "Số điện thoại",
+  "We will send a code to this number.": "Chúng tôi sẽ gửi mã đến số này.",
+  "Send code": "Gửi mã",
+  "Verification code": "Mã xác minh",
+  "Change number": "Đổi số",
+  "Resend code": "Gửi lại mã",
+  "Resend in {{seconds}}s": "Gửi lại sau {{seconds}} giây",
+  "The code is incorrect or has expired.": "Mã không đúng hoặc đã hết hạn.",
+  "We could not send the code. Please try again.": "Không gửi được mã. Vui lòng thử lại.",
+  "Could not reach the server.": "Không kết nối được với máy chủ."
 }

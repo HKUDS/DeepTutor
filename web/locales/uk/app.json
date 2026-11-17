@@ -6708,5 +6708,17 @@
   "Plans and usage": "Plans and usage",
   "Billing and quota management are part of Phase 5.": "Billing and quota management are part of Phase 5.",
   "Security and audit": "Security and audit",
-  "Audit trails are part of Phase 6.": "Audit trails are part of Phase 6."
+  "Audit trails are part of Phase 6.": "Audit trails are part of Phase 6.",
+  "Phone": "Телефон",
+  "Sign-in method": "Спосіб входу",
+  "Phone number": "Номер телефону",
+  "We will send a code to this number.": "Ми надішлемо код на цей номер.",
+  "Send code": "Надіслати код",
+  "Verification code": "Код підтвердження",
+  "Change number": "Змінити номер",
+  "Resend code": "Надіслати код повторно",
+  "Resend in {{seconds}}s": "Повторно через {{seconds}} с",
+  "The code is incorrect or has expired.": "Код неправильний або прострочений.",
+  "We could not send the code. Please try again.": "Не вдалося надіслати код. Спробуйте ще раз.",
+  "Could not reach the server.": "Не вдалося зв'язатися із сервером."
 }

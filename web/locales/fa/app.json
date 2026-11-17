@@ -697,5 +697,18 @@
   "Billing and quota management are part of Phase 5.": "مدیریت اعتبار و سهمیه بخشی از فاز ۵ است.",
   "Security and audit": "امنیت و audit",
   "Audit trails are part of Phase 6.": "ردگیری audit بخشی از فاز ۶ است.",
-  "Coming soon": "به‌زودی"
+  "Coming soon": "به‌زودی",
+  "Phone": "موبایل",
+  "Sign-in method": "روش ورود",
+  "Phone number": "شماره موبایل",
+  "We will send a code to this number.": "یک کد به این شماره می‌فرستیم.",
+  "Send code": "ارسال کد",
+  "Sending…": "در حال ارسال…",
+  "Verification code": "کد تأیید",
+  "Change number": "تغییر شماره",
+  "Resend code": "ارسال دوباره",
+  "Resend in {{seconds}}s": "ارسال دوباره تا {{seconds}} ثانیه",
+  "The code is incorrect or has expired.": "کد نادرست است یا منقضی شده.",
+  "We could not send the code. Please try again.": "ارسال کد ممکن نشد. دوباره تلاش کنید.",
+  "Could not reach the server.": "ارتباط با سرور برقرار نشد."
 }

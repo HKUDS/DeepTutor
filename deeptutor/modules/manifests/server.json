@@ -23,6 +23,17 @@
       "order": 542
     },
     {
+      "reference": "deeptutor.api.routers.auth_otp:router",
+      "options": {
+        "prefix": "/api/auth",
+        "tags": [
+          "auth-otp"
+        ]
+      },
+      "auth": "public",
+      "order": 542
+    },
+    {
       "reference": "deeptutor.api.routers.outputs:router",
       "options": {
         "prefix": "/files/outputs",

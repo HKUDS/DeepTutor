@@ -6686,5 +6686,17 @@
   "Plans and usage": "Plans and usage",
   "Billing and quota management are part of Phase 5.": "Billing and quota management are part of Phase 5.",
   "Security and audit": "Security and audit",
-  "Audit trails are part of Phase 6.": "Audit trails are part of Phase 6."
+  "Audit trails are part of Phase 6.": "Audit trails are part of Phase 6.",
+  "Phone": "電話",
+  "Sign-in method": "サインイン方法",
+  "Phone number": "電話番号",
+  "We will send a code to this number.": "この番号にコードを送信します。",
+  "Send code": "コードを送信",
+  "Verification code": "確認コード",
+  "Change number": "番号を変更",
+  "Resend code": "コードを再送信",
+  "Resend in {{seconds}}s": "{{seconds}} 秒後に再送信",
+  "The code is incorrect or has expired.": "コードが正しくないか、期限切れです。",
+  "We could not send the code. Please try again.": "コードを送信できませんでした。もう一度お試しください。",
+  "Could not reach the server.": "サーバーに接続できませんでした。"
 }

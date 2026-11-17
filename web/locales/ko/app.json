@@ -698,5 +698,19 @@
   "Billing and quota management are part of Phase 5.": "Billing and quota management are part of Phase 5.",
   "Security and audit": "Security and audit",
   "Audit trails are part of Phase 6.": "Audit trails are part of Phase 6.",
-  "Coming soon": "Coming soon"
+  "Coming soon": "Coming soon",
+  "Phone": "전화",
+  "Password": "비밀번호",
+  "Sign-in method": "로그인 방법",
+  "Phone number": "전화번호",
+  "We will send a code to this number.": "이 번호로 코드를 보내드립니다.",
+  "Send code": "코드 보내기",
+  "Sending…": "보내는 중…",
+  "Verification code": "인증 코드",
+  "Change number": "번호 변경",
+  "Resend code": "코드 다시 보내기",
+  "Resend in {{seconds}}s": "{{seconds}}초 후 다시 보내기",
+  "The code is incorrect or has expired.": "코드가 올바르지 않거나 만료되었습니다.",
+  "We could not send the code. Please try again.": "코드를 보낼 수 없습니다. 다시 시도해 주세요.",
+  "Could not reach the server.": "서버에 연결할 수 없습니다."
 }
