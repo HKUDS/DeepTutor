@@ -157,46 +157,69 @@ jobs:
         env:
           BASE: http://127.0.0.1:3782
         run: |
-          # The first registered account becomes the admin; a second account is
-          # created by that admin. Doing it through the real endpoints means the
-          # tests exercise the same paths an operator would.
-          #
-          # `-f` is deliberately absent from the register call: a 409 means the
-          # account already exists, which is the desired end state, and curl
-          # exiting 22 on it would fail a run that is actually fine.
-          JAR=/tmp/admin.cookies
-          code=$(curl -sS -o /tmp/register.out -w '%{http_code}' \
-            -c "$JAR" -X POST "$BASE/api/auth/register" \
-            -H 'Content-Type: application/json' \
-            -d '{"username":"phase1-admin","password":"phase1-admin-pass"}')
-          echo "register -> $code"
-          cat /tmp/register.out
-          echo "::notice title=register::HTTP $code"
+          # Done in Python rather than curl so that every failure prints its
+          # status and body instead of exiting 22 with no explanation. The run
+          # log is not readable from the sandbox this repo is developed in, so
+          # each outcome is also emitted as an annotation.
+          python - <<'PYEOF'
+          import json, sys, urllib.error, urllib.request
 
-          curl -fsS -b "$JAR" -c "$JAR" -X POST "$BASE/api/auth/login" \
-            -H 'Content-Type: application/json' \
-            -d '{"username":"phase1-admin","password":"phase1-admin-pass"}' \
-            -o /tmp/login.out -w 'login -> %{http_code}\n'
-          cat /tmp/login.out
-          echo
-          test -s "$JAR" || { echo "::error title=seed::no session cookie after login"; exit 1; }
+          BASE = "http://127.0.0.1:3782"
+          cookie = {"value": None}
 
-          code=$(curl -sS -o /tmp/create.out -w '%{http_code}' -b "$JAR" \
-            -X POST "$BASE/api/auth/users" -H 'Content-Type: application/json' \
-            -d '{"username":"phase1-student","password":"phase1-student-pass","preset":"learner"}')
-          echo "create student -> $code"; cat /tmp/create.out; echo
+          def call(method, path, payload=None):
+              data = json.dumps(payload).encode() if payload is not None else None
+              req = urllib.request.Request(BASE + path, data=data, method=method)
+              req.add_header("Content-Type", "application/json")
+              if cookie["value"]:
+                  req.add_header("Cookie", cookie["value"])
+              try:
+                  with urllib.request.urlopen(req) as r:
+                      body = r.read().decode()
+                      for header in r.headers.get_all("Set-Cookie") or []:
+                          if header.startswith("dt_token="):
+                              cookie["value"] = header.split(";")[0]
+                      return r.status, body
+              except urllib.error.HTTPError as e:
+                  return e.code, e.read().decode()
+              except Exception as e:                      # noqa: BLE001
+                  return 0, repr(e)
 
-          # The created account is an ordinary user; the role is assigned
-          # separately, which is how the product models it.
-          code=$(curl -sS -o /tmp/role.out -w '%{http_code}' -b "$JAR" \
-            -X PUT "$BASE/api/auth/users/phase1-student/role" \
-            -H 'Content-Type: application/json' -d '{"role":"student"}')
-          echo "set role -> $code"; cat /tmp/role.out; echo
+          def note(title, message):
+              print(f"::notice title={title}::{message}"[:900])
+              print(f"[{title}] {message}")
 
-          # Prove the seed took before the browser tests depend on it.
-          curl -sS -b "$JAR" "$BASE/api/auth/status"
-          echo
-          echo "::notice title=seed::register=$code"
+          # 1. First registration becomes the administrator.
+          code, body = call("POST", "/api/auth/register",
+                            {"username": "phase1-admin", "password": "phase1-admin-pass"})
+          note("register", f"HTTP {code} {body[:200]}")
+          if code not in (200, 201) and code != 409:
+              print(f"::error title=register::HTTP {code} {body[:300]}"); sys.exit(1)
+
+          # 2. Sign in to establish the session cookie.
+          code, body = call("POST", "/api/auth/login",
+                            {"username": "phase1-admin", "password": "phase1-admin-pass"})
+          note("login", f"HTTP {code} {body[:200]}")
+          if code != 200 or not cookie["value"]:
+              print("::error title=login::no session cookie"); sys.exit(1)
+
+          # 3. The administrator creates the student.
+          code, body = call("POST", "/api/auth/users",
+                            {"username": "phase1-student",
+                             "password": "phase1-student-pass", "preset": "learner"})
+          note("create-student", f"HTTP {code} {body[:200]}")
+
+          # 4. Role is assigned separately, which is how the product models it.
+          code, body = call("PUT", "/api/auth/users/phase1-student/role", {"role": "student"})
+          note("set-role", f"HTTP {code} {body[:200]}")
+
+          # 5. Prove the session is real before the browser tests rely on it.
+          code, body = call("GET", "/api/auth/status")
+          note("status", f"HTTP {code} {body[:300]}")
+          if code != 200 or '"authenticated":true' not in body.replace(" ", ""):
+              print("::error title=status::session not authenticated"); sys.exit(1)
+          print("seed complete")
+          PYEOF
 
       - name: Gate 1 - public entry points
         id: public_entries
