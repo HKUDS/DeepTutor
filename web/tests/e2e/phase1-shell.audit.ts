@@ -96,6 +96,15 @@ test.describe("public entry points", () => {
     // the fallback. Waiting for a form control is what proves the components
     // mounted; asserting on `aside` alone races the hydration.
     const formField = page.getByLabel(/email or username|نام کاربری|ایمیل/i);
+    // `count()` returns immediately; waiting is what distinguishes "not there
+    // yet" from "not there". The client tree mounts after the Suspense
+    // fallback, so this has to wait rather than sample once.
+    try {
+      await formField.first().waitFor({ state: "visible", timeout: 30_000 });
+    } catch {
+      const body = await page.locator("body").innerText();
+      throw new Error(`username field never appeared; body: ${body.slice(0, 300)}`);
+    }
     const fieldCount = await formField.count();
     if (fieldCount === 0) {
       const body = await page.locator("body").innerText();
