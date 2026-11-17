@@ -31,6 +31,7 @@ import {
   X,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { PRODUCT_NAME_FA } from "@/lib/brand";
 import type { SelectedRecord } from "@/lib/notebook-selection-types";
 import type { SelectedHistorySession } from "@/components/chat/HistorySessionPicker";
 import type { SelectedQuestionEntry } from "@/components/chat/QuestionBankPicker";
@@ -2760,7 +2761,7 @@ export default function ChatWorkspace() {
                   <div className="w-full max-w-[960px] flex items-center justify-center gap-4">
                     <img
                       src="/brand/black-logo.png"
-                      alt="DeepTutor"
+                      alt={PRODUCT_NAME_FA}
                       width={40}
                       height={40}
                       className="h-10 w-10 select-none dark:invert"

@@ -205,7 +205,7 @@ function AnswerList({
         )}
         {answerers && (
           <TraySection title={t("composer.tray.whoAnswers")} hint={t("composer.tray.whoAnswersHint")}>
-            {matches("DeepTutor") && (
+            {matches("DeepTutor", t("composer.tray.deeptutor")) && (
               <TrayOption
                 selected={!answerers.value}
                 onSelect={() => pick(null)}

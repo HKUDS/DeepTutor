@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { PRODUCT_NAME_FA, PRODUCT_TAGLINE } from "@/lib/brand";
 import "./globals.css";
 // Self-hosted fonts: keeps `next build` free of any Google Fonts fetch.
 import "./fonts.css";
@@ -14,9 +15,12 @@ import { I18nClientBridge } from "@/i18n/I18nClientBridge";
 
 export const viewport: Viewport = { interactiveWidget: "resizes-content" };
 
+// The tab title and the search-result description are the first and sometimes
+// the only place the product names itself, so they carry the display brand.
+// D-01: visible metadata becomes درسیار; internals stay `deeptutor`.
 export const metadata: Metadata = {
-  title: "DeepTutor",
-  description: "Agent-native intelligent learning companion",
+  title: PRODUCT_NAME_FA,
+  description: PRODUCT_TAGLINE,
   icons: {
     icon: [
       { url: "/brand/favicon-16x16.png", sizes: "16x16", type: "image/png" },

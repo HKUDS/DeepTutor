@@ -1564,7 +1564,9 @@ export function StreamingStatus({
     Boolean(isStreaming),
   );
 
-  const name = agentName?.trim() || "DeepTutor";
+  // The fallback is what the activity row calls the product when no agent
+  // name is set; it must follow the display brand (D-01).
+  const name = agentName?.trim() || t("composer.tray.deeptutor");
   let modeLabel = t("{{name}} Reasoning…", { name });
   if (mode === "tool_using") modeLabel = t("Tool Calling…");
   else if (mode === "planning") modeLabel = t("{{name}} Planning…", { name });

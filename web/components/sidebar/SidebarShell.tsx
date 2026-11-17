@@ -18,6 +18,7 @@ import {
 import { useAppShell } from "@/context/AppShellContext";
 import { ChevronsLeft, ChevronsRight, PanelLeftClose, Search, SquarePen } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { PRODUCT_NAME_FA } from "@/lib/brand";
 import { useChatWorkspaces } from "@/hooks/useChatWorkspaces";
 
 import { useSidebarDrawer } from "@/components/layout/AppShell";
@@ -304,8 +305,8 @@ export function SidebarShell({
         {/* The open sidebar's header, stood on end: the workspace (with its
             menu of settings and account), the way back out, then search. */}
         {bodySlot ? (
-          <Link href={brandHref} prefetch={false} aria-label="DeepTutor" className="dt-rail-brand">
-            <Image src="/brand/color-logo.png" alt="DeepTutor" width={22} height={22} className="h-[22px] w-[22px] rounded-md" />
+          <Link href={brandHref} prefetch={false} aria-label={PRODUCT_NAME_FA} className="dt-rail-brand">
+            <Image src="/brand/color-logo.png" alt={PRODUCT_NAME_FA} width={22} height={22} className="h-[22px] w-[22px] rounded-md" />
           </Link>
         ) : (
           <WorkspaceMenu compact accountSlot={renderedFooter} onNavigate={() => drawer?.close()} />
@@ -365,14 +366,14 @@ export function SidebarShell({
           <Link href={brandHref} prefetch={false} className="group flex items-center gap-1.5">
             <Image
               src="/brand/color-logo.png"
-              alt="DeepTutor"
+              alt={PRODUCT_NAME_FA}
               width={22}
               height={22}
               className="h-[22px] w-[22px] transition-transform duration-200 group-hover:scale-105"
             />
             <Image
               src="/brand/color-word.png"
-              alt="DeepTutor"
+              alt={PRODUCT_NAME_FA}
               width={1200}
               height={310}
               priority
