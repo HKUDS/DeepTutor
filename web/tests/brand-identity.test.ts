@@ -53,6 +53,30 @@ test('no user-visible value still says DeepTutor', () => {
   assert.deepEqual(offenders, [])
 })
 
+test('every locale bundle is free of the old visible name', () => {
+  // The English bundle carries the Persian wordmark; Latin-script bundles carry
+  // the Latin one, so a French sentence never mixes scripts. Either way the old
+  // name is gone from what renders.
+  const bundles = fs
+    .readdirSync(path.join(ROOT, 'locales'))
+    .filter((lang) => fs.existsSync(path.join(ROOT, 'locales', lang, 'app.json')))
+  assert.ok(bundles.length >= 14, `expected the full bundle set, found ${bundles.length}`)
+  const offenders: string[] = []
+  for (const lang of bundles) {
+    const catalog = JSON.parse(
+      fs.readFileSync(path.join(ROOT, 'locales', lang, 'app.json'), 'utf8'),
+    ) as Record<string, string>
+    for (const [key, value] of Object.entries(catalog)) {
+      if (typeof value !== 'string' || value === key) continue
+      if (!/\bDeepTutor\b/.test(value)) continue
+      // Same two installation-level exemptions as the English check.
+      if (/github\.com|HKUDS|DeepTutor installation/.test(value)) continue
+      offenders.push(`${lang}: ${key} => ${value}`)
+    }
+  }
+  assert.deepEqual(offenders, [])
+})
+
 test('the auth screens name the product from the brand module', () => {
   for (const page of ['app/(auth)/login/page.tsx', 'app/(auth)/register/page.tsx']) {
     const source = fs.readFileSync(path.join(ROOT, page), 'utf8')
