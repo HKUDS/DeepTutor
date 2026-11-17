@@ -120,6 +120,95 @@ REQUIRED_COLUMNS: dict[str, tuple[str, ...]] = {
         "lease_expires_at",
         "run_after",
     ),
+    # --- Phase 4: academic catalog -------------------------------------
+    "curriculum_systems": (
+        "id",
+        "code",
+        "title",
+        "status",
+        "effective_from_year",
+        "effective_to_year",
+        "sort_order",
+        "created_at",
+    ),
+    "curriculum_grades": (
+        "id",
+        "system_id",
+        "grade_number",
+        "title",
+        "stage_code",
+        "requires_track",
+    ),
+    "curriculum_tracks": ("id", "code", "title", "kind", "sort_order"),
+    "curriculum_majors": (
+        "id",
+        "track_id",
+        "code",
+        "title",
+        "selectable_grades",
+        "sort_order",
+    ),
+    "curriculum_subjects": (
+        "id",
+        "curriculum_version_id",
+        "grade_number",
+        "major_code",
+        "code",
+        "title",
+        "language",
+        "requirement",
+        "weekly_hours",
+        "sort_order",
+    ),
+    "curriculum_versions": (
+        "id",
+        "label",
+        "school_year",
+        "status",
+        "published_at",
+        "created_at",
+    ),
+    # --- Phase 4: sources and rights -----------------------------------
+    "catalog_sources": (
+        "id",
+        "title",
+        "source_type",
+        "grade_number",
+        "major_code",
+        "subject_code",
+        "supersedes_id",
+        "edition",
+        "content_checksum",
+        "page_count",
+        "provenance_kind",
+        "provenance_note",
+        "rights_status",
+        "review_status",
+        "publicly_retrievable",
+        "created_at",
+        "updated_at",
+    ),
+    "source_rights_reviews": (
+        "id",
+        "source_id",
+        "decision",
+        "rights_status_before",
+        "rights_status_after",
+        "reviewer",
+        "reason",
+        "reviewed_at",
+    ),
+    "source_versions": (
+        "id",
+        "source_id",
+        "version_label",
+        "title",
+        "content_checksum",
+        "rights_status",
+        "review_status",
+        "snapshot",
+        "recorded_at",
+    ),
 }
 
 
@@ -144,6 +233,14 @@ REQUIRED_INDEXES: dict[str, tuple[str, ...]] = {
     "user_files": ("uq_user_files_storage_path",),
     "jobs": ("uq_jobs_dedupe",),
     "plans": ("uq_plans_code",),
+    # Phase 4. Both of these are duplicate detectors, and both are uniquely
+    # awkward: their key columns are nullable, so a plain UNIQUE index would
+    # stop enforcing anything the moment a row omits the column (SQL treats
+    # NULL as distinct from NULL). They therefore use COALESCE expressions, and
+    # they are asserted here by name so a future migration cannot quietly
+    # simplify them back into a constraint that does not constrain.
+    "catalog_sources": ("uq_catalog_sources_identity",),
+    "curriculum_subjects": ("uq_curriculum_subjects_identity",),
 }
 
 
