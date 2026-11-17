@@ -81,7 +81,25 @@ test.describe("public entry points", () => {
     // mounted; asserting on `aside` alone races the hydration.
     await expect(page.getByLabel(/email or username|نام کاربری/i)).toBeVisible();
     const panel = page.locator("aside");
-    await expect(panel).toBeVisible();
+    await expect(panel).toHaveCount(1);
+
+    // Report what the browser actually decided, rather than failing with a
+    // bare "not visible". `hidden lg:flex` resolves by media query and CSS
+    // order, and only the computed style can say which one won.
+    const diag = await panel.evaluate((el) => {
+      const cs = getComputedStyle(el as HTMLElement);
+      return {
+        display: cs.display,
+        visibility: cs.visibility,
+        width: (el as HTMLElement).getBoundingClientRect().width,
+        innerWidth: window.innerWidth,
+        matchesLg: window.matchMedia("(min-width: 1024px)").matches,
+      };
+    });
+    if (diag.display === "none") {
+      throw new Error(`panel display:none at ${diag.innerWidth}px (lg=${diag.matchesLg})`);
+    }
+    expect(diag.width).toBeGreaterThan(0);
 
     // Mobile: the panel is hidden and the compact wordmark takes over, so a
     // phone user still knows which product they opened.
