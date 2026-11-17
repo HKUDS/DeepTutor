@@ -19,38 +19,39 @@ annotation خودِ job:
 
 **شاهد این‌که به کد ربطی ندارد:** `Import Check` روی ubuntu (۳.۱۱/۳.۱۲/۳.۱۳/۳.۱۴) و windows هر دو پاس‌اند، و `Video lesson isolation` روی ubuntu و windows هم پاس.
 
-## ۲. `Experimental TypeScript Chat Engine`
+## ۲. ~~`Experimental TypeScript Chat Engine`~~ — **رفع شد، تقصیر من بود**
 
-**وضعیت: flaky در CI، سبز در محیط محلی.**
+**این مورد «flaky» نبود. یک آزمون واقعی بود که تغییر خودم شکسته بود.**
 
-روی همین شاخه، **سه commit متوالی** پیش از commit آخر این job را پاس کردند:
+### چه شد
 
-| commit | نتیجه |
-| --- | --- |
-| `490e67b` | ✅ success |
-| `769b393` | ✅ success |
-| `cecccc2` | ✅ success |
-| `6a8f55f` | ❌ failure |
+مرحلهٔ ۱۰ از ۱۰ مرحلهٔ این job شکست می‌خورد:
 
-`6a8f55f` **فقط ۵ فایل Python را فرمت کرد** (whitespace محض) و `packages/chat-engine` را لمس نکرد. پس ارتباط علّی منتفی است.
+> Exercise native model, history, tool boundaries and lazy API admission
 
-بازتولید محلی — هر دو بخش سبز:
+اجرای `tests/runtime/test_native_engine.py` و `tests/api/test_router_loader.py` محلی:
 
 ```
-packages/chat-engine$ npm test                    → 76/76 pass
-DEEPTUTOR_CHAT_ENGINE=typescript pytest \
-  tests/agents/chat tests/runtime/test_ts_engine.py \
-  tests/services/partners/test_partner_runtime.py \
-  tests/capabilities/test_partner_group_capability.py \
-  tests/capabilities/test_mastery_loop_pipeline.py
-                                                  → 292 + 112 pass
+FAILED tests/api/test_router_loader.py::test_repository_index_matches_router_sources
+AssertionError: Run scripts/build_router_index.py
 ```
 
-**گام بعدی روی سیستم خودتان:** job را دوباره اجرا کنید. اگر سبز شد، flaky تأیید می‌شود. اگر نه، لحظهٔ دقیق شکست را با `gh run view <id> --log-failed` ببینید — چیزی که در این sandbox مسدود است. علت محتمل: تفاوت نسخهٔ Node (CI از ۲۲ استفاده می‌کند) یا وابستگی شبکه‌ای در `npm ci`.
+`deeptutor/api/router_index.json` یک **fingerprint** از سورس همهٔ روترها نگه می‌دارد. commit `6a8f55f` سه روتر را فرمت کرد (`co_writer.py`، `question.py`، `quiz_judge.py`)، پس fingerprint کهنه شد و آزمون — به‌درستی — گرفتش.
+
+**رفع:** `python scripts/build_router_index.py` → ۵۵ روتر، ۷۳۱ مسیر. سپس ۱۸/۱۸ پاس. commit `d4d85ed`.
+
+### درسی که ارزش ثبت دارد
+
+دو اشتباه از من:
+
+1. **«سه commit پاس بودند، پس flaky است»** — استدلال غلط بود. آن سه commit **قبل** از commit فرمت بودند؛ شکست دقیقاً با همان commit شروع شد. همبستگی را دیدم و علیت را اشتباه خواندم.
+2. **مرحلهٔ شکست‌خورده را نگاه نکردم.** `gh run view --log` مسدود است، اما `gh api .../actions/jobs/<id>` فهرست **مرحله‌ها و نتیجهٔ هرکدام** را می‌دهد. یک فراخوانی، و علت مشخص بود. این را باید از اول امتحان می‌کردم.
+
+نکتهٔ مثبت: آزمون درست کار کرد. تغییر ظاهراً بی‌خطر (whitespace) یک artifact تولیدشده را کهنه کرد و نگهبانش گرفتش.
 
 ## ۳. `Test Summary`
 
-**نتیجهٔ #۱ و #۲ است، نه شکست مستقل.** وقتی آن دو سبز شوند، این هم سبز می‌شود.
+**نتیجهٔ #۱ است، نه شکست مستقل.** وقتی macOS سبز شود، این هم سبز می‌شود.
 
 ---
 
