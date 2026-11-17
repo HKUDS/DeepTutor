@@ -194,7 +194,7 @@ export default function KbIndexVersionsSection({
           <div>
             <div className="text-[12.5px] font-medium text-[var(--foreground)]">
               {t("Index versions")}
-              <span className="ml-2 rounded-full bg-[var(--muted)] px-1.5 py-0.5 text-[10px] font-normal text-[var(--muted-foreground)]">
+              <span className="ms-2 rounded-full bg-[var(--muted)] px-1.5 py-0.5 text-[10px] font-normal text-[var(--muted-foreground)]">
                 {versions.length}
               </span>
             </div>

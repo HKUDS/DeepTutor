@@ -138,6 +138,7 @@ _LANGUAGE_CHOICES: tuple[tuple[str, str, str], ...] = (
     ("tr", "Türkçe", "Interface and replies in Turkish."),
     ("it", "Italiano", "Interface and replies in Italian."),
     ("hu", "Magyar", "Interface and replies in Hungarian."),
+    ("fa", "فارسی", "Interface and replies in Persian."),
 )
 
 _RESPONSE_LANGUAGE_CHOICES: tuple[tuple[str, str, str], ...] = (
@@ -159,6 +160,7 @@ _RESPONSE_LANGUAGE_CHOICES: tuple[tuple[str, str, str], ...] = (
     ("tr", "Türkçe", "Replies in Turkish."),
     ("hi", "हिन्दी", "Replies in Hindi."),
     ("hu", "Magyar", "Replies in Hungarian."),
+    ("fa", "فارسی", "Replies in Persian."),
 )
 
 _THEME_CHOICES: tuple[tuple[str, str, str], ...] = (

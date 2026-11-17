@@ -39,7 +39,7 @@
   display: none;
 }
 .dt-notes-count {
-  margin-left: auto;
+  margin-inline-start: auto;
   font-size: 12px;
   color: var(--muted-foreground);
 }
@@ -308,7 +308,7 @@
   opacity: 0.5;
 }
 .dt-notes-review header > span:nth-child(2) {
-  margin-left: auto;
+  margin-inline-start: auto;
   font-weight: 400;
   color: var(--muted-foreground);
 }

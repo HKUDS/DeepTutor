@@ -68,7 +68,7 @@ export function LearningWays() {
                     aria-haspopup="dialog"
                     aria-expanded={opened}
                     aria-controls={opened ? `${id}-panel` : undefined}
-                    className="relative flex h-full min-h-[196px] w-full flex-col items-start rounded-[20px] p-5 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
+                    className="relative flex h-full min-h-[196px] w-full flex-col items-start rounded-[20px] p-5 text-start focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
                   >
                     <span className="mb-5 flex w-full items-center justify-between">
                       <motion.span
@@ -226,7 +226,7 @@ function WayPanel({
           transition={spring}
           className="relative min-h-0 overflow-y-auto overscroll-contain rounded-t-[28px] px-6 pt-7 sm:px-8 sm:pt-8"
         >
-          <div className="flex items-center gap-3.5 pr-9">
+          <div className="flex items-center gap-3.5 pe-9">
             <motion.span
               layout="position"
               layoutId={sharedId('icon', surface.kind)}
@@ -251,7 +251,7 @@ function WayPanel({
             aria-label={t('Close')}
             variants={{ hidden: { opacity: 0 }, visible: { opacity: 1 } }}
             transition={fade}
-            className="absolute right-5 top-6 flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring sm:right-6 sm:top-7"
+            className="absolute end-5 top-6 flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring sm:end-6 sm:top-7"
           >
             <X size={18} aria-hidden="true" />
           </motion.button>

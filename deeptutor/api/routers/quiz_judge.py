@@ -15,13 +15,25 @@ from typing import Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from deeptutor.services.config import PROJECT_ROOT, load_config_with_main
+from deeptutor.services.config import load_main_config
 from deeptutor.services.llm import stream as llm_stream
 from deeptutor.services.settings.interface_settings import get_response_language
 from deeptutor.utils.error_utils import format_exception_message
 
 logger = logging.getLogger(__name__)
-_config = load_config_with_main("main.yaml", PROJECT_ROOT)
+
+
+def _main_config() -> dict:
+    """Load ``main.yaml`` on demand instead of at import time (R-12)."""
+    return load_main_config()
+
+
+def _config_default_language() -> str:
+    """UI default reply language, falling back to English if uninitialized."""
+    try:
+        return str(_main_config().get("system", {}).get("language", "en"))
+    except Exception:
+        return "en"
 
 router = APIRouter()
 
@@ -139,6 +151,18 @@ _JUDGE_SYSTEM_PROMPTS = {
         "- Ha több elfogadható válasz is létezik, ismerje el, amit a tanuló jól tett.\n"
         "- Közvetlenül a tanuló megoldására reagáljon — ne tartson általános előadást.\n"
         "- Magyarul válaszoljon."
+    ),
+    "fa": (
+        "شما دستیار آموزشی سخت‌گیر اما تشویق‌کننده هستید که پاسخ یک دانش‌آموز به "
+        "یک پرسش آزمون را تصحیح می‌کنید. بر پایهٔ پرسش، پاسخ مرجع و توضیح، ارزیابی "
+        "هدفمند بدهید.\n\n"
+        "الزامات:\n"
+        "- با یک خط حکم آغاز کنید: ✅ درست / ⚠️ تا حدی درست / ❌ نادرست، و دلیل اصلی.\n"
+        "- سپس فهرست کنید: دانش‌آموز چه چیزی را درست گفته، چه چیزی نادرست یا جاافتاده "
+        "است، و چگونه اصلاح شود.\n"
+        "- اگر چند پاسخ معقول وجود دارد، نکات درست دانش‌آموز را بپذیرید.\n"
+        "- مستقیماً به پاسخ دانش‌آموز بپردازید — سخنرانی عمومی نکنید.\n"
+        "- به فارسی پاسخ دهید."
     ),
 }
 
@@ -428,7 +452,7 @@ async def websocket_quiz_judge(websocket: WebSocket):
     requested_language = (data.get("language") or "").strip().lower()
     if requested_language not in SUPPORTED_JUDGE_LANGUAGES:
         requested_language = get_response_language(
-            default=_config.get("system", {}).get("language", "en")
+            default=_config_default_language()
         )
         if requested_language not in SUPPORTED_JUDGE_LANGUAGES:
             requested_language = "en"

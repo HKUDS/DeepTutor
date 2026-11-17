@@ -596,7 +596,7 @@ export function ReadingWorkspacePage() {
               }}
             />
           ) : (
-            <div className="h-full [&>div]:border-r-0">
+            <div className="h-full [&>div]:border-e-0">
               <ReaderPane
                 sessionId={state.sessionId ?? sessionIdParam}
                 externalJump={documentJump}

@@ -154,7 +154,7 @@ function SegmentRow({
       <span className="shrink-0 text-[11.5px] tabular-nums text-[var(--muted-foreground)]">
         {formatTokens(tokens)}
       </span>
-      <span className="w-9 shrink-0 text-right text-[11px] tabular-nums text-[var(--muted-foreground)]/70">
+      <span className="w-9 shrink-0 text-end text-[11px] tabular-nums text-[var(--muted-foreground)]/70">
         {formatPercent(share)}
       </span>
     </div>
@@ -254,7 +254,7 @@ export default function ContextBudgetChip({
           role="dialog"
           aria-label={t("contextBudget.title")}
           style={{ transformOrigin: "bottom right" }}
-          className="dt-popup-up absolute bottom-full right-0 z-50 mb-1.5 w-[min(300px,calc(100vw-32px))] overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--popover)] shadow-lg backdrop-blur-md"
+          className="dt-popup-up absolute bottom-full end-0 z-50 mb-1.5 w-[min(300px,calc(100vw-32px))] overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--popover)] shadow-lg backdrop-blur-md"
         >
           <div className="px-3 pb-2.5 pt-2.5">
             <div className="flex items-baseline justify-between gap-2">

@@ -245,10 +245,10 @@ export default function HistorySessionPicker({
 
         <div className="flex min-h-0 flex-1">
           {/* ── Left: searchable, selectable session list ── */}
-          <div className="flex w-full min-w-0 flex-col border-r border-[var(--border)] md:w-[42%] md:max-w-[380px]">
+          <div className="flex w-full min-w-0 flex-col border-e border-[var(--border)] md:w-[42%] md:max-w-[380px]">
             <div className="flex items-center gap-2 px-4 pb-3 pt-4">
               <div className="relative flex-1">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted-foreground)]" />
+                <Search className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted-foreground)]" />
                 <input
                   value={query}
                   onChange={(event) => {
@@ -257,7 +257,7 @@ export default function HistorySessionPicker({
                   }}
                   maxLength={200}
                   placeholder={t("Search full conversation history")}
-                  className="w-full rounded-xl border border-[var(--border)] bg-[var(--card)] py-2.5 pl-9 pr-3 text-[13px] text-[var(--foreground)] outline-none transition focus:border-[var(--primary)]/50 focus:ring-2 focus:ring-[var(--primary)]/15"
+                  className="w-full rounded-xl border border-[var(--border)] bg-[var(--card)] py-2.5 ps-9 pe-3 text-[13px] text-[var(--foreground)] outline-none transition focus:border-[var(--primary)]/50 focus:ring-2 focus:ring-[var(--primary)]/15"
                 />
               </div>
               {selectedIds.length > 0 && (
@@ -303,7 +303,7 @@ export default function HistorySessionPicker({
                       >
                         {/* Accent rail marks the previewed row */}
                         <span
-                          className={`absolute inset-y-1.5 left-0 w-[2.5px] rounded-full bg-[var(--primary)] transition-opacity ${
+                          className={`absolute inset-y-1.5 start-0 w-[2.5px] rounded-full bg-[var(--primary)] transition-opacity ${
                             active ? "opacity-100" : "opacity-0"
                           }`}
                         />

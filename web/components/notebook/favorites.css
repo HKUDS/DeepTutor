@@ -130,7 +130,7 @@
 .dt-fav-collections {
   overflow-y: auto;
   padding: 10px 8px;
-  border-right: 1px solid var(--border);
+  border-inline-end: 1px solid var(--border);
   background: color-mix(in srgb, var(--muted) 45%, var(--card));
 }
 .dt-fav-collections > button {
@@ -143,7 +143,7 @@
   border-radius: 8px;
   font-size: 13.5px;
   color: var(--foreground);
-  text-align: left;
+  text-align: start;
   transition: background-color 120ms;
 }
 .dt-fav-collections > button:hover {
@@ -168,7 +168,7 @@
   border-radius: 3px;
 }
 .dt-fav-count {
-  margin-left: auto;
+  margin-inline-start: auto;
   font-size: 12px;
   font-variant-numeric: tabular-nums;
   color: var(--muted-foreground);
@@ -233,7 +233,7 @@
   display: flex;
   align-items: flex-start;
   gap: 4px;
-  padding-right: 8px;
+  padding-inline-end: 8px;
 }
 .dt-fav-row-main {
   display: flex;
@@ -385,7 +385,7 @@
   font-weight: 550;
 }
 .dt-fav-selection button {
-  margin-left: 8px;
+  margin-inline-start: 8px;
   font-size: 12.5px;
   font-weight: 400;
   color: var(--primary);
@@ -435,7 +435,7 @@
     display: flex;
     gap: 4px;
     overflow-x: auto;
-    border-right: 0;
+    border-inline-end: 0;
     border-bottom: 1px solid var(--border);
   }
   .dt-fav-collections > button {
@@ -447,7 +447,7 @@
     display: none;
   }
   .dt-fav-preview {
-    margin-left: 12px;
+    margin-inline-start: 12px;
   }
 }
 
@@ -671,7 +671,7 @@
   overflow: hidden;
   font-size: 12.5px;
   line-height: 1.7;
-  text-align: left;
+  text-align: start;
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--muted-foreground);
@@ -734,7 +734,7 @@
   color: var(--foreground);
 }
 .dt-fav-home-count {
-  margin-left: auto;
+  margin-inline-start: auto;
   font-size: 12px;
   font-variant-numeric: tabular-nums;
   color: var(--muted-foreground);
@@ -759,7 +759,7 @@
   padding: 16px 16px 14px;
   border-radius: 12px;
   background: var(--card);
-  text-align: left;
+  text-align: start;
   box-shadow:
     0 0 0 1px color-mix(in srgb, var(--foreground) 9%, transparent),
     0 1px 2px rgb(0 0 0 / 0.03);
@@ -798,7 +798,7 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  padding-right: 24px;
+  padding-inline-end: 24px;
 }
 .dt-fav-card-head svg {
   flex-shrink: 0;
@@ -859,7 +859,7 @@
   border-radius: 6px;
 }
 .dt-fav-card-more {
-  padding-left: 28px;
+  padding-inline-start: 28px;
   font-size: 11.5px;
   color: var(--muted-foreground);
 }
@@ -1036,7 +1036,7 @@
   align-items: flex-start;
   gap: 12px;
   padding: 14px 6px 14px 14px;
-  text-align: left;
+  text-align: start;
   border-radius: 12px;
 }
 .dt-fav-record-toggle:focus-visible {
@@ -1151,6 +1151,6 @@
 }
 @media (max-width: 640px) {
   .dt-fav-record-body {
-    padding-left: 0;
+    padding-inline-start: 0;
   }
 }

@@ -563,7 +563,7 @@ export function InlineWorkspaceImage({
     <button
       type="button"
       onClick={() => ctx.onOpen?.(attachment)}
-      className="inline-block max-w-full cursor-zoom-in text-left"
+      className="inline-block max-w-full cursor-zoom-in text-start"
       aria-label={`Open ${attachment.filename || name}`}
     >
       {image}

@@ -556,7 +556,7 @@ export default function PartnerConfigure({
                 >
                   <span className="min-w-0 truncate text-[13px] text-[var(--foreground)]">
                     {row.label}
-                    <span className="ml-2 text-[11px] text-[var(--muted-foreground)]">
+                    <span className="ms-2 text-[11px] text-[var(--muted-foreground)]">
                       {row.kind}
                     </span>
                   </span>

@@ -162,7 +162,7 @@ export function TurnCoordinationSettings({
           title={t("Check runtime settings")}
           className="mt-4"
         >
-          <ul className="list-disc space-y-1 pl-4">
+          <ul className="list-disc space-y-1 ps-4">
             {errors.map((error) => (
               <li key={error}>{t(error)}</li>
             ))}

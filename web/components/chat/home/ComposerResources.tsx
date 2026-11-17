@@ -260,7 +260,7 @@ export default function ComposerResources({
           <Plus size={17} strokeWidth={1.7} />
           {configured && (
             <span
-              className="absolute -right-1 -top-0.5 h-1.5 w-1.5 rounded-full bg-[var(--primary)]"
+              className="absolute -end-1 -top-0.5 h-1.5 w-1.5 rounded-full bg-[var(--primary)]"
               aria-label={t("Configured")}
             />
           )}
@@ -302,7 +302,7 @@ export default function ComposerResources({
                   ...position,
                   visibility: position ? "visible" : "hidden",
                 }}
-                className="pointer-events-auto fixed left-3 top-3 z-[1] flex w-[calc(100vw-24px)] max-h-[calc(100dvh-24px)] flex-col overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--popover)] shadow-[0_8px_40px_rgba(0,0,0,0.14)] md:w-[336px]"
+                className="pointer-events-auto fixed start-3 top-3 z-[1] flex w-[calc(100vw-24px)] max-h-[calc(100dvh-24px)] flex-col overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--popover)] shadow-[0_8px_40px_rgba(0,0,0,0.14)] md:w-[336px]"
                 onKeyDown={(event) => {
                   if (event.key === "Escape") {
                     event.preventDefault();

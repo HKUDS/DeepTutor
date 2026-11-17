@@ -1,0 +1,338 @@
+# نقشه راه اجرایی درسیار (Roadmap & Acceptance Gates)
+
+- نسخه: 1.0
+- تاریخ: 2026-11-16
+- وضعیت همه فازها در زمان ایجاد سند: NOT STARTED / نیازمند اجرا و شواهد
+
+## اصول اجرای نقشه راه
+
+1. فازها به ترتیب اجرا شوند؛ فاز بعدی پیش از عبور رسمی از Gate فاز جاری شروع نشود.
+2. هر فاز scope محدود، مالکیت فایل/ماژول، معیار پذیرش، تست و گزارش مستقل داشته باشد.
+3. ابتدا source owner و تست‌های فعلی DeepTutor شناخته شوند؛ قابلیت تکراری ساخته نشود.
+4. هیچ Phase با صرف نوشتن UI، کامیت یا وجود کلاس/Manifest COMPLETE نیست.
+5. تست‌های موجود نباید بی‌دلیل حذف یا ضعیف شوند.
+6. داده واقعی کتاب یا دانش‌آموز در fixture عمومی/ریپازیتوری قرار نگیرد.
+7. هیچ عملیات تولیدی/Production با رمز پیش‌فرض، کلید تست یا مجوز نامشخص فعال نشود.
+8. KiloCode باید تفاوت بین PASS، FAIL، BLOCKED، NOT RUN و NOT APPLICABLE را صریح گزارش کند.
+
+## فازها
+
+### Phase 0 — Repository Audit & Architecture Baseline
+
+**هدف:** ساختن خط مبنا و کاهش ریسک پیش از هر تغییر اجرایی.
+
+Scope:
+- بررسی README، AGENTS، مستندات معماری، توسعه، تست، ماژول‌ها، ذخیره‌سازی، امنیت و قراردادهای Frontend.
+- ترسیم request flow از Browser تا TurnApplicationService/Turn Engine و بازگشت stream.
+- فهرست auth، session، multi-user، knowledge, RAG, books, questions, practice, mastery, audio/video, provider catalog و usage.
+- تهیه dependency map و source ownership map.
+- فهرست تست‌های مرتبط و baseline قابل تکرار.
+- تشخیص وضعیت current branch، working tree و آخرین commit.
+- بررسی fork/upstream و رعایت Apache-2.0 و THIRD_PARTY_NOTICES.
+- ثبت gaps، risks و ADRهای لازم.
+
+ممنوع:
+- تغییر کد اجرایی، schema، settings یا dependency.
+- حذف فایل/ماژول.
+- migration داده یا تنظیم Production.
+
+Acceptance:
+- گزارش ممیزی با pathهای واقعی و وضعیت هر قابلیت.
+- test baseline با command، environment، exit code و summary.
+- هیچ ادعای PASS بدون خروجی ثبت‌شده.
+- نقشه وابستگی و اولویت ریسک.
+- فهرست دقیق تصمیم‌هایی که مانع Phase 1 می‌شوند.
+
+**Gate 0:** بازبینی گزارش؛ فقط با مشخص بودن baseline و ریسک‌ها اجازه ورود به Phase 1 صادر شود.
+
+### Phase 1 — Darsyar Brand & Web Product Shell
+
+**هدف:** تبدیل هویت قابل مشاهده از DeepTutor به درسیار و تثبیت تجربه وب فارسی.
+
+Scope:
+- نام و برند نمایشی در Header، Login، metadata، empty/error/loading states و navigation.
+- فارسی‌سازی کامل و RTL با الگوی i18n فعلی.
+- طراحی responsive کاربر و layout مستقل admin.
+- مسیرهای product shell؛ لینک admin فقط برای مدیر مجاز.
+- Desktop از build/deploy هدف درسیار خارج شود، اما source آن تا dependency audit حذف نشود.
+- حفظ Next.js App Router و قراردادهای موجود.
+
+Acceptance:
+- تمام مسیرهای اصلی روی mobile/tablet/desktop کار کنند.
+- مسیرهای auth/admin در refresh و direct navigation درست باشند.
+- i18n parity، lint، typecheck، architecture check و build پاس شوند.
+- هیچ عبارت برند DeepTutor در UI عمومی درسیار باقی نماند، مگر در صفحه attribution/notice لازم.
+- هیچ API یا data schema بدون نیاز تغییر نکند.
+
+**Gate 1:** UI smoke tests و browser E2E مسیرهای اصلی PASS.
+
+### Phase 2 — Identity, SMS OTP & Admin Authorization
+
+**هدف:** ورود موبایلی امن و مدیریت واقعی کاربران.
+
+Scope:
+- طراحی phone identity و phone normalization.
+- SMS provider interface + mock test provider + یک provider واقعی منتخب پس از ADR.
+- OTP issue/verify/expiry/resend/attempt limits/rate limits.
+- ثبت‌نام اولین ورود با OTP و تعیین رمز.
+- ورود بعدی با phone/password.
+- password reset با OTP.
+- admin bootstrap امن؛ admin/123 فقط development و force password change.
+- Admin login و server-enforced Super Admin/role guards.
+- user CRUD، disable/restore، password reset، profile changes و audit log.
+- تصمیم و پیاده‌سازی storage مرکزی بر اساس ADR.
+
+Acceptance:
+- تست یکتایی شماره و race condition ثبت‌نام.
+- تست OTP منقضی، غلط، replay، rate limit و resend.
+- تست session expiry/revocation.
+- تست دسترسی horizontal/vertical escalation در REST و WebSocket.
+- test اثبات اینکه non-admin هیچ admin API را حتی با فراخوانی مستقیم نمی‌تواند اجرا کند.
+- هیچ OTP/password خام در DB/log/trace.
+- Production با default credential بالا نمی‌آید.
+
+**Gate 2:** امنیت auth و admin به‌طور مستقل بازبینی شود.
+
+### Phase 3 — Product Database, Migration & Storage Foundations
+
+**هدف:** داده تراکنشی قابل اعتماد برای سرویس چندکاربره.
+
+Scope:
+- تصمیم نهایی database/ORM/migrations.
+- PostgreSQL target برای identity، academic catalog، exams، billing و audit.
+- repository/service boundaries؛ مدل‌های file/JSON فعلی بی‌بررسی حذف نشوند.
+- migration plan، backfill و rollback.
+- object storage interface برای فایل‌ها و assets.
+- worker/queue interface برای jobs طولانی.
+- health/readiness/backup/restore.
+
+Acceptance:
+- migration از DB خالی و migration از fixture نسخه قبلی.
+- rollback/restore drill.
+- داده کاربر A از کاربر B قابل مشاهده/تغییر نباشد.
+- transaction و unique constraints برای wallet/reservations/account identity.
+- backup restore نتیجه قابل مقایسه ارائه دهد.
+- restart worker و retry job باعث duplicate اثر نشود.
+
+**Gate 3:** migration و recovery evidence PASS.
+
+### Phase 4 — Academic Catalog & Source Rights
+
+**هدف:** تعریف درخت رسمی آموزشی و ثبت کنترل‌شده منابع.
+
+Scope:
+- دوره، پایه، شاخه، رشته، درس، نسخه curriculum و سال تحصیلی.
+- ابتدایی 1–6، متوسطه اول 7–9، متوسطه دوم 10–12.
+- رشته‌های نظری و هنرستان با ساختار داده‌محور.
+- پیش‌دانشگاهی و نظام‌های گذشته به‌صورت archive مستقل.
+- انواع منبع: رسمی، کمک‌آموزشی، جزوه، نمونه سؤال، کنکور و منابع مکمل.
+- metadata، versioning، provenance، checksum، rights status و review workflow.
+- import catalog با provenance؛ بدون scraping یا واردکردن انبوه بدون مجوز.
+
+Acceptance:
+- آزمون‌های catalog برای رشته/درس معتبر و نامعتبر.
+- آزمون جداسازی current curriculum و archive.
+- duplicate detection و version history.
+- منبع unreviewed/rights unknown از retrieval عمومی خارج باشد.
+- admin بتواند منبع را approve/reject/archive کند و audit ثبت شود.
+
+**Gate 4:** owner review برای taxonomy و legal provenance.
+
+### Phase 5 — Ingestion, OCR & Grounded Tutor
+
+**هدف:** پردازش باکیفیت کتاب‌ها و پاسخ قابل استناد.
+
+Scope:
+- PDF parsing و OCR pipeline با ماژول‌های موجود.
+- استخراج chapter/section، جدول، تصویر، فرمول و page provenance.
+- ingestion jobs با staging، review، retry و index version.
+- source filtering اجباری بر اساس grade/track/subject/rights.
+- RAG adapter برای reuse کردن pipeline موجود.
+- citation renderer کوتاه: [نام کتاب | فصل].
+- پاسخ خارج از منابع، abstention و conflict handling.
+- dataset طلایی فارسی برای همه پایه‌های pilot.
+
+Acceptance:
+- golden tests برای بازیابی دقیق موضوع و فصل.
+- no grade/track leakage در تست adversarial.
+- citation validation با سند واقعی بازیابی‌شده.
+- تست فارسی، اعداد، جدول، شکل، فرمول و OCR.
+- query خارج از منبع به‌درستی abstain شود.
+- ingestion failure/timeout/cancellation و restart recovery آزمایش شود.
+- hallucinated citation در مجموعه ارزیابی صفر باشد.
+
+**Gate 5:** ارزیابی کیفیت retrieval و مجوز محتوا قبل از pilot.
+
+### Phase 6 — Exam Center & Assessment
+
+**هدف:** اجرای آزمون تشریحی، چهارگزینه‌ای و کنکوری.
+
+Scope:
+- question bank و نسخه سؤال.
+- exam blueprint، فصل/مبحث، دشواری، زمان و ترتیب.
+- چهارگزینه‌ای با grading قطعی بر اساس answer key.
+- تشریحی با rubric، نمره جزئی، uncertainty و human review.
+- نمره منفی با policy قابل تنظیم per-exam.
+- snapshot از سؤال، answer key و scoring policy.
+- گزارش اشتباهات و مباحث نیازمند مرور.
+- جلوگیری از نمره‌دهی قطعی به سؤال خراب/بدون کلید معتبر.
+
+Acceptance:
+- unit/property tests برای فرمول نمره و edge cases.
+- پاسخ غلط، درست، نزده، سؤال بدون پاسخ و ضریب متفاوت.
+- تست سه پاسخ غلط/یک پاسخ درست فقط وقتی policy مربوطه فعال است.
+- تشریحی: rubric، حداقل/حداکثر نمره، اعتراض و تغییر ثبت‌شده.
+- تکرار/refresh ارسال پاسخ نباید دوباره نمره یا attempt ایجاد کند.
+- نمره قبلی با تغییر question bank یا policy جدید تغییر نکند.
+
+**Gate 6:** validation آزمون با مجموعه سؤال بازبینی‌شده.
+
+### Phase 7 — Mastery, Flashcards & Personalized Review
+
+**هدف:** تکمیل تجربه یادگیری شخصی و مرور.
+
+Scope:
+- ممیزی و reuse ماژول Flash Cards و Mastery.
+- ساخت کارت از کتاب/فصل/منبع و اشتباهات آزمون.
+- spaced repetition با تاریخچه review.
+- dashboard تسلط بر فصل و مبحث.
+- پیشنهاد تمرین/مرور بر اساس evidence نه صرفاً تخمین مدل.
+
+Acceptance:
+- هیچ deck/card خارج از scope کاربر ساخته/خوانده نشود.
+- progress پس از restart حفظ شود.
+- الگوریتم مرور deterministic test داشته باشد.
+- deduplication و citation provenance.
+- regression tests ماژول mastery فعلی پاس شوند.
+
+**Gate 7:** اثبات تداوم progress و صحت جداسازی کاربران.
+
+### Phase 8 — Learning Studio & Media Jobs
+
+**هدف:** فراهم‌کردن خروجی‌های آموزشی چندرسانه‌ای.
+
+Scope:
+- فعال‌سازی و فارسی‌سازی Audio Overview و Video Lesson.
+- تولید slide، mind map و infographic در اولویت‌های جداگانه.
+- job queue، cancellation، retry limit، quota و asset library.
+- source-aware script/output و provenance.
+- cache/reuse محتوا در صورت یکسان بودن scope و مجوز.
+- cost measurement برای token و non-token operations.
+
+Acceptance:
+- mock-provider integration tests و یک مسیر واقعی controlled smoke test.
+- job state transitions و recovery پس از worker restart.
+- عدم اجرای job بدون entitlement/quota/authorization.
+- فایل asset فقط برای مالک یا مجاز قابل دریافت باشد.
+- مصرف job قابل ردیابی و settle/refund صحیح باشد.
+- خطای ویدئو/صوت chat عادی را مختل نکند.
+- کیفیت فارسی با checklist انسانی ارزیابی شود.
+
+**Gate 8:** هزینه، کیفیت، rights و capacity به‌صورت مستند پذیرفته شوند.
+
+### Phase 9 — Plans, Billing, Custom AI & Production Readiness
+
+**هدف:** تکمیل مدل تجاری و آماده‌سازی انتشار.
+
+Scope:
+- plans, subscriptions, entitlement engine.
+- usage ledger مرکزی و قیمت‌گذاری نسخه‌دار.
+- transactional reserve/settle/refund.
+- Custom AI Provider UI/API و routing برای هر capability.
+- secret encryption، rotation، SSRF/egrss policy.
+- پرداخت/تمدید تنها پس از انتخاب درگاه و ADR مستقل.
+- admin reporting و cost/profit views.
+- performance, security, backup, restore, deployment runbooks.
+
+Acceptance:
+- تست exactly-once/idempotency برای ledger و wallet.
+- تست provider actual vs estimated usage.
+- تست refund و failure cases.
+- تست عدم افشای API key در browser/network/log.
+- تست SSRF برای localhost، private IP، metadata endpoint و redirect.
+- load test ترکیبی chat + ingest + media jobs.
+- security review و backup/restore drill.
+- migration و rollback روی staging.
+- deployment smoke test و monitoring alerts.
+
+**Gate 9:** انتشار Production فقط با شواهد کامل، secrets واقعی امن، rights approved و owner acceptance مجاز است.
+
+---
+
+## قالب گزارش پایان هر فاز
+
+هر گزارش باید شامل:
+1. Phase و scope.
+2. baseline commit و branch.
+3. فایل‌های تغییرکرده و دلیل ownership.
+4. تصمیم‌ها و ADRهای ایجاد/تغییر یافته.
+5. تست‌ها: command، exit code، تعداد PASS/FAIL/SKIP و log reference.
+6. مواردی که تست نشده‌اند یا external service لازم دارند.
+7. migration/rollback evidence.
+8. security/privacy/rights considerations.
+9. known issues و ریسک باز.
+10. نتیجه Gate: PASS / FAIL / BLOCKED.
+11. commit SHA و مسیر branch؛ push/merge فقط مطابق اختیار صریح کارفرما.
+
+## Definition of Done
+
+فاز فقط وقتی COMPLETE می‌شود که scope کامل، acceptance criteria پاس، regression tests پاس، docs به‌روز، migration قابل بازیابی، گزارش مستند و هیچ blocker بحرانی حل‌نشده باقی نمانده باشد.
+
+
+---
+
+## Phase 1 — تصمیم‌های مصوب صاحب محصول (2026-11-17)
+
+این بخش تکمیل‌کننده دامنه Phase 1 است و بر توضیحات کلی قبلی اولویت دارد.
+
+### ترتیب اجرایی
+
+**1.0 — R-12 import-time configuration fix**
+- فقط refactor لازم برای حذف import-time crash در `co_writer.py`.
+- رفتار با config معتبر بدون تغییر بماند.
+- تست import در runtime home تازه و بدون `deeptutor init` + تست مسیر initialized.
+- commit مستقل و گزارش تست مستقل.
+
+**1.1 — Font foundation**
+- self-host کردن Vazirmatn Variable و فونت‌های محلی موردنیاز.
+- افزودن متن license و attribution فونت.
+- حذف وابستگی `next/font/google` و درخواست شبکه در build.
+- production build واقعی باید از شبکه Google Fonts مستقل شود.
+
+**1.2 — i18n فارسی**
+- افزودن locale key `fa` به‌عنوان زبان چهاردهم.
+- استفاده از `fa-IR` برای formatting و document language.
+- تکمیل کلیدها با parity؛ متن‌های ناقص/انگلیسی در جریان‌های اصلی قابل پذیرش نیستند.
+
+**1.3 — RTL کامل**
+- ابتدا locale و direction metadata، سپس تبدیل کلاس‌های فیزیکی به logical properties.
+- ترتیب i18n پیش از RTL codemod حفظ شود.
+- بصری در موبایل، تبلت و دسکتاپ تست شود.
+
+**1.4 — Darsyar branding**
+- نام نمایشی و metadata قابل مشاهده به درسیار تغییر کند.
+- Python package/import namespace، CLI و runtime internals تغییر نام ندهند.
+- attribution مجوز و upstream حفظ شود.
+
+**1.5 — Functional login presentation**
+- مسیر `/login` و flow فعلی username/password حفظ شود.
+- ظاهر و برند بازطراحی شود؛ ورود OTP تا Phase 2 خارج از scope است.
+
+**1.6 — Full web shell**
+- Shell کامل کاربر و admin طبق `DECISIONS.md` بخش F-1.
+- قابلیت‌های موجود reuse شوند؛ برای قابلیت‌های آینده placeholder شفاف استفاده شود.
+- مسیر `/admin/login` و `/admin` مستقل بمانند؛ احراز هویت/نقش از قرارداد موجود استفاده کند و API ساختگی ایجاد نشود.
+
+**1.7 — Gate 1**
+- اجرای contracts، architecture، typecheck، Node tests، Vitest، lint، i18n checks و build.
+- تست browser E2E برای login، refresh/direct route، non-admin redirect، admin navigation و responsive shell.
+- Build باید با فونت‌های self-host و بدون دسترسی Google Fonts PASS شود.
+- هیچ لینک مرده، action ظاهری بدون رفتار، secret در browser یا regression در مسیرهای فعلی پذیرفته نیست.
+
+### خارج از Phase 1
+
+SMS/OTP، تغییر storage هویت به PostgreSQL، Academic Catalog و import کتاب‌ها، rights workflow، grade/track RAG enforcement، Exam domain/negative marking، wallet/subscription واقعی و media job queue در فازهای بعدی ROADMAP باقی می‌مانند. Phase 1 حق ندارد placeholderها را به‌عنوان قابلیت تکمیل‌شده معرفی کند.
+
+### Gate 0 disposition
+
+Gate 0 = **ACCEPTED CONDITIONAL PASS** برای شروع Phase 1، با شرایط خط پایه ثبت‌شده در DECISIONS.md بخش F-3. این پذیرش به معنی عبور از Gateهای Phase 1 تا 9 یا Production approval نیست.

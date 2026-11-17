@@ -70,21 +70,21 @@ export default function SettingsNav({ onNavigate }: { onNavigate?: () => void })
         <Search
           size={14}
           strokeWidth={1.8}
-          className="pointer-events-none absolute left-2.5 top-3 text-[var(--muted-foreground)]"
+          className="pointer-events-none absolute start-2.5 top-3 text-[var(--muted-foreground)]"
         />
         <input
           aria-label={t('Search settings')}
           placeholder={t('Search settings')}
           value={query}
           onChange={event => setQuery(event.target.value)}
-          className="w-full rounded-full bg-[var(--muted)] py-2.5 pl-8 pr-7 text-[13px] ring-1 ring-inset ring-transparent outline-none placeholder:text-muted-foreground/70 focus:ring-[var(--ring)]"
+          className="w-full rounded-full bg-[var(--muted)] py-2.5 ps-8 pe-7 text-[13px] ring-1 ring-inset ring-transparent outline-none placeholder:text-muted-foreground/70 focus:ring-[var(--ring)]"
         />
         {query && (
           <button
             type="button"
             aria-label={t('Clear')}
             onClick={() => setQuery('')}
-            className="absolute right-1.5 top-2.5 rounded p-0.5 text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
+            className="absolute end-1.5 top-2.5 rounded p-0.5 text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
           >
             <X size={14} />
           </button>

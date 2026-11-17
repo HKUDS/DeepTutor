@@ -592,7 +592,7 @@ export function MediaReadingStage({
                 type="button"
                 onClick={toggleFullscreen}
                 aria-label={t("Exit fullscreen")}
-                className="absolute right-3 top-3 z-10 rounded-md bg-black/60 p-2 text-white hover:bg-black/80"
+                className="absolute end-3 top-3 z-10 rounded-md bg-black/60 p-2 text-white hover:bg-black/80"
               >
                 <Minimize2 size={13} />
               </button>
@@ -681,7 +681,7 @@ export function MediaReadingStage({
                         : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
                     }`}
                   >
-                    <span className="w-9 shrink-0 text-right text-[10px] tabular-nums text-[var(--muted-foreground)]">
+                    <span className="w-9 shrink-0 text-end text-[10px] tabular-nums text-[var(--muted-foreground)]">
                       {formatMediaTime(
                         timeFromSourceHref(row.sourceHref) || 0,
                       )}
@@ -712,7 +712,7 @@ export function MediaReadingStage({
                   href={rawMaterialUrl(material.material_id)}
                   target="_blank"
                   rel="noreferrer"
-                  className="ml-1 inline-flex items-center gap-1 text-[var(--primary)] hover:underline"
+                  className="ms-1 inline-flex items-center gap-1 text-[var(--primary)] hover:underline"
                 >
                   {t("Open the original file")}
                   <ExternalLink size={9} />
@@ -871,7 +871,7 @@ export function MediaReadingStage({
                   type="button"
                   onClick={startNote}
                   disabled={!activeCue}
-                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-[11px] text-[var(--muted-foreground)] hover:text-[var(--foreground)] disabled:opacity-40"
+                  className="flex w-full items-center gap-2 px-3 py-2 text-start text-[11px] text-[var(--muted-foreground)] hover:text-[var(--foreground)] disabled:opacity-40"
                 >
                   <StickyNote size={12} />
                   {t("Add a note for this segment")}
@@ -886,7 +886,7 @@ export function MediaReadingStage({
                 <span className="sr-only">{t("Search transcript")}</span>
                 <Search
                   size={11}
-                  className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--muted-foreground)]"
+                  className="pointer-events-none absolute start-2.5 top-1/2 -translate-y-1/2 text-[var(--muted-foreground)]"
                 />
                 <input
                   type="search"
@@ -911,7 +911,7 @@ export function MediaReadingStage({
                       moveTranscriptMatch(event.shiftKey ? -1 : 1);
                     }
                   }}
-                  className="h-8 w-full rounded-lg bg-[var(--muted)]/60 pl-8 pr-2 text-[10.5px] outline-none transition-colors focus:bg-[var(--background)] focus:shadow-[0_0_0_1px_color-mix(in_srgb,var(--primary)_40%,transparent)]"
+                  className="h-8 w-full rounded-lg bg-[var(--muted)]/60 ps-8 pe-2 text-[10.5px] outline-none transition-colors focus:bg-[var(--background)] focus:shadow-[0_0_0_1px_color-mix(in_srgb,var(--primary)_40%,transparent)]"
                 />
               </label>
               {!!normalizedTranscriptQuery && (
@@ -1020,7 +1020,7 @@ export function MediaReadingStage({
                               : "text-[var(--foreground)] hover:bg-[var(--muted)]"
                         }`}
                       >
-                        <span className="w-9 shrink-0 text-right text-[10px] tabular-nums text-[var(--muted-foreground)]">
+                        <span className="w-9 shrink-0 text-end text-[10px] tabular-nums text-[var(--muted-foreground)]">
                           {row.title}
                         </span>
                         <span className="line-clamp-2 min-w-0 leading-[1.5]">

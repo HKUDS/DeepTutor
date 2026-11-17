@@ -88,7 +88,7 @@ export function WorkspaceMenu({
           <div
             role="menu"
             aria-label={t("More")}
-            className="absolute right-0 top-8 z-40 max-h-[calc(100vh-4rem)] w-64 overflow-y-auto rounded-lg border border-[var(--border)] bg-[var(--card)] p-1 text-[12px] shadow-md dark:bg-[var(--popover)]"
+            className="absolute end-0 top-8 z-40 max-h-[calc(100vh-4rem)] w-64 overflow-y-auto rounded-lg border border-[var(--border)] bg-[var(--card)] p-1 text-[12px] shadow-md dark:bg-[var(--popover)]"
           >
             {groups.map(([key, heading, items], index) => {
               if (!items?.length) return null;

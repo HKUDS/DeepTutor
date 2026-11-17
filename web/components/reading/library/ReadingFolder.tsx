@@ -207,7 +207,7 @@ export function ReadingFolderPage({ folderId }: { folderId: string }) {
               />
               <div
                 role="menu"
-                className="absolute right-0 top-11 z-20 w-44 rounded-lg border border-[var(--border)] bg-[var(--card)] p-1 text-[12px] shadow-md dark:bg-[var(--popover)]"
+                className="absolute end-0 top-11 z-20 w-44 rounded-lg border border-[var(--border)] bg-[var(--card)] p-1 text-[12px] shadow-md dark:bg-[var(--popover)]"
               >
                 <button
                   type="button"
@@ -216,7 +216,7 @@ export function ReadingFolderPage({ folderId }: { folderId: string }) {
                     setMenuOpen(false);
                     setDialog("edit");
                   }}
-                  className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left hover:bg-[var(--muted)]"
+                  className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-start hover:bg-[var(--muted)]"
                 >
                   <Palette size={12} />
                   {t("Rename or recolor")}
@@ -228,7 +228,7 @@ export function ReadingFolderPage({ folderId }: { folderId: string }) {
                     setMenuOpen(false);
                     setDialog("delete");
                   }}
-                  className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-[var(--destructive)] hover:bg-[var(--muted)]"
+                  className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-start text-[var(--destructive)] hover:bg-[var(--muted)]"
                 >
                   <Trash2 size={12} />
                   {t("Delete collection")}
@@ -393,7 +393,7 @@ function FileRow({
           <button
             type="button"
             onClick={onOpen}
-            className="flex min-w-0 flex-1 items-center gap-3 px-1 py-2.5 text-left transition hover:bg-[var(--secondary)]"
+            className="flex min-w-0 flex-1 items-center gap-3 px-1 py-2.5 text-start transition hover:bg-[var(--secondary)]"
           >
             <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-[var(--muted)] text-[var(--muted-foreground)]">
               {opening || pending ? (

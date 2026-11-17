@@ -324,8 +324,8 @@ export default function OrganizedSessionList({
               void onSelect(session.session_id);
             }
           }}
-          className={`group/session flex min-w-0 items-center gap-1.5 rounded-lg py-1.5 pr-1 transition-colors ${
-            child ? "ml-4 border-l border-[var(--border)]/60 pl-2" : "pl-1.5"
+          className={`group/session flex min-w-0 items-center gap-1.5 rounded-lg py-1.5 pe-1 transition-colors ${
+            child ? "ms-4 border-s border-[var(--border)]/60 ps-2" : "ps-1.5"
           } ${
             active
               ? "bg-background/60 text-[var(--foreground)]"
@@ -430,7 +430,7 @@ export default function OrganizedSessionList({
                   );
                   setOpenMenuId(session.session_id);
                 }}
-                className={`absolute right-0 rounded p-1 hover:bg-[var(--muted)] ${
+                className={`absolute end-0 rounded p-1 hover:bg-[var(--muted)] ${
                   menuOpen
                     ? "opacity-100"
                     : "opacity-0 group-hover/session:opacity-100 focus:opacity-100"
@@ -462,7 +462,7 @@ export default function OrganizedSessionList({
                 );
                 setOpenMenuId(session.session_id);
               }}
-              className={`rounded p-1 hover:bg-[var(--muted)] ${timeline ? "absolute right-0" : ""} ${
+              className={`rounded p-1 hover:bg-[var(--muted)] ${timeline ? "absolute end-0" : ""} ${
                 menuOpen
                   ? "opacity-100"
                   : "opacity-0 group-hover/session:opacity-100 focus:opacity-100"
@@ -629,7 +629,7 @@ export default function OrganizedSessionList({
           // had it a hair smaller than a caption and uppercase, which shouted
           // in a list of 12.5px rows and did nothing whatsoever to the CJK
           // titles most of these groups actually carry.
-          className="group/heading flex w-full min-w-0 items-center gap-1.5 rounded-lg px-1.5 py-1 text-left text-[12.5px] font-medium text-[var(--foreground)] transition-colors hover:bg-background/40 hover:text-[var(--foreground)]"
+          className="group/heading flex w-full min-w-0 items-center gap-1.5 rounded-lg px-1.5 py-1 text-start text-[12.5px] font-medium text-[var(--foreground)] transition-colors hover:bg-background/40 hover:text-[var(--foreground)]"
         >
           {!recent && <GroupMark />}
           <span className="min-w-0 truncate">{recent ? t("Recent") : entry.label}</span>
@@ -653,7 +653,7 @@ export default function OrganizedSessionList({
           ) : null}
         </button>
         {collapsed ? null : (
-          <div className={recent ? "" : "ml-1.5 border-l border-[var(--border)]/40 pl-1"}>
+          <div className={recent ? "" : "ms-1.5 border-s border-[var(--border)]/40 ps-1"}>
             {visibleRows.map((session) => renderRow(session))}
             {entry.rows.length > limit && (
               <button type="button" className="px-2 py-1 text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)]"

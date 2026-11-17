@@ -48,7 +48,7 @@
   align-items: center;
   gap: 9px;
   width: 100%;
-  text-align: left;
+  text-align: start;
   padding: 6px 8px;
   font-size: 13px;
   border-radius: 4px;
@@ -134,7 +134,7 @@
 }
 .dt-note-clip {
   padding: 10px 14px;
-  border-left: 3px solid var(--border);
+  border-inline-start: 3px solid var(--border);
   width: 100%;
   background: color-mix(in srgb, var(--secondary) 40%, transparent);
 }
@@ -208,8 +208,8 @@
 }
 @media (max-width: 640px) {
   .dt-note-editor .bn-editor {
-    padding-left: 30px;
-    padding-right: 16px;
+    padding-inline-start: 30px;
+    padding-inline-end: 16px;
   }
 }
 
@@ -297,7 +297,7 @@
   min-height: 32px;
   padding: 4px 8px;
   width: 100%;
-  text-align: left;
+  text-align: start;
   border-radius: 6px;
 }
 .dt-note-menu-items button.selected {
@@ -318,7 +318,7 @@
   height: 17px;
 }
 .dt-note-menu-items kbd {
-  margin-left: auto;
+  margin-inline-start: auto;
   font: 11.5px inherit;
   color: var(--muted-foreground);
 }
@@ -406,11 +406,11 @@
   accent-color: var(--primary);
 }
 .dt-note-preview-example blockquote {
-  border-left: 3px solid var(--border);
-  padding-left: 10px;
+  border-inline-start: 3px solid var(--border);
+  padding-inline-start: 10px;
 }
 .dt-note-preview-example ul {
-  padding-left: 16px;
+  padding-inline-start: 16px;
   list-style: disc;
   line-height: 1.8;
 }
@@ -422,7 +422,7 @@
 .dt-note-preview-example :is(td, th) {
   border: 1px solid var(--border);
   padding: 4px;
-  text-align: left;
+  text-align: start;
 }
 .dt-note-preview-example pre {
   white-space: pre-wrap;
@@ -552,7 +552,7 @@
   margin-bottom: 9px;
 }
 .dt-note-block-label button {
-  margin-left: auto;
+  margin-inline-start: auto;
 }
 .dt-note-toc p,
 .dt-note-hint {
@@ -676,7 +676,7 @@
 .dt-note-data-view [role='tablist'] {
   display: flex;
   gap: 4px;
-  margin-left: auto;
+  margin-inline-start: auto;
 }
 .dt-note-data-view [role='tab'] {
   display: flex;
@@ -712,7 +712,7 @@
   border-collapse: collapse;
 }
 .dt-note-data-view :is(th, td) {
-  text-align: left;
+  text-align: start;
   padding: 8px 12px;
   border: 1px solid var(--border);
   font-weight: normal;
@@ -764,7 +764,7 @@
   border-bottom: 1px solid var(--border);
 }
 .dt-note-task-list small {
-  margin-left: auto;
+  margin-inline-start: auto;
   color: var(--muted-foreground);
 }
 .dt-note-new-task {
@@ -868,12 +868,12 @@
   line-height: 1.6;
 }
 .dt-note-preview-example ol {
-  padding-left: 18px;
+  padding-inline-start: 18px;
   list-style: decimal;
   line-height: 1.8;
 }
 .dt-note-preview-toggle-body {
-  padding-left: 20px;
+  padding-inline-start: 20px;
   line-height: 1.6;
   color: var(--muted-foreground);
 }
@@ -1167,7 +1167,7 @@
   text-underline-offset: 3px;
 }
 .dt-note-preview-toc span:not(:nth-child(2)) {
-  padding-left: 12px;
+  padding-inline-start: 12px;
   color: var(--muted-foreground);
   font-size: 11px;
 }
@@ -1176,14 +1176,14 @@
   gap: 7px;
 }
 .dt-note-preview-columns > div {
-  border-left: 1px solid var(--border);
-  padding-left: 6px;
+  border-inline-start: 1px solid var(--border);
+  padding-inline-start: 6px;
   min-height: 70px;
   min-width: 0;
 }
 .dt-note-preview-columns > div:first-child {
   border: 0;
-  padding-left: 0;
+  padding-inline-start: 0;
 }
 .dt-note-preview-columns strong {
   display: block;
@@ -1264,9 +1264,9 @@
   font-size: 17px;
 }
 .dt-note-preview-timeline {
-  border-left: 2px solid var(--border);
+  border-inline-start: 2px solid var(--border);
   margin: 0 5px;
-  padding-left: 12px;
+  padding-inline-start: 12px;
 }
 .dt-note-preview-timeline > div {
   position: relative;
@@ -1344,7 +1344,7 @@
 .dt-note-preview-concepts span::before {
   content: '';
   height: 22px;
-  border-left: 1px solid var(--border);
+  border-inline-start: 1px solid var(--border);
   position: absolute;
   left: 50%;
   bottom: 100%;
@@ -1360,8 +1360,8 @@
   text-align: center;
 }
 .dt-note-preview-transcript {
-  border-left: 2px solid var(--border);
-  padding-left: 6px;
+  border-inline-start: 2px solid var(--border);
+  padding-inline-start: 6px;
   font-size: 10px;
   color: var(--muted-foreground);
 }
@@ -1374,8 +1374,8 @@
 }
 .dt-note-preview-ai p.is-suggested {
   padding: 4px 8px;
-  margin-left: -8px;
-  border-left: 2px solid var(--primary);
+  margin-inline-start: -8px;
+  border-inline-start: 2px solid var(--primary);
   background: color-mix(in srgb, var(--primary) 7%, transparent);
   border-radius: 0 4px 4px 0;
 }
@@ -1397,7 +1397,7 @@
   align-items: center;
   gap: 6px;
   height: 28px;
-  margin-left: -6px;
+  margin-inline-start: -6px;
   padding: 0 8px 0 7px;
   border-radius: 8px;
   font-size: 13px;
@@ -1503,7 +1503,7 @@
   gap: 6px;
 }
 .dt-note-generation-hint {
-  margin-right: auto;
+  margin-inline-end: auto;
   font-size: 11.5px;
   color: var(--muted-foreground);
   opacity: 0.85;
@@ -1925,7 +1925,7 @@
 /* Two-way switch inside a card header (HTML: edit / preview). */
 .dt-note-segment {
   display: inline-flex;
-  margin-left: auto;
+  margin-inline-start: auto;
   padding: 2px;
   border-radius: 8px;
   background: var(--secondary);
@@ -1949,7 +1949,7 @@
   opacity: 0.45;
 }
 .dt-note-block-label .dt-note-segment button {
-  margin-left: 0;
+  margin-inline-start: 0;
 }
 .dt-note-upload[aria-busy='false'] > svg {
   color: var(--muted-foreground);

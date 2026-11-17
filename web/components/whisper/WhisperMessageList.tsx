@@ -12,18 +12,18 @@ type WhisperMessageListProps = {
 
 function bubbleClass(msg: WhisperMessage): string {
   if (msg.role === "user") {
-    return "ml-auto bg-[var(--primary)] text-[var(--primary-foreground)]";
+    return "ms-auto bg-[var(--primary)] text-[var(--primary-foreground)]";
   }
   if (msg.stage === "whisper") {
-    return "mr-auto border border-amber-500/40 bg-amber-500/10 text-[var(--foreground)]";
+    return "me-auto border border-amber-500/40 bg-amber-500/10 text-[var(--foreground)]";
   }
   if (msg.stage === "debrief") {
-    return "mr-auto border border-violet-500/40 bg-violet-500/10 text-[var(--foreground)]";
+    return "me-auto border border-violet-500/40 bg-violet-500/10 text-[var(--foreground)]";
   }
   if (msg.role === "system") {
     return "mx-auto border border-dashed border-[var(--border)] bg-[var(--background)]/60 text-[var(--muted-foreground)]";
   }
-  return "mr-auto border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)]";
+  return "me-auto border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)]";
 }
 
 function showSource(source?: string): boolean {
@@ -49,7 +49,7 @@ export default function WhisperMessageList({
         <p className="mb-2 font-medium text-[var(--foreground)]">
           {t("Dual-seat whisper — 3 steps")}
         </p>
-        <ol className="list-decimal space-y-1.5 pl-4">
+        <ol className="list-decimal space-y-1.5 ps-4">
           <li>
             <span className="font-medium text-[var(--foreground)]">
               {t("Visitor")}:

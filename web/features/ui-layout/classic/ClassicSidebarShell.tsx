@@ -20,6 +20,7 @@ import {
 import { useAppShell } from "@/context/AppShellContext";
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { PRODUCT_NAME_FA } from "@/lib/brand";
 import { useChatWorkspaces } from "@/hooks/useChatWorkspaces";
 import SessionList from "@/components/SessionList";
 import { useSidebarDrawer } from "@/components/layout/AppShell";
@@ -189,12 +190,12 @@ export function ClassicSidebarShell({
           <Link
             href="/"
             prefetch={false}
-            aria-label="DeepTutor"
+            aria-label={PRODUCT_NAME_FA}
             className="flex items-center justify-center transition-opacity duration-150 group-hover/sb:opacity-0"
           >
             <Image
               src="/brand/color-logo.png"
-              alt="DeepTutor"
+              alt={PRODUCT_NAME_FA}
               width={22}
               height={22}
               className="h-[22px] w-[22px] rounded-md"
@@ -258,14 +259,14 @@ export function ClassicSidebarShell({
         <Link href="/" prefetch={false} className="group flex items-center gap-1.5">
           <Image
             src="/brand/color-logo.png"
-            alt="DeepTutor"
+            alt={PRODUCT_NAME_FA}
             width={22}
             height={22}
             className="h-[22px] w-[22px] transition-transform duration-200 group-hover:scale-105"
           />
           <Image
             src="/brand/color-word.png"
-            alt="DeepTutor"
+            alt={PRODUCT_NAME_FA}
             width={1200}
             height={310}
             priority
@@ -387,7 +388,7 @@ export function ClassicSidebarShell({
           aria-valuenow={resize.width}
           tabIndex={0}
           {...resize.handleProps}
-          className="group/resize absolute inset-y-0 -right-1 z-30 w-2 touch-none cursor-col-resize outline-none max-md:hidden"
+          className="group/resize absolute inset-y-0 -end-1 z-30 w-2 touch-none cursor-col-resize outline-none max-md:hidden"
         >
           <div
             className={`mx-auto h-full w-0.5 transition-colors group-hover/resize:bg-[var(--ring)] group-focus-visible/resize:bg-[var(--ring)] ${resize.resizing ? "bg-[var(--ring)]" : "bg-transparent"}`}

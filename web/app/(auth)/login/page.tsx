@@ -4,6 +4,7 @@ import { Suspense, useCallback, useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useTranslation } from "react-i18next";
+import { productName } from "@/lib/brand";
 import { login, fetchAuthStatus, checkIsFirstUser } from "@/lib/auth";
 import {
   inheritLoginHash,
@@ -11,7 +12,7 @@ import {
 } from "@/shared/auth/return-url";
 
 function LoginPageContent() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const router = useRouter();
   const searchParams = useSearchParams();
   const next = normalizeInternalReturnPath(searchParams.get("next"));
@@ -69,7 +70,7 @@ function LoginPageContent() {
       {/* Logo / Title */}
       <div className="text-center mb-8">
         <h1 className="font-serif text-2xl font-semibold text-[var(--foreground)] tracking-tight">
-          DeepTutor
+          {productName(i18n.language)}
         </h1>
         <p className="mt-1 text-sm text-[var(--muted-foreground)]">
           {t("Sign in to your account")}
