@@ -237,19 +237,26 @@ jobs:
         run: |
           set +e
           echo "--- /login ---"
-          curl -s -o /dev/null -w "status=%{http_code}\n" http://localhost:3000/login
+          curl -s -o /dev/null -w "status=%{http_code}\n" http://localhost:3000/login | tee /tmp/probe-1-login.txt
           echo "--- /api/auth/login via the Next proxy ---"
           curl -s -c /tmp/p.jar -X POST http://localhost:3000/api/auth/login \
             -H 'Content-Type: application/json' \
             -d '{"username":"phase1-admin","password":"phase1-admin-pass"}' \
-            -w "\nstatus=%{http_code}\n"
-          echo "--- cookie received ---"
-          grep -c dt_token /tmp/p.jar
-          echo "--- /admin/users with that cookie ---"
-          curl -s -b /tmp/p.jar -o /dev/null -w "status=%{http_code}\n" http://localhost:3000/admin/users
-          echo "--- /admin/users without a cookie ---"
-          curl -s -o /dev/null -w "status=%{http_code} redirect=%{redirect_url}\n" http://localhost:3000/admin/users
-          echo "::notice title=probe::login+admin statuses above"
+            -w "status=%{http_code}" | tee /tmp/probe-2-apilogin.txt
+          echo
+          grep -c dt_token /tmp/p.jar > /tmp/probe-3-cookie.txt 2>&1
+          curl -s -b /tmp/p.jar -o /dev/null -w "status=%{http_code}" http://localhost:3000/admin/users \
+            | tee /tmp/probe-4-adminwith.txt
+          curl -s -o /dev/null -w "status=%{http_code} redirect=%{redirect_url}" http://localhost:3000/admin/users \
+            | tee /tmp/probe-5-adminwithout.txt
+          # Emit each answer as its own annotation: the summary and the run log
+          # are both unreachable from the build sandbox, annotations are not.
+          for f in /tmp/probe-*.txt; do
+            [ -f "$f" ] && head -2 "$f" | while IFS= read -r l; do
+              echo "::notice title=probe $(basename "$f")::${l:0:180}"
+            done
+          done
+          echo "::notice title=probe::done"
 
       - name: Gate 1 - public entry points
         id: public_entries
