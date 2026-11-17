@@ -67,13 +67,31 @@ async function signIn(page: Page, username: string, password: string, path = "/l
  * real problem was that nobody was signed in. The surface text is included
  * because that is what distinguishes a rejected credential from a broken page.
  */
-async function expectSignedIn(page: Page) {
+async function expectSignedIn(page: Page, { from }: { from?: string } = {}) {
+  // Both sign-in screens count as "still on the form": `/admin/login` starts
+  // with `/admin`, not `/login`, so the original check passed instantly for the
+  // admin entrance without proving anything. Naming the screen explicitly is
+  // what makes the assertion mean the same thing on both.
+  const isForm = (pathname: string) =>
+    pathname === "/login" || pathname === "/admin/login";
+  // Wait for the form to be left *and* to land somewhere that is not another
+  // sign-in screen. `router.replace` from /admin/login goes to /admin/users,
+  // which may bounce to /login when the session did not stick - that is a
+  // failed sign-in, not a success.
   try {
-    await page.waitForURL((url) => !url.pathname.startsWith("/login"), { timeout: 30_000 });
+    await page.waitForURL((url) => !isForm(url.pathname), { timeout: 30_000 });
   } catch {
     const body = await page.locator("body").innerText();
-    throw new Error(`sign-in did not navigate away from ${new URL(page.url()).pathname}. Page says: ${body.slice(0, 300)}`);
+    throw new Error(
+      `sign-in did not leave ${from ?? "the form"} (now at ${new URL(page.url()).pathname}). Page says: ${body.slice(0, 300)}`,
+    );
   }
+  // Report where it landed, so a later assertion failure is self-explanatory.
+  const landed = new URL(page.url()).pathname;
+  if (isForm(landed)) {
+    throw new Error(`sign-in bounced back to ${landed}`);
+  }
+  return landed;
 }
 
 /** Force Persian and LTR/RTL before any app code runs. */
@@ -154,7 +172,11 @@ test.describe("public entry points", () => {
     // phone user still knows which product they opened.
     await page.setViewportSize({ width: 375, height: 812 });
     await expect(panel).toBeHidden();
-    await expect(page.locator("img[alt='']").first()).toBeVisible();
+    // The wordmark is the *second* `img[alt=""]` in the document: the panel's
+    // own decorative mark comes first and is inside the element that is now
+    // display:none. `.first()` therefore selected a hidden image and failed
+    // while the compact wordmark was on screen the whole time.
+    await expect(page.locator("img[alt='']:visible").first()).toBeVisible();
   });
 
   test("Persian renders right-to-left and the shell mirrors", async ({ page }) => {
@@ -179,6 +201,21 @@ test.describe("public entry points", () => {
 
 test.describe("session and authorisation", () => {
   test.skip(!SEEDED, "Needs seeded admin and student accounts.");
+
+  // Diagnostic first: when the session tests fail, this says *where* the
+  // browser ends up and what it can see, instead of leaving the next test to
+  // report a missing element three steps downstream. It also proves the
+  // browser and curl disagree for a reason, if they do.
+  test("the browser can hold a session at all", async ({ page, context }) => {
+    await signIn(page, ADMIN_USER, ADMIN_PASS, "/admin/login");
+    const landed = await expectSignedIn(page, { from: "/admin/login" });
+    const cookies = await context.cookies();
+    const names = cookies.map((c) => `${c.name}@${c.domain}${c.path}`).join(",");
+    const html = await page.evaluate(() => document.body.innerText.slice(0, 200));
+    throw new Error(
+      `landed=${landed} cookies=[${names}] body=${html.replace(/\s+/g, " ").slice(0, 160)}`,
+    );
+  });
 
   test("a signed-in administrator reaches the admin panel", async ({ page }) => {
     await signIn(page, ADMIN_USER, ADMIN_PASS, "/admin/login");
