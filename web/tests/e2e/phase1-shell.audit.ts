@@ -35,12 +35,28 @@ const ADMIN_PASS = process.env.PHASE1_ADMIN_PASS ?? "phase1-admin-pass";
 const STUDENT_USER = process.env.PHASE1_STUDENT_USER ?? "phase1-student";
 const STUDENT_PASS = process.env.PHASE1_STUDENT_PASS ?? "phase1-student-pass";
 
-/** Sign in through the real form, so the form itself is on the test path. */
+/**
+ * Sign in through the real form, so the form itself is on the test path.
+ *
+ * Every step waits for its target first. The auth pages are client-rendered
+ * behind <Suspense>, so the server sends a fallback and the fields appear only
+ * once the tree mounts; filling without waiting races that mount and fails
+ * intermittently. The label patterns accept both languages because the runner
+ * may have either language persisted from an earlier test.
+ */
 async function signIn(page: Page, username: string, password: string, path = "/login") {
   await page.goto(path);
-  await page.getByLabel(/email or username|نام کاربری/i).fill(username);
-  await page.getByLabel(/^password|گذرواژه/i).fill(password);
-  await page.getByRole("button", { name: /^sign in|ورود$/i }).click();
+  const user = page.getByLabel(/email or username|نام کاربری|ایمیل/i);
+  await user.waitFor({ state: "visible", timeout: 30_000 });
+  await user.fill(username);
+
+  const pass = page.getByLabel(/^password|گذرواژه|رمز/i);
+  await pass.waitFor({ state: "visible", timeout: 30_000 });
+  await pass.fill(password);
+
+  const submit = page.getByRole("button", { name: /^sign in|signing in|ورود|در حال/i });
+  await submit.waitFor({ state: "visible", timeout: 30_000 });
+  await submit.click();
 }
 
 /** Force Persian and LTR/RTL before any app code runs. */
