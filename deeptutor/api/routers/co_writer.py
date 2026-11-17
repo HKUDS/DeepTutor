@@ -53,6 +53,7 @@ def _main_config() -> dict:
     """
     return load_main_config()
 
+
 _edit_agent: "EditAgent | None" = None
 
 

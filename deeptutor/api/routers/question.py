@@ -42,6 +42,7 @@ def _response_language_default() -> str:
         default_language = "en"
     return get_response_language(default=default_language)
 
+
 router = APIRouter()
 ws_router = APIRouter()
 

@@ -382,7 +382,6 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "sandbox.disabled_for_account": "A kódvégrehajtás ki van kapcsolva az Ön fiókjában.",
         "sandbox.no_backend": "nincs elérhető sandbox-háttér",
     },
-
     "fa": {
         "api.content_required": "محتوا الزامی است",
         "api.invalid_channels_config": "پیکربندی کانال‌ها نامعتبر است",

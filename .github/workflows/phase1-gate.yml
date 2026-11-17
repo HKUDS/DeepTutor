@@ -1,0 +1,390 @@
+name: Phase 1 Gate
+
+# Gate 1 of the Darsyar Phase 1 roadmap needs a real browser: rendering,
+# hydration, RTL layout and middleware redirects as the browser experiences
+# them. The sandbox this phase was built in has no browser and cannot get one,
+# so this workflow is the machine that provides it.
+#
+# Read-only on purpose: the job starts the app, drives it with Playwright and
+# uploads the report. It never pushes, comments or publishes.
+#
+# DECISIONS.md F-4 records the exception this closes.
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - "arena/**"
+    paths:
+      - "web/tests/e2e/**"
+      - "web/playwright.config.ts"
+      - "web/scripts/run_phase1_gate.sh"
+      - "web/app/**"
+      - "web/components/**"
+      - "web/lib/**"
+      - "web/locales/**"
+      - ".github/workflows/phase1-gate.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "web/**"
+      - ".github/workflows/phase1-gate.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    name: Browser E2E
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install web dependencies
+        working-directory: web
+        run: npm ci --replace-registry-host=always
+
+      # --with-deps installs libnss3/libnspr4 for us. That is precisely the step
+      # the build sandbox could not perform, and it is why this job exists.
+      - name: Install chromium
+        working-directory: web
+        run: npx playwright install --with-deps chromium
+
+      # The authorisation and responsive tests need a live backend: a session
+      # to sign in with, a role to be refused on. Without it those nine tests
+      # skip, and a skip is not a pass.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install the backend
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install -e . --no-deps
+
+      - name: Configure auth and seed accounts
+        env:
+          DEEPTUTOR_HOME: ${{ github.workspace }}/.ci-home
+        run: |
+          mkdir -p "$DEEPTUTOR_HOME/data/user/settings"
+          python - <<'PYEOF'
+          import json, pathlib, os
+          import bcrypt
+          home = pathlib.Path(os.environ["DEEPTUTOR_HOME"])
+          settings = home / "data" / "user" / "settings"
+          settings.mkdir(parents=True, exist_ok=True)
+          admin_pw, student_pw = "phase1-admin-pass", "phase1-student-pass"
+          # bcrypt is what the backend verifies against; a sha256 here would
+          # simply never authenticate.
+          (settings / "auth.json").write_text(json.dumps({
+              "enabled": True,
+              "username": "phase1-admin",
+              "password_hash": bcrypt.hashpw(admin_pw.encode(), bcrypt.gensalt()).decode(),
+              "token_expire_hours": 24,
+          }, indent=2))
+          print("auth.json written for phase1-admin")
+          PYEOF
+
+      - name: Build the web app
+        working-directory: web
+        env:
+          # Next's build is memory-hungry; the default heap is not enough.
+          NODE_OPTIONS: --max-old-space-size=4096
+          # proxy.ts resolves the backend address at module scope, i.e. when the
+          # bundle is built - not when the server starts. Setting this only on
+          # the start step left the middleware pointing at the 8001 default, so
+          # every /api call 500'd and the auth tests could never sign in.
+          DEEPTUTOR_API_BASE_URL: http://127.0.0.1:3782
+          # Same reason: proxy.ts reads this at module scope too. With auth
+          # unset at build time the admin gate compiled itself out, so
+          # /admin/users was served to anyone - the tests were right to fail.
+          DEEPTUTOR_AUTH_ENABLED: "true"
+        run: npm run build
+
+      - name: Start the backend
+        env:
+          DEEPTUTOR_HOME: ${{ github.workspace }}/.ci-home
+        run: |
+          nohup python -m uvicorn deeptutor.api.main:app \
+            --host 127.0.0.1 --port 3782 > /tmp/backend.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -fsS -o /dev/null http://127.0.0.1:3782/api/auth/status; then
+              echo "backend is up after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "backend did not come up; log follows"
+          tail -40 /tmp/backend.log
+          # The run log is not readable from the build sandbox; annotations are.
+          tail -12 /tmp/backend.log | while IFS= read -r line; do
+            echo "::error title=backend::${line//\%/}"
+          done
+          exit 1
+
+      - name: Start the app
+        working-directory: web
+        env:
+          PORT: "3000"
+          HOSTNAME: 0.0.0.0
+          DEEPTUTOR_API_BASE_URL: http://127.0.0.1:3782
+          DEEPTUTOR_AUTH_ENABLED: "true"
+        run: |
+          # `output: standalone` is what this app builds, so the standalone
+          # server is the correct entry point - `next start` warns and is not
+          # equivalent.
+          node .next/standalone/server.js > /tmp/web.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -fsS -o /dev/null http://localhost:3000/login; then
+              echo "web is up after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "web did not come up; log follows"
+          cat /tmp/web.log
+          exit 1
+
+      # The public-entry tests (metadata, form, brand panel, RTL attributes,
+      # admin entrance) need only the web app, and they are the ones that carry
+      # most of the visual risk. Run them first so a browser problem or a
+      # layout break is visible even when no backend is available.
+      - name: Seed the student account
+        env:
+          BASE: http://127.0.0.1:3782
+        run: |
+          # Done in Python rather than curl so that every failure prints its
+          # status and body instead of exiting 22 with no explanation. The run
+          # log is not readable from the sandbox this repo is developed in, so
+          # each outcome is also emitted as an annotation.
+          python - <<'PYEOF'
+          import json, sys, urllib.error, urllib.request
+
+          BASE = "http://127.0.0.1:3782"
+          cookie = {"value": None}
+
+          def call(method, path, payload=None):
+              data = json.dumps(payload).encode() if payload is not None else None
+              req = urllib.request.Request(BASE + path, data=data, method=method)
+              req.add_header("Content-Type", "application/json")
+              if cookie["value"]:
+                  req.add_header("Cookie", cookie["value"])
+              try:
+                  with urllib.request.urlopen(req) as r:
+                      body = r.read().decode()
+                      for header in r.headers.get_all("Set-Cookie") or []:
+                          if header.startswith("dt_token="):
+                              cookie["value"] = header.split(";")[0]
+                      return r.status, body
+              except urllib.error.HTTPError as e:
+                  return e.code, e.read().decode()
+              except Exception as e:                      # noqa: BLE001
+                  return 0, repr(e)
+
+          def note(title, message):
+              print(f"::notice title={title}::{message}"[:900])
+              print(f"[{title}] {message}")
+
+          # The administrator comes from auth.json as the single-user bootstrap
+          # account, which also means self-registration is correctly closed -
+          # hence signing in rather than registering.
+
+          # 1. Sign in to establish the session cookie.
+          code, body = call("POST", "/api/auth/login",
+                            {"username": "phase1-admin", "password": "phase1-admin-pass"})
+          note("login", f"HTTP {code} {body[:200]}")
+          if code != 200 or not cookie["value"]:
+              print("::error title=login::no session cookie"); sys.exit(1)
+
+          # 2. The administrator creates the student.
+          code, body = call("POST", "/api/auth/users",
+                            {"username": "phase1-student",
+                             "password": "phase1-student-pass", "preset": "learner"})
+          # 409 means a previous step (or a re-run) already created it, which is
+          # success for our purposes. Anything else is a real failure: without
+          # this account three browser tests fail for a reason that has nothing
+          # to do with the browser.
+          if code not in (200, 201, 409):
+              print(f"::error title=create-student::HTTP {code} {body[:300]}")
+              sys.exit(1)
+
+          # 3. Role is assigned separately, which is how the product models it.
+          code, body = call("PUT", "/api/auth/users/phase1-student/role", {"role": "student"})
+          if code not in (200, 204):
+              print(f"::error title=set-role::HTTP {code} {body[:300]}")
+              sys.exit(1)
+
+          # 4. Prove the student can actually sign in before the tests rely on
+          # it. The admin's session is still in `cookie`, so this uses a plain
+          # request and then checks the answer directly.
+          code, body = call("POST", "/api/auth/login",
+                            {"username": "phase1-student", "password": "phase1-student-pass"})
+          if code != 200 or '"role":"student"' not in body.replace(" ", ""):
+              print(f"::error title=student-login::HTTP {code} {body[:300]}")
+              sys.exit(1)
+          note("seed", "admin + student ready")
+
+          # 4. Prove the session is real before the browser tests rely on it.
+          code, body = call("GET", "/api/auth/status")
+          note("status", f"HTTP {code} {body[:300]}")
+          if code != 200 or '"authenticated":true' not in body.replace(" ", ""):
+              print("::error title=status::session not authenticated"); sys.exit(1)
+          print("seed complete")
+          PYEOF
+
+      # Diagnose the running server the same way the browser will see it.
+      # These commands answer "is this a test problem or an app problem" without
+      # another round trip through a failing assertion.
+      - name: Probe the running server
+        run: |
+          set +e
+          echo "--- /login ---"
+          curl -s -o /dev/null -w "status=%{http_code}\n" http://localhost:3000/login | tee /tmp/probe-1-login.txt
+          echo "--- /api/auth/login via the Next proxy ---"
+          curl -s -c /tmp/p.jar -X POST http://localhost:3000/api/auth/login \
+            -H 'Content-Type: application/json' \
+            -d '{"username":"phase1-admin","password":"phase1-admin-pass"}' \
+            -w "status=%{http_code}" | tee /tmp/probe-2-apilogin.txt
+          echo
+          grep -c dt_token /tmp/p.jar > /tmp/probe-3-cookie.txt 2>&1
+          curl -s -b /tmp/p.jar -o /dev/null -w "status=%{http_code}" http://localhost:3000/admin/users \
+            | tee /tmp/probe-4-adminwith.txt
+          curl -s -o /dev/null -w "status=%{http_code} redirect=%{redirect_url}" http://localhost:3000/admin/users \
+            | tee /tmp/probe-5-adminwithout.txt
+          # Emit each answer as its own annotation: the summary and the run log
+          # are both unreachable from the build sandbox, annotations are not.
+          for f in /tmp/probe-*.txt; do
+            [ -f "$f" ] && head -2 "$f" | while IFS= read -r l; do
+              echo "::notice title=probe $(basename "$f")::${l:0:180}"
+            done
+          done
+          echo "::notice title=probe::done"
+
+      - name: Gate 1 - public entry points
+        id: public_entries
+        working-directory: web
+        env:
+          WEB_BASE_URL: http://localhost:3000
+        run: |
+          # Tee so the excerpt can be published below. The step still fails on a
+          # non-zero exit; `|| true` would hide the result we are here to see.
+          set +e
+          npx playwright test --project=phase1-shell \
+            --grep-invert "signed-in|student|unauthenticated|responsive|Persian chat" \
+            --reporter=list 2>&1 | tee /tmp/public-entries.log
+          echo "PLAYWRIGHT_EXIT=${PIPESTATUS[0]}" >> "$GITHUB_ENV"
+          exit "${PIPESTATUS[0]}"
+
+      - name: Gate 1 - full suite
+        id: full
+        working-directory: web
+        env:
+          WEB_BASE_URL: http://localhost:3000
+          DEEPTUTOR_PHASE1_SEED: "1"
+        run: |
+          set +e
+          npx playwright test --project=phase1-shell --reporter=list 2>&1 | tee /tmp/full.log
+          EXIT=${PIPESTATUS[0]}
+          echo "PLAYWRIGHT_EXIT=$EXIT" >> "$GITHUB_ENV"
+          # Assert coverage, not just absence of failure: a run where the
+          # session-dependent tests all skipped is green and worthless.
+          PASSED=$(grep -cE "^  [0-9]+ passed" /tmp/full.log || true)
+          SKIPPED=$(grep -oE "[0-9]+ skipped" /tmp/full.log | head -1 | grep -oE "[0-9]+" || echo 0)
+          PASSED=$(grep -oE "[0-9]+ passed" /tmp/full.log | head -1 | grep -oE "[0-9]+" || echo 0)
+          echo "::notice title=results::passed=$PASSED skipped=${SKIPPED:-0} exit=$EXIT"
+          # Name the failures: the run log is unreachable from the build
+          # sandbox, so the failing test names have to come through here.
+          grep -E "^  [0-9]+\) |✘|✗|failed$" /tmp/full.log | head -12 | while IFS= read -r line; do
+            echo "::error title=failing test::${line:0:200}"
+          done
+          grep -A 3 -E "^  [0-9]+\) " /tmp/full.log | head -40 | while IFS= read -r line; do
+            echo "::warning title=detail::${line:0:200}"
+          done
+          if [ "${SKIPPED:-0}" -gt 0 ]; then
+            echo "::error title=skipped::${SKIPPED} test(s) skipped - Gate 1 needs them to run"
+            exit 1
+          fi
+          exit "$EXIT"
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gate1-playwright-report
+          path: |
+            web/playwright-report/
+            web/test-results/
+          retention-days: 14
+
+      # The full suite needs a backend and seeded accounts. Until those exist in
+      # CI it reports skips, not failures, so its exit code is informational -
+      # but the public-entry run above is not, and it gates this job.
+      # A green step means "nothing failed", which is also what an all-skipped
+      # run looks like. Print what actually executed so the summary cannot
+      # imply coverage that was never measured.
+      # Emit the counts as an annotation, not only to the step summary: the
+      # summary is not readable through the API, while annotations are. This is
+      # what makes "did anything actually run?" answerable from a machine.
+      - name: Report counts
+        if: always()
+        working-directory: web
+        run: |
+          set +e
+          npx playwright test --project=phase1-shell --list 2>&1 | tee /tmp/list.log
+          TOTAL=$(grep -cE "^  \[phase1-shell\] › " /tmp/list.log)
+          echo "::notice title=Collected tests::${TOTAL} tests collected in the phase1-shell project"
+          echo "## Collected: ${TOTAL}" >> "$GITHUB_STEP_SUMMARY"
+          grep -E "^  \[phase1-shell\] › " /tmp/list.log | sed 's/.*› //' | head -20 | while read -r name; do
+            echo "::notice title=Test::${name}"
+          done
+          test "$TOTAL" -ge 14 || { echo "::error title=Too few tests::expected at least 14, got ${TOTAL}"; exit 1; }
+
+      # The run log and the artifact both live on hosts this build sandbox
+      # cannot reach, so the failure text is surfaced through the job summary,
+      # which the API does serve. Without this the CI is unreadable from here.
+      - name: Publish test output
+        if: always()
+        run: |
+          {
+            echo "## Playwright output (public entry points)"
+            echo ""
+            if [ -f /tmp/public-entries.log ]; then
+              echo '```'
+              head -c 12000 /tmp/public-entries.log
+              echo '```'
+            else
+              echo "_no log captured_"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Summarise
+        if: always()
+        run: |
+          {
+            echo "## Phase 1 Gate 1"
+            echo ""
+            echo "| step | result |"
+            echo "| --- | --- |"
+            echo "| public entry points | ${{ steps.public_entries.outcome }} |"
+            echo "| full suite | ${{ steps.full.outcome }} |"
+            echo ""
+            echo "The full suite skips the authorisation and responsive tests unless"
+            echo "a backend is running and DEEPTUTOR_PHASE1_SEED=1 is set with the two"
+            echo "seed accounts. Skips are not passes."
+          } >> $GITHUB_STEP_SUMMARY
