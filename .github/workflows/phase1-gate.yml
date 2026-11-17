@@ -63,6 +63,41 @@ jobs:
         working-directory: web
         run: npx playwright install --with-deps chromium
 
+      # The authorisation and responsive tests need a live backend: a session
+      # to sign in with, a role to be refused on. Without it those nine tests
+      # skip, and a skip is not a pass.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install the backend
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install -e . --no-deps
+
+      - name: Configure auth and seed accounts
+        env:
+          DEEPTUTOR_HOME: ${{ github.workspace }}/.ci-home
+        run: |
+          mkdir -p "$DEEPTUTOR_HOME/data/user/settings"
+          python - <<'PYEOF'
+          import hashlib, json, pathlib, os
+          home = pathlib.Path(os.environ["DEEPTUTOR_HOME"])
+          settings = home / "data" / "user" / "settings"
+          settings.mkdir(parents=True, exist_ok=True)
+          admin_pw, student_pw = "phase1-admin-pass", "phase1-student-pass"
+          (settings / "auth.json").write_text(json.dumps({
+              "enabled": True,
+              "username": "phase1-admin",
+              "password_hash": hashlib.sha256(admin_pw.encode()).hexdigest(),
+              "token_expire_hours": 24,
+          }, indent=2))
+          print("auth.json written; seed passwords:", admin_pw, student_pw)
+          PYEOF
+
       - name: Build the web app
         working-directory: web
         env:
@@ -70,11 +105,30 @@ jobs:
           NODE_OPTIONS: --max-old-space-size=4096
         run: npm run build
 
+      - name: Start the backend
+        env:
+          DEEPTUTOR_HOME: ${{ github.workspace }}/.ci-home
+        run: |
+          nohup python -m uvicorn deeptutor.api.app:app \
+            --host 127.0.0.1 --port 3782 > /tmp/backend.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -fsS -o /dev/null http://127.0.0.1:3782/api/auth/status; then
+              echo "backend is up after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "backend did not come up; log follows"
+          cat /tmp/backend.log
+          exit 1
+
       - name: Start the app
         working-directory: web
         env:
           PORT: "3000"
           HOSTNAME: 0.0.0.0
+          DEEPTUTOR_API_BASE_URL: http://127.0.0.1:3782
+          DEEPTUTOR_AUTH_ENABLED: "true"
         run: |
           # `output: standalone` is what this app builds, so the standalone
           # server is the correct entry point - `next start` warns and is not
@@ -95,6 +149,35 @@ jobs:
       # admin entrance) need only the web app, and they are the ones that carry
       # most of the visual risk. Run them first so a browser problem or a
       # layout break is visible even when no backend is available.
+      - name: Seed the student account
+        env:
+          BASE: http://127.0.0.1:3782
+        run: |
+          # The first registered account becomes the admin; a second account is
+          # created by that admin. Doing it through the real endpoints means the
+          # tests exercise the same paths an operator would.
+          #
+          # Login sets the session as a `dt_token` cookie rather than returning a
+          # bearer token, so the cookie jar carries the session between calls.
+          JAR=/tmp/admin.cookies
+          curl -fsS -c "$JAR" -X POST "$BASE/api/auth/register" \
+            -H 'Content-Type: application/json' \
+            -d '{"username":"phase1-admin","password":"phase1-admin-pass"}' || true
+          curl -fsS -b "$JAR" -c "$JAR" -X POST "$BASE/api/auth/login" \
+            -H 'Content-Type: application/json' \
+            -d '{"username":"phase1-admin","password":"phase1-admin-pass"}'
+          curl -fsS -b "$JAR" -X POST "$BASE/api/auth/users" \
+            -H 'Content-Type: application/json' \
+            -d '{"username":"phase1-student","password":"phase1-student-pass","preset":"learner"}' \
+            || echo "student may already exist"
+          # The created account is an ordinary user; the role is assigned
+          # separately, which is how the product models it.
+          curl -fsS -b "$JAR" -X PUT "$BASE/api/auth/users/phase1-student/role" \
+            -H 'Content-Type: application/json' -d '{"role":"student"}' \
+            || echo "role may already be set"
+          # Prove the seed took before the browser tests depend on it.
+          curl -fsS -b "$JAR" "$BASE/api/auth/status"
+
       - name: Gate 1 - public entry points
         id: public_entries
         working-directory: web
@@ -112,11 +195,15 @@ jobs:
 
       - name: Gate 1 - full suite
         id: full
-        continue-on-error: true
         working-directory: web
         env:
           WEB_BASE_URL: http://localhost:3000
-        run: npx playwright test --project=phase1-shell --reporter=list
+          DEEPTUTOR_PHASE1_SEED: "1"
+        run: |
+          set +e
+          npx playwright test --project=phase1-shell --reporter=list 2>&1 | tee /tmp/full.log
+          echo "PLAYWRIGHT_EXIT=${PIPESTATUS[0]}" >> "$GITHUB_ENV"
+          exit "${PIPESTATUS[0]}"
 
       - name: Upload report
         if: always()
