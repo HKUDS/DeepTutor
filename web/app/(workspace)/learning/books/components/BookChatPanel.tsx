@@ -6,7 +6,7 @@ import {
   SUBMIT_CONNECT_RETRY_LIMIT,
 } from "@/lib/send-retry";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type {
   ChangeEvent,
   ClipboardEvent,
@@ -23,6 +23,13 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import AssistantResponse from "@/components/common/AssistantResponse";
+import {
+  AskUserOptions,
+  extractMessageSegments,
+} from "@/components/chat/home/AskUserOptions";
+import type { UserReplyPayload } from "@/hooks/use-card-submission";
+import { newCommandId } from "@/contracts/parse/turn-command";
+import { pendingAskUserKeyInMessages } from "@/lib/ask-user-state";
 import { useAppShell } from "@/context/AppShellContext";
 import { getSession } from "@/lib/session-api";
 import {
@@ -37,6 +44,7 @@ import {
 } from "@/lib/file-attachments";
 import { shouldSubmitOnEnter } from "@/lib/composer-keyboard";
 import { useImeComposing } from "@/lib/use-ime-composing";
+import { useChatAutoScroll } from "@/hooks/useChatAutoScroll";
 import { shouldAppendEventContent } from "@/lib/stream";
 import type {
   StartTurnMessage,
@@ -45,6 +53,7 @@ import type {
 import { UnifiedTurnClient } from "@/features/chat/transport/UnifiedTurnClient";
 import type { MessageAttachment } from "@/features/chat/ChatStateAdapter";
 import type { Page, Book } from "@/lib/book-types";
+import BookEditReview from "./BookEditReview";
 import Tooltip from "@/shared/ui/Tooltip";
 
 interface ChatMessage {
@@ -53,6 +62,7 @@ interface ChatMessage {
   streaming?: boolean;
   attachments?: MessageAttachment[];
   events?: StreamEvent[];
+  turnId?: string;
 }
 
 interface PendingAttachment {
@@ -68,6 +78,7 @@ export interface BookChatPanelProps {
   page: Page | null;
   open: boolean;
   onClose: () => void;
+  onBookChanged?: () => Promise<void> | void;
   initialSessionId?: string | null;
   onSessionResolved?: (sessionId: string) => void;
 }
@@ -100,6 +111,39 @@ function messageAttachment(attachment: PendingAttachment): MessageAttachment {
   };
 }
 
+function BookAssistantMessage({
+  message,
+  language,
+  onSubmit,
+}: {
+  message: ChatMessage;
+  language: string;
+  onSubmit: (reply: UserReplyPayload) => Promise<boolean>;
+}) {
+  const segments = extractMessageSegments(message.events, message.content, {
+    streaming: Boolean(message.streaming),
+  });
+  const response = (content: string, key?: string) => (
+    <AssistantResponse
+      key={key}
+      content={content}
+      language={language}
+      className="text-sm leading-relaxed"
+      isStreaming={Boolean(message.streaming)}
+    />
+  );
+  if (!segments.some((segment) => segment.kind === "ask_user")) {
+    return response(message.content);
+  }
+  return segments.map((segment) =>
+    segment.kind === "ask_user" ? (
+      <AskUserOptions key={segment.key} data={segment.data} onSubmit={onSubmit} />
+    ) : segment.kind === "text" ? (
+      response(segment.text, segment.key)
+    ) : null,
+  );
+}
+
 export default function BookChatPanel({
   book,
   page,
@@ -107,6 +151,7 @@ export default function BookChatPanel({
   onClose,
   initialSessionId = null,
   onSessionResolved,
+  onBookChanged,
 }: BookChatPanelProps) {
   const { t } = useTranslation();
   const { language: appLanguage } = useAppShell();
@@ -119,8 +164,25 @@ export default function BookChatPanel({
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const sessionIdRef = useRef<string | null>(null);
   const clientRef = useRef<UnifiedTurnClient | null>(null);
+  const turnIdRef = useRef<string | null>(null);
+  const replyCommandRef = useRef<{
+    fingerprint: string;
+    commandId: string;
+  } | null>(null);
   const retryTimersRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
-  const scrollerRef = useRef<HTMLDivElement | null>(null);
+  const lastMessage = messages.at(-1);
+  const {
+    containerRef: scrollerRef,
+    handleScroll,
+    shouldAutoScrollRef,
+  } = useChatAutoScroll({
+    hasMessages: open && messages.length > 0,
+    isStreaming: busy,
+    composerHeight: 0,
+    messageCount: messages.length,
+    lastMessageContent: lastMessage?.content,
+    lastEventCount: lastMessage?.events?.length,
+  });
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const dragRef = useRef<{ startX: number; startWidth: number } | null>(null);
   const { isComposingRef, onCompositionStart, onCompositionEnd } =
@@ -131,7 +193,6 @@ export default function BookChatPanel({
     const parsed = Number(raw);
     if (Number.isFinite(parsed) && parsed >= 300 && parsed <= 720) {
       // Hydrate persisted panel width after the SSR-safe default render.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setWidth(parsed);
     }
   }, []);
@@ -161,8 +222,10 @@ export default function BookChatPanel({
     clientRef.current?.disconnect();
     clientRef.current = null;
     sessionIdRef.current = initialSessionId || null;
+    shouldAutoScrollRef.current = true;
+    turnIdRef.current = null;
+    replyCommandRef.current = null;
     // Reset local chat state when the backing page/session changes.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMessages([]);
     setAttachments([]);
     setAttachmentError(null);
@@ -174,15 +237,29 @@ export default function BookChatPanel({
       .then((session) => {
         if (cancelled) return;
         settled = true;
+        const activeTurn = session.active_turns?.[0];
+        const activeTurnId = activeTurn?.turn_id || activeTurn?.id;
         const restored = (session.messages || [])
           .filter((m) => m.role === "user" || m.role === "assistant")
+          .filter((m) => !(
+            activeTurnId && m.role === "assistant" && m.metadata?.turn_id === activeTurnId
+          ))
           .map((m) => ({
+            turnId: typeof m.metadata?.turn_id === "string" ? m.metadata.turn_id : undefined,
             role: m.role as "user" | "assistant",
             content: String(m.content || ""),
             attachments: m.attachments || [],
             events: m.events || [],
           }));
         setMessages(restored);
+        if (activeTurnId) {
+          turnIdRef.current = activeTurnId;
+          setBusy(true);
+          // A paused turn's question only exists in its event log until it finishes.
+          ensureClient().send({
+            type: "subscribe_turn", turn_id: activeTurnId, after_seq: 0,
+          });
+        }
       })
       .catch(() => {
         if (!cancelled) sessionIdRef.current = null;
@@ -195,19 +272,12 @@ export default function BookChatPanel({
       // than mistake it for the session this panel's own turn created.
       if (!settled && sessionIdRef.current === initialSessionId) sessionIdRef.current = null;
     };
-  }, [book?.id, page?.id, initialSessionId, open]);
-
-  // Pin-to-bottom in layout phase (not in a post-paint effect): the
-  // assignment lands before the browser commits the frame so the
-  // viewer never sees the "new content at the old scrollTop" flash
-  // that an ordinary ``useEffect`` would produce during fast streams.
-  useLayoutEffect(() => {
-    if (scrollerRef.current) {
-      scrollerRef.current.scrollTop = scrollerRef.current.scrollHeight;
-    }
-  }, [messages]);
+    // Restore only at the page/session boundary, not on message renders.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [book?.id, page?.id, initialSessionId, open, shouldAutoScrollRef]);
 
   function handleEvent(event: StreamEvent) {
+    if (event.turn_id) turnIdRef.current = event.turn_id;
     if (event.type === "session") {
       const metadata = (event.metadata || {}) as Record<string, unknown>;
       const sessionId =
@@ -224,6 +294,7 @@ export default function BookChatPanel({
     }
 
     if (event.type === "done") {
+      turnIdRef.current = null;
       setMessages((prev) => {
         const next = [...prev];
         const last = next[next.length - 1];
@@ -237,6 +308,7 @@ export default function BookChatPanel({
     }
 
     if (event.type === "error") {
+      turnIdRef.current = null;
       setMessages((prev) => [
         ...prev,
         {
@@ -258,6 +330,7 @@ export default function BookChatPanel({
       if (last && last.role === "assistant" && last.streaming) {
         next[next.length - 1] = {
           ...last,
+          turnId: event.turn_id || last.turnId,
           content: last.content + contentDelta,
           events: [...(last.events || []), event],
         };
@@ -265,12 +338,34 @@ export default function BookChatPanel({
         next.push({
           role: "assistant",
           content: contentDelta,
+          turnId: event.turn_id,
           streaming: true,
           events: [event],
         });
       }
       return next;
     });
+  }
+
+  async function submitUserReply(turnId: string | undefined, reply: UserReplyPayload) {
+    if (!turnId || turnId !== turnIdRef.current) return false;
+    const fingerprint = JSON.stringify([
+      turnId, reply, pendingAskUserKeyInMessages(messages, turnId),
+    ]);
+    const commandId = replyCommandRef.current?.fingerprint === fingerprint
+      ? replyCommandRef.current.commandId : newCommandId();
+    replyCommandRef.current = { fingerprint, commandId };
+    const accepted = await ensureClient().sendAwaitingAck({
+      type: "submit_user_reply",
+      turn_id: turnId,
+      command_id: commandId,
+      ...reply,
+    });
+    if (!accepted && turnIdRef.current === turnId) {
+      turnIdRef.current = null;
+      setBusy(false);
+    }
+    return accepted;
   }
 
   function ensureClient(): UnifiedTurnClient {
@@ -391,6 +486,7 @@ export default function BookChatPanel({
           )
         : t("Please use the attached file(s) and this chapter as context."));
     const sentAttachments = attachments.map(messageAttachment);
+    shouldAutoScrollRef.current = true;
     setMessages((prev) => [
       ...prev,
       { role: "user", content: userContent, attachments: sentAttachments },
@@ -486,8 +582,11 @@ export default function BookChatPanel({
       <div
         ref={scrollerRef}
         data-chat-scroll-root="true"
+        onScroll={handleScroll}
         className="flex-1 overflow-y-auto px-4 py-3"
+        style={{ overflowAnchor: "none" }}
       >
+          {book && page && book.can_edit !== false && onBookChanged && <BookEditReview key={`${book.id}:${page.id}`} bookId={book.id} pageId={page.id} revision={book.revision || 1} refreshKey={busy} onChanged={onBookChanged} />}
         {messages.length === 0 ? (
           <div className="rounded-2xl bg-[var(--background)] p-4 text-xs leading-5 text-[var(--muted-foreground)]">
             {t(
@@ -531,11 +630,10 @@ export default function BookChatPanel({
                     </div>
                   ) : null}
                   {m.role === "assistant" ? (
-                    <AssistantResponse
-                      content={m.content}
+                    <BookAssistantMessage
+                      message={m}
                       language={book?.language || appLanguage}
-                      className="text-sm leading-relaxed"
-                      isStreaming={Boolean(m.streaming)}
+                      onSubmit={(reply) => submitUserReply(m.turnId, reply)}
                     />
                   ) : (
                     <div className="whitespace-pre-wrap break-words">

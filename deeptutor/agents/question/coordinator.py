@@ -71,9 +71,17 @@ class AgentCoordinator:
         difficulty: str = "",
         question_types: list[str] | None = None,
         per_type_counts: dict[str, int] | None = None,
+        preference: str = "",
+        question_type: str = "",
     ) -> dict[str, Any]:
         """Generate a quiz from a topic using the new pipeline."""
 
+        # The legacy WebSocket route still sends singular type and preference
+        # fields (#2433). Preserve their meaning at this compatibility boundary.
+        if preference.strip():
+            user_topic = f"{user_topic}\n\n{preference.strip()}"
+        if question_types is None and question_type.strip():
+            question_types = [question_type.strip()]
         context = self._build_context(user_message=user_topic)
         pipeline = self._build_pipeline()
         stream = self._new_stream_bus()

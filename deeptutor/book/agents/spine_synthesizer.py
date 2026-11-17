@@ -34,7 +34,7 @@ from collections.abc import Awaitable, Callable
 import logging
 from typing import Any
 
-from deeptutor.agents.base_agent import BaseAgent
+from deeptutor.book.generation_context import BookAgent
 from deeptutor.services.llm.structured_retry import json_with_reasoning_retry
 from deeptutor.services.llm.types import StreamOutcome
 
@@ -80,7 +80,7 @@ _FALLBACK_USER = "Proposal:\n{proposal_block}\n\nExploration:\n{exploration_summ
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-class SpineSynthesizer(BaseAgent):
+class SpineSynthesizer(BookAgent):
     """Draft → Critique → Revise spine designer with concept-graph output."""
 
     def __init__(

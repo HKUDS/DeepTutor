@@ -107,7 +107,9 @@ async def list_servers() -> dict[str, Any]:
     # row's status, not the page.
     for warm in (manager.ensure_started(), manager.ensure_scope(owner)):
         try:
-            await asyncio.wait_for(warm, timeout=_STATUS_WARM_TIMEOUT_S)
+            # A status request may finish before the connection handshake does.
+            # Keep that handshake alive so it can publish its final status.
+            await asyncio.wait_for(asyncio.shield(warm), timeout=_STATUS_WARM_TIMEOUT_S)
         except Exception:
             logger.debug("MCP status warm-up did not finish for owner %s", owner, exc_info=True)
     return {
@@ -263,12 +265,27 @@ async def test_server(name: str, payload: ServerPayload) -> dict[str, Any]:
     Deliberately side-effect free: nothing is written, so the incoming config is
     probed as given (any literal credential in it is used in memory only). That
     also means a caller may probe under a scratch name the store would refuse,
-    which is how the UI tests a draft before it has one.
+    which is how the UI tests a draft before it has one — with one exception:
+    an OAuth-backed server's grant lives under the name it is saved under, so
+    its probe addresses the OAuth store by the path name. A scratch name no
+    grant could live under is answered the way an unauthorized server is, not
+    with the store's refusal.
     """
-    _ = name  # part of the path for symmetry with PUT; the probe is stateless
     owner = current_owner_id()
     resolved = _resolve_for_probe(owner, payload.config)
-    return await probe_server(resolved, owner=owner)
+    server_name = ""
+    if resolved.auth == "oauth":
+        if not oauth.usable_store_name(name):
+            # No OAuth grant can exist under a name the store refuses (the
+            # save-time name rule rejects the same names), so the honest probe
+            # result is the missing authorization, not a raised ValueError.
+            return {
+                "ok": False,
+                "tools": [],
+                "error": describe_connect_failure(oauth.AuthorizationRequired(name)),
+            }
+        server_name = name
+    return await probe_server(resolved, owner=owner, server_name=server_name)
 
 
 def _resolve_for_probe(owner: str, config: MCPServerConfig) -> MCPServerConfig:

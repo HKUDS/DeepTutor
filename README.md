@@ -45,12 +45,14 @@
 
 ### 📦 Releases
 
-> **[2026.11.6]** [v1.7.2](https://github.com/HKUDS/DeepTutor/releases/tag/v1.7.2) — Complete desktop downloads, selected-text speech, easier model setup, Korean interface preview, NVIDIA NIM embeddings, and more reliable mastery, retrieval, and updates.
-
-> **[2026.11.1]** [v1.7.1](https://github.com/HKUDS/DeepTutor/releases/tag/v1.7.1) — Desktop previews, broader localization, password changes, checked video lessons, Anki and calendar exports, more providers, and wide reliability improvements.
+> **[2026.11.16]** [v1.7.3](https://github.com/HKUDS/DeepTutor/releases/tag/v1.7.3) — Flexible reading and book editing, richer search and agent connections, clearer learning records, and more reliable model streams and desktop upgrades.
 
 <details>
 <summary><b>Past releases (more than 1 week ago)</b></summary>
+
+> **[2026.11.6]** [v1.7.2](https://github.com/HKUDS/DeepTutor/releases/tag/v1.7.2) — Complete desktop downloads, selected-text speech, easier model setup, Korean interface preview, NVIDIA NIM embeddings, and more reliable mastery, retrieval, and updates.
+
+> **[2026.11.1]** [v1.7.1](https://github.com/HKUDS/DeepTutor/releases/tag/v1.7.1) — Desktop previews, broader localization, password changes, checked video lessons, Anki and calendar exports, more providers, and wide reliability improvements.
 
 > **[2026.10.28]** [v1.7.0](https://github.com/HKUDS/DeepTutor/releases/tag/v1.7.0) — Modular installation, a refreshed learning workspace, block notebooks with Dito, narrated video lessons, resumable embedding checkpoints, and more reliable tutoring.
 
@@ -226,7 +228,7 @@
 
 </details>
 
-> ✨ **v1.7.2 is live.** `pip install -U "deeptutor[full]"` installs the full Web app and CLI; bare `deeptutor` installs core only. See the upgrade steps below for legacy CLI installations.
+> ✨ **v1.7.3 is live.** `pip install -U "deeptutor[full]"` installs the full Web app and CLI; bare `deeptutor` installs core only. See the upgrade steps below for legacy CLI installations.
 
 ### 📰 News
 
@@ -386,7 +388,7 @@ The tutor calls tools as needed and can pause to ask clarifying questions. **Cus
 
 User-toggleable tools are `brainstorm`, `web_search`, `paper_search`, `zotero_search`, `reason`, and `geogebra_analysis` — plus `imagegen` and `videogen` once you configure the matching generation model. Contextual tools such as `rag`, `kb_files`, `knowledge_frontier`, `read_source`, `read_memory`, `write_memory`, `read_skill`, `load_tools`, `exec`, `web_fetch`, `ask_user`, `list_favorites`, `save_favorite`, `write_note`, `search_notes`, `question_bank`, `github`, `consult_subagent`, `workspace_list`, `workspace_read`, `workspace_search`, `workspace_present`, and `workspace_export` mount automatically when the turn has the right context.
 
-Context comes in two kinds: **sticky session context** (capability, workspace or course, tools, knowledge bases, persona, model, and Reading / Mastery state) persists across turns; **references** (files, chat history, books, reading sections, notebooks, selected question-bank entries, imported agents) come from the `+` menu for one turn by default, or every turn when pinned. The voice button only transcribes the current message.
+Context comes in two kinds: **sticky session context** (capability, workspace or course, tools, knowledge bases, persona, model and supported reasoning effort, and Reading / Mastery state) persists across turns; **references** (files, chat history, books, reading sections, notebooks, selected question-bank entries, imported agents) come from the `+` menu for one turn by default, or every turn when pinned. The voice button only transcribes the current message.
 
 **Reasoning-only output limits.** The shared agent loop retries once when internal reasoning uses the output budget without an answer or tool action. The default `prompt` strategy keeps the same budget. To stop immediately, set `strategy: stop` under `capabilities.chat.reasoning_budget_recovery` in your runtime `settings/agents.yaml`. An explicit larger budget can help models that need more room, at the cost of potentially higher latency and usage:
 
@@ -401,6 +403,8 @@ capabilities:
 ```
 
 The recovery limit must exceed the normal output limit and be at most 131072; choose a value supported by your model. It applies to one recovery call only, retains the existing round and request-timeout bounds, and leaves reasoning effort unchanged. The trace records the policy, old/new limits, effective per-call budgets, and accumulated usage. Visible answer truncation keeps its normal continuation. With the experimental `typescript-native` runtime, explicit `stop` or `increase_output_budget` policies select the shared Python effects host with the TypeScript scheduler before the turn begins; the result reports that compatibility reason.
+
+The Python history builder also enforces its history plan after condensation. If a complete retained exchange still exceeds that budget, the turn stops with `history_budget_exceeded` before answer generation. Stored messages and tool-call/result pairs remain intact; start a new conversation or shorten the oversized earlier exchange to continue. This history allowance is separate from the model's full context-window capacity.
 
 With the full profile, Home keeps **Chat**, **Ask Questions**, **Quiz**, **Visualize**, and **Video Lesson** one click away; **Research** for cited reports and **Solve** for worked reasoning sit under *More Capabilities*. Select text in an answer to open **Little Tutor**, a focused sidebar thread that stays nested under the source conversation. With at least three sent messages, the left gutter shows a tick for each question when space allows; hover to preview, click to jump back, or use **Alt/Option + ↑/↓** to move between questions.
 
@@ -469,7 +473,7 @@ Book turns selected sources into an interactive **living book** — not a static
 <img src="assets/figs/web-dev/book-widget.png" alt="Book interactive widget block" width="31%">
 </p>
 
-Each chapter compiles into editable typed blocks — text, callouts, quizzes, flash cards, timelines, code, figures, interactive HTML, animations, concept graphs, deep dives, and user notes — with its own Page Chat. Insert, move, regenerate, rewrite, or switch a block type; selected passages enter a reviewable learning-capture inbox. Progress, bookmarks, quiz attempts, captures, and Page Chat stay private per reader even when an admin book is shared read-only or for collaborative editing; shared deletion stays admin-only. Any book exports to Markdown, long compiles pause and resume, `deeptutor book health` flags source drift, and `deeptutor book refresh-fingerprints` refreshes the source baseline.
+Each chapter compiles into editable typed blocks — text, callouts, quizzes, flash cards, timelines, code, figures, interactive HTML, animations, concept graphs, deep dives, and user notes — with its own Page Chat. Review and undo chapter or section edits; insert, move, regenerate, rewrite, or switch blocks; selected passages enter a learning-capture inbox. Progress, bookmarks, quiz attempts, captures, and Page Chat stay private per reader even when an admin book is shared read-only or for collaborative editing; shared deletion stays admin-only. Any book exports to Markdown, long compiles pause and resume, `deeptutor book health` flags source drift, and `deeptutor book refresh-fingerprints` refreshes the source baseline.
 
 </details>
 
@@ -500,6 +504,8 @@ Creating a KB, you can **create new** (upload and index documents), **link exist
 The built-in LightRAG engine is installed with `pip install 'deeptutor[rag-lightrag]'`. That extra contains the supported LightRAG SDK but does not install MinerU. Choose MinerU independently in Document Parsing and either configure its cloud mode or install its current local CLI when structured parsing is wanted. MinerU accepts PDF, common raster images, DOCX, PPTX, and XLSX; the legacy `magic-pdf` command remains PDF-only. Text-only and the other parsing engines do not require MinerU.
 
 Native LightRAG queries and incremental indexing require the embedding configuration recorded by the published index, including the model, dimension, and endpoint identity. If it changes, restore the original configuration or rebuild with the current embedding; indexes without a recorded embedding identity require a rebuild. The knowledge-base detail and index-version views show recovery guidance, while files remain available for viewing and download.
+
+OpenAI-compatible HTTP embedding responses with explicit vector indices are restored to input order. Repeated, missing, or invalid indices are rejected before the vectors reach indexing; index-free proxy responses retain positional ordering. If a gateway previously returned reordered indexed vectors, rebuild affected indexes to replace their old text/vector associations. Existing index files are preserved.
 
 **Scoring a knowledge base.** With several engines available, "which one retrieves best here?" is an empirical question — so `deeptutor kb eval` answers it. Write a QA set (one JSON object per line: a `query` plus the `gold` passages an ideal retrieval should return), then score the KB with `deeptutor kb eval <name> --dataset qa.jsonl --top-k 5 [--mode hybrid] [--save baseline.json]`. Each case is retrieved through the same path a chat turn uses, its ranked citations are matched against the gold passages using exact text or lexical overlap (thresholds are tunable with `--min-ratio`; semantic equivalence is not assessed), and the run reports **Recall@k / Precision@k / nDCG@k / MRR / MAP / Hit@k**. Metrics are pure functions over the ranking; no model judges the output. Compare saved reports with `deeptutor kb eval-diff baseline.json candidate.json` for per-metric and per-case changes. Use `--rewrite off` or `--rewrite standalone` on `kb eval` to compare original and rewritten queries; reports retain rewrite provenance. Cases whose search failed (a missing index, bad credentials) carry no score and are reported separately rather than dragging the means down. PageIndex uses reasoning as retrieval and returns no ranked chunks, so it is excluded.
 
@@ -568,7 +574,7 @@ Personalization follows the account across workspaces. Choose how the tutor shou
 <img src="assets/figs/web-dev/agents.png" alt="DeepTutor My Agents workspace" width="900">
 </div>
 
-**Connect a live agent** — Claude Code, Codex, Grok CLI, Antigravity, Kimi, opencode, MiMo Code, Hermes Agent, OpenClaw, DeepSeek Harness, or a Partner — and consult it from a Chat turn. DeepTutor runs the selected agent and streams its work into the Activity panel through `consult_subagent`; the Agent chip or `@` keeps the connection attached to the session. Local harnesses use their own authentication, working directory, and session storage.
+**Connect a live agent** — Claude Code, Codex, Grok CLI, Antigravity, Kimi, opencode, MiMo Code, Hermes Agent, OpenClaw, DeepSeek Harness, a configured ACP agent, or a Partner — and consult it from a Chat turn. DeepTutor runs the selected agent and streams its work into the Activity panel through `consult_subagent`; the Agent chip or `@` keeps the connection attached to the session. Local harnesses use their own authentication, working directory, and session storage.
 
 **Import past conversations** from ChatGPT, Claude Code, and Codex as searchable, resumable references. ChatGPT uses an official `conversations.json` export; Claude history is selected by project or working directory, and Codex history by date. Reference an imported conversation through `+` → My Agents without turning it into DeepTutor's own voice.
 

@@ -601,9 +601,35 @@ def _small_window_cfg() -> MagicMock:
     return cfg
 
 
+class _WordCountEncoding:
+    """Deterministic stand-in for the local tokenizer: one word = one token."""
+
+    def encode(self, text: str) -> list[str]:
+        return text.split()
+
+
+def _pin_exact_token_counts(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Freeze ``count_tokens`` on deterministic exact counts for path tests.
+
+    The rebuild/fold-in decisions under test compare token budgets against
+    boundaries tuned for exact counts, but the locally verified tokenizer
+    only exists on warm machines: with a cold cache (#2522) counting stays
+    on the chars/4 heuristic and the boundaries flip. Pinning the counter
+    keeps the budget-path logic deterministic on every machine while still
+    exercising the real ``count_tokens`` code path.
+    """
+    monkeypatch.setattr(
+        "deeptutor.services.session.context_builder.get_local_encoding",
+        lambda: _WordCountEncoding(),
+    )
+
+
 class TestContextBuilderSummarizePaths:
     @pytest.mark.asyncio
-    async def test_rebuilds_from_raw_when_prefix_fits(self) -> None:
+    async def test_rebuilds_from_raw_when_prefix_fits(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _pin_exact_token_counts(monkeypatch)
         messages = [
             {"id": 1, "role": "user", "content": "RAW_OLDEST_MARKER " + "alpha " * 90},
             {"id": 2, "role": "assistant", "content": "beta " * 90},
@@ -632,7 +658,10 @@ class TestContextBuilderSummarizePaths:
         }
 
     @pytest.mark.asyncio
-    async def test_folds_in_when_prefix_exceeds_rebuild_budget(self) -> None:
+    async def test_folds_in_when_prefix_exceeds_rebuild_budget(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _pin_exact_token_counts(monkeypatch)
         messages = [
             {"id": 1, "role": "user", "content": "RAW_OLDEST_MARKER " + "w1 " * 600},
             {"id": 2, "role": "assistant", "content": "w2 " * 600},

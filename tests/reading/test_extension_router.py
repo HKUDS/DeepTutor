@@ -107,6 +107,93 @@ def test_action_succeeds_when_activity_store_fails(material, monkeypatch):
     assert response.json()["payload"]["body"] == "ok"
 
 
+def test_quiz_response_hides_answer_key_but_server_can_still_grade(
+    material, monkeypatch, sqlite_store
+):
+    monkeypatch.setattr("deeptutor.services.session.get_sqlite_session_store", lambda: sqlite_store)
+    question = {
+        "prompt": "Which phrase appears in the passage?",
+        "choices": ["invented phrase", "verified phrase"],
+        "correct_choice_index": 1,
+        "explanation": "The correct answer is verified phrase.",
+        "evidence": "verified phrase",
+        "can_answer": False,
+    }
+    extension = _extension(
+        lambda *_: ReadingExtensionResult(type="quiz", payload={"questions": [question]}),
+        result_types=("quiz",),
+    )
+    with _client(monkeypatch, extension) as client:
+        response = client.post(
+            f"/api/reading/materials/{material.material_id}/extensions/sample/actions/open",
+            json={"locator": 1},
+        )
+        assert response.status_code == 200, response.text
+        public_question = response.json()["payload"]["questions"][0]
+        assert public_question == {
+            "id": public_question["id"],
+            "prompt": question["prompt"],
+            "choices": question["choices"],
+            "can_answer": True,
+        }
+        pending = asyncio.run(sqlite_store.get_reading_quiz_pending(material.material_id, 1))
+        assert pending[public_question["id"]]["correct_choice_index"] == 1
+        assert asyncio.run(sqlite_store.list_notebook_entries())["total"] == 0
+
+        for selected_index, is_correct in [(0, False), (1, True)]:
+            graded = client.post(
+                f"/api/reading/materials/{material.material_id}/extensions/quiz/answers",
+                json={
+                    "locator": 1,
+                    "answers": [
+                        {"question_id": public_question["id"], "selected_index": selected_index}
+                    ],
+                },
+            )
+            assert graded.status_code == 200, graded.text
+            assert graded.json()["answers"] == [
+                {
+                    "question_id": public_question["id"],
+                    "is_correct": is_correct,
+                    "result": "correct" if is_correct else "incorrect",
+                }
+            ]
+
+
+@pytest.mark.parametrize("answer_key", [None, -1, 2, True, "1"])
+def test_quiz_without_valid_key_stays_display_only(material, monkeypatch, sqlite_store, answer_key):
+    monkeypatch.setattr("deeptutor.services.session.get_sqlite_session_store", lambda: sqlite_store)
+    question = {
+        "prompt": "A display-only question",
+        "choices": ["First", "Second"],
+        "can_answer": True,
+    }
+    if answer_key is not None:
+        question["correct_choice_index"] = answer_key
+    extension = _extension(
+        lambda *_: ReadingExtensionResult(type="quiz", payload={"questions": [question]}),
+        result_types=("quiz",),
+    )
+    with _client(monkeypatch, extension) as client:
+        response = client.post(
+            f"/api/reading/materials/{material.material_id}/extensions/sample/actions/open",
+            json={"locator": 1},
+        )
+        assert response.status_code == 200, response.text
+        public_question = response.json()["payload"]["questions"][0]
+        assert public_question["can_answer"] is False
+        assert "correct_choice_index" not in public_question
+        forced_submission = client.post(
+            f"/api/reading/materials/{material.material_id}/extensions/quiz/answers",
+            json={
+                "locator": 1,
+                "answers": [{"question_id": public_question["id"], "selected_index": 0}],
+            },
+        )
+        assert forced_submission.status_code == 409
+    assert asyncio.run(sqlite_store.list_notebook_entries())["total"] == 0
+
+
 def test_source_anchor_is_loaded_from_server_position(material, monkeypatch):
     ReadingStore().save_position(
         material.material_id,

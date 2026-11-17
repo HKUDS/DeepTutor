@@ -44,7 +44,9 @@ class TurnLifecycle:
 
         self.store = store or get_session_store()
         self.coordinator = coordinator
-        self.owner_id = owner_id
+        from deeptutor.runtime.coordination.worker_identity import new_worker_id
+
+        self.owner_id = owner_id or new_worker_id()
         if turn_engine is None:
             from deeptutor.runtime.turn_engine import get_turn_engine
 

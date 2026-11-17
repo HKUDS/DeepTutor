@@ -1608,6 +1608,8 @@ async def branch_partner_session(partner_id: str, payload: SessionBranchBody):
                     session_key=payload.source_key,
                     new_session_key=target_key,
                 )
+    except FileExistsError:
+        raise HTTPException(status_code=409, detail="Destination session already exists") from None
     except PartnerTurnBusyError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from None
     return {

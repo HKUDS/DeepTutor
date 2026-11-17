@@ -384,6 +384,8 @@ class LLMProvider(ABC):
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
+                if getattr(exc, "retryable", None) is False:
+                    raise
                 status_code = self._status_code_from_exception(exc)
                 caught_exception = exc
                 response = LLMResponse(

@@ -31,15 +31,19 @@ class ReadinessReport:
 class Parser(Protocol):
     """A document-parsing engine: ``source_path`` in → ``ParsedDocument`` out.
 
-    Concrete engines also expose a ``classmethod is_available() -> bool`` (probed
-    by the factory before instantiation); it is intentionally not part of the
-    instance Protocol.
+    Availability is probed by the factory and by upload/fallback selection before
+    invoking an engine.
     """
 
     name: str
     # True when the engine downloads/needs local model weights (MinerU local,
     # Docling). text-only, markitdown, and cloud backends are False.
     needs_local_models: bool
+
+    @classmethod
+    def is_available(cls) -> bool:
+        """Whether this engine's required runtime is installed or configured."""
+        ...
 
     def resolve_config(self) -> Any:
         """Load this engine's effective config slice from runtime settings."""

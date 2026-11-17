@@ -61,6 +61,7 @@ class DataMigrationPayload(BaseModel):
     target_workspace_id: str = ""
     features: list[str] = Field(min_length=1)
     include_historical: bool = False
+    session_ids: list[str] | None = Field(default=None, min_length=1, max_length=1000)
 
 
 class KnowledgeMovePayload(BaseModel):
@@ -114,7 +115,11 @@ async def preview_workspace_data(payload: DataMigrationPayload) -> dict:
     from deeptutor.services.workspace.data_migration import preview
 
     return await _data_operation(
-        preview, payload.source_workspace_id, payload.target_workspace_id, payload.features
+        preview,
+        payload.source_workspace_id,
+        payload.target_workspace_id,
+        payload.features,
+        session_ids=set(payload.session_ids) if payload.session_ids is not None else None,
     )
 
 
@@ -123,7 +128,11 @@ async def migrate_workspace_data(payload: DataMigrationPayload) -> dict:
     from deeptutor.services.workspace.data_migration import migrate_data
 
     return await _data_operation(
-        migrate_data, payload.source_workspace_id, payload.target_workspace_id, payload.features
+        migrate_data,
+        payload.source_workspace_id,
+        payload.target_workspace_id,
+        payload.features,
+        session_ids=set(payload.session_ids) if payload.session_ids is not None else None,
     )
 
 

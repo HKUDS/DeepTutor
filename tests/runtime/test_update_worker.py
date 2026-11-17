@@ -119,7 +119,7 @@ def test_worker_marks_failed_when_the_launcher_exits_early(tmp_path: Path) -> No
     assert job.error is not None and "exited with status 23" in job.error
 
 
-def test_worker_leaves_a_live_launcher_in_restarting(
+def test_worker_bounds_a_live_launcher_without_readiness(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     store, _job = _handoff_job(tmp_path)
@@ -139,8 +139,9 @@ def test_worker_leaves_a_live_launcher_in_restarting(
         restart_launcher=lambda _job, _log: LiveProcess(),
     )
 
-    assert result == 0
-    assert store.load().status == "restarting"
+    assert result == 1
+    assert store.load().status == "failed"
+    assert "readiness was not confirmed" in store.load().error
 
 
 def test_update_command_upgrades_every_installed_module(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -203,3 +204,24 @@ def test_restart_ignores_stale_package_under_runtime_home(tmp_path, monkeypatch)
     process = update_worker._launch_restart(job, log_path=log)
     assert process.wait(timeout=15) == 0
     assert "installed package" in log.read_text()
+
+
+def test_worker_accepts_only_same_job_readiness(tmp_path):
+    store, job = _handoff_job(tmp_path)
+
+    class ReadyProcess:
+        def wait(self, timeout=None):
+            import subprocess
+
+            store.mark_succeeded(job.id)
+            raise subprocess.TimeoutExpired("launcher", timeout)
+
+    result = run_update_worker(
+        store_root=store.root,
+        parent_pid=123,
+        wait_for_parent=lambda _: None,
+        command_runner=lambda *_: 0,
+        restart_launcher=lambda *_: ReadyProcess(),
+    )
+    assert result == 0
+    assert store.load().status == "succeeded"

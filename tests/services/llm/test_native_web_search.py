@@ -405,7 +405,7 @@ class TestParseServerExecutedWebSearch:
         ]
         provider_events: list[tuple[str, dict]] = []
         content, tool_calls, _ = await consume_sse(
-            _SSEFixture(events),
+            _SSEFixture([*events, {"type": "response.completed"}]),
             on_provider_event=lambda kind, payload: provider_events.append((kind, payload)),
         )
         assert content == "hello"
@@ -430,7 +430,7 @@ class TestParseServerExecutedWebSearch:
         ]
         provider_events: list[tuple[str, dict]] = []
         _, tool_calls, _ = await consume_sse(
-            _SSEFixture(events),
+            _SSEFixture([*events, {"type": "response.completed"}]),
             on_provider_event=lambda kind, payload: provider_events.append((kind, payload)),
         )
         assert tool_calls == []
@@ -458,7 +458,7 @@ class TestParseServerExecutedWebSearch:
         ]
         provider_events: list[tuple[str, dict]] = []
         _, tool_calls, _ = await consume_sse(
-            _SSEFixture(events),
+            _SSEFixture([*events, {"type": "response.completed"}]),
             on_provider_event=lambda kind, payload: provider_events.append((kind, payload)),
         )
         assert tool_calls == []

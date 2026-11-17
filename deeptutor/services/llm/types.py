@@ -14,6 +14,11 @@ logger = logging.getLogger(__name__)
 TRUNCATED_FINISH_REASONS = frozenset({"length", "max_tokens", "max_output_tokens"})
 
 
+#: Canonical finish reason for a response cut off because the context window
+#: was full (distinct from the output-cap reasons in ``TRUNCATED_FINISH_REASONS``).
+CONTEXT_LENGTH_EXCEEDED_FINISH = "context_length_exceeded"
+
+
 def finish_was_truncated(reason: str | None) -> bool:
     """Return whether a provider ended generation because output hit a cap."""
     return str(reason or "").strip().lower() in TRUNCATED_FINISH_REASONS
@@ -76,6 +81,7 @@ StreamChunk = TutorStreamChunk
 
 __all__ = [
     "TRUNCATED_FINISH_REASONS",
+    "CONTEXT_LENGTH_EXCEEDED_FINISH",
     "AsyncStreamGenerator",
     "LLMResponse",
     "StreamChunk",

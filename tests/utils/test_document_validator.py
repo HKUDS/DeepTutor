@@ -101,3 +101,13 @@ def test_validate_upload_safety_empty_policy_delegates_extension_detection() -> 
     )
     with pytest.raises(ValueError, match="Invalid filename"):
         DocumentValidator.validate_upload_safety(".hidden", 1024, allowed_extensions=set())
+
+
+@pytest.mark.parametrize("extension", [".doc", ".xls", ".ppt", ".rtf"])
+def test_builtin_upload_rejects_legacy_office_but_explicit_engine_can_admit_it(extension):
+    with pytest.raises(ValueError, match="Unsupported file type"):
+        DocumentValidator.validate_upload_safety("old" + extension, 50)
+    assert (
+        DocumentValidator.validate_upload_safety("old" + extension, 50, {extension})
+        == "old" + extension
+    )

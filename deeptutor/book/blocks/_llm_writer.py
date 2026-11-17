@@ -47,6 +47,9 @@ async def llm_text(
     drifting between languages when prompts contain English token names,
     JSON keys, or non-matching source material.
     """
+    from deeptutor.book.generation_context import with_workspace_instructions
+
+    system_prompt = with_workspace_instructions(system_prompt)
     if language:
         system_prompt = append_language_directive(system_prompt, language)
 

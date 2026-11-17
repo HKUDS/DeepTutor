@@ -207,3 +207,106 @@ async def test_wrong_user_repository_does_not_acknowledge_expired_turn(tmp_path)
 
     assert await TurnRecoveryService(coordinator, owner_repository).recover_once() == 1
     assert await coordinator.list_expired_turn_ids() == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", ["queued", "running", "waiting_input"])
+async def test_other_process_turn_survives_server_recovery_then_recovers_after_exit(
+    tmp_path, status
+):
+    import subprocess
+    import sys
+
+    script = """
+import asyncio, sys
+from pathlib import Path
+from deeptutor.runtime.coordination import MemoryCoordinator
+from deeptutor.runtime.coordination.worker_identity import new_worker_id
+from deeptutor.services.session.sqlite_store import SQLiteSessionStore
+async def run():
+    store = SQLiteSessionStore(Path(sys.argv[1]))
+    session = await store.ensure_session(None)
+    coordinator = MemoryCoordinator()
+    lease = await coordinator.acquire_turn('cli-turn', session['id'], new_worker_id())
+    await store.begin_turn(session['id'], 'chat', turn_id=lease.turn_id,
+                          owner_id=lease.owner_id, fencing_token=lease.fencing_token)
+    await store.transition_turn(lease.turn_id, sys.argv[2])
+    await store.append_events(lease.turn_id, [{'type':'content', 'content':'live CLI'}])
+    print('ready', flush=True)
+    await asyncio.to_thread(sys.stdin.readline)
+asyncio.run(run())
+"""
+    db = tmp_path / "shared.db"
+    process = subprocess.Popen(
+        [sys.executable, "-c", script, str(db), status],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        ready = await asyncio.wait_for(asyncio.to_thread(process.stdout.readline), 15)
+        assert ready == "ready\n", process.stderr.read() if not ready else ready
+        store = SQLiteSessionStore(db)
+        recovery = TurnRecoveryService(MemoryCoordinator(), store)
+        original = await store.get_events("cli-turn")
+        for _ in range(3):
+            assert await recovery.recover_once() == 0
+        assert (await store.get_turn("cli-turn"))["status"] == status
+        assert await store.get_events("cli-turn") == original
+        process.terminate()
+        await asyncio.to_thread(process.wait, 5)
+        assert await recovery.recover_once() == 1
+        assert (await store.get_turn("cli-turn"))["failure_code"] == "worker_lost"
+        assert [event["seq"] for event in await store.get_events("cli-turn")] == [1, 2, 3]
+        assert await recovery.recover_once() == 0
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait(timeout=5)
+        for stream in (process.stdin, process.stdout, process.stderr):
+            stream.close()
+
+
+def test_worker_identity_handles_pid_reuse_legacy_and_inaccessible_processes(monkeypatch):
+    import os
+    import socket
+    import time
+
+    import psutil
+
+    from deeptutor.runtime.coordination import worker_identity as identity
+
+    owner = identity.new_worker_id()
+    assert identity.owner_process_may_be_alive({"owner_id": owner})
+    parts = owner.split(":")
+    parts[-1] = str(float(parts[-1]) - 100)
+    assert not identity.owner_process_may_be_alive({"owner_id": ":".join(parts)})
+    legacy = f"{socket.gethostname()}:{os.getpid()}:old"
+    assert identity.owner_process_may_be_alive({"owner_id": legacy, "created_at": time.time()})
+    assert not identity.owner_process_may_be_alive({"owner_id": legacy, "created_at": 1})
+    assert identity.owner_process_may_be_alive({"owner_id": "another-host:123:old"})
+
+    def denied(pid):
+        raise psutil.AccessDenied(pid)
+
+    monkeypatch.setattr(identity.psutil, "Process", denied)
+    assert identity.owner_process_may_be_alive({"owner_id": owner})
+
+
+@pytest.mark.asyncio
+async def test_locally_expired_lease_still_recovers_even_while_owner_process_exists(tmp_path):
+    from deeptutor.runtime.coordination.worker_identity import new_worker_id
+
+    store = SQLiteSessionStore(tmp_path / "expired.db")
+    session = await store.ensure_session(None)
+    coordinator = MemoryCoordinator(lease_ttl_seconds=-1)
+    lease = await coordinator.acquire_turn("expired", session["id"], new_worker_id())
+    await store.begin_turn(
+        session["id"],
+        "chat",
+        turn_id=lease.turn_id,
+        owner_id=lease.owner_id,
+        fencing_token=lease.fencing_token,
+    )
+    assert await TurnRecoveryService(coordinator, store).recover_once() == 1

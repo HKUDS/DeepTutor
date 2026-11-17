@@ -6,7 +6,13 @@ import { createPortal } from "react-dom";
 import { Code2, Copy, Check, ExternalLink, Maximize2, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Mermaid } from "@/components/Mermaid";
-import { prepareIframeHtml } from "@/lib/iframe-html";
+import { prepareIframeHtml, type WidgetColorScheme } from "@/lib/iframe-html";
+import {
+  getStoredThemePreference,
+  resolveTheme,
+  subscribeToThemeChanges,
+  type Theme,
+} from "@/lib/theme";
 import {
   isManimResult,
   type VisualizeCanvasResult,
@@ -115,12 +121,30 @@ function ChartJsRenderer({ config }: { config: string }) {
   );
 }
 
+/**
+ * The widget canvas follows the app's resolved palette: Dark and Glass are
+ * dark canvases, everything else is light. Re-preparing on a resolved-theme
+ * change rewrites the srcdoc, which reloads the widget — the whole app just
+ * re-themed, so that is the expected moment to re-render it (#2600).
+ */
+function colorSchemeForTheme(theme: Theme): WidgetColorScheme {
+  return theme === "dark" || theme === "glass" ? "dark" : "light";
+}
+
 function HtmlRenderer({ html }: { html: string }) {
   const { t } = useTranslation();
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [height, setHeight] = useState(560);
+  const [theme, setTheme] = useState<Theme>(() =>
+    resolveTheme(getStoredThemePreference()),
+  );
 
-  const prepared = useMemo(() => prepareIframeHtml(html || ""), [html]);
+  useEffect(() => subscribeToThemeChanges(setTheme), []);
+
+  const prepared = useMemo(
+    () => prepareIframeHtml(html || "", colorSchemeForTheme(theme)),
+    [html, theme],
+  );
 
   useEffect(() => {
     const iframe = iframeRef.current;

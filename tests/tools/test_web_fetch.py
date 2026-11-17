@@ -18,6 +18,21 @@ from deeptutor.tools.web_fetch import (
 
 _ARTICLE_FIXTURE = Path(__file__).parents[1] / "fixtures" / "web" / "vector_article.html"
 
+
+@pytest.fixture(autouse=True)
+def _isolated_fetch_backend(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep backend resolution off the machine state: no deployment env
+    override and a throwaway settings dir, so ``backend=None`` always
+    resolves to local regardless of the real user settings."""
+    from deeptutor.services.config import runtime_settings
+
+    monkeypatch.delenv("DEEPTUTOR_FETCH_BACKEND", raising=False)
+    settings_dir = tmp_path / "settings"
+    settings_dir.mkdir(parents=True)
+    monkeypatch.setattr(runtime_settings, "_global_settings_dir", lambda: settings_dir)
+    monkeypatch.setattr(runtime_settings.RuntimeSettingsService, "_instances", {}, raising=False)
+
+
 # ---------------------------------------------------------------------------
 # Host validation
 # ---------------------------------------------------------------------------

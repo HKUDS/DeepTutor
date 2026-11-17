@@ -753,3 +753,70 @@ async def test_book_manifest_with_cjk_title_survives_non_utf8_locale(account, mo
     assert "book" in features
     assert cited["id"] in ids
     assert not any("book_cjk_title" in message for message in warnings)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("same_origin", [True, False])
+async def test_move_one_chat_reuses_only_the_same_assigned_knowledge_catalog(account, same_origin):
+    from deeptutor.multi_user.knowledge_access import current_kb_manager, resolve_kb
+    from deeptutor.services.workspace.knowledge import qualified_kb_id
+    from deeptutor.services.workspace.session_move import move_chat
+
+    current_kb_manager().register_connected_entry(
+        "notes", {"type": "obsidian", "vault_path": "/unused"}
+    )
+    origin = resolve_kb("notes").base_dir
+    target = account.create_workspace("Target")["workspace_id"]
+    if not same_origin:
+        with workspace_context(target):
+            current_kb_manager().register_connected_entry(
+                "notes", {"type": "obsidian", "vault_path": "/different"}
+            )
+    account.update_workspace(
+        target,
+        resources={"knowledge_bases": [qualified_kb_id("notes", "" if same_origin else target)]},
+    )
+    store = get_sqlite_session_store()
+    selected = await store.create_session("Selected")
+    await store.update_session_preferences(selected["id"], {"knowledge_bases": ["notes"]})
+    retained = await store.create_session("Unrelated")
+    await store.update_session_preferences(retained["id"], {"knowledge_bases": ["notes"]})
+    plan = preview("", target, ["chat"], session_ids={selected["id"]})
+    if not same_origin:
+        assert "knowledge_bases" in plan["features"]
+        with pytest.raises(WorkspaceError):
+            move_chat(selected["id"], target)
+        assert await store.get_session(selected["id"])
+        return
+    assert plan["blockers"] == []
+    assert plan["session_ids"] == [selected["id"]]
+    assert "knowledge_bases" not in plan["features"]
+    move_chat(selected["id"], target)
+    assert await store.get_session(retained["id"])
+    assert not await store.get_session(selected["id"])
+    with workspace_context(target):
+        moved = await get_sqlite_session_store().get_session(selected["id"])
+        assert moved["preferences"]["knowledge_bases"] == ["notes"]
+        assert resolve_kb("notes").base_dir == origin
+    assert origin.exists()
+
+
+@pytest.mark.asyncio
+async def test_preview_reports_turn_identity_conflict_without_copying(account):
+    target = account.create_workspace("Target")["workspace_id"]
+    store = get_sqlite_session_store()
+    source_session = await store.create_session()
+    turn = await store.create_turn(source_session["id"])
+    await store.update_turn_status(turn["id"], "completed")
+    with workspace_context(target):
+        other = get_sqlite_session_store()
+        other_session = await other.create_session()
+        other_turn = await other.create_turn(other_session["id"])
+        await other.update_turn_status(other_turn["id"], "completed")
+        with sqlite3.connect(get_path_service().get_chat_history_db()) as conn:
+            conn.execute("UPDATE turns SET id=? WHERE id=?", (turn["id"], other_turn["id"]))
+    plan = preview("", target, ["chat"], session_ids={source_session["id"]})
+    assert any("turns" in item and turn["id"] in item for item in plan["blockers"])
+    with pytest.raises(WorkspaceError, match="turns"):
+        migrate_data("", target, ["chat"], session_ids={source_session["id"]})
+    assert await store.get_session(source_session["id"])

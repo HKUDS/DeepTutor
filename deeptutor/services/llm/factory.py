@@ -24,7 +24,11 @@ from .config import LLMConfig, get_llm_config
 from .error_mapping import map_error
 from .multimodal import prepare_multimodal_messages
 from .provider_core.base import LLMProvider
-from .provider_factory import build_isolated_provider, get_runtime_provider
+from .provider_factory import (
+    acquire_runtime_provider,
+    build_isolated_provider,
+    get_runtime_provider,
+)
 from .types import StreamOutcome
 from .utils import is_local_llm_server
 
@@ -362,7 +366,6 @@ async def _complete_with_resolved_config(
     provider: LLMProvider | None = None,
 ) -> str:
     """Execute one completion from an already resolved configuration."""
-    provider = provider or get_runtime_provider(config)
     capability_binding = _capability_binding(config, provider_spec)
     request_messages = _build_messages(prompt, system_prompt, messages)
     request_messages = _apply_inline_image_data(
@@ -384,14 +387,21 @@ async def _complete_with_resolved_config(
     )
 
     try:
-        response = await provider.chat_with_retry(
-            messages=request_messages,
-            model=config.model,
-            reasoning_effort=config.reasoning_effort,
-            retry_delays=retry_delays,
-            allow_image_fallback=image_fallback_enabled,
-            **extra_kwargs,
+        # Explicit-config callers own their isolated provider's lifecycle.
+        lease = (
+            contextlib.nullcontext(provider)
+            if provider is not None
+            else acquire_runtime_provider(config)
         )
+        with lease as active_provider:
+            response = await active_provider.chat_with_retry(
+                messages=request_messages,
+                model=config.model,
+                reasoning_effort=config.reasoning_effort,
+                retry_delays=retry_delays,
+                allow_image_fallback=image_fallback_enabled,
+                **extra_kwargs,
+            )
     except Exception as exc:
         raise map_error(exc, provider=config.provider_name) from exc
 
@@ -559,7 +569,6 @@ async def stream(
         extra_headers=caller_extra_headers,
         reasoning_effort=reasoning_effort,
     )
-    provider = get_runtime_provider(config)
     capability_binding = _capability_binding(config, provider_spec)
     request_messages = _build_messages(prompt, system_prompt, messages)
     request_messages = _apply_inline_image_data(
@@ -609,16 +618,18 @@ async def stream(
     async def _runner() -> None:
         nonlocal saw_output, in_think_block
         try:
-            response = await provider.chat_stream_with_retry(
-                messages=request_messages,
-                model=config.model,
-                reasoning_effort=config.reasoning_effort,
-                on_content_delta=_on_content_delta,
-                on_reasoning_delta=_on_reasoning_delta,
-                retry_delays=retry_delays,
-                allow_image_fallback=image_fallback_enabled,
-                **extra_kwargs,
-            )
+            # The worker owns the lease, including cancellation by the reader.
+            with acquire_runtime_provider(config) as provider:
+                response = await provider.chat_stream_with_retry(
+                    messages=request_messages,
+                    model=config.model,
+                    reasoning_effort=config.reasoning_effort,
+                    on_content_delta=_on_content_delta,
+                    on_reasoning_delta=_on_reasoning_delta,
+                    retry_delays=retry_delays,
+                    allow_image_fallback=image_fallback_enabled,
+                    **extra_kwargs,
+                )
             if outcome is not None:
                 outcome.finish_reason = str(response.finish_reason or "")
                 outcome.usage = dict(response.usage or {})

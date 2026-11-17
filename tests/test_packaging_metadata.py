@@ -41,16 +41,26 @@ def test_docling_parser_avoids_source_only_build_dependencies():
 
     ``format-video`` pulls ``resemblyzer`` -> ``webrtcvad``, which ships only an
     sdist. The document parser does not use Docling's video extras, so keep the
-    one-click install runnable in the published image (#2327).
+    one-click install runnable in the published image (#2327). The container's
+    ``install_extras`` startup run installs the resolved plan — the manifest row
+    expanded through the shared ``parsing`` module graph — so every requirement
+    pip is asked to build must stay wheel-only.
     """
     requirements = manifests()["parser-docling"]["requirements"]
     assert all("format-video" not in requirement for requirement in requirements)
+    resolved = source_optional_dependencies()["parse-docling"]
+    assert set(requirements) <= set(resolved)
+    assert not any(
+        source_only in requirement
+        for requirement in resolved
+        for source_only in ("format-video", "resemblyzer", "webrtcvad")
+    )
 
 
 @pytest.mark.parametrize(
     "module,requirement",
     [
-        ("core", "mcp>=1.26.0,<2.0.0"),
+        ("core", "mcp>=1.30.0,<2.0.0"),
         ("core", "typer>=0.9.0"),
         ("core", "tzdata>=2024.1"),
         ("core", "packaging>=24.2"),
@@ -66,8 +76,8 @@ def test_docling_parser_avoids_source_only_build_dependencies():
         ("parser-markitdown", "markitdown[all]>=0.1.7"),
         ("parser-pymupdf4llm", "pymupdf4llm>=1.28.2"),
         ("parser-liteparse", "liteparse>=2.14.2"),
-        ("parser-docling", "docling[xbrl]>=2.123.1"),
-        ("parser-docling", "docling-slim[format-iwork,format-opendocument]>=2.123.1"),
+        ("parser-docling", "docling[xbrl]>=2.148.0"),
+        ("parser-docling", "docling-slim[format-iwork,format-opendocument]>=2.148.0"),
     ],
 )
 def test_dependency_floor_belongs_to_its_module(module, requirement):

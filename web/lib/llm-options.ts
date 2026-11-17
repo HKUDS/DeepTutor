@@ -15,6 +15,8 @@ export interface LLMOption extends LLMSelection {
   context_window?: number;
   reasoning_effort?: string;
   supported_reasoning_efforts?: string[];
+  /** The model's own Settings declaration of reasoning support, when present. */
+  declared_reasoning?: boolean;
   supports_vision?: boolean;
   is_active_default: boolean;
 }
@@ -34,6 +36,18 @@ export function sameLLMSelection(
   b: LLMSelection | null | undefined,
 ) {
   return llmSelectionKey(a) === llmSelectionKey(b);
+}
+
+/** The most recent option list any `listLLMOptions` call fetched — no TTL.
+ *
+ *  Synchronous, so a send path can validate its `llm_selection` against the
+ *  catalog without awaiting (or firing) a request (#641): empty until the
+ *  first successful load, which callers treat as "option unresolved".
+ */
+let lastKnownOptions: LLMOption[] = [];
+
+export function readLastKnownLLMOptions(): LLMOption[] {
+  return lastKnownOptions;
 }
 
 /** List the configured model profiles.
@@ -63,9 +77,10 @@ export async function listLLMOptions(options?: {
           throw new Error(`Failed to load LLM options: ${response.status}`);
         }
         const data = (await response.json()) as LLMOptionsResponse;
+        lastKnownOptions = Array.isArray(data.options) ? data.options : [];
         return {
           active: data.active ?? null,
-          options: Array.isArray(data.options) ? data.options : [],
+          options: lastKnownOptions,
         };
       } finally {
         clearTimeout(timeout);
