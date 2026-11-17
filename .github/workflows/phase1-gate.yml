@@ -109,7 +109,7 @@ jobs:
         env:
           DEEPTUTOR_HOME: ${{ github.workspace }}/.ci-home
         run: |
-          nohup python -m uvicorn deeptutor.api.app:app \
+          nohup python -m uvicorn deeptutor.api.main:app \
             --host 127.0.0.1 --port 3782 > /tmp/backend.log 2>&1 &
           for i in $(seq 1 60); do
             if curl -fsS -o /dev/null http://127.0.0.1:3782/api/auth/status; then
@@ -119,7 +119,11 @@ jobs:
             sleep 1
           done
           echo "backend did not come up; log follows"
-          cat /tmp/backend.log
+          tail -40 /tmp/backend.log
+          # The run log is not readable from the build sandbox; annotations are.
+          tail -12 /tmp/backend.log | while IFS= read -r line; do
+            echo "::error title=backend::${line//\%/}"
+          done
           exit 1
 
       - name: Start the app
