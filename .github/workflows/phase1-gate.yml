@@ -245,8 +245,19 @@ jobs:
         run: |
           set +e
           npx playwright test --project=phase1-shell --reporter=list 2>&1 | tee /tmp/full.log
-          echo "PLAYWRIGHT_EXIT=${PIPESTATUS[0]}" >> "$GITHUB_ENV"
-          exit "${PIPESTATUS[0]}"
+          EXIT=${PIPESTATUS[0]}
+          echo "PLAYWRIGHT_EXIT=$EXIT" >> "$GITHUB_ENV"
+          # Assert coverage, not just absence of failure: a run where the
+          # session-dependent tests all skipped is green and worthless.
+          PASSED=$(grep -cE "^  [0-9]+ passed" /tmp/full.log || true)
+          SKIPPED=$(grep -oE "[0-9]+ skipped" /tmp/full.log | head -1 | grep -oE "[0-9]+" || echo 0)
+          PASSED=$(grep -oE "[0-9]+ passed" /tmp/full.log | head -1 | grep -oE "[0-9]+" || echo 0)
+          echo "::notice title=results::passed=$PASSED skipped=${SKIPPED:-0} exit=$EXIT"
+          if [ "${SKIPPED:-0}" -gt 0 ]; then
+            echo "::error title=skipped::${SKIPPED} test(s) skipped - Gate 1 needs them to run"
+            exit 1
+          fi
+          exit "$EXIT"
 
       - name: Upload report
         if: always()
