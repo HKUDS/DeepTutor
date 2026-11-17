@@ -35,6 +35,7 @@ from .model_history import (
 )
 from .protocol import SessionStoreProtocol
 from .provider_response_state import normalize_provider_response_state
+from .sqlite_store import SQLiteSessionStore
 from .token_encoding import get_local_encoding
 
 logger = logging.getLogger(__name__)
@@ -287,6 +288,10 @@ class HistoryBudgetExceeded(ValueError):
             f"for a {budget}-token plan). Start a new conversation or shorten the oversized "
             "earlier exchange. Stored messages have been preserved."
         )
+
+
+class _CompactionHistoryChanged(Exception):
+    """A deletion or another summary write invalidated the in-flight plan."""
 
 
 class ContextBuilder:
@@ -635,16 +640,63 @@ class ContextBuilder:
         on_event: Callable[[StreamEvent], Awaitable[None]] | None = None,
         leaf_message_id: int | None = None,
     ) -> ContextBuildResult:
-        session = await self.store.get_session(session_id)
-        # When ``leaf_message_id`` is given (edit-branch turn), only the
-        # ancestor path of that message is included in context — sibling
-        # branches at any depth are excluded.
-        messages = await self.store.get_messages_for_context(
-            session_id, leaf_message_id=leaf_message_id
-        )
-        if session is None:
-            return ContextBuildResult([], "", "", [], 0, self._history_budget(llm_config))
+        while True:
+            if isinstance(self.store, SQLiteSessionStore):
+                session, messages = await self.store.get_context_snapshot(
+                    session_id, leaf_message_id
+                )
+            else:
+                session = await self.store.get_session(session_id)
+                messages = await self.store.get_messages_for_context(
+                    session_id, leaf_message_id=leaf_message_id
+                )
+            if session is None:
+                return ContextBuildResult([], "", "", [], 0, self._history_budget(llm_config))
+            try:
+                return await self._build_from_history(
+                    session_id=session_id,
+                    session=session,
+                    messages=messages,
+                    llm_config=llm_config,
+                    language=language,
+                    on_event=on_event,
+                )
+            except _CompactionHistoryChanged:
+                # Reload this same branch, including replay metadata and exact-recall
+                # sources. Its remaining history may now fit without another LLM call.
+                continue
 
+    async def _finish_compaction(
+        self,
+        session_id: str,
+        session: dict,
+        messages: list[dict],
+        summary: str | None,
+        watermark: int | str | None,
+    ) -> None:
+        if isinstance(self.store, SQLiteSessionStore):
+            if not await self.store.finish_compaction(
+                session_id,
+                [row["id"] for row in messages],
+                session.get("compressed_summary") or "",
+                session.get("summary_up_to_msg_id") or 0,
+                summary,
+                int(watermark) if watermark is not None else None,
+            ):
+                raise _CompactionHistoryChanged
+        elif summary is not None and watermark is not None:
+            await self.store.update_summary(session_id, summary, watermark)
+
+    async def _build_from_history(
+        self,
+        *,
+        session_id: str,
+        session: dict,
+        messages: list[dict],
+        llm_config: LLMConfig,
+        language: str,
+        on_event: Callable[[StreamEvent], Awaitable[None]] | None,
+    ) -> ContextBuildResult:
         budget = self._history_budget(llm_config)
         summary_budget = self._summary_budget(budget, llm_config)
         recent_budget = self._recent_budget(budget)
@@ -683,6 +735,7 @@ class ContextBuilder:
                 return await build_native_history(
                     self,
                     session_id=session_id,
+                    session=session,
                     llm_config=llm_config,
                     language=language,
                     messages=messages,
@@ -798,10 +851,11 @@ class ContextBuilder:
             up_to_msg_id = summary_up_to_msg_id
             if prefix_messages:
                 up_to_msg_id = prefix_messages[-1].get("id", 0) or 0
-            await self.store.update_summary(session_id, new_summary, up_to_msg_id)
+            await self._finish_compaction(session_id, session, messages, new_summary, up_to_msg_id)
             stored_summary = new_summary
             retained_rows = recent_messages
         else:
+            await self._finish_compaction(session_id, session, messages, None, None)
             # Degrade for this turn only: keep the stale summary and as many
             # unsummarized turns as fit; nothing is marked as summarized, so
             # the next turn retries with the full material.

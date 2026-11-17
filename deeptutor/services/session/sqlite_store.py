@@ -2950,10 +2950,20 @@ class SQLiteSessionStore:
             return None
         return await self._run(self._get_message_role_sync, session_id, numeric_id)
 
-    def _get_messages_for_context_sync(
+    def _get_context_snapshot_sync(
         self, session_id: str, leaf_message_id: int | None = None
-    ) -> list[dict[str, Any]]:
+    ) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
         with self._connect() as conn:
+            # Read the summary, parent links and replay metadata from the same
+            # side of a concurrent delete, even if no compaction is needed.
+            conn.execute("BEGIN")
+            record = conn.execute(
+                "SELECT compressed_summary, summary_up_to_msg_id FROM sessions WHERE id = ?",
+                (session_id,),
+            ).fetchone()
+            if record is None:
+                return None, []
+            session = dict(record)
             if leaf_message_id is None:
                 rows = conn.execute(
                     """
@@ -2966,7 +2976,7 @@ class SQLiteSessionStore:
                     """,
                     (session_id,),
                 ).fetchall()
-                return [
+                return session, [
                     {
                         "id": row["id"],
                         "role": row["role"],
@@ -3016,12 +3026,18 @@ class SQLiteSessionStore:
                 current = int(parent) if parent is not None else None
                 safety -= 1
         chain.reverse()
-        return chain
+        return session, chain
+
+    async def get_context_snapshot(
+        self, session_id: str, leaf_message_id: int | None = None
+    ) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+        return await self._run(self._get_context_snapshot_sync, session_id, leaf_message_id)
 
     async def get_messages_for_context(
         self, session_id: str, leaf_message_id: int | None = None
     ) -> list[dict[str, Any]]:
-        return await self._run(self._get_messages_for_context_sync, session_id, leaf_message_id)
+        _, messages = await self.get_context_snapshot(session_id, leaf_message_id)
+        return messages
 
     # Imported conversations live in the same tables as native chats (so the
     # chat loop can re-open and continue them) but carry an ``imported_`` id
@@ -3313,6 +3329,65 @@ class SQLiteSessionStore:
 
     async def update_summary(self, session_id: str, summary: str, up_to_msg_id: int | str) -> bool:
         return await self._run(self._update_summary_sync, session_id, summary, int(up_to_msg_id))
+
+    def _finish_compaction_sync(
+        self,
+        session_id: str,
+        source_ids: list[int],
+        prior_summary: str,
+        prior_watermark: int,
+        summary: str | None,
+        watermark: int | None,
+    ) -> bool:
+        # Source IDs come from the selected history, including the ancestors
+        # already covered by the prior summary. New messages and deletions in
+        # other branches do not invalidate those inputs.
+        with self._connect() as conn:
+            result = conn.execute(
+                """
+                UPDATE sessions
+                SET compressed_summary = COALESCE(?, compressed_summary),
+                    summary_up_to_msg_id = COALESCE(?, summary_up_to_msg_id)
+                WHERE id = ? AND COALESCE(compressed_summary, '') = ?
+                  AND COALESCE(summary_up_to_msg_id, 0) = ?
+                  AND NOT EXISTS (
+                    SELECT 1 FROM json_each(?) AS source
+                    WHERE NOT EXISTS (
+                        SELECT 1 FROM messages AS m
+                        WHERE m.id = source.value AND m.session_id = sessions.id
+                    )
+                  )
+                """,
+                (
+                    summary,
+                    watermark,
+                    session_id,
+                    prior_summary,
+                    prior_watermark,
+                    _json_dumps(source_ids),
+                ),
+            )
+            return result.rowcount == 1
+
+    async def finish_compaction(
+        self,
+        session_id: str,
+        source_ids: list[int],
+        prior_summary: str,
+        prior_watermark: int,
+        summary: str | None,
+        watermark: int | None,
+    ) -> bool:
+        """Commit against the input snapshot, or just validate it on provider failure."""
+        return await self._run(
+            self._finish_compaction_sync,
+            session_id,
+            source_ids,
+            prior_summary,
+            prior_watermark,
+            summary,
+            watermark,
+        )
 
     def _update_session_preferences_sync(
         self, session_id: str, preferences: dict[str, Any], touch: bool = True
