@@ -35,6 +35,7 @@ def _config_default_language() -> str:
     except Exception:
         return "en"
 
+
 router = APIRouter()
 
 
@@ -451,9 +452,7 @@ async def websocket_quiz_judge(websocket: WebSocket):
 
     requested_language = (data.get("language") or "").strip().lower()
     if requested_language not in SUPPORTED_JUDGE_LANGUAGES:
-        requested_language = get_response_language(
-            default=_config_default_language()
-        )
+        requested_language = get_response_language(default=_config_default_language())
         if requested_language not in SUPPORTED_JUDGE_LANGUAGES:
             requested_language = "en"
 

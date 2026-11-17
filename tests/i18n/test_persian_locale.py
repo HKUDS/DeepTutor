@@ -71,9 +71,7 @@ def test_persian_is_a_supported_reply_language() -> None:
 
 def test_settings_offer_persian_for_interface_and_replies() -> None:
     assert ("fa", "فارسی") in {(code, label) for code, label, _ in _LANGUAGE_CHOICES}
-    assert ("fa", "فارسی") in {
-        (code, label) for code, label, _ in _RESPONSE_LANGUAGE_CHOICES
-    }
+    assert ("fa", "فارسی") in {(code, label) for code, label, _ in _RESPONSE_LANGUAGE_CHOICES}
 
 
 # ── prompt, judge, book and voice seams ──────────────────────────────────────
@@ -121,9 +119,7 @@ def test_backend_persian_messages_cover_english_and_preserve_format_fields() -> 
     assert set(_MESSAGES["fa"]) == set(_MESSAGES["en"])
     pattern = re.compile(r"\{[^{}]*\}")
     for key, text in _MESSAGES["en"].items():
-        assert Counter(pattern.findall(text)) == Counter(
-            pattern.findall(_MESSAGES["fa"][key])
-        ), key
+        assert Counter(pattern.findall(text)) == Counter(pattern.findall(_MESSAGES["fa"][key])), key
 
 
 # ── web catalogs ─────────────────────────────────────────────────────────────
@@ -149,9 +145,7 @@ def test_web_persian_catalog_keeps_interpolation_placeholders() -> None:
     en, fa = _catalog("en"), _catalog("fa")
     pattern = re.compile(r"\{\{[^}]+\}\}")
     mismatches = [
-        key
-        for key in fa
-        if Counter(pattern.findall(en[key])) != Counter(pattern.findall(fa[key]))
+        key for key in fa if Counter(pattern.findall(en[key])) != Counter(pattern.findall(fa[key]))
     ]
     assert mismatches == []
 
