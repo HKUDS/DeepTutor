@@ -59,6 +59,23 @@ async function signIn(page: Page, username: string, password: string, path = "/l
   await submit.click();
 }
 
+/**
+ * Assert the login actually succeeded.
+ *
+ * Without this, a failed sign-in surfaces as whatever the *next* assertion
+ * expected, which is why three tests kept reporting "text not visible" when the
+ * real problem was that nobody was signed in. The surface text is included
+ * because that is what distinguishes a rejected credential from a broken page.
+ */
+async function expectSignedIn(page: Page) {
+  try {
+    await page.waitForURL((url) => !url.pathname.startsWith("/login"), { timeout: 30_000 });
+  } catch {
+    const body = await page.locator("body").innerText();
+    throw new Error(`sign-in did not navigate away from ${new URL(page.url()).pathname}. Page says: ${body.slice(0, 300)}`);
+  }
+}
+
 /** Force Persian and LTR/RTL before any app code runs. */
 async function useLanguage(page: Page, language: "fa" | "en") {
   await page.addInitScript((lang) => {
@@ -165,7 +182,7 @@ test.describe("session and authorisation", () => {
 
   test("a signed-in administrator reaches the admin panel", async ({ page }) => {
     await signIn(page, ADMIN_USER, ADMIN_PASS, "/admin/login");
-    await page.waitForURL(/\/admin/, { timeout: 20_000 });
+    await expectSignedIn(page);
 
     // The landing page must render its real entry rather than an invented
     // dashboard: user management is the one surface Phase 1 built.
@@ -176,7 +193,7 @@ test.describe("session and authorisation", () => {
 
   test("direct navigation and refresh survive on an admin route", async ({ page }) => {
     await signIn(page, ADMIN_USER, ADMIN_PASS, "/admin/login");
-    await page.waitForURL(/\/admin/, { timeout: 20_000 });
+    await expectSignedIn(page);
 
     // Refresh is the case a client-only guard handles badly: the server must
     // still hand over the page rather than bouncing a valid session.
@@ -227,7 +244,7 @@ test.describe("responsive shell", () => {
       await useLanguage(page, "fa");
       await page.setViewportSize(viewport);
       await signIn(page, STUDENT_USER, STUDENT_PASS);
-      await page.waitForURL((url) => !url.pathname.startsWith("/login"));
+      await expectSignedIn(page);
 
       // The single most common RTL layout failure: content wider than the
       // viewport, which leaks a horizontal scrollbar and clips the shell.
