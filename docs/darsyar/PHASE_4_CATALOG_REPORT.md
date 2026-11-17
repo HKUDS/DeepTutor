@@ -30,7 +30,7 @@ Acceptance:
 
 - baseline: `f310df9` (merge فاز ۳)
 - branch: `arena/a49c232e-deeptutor`
-- commit: `TODO` (پس از commit درج می‌شود)
+- commit: `d4fd31e`
 
 ## ۳. فایل‌های تغییرکرده
 
@@ -253,5 +253,5 @@ DETAIL: Key (code, grade_number, COALESCE(major_code, ''::text))=
 ## ۱۱. commit SHA و branch
 
 - branch: `arena/a49c232e-deeptutor`
-- commit: در بخش ۲ درج می‌شود
+- commit: `d4fd31e`
 - push/merge: فقط با اجازهٔ صریح مالک
