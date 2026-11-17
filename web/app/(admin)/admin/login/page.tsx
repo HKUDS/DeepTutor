@@ -64,13 +64,15 @@ function AdminLoginContent() {
         return;
       }
 
-      if (result.mustChangePassword) {
-        router.replace("/profile?change=1");
-        return;
-      }
-
+      // The role is checked BEFORE the password-change redirect. The reverse
+      // order sent a non-administrator with a temporary password to
+      // /profile?change=1 without a word: they were told to pick a new password
+      // for an account they had just been refused entry to, and never learned
+      // why the admin entrance turned them around. Authorisation is the more
+      // fundamental answer, so it is the one that gets reported.
+      //
       // `login()` returns only success and the password-change flag, so the
-      // role is read from the status endpoint it just invalidated. Widening
+      // role comes from the status endpoint it just invalidated. Widening
       // login()'s return type would touch every caller for one screen's need.
       const status = await fetchAuthStatus();
       if (status?.role !== "admin") {
@@ -78,6 +80,11 @@ function AdminLoginContent() {
         // session stands — they are signed in, just not here for this.
         setError(t("This account does not have administrator access."));
         setLoading(false);
+        return;
+      }
+
+      if (result.mustChangePassword) {
+        router.replace("/profile?change=1");
         return;
       }
 

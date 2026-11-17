@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { expect, it, vi } from 'vitest'
 
 /**
@@ -15,8 +15,10 @@ import { expect, it, vi } from 'vitest'
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key, i18n: { language: 'fa' } }),
 }))
+// Hoisted so individual tests can assert on navigation without re-mocking.
+const { replaceMock } = vi.hoisted(() => ({ replaceMock: vi.fn() }))
 vi.mock('next/navigation', () => ({
-  useRouter: () => ({ replace: vi.fn(), push: vi.fn() }),
+  useRouter: () => ({ replace: replaceMock, push: vi.fn() }),
   useSearchParams: () => new URLSearchParams(),
 }))
 vi.mock('@/lib/auth', () => ({
@@ -74,4 +76,37 @@ it('renders a separate admin sign-in that names its own purpose', async () => {
   expect(screen.getByLabelText('Password')).toBeTruthy()
   // A way back, so an operator who landed here by mistake is not stuck.
   expect(screen.getByRole('link', { name: 'Back to the learning app' })).toBeTruthy()
+})
+
+it('reports an authorisation refusal instead of demanding a new password', async () => {
+  // Regression: the admin form used to check `mustChangePassword` *before* the
+  // role. A student signing in here with a temporary password was redirected to
+  // /profile?change=1 with no explanation - asked to choose a new password for
+  // an account the admin entrance had just refused. The role check has to come
+  // first, because it is the more fundamental answer.
+  const auth = await import('@/lib/auth')
+  vi.mocked(auth.login).mockResolvedValue({ ok: true, mustChangePassword: true })
+  vi.mocked(auth.fetchAuthStatus).mockResolvedValue({
+    authenticated: true,
+    role: 'student',
+  } as never)
+
+  replaceMock.mockClear()
+
+  const { default: AdminLoginPage } = await import('@/app/(admin)/admin/login/page')
+  render(<AdminLoginPage />)
+
+  fireEvent.change(await screen.findByLabelText('Email or username'), {
+    target: { value: 'phase1-student' },
+  })
+  fireEvent.change(screen.getByLabelText('Password'), {
+    target: { value: 'phase1-student-pass' },
+  })
+  fireEvent.submit(screen.getByRole('button', { name: 'Sign in' }).closest('form')!)
+
+  expect(
+    await screen.findByText('This account does not have administrator access.'),
+  ).toBeTruthy()
+  // The point of the regression test: it must not have navigated to /profile.
+  expect(replaceMock).not.toHaveBeenCalledWith('/profile?change=1')
 })
