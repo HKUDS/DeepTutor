@@ -84,18 +84,21 @@ jobs:
         run: |
           mkdir -p "$DEEPTUTOR_HOME/data/user/settings"
           python - <<'PYEOF'
-          import hashlib, json, pathlib, os
+          import json, pathlib, os
+          import bcrypt
           home = pathlib.Path(os.environ["DEEPTUTOR_HOME"])
           settings = home / "data" / "user" / "settings"
           settings.mkdir(parents=True, exist_ok=True)
           admin_pw, student_pw = "phase1-admin-pass", "phase1-student-pass"
+          # bcrypt is what the backend verifies against; a sha256 here would
+          # simply never authenticate.
           (settings / "auth.json").write_text(json.dumps({
               "enabled": True,
               "username": "phase1-admin",
-              "password_hash": hashlib.sha256(admin_pw.encode()).hexdigest(),
+              "password_hash": bcrypt.hashpw(admin_pw.encode(), bcrypt.gensalt()).decode(),
               "token_expire_hours": 24,
           }, indent=2))
-          print("auth.json written; seed passwords:", admin_pw, student_pw)
+          print("auth.json written for phase1-admin")
           PYEOF
 
       - name: Build the web app
@@ -189,31 +192,28 @@ jobs:
               print(f"::notice title={title}::{message}"[:900])
               print(f"[{title}] {message}")
 
-          # 1. First registration becomes the administrator.
-          code, body = call("POST", "/api/auth/register",
-                            {"username": "phase1-admin", "password": "phase1-admin-pass"})
-          note("register", f"HTTP {code} {body[:200]}")
-          if code not in (200, 201) and code != 409:
-              print(f"::error title=register::HTTP {code} {body[:300]}"); sys.exit(1)
+          # The administrator comes from auth.json as the single-user bootstrap
+          # account, which also means self-registration is correctly closed -
+          # hence signing in rather than registering.
 
-          # 2. Sign in to establish the session cookie.
+          # 1. Sign in to establish the session cookie.
           code, body = call("POST", "/api/auth/login",
                             {"username": "phase1-admin", "password": "phase1-admin-pass"})
           note("login", f"HTTP {code} {body[:200]}")
           if code != 200 or not cookie["value"]:
               print("::error title=login::no session cookie"); sys.exit(1)
 
-          # 3. The administrator creates the student.
+          # 2. The administrator creates the student.
           code, body = call("POST", "/api/auth/users",
                             {"username": "phase1-student",
                              "password": "phase1-student-pass", "preset": "learner"})
           note("create-student", f"HTTP {code} {body[:200]}")
 
-          # 4. Role is assigned separately, which is how the product models it.
+          # 3. Role is assigned separately, which is how the product models it.
           code, body = call("PUT", "/api/auth/users/phase1-student/role", {"role": "student"})
           note("set-role", f"HTTP {code} {body[:200]}")
 
-          # 5. Prove the session is real before the browser tests rely on it.
+          # 4. Prove the session is real before the browser tests rely on it.
           code, body = call("GET", "/api/auth/status")
           note("status", f"HTTP {code} {body[:300]}")
           if code != 200 or '"authenticated":true' not in body.replace(" ", ""):
