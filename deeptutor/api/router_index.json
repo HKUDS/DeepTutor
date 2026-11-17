@@ -1,5 +1,5 @@
 {
-  "fingerprint": "8af28119fdf5145e8e05a83cde87b9c2b6ff807c8295e9386fd66bcdd08ad46a",
+  "fingerprint": "f3b2d81b7c41b2f8cc63a684b6373fd1a987b7673ff37a5e217c22149800a09b",
   "routers": {
     "deeptutor.api.routers.auth:router": [
       {
@@ -5977,6 +5977,42 @@
         "kind": "http",
         "methods": [
           "POST"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.platform_health:router": [
+      {
+        "path": "/health/live",
+        "name": "liveness_probe",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/health/ready",
+        "name": "readiness_probe",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.platform_health:admin_router": [
+      {
+        "path": "/health/backup",
+        "name": "backup_evidence",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/health/migrations",
+        "name": "migration_status",
+        "kind": "http",
+        "methods": [
+          "GET"
         ]
       }
     ],
