@@ -66,18 +66,24 @@ export function scopedUrl(path: string, workspaceId = activeWorkspaceId()): stri
  * every socket-backed surface hung instead of connecting (#2404). Sockets
  * therefore take the scoped path and turn it into the matching absolute URL.
  *
- * The scheme follows the target: a same-origin socket follows the page, so an
- * `https:` document yields `wss:` and never opens a cleartext socket on a TLS
- * page, while an `https:` URL that already names another origin keeps that
- * origin and takes `wss:` from its own scheme. A URL that is already
+ * The scheme follows the target's origin. A same-origin socket follows the
+ * page, so an `https:` document gets `wss:`. A target on another origin keeps
+ * that origin and takes its scheme from its own protocol, which means an
+ * `http:` target stays `ws:` even on a TLS page: the caller named a plaintext
+ * endpoint, and there is nothing to upgrade. A URL that is already
  * `ws:`/`wss:` is returned untouched. Anything that is not a URL at all (a
  * bare word, a `data:` URI) is returned unchanged, since the socket layer is
  * not the right place to reject it.
+ *
+ * Fragments are dropped. The constructor rejects any URL carrying one, with
+ * `SyntaxError: The URL contains a fragment identifier`, and a fragment is
+ * meaningless to a socket in any case.
  */
 export function scopedSocketUrl(path: string, workspaceId = activeWorkspaceId()): string {
   if (typeof window === 'undefined') return scopedUrl(path, workspaceId)
   const scoped = scopedUrl(path, workspaceId)
-  if (/^wss?:\/\//i.test(scoped)) return scoped
+  // Already a socket URL: keep it, minus any fragment the constructor rejects.
+  if (/^wss?:\/\//i.test(scoped)) return scoped.split('#')[0]
   const absolute = /^https?:\/\//i.test(scoped)
   // Only a relative socket path is ours to complete; a bare word or a
   // non-http scheme is left to the caller.
@@ -90,6 +96,8 @@ export function scopedSocketUrl(path: string, workspaceId = activeWorkspaceId())
       ? window.location.protocol === 'https:'
       : url.protocol === 'https:'
   url.protocol = secure ? 'wss:' : 'ws:'
+  // The constructor rejects a fragment outright, and a socket cannot use one.
+  url.hash = ''
   return url.toString()
 }
 

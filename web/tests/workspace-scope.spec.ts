@@ -47,7 +47,7 @@ it("gives sockets an absolute ws: URL that WebSocket accepts", () => {
 });
 
 it("maps an https page to wss: and keeps the scoped query", () => {
-  const original = window.location;
+  const descriptor = Object.getOwnPropertyDescriptor(window, "location")!;
   const secure = new URL("https://deeptutor.example.org/chat?dt_workspace=ws_c");
   Object.defineProperty(window, "location", { value: secure, writable: true, configurable: true });
   try {
@@ -57,7 +57,10 @@ it("maps an https page to wss: and keeps the scoped query", () => {
     expect(new URL(socket).pathname).toBe("/ws/books");
     expect(new URL(socket).searchParams.get("dt_workspace")).toBe("ws_c");
   } finally {
-    Object.defineProperty(window, "location", { value: original, writable: true, configurable: true });
+    // Restore the accessor, not a data slot: assigning `{ value: original }`
+    // turns `window.location` into a writable property and a later
+    // `window.location = "/x"` in another test would silently replace it.
+    Object.defineProperty(window, "location", descriptor);
   }
 });
 
@@ -77,18 +80,43 @@ it("keeps apiUrl relative so the browser resolves it against the document", () =
 it("gives the turn runtime an absolute default socket URL", () => {
   window.history.replaceState(null, "", "/chat?dt_workspace=ws_turn");
   // The runtime builds its own default and does not go through wsUrl, so it
-  // needs the same guarantee: a browser-rejectable relative path never
-  // reaches new WebSocket() (#2404).
+  // needs the same guarantee. Assert through the factory rather than the
+  // private options object: the path that matters is the one `connect()`
+  // hands to `new WebSocket()`, so a later change that relativises at the
+  // call site has to fail here (#2404).
+  let seen: string | undefined;
   const client = new TurnRuntimeClient({
     onEvent: () => {},
-    socketFactory: () => {
-      throw new Error("unused");
+    socketFactory: (url) => {
+      seen = url;
+      throw new Error("stop after capture");
     },
   });
-  const url = (client as unknown as { options: { url: string } }).options.url;
-  expect(url).toMatch(/^wss?:\/\//);
-  expect(new URL(url).pathname).toBe("/ws");
-  expect(new URL(url).searchParams.get("dt_workspace")).toBe("ws_turn");
+  client.connect();
+  expect(seen).toBeDefined();
+  expect(seen).toMatch(/^wss?:\/\//);
+  const parsed = new URL(seen!);
+  expect(parsed.pathname).toBe("/ws");
+  expect(parsed.searchParams.get("dt_workspace")).toBe("ws_turn");
+});
+
+it("drops a fragment, which the WebSocket constructor rejects", () => {
+  window.history.replaceState(null, "", "/chat?dt_workspace=ws_a");
+  // Verified in Chromium 156: a URL with a fragment throws rather than
+  // connecting, so it must not survive into the socket URL.
+  const socket = wsUrl("/ws#lobby");
+  expect(socket).toBe(`${socketOrigin()}/ws?dt_workspace=ws_a`);
+  expect(socket).not.toContain("#");
+  expect(() => new WebSocket(socket)).not.toThrow();
+});
+
+it("leaves an already absolute ws: URL alone and keeps it on wss:", () => {
+  // A caller that already names a secure endpoint must not be downgraded to
+  // cleartext: that is the regression this whole change exists to prevent.
+  expect(wsUrl("wss://media.example.org/ws")).toBe("wss://media.example.org/ws");
+  expect(wsUrl("ws://media.example.org/ws")).toBe("ws://media.example.org/ws");
+  // The fragment is stripped here too, or the constructor rejects the URL.
+  expect(wsUrl("wss://media.example.org/ws#top")).toBe("wss://media.example.org/ws");
 });
 
 it("does not append workspace identity to external or signed URLs", () => {

@@ -37,9 +37,12 @@ The architectural change that makes shape 3 work is that URL knowledge
 no longer lives in the frontend bundle. Concretely:
 
 - The bundle is built with no `NEXT_PUBLIC_API_BASE` placeholder and no
-  `sed -i` of the build output. `web/lib/api.ts` exports `apiUrl` and
-  `wsUrl` as one-line pass-throughs, so the browser fetches relative
-  paths through the frontend (`:3782/api/...`).
+  `sed -i` of the build output. `web/shared/api/client.ts` exports `apiUrl`
+  (a pass-through, so the browser fetches relative paths through the
+  frontend: `:3782/api/...`) and `wsUrl`, which resolves the scoped path to
+  an absolute `ws:`/`wss:` URL because a WebSocket constructor takes no
+  relative path. The proxy still sees `/ws/*` in both cases; the socket
+  simply names the page's own origin explicitly.
 - `web/proxy.ts` catches `/api/*` and `/ws/*` and rewrites them to
   `DEEPTUTOR_API_BASE_URL` at request time. That env var is set by the
   container entrypoint on every start, read from
