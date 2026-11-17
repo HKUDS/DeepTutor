@@ -198,6 +198,19 @@
 .dt-category-content > .dt-overview-row:first-child, .dt-category-content > div > .dt-overview-row:first-child { margin-top: 10px; }
 .dt-learning-record-list { position: relative; flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-bottom: 8px; }
 .dt-learning-record-list:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; border-radius: 7px; }
+.dt-record-type-filter {
+  position: relative; display: flex; align-items: center; flex-shrink: 0;
+  gap: 8px; margin: 0 8px 8px; padding: 0 10px; min-width: 0; height: 34px;
+  border-radius: 7px; color: var(--muted-foreground); background: var(--background);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+.dt-record-type-filter:focus-within { outline: 2px solid var(--ring); outline-offset: 2px; }
+.dt-record-type-filter > svg { flex-shrink: 0; pointer-events: none; }
+.dt-record-type-filter select {
+  flex: 1; min-width: 0; height: 100%; appearance: none; cursor: pointer;
+  background: transparent; color: var(--foreground); font-size: 12.5px; outline: none;
+}
+.dt-record-type-filter option { background: var(--background); color: var(--foreground); }
 /* Record lists (conversations, learning, partner conversations): one heading
    with sort and search on its right, then the rows by day. */
 .dt-record-header { flex-shrink: 0; padding-top: 12px; }
