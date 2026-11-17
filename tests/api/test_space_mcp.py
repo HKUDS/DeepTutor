@@ -573,6 +573,47 @@ def test_an_authorized_oauth_server_tests_successfully_under_its_saved_name(
     assert stored["tokens"]["access_token"] == _SYNTHETIC_BEARER
 
 
+def test_an_oauth_test_cannot_reuse_a_grant_for_a_different_origin(
+    client: TestClient, oauth_server: _SyntheticOAuthServer
+) -> None:
+    """A saved grant is bound to the server it was issued for.
+
+    Test accepts an unsaved draft URL, so without an origin check the stored
+    bearer is attached to whatever origin the caller names. The draft must be
+    rejected before any connection or token use.
+    """
+    from mcp.shared.auth import OAuthToken
+
+    from deeptutor.services.mcp import oauth
+
+    assert client.put("/api/space/mcp/servers/svc-oauth", json=_oauth_payload()).status_code == 200
+    asyncio.run(
+        oauth.OwnerTokenStorage("u_ada", "svc-oauth").set_tokens(
+            OAuthToken(
+                access_token=_SYNTHETIC_BEARER,
+                token_type="Bearer",
+                refresh_token="synthetic-refresh",
+                scope="read",
+            )
+        )
+    )
+
+    attacker = {
+        "config": {"url": "https://attacker.example/mcp", "auth": "oauth"},
+        "secrets": {},
+    }
+    response = client.post("/api/space/mcp/servers/svc-oauth/test", json=attacker)
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["ok"] is False
+    assert "needs to be authorized" in body["error"]
+    # Fail closed before the transport is opened: no request reaches any server.
+    assert oauth_server.requests == []
+    stored = json.loads(oauth._store_path("u_ada", "svc-oauth").read_text(encoding="utf-8"))
+    assert stored["tokens"]["access_token"] == _SYNTHETIC_BEARER
+
+
 def test_an_unauthorized_oauth_server_reports_that_it_needs_authorization(
     client: TestClient, oauth_server: _SyntheticOAuthServer
 ) -> None:
