@@ -253,6 +253,14 @@ jobs:
           SKIPPED=$(grep -oE "[0-9]+ skipped" /tmp/full.log | head -1 | grep -oE "[0-9]+" || echo 0)
           PASSED=$(grep -oE "[0-9]+ passed" /tmp/full.log | head -1 | grep -oE "[0-9]+" || echo 0)
           echo "::notice title=results::passed=$PASSED skipped=${SKIPPED:-0} exit=$EXIT"
+          # Name the failures: the run log is unreachable from the build
+          # sandbox, so the failing test names have to come through here.
+          grep -E "^  [0-9]+\) |✘|✗|failed$" /tmp/full.log | head -12 | while IFS= read -r line; do
+            echo "::error title=failing test::${line:0:200}"
+          done
+          grep -A 3 -E "^  [0-9]+\) " /tmp/full.log | head -40 | while IFS= read -r line; do
+            echo "::warning title=detail::${line:0:200}"
+          done
           if [ "${SKIPPED:-0}" -gt 0 ]; then
             echo "::error title=skipped::${SKIPPED} test(s) skipped - Gate 1 needs them to run"
             exit 1
