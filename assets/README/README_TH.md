@@ -27,6 +27,7 @@
   <a href="README_PT.md"><img alt="Português" height="40" src="https://img.shields.io/badge/Português-CDCFD4"></a>&nbsp;
   <a href="README_TH.md"><img alt="Thai" height="40" src="https://img.shields.io/badge/Thai-BCDCF7"></a>&nbsp;
   <a href="README_PL.md"><img alt="Polski" height="40" src="https://img.shields.io/badge/Polski-CDCFD4"></a>
+  <a href="README_TR.md"><img alt="Türkçe" height="40" src="https://img.shields.io/badge/Türkçe-CDCFD4"></a>
 </p>
 
 [![สัญญาอนุญาต](https://img.shields.io/badge/License-Apache_2.0-blue?style=flat-square)](../../LICENSE) [![รุ่นเผยแพร่บน GitHub](https://img.shields.io/github/v/release/HKUDS/DeepTutor?style=flat-square&color=brightgreen)](https://github.com/HKUDS/DeepTutor/releases) [![arXiv](https://img.shields.io/badge/arXiv-2604.26962-b31b1b?style=flat-square&logo=arxiv&logoColor=white)](https://arxiv.org/abs/2604.26962) [![Discord](https://img.shields.io/badge/Discord-Community-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/eRsjPgMU4t) [![Feishu](https://img.shields.io/badge/Feishu-Group-00D4AA?style=flat-square&logo=feishu&logoColor=white)](../../Communication.md) [![WeChat](https://img.shields.io/badge/WeChat-Group-07C160?style=flat-square&logo=wechat&logoColor=white)](https://github.com/HKUDS/DeepTutor/issues/78)
