@@ -131,6 +131,21 @@ jobs:
       # The full suite needs a backend and seeded accounts. Until those exist in
       # CI it reports skips, not failures, so its exit code is informational -
       # but the public-entry run above is not, and it gates this job.
+      # A green step means "nothing failed", which is also what an all-skipped
+      # run looks like. Print what actually executed so the summary cannot
+      # imply coverage that was never measured.
+      - name: List collected tests
+        if: always()
+        working-directory: web
+        run: |
+          {
+            echo "## Collected tests"
+            echo ""
+            echo '```'
+            npx playwright test --project=phase1-shell --list 2>&1 | tail -40
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
       # The run log and the artifact both live on hosts this build sandbox
       # cannot reach, so the failure text is surfaced through the job summary,
       # which the API does serve. Without this the CI is unreadable from here.
