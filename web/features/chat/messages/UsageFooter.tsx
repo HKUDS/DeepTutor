@@ -129,7 +129,7 @@ export function UsageFooter({ turn, session }: { turn: UsageSummary; session: Us
         <ChevronDown
           size={12}
           aria-hidden="true"
-          className={`-ml-1 transition-transform ${open ? 'rotate-180' : ''}`}
+          className={`-ms-1 transition-transform ${open ? 'rotate-180' : ''}`}
         />
       </button>
       {open &&
@@ -168,7 +168,7 @@ export function UsageFooter({ turn, session }: { turn: UsageSummary; session: Us
                   setOpen(false)
                   anchor.current?.focus()
                 }}
-                className="ml-1 rounded p-1 text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
+                className="ms-1 rounded p-1 text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
               >
                 <X size={13} />
               </button>

@@ -70,7 +70,7 @@ export function ResourceReuseControl({ kind }: { kind: ResourceKind }) {
         <span>{t(enabled ? "Every turn" : "This turn only")}</span>
         <span
           aria-hidden="true"
-          className="relative ml-1 h-3.5 w-6 rounded-full transition-colors"
+          className="relative ms-1 h-3.5 w-6 rounded-full transition-colors"
           style={{
             backgroundColor: enabled ? "var(--primary)" : "var(--border)",
           }}

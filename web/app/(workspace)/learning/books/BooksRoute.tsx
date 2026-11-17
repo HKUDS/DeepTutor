@@ -88,7 +88,7 @@ export default function BookPage() {
     <Suspense
       fallback={
         <div className="flex h-full w-full items-center justify-center text-[var(--muted-foreground)]">
-          <Loader2 className="mr-2 h-4 w-4 animate-spin" /> <BookLoadingText />
+          <Loader2 className="me-2 h-4 w-4 animate-spin" /> <BookLoadingText />
         </div>
       }
     >
@@ -1031,7 +1031,7 @@ function BookPageInner() {
       {requestedBookId && openBook && (
         <div className="flex min-w-0 shrink-0 items-center">
           <BookCrumb id={openBook.id} label={openBook.title || t('Untitled book')} />
-          {detail?.spine && canEditBook && <button className="ml-auto mr-4 text-sm" onClick={() => setStructureOpen(true)}>{t('Edit book structure')}</button>}
+          {detail?.spine && canEditBook && <button className="ms-auto me-4 text-sm" onClick={() => setStructureOpen(true)}>{t('Edit book structure')}</button>}
         </div>
       )}
       <div className="flex min-h-0 min-w-0 flex-1">
@@ -1240,7 +1240,7 @@ function BookPageInner() {
 
           {displayView === 'spine' && !detail?.spine && (
             <div className="flex h-full items-center justify-center text-[var(--muted-foreground)]">
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" /> {t('Loading spine…')}
+              <Loader2 className="me-2 h-4 w-4 animate-spin" /> {t('Loading spine…')}
             </div>
           )}
           </div>
@@ -1249,7 +1249,7 @@ function BookPageInner() {
         {displayView === 'reader' && !chatOpen && (
           <button
             onClick={() => setChatOpen(true)}
-            className="absolute bottom-4 right-4 inline-flex items-center gap-2 rounded-full bg-[var(--primary)] px-4 py-2 text-sm font-medium text-[var(--primary-foreground)] shadow-lg hover:opacity-90"
+            className="absolute bottom-4 end-4 inline-flex items-center gap-2 rounded-full bg-[var(--primary)] px-4 py-2 text-sm font-medium text-[var(--primary-foreground)] shadow-lg hover:opacity-90"
           >
             <MessageSquare className="h-4 w-4" />
             {t('Chat')}

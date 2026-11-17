@@ -250,7 +250,7 @@ export function SourcesStep({
         role="tabpanel"
         id={`${tabId}-panel`}
         aria-labelledby={`${tabId}-${tab}`}
-        className="min-h-40 pr-1"
+        className="min-h-40 pe-1"
       >
         {groupLoading ? (
           <div className="flex justify-center py-14">
@@ -484,7 +484,7 @@ function SourceSection({
                     onClick={() => onToggleOpen?.(item)}
                     aria-expanded={isOpen}
                     disabled={!item.available}
-                    className="flex w-11 shrink-0 items-center justify-center border-l border-[var(--border)] text-[var(--muted-foreground)] transition hover:bg-[color-mix(in_srgb,var(--accent)_60%,transparent)] hover:text-[var(--foreground)] disabled:opacity-40"
+                    className="flex w-11 shrink-0 items-center justify-center border-s border-[var(--border)] text-[var(--muted-foreground)] transition hover:bg-[color-mix(in_srgb,var(--accent)_60%,transparent)] hover:text-[var(--foreground)] disabled:opacity-40"
                     aria-label={t('Show what is inside')}
                   >
                     <span className="flex flex-col items-center gap-0.5">

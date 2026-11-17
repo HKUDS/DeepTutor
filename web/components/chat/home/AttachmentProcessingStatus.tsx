@@ -85,7 +85,7 @@ export default function AttachmentProcessingStatus({
               </span>
             </div>
             {hasDetails ? (
-              <details className="ml-9 mt-1 text-[var(--muted-foreground)]">
+              <details className="ms-9 mt-1 text-[var(--muted-foreground)]">
                 <summary className="cursor-pointer select-none">
                   {t("Failure details")}
                 </summary>

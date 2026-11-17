@@ -851,7 +851,7 @@ export default function QuizViewer({
                   hasThread ? (
                     <span className="relative inline-flex">
                       <Check size={10} />
-                      <span className="absolute -right-1 -top-1 h-1.5 w-1.5 rounded-full bg-[var(--primary)]" />
+                      <span className="absolute -end-1 -top-1 h-1.5 w-1.5 rounded-full bg-[var(--primary)]" />
                     </span>
                   ) : (
                     <Check size={10} />
@@ -859,7 +859,7 @@ export default function QuizViewer({
                 ) : hasThread && done && !isCurrent ? (
                   <span className="relative inline-flex">
                     {questionIndex + 1}
-                    <span className="absolute -right-1 -top-1 h-1.5 w-1.5 rounded-full bg-[var(--primary)]" />
+                    <span className="absolute -end-1 -top-1 h-1.5 w-1.5 rounded-full bg-[var(--primary)]" />
                   </span>
                 ) : (
                   questionIndex + 1
@@ -942,7 +942,7 @@ export default function QuizViewer({
                 <button
                   type="button"
                   onClick={handleOpenFollowup}
-                  className="ml-1 inline-flex items-center gap-1 rounded-lg border border-[var(--primary)]/60 bg-[var(--primary)]/10 px-2 py-1 text-[12px] font-medium text-[var(--primary)] transition-colors hover:bg-[var(--primary)]/15"
+                  className="ms-1 inline-flex items-center gap-1 rounded-lg border border-[var(--primary)]/60 bg-[var(--primary)]/10 px-2 py-1 text-[12px] font-medium text-[var(--primary)] transition-colors hover:bg-[var(--primary)]/15"
                 >
                   <MessageSquarePlus size={13} />
                   {t("Follow-up")}
@@ -1162,7 +1162,7 @@ export default function QuizViewer({
                         {image.filename}
                       </div>
                       {!ans.submitted && (
-                        <span className="absolute right-1 top-1 opacity-0 transition-opacity group-hover:opacity-100">
+                        <span className="absolute end-1 top-1 opacity-0 transition-opacity group-hover:opacity-100">
                           <Tooltip label={t("Remove image")}>
                             <button
                               type="button"
@@ -1315,7 +1315,7 @@ export default function QuizViewer({
                         type="button"
                         onClick={toggleCollapsed}
                         aria-label={collapsed ? t("Expand") : t("Collapse")}
-                        className="ml-auto inline-flex h-5 w-5 items-center justify-center rounded-md text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+                        className="ms-auto inline-flex h-5 w-5 items-center justify-center rounded-md text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
                       >
                         <ChevronDown
                           size={13}
@@ -1328,14 +1328,14 @@ export default function QuizViewer({
                   <button
                     type="button"
                     onClick={toggleCollapsed}
-                    className="flex w-full items-center gap-1 pb-1.5 text-left"
+                    className="flex w-full items-center gap-1 pb-1.5 text-start"
                   >
                     <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">
                       {hasJudgment ? t("AI Judgment") : t("Reference Answer")}
                     </span>
                     <ChevronDown
                       size={13}
-                      className={`ml-auto text-[var(--muted-foreground)] transition-transform ${
+                      className={`ms-auto text-[var(--muted-foreground)] transition-transform ${
                         collapsed ? "-rotate-90" : ""
                       }`}
                     />

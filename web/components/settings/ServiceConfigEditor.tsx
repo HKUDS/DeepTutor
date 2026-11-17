@@ -761,7 +761,7 @@ export function ServiceConfigEditor({
                           )}
 
                         {service !== "search" && (
-                          <div className="border-l-2 border-[var(--border)] pl-3 sm:pl-5">
+                          <div className="border-s-2 border-[var(--border)] ps-3 sm:ps-5">
                             <SectionHead
                               title={t("Models from {{provider}}", {
                                 provider: openedProfile.name,
@@ -997,7 +997,7 @@ export function ServiceConfigEditor({
                                                     ),
                                                   )}
                                                 </select>
-                                                <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--muted-foreground)]" />
+                                                <ChevronDown className="pointer-events-none absolute end-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--muted-foreground)]" />
                                               </div>
                                               <p className="mt-1.5 text-[11px] leading-relaxed text-[var(--muted-foreground)]">
                                                 {t(
@@ -1144,7 +1144,7 @@ export function ServiceConfigEditor({
                                                   </option>
                                                 ))}
                                               </select>
-                                              <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--muted-foreground)]" />
+                                              <ChevronDown className="pointer-events-none absolute end-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--muted-foreground)]" />
                                             </div>
                                           </div>
                                         </>
@@ -1570,11 +1570,11 @@ function ProfileFields({
             <ProviderIcon
               provider={providerValue}
               size={15}
-              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2"
+              className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2"
             />
           )}
           <select
-            className={`${selectClass} ${providerValue ? "pl-9" : ""}`}
+            className={`${selectClass} ${providerValue ? "ps-9" : ""}`}
             value={providerValue}
             aria-label={t("Provider")}
             disabled={isManagedCodex || Boolean(linkedConnection)}
@@ -1653,7 +1653,7 @@ function ProfileFields({
                 </option>
               ))}
           </select>
-          <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--muted-foreground)]" />
+          <ChevronDown className="pointer-events-none absolute end-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--muted-foreground)]" />
         </div>
         {showSearchProviderWarning && (
           <p
@@ -1728,7 +1728,7 @@ function ProfileFields({
               type={showApiKey ? "text" : "password"}
               autoComplete="new-password"
               spellCheck={false}
-              className={`${inputClass} pr-10 font-mono disabled:opacity-60`}
+              className={`${inputClass} pe-10 font-mono disabled:opacity-60`}
               value={linkedConnection?.api_key ?? profile.api_key}
               aria-label={t("API Key")}
               onChange={(e) =>
@@ -1736,7 +1736,7 @@ function ProfileFields({
               }
               placeholder="sk-..."
             />
-            <span className="absolute right-1 top-1/2 -translate-y-1/2">
+            <span className="absolute end-1 top-1/2 -translate-y-1/2">
               <Tooltip label={showApiKey ? t("Hide API key") : t("Show API key")} side="top">
                 <button
                   type="button"
@@ -1763,7 +1763,7 @@ function ProfileFields({
         >
           <summary className="cursor-pointer px-3.5 py-3 text-xs font-medium">
             {t("Connection options")}
-            <span className="ml-2 font-normal text-[var(--muted-foreground)]">
+            <span className="ms-2 font-normal text-[var(--muted-foreground)]">
               {t("Address, protocol and request headers")}
             </span>
           </summary>
@@ -1834,7 +1834,7 @@ function ProfileFields({
                       </option>
                     ))}
                   </select>
-                  <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--muted-foreground)]" />
+                  <ChevronDown className="pointer-events-none absolute end-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--muted-foreground)]" />
                 </div>
                 {API_FORMAT_HINTS[apiFormat] && (
                   <p className="mt-1.5 text-[11px] leading-relaxed text-[var(--muted-foreground)]">

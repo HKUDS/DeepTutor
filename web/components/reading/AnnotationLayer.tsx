@@ -96,7 +96,7 @@ export function AnnotationLayer({
                   {annotation.author === "assistant" && index === 0 && (
                     <span
                       aria-hidden
-                      className="absolute -top-1 -right-1 h-1.5 w-1.5 rounded-full bg-[var(--primary)] shadow-sm"
+                      className="absolute -top-1 -end-1 h-1.5 w-1.5 rounded-full bg-[var(--primary)] shadow-sm"
                     />
                   )}
                 </button>

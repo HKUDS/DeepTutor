@@ -620,7 +620,7 @@ export function MasteryStudy({
               </Link>
             </Tooltip>
 
-            <div className="ml-1.5 flex min-w-0 flex-1 items-baseline gap-2">
+            <div className="ms-1.5 flex min-w-0 flex-1 items-baseline gap-2">
               <h1 className="shrink-0 truncate text-[14.5px] font-semibold tracking-[-0.01em] text-[var(--foreground)]">
                 {displayName}
               </h1>
@@ -651,7 +651,7 @@ export function MasteryStudy({
           className="hidden shrink-0 sm:flex"
         />
 
-        <div className="flex shrink-0 items-center gap-1.5 pl-2">
+        <div className="flex shrink-0 items-center gap-1.5 ps-2">
           <Tooltip label={t("Save to Notebook")}>
             <button
               type="button"
@@ -791,7 +791,7 @@ export function MasteryStudy({
                             type="button"
                             onClick={() => startFromPrompt(label)}
                             disabled={state.isStreaming || sessionLoading}
-                            className="group rounded-[14px] bg-[rgb(var(--dt-ink,55_53_47)/0.03)] p-4 text-left transition hover:-translate-y-0.5 hover:bg-[rgb(var(--dt-ink,55_53_47)/0.055)] disabled:opacity-50"
+                            className="group rounded-[14px] bg-[rgb(var(--dt-ink,55_53_47)/0.03)] p-4 text-start transition hover:-translate-y-0.5 hover:bg-[rgb(var(--dt-ink,55_53_47)/0.055)] disabled:opacity-50"
                           >
                             <Icon className="h-4 w-4 text-[var(--primary)]" />
                             <span className="mt-3 block text-xs font-medium leading-5 text-[var(--foreground)]">

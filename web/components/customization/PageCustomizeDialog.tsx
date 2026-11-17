@@ -40,7 +40,7 @@ export function ChoiceRow({
       role="switch"
       aria-checked={checked}
       onClick={onChange}
-      className="flex w-full cursor-pointer items-center gap-4 rounded-xl border border-border p-3.5 text-left transition-colors hover:bg-muted/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring"
+      className="flex w-full cursor-pointer items-center gap-4 rounded-xl border border-border p-3.5 text-start transition-colors hover:bg-muted/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring"
     >
       <span className="min-w-0 flex-1">
         <span className="block text-sm font-medium">{label}</span>
@@ -157,7 +157,7 @@ export default function PageCustomizeDialog({
         >
           {t('customize.saveError')}
           {loadError && (
-            <button type="button" className="ml-2 underline" onClick={reload}>
+            <button type="button" className="ms-2 underline" onClick={reload}>
               {t('Retry')}
             </button>
           )}

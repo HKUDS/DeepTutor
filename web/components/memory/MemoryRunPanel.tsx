@@ -822,7 +822,7 @@ function NumberInput({
           const n = parseInt(v, 10);
           if (!Number.isNaN(n)) setValue(Math.max(min, Math.min(max, n)));
         }}
-        className="w-14 bg-transparent text-right text-[11.5px] text-[var(--foreground)] outline-none"
+        className="w-14 bg-transparent text-end text-[11.5px] text-[var(--foreground)] outline-none"
       />
     </label>
   );
@@ -887,13 +887,13 @@ function ModelPill({
           }
         >
           <Bot className="h-3 w-3 shrink-0 text-[var(--muted-foreground)]" />
-          <span className="flex-1 truncate text-left">{label}</span>
+          <span className="flex-1 truncate text-start">{label}</span>
           <ChevronDown className="h-3 w-3 shrink-0 text-[var(--muted-foreground)]" />
         </button>
       </Tooltip>
 
       {open && !inactive && (
-        <div className="absolute right-0 top-full z-30 mt-1 max-h-72 w-[min(320px,calc(100vw-32px))] overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--card)] p-1 shadow-lg">
+        <div className="absolute end-0 top-full z-30 mt-1 max-h-72 w-[min(320px,calc(100vw-32px))] overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--card)] p-1 shadow-lg">
           {options.map((opt) => {
             const active = sameLLMSelection(opt, value);
             return (
@@ -908,7 +908,7 @@ function ModelPill({
                   setOpen(false);
                 }}
                 className={
-                  "flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left text-[11.5px] transition hover:bg-[var(--muted)] " +
+                  "flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-start text-[11.5px] transition hover:bg-[var(--muted)] " +
                   (active
                     ? "bg-[var(--muted)] text-[var(--foreground)]"
                     : "text-[var(--muted-foreground)]")

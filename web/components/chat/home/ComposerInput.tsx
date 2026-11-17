@@ -579,7 +579,7 @@ export const ComposerInput = memo(
         {showAtPopup && agentMentionMode && (
           <div
             ref={popupRef}
-            className="absolute bottom-full left-0 z-[70] mb-2"
+            className="absolute bottom-full start-0 z-[70] mb-2"
           >
             <div
               role="listbox"
@@ -635,7 +635,7 @@ export const ComposerInput = memo(
         {showAtPopup && !agentMentionMode && (
           <div
             ref={popupRef}
-            className="absolute bottom-full left-0 z-[70] mb-2"
+            className="absolute bottom-full start-0 z-[70] mb-2"
           >
             <ChatSpaceMenu
               variant="mention"
@@ -651,7 +651,7 @@ export const ComposerInput = memo(
         {showSlashPopup && (
           <div
             ref={slashPopupRef}
-            className="absolute bottom-full left-0 z-[70] mb-2"
+            className="absolute bottom-full start-0 z-[70] mb-2"
           >
             <div
               id={slashListId}
@@ -699,7 +699,7 @@ export const ComposerInput = memo(
         {showLanguagePopup && (
           <div
             ref={languagePopupRef}
-            className={`absolute left-0 z-[70] ${
+            className={`absolute start-0 z-[70] ${
               languagePickerBelow ? "top-full mt-2" : "bottom-full mb-2"
             }`}
           >

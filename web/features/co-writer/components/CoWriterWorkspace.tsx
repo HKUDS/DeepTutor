@@ -1858,7 +1858,7 @@ export default function CoWriterWorkspace({ docId, onBack }: CoWriterWorkspacePr
           );
         })}
 
-        <div className="ml-auto flex shrink-0 items-center gap-1.5 pl-3 text-[10.5px] text-[var(--muted-foreground)]">
+        <div className="ms-auto flex shrink-0 items-center gap-1.5 ps-3 text-[10.5px] text-[var(--muted-foreground)]">
           <Tooltip
             label={
               syncScrollEnabled
@@ -1977,9 +1977,9 @@ export default function CoWriterWorkspace({ docId, onBack }: CoWriterWorkspacePr
               className="group relative z-10 flex h-full w-1 shrink-0 cursor-col-resize items-stretch bg-transparent focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--primary)]"
             >
               {/* Wider invisible hit-area so the handle is easy to grab */}
-              <div className="absolute inset-y-0 -left-1.5 -right-1.5" />
+              <div className="absolute inset-y-0 -start-1.5 -end-1.5" />
               <div
-                className={`pointer-events-none absolute left-1/2 top-1/2 h-10 w-[3px] -translate-x-1/2 -translate-y-1/2 rounded-full transition-opacity ${
+                className={`pointer-events-none absolute start-1/2 top-1/2 h-10 w-[3px] -translate-x-1/2 -translate-y-1/2 rounded-full transition-opacity ${
                   isResizingSplit
                     ? "bg-[var(--primary)] opacity-100"
                     : "bg-[var(--muted-foreground)]/40 opacity-0 group-hover:opacity-100"
@@ -2082,10 +2082,10 @@ export default function CoWriterWorkspace({ docId, onBack }: CoWriterWorkspacePr
                   void applyReactSelectionEdit();
                 }
               }}
-              className="h-10 w-full rounded-xl bg-transparent pl-3 pr-10 text-[13px] text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)]"
+              className="h-10 w-full rounded-xl bg-transparent ps-3 pe-10 text-[13px] text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)]"
               placeholder={t("Tell AI what to do with the selection...")}
             />
-            <span className="absolute right-1.5 top-1.5">
+            <span className="absolute end-1.5 top-1.5">
               <Tooltip label={t("Apply AI edit")}>
                 <button
                   type="button"
@@ -2130,14 +2130,14 @@ export default function CoWriterWorkspace({ docId, onBack }: CoWriterWorkspacePr
                 />
               </button>
               {isToolMenuOpen && (
-                <div className="dt-popup-up absolute left-0 top-full z-20 mt-1 w-full rounded-xl bg-[var(--popover)] p-1 shadow-[0_0_0_1px_rgb(15_15_15/0.05),0_12px_32px_-10px_rgb(15_15_15/0.22),0_3px_8px_-3px_rgb(15_15_15/0.08)]">
+                <div className="dt-popup-up absolute start-0 top-full z-20 mt-1 w-full rounded-xl bg-[var(--popover)] p-1 shadow-[0_0_0_1px_rgb(15_15_15/0.05),0_12px_32px_-10px_rgb(15_15_15/0.22),0_3px_8px_-3px_rgb(15_15_15/0.08)]">
                   {TOOL_OPTIONS.map((tool) => {
                     const active = selectionTools.includes(tool.name);
                     return (
                       <button
                         key={tool.name}
                         onClick={() => toggleSelectionTool(tool.name)}
-                        className="flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-[12.5px] text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]/45"
+                        className="flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-start text-[12.5px] text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]/45"
                       >
                         <span>{t(tool.label)}</span>
                         {active ? (
@@ -2172,7 +2172,7 @@ export default function CoWriterWorkspace({ docId, onBack }: CoWriterWorkspacePr
                 />
               </button>
               {isModeMenuOpen && (
-                <div className="dt-popup-up absolute left-0 top-full z-20 mt-1 w-full rounded-xl bg-[var(--popover)] p-1 shadow-[0_0_0_1px_rgb(15_15_15/0.05),0_12px_32px_-10px_rgb(15_15_15/0.22),0_3px_8px_-3px_rgb(15_15_15/0.08)]">
+                <div className="dt-popup-up absolute start-0 top-full z-20 mt-1 w-full rounded-xl bg-[var(--popover)] p-1 shadow-[0_0_0_1px_rgb(15_15_15/0.05),0_12px_32px_-10px_rgb(15_15_15/0.22),0_3px_8px_-3px_rgb(15_15_15/0.08)]">
                   {MODE_OPTIONS.map((mode) => (
                     <button
                       key={mode.value}
@@ -2180,7 +2180,7 @@ export default function CoWriterWorkspace({ docId, onBack }: CoWriterWorkspacePr
                         setSelectionMode(mode.value);
                         setIsModeMenuOpen(false);
                       }}
-                      className="flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left text-[12px] text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]"
+                      className="flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-start text-[12px] text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]"
                     >
                       <span>{t(mode.label)}</span>
                       {selectionMode === mode.value ? (

@@ -337,13 +337,13 @@ export function WatchingBrowser({
                           <Play size={28} />
                         )}
                         {!isPlaylist && (
-                          <span className="absolute bottom-2 right-2 rounded bg-black/75 px-1.5 py-0.5 text-xs text-white">
+                          <span className="absolute bottom-2 end-2 rounded bg-black/75 px-1.5 py-0.5 text-xs text-white">
                             {Math.floor((item.lengthSeconds || 0) / 60)}:
                             {String((item.lengthSeconds || 0) % 60).padStart(2, '0')}
                           </span>
                         )}
                       </div>
-                      <div className="mt-3 flex items-center gap-3 text-left">
+                      <div className="mt-3 flex items-center gap-3 text-start">
                         <LearningCardContent
                           title={item.title}
                           icon={isPlaylist ? <ListVideo size={18} /> : <Play size={18} />}

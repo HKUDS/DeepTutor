@@ -124,7 +124,7 @@ export default function AnswerModeMenu({
       value={value}
       active={Boolean(chosen || persona?.value)}
       placement={placement}
-      align="end"
+      align="right"
       open={onOpenChange ? open : undefined}
       onOpenChange={onOpenChange}
     >
@@ -296,7 +296,7 @@ export function PartnerLinkMenu({
       value={value}
       active={Boolean(value)}
       placement={placement}
-      align="end"
+      align="right"
     >
       {(close) => <PartnerLinkList partners={partners} groups={groups} agents={agents} close={close} />}
     </TrayMenu>

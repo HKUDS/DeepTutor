@@ -97,7 +97,7 @@ export default function AppShell({ sidebar, pageBar, children, homeHref = "/" }:
             half `max-md:` cannot express, hence useDevice(). */}
         <div
           inert={isMobile && !drawerOpen ? true : undefined}
-          className={`max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-50 max-md:shadow-xl max-md:transition-transform max-md:duration-200 max-md:ease-out ${
+          className={`max-md:fixed max-md:inset-y-0 max-md:start-0 max-md:z-50 max-md:shadow-xl max-md:transition-transform max-md:duration-200 max-md:ease-out ${
             drawerOpen ? "max-md:translate-x-0" : "max-md:-translate-x-full"
           }`}
         >

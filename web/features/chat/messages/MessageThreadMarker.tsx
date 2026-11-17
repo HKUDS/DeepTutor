@@ -167,7 +167,7 @@ export default function MessageThreadMarker({
 
   return (
     <div
-      className={`mt-1 flex ${align === "right" ? "justify-end pr-1" : "justify-start"}`}
+      className={`mt-1 flex ${align === "right" ? "justify-end pe-1" : "justify-start"}`}
       data-message-thread-marker={threads.length}
     >
       <button
@@ -273,7 +273,7 @@ function ThreadRow({
         type="button"
         onClick={onOpen}
         aria-label={`${t("Open tutor thread")}: ${title}`}
-        className="flex min-w-0 flex-1 flex-col gap-0.5 rounded-lg px-2 py-1.5 text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--ring)]"
+        className="flex min-w-0 flex-1 flex-col gap-0.5 rounded-lg px-2 py-1.5 text-start focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--ring)]"
       >
         <span className="truncate text-[12.5px] font-medium text-[var(--foreground)]">
           {title}
@@ -293,7 +293,7 @@ function ThreadRow({
         ) : null}
       </button>
       {confirming ? (
-        <span className="flex items-center gap-1 pr-1 pt-1.5">
+        <span className="flex items-center gap-1 pe-1 pt-1.5">
           <button
             type="button"
             disabled={deleting}
@@ -319,7 +319,7 @@ function ThreadRow({
               disabled={detaching || deleteDisabled}
               onClick={onDetach}
               aria-label={t("Detach from this message")}
-              className="mr-0.5 mt-1.5 flex h-6 w-6 items-center justify-center rounded-md text-[var(--muted-foreground)] opacity-0 transition-opacity hover:bg-[var(--muted)]/50 hover:text-[var(--foreground)] focus-visible:opacity-100 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-30 group-hover/thread:opacity-100"
+              className="me-0.5 mt-1.5 flex h-6 w-6 items-center justify-center rounded-md text-[var(--muted-foreground)] opacity-0 transition-opacity hover:bg-[var(--muted)]/50 hover:text-[var(--foreground)] focus-visible:opacity-100 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-30 group-hover/thread:opacity-100"
             >
               <Unlink size={12} strokeWidth={1.7} />
             </button>
@@ -329,7 +329,7 @@ function ThreadRow({
             disabled={deleteDisabled}
             onClick={onAskDelete}
             aria-label={t("Delete tutor thread")}
-            className="mr-1 mt-1.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[var(--muted-foreground)] opacity-0 transition-opacity hover:bg-[var(--muted)]/50 hover:text-[var(--destructive)] focus-visible:opacity-100 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-30 group-hover/thread:opacity-100"
+            className="me-1 mt-1.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[var(--muted-foreground)] opacity-0 transition-opacity hover:bg-[var(--muted)]/50 hover:text-[var(--destructive)] focus-visible:opacity-100 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-30 group-hover/thread:opacity-100"
           >
             <Trash2 size={12} strokeWidth={1.7} />
           </button>

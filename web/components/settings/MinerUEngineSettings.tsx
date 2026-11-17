@@ -578,7 +578,7 @@ export function MinerUEngineSettings() {
                   spellCheck={false}
                   data-1p-ignore="true"
                   data-lpignore="true"
-                  className={`${inputClass} w-[320px] max-w-[48vw] pr-9 font-mono`}
+                  className={`${inputClass} w-[320px] max-w-[48vw] pe-9 font-mono`}
                   placeholder={tokenSet ? TOKEN_MASK : t("Paste API token")}
                   value={tokenDraft}
                   onChange={(e) => {
@@ -590,7 +590,7 @@ export function MinerUEngineSettings() {
                   type="button"
                   onClick={() => setShowToken((v) => !v)}
                   aria-label={showToken ? t("Hide API token") : t("Show API token")}
-                  className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md p-1 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+                  className="absolute end-1.5 top-1/2 -translate-y-1/2 rounded-md p-1 text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
                 >
                   {showToken ? (
                     <EyeOff className="h-3.5 w-3.5" />

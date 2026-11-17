@@ -58,7 +58,7 @@ export default function TaskColorPicker({
       >
         <Palette size={15} strokeWidth={1.7} />
         {t('tasks.colors')}
-        <span aria-hidden className="ml-1 flex items-center -space-x-1">
+        <span aria-hidden className="ms-1 flex items-center -space-x-1">
           {statuses.map(status => (
             <span
               key={status}
@@ -116,7 +116,7 @@ function ColorPanel({
       role="dialog"
       aria-label={t('tasks.colors')}
       style={{ boxShadow: 'var(--shadow-raised)' }}
-      className="absolute left-0 top-full z-50 mt-2 w-[min(320px,calc(100vw-48px))] overflow-hidden rounded-2xl border border-border/70 bg-popover text-foreground backdrop-blur-xl md:left-auto md:right-0"
+      className="absolute start-0 top-full z-50 mt-2 w-[min(320px,calc(100vw-48px))] overflow-hidden rounded-2xl border border-border/70 bg-popover text-foreground backdrop-blur-xl md:start-auto md:end-0"
     >
       <div className="flex items-center justify-between px-4 pb-3 pt-4">
         <h2 className="text-[13px] font-semibold">{t('tasks.colors')}</h2>
@@ -211,7 +211,7 @@ function ColorPanel({
                 if (/^#[0-9a-f]{6}$/i.test(value))
                   setDraft(current => ({ ...current, [status]: value }))
               }}
-              className="w-[76px] rounded bg-transparent py-1 text-right font-mono text-xs uppercase tracking-wide outline-none focus-visible:ring-2 focus-visible:ring-ring/40 aria-[invalid=true]:text-destructive"
+              className="w-[76px] rounded bg-transparent py-1 text-end font-mono text-xs uppercase tracking-wide outline-none focus-visible:ring-2 focus-visible:ring-ring/40 aria-[invalid=true]:text-destructive"
             />
           </span>
         </div>

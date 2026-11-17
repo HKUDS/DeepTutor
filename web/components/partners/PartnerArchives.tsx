@@ -314,7 +314,7 @@ export default function PartnerArchives({
 
   return (
     <div className="grid h-full min-h-0 grid-cols-1 gap-4 lg:grid-cols-[280px_minmax(0,1fr)]">
-      <div className="min-h-0 border-r border-[var(--border)] pr-4 lg:overflow-y-auto">
+      <div className="min-h-0 border-e border-[var(--border)] pe-4 lg:overflow-y-auto">
         <div className="mb-3 flex items-center justify-between gap-2">
           <div>
             <h2 className="text-[13px] font-medium text-[var(--foreground)]">

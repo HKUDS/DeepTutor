@@ -448,7 +448,7 @@ export default function MasteryTopicPage() {
             {t("Learning topics")}
           </Link>
           {/* The goal's own actions go up to the page bar, top right. */}
-          <PageBarSlot name="actions" className="ml-auto flex items-center gap-1">
+          <PageBarSlot name="actions" className="ms-auto flex items-center gap-1">
             <button
               type="button"
               onClick={(event) => openEditor(event.currentTarget)}
@@ -462,13 +462,13 @@ export default function MasteryTopicPage() {
                 <MoreHorizontal className="h-4 w-4" />
                 <span className="sr-only">{t("More actions")}</span>
               </summary>
-              <div className="absolute right-0 z-20 mt-2 w-44 rounded-xl border border-[var(--border)] bg-[var(--popover)] p-1.5 text-xs shadow-xl">
+              <div className="absolute end-0 z-20 mt-2 w-44 rounded-xl border border-[var(--border)] bg-[var(--popover)] p-1.5 text-xs shadow-xl">
                 <button
                   type="button"
                   onClick={(event) =>
                     openConfirmation("reset", event.currentTarget)
                   }
-                  className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left hover:bg-[var(--accent)]"
+                  className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-start hover:bg-[var(--accent)]"
                 >
                   <RotateCcw className="h-3.5 w-3.5" /> {t("Reset progress")}
                 </button>
@@ -477,7 +477,7 @@ export default function MasteryTopicPage() {
                   onClick={(event) =>
                     openConfirmation("delete", event.currentTarget)
                   }
-                  className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-red-600 hover:bg-red-500/10"
+                  className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-start text-red-600 hover:bg-red-500/10"
                 >
                   <Trash2 className="h-3.5 w-3.5" /> {t("Delete topic")}
                 </button>
@@ -686,7 +686,7 @@ export default function MasteryTopicPage() {
                 className={`min-h-0 min-w-0 lg:min-h-[260px] lg:flex-1 ${
                   topicView === "board"
                     ? "flex flex-col"
-                    : "lg:overflow-y-auto lg:pr-1"
+                    : "lg:overflow-y-auto lg:pe-1"
                 }`}
               >
                 {topicView === "outline" ? (

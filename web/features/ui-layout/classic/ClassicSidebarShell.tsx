@@ -387,7 +387,7 @@ export function ClassicSidebarShell({
           aria-valuenow={resize.width}
           tabIndex={0}
           {...resize.handleProps}
-          className="group/resize absolute inset-y-0 -right-1 z-30 w-2 touch-none cursor-col-resize outline-none max-md:hidden"
+          className="group/resize absolute inset-y-0 -end-1 z-30 w-2 touch-none cursor-col-resize outline-none max-md:hidden"
         >
           <div
             className={`mx-auto h-full w-0.5 transition-colors group-hover/resize:bg-[var(--ring)] group-focus-visible/resize:bg-[var(--ring)] ${resize.resizing ? "bg-[var(--ring)]" : "bg-transparent"}`}

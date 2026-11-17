@@ -36,7 +36,7 @@ export default function MemoryArchivedBanner({
 
   if (variant === "full") {
     return (
-      <div className="relative flex items-start gap-3 rounded-2xl border border-[var(--border)] bg-[var(--muted)] px-5 py-4 pr-12 text-[13px]">
+      <div className="relative flex items-start gap-3 rounded-2xl border border-[var(--border)] bg-[var(--muted)] px-5 py-4 pe-12 text-[13px]">
         <Archive className="mt-0.5 h-4 w-4 shrink-0 text-[var(--muted-foreground)]" />
         <div>
           <p className="font-medium text-[var(--foreground)]">
@@ -53,7 +53,7 @@ export default function MemoryArchivedBanner({
           type="button"
           onClick={dismiss}
           aria-label={t("Dismiss")}
-          className="absolute right-2 top-2 rounded-md p-1.5 text-[var(--muted-foreground)] transition hover:bg-[var(--background)] hover:text-[var(--foreground)]"
+          className="absolute end-2 top-2 rounded-md p-1.5 text-[var(--muted-foreground)] transition hover:bg-[var(--background)] hover:text-[var(--foreground)]"
         >
           <X className="h-3.5 w-3.5" />
         </button>
@@ -66,7 +66,7 @@ export default function MemoryArchivedBanner({
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
-        className="flex w-full items-center justify-between gap-2 px-4 py-2 text-left"
+        className="flex w-full items-center justify-between gap-2 px-4 py-2 text-start"
       >
         <span className="flex items-center gap-2 text-[var(--muted-foreground)]">
           <Archive className="h-3.5 w-3.5" />
@@ -79,7 +79,7 @@ export default function MemoryArchivedBanner({
         )}
       </button>
       {expanded && (
-        <div className="relative border-t border-[var(--border)] px-4 py-3 pr-10 text-[var(--muted-foreground)]">
+        <div className="relative border-t border-[var(--border)] px-4 py-3 pe-10 text-[var(--muted-foreground)]">
           {t(
             "Stored at memory/backup/{{name}}. v2 starts fresh — interact with DeepTutor and click Update on each doc to build memory.",
             { name: latestBackup },
@@ -88,7 +88,7 @@ export default function MemoryArchivedBanner({
             type="button"
             onClick={dismiss}
             aria-label={t("Dismiss")}
-            className="absolute right-2 top-2 rounded-md p-1 text-[var(--muted-foreground)] transition hover:bg-[var(--background)] hover:text-[var(--foreground)]"
+            className="absolute end-2 top-2 rounded-md p-1 text-[var(--muted-foreground)] transition hover:bg-[var(--background)] hover:text-[var(--foreground)]"
           >
             <X className="h-3 w-3" />
           </button>

@@ -26,7 +26,7 @@ import { Search } from "lucide-react";
  */
 
 const CARD_BASE =
-  "group relative w-full rounded-xl border px-4 py-3.5 text-left outline-none transition-[background-color,border-color,box-shadow,transform] duration-150 active:scale-[0.99] focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]";
+  "group relative w-full rounded-xl border px-4 py-3.5 text-start outline-none transition-[background-color,border-color,box-shadow,transform] duration-150 active:scale-[0.99] focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]";
 
 /** Row in a workspace rail. `active` is the row being edited, not the runtime default. */
 export function workspaceCardClass(active: boolean): string {
@@ -194,7 +194,7 @@ export function WorkspaceRail({
         <Search
           size={14}
           aria-hidden
-          className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--muted-foreground)]"
+          className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-[var(--muted-foreground)]"
         />
         <input
           type="search"
@@ -202,7 +202,7 @@ export function WorkspaceRail({
           value={search.value}
           onChange={(event) => search.onChange(event.target.value)}
           placeholder={search.placeholder}
-          className="min-h-10 w-full rounded-lg border border-[var(--border)] bg-transparent py-2.5 pl-8 pr-3 text-[13px] outline-none transition-[border-color,box-shadow] duration-150 placeholder:text-[color-mix(in_srgb,var(--muted-foreground)_75%,transparent)] hover:border-[color-mix(in_srgb,var(--foreground)_22%,var(--border))] focus:border-[var(--ring)] focus:ring-2 focus:ring-[color-mix(in_srgb,var(--ring)_16%,transparent)]"
+          className="min-h-10 w-full rounded-lg border border-[var(--border)] bg-transparent py-2.5 ps-8 pe-3 text-[13px] outline-none transition-[border-color,box-shadow] duration-150 placeholder:text-[color-mix(in_srgb,var(--muted-foreground)_75%,transparent)] hover:border-[color-mix(in_srgb,var(--foreground)_22%,var(--border))] focus:border-[var(--ring)] focus:ring-2 focus:ring-[color-mix(in_srgb,var(--ring)_16%,transparent)]"
         />
       </div>
       {filter}
@@ -224,7 +224,7 @@ export function WorkspaceRail({
                 ? undefined
                 : { maxHeight: `${Math.max(available, 220)}px` }
             }
-            className="flex max-h-[24rem] min-h-0 flex-col gap-2 overflow-y-auto overscroll-contain pb-0.5 pr-0.5 [scrollbar-gutter:stable] xl:max-h-[calc(100dvh-15rem)]"
+            className="flex max-h-[24rem] min-h-0 flex-col gap-2 overflow-y-auto overscroll-contain pb-0.5 pe-0.5 [scrollbar-gutter:stable] xl:max-h-[calc(100dvh-15rem)]"
           >
             {children}
           </div>

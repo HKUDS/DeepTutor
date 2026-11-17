@@ -501,7 +501,7 @@ export function AddMaterialsDialog({
           >
             <Library size={13} />
             {t("Choose from material you already uploaded")}
-            <span className="ml-auto">{showPicker ? "−" : "›"}</span>
+            <span className="ms-auto">{showPicker ? "−" : "›"}</span>
           </button>
           {showPicker && (
             <LibraryPicker onPick={pickLibrary} selectedIds={selectedLibraryIds} />
@@ -602,7 +602,7 @@ function PendingRow({
       </div>
 
       {matched && item.match?.kind === "same_content" && (
-        <p className="mt-1.5 flex flex-wrap items-center gap-1.5 pl-5 text-[10.5px] leading-relaxed text-[var(--muted-foreground)]">
+        <p className="mt-1.5 flex flex-wrap items-center gap-1.5 ps-5 text-[10.5px] leading-relaxed text-[var(--muted-foreground)]">
           <Check size={11} className="text-[var(--primary)]" />
           {/* Naming the match matters: the file the user picked and the copy
               already in the library often have different names. */}
@@ -630,7 +630,7 @@ function PendingRow({
       )}
 
       {matched && item.match?.kind === "same_name" && (
-        <div className="mt-1.5 pl-5">
+        <div className="mt-1.5 ps-5">
           <p className="text-[10.5px] leading-relaxed text-[var(--muted-foreground)]">
             {where
               ? t(
@@ -769,7 +769,7 @@ function LibraryPicker({
               type="button"
               onClick={() => onPick(material)}
               disabled={selectedIds.has(material.material_id)}
-              className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-[var(--muted)]"
+              className="flex w-full items-center gap-2 px-3 py-2 text-start hover:bg-[var(--muted)]"
             >
               <MaterialGlyph
                 material={material}

@@ -805,7 +805,7 @@ function Controls({
 }) {
   const { t } = useTranslation();
   return (
-    <div className="pointer-events-none absolute right-4 top-4 flex flex-col items-end gap-2">
+    <div className="pointer-events-none absolute end-4 top-4 flex flex-col items-end gap-2">
       <div className="pointer-events-auto inline-flex items-center overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--card)]/95 shadow-sm backdrop-blur">
         <IconButton onClick={() => zoomBy(1.25)} title={t("Zoom in")}>
           <ZoomIn className="h-3.5 w-3.5" />
@@ -842,9 +842,9 @@ function Controls({
                   : t("Raw traces")}
             </span>
             {layerOn[layer] ? (
-              <Eye className="ml-1 h-3 w-3 text-[var(--muted-foreground)]" />
+              <Eye className="ms-1 h-3 w-3 text-[var(--muted-foreground)]" />
             ) : (
-              <EyeOff className="ml-1 h-3 w-3 text-[var(--muted-foreground)]/60" />
+              <EyeOff className="ms-1 h-3 w-3 text-[var(--muted-foreground)]/60" />
             )}
           </button>
         ))}
@@ -891,7 +891,7 @@ function Legend({ graph }: { graph: MemoryGraph }) {
   }, [graph.nodes]);
 
   return (
-    <div className="pointer-events-none absolute bottom-4 left-4 max-w-md rounded-lg border border-[var(--border)] bg-[var(--card)]/92 p-3 text-[11.5px] shadow-sm backdrop-blur">
+    <div className="pointer-events-none absolute bottom-4 start-4 max-w-md rounded-lg border border-[var(--border)] bg-[var(--card)]/92 p-3 text-[11.5px] shadow-sm backdrop-blur">
       <div className="mb-2 flex items-center gap-3 text-[var(--muted-foreground)]">
         {(["L3", "L2", "L1"] as const).map((layer) => (
           <span key={layer} className="inline-flex items-center gap-1.5">
