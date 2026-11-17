@@ -161,26 +161,42 @@ jobs:
           # created by that admin. Doing it through the real endpoints means the
           # tests exercise the same paths an operator would.
           #
-          # Login sets the session as a `dt_token` cookie rather than returning a
-          # bearer token, so the cookie jar carries the session between calls.
+          # `-f` is deliberately absent from the register call: a 409 means the
+          # account already exists, which is the desired end state, and curl
+          # exiting 22 on it would fail a run that is actually fine.
           JAR=/tmp/admin.cookies
-          curl -fsS -c "$JAR" -X POST "$BASE/api/auth/register" \
+          code=$(curl -sS -o /tmp/register.out -w '%{http_code}' \
+            -c "$JAR" -X POST "$BASE/api/auth/register" \
             -H 'Content-Type: application/json' \
-            -d '{"username":"phase1-admin","password":"phase1-admin-pass"}' || true
+            -d '{"username":"phase1-admin","password":"phase1-admin-pass"}')
+          echo "register -> $code"
+          cat /tmp/register.out
+          echo "::notice title=register::HTTP $code"
+
           curl -fsS -b "$JAR" -c "$JAR" -X POST "$BASE/api/auth/login" \
             -H 'Content-Type: application/json' \
-            -d '{"username":"phase1-admin","password":"phase1-admin-pass"}'
-          curl -fsS -b "$JAR" -X POST "$BASE/api/auth/users" \
-            -H 'Content-Type: application/json' \
-            -d '{"username":"phase1-student","password":"phase1-student-pass","preset":"learner"}' \
-            || echo "student may already exist"
+            -d '{"username":"phase1-admin","password":"phase1-admin-pass"}' \
+            -o /tmp/login.out -w 'login -> %{http_code}\n'
+          cat /tmp/login.out
+          echo
+          test -s "$JAR" || { echo "::error title=seed::no session cookie after login"; exit 1; }
+
+          code=$(curl -sS -o /tmp/create.out -w '%{http_code}' -b "$JAR" \
+            -X POST "$BASE/api/auth/users" -H 'Content-Type: application/json' \
+            -d '{"username":"phase1-student","password":"phase1-student-pass","preset":"learner"}')
+          echo "create student -> $code"; cat /tmp/create.out; echo
+
           # The created account is an ordinary user; the role is assigned
           # separately, which is how the product models it.
-          curl -fsS -b "$JAR" -X PUT "$BASE/api/auth/users/phase1-student/role" \
-            -H 'Content-Type: application/json' -d '{"role":"student"}' \
-            || echo "role may already be set"
+          code=$(curl -sS -o /tmp/role.out -w '%{http_code}' -b "$JAR" \
+            -X PUT "$BASE/api/auth/users/phase1-student/role" \
+            -H 'Content-Type: application/json' -d '{"role":"student"}')
+          echo "set role -> $code"; cat /tmp/role.out; echo
+
           # Prove the seed took before the browser tests depend on it.
-          curl -fsS -b "$JAR" "$BASE/api/auth/status"
+          curl -sS -b "$JAR" "$BASE/api/auth/status"
+          echo
+          echo "::notice title=seed::register=$code"
 
       - name: Gate 1 - public entry points
         id: public_entries
