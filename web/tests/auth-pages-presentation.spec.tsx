@@ -62,3 +62,16 @@ it('keeps the brand panel out of the reading order on small screens', async () =
   // Mirrors with the page direction rather than a physical border.
   expect(aside!.className).toContain('border-e')
 })
+
+it('renders a separate admin sign-in that names its own purpose', async () => {
+  const { default: AdminLoginPage } = await import('@/app/(admin)/admin/login/page')
+  render(<AdminLoginPage />)
+
+  // It must be distinguishable from /login, or the separate entrance is
+  // pointless: same fields, different framing.
+  expect(await screen.findByText('Sign in to the admin panel')).toBeTruthy()
+  expect(screen.getByLabelText('Email or username')).toBeTruthy()
+  expect(screen.getByLabelText('Password')).toBeTruthy()
+  // A way back, so an operator who landed here by mistake is not stuck.
+  expect(screen.getByRole('link', { name: 'Back to the learning app' })).toBeTruthy()
+})

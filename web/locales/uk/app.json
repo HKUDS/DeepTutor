@@ -6692,5 +6692,21 @@
   "Practice and track what you have learned": "Practice and track what you have learned",
   "Always know which source an answer came from": "Always know which source an answer came from",
   "Darsyar": "Darsyar",
-  "Start learning in a minute": "Start learning in a minute"
+  "Start learning in a minute": "Start learning in a minute",
+  "navigation.admin": "Administration",
+  "navigation.users": "Users",
+  "Administration": "Administration",
+  "Sign in to the admin panel": "Sign in to the admin panel",
+  "This account does not have administrator access.": "This account does not have administrator access.",
+  "Back to the learning app": "Back to the learning app",
+  "Users": "Users",
+  "Create accounts, assign roles and reset passwords.": "Create accounts, assign roles and reset passwords.",
+  "Educational catalog": "Educational catalog",
+  "Courses, books and question banks arrive with Phase 3.": "Courses, books and question banks arrive with Phase 3.",
+  "Models and providers": "Models and providers",
+  "Provider configuration is part of Phase 4.": "Provider configuration is part of Phase 4.",
+  "Plans and usage": "Plans and usage",
+  "Billing and quota management are part of Phase 5.": "Billing and quota management are part of Phase 5.",
+  "Security and audit": "Security and audit",
+  "Audit trails are part of Phase 6.": "Audit trails are part of Phase 6."
 }

@@ -6688,5 +6688,21 @@
   "Practice and track what you have learned": "Pratique e acompanhe o que você aprendeu",
   "Always know which source an answer came from": "Saiba sempre de qual fonte veio uma resposta",
   "Darsyar": "Darsyar",
-  "Start learning in a minute": "Comece a aprender em um minuto"
+  "Start learning in a minute": "Comece a aprender em um minuto",
+  "navigation.admin": "Administração",
+  "navigation.users": "Usuários",
+  "Administration": "Administração",
+  "Sign in to the admin panel": "Entrar no painel administrativo",
+  "This account does not have administrator access.": "Esta conta não tem acesso de administrador.",
+  "Back to the learning app": "Voltar para o aplicativo de aprendizagem",
+  "Users": "Usuários",
+  "Create accounts, assign roles and reset passwords.": "Crie contas, atribua funções e redefina senhas.",
+  "Educational catalog": "Catálogo educacional",
+  "Courses, books and question banks arrive with Phase 3.": "Cursos, livros e bancos de questões chegam na Fase 3.",
+  "Models and providers": "Modelos e provedores",
+  "Provider configuration is part of Phase 4.": "A configuração de provedores faz parte da Fase 4.",
+  "Plans and usage": "Planos e uso",
+  "Billing and quota management are part of Phase 5.": "A gestão de cobrança e cotas faz parte da Fase 5.",
+  "Security and audit": "Segurança e auditoria",
+  "Audit trails are part of Phase 6.": "As trilhas de auditoria fazem parte da Fase 6."
 }

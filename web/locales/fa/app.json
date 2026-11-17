@@ -680,5 +680,22 @@
   "Practice and track what you have learned": "تمرین کنید و پیشرفتتان را ببینید",
   "Always know which source an answer came from": "همیشه بدانید پاسخ از کدام منبع آمده",
   "Darsyar": "درسیار",
-  "Start learning in a minute": "شروع یادگیری در یک دقیقه"
+  "Start learning in a minute": "شروع یادگیری در یک دقیقه",
+  "navigation.admin": "مدیریت",
+  "navigation.users": "کاربران",
+  "Administration": "مدیریت",
+  "Sign in to the admin panel": "ورود به پنل مدیریت",
+  "This account does not have administrator access.": "این حساب دسترسی مدیر ندارد.",
+  "Back to the learning app": "بازگشت به اپلیکیشن یادگیری",
+  "Users": "کاربران",
+  "Create accounts, assign roles and reset passwords.": "ساخت حساب، تعیین نقش و بازنشانی گذرواژه.",
+  "Educational catalog": "کاتالوگ آموزشی",
+  "Courses, books and question banks arrive with Phase 3.": "دوره‌ها، کتاب‌ها و بانک سؤال در فاز ۳ اضافه می‌شوند.",
+  "Models and providers": "مدل‌ها و Providerها",
+  "Provider configuration is part of Phase 4.": "پیکربندی Providerها بخشی از فاز ۴ است.",
+  "Plans and usage": "پلن و مصرف",
+  "Billing and quota management are part of Phase 5.": "مدیریت اعتبار و سهمیه بخشی از فاز ۵ است.",
+  "Security and audit": "امنیت و audit",
+  "Audit trails are part of Phase 6.": "ردگیری audit بخشی از فاز ۶ است.",
+  "Coming soon": "به‌زودی"
 }
