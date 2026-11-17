@@ -199,9 +199,26 @@ def test_minimax_model_references_follow_protocol_changes_without_rewriting_mode
     assert catalog["services"] == original_models
 
 
-def test_switch_one_legacy_model_provider_without_touching_sibling_or_unknown_fields(tmp_path):
+@pytest.mark.parametrize("linked_profile", [False, True], ids=["legacy", "linked"])
+def test_switch_one_model_provider_without_touching_sibling_or_unknown_fields(
+    tmp_path, linked_profile
+):
     store, current = fixture(tmp_path)
-    catalog = merge_registry_edit(current, provider_edit())
+    profile = current["services"]["llm"]["profiles"][0]
+    profile["api_format"] = "openai_chat"
+    if linked_profile:
+        current = merge_registry_edit(
+            current,
+            {
+                **provider_edit(base_url="https://legacy.test/v1", api_key="old-secret"),
+                "ref": {"connection_id": "original"},
+            },
+        )
+        current["services"]["llm"]["profiles"][0]["provider_ref"] = {
+            "connection_id": "original",
+            "binding": "custom",
+        }
+    catalog = merge_registry_edit(current, provider_edit(api_format="openai_responses"))
     original_profile = deepcopy(catalog["services"]["llm"]["profiles"][0])
     model = deepcopy(original_profile["models"][0])
     model["provider_ref"] = {"connection_id": "account", "binding": "custom"}
@@ -210,13 +227,15 @@ def test_switch_one_legacy_model_provider_without_touching_sibling_or_unknown_fi
             catalog, {"kind": "model", "service": "llm", "profile_id": "llm", "model": model}
         )
     )
-    assert resolve_llm_runtime_config(catalog, service=store).api_key == "new-secret"
-    assert (
-        resolve_llm_runtime_config(
-            catalog, service=store, llm_selection={"profile_id": "llm", "model_id": "llm-two"}
-        ).api_key
-        == "old-secret"
+    resolved = resolve_llm_runtime_config(store.load(), service=store)
+    assert resolved.api_key == "new-secret"
+    assert resolved.effective_url == "https://new.test/v1"
+    assert resolved.api_format == "openai_responses"
+    sibling = resolve_llm_runtime_config(
+        catalog, service=store, llm_selection={"profile_id": "llm", "model_id": "llm-two"}
     )
+    assert sibling.api_key == "old-secret"
+    assert sibling.api_format == "openai_chat"
     assert catalog["services"]["llm"]["profiles"][0]["models"][1] == original_profile["models"][1]
     assert (
         catalog["services"]["llm"]["profiles"][0]["extra_headers"]
@@ -619,17 +638,20 @@ def test_manual_service_changes_do_not_rekey_or_remove_existing_models(tmp_path)
 # silently clobbered by the linked connection's value.
 
 
-def _linked_profile_with_api_format(tmp_path, *, profile_format=None, connection_format=None):
-    store, catalog = fixture(tmp_path)
-
-
-def _linked_profile_with_api_format(tmp_path, *, profile_format=None, connection_format=None):
+def _linked_profile_with_api_format(
+    tmp_path, *, profile_format=None, connection_format=None, explicit_model_ref=False
+):
     store, catalog = fixture(tmp_path)
     # merge_registry_edit is what materializes the "account" connection the
     # profile links to; without it saved["connections"] stays empty.
     catalog = merge_registry_edit(catalog, provider_edit())
     profile = catalog["services"]["llm"]["profiles"][0]
     profile["provider_ref"] = {"connection_id": "account", "binding": "custom"}
+    if explicit_model_ref:
+        profile["models"][0]["provider_ref"] = {
+            **profile["provider_ref"],
+            "default_base_url": "https://new.test/v1",
+        }
     if profile_format is not None:
         profile["api_format"] = profile_format
     saved = store.save(catalog)
@@ -637,12 +659,17 @@ def _linked_profile_with_api_format(tmp_path, *, profile_format=None, connection
     if connection_format is not None:
         source["api_format"] = connection_format
     saved = store.save(saved)
-    return resolve_profile_provider(saved, "llm", saved["services"]["llm"]["profiles"][0])
+    profile = saved["services"]["llm"]["profiles"][0]
+    return resolve_profile_provider(saved, "llm", profile, profile["models"][0])
 
 
-def test_profile_explicit_api_format_wins_over_connection(tmp_path):
+@pytest.mark.parametrize("explicit_model_ref", [False, True], ids=["inherited", "same-provider"])
+def test_profile_explicit_api_format_wins_over_connection(tmp_path, explicit_model_ref):
     resolved = _linked_profile_with_api_format(
-        tmp_path, profile_format="openai_responses", connection_format="auto"
+        tmp_path,
+        profile_format="openai_responses",
+        connection_format="auto",
+        explicit_model_ref=explicit_model_ref,
     )
 
     assert resolved["api_format"] == "openai_responses"
