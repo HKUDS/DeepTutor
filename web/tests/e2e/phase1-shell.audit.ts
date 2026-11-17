@@ -79,7 +79,7 @@ test.describe("public entry points", () => {
     // /login is a client-rendered page behind <Suspense>, so the server sends
     // the fallback. Waiting for a form control is what proves the components
     // mounted; asserting on `aside` alone races the hydration.
-    const formField = page.getByLabel(/email or username|نام کاربری/i);
+    const formField = page.getByLabel(/email or username|نام کاربری|ایمیل/i);
     const fieldCount = await formField.count();
     if (fieldCount === 0) {
       const body = await page.locator("body").innerText();
