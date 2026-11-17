@@ -39,6 +39,7 @@ __all__ = [
     "recover_finished_label",
     "dispatch_tool_calls",
     "execute_tool_call",
+    "refuse_truncated_tool_calls",
     "find_inline_labels",
     "run_agentic_loop",
     "run_labeled_step",
@@ -67,6 +68,7 @@ _EXPORT_MODULES = {
     "DispatchOutcome": "tool_dispatch",
     "dispatch_tool_calls": "tool_dispatch",
     "execute_tool_call": "tool_dispatch",
+    "refuse_truncated_tool_calls": "tool_dispatch",
     "UsageTracker": "usage",
 }
 

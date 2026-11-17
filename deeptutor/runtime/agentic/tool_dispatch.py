@@ -124,6 +124,71 @@ class DispatchOutcome:
     pause_tool_call_id: str | None = None
 
 
+#: Notice text recorded for every call in a refused truncated batch. Matches
+#: the chat loop's refusal wording so every flow reports the same sentence.
+TRUNCATED_TOOL_CALL_NOTICE = (
+    "Model output was truncated. No tools in this batch were executed; "
+    "retry with complete arguments."
+)
+
+
+async def refuse_truncated_tool_calls(
+    *,
+    tool_calls: list[dict[str, Any]],
+    stream: StreamBus,
+    source: str,
+    stage: str,
+    notice: str = TRUNCATED_TOOL_CALL_NOTICE,
+) -> list[dict[str, Any]]:
+    """Record every call in a truncated batch as *not executed*.
+
+    ``dispatch_tool_calls`` deliberately repairs malformed JSON before running
+    a tool, which is the right default for a complete call that came back
+    mangled and the worst possible default for a call the provider cut off mid
+    arguments: repair would close the partial value and the tool would run on
+    it. A round whose ``finish_reason`` says the output cap was hit therefore
+    refuses the whole batch: each call gets one ``role: "tool"`` message with
+    the notice, so the next round sees what was *not* executed and can retry
+    with complete arguments.
+
+    Display parsing uses the stdlib decoder only. A partial value is never
+    repaired and never passed to a tool.
+    """
+    messages: list[dict[str, Any]] = []
+    for call in tool_calls:
+        name = str(call.get("name") or "")
+        raw = call.get("arguments") or ""
+        parsed: Any
+        try:
+            parsed = json.loads(raw) if isinstance(raw, str) else raw
+        except json.JSONDecodeError:
+            parsed = None
+        display = parsed if isinstance(parsed, dict) else {"arguments": raw}
+        await stream.tool_call(
+            tool_name=name,
+            args=display,
+            source=source,
+            stage=stage,
+            metadata={"trace_kind": "tool_call", "truncated": True},
+        )
+        await stream.tool_result(
+            tool_name=name,
+            result=notice,
+            source=source,
+            stage=stage,
+            metadata={"trace_kind": "tool_result", "truncated": True},
+        )
+        messages.append(
+            {
+                "role": "tool",
+                "tool_call_id": call.get("id") or "",
+                "name": name,
+                "content": notice,
+            }
+        )
+    return messages
+
+
 async def dispatch_tool_calls(
     *,
     tool_calls: list[dict[str, Any]],

@@ -12,6 +12,7 @@ from deeptutor.capabilities.explore_context import explorer as explorer_mod
 from deeptutor.capabilities.protocol import PromptBlock
 from deeptutor.core.context import Attachment, UnifiedContext
 from deeptutor.core.stream import StreamEventType
+from deeptutor.runtime.agentic.tool_dispatch import TRUNCATED_TOOL_CALL_NOTICE
 from deeptutor.runtime.stream_bus import StreamBus
 from deeptutor.services.llm.exceptions import LLMProviderTransportError
 
@@ -189,9 +190,14 @@ class _FakeDelta:
 
 
 class _FakeChoice:
-    def __init__(self, delta: _FakeDelta, provider_specific_fields: dict | None = None) -> None:
+    def __init__(
+        self,
+        delta: _FakeDelta,
+        provider_specific_fields: dict | None = None,
+        finish_reason: str | None = None,
+    ) -> None:
         self.delta = delta
-        self.finish_reason = None
+        self.finish_reason = finish_reason
         self.provider_specific_fields = provider_specific_fields
 
 
@@ -200,8 +206,9 @@ class _FakeChunk:
         self,
         delta: _FakeDelta,
         provider_specific_fields: dict | None = None,
+        finish_reason: str | None = None,
     ) -> None:
-        self.choices = [_FakeChoice(delta, provider_specific_fields)]
+        self.choices = [_FakeChoice(delta, provider_specific_fields, finish_reason)]
         self.usage = None
 
 
@@ -286,6 +293,52 @@ async def test_loop_reads_source_then_writes_investigation(
     kinds = [e.type for e in bus._history]
     assert StreamEventType.CONTENT not in kinds
     assert StreamEventType.TOOL_CALL in kinds
+
+
+@pytest.mark.asyncio
+async def test_loop_refuses_a_tool_round_cut_off_by_the_output_cap(
+    monkeypatch: pytest.MonkeyPatch, _force_loop: None
+) -> None:
+    """A round whose finish_reason says the cap was hit must not dispatch.
+
+    The explore loop repaired and ran the cut-off arguments before this fix:
+    ``read_source`` received a JSON object closed by the repair pass.
+    """
+    cut_off = '{"source_id": "hs-x'
+    rounds = [
+        [
+            _FakeChunk(
+                _FakeDelta(tool_calls=[_FakeToolCall(0, "call_1", "read_source", cut_off)]),
+                finish_reason="length",
+            )
+        ],
+        [_FakeChunk(_FakeDelta(content="Nothing was read; nothing to report."))],
+    ]
+    fake_client = _FakeClient(rounds)
+    monkeypatch.setattr(explorer_mod, "build_openai_client", lambda _cfg: fake_client)
+
+    cap = ExploreContextCapability()
+    ctx = _ctx(
+        source_index={"hs-x": "## Claude Code\nI rewrote the nav and shipped it."},
+        history_references=["x"],
+        _manifest="[Attached Sources]\n- id=hs-x type=history name='nav'",
+    )
+    bus = StreamBus()
+
+    block = await cap.pre_loop(ctx, bus, usage=None)
+
+    assert isinstance(block, PromptBlock)
+    second_round = fake_client.chat.completions.calls[1]["messages"]
+    refusals = [
+        m
+        for m in second_round
+        if m.get("role") == "tool" and m.get("content") == TRUNCATED_TOOL_CALL_NOTICE
+    ]
+    assert [m["tool_call_id"] for m in refusals] == ["call_1"]
+    # The refusal is what the trace shows, tagged so the UI can tell it apart
+    # from a real tool result.
+    kinds = [e.type for e in bus._history]
+    assert StreamEventType.TOOL_RESULT in kinds
 
 
 @pytest.mark.asyncio
