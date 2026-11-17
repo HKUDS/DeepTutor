@@ -84,6 +84,15 @@ def _canonical_record(
         "preset": preset,
         "must_change_password": bool(value.get("must_change_password", False)),
     }
+    # Security state that must survive a canonicalise-write round trip.
+    # Without these two lines ``bump_token_version`` writes, ``load_users``
+    # rewrites without the field, and revocation silently does nothing.
+    try:
+        record["token_version"] = int(value.get("token_version") or 0)
+    except (TypeError, ValueError):
+        record["token_version"] = 0
+    if value.get("phone"):
+        record["phone"] = str(value["phone"])
     if "book_permission" in value:
         record["book_permission"] = canonical_book_permission(value.get("book_permission"))
     if "learner_profile" in value:
@@ -257,6 +266,10 @@ def save_user(
             "preset": effective_preset,
             "book_permission": canonical_book_permission(existing.get("book_permission")),
             "learner_profile": normalize_profile(existing.get("learner_profile")),
+            # Re-saving an account (e.g. an admin resetting a password) must not
+            # silently un-revoke its sessions or clear the password-change flag.
+            "must_change_password": bool(existing.get("must_change_password", False)),
+            "token_version": int(existing.get("token_version") or 0),
         }
         users[username] = record
         _write_users(users)
@@ -419,6 +432,92 @@ def set_must_change_password(username: str, required: bool) -> bool:
         record["must_change_password"] = bool(required)
         _write_users(users)
         return True
+
+
+def set_phone(username: str, phone: str) -> bool:
+    """Store ``phone`` (already E.164) on the account.
+
+    Uniqueness across accounts is the caller's job - the router checks it - but
+    this refuses to write a number another record already holds, because two
+    accounts sharing a number would make OTP sign-in nondeterministic.
+    """
+    if not USERS_FILE.exists():
+        return False
+    with _USERS_WRITE_LOCK:
+        users = load_users()
+        record = users.get(username)
+        if record is None:
+            return False
+        # An empty phone means "release". Without this guard the loop below
+        # matches the first account that has no phone, so releasing was
+        # impossible and a number could never move between accounts.
+        if phone:
+            for other, other_record in users.items():
+                if other != username and str(other_record.get("phone") or "") == phone:
+                    return False
+        record["phone"] = phone
+        _write_users(users)
+        return True
+
+
+def get_phone(username: str) -> str:
+    """The account's stored phone, or "" when it has none."""
+    record = get_user(username) or {}
+    return str(record.get("phone") or "")
+
+
+def set_disabled(username: str, disabled: bool) -> bool:
+    """Disable or restore an account.
+
+    A disabled account cannot authenticate, and any token it already holds
+    stops working because ``decode_token`` checks the flag (see
+    ``ADR-002``). Before this, ``disabled`` was a field nothing ever read or
+    wrote - the admin UI showed it, and it meant nothing.
+    """
+    if not USERS_FILE.exists():
+        return False
+    with _USERS_WRITE_LOCK:
+        users = load_users()
+        record = users.get(username)
+        if record is None:
+            return False
+        record["disabled"] = bool(disabled)
+        _write_users(users)
+        return True
+
+
+def is_disabled(username: str) -> bool:
+    """True when the account exists and is disabled."""
+    record = get_user(username)
+    return bool(record and record.get("disabled"))
+
+
+def bump_token_version(username: str) -> bool:
+    """Advance the session generation, invalidating outstanding tokens.
+
+    Returns False when the account does not exist or is the bootstrap user from
+    ``auth.json``, which has no mutable record to advance - an admin resetting
+    that account's sessions must not be told it worked.
+    """
+    if not USERS_FILE.exists():
+        return False
+    with _USERS_WRITE_LOCK:
+        users = load_users()
+        record = users.get(username)
+        if record is None:
+            return False
+        record["token_version"] = int(record.get("token_version") or 0) + 1
+        _write_users(users)
+        return True
+
+
+def token_version_of(username: str) -> int:
+    """Current session generation, 0 when unknown."""
+    record = get_user(username) or {}
+    try:
+        return int(record.get("token_version") or 0)
+    except (TypeError, ValueError):
+        return 0
 
 
 def set_avatar(username: str, avatar: str) -> bool:

@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useTranslation } from "react-i18next";
 import { productName } from "@/lib/brand";
 import { AuthBrandPanel } from "@/components/auth/AuthBrandPanel";
+import { LoginPhone } from "@/components/auth/LoginPhone";
 import { login, fetchAuthStatus, checkIsFirstUser } from "@/lib/auth";
 import {
   inheritLoginHash,
@@ -28,6 +29,18 @@ function LoginPageContent() {
 
   const registered = searchParams.get("registered") === "1";
 
+  // Which credential the card is asking for.
+  //
+  // Password is the default even though D-005 makes phone the sign-up path.
+  // Reasons, in order of weight:
+  //   * every existing account (and the bootstrap administrator) has a
+  //     password and may not have a phone number yet;
+  //   * the Gate 1 browser suite signs in through this form, and changing the
+  //     default would replace a green acceptance gate with a regression;
+  //   * a user who has never signed up reaches the phone tab, which is one
+  //     visible, labelled click away.
+  // Reversing this is a product decision, not a refactor.
+  const [mode, setMode] = useState<"phone" | "password">("password");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -106,6 +119,33 @@ function LoginPageContent() {
 
       {/* Card */}
       <div className="bg-[var(--card)] border border-[var(--border)] rounded-2xl shadow-sm px-8 py-8">
+        <div
+          role="tablist"
+          aria-label={t("Sign-in method")}
+          className="grid grid-cols-2 gap-1 p-1 mb-6 rounded-lg bg-[var(--muted)]"
+        >
+          {(["phone", "password"] as const).map((value) => (
+            <button
+              key={value}
+              type="button"
+              role="tab"
+              aria-selected={mode === value}
+              onClick={() => setMode(value)}
+              className={
+                "py-1.5 rounded-md text-sm font-medium transition-colors " +
+                (mode === value
+                  ? "bg-[var(--card)] text-[var(--foreground)] shadow-sm"
+                  : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]")
+              }
+            >
+              {value === "phone" ? t("Phone") : t("Password")}
+            </button>
+          ))}
+        </div>
+
+        {mode === "phone" ? (
+          <LoginPhone />
+        ) : (
         <form onSubmit={handleSubmit} className="space-y-5">
           {/* Email or username */}
           <div>
@@ -175,6 +215,7 @@ function LoginPageContent() {
             {loading ? t("Signing in…") : t("Sign in")}
           </button>
         </form>
+        )}
       </div>
 
       <p className="mt-6 text-center text-sm text-[var(--muted-foreground)]">

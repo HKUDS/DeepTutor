@@ -110,3 +110,23 @@ it('reports an authorisation refusal instead of demanding a new password', async
   // The point of the regression test: it must not have navigated to /profile.
   expect(replaceMock).not.toHaveBeenCalledWith('/profile?change=1')
 })
+
+it('opens on the password tab and reaches the phone tab in one click', async () => {
+  // Both credentials live on one card. Which one is the default is a product
+  // decision recorded in the page; this test is what stops it changing by
+  // accident, because the Gate 1 browser suite signs in through the password
+  // form and a silent default swap would break that gate.
+  const { default: LoginPage } = await import('@/app/(auth)/login/page')
+  render(<LoginPage />)
+
+  expect(await screen.findByLabelText('Email or username')).toBeTruthy()
+  expect(screen.queryByLabelText('Phone number')).toBeNull()
+
+  const phoneTab = screen.getByRole('tab', { name: 'Phone' })
+  expect(phoneTab.getAttribute('aria-selected')).toBe('false')
+
+  fireEvent.click(phoneTab)
+
+  expect(await screen.findByLabelText('Phone number')).toBeTruthy()
+  expect(screen.queryByLabelText('Email or username')).toBeNull()
+})

@@ -115,6 +115,13 @@ async def lifespan(app: FastAPI):
     logger.info("Application startup")
     app.state.ready = False
 
+    # Refuse to serve a configuration that would hand out admin access. Runs
+    # before anything else so a misconfigured deployment fails at the first
+    # request rather than on the first customer (Phase 2, ADR-002).
+    from deeptutor.multi_user.guards import assert_safe_to_start
+
+    assert_safe_to_start()
+
     # Validate configuration consistency
     validate_tool_consistency()
 
