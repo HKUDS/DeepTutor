@@ -125,6 +125,19 @@ async def lifespan(app: FastAPI):
     # Validate configuration consistency
     validate_tool_consistency()
 
+    # Seed the tokenizer cache if this deployment vendored the BPE file, so the
+    # studio's cost figures are exact rather than estimated. A host without the
+    # file keeps working: the estimator takes over and reports its own error.
+    from deeptutor.services.studio import tokens as studio_tokens
+
+    if studio_tokens.install_tokenizer():
+        logger.info("studio: real cl100k tokenizer available for cost accounting")
+    else:
+        logger.info(
+            "studio: no offline tokenizer data; cost is estimated "
+            "(set DEEPTUTOR_TIKTOKEN_BPE to enable exact counting)"
+        )
+
     # Build one process-level dependency graph.  Every adapter resolves turns
     # through this container, so a WebSocket cannot accidentally construct a
     # second store/runtime for the same authenticated scope.

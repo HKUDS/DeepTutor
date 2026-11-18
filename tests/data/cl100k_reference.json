@@ -1,0 +1,154 @@
+{
+ "reference": "cl100k_base",
+ "how_obtained": "tiktoken Encoding with the published BPE file, loaded offline",
+ "why_committed": "pins the estimator's calibration so CI can check it without network",
+ "sentences": [
+  {
+   "text": "مشتق نرخ تغییر لحظه‌ای است. در فیزیک، مشتق مکان نسبت به زمان همان سرعت است.",
+   "chars": 75,
+   "cl100k": 51,
+   "estimator": 54,
+   "chars_div_4": 18
+  },
+  {
+   "text": "شتاب نیز مشتق سرعت نسبت به زمان است. از مشتق برای یافتن بیشینه و کمینهٔ توابع استفاده می‌کنیم.",
+   "chars": 94,
+   "cl100k": 67,
+   "estimator": 67,
+   "chars_div_4": 23
+  },
+  {
+   "text": "به این درس خوش آمدید. فصل ۳ — مشتق. بخش ۱: مشتق نرخ تغییر لحظه‌ای است.",
+   "chars": 70,
+   "cl100k": 53,
+   "estimator": 48,
+   "chars_div_4": 17
+  },
+  {
+   "text": "حد و پیوستگی. حد یعنی نزدیک شدن به یک مقدار. پیوستگی یعنی بی‌پرش بودن نمودار.",
+   "chars": 77,
+   "cl100k": 59,
+   "estimator": 54,
+   "chars_div_4": 19
+  },
+  {
+   "text": "انتگرال مساحت زیر نمودار است. انتگرال معکوس مشتق است و کاربردهای زیادی دارد.",
+   "chars": 76,
+   "cl100k": 50,
+   "estimator": 55,
+   "chars_div_4": 19
+  },
+  {
+   "text": "تابع مثلثاتی، مشتق زنجیره‌ای، قاعدهٔ ضرب، قاعدهٔ تقسیم، و رسم نمودار دقیق توابع.",
+   "chars": 80,
+   "cl100k": 63,
+   "estimator": 62,
+   "chars_div_4": 20
+  },
+  {
+   "text": "اگر مشتق تابع در یک نقطه مثبت باشد، تابع در آن نقطه صعودی است.",
+   "chars": 62,
+   "cl100k": 43,
+   "estimator": 43,
+   "chars_div_4": 15
+  },
+  {
+   "text": "مساحت زیر نمودار سرعت برابر است با جابه‌جایی. این رابطه مفهوم انتگرال را روشن می‌کند.",
+   "chars": 85,
+   "cl100k": 60,
+   "estimator": 62,
+   "chars_div_4": 21
+  },
+  {
+   "text": "در ریاضیات، بردار یک کمیت با اندازه و جهت است و با پیکان نمایش داده می‌شود.",
+   "chars": 75,
+   "cl100k": 51,
+   "estimator": 53,
+   "chars_div_4": 18
+  },
+  {
+   "text": "معادلهٔ خط و شیب آن: شیب خط برابر است با تغییر در y تقسیم بر تغییر در x.",
+   "chars": 72,
+   "cl100k": 48,
+   "estimator": 48,
+   "chars_div_4": 18
+  },
+  {
+   "text": "Use the chain rule to differentiate a composite function in three steps.",
+   "chars": 72,
+   "cl100k": 13,
+   "estimator": 15,
+   "chars_div_4": 18
+  },
+  {
+   "text": "The area under a velocity graph equals displacement, which is the integral.",
+   "chars": 75,
+   "cl100k": 14,
+   "estimator": 15,
+   "chars_div_4": 18
+  },
+  {
+   "text": "A limit describes the value a function approaches, not necessarily reaches.",
+   "chars": 75,
+   "cl100k": 13,
+   "estimator": 15,
+   "chars_div_4": 18
+  },
+  {
+   "text": "Derivative of position with respect to time is velocity; derivative of velocity is acceleration.",
+   "chars": 96,
+   "cl100k": 17,
+   "estimator": 19,
+   "chars_div_4": 24
+  },
+  {
+   "text": "This lesson covers five worked examples and two exercises on continuity.",
+   "chars": 72,
+   "cl100k": 12,
+   "estimator": 13,
+   "chars_div_4": 18
+  },
+  {
+   "text": "مشتق",
+   "chars": 4,
+   "cl100k": 4,
+   "estimator": 3,
+   "chars_div_4": 1
+  },
+  {
+   "text": "انتگرال معین",
+   "chars": 12,
+   "cl100k": 8,
+   "estimator": 10,
+   "chars_div_4": 3
+  },
+  {
+   "text": "۳/۲",
+   "chars": 3,
+   "cl100k": 5,
+   "estimator": 3,
+   "chars_div_4": 0
+  },
+  {
+   "text": "تابع f(x) = x² + 2x + 1",
+   "chars": 23,
+   "cl100k": 16,
+   "estimator": 12,
+   "chars_div_4": 5
+  },
+  {
+   "text": "قالب: عنوان، مقدمه، بدنه، جمع‌بندی.",
+   "chars": 35,
+   "cl100k": 29,
+   "estimator": 29,
+   "chars_div_4": 8
+  }
+ ],
+ "totals": {
+  "cl100k": 676,
+  "estimator": 680,
+  "chars_div_4": 301,
+  "estimator_error": 0.0059,
+  "chars_div_4_error": 0.5547
+ }
+}

@@ -186,7 +186,45 @@ def _keywords(text: str, limit: int) -> list[str]:
         counts[key] = counts.get(key, 0) + 1
         order.setdefault(key, index)
     ranked = sorted(counts, key=lambda w: (-counts[w], order[w]))
-    return ranked[:limit]
+    # A single word is often grammatical glue even when it is not a stopword:
+    # "نسبت" ("ratio") appears beside "زمان" and the pair means more than either
+    # half. Two-word phrases that recur are better branches than isolated words
+    # that recur, so pairs are counted first and used to top up the ranking.
+    pairs: dict[str, int] = {}
+    pair_order: dict[str, int] = {}
+    keys = [w.replace(_ZWNJ, "").strip() for w in words]
+    keys = [k for k in keys if k and k not in _PERSIAN_STOPWORDS]
+    for index in range(len(keys) - 1):
+        pair = f"{keys[index]} {keys[index + 1]}"
+        pairs[pair] = pairs.get(pair, 0) + 1
+        pair_order.setdefault(pair, index)
+    repeated_pairs = sorted(
+        (pair for pair, count in pairs.items() if count > 1),
+        key=lambda pair: (-pairs[pair], pair_order[pair]),
+    )
+
+    chosen: list[str] = []
+    for pair in repeated_pairs:
+        if len(chosen) >= limit:
+            break
+        # Do not spend two slots on "الف ب" and "ب" -- the longer label wins.
+        if any(pair.split()[0] == c or pair.split()[1] == c for c in chosen):
+            continue
+        chosen.append(pair)
+    for word in ranked:
+        if len(chosen) >= limit:
+            break
+        if word in chosen:
+            continue
+        if any(word in c.split() for c in chosen):
+            continue
+        chosen.append(word)
+    for word in ranked:
+        if len(chosen) >= limit:
+            break
+        if word not in chosen:
+            chosen.append(word)
+    return chosen[:limit]
 
 
 def outline_for(kind: str, text: str, *, max_sections: int = 5) -> list[str]:

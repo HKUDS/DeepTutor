@@ -56,6 +56,11 @@ codebuddy = ["codebuddy-agent-sdk>=0.3,<0.4"]
 claude-code = ["claude-agent-sdk>=0.2.174,<0.3"]
 video-learning = ["deeptutor-reading=={version}"]
 edge-tts = ["edge-tts>=7.0,<8.0"]
+# Local media renderers (slide deck, mind map, infographic) draw real Persian
+# pixels with Pillow. Shaping is not optional: without arabic-reshaper and
+# python-bidi the letters come out disconnected and reversed, so they live in
+# the same extra rather than behind a second install step nobody would find.
+studio = ["Pillow>=10.0", "arabic-reshaper>=3.0.0", "python-bidi>=0.4.2"]
 video-lesson = ["deeptutor-video-lesson=={version}", "edge-tts>=7.0,<8.0"]
 server = ["deeptutor-server=={version}"]
 partners = ["deeptutor-partners=={version}"]

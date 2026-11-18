@@ -1,5 +1,5 @@
 {
-  "fingerprint": "bc2b9487eec85edc1e14d7d80d7e48fc5900f936752017d5cdc09212c0f4544c",
+  "fingerprint": "c7be9d369845e22ff25e417489bf86c31bb93c59fead1e9286886bb3140e2f22",
   "routers": {
     "deeptutor.api.routers.auth:router": [
       {
@@ -6586,8 +6586,72 @@
         ]
       },
       {
+        "path": "/assets/{asset_id}/grants",
+        "name": "create_grant",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/assets/{asset_id}/grants/{grantee_id}",
+        "name": "delete_grant",
+        "kind": "http",
+        "methods": [
+          "DELETE"
+        ]
+      },
+      {
+        "path": "/assets/{asset_id}/grants",
+        "name": "list_grants",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/shared",
+        "name": "shared_with_me",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/assets/{asset_id}/reviews",
+        "name": "create_review",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/assets/{asset_id}/reviews",
+        "name": "get_reviews",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
         "path": "/quota",
         "name": "quota",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/licences",
+        "name": "licence_catalogue",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/cost/method",
+        "name": "cost_method",
         "kind": "http",
         "methods": [
           "GET"

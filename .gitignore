@@ -7,6 +7,11 @@
 # ============================================
 # Runtime data (knowledge bases, partner workspaces, memory, etc.)
 data/
+# Exception: the token-count reference the cost tests are calibrated against.
+# It is a fixture, not runtime output, and without it the calibration test
+# would skip in CI -- a test that cannot run is not evidence.
+!tests/data/
+!tests/data/cl100k_reference.json
 /multi-user/
 # Developer and agent documentation is tracked in docs-for-dev/.
 # Keep obsolete local notes and downloaded references out of the repository.
