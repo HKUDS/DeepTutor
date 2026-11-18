@@ -357,6 +357,20 @@ class DocumentAdder:
 
         rag_service = RAGService(kb_base_dir=str(self.base_dir), provider=self.rag_provider)
         total_files = len(new_files)
+
+        def on_progress(current: int, total: int) -> None:
+            if self.progress_tracker is None:
+                return
+            from deeptutor.knowledge.progress_tracker import ProgressStage
+
+            self.progress_tracker.update(
+                ProgressStage.PROCESSING_DOCUMENTS,
+                message_key="Embedding batches: {{current}}/{{total}}",
+                message_params={"current": current, "total": total},
+                current=current,
+                total=total,
+            )
+
         if self.progress_tracker is not None:
             from deeptutor.knowledge.progress_tracker import ProgressStage
 
@@ -372,6 +386,8 @@ class DocumentAdder:
                 self.kb_name,
                 [str(path) for path in new_files],
                 indexed_file_callback=on_indexed,
+                progress_callback=on_progress,
+                task_id=self.progress_tracker.task_id if self.progress_tracker is not None else "",
             )
         except PermissionError as exc:
             logger.exception("Permission denied while indexing a LlamaIndex batch: %s", exc)
