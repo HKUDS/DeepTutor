@@ -1,5 +1,5 @@
 {
-  "fingerprint": "608a5347db09012e77622dbd6c3ea6d993e6e2092b5b3035de2d998018ace37e",
+  "fingerprint": "bc2b9487eec85edc1e14d7d80d7e48fc5900f936752017d5cdc09212c0f4544c",
   "routers": {
     "deeptutor.api.routers.auth:router": [
       {
@@ -6498,6 +6498,122 @@
       {
         "path": "/mastery",
         "name": "mastery_dashboard",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.studio:router": [
+      {
+        "path": "/kinds",
+        "name": "list_kinds",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/kinds/{kind}/checklist",
+        "name": "kind_checklist",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/script",
+        "name": "draft_script",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/jobs",
+        "name": "submit_job",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/jobs/{job_id}",
+        "name": "get_job",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/jobs/{job_id}/cancel",
+        "name": "cancel_job",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/assets",
+        "name": "list_assets",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/assets/{asset_id}",
+        "name": "get_asset",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/assets/{asset_id}",
+        "name": "delete_asset",
+        "kind": "http",
+        "methods": [
+          "DELETE"
+        ]
+      },
+      {
+        "path": "/assets/{asset_id}/content",
+        "name": "asset_content",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/quota",
+        "name": "quota",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.studio:admin_router": [
+      {
+        "path": "/queue",
+        "name": "queue_health",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/costs",
+        "name": "cost_rows",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/assets",
+        "name": "admin_assets",
         "kind": "http",
         "methods": [
           "GET"
