@@ -1,5 +1,5 @@
 {
-  "fingerprint": "a4a9848c797aa144fd3ce42de46caf45b7a95fe077667368fd558750c4ac0a17",
+  "fingerprint": "c35dde291914edce323d1104ed5ebe4265a41121939a5ce5cce5bdf467dc3eaf",
   "routers": {
     "deeptutor.api.routers.auth:router": [
       {
@@ -6221,6 +6221,164 @@
         "kind": "http",
         "methods": [
           "POST"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.exam:router": [
+      {
+        "path": "/exams",
+        "name": "list_published",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/exams/{exam_id}",
+        "name": "get_published_exam",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/exams/{exam_id}/submit",
+        "name": "submit",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/attempts/{attempt_id}",
+        "name": "get_attempt",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/attempts",
+        "name": "list_my_attempts",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/attempts/{attempt_id}/mistakes",
+        "name": "get_mistakes",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.exam:admin_router": [
+      {
+        "path": "/questions",
+        "name": "create_question",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/questions",
+        "name": "list_questions",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/questions/{question_id}/review",
+        "name": "review_question",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/policies",
+        "name": "create_policy",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/policies",
+        "name": "list_policies",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/exams",
+        "name": "create_exam",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/exams",
+        "name": "list_all_exams",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/exams/{exam_id}/publish",
+        "name": "publish_exam",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/exams/{exam_id}/validate",
+        "name": "validate_exam",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/attempts",
+        "name": "list_attempts",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.exam:review_router": [
+      {
+        "path": "/attempts/{attempt_id}/regrade",
+        "name": "regrade",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/attempts/{attempt_id}/override",
+        "name": "override",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/attempts/{attempt_id}/changes",
+        "name": "changes",
+        "kind": "http",
+        "methods": [
+          "GET"
         ]
       }
     ],

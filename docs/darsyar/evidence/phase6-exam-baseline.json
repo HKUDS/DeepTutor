@@ -1,0 +1,144 @@
+{
+  "phase": 6,
+  "name": "exam_center",
+  "generated_at": "2026-11-18T02:30:00Z",
+  "base_commit": "1ceff2a731cf01c977f460f5a2388a6f1b3a2439",
+  "branch": "arena/d6193a93-deeptutor",
+  "migration": {
+    "version": 8,
+    "name": "exam_center",
+    "checksum": "abb527d6653e232c24ec3ec88f6462ed",
+    "applied_to_supabase_project": "jmqgzaqydvkjysqlaloe",
+    "tables": [
+      "exam_questions",
+      "exam_scoring_policies",
+      "exams",
+      "exam_items",
+      "exam_attempts",
+      "exam_attempt_items",
+      "exam_grade_changes"
+    ],
+    "indexes": [
+      "uq_exam_questions_version",
+      "ix_exam_questions_scope",
+      "ix_exam_questions_identity",
+      "ix_exams_scope",
+      "uq_exam_items_position",
+      "uq_exam_items_question",
+      "ix_exam_items_exam",
+      "uq_exam_attempt_identity",
+      "ix_exam_attempts_user",
+      "ix_exam_attempts_exam",
+      "uq_exam_attempt_items_question",
+      "ix_exam_attempt_items_attempt",
+      "ix_exam_grade_changes_attempt"
+    ],
+    "down_migration_verified": true
+  },
+  "postgres_findings": [
+    {
+      "finding": "foreign key blocks an attempt with a dangling exam_id",
+      "observable_error": "23503 insert or update on table exam_attempts violates foreign key constraint",
+      "verified": true
+    },
+    {
+      "finding": "uq_exam_attempt_identity rejects a second attempt with the same (exam, user, attempt_no)",
+      "observable_error": "23505 duplicate key value violates unique constraint uq_exam_attempt_identity",
+      "verified": true,
+      "deliberate_retake_accepted": "attempt_no=2 inserted successfully",
+      "regression_test": "tests/db/test_exam_center.py::test_a_deliberate_retake_uses_a_new_attempt_number"
+    }
+  ],
+  "bugs_found_by_live_run": [
+    {
+      "id": "numeric_choice_read_as_index",
+      "severity": "high",
+      "file": "deeptutor/services/exam/scoring.py",
+      "symptom": "with choices [\"۳\",\"۴\",\"۵\",\"۶\"], an answer of \"۳\" was read as index 3 instead of the first choice",
+      "impact": "a correct answer in a maths exam was marked wrong; live score was 2.0001 instead of 6.0",
+      "why_tests_missed_it": "every unit test used lettered choices (a\\nb\\nc\\nd)",
+      "fixed": true,
+      "fix": "exact choice-text lookup runs before positional interpretation",
+      "regression_test": "tests/db/test_exam_scoring.py::test_a_numeric_choice_text_wins_over_a_numeric_index"
+    },
+    {
+      "id": "persian_first_label_unresolvable",
+      "severity": "high",
+      "file": "deeptutor/services/exam/scoring.py",
+      "symptom": "«الف» is three characters and never matched the single-character lookup table; «ب» worked",
+      "impact": "every first answer submitted from a Persian-labelled answer form graded as wrong, silently",
+      "fixed": true,
+      "fix": "explicit mapping of «الف» and «آ» to index 0",
+      "regression_test": "tests/db/test_exam_scoring.py::test_a_persian_spelled_out_first_label_resolves"
+    }
+  ],
+  "bugs_found_by_tests": [
+    {
+      "id": "voided_question_did_not_require_review",
+      "severity": "high",
+      "file": "deeptutor/services/exam/scoring.py",
+      "symptom": "a voided question under the default 'void' policy left review_required False",
+      "impact": "a question nobody could answer was excluded from the score and nobody was told",
+      "fixed": true,
+      "regression_test": "tests/db/test_exam_scoring.py::test_a_question_with_no_valid_key_is_voided"
+    }
+  ],
+  "test_results": {
+    "tests_db": {"passed": 587, "skipped": 335, "failed": 0},
+    "db_plus_eval_plus_api": {"passed": 1956, "skipped": 358, "failed": 0},
+    "exam_suite": {"passed": 116, "skipped": 67, "failed": 0},
+    "ruff": "clean",
+    "lint_imports": {"contracts_kept": 3, "broken": 0},
+    "router_index": {"routers": 65, "routes": 785}
+  },
+  "property_tests": [
+    "score never exceeds max_score (exhaustive over 27 answer combinations)",
+    "a correct answer never scores below a wrong one (5 penalty ratios)",
+    "the worst possible score is bounded by the total penalty",
+    "grading the same snapshot twice is identical (30 random exams)",
+    "question order does not change the total",
+    "the reported total always equals the sum of its items"
+  ],
+  "acceptance_evidence": {
+    "golden_formula_unit_and_property": "43 unit + 8 property tests in test_exam_scoring.py",
+    "wrong_right_blank_unanswered_and_weight": "4 branch tests + property suite",
+    "three_wrong_one_right_only_when_policy_active": "test_three_wrong_and_one_right_only_works_when_the_policy_is_active",
+    "essay_rubric_bounds_appeal_and_recorded_change": "5 tests in test_exam_center.py",
+    "repeat_or_refresh_creates_no_second_attempt": "3 idempotency tests, proven live (duplicate_submission=true, same id)",
+    "past_score_unchanged_by_bank_or_policy_change": "2 adversarial tests, proven live (score 6.0 across a full bank rewrite)"
+  },
+  "live_verification": {
+    "server": "uvicorn deeptutor.api.main:app on port 3801",
+    "authoring_flow": [
+      "POST /api/exam/admin/questions -> 201 (v1)",
+      "POST /api/exam/admin/policies -> 201",
+      "POST /api/exam/admin/exams -> 201",
+      "GET  /api/exam/admin/exams/{id}/validate -> 200 valid",
+      "POST /api/exam/admin/exams/{id}/publish -> 200 published"
+    ],
+    "student_flow": [
+      "GET  /api/exam/exams/{id} -> 200, answer_key absent, choices are a list",
+      "POST /api/exam/exams/{id}/submit -> 200, score 2.0001 with 1 right 1 wrong under 1/3 negative marking",
+      "POST same answers again -> 200 duplicate_submission=true, same attempt id, same score",
+      "POST different answers -> 409 attempt_already_submitted",
+      "GET  /api/exam/attempts/{id}?user_id=other -> 404",
+      "GET  /api/exam/attempts/{id}?user_id=owner -> 200",
+      "GET  /api/exam/attempts/{id}/mistakes -> 200 grouped by topic",
+      "answers «ب»/«الف» -> 6.0",
+      "answers «۴»/«تهران» -> 6.0",
+      "answers B/0 -> 6.0"
+    ],
+    "immutability_flow": [
+      "submit both correct -> 6.0",
+      "rewrite both questions (new version, key=3, points=99)",
+      "re-read the old attempt -> 6.0, max 6.0, unchanged",
+      "a new student submitting to the same exam -> 6.0 (pinned v1)"
+    ]
+  },
+  "gate_6": {
+    "technical": "PASS",
+    "validation_against_reviewed_question_set": "BLOCKED — no real reviewed question set exists; questions come from textbooks, which depends on the Phase 4/5 rights answer",
+    "essay_grading": "needs_review path is safe but gives a student no feedback without a human grader",
+    "verdict": "PASS technically, BLOCKED on real validated content"
+  }
+}

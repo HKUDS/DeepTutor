@@ -416,6 +416,39 @@
       },
       "auth": "admin",
       "order": 851
+    },
+    {
+      "reference": "deeptutor.api.routers.exam:router",
+      "options": {
+        "prefix": "/api/exam",
+        "tags": [
+          "exam"
+        ]
+      },
+      "auth": "learning",
+      "order": 852
+    },
+    {
+      "reference": "deeptutor.api.routers.exam:admin_router",
+      "options": {
+        "prefix": "/api/exam/admin",
+        "tags": [
+          "exam-admin"
+        ]
+      },
+      "auth": "admin",
+      "order": 853
+    },
+    {
+      "reference": "deeptutor.api.routers.exam:review_router",
+      "options": {
+        "prefix": "/api/exam/review",
+        "tags": [
+          "exam-review"
+        ]
+      },
+      "auth": "admin",
+      "order": 854
     }
   ],
   "commands": [],
