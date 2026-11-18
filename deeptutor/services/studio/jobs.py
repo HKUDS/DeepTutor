@@ -460,6 +460,8 @@ def record_cost(
     non_token_unit: str = "",
     non_token_cost_toman: int = 0,
     provider: str = "",
+    cost_microusd: int | None = None,
+    price: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Write an estimate or actual cost row.
 
@@ -475,8 +477,8 @@ def record_cost(
             conn.execute(
                 "INSERT INTO media_job_costs "
                 "(id, job_id, user_id, phase, tokens, non_token_units, non_token_unit, "
-                " non_token_cost_toman, provider, created_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                " non_token_cost_toman, provider, cost_microusd, price_json, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     row_id,
                     job_id,
@@ -487,6 +489,8 @@ def record_cost(
                     non_token_unit,
                     non_token_cost_toman,
                     provider,
+                    None if cost_microusd is None else int(cost_microusd),
+                    json.dumps(dict(price), ensure_ascii=False) if price else "",
                     _now(),
                 ),
             )
@@ -537,6 +541,16 @@ class RenderResult:
     #: estimated error). Kept with the cost so a reader can judge the number
     #: instead of trusting it.
     cost_method: Mapping[str, Any] | None = None
+    #: What those tokens actually cost, in micro-USD, when the provider
+    #: publishes a per-token price. None means "not priced", which is different
+    #: from zero: a free endpoint is 0, an unpriced one is unknown. Kept in
+    #: integer micro-USD because floating-point currency accumulates error in a
+    #: ledger, and 1e-6 USD is finer than any price we have seen.
+    actual_cost_microusd: int | None = None
+    #: The price used, in plain terms, so the number can be re-derived later
+    #: without knowing which endpoint was live. e.g. {"in": 6e-8, "out": 3.5e-7,
+    #: "unit": "USD/token", "endpoint": "Darkbloom"}.
+    price: Mapping[str, Any] | None = None
 
 
 def run_job(
@@ -625,6 +639,8 @@ def run_job(
             non_token_unit=result.non_token_unit,
             non_token_cost_toman=result.non_token_cost_toman,
             provider=result.provider,
+            cost_microusd=result.actual_cost_microusd,
+            price=result.price,
         )
 
     return {"status": "ready", "asset_id": asset["id"]}

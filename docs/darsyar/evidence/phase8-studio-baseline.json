@@ -328,7 +328,7 @@
     "verdict": "closed except quality, which requires a human",
     "columns": {
       "cost": {
-        "status": "measured",
+        "status": "priced, not yet invoiced",
         "old_method": "len(text) // 4",
         "old_method_error_on_persian": 0.601,
         "old_method_undercount_factor": 2.9,
@@ -339,7 +339,33 @@
         "reference_file": "tests/data/cl100k_reference.json",
         "regenerate": "python scripts/measure_tokens.py --check",
         "real_tokenizer_when_available": true,
-        "what_this_does_not_cover": "the actual provider invoice: this counts tokens, it does not price them. No provider key existed on this host, so no paid call could be made and no dollar figure is claimed"
+        "what_this_does_not_cover": "no provider completion was executed: openrouter.ai is blocked at TLS from this sandbox (github.com and pypi.org are reachable, so the egress filter is selective). The dollar figure is computed token count times the published rate, not an invoice",
+        "provider": "openrouter / nvidia/nemotron-3.5-super-vl:free",
+        "price_source": "https://openrouter.ai/api/v1/models/nvidia/nemotron-3.5-super-vl/endpoints",
+        "price_read_at": "2026-11-18",
+        "priced_example": {
+          "prompt_tokens": 79,
+          "completion_tokens": 106,
+          "cheapest_paid_endpoint": "Darkbloom nvfp4",
+          "cost_usd_per_lesson": 4.2e-05,
+          "cost_usd_per_1000_lessons": 0.042,
+          "free_endpoint_cost_usd": 0.0
+        },
+        "free_tier_limits": {
+          "requests_per_minute": 20,
+          "requests_per_day_under_10_credits": 50,
+          "requests_per_day_at_least_10_credits": 1000
+        },
+        "effective_capacity_under_free_tier": "50 lessons/day = 5.8/hour, not the 86 jobs/second measured on this host",
+        "ledger": {
+          "migration": "V0013",
+          "columns": [
+            "cost_microusd",
+            "price_json"
+          ],
+          "why_integer": "rates span 6e-8..1.83e-6 USD/token; float rounding disagrees on 396 catalogue cases",
+          "null_semantics": "NULL = unpriced, 0 = free endpoint"
+        }
       },
       "quality": {
         "status": "open -- requires an independent Persian-speaking human",
@@ -423,20 +449,42 @@
       "tokens": 15,
       "capacity": 6,
       "catalogue_http": 9,
-      "total": 47
+      "total": 77,
+      "pricing": 23,
+      "pricing_http": 7
     },
     "mutations": {
-      "count": 18,
-      "caught": 18,
+      "count": 25,
+      "caught": 25,
       "note": "11 from the previous pass plus 7 for licences, tokens and attribution"
     },
     "new_endpoints": [
       "GET /api/studio/licences",
-      "GET /api/studio/cost/method"
+      "GET /api/studio/cost/method",
+      "GET /api/studio/pricing"
     ],
     "totals": {
-      "studio_tests": 196,
-      "suite_db_api_modules": "969 passed / 567 skipped"
-    }
+      "studio_tests": 203,
+      "suite_db_api_modules": "997 passed / 587 skipped"
+    },
+    "decisions_added": [
+      "D-085",
+      "D-086",
+      "D-087"
+    ]
+  },
+  "provider_wiring": {
+    "provider": "openrouter",
+    "detected_from_key_prefix": "sk-or-",
+    "repo_support": "provider_registry.py has an openrouter gateway spec (D-008 era)",
+    "verified_against_local_stand_in": {
+      "path": "/api/v1/chat/completions",
+      "auth_header": "Bearer <key>",
+      "model_forwarded": "nvidia/nemotron-3.5-super-vl:free",
+      "reply_parsed": true,
+      "usage_parsed": true
+    },
+    "not_verified": "a real completion from openrouter.ai, which this host cannot reach",
+    "key_storage": "environment variable only; never written to a file or committed"
   }
 }
