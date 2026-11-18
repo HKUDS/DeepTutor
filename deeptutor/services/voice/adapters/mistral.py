@@ -1,13 +1,16 @@
 """Native Mistral Voxtral voice adapters.
 
 Mistral TTS is close to the OpenAI speech shape (``/v1/audio/speech``) but uses
-``voice_id`` and has no ``speed``/``instructions`` fields. STT sends the audio
+``voice_id``, has no ``speed``/``instructions`` fields, and answers with JSON
+carrying base64 ``audio_data`` rather than raw audio bytes. STT sends the audio
 as multipart data directly to ``/v1/audio/transcriptions``; it does not create
 persistent uploaded files or signed URLs.
 """
 
 from __future__ import annotations
 
+import base64
+import binascii
 import logging
 from typing import Any
 
@@ -83,9 +86,15 @@ class MistralTTSAdapter(BaseTTSAdapter):
         except httpx.HTTPError as exc:
             raise VoiceProviderError(f"Mistral TTS request error: {exc}") from exc
         _raise_for_provider(resp, "Mistral TTS synthesis")
-        if not resp.content:
+        audio = resp.content
+        if "json" in resp.headers.get("content-type", "").lower():
+            try:
+                audio = base64.b64decode(resp.json()["audio_data"], validate=True)
+            except (ValueError, KeyError, TypeError, binascii.Error) as exc:
+                raise VoiceProviderError("Mistral TTS returned malformed audio data.") from exc
+        if not audio:
             raise VoiceProviderError("Mistral TTS returned empty audio.")
-        return resp.content, _CONTENT_TYPES.get(fmt, "audio/mpeg")
+        return audio, _CONTENT_TYPES.get(fmt, "audio/mpeg")
 
 
 class MistralSTTAdapter(BaseSTTAdapter):
