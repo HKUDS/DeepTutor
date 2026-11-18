@@ -98,6 +98,16 @@ _MAIN_YAML_RUNTIME_DEFAULTS: dict[str, dict[str, Any]] = {
             },
         },
     },
+    "math_animator": {
+        # Overall deadline for one code-repair call in the render-fix loop. Must
+        # match ``CodeRetryManager``'s shipped default: this table is the fallback
+        # written when a settings payload is saved, so a user who merely opens
+        # animation settings and saves would otherwise persist 180 and permanently
+        # shadow the loop's own default — the #1316 shape. A long reasoning model
+        # repairing a book animation was cancelled mid-edit at this fixed ceiling
+        # with no setting that moved it (#2767).
+        "repair_timeout": 180,
+    },
 }
 
 
@@ -305,6 +315,16 @@ def _build_main_runtime_block(main_cfg: dict[str, Any], capability: str) -> dict
                 },
             },
         }
+    if capability == "math_animator":
+        animator_cfg = _get_at(main_cfg, ("capabilities", "math_animator"))
+        return {
+            "repair_timeout": _coerce_int(
+                animator_cfg.get("repair_timeout"),
+                defaults["repair_timeout"],
+                lo=1,
+                hi=3600,
+            ),
+        }
     return {}
 
 
@@ -419,6 +439,15 @@ def _apply_main_runtime(
                 "max_tokens": _coerce_int(sm.get("max_tokens"), d["tool_summarizer"]["max_tokens"]),
             },
         }
+    if capability == "math_animator" and "repair_timeout" in block:
+        main_payload.setdefault("capabilities", {})["math_animator"] = {
+            "repair_timeout": _coerce_int(
+                block.get("repair_timeout"),
+                defaults["repair_timeout"],
+                lo=1,
+                hi=3600,
+            ),
+        }
 
 
 def save_capabilities_settings(payload: dict[str, Any]) -> dict[str, Any]:
@@ -473,8 +502,24 @@ def get_solve_params() -> dict[str, Any]:
     return {**llm, **runtime}
 
 
+def get_math_animator_params() -> dict[str, Any]:
+    """Runtime math-animator knobs, read through the same coerce path as the UI.
+
+    Today this is the code-repair overall deadline (#2767): ``run_render`` used to
+    build ``CodeRetryManager`` with a hardcoded 180s timeout that no setting could
+    move, so a long reasoning model repairing a book animation was cancelled
+    mid-edit with no recourse. The pipeline reads this once per render, so an
+    in-flight render keeps the value it started with. The agents read their LLM
+    params (``temperature`` / ``max_tokens``) through their own loader seam, so
+    this getter returns only the runtime knob the render loop reads here.
+    """
+    main_cfg = ConfigManager().load_config()
+    return _build_main_runtime_block(main_cfg, "math_animator")
+
+
 __all__ = [
     "capabilities_settings_dict",
+    "get_math_animator_params",
     "get_solve_params",
     "get_visualize_params",
     "save_capabilities_settings",
