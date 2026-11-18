@@ -36,7 +36,7 @@ from pydantic import BaseModel, Field
 from deeptutor.db.connection import DatabaseError, open_database
 from deeptutor.db.jobs.queue import JobQueue, JobQueueUnavailable
 from deeptutor.services.scope import ScopeError, as_http, caller_id
-from deeptutor.services.studio import accounting, licences, tokens
+from deeptutor.services.studio import accounting, licences, pricing, tokens
 from deeptutor.services.studio import jobs as studio
 
 router = APIRouter()
@@ -559,6 +559,59 @@ async def licence_catalogue() -> dict:
             for kind in studio.MEDIA_KINDS
         },
     }
+
+
+@router.get("/pricing")
+async def price_list(model: str = Query("nvidia/nemotron-3.5-super-vl")) -> dict:
+    """Every endpoint's published price for a model, and the daily ceiling.
+
+    Prices come from the provider's public catalogue and carry the date they
+    were read. The ceiling is part of the answer, not a footnote: a free
+    endpoint costs nothing per lesson and serves fifty lessons a day, and a
+    client that only heard the first half would plan against a limit that is
+    not money.
+    """
+    try:
+        options = pricing.endpoints_for(model)
+        entry = pricing.CATALOGUE[model]
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {
+        "model": model,
+        "read_at": entry["read_at"],
+        "source": entry["source"],
+        "context_length": entry["context_length"],
+        "endpoints": [
+            {
+                "endpoint": option.endpoint,
+                "prompt_usd_per_token": option.prompt_usd_per_token,
+                "completion_usd_per_token": option.completion_usd_per_token,
+                "uptime_1d": option.uptime_1d,
+                "free": option.prompt_usd_per_token == 0,
+            }
+            for option in options
+        ],
+        "daily_ceiling": _ceiling(model),
+    }
+
+
+def _ceiling(model: str) -> dict:
+    try:
+        if all(p.prompt_usd_per_token == 0 for p in pricing.endpoints_for(model)):
+            return pricing.daily_ceiling(model)
+        cheapest = pricing.cheapest_paid(model)
+        return {
+            "free": False,
+            "binding_constraint": "budget",
+            "lessons_per_day": None,
+            "note": (
+                "a paid model is capped by budget, not by requests; pass a "
+                "daily budget to pricing.daily_ceiling to get a lesson count. "
+                f"cheapest endpoint is {cheapest.endpoint}"
+            ),
+        }
+    except (KeyError, ValueError) as exc:  # pragma: no cover - defensive
+        return {"error": str(exc)}
 
 
 @router.get("/cost/method")

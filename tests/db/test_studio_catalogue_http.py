@@ -135,3 +135,57 @@ def test_the_calibration_shipped_to_clients_carries_the_measurement(live):
 def test_the_known_limits_are_published_not_hidden(live):
     body = _run(api.cost_method())
     assert body["known_limits"], "a cost figure without its limits is a claim"
+
+
+# ---------------------------------------------------------------------------
+# Pricing
+# ---------------------------------------------------------------------------
+
+
+def test_the_price_list_shows_every_endpoint_for_a_paid_model(live):
+    body = _run(api.price_list("nvidia/nemotron-3.5-super-vl"))
+    assert len(body["endpoints"]) >= 8
+    assert all(not e["free"] for e in body["endpoints"])
+
+
+def test_the_price_list_shows_the_free_endpoint_as_free(live):
+    body = _run(api.price_list("nvidia/nemotron-3.5-super-vl:free"))
+    assert len(body["endpoints"]) == 1
+    assert body["endpoints"][0]["free"] is True
+    assert body["endpoints"][0]["prompt_usd_per_token"] == 0
+
+
+def test_the_price_list_publishes_when_it_was_read(live):
+    body = _run(api.price_list("nvidia/nemotron-3.5-super-vl"))
+    assert body["read_at"]
+    assert "openrouter.ai" in body["source"]
+
+
+def test_the_free_ceiling_is_a_request_cap_not_zero_spend(live):
+    """The whole point: a free model is capped by count, and the API says so."""
+    body = _run(api.price_list("nvidia/nemotron-3.5-super-vl:free"))
+    ceiling = body["daily_ceiling"]
+    assert ceiling["free"] is True
+    assert ceiling["lessons_per_day"] == 50
+    assert ceiling["binding_constraint"] == "requests_per_day"
+
+
+def test_a_paid_model_reports_a_budget_constraint_with_no_fake_number(live):
+    body = _run(api.price_list("nvidia/nemotron-3.5-super-vl"))
+    ceiling = body["daily_ceiling"]
+    assert ceiling["free"] is False
+    assert ceiling["lessons_per_day"] is None, "a lesson count without a budget is invented"
+
+
+def test_an_unknown_model_is_404_with_the_reason(live):
+    with pytest.raises(HTTPException) as exc:
+        _run(api.price_list("no/such-model"))
+    assert exc.value.status_code == 404
+    assert "guessing a rate" in str(exc.value.detail)
+
+
+def test_every_endpoint_price_is_positive_and_ordered(live):
+    body = _run(api.price_list("nvidia/nemotron-3.5-super-vl"))
+    for endpoint in body["endpoints"]:
+        assert endpoint["prompt_usd_per_token"] > 0
+        assert endpoint["completion_usd_per_token"] > endpoint["prompt_usd_per_token"]

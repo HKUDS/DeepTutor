@@ -1,5 +1,5 @@
 {
-  "fingerprint": "c7be9d369845e22ff25e417489bf86c31bb93c59fead1e9286886bb3140e2f22",
+  "fingerprint": "a632c2e3ac7586035bfd1a95059803bef9dc380608312ac9165a0bb8a1ae4195",
   "routers": {
     "deeptutor.api.routers.auth:router": [
       {
@@ -6644,6 +6644,14 @@
       {
         "path": "/licences",
         "name": "licence_catalogue",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/pricing",
+        "name": "price_list",
         "kind": "http",
         "methods": [
           "GET"
