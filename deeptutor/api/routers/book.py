@@ -20,7 +20,6 @@ from pydantic import BaseModel, Field
 from deeptutor.api.utils.http_headers import content_disposition
 from deeptutor.book import progress as progress_ops
 from deeptutor.book.authoring import BookEdit
-from deeptutor.book.engine import source_summaries
 from deeptutor.book.errors import BookPausedError
 from deeptutor.book.export import export_filename, render_book_markdown
 from deeptutor.book.models import (
@@ -318,6 +317,11 @@ def _book_payload(book: Any, resolved: ResolvedBook) -> dict[str, Any]:
     # snapshot on disk. Read it so a reopened book shows the notes it was
     # actually built from instead of an empty source list (#2762).
     if not data.get("sources"):
+        # Deferred on purpose: importing ``book.engine`` at module scope pulls
+        # the book agents into every API process at startup, which the cold
+        # import boundary forbids (tests/runtime/test_api_import_memory_boundary.py).
+        from deeptutor.book.engine import source_summaries
+
         try:
             inputs = resolved.engine.storage.load_inputs(book.id)
         except Exception:  # noqa: BLE001 - a payload must never fail on this
