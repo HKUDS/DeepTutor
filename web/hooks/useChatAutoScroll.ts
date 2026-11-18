@@ -5,6 +5,11 @@ import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
 interface AutoScrollOptions {
   hasMessages: boolean;
   isStreaming: boolean;
+  /**
+   * Kept for call-site compatibility. Must not retrigger pin-to-bottom:
+   * composer autosize while typing updates this often and forced a layout
+   * pass over the whole message scrollport (#2745 / #2743).
+   */
   composerHeight: number;
   messageCount: number;
   lastMessageContent?: string;
@@ -17,9 +22,10 @@ interface AutoScrollOptions {
  * The scroll root must retain overflow-anchor: none to avoid competing writers.
  */
 export function useChatAutoScroll({
-  hasMessages, isStreaming, composerHeight, messageCount,
+  hasMessages, isStreaming, composerHeight: _composerHeight, messageCount,
   lastMessageContent, lastEventCount,
 }: AutoScrollOptions) {
+  void _composerHeight;
   const containerRef = useRef<HTMLDivElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const shouldAutoScrollRef = useRef(true);
@@ -40,10 +46,12 @@ export function useChatAutoScroll({
     rememberPosition(container);
   }, [rememberPosition]);
 
+  // Intentionally omit composerHeight: typing / IME autosize must not force
+  // scrollHeight reads on a KaTeX-heavy transcript (#2745).
   useLayoutEffect(() => {
     if (hasMessages && shouldAutoScrollRef.current) pinToBottom();
   }, [pinToBottom, hasMessages, isStreaming, messageCount,
-    lastMessageContent, lastEventCount, composerHeight]);
+    lastMessageContent, lastEventCount]);
 
   const handleScroll = useCallback(() => {
     const container = containerRef.current;
