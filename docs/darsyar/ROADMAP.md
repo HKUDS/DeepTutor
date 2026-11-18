@@ -163,6 +163,23 @@ Acceptance:
 
 **Gate 5:** ارزیابی کیفیت retrieval و مجوز محتوا قبل از pilot.
 
+> **وضعیت (۲۰۲۶-۱۱-۱۸): پیاده‌سازی COMPLETE، Gate 5 BLOCKED.**
+> همهٔ محورهای Scope پیاده شدند و همهٔ Acceptance در
+> `tests/db/test_scope_isolation.py`، `test_citation.py`، `test_extraction.py`،
+> `test_ingestion_pipeline.py` و `test_golden_set.py` پاس می‌شوند (۴۷۶ pass در
+> `tests/db`). گزارش: `PHASE_5_INGESTION_REPORT.md`؛ تصمیم‌ها: ADR-005 و
+> D-031…D-037.
+>
+> Gate 5 هنوز دو شرط ناتمام دارد:
+> ۱. **مجوز محتوا** — سؤال Gate 4 («آیا سرو کردن کتاب‌های سازمان پژوهش مجاز
+>    است؟») بی‌پاسخ است. خط لوله دروازهٔ مجوز را اکنون *اجرا* می‌کند
+>    (`source_not_approved`)، اما هیچ کتاب واقعی وارد نشده.
+> ۲. **ارزیابی کیفیت retrieval** — امتیازدهی فعلی واژگانی است
+>    (`grounding.search`)؛ سنجش معنایی با embedding انجام نشده.
+>
+> تا پاسخ سؤال حقوقی، import انبوه (که ROADMAP سطر ~۱۳۷ ممنوع می‌کند) انجام
+> نمی‌شود.
+
 ### Phase 6 — Exam Center & Assessment
 
 **هدف:** اجرای آزمون تشریحی، چهارگزینه‌ای و کنکوری.
