@@ -32,14 +32,14 @@ from pydantic import BaseModel, Field
 
 from deeptutor.db.connection import DatabaseError, open_database
 from deeptutor.db.repositories import grounding
-from deeptutor.services.exam.scope import (
+from deeptutor.services.ingestion import pipeline
+from deeptutor.services.scope import (
     Enrolment,
     ScopeError,
     as_http,
     caller_id,
     resolve_enrolment,
 )
-from deeptutor.services.ingestion import pipeline
 
 logger = logging.getLogger(__name__)
 

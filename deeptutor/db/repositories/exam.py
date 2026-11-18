@@ -34,16 +34,16 @@ import logging
 from typing import Any, Mapping, Sequence
 
 from deeptutor.db.connection import Database, DatabaseError
-from deeptutor.services.exam.scope import (
-    Enrolment,
-    require_scope_reaches,
-    resolve_enrolment,
-)
 from deeptutor.services.exam.scoring import (
     ExamResult,
     Policy,
     ScoringError,
     grade_exam,
+)
+from deeptutor.services.scope import (
+    Enrolment,
+    require_scope_reaches,
+    resolve_enrolment,
 )
 
 logger = logging.getLogger(__name__)

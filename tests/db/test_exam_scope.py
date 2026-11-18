@@ -26,7 +26,7 @@ import pytest
 
 from deeptutor.db.repositories import exam as repo
 from deeptutor.db.repositories.identity import IdentityRepository
-from deeptutor.services.exam import scope
+from deeptutor.services import scope
 
 
 def _learner(db, user_id, *, grade_number, major_code=None):

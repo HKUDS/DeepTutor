@@ -1,5 +1,11 @@
 """Resolving a caller's enrolment, so no endpoint has to trust a query string.
 
+This module was born inside ``services/exam`` because examination was the first
+surface to need it, and it stayed half-named when ingestion started importing it
+too: a module called "exam scope" that the grounding router depends on is a
+signpost pointing the wrong way. Phase 7 adds a third surface -- flashcards and
+review -- so the file moved to where its name matches its job.
+
 The problem this exists to prevent
 ----------------------------------
 Phase 4 and Phase 5 established a hard rule: retrieval is scoped to an
