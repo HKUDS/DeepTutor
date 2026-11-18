@@ -153,3 +153,23 @@ test('public placeholders are patched in a cache, preserving immutable bundle', 
   await stageBundledWeb(source, path.join(root, 'cache'), 'http://127.0.0.1:1002', 'true');
   assert.equal(await readFile(path.join(cache, '.next/static/client.js'), 'utf8'), 'http://127.0.0.1:1002 true');
 });
+
+test('stopping attach mode during an in-flight probe keeps the runtime stopped', async t => {
+  let requestReceived;
+  const receiving = new Promise(resolve => { requestReceived = resolve; });
+  let finish;
+  const server = http.createServer((_req, response) => {
+    finish = () => response.end('ready');
+    requestReceived();
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => { server.closeAllConnections(); server.close(); });
+  const url = `http://127.0.0.1:${server.address().port}`;
+  const runtime = new SourceRuntime();
+  const started = runtime.start({ schemaVersion: 1, mode: 'attach', url }, '/unused');
+  await receiving;
+  await runtime.stop();
+  finish();
+  await started;
+  assert.equal(runtime.state.phase, 'stopped');
+});
