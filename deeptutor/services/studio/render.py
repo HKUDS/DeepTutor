@@ -71,6 +71,12 @@ class RenderSettings:
     #: artefact itself, not only in the database: an obligation stored in a row
     #: the reader never sees has not been met, and the file is what gets shared.
     attribution: str = ""
+    #: The chapter this artefact belongs to, drawn as the slide header.
+    #: Separate from the body on purpose: the previous code used the first line
+    #: of the body as the title, which on an audio-overview script is
+    #: "در این ویدیو یاد می‌گیریم" -- a lead-in, not a title -- so every frame
+    #: repeated it and the artefact introduced itself five times.
+    chapter_title: str = ""
 
 
 def _font_path() -> str:
@@ -269,10 +275,11 @@ def render_slide_deck(*, script: Any, settings: RenderSettings | None = None) ->
     if not sections:
         sections = [str(getattr(script, "text", "") or "").strip() or "—"]
 
-    title = ""
-    lines = str(getattr(script, "text", "") or "").splitlines()
-    if lines:
-        title = lines[0]
+    title = settings.chapter_title.strip()
+    if not title:
+        lines = str(getattr(script, "text", "") or "").splitlines()
+        if lines:
+            title = lines[0]
 
     frames = [
         render_slide(
@@ -345,21 +352,63 @@ def render_mind_map(*, script: Any, settings: RenderSettings | None = None) -> b
     centre_text = shape(centre_raw)
     branches = branches[1:] if len(branches) > 1 else branches
 
-    radius = int(min(settings.width, settings.height) * 0.33)
     palette = ["#2563eb", "#059669", "#d97706", "#7c3aed", "#dc2626", "#0891b2"]
 
+    # Lay out by measured size, not by a fixed radius. A branch label is a
+    # phrase now, not a single word, so a fixed radius threw two labels through
+    # the hub: the boxes were wider than the gap the angle gave them. Each node
+    # is sized first, then placed on a ring big enough to hold the widest one.
     count = len(branches)
-    for index, branch in enumerate(branches):
+    # The hub is sized first: the ring radius has to clear it, and the previous
+    # order (ring, then hub) is why two labels sat on top of the topic text.
+    hub_width, hub_height = 190, 74
+    hub_box = draw.textbbox((0, 0), centre_text, font=centre_font)
+    hub_width = max(hub_width, (hub_box[2] - hub_box[0]) + 56)
+    max_hub = int(settings.width * 0.62)
+    if hub_width > max_hub:
+        scale = max_hub / hub_width
+        centre_font = ImageFont.truetype(
+            _font_path(), max(14, int(settings.font_size * 1.2 * scale))
+        )
+        hub_box = draw.textbbox((0, 0), centre_text, font=centre_font)
+        hub_width = min(max_hub, (hub_box[2] - hub_box[0]) + 56)
+    hub_height = max(hub_height, (hub_box[3] - hub_box[1]) + 40)
+
+    labels: list[tuple[str, int, int, int]] = []
+    for branch in branches:
+        text = shape(branch)
+        box = draw.textbbox((0, 0), text, font=node_font)
+        width, height = box[2] - box[0], box[3] - box[1]
+        labels.append((text, width, height, 14))
+
+    padding = 14
+    widest = max((w + 2 * padding for _, w, _, _ in labels), default=0)
+    tallest = max((h + 2 * padding for _, _, h, _ in labels), default=0)
+    hub_half = hub_width // 2 + 8
+
+    # Horizontal room each node needs is half its width plus half the hub, so
+    # the ring radius must clear that for the worst case at its angle.
+    min_radius = max(widest, tallest * 2, hub_half * 2) + padding
+    max_radius = int(min(settings.width, settings.height) * 0.42)
+    radius = max(min_radius, min(int(min(settings.width, settings.height) * 0.33), max_radius))
+    # Vertical squash keeps the ellipse inside a 16:9 canvas, but the vertical
+    # radius must still clear the tallest box.
+    vertical = min(int(radius * 0.72), (settings.height // 2) - tallest - padding)
+    vertical = max(vertical, tallest + padding)
+
+    for index, (branch, (label, width, height, padding)) in enumerate(zip(branches, labels)):
         angle = (2 * math.pi * index / count) - (math.pi / 2)
         x = cx + int(radius * math.cos(angle))
-        y = cy + int(radius * 0.72 * math.sin(angle))
+        y = cy + int(vertical * math.sin(angle))
+        # Keep the box inside the canvas even when the ring is wide.
+        x = max(width // 2 + padding, min(x, settings.width - width // 2 - padding))
+        # The bottom margin holds the attribution; a node drawn into it collides
+        # with the credit line, which is both ugly and a licence problem.
+        bottom_limit = settings.height - height // 2 - padding - int(settings.height * 0.13)
+        y = max(height // 2 + padding, min(y, bottom_limit))
         colour = palette[index % len(palette)]
         draw.line([(cx, cy), (x, y)], fill=colour, width=3)
 
-        label = shape(branch)
-        box = draw.textbbox((0, 0), label, font=node_font)
-        width, height = box[2] - box[0], box[3] - box[1]
-        padding = 14
         draw.rounded_rectangle(
             [
                 (x - width // 2 - padding, y - height // 2 - padding),
@@ -376,22 +425,6 @@ def render_mind_map(*, script: Any, settings: RenderSettings | None = None) -> b
     # ellipse clipped any centre word longer than a few characters, and the
     # clipping was silent -- the image looked deliberate but the topic was
     # unreadable.
-    hub_width, hub_height = 190, 74
-    box = draw.textbbox((0, 0), centre_text, font=centre_font)
-    needed = (box[2] - box[0]) + 56
-    if needed > hub_width:
-        hub_width = needed
-    # If even that would run past the canvas, shrink the font instead.
-    max_hub = int(settings.width * 0.62)
-    if hub_width > max_hub:
-        scale = max_hub / hub_width
-        centre_font = ImageFont.truetype(
-            _font_path(), max(14, int(settings.font_size * 1.2 * scale))
-        )
-        box = draw.textbbox((0, 0), centre_text, font=centre_font)
-        hub_width = min(max_hub, (box[2] - box[0]) + 56)
-    hub_height = max(hub_height, (box[3] - box[1]) + 40)
-
     draw.ellipse(
         [(cx - hub_width // 2, cy - hub_height // 2),
          (cx + hub_width // 2, cy + hub_height // 2)],
@@ -524,7 +557,8 @@ def render_local(
     # The attribution comes from the job payload, resolved once at submit time,
     # so every kind produced under the same licence carries the same credit.
     settings = settings or RenderSettings(
-        attribution=str(payload.get("attribution") or "")
+        attribution=str(payload.get("attribution") or ""),
+        chapter_title=str(payload.get("chapter_title") or ""),
     )
 
     if kind == "slide_deck":

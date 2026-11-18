@@ -12,6 +12,10 @@ data/
 # would skip in CI -- a test that cannot run is not evidence.
 !tests/data/
 !tests/data/cl100k_reference.json
+# Generated review packages: the artefacts are output, rebuilt on demand by
+# scripts/build_review_package.py. Committing a 1.4 MB WAV to hand a reviewer a
+# file they will not read from git is the wrong trade.
+review-package/
 /multi-user/
 # Developer and agent documentation is tracked in docs-for-dev/.
 # Keep obsolete local notes and downloaded references out of the repository.

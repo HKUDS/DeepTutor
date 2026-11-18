@@ -371,7 +371,47 @@
         "status": "open -- requires an independent Persian-speaking human",
         "mechanism": "media_quality_reviews (D-077)",
         "independent_reviews_recorded": 0,
-        "why_not_closed": "a verdict I write about my own output is not a quality gate. Manufacturing a reviewer would turn the gate into paperwork"
+        "why_not_closed": "a verdict I write about my own output is not a quality gate. Manufacturing a reviewer would turn the gate into paperwork",
+        "review_package": {
+          "builder": "scripts/build_review_package.py",
+          "decision": "D-088",
+          "contents": [
+            "5 real artefacts from the real renderer",
+            "review.html: offline, no CDN, no install",
+            "verdict_template.json for editors without a browser",
+            "load_verdict.py: records through the same record_review",
+            "manifest.json: sha256 per artefact so a verdict binds to what was seen"
+          ],
+          "questions": 35,
+          "loop_verified": {
+            "self_review": {
+              "complete": true,
+              "independent": 0
+            },
+            "independent_review": {
+              "independent": 7,
+              "independently_reviewed": true
+            }
+          },
+          "self_review_is_refused_by_the_loader": true,
+          "what_it_does_not_do": "find the human. The tooling reduces their work to opening one HTML file; it cannot supply the judgment"
+        },
+        "defects_fixed_before_asking": {
+          "decision": "D-089",
+          "found_by": "opening the artefacts, not by testing the code",
+          "items": [
+            "every slide repeated the first line of the body as its title, so a video introduced itself three times",
+            "mind-map branches were the most frequent words: 'مشتق / قاعده / نمودار / نرخ / تغییر'",
+            "after branches became phrases, the fixed-radius layout drew them across the hub"
+          ],
+          "why_it_mattered": "sending a package with defects I could see would have been asking a human to grade work already known to be wrong"
+        },
+        "remaining_known_defects_stated_to_the_reviewer": [
+          "slide 1 is only a greeting and carries no idea",
+          "video frame 3 promises 'three continuity conditions' that the frame does not show",
+          "the audio file is a tone, not speech",
+          "the last quarter of the video storyboard is empty"
+        ]
       },
       "rights": {
         "status": "enforced (whether we hold the licence stays human)",
@@ -449,14 +489,16 @@
       "tokens": 15,
       "capacity": 6,
       "catalogue_http": 9,
-      "total": 77,
+      "total": 115,
       "pricing": 23,
-      "pricing_http": 7
+      "pricing_http": 7,
+      "render_quality": 22,
+      "review_package": 16
     },
     "mutations": {
-      "count": 25,
-      "caught": 25,
-      "note": "11 from the previous pass plus 7 for licences, tokens and attribution"
+      "count": 29,
+      "caught": 29,
+      "note": "25 previous plus 4 for the three rendering defects; three of the first four new tests passed against the mutation and had to be rewritten (D-090)"
     },
     "new_endpoints": [
       "GET /api/studio/licences",
@@ -464,13 +506,17 @@
       "GET /api/studio/pricing"
     ],
     "totals": {
-      "studio_tests": 203,
-      "suite_db_api_modules": "997 passed / 587 skipped"
+      "studio_tests": 248,
+      "review_package_tests": 16,
+      "suite_db_api_modules": "1041 passed / 599 skipped"
     },
     "decisions_added": [
       "D-085",
       "D-086",
-      "D-087"
+      "D-087",
+      "D-088",
+      "D-089",
+      "D-090"
     ]
   },
   "provider_wiring": {
