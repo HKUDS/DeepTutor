@@ -1,5 +1,5 @@
 {
-  "fingerprint": "dbcd98dfdbcfa5500925ac84d5cbc6f5f26218b76a0edf54e4fdfcbaa129f62f",
+  "fingerprint": "608a5347db09012e77622dbd6c3ea6d993e6e2092b5b3035de2d998018ace37e",
   "routers": {
     "deeptutor.api.routers.auth:router": [
       {
@@ -6376,6 +6376,128 @@
       {
         "path": "/attempts/{attempt_id}/changes",
         "name": "changes",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.flashcards:router": [
+      {
+        "path": "/decks",
+        "name": "list_decks",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/decks",
+        "name": "create_deck",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/decks/{deck_id}",
+        "name": "get_deck",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/decks/{deck_id}",
+        "name": "delete_deck",
+        "kind": "http",
+        "methods": [
+          "DELETE"
+        ]
+      },
+      {
+        "path": "/decks/{deck_id}/cards",
+        "name": "list_cards",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/decks/{deck_id}/cards",
+        "name": "add_cards",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/decks/{deck_id}/from-mistakes",
+        "name": "cards_from_mistakes",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/cards/{card_id}",
+        "name": "get_card",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/cards/{card_id}",
+        "name": "patch_card",
+        "kind": "http",
+        "methods": [
+          "PATCH"
+        ]
+      },
+      {
+        "path": "/cards/{card_id}",
+        "name": "archive_card",
+        "kind": "http",
+        "methods": [
+          "DELETE"
+        ]
+      },
+      {
+        "path": "/review/queue",
+        "name": "review_queue",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/cards/{card_id}/review",
+        "name": "review_card",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/cards/{card_id}/history",
+        "name": "card_history",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/summary",
+        "name": "summary",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/mastery",
+        "name": "mastery_dashboard",
         "kind": "http",
         "methods": [
           "GET"

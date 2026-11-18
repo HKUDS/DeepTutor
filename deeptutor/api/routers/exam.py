@@ -31,8 +31,8 @@ from pydantic import BaseModel, Field
 
 from deeptutor.db.connection import DatabaseError, open_database
 from deeptutor.db.repositories import exam as repo
-from deeptutor.services.exam.scope import ScopeError, as_http, caller_id
 from deeptutor.services.exam.scoring import ScoringError
+from deeptutor.services.scope import ScopeError, as_http, caller_id
 
 router = APIRouter()
 admin_router = APIRouter()
@@ -232,17 +232,18 @@ async def submit(exam_id: str, payload: SubmitRequest) -> dict:
 
 
 @router.get("/attempts/{attempt_id}")
-async def get_attempt(attempt_id: str, user_id: str = Query(..., min_length=1)) -> dict:
+async def get_attempt(attempt_id: str, user_id: str | None = Query(None)) -> dict:
     """One attempt, only for its owner.
 
-    ``user_id`` is required and compared against the stored owner. This is the
-    ownership check described in the module docstring: an attempt id is opaque
-    but not secret, and treating it as a capability would be an IDOR.
+    Ownership is checked against the *caller the server resolved*, not a value
+    the request volunteered. ``user_id`` survives only for the single-operator
+    dev configuration; with authentication on it is discarded (``caller_id``),
+    so a student cannot read another student's attempt by naming them.
     """
     database = _database()
     try:
         attempt = repo.get_attempt(database, attempt_id)
-        if attempt["user_id"] != user_id:
+        if attempt["user_id"] != caller_id(user_id):
             # 404, not 403: telling a stranger that the attempt exists is itself
             # a small disclosure, and they have no legitimate use for the answer.
             raise HTTPException(status_code=404, detail="attempt not found")
@@ -255,11 +256,12 @@ async def get_attempt(attempt_id: str, user_id: str = Query(..., min_length=1)) 
 
 @router.get("/attempts")
 async def list_my_attempts(
-    user_id: str = Query(..., min_length=1), limit: int = Query(50, ge=1, le=200)
+    user_id: str | None = Query(None), limit: int = Query(50, ge=1, le=200)
 ) -> dict:
+    """This student's attempts. The id is the caller's, not one they named."""
     database = _database()
     try:
-        attempts = repo.list_attempts(database, user_id=user_id, limit=limit)
+        attempts = repo.list_attempts(database, user_id=caller_id(user_id), limit=limit)
         return {
             "attempts": [
                 {key: value for key, value in attempt.items() if key != "question_snapshot"}
@@ -272,12 +274,12 @@ async def list_my_attempts(
 
 
 @router.get("/attempts/{attempt_id}/mistakes")
-async def get_mistakes(attempt_id: str, user_id: str = Query(..., min_length=1)) -> dict:
+async def get_mistakes(attempt_id: str, user_id: str | None = Query(None)) -> dict:
     """Which topics this student should review."""
     database = _database()
     try:
         attempt = repo.get_attempt(database, attempt_id)
-        if attempt["user_id"] != user_id:
+        if attempt["user_id"] != caller_id(user_id):
             raise HTTPException(status_code=404, detail="attempt not found")
         return repo.mistake_report(database, attempt_id)
     except repo.ExamError as exc:

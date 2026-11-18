@@ -523,7 +523,7 @@ def test_an_account_with_no_profile_falls_back_to_an_unverified_scope(published,
     """
     db, exam_id = published
     from deeptutor.db.repositories.identity import IdentityRepository
-    from deeptutor.services.exam import scope
+    from deeptutor.services import scope
 
     monkeypatch.setattr(scope, "_auth_enabled", lambda: False)
     IdentityRepository(db).save("noprofile", {"id": "noprofile", "hash": "x", "role": "user"})
@@ -539,7 +539,7 @@ def test_an_account_with_no_profile_is_403_when_authentication_is_on(published, 
     """With authentication on there is nothing to fall back to, so refuse."""
     db, exam_id = published
     from deeptutor.db.repositories.identity import IdentityRepository
-    from deeptutor.services.exam import scope
+    from deeptutor.services import scope
 
     monkeypatch.setattr(scope, "_auth_enabled", lambda: True)
     IdentityRepository(db).save("noprofile", {"id": "noprofile", "hash": "x", "role": "user"})
@@ -559,3 +559,47 @@ def test_reading_another_grades_exam_is_403(published):
         _run(api.get_published_exam(exam_id, user_id="grade7"))
 
     assert exc.value.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# Ownership comes from the caller, not from the request
+# ---------------------------------------------------------------------------
+
+
+def test_an_attempt_cannot_be_read_by_naming_another_student(published, monkeypatch):
+    """The old check compared against a user_id the *request* supplied.
+
+    That is not an ownership check: it asks the caller who they are and trusts
+    the answer. With authentication on the id comes from the session, so naming
+    someone else finds nothing.
+    """
+    db, exam_id = published
+    from deeptutor.services import scope
+
+    attempt = _run(
+        api.submit(exam_id, api.SubmitRequest(user_id="u1", answers={"q1": "1", "q2": "0"}))
+    )
+    _other_learner(db, "thief", grade_number=10)
+
+    # Pretend the session resolved to "thief" while the request says "u1".
+    monkeypatch.setattr(api, "caller_id", lambda supplied=None: "thief")
+
+    with pytest.raises(HTTPException) as exc:
+        _run(api.get_attempt(attempt["id"], user_id="u1"))
+
+    assert exc.value.status_code == 404
+
+
+def test_listing_attempts_returns_the_callers_own(published, monkeypatch):
+    db, exam_id = published
+    from deeptutor.services import scope
+
+    _run(api.submit(exam_id, api.SubmitRequest(user_id="u1", answers={"q1": "1", "q2": "0"})))
+    _other_learner(db, "other", grade_number=10)
+
+    # Patch the name the router actually calls, not the module it came from:
+    # `from ... import caller_id` bound the function into the router's namespace.
+    monkeypatch.setattr(api, "caller_id", lambda supplied=None: "other")
+    payload = _run(api.list_my_attempts(user_id="u1", limit=50))
+
+    assert payload["count"] == 0, "asking for u1's attempts must not return them to 'other'"

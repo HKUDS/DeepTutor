@@ -328,7 +328,7 @@ def test_browse_is_scoped_by_the_profile_too(seeded):
 
 
 def test_a_dev_caller_with_no_profile_is_marked_unverified(seeded, monkeypatch):
-    from deeptutor.services.exam import scope
+    from deeptutor.services import scope
 
     monkeypatch.setattr(scope, "_auth_enabled", lambda: False)
 
