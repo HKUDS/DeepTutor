@@ -41,8 +41,30 @@ def _question(db, qid="q1", **kwargs):
     return repo.create_question(db, repo.QuestionInput(**defaults))
 
 
+def _learner(db, user_id="u1", grade_number=10, major_code=None):
+    """An account with a recorded enrolment.
+
+    Scope is read from the *stored profile*, so a test that submits answers
+    needs a profile to read. Seeding one here is what makes these tests run the
+    same path production runs, instead of a bypass only the tests take.
+    """
+    from deeptutor.db.repositories.identity import IdentityRepository
+
+    IdentityRepository(db).save(
+        user_id,
+        {
+            "id": user_id,
+            "hash": "x",
+            "role": "user",
+            "learner_profile": {"grade_number": grade_number, "major_code": major_code},
+        },
+    )
+    return user_id
+
+
 @pytest.fixture
 def exam_with_policy(bank):
+    _learner(bank, "u1", grade_number=10)
     q1 = _question(bank, "q1")
     _question(
         bank,
@@ -319,6 +341,7 @@ def test_a_deliberate_retake_uses_a_new_attempt_number(exam_with_policy):
 
 def test_two_students_get_separate_attempts(exam_with_policy):
     db, exam, _ = exam_with_policy
+    _learner(db, "u2", grade_number=10)
     a = repo.submit_exam(
         db, exam_id=exam["id"], user_id="u1", answers={"q1": "1", "q2": "0", "q3": "1"}
     )
