@@ -1,4 +1,7 @@
 {
+  "Technology partner": "기술 파트너",
+  "Thanks to SiliconFlow for supporting DeepTutor with model inference services.": "DeepTutor에 모델 추론 서비스를 제공하는 SiliconFlow에 감사드립니다.",
+  "Powered by SiliconFlow": "SiliconFlow 기술 지원",
   "language.english": "English",
   "language.chinese": "中文",
   "language.french": "Français",

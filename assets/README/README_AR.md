@@ -716,6 +716,13 @@ deeptutor skill install clawhub:udiedrichsen/stock-analysis
       <img src="../../assets/figs/partners/pageindex-mark.svg" alt="PageIndex" height="38">
     </picture>
   </a>
+  &nbsp;&nbsp;&nbsp;
+  <a href="https://www.siliconflow.cn/">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="../../web/public/partners/powered-by-siliconflow-dark.svg">
+      <img src="../../web/public/partners/powered-by-siliconflow.svg" alt="Powered by SiliconFlow" height="38">
+    </picture>
+  </a>
 </p>
 
 <p align="center">
