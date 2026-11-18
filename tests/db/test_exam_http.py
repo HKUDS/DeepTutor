@@ -31,6 +31,19 @@ def live(db, monkeypatch):
     settings = DatabaseSettings(app_url=db.settings.app_url, backend=db.settings.backend)
     monkeypatch.setattr("deeptutor.db.config.get_database_settings", lambda: settings)
     reset_database_settings()
+    # A student with a recorded enrolment: scope comes from the profile, so the
+    # API tests must have one or every submission would be refused.
+    from deeptutor.db.repositories.identity import IdentityRepository
+
+    IdentityRepository(db).save(
+        "u1",
+        {
+            "id": "u1",
+            "hash": "x",
+            "role": "user",
+            "learner_profile": {"grade_number": 10, "major_code": None},
+        },
+    )
     return db
 
 
@@ -82,7 +95,7 @@ def published(live):
 
 def test_a_student_sees_published_exams(published):
     db, exam_id = published
-    payload = _run(api.list_published(grade_number=10, major_code=None, limit=50))
+    payload = _run(api.list_published(user_id="u1", grade_number=10, major_code=None, limit=50))
     assert payload["count"] == 1
     assert payload["exams"][0]["id"] == exam_id
 
@@ -92,7 +105,7 @@ def test_a_draft_exam_is_hidden_from_students(published):
     db, exam_id = published
     with db.transaction() as conn:
         conn.execute("UPDATE exams SET status = 'draft' WHERE id = ?", (exam_id,))
-    assert _run(api.list_published(grade_number=None, major_code=None, limit=50))["count"] == 0
+    assert _run(api.list_published(user_id="u1", grade_number=None, major_code=None, limit=50))["count"] == 0
 
 
 def test_a_draft_exam_cannot_be_fetched_by_a_student(published):
@@ -100,7 +113,7 @@ def test_a_draft_exam_cannot_be_fetched_by_a_student(published):
     with db.transaction() as conn:
         conn.execute("UPDATE exams SET status = 'draft' WHERE id = ?", (exam_id,))
     with pytest.raises(HTTPException) as exc:
-        _run(api.get_published_exam(exam_id))
+        _run(api.get_published_exam(exam_id, user_id="u1"))
     assert exc.value.status_code == 404
 
 
@@ -112,7 +125,7 @@ def test_the_exam_a_student_receives_contains_no_answer_keys(published):
     model, so a future field cannot reintroduce it unnoticed.
     """
     db, exam_id = published
-    payload = _run(api.get_published_exam(exam_id))
+    payload = _run(api.get_published_exam(exam_id, user_id="u1"))
     serialised = str(payload)
     assert "answer_key" not in serialised
     for item in payload["items"]:
@@ -122,7 +135,7 @@ def test_the_exam_a_student_receives_contains_no_answer_keys(published):
 
 def test_the_exam_a_student_receives_has_choices_as_a_list(published):
     db, exam_id = published
-    payload = _run(api.get_published_exam(exam_id))
+    payload = _run(api.get_published_exam(exam_id, user_id="u1"))
     first = payload["items"][0]
     assert isinstance(first["choices"], list)
     assert len(first["choices"]) == 4
@@ -443,5 +456,106 @@ def test_the_database_being_disabled_is_503(monkeypatch):
     monkeypatch.setattr("deeptutor.db.config.get_database_settings", lambda: disabled)
     reset_database_settings()
     with pytest.raises(HTTPException) as exc:
-        _run(api.list_published(grade_number=None, major_code=None, limit=50))
+        _run(api.list_published(user_id="u1", grade_number=None, major_code=None, limit=50))
     assert exc.value.status_code == 503
+
+
+# ---------------------------------------------------------------------------
+# Scope at the API boundary
+# ---------------------------------------------------------------------------
+
+
+def _other_learner(db, user_id, *, grade_number, major_code=None):
+    from deeptutor.db.repositories.identity import IdentityRepository
+
+    IdentityRepository(db).save(
+        user_id,
+        {
+            "id": user_id,
+            "hash": "x",
+            "role": "user",
+            "learner_profile": {"grade_number": grade_number, "major_code": major_code},
+        },
+    )
+
+
+def test_submitting_outside_your_grade_is_403_not_a_score(published):
+    db, exam_id = published
+    _other_learner(db, "grade7", grade_number=7)
+
+    with pytest.raises(HTTPException) as exc:
+        _run(
+            api.submit(
+                exam_id,
+                api.SubmitRequest(user_id="grade7", answers={"q1": "1", "q2": "0"}),
+            )
+        )
+
+    assert exc.value.status_code == 403
+    assert exc.value.detail["rule"] == "scope_mismatch"
+
+
+def test_the_listing_only_shows_your_own_grade(published):
+    db, exam_id = published
+    _other_learner(db, "grade7", grade_number=7)
+
+    payload = _run(
+        api.list_published(user_id="grade7", grade_number=10, major_code=None, limit=50)
+    )
+
+    # The grade-10 exam exists and is published, but a grade-7 caller must not
+    # see it -- and the ?grade_number=10 they passed must not widen the listing.
+    assert payload["count"] == 0
+    assert payload["scope"]["grade_number"] == 7
+
+
+def test_the_listing_reports_whether_the_scope_was_verified(published):
+    db, exam_id = published
+    payload = _run(api.list_published(user_id="u1", grade_number=None, major_code=None, limit=50))
+    assert payload["scope"]["unverified"] is False
+
+
+def test_an_account_with_no_profile_falls_back_to_an_unverified_scope(published, monkeypatch):
+    """With authentication off there is no session to read, so the query is used.
+
+    The point of the test is that the fallback is *labelled*: the response says
+    ``unverified`` so a dev deployment cannot be mistaken for a scoped one.
+    """
+    db, exam_id = published
+    from deeptutor.db.repositories.identity import IdentityRepository
+    from deeptutor.services.exam import scope
+
+    monkeypatch.setattr(scope, "_auth_enabled", lambda: False)
+    IdentityRepository(db).save("noprofile", {"id": "noprofile", "hash": "x", "role": "user"})
+
+    payload = _run(
+        api.list_published(user_id="noprofile", grade_number=10, major_code=None, limit=50)
+    )
+    assert payload["scope"]["unverified"] is True
+    assert payload["scope"]["grade_number"] == 10
+
+
+def test_an_account_with_no_profile_is_403_when_authentication_is_on(published, monkeypatch):
+    """With authentication on there is nothing to fall back to, so refuse."""
+    db, exam_id = published
+    from deeptutor.db.repositories.identity import IdentityRepository
+    from deeptutor.services.exam import scope
+
+    monkeypatch.setattr(scope, "_auth_enabled", lambda: True)
+    IdentityRepository(db).save("noprofile", {"id": "noprofile", "hash": "x", "role": "user"})
+
+    with pytest.raises(HTTPException) as exc:
+        _run(api.list_published(user_id="noprofile", grade_number=10, major_code=None, limit=50))
+    assert exc.value.status_code == 403
+    assert exc.value.detail["rule"] == "missing_enrolment"
+
+
+def test_reading_another_grades_exam_is_403(published):
+    """The listing hid the id; reading it directly must not be the way around."""
+    db, exam_id = published
+    _other_learner(db, "grade7", grade_number=7)
+
+    with pytest.raises(HTTPException) as exc:
+        _run(api.get_published_exam(exam_id, user_id="grade7"))
+
+    assert exc.value.status_code == 403

@@ -179,14 +179,14 @@ def test_validate_rejects_an_invented_citation(seeded):
 
 
 def test_catalogue_lists_the_available_book(seeded):
-    payload = _run(api.catalogue(grade_number=10, major_code="math_physics"))
+    payload = _run(api.catalogue(user_id="u1", grade_number=10, major_code="math_physics"))
     assert len(payload["sources"]) == 1
     assert payload["sources"][0]["title"] == "ریاضی دهم"
     assert payload["sources"][0]["chunks"] >= 1
 
 
 def test_catalogue_excludes_another_major(seeded):
-    payload = _run(api.catalogue(grade_number=10, major_code="experimental"))
+    payload = _run(api.catalogue(user_id="u1", grade_number=10, major_code="experimental"))
     assert payload["sources"] == []
 
 
@@ -269,3 +269,95 @@ def test_database_disabled_is_503(monkeypatch):
             )
         )
     assert exc.value.status_code == 503
+
+
+# ---------------------------------------------------------------------------
+# The enrolment is resolved, not accepted
+# ---------------------------------------------------------------------------
+
+
+def _learner(db, user_id, *, grade_number, major_code=None):
+    from deeptutor.db.repositories.identity import IdentityRepository
+
+    IdentityRepository(db).save(
+        user_id,
+        {
+            "id": user_id,
+            "hash": "x",
+            "role": "user",
+            "learner_profile": {"grade_number": grade_number, "major_code": major_code},
+        },
+    )
+
+
+def test_a_stored_profile_overrides_the_query_scope(seeded):
+    """The docstring said the parameters must match the profile. Now they do.
+
+    A grade-7 account asking with ``?grade_number=10&major_code=math_physics``
+    must be answered as a grade-7 student -- that is, with nothing from the
+    grade-10 book -- instead of being handed another grade's material.
+    """
+    _learner(seeded, "grade7", grade_number=7)
+
+    payload = _search(user_id="grade7", grade_number=10, major_code="math_physics")
+
+    assert payload["abstained"] is True
+    assert payload["scope"]["grade_number"] == 7
+    assert payload["scope"]["major_code"] is None
+
+
+def test_the_scope_is_reported_so_a_client_cannot_assume(seeded):
+    _learner(seeded, "grade10", grade_number=10, major_code="math_physics")
+
+    payload = _search(user_id="grade10", grade_number=10, major_code="math_physics")
+
+    assert payload["scope"] == {
+        "grade_number": 10,
+        "major_code": "math_physics",
+        "unverified": False,
+    }
+
+
+def test_browse_is_scoped_by_the_profile_too(seeded):
+    _learner(seeded, "grade7", grade_number=7)
+
+    payload = _run(api.browse(user_id="grade7", grade_number=10, major_code="math_physics", limit=20))
+
+    assert payload["count"] == 0
+    assert payload["scope"]["grade_number"] == 7
+
+
+def test_a_dev_caller_with_no_profile_is_marked_unverified(seeded, monkeypatch):
+    from deeptutor.services.exam import scope
+
+    monkeypatch.setattr(scope, "_auth_enabled", lambda: False)
+
+    payload = _search(user_id="anon", grade_number=10, major_code="math_physics")
+
+    assert payload["scope"]["unverified"] is True
+
+
+def test_the_catalogue_does_not_widen_when_no_major_is_given(seeded):
+    """The old predicate was ``(? IS NULL OR s.major_code = ?)``.
+
+    A caller who passed no major therefore matched every major's books -- the
+    widening ``scope_sql`` forbids, reintroduced here in a single line because
+    it was spelled differently. A student with no major must see only books
+    with no major.
+    """
+    _learner(seeded, "grade7", grade_number=7)
+
+    payload = _run(api.catalogue(user_id="grade7", grade_number=7, major_code=None))
+
+    assert payload["sources"] == [], "a grade-7 student has no grade-10 math book"
+    assert payload["major_code"] is None
+
+
+def test_the_catalogue_still_shows_the_matching_major(seeded):
+    _learner(seeded, "grade10", grade_number=10, major_code="math_physics")
+
+    payload = _run(
+        api.catalogue(user_id="grade10", grade_number=10, major_code="math_physics")
+    )
+
+    assert [row["title"] for row in payload["sources"]] == ["ریاضی دهم"]

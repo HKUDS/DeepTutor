@@ -32,6 +32,13 @@ from pydantic import BaseModel, Field
 
 from deeptutor.db.connection import DatabaseError, open_database
 from deeptutor.db.repositories import grounding
+from deeptutor.services.exam.scope import (
+    Enrolment,
+    ScopeError,
+    as_http,
+    caller_id,
+    resolve_enrolment,
+)
 from deeptutor.services.ingestion import pipeline
 
 logger = logging.getLogger(__name__)
@@ -41,6 +48,41 @@ router = APIRouter()
 
 #: Operator-facing ingestion. Mounted at ``/api/grounding/admin`` (admin).
 admin_router = APIRouter()
+
+
+def _enrolment(
+    database: Any,
+    *,
+    user_id: str | None,
+    grade_number: int | None,
+    major_code: str | None,
+) -> Enrolment:
+    """The caller's enrolment, resolved the one way every scoped route resolves it.
+
+    This router's docstring has always claimed the scope comes from the
+    authenticated profile. Until Phase 6 was reviewed, it *did not*: the grade
+    and major were read straight from the query string and the docstring was
+    aspirational. Routing the values through the same resolver the exam center
+    uses is what makes the claim true, and means the two surfaces cannot drift
+    apart again.
+    """
+    try:
+        return resolve_enrolment(
+            database,
+            user_id=caller_id(user_id),
+            grade_number=grade_number,
+            major_code=major_code,
+        )
+    except ScopeError as exc:
+        raise as_http(exc) from exc
+
+
+def _scope_dict(enrolment: Enrolment) -> dict[str, Any]:
+    return {
+        "grade_number": enrolment.grade_number,
+        "major_code": enrolment.major_code,
+        "unverified": enrolment.unverified,
+    }
 
 
 def _database() -> Any:
@@ -102,6 +144,7 @@ class CitationRequest(BaseModel):
 @router.get("/search")
 async def search(
     q: str = Query(..., min_length=1, max_length=500),
+    user_id: str | None = Query(None),
     grade_number: int = Query(..., ge=1, le=20),
     major_code: str | None = Query(None),
     subject_code: str | None = Query(None),
@@ -115,17 +158,23 @@ async def search(
     behaviour the roadmap requires ("asks something not in the books") is
     decided here, by whether any chunk in scope actually addresses the query.
 
-    ``grade_number`` and ``major_code`` are accepted because this is the
-    server-side lookup used by the tutor, which has already resolved the
-    authenticated user's enrolment. It is not a client-controlled widening:
-    the values must match the resolved enrolment the auth layer supplies.
+    ``grade_number`` and ``major_code`` are accepted for the single-operator
+    dev configuration. With authentication on they are ignored: the enrolment
+    is resolved from the caller's stored profile, and an account with no
+    profile is refused rather than trusted. Until this was wired the parameters
+    *were* the scope, so the docstring described a guarantee the code did not
+    make.
     """
     database = _database()
     try:
+        enrolment = _enrolment(
+            database, user_id=user_id, grade_number=grade_number, major_code=major_code
+        )
         chunks = grounding.search(
             database,
             query=q,
-            enrolment={"grade_number": grade_number, "major_code": major_code},
+            enrolment={"grade_number": enrolment.grade_number,
+                       "major_code": enrolment.major_code},
             subject_code=subject_code,
             limit=limit,
             min_score=min_score,
@@ -133,8 +182,14 @@ async def search(
         for chunk in chunks:
             chunk["citation"] = grounding.render_citation(chunk)
         if not chunks:
-            return grounding.abstain("no_relevant_source")
-        return {"grounded": True, "abstained": False, "chunks": chunks, "count": len(chunks)}
+            return {**grounding.abstain("no_relevant_source"), "scope": _scope_dict(enrolment)}
+        return {
+            "grounded": True,
+            "abstained": False,
+            "chunks": chunks,
+            "count": len(chunks),
+            "scope": _scope_dict(enrolment),
+        }
     except Exception as exc:  # noqa: BLE001
         raise _translate(exc) from exc
     finally:
@@ -144,6 +199,7 @@ async def search(
 @router.post("/validate")
 async def validate(
     answer: CitationRequest,
+    user_id: str | None = Query(None),
     grade_number: int = Query(..., ge=1, le=20),
     major_code: str | None = Query(None),
 ) -> dict:
@@ -155,8 +211,13 @@ async def validate(
     """
     database = _database()
     try:
+        enrolment = _enrolment(
+            database, user_id=user_id, grade_number=grade_number, major_code=major_code
+        )
         retrieved = grounding.retrievable(
-            database, enrolment={"grade_number": grade_number, "major_code": major_code}
+            database,
+            enrolment={"grade_number": enrolment.grade_number,
+                       "major_code": enrolment.major_code},
         )
         report = grounding.validate_citations(answer.answer, retrieved)
         return report
@@ -168,6 +229,7 @@ async def validate(
 
 @router.get("/browse")
 async def browse(
+    user_id: str | None = Query(None),
     grade_number: int = Query(..., ge=1, le=20),
     major_code: str | None = Query(None),
     limit: int = Query(20, ge=1, le=200),
@@ -180,14 +242,18 @@ async def browse(
     """
     database = _database()
     try:
+        enrolment = _enrolment(
+            database, user_id=user_id, grade_number=grade_number, major_code=major_code
+        )
         chunks = grounding.retrievable(
             database,
-            enrolment={"grade_number": grade_number, "major_code": major_code},
+            enrolment={"grade_number": enrolment.grade_number,
+                       "major_code": enrolment.major_code},
             limit=limit,
         )
         for chunk in chunks:
             chunk["citation"] = grounding.render_citation(chunk)
-        return {"chunks": chunks, "count": len(chunks)}
+        return {"chunks": chunks, "count": len(chunks), "scope": _scope_dict(enrolment)}
     except Exception as exc:  # noqa: BLE001
         raise _translate(exc) from exc
     finally:
@@ -196,6 +262,7 @@ async def browse(
 
 @router.get("/catalogue")
 async def catalogue(
+    user_id: str | None = Query(None),
     grade_number: int = Query(..., ge=1, le=20),
     major_code: str | None = Query(None),
 ) -> dict:
@@ -204,10 +271,25 @@ async def catalogue(
     Useful for the UI's "which books can I ask about" panel, and for an operator
     to see why a student gets nothing: zero visible chunks is a very different
     answer from an empty library.
+
+    The major predicate used to be ``(? IS NULL OR s.major_code = ?)``, which
+    meant a caller who passed no major saw every major's books -- the same
+    widening :func:`scope_sql` was written to forbid, reintroduced here in one
+    line because it was spelled differently. It now mirrors the retrieval rule:
+    no major means only books with no major.
     """
     database = _database()
     try:
+        enrolment = _enrolment(
+            database, user_id=user_id, grade_number=grade_number, major_code=major_code
+        )
         with database.read() as conn:
+            if enrolment.major_code is None:
+                major_clause = "AND s.major_code IS NULL "
+                params: tuple[Any, ...] = (enrolment.grade_number,)
+            else:
+                major_clause = "AND (s.major_code IS NULL OR s.major_code = ?) "
+                params = (enrolment.grade_number, enrolment.major_code)
             rows = list(
                 conn.query(
                     "SELECT s.id, s.title, s.source_type, COUNT(c.chunk_key) AS chunks "
@@ -215,13 +297,18 @@ async def catalogue(
                     "LEFT JOIN ingestion_chunks c ON c.source_id = s.id "
                     "WHERE s.publicly_retrievable = 1 "
                     "AND (s.grade_number IS NULL OR s.grade_number = ?) "
-                    "AND (s.major_code IS NULL OR ? IS NULL OR s.major_code = ?) "
-                    "GROUP BY s.id, s.title, s.source_type "
+                    + major_clause
+                    + "GROUP BY s.id, s.title, s.source_type "
                     "ORDER BY s.title",
-                    (grade_number, major_code, major_code),
+                    params,
                 )
             )
-        return {"grade_number": grade_number, "major_code": major_code, "sources": rows}
+        return {
+            "grade_number": enrolment.grade_number,
+            "major_code": enrolment.major_code,
+            "sources": rows,
+            "scope": _scope_dict(enrolment),
+        }
     except Exception as exc:  # noqa: BLE001
         raise _translate(exc) from exc
     finally:

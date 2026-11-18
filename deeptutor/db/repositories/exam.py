@@ -33,8 +33,14 @@ import json
 import logging
 from typing import Any, Mapping, Sequence
 
-from deeptutor.db.connection import Database
+from deeptutor.db.connection import Database, DatabaseError
+from deeptutor.services.exam.scope import (
+    Enrolment,
+    require_scope_reaches,
+    resolve_enrolment,
+)
 from deeptutor.services.exam.scoring import (
+    ExamResult,
     Policy,
     ScoringError,
     grade_exam,
@@ -505,6 +511,54 @@ def list_exams(
         ]
 
 
+def list_exams_in_scope(
+    db: Database,
+    enrolment: Enrolment,
+    *,
+    status: str | None = "published",
+    limit: int = 100,
+) -> list[dict[str, Any]]:
+    """Exams this enrolment may sit -- the mirror of ``require_scope_reaches``.
+
+    The guard on submission is what stops a student being *graded* outside their
+    grade. This is the other half: a listing that showed every grade's papers
+    would leak the curriculum and, worse, hand out ids the guard then has to
+    refuse one by one. Both sides read the same rule, so they cannot drift.
+
+    An exam with no grade is open to everyone, and an exam with no major is open
+    to every major. An exam *with* a major is not open to a student without one
+    -- the same asymmetry the guard enforces.
+    """
+    clauses = ["1 = 1"]
+    params: list[Any] = []
+    if enrolment.grade_number is None:
+        # No verified grade: only unscoped exams are visible, because every
+        # scoped exam would be refused on submission anyway.
+        clauses.append("grade_number IS NULL")
+    else:
+        clauses.append("(grade_number IS NULL OR grade_number = ?)")
+        params.append(enrolment.grade_number)
+    if enrolment.major_code is None:
+        clauses.append("major_code IS NULL")
+    else:
+        clauses.append("(major_code IS NULL OR major_code = ?)")
+        params.append(enrolment.major_code)
+    if status is not None:
+        clauses.append("status = ?")
+        params.append(status)
+    params.append(limit)
+    with db.read() as conn:
+        return [
+            dict(row)
+            for row in conn.query(
+                "SELECT * FROM exams WHERE "
+                + " AND ".join(clauses)
+                + " ORDER BY created_at DESC LIMIT ?",
+                tuple(params),
+            )
+        ]
+
+
 def publish_exam(db: Database, exam_id: str, *, actor: str = "") -> dict[str, Any]:
     """Publish, but only if every item is reviewed.
 
@@ -663,6 +717,7 @@ def submit_exam(
     answers: Mapping[str, Any] | Sequence[Any],
     attempt_no: int = 1,
     essay_scores: Mapping[str, float] | None = None,
+    enrolment: Enrolment | None = None,
 ) -> dict[str, Any]:
     """Submit answers and grade them, atomically.
 
@@ -670,8 +725,24 @@ def submit_exam(
     answers -- returns the existing attempt untouched. That covers the two ways
     a duplicate happens in a real client: a refresh re-POSTing the form, and a
     network retry that the caller could not distinguish from a failure.
+
+    The exam's grade and major are checked against the caller's enrolment
+    before a single item is snapshotted. Skipping that check was the Phase 6
+    hole: a grade-7 student could be graded on a grade-12 paper by naming its
+    id, and the scope filters on every read path counted for nothing.
     """
     exam = get_exam(db, exam_id)
+    if enrolment is None:
+        # Only the *caller's* claim reaches this call -- never the exam's own
+        # grade. Passing the object's scope as the caller's claim would make the
+        # guard compare a value with itself and always pass.
+        enrolment = resolve_enrolment(db, user_id=user_id)
+    require_scope_reaches(
+        enrolment,
+        grade_number=exam.get("grade_number"),
+        major_code=exam.get("major_code"),
+        what="این آزمون",
+    )
     if exam["status"] != "published" and exam["status"] != "draft":
         raise ExamError(
             "exam_not_open",
@@ -723,6 +794,66 @@ def submit_exam(
     attempt_id = _new_id("att")
     answers_json = json.dumps(answers, ensure_ascii=False, default=str)
 
+    try:
+        _insert_attempt(
+            db,
+            attempt_id=attempt_id,
+            exam_id=exam_id,
+            user_id=user_id,
+            attempt_no=int(attempt_no),
+            snapshot=snapshot,
+            policy_row=policy_row,
+            blueprint=exam.get("blueprint") or "{}",
+            answers_json=answers_json,
+            result=result,
+            fingerprint=fingerprint,
+        )
+    except DatabaseError as exc:
+        # Two concurrent submissions of the same answers can both pass the
+        # read above and then collide on uq_exam_attempt_identity. To the
+        # student that surfaced as a 500 -- the exact outcome the idempotency
+        # rule exists to prevent. The unique index is the real arbiter, so the
+        # loser of the race re-reads and returns the winner's attempt.
+        if "uq_exam_attempt_identity" not in str(exc) and "UNIQUE" not in str(exc):
+            raise
+        with db.read() as conn:
+            winner = conn.query_one(
+                "SELECT * FROM exam_attempts WHERE exam_id = ? AND user_id = ? "
+                "AND attempt_no = ?",
+                (exam_id, user_id, int(attempt_no)),
+            )
+        if winner is None:  # pragma: no cover - the collision implies a row
+            raise
+        if winner.get("submission_fingerprint") == fingerprint:
+            return _attempt_payload(db, dict(winner), duplicate=True)
+        raise ExamError(
+            "attempt_already_submitted",
+            f"attempt {attempt_no} was already submitted with different answers; "
+            "use a new attempt_no for a retake",
+            field="attempt_no",
+        ) from exc
+
+    with db.read() as conn:
+        row = conn.query_one("SELECT * FROM exam_attempts WHERE id = ?", (attempt_id,))
+    return _attempt_payload(db, dict(row), duplicate=False, warnings=result.warnings)
+
+
+def _insert_attempt(
+    db: Database,
+    *,
+    attempt_id: str,
+    exam_id: str,
+    user_id: str,
+    attempt_no: int,
+    snapshot: Sequence[Mapping[str, Any]],
+    policy_row: Mapping[str, Any] | None,
+    blueprint: str,
+    answers_json: str,
+    result: ExamResult,
+    fingerprint: str,
+) -> None:
+    """Write the attempt and its items in one transaction."""
+    timestamp = _now()
     with db.transaction() as conn:
         conn.execute(
             "INSERT INTO exam_attempts "
@@ -739,7 +870,7 @@ def submit_exam(
                 int(attempt_no),
                 json.dumps(snapshot, ensure_ascii=False),
                 json.dumps(policy_row or {}, ensure_ascii=False),
-                json.dumps(exam.get("blueprint") or "{}", ensure_ascii=False),
+                blueprint,
                 answers_json,
                 result.score,
                 result.max_score,
@@ -777,10 +908,6 @@ def submit_exam(
                     timestamp,
                 ),
             )
-
-    with db.read() as conn:
-        row = conn.query_one("SELECT * FROM exam_attempts WHERE id = ?", (attempt_id,))
-    return _attempt_payload(db, dict(row), duplicate=False, warnings=result.warnings)
 
 
 def _attempt_payload(

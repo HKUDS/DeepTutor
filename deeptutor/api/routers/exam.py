@@ -31,6 +31,7 @@ from pydantic import BaseModel, Field
 
 from deeptutor.db.connection import DatabaseError, open_database
 from deeptutor.db.repositories import exam as repo
+from deeptutor.services.exam.scope import ScopeError, as_http, caller_id
 from deeptutor.services.exam.scoring import ScoringError
 
 router = APIRouter()
@@ -79,6 +80,10 @@ def _translate(exc: Exception) -> HTTPException:
         )
     if isinstance(exc, ScoringError):
         return HTTPException(status_code=422, detail={"rule": exc.rule, "message": exc.detail})
+    if isinstance(exc, ScopeError):
+        # 403, not 404: the exam is publicly listed, so pretending it does not
+        # exist would hide a scoping bug behind a plausible-looking 404.
+        return as_http(exc)
     if isinstance(exc, DatabaseError):
         return HTTPException(status_code=503, detail="database unavailable")
     raise exc
@@ -106,37 +111,62 @@ class SubmitRequest(BaseModel):
 
 @router.get("/exams")
 async def list_published(
+    user_id: str | None = Query(None),
     grade_number: int | None = Query(None, ge=1, le=20),
     major_code: str | None = Query(None),
     limit: int = Query(50, ge=1, le=200),
 ) -> dict:
-    """Published exams a student can sit.
+    """Published exams a student can sit, limited to their own enrolment.
 
     Deliberately excludes drafts: an unpublished exam may still contain
     unreviewed questions, and letting a student see it would defeat Gate 6.
+
+    The listing is filtered by the enrolment resolved from the caller's stored
+    profile, not by the query parameters. ``grade_number``/``major_code`` are
+    still accepted so an existing client keeps working, but they are ignored
+    once a profile exists -- the same rule submission follows, so the listing
+    cannot show a paper the guard will refuse.
     """
     database = _database()
     try:
-        exams = repo.list_exams(
+        enrolment = repo.resolve_enrolment(
             database,
+            user_id=caller_id(user_id),
             grade_number=grade_number,
             major_code=major_code,
-            status="published",
-            limit=limit,
         )
-        return {"exams": exams, "count": len(exams)}
+        exams = repo.list_exams_in_scope(database, enrolment, status="published", limit=limit)
+        return {
+            "exams": exams,
+            "count": len(exams),
+            "scope": enrolment.as_dict(),
+        }
+    except ScopeError as exc:
+        raise _translate(exc) from exc
     finally:
         database.close()
 
 
 @router.get("/exams/{exam_id}")
-async def get_published_exam(exam_id: str) -> dict:
-    """The exam as a student sees it: questions with choices, and no answer keys."""
+async def get_published_exam(exam_id: str, user_id: str | None = Query(None)) -> dict:
+    """The exam as a student sees it: questions with choices, and no answer keys.
+
+    Scoped like submission is. An exam a student cannot sit is an exam they
+    should not be able to read either -- otherwise the questions of every grade
+    leak through an id that the listing was careful not to show.
+    """
     database = _database()
     try:
         exam = repo.get_exam(database, exam_id)
         if exam["status"] != "published":
             raise HTTPException(status_code=404, detail="exam not found")
+        enrolment = repo.resolve_enrolment(database, user_id=caller_id(user_id))
+        repo.require_scope_reaches(
+            enrolment,
+            grade_number=exam.get("grade_number"),
+            major_code=exam.get("major_code"),
+            what="این آزمون",
+        )
         items = []
         for item in exam["items"]:
             question = repo.get_question(
@@ -166,7 +196,7 @@ async def get_published_exam(exam_id: str) -> dict:
             "duration_minutes": exam["duration_minutes"],
             "items": items,
         }
-    except repo.ExamError as exc:
+    except (repo.ExamError, ScopeError) as exc:
         raise _translate(exc) from exc
     finally:
         database.close()
@@ -178,18 +208,24 @@ async def submit(exam_id: str, payload: SubmitRequest) -> dict:
 
     Safe to retry: identical answers to the same attempt return the existing
     result instead of a second attempt.
+
+    Raises 403 when the exam's grade or major is outside the caller's
+    enrolment. The check lives in the repository, next to the write, so no
+    future caller can reach the insert without passing through it.
     """
     database = _database()
     try:
         attempt = repo.submit_exam(
             database,
             exam_id=exam_id,
-            user_id=payload.user_id,
+            # With authentication on this is the session's user id; the body
+            # value is discarded, so a student cannot submit as someone else.
+            user_id=caller_id(payload.user_id),
             answers=payload.answers,
             attempt_no=payload.attempt_no,
         )
         return _attempt_view(attempt, reveal_keys=True)
-    except repo.ExamError as exc:
+    except (repo.ExamError, ScopeError) as exc:
         raise _translate(exc) from exc
     finally:
         database.close()
