@@ -240,6 +240,22 @@ class JobRequest:
     estimate_tokens: int | None = None
 
 
+def _attribution_for(request: "JobRequest") -> str:
+    """The attribution line this job must carry, or '' when not required."""
+    if not request.licence_code:
+        return ""
+    from deeptutor.services.studio import licences
+
+    try:
+        return licences.attribution_for(
+            licence_code=request.licence_code,
+            source_title=str(request.chapter_title or ""),
+            source_id=request.source_id,
+        )
+    except licences.LicenceError:  # pragma: no cover - validated earlier
+        return ""
+
+
 def submit(
     db: Database,
     *,
@@ -289,7 +305,7 @@ def submit(
     # Install the table-level guard before the first write. The service check
     # below is the readable error; the trigger is the guarantee, because the
     # next writer may not be this module.
-    from deeptutor.services.studio import integrity
+    from deeptutor.services.studio import integrity, licences
 
     integrity.ensure_guards(db)
 
@@ -300,6 +316,16 @@ def submit(
             "without it the provenance cannot be honoured",
             field="licence_code",
         )
+
+    # A licence is a set of permissions, not a word. Checking the operations
+    # this kind performs against what the licence grants is what turns the
+    # rights column from a label into a control: a `citation-only` source
+    # cannot produce a lesson, however correctly the row is written.
+    if request.licence_code:
+        try:
+            licences.check(request.licence_code, request.kind)
+        except licences.LicenceError as exc:
+            raise StudioError(exc.rule, exc.detail, field="licence_code") from exc
 
     estimate = estimate_for(request.kind, tokens=request.estimate_tokens)
 
@@ -341,6 +367,11 @@ def submit(
                 "source_id": request.source_id,
                 "chapter_title": request.chapter_title,
                 "licence_code": request.licence_code,
+                # Resolved at submit time, not at render time: every renderer
+                # must produce the same attribution string, and a renderer that
+                # builds its own is a renderer that will one day build a
+                # different one.
+                "attribution": _attribution_for(request),
                 "render": dict(request.render or {}),
                 "reservation_id": reservation["id"],
                 "content_hash": key,
@@ -502,6 +533,10 @@ class RenderResult:
     non_token_unit: str = ""
     non_token_cost_toman: int = 0
     provider: str = ""
+    #: How the token figure was obtained (tokenizer vs estimator, and the
+    #: estimated error). Kept with the cost so a reader can judge the number
+    #: instead of trusting it.
+    cost_method: Mapping[str, Any] | None = None
 
 
 def run_job(

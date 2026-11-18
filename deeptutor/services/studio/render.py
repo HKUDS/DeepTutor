@@ -67,6 +67,10 @@ class RenderSettings:
     foreground: str = "#111111"
     accent: str = "#2563eb"
     font_size: int = 40
+    #: The attribution line the licence obliges us to carry. Rendered on the
+    #: artefact itself, not only in the database: an obligation stored in a row
+    #: the reader never sees has not been met, and the file is what gets shared.
+    attribution: str = ""
 
 
 def _font_path() -> str:
@@ -123,6 +127,61 @@ def _wrap(text: str, font: Any, draw: Any, max_width: int) -> list[str]:
             current = word
     lines.append(current)
     return lines
+
+
+def _draw_attribution(draw: Any, settings: "RenderSettings", *, y: int | None = None) -> None:
+    """Stamp the licence obligation onto the image.
+
+    The attribution is split on " — " and each part is drawn on its own line:
+    the Persian source title shaped and right-aligned, the Latin licence name
+    and URL left-aligned without shaping. Drawing them as one string was the
+    first attempt and it came out mangled -- a long URL inside an RTL run gets
+    reordered by bidi and clipped at the margin, which produces something that
+    looks like a corrupted file rather than a credit.
+
+    Never truncated silently: if the parts do not fit in two lines the font
+    shrinks, because an attribution cut off at the edge is not the attribution
+    the licence asked for.
+    """
+    if not settings.attribution:
+        return
+    from PIL import ImageFont
+
+    margin = int(settings.width * 0.03)
+    parts = [part.strip() for part in settings.attribution.split("—") if part.strip()]
+    persian = [p for p in parts if any("\u0600" <= ch <= "\u06ff" for ch in p)]
+    latin = [p for p in parts if p not in persian]
+
+    # Persian credit first (it sits at the bottom-right of the block), then the
+    # licence terms in Latin. Two lines is the budget.
+    lines: list[tuple[str, bool]] = []
+    if persian:
+        lines.append((" — ".join(persian), True))
+    if latin:
+        lines.append((" — ".join(latin), False))
+
+    size = max(10, int(settings.font_size * 0.45))
+    font = ImageFont.truetype(_font_path(), size)
+    max_width = settings.width - 2 * margin
+    # Shrink until every line fits, down to a floor where it is still legible.
+    while size > 9 and any(
+        draw.textlength(shape(text) if is_rtl else text, font=font) > max_width
+        for text, is_rtl in lines
+    ):
+        size -= 1
+        font = ImageFont.truetype(_font_path(), size)
+
+    base = y if y is not None else settings.height - int(settings.height * 0.035)
+    line_height = int(size * 1.5)
+    for offset, (text, is_rtl) in enumerate(reversed(lines)):
+        rendered = shape(text) if is_rtl else text
+        draw.text(
+            (settings.width - margin, base - offset * line_height),
+            rendered,
+            font=font,
+            fill="#6b7280",
+            anchor="rd",
+        )
 
 
 def render_slide(
@@ -186,6 +245,8 @@ def render_slide(
             fill=settings.accent,
             anchor="ld",
         )
+
+    _draw_attribution(draw, settings, y=settings.height - margin)
 
     buffer = io.BytesIO()
     image.save(buffer, format="PNG", optimize=True)
@@ -339,6 +400,7 @@ def render_mind_map(*, script: Any, settings: RenderSettings | None = None) -> b
         width=4,
     )
     draw.text((cx, cy), centre_text, font=centre_font, fill="#ffffff", anchor="mm")
+    _draw_attribution(draw, settings)
 
     buffer = io.BytesIO()
     image.save(buffer, format="PNG", optimize=True)
@@ -401,6 +463,8 @@ def render_infographic(*, script: Any, settings: RenderSettings | None = None) -
             text_y += int(settings.font_size * 1.4)
         y += block_height + 12
 
+    _draw_attribution(draw, settings)
+
     buffer = io.BytesIO()
     image.save(buffer, format="PNG", optimize=True)
     return buffer.getvalue()
@@ -444,19 +508,40 @@ class Rendered:
     note: str = ""
 
 
-def render_local(kind: str, payload: Mapping[str, Any], *, script: Any) -> Rendered:
+def render_local(
+    kind: str,
+    payload: Mapping[str, Any],
+    *,
+    script: Any,
+    settings: RenderSettings | None = None,
+) -> Rendered:
     """Dispatch to the local renderer for a kind.
 
     ``audio_overview`` and ``video_lesson`` are explicitly placeholder-shaped:
     there is no TTS engine and no video encoder on this machine, and inventing
     one out of sine waves would be worse than naming the limitation.
     """
+    # The attribution comes from the job payload, resolved once at submit time,
+    # so every kind produced under the same licence carries the same credit.
+    settings = settings or RenderSettings(
+        attribution=str(payload.get("attribution") or "")
+    )
+
     if kind == "slide_deck":
-        return Rendered(render_slide_deck(script=script), "image/png", ".png", "local renderer")
+        return Rendered(
+            render_slide_deck(script=script, settings=settings), "image/png", ".png", "local renderer"
+        )
     if kind == "mind_map":
-        return Rendered(render_mind_map(script=script), "image/png", ".png", "local renderer")
+        return Rendered(
+            render_mind_map(script=script, settings=settings), "image/png", ".png", "local renderer"
+        )
     if kind == "infographic":
-        return Rendered(render_infographic(script=script), "image/png", ".png", "local renderer")
+        return Rendered(
+            render_infographic(script=script, settings=settings),
+            "image/png",
+            ".png",
+            "local renderer",
+        )
     if kind == "audio_overview":
         from deeptutor.services.studio.script import estimate_duration
 
@@ -469,7 +554,7 @@ def render_local(kind: str, payload: Mapping[str, Any], *, script: Any) -> Rende
         )
     if kind == "video_lesson":
         return Rendered(
-            render_slide_deck(script=script),
+            render_slide_deck(script=script, settings=settings),
             "image/png",
             ".png",
             "storyboard only: no video encoder on this host",

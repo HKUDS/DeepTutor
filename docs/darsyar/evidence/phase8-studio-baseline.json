@@ -323,5 +323,120 @@
         "meter_after": 0
       }
     }
+  },
+  "gate8": {
+    "verdict": "closed except quality, which requires a human",
+    "columns": {
+      "cost": {
+        "status": "measured",
+        "old_method": "len(text) // 4",
+        "old_method_error_on_persian": 0.601,
+        "old_method_undercount_factor": 2.9,
+        "new_method": "two-script estimator, calibrated against cl100k_base",
+        "new_method_error": 0.006,
+        "reference_sentences": 20,
+        "reference_tokens": 676,
+        "reference_file": "tests/data/cl100k_reference.json",
+        "regenerate": "python scripts/measure_tokens.py --check",
+        "real_tokenizer_when_available": true,
+        "what_this_does_not_cover": "the actual provider invoice: this counts tokens, it does not price them. No provider key existed on this host, so no paid call could be made and no dollar figure is claimed"
+      },
+      "quality": {
+        "status": "open -- requires an independent Persian-speaking human",
+        "mechanism": "media_quality_reviews (D-077)",
+        "independent_reviews_recorded": 0,
+        "why_not_closed": "a verdict I write about my own output is not a quality gate. Manufacturing a reviewer would turn the gate into paperwork"
+      },
+      "rights": {
+        "status": "enforced (whether we hold the licence stays human)",
+        "mechanism": "services/studio/licences.py + attribution on the artefact",
+        "licence_codes": 9,
+        "refusals": [
+          "unknown_licence",
+          "licence_insufficient",
+          "licence_obligation_unsupported"
+        ],
+        "attribution_on_artefact": true,
+        "decisions": [
+          "D-079",
+          "D-080",
+          "D-084"
+        ]
+      },
+      "capacity": {
+        "status": "measured",
+        "script": "scripts/measure_capacity.py",
+        "measurements": [
+          {
+            "concurrency": 1,
+            "jobs": 60,
+            "wall": 0.86,
+            "throughput": 69.78,
+            "errors": 0,
+            "p50_ms": 13.0,
+            "max_ms": 32.0,
+            "rss_growth_mb": 1.0
+          },
+          {
+            "concurrency": 4,
+            "jobs": 60,
+            "wall": 0.702,
+            "throughput": 85.47,
+            "errors": 0,
+            "p50_ms": 44.4,
+            "max_ms": 82.0,
+            "rss_growth_mb": 2.5
+          },
+          {
+            "concurrency": 12,
+            "jobs": 60,
+            "wall": 0.848,
+            "throughput": 70.76,
+            "errors": 0,
+            "p50_ms": 139.6,
+            "max_ms": 463.0,
+            "rss_growth_mb": 6.4
+          },
+          {
+            "concurrency": 24,
+            "jobs": 120,
+            "wall": 1.582,
+            "throughput": 75.84,
+            "errors": 0,
+            "p50_ms": 253.2,
+            "max_ms": 1175.0,
+            "rss_growth_mb": 10.3
+          }
+        ],
+        "bottleneck": "SQLite write serialisation, not rendering",
+        "evidence": {
+          "throughput_flat_until": "concurrency 12",
+          "p50_latency_growth": "13ms -> 253ms from 1 to 24 threads",
+          "memory_growth_at_120_jobs_mb": 10.3,
+          "errors_across_all_levels": 0
+        },
+        "what_this_does_not_cover": "provider rate limits, network latency, GPU throughput: the renderers here are Pillow plus labelled stand-ins"
+      }
+    },
+    "tests_added": {
+      "licences": 17,
+      "tokens": 15,
+      "capacity": 6,
+      "catalogue_http": 9,
+      "total": 47
+    },
+    "mutations": {
+      "count": 18,
+      "caught": 18,
+      "note": "11 from the previous pass plus 7 for licences, tokens and attribution"
+    },
+    "new_endpoints": [
+      "GET /api/studio/licences",
+      "GET /api/studio/cost/method"
+    ],
+    "totals": {
+      "studio_tests": 196,
+      "suite_db_api_modules": "969 passed / 567 skipped"
+    }
   }
 }

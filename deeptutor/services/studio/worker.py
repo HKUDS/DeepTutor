@@ -87,10 +87,14 @@ def local_renderer(kind: str, payload: Mapping[str, Any]) -> studio.RenderResult
     store = get_object_store()
     key = store.put(rendered.data, namespace="media", key=f"{payload['content_hash'][:16]}{rendered.extension}")
 
-    # A real, measured figure: one token per four characters of output is the
-    # usual English approximation and is close enough for Persian; the point is
-    # that the number derives from the artefact rather than from a table.
-    measured = max(1, len(script.text) // 4)
+    # Measured, not looked up. `tokens.count` uses a real tokenizer when its
+    # data is cached offline and falls back to a script-aware estimator fitted
+    # against one; either way the number derives from the artefact. The old
+    # `len // 4` undercounted Persian by 2.9x, which is the difference between
+    # a cost report and a guess.
+    from deeptutor.services.studio import tokens as token_count
+
+    counted = token_count.count(str(script.text or ""))
 
     return studio.RenderResult(
         storage_path=key,
@@ -98,8 +102,11 @@ def local_renderer(kind: str, payload: Mapping[str, Any]) -> studio.RenderResult
         content=str(rendered.note),
         size_bytes=len(rendered.data),
         duration_seconds=_duration(rendered.data, rendered.mime_type),
-        actual_tokens=measured,
+        actual_tokens=counted.tokens,
         provider="local",
+        # Recorded with the cost so Gate 8 can say *how* the number was
+        # obtained and how much to trust it.
+        cost_method=counted.as_dict(),
     )
 
 

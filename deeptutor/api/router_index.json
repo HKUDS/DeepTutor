@@ -1,5 +1,5 @@
 {
-  "fingerprint": "82ff514a61f1c62001b0a09add207ed558909a6e4dce1aa6a88c1768600edf6c",
+  "fingerprint": "c7be9d369845e22ff25e417489bf86c31bb93c59fead1e9286886bb3140e2f22",
   "routers": {
     "deeptutor.api.routers.auth:router": [
       {
@@ -6636,6 +6636,22 @@
       {
         "path": "/quota",
         "name": "quota",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/licences",
+        "name": "licence_catalogue",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/cost/method",
+        "name": "cost_method",
         "kind": "http",
         "methods": [
           "GET"

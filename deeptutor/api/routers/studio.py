@@ -36,7 +36,7 @@ from pydantic import BaseModel, Field
 from deeptutor.db.connection import DatabaseError, open_database
 from deeptutor.db.jobs.queue import JobQueue, JobQueueUnavailable
 from deeptutor.services.scope import ScopeError, as_http, caller_id
-from deeptutor.services.studio import accounting
+from deeptutor.services.studio import accounting, licences, tokens
 from deeptutor.services.studio import jobs as studio
 
 router = APIRouter()
@@ -540,6 +540,49 @@ async def quota(user_id: _UserParam = None) -> dict:
         raise _translate(exc) from exc
     finally:
         database.close()
+
+
+@router.get("/licences")
+async def licence_catalogue() -> dict:
+    """What each licence code permits, and what each kind requires.
+
+    Public because a client has to know *before* submitting whether a source is
+    usable: failing at submit with ``licence_insufficient`` is the enforcement
+    point, but a catalogue that explains it turns a rejection into a fix. The
+    requirement table is included so a UI can grey out kinds that a given code
+    cannot produce, instead of offering them and then refusing.
+    """
+    return {
+        "licences": licences.describe_all(),
+        "requirements": {
+            kind: sorted(licences.requirements_for(kind))
+            for kind in studio.MEDIA_KINDS
+        },
+    }
+
+
+@router.get("/cost/method")
+async def cost_method() -> dict:
+    """How the token figures in the cost ledger are obtained.
+
+    Exposed rather than buried because the number has an error bar. If the real
+    tokenizer is usable the uncertainty is zero; otherwise the estimator reports
+    the error it was calibrated to, measured against ``cl100k_base``.
+    """
+    counter = tokens.counter()
+    return {
+        "tokenizer": "cl100k_base" if counter is not None else "studio:offline-v1",
+        "exact": counter is not None,
+        "uncertainty": 0.0 if counter is not None else tokens.CALIBRATION.get(
+            "per_sentence_error_mean", 0.0
+        ),
+        "calibration": {
+            key: value
+            for key, value in tokens.CALIBRATION.items()
+            if key != "known_limits"
+        },
+        "known_limits": tokens.CALIBRATION.get("known_limits", ""),
+    }
 
 
 # ---------------------------------------------------------------------------
