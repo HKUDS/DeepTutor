@@ -388,6 +388,83 @@ async def asset_content(asset_id: str, user_id: _UserParam = None):
         database.close()
 
 
+# ---------------------------------------------------------------------------
+# Sharing: the "or someone authorized" half
+# ---------------------------------------------------------------------------
+
+
+class GrantPayload(BaseModel):
+    grantee_id: str
+    expires_at: str | None = None
+
+
+@router.post("/assets/{asset_id}/grants")
+async def create_grant(
+    asset_id: str, payload: GrantPayload, user_id: str | None = Query(None)
+) -> dict:
+    """Share one asset with one person. Owner only."""
+    database = _database()
+    try:
+        return studio.grant_access(
+            database,
+            asset_id=asset_id,
+            owner_id=_caller(user_id),
+            grantee_id=payload.grantee_id,
+            expires_at=payload.expires_at,
+        )
+    except (studio.StudioError, ScopeError) as exc:
+        raise _translate(exc) from exc
+    finally:
+        database.close()
+
+
+@router.delete("/assets/{asset_id}/grants/{grantee_id}")
+async def delete_grant(
+    asset_id: str, grantee_id: str, user_id: str | None = Query(None)
+) -> dict:
+    """Revoke a share. A timestamp, not a delete, so history survives."""
+    database = _database()
+    try:
+        return {
+            "revoked": studio.revoke_access(
+                database, asset_id=asset_id, owner_id=_caller(user_id), grantee_id=grantee_id
+            )
+        }
+    except (studio.StudioError, ScopeError) as exc:
+        raise _translate(exc) from exc
+    finally:
+        database.close()
+
+
+@router.get("/assets/{asset_id}/grants")
+async def list_grants(asset_id: str, user_id: str | None = Query(None)) -> dict:
+    database = _database()
+    try:
+        rows = studio.list_grants(database, asset_id=asset_id, owner_id=_caller(user_id))
+        return {"grants": rows, "count": len(rows)}
+    except (studio.StudioError, ScopeError) as exc:
+        raise _translate(exc) from exc
+    finally:
+        database.close()
+
+
+@router.get("/shared")
+async def shared_with_me(user_id: str | None = Query(None), limit: int = 100) -> dict:
+    """Assets other people shared with the caller, still live.
+
+    Separate from ``/assets`` on purpose: the library is what you made, this is
+    what was given to you. Merging them would make "delete" ambiguous.
+    """
+    database = _database()
+    try:
+        rows = studio.list_shared_with_me(database, user_id=_caller(user_id), limit=int(limit))
+        return {"assets": rows, "count": len(rows)}
+    except (studio.StudioError, ScopeError) as exc:
+        raise _translate(exc) from exc
+    finally:
+        database.close()
+
+
 @router.get("/quota")
 async def quota(user_id: _UserParam = None) -> dict:
     """What the caller can still afford, net of open holds."""

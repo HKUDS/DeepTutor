@@ -1,5 +1,5 @@
 {
-  "fingerprint": "bc2b9487eec85edc1e14d7d80d7e48fc5900f936752017d5cdc09212c0f4544c",
+  "fingerprint": "1d6e3bb3c3d64416f93bea8ca9430dfd1de7a03d04e730f078d4eff95430ac43",
   "routers": {
     "deeptutor.api.routers.auth:router": [
       {
@@ -6580,6 +6580,38 @@
       {
         "path": "/assets/{asset_id}/content",
         "name": "asset_content",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/assets/{asset_id}/grants",
+        "name": "create_grant",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/assets/{asset_id}/grants/{grantee_id}",
+        "name": "delete_grant",
+        "kind": "http",
+        "methods": [
+          "DELETE"
+        ]
+      },
+      {
+        "path": "/assets/{asset_id}/grants",
+        "name": "list_grants",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/shared",
+        "name": "shared_with_me",
         "kind": "http",
         "methods": [
           "GET"

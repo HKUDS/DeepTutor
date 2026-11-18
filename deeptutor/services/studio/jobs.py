@@ -624,20 +624,197 @@ def store_asset(
             return dict(existing)
         raise
 
+    # Storage is a second, independent quota and it was silently not being
+    # charged: assets appeared in the library while `storage_used_bytes` stayed
+    # at zero, so a user could fill the disk without ever hitting a limit. The
+    # charge happens *after* the row exists, because the row is what makes the
+    # bytes addressable -- but before the caller is told the asset is ready.
+    _charge_storage(db, user_id=user_id, delta=int(result.size_bytes or 0))
+
     return get_asset(db, asset_id, user_id=user_id)
 
 
+def _charge_storage(db: Database, *, user_id: str, delta: int) -> None:
+    """Move the user's storage meter.
+
+    A missing wallet must not fail the job: the artefact is already written and
+    the user has already been charged tokens. Recording the storage is important
+    but refusing to deliver a finished asset over a counter is worse, so this
+    raises only when there is a wallet and it says the quota is gone.
+    """
+    from deeptutor.db.repositories.wallets import WalletRepository, WalletRepositoryError
+
+    repository = WalletRepository(db)
+    try:
+        repository.add_storage(user_id, delta)
+    except WalletRepositoryError:
+        # No wallet, or the quota is already exceeded. The second case is a real
+        # signal the operator needs; it must not be swallowed.
+        if repository.get(user_id) is not None:
+            raise
+
+
+def release_storage(db: Database, *, user_id: str, size_bytes: int) -> None:
+    """Give the bytes back when an asset is deleted."""
+    from deeptutor.db.repositories.wallets import WalletRepository
+
+    if int(size_bytes or 0) <= 0:
+        return
+    WalletRepository(db).add_storage(user_id, -int(size_bytes))
+
+
+def has_access(db: Database, asset: Mapping[str, Any], user_id: str) -> bool:
+    """Owner, or somebody the owner explicitly granted access to.
+
+    The two are deliberately different checks. Ownership is a column on the
+    asset; a grant is a row that can expire or be revoked. Reading them through
+    one predicate is what lets the caller ask "may this person see it" without
+    caring which route made it true -- but they must not be *stored* in one
+    place, or a grant would be able to contradict the owner.
+    """
+    if asset["user_id"] == user_id:
+        return True
+    now = _now_iso()
+    with db.read() as conn:
+        row = conn.query_one(
+            "SELECT 1 FROM media_asset_grants "
+            "WHERE asset_id = ? AND grantee_id = ? AND revoked_at IS NULL "
+            "AND (expires_at IS NULL OR expires_at > ?)",
+            (asset["id"], user_id, now),
+        )
+    return row is not None
+
+
+def _now_iso() -> str:
+    from datetime import datetime, timezone
+
+    return datetime.now(timezone.utc).isoformat()
+
+
 def get_asset(db: Database, asset_id: str, *, user_id: str) -> dict[str, Any]:
-    """One asset, only for its owner.
+    """One asset, only for someone authorized to read it.
 
     Not-found and not-yours are the same answer, the same rule Phase 6 applied
-    to attempts: an opaque id is not a capability.
+    to attempts: an opaque id is not a capability. A grant is checked against
+    its expiry *at read time*, so a lapsed share closes without a cleanup job.
     """
     with db.read() as conn:
         row = conn.query_one("SELECT * FROM media_assets WHERE id = ?", (asset_id,))
-    if row is None or row["user_id"] != user_id or row["status"] != "ready":
+    if row is None or row["status"] != "ready" or not has_access(db, row, user_id):
         raise StudioError("asset_not_found", f"no asset {asset_id!r}", field="asset_id")
     return dict(row)
+
+
+def _require_owner(db: Database, asset_id: str, owner_id: str) -> dict[str, Any]:
+    """Fetch an asset, insisting the caller is the *owner*, not a grantee.
+
+    This exists because of a real hole: owner-only operations called
+    :func:`get_asset`, which answers "may this person read it" -- and a grantee
+    may. A recipient could therefore delete the owner's asset and revoke the
+    owner's other grants. Reading permission and owning permission are not the
+    same question and must not share a predicate.
+    """
+    with db.read() as conn:
+        row = conn.query_one("SELECT * FROM media_assets WHERE id = ?", (asset_id,))
+    if row is None or row["user_id"] != owner_id or row["status"] != "ready":
+        raise StudioError("asset_not_found", f"no asset {asset_id!r}", field="asset_id")
+    return dict(row)
+
+
+def grant_access(
+    db: Database,
+    *,
+    asset_id: str,
+    owner_id: str,
+    grantee_id: str,
+    expires_at: str | None = None,
+) -> dict[str, Any]:
+    """Share an asset with one person. Only the owner may do this.
+
+    Deliberately not "anyone with a grant can re-share". Recipients of a share
+    are not its owners, and a permission system that quietly lets them
+    redistribute is how a private lesson ends up in a group chat.
+    """
+    asset = _require_owner(db, asset_id, owner_id)
+    if str(grantee_id or "").strip() == "":
+        raise StudioError("missing_user", "a grant needs a grantee", field="grantee_id")
+    if grantee_id == owner_id:
+        raise StudioError(
+            "self_grant", "the owner already has access; a grant adds nothing", field="grantee_id"
+        )
+
+    record_id = _new_id("grant")
+    stamp = _now_iso()
+    with db.transaction() as conn:
+        existing = conn.query_one(
+            "SELECT * FROM media_asset_grants WHERE asset_id = ? AND grantee_id = ?",
+            (asset_id, grantee_id),
+        )
+        if existing is not None:
+            # Re-granting revives a revoked grant or moves its expiry. Doing it
+            # as an update keeps one row per (asset, grantee), so "who has this"
+            # never has to union a history.
+            conn.execute(
+                "UPDATE media_asset_grants SET revoked_at = NULL, expires_at = ?, "
+                "granted_by = ?, granted_at = ? WHERE id = ?",
+                (expires_at, owner_id, stamp, existing["id"]),
+            )
+            record_id = str(existing["id"])
+        else:
+            conn.execute(
+                "INSERT INTO media_asset_grants "
+                "(id, asset_id, grantee_id, granted_by, granted_at, expires_at, revoked_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, NULL)",
+                (record_id, asset_id, grantee_id, owner_id, stamp, expires_at),
+            )
+        row = conn.query_one("SELECT * FROM media_asset_grants WHERE id = ?", (record_id,))
+    return dict(row)
+
+
+def revoke_access(db: Database, *, asset_id: str, owner_id: str, grantee_id: str) -> bool:
+    """Take a share back. Revocation is a timestamp, never a delete.
+
+    A deleted grant cannot answer "did this person ever have access", which is
+    exactly the question asked after something leaks.
+    """
+    _require_owner(db, asset_id, owner_id)
+    with db.transaction() as conn:
+        changed = conn.execute(
+            "UPDATE media_asset_grants SET revoked_at = ? "
+            "WHERE asset_id = ? AND grantee_id = ? AND revoked_at IS NULL",
+            (_now_iso(), asset_id, grantee_id),
+        )
+    return changed == 1
+
+
+def list_grants(db: Database, *, asset_id: str, owner_id: str) -> list[dict[str, Any]]:
+    """Who this asset is shared with. Owner only."""
+    _require_owner(db, asset_id, owner_id)
+    with db.read() as conn:
+        rows = list(
+            conn.query(
+                "SELECT * FROM media_asset_grants WHERE asset_id = ? ORDER BY granted_at DESC",
+                (asset_id,),
+            )
+        )
+    return [dict(row) for row in rows]
+
+
+def list_shared_with_me(db: Database, *, user_id: str, limit: int = 100) -> list[dict[str, Any]]:
+    """Assets other people shared with this user, still live."""
+    now = _now_iso()
+    with db.read() as conn:
+        rows = list(
+            conn.query(
+                "SELECT a.* FROM media_assets a "
+                "JOIN media_asset_grants g ON g.asset_id = a.id "
+                "WHERE g.grantee_id = ? AND g.revoked_at IS NULL "
+                "AND (g.expires_at IS NULL OR g.expires_at > ?) "
+                "AND a.status = 'ready' ORDER BY a.created_at DESC LIMIT ?",
+                (user_id, now, int(limit)),
+            )
+        )
+    return [dict(row) for row in rows]
 
 
 def list_assets(
@@ -663,14 +840,40 @@ def list_assets(
 
 
 def delete_asset(db: Database, asset_id: str, *, user_id: str) -> bool:
-    """Soft-delete. The row stays so the storage path is not reused silently."""
-    get_asset(db, asset_id, user_id=user_id)
+    """Soft-delete, and give the storage back.
+
+    The row stays so the storage path is not silently reused, but the *bytes* it
+    no longer accounts for must come off the meter -- otherwise deleting an
+    asset and re-creating it permanently consumes quota, and the meter drifts
+    upward with nothing to explain it.
+    """
+    asset = _require_owner(db, asset_id, user_id)
     with db.transaction() as conn:
         conn.execute(
             "UPDATE media_assets SET status = 'deleted', updated_at = ? WHERE id = ?",
             (_now(), asset_id),
         )
+    release_storage(db, user_id=user_id, size_bytes=int(asset["size_bytes"] or 0))
     return True
+
+
+def can_store(db: Database, *, user_id: str, size_bytes: int) -> bool:
+    """Would this much fit in the user's storage quota?
+
+    Called *before* a render so a job that cannot possibly be stored is refused
+    while it is still free. Discovering the problem after paying a provider is
+    the same class of mistake as charging for a failed job.
+    """
+    from deeptutor.db.repositories.wallets import WalletRepository
+
+    wallet = WalletRepository(db).get(user_id)
+    if wallet is None:
+        return True  # nothing to check against; tokens already gate the work
+    quota = int(wallet.get("storage_quota_bytes") or 0)
+    if quota <= 0:
+        return True  # unlimited
+    used = int(wallet.get("storage_used_bytes") or 0)
+    return used + int(size_bytes or 0) <= quota
 
 
 __all__ = [
@@ -685,15 +888,22 @@ __all__ = [
     "RenderResult",
     "StudioError",
     "cache_key",
+    "can_store",
     "cancel",
     "delete_asset",
     "estimate_for",
     "find_cached",
     "get_asset",
+    "grant_access",
+    "has_access",
+    "list_grants",
+    "list_shared_with_me",
     "job_costs",
     "job_kind",
     "list_assets",
     "record_cost",
+    "release_storage",
+    "revoke_access",
     "run_job",
     "store_asset",
     "submit",

@@ -1,97 +1,216 @@
 {
   "phase": 8,
-  "generated": "2026-11-16",
   "branch": "arena/13c4e9b8-deeptutor",
   "base_commit": "1dc75fcdf",
-  "migration": {
-    "name": "V0010__media_studio.sql",
-    "versions_after_apply": [
-      1,
-      2,
-      3,
-      6,
-      7,
-      8,
-      9,
-      10
-    ],
-    "tables_up": [
-      "media_assets",
-      "media_job_costs",
-      "media_reservations"
-    ],
-    "indices_up": [
-      "ix_media_assets_hash",
-      "ix_media_assets_owner",
-      "ix_media_job_costs_user",
-      "ix_media_reservations_job",
-      "ix_media_reservations_user"
-    ],
-    "tables_after_rollback_to_9": [],
-    "round_trip_ok": true
-  },
+  "generated": "2026-11-16",
+  "status": "completed (mechanism + real local output); Gate 8 NOT accepted",
+  "migrations": [
+    {
+      "name": "V0010__media_studio.sql",
+      "tables": [
+        "media_assets",
+        "media_reservations",
+        "media_job_costs"
+      ],
+      "round_trip_ok": true
+    },
+    {
+      "name": "V0011__media_asset_grants.sql",
+      "tables": [
+        "media_asset_grants"
+      ],
+      "round_trip_ok": true,
+      "note": "applied after V0010; rolling back to 10 removes only grants"
+    }
+  ],
   "tests": {
     "accounting": 17,
     "jobs": 22,
     "http": 15,
     "script": 19,
-    "total_new": 73,
-    "suite_db_api_modules": "846 passed, 470 skipped",
-    "modules": "64 passed"
+    "sharing": 13,
+    "sharing_http": 10,
+    "storage_and_rendering": 18,
+    "total_new": 114,
+    "suite_db_api_modules": "886 passed, 504 skipped"
   },
   "mutation_evidence": [
     {
       "mutation": "remove owner check in get_asset",
-      "result": "3 ownership tests fail",
-      "restored_green": true
+      "caught_by": "3 ownership tests"
     },
     {
       "mutation": "settle at reserved instead of actual",
-      "result": "2 cost tests fail",
-      "restored_green": true
+      "caught_by": "2 cost tests"
     },
     {
       "mutation": "no refund on terminal failure",
-      "result": "leak test fails",
-      "restored_green": true
+      "caught_by": "leak test"
+    },
+    {
+      "mutation": "owner-only ops fall back to read permission",
+      "caught_by": "4 tests",
+      "class": "privilege escalation"
+    },
+    {
+      "mutation": "stop charging storage on store",
+      "caught_by": "2 tests"
+    },
+    {
+      "mutation": "stop releasing storage on delete",
+      "caught_by": "1 test"
     }
   ],
-  "live_smoke": {
-    "server": "uvicorn deeptutor.api.main:app :3831",
-    "submit": 202,
-    "owner_job": 200,
-    "stranger_job": 404,
-    "owner_bytes": 200,
-    "stranger_bytes": 404,
-    "cancel": {
-      "cancelled": true,
-      "refunded": true
+  "real_output": {
+    "renderer": "local (Pillow + stdlib wave); no provider, no network",
+    "persian_shaping": "arabic-reshaper + python-bidi; refused if absent",
+    "artefacts": {
+      "slide_deck": {
+        "mime": "image/png",
+        "bytes": 41968,
+        "real": true
+      },
+      "mind_map": {
+        "mime": "image/png",
+        "bytes": 16816,
+        "real": true
+      },
+      "infographic": {
+        "mime": "image/png",
+        "bytes": 28469,
+        "real": true
+      },
+      "audio_overview": {
+        "mime": "audio/wav",
+        "bytes": 732104,
+        "real": true,
+        "limitation": "placeholder tone, not speech"
+      },
+      "video_lesson": {
+        "mime": "image/png",
+        "bytes": 53159,
+        "real": true,
+        "limitation": "storyboard, not a video"
+      }
     },
-    "settle": {
-      "wallet_before": 5000,
-      "wallet_after": 4570,
-      "estimate": 600,
-      "actual": 430
+    "headers_verified": {
+      "png": "\\x89PNG",
+      "wav": "RIFF"
+    }
+  },
+  "live_smoke_two_processes": {
+    "api": "uvicorn deeptutor.api.main:app :3841",
+    "worker": "python -m deeptutor.services.studio.worker (separate process)",
+    "all_five_kinds_rendered": true,
+    "seconds_to_drain_five": 4,
+    "wallet": {
+      "before": 50000,
+      "after": 49837,
+      "open_holds": 0
     },
-    "cache_hit": {
-      "cached": true,
-      "reserved": 0
+    "storage_used_bytes": 872516,
+    "access_chain": {
+      "owner_download": 200,
+      "stranger_download": 404,
+      "after_grant": 200,
+      "grantee_delete": 404,
+      "grantee_library": 0,
+      "grantee_shared": 1,
+      "after_revoke": 404
     },
-    "video_failure": {
-      "job": "queued (retry)",
-      "wallet_unchanged": true,
-      "health_after": {
+    "worker_restart_recovery": {
+      "simulated": "lease_owner='dead', lease_expires_at=2000-01-01",
+      "outcome": "reclaimed and completed",
+      "assets": 1,
+      "settlements": 1,
+      "open_holds": 0
+    },
+    "failure_isolation": {
+      "poisoned_job": "empty script -> build_script raises",
+      "worker_survived": true,
+      "next_job_processed": true,
+      "health": {
         "/health": 200,
         "/health/ready": 200,
         "/api/platform/health/live": 200
-      }
+      },
+      "graceful_shutdown": "SIGTERM -> 'received signal 15; finishing current job'"
     }
   },
+  "cost_reconciliation": {
+    "finding": "DEFAULT_ESTIMATES overestimated by 20x-50x",
+    "rows": [
+      {
+        "kind": "video_lesson",
+        "estimate": 2500,
+        "actual": 42,
+        "ratio": 0.02
+      },
+      {
+        "kind": "audio_overview",
+        "estimate": 800,
+        "actual": 39,
+        "ratio": 0.05
+      },
+      {
+        "kind": "slide_deck",
+        "estimate": 1200,
+        "actual": 37,
+        "ratio": 0.03
+      },
+      {
+        "kind": "infographic",
+        "estimate": 1500,
+        "actual": 35,
+        "ratio": 0.02
+      },
+      {
+        "kind": "mind_map",
+        "estimate": 600,
+        "actual": 10,
+        "ratio": 0.02
+      }
+    ],
+    "caveat": "measured against a local CPU renderer, not a paid provider"
+  },
+  "bugs_found_and_fixed": [
+    {
+      "id": 6,
+      "bug": "grantee could delete the owner's asset and revoke others' grants",
+      "class": "privilege escalation",
+      "fixed_by": "_require_owner"
+    },
+    {
+      "id": 7,
+      "bug": "storage_used_bytes never moved",
+      "fixed_by": "charge on store, release on delete"
+    },
+    {
+      "id": 8,
+      "bug": "mind map hub label overflowed and was clipped",
+      "found_by": "looking at the PNG"
+    },
+    {
+      "id": 9,
+      "bug": "mind map drew its topic twice",
+      "found_by": "looking at the PNG"
+    },
+    {
+      "id": 10,
+      "bug": "branches were isolated words, not concepts",
+      "fixed_by": "prefer recurring phrases"
+    }
+  ],
   "gate_8": {
-    "cost": "mechanism complete; ALL figures from a mock renderer -- no real provider",
-    "quality": "checklist built as data; NOT filled by a human reviewer",
+    "cost": "measured against real output, but from a local renderer -- not a paid provider",
+    "quality": "Persian reviewed by the author, 4 defects fixed; NOT reviewed by an independent teacher; checklist unfilled",
     "rights": "enforced in cache key and asset row; underlying licence question unanswered (same as Gates 5/6)",
-    "capacity": "queue depth exposed; no load test possible without a real provider",
-    "accepted": false
+    "capacity": "5 jobs in ~4s on one machine with a local renderer; no load test, no provider baseline",
+    "accepted": false,
+    "blockers": [
+      "a real provider to record a real monetary cost",
+      "an independent Persian reviewer to fill the checklist",
+      "the licence answer outstanding since Phase 5"
+    ]
   }
 }
