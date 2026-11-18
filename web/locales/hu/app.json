@@ -1379,6 +1379,8 @@
   "Target level": "Célszint",
   "Estimated chapters": "Becsült fejezetszám",
   "Knowledge bases used": "Használt tudásbázisok",
+  "Sources used": "Felhasznált források",
+  "Selected, but could not be read when this book was created.": "Kiválasztva, de a könyv létrehozásakor nem volt olvasható.",
   "No knowledge bases selected. The book will rely on general knowledge.": "Nincs kiválasztott tudásbázis. A könyv az általános tudásra támaszkodik.",
   "Loading spine…": "Könyvgerinc betöltése…",
   "All books": "Minden könyv",

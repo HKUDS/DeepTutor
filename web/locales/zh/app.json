@@ -1499,6 +1499,8 @@
   "Target level": "目标水平",
   "Estimated chapters": "预计章节数",
   "Knowledge bases used": "使用的知识库",
+  "Sources used": "使用的知识来源",
+  "Selected, but could not be read when this book was created.": "已选择，但创建本书时无法读取。",
   "No knowledge bases selected. The book will rely on general knowledge.": "未选择知识库。本书将依赖通用知识生成。",
   "Loading spine…": "正在加载主线…",
   "All books": "全部书籍",

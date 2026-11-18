@@ -1273,6 +1273,8 @@
   "Target level": "Poziom docelowy",
   "Estimated chapters": "Szacowana liczba rozdziałów",
   "Knowledge bases used": "Użyte bazy wiedzy",
+  "Sources used": "Użyte źródła",
+  "Selected, but could not be read when this book was created.": "Wybrano, ale nie udało się odczytać przy tworzeniu tej książki.",
   "No knowledge bases selected. The book will rely on general knowledge.": "Nie wybrano żadnych baz wiedzy. Książka będzie oparta na ogólnej wiedzy.",
   "Loading spine…": "Wczytywanie struktury…",
   "All books": "Wszystkie książki",

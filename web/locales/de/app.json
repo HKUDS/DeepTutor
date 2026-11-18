@@ -1274,6 +1274,8 @@
   "Target level": "Zielniveau",
   "Estimated chapters": "Geschätzte Kapitel",
   "Knowledge bases used": "Verwendete Knowledge Bases",
+  "Sources used": "Verwendete Quellen",
+  "Selected, but could not be read when this book was created.": "Ausgewählt, konnte beim Erstellen dieses Buchs aber nicht gelesen werden.",
   "No knowledge bases selected. The book will rely on general knowledge.": "Keine Knowledge Bases ausgewählt. Das Buch greift auf allgemeines Wissen zurück.",
   "Loading spine…": "Inhaltsgerüst wird geladen…",
   "All books": "Alle Bücher",

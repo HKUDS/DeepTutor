@@ -1255,6 +1255,8 @@
   "Target level": "Trình độ mục tiêu",
   "Estimated chapters": "Số chương dự kiến",
   "Knowledge bases used": "Cơ sở tri thức đã dùng",
+  "Sources used": "Nguồn đã dùng",
+  "Selected, but could not be read when this book was created.": "Đã chọn nhưng không đọc được khi tạo sách này.",
   "No knowledge bases selected. The book will rely on general knowledge.": "Chưa chọn cơ sở tri thức nào. Sách sẽ dựa trên kiến thức chung.",
   "Loading spine…": "Đang tải khung chương…",
   "All books": "Tất cả sách",

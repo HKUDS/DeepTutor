@@ -1257,6 +1257,8 @@
   "Target level": "Hedef seviye",
   "Estimated chapters": "Tahmini bölüm sayısı",
   "Knowledge bases used": "Kullanılan bilgi bankaları",
+  "Sources used": "Kullanılan kaynaklar",
+  "Selected, but could not be read when this book was created.": "Seçildi ancak bu kitap oluşturulurken okunamadı.",
   "No knowledge bases selected. The book will rely on general knowledge.": "Hiç bilgi bankası seçilmedi. Kitap genel bilgiye dayanacak.",
   "Loading spine…": "İskelet yükleniyor…",
   "All books": "Tüm kitaplar",

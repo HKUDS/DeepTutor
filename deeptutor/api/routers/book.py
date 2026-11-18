@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field
 from deeptutor.api.utils.http_headers import content_disposition
 from deeptutor.book import progress as progress_ops
 from deeptutor.book.authoring import BookEdit
+from deeptutor.book.engine import source_summaries
 from deeptutor.book.errors import BookPausedError
 from deeptutor.book.export import export_filename, render_book_markdown
 from deeptutor.book.models import (
@@ -313,6 +314,18 @@ def _resolve_book_or_404(
 def _book_payload(book: Any, resolved: ResolvedBook) -> dict[str, Any]:
     data = book.model_dump(mode="json")
     data.update(resolved.capabilities())
+    # Books created before ``Book.sources`` existed still have their inputs
+    # snapshot on disk. Read it so a reopened book shows the notes it was
+    # actually built from instead of an empty source list (#2762).
+    if not data.get("sources"):
+        try:
+            inputs = resolved.engine.storage.load_inputs(book.id)
+        except Exception:  # noqa: BLE001 - a payload must never fail on this
+            inputs = None
+        if inputs is not None:
+            data["sources"] = [
+                source.model_dump(mode="json") for source in source_summaries(inputs)
+            ]
     if resolved.is_shared:
         metadata = dict(data.get("metadata") or {})
         metadata["page_chat_sessions"] = resolved.learning.load_page_chat_sessions(book.id)

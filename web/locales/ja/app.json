@@ -1256,6 +1256,8 @@
   "Target level": "対象レベル",
   "Estimated chapters": "推定章数",
   "Knowledge bases used": "使用するナレッジベース",
+  "Sources used": "使用したソース",
+  "Selected, but could not be read when this book was created.": "選択されましたが、このブックの作成時に読み取れませんでした。",
   "No knowledge bases selected. The book will rely on general knowledge.": "ナレッジベースが選択されていません。ブックは一般的な知識に基づいて作成されます。",
   "Loading spine…": "骨子を読み込み中…",
   "All books": "すべてのブック",

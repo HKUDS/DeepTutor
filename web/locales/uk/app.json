@@ -1236,6 +1236,8 @@
   "Target level": "Цільовий рівень",
   "Estimated chapters": "Орієнтовна кількість розділів",
   "Knowledge bases used": "Використані бази знань",
+  "Sources used": "Використані джерела",
+  "Selected, but could not be read when this book was created.": "Вибрано, але не вдалося прочитати під час створення цієї книги.",
   "No knowledge bases selected. The book will rely on general knowledge.": "Не вибрано жодної бази знань. Книга спиратиметься на загальні знання.",
   "Loading spine…": "Завантаження структури…",
   "All books": "Усі книги",

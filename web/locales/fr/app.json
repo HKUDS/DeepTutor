@@ -1706,6 +1706,8 @@
   "Target level": "Niveau cible",
   "Estimated chapters": "Chapitres estimés",
   "Knowledge bases used": "Bases de connaissances utilisées",
+  "Sources used": "Sources utilisées",
+  "Selected, but could not be read when this book was created.": "Sélectionnée, mais illisible lors de la création de ce livre.",
   "No knowledge bases selected. The book will rely on general knowledge.": "Aucune base de connaissances sélectionnée. Le livre s'appuiera sur les connaissances générales.",
   "Delete this book? This cannot be undone.": "Supprimer ce livre ? Cette action est irréversible.",
   "Rebuild this book using the current chapter structure? Existing generated pages will be replaced.": "Reconstruire ce livre avec la structure de chapitres actuelle ? Les pages déjà générées seront remplacées.",
