@@ -1,5 +1,5 @@
 {
-  "fingerprint": "1d6e3bb3c3d64416f93bea8ca9430dfd1de7a03d04e730f078d4eff95430ac43",
+  "fingerprint": "82ff514a61f1c62001b0a09add207ed558909a6e4dce1aa6a88c1768600edf6c",
   "routers": {
     "deeptutor.api.routers.auth:router": [
       {
@@ -6612,6 +6612,22 @@
       {
         "path": "/shared",
         "name": "shared_with_me",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/assets/{asset_id}/reviews",
+        "name": "create_review",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/assets/{asset_id}/reviews",
+        "name": "get_reviews",
         "kind": "http",
         "methods": [
           "GET"

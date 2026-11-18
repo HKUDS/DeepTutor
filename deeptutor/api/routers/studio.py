@@ -465,6 +465,58 @@ async def shared_with_me(user_id: str | None = Query(None), limit: int = 100) ->
         database.close()
 
 
+# ---------------------------------------------------------------------------
+# Quality review: recording the human verdict
+# ---------------------------------------------------------------------------
+
+
+class ReviewPayload(BaseModel):
+    item_id: str
+    verdict: str
+    comment: str = ""
+    reviewer_id: str | None = None
+
+
+@router.post("/assets/{asset_id}/reviews")
+async def create_review(
+    asset_id: str, payload: ReviewPayload, user_id: str | None = Query(None)
+) -> dict:
+    """Record one checklist verdict.
+
+    ``reviewer_id`` lets someone other than the owner answer -- which is the
+    whole point, since a self-review is not independent evidence. The owner
+    still has to be the caller: a review is attached to an asset by whoever is
+    responsible for it.
+    """
+    database = _database()
+    try:
+        return studio.record_review(
+            database,
+            asset_id=asset_id,
+            user_id=_caller(user_id),
+            item_id=payload.item_id,
+            verdict=payload.verdict,
+            comment=payload.comment,
+            reviewer_id=payload.reviewer_id,
+        )
+    except (studio.StudioError, ScopeError) as exc:
+        raise _translate(exc) from exc
+    finally:
+        database.close()
+
+
+@router.get("/assets/{asset_id}/reviews")
+async def get_reviews(asset_id: str, user_id: str | None = Query(None)) -> dict:
+    """The review state, including whether any of it is independent."""
+    database = _database()
+    try:
+        return studio.review_status(database, asset_id, user_id=_caller(user_id))
+    except (studio.StudioError, ScopeError) as exc:
+        raise _translate(exc) from exc
+    finally:
+        database.close()
+
+
 @router.get("/quota")
 async def quota(user_id: _UserParam = None) -> dict:
     """What the caller can still afford, net of open holds."""

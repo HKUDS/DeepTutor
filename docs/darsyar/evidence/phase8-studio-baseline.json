@@ -3,7 +3,7 @@
   "branch": "arena/13c4e9b8-deeptutor",
   "base_commit": "1dc75fcdf",
   "generated": "2026-11-16",
-  "status": "completed (mechanism + real local output); Gate 8 NOT accepted",
+  "status": "completed (mechanism + real output + integrity guards); Gate 8 NOT accepted",
   "migrations": [
     {
       "name": "V0010__media_studio.sql",
@@ -21,6 +21,14 @@
       ],
       "round_trip_ok": true,
       "note": "applied after V0010; rolling back to 10 removes only grants"
+    },
+    {
+      "name": "V0012__media_licence_and_review.sql",
+      "tables": [
+        "media_quality_reviews"
+      ],
+      "round_trip_ok": true,
+      "note": "declarative only; the licence triggers are installed at startup because the migration runner cannot express a compound trigger body"
     }
   ],
   "tests": {
@@ -31,8 +39,11 @@
     "sharing": 13,
     "sharing_http": 10,
     "storage_and_rendering": 18,
-    "total_new": 114,
-    "suite_db_api_modules": "886 passed, 504 skipped"
+    "total_new": 149,
+    "suite_db_api_modules": "922 passed, 539 skipped",
+    "integrity": 28,
+    "review_http": 7,
+    "full_suite": "14743 passed, 671 skipped (2 deselected: pre-existing env artifacts)"
   },
   "mutation_evidence": [
     {
@@ -59,6 +70,26 @@
     {
       "mutation": "stop releasing storage on delete",
       "caught_by": "1 test"
+    },
+    {
+      "mutation": "drop the licence requirement",
+      "caught_by": "2 licence tests"
+    },
+    {
+      "mutation": "delete frees the meter but keeps the bytes (the old bug)",
+      "caught_by": "byte test"
+    },
+    {
+      "mutation": "count a self-review as independent",
+      "caught_by": "2 independence tests"
+    },
+    {
+      "mutation": "never install the insert licence trigger",
+      "caught_by": "2 database tests"
+    },
+    {
+      "mutation": "never install the update licence trigger",
+      "caught_by": "1 database test"
     }
   ],
   "real_output": {
@@ -203,8 +234,8 @@
   ],
   "gate_8": {
     "cost": "measured against real output, but from a local renderer -- not a paid provider",
-    "quality": "Persian reviewed by the author, 4 defects fixed; NOT reviewed by an independent teacher; checklist unfilled",
-    "rights": "enforced in cache key and asset row; underlying licence question unanswered (same as Gates 5/6)",
+    "quality": "Persian reviewed by the author, defects fixed; the review is now RECORDABLE (media_quality_reviews) and distinguishes self-review from independent review. NOT yet reviewed by an independent teacher: independent_reviews = 0.",
+    "rights": "enforced: cache key, asset row, service check AND before-insert/update triggers. The underlying licence question is still unanswered (Gates 5/6).",
     "capacity": "5 jobs in ~4s on one machine with a local renderer; no load test, no provider baseline",
     "accepted": false,
     "blockers": [
@@ -212,5 +243,85 @@
       "an independent Persian reviewer to fill the checklist",
       "the licence answer outstanding since Phase 5"
     ]
+  },
+  "finish_pass": {
+    "gaps_found_after_mechanism_was_complete": [
+      {
+        "id": 11,
+        "gap": "licence_code could be empty for source-derived assets",
+        "why": "the row said where it came from and nothing about what we may do",
+        "fix": "licence_required in service + BEFORE INSERT/UPDATE triggers on the table"
+      },
+      {
+        "id": 12,
+        "gap": "delete freed the storage meter but left the object on disk",
+        "why": "quota said the space was free, the disk said otherwise",
+        "fix": "delete bytes -> release meter -> tombstone the row",
+        "proof": "3 create/delete cycles: disk unchanged (1,055,236 bytes), meter 0"
+      },
+      {
+        "id": 13,
+        "gap": "quality_checklist existed but there was nowhere to record a verdict",
+        "why": "'quality assessed' could only mean 'criteria written down'",
+        "fix": "media_quality_reviews + POST/GET /assets/{id}/reviews"
+      },
+      {
+        "id": 14,
+        "gap": "store.delete returning False (already absent) treated as failure",
+        "found_by": "a test",
+        "fix": "already-absent is the desired state, not an error"
+      }
+    ],
+    "table_level_guarantee": {
+      "mechanism": "SQLite triggers installed by services/studio/integrity.ensure_guards",
+      "why_not_check_constraint": "SQLite cannot ADD CONSTRAINT to an existing table without a full rebuild",
+      "why_not_in_migration": "the migration splitter cannot express BEGIN ... END",
+      "verified": "a raw INSERT that bypasses every service check is refused",
+      "guards": {
+        "insert": true,
+        "update": true
+      }
+    },
+    "live_proof": {
+      "processes": [
+        "uvicorn :3851",
+        "python -m deeptutor.services.studio.worker"
+      ],
+      "licence": {
+        "source_no_licence": 422,
+        "source_with_licence": 202,
+        "prompt_only": 202
+      },
+      "delete": {
+        "before_bytes_present": true,
+        "after_bytes_present": false,
+        "meter_before": 15355,
+        "meter_after": 7471
+      },
+      "review": {
+        "self_review": {
+          "answered": 7,
+          "total": 7,
+          "complete": true,
+          "independent": 0
+        },
+        "after_one_independent": {
+          "independently_reviewed": true,
+          "failures": [
+            "persian_register"
+          ]
+        },
+        "stranger_post": 404,
+        "stranger_get": 404,
+        "invalid_verdict": 422
+      },
+      "leak_closed": {
+        "create_delete_cycles": 3,
+        "disk_bytes_before": 1055236,
+        "disk_bytes_after": 1055236,
+        "growth": 0,
+        "meter_after": 0
+      }
+    }
   }
 }

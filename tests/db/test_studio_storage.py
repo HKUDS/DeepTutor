@@ -231,7 +231,10 @@ def test_the_worker_renders_and_stores_for_every_kind(db):
     for kind in S.MEDIA_KINDS:
         out = S.submit(
             db, queue=queue,
-            request=S.JobRequest(user_id="u1", kind=kind, script=script_text, source_id="s1"),
+            request=S.JobRequest(
+                user_id="u1", kind=kind, script=script_text, source_id="s1",
+                licence_code="cc-by",
+            ),
         )
         worker.drain(db, worker_id="w", limit=1)
         job = queue.get(out["job_id"])

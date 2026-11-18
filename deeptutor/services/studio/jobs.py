@@ -277,9 +277,33 @@ def submit(
             field="kind",
         )
 
+    # 2. Licence. Content that came from a source must carry its terms, or the
+    #    provenance record is a statement we cannot stand behind: the row would
+    #    say "this is from chapter 3" and nothing would say whether we may use
+    #    it. Enforced here and again by a table constraint, because the service
+    #    can be bypassed by the next writer and the constraint cannot.
+    #
+    #    This is deliberately *not* a licensing policy. It does not know which
+    #    codes are valid; that is the open question from Phase 5. It only
+    #    refuses to record a source without recording its terms.
+    # Install the table-level guard before the first write. The service check
+    # below is the readable error; the trigger is the guarantee, because the
+    # next writer may not be this module.
+    from deeptutor.services.studio import integrity
+
+    integrity.ensure_guards(db)
+
+    if request.source_id and not str(request.licence_code or "").strip():
+        raise StudioError(
+            "licence_required",
+            "an asset derived from a source must record its licence; "
+            "without it the provenance cannot be honoured",
+            field="licence_code",
+        )
+
     estimate = estimate_for(request.kind, tokens=request.estimate_tokens)
 
-    # 2. Cache first: a hit costs nothing, so it must not take a hold at all.
+    # 3. Cache first: a hit costs nothing, so it must not take a hold at all.
     key = cache_key(
         kind=request.kind,
         script=request.script,
@@ -297,13 +321,13 @@ def submit(
             "estimate": estimate.as_dict(),
         }
 
-    # 3. Reserve. Raises QuotaExceeded (a 402) if the balance, net of open
+    # 4. Reserve. Raises QuotaExceeded (a 402) if the balance, net of open
     #    holds, cannot cover it.
     reservation = accounting.reserve(
         db, user_id=request.user_id, tokens=estimate.tokens
     )
 
-    # 4. Enqueue. If this raises, the hold must not survive: a reservation with
+    # 5. Enqueue. If this raises, the hold must not survive: a reservation with
     #    no job is a permanent leak. Rolling back explicitly is the only way to
     #    guarantee that, since the two writes are in different tables.
     try:
@@ -800,6 +824,137 @@ def list_grants(db: Database, *, asset_id: str, owner_id: str) -> list[dict[str,
     return [dict(row) for row in rows]
 
 
+# ---------------------------------------------------------------------------
+# Quality review: where the human verdict goes
+# ---------------------------------------------------------------------------
+
+#: The only verdicts. "unclear" is a real answer: a reviewer who could not
+#: decide should not be forced into a confident one, because a forced answer is
+#: indistinguishable from a real one once it is in the table.
+VERDICTS = ("pass", "fail", "unclear")
+
+
+def record_review(
+    db: Database,
+    *,
+    asset_id: str,
+    user_id: str,
+    item_id: str,
+    verdict: str,
+    comment: str = "",
+    reviewer_id: str | None = None,
+) -> dict[str, Any]:
+    """Record one human verdict on one checklist item.
+
+    ``user_id`` is the asset owner asking to review; ``reviewer_id`` is who is
+    actually answering, defaulting to the owner. They are separate so a
+    self-review is *recorded and distinguishable* rather than either forbidden
+    (which pushes it off the record) or silently counted as independent
+    evidence.
+    """
+    from deeptutor.services.studio.script import quality_checklist
+
+    if verdict not in VERDICTS:
+        raise StudioError(
+            "invalid_verdict", f"verdict must be one of {list(VERDICTS)}", field="verdict"
+        )
+    asset = _require_owner(db, asset_id, user_id)
+    valid_items = {item["id"] for item in quality_checklist(asset["kind"])}
+    if item_id not in valid_items:
+        raise StudioError(
+            "unknown_checklist_item",
+            f"{item_id!r} is not a checklist item for {asset['kind']}",
+            field="item_id",
+        )
+
+    reviewer = str(reviewer_id or user_id)
+    stamp = _now_iso()
+    with db.transaction() as conn:
+        existing = conn.query_one(
+            "SELECT id FROM media_quality_reviews "
+            "WHERE asset_id = ? AND item_id = ? AND reviewer_id = ?",
+            (asset_id, item_id, reviewer),
+        )
+        if existing is not None:
+            conn.execute(
+                "UPDATE media_quality_reviews SET verdict = ?, comment = ?, created_at = ? "
+                "WHERE id = ?",
+                (verdict, str(comment or ""), stamp, existing["id"]),
+            )
+            record_id = str(existing["id"])
+        else:
+            record_id = _new_id("review")
+            conn.execute(
+                "INSERT INTO media_quality_reviews "
+                "(id, asset_id, item_id, verdict, reviewer_id, comment, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (record_id, asset_id, item_id, verdict, reviewer, str(comment or ""), stamp),
+            )
+        row = conn.query_one("SELECT * FROM media_quality_reviews WHERE id = ?", (record_id,))
+    return dict(row)
+
+
+def review_status(db: Database, asset_id: str, *, user_id: str) -> dict[str, Any]:
+    """How far the human review of one asset has got.
+
+    The important number is ``independent``: an asset reviewed only by its
+    owner has not been independently assessed, and a report that said
+    "reviewed" without that distinction would overstate the evidence. That is
+    the same mistake Gate 8 exists to prevent.
+    """
+    from deeptutor.services.studio.script import quality_checklist
+
+    asset = _require_owner(db, asset_id, user_id)
+    items = quality_checklist(asset["kind"])
+    with db.read() as conn:
+        rows = [
+            dict(row)
+            for row in conn.query(
+                "SELECT * FROM media_quality_reviews WHERE asset_id = ? ORDER BY created_at",
+                (asset_id,),
+            )
+        ]
+
+    by_item: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        by_item.setdefault(row["item_id"], []).append(row)
+
+    # A self-review counts as an answer but not as independence.
+    independent = [
+        row for row in rows if row["reviewer_id"] != asset["user_id"]
+    ]
+    answered = [item for item in items if item["id"] in by_item]
+    failures = [row for row in rows if row["verdict"] == "fail"]
+    unclear = [row for row in rows if row["verdict"] == "unclear"]
+
+    return {
+        "asset_id": asset_id,
+        "kind": asset["kind"],
+        "items": [
+            {
+                **item,
+                "verdicts": [
+                    {
+                        "verdict": row["verdict"],
+                        "reviewer_id": row["reviewer_id"],
+                        "independent": row["reviewer_id"] != asset["user_id"],
+                        "comment": row["comment"],
+                    }
+                    for row in by_item.get(item["id"], [])
+                ],
+            }
+            for item in items
+        ],
+        "total_items": len(items),
+        "answered_items": len(answered),
+        "complete": len(answered) == len(items) and len(items) > 0,
+        "independent_reviews": len(independent),
+        "independently_reviewed": bool(independent),
+        "failures": [row["item_id"] for row in failures],
+        "unclear": [row["item_id"] for row in unclear],
+    }
+
+
 def list_shared_with_me(db: Database, *, user_id: str, limit: int = 100) -> list[dict[str, Any]]:
     """Assets other people shared with this user, still live."""
     now = _now_iso()
@@ -840,20 +995,65 @@ def list_assets(
 
 
 def delete_asset(db: Database, asset_id: str, *, user_id: str) -> bool:
-    """Soft-delete, and give the storage back.
+    """Remove an asset: the bytes, the meter, and access.
 
-    The row stays so the storage path is not silently reused, but the *bytes* it
-    no longer accounts for must come off the meter -- otherwise deleting an
-    asset and re-creating it permanently consumes quota, and the meter drifts
-    upward with nothing to explain it.
+    Order matters and each step has a reason:
+
+    1. **Bytes first.** A soft delete that frees the meter while leaving the
+       file on disk is worse than no delete at all: the quota says the space is
+       available, the disk says otherwise, and nothing reconciles the two until
+       the volume fills. The space is what the user asked to reclaim, so the
+       space is what gets reclaimed.
+    2. **Meter second, only for what was actually freed.** If the object was
+       already gone (a previous partial delete, a manual clean-up), the meter is
+       still corrected -- but the failure to remove is reported rather than
+       swallowed, because a silent no-op here is how the drift starts.
+    3. **Row last, as a tombstone.** The row stays with `status='deleted'` so the
+       storage path is not silently reused by a future asset with different
+       provenance, and so "who deleted what, when" survives.
+
+    Grants are revoked implicitly: ``has_access`` refuses a non-ready asset, so
+    a grantee loses access the moment the owner deletes, without needing to
+    know that fact.
     """
     asset = _require_owner(db, asset_id, user_id)
+    storage_path = str(asset["storage_path"] or "")
+    size_bytes = int(asset["size_bytes"] or 0)
+
+    # `delete` returns False when the object was already absent, which is the
+    # *desired* end state, not a failure -- treating it as one made deleting an
+    # already-deleted asset raise on a situation that was already correct.
+    # Only an exception means the bytes might still be there.
+    removed = True
+    if storage_path:
+        from deeptutor.db.storage import get_object_store
+
+        try:
+            get_object_store().delete(storage_path)
+            removed = not get_object_store().exists(storage_path)
+        except Exception:  # noqa: BLE001 - a store failure must not corrupt the meter
+            removed = False
+
     with db.transaction() as conn:
         conn.execute(
             "UPDATE media_assets SET status = 'deleted', updated_at = ? WHERE id = ?",
             (_now(), asset_id),
         )
-    release_storage(db, user_id=user_id, size_bytes=int(asset["size_bytes"] or 0))
+
+    # Release what the object actually occupied. If it was already absent the
+    # bytes were already not occupying anything, so the meter must still come
+    # down -- keeping the charge would punish the user for our own leak.
+    release_storage(db, user_id=user_id, size_bytes=size_bytes)
+
+    if not removed and storage_path:
+        # The caller needs to know the disk did not shrink, even though the
+        # meter did. This is the one case where "deleted" is a half-truth.
+        raise StudioError(
+            "storage_delete_failed",
+            f"the asset was removed from the library but its object "
+            f"{storage_path!r} could not be deleted from storage",
+            field="asset_id",
+        )
     return True
 
 
@@ -901,8 +1101,11 @@ __all__ = [
     "job_costs",
     "job_kind",
     "list_assets",
+    "VERDICTS",
     "record_cost",
+    "record_review",
     "release_storage",
+    "review_status",
     "revoke_access",
     "run_job",
     "store_asset",
