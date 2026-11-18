@@ -264,7 +264,17 @@ def _inspect_lightrag(storage_dir: Path) -> ProviderIndexProbe:
 # it is the dominant cost of a LlamaIndex readiness probe. The count only
 # changes when the file itself changes, so it is cached keyed on size +
 # mtime_ns (same freshness convention as storage._freshness_token).
-_DOCSTORE_COUNT_CACHE_SIZE = 128
+#
+# The cache is keyed per ``version-N`` directory, and a catalogue sweep
+# (``list_knowledge_bases`` / ``get_info``) probes every historical version of
+# every KB because the UI renders readiness per version. The capacity must
+# therefore cover the total number of version directories across all KBs, not
+# one KB's worth: at 128 slots a real installation (#2772: 13 KBs, 310 version
+# directories) evicted exactly what it had just read, so the hit rate stayed at
+# a permanent 0% and every navigation re-parsed every multi-MB docstore. Each
+# entry is only a path plus an int, so a capacity far above the working set
+# costs about a megabyte.
+_DOCSTORE_COUNT_CACHE_SIZE = 4096
 
 
 @lru_cache(maxsize=_DOCSTORE_COUNT_CACHE_SIZE)
