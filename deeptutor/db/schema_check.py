@@ -209,6 +209,55 @@ REQUIRED_COLUMNS: dict[str, tuple[str, ...]] = {
         "snapshot",
         "recorded_at",
     ),
+    # --- Phase 5: ingestion and grounding ------------------------------
+    "ingestion_runs": (
+        "id",
+        "source_id",
+        "status",
+        "grade_number",
+        "major_code",
+        "subject_code",
+        "document_key",
+        "content_checksum",
+        "page_count",
+        "chunk_count",
+        "parser_engine",
+        "failure_kind",
+        "error_message",
+        "started_at",
+        "finished_at",
+        "created_at",
+        "updated_at",
+    ),
+    "ingestion_chunks": (
+        "chunk_key",
+        "source_id",
+        "run_id",
+        "document_key",
+        "page_index",
+        "page_label",
+        "chapter_index",
+        "chapter_title",
+        "section_title",
+        "grade_number",
+        "major_code",
+        "subject_code",
+        "rights_status",
+        "block_kind",
+        "text",
+        "content_checksum",
+        "ordinal",
+    ),
+    "grounded_answers": (
+        "id",
+        "query",
+        "answer",
+        "retrieved_chunk_keys",
+        "cited_chunk_keys",
+        "grounding_status",
+        "citation_count",
+        "created_at",
+    ),
 }
 
 
@@ -241,6 +290,13 @@ REQUIRED_INDEXES: dict[str, tuple[str, ...]] = {
     # simplify them back into a constraint that does not constrain.
     "catalog_sources": ("uq_catalog_sources_identity",),
     "curriculum_subjects": ("uq_curriculum_subjects_identity",),
+    # Phase 5. ``uq_ingestion_chunk_identity`` is what makes re-ingestion an
+    # update instead of a duplicate, and ``uq_ingestion_active`` is what stops
+    # two workers ingesting the same book at once. Both use expressions, and
+    # both must stay expression indexes: a plain UNIQUE over nullable columns
+    # (chapter_index is nullable) constrains nothing.
+    "ingestion_chunks": ("uq_ingestion_chunk_identity",),
+    "ingestion_runs": ("uq_ingestion_active",),
 }
 
 

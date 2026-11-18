@@ -1,0 +1,203 @@
+{
+  "name": "darsyar-phase5-golden",
+  "version": "1",
+  "k": 5,
+  "notes": "Persian golden set for the Phase 5 pilot grades. A case passes when recall@k over the graded passages is 1.0. Cases are grouped by what they test, because a single aggregate number hides which capability is weak: chapter targeting and out-of-source abstention fail for completely different reasons and need different fixes.",
+  "cases": [
+    {
+      "id": "g10-set-definition",
+      "group": "topic",
+      "grade_number": 10,
+      "major_code": "math_physics",
+      "query": "مجموعه چیست و عضو مجموعه چگونه نشان داده می‌شود؟",
+      "expected_chapters": [
+        {
+          "title": "ریاضی دهم ریاضی‌فیزیک",
+          "chapter": "فصل ۱: مجموعه‌ها",
+          "gold": "مجموعه گردایه‌ای از اشیاء است و هر عضو آن با یک نماد نشان داده می‌شود."
+        }
+      ],
+      "notes": "Baseline: a question whose words appear verbatim in one chapter."
+    },
+    {
+      "id": "g10-set-membership",
+      "group": "topic",
+      "grade_number": 10,
+      "major_code": "math_physics",
+      "query": "چه زمانی یک شیء عضو یک مجموعه است؟",
+      "expected_chapters": [
+        {
+          "title": "ریاضی دهم ریاضی‌فیزیک",
+          "chapter": "فصل ۱: مجموعه‌ها",
+          "gold": "هر شیئی که در یک مجموعه قرار می‌گیرد عضو آن مجموعه نامیده می‌شود."
+        }
+      ],
+      "notes": "Paraphrase: the query shares no long span with the gold, so this fails if retrieval is pure lexical containment."
+    },
+    {
+      "id": "g10-natural-numbers",
+      "group": "topic",
+      "grade_number": 10,
+      "major_code": "math_physics",
+      "query": "اعداد طبیعی از کجا شروع می‌شوند؟",
+      "expected_chapters": [
+        {
+          "title": "ریاضی دهم ریاضی‌فیزیک",
+          "chapter": "فصل ۲: اعداد طبیعی",
+          "gold": "اعداد طبیعی از یک شروع می‌شوند و بی‌پایان ادامه دارند."
+        }
+      ],
+      "notes": "Chapter targeting: the correct chunk is in chapter 2, not chapter 1."
+    },
+    {
+      "id": "g10-persian-numerals",
+      "group": "numerals",
+      "grade_number": 10,
+      "major_code": "experimental",
+      "query": "در مثلث قائم‌الزاویه چه رابطه‌ای میان اضلاع برقرار است؟",
+      "expected_chapters": [
+        {
+          "title": "ریاضی دهم تجربی",
+          "chapter": "فصل ۳: مثلثات",
+          "gold": "در هر مثلث قائم‌الزاویه مربع وتر برابر مجموع مربع‌های دو ضلع دیگر است."
+        }
+      ],
+      "notes": "Persian numerals appear in the chapter title (فصل ۳) and in the book metadata; they must not stop the match."
+    },
+    {
+      "id": "g10-table-reading",
+      "group": "table",
+      "grade_number": 10,
+      "major_code": "math_physics",
+      "query": "جدول مقادیر سینوس و کسینوس زوایای خاص",
+      "expected_chapters": [
+        {
+          "title": "ریاضی دهم ریاضی‌فیزیک",
+          "chapter": "فصل ۳: مثلثات",
+          "gold": "جدول ۱: مقادیر سینوس و کسینوس برای زوایای ۳۰ و ۴۵ و ۶۰ درجه"
+        }
+      ],
+      "notes": "A table chunk must be retrievable as a table. Folding a short table into the surrounding paragraph would make this case unfindable."
+    },
+    {
+      "id": "g10-figure-caption",
+      "group": "figure",
+      "grade_number": 10,
+      "major_code": "math_physics",
+      "query": "شکل مربوط به نمایش مجموعه‌ها با نمودار ون",
+      "expected_chapters": [
+        {
+          "title": "ریاضی دهم ریاضی‌فیزیک",
+          "chapter": "فصل ۱: مجموعه‌ها",
+          "gold": "شکل ۲: نمایش مجموعه‌ها با نمودار ون"
+        }
+      ],
+      "notes": "A figure is retrievable only through its caption, so the caption must become a chunk."
+    },
+    {
+      "id": "g10-formula",
+      "group": "formula",
+      "grade_number": 10,
+      "major_code": "math_physics",
+      "query": "فرمول مساحت مثلث",
+      "expected_chapters": [
+        {
+          "title": "ریاضی دهم ریاضی‌فیزیک",
+          "chapter": "فصل ۳: مثلثات",
+          "gold": "مساحت مثلث برابر است با نصف حاصل‌ضرب قاعده در ارتفاع"
+        }
+      ],
+      "notes": "A formula chunk keeps its own kind so it can outrank prose that merely mentions the word «فرمول»."
+    },
+    {
+      "id": "g11-derivative-definition",
+      "group": "topic",
+      "grade_number": 11,
+      "major_code": "math_physics",
+      "query": "مشتق در یک نقطه چگونه تعریف می‌شود؟",
+      "expected_chapters": [
+        {
+          "title": "حسابان یازدهم",
+          "chapter": "فصل ۱: مشتق",
+          "gold": "مشتق تابع در یک نقطه حد نسبت تغییر تابع به تغییر متغیر است وقتی تغییر متغیر به صفر میل کند."
+        }
+      ],
+      "notes": "Second pilot grade: retrieval must work across grades, not just the one used in the happy path."
+    },
+    {
+      "id": "g12-integral",
+      "group": "topic",
+      "grade_number": 12,
+      "major_code": "math_physics",
+      "query": "انتگرال معین چگونه محاسبه می‌شود؟",
+      "expected_chapters": [
+        {
+          "title": "حسابان دوازدهم",
+          "chapter": "فصل ۲: انتگرال",
+          "gold": "انتگرال معین تابع پیوسته روی بازه با قضیهٔ اساسی حساب دیفرانسیل و انتگرال محاسبه می‌شود."
+        }
+      ],
+      "notes": "Third pilot grade."
+    },
+    {
+      "id": "g12-humanities-history",
+      "group": "track",
+      "grade_number": 12,
+      "major_code": "humanities",
+      "query": "جنگ جهانی دوم چگونه پایان یافت؟",
+      "expected_chapters": [
+        {
+          "title": "تاریخ دوازدهم انسانی",
+          "chapter": "درس ۴: جنگ جهانی دوم",
+          "gold": "جنگ جهانی دوم در سال ۱۹۴۵ با تسلیم آلمان و ژاپن پایان یافت."
+        }
+      ],
+      "notes": "A different track: the same grade must not serve a ریاضی‌فیزیک book for a history question."
+    },
+    {
+      "id": "ocr-scanned-page",
+      "group": "ocr",
+      "grade_number": 10,
+      "major_code": "math_physics",
+      "query": "تعریف بردار و پاره‌خط جهت‌دار",
+      "expected_chapters": [
+        {
+          "title": "ریاضی دهم ریاضی‌فیزیک",
+          "chapter": "فصل ۴: بردارها",
+          "gold": "بردار پاره‌خطی جهت‌دار است که طول و جهت دارد."
+        }
+      ],
+      "notes": "Page came from OCR, so the text may carry recognition noise; the match threshold must tolerate a small amount without matching everything."
+    },
+    {
+      "id": "out-of-source-nonexistent",
+      "group": "abstain",
+      "grade_number": 10,
+      "major_code": "math_physics",
+      "query": "اثبات قضیهٔ فرما در حساب دیفرانسیل چندمتغیره",
+      "expected_chapters": [],
+      "expect_abstain": true,
+      "notes": "Not in any grade-10 book. Retrieval must return nothing rather than the least-bad chunk. This is the single most important case in the set: a tutor that always answers is a tutor that fabricates."
+    },
+    {
+      "id": "out-of-source-wrong-grade",
+      "group": "abstain",
+      "grade_number": 10,
+      "major_code": "math_physics",
+      "query": "انتگرال معین چگونه محاسبه می‌شود؟",
+      "expected_chapters": [],
+      "expect_abstain": true,
+      "notes": "The answer exists in the library — in a grade-12 book. A grade-10 student must be told it is not in their material, not quietly served a grade-12 page. This is the abstention and the scope filter working together."
+    },
+    {
+      "id": "out-of-source-wrong-track",
+      "group": "abstain",
+      "grade_number": 12,
+      "major_code": "math_physics",
+      "query": "جنگ جهانی دوم چگونه پایان یافت؟",
+      "expected_chapters": [],
+      "expect_abstain": true,
+      "notes": "The humanities book has this answer; a ریاضی‌فیزیک student must not receive it."
+    }
+  ]
+}

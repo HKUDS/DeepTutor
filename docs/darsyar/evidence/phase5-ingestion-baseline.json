@@ -1,0 +1,149 @@
+{
+  "phase": 5,
+  "name": "ingestion_and_grounding",
+  "generated_at": "2026-11-18T00:15:00Z",
+  "base_commit": "8a52d3e19896935fd5a6bb258f923c05b7a0cdc3",
+  "branch": "arena/d6193a93-deeptutor",
+  "migration": {
+    "version": 7,
+    "name": "ingestion_and_grounding",
+    "checksum": "fa648f8dc41a510ce030e9e45ee7b8f2",
+    "applied_to_supabase_project": "jmqgzaqydvkjysqlaloe",
+    "tables": ["ingestion_runs", "ingestion_chunks", "grounded_answers"],
+    "indexes": [
+      "ix_ingestion_runs_source",
+      "ix_ingestion_runs_status",
+      "uq_ingestion_active",
+      "ix_ingestion_chunks_source",
+      "ix_ingestion_chunks_scope",
+      "uq_ingestion_chunk_identity",
+      "ix_grounded_answers_session"
+    ],
+    "down_migration_verified": true
+  },
+  "postgres_findings": [
+    {
+      "finding": "CASE inside a CREATE UNIQUE INDEX must be parenthesised",
+      "sqlite_behaviour": "accepts the bare form",
+      "postgres_behaviour": "rejects with 42601 syntax error at or near \"CASE\"",
+      "fix": "wrap the CASE expression in its own parentheses",
+      "proven_on_real_project": true,
+      "regression_test": "tests/db/test_ingestion_pipeline.py::test_the_live_run_index_is_valid_postgres_syntax"
+    },
+    {
+      "finding": "uq_ingestion_active rejects a second live run with 23505",
+      "verified": true,
+      "finish_one_run_then_retry": "accepted",
+      "regression_test": "tests/db/test_ingestion_pipeline.py::test_at_most_one_live_run_per_source"
+    }
+  ],
+  "bugs_found_by_tests": [
+    {
+      "id": "persian_tokenizer_empty",
+      "severity": "critical_silent",
+      "file": "deeptutor/services/rag/eval/matching.py",
+      "symptom": "tokenize() returned [] for every Persian string",
+      "impact": "every Persian retrieval evaluation silently scored zero",
+      "fixed": true,
+      "regression_test": "tests/db/test_golden_set.py (whole set would fail)"
+    },
+    {
+      "id": "run_id_second_precision_collision",
+      "severity": "high",
+      "file": "deeptutor/services/ingestion/pipeline.py",
+      "symptom": "a retry within the same second failed with UNIQUE constraint on ingestion_runs.id",
+      "impact": "a legitimate retry became an error",
+      "fixed": true,
+      "regression_test": "tests/db/test_ingestion_pipeline.py::test_a_finished_run_does_not_block_a_new_one"
+    },
+    {
+      "id": "short_table_merged_into_prose",
+      "severity": "high",
+      "file": "deeptutor/services/ingestion/extract.py",
+      "symptom": "a short table or formula was merged into the neighbouring paragraph and lost its block_kind",
+      "impact": "a student asking about a table could not find it",
+      "fixed": true,
+      "regression_test": "tests/db/test_extraction.py::test_block_kinds_are_recognised"
+    },
+    {
+      "id": "zwnj_split_created_stopword_fragments",
+      "severity": "high",
+      "file": "deeptutor/db/repositories/grounding.py",
+      "symptom": "ZWNJ was replaced by a space, splitting «می‌شود» into «می» + «شود»; «می» matched every chunk so every query scored 0.25",
+      "impact": "an unrelated question was never abstained",
+      "fixed": true,
+      "regression_test": "tests/db/test_grounding_http.py::test_search_abstains_for_an_unrelated_question"
+    },
+    {
+      "id": "persian_punctuation_glued_to_tokens",
+      "severity": "medium",
+      "file": "deeptutor/db/repositories/grounding.py",
+      "symptom": "«؟» (U+061F) sits inside the Arabic block range, so «می‌گوید؟» never matched «می‌گوید»",
+      "impact": "questions ending in a Persian question mark could not match their own answer",
+      "fixed": true,
+      "regression_test": "tests/db/test_golden_set.py::test_topic_recall_is_perfect"
+    },
+    {
+      "id": "grounding_error_mapped_to_500",
+      "severity": "medium",
+      "file": "deeptutor/api/routers/ingestion.py",
+      "symptom": "a blank query returned 500 instead of 422",
+      "impact": "a caller mistake looked like a server fault",
+      "fixed": true,
+      "regression_test": "tests/db/test_grounding_http.py::test_an_empty_query_is_refused"
+    }
+  ],
+  "test_results": {
+    "tests_db": {"passed": 476, "skipped": 268, "failed": 0},
+    "full_suite": {"passed": 14430, "skipped": 400, "failed": 2},
+    "full_suite_failures_environmental": [
+      "tests/cli/test_doctor_cli.py::test_diagnostics_never_render_credentials_or_endpoint_secrets",
+      "tests/cli/test_kb_eval_cli.py::test_eval_reports_an_invalid_dataset"
+    ],
+    "eval_suite": {"passed": 89, "failed": 0},
+    "ruff": "clean",
+    "lint_imports": {"contracts_kept": 3, "broken": 0},
+    "router_index": {"routers": 62, "routes": 766}
+  },
+  "golden_set": {
+    "path": "tests/fixtures/grounding/darsyar_phase5_golden.json",
+    "cases": 15,
+    "k": 5,
+    "groups": ["topic", "numerals", "table", "figure", "formula", "ocr", "track", "abstain"],
+    "grades": [10, 11, 12],
+    "result": "15/15 passed",
+    "hallucinated_citations": 0
+  },
+  "live_verification": {
+    "server": "uvicorn deeptutor.api.main:app on port 3800",
+    "endpoints": [
+      "GET  /api/grounding/search     200 grounded / 200 abstained",
+      "GET  /api/grounding/browse     200",
+      "GET  /api/grounding/catalogue  200",
+      "POST /api/grounding/validate   200 valid / 200 unverified",
+      "POST /api/grounding/admin/ingest   201 succeeded / 409 source_not_approved",
+      "GET  /api/grounding/admin/runs     200",
+      "GET  /api/grounding/admin/runs/{id} 200 / 404",
+      "POST /api/grounding/admin/recover  200"
+    ],
+    "flows": [
+      "ingest before approval -> 409 source_not_approved",
+      "approve then ingest -> 201, 2 chunks, 2 chapters",
+      "search relevant -> grounded true with citation",
+      "search out-of-source -> abstained, reason no_relevant_source",
+      "search wrong track -> abstained",
+      "validate real citation -> valid true",
+      "validate invented chapter -> valid false, unverified 1",
+      "validate wrong-grade book -> valid false, unverified 1",
+      "validate no citation -> valid false",
+      "archive source -> search abstains immediately, chunks retained for audit",
+      "ingest while archived -> 409 source_not_approved"
+    ]
+  },
+  "gate_5": {
+    "technical": "PASS",
+    "retrieval_quality_evaluation": "NOT STARTED — lexical scoring only",
+    "content_licence": "BLOCKED — Gate 4 question unanswered",
+    "verdict": "PASS technically, BLOCKED legally; no bulk ingestion until the rights question is answered"
+  }
+}

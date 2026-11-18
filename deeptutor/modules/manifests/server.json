@@ -394,6 +394,28 @@
       },
       "auth": "admin",
       "order": 849
+    },
+    {
+      "reference": "deeptutor.api.routers.ingestion:router",
+      "options": {
+        "prefix": "/api/grounding",
+        "tags": [
+          "grounding"
+        ]
+      },
+      "auth": "learning",
+      "order": 850
+    },
+    {
+      "reference": "deeptutor.api.routers.ingestion:admin_router",
+      "options": {
+        "prefix": "/api/grounding/admin",
+        "tags": [
+          "grounding-admin"
+        ]
+      },
+      "auth": "admin",
+      "order": 851
     }
   ],
   "commands": [],

@@ -31,10 +31,26 @@ DEFAULT_MIN_RATIO = 0.5
 DEFAULT_MIN_TOKENS = 4
 
 _WHITESPACE = re.compile(r"\s+")
-# ASCII words and digits, or one token per CJK / Kana / Hangul character.
+#: Arabic vowel marks (harakat), the tatweel, and the superscript alef: purely
+#: orthographic, so they must not make two spellings of one word differ.
+_DIACRITICS = re.compile(r"[\u0610-\u061a\u064b-\u065f\u0670\u06d6-\u06dc\u06df-\u06e8\u0640]")
+# ASCII words and digits, one token per CJK / Kana / Hangul character, and
+# Persian/Arabic-script words.
+#
+# The Persian branch was missing, and it failed silently: ``tokenize`` returned
+# an empty list for every Persian string, so every gold passage had zero tokens,
+# the overlap ratio was undefined, and evaluation scored Persian retrieval as
+# zero without raising anything. A metric that reports 0/0 as "no match" is
+# worse than a crash, because the number looks like a quality problem rather
+# than a bug.
+#
+# Arabic Presentation Forms (\ufb50-\ufdff, \ufe70-\ufeff) are included
+# because a PDF extractor can emit them instead of the base block, and a word
+# must tokenize the same either way.
 _TOKEN = re.compile(
     r"[0-9a-z]+"
     r"|[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uac00-\ud7af]"
+    r"|[\u0620-\u063f\u0641-\u064a\u066e-\u06d3\u06fa-\u06ff\ufb50-\ufdff\ufe70-\ufeff]+"
 )
 
 #: Keys that hold a citation's text across the shipped engines.
@@ -47,8 +63,15 @@ def normalize_text(value: str) -> str:
 
 
 def tokenize(value: str) -> list[str]:
-    """Split ``value`` into comparison tokens (ASCII words + CJK characters)."""
-    return _TOKEN.findall((value or "").lower())
+    """Split ``value`` into comparison tokens.
+
+    ASCII words, CJK characters and Persian words each become one token. Persian
+    diacritics (harakat) and the tatweel are stripped first so that the same
+    word written with or without them compares equal -- a PDF extractor emits
+    both spellings for the same line of a book.
+    """
+    cleaned = _DIACRITICS.sub("", (value or "").lower())
+    return _TOKEN.findall(cleaned)
 
 
 def source_text(source: Any) -> str:

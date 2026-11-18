@@ -1,5 +1,5 @@
 {
-  "fingerprint": "c5fe50dd1cfd597ab4cae83b40c760123407b661b2834b567ede2d0b945e5440",
+  "fingerprint": "a4a9848c797aa144fd3ce42de46caf45b7a95fe077667368fd558750c4ac0a17",
   "routers": {
     "deeptutor.api.routers.auth:router": [
       {
@@ -6153,6 +6153,74 @@
         "kind": "http",
         "methods": [
           "GET"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.ingestion:router": [
+      {
+        "path": "/search",
+        "name": "search",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/validate",
+        "name": "validate",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/browse",
+        "name": "browse",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/catalogue",
+        "name": "catalogue",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.ingestion:admin_router": [
+      {
+        "path": "/ingest",
+        "name": "ingest",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/runs",
+        "name": "list_runs",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/runs/{run_id}",
+        "name": "get_run",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/recover",
+        "name": "recover",
+        "kind": "http",
+        "methods": [
+          "POST"
         ]
       }
     ],
