@@ -449,6 +449,28 @@
       },
       "auth": "admin",
       "order": 854
+    },
+    {
+      "reference": "deeptutor.api.routers.studio:router",
+      "options": {
+        "prefix": "/api/studio",
+        "tags": [
+          "studio"
+        ]
+      },
+      "auth": "learning",
+      "order": 862
+    },
+    {
+      "reference": "deeptutor.api.routers.studio:admin_router",
+      "options": {
+        "prefix": "/api/studio/admin",
+        "tags": [
+          "studio-admin"
+        ]
+      },
+      "auth": "admin",
+      "order": 863
     }
   ],
   "commands": [],

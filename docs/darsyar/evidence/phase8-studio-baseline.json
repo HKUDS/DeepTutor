@@ -1,0 +1,97 @@
+{
+  "phase": 8,
+  "generated": "2026-11-16",
+  "branch": "arena/13c4e9b8-deeptutor",
+  "base_commit": "1dc75fcdf",
+  "migration": {
+    "name": "V0010__media_studio.sql",
+    "versions_after_apply": [
+      1,
+      2,
+      3,
+      6,
+      7,
+      8,
+      9,
+      10
+    ],
+    "tables_up": [
+      "media_assets",
+      "media_job_costs",
+      "media_reservations"
+    ],
+    "indices_up": [
+      "ix_media_assets_hash",
+      "ix_media_assets_owner",
+      "ix_media_job_costs_user",
+      "ix_media_reservations_job",
+      "ix_media_reservations_user"
+    ],
+    "tables_after_rollback_to_9": [],
+    "round_trip_ok": true
+  },
+  "tests": {
+    "accounting": 17,
+    "jobs": 22,
+    "http": 15,
+    "script": 19,
+    "total_new": 73,
+    "suite_db_api_modules": "846 passed, 470 skipped",
+    "modules": "64 passed"
+  },
+  "mutation_evidence": [
+    {
+      "mutation": "remove owner check in get_asset",
+      "result": "3 ownership tests fail",
+      "restored_green": true
+    },
+    {
+      "mutation": "settle at reserved instead of actual",
+      "result": "2 cost tests fail",
+      "restored_green": true
+    },
+    {
+      "mutation": "no refund on terminal failure",
+      "result": "leak test fails",
+      "restored_green": true
+    }
+  ],
+  "live_smoke": {
+    "server": "uvicorn deeptutor.api.main:app :3831",
+    "submit": 202,
+    "owner_job": 200,
+    "stranger_job": 404,
+    "owner_bytes": 200,
+    "stranger_bytes": 404,
+    "cancel": {
+      "cancelled": true,
+      "refunded": true
+    },
+    "settle": {
+      "wallet_before": 5000,
+      "wallet_after": 4570,
+      "estimate": 600,
+      "actual": 430
+    },
+    "cache_hit": {
+      "cached": true,
+      "reserved": 0
+    },
+    "video_failure": {
+      "job": "queued (retry)",
+      "wallet_unchanged": true,
+      "health_after": {
+        "/health": 200,
+        "/health/ready": 200,
+        "/api/platform/health/live": 200
+      }
+    }
+  },
+  "gate_8": {
+    "cost": "mechanism complete; ALL figures from a mock renderer -- no real provider",
+    "quality": "checklist built as data; NOT filled by a human reviewer",
+    "rights": "enforced in cache key and asset row; underlying licence question unanswered (same as Gates 5/6)",
+    "capacity": "queue depth exposed; no load test possible without a real provider",
+    "accepted": false
+  }
+}
