@@ -57,6 +57,8 @@ _PERSIAN_STOPWORDS = frozenset(
     که این آن را را از به با در بر برای تا هم نیز ولی اما یا اگر چون چه چیزی
     یک دو سه خود ما شما او ایشان آنها اینها کار مورد طور صورت گونه بخش فصل
     می‌باشد باشد باشند دارد دارند داشت داشتند کند کنند کرده کردن
+    و یا هر همهٔ برخی چنین همان همین بدون روی زیر پیش پس هنگام نسبت
+    تواند توانند باید نباید لازم مثلاً یعنی
     """.split()
 )
 
@@ -227,6 +229,101 @@ def _keywords(text: str, limit: int) -> list[str]:
     return chosen[:limit]
 
 
+
+#: A branch label is a *concept*, not a word. Frequency counting cannot tell
+#: them apart: on a real lesson it returns ['مشتق', 'قاعدهٔ', 'نمودار', 'نرخ',
+#: 'تغییر'], where "قاعدهٔ" (rule) and "نرخ" (rate) are fragments of a sentence
+#: whose meaning lives in the whole clause. The fix is not a better stemmer --
+#: it is to stop asking a word for something a clause has to say.
+_CONCEPT_MARKERS: tuple[tuple[str, str], ...] = (
+    ("تعریف", "تعریف"),
+    ("یعنی", "تعریف"),
+    ("است که", "تعریف"),
+    ("قاعده", "قاعده"),
+    ("فرمول", "فرمول"),
+    ("مثال", "مثال"),
+    ("کاربرد", "کاربرد"),
+    ("استفاده", "کاربرد"),
+    ("نشان می‌دهد", ""),
+    ("نشان می‌ده", ""),
+    ("نمودار", "نمودار"),
+    ("محاسبه", "محاسبه"),
+    ("بیان", "بیان"),
+)
+
+
+def _concept_label(sentence: str, *, max_words: int = 4) -> str:
+    """Name the idea in one clause, briefly enough for a node.
+
+    Two strategies, in order: a marker word that names the *kind* of statement
+    ("قاعده", "کاربرد", "مثال") followed by what it is about, otherwise the
+    clause's own opening content words minus the topic. The topic is dropped
+    because it is already the hub: every branch starting with "مشتق" wastes the
+    label on the one word the reader can see in the middle.
+    """
+    text = str(sentence or "").strip().rstrip(".")
+    if not text:
+        return ""
+    # The bit before a colon is the heading of its own clause.
+    head, _, tail = text.partition(":")
+    if tail and len(head.split()) <= 3:
+        return head.strip()
+
+    words = [w for w in text.replace("،", "").split() if w not in _PERSIAN_STOPWORDS]
+    lowered = text.replace("\u200c", "")
+    for marker, label in _CONCEPT_MARKERS:
+        if marker not in lowered:
+            continue
+        after = lowered.split(marker, 1)[1].strip()
+        about = [w for w in after.split() if w not in _PERSIAN_STOPWORDS]
+        # A marker with an empty label is a *separator* ("نشان می‌دهد" ends a
+        # clause, it does not name one): the useful words are before it.
+        if not label:
+            before = [w for w in lowered.split(marker, 1)[0].split()
+                      if w not in _PERSIAN_STOPWORDS]
+            if before:
+                return " ".join(before[-max_words:])
+            continue
+        if about:
+            return " ".join([label] + about[: max_words - 1])
+        return label
+
+    # No marker: take the clause's opening words, skipping a topic-repeat.
+    informative = [w for w in words]
+    if informative and len(informative) > 1 and any(
+        informative[0] == w for w in informative[1:2]
+    ):
+        informative = informative[1:]
+    return " ".join(informative[:max_words])
+
+
+def concept_outline(text: str, limit: int = 5) -> list[str]:
+    """Branch labels for a mind map: one per clause, named by what it says.
+
+    Distinct from :func:`_keywords`, which ranks words and is still used where a
+    word list is what is wanted. A mind map is not that place.
+    """
+    labels: list[str] = []
+    seen: set[str] = set()
+    hub = ""
+    for position, sentence in enumerate(_sentences(text)):
+        label = _concept_label(sentence)
+        if not label or label in seen:
+            continue
+        if position == 0 and len(label.split()) > 1:
+            # The opening clause *defines* the topic, and the topic is already
+            # the hub. Naming the branch "مشتق نرخ تغییر است" beside a hub
+            # labelled "مشتق" reads as a duplicate, so say what the clause does.
+            hub = label.split()[0]
+            rest = [w for w in label.split()[1:] if w != hub]
+            label = "تعریف " + " ".join(rest[:2]) if rest else "تعریف"
+        seen.add(label)
+        labels.append(label)
+        if len(labels) >= limit:
+            break
+    return labels
+
+
 def outline_for(kind: str, text: str, *, max_sections: int = 5) -> list[str]:
     """The structural skeleton of a script, per kind.
 
@@ -237,7 +334,7 @@ def outline_for(kind: str, text: str, *, max_sections: int = 5) -> list[str]:
     """
     sentences = _sentences(text)
     if kind == "mind_map":
-        return _keywords(text, max_sections)
+        return concept_outline(text, max_sections)
     if kind in {"slide_deck", "infographic"}:
         # One sentence per slide/node, truncated to the kind's line budget.
         budget = int(_SHAPES.get(kind, {}).get("max_words") or 40)
@@ -405,6 +502,7 @@ __all__ = [
     "ScriptRequest",
     "build_script",
     "estimate_duration",
+    "concept_outline",
     "outline_for",
     "quality_checklist",
     "to_persian_digits",

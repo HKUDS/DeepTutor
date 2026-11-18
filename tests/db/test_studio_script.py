@@ -57,7 +57,14 @@ def test_a_mind_map_does_not_branch_on_a_copula():
         ScriptRequest(kind="mind_map", source_text=SENTENCES, source_id="s1")
     )
     assert "است" not in script.outline
-    assert "مشتق" in script.outline
+    # This used to assert `"مشتق" in outline`, which required a *bare word* to
+    # be a branch -- the very behaviour that made the map read
+    # "مشتق / قاعده / نمودار / نرخ / تغییر". The topic belongs to the hub; what
+    # the branches owe the reader is a named idea, so the assertion is that the
+    # idea is present, in a label longer than one word.
+    joined = " ".join(script.outline)
+    assert "مشتق" in joined
+    assert all(len(branch.split()) > 1 for branch in script.outline)
 
 
 # ---------------------------------------------------------------------------
