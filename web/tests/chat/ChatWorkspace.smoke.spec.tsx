@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { updateRecoveryPrincipal } from '@/lib/recovery-principal'
 import { initI18n } from '@/i18n/init'
 import type { ChatState, MessageItem } from '@/features/chat/ChatStateAdapter'
 import type { StreamEvent } from '@/features/chat/model/protocol'
@@ -334,6 +335,35 @@ describe('ChatWorkspace smoke', () => {
     fixture.composerProps = null
     fixture.listProps = null
     fixture.adapter.state = emptyChatState()
+  })
+
+  it('remembers a consult partner on reopening only its own conversation, including deselection', async () => {
+    updateRecoveryPrincipal({ enabled: false, authenticated: false })
+    try {
+      applyState({ sessionId: 'partner-chat', sessionKey: 'partner-chat' })
+      const first = renderWorkspace()
+      await act(async () => {})
+      act(() => (fixture.composerProps!.onSelectPartner as (id: string | null) => void)('tutor-a'))
+      first.unmount()
+
+      const reopened = renderWorkspace()
+      await act(async () => {})
+      expect(fixture.composerProps!.selectedPartner).toBe('tutor-a')
+      applyState({ sessionId: 'another-chat', sessionKey: 'another-chat' })
+      reopened.rerender(<ChatWorkspace />)
+      expect(fixture.composerProps!.selectedPartner).toBeNull()
+      applyState({ sessionId: 'partner-chat', sessionKey: 'partner-chat' })
+      reopened.rerender(<ChatWorkspace />)
+      expect(fixture.composerProps!.selectedPartner).toBe('tutor-a')
+      act(() => (fixture.composerProps!.onSelectPartner as (id: string | null) => void)(null))
+      reopened.unmount()
+      const cleared = renderWorkspace()
+      await act(async () => {})
+      expect(fixture.composerProps!.selectedPartner).toBeNull()
+      cleared.unmount()
+    } finally {
+      updateRecoveryPrincipal(null)
+    }
   })
 
   it('initializes an untouched draft from its only ready default KB', async () => {
