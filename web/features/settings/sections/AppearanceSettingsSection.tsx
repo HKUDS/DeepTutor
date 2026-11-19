@@ -111,11 +111,13 @@ export default function AppearanceSettingsPage() {
               />
             ))}
           </div>
-          <p className="mt-4 text-[11.5px] leading-relaxed text-[var(--muted-foreground)]/80">
-            {t("System follows the device's light or dark appearance.")}{" "}
-            {t(
-              "Default is a clean pure-white theme with a blue accent. Cream is warm and paper-like with a terracotta accent. Dark keeps Cream's warmth on near-black. Glass adds translucent purple panels on a deep gradient.",
-            )}
+          <p className="mt-4 text-[11.5px] leading-relaxed text-[var(--muted-foreground)]/80 empty:hidden">
+            {[
+              t("System follows the device's light or dark appearance."),
+              t(
+                "Default is a clean pure-white theme with a blue accent. Cream is warm and paper-like with a terracotta accent. Dark keeps Cream's warmth on near-black. Glass adds translucent purple panels on a deep gradient.",
+              ),
+            ].filter(Boolean).join(" ")}
           </p>
         </div>
       </SettingSection>
@@ -220,7 +222,7 @@ export default function AppearanceSettingsPage() {
           <div className="text-[13.5px] font-medium text-[var(--foreground)]">
             {t("Preview")}
           </div>
-          <p className="mb-3 mt-1 text-[12px] leading-relaxed text-[var(--muted-foreground)]">
+          <p className="mb-3 mt-1 text-[12px] leading-relaxed text-[var(--muted-foreground)] empty:hidden">
             {t("Updates live as you change the settings below.")}
           </p>
           <RichCodeBlockPreview

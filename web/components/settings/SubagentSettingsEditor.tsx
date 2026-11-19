@@ -202,19 +202,19 @@ const DISPLAY_NAMES: Record<string, string> = {
 // the agent (a real flag, a native prompt field, or a first-message prefix).
 const SYSTEM_PROMPT_HINT: Record<string, Lang> = {
   grok: {
-    zh: "通过 Grok CLI 的 rules 参数传入额外教学或委派指令。",
+    zh: "通过 Grok CLI 的 rules 选项传入指令。",
     en: "Additional teaching or delegation instructions are passed through Grok CLI's rules option.",
   },
   claude_code: {
-    zh: "追加到该智能体的系统提示（--append-system-prompt）。",
+    zh: "通过 --append-system-prompt 追加到系统提示词。",
     en: "Appended to the agent's system prompt (--append-system-prompt).",
   },
   kimi: {
-    zh: "Kimi CLI 没有系统提示 flag——该指令会前缀在每个新会话的第一条消息上。",
+    zh: "指令加在每个 Kimi CLI 新会话的首条消息开头。",
     en: "Kimi CLI has no system-prompt flag — the instruction is prefixed to each new session's first message.",
   },
   opencode: {
-    zh: "通过服务器 API 的 system 字段注入到每个新会话。",
+    zh: "通过服务端 API 的 system 字段传入每个新会话。",
     en: "Injected into each new session via the server API's system field.",
   },
   mimo: {
@@ -222,19 +222,19 @@ const SYSTEM_PROMPT_HINT: Record<string, Lang> = {
     en: "Injected into each new session via the server API's system field.",
   },
   hermes: {
-    zh: "Hermes 没有系统提示 flag——该指令会前缀在每个新会话的第一条消息上。",
+    zh: "指令加在每个 Hermes 新会话的首条消息开头。",
     en: "Hermes has no system-prompt flag — the instruction is prefixed to each new session's first message.",
   },
   hermes_remote: {
-    zh: "新会话（或远端会话已失效）时，通过 Hermes 网关 API 的 instructions 字段注入。",
+    zh: "新建会话或旧会话过期时，通过 Hermes 网关的 instructions 字段传入。",
     en: "Sent through the Hermes gateway API's instructions field for a fresh or expired session.",
   },
   openclaw: {
-    zh: "该指令会前缀在每个新 OpenClaw session key 的第一条消息上。",
+    zh: "每个新的 OpenClaw 会话密钥首次使用时，指令加在首条消息开头。",
     en: "The instruction is prefixed to the first message for each new OpenClaw session key.",
   },
   deepseek_harness: {
-    zh: "该指令会前缀在每个新 DeepSeek Harness 会话的第一条消息上。",
+    zh: "指令加在每个 DeepSeek Harness 新会话的首条消息开头。",
     en: "The instruction is prefixed to the first message in each new DeepSeek Harness session.",
   },
 };
@@ -243,7 +243,7 @@ const PERMISSION_MODES: { value: string; label: Lang }[] = [
   {
     value: "bypassPermissions",
     label: {
-      zh: "绕过权限 · 全自主（推荐）",
+      zh: "绕过权限检查（推荐）",
       en: "Bypass permissions · autonomous (recommended)",
     },
   },
@@ -253,11 +253,11 @@ const PERMISSION_MODES: { value: string; label: Lang }[] = [
   },
   {
     value: "default",
-    label: { zh: "默认 · 可能等待确认", en: "Default · may wait for prompts" },
+    label: { zh: "默认（可能等待确认）", en: "Default · may wait for prompts" },
   },
   {
     value: "plan",
-    label: { zh: "计划模式 · 只读", en: "Plan mode · read-only" },
+    label: { zh: "计划模式（只读）", en: "Plan mode · read-only" },
   },
 ];
 
@@ -271,7 +271,7 @@ const GROK_PERMISSION_MODES: { value: string; label: Lang }[] = [
   },
   {
     value: "plan",
-    label: { zh: "Plan（兼容模式）", en: "Plan (compatibility mode)" },
+    label: { zh: "计划模式（兼容模式）", en: "Plan (compatibility mode)" },
   },
   {
     value: "default",
@@ -319,7 +319,7 @@ const APPROVALS: { value: string; label: Lang }[] = [
   { value: "on-request", label: { zh: "按需询问", en: "On request" } },
   {
     value: "untrusted",
-    label: { zh: "不可信命令时询问", en: "Untrusted commands" },
+    label: { zh: "运行不受信任的命令时询问", en: "Untrusted commands" },
   },
 ];
 
@@ -438,7 +438,7 @@ export function SubagentSettingsEditor({ kind }: { kind: string }) {
         description={
           isRemote
             ? tr({
-                zh: "配置 DeepTutor 通过 HTTP 调用的远程 Hermes 网关、模型与运行参数。",
+                zh: "通过 HTTP 连接远程 Hermes 网关。",
                 en: "Configure the remote Hermes gateway, model, and run parameters DeepTutor uses over HTTP.",
               })
             : t(
@@ -470,16 +470,16 @@ export function SubagentSettingsEditor({ kind }: { kind: string }) {
             description={
               isRemote
                 ? tr({
-                    zh: "检查已配置网关的连通性与认证状态。",
+                    zh: "",
                     en: "Check connectivity and authentication for the configured gateway.",
                   })
                 : isGrok
                   ? tr({
-                      zh: "检测后端环境中的 Grok CLI。模型和推理强度可留空使用 CLI 默认值，或手动填写。",
+                      zh: "检测后端环境中的 Grok CLI。模型和推理强度可手动填写，留空使用 CLI 默认值。",
                       en: "Detect Grok CLI in the backend environment. Leave model and reasoning effort blank for CLI defaults, or enter them manually.",
                     })
                   : tr({
-                      zh: "供应商会不定期增删模型与推理档位——随时点同步即可重新拉取最新列表。",
+                      zh: "同步可更新模型和推理强度列表。",
                       en: "Vendors add and retire models and effort levels over time — sync any time to re-pull the latest lists.",
                     })
             }
@@ -528,7 +528,7 @@ export function SubagentSettingsEditor({ kind }: { kind: string }) {
               description={
                 isGrok
                   ? tr({
-                      zh: "不预设模型列表；请填写当前 Grok CLI 支持的模型名。同步仅重新检测 CLI。",
+                      zh: "请填写本机 Grok CLI 支持的模型名。同步仅重新检测 CLI。",
                       en: "No model catalog is assumed. Enter a model supported by your Grok CLI; sync only detects the CLI again.",
                     })
                   : options.synced_at
@@ -537,11 +537,11 @@ export function SubagentSettingsEditor({ kind }: { kind: string }) {
                       })
                     : isRemote
                       ? tr({
-                          zh: "远程网关当前不提供模型枚举；可以留空使用网关默认值，或手动填写模型名。",
+                          zh: "网关不提供模型列表。可使用默认模型或手动输入名称。",
                           en: "The remote gateway does not currently enumerate models here; use its default or enter a model name manually.",
                         })
                       : tr({
-                          zh: "该 CLI 无可枚举的模型接口，下方为常用别名，可自定义任意模型名。",
+                          zh: "此 CLI 不提供模型列表。可选择常用别名，也可输入模型名。",
                           en: "This CLI has no model-list API; below are the common aliases, and any model name is accepted.",
                         })
               }
@@ -571,7 +571,7 @@ export function SubagentSettingsEditor({ kind }: { kind: string }) {
             <SettingSection
               title={tr({ zh: "远程网关", en: "Remote gateway" })}
               description={tr({
-                zh: "密钥只从环境变量读取；这里仅保存变量名，不保存密钥值。",
+                zh: "只保存环境变量名。访问令牌从该变量读取。",
                 en: "The bearer is read only from the environment; this stores the variable name, never the secret.",
               })}
             >
@@ -604,9 +604,9 @@ export function SubagentSettingsEditor({ kind }: { kind: string }) {
                 }
               />
               <SettingRow
-                title={tr({ zh: "配置 profile", en: "Profile label" })}
+                title={tr({ zh: "配置名称", en: "Profile label" })}
                 description={tr({
-                  zh: "仅作部署标识，不会把密钥写入设置。",
+                  zh: "",
                   en: "Informational deployment label; it never stores a key.",
                 })}
                 control={
@@ -647,14 +647,14 @@ export function SubagentSettingsEditor({ kind }: { kind: string }) {
           <SettingSection
             title={tr({ zh: "模型", en: "Model" })}
             description={tr({
-              zh: "DeepTutor 调用该智能体时使用的模型与推理强度。",
+              zh: "",
               en: "The model and reasoning effort DeepTutor consults this agent with.",
             })}
           >
             <SettingRow
               title={tr({ zh: "启用", en: "Enabled" })}
               description={tr({
-                zh: "关闭后，DeepTutor 不会在对话中调用该智能体。",
+                zh: "关闭后，对话中将不再调用此智能体。",
                 en: "When off, DeepTutor won't consult this agent in chat.",
               })}
               control={
@@ -767,7 +767,7 @@ export function SubagentSettingsEditor({ kind }: { kind: string }) {
               description={`${tr(
                 SYSTEM_PROMPT_HINT[kind] ?? SYSTEM_PROMPT_HINT.claude_code,
               )} ${tr({
-                zh: "留空则使用 DeepTutor 的默认委派提示。",
+                zh: "留空使用 DeepTutor 的默认委派指令。",
                 en: "Blank uses DeepTutor's default delegate instruction.",
               })}`}
             >
@@ -777,7 +777,7 @@ export function SubagentSettingsEditor({ kind }: { kind: string }) {
                   className={`${inputClass} min-h-[96px] resize-y leading-relaxed`}
                   disabled={busy}
                   placeholder={tr({
-                    zh: "（留空使用默认委派提示）",
+                    zh: "留空使用默认指令",
                     en: "(blank uses the default delegate instruction)",
                   })}
                   value={config.system_prompt ?? ""}
@@ -793,7 +793,7 @@ export function SubagentSettingsEditor({ kind }: { kind: string }) {
           <SettingSection
             title={tr({ zh: "运行参数", en: "Run parameters" })}
             description={tr({
-              zh: "DeepTutor 无人值守地驱动该智能体——默认值确保它不会卡在等待确认上。",
+              zh: "智能体在后台运行，无法回应交互式确认。",
               en: "DeepTutor drives the agent unattended — the defaults ensure it never stalls waiting for an approval prompt.",
             })}
           >
@@ -803,11 +803,11 @@ export function SubagentSettingsEditor({ kind }: { kind: string }) {
                 description={
                   isGrok
                     ? tr({
-                        zh: "默认 dontAsk 会拒绝需审批的操作。其它模式遵循 Grok CLI 权限规则；无人值守运行无法回答交互审批。",
+                        zh: "默认的 dontAsk 会拒绝需要批准的操作。其他模式遵循 Grok CLI 权限；若要求交互确认，后台任务无法回应。",
                         en: "The default dontAsk mode denies operations that need approval. Other modes follow Grok CLI permissions; unattended runs cannot answer interactive prompts.",
                       })
                     : tr({
-                        zh: "非「绕过权限」的模式可能让无人值守的运行卡住等待确认。",
+                        zh: "后台运行时，其他权限模式可能停下来等待确认。",
                         en: "Modes other than bypass may stall an unattended run waiting for a prompt.",
                       })
                 }
@@ -838,7 +838,7 @@ export function SubagentSettingsEditor({ kind }: { kind: string }) {
               <SettingRow
                 title={tr({ zh: "自动批准", en: "Auto-approve" })}
                 description={tr({
-                  zh: "自动批准该智能体的权限请求。关闭后请求将被拒绝——无人值守运行无法交互确认。",
+                  zh: "开启后自动批准权限请求，关闭后自动拒绝。",
                   en: "Approve the agent's permission asks automatically. When off they are rejected — an unattended run can't confirm interactively.",
                 })}
                 control={
@@ -855,7 +855,7 @@ export function SubagentSettingsEditor({ kind }: { kind: string }) {
               <SettingRow
                 title={tr({ zh: "思考过程", en: "Thinking" })}
                 description={tr({
-                  zh: "流式展示模型的思考过程（--thinking）。",
+                  zh: "实时显示思考过程（--thinking）。",
                   en: "Stream the model's thinking (--thinking).",
                 })}
                 control={
@@ -890,7 +890,7 @@ export function SubagentSettingsEditor({ kind }: { kind: string }) {
                 <SettingRow
                   title={tr({ zh: "审批策略", en: "Approval policy" })}
                   description={tr({
-                    zh: "非「从不询问」可能让无人值守的运行卡住。",
+                    zh: "选择其他策略时，后台任务可能停下来等待确认。",
                     en: "Anything but never may stall an unattended run.",
                   })}
                   control={
@@ -911,7 +911,7 @@ export function SubagentSettingsEditor({ kind }: { kind: string }) {
                 <SettingRow
                   title={tr({ zh: "命令联网", en: "Command network access" })}
                   description={tr({
-                    zh: "允许模型运行的 shell 命令访问网络（工作目录可写模式默认离线）。内置 web search 不受影响。",
+                    zh: "允许 shell 命令联网。workspace-write 默认离线，内置搜索不受此项影响。",
                     en: "Let the model's shell commands reach the network (workspace-write is offline by default). The built-in web search is unaffected.",
                   })}
                   control={
@@ -925,7 +925,7 @@ export function SubagentSettingsEditor({ kind }: { kind: string }) {
                 <SettingRow
                   title={tr({ zh: "临时会话", en: "Ephemeral session" })}
                   description={tr({
-                    zh: "不在 ~/.codex/sessions 下持久化本次会话。",
+                    zh: "会话不会保存到 ~/.codex/sessions。",
                     en: "Don't persist the session under ~/.codex/sessions.",
                   })}
                   control={
@@ -943,7 +943,7 @@ export function SubagentSettingsEditor({ kind }: { kind: string }) {
               <SettingRow
                 title={tr({ zh: "转发图片", en: "Forward images" })}
                 description={tr({
-                  zh: "允许 DeepTutor 把本轮对话中的图片附件转发给该智能体。",
+                  zh: "将当前消息的图片附件发给此智能体。",
                   en: "Let DeepTutor forward image attachments from the chat turn to this agent.",
                 })}
                 control={

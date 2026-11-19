@@ -25,7 +25,7 @@ export default function AgentSetupHelp() {
   return (
     <>
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border)]/50 py-4">
-        <p className="text-[13px] leading-relaxed text-[var(--muted-foreground)]">
+        <p className="text-[13px] leading-relaxed text-[var(--muted-foreground)] empty:hidden">
           {t("settings.agentSetup.description")}
         </p>
         <button

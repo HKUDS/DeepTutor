@@ -195,20 +195,20 @@ export default function DataMigrationSettingsSection() {
       <p className="text-sm leading-relaxed text-[var(--muted-foreground)]">
         {text(
           'Discover stored learning data, move it with its related conversations, or download an archive. Verified recovery copies are retained after migration.',
-          '查找已有学习数据，将资料和关联对话一并迁移，或下载备份。迁移后会保留经过校验的恢复副本。'
+          '可迁移学习资料和关联对话，也可下载备份。迁移后保留已校验的恢复副本。'
         )}
       </p>
       <p className="text-sm leading-relaxed text-[var(--muted-foreground)]">
         {text(
           'Learning data moves as a complete feature bundle. Preview includes related sources and conversations. Choose a destination with no existing data for these features.',
-          '学习数据按功能整体迁移，预览会列出关联资料和对话。目标工作区中对应功能应为空，以免覆盖已有学习记录。'
+          '按功能整体迁移。预览可查看关联资料和对话，请选择尚无该功能数据的目标工作区。'
         )}
       </p>
       {selected.some(key => key.startsWith('historical_')) ? (
         <p className="text-sm text-[var(--muted-foreground)]">
           {text(
             'Historical data is retained as an archive inside the destination workspace. It is not automatically merged into current learning records.',
-            '历史数据将作为档案保存在目标工作区内，不会自动合并到当前学习记录。'
+            '历史数据在目标工作区单独归档，不会自动并入现有学习记录。'
           )}
         </p>
       ) : null}
@@ -336,7 +336,7 @@ export default function DataMigrationSettingsSection() {
               <p className="text-xs text-[var(--muted-foreground)]">
                 {text(
                   'Related source data included to preserve references',
-                  '为保留引用，额外包含关联来源数据'
+                  '为保留引用而一并迁移的资料'
                 )}
                 : {preview.dependencies.map(label).join('、')}
               </p>
@@ -361,7 +361,7 @@ export default function DataMigrationSettingsSection() {
         <p role="status" className="text-sm">
           {text(
             'Processing. You can return to this page to view the result.',
-            '正在处理。可以稍后回到此页查看结果。'
+            '正在处理，可稍后返回查看结果。'
           )}
         </p>
       ) : null}

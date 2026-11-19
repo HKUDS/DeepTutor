@@ -167,7 +167,7 @@ export default function SettingsOverview() {
           >
             <div>
               <div className="text-[14px] font-medium">{item.title}</div>
-              <p className="mt-1 text-[13px] leading-relaxed text-[var(--muted-foreground)]">
+              <p className="mt-1 text-[13px] leading-relaxed text-[var(--muted-foreground)] empty:hidden">
                 {item.description}
               </p>
             </div>
@@ -187,7 +187,7 @@ export default function SettingsOverview() {
           <Link key={item.href} href={item.href} className="flex items-center justify-between gap-5 border-b border-[var(--border)]/50 py-4 last:border-0 rounded-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--ring)]">
             <div>
               <div className="text-[14px] font-medium">{item.title}</div>
-              <p className="mt-1 text-[13px] text-[var(--muted-foreground)]">{item.description}</p>
+              <p className="mt-1 text-[13px] text-[var(--muted-foreground)] empty:hidden">{item.description}</p>
             </div>
             <ArrowRight size={17} className="shrink-0 text-[var(--muted-foreground)]" />
           </Link>
