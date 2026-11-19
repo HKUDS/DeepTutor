@@ -204,6 +204,83 @@ deeptutor provider login openai-codex
 OpenAI Codex uses DeepTutor's own OAuth credentials; the external agent's login
 is not automatically reused. Login does not select a model.
 
+### Local Rapid-MLX on Apple Silicon
+
+[Rapid-MLX](https://github.com/raullenchai/Rapid-MLX) serves OpenAI-compatible
+chat and embeddings on macOS with an Apple Silicon (M-series) chip. Install
+it in a separate Python environment with `pip install rapid-mlx`, then start
+the models you want to use:
+
+```bash
+rapid-mlx serve qwen3.5-4b-4bit --embedding-model embeddinggemma-2-4bit
+```
+
+The first start may download the models. If a server is already running, reuse
+it. Chat-only use can omit `--embedding-model embeddinggemma-2-4bit`.
+
+Use DeepTutor's existing **vLLM/Local** LLM provider (`vllm`) and
+**vLLM / LM Studio** embedding provider (`vllm`). These select the existing
+OpenAI-compatible adapters; no Rapid-MLX-specific provider is needed. In
+**Settings → Models**, add and select profiles with these values, or save
+the following as `rapid-mlx-setup.json` for `config apply`:
+
+```json
+{
+  "llm": {
+    "provider": "vllm",
+    "model": "mlx-community/Qwen3.5-4B-MLX-4bit",
+    "base_url": "http://127.0.0.1:8000/v1",
+    "api_format": "openai_chat"
+  },
+  "embedding": {
+    "provider": "vllm",
+    "model": "embeddinggemma-2-4bit",
+    "base_url": "http://127.0.0.1:8000/v1/embeddings",
+    "dimension": 768
+  }
+}
+```
+
+Rapid-MLX requires no API key for this local setup, so omit `api_key_env` and
+leave the UI key fields empty. The chat Base URL ends in `/v1`; the embedding
+Base URL must be the **full `/v1/embeddings` endpoint**. The embedding adapter
+also accepts `custom` with that full URL. Use the dimension returned by your
+embedding model (768 for the model above), and rebuild existing KB indexes
+when changing their embedding model or dimension.
+
+DeepTutor discovers local chat models through `GET /v1/models`. Select the
+chat model ID returned by that server; the list may also include embedding
+and reranker models, which should not be selected for chat. From Docker,
+replace `127.0.0.1` with the reachable host address as described in
+[Host LLM providers](CONTAINERIZATION.md#host-llm-providers-ollama--lm-studio--llamacpp--vllm--lemonade).
+
+With the same `DEEPTUTOR_HOME` and source environment from the steps above:
+
+```bash
+deeptutor config apply rapid-mlx-setup.json --check
+deeptutor config apply rapid-mlx-setup.json
+deeptutor run chat "Reply with a short greeting." --format json
+```
+
+Verify knowledge-base ingestion and retrieval as well as chat. Save a small
+UTF-8 file named `rapid-mlx-notes.txt` containing:
+
+```text
+The Cedar Observatory opens at 09:17 every Tuesday. Its telescope is named Marigold.
+```
+
+```bash
+deeptutor kb create rapid-mlx-notes --doc rapid-mlx-notes.txt
+deeptutor kb search rapid-mlx-notes "When does the Cedar Observatory open?" --format json
+deeptutor run chat "Use the knowledge base: when does the Cedar Observatory open, and what is its telescope called?" --kb rapid-mlx-notes --format json
+```
+
+Check that creation succeeds, search returns the note, and the completed chat
+answer contains Tuesday at 09:17 and Marigold. These commands use the default
+LlamaIndex pipeline. Its optional reranker loads a local cross-encoder; it
+does not connect to Rapid-MLX's `/v1/rerank` endpoint. Leave reranking disabled
+for this setup.
+
 ## 5. Verify and start
 
 ```bash
