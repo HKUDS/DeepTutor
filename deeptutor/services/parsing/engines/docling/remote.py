@@ -69,6 +69,34 @@ def parse_remote(
     report(f"Docling server: wrote {stem}.md")
 
 
+def remote_version(config: DoclingConfig) -> str:
+    """Bind cache reuse to the actual server build, not the local package floor."""
+    try:
+        with httpx.Client(timeout=_HEALTH_TIMEOUT_SECONDS) as client:
+            response = client.get(
+                config.api_base_url.rstrip("/") + _VERSION_ENDPOINT, headers=_auth_headers(config)
+            )
+            response.raise_for_status()
+            value = response.json()
+        if not isinstance(value, dict) or not any(
+            value.get(key) for key in ("docling", "docling-serve", "version")
+        ):
+            raise ValueError("missing server version")
+        # Docling Serve and its converter can be upgraded independently.
+        return json.dumps(
+            {
+                key: str(value[key])
+                for key in ("docling", "docling-serve", "docling-core", "version")
+                if value.get(key)
+            },
+            sort_keys=True,
+        )
+    except (httpx.HTTPError, ValueError) as exc:
+        raise ParserError(
+            "Cannot verify Docling server version; check its /version endpoint before reusing cached parses."
+        ) from exc
+
+
 def verify_remote(
     config: DoclingConfig, timeout: float = _HEALTH_TIMEOUT_SECONDS
 ) -> tuple[bool, str]:
@@ -99,6 +127,9 @@ def _convert_file(source_path: Path, base_url: str, config: DoclingConfig) -> st
         "to_formats": "md",
         "do_ocr": "true" if config.do_ocr else "false",
         "do_table_structure": "true" if config.do_table_structure else "false",
+        "do_formula_enrichment": "true" if config.do_formula_enrichment else "false",
+        "do_picture_classification": "true" if config.do_picture_classification else "false",
+        "do_picture_description": "true" if config.do_picture_description else "false",
     }
     with source_path.open("rb") as source:
         files = {"files": (source_path.name, source, "application/octet-stream")}

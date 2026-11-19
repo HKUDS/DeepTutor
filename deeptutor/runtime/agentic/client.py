@@ -187,12 +187,38 @@ def _build_openai_client(
     )
     if config.binding == "azure_openai" or (config.binding == "openai" and config.api_version):
         sdk_kwargs.pop("base_url", None)
-        return AsyncAzureOpenAI(
-            azure_endpoint=config.base_url,
-            api_version=config.api_version,
-            **sdk_kwargs,
+        return _sanitize_chat_client(
+            AsyncAzureOpenAI(
+                azure_endpoint=config.base_url,
+                api_version=config.api_version,
+                **sdk_kwargs,
+            )
         )
-    return AsyncOpenAI(**sdk_kwargs)
+    return _sanitize_chat_client(AsyncOpenAI(**sdk_kwargs))
+
+
+def _sanitize_chat_client(client: Any) -> Any:
+    """Project internal replay state before a raw SDK request crosses the wire.
+
+    Agent loops call the SDK directly, bypassing the services provider's
+    request builder. Reuse its projection so strict compatible endpoints do
+    not receive private fields, while thinking models retain their reasoning.
+    Native/Responses adapters return above and keep their own replay format.
+    """
+    create = client.chat.completions.create
+
+    async def create_chat_completion(**kwargs: Any) -> Any:
+        from deeptutor.services.llm.provider_core.openai_compat_provider import (
+            OpenAICompatProvider,
+        )
+
+        request = dict(kwargs)
+        if "messages" in request:
+            request["messages"] = OpenAICompatProvider._sanitize_messages(request["messages"])
+        return await create(**request)
+
+    client.chat.completions.create = create_chat_completion
+    return client
 
 
 class _KeyRotatingCompletions:
@@ -542,29 +568,43 @@ class _ProviderOpenAIStream:
         self._extra_kwargs = extra_kwargs
         self._queue: asyncio.Queue[Any] | None = None
         self._task: asyncio.Task[None] | None = None
+        self._closed = False
         self._emitted_content = False
         self._emitted_reasoning = False
 
     def __aiter__(self) -> "_ProviderOpenAIStream":
-        if self._queue is None:
+        if self._queue is None and not self._closed:
             self._queue = asyncio.Queue()
             self._task = asyncio.create_task(self._run())
         return self
 
     async def __anext__(self) -> Any:
+        if self._closed:
+            raise StopAsyncIteration
         if self._queue is None:
             self.__aiter__()
         assert self._queue is not None
         item = await self._queue.get()
-        if item is None:
+        if self._closed or item is None:
+            self._closed = True
+            # Keep the terminal marker available to other pending readers.
+            self._queue.put_nowait(None)
             raise StopAsyncIteration
         if isinstance(item, Exception):
+            self._closed = True
+            self._queue.put_nowait(None)
             raise item
         return item
 
     async def close(self) -> None:
+        already_closed = self._closed
+        self._closed = True
+        if self._queue is not None:
+            # Cancellation before _run starts cannot execute its finally block.
+            self._queue.put_nowait(None)
         if self._task and not self._task.done():
-            self._task.cancel()
+            if not already_closed:
+                self._task.cancel()
             await asyncio.gather(self._task, return_exceptions=True)
 
     def _raise_for_error_response(self, response: Any) -> None:

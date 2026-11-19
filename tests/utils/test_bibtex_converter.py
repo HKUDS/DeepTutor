@@ -122,3 +122,37 @@ def test_bibtex_to_markdown_formats_jr_and_braced_author_names() -> None:
     result = bibtex_to_markdown(text)
 
     assert "**Authors:** Martin Luther King Jr., Food and Agriculture Organization" in result
+
+
+def test_bibtex_to_markdown_preserves_spaces_in_concatenated_values() -> None:
+    text = """
+    @article{joined,
+      title = "Attention " # {Is All } # "You Need",
+      author = "Doe, " # {Jane and } # "Smith, John",
+      abstract = {First sentence.} # " " # {Second sentence.},
+      year = 20 # 26
+    }
+    """
+
+    result = bibtex_to_markdown(text)
+
+    assert "## 1. Attention Is All You Need" in result
+    assert "**Authors:** Jane Doe, John Smith" in result
+    assert "**Abstract:** First sentence. Second sentence." in result
+    assert "**Year:** 2026" in result
+
+
+def test_bibtex_to_markdown_does_not_insert_spaces_between_joined_values() -> None:
+    text = """
+    @article{joined,
+      title = "Sub" # {word},
+      doi = "10.1000/" # "example",
+      year = 20 # 26
+    }
+    """
+
+    result = bibtex_to_markdown(text)
+
+    assert "## 1. Subword" in result
+    assert "**DOI:** 10.1000/example" in result
+    assert "**Year:** 2026" in result

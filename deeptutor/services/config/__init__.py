@@ -78,6 +78,13 @@ __all__ = [
     "search_missing_credential",
     "search_fallback_candidates",
     "supported_search_providers_hint",
+    # Fetch backends (web_fetch)
+    "FetchProviderSpec",
+    "FETCH_PROVIDERS",
+    "SUPPORTED_FETCH_PROVIDERS",
+    "DEFAULT_FETCH_PROVIDER",
+    "fetch_provider_spec",
+    "supported_fetch_providers_hint",
     # From knowledge_base_config.py
     "KnowledgeBaseConfigService",
     "get_kb_config_service",
@@ -132,6 +139,12 @@ def __getattr__(name: str):
         "search_provider_spec",
         "search_provider_state",
         "supported_search_providers_hint",
+        "FetchProviderSpec",
+        "FETCH_PROVIDERS",
+        "SUPPORTED_FETCH_PROVIDERS",
+        "DEFAULT_FETCH_PROVIDER",
+        "fetch_provider_spec",
+        "supported_fetch_providers_hint",
     }:
         provider_runtime = importlib.import_module(f"{__name__}.provider_runtime")
 

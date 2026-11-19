@@ -617,12 +617,19 @@ def prune_index_cache() -> int:
 
 
 def retrieve_nodes(
-    storage_dir: Path, query: str, *, top_k: int = 5, document_keys: list[str] | None = None
+    storage_dir: Path,
+    query: str,
+    *,
+    top_k: int = 5,
+    document_keys: list[str] | None = None,
+    raw_root: Path | None = None,
 ) -> list[Any]:
     index = _cached_index(Path(storage_dir))
     if document_keys is None:
         return retrievers.retrieve_nodes(index, Path(storage_dir), query, top_k=top_k)
-    return retrievers.retrieve_scoped_nodes(index, query, document_keys, top_k=top_k)
+    return retrievers.retrieve_scoped_nodes(
+        index, query, document_keys, top_k=top_k, raw_root=raw_root
+    )
 
 
 def delete_kb_dir(kb_dir: Path) -> bool:

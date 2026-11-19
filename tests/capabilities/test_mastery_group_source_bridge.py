@@ -95,7 +95,7 @@ def test_all_leaf_sources_validate_before_any_attempt(service, monkeypatch):
     service.register_question("p", group())
     calls = []
 
-    def validate(_store, _progress, kp_id, snapshot):
+    def validate(_store, _progress, kp_id, snapshot, **_flags):
         calls.append(kp_id)
         assert snapshot["verified"]
         if kp_id == "two":
@@ -118,7 +118,7 @@ def test_verified_leaves_grade_independently_and_keep_private_provenance(service
     )
     verified = []
 
-    def validate(_store, _progress, kp_id, snapshot):
+    def validate(_store, _progress, kp_id, snapshot, **_flags):
         assert snapshot["objective_id"] == kp_id
         verified.append(kp_id)
 

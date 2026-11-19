@@ -5,6 +5,7 @@ import { supportsSubmissionReplacement } from "@/lib/session-api";
 import { activeWorkspaceId } from "@/lib/workspace-scope";
 import {
   clearFailedSubmission,
+  markFailedSubmissionNoLlmAccess,
   moveFailedSubmissions,
   readFailedSubmissions,
   serverContainsFailedSubmission,
@@ -34,10 +35,11 @@ import {
   resolveResponseLanguage,
   writeStoredActiveSessionId,
 } from "@/context/app-shell-storage";
-import type {
-  StreamEvent,
-  ChatMessage,
-  LLMSelection,
+import {
+  NO_LLM_ACCESS,
+  type StreamEvent,
+  type ChatMessage,
+  type LLMSelection,
 } from "@/features/chat/model/protocol";
 import { UnifiedTurnClient } from "@/features/chat/transport/UnifiedTurnClient";
 import { buildStartTurnInput } from "@/features/chat/controllers/buildStartTurnInput";
@@ -84,6 +86,15 @@ import { reconcileTurnIds } from "@/lib/turn-reconcile";
 import { decideFailedTurnReplay, isFailedTurnVisible } from "@/lib/chat-resend";
 import { shouldAppendEventContent } from "@/lib/stream";
 import { hasPendingAskUserInMessages, pendingAskUserKeyInMessages } from "@/lib/ask-user-state";
+import {
+  dropUnvalidatedReasoningEffort,
+  normalizeReasoningEffort,
+} from "@/lib/reasoning-effort";
+import {
+  readLastKnownLLMOptions,
+  sameLLMSelection,
+  type LLMOption,
+} from "@/lib/llm-options";
 import { notify } from "@/lib/notifications";
 import { forwardReaderAction } from "@/lib/reading-reader-action";
 import {
@@ -211,6 +222,8 @@ export interface ChatState {
   /** Stable product surface; per-turn capability selection is orthogonal. */
   workspaceMode: WorkspaceMode | null;
   knowledgeBases: string[];
+  /** A saved or explicit choice, including an explicit empty selection. */
+  knowledgeBasesInitialized: boolean;
   llmSelection: LLMSelection | null;
   /** Persistent mastery state associated with this conversation. */
   masteryPathId: string | null;
@@ -255,10 +268,14 @@ export interface ChatState {
    *  accepted (#1594). Drives the composer-adjacent error banner; the
    *  error must not render as an assistant reply. */
   submissionFailed: boolean;
+  submissionNoLlmAccess: boolean;
   /** The text was recovered without its attachments or other request context. */
   submissionNeedsReview: boolean;
   /** No browser storage accepted even the text. Copy before leaving this tab. */
   submissionNotSaved: boolean;
+  /** The server's own rejection text for the flagged submission, when it
+   *  provided one (#2637). Falls back to the transport copy in the banner. */
+  submissionErrorMessage: string;
   /** Messages sent while a turn ran, oldest first. */
   queuedMessages: QueuedMessage[];
 }
@@ -380,9 +397,13 @@ export interface MessageItem {
   /** This submission never reached the server (#1594). Rendered with an
    *  "unsent" marker; its requestSnapshot drives the retry. */
   failedSubmission?: boolean;
+  failedSubmissionNoLlmAccess?: boolean;
   failedSubmissionNeedsReview?: boolean;
   failedSubmissionNotSaved?: boolean;
   failedSubmissionId?: string;
+  /** The server's own rejection text for this submission (start_turn_rejected
+   *  carries a reason; the banner renders it instead of a connection claim). */
+  failedSubmissionMessage?: string;
   /** A backend failure with a saved user row and no assistant reply (#1570). */
   orphanedFailedTurn?: OrphanedFailedTurn;
 }
@@ -440,6 +461,7 @@ type Action =
   | { type: "SET_TOOLS"; tools: string[] }
   | { type: "SET_CAPABILITY"; cap: string | null }
   | { type: "SET_KB"; kbs: string[] }
+  | { type: "INITIALIZE_KB"; key: string; workspaceId: string | null; kbs: string[] }
   | { type: "SET_LLM_SELECTION"; selection: LLMSelection | null }
   // ``key`` targets a specific conversation — a backend push belongs to the
   // session that produced it, which may no longer be the selected one. The
@@ -480,6 +502,7 @@ type Action =
       /** The turn never left this tab: the WebSocket could not connect, so
        *  the server never saw the user's message (#1594). */
       submissionFailed?: boolean;
+      submissionNoLlmAccess?: boolean;
     }
   | {
       type: "BIND_SERVER_SESSION";
@@ -549,6 +572,7 @@ function createSessionEntry(
     activeCapability: null,
     workspaceMode: null,
     knowledgeBases: [],
+    knowledgeBasesInitialized: sessionId !== null,
     llmSelection: null,
     masteryPathId: null,
     masterySessionMode: null,
@@ -572,6 +596,8 @@ function createSessionEntry(
     selectedBranches: {},
     lastTurnFailed: false,
     submissionFailed: false,
+    submissionErrorMessage: "",
+    submissionNoLlmAccess: false,
     submissionNeedsReview: false,
     submissionNotSaved: false,
     queuedMessages: [],
@@ -627,6 +653,7 @@ function restoredFailedMessage(
     ...(snapshot.attachments?.length ? { attachments: snapshot.attachments } : {}),
     requestSnapshot: snapshot,
     failedSubmission: true,
+    failedSubmissionNoLlmAccess: record.noLlmAccess === true,
     failedSubmissionNeedsReview: record.retryRequiresReview,
     failedSubmissionId: record.submissionId,
   };
@@ -704,6 +731,8 @@ function applySessionConfiguration(
       configuration.knowledgeBases !== undefined
         ? [...configuration.knowledgeBases]
         : session.knowledgeBases,
+    knowledgeBasesInitialized:
+      configuration.knowledgeBases !== undefined || session.knowledgeBasesInitialized,
     masteryPathId:
       configuration.masteryPathId !== undefined
         ? configuration.masteryPathId
@@ -821,7 +850,16 @@ function reduce(state: ProviderState, action: Action): ProviderState {
       return updateSelectedSession(state, (session) => ({
         ...session,
         knowledgeBases: action.kbs,
+        knowledgeBasesInitialized: true,
       }));
+    case "INITIALIZE_KB": {
+      const session = state.sessions[action.key];
+      if (!session || session.knowledgeBasesInitialized || session.sessionId ||
+          session.messages.length || session.workspaceId !== action.workspaceId) return state;
+      return { ...state, sessions: { ...state.sessions, [action.key]: {
+        ...session, knowledgeBases: action.kbs, knowledgeBasesInitialized: true,
+      } } };
+    }
     case "SET_LLM_SELECTION":
       return updateSelectedSession(state, (session) => ({
         ...session,
@@ -1229,6 +1267,13 @@ function reduce(state: ProviderState, action: Action): ProviderState {
           messages[messages.length - 1] = {
             ...candidate,
             failedSubmission: true,
+            // Admission rejections carry the server's own explanation
+            // (#2637): the banner shows it instead of the generic
+            // connection copy, which is for transport failures only.
+            ...(action.errorMessage
+              ? { failedSubmissionMessage: action.errorMessage }
+              : {}),
+            failedSubmissionNoLlmAccess: action.submissionNoLlmAccess,
           };
           return {
             ...state,
@@ -1388,6 +1433,7 @@ function reduce(state: ProviderState, action: Action): ProviderState {
                 ? action.workspaceMode
                 : existing.workspaceMode,
             knowledgeBases: action.knowledgeBases ?? existing.knowledgeBases,
+            knowledgeBasesInitialized: true,
             llmSelection:
               action.llmSelection !== undefined
                 ? action.llmSelection
@@ -1714,6 +1760,7 @@ interface ChatContextValue {
   setTools: (tools: string[]) => void;
   setCapability: (cap: string | null) => void;
   setKBs: (kbs: string[]) => void;
+  initializeKBs: (key: string, workspaceId: string | null, kbs: string[]) => void;
   setLLMSelection: (selection: LLMSelection | null) => void;
   setMasteryPathId: (masteryPathId: string | null) => void;
   /** What this mastery conversation is doing — see lib/mastery-mode. */
@@ -1859,15 +1906,36 @@ function asStringArray(value: unknown): string[] {
     : [];
 }
 
-function asLLMSelection(value: unknown): LLMSelection | null {
+export function asLLMSelection(value: unknown): LLMSelection | null {
   const record = asRecord(value);
   const profileId =
     typeof record?.profile_id === "string" ? record.profile_id.trim() : "";
   const modelId =
     typeof record?.model_id === "string" ? record.model_id.trim() : "";
-  return profileId && modelId
-    ? { profile_id: profileId, model_id: modelId }
-    : null;
+  if (!profileId || !modelId) return null;
+  // A persisted reasoning-effort override (#641) survives the round-trip;
+  // illegal values are dropped here rather than sent to the provider.
+  const reasoningEffort = normalizeReasoningEffort(record?.reasoning_effort);
+  return reasoningEffort
+    ? { profile_id: profileId, model_id: modelId, reasoning_effort: reasoningEffort }
+    : { profile_id: profileId, model_id: modelId };
+}
+
+/**
+ * #641: an override is only forwarded when the selected model supports it.
+ * The model option is resolved against the last-known option catalog
+ * (synchronous — never blocks or fires a request); `dropUnvalidated…`
+ * omits the override when the option is unresolved, so the turn falls back
+ * to the configured default instead of erroring at the provider.
+ */
+export function sanitizeOutgoingLLMSelection(
+  selection: LLMSelection | null,
+  options: LLMOption[] = readLastKnownLLMOptions(),
+): LLMSelection | null {
+  if (!selection?.reasoning_effort) return selection;
+  const option =
+    options.find((candidate) => sameLLMSelection(candidate, selection)) ?? null;
+  return dropUnvalidatedReasoningEffort(selection, option);
 }
 
 function normalizeSelectedBranches(value: unknown): Record<string, number> {
@@ -2413,14 +2481,20 @@ export function ChatStateAdapterProvider({
       const reason = terminalError
         ? String((event.metadata as { reason?: string } | undefined)?.reason || "")
         : "";
+      const submissionNoLlmAccess = reason === NO_LLM_ACCESS;
+      const pendingSubmission = pendingSubmissionIdsRef.current.get(effectiveKey);
       const submissionRejected = new Set([
-        "start_turn_rejected", "invalid_command", "invalid_json",
+        "start_turn_rejected", NO_LLM_ACCESS, "invalid_command", "invalid_json",
         "unsupported_protocol_version", "unknown_message_type",
       ]).has(reason);
       // An admission rejection is not an assistant reply. Keep the
       // placeholder empty so STREAM_END can flag the optimistic user row.
       if (!submissionRejected) {
         dispatch({ type: "STREAM_EVENT", key: effectiveKey, event });
+      } else if (submissionNoLlmAccess && pendingSubmission) {
+        const { storageKey, sourceStorageKey, submissionId } = pendingSubmission;
+        markFailedSubmissionNoLlmAccess(storageKey, submissionId);
+        if (sourceStorageKey) markFailedSubmissionNoLlmAccess(sourceStorageKey, submissionId);
       } else {
         notify(event.content, { tone: "error", durationMs: 10_000 });
       }
@@ -2432,7 +2506,8 @@ export function ChatStateAdapterProvider({
           reason === "regenerate_busy" ||
           reason === "regenerate_rejected" ||
           reason === "nothing_to_regenerate" ||
-          reason === "start_turn_rejected"
+          reason === "start_turn_rejected" ||
+          submissionNoLlmAccess
         ) {
           const stash =
             pendingRegenerateRef.current.get(effectiveKey) ??
@@ -2462,6 +2537,10 @@ export function ChatStateAdapterProvider({
           status: status as SessionRuntimeStatus,
           turnId: event.turn_id || null,
           submissionFailed: submissionRejected,
+          // The server's rejection text belongs on the flagged row (#2637),
+          // not only in a 10-second toast.
+          errorMessage: submissionRejected ? event.content : undefined,
+          submissionNoLlmAccess,
         });
       }
     },
@@ -3059,11 +3138,16 @@ export function ChatStateAdapterProvider({
         replaySnapshot?.enabledTools ?? session.enabledTools;
       const effectiveKnowledgeBases =
         replaySnapshot?.knowledgeBases ?? session.knowledgeBases;
-      const effectiveLLMSelection =
+      // #641: a reasoning-effort override the selected model does not
+      // support (or that cannot be validated against the option catalog)
+      // never reaches the provider — it is dropped from the outgoing
+      // llm_selection, never from the persisted conversation selection.
+      const effectiveLLMSelection = sanitizeOutgoingLLMSelection(
         exactReplay ? (replaySnapshot?.llmSelection ?? null) :
         replaySnapshot && "llmSelection" in replaySnapshot
           ? (replaySnapshot.llmSelection ?? null)
-          : session.llmSelection;
+          : session.llmSelection,
+      );
       const effectiveMasteryPathId =
         exactReplay ? (replaySnapshot?.masteryPathId ?? null) :
         replaySnapshot?.masteryPathId ?? session.masteryPathId;
@@ -3616,8 +3700,10 @@ export function ChatStateAdapterProvider({
         ? {
             replay_snapshot: true,
             // The failed turn's context is replayed, but the model and the
-            // reply language are the ones selected right now (#2105).
-            llm_selection: session.llmSelection ?? null,
+            // reply language are the ones selected right now (#2105). The
+            // reasoning-effort override is validated like a live send
+            // (#641): unsupported values are omitted, not forwarded.
+            llm_selection: sanitizeOutgoingLLMSelection(session.llmSelection),
             language: session.replyLanguageOverride ?? readStoredResponseLanguage(),
           }
         : { language: readStoredResponseLanguage() },
@@ -3766,6 +3852,9 @@ export function ChatStateAdapterProvider({
 
   const derivedState = useMemo<ChatState>(() => {
     const current = ensureSelectedSession(state);
+    const tail = current.messages.at(-1);
+    const submissionNoLlmAccess = tail?.failedSubmission === true &&
+      tail.failedSubmissionNoLlmAccess === true;
     return {
       sessionKey: current.key,
       boundFromKey: current.boundFromKey ?? null,
@@ -3775,6 +3864,7 @@ export function ChatStateAdapterProvider({
       activeCapability: current.activeCapability,
       workspaceMode: current.workspaceMode,
       knowledgeBases: current.knowledgeBases,
+      knowledgeBasesInitialized: current.knowledgeBasesInitialized,
       llmSelection: current.llmSelection,
       masteryPathId: current.masteryPathId,
       masterySessionMode: current.masterySessionMode,
@@ -3799,13 +3889,13 @@ export function ChatStateAdapterProvider({
       ),
       submissionFailed: (() => {
         if (current.isStreaming) return false;
-        const tail = current.messages[current.messages.length - 1];
         return (
           (current.status === "failed" || current.status === "rejected") &&
           tail?.role === "user" &&
           tail.failedSubmission === true
         );
       })(),
+      submissionNoLlmAccess,
       submissionNeedsReview: (() => {
         const tail = current.messages[current.messages.length - 1];
         return tail?.role === "user" && tail.failedSubmissionNeedsReview === true;
@@ -3813,6 +3903,12 @@ export function ChatStateAdapterProvider({
       submissionNotSaved: (() => {
         const tail = current.messages[current.messages.length - 1];
         return tail?.role === "user" && tail.failedSubmissionNotSaved === true;
+      })(),
+      submissionErrorMessage: (() => {
+        const tail = current.messages[current.messages.length - 1];
+        return tail?.role === "user" && tail.failedSubmissionMessage
+          ? tail.failedSubmissionMessage
+          : "";
       })(),
     };
   }, [state]);
@@ -3841,6 +3937,10 @@ export function ChatStateAdapterProvider({
 
   const setKBs = useCallback((kbs: string[]) => {
     dispatch({ type: "SET_KB", kbs });
+  }, []);
+
+  const initializeKBs = useCallback((key: string, workspaceId: string | null, kbs: string[]) => {
+    dispatch({ type: "INITIALIZE_KB", key, workspaceId, kbs });
   }, []);
 
   const setLLMSelection = useCallback((selection: LLMSelection | null) => {
@@ -4277,6 +4377,7 @@ export function ChatStateAdapterProvider({
       setTools,
       setCapability,
       setKBs,
+      initializeKBs,
       setLLMSelection,
       setMasteryPathId,
       setMasterySessionMode,
@@ -4314,6 +4415,7 @@ export function ChatStateAdapterProvider({
       setTools,
       setCapability,
       setKBs,
+      initializeKBs,
       setLLMSelection,
       setMasteryPathId,
       setMasterySessionMode,

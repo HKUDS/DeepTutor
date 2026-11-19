@@ -2,6 +2,7 @@
 
 import { useSettings } from "@/features/settings/store/SettingsStore";
 import { useStagedSettings } from "@/features/settings/store/useStagedSettings";
+import Image from "next/image";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ArrowUpRight,
@@ -418,6 +419,33 @@ export default function AboutSettingsPage() {
           href="https://docs.deeptutor.info"
           icon={<ArrowUpRight className="h-4 w-4" />}
         />
+      </SettingSection>
+
+      <SettingSection title={t("Technology partner")}>
+        <p className="mb-3 pt-3.5 text-[13px] leading-relaxed text-[var(--muted-foreground)]">
+          {t("Thanks to SiliconFlow for supporting DeepTutor with model inference services.")}
+        </p>
+        <a
+          href="https://www.siliconflow.cn/"
+          target="_blank"
+          rel="noreferrer noopener"
+          className="inline-block max-w-full rounded-md focus-visible:outline-2 focus-visible:outline-offset-2"
+        >
+          <Image
+            src="/partners/powered-by-siliconflow.svg"
+            alt={t("Powered by SiliconFlow")}
+            width={199}
+            height={53}
+            className="h-auto max-w-full dark:hidden"
+          />
+          <Image
+            src="/partners/powered-by-siliconflow-dark.svg"
+            alt={t("Powered by SiliconFlow")}
+            width={199}
+            height={53}
+            className="hidden h-auto max-w-full dark:block"
+          />
+        </a>
       </SettingSection>
 
       <ConfirmDialog

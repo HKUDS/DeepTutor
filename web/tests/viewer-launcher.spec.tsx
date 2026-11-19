@@ -1,6 +1,7 @@
+import { updateRecoveryPrincipal } from "@/lib/recovery-principal";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { createRef } from "react";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import SessionViewerPanel, {
   type SessionViewerPanelHandle,
@@ -36,6 +37,7 @@ vi.mock("@/lib/session-api", async (importOriginal) => ({
 }));
 
 initI18n("en");
+beforeEach(() => { localStorage.clear(); updateRecoveryPrincipal({ enabled: false, authenticated: false }); });
 
 afterEach(() => {
   cleanup();
@@ -67,7 +69,7 @@ function renderPanel(props: Partial<SessionViewerPanelProps> = {}) {
         <SessionViewerPanel ref={ref} {...base} {...next} />
       </QuizFollowupProvider>,
     );
-  return { ref, rerender };
+  return { ref, rerender, unmount: view.unmount };
 }
 
 /** The panel slides in over two frames and is aria-hidden until it has. */
@@ -225,6 +227,53 @@ it("brings an earlier side chat back with its history and who answered it", asyn
   expect(screen.queryByRole("button", { name: /Why fork returns twice/ })).toBeNull();
 });
 
+it("restores an open side chat after a reload", async () => {
+  api.getSession.mockResolvedValue({
+    messages: [
+      { role: "user", content: "Why twice?", events: [] },
+      { role: "assistant", content: "Once in each process.", events: [] },
+    ],
+  });
+  const thread = {
+    id: "thread-1",
+    session_id: "thread-1",
+    title: "Why fork returns twice",
+    created_at: 1,
+    updated_at: 1_700_000_000,
+    message_count: 2,
+    last_message: "",
+    preferences: {
+      parent_session_id: "session-a",
+      session_kind: "selection_tutor" as const,
+      answer_by: "partner:ada",
+    },
+  };
+  const first = renderPanel({ conversation });
+  await entered();
+
+  act(() => first.ref.current!.openSideChatThread(thread));
+  expect(await within(tabBar()).findByRole("button", { name: "Ada" })).toBeVisible();
+  await waitFor(() =>
+    expect(localStorage.getItem("dt:chat:viewer-tabs:single-user:session-a")).toContain("thread-1"),
+  );
+
+  first.unmount();
+  renderPanel({ conversation });
+  await entered();
+
+  expect(await within(tabBar()).findByRole("button", { name: "Ada" })).toBeVisible();
+  await waitFor(() => expect(api.getSession).toHaveBeenCalledWith("thread-1"));
+  expect(screen.getByText("Once in each process.")).toBeVisible();
+});
+
+it("ignores corrupt persisted side-chat state", async () => {
+  localStorage.setItem("dt:chat:viewer-tabs:single-user:session-a", "{not json");
+  renderPanel({ conversation });
+  await entered();
+
+  expect(screen.queryByRole("button", { name: "Ada" })).toBeNull();
+});
+
 it("reuses the page's thread list instead of reading it again", async () => {
   renderPanel({ conversation, threads: [] });
   await entered();
@@ -233,4 +282,16 @@ it("reuses the page's thread list instead of reading it again", async () => {
   await screen.findByRole("textbox", { name: "Open URL" });
 
   expect(api.listSessionThreads).not.toHaveBeenCalled();
+});
+
+it("does not carry viewer tabs across authenticated account changes", async () => {
+  updateRecoveryPrincipal({ enabled: true, authenticated: true, user_id: "alice" });
+  const { ref } = renderPanel({ conversation });
+  await entered();
+  act(() => ref.current!.openWebTab("https://example.com/private"));
+  expect(await within(tabBar()).findByRole("button", { name: "example.com" })).toBeVisible();
+  act(() => updateRecoveryPrincipal({ enabled: true, authenticated: true, user_id: "bob" }));
+  await entered();
+  expect(within(tabBar()).queryByRole("button", { name: "example.com" })).toBeNull();
+  expect(api.getSession).not.toHaveBeenCalled();
 });

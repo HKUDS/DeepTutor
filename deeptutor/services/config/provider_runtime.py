@@ -104,6 +104,7 @@ SEARCH_PROVIDERS: dict[str, SearchProviderSpec] = {
     ),
     "serper": SearchProviderSpec(label="Serper", requires_api_key=True, soft_fallback=False),
     "serply": SearchProviderSpec(label="Serply", requires_api_key=True, soft_fallback=False),
+    "searchapi": SearchProviderSpec(label="SearchApi", requires_api_key=True, soft_fallback=False),
     "firecrawl": SearchProviderSpec(label="Firecrawl", requires_api_key=True, soft_fallback=False),
     # China-hosted engines. Doubao is the one that writes its own answer: Ark
     # exposes web search only as a tool on a Doubao model, never standalone.
@@ -120,6 +121,15 @@ SEARCH_PROVIDERS: dict[str, SearchProviderSpec] = {
     ),
     "aliyun_iqs": SearchProviderSpec(
         label="Aliyun IQS", requires_api_key=True, soft_fallback=False
+    ),
+    # DeepSeek's standalone SERP engine (``POST /v1/tools/search``) — usable
+    # with any chat LLM, unlike the model-side web_search tool mapping.
+    "deepseek": SearchProviderSpec(label="DeepSeek", requires_api_key=True, soft_fallback=False),
+    "specstream": SearchProviderSpec(
+        label="SpecStream",
+        requires_api_key=True,
+        soft_fallback=False,
+        supports_answer=True,
     ),
 }
 
@@ -138,6 +148,49 @@ def search_provider_spec(provider: str | None) -> SearchProviderSpec | None:
 def supported_search_providers_hint() -> str:
     """Human-readable provider list for error messages and CLI output."""
     return ", ".join(name for name in SEARCH_PROVIDERS if name != "none")
+
+
+@dataclass(frozen=True)
+class FetchProviderSpec:
+    """Single web-fetch-backend metadata entry.
+
+    Companion to :class:`SearchProviderSpec` for the ``web_fetch`` fetch
+    backend (issue #2448). ``local`` is the in-process httpx GET +
+    readability extractor and the default for every install; a remote
+    backend replaces the HTTP+extract step only — the scheme/SSRF gate in
+    ``deeptutor/tools/web_fetch.py`` always runs before any backend is
+    contacted, so a private URL is never handed to a third party.
+
+    The fetch registry (``deeptutor/services/fetch/providers``) derives its
+    adapter metadata from this table, mirroring how the search registry
+    derives from ``SEARCH_PROVIDERS``.
+    """
+
+    label: str
+    requires_api_key: bool = False
+    requires_base_url: bool = False
+
+
+# Insertion order is the Settings dropdown order.
+FETCH_PROVIDERS: dict[str, FetchProviderSpec] = {
+    "local": FetchProviderSpec(label="Local"),
+    "deepseek": FetchProviderSpec(label="DeepSeek Fetch", requires_api_key=True),
+}
+
+# The credential-free backend every unconfigured install keeps using.
+DEFAULT_FETCH_PROVIDER = "local"
+
+SUPPORTED_FETCH_PROVIDERS = frozenset(FETCH_PROVIDERS)
+
+
+def fetch_provider_spec(provider: str | None) -> FetchProviderSpec | None:
+    """Look up a fetch backend's spec, or ``None`` for unknown names."""
+    return FETCH_PROVIDERS.get((provider or "").strip().lower())
+
+
+def supported_fetch_providers_hint() -> str:
+    """Human-readable fetch-backend list for error messages and CLI output."""
+    return ", ".join(FETCH_PROVIDERS)
 
 
 LLM_LOCALHOST_PROVIDERS = ("ollama", "vllm")
@@ -722,6 +775,9 @@ class ResolvedSearchConfig:
     base_url: str = ""
     max_results: int = 5
     proxy: str | None = None
+    # Engine the active profile pins, consumed by providers whose API has one
+    # (Zhipu). ``None`` lets each provider use its own default.
+    search_engine: str | None = None
     unsupported_provider: bool = False
     deprecated_provider: bool = False
     missing_credentials: bool = False
@@ -1510,6 +1566,33 @@ def _resolve_search_max_results(catalog: dict[str, Any], default: int = 5) -> in
         return default
 
 
+def _resolve_search_engine(catalog: dict[str, Any]) -> str | None:
+    """Engine the active search profile pins, for providers that take one.
+
+    Mirrors :func:`_resolve_search_max_results`: the active search profile
+    wins, then ``tools.web_search`` in main.yaml. Only the value is resolved
+    here -- validating it is the provider's job, since only it knows which
+    engines its API accepts.
+    """
+    profile = get_model_catalog_service().get_active_profile(catalog, "search") or {}
+    for key in ("search_engine", "engine"):
+        raw = _as_str(profile.get(key))
+        if raw:
+            return raw
+    try:
+        settings = load_config_with_main("main.yaml")
+    except Exception:
+        return None
+    tools = settings.get("tools", {}) if isinstance(settings, dict) else {}
+    web_search = tools.get("web_search", {}) if isinstance(tools, dict) else {}
+    if isinstance(web_search, dict):
+        for key in ("search_engine", "engine"):
+            raw = _as_str(web_search.get(key))
+            if raw:
+                return raw
+    return None
+
+
 def _search_profiles(catalog: dict[str, Any]) -> list[dict[str, Any]]:
     profiles = catalog.get("services", {}).get("search", {}).get("profiles", [])
     return [
@@ -1642,6 +1725,7 @@ def resolve_search_runtime_config(
         base_url=base_url,
         max_results=max_results,
         proxy=proxy,
+        search_engine=_resolve_search_engine(loaded),
         unsupported_provider=False,
         deprecated_provider=False,
         missing_credentials=bool(missing) and not spec.soft_fallback,
@@ -1672,6 +1756,12 @@ __all__ = [
     "search_missing_credential",
     "search_fallback_candidates",
     "supported_search_providers_hint",
+    "FETCH_PROVIDERS",
+    "SUPPORTED_FETCH_PROVIDERS",
+    "DEFAULT_FETCH_PROVIDER",
+    "FetchProviderSpec",
+    "fetch_provider_spec",
+    "supported_fetch_providers_hint",
     "NANOBOT_LLM_PROVIDERS",
     "EmbeddingProviderSpec",
     "EMBEDDING_PROVIDERS",

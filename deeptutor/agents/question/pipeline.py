@@ -81,6 +81,7 @@ from deeptutor.services.config import parse_language
 from deeptutor.services.config.loader import get_capability_params
 from deeptutor.services.llm import get_llm_config, prepare_multimodal_messages
 from deeptutor.services.llm.reasoning_params import RETRY_REASONING_EFFORT
+from deeptutor.services.llm.request_compat import is_stream_options_unsupported
 from deeptutor.services.prompt import get_prompt_manager
 from deeptutor.services.prompt.language import append_language_directive
 from deeptutor.services.sandbox import exec_capability_available
@@ -1117,7 +1118,15 @@ class QuestionPipeline:
         # multiple stream chunks; recording each one would N× inflate calls.
         usage_seen = None
         try:
-            response_stream = await client.chat.completions.create(**kwargs)
+            try:
+                response_stream = await client.chat.completions.create(**kwargs)
+            except Exception as create_exc:
+                if not is_stream_options_unsupported(create_exc):
+                    raise
+                # Provider rejected ``stream_options``; retry once without it
+                # (same fallback as ``agent_loop`` / ``labeled_step``).
+                kwargs.pop("stream_options", None)
+                response_stream = await client.chat.completions.create(**kwargs)
             async for chunk in response_stream:
                 usage_frame = getattr(chunk, "usage", None)
                 if usage_frame is not None:

@@ -167,7 +167,7 @@ async def get_learning_index():
 
 
 @router.get("/source-library/{kind}")
-async def get_source_library(kind: str):
+async def get_source_library(kind: str, limit: int = 50, offset: int = 0, search: str = ""):
     """Source indexes of the request's workspace, for the topic and book pickers."""
 
     async def read():
@@ -205,19 +205,24 @@ async def get_source_library(kind: str):
             )
         return {"items": items, "unavailable_workspaces": []}
     if kind in {"books", "practice"}:
-        return await get_learning_library(kind)
+        return await get_learning_library(kind, limit=limit, offset=offset, search=search)
     if kind not in {"notebooks", "chats", "drafts"}:
         raise HTTPException(404, "Unknown source library")
     return {"items": await _workspace_rows(read), "unavailable_workspaces": []}
 
 
 @router.get("/learning-library/{kind}")
-async def get_learning_library(kind: str):
+async def get_learning_library(kind: str, limit: int = 50, offset: int = 0, search: str = ""):
     """The request's workspace library of one kind."""
     can_create = True
+    total = 0
+    if not 1 <= limit <= 200 or offset < 0 or len(search) > 500:
+        raise HTTPException(
+            422, "Use limit 1–200, a nonnegative offset, and search up to 500 characters."
+        )
 
     async def read():
-        nonlocal can_create
+        nonlocal can_create, total
         if kind == "books":
             from deeptutor.api.routers.book import list_books
 
@@ -242,14 +247,9 @@ async def get_learning_library(kind: str):
             from deeptutor.services.session import get_sqlite_session_store
 
             store = get_sqlite_session_store()
-            items = []
-            offset = 0
-            while True:
-                result = await store.list_notebook_entries(limit=200, offset=offset)
-                items.extend(result["items"])
-                offset += len(result["items"])
-                if not result["items"] or offset >= result["total"]:
-                    return items
+            result = await store.list_notebook_entries(limit=limit, offset=offset, search=search)
+            total = result["total"]
+            return result["items"]
         from deeptutor.services.session.organization import list_all_sessions_snapshot
 
         rows = await list_all_sessions_snapshot(get_session_store())
@@ -266,7 +266,21 @@ async def get_learning_library(kind: str):
     if kind not in {"books", "mastery", "reading", "materials", "practice", "watching"}:
         raise HTTPException(status_code=404, detail="Unknown learning library")
     rows = await _workspace_rows(read)
-    return {"items": rows, "unavailable_workspaces": [], "can_create": can_create}
+    return {
+        "items": rows,
+        "unavailable_workspaces": [],
+        "can_create": can_create,
+        **(
+            {
+                "total": total,
+                "offset": offset,
+                "limit": limit,
+                "has_more": offset + len(rows) < total,
+            }
+            if kind == "practice"
+            else {}
+        ),
+    }
 
 
 @router.get("/{entry_id}")

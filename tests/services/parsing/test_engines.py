@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import builtins
+import json
 from pathlib import Path
 import subprocess
 import sys
@@ -274,7 +275,10 @@ def test_mineru_cloud_readiness_needs_token() -> None:
     assert mineru_readiness(MinerUConfig(mode="cloud", api_token="tok")).ready is True
 
 
-def test_docling_signature_distinguishes_local_and_remote() -> None:
+def test_docling_signature_distinguishes_local_and_remote(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "deeptutor.services.parsing.engines.docling.remote.remote_version", lambda _: "server-test"
+    )
     parser = factory.get_parser("docling")
     from deeptutor.services.parsing.engines.docling.config import DoclingConfig
 
@@ -289,15 +293,15 @@ def test_docling_signature_distinguishes_local_and_remote() -> None:
 
 def test_docling_advertises_complete_current_upstream_formats() -> None:
     from deeptutor.services.parsing.engines.docling.formats import (
-        DOCLING_2_123_1_FORMATS,
+        DOCLING_2_148_0_FORMATS,
         MIN_DOCLING_VERSION,
         docling_supported_formats,
         docling_version_is_current,
     )
 
-    assert MIN_DOCLING_VERSION == "2.123.1"
-    assert len(DOCLING_2_123_1_FORMATS) == 74
-    assert DOCLING_2_123_1_FORMATS <= docling_supported_formats()
+    assert MIN_DOCLING_VERSION == "2.148.0"
+    assert len(DOCLING_2_148_0_FORMATS) == 88
+    assert DOCLING_2_148_0_FORMATS <= docling_supported_formats()
     assert {
         ".pdf",
         ".doc",
@@ -310,14 +314,14 @@ def test_docling_advertises_complete_current_upstream_formats() -> None:
         ".dclg.xml",
         ".tar.gz",
     } <= factory.get_parser("docling").supported_formats()
-    assert docling_version_is_current("2.123.1") is True
-    assert docling_version_is_current("2.124.0") is True
+    assert docling_version_is_current("2.148.0") is True
+    assert docling_version_is_current("2.149.0") is True
     assert docling_version_is_current("2.122.9") is False
 
 
 def test_docling_format_discovery_never_imports_the_runtime(monkeypatch) -> None:
     from deeptutor.services.parsing.engines.docling.formats import (
-        DOCLING_2_123_1_FORMATS,
+        DOCLING_2_148_0_FORMATS,
         docling_supported_formats,
     )
 
@@ -330,7 +334,7 @@ def test_docling_format_discovery_never_imports_the_runtime(monkeypatch) -> None
 
     monkeypatch.setattr(builtins, "__import__", guarded_import)
 
-    assert docling_supported_formats() == DOCLING_2_123_1_FORMATS
+    assert docling_supported_formats() == DOCLING_2_148_0_FORMATS
 
 
 def test_docling_remote_readiness_needs_no_local_package() -> None:
@@ -355,7 +359,7 @@ def test_docling_local_readiness_requires_current_package(monkeypatch) -> None:
 
     assert report.ready is False
     assert report.reason == "update_required"
-    assert "2.123.1" in report.message
+    assert "2.148.0" in report.message
 
 
 def test_docling_local_parse_runs_in_isolated_worker(tmp_path, monkeypatch) -> None:
@@ -904,10 +908,17 @@ def _install_fake_liteparse(monkeypatch, *, image_names: tuple[str, ...] = ()) -
         def __init__(self, name: str) -> None:
             self.name = name
 
+    class _FakePage:
+        def __init__(self, page_num: int, markdown: str) -> None:
+            self.page_num = page_num
+            self.markdown = markdown
+            self.text = markdown
+
     class _FakeResult:
         def __init__(self, text: str, images: list) -> None:
             self.text = text
             self.images = images
+            self.pages = [_FakePage(1, text)]
 
     class _FakeLiteParse:
         def __init__(self, **kwargs) -> None:
@@ -953,6 +964,8 @@ def test_liteparse_pins_markdown_output_and_images_dir(tmp_path, monkeypatch) ->
     markdown = (workdir / "paper.md").read_text(encoding="utf-8")
     # Bare ``![](img_p1_1.png)`` is invalid once the file lands in images/.
     assert "![](images/img_p1_1.png)" in markdown
+    content_list = json.loads((workdir / "paper_content_list.json").read_text(encoding="utf-8"))
+    assert content_list == [{"type": "text", "text": markdown, "page_idx": 0}]
     assert (workdir / "images" / "img_p1_1.png").exists()
 
 
@@ -1000,8 +1013,8 @@ def test_install_manager_spec_allowlist() -> None:
     assert ENGINE_PIP_SPECS["pymupdf4llm"] == ["pymupdf4llm>=1.28.2"]
     assert ENGINE_PIP_SPECS["liteparse"] == ["liteparse>=2.14.2"]
     assert ENGINE_PIP_SPECS["docling"] == [
-        "docling[xbrl]>=2.123.1",
-        "docling-slim[format-iwork,format-opendocument]>=2.123.1",
+        "docling[xbrl]>=2.148.0",
+        "docling-slim[format-iwork,format-opendocument]>=2.148.0",
     ]
     assert "text_only" not in ENGINE_PIP_SPECS
     assert "mineru" not in ENGINE_PIP_SPECS
@@ -1170,3 +1183,39 @@ def test_docling_models_dir_honors_cache_env(monkeypatch, tmp_path) -> None:
     models.mkdir(parents=True)
     (models / "model.bin").write_bytes(b"x")
     assert docling_engine._docling_models_ready() is True
+
+
+def test_docling_enrichments_and_server_build_change_the_cache_key(monkeypatch):
+    from deeptutor.services.parsing.engines.docling import remote
+    from deeptutor.services.parsing.engines.docling.config import DoclingConfig
+    from deeptutor.services.parsing.engines.docling.engine import DoclingParser
+
+    parser = DoclingParser()
+    base = parser.signature(DoclingConfig()).hash()
+    for key in ("do_formula_enrichment", "do_picture_classification", "do_picture_description"):
+        assert parser.signature(DoclingConfig(**{key: True})).hash() != base
+    monkeypatch.setattr(remote, "remote_version", lambda _: "server-A")
+    before = parser.signature(DoclingConfig(mode="remote")).hash()
+    monkeypatch.setattr(remote, "remote_version", lambda _: "server-B")
+    assert parser.signature(DoclingConfig(mode="remote")).hash() != before
+
+
+def test_docling_remote_version_uses_both_components_and_auth(monkeypatch):
+    from deeptutor.services.parsing.engines.docling import remote
+    from deeptutor.services.parsing.engines.docling.config import DoclingConfig
+
+    original = httpx.Client
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+        return httpx.Response(200, json={"docling-serve": "1.0", "docling": "2.148.0"})
+
+    monkeypatch.setattr(
+        remote.httpx,
+        "Client",
+        lambda **kwargs: original(transport=httpx.MockTransport(handler), **kwargs),
+    )
+    value = remote.remote_version(DoclingConfig(mode="remote", api_token="synthetic-key"))
+    assert "2.148.0" in value and "1.0" in value
+    assert requests[0].headers["X-Api-Key"] == "synthetic-key"

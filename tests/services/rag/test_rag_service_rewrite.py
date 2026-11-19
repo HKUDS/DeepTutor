@@ -149,3 +149,38 @@ async def test_search_error_path_keeps_rewrite_provenance(service_with_pipeline,
 
     assert result.get("error_type") == "index_missing"
     assert result["query_rewrite"] == outcome.to_dict()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("document_keys", [["selected.txt"], []])
+@pytest.mark.parametrize("provider", ["lightrag", "unknown_backend"])
+async def test_document_scope_fails_before_rewrite_or_retrieval(
+    service_with_pipeline, monkeypatch, document_keys, provider
+):
+    from unittest.mock import AsyncMock
+
+    from deeptutor.services.rag import query_rewrite
+
+    service, pipeline = service_with_pipeline
+    monkeypatch.setattr(service, "_resolve_provider", lambda _kb: provider)
+    monkeypatch.setattr(service, "_get_pipeline", lambda _provider: pipeline)
+    rewrite = AsyncMock(side_effect=AssertionError("must not rewrite an unsupported scoped query"))
+    monkeypatch.setattr(query_rewrite, "maybe_rewrite", rewrite)
+    result = await service.search(
+        query="q", kb_name="kb", document_keys=document_keys, rewrite=True
+    )
+    assert result["error_type"] == "document_scope_unsupported"
+    assert result["content"] == ""
+    assert result["sources"] == []
+    assert pipeline.calls == []
+    rewrite.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_declared_document_scope_is_forwarded(service_with_pipeline, monkeypatch):
+    service, pipeline = service_with_pipeline
+    pipeline.supports_document_scope = True
+    _patch_rewrite(monkeypatch, "q", None)
+    result = await service.search(query="q", kb_name="kb", document_keys=["selected.txt"])
+    assert "error_type" not in result
+    assert pipeline.calls[-1]["kwargs"]["document_keys"] == ["selected.txt"]

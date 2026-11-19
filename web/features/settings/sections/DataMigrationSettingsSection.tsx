@@ -87,6 +87,7 @@ export default function DataMigrationSettingsSection() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [historical, setHistorical] = useState(false)
+  const [conversationIds, setConversationIds] = useState('')
   const label = (key: string) => (labels[key] ? text(...labels[key]) : key)
   const statusLabel = (key: string) => ({
     preparing: text('Preparing', '准备中'), copying: text('Copying', '复制中'),
@@ -101,10 +102,11 @@ export default function DataMigrationSettingsSection() {
     target_workspace_id: target,
     features: selected,
     include_historical: historical,
+    ...(selected.includes('chat') && conversationIds.trim() ? { session_ids: conversationIds.trim().split(/[\s,]+/) } : {}),
   }
   useEffect(() => {
     setPreview(null)
-  }, [source, target, selected])
+  }, [source, target, selected, conversationIds])
   useEffect(() => {
     let alive = true
     const timer = window.setInterval(() => {
@@ -123,6 +125,7 @@ export default function DataMigrationSettingsSection() {
     let alive = true
     setDiscovery(null)
     setSelected([])
+    setConversationIds('')
     setError('')
     request<Discovery>(`/discover?source_workspace_id=${encodeURIComponent(source)}`)
       .then(value => {
@@ -232,6 +235,12 @@ export default function DataMigrationSettingsSection() {
             </select>
           </label>
         </div>
+        {selected.includes('chat') && <label className="block space-y-2 text-sm">
+          <span>{text('Conversation IDs (optional)', '指定对话 ID（可选）')}</span>
+          <input value={conversationIds} onChange={event => setConversationIds(event.target.value)}
+            className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] p-2" />
+          <p className="text-[var(--muted-foreground)]">{text('Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.', '留空选择全部对话；多个 ID 用逗号分隔。预览包含关联依赖。导出仍包含完整功能数据。')}</p>
+        </label>}
         <div className="divide-y divide-[var(--border)] rounded-xl border border-[var(--border)]">
           {!discovery ? (
             <p className="p-4 text-sm" aria-busy="true">

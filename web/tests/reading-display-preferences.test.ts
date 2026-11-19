@@ -82,6 +82,7 @@ test("keyboard zoom is handled only while the reader is active", () => {
     modifier: true,
     readerHovered: false,
     readerFocused: false,
+    editableTarget: false,
   };
   assert.equal(readerDisplayShortcut(input), null);
   assert.equal(

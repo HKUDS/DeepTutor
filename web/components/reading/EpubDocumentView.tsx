@@ -29,6 +29,15 @@ import {
 import { cleanQuote } from "@/lib/reading-selection";
 import type { JumpRequest, SelectionPayload } from "./PdfDocumentView";
 import { ReaderDisplayControls } from "./ReaderDisplayControls";
+import dynamic from "next/dynamic";
+
+import { collectLightboxImages } from "@/lib/reading-images";
+import type { LightboxImage } from "./ReaderImageLightbox";
+
+const ReaderImageLightbox = dynamic(
+  () => import("./ReaderImageLightbox").then((module) => module.ReaderImageLightbox),
+  { ssr: false },
+);
 
 type EpubLocation = {
   start?: { cfi?: string; href?: string; percentage?: number };
@@ -203,6 +212,19 @@ export function EpubDocumentView({
   );
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
+  const [lightbox, setLightbox] = useState<{
+    images: LightboxImage[];
+    index: number;
+  } | null>(null);
+  // The click listener lives on the iframe's document and is installed once per
+  // section, so it reaches the current handler through a ref.
+  const imageClickRef = useRef<
+    ((images: LightboxImage[], index: number) => void) | null
+  >(null);
+
+  useEffect(() => {
+    imageClickRef.current = (images, index) => setLightbox({ images, index });
+  });
 
   useEffect(() => {
     const saved = loadReaderDisplayPreferences();
@@ -406,6 +428,29 @@ export function EpubDocumentView({
         if (!/^https?:\/\//i.test(href)) return;
         event.preventDefault();
         window.open(href, "_blank", "noopener,noreferrer");
+      });
+      // The injected stylesheet keeps pictures inside the column, which is right
+      // for reading and useless for reading a diagram's labels. Hand the picture
+      // to the lightbox, which draws it outside the iframe at its own size.
+      doc.addEventListener("click", (event) => {
+        if ((doc.getSelection?.()?.toString() ?? "").trim()) return;
+        const image = (event.target as Element | null)?.closest?.(
+          "img",
+        ) as HTMLImageElement | null;
+        if (!image || image.closest("a[href]")) return;
+        // A picture that never resolved has no source to draw full-screen;
+        // opening the viewer for it showed a blank overlay. The text reader
+        // guards the same way, so both paths behave alike.
+        const src = image.currentSrc || image.getAttribute("src") || "";
+        if (!src) return;
+        event.preventDefault();
+        // Every picture in this section, in reading order. Built from the
+        // iframe's own DOM, so a blob URL stays valid exactly as long as the
+        // section that owns it — stepping only ever shows pictures from this
+        // chapter, which is the scope the section itself defines. Shared with the
+        // text reader: the index comes from the clicked node, not its `src`.
+        const { images, index } = collectLightboxImages(doc, image);
+        imageClickRef.current?.(images, index);
       });
     };
 
@@ -699,6 +744,16 @@ export function EpubDocumentView({
           </>
         )}
       </div>
+      {lightbox && (
+        <ReaderImageLightbox
+          images={lightbox.images}
+          index={lightbox.index}
+          onIndexChange={(index) =>
+            setLightbox((current) => (current ? { ...current, index } : current))
+          }
+          onClose={() => setLightbox(null)}
+        />
+      )}
     </div>
   );
 }

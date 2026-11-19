@@ -131,6 +131,7 @@ async function execute(
         kind: "failed",
         runId: id,
         callId: error instanceof HostFailure ? error.callId : undefined,
+        operationPaused: error instanceof HostFailure && error.callId === "native-provider" && error.fatal,
         partialResponse:
           mode !== "run" ||
           (error instanceof HostFailure && error.partialResponse),

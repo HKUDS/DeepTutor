@@ -182,6 +182,31 @@ def _duplicate_option_body(options: dict[str, str]) -> str:
     return ""
 
 
+def _decode_json_options(raw_options: str) -> Any:
+    """Unwrap ``options`` a model sent as a JSON-encoded string.
+
+    The schema declares ``options`` as an array, but models intermittently
+    serialise the array into a string (``'[{"label": "A", "body": …}]'``).
+    Rejecting that cost whole turns: a model that sent the string once often
+    sent it again on every retry until the round budget was gone. A string
+    that decodes to an array or object is read as that value; anything else
+    is rejected with a message that names the actual mistake.
+    """
+    text = raw_options.strip()
+    if text[:1] in ("[", "{"):
+        try:
+            decoded = json.loads(text)
+        except ValueError:
+            decoded = None
+        if isinstance(decoded, (list, dict)):
+            return decoded
+    raise ValueError(
+        "mastery_quiz.options must be an array, not a string — send "
+        "[{'label': 'A', 'body': 'first answer'}, …] directly instead of "
+        "encoding it as text."
+    )
+
+
 def _read_choice_options(raw_options: Any) -> list[dict[str, str]]:
     """The options as sent, read into ``[{label, body}]`` order.
 
@@ -194,6 +219,8 @@ def _read_choice_options(raw_options: Any) -> list[dict[str, str]]:
     """
     if raw_options is None:
         return []
+    if isinstance(raw_options, str):
+        raw_options = _decode_json_options(raw_options)
 
     read = read_option_objects(raw_options)
     if read is not None:
@@ -418,6 +445,7 @@ async def _sync_qualitative_to_question_bank(
     knowledge_point_name: str,
     passed: bool,
     evidence: str,
+    reference_answer: str = "",
     material_title: str = "",
     quality: float | None = None,
     result: str = "",
@@ -437,6 +465,7 @@ async def _sync_qualitative_to_question_bank(
         question=knowledge_point_name,
         question_type="written",
         user_answer=evidence,
+        correct_answer=reference_answer,
         is_correct=passed,
         result=result or ("correct" if passed else "partial"),
         source="mastery_path",
@@ -911,6 +940,17 @@ class MasteryStatusTool(BaseTool):
                     "re-poses it verbatim, so what you pass is ignored, and that "
                     "call ends the turn."
                 )
+            pending_interaction["session_id"] = interaction.session_id
+            session_id = _resolve_session_id(kwargs)
+            if session_id and interaction.session_id and interaction.session_id != session_id:
+                pending_interaction["instruction"] = (
+                    "This pending card belongs to an earlier conversation. For fresh practice "
+                    "in this conversation, submit a new source-supported mastery_quiz with "
+                    "pending_action='retain'; once it validates the old card is archived. "
+                    "Use resume only when the learner requests that previous card. "
+                    "Previously committed answers must be assessed before archiving. "
+                    "Never grade an unanswered question or copy its answer key as a reply."
+                )
             payload["pending_interaction"] = pending_interaction
         if kwargs.get("_working_brief"):
             payload = self._working_brief(payload, progress)
@@ -1140,7 +1180,7 @@ class MasteryQuizTool(BaseTool):
                 ToolParameter(
                     name="expected_answer",
                     type="string",
-                    description="The correct answer, used only server-side for grading.",
+                    description="The correct answer, used only server-side for grading. For choice questions, pass the exact full body text of the correct option, never its letter.",
                     # The learner is looking at this question, and the trace
                     # that records the call is theirs to expand.
                     sensitive=True,
@@ -1328,10 +1368,15 @@ class MasteryQuizTool(BaseTool):
                 or not isinstance(learner_message, str)
                 or request not in learner_message
             ):
-                return ToolResult(
-                    content="Replacement needs a literal request from the current learner message.",
-                    success=False,
-                )
+                active = service.store.get_active_interaction(path_id)
+                session_id = _resolve_session_id(kwargs)
+                if active and session_id and active.session_id and active.session_id != session_id:
+                    pending_action = "retain"
+                else:
+                    return ToolResult(
+                        content="Replacement needs a literal request from the current learner message.",
+                        success=False,
+                    )
         raw_questions = kwargs.get("questions")
         # An empty optional group carries no contracts; use the single question.
         if isinstance(raw_questions, list) and not raw_questions:
@@ -1708,10 +1753,46 @@ class MasteryGradeTool(BaseTool):
             # reply — unless that commit was unreadable clarifying prose on a
             # choice card (#1004), in which case a later readable answer may
             # still recover the gate.
-            from deeptutor.learning.pending import is_readable_choice_answer
+            from deeptutor.learning.pending import (
+                is_readable_choice_answer,
+                supersedes_ungraded_reply,
+            )
 
             stored = str(interaction.user_answer or "")
             question = interaction.question
+            # Revision needs the runtime's key, not the public ``answer``
+            # parameter. ``_learner_message`` is injected from the turn's real
+            # user message and overrides any same-named model argument; the
+            # public ``answer`` is model-authored. Without this check a model
+            # call outside a mastery turn could replace a committed learner
+            # reply with its own text and credit mastery for it.
+            superseded = (
+                supersedes_ungraded_reply(stored, answer, interaction.result)
+                if "_learner_message" in kwargs
+                and question.question_type != "choice"
+                and not question.questions
+                else None
+            )
+            if superseded is not None:
+                # A reply already ruled non-final is a question the learner
+                # asked, not an answer we are holding: they asked for help, the
+                # tutor explained, and they have now answered. Reusing the
+                # stored reply here graded the old help request again — the
+                # judge declined it again as ungraded, and the question could
+                # never be cleared (#2595, the free-text half of #1004).
+                # Revising through the service rewrites ``user_answer`` and
+                # keeps the superseded attempt in the event log as
+                # ``assessment.revised``.
+                revised = service.record_question_answer(
+                    path_id,
+                    superseded,
+                    interaction_id=interaction.interaction_id,
+                    session_id=_resolve_session_id(kwargs),
+                    turn_id=_resolve_turn_id(kwargs),
+                )
+                if revised is not None:
+                    interaction = revised
+                stored = str(interaction.user_answer or "")
             if question.question_type != "choice" or is_readable_choice_answer(
                 stored, question.choice_map
             ):
@@ -2088,6 +2169,7 @@ class MasteryAssessTool(BaseTool):
             knowledge_point_name=kp.name,
             passed=passed,
             evidence=assessed_answer,
+            reference_answer=receipt.get("reference_answer", ""),
             result=receipt["result"],
             quality={"correct": 1.0, "partial": 0.5, "incorrect": 0.0}[receipt["result"]],
             material_title=progress.name,
@@ -2216,7 +2298,7 @@ class MasteryRepairQuestionTool(BaseTool):
                 ToolParameter(
                     name="expected_answer",
                     type="string",
-                    description="The corrected answer key. Required when action is correct.",
+                    description="The corrected answer key. Required when action is correct. For choice questions, pass the exact full body text of the correct option, never its letter.",
                     required=False,
                 ),
             ],

@@ -58,6 +58,7 @@ export default function McpServerForm({
   );
   const [cwd, setCwd] = useState(initialConfig.cwd);
   const [url, setUrl] = useState(initialConfig.url);
+  const [auth, setAuth] = useState<McpServerConfig["auth"]>(initialConfig.auth);
   const [allowPrivateNetwork, setAllowPrivateNetwork] = useState(initialConfig.allow_private_network ?? false);
   const [headerPairs, setHeaderPairs] = useState<McpKvPair[]>(
     dictToPairs(initialConfig.headers),
@@ -86,6 +87,7 @@ export default function McpServerForm({
           toolTimeout,
           enabledToolsText,
           allowPrivateNetwork,
+          auth,
         },
         initialConfig,
       ),
@@ -100,6 +102,7 @@ export default function McpServerForm({
       toolTimeout,
       enabledToolsText,
       allowPrivateNetwork,
+      auth,
       initialConfig,
     ],
   );
@@ -293,6 +296,22 @@ export default function McpServerForm({
               <span className="mt-1 block text-[var(--muted-foreground)]">{t("Only this scheme, host and port can use private Docker or LAN addresses. Metadata addresses remain blocked.")}</span>
             </span>
           </label>
+          {/* OAuth is opt-in, mirroring MCPServerConfig.auth on the backend: a
+              401 can also mean "type the token into the headers below", and
+              guessing a consent flow on the user's behalf would be wrong. */}
+          <div>
+            <label className={labelClass}>{t("Authentication")}</label>
+            <select
+              className={selectClass}
+              value={auth}
+              onChange={(e) =>
+                setAuth(e.target.value as McpServerConfig["auth"])
+              }
+            >
+              <option value="">{t("None")}</option>
+              <option value="oauth">{t("OAuth")}</option>
+            </select>
+          </div>
           <KeyValueEditor
             label={t("HTTP headers")}
             pairs={headerPairs}
