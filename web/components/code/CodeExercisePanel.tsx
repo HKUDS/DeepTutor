@@ -13,6 +13,7 @@ import {
   type CodeRunResponse,
   type CodeSpec,
 } from "@/lib/code-runner-api";
+import { browserStorage } from "@/shared/storage";
 
 interface CodeExercisePanelProps {
   questionId: string;
@@ -59,12 +60,8 @@ export default function CodeExercisePanel({
 
   useEffect(() => {
     let initial = value || starter;
-    try {
-      const draft = window.localStorage.getItem(key);
-      if (draft !== null && draft !== "" && !disabled) initial = draft;
-    } catch {
-      /* storage may be unavailable in private mode */
-    }
+    const draft = browserStorage.readRaw("local", key);
+    if (draft !== null && draft !== "" && !disabled) initial = draft;
     if (initial !== value) {
       setCode(initial);
       onChangeRef.current(initial);
@@ -79,11 +76,7 @@ export default function CodeExercisePanel({
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      try {
-        window.localStorage.setItem(key, code);
-      } catch {
-        /* ignore quota / privacy errors */
-      }
+      browserStorage.writeRaw("local", key, code);
     }, 300);
     return () => window.clearTimeout(timer);
   }, [code, key]);
@@ -145,11 +138,7 @@ export default function CodeExercisePanel({
     updateCode(starter);
     setResult(null);
     setError("");
-    try {
-      window.localStorage.removeItem(key);
-    } catch {
-      /* ignore */
-    }
+    browserStorage.removeRaw("local", key);
   }, [key, starter, updateCode]);
 
   const canRun = Boolean(capabilities?.available) && !disabled && !running;
