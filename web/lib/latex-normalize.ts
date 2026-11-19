@@ -21,6 +21,8 @@
  * `$` is left as text rather than guessed into a formula.
  */
 
+import { fromMarkdown } from "mdast-util-from-markdown";
+import type { Nodes } from "mdast";
 import { isKnownLatexCommand, isMathTriggerCommand } from "./latex-commands";
 
 const FENCE_LINE_RE = /^ {0,3}(`{3,}|~{3,})(.*)$/;
@@ -581,6 +583,86 @@ function escapeStrayDollars(text: string): string {
 // entry points
 // ---------------------------------------------------------------------------
 
+/**
+ * Recover only single-letter scripted symbols; never rewrite Markdown code,
+ * links, URLs or paths. Longer identifiers and unfinished scripts stay literal.
+ * Routing uses this same transform so a recovered symbol always reaches KaTeX.
+ */
+export function wrapBareScriptMath(content: string): string {
+  if (!/\b[A-Za-z]'?[_^]/.test(content)) return content;
+  const prose: [number, number][] = [];
+  const visit = (node: Nodes): void => {
+    // Text inside links is intentionally left alone too. Positions refer to
+    // the original source, so no Markdown serialization or placeholders can
+    // alter code, reference destinations, escaping or filenames.
+    if (["link", "linkReference", "image", "imageReference"].includes(node.type)) {
+      return;
+    }
+    if (node.type === "text") {
+      const start = node.position?.start.offset;
+      const end = node.position?.end.offset;
+      if (start !== undefined && end !== undefined) prose.push([start, end]);
+    } else if ("children" in node) {
+      node.children.forEach(visit);
+    }
+  };
+  visit(fromMarkdown(content));
+  const protectedRanges: [number, number][] = [];
+  for (const pattern of [
+    MATH_SPAN_RE,
+    /<code\b[^>]*>[\s\S]*?<\/code>|<pre\b[^>]*>[\s\S]*?<\/pre>|\b(?:[a-z][a-z0-9+.-]*:\/\/|www\.)\S+|\S*[\/\\]\S*/gi,
+  ]) {
+    for (const match of content.matchAll(pattern)) {
+      protectedRanges.push([match.index, match.index + match[0].length]);
+    }
+  }
+  protectedRanges.sort((a, b) => a[0] - b[0]);
+  // Only unpaired dollars in prose can start unfinished streaming math.
+  // Code/links and complete math must not suppress later bare symbols.
+  let proseIndex = 0;
+  let protectedIndex = 0;
+  const unfinished: [number, number][] = [];
+  for (const match of content.matchAll(/(?<!\\)\$/g)) {
+    const offset = match.index;
+    while (proseIndex < prose.length && prose[proseIndex][1] <= offset) proseIndex++;
+    while (
+      protectedIndex < protectedRanges.length && protectedRanges[protectedIndex][1] <= offset
+    ) protectedIndex++;
+    if (
+      !prose[proseIndex] || prose[proseIndex][0] > offset ||
+      (protectedRanges[protectedIndex] && protectedRanges[protectedIndex][0] <= offset)
+    ) continue;
+    const newline = content.indexOf("\n", offset);
+    unfinished.push([offset, newline === -1 ? content.length : newline]);
+  }
+  protectedRanges.push(...unfinished);
+  protectedRanges.sort((a, b) => a[0] - b[0]);
+  proseIndex = 0;
+  protectedIndex = 0;
+  return content.replace(
+    /(?<![\p{L}\p{N}_\\/.@'"{}^:\-])[A-Za-z]'?(?:[_^](?:\{(?:\d+(?:\.\d+)?|[A-Za-z])\}|\d+|[A-Za-z])){1,2}(?![\p{L}\p{N}_{}^'"@:(\-]|\.[\p{L}\p{N}])/gu,
+    (symbol, offset: number) => {
+      const end = offset + symbol.length;
+      while (proseIndex < prose.length && prose[proseIndex][1] <= offset) proseIndex++;
+      while (
+        protectedIndex < protectedRanges.length && protectedRanges[protectedIndex][1] <= offset
+      ) protectedIndex++;
+      const range = prose[proseIndex];
+      const protectedRange = protectedRanges[protectedIndex];
+      if (
+        !range || offset < range[0] || end > range[1] ||
+        (protectedRange && protectedRange[0] < end)
+      ) return symbol;
+      // Duplicate subscripts/superscripts are not valid LaTeX.
+      if (
+        (symbol.match(/_/g)?.length ?? 0) > 1 ||
+        (symbol.match(/\^/g)?.length ?? 0) > 1
+      ) return symbol;
+      return `$${symbol}$`;
+    },
+  );
+}
+
 function normalizeProse(text: string, mathContext: boolean): string {
   // Unwrap first: this is the one step that reads code spans rather than
   // hiding them.
@@ -628,7 +710,9 @@ export function normalizeMathMarkup(content: string): string {
     /\$\$/.test(value) ||
     hasInlineMathCandidate(value) ||
     hasBareLatexTrigger(value);
-  return mapMarkdownProse(value, (text) => normalizeProse(text, mathContext));
+  return wrapBareScriptMath(
+    mapMarkdownProse(value, (text) => normalizeProse(text, mathContext)),
+  );
 }
 
 /**
