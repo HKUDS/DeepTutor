@@ -28,6 +28,7 @@ from .ask_user_trace import (
 )
 from .model_history import (
     SUMMARY_SNAPSHOT_NAME,
+    has_model_turn,
     history_groups,
     model_turn,
     replay_history,
@@ -380,7 +381,7 @@ class ContextBuilder:
         route: dict[str, str] | None = None,
     ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         groups = history_groups(messages)
-        if any(model_turn(row) is not None for row in messages):
+        if any(has_model_turn(row) for row in messages):
             # Rebuild each group once, then find the longest fitting suffix.
             # Images are shared across turns: adding per-group costs overcounts
             # repeats, while replaying every growing tail is quadratic work.
@@ -419,7 +420,7 @@ class ContextBuilder:
         summary: str = "",
         route: dict[str, str] | None = None,
     ) -> int:
-        if any(model_turn(row) is not None for row in messages):
+        if any(has_model_turn(row) for row in messages):
             replayed = replay_history(messages, route=route)
             tokens = _count_projected_model_tokens(replayed)
             # The answer loop appends the summary as a trailing snapshot, but
