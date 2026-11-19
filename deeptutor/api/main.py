@@ -698,6 +698,12 @@ _router_loader.include(
     tags=["practice"],
     dependencies=_auth,
 )
+_router_loader.include(
+    "deeptutor.api.routers.code_runner:router",
+    prefix="/api/code",
+    tags=["code"],
+    dependencies=_auth,
+)
 # Public UI-settings read (auth pages bootstrap the interface language
 # before a session exists, so GET /api/settings/ui must not be gated
 # by _auth). Mounted first so the path resolves here, not on the gated

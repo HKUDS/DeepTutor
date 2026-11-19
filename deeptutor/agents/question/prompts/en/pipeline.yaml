@@ -164,7 +164,7 @@ plan:
        - ``fill_in_blank`` — single-blank completion (one missing word / phrase).
        - ``short_answer`` — concept-style Q&A (a few sentences expected).
        - ``written`` — longer essay-style explanation / discussion.
-       - ``coding`` — write code / pseudocode / algorithm.
+       - ``coding`` — write a runnable program that reads stdin and writes stdout.
        Constraints:
        - Restrict the type to those listed in "Allowed question types" (see user input). If the list is "any", pick the type that best fits each question's topic.
        - When "Per-type quantity targets" specifies counts (e.g., ``choice=3, short_answer=2``), the plan's distribution of types must match those counts exactly.
@@ -221,7 +221,15 @@ quiz_step:
       "question": "the question text shown to the learner (Markdown, math in LaTeX)",
       "options": {{"A": "...", "B": "...", "C": "...", "D": "..."}},
       "correct_answer": "see per-type rules below",
-      "explanation": "why the correct answer is correct — a clear, learner-facing explanation"
+      "explanation": "why the correct answer is correct — a clear, learner-facing explanation",
+      "code": {{
+        "language": "python | c | cpp",
+        "starter_code": "initial code shown to the learner, runnable but incomplete",
+        "stdin": "optional stdin applied to every run",
+        "tests": [
+          {{"name": "Sample 1", "stdin": "input text", "expected_stdout": "expected output"}}
+        ]
+      }}
     }}
 
     Hard schema rules:
@@ -231,7 +239,8 @@ quiz_step:
     - If ``question_type`` is ``fill_in_blank``: the question text MUST contain exactly one occurrence of the literal blank token ``____`` (four underscores) marking the missing word or phrase. Omit ``options`` (or null). ``correct_answer`` is the string that fills the blank (a single word or short phrase). Do not pluralize alternates — pick one canonical answer.
     - If ``question_type`` is ``short_answer``: a concept-style Q&A — expected answer is a few sentences. Omit ``options`` (or null). ``correct_answer`` is the reference answer text.
     - If ``question_type`` is ``written``: a longer essay-style answer (a paragraph or more of discussion). Omit ``options`` (or null). ``correct_answer`` is the reference answer text.
-    - If ``question_type`` is ``coding``: omit ``options`` (or null). ``correct_answer`` is the reference code / pseudocode / algorithm.
+    - If ``question_type`` is ``coding``: omit ``options`` (or null). ``correct_answer`` is the complete reference implementation. You MUST also include ``code``: ``language`` is one of python, c, cpp; ``starter_code`` is runnable but leaves the key logic as a TODO (never the full answer); ``tests`` holds 1–3 public samples, each with ``name``, ``stdin`` and ``expected_stdout``. Omit ``code`` (or null) for every other question type.
+    - A coding question must be solvable by reading stdin and writing stdout. Do not require a browser, network, files, or third-party packages.
     - The question must align tightly with the template's ``topic`` and respect the template's ``difficulty``.
     - The question must NOT duplicate or near-duplicate any entry in "Already-generated questions this turn".
     - Cite sources inline as [source-id] when you used retrieved passages.
@@ -276,9 +285,10 @@ repair:
     - If ``question_type`` is ``choice``: provide exactly four options A/B/C/D; ``correct_answer`` must be one of "A", "B", "C", "D".
     - If ``question_type`` is ``concept``: omit ``options`` (or null); ``correct_answer`` must be exactly ``"true"`` or ``"false"`` (lowercase).
     - If ``question_type`` is ``fill_in_blank``: omit ``options`` (or null); ``question`` must contain exactly one ``____`` (four underscores) marking the blank; ``correct_answer`` is the string that fills it.
-    - If ``question_type`` is ``short_answer``, ``written``, or ``coding``: omit ``options`` (or null); ``correct_answer`` is the reference answer text.
+    - If ``question_type`` is ``short_answer`` or ``written``: omit ``options`` (or null), omit ``code`` (or null); ``correct_answer`` is the reference answer text.
+    - If ``question_type`` is ``coding``: omit ``options`` (or null); ``correct_answer`` is the reference implementation; include ``code`` with ``language`` (python/c/cpp), runnable ``starter_code``, optional ``stdin``, and 1–3 public ``tests`` (``name``, ``stdin``, ``expected_stdout``).
     - Preserve the topic and difficulty intent.
-    - Return JSON only with keys: question_type, question, options, correct_answer, explanation.
+    - Return JSON only with keys: question_type, question, options, correct_answer, explanation, code.
   user_template: |-
     ## Template
     - question_id: {question_id}

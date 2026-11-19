@@ -6192,5 +6192,14 @@
   "Turn a question into an animated explainer you can play": "Перетворіть запитання на анімоване пояснення, яке можна відтворити",
   "View Remotion Code": "Переглянути код Remotion",
   "{{seconds}} s": "{{seconds}} с",
-  "Fixed after {{count}} checks": "Виправлено після {{count}} перевірок"
+  "Fixed after {{count}} checks": "Виправлено після {{count}} перевірок",
+  "No output": "Немає виводу",
+  "Exit code": "Код виходу",
+  "Timed out": "Перевищено час",
+  "Code editor": "Редактор коду",
+  "Run Tests": "Запустити тести",
+  "Expected output": "Очікуваний вивід",
+  "Actual output": "Фактичний вивід",
+  "Tests passed": "{{passed}}/{{total}} тестів пройдено",
+  "Code execution is unavailable": "Виконання коду недоступне"
 }

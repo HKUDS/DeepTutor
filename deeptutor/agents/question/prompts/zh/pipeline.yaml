@@ -145,7 +145,7 @@ plan:
        - ``fill_in_blank``——单空填空（一个缺失的词或短语）。
        - ``short_answer``——概念性简答（预期几句话）。
        - ``written``——更长的论述 / 解答（一段甚至多段）。
-       - ``coding``——写代码 / 伪代码 / 算法。
+       - ``coding``——编写可运行、从标准输入读取、向标准输出作答的程序。
        约束：
        - 类型必须在「允许的题型」列表中（参见用户输入）。若列表为 "any"，按每道题最合适的类型选择。
        - 若「各题型数量分配」给出了配比（例如 ``choice=3, short_answer=2``），plan 中的类型分布必须严格符合该配比。
@@ -202,7 +202,15 @@ quiz_step:
       "question": "向学习者展示的题面（Markdown，数学用 LaTeX）",
       "options": {{"A": "...", "B": "...", "C": "...", "D": "..."}},
       "correct_answer": "见下方各题型规则",
-      "explanation": "为什么正确答案是正确的——面向学习者的清晰解释"
+      "explanation": "为什么正确答案是正确的——面向学习者的清晰解释",
+      "code": {{
+        "language": "python | c | cpp",
+        "starter_code": "给学习者的初始代码，可运行但不完整",
+        "stdin": "每次运行使用的标准输入，可为空",
+        "tests": [
+          {{"name": "样例 1", "stdin": "输入文本", "expected_stdout": "期望输出"}}
+        ]
+      }}
     }}
 
     硬性 schema 规则：
@@ -212,7 +220,8 @@ quiz_step:
     - 如果 ``question_type`` 是 ``fill_in_blank``：题面中**必须**包含**恰好一处** ``____``（四个下划线），用于标记缺失的词或短语。省略 ``options``（或 null）；``correct_answer`` 是填入空白处的字符串（一个词或短语）。**不要**列多个并列答案——选一个最规范的。
     - 如果 ``question_type`` 是 ``short_answer``：概念性简答，期望答案是几句话。省略 ``options``（或 null）；``correct_answer`` 是参考答案文本。
     - 如果 ``question_type`` 是 ``written``：更长的论述 / 解答（一段甚至多段）。省略 ``options``（或 null）；``correct_answer`` 是参考答案文本。
-    - 如果 ``question_type`` 是 ``coding``：省略 ``options``（或 null）；``correct_answer`` 是参考代码 / 伪代码 / 算法。
+    - 如果 ``question_type`` 是 ``coding``：省略 ``options``（或 null）；``correct_answer`` 是完整参考实现。**必须**同时提供 ``code``：``language`` 为 python / c / cpp 之一；``starter_code`` 可运行但把关键逻辑留成 TODO（**绝不能**直接给出完整答案）；``tests`` 提供 1–3 条公开样例，每条包含 ``name``、``stdin``、``expected_stdout``。其他题型省略 ``code``（或 null）。
+    - 代码题必须能通过标准输入读取、标准输出作答；不得依赖浏览器、网络、文件或第三方库。
     - 题目必须严格扣住 template 的 ``topic``，并符合 ``difficulty``。
     - 题目**不允许**重复 / 近似重复「本轮已生成题目」中的任何一项。
     - 如用到检索内容，以 [source-id] 行内引用。
@@ -257,9 +266,10 @@ repair:
     - 如果是 ``choice``：提供恰好四个选项 A/B/C/D；``correct_answer`` 必须是 "A"/"B"/"C"/"D" 之一。
     - 如果是 ``concept``：省略 ``options``（或 null）；``correct_answer`` 必须是小写的 ``"true"`` 或 ``"false"``。
     - 如果是 ``fill_in_blank``：省略 ``options``（或 null）；``question`` 中必须包含**恰好一处** ``____``（四个下划线）；``correct_answer`` 是填入空白处的字符串。
-    - 如果是 ``short_answer``、``written`` 或 ``coding``：省略 ``options``（或 null）；``correct_answer`` 是参考答案文本。
+    - 如果是 ``short_answer`` 或 ``written``：省略 ``options``（或 null），省略 ``code``（或 null）；``correct_answer`` 是参考答案文本。
+    - 如果是 ``coding``：省略 ``options``（或 null）；``correct_answer`` 是参考实现；必须包含 ``code``：``language``（python/c/cpp）、可运行的 ``starter_code``、可选 ``stdin``，以及 1–3 条公开 ``tests``（``name``、``stdin``、``expected_stdout``）。
     - 保留原 topic 和 difficulty 意图。
-    - 返回 JSON 只包含字段：question_type, question, options, correct_answer, explanation。
+    - 返回 JSON 只包含字段：question_type, question, options, correct_answer, explanation, code。
   user_template: |-
     ## Template
     - question_id: {question_id}

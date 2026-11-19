@@ -6324,5 +6324,14 @@
   "Turn a question into an animated explainer you can play": "Transformer une question en animation explicative à regarder",
   "View Remotion Code": "Voir le code Remotion",
   "{{seconds}} s": "{{seconds}} s",
-  "Fixed after {{count}} checks": "Corrigé après {{count}} vérifications"
+  "Fixed after {{count}} checks": "Corrigé après {{count}} vérifications",
+  "No output": "Aucune sortie",
+  "Exit code": "Code de sortie",
+  "Timed out": "Délai dépassé",
+  "Code editor": "Éditeur de code",
+  "Run Tests": "Lancer les tests",
+  "Expected output": "Sortie attendue",
+  "Actual output": "Sortie réelle",
+  "Tests passed": "{{passed}}/{{total}} tests réussis",
+  "Code execution is unavailable": "L'exécution du code n'est pas disponible"
 }
