@@ -90,10 +90,10 @@ services:
     # feature unavailable rather than stopping the app. The pip cache lives on
     # the data volume above, so a recreate reuses the downloads it already
     # paid for. Preview an extra with
-    # `python scripts/install_extras.py --dry-run "<name>"`. Uncomment the
-    # Optional entries can be added to the environment list above.
+    # `python scripts/install_extras.py --dry-run "<name>"`. Add the
+    # following entries to the environment list above for these extras.
     #   - DEEPTUTOR_EXTRAS=math-animator,partners
-    #   - DEEPTUTOR_APT_PACKAGES=ffmpeg
+    #   - DEEPTUTOR_APT_PACKAGES=build-essential,pkg-config,libcairo2-dev,libpango1.0-dev
     # Unraid / NAS bind mounts: PUID/PGID remap the unprivileged deeptutor
     # user to the host owner of ./data. Do not run the app as root.
     #   - PUID=99

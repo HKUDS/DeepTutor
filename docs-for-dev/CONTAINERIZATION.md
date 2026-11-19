@@ -356,6 +356,56 @@ What `compose.yaml` does, and why:
   restricted subprocess backend controlled by
   `sandbox_allow_subprocess` in `system.json`.
 
+### Math Animator in a read-only container
+
+Manim builds `pycairo` and `ManimPango` against native libraries on Linux.
+A Meson error about a missing `cc` during `pycairo` installation means the
+container needs a compiler. For the rootless `compose.yaml` deployment,
+install these dependencies at image build time so the service can keep
+its read-only root filesystem.
+
+Save this as `Containerfile` in an empty directory. Set `DEEPTUTOR_VERSION`
+to the release you deploy. The base image includes FFmpeg and Python headers.
+
+```dockerfile
+ARG DEEPTUTOR_VERSION=1.7.3
+FROM ghcr.io/hkuds/deeptutor:${DEEPTUTOR_VERSION}
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        build-essential pkg-config libcairo2-dev libpango1.0-dev \
+    && rm -rf /var/lib/apt/lists/* \
+    && python -m pip install --no-cache-dir -r /app/requirements/math-animator.txt \
+    && python -m manim --version
+```
+
+Build and check the image from that directory:
+
+```bash
+podman build --build-arg DEEPTUTOR_VERSION=1.7.3 -t localhost/deeptutor-math:1.7.3 .
+podman run --rm --read-only --tmpfs /tmp --user 1000:1000 \
+  --entrypoint python localhost/deeptutor-math:1.7.3 -m manim --version
+```
+
+Next to the project's `compose.yaml`, save `compose.math.yaml`:
+
+```yaml
+services:
+  deeptutor:
+    image: localhost/deeptutor-math:1.7.3
+    pull_policy: never
+```
+
+Start the service with both files:
+
+```bash
+podman compose -f compose.yaml -f compose.math.yaml up -d
+```
+
+Rebuild and update the local tag in the override when upgrading DeepTutor.
+Scenes using `Tex` or `MathTex` also need a LaTeX distribution and `dvisvgm`
+in the derived image.
+
 ### Running outside `compose.yaml`
 
 `compose.yaml` is a starting point, not the only shape. The same
