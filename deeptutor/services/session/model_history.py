@@ -106,9 +106,43 @@ def normalize_model_turn(value: Any) -> dict[str, Any] | None:
         if key in value:
             record[key] = value[key]
     try:
+        return _json_copy(record)
+    except (_NotPlainJson, RecursionError):
+        pass
+    try:
         return json.loads(json.dumps(record, ensure_ascii=False, allow_nan=False))
     except (TypeError, ValueError):
         return None
+
+
+class _NotPlainJson(Exception):
+    pass
+
+
+def _json_copy(value: Any) -> Any:
+    """Copy a plain JSON tree without re-encoding its (immutable) strings.
+
+    Stored turns can hold the whole request of a long session (megabytes of
+    text), and history is grouped several times per context build. A JSON
+    round-trip scales with bytes; this walk scales with nodes. Anything that
+    is not already plain JSON defers to the round-trip, which decides.
+    """
+    if value is None or type(value) in (str, int, bool):
+        return value
+    if type(value) is float:
+        if value != value or value in (float("inf"), float("-inf")):
+            raise _NotPlainJson
+        return value
+    if type(value) is dict:
+        copied: dict[str, Any] = {}
+        for key, item in value.items():
+            if type(key) is not str:
+                raise _NotPlainJson
+            copied[key] = _json_copy(item)
+        return copied
+    if type(value) is list:
+        return [_json_copy(item) for item in value]
+    raise _NotPlainJson
 
 
 def model_turn(row: dict[str, Any]) -> dict[str, Any] | None:
