@@ -35,6 +35,7 @@ from pydantic import BaseModel, Field
 
 from deeptutor.db.connection import DatabaseError, open_database
 from deeptutor.db.jobs.queue import JobQueue, JobQueueUnavailable
+from deeptutor.services import entitlements
 from deeptutor.services.scope import ScopeError, as_http, caller_id
 from deeptutor.services.studio import accounting, licences, pricing, tokens
 from deeptutor.services.studio import jobs as studio
@@ -247,6 +248,10 @@ async def submit_job(payload: SubmitPayload, user_id: _UserParam = None) -> dict
         result = studio.submit(
             database,
             queue=_queue(database),
+            # The gate is passed, not inherited. `submit` accepted this callable
+            # since Phase 8 and no caller ever supplied it, so this line is the
+            # difference between an entitlement check and a parameter.
+            require_entitlement=entitlements.studio_gate(database),
             request=studio.JobRequest(
                 user_id=owner,
                 kind=payload.kind,

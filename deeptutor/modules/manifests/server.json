@@ -471,6 +471,39 @@
       },
       "auth": "admin",
       "order": 863
+    },
+    {
+      "reference": "deeptutor.api.routers.usage:router",
+      "options": {
+        "prefix": "/api/usage",
+        "tags": [
+          "usage"
+        ]
+      },
+      "auth": "learning",
+      "order": 864
+    },
+    {
+      "reference": "deeptutor.api.routers.usage:admin_router",
+      "options": {
+        "prefix": "/api/usage/admin",
+        "tags": [
+          "usage-admin"
+        ]
+      },
+      "auth": "admin",
+      "order": 865
+    },
+    {
+      "reference": "deeptutor.api.routers.providers:router",
+      "options": {
+        "prefix": "/api/providers",
+        "tags": [
+          "providers"
+        ]
+      },
+      "auth": "authenticated",
+      "order": 866
     }
   ],
   "commands": [],

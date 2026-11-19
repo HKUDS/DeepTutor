@@ -16,6 +16,7 @@ from deeptutor.api.routers import studio as api
 from deeptutor.db.config import DatabaseSettings, reset_database_settings
 from deeptutor.db.repositories.identity import IdentityRepository
 from deeptutor.db.repositories.wallets import WalletRepository
+from deeptutor.services import entitlements
 from deeptutor.services.studio import jobs as S
 from deeptutor.services.studio import licences
 
@@ -31,7 +32,30 @@ def live(db, monkeypatch):
     reset_database_settings()
     IdentityRepository(db).save("u1", {"id": "u1", "hash": "x", "role": "user"})
     WalletRepository(db).grant("u1", tokens=5000)
+    # This module measures the *licence* gate. Phase 9 added an entitlement gate
+    # in front of it, so without a plan that grants the media surfaces every
+    # submission here would be refused for the wrong reason and the licence
+    # assertions would pass vacuously. The plan is the control; the licence is
+    # the variable.
+    _grant_full_plan(db)
     return db
+
+
+def _grant_full_plan(db, user_id="u1"):
+    from datetime import datetime, timezone
+
+    with db.transaction() as conn:
+        existing = conn.query_one("SELECT code FROM plans WHERE code = 'test-full'")
+        if not existing:
+            conn.execute(
+                "INSERT INTO plans (code, name, price_toman, token_quota, "
+                "duration_days, is_active, sort_order, storage_quota_bytes, "
+                "updated_at, capabilities) VALUES ('test-full', 'fixture', 0, "
+                "100000, 30, 1, 1, 104857600, ?, "
+                "'studio,media.video,media.audio')",
+                (datetime.now(timezone.utc).isoformat(),),
+            )
+    entitlements.grant_plan(db, user_id=user_id, plan_code="test-full")
 
 
 # ---------------------------------------------------------------------------

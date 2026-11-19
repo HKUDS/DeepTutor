@@ -1,5 +1,5 @@
 {
-  "fingerprint": "a632c2e3ac7586035bfd1a95059803bef9dc380608312ac9165a0bb8a1ae4195",
+  "fingerprint": "84b32b4e8b62593aa60832766334416c7b2eb2f73f7d8ce4cb96593ee2ac042f",
   "routers": {
     "deeptutor.api.routers.auth:router": [
       {
@@ -6689,6 +6689,68 @@
         "kind": "http",
         "methods": [
           "GET"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.usage:router": [
+      {
+        "path": "",
+        "name": "my_usage",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/recent",
+        "name": "my_recent",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/reconciliation",
+        "name": "my_reconciliation",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.usage:admin_router": [
+      {
+        "path": "",
+        "name": "all_usage",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      }
+    ],
+    "deeptutor.api.routers.providers:router": [
+      {
+        "path": "",
+        "name": "list_providers",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "",
+        "name": "create_provider",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/{provider_id}",
+        "name": "delete_provider",
+        "kind": "http",
+        "methods": [
+          "DELETE"
         ]
       }
     ],
