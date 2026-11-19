@@ -7,6 +7,7 @@ import {
   type NormalizedQuizQuestionType,
   normalizeQuizQuestionType,
 } from "./quiz-question-type";
+import type { CodeLanguage, CodeSpec, CodeTestCase } from "./code-runner-api";
 
 export type DeepQuestionMode = "custom" | "mimic";
 
@@ -52,6 +53,8 @@ export interface QuizQuestion {
   difficulty?: string;
   concentration?: string;
   knowledge_context?: string;
+  /** Optional runnable exercise payload for ``coding`` questions. */
+  code?: CodeSpec;
 }
 
 export interface QuizFollowupContext {
@@ -95,6 +98,36 @@ function decodeQuizOptions(
   return out;
 }
 
+const CODE_LANGUAGES = new Set<CodeLanguage>(["python", "c", "cpp"]);
+
+function decodeCodeSpec(raw: unknown): CodeSpec | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const value = raw as Record<string, unknown>;
+  const language = String(value.language || "python").trim().toLowerCase();
+  if (!CODE_LANGUAGES.has(language as CodeLanguage)) return undefined;
+
+  const tests: CodeTestCase[] = [];
+  if (Array.isArray(value.tests)) {
+    for (const item of value.tests.slice(0, 10)) {
+      if (!item || typeof item !== "object") continue;
+      const test = item as Record<string, unknown>;
+      if (test.expected_stdout === undefined || test.expected_stdout === null) continue;
+      tests.push({
+        name: decodeQuizText(String(test.name || `Test ${tests.length + 1}`)),
+        stdin: String(test.stdin || "").slice(0, 20_000),
+        expected_stdout: String(test.expected_stdout).slice(0, 20_000),
+      });
+    }
+  }
+
+  return {
+    language: language as CodeLanguage,
+    starter_code: decodeQuizText(String(value.starter_code || "")).slice(0, 20_000),
+    stdin: String(value.stdin || "").slice(0, 20_000),
+    tests,
+  };
+}
+
 function buildQuizQuestionFromQa(qa: Record<string, unknown>): QuizQuestion {
   return {
     question_id: String(qa.question_id ?? ""),
@@ -105,6 +138,7 @@ function buildQuizQuestionFromQa(qa: Record<string, unknown>): QuizQuestion {
     explanation: decodeQuizText(qa.explanation as string | undefined | null),
     difficulty: qa.difficulty ? String(qa.difficulty) : undefined,
     concentration: qa.concentration ? String(qa.concentration) : undefined,
+    code: decodeCodeSpec(qa.code),
     knowledge_context:
       qa.metadata &&
       typeof qa.metadata === "object" &&

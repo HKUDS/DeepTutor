@@ -80,6 +80,56 @@ _JUDGE_SYSTEM_PROMPTS = {
 SUPPORTED_JUDGE_LANGUAGES: frozenset[str] = frozenset(_JUDGE_SYSTEM_PROMPTS)
 
 
+def _format_run_block(
+    *,
+    language: str,
+    run_output: dict | None,
+    test_summary: dict | None,
+) -> list[str]:
+    """The program's real output, for judging code rather than prose."""
+    if not run_output and not test_summary:
+        return []
+
+    if language == "zh":
+        lines = ["代码运行结果："]
+    else:
+        lines = ["Program run results:"]
+
+    if run_output:
+        stdout = str(run_output.get("stdout") or "").strip()
+        stderr = str(run_output.get("stderr") or "").strip()
+        lines.append(f"stdout:\n{stdout or '(empty)'}")
+        lines.append(f"stderr:\n{stderr or '(empty)'}")
+        lines.append(
+            f"exit_code: {run_output.get('exit_code', 'unknown')}, "
+            f"timed_out: {bool(run_output.get('timed_out'))}"
+        )
+
+    if test_summary:
+        passed = int(test_summary.get("passed") or 0)
+        total = int(test_summary.get("total") or 0)
+        if total:
+            lines.append(
+                f"公开测试：{passed}/{total} 通过"
+                if language == "zh"
+                else f"Public tests: {passed}/{total} passed"
+            )
+        failures = test_summary.get("failures")
+        if isinstance(failures, list):
+            for failure in failures[:5]:
+                if not isinstance(failure, dict):
+                    continue
+                name = str(failure.get("name") or "test")
+                expected = str(failure.get("expected") or "")
+                actual = str(failure.get("actual") or "")
+                lines.append(
+                    f"- {name}: 期望输出 {expected!r}，实际输出 {actual!r}"
+                    if language == "zh"
+                    else f"- {name}: expected {expected!r}, got {actual!r}"
+                )
+    return lines
+
+
 def _build_judge_user_prompt(
     *,
     language: str,
@@ -91,6 +141,8 @@ def _build_judge_user_prompt(
     user_answer: str,
     has_image: bool,
     image_count: int = 0,
+    run_output: dict | None = None,
+    test_summary: dict | None = None,
 ) -> str:
     options_block = ""
     if options:
@@ -124,6 +176,13 @@ def _build_judge_user_prompt(
                 else "学习者另附了一张图片作为作答内容"
             )
             parts.append(f"{count_text}，请结合图片中的文字/公式/草图一并判定。")
+        parts.extend(
+            _format_run_block(
+                language=language,
+                run_output=run_output,
+                test_summary=test_summary,
+            )
+        )
         parts.append("请针对该学习者的具体作答给出 AI 评判。")
     else:
         parts = [
@@ -155,6 +214,13 @@ def _build_judge_user_prompt(
                     "The learner attached an image as part of the answer. "
                     "Read its text/formulas/sketches and factor it into the judgment."
                 )
+        parts.extend(
+            _format_run_block(
+                language=language,
+                run_output=run_output,
+                test_summary=test_summary,
+            )
+        )
         parts.append("Produce an AI judgment that addresses this learner's specific answer.")
     return "\n\n".join(parts)
 
@@ -252,6 +318,13 @@ async def websocket_quiz_judge(websocket: WebSocket):
             ] | null,
             "user_answer_image": str | null,  # legacy single-image form
             "image_filename": str | null,     # legacy filename for the above
+            # Coding answers: the latest run and public-test summary. Both are
+            # optional and only used to ground the feedback in real output.
+            "run_output": {"stdout": str, "stderr": str, "exit_code": int,
+                           "timed_out": bool} | null,
+            "test_summary": {"passed": int, "total": int,
+                             "failures": [{"name": str, "expected": str,
+                                           "actual": str}]} | null,
             "language": "zh" | "en" | "de" | "uk",
         }
 
@@ -368,6 +441,8 @@ async def websocket_quiz_judge(websocket: WebSocket):
 
     has_image = bool(image_records)
 
+    run_output = data.get("run_output") if isinstance(data.get("run_output"), dict) else None
+    test_summary = data.get("test_summary") if isinstance(data.get("test_summary"), dict) else None
     options_value = data.get("options") if isinstance(data.get("options"), dict) else None
     system_prompt = _JUDGE_SYSTEM_PROMPTS.get(requested_language, _JUDGE_SYSTEM_PROMPTS["en"])
     user_prompt = _build_judge_user_prompt(
@@ -380,6 +455,8 @@ async def websocket_quiz_judge(websocket: WebSocket):
         user_answer=user_answer,
         has_image=has_image,
         image_count=len(image_records),
+        run_output=run_output,
+        test_summary=test_summary,
     )
 
     if not (user_answer.strip() or has_image):

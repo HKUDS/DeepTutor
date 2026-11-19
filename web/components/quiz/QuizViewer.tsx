@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import MarkdownRenderer from "@/components/common/MarkdownRenderer";
+import CodeExercisePanel from "@/components/code/CodeExercisePanel";
 import {
   useAllFollowupThreads,
   useQuizFollowupController,
@@ -42,6 +43,7 @@ import {
   type QuizJudgeHandle,
 } from "@/lib/quiz-judge";
 import { type QuizQuestion } from "@/lib/quiz-types";
+import type { CodeRunResponse } from "@/lib/code-runner-api";
 import CategoryMenu from "@/components/space/question-bank/CategoryMenu";
 import {
   addEntryToCategory,
@@ -214,6 +216,7 @@ export default function QuizViewer({
   const [categories, setCategories] = useState<NotebookCategory[]>([]);
 
   const [judgments, setJudgments] = useState<Record<number, JudgmentState>>({});
+  const [codeRuns, setCodeRuns] = useState<Record<number, CodeRunResponse>>({});
   const [answerViews, setAnswerViews] = useState<Record<number, AnswerView>>(
     {},
   );
@@ -659,6 +662,28 @@ export default function QuizViewer({
           filename: image.filename,
           mime_type: image.mime,
         })),
+        run_output: codeRuns[idx]
+          ? {
+              stdout: codeRuns[idx].stdout,
+              stderr: codeRuns[idx].stderr,
+              exit_code: codeRuns[idx].exit_code,
+              timed_out: codeRuns[idx].timed_out,
+            }
+          : undefined,
+        test_summary:
+          codeRuns[idx] && codeRuns[idx].total > 0
+            ? {
+                passed: codeRuns[idx].passed,
+                total: codeRuns[idx].total,
+                failures: codeRuns[idx].tests
+                  .filter((test) => !test.passed)
+                  .map((test) => ({
+                    name: test.name,
+                    expected: test.expected_stdout,
+                    actual: test.stdout || test.stderr,
+                  })),
+              }
+            : undefined,
         language: judgeLanguage,
       },
       {
@@ -708,7 +733,7 @@ export default function QuizViewer({
       },
     );
     judgeHandlesRef.current.set(idx, handle);
-  }, [answers, entryIds, idx, language, q]);
+  }, [answers, codeRuns, entryIds, idx, language, q]);
 
   const handleStopAiJudge = useCallback(() => {
     judgeHandlesRef.current.get(idx)?.cancel();
@@ -1094,33 +1119,45 @@ export default function QuizViewer({
             />
           </div>
         ) : (
-          // Free-text branches: short_answer / written / coding.
-          // Different default heights so essay-style "written" has more
-          // room than a concept-style short answer.
-          <div>
-            <textarea
+          // Coding gets the editor; the remaining free-text branches are
+          // short_answer / written. Essay questions get more height.
+          q.question_type === "coding" ? (
+            <CodeExercisePanel
+              key={getQuestionKey(q, idx)}
+              questionId={getQuestionKey(q, idx)}
+              turnId={turnId}
+              codeSpec={q.code}
               value={ans.typed}
-              onChange={(event) => updateAnswer({ typed: event.target.value })}
               disabled={ans.submitted}
-              rows={
-                q.question_type === "coding"
-                  ? 6
-                  : q.question_type === "written"
-                    ? 5
-                    : 3
+              onChange={(code) => {
+                updateAnswer({ typed: code });
+                setCodeRuns((prev) => {
+                  if (!(idx in prev)) return prev;
+                  const next = { ...prev };
+                  delete next[idx];
+                  return next;
+                });
+              }}
+              onRunResult={(result) =>
+                setCodeRuns((prev) => ({ ...prev, [idx]: result }))
               }
-              placeholder={
-                q.question_type === "coding"
-                  ? t("Write your code here...")
-                  : t("Type your answer...")
-              }
-              className={`w-full resize-y rounded-lg border px-3 py-2 text-[13px] outline-none transition-colors placeholder:text-[var(--muted-foreground)] ${
-                ans.submitted
-                  ? "border-[var(--border)] bg-[var(--muted)] text-[var(--foreground)]"
-                  : "border-[var(--border)] bg-[var(--background)] text-[var(--foreground)] focus:border-[var(--primary)]/40"
-              } ${q.question_type === "coding" ? "font-mono" : ""}`}
             />
-          </div>
+          ) : (
+            <div>
+              <textarea
+                value={ans.typed}
+                onChange={(event) => updateAnswer({ typed: event.target.value })}
+                disabled={ans.submitted}
+                rows={q.question_type === "written" ? 5 : 3}
+                placeholder={t("Type your answer...")}
+                className={`w-full resize-y rounded-lg border px-3 py-2 text-[13px] outline-none transition-colors placeholder:text-[var(--muted-foreground)] ${
+                  ans.submitted
+                    ? "border-[var(--border)] bg-[var(--muted)] text-[var(--foreground)]"
+                    : "border-[var(--border)] bg-[var(--background)] text-[var(--foreground)] focus:border-[var(--primary)]/40"
+                }`}
+              />
+            </div>
+          )
         )}
 
         {/* Image-as-answer attachment — offered for open-ended questions and
@@ -1384,7 +1421,7 @@ export default function QuizViewer({
                             content={
                               q.question_type === "coding" &&
                               !q.correct_answer.trimStart().startsWith("```")
-                                ? `\`\`\`python\n${q.correct_answer}\n\`\`\``
+                                ? `\`\`\`${q.code?.language ?? "python"}\n${q.correct_answer}\n\`\`\``
                                 : q.correct_answer
                             }
                             variant="prose"

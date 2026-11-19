@@ -895,3 +895,29 @@ class TestJudgeDisconnectAndCleanup:
 
         assert socket.sent == []
         assert stream.calls == []
+
+
+def test_judge_prompt_includes_program_run_and_test_failures() -> None:
+    prompt = _build_judge_user_prompt(
+        language="en",
+        question="Print the sum.",
+        question_type="coding",
+        options=None,
+        correct_answer="print(sum(numbers))",
+        explanation="Sum the list.",
+        user_answer="print(0)",
+        has_image=False,
+        run_output={"stdout": "0\n", "stderr": "", "exit_code": 0, "timed_out": False},
+        test_summary={
+            "passed": 0,
+            "total": 1,
+            "failures": [
+                {"name": "Sample 1", "expected": "6\n", "actual": "0\n"},
+            ],
+        },
+    )
+
+    assert "Program run results:" in prompt
+    assert "stdout:\n0" in prompt
+    assert "Public tests: 0/1 passed" in prompt
+    assert "Sample 1: expected '6\\n', got '0\\n'" in prompt

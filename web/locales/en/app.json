@@ -6170,5 +6170,14 @@
   "Turn a question into an animated explainer you can play": "Turn a question into an animated explainer you can play",
   "View Remotion Code": "View Remotion Code",
   "{{seconds}} s": "{{seconds}} s",
-  "Fixed after {{count}} checks": "Fixed after {{count}} checks"
+  "Fixed after {{count}} checks": "Fixed after {{count}} checks",
+  "No output": "No output",
+  "Exit code": "Exit code",
+  "Timed out": "Timed out",
+  "Code editor": "Code editor",
+  "Run Tests": "Run Tests",
+  "Expected output": "Expected output",
+  "Actual output": "Actual output",
+  "Tests passed": "{{passed}}/{{total}} tests passed",
+  "Code execution is unavailable": "Code execution is unavailable"
 }

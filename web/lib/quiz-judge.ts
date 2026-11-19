@@ -18,6 +18,19 @@ export interface QuizJudgeRequest {
   user_answer: string;
   /** Multi-image list — backend builds a multimodal user message from this. */
   user_answer_images: QuizJudgeImage[];
+  /** Coding answers only: the most recent program run. */
+  run_output?: {
+    stdout: string;
+    stderr: string;
+    exit_code: number;
+    timed_out: boolean;
+  };
+  /** Coding answers only: public-test summary. */
+  test_summary?: {
+    passed: number;
+    total: number;
+    failures: Array<{ name: string; expected: string; actual: string }>;
+  };
   language: string;
 }
 

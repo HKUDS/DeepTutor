@@ -2,15 +2,13 @@
 
 from __future__ import annotations
 
-from pathlib import Path, PureWindowsPath
 import re
-import shlex
 import sys
 from typing import Any
-import uuid
 
 from deeptutor.core.tool_protocol import BaseTool, ToolDefinition, ToolResult
 from deeptutor.services.i18n import t
+from deeptutor.services.sandbox import source as sandbox_source
 from deeptutor.tools.prompting import load_prompt_hints
 
 # Imported lazily inside methods to avoid the tools -> services -> runtime ->
@@ -29,26 +27,15 @@ _DENY_PATTERNS: tuple[str, ...] = (
     r"(?:^|[;&|]\s*)(useradd|usermod|passwd|chpasswd|crontab)\b",
 )
 
-_DEFAULT_TIMEOUT = 30
-_MAX_TIMEOUT = 300
+_DEFAULT_TIMEOUT = sandbox_source.DEFAULT_TIMEOUT
+_MAX_TIMEOUT = sandbox_source.MAX_TIMEOUT
 
 
 class ExecTool(BaseTool):
     """Run source code or a shell script through one sandbox contract."""
 
-    _LANGUAGES: dict[str, tuple[str, str]] = {
-        "python": ("main.py", "python3 {src} {stdin}"),
-        "c": ("main.c", "cc {src} -O2 -o prog && ./prog {stdin}"),
-        "cpp": ("main.cpp", "c++ -std=c++17 -O2 {src} -o prog && ./prog {stdin}"),
-    }
-    _LANGUAGE_ALIASES: dict[str, str] = {
-        "py": "python",
-        "python3": "python",
-        "c++": "cpp",
-        "cxx": "cpp",
-        "cc": "c",
-        "sh": "shell",
-    }
+    _LANGUAGES = sandbox_source.LANGUAGES
+    _LANGUAGE_ALIASES = {**sandbox_source.LANGUAGE_ALIASES, "sh": "shell"}
 
     def get_prompt_hints(self, language: str = "en"):
         return load_prompt_hints(self.name, language=language)
@@ -95,14 +82,6 @@ class ExecTool(BaseTool):
             },
         )
 
-    @staticmethod
-    def _powershell_path(value: str) -> str:
-        """Quote a PowerShell path only when its spelling requires it."""
-
-        if not re.search(r"[\s']", value):
-            return value
-        return "'" + value.replace("'", "''") + "'"
-
     @classmethod
     def _command_for_platform(
         cls,
@@ -111,73 +90,21 @@ class ExecTool(BaseTool):
         has_stdin: bool,
         call_dir: str = "",
     ) -> str:
-        source_name, _command_template = cls._LANGUAGES[language]
-        if sys.platform != "win32":
-            prefix = f"{call_dir.rstrip('/')}/" if call_dir else ""
-            source = f"{prefix}{source_name}"
-            source_arg = shlex.quote(source)
-            stdin_redirect = f"< {shlex.quote(f'{prefix}stdin.txt')}" if has_stdin else ""
-            if language == "python":
-                return f"python3 {source_arg} {stdin_redirect}".strip()
-            compiler = "cc" if language == "c" else "c++ -std=c++17"
-            program = f"{prefix}prog"
-            program_arg = shlex.quote(program)
-            return (
-                f"{compiler} {source_arg} -O2 -o {program_arg} && {program_arg} {stdin_redirect}"
-            ).strip()
-
-        windows_call_dir = call_dir.replace("/", "\\").rstrip("\\")
-        prefix = f"{windows_call_dir}\\" if windows_call_dir else ""
-        source = f"{prefix}{source_name}"
-        stdin_path = f"{prefix}stdin.txt"
-        program = f"{prefix}prog.exe"
-        executable = (
-            program
-            if call_dir and PureWindowsPath(windows_call_dir).is_absolute()
-            else (f".\\{program}" if call_dir else ".\\prog.exe")
-        )
-        source_arg = cls._powershell_path(source)
-        stdin_arg = cls._powershell_path(stdin_path)
-        program_arg = cls._powershell_path(program)
-        executable_arg = cls._powershell_path(executable)
-        compiler, flags = ("gcc", "-O2") if language == "c" else ("g++", "-std=c++17 -O2")
-        command = (
-            f"python {source_arg}"
-            if language == "python"
-            else (
-                f"{compiler} {flags} {source_arg} -o {program_arg}; "
-                f"if ($LASTEXITCODE -eq 0) {{ & {executable_arg} }}"
-            )
-        )
-        if not has_stdin:
-            return command
-        if language == "python":
-            return f"Get-Content {stdin_arg} | python {source_arg}"
-        return (
-            f"$stdinText = Get-Content -Raw {stdin_arg}; "
-            f"{compiler} {flags} {source_arg} -o {program_arg}; "
-            f"if ($LASTEXITCODE -eq 0) {{ $stdinText | & {executable_arg} }}"
+        """Compatibility seam for callers/tests that used the old helper."""
+        return sandbox_source.command_for_platform(
+            language,
+            has_stdin=has_stdin,
+            call_dir=call_dir,
+            platform=sys.platform,
         )
 
     @classmethod
     def _resolve_language(cls, raw: Any) -> str:
-        language = str(raw or "python").strip().lower()
-        language = cls._LANGUAGE_ALIASES.get(language, language)
-        if language not in {*cls._LANGUAGES, "shell"}:
-            raise ValueError(
-                f"Unsupported exec language {language!r}; supported: python, c, cpp, shell."
-            )
-        return language
+        return sandbox_source.resolve_language(raw, allow_shell=True)
 
     @staticmethod
     def _limits(raw_timeout: Any):
-        from deeptutor.services.sandbox import ResourceLimits
-
-        try:
-            timeout = int(raw_timeout or _DEFAULT_TIMEOUT)
-        except (TypeError, ValueError):
-            timeout = _DEFAULT_TIMEOUT
-        return ResourceLimits(timeout_s=max(1, min(timeout, _MAX_TIMEOUT)))
+        return sandbox_source.resource_limits(raw_timeout, default=_DEFAULT_TIMEOUT)
 
     async def execute(self, **kwargs: Any) -> ToolResult:
         code = str(kwargs.get("code") or "").strip()
@@ -227,8 +154,11 @@ class ExecTool(BaseTool):
         language: str,
         kwargs: dict[str, Any],
     ) -> ToolResult:
-        from deeptutor.services.sandbox import ExecRequest, Mount, get_sandbox_service
+        from pathlib import Path
+
+        from deeptutor.services.sandbox import Mount
         from deeptutor.services.sandbox.artifacts import snapshot_public_artifact_files
+        from deeptutor.services.workspace.execution import logical_workspace_path
 
         workdir = str(
             kwargs.get("_sandbox_code_workdir") or kwargs.get("_sandbox_workdir") or ""
@@ -243,56 +173,31 @@ class ExecTool(BaseTool):
         stable_dir = Path(workdir)
         stable_dir.mkdir(parents=True, exist_ok=True)
         artifact_snapshot = snapshot_public_artifact_files(stable_dir)
-        source_name, _command_template = self._LANGUAGES[language]
-        source_root_raw = str(kwargs.get("_sandbox_source_dir") or "").strip()
-        if source_root_raw:
-            source_root = Path(source_root_raw).expanduser().resolve()
-            call_dir = source_root / f"{language}_{uuid.uuid4().hex[:12]}"
-            command_dir = str(call_dir)
-        else:
-            call_relative = (
-                Path(".deeptutor") / "exec_calls" / (f"{language}_{uuid.uuid4().hex[:12]}")
-            )
-            call_dir = stable_dir / call_relative
-            command_dir = call_relative.as_posix()
-        call_dir.mkdir(parents=True, exist_ok=True)
-        (call_dir / source_name).write_text(code, encoding="utf-8")
-
-        has_stdin = str(kwargs.get("stdin") or "") != ""
-        if has_stdin:
-            (call_dir / "stdin.txt").write_text(str(kwargs["stdin"]), encoding="utf-8")
-        command = self._command_for_platform(
-            language,
-            has_stdin=has_stdin,
-            call_dir=command_dir,
-        )
         limits = self._limits(kwargs.get("timeout"))
-        request = ExecRequest(
-            command=command,
+
+        run = await sandbox_source.run_source(
+            language=language,
+            code=code,
+            stdin=str(kwargs.get("stdin") or ""),
+            timeout_s=limits.timeout_s,
+            user_id=str(kwargs.get("_sandbox_user_id") or "anonymous"),
             workdir=str(stable_dir),
             mounts=mounts,
             env=dict(kwargs.get("_sandbox_env") or {}),
-            limits=limits,
+            source_root=str(kwargs.get("_sandbox_source_dir") or "").strip(),
         )
-        result = await get_sandbox_service().run(
-            request,
-            user_id=str(kwargs.get("_sandbox_user_id") or "anonymous"),
-        )
-
-        from deeptutor.services.workspace.execution import logical_workspace_path
-
         return self._render_result(
-            result=result,
+            result=run.result,
             limits=limits,
-            artifact_dir=str(stable_dir),
+            artifact_dir=run.workdir,
             artifact_snapshot=artifact_snapshot,
             kwargs=kwargs,
             metadata={
                 "language": language,
                 "code": code,
-                "command": command,
+                "command": run.command,
                 "run_dir": logical_workspace_path(
-                    stable_dir, str(kwargs.get("_workspace_root") or "")
+                    run.workdir, str(kwargs.get("_workspace_root") or "")
                 ),
             },
         )

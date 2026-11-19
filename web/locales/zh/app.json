@@ -6170,5 +6170,14 @@
   "Turn a question into an animated explainer you can play": "把问题做成可以播放的讲解动画",
   "View Remotion Code": "查看 Remotion 代码",
   "{{seconds}} s": "{{seconds}} 秒",
-  "Fixed after {{count}} checks": "经 {{count}} 轮检查修复"
+  "Fixed after {{count}} checks": "经 {{count}} 轮检查修复",
+  "No output": "无输出",
+  "Exit code": "退出码",
+  "Timed out": "超时",
+  "Code editor": "代码编辑器",
+  "Run Tests": "运行测试",
+  "Expected output": "期望输出",
+  "Actual output": "实际输出",
+  "Tests passed": "公开测试 {{passed}}/{{total}} 通过",
+  "Code execution is unavailable": "当前部署未启用代码执行"
 }

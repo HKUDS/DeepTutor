@@ -35,6 +35,13 @@
   "dependencies": {
     "@blocknote/core": "0.56.0",
     "@blocknote/react": "0.56.0",
+    "@codemirror/autocomplete": "^6.20.4",
+    "@codemirror/commands": "^6.11.1",
+    "@codemirror/lang-cpp": "^6.0.3",
+    "@codemirror/lang-python": "^6.2.1",
+    "@codemirror/language": "^6.13.1",
+    "@codemirror/state": "^6.7.6",
+    "@codemirror/view": "^6.43.15",
     "@recogito/text-annotator": "4.2.5",
     "chart.js": "^4.5.1",
     "clsx": "^2.1.1",

@@ -172,6 +172,74 @@ _CHOICE_KEYS = ("A", "B", "C", "D")
 _FILL_IN_BLANK_TOKEN = "____"
 _CONCEPT_ANSWERS: frozenset[str] = frozenset({"true", "false"})
 
+#: Languages a coding exercise may name. Kept in lockstep with the sandbox's
+#: source runner; ``shell`` is deliberately excluded because a practice card
+#: is not the place to hand a learner an arbitrary shell.
+_CODE_LANGUAGES = frozenset({"python", "c", "cpp"})
+_CODE_LANGUAGE_ALIASES = {
+    "py": "python",
+    "python3": "python",
+    "c++": "cpp",
+    "cxx": "cpp",
+    "cc": "c",
+}
+_CODE_FIELD_LIMIT = 20_000
+_CODE_TEST_LIMIT = 10
+_CODE_TEST_NAME_LIMIT = 80
+
+
+def _normalize_code_spec(raw: Any, *, correct_answer: str = "") -> dict[str, Any] | None:
+    """Read the optional ``code`` block a coding question carries.
+
+    The model is not forced to emit this block (older prompts and older
+    sessions never did), so an absent or malformed value must degrade to a
+    plain coding card instead of failing the question. Every string is capped
+    because this payload is streamed to the browser and persisted with the
+    turn.
+    """
+    if not isinstance(raw, dict):
+        return None
+
+    language = str(raw.get("language") or "python").strip().lower()
+    language = _CODE_LANGUAGE_ALIASES.get(language, language)
+    if language not in _CODE_LANGUAGES:
+        return None
+
+    starter_code = str(raw.get("starter_code") or "").strip()[:_CODE_FIELD_LIMIT]
+    # A starter that already contains the reference implementation defeats
+    # the exercise. Compare whitespace-insensitively, and only when the
+    # reference is long enough for the match to be meaningful.
+    reference = re.sub(r"\s+", "", str(correct_answer or ""))
+    candidate = re.sub(r"\s+", "", starter_code)
+    if reference and len(reference) >= 24 and reference in candidate:
+        starter_code = ""
+
+    stdin = str(raw.get("stdin") or "")[:_CODE_FIELD_LIMIT]
+
+    tests: list[dict[str, str]] = []
+    raw_tests = raw.get("tests")
+    if isinstance(raw_tests, list):
+        for index, item in enumerate(raw_tests[:_CODE_TEST_LIMIT]):
+            if not isinstance(item, dict):
+                continue
+            expected = item.get("expected_stdout")
+            if expected is None:
+                continue
+            tests.append(
+                {
+                    "name": str(item.get("name") or f"Test {index + 1}")[:_CODE_TEST_NAME_LIMIT],
+                    "stdin": str(item.get("stdin") or "")[:_CODE_FIELD_LIMIT],
+                    "expected_stdout": str(expected)[:_CODE_FIELD_LIMIT],
+                }
+            )
+
+    return {
+        "language": language,
+        "starter_code": starter_code,
+        "stdin": stdin,
+        "tests": tests,
+    }
+
 
 # ---------------------------------------------------------------------------
 # Question-type whitelist helpers (used by ``run`` / ``_explore`` / ``_plan``).
@@ -356,6 +424,7 @@ class QuizPair:
     correct_answer: str
     explanation: str
     options: dict[str, str] | None = None
+    code: dict[str, Any] | None = None
     topic: str = ""
     difficulty: str = ""
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -1495,13 +1564,15 @@ class QuestionPipeline:
         question = str(payload.get("question") or "").strip()
         if not question:
             question = f"[Generation failed] {template.topic}"
+        correct_answer = str(payload.get("correct_answer") or "").strip() or "N/A"
         return QuizPair(
             question_id=template.question_id,
             question=question,
             question_type=template.question_type,
-            correct_answer=str(payload.get("correct_answer") or "").strip() or "N/A",
+            correct_answer=correct_answer,
             explanation=str(payload.get("explanation") or "").strip() or "N/A",
             options=payload.get("options") if isinstance(payload.get("options"), dict) else None,
+            code=_normalize_code_spec(payload.get("code"), correct_answer=correct_answer),
             topic=template.topic,
             difficulty=template.difficulty,
             metadata={"issues": issues} if issues else {},
@@ -1956,6 +2027,7 @@ class QuestionPipeline:
             "question": qa.question,
             "question_type": qa.question_type,
             "options": qa.options,
+            "code": qa.code,
             "correct_answer": qa.correct_answer,
             "explanation": qa.explanation,
             "difficulty": qa.difficulty,

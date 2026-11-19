@@ -6170,5 +6170,14 @@
   "Turn a question into an animated explainer you can play": "Verwandle eine Frage in ein abspielbares Erklär-Video",
   "View Remotion Code": "Remotion-Code anzeigen",
   "{{seconds}} s": "{{seconds}} s",
-  "Fixed after {{count}} checks": "Nach {{count}} Prüfungen korrigiert"
+  "Fixed after {{count}} checks": "Nach {{count}} Prüfungen korrigiert",
+  "No output": "Keine Ausgabe",
+  "Exit code": "Exit-Code",
+  "Timed out": "Zeitüberschreitung",
+  "Code editor": "Code-Editor",
+  "Run Tests": "Tests ausführen",
+  "Expected output": "Erwartete Ausgabe",
+  "Actual output": "Tatsächliche Ausgabe",
+  "Tests passed": "{{passed}}/{{total}} Tests bestanden",
+  "Code execution is unavailable": "Codeausführung ist nicht verfügbar"
 }
