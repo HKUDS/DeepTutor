@@ -193,22 +193,19 @@ export default function DataMigrationSettingsSection() {
     <section className="space-y-5">
       <h2 className="text-lg font-semibold">{text('Data migration', '数据迁移')}</h2>
       <p className="text-sm leading-relaxed text-[var(--muted-foreground)]">
-        {text(
-          'Discover stored learning data, move it with its related conversations, or download an archive. Verified recovery copies are retained after migration.',
-          '可迁移学习资料和关联对话，也可下载备份。迁移后保留已校验的恢复副本。'
+        {t(
+          'Discover stored learning data, move it with its related conversations, or download an archive. Verified recovery copies are retained after migration.'
         )}
       </p>
       <p className="text-sm leading-relaxed text-[var(--muted-foreground)]">
-        {text(
-          'Learning data moves as a complete feature bundle. Preview includes related sources and conversations. Choose a destination with no existing data for these features.',
-          '按功能整体迁移。预览可查看关联资料和对话，请选择尚无该功能数据的目标工作区。'
+        {t(
+          'Learning data moves as a complete feature bundle. Preview includes related sources and conversations. Choose a destination with no existing data for these features.'
         )}
       </p>
       {selected.some(key => key.startsWith('historical_')) ? (
         <p className="text-sm text-[var(--muted-foreground)]">
-          {text(
-            'Historical data is retained as an archive inside the destination workspace. It is not automatically merged into current learning records.',
-            '历史数据在目标工作区单独归档，不会自动并入现有学习记录。'
+          {t(
+            'Historical data is retained as an archive inside the destination workspace. It is not automatically merged into current learning records.'
           )}
         </p>
       ) : null}
@@ -334,9 +331,8 @@ export default function DataMigrationSettingsSection() {
             </p>
             {preview.dependencies.length ? (
               <p className="text-xs text-[var(--muted-foreground)]">
-                {text(
-                  'Related source data included to preserve references',
-                  '为保留引用而一并迁移的资料'
+                {t(
+                  'Related source data included to preserve references'
                 )}
                 : {preview.dependencies.map(label).join('、')}
               </p>
@@ -359,9 +355,8 @@ export default function DataMigrationSettingsSection() {
       </fieldset>
       {busy ? (
         <p role="status" className="text-sm">
-          {text(
-            'Processing. You can return to this page to view the result.',
-            '正在处理，可稍后返回查看结果。'
+          {t(
+            'Processing. You can return to this page to view the result.'
           )}
         </p>
       ) : null}
