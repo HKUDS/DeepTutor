@@ -1,7 +1,7 @@
 import { app, BrowserWindow, WebContentsView, Menu, ipcMain, shell, dialog, session, nativeTheme } from 'electron';
 import { fork } from 'node:child_process';
 import { watch } from 'node:fs';
-import { mkdir, readFile, writeFile, rename, cp, appendFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile, rename, appendFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { installBundle, bundleConfig, startupRuntime } from './bundles.mjs';
@@ -9,6 +9,8 @@ import { externalURL } from './config.mjs';
 import { resolveLanguage, translate } from './i18n.mjs';
 import { WINDOWS, agentMarker, edition, targetId } from './platform.mjs';
 import { killTree } from './processes.mjs';
+import { restoreWorkspace, snapshotWorkspace } from './snapshot.mjs';
+import { focusWindow, repaintOnShow } from './window.mjs';
 
 app.setName('Open DeepTutor');
 if (WINDOWS) app.setAppUserModelId('org.deeptutor.open-desktop');
@@ -154,6 +156,9 @@ async function openContent(url) {
   window.contentView.addChildView(view);
   layout();
   await content.loadURL(url);
+  // A view added while the window was minimized or occluded is never painted,
+  // and loading the page does not by itself lay it out again (#2721).
+  layout();
 }
 
 function trustedShell(event) {
@@ -205,13 +210,19 @@ async function recoverInterruptedUpgrade() {
   const transaction = await readJSON(transactionFile);
   if (!transaction || transaction.phase !== 'testing') return;
   status({ phase: 'starting', step: 'recovering' });
-  if (transaction.backup) {
-    try { await rename(runtimeHome, `${runtimeHome}.interrupted-${Date.now()}`); }
-    catch (error) { if (error.code !== 'ENOENT') throw error; }
-    await cp(transaction.backup, runtimeHome, { recursive: true });
-  }
+  if (transaction.backup) await restoreWorkspace(transaction.backup, runtimeHome);
   await writeJSON(activeFile, transaction.previous);
   await writeJSON(transactionFile, { ...transaction, phase: 'recovered' });
+}
+
+async function logBackupFailure(error) {
+  // A backup only guards a rollback, so a failure is recorded and startup goes
+  // on instead of refusing to launch on every attempt (#2721).
+  console.error(error);
+  try {
+    await mkdir(path.dirname(logPath), { recursive: true });
+    await appendFile(logPath, `\nWorkspace backup failed, continuing without a rollback: ${error.stack ?? error}\n`);
+  } catch (logError) { console.error(logError); }
 }
 
 async function logStartupFailure(error) {
@@ -257,14 +268,9 @@ async function boot() {
       // The app was installed over an older core: switch to the bundled one with the
       // same backup and rollback as a manual update.
       status({ phase: 'starting', step: 'updating' });
-      let backup = path.join(userRoot, 'backups', `before-${active.manifest.runtimeId}-${Date.now()}`);
-      await mkdir(path.dirname(backup), { recursive: true });
-      try { await cp(runtimeHome, backup, { recursive: true }); }
-      catch (error) {
-        // No workspace yet means nothing to restore on rollback.
-        if (error.code !== 'ENOENT') throw error;
-        backup = undefined;
-      }
+      const backup = await snapshotWorkspace(runtimeHome,
+        path.join(userRoot, 'backups', `before-${active.manifest.runtimeId}-${Date.now()}`),
+        { warn: logBackupFailure });
       transaction = { phase: 'testing', previous, candidate: active.manifest, backup };
       await writeJSON(transactionFile, transaction);
     }
@@ -307,9 +313,9 @@ async function installUpdate() {
     if (next.manifest.runtimeId === active.manifest.runtimeId) return;
     status({ phase: 'starting', step: 'updating' });
     await stopWorker();
-    const backup = path.join(userRoot, 'backups', `before-${next.manifest.runtimeId}-${Date.now()}`);
-    await mkdir(path.dirname(backup), { recursive: true });
-    await cp(runtimeHome, backup, { recursive: true });
+    const backup = await snapshotWorkspace(runtimeHome,
+      path.join(userRoot, 'backups', `before-${next.manifest.runtimeId}-${Date.now()}`),
+      { warn: logBackupFailure });
     transaction = { phase: 'testing', previous: active.manifest, candidate: next.manifest, backup };
     await writeJSON(transactionFile, transaction);
     const ready = await launchRuntime(next);
@@ -373,7 +379,7 @@ function buildMenu() {
 
 if (!app.requestSingleInstanceLock()) { app.quit(); }
 else {
-  app.on('second-instance', () => { window?.show(); window?.focus(); });
+  app.on('second-instance', () => focusWindow(window));
   app.on('before-quit', event => {
     if (exitAllowed) return;
     event.preventDefault();
@@ -407,6 +413,7 @@ else {
   window.webContents.on('will-navigate', event => event.preventDefault());
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   window.on('resize', layout);
+  repaintOnShow(window, layout);
   window.on('close', event => { if (!exitAllowed) { event.preventDefault(); app.quit(); } });
   for (const [channel, handler] of Object.entries({
     status: () => snapshot(),
