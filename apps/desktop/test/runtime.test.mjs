@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { generateKeyPairSync, sign } from 'node:crypto';
 import http from 'node:http';
-import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, rm, symlink } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
@@ -83,7 +83,7 @@ test('occupied ports are left alone and an available port is chosen', async t =>
   assert.equal(await probe(`http://127.0.0.1:${occupied}`), true);
 });
 
-test('a signed bundle installs from and into paths containing spaces and Chinese characters', async t => {
+test('a signed bundle installs into Unicode and relocated data directories', async t => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'DeepTutor 安装 test '));
   t.after(() => rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }));
   const source = path.join(root, 'source');
@@ -108,6 +108,38 @@ test('a signed bundle installs from and into paths containing spaces and Chinese
   const installed = await installBundle(manifestFile, path.join(root, '用户 data'), publicKey);
   assert.equal(await readFile(path.join(installed.destination, layout.python), 'utf8'), 'test runtime file');
   assert.deepEqual((await installBundle(manifestFile, path.join(root, '用户 data'), publicKey)).manifest, manifest);
+
+  const physicalRoot = path.join(root, 'relocated data');
+  const linkedRoot = path.join(root, 'linked data');
+  await mkdir(physicalRoot);
+  try {
+    await symlink(physicalRoot, linkedRoot, 'dir');
+  } catch (error) {
+    // Creating directory symlinks requires a privilege on some Windows hosts.
+    if (process.platform !== 'win32' || error.code !== 'EPERM') throw error;
+    await symlink(physicalRoot, linkedRoot, 'junction');
+  }
+  const relocated = await installBundle(manifestFile, linkedRoot, publicKey);
+  assert.equal(await readFile(path.join(relocated.destination, layout.python), 'utf8'), 'test runtime file');
+  const installedManifest = path.join(physicalRoot, 'runtimes', manifest.runtimeId, 'installed.json');
+  assert.deepEqual(JSON.parse(await readFile(installedManifest, 'utf8')), manifest);
+});
+
+test('a failed extraction reports the tar diagnostic and cleans up staging', async t => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'DeepTutor tar test '));
+  t.after(() => rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }));
+  const archive = path.join(root, 'core.tar.gz');
+  await writeFile(archive, 'incomplete archive');
+  const { privateKey, publicKey } = generateKeyPairSync('ed25519');
+  const manifest = {
+    formatVersion: 1, protocolVersion: 1, platform: process.platform, arch: process.arch,
+    runtimeId: 'incomplete-core', archive: 'core.tar.gz', sha256: await sha256(archive),
+  };
+  manifest.signature = sign(null, Buffer.from(canonicalManifest(manifest)), privateKey).toString('base64');
+  const manifestFile = path.join(root, 'runtime.json');
+  await writeFile(manifestFile, JSON.stringify(manifest));
+  await assert.rejects(installBundle(manifestFile, root, publicKey), /Core extraction failed \(tar exit \d+\): \S/);
+  await assert.rejects(readFile(path.join(root, 'runtimes', 'incomplete-core.installing')), { code: 'ENOENT' });
 });
 
 test('stopping attach mode never stops the attached server', async t => {

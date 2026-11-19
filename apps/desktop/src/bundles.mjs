@@ -1,13 +1,14 @@
 import { createHash, verify } from 'node:crypto';
+import { spawn } from 'node:child_process';
+import { once } from 'node:events';
 import { createReadStream } from 'node:fs';
-import { readFile, mkdir, rename, rm, access, writeFile } from 'node:fs/promises';
+import { readFile, mkdir, realpath, rename, rm, access, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
 import { pipeline } from 'node:stream/promises';
 import { runtimeLayout, systemTar } from './platform.mjs';
 
-const exec = promisify(execFile);
+const TAR_DIAGNOSTIC_CHARS = 8192;
+
 export function canonicalManifest(manifest) {
   return JSON.stringify(Object.fromEntries(Object.entries(manifest).filter(([key]) => key !== 'signature').sort(([a], [b]) => a.localeCompare(b))));
 }
@@ -90,15 +91,7 @@ export async function installBundle(manifestFile, root, publicKey, progress = ()
   await mkdir(staging, { mode: 0o700 });
   try {
     progress('firstLaunch');
-    // Only locally signed, hash-verified artifacts reach extraction.
-    // Windows' system tar can mangle non-ASCII command-line paths. Node opens
-    // the archive and sets the working directory using Unicode-aware OS APIs.
-    const extraction = exec(systemTar(), ['-xzf', '-'], { cwd: staging, timeout: 600000, windowsHide: true });
-    const [input, result] = await Promise.allSettled([
-      pipeline(createReadStream(archive), extraction.child.stdin), extraction,
-    ]);
-    if (result.status === 'rejected') throw result.reason;
-    if (input.status === 'rejected') throw input.reason;
+    await extractArchive(archive, staging);
     await checkLayout(staging);
     await writeFile(path.join(staging, 'installed.json'), JSON.stringify(manifest, null, 2));
     await rename(staging, destination);
@@ -107,6 +100,30 @@ export async function installBundle(manifestFile, root, publicKey, progress = ()
     await rm(staging, { recursive: true, force: true });
     throw error;
   }
+}
+
+async function extractArchive(archive, staging) {
+  // bsdtar refuses to extract through a Windows directory symlink. Keep
+  // Unicode paths out of its arguments and give it the physical working dir.
+  const child = spawn(systemTar(), ['-xzf', '-'], {
+    cwd: await realpath(staging), stdio: ['pipe', 'ignore', 'pipe'], timeout: 600000, windowsHide: true,
+  });
+  // Drain every diagnostic, keeping the first error even if tar repeats it for every entry.
+  let diagnostic = '';
+  child.stderr.setEncoding('utf8').on('data', chunk => {
+    diagnostic += chunk.slice(0, TAR_DIAGNOSTIC_CHARS - diagnostic.length);
+  });
+  const [result, input] = await Promise.allSettled([
+    once(child, 'close'), pipeline(createReadStream(archive), child.stdin),
+  ]);
+  if (result.status === 'rejected') throw result.reason;
+  const [code, signal] = result.value;
+  if (code !== 0) {
+    const status = signal ?? `exit ${code}`;
+    const detail = diagnostic.trim();
+    throw new Error(`Core extraction failed (tar ${status})${detail ? `: ${detail}` : ''}`);
+  }
+  if (input.status === 'rejected') throw input.reason;
 }
 
 async function checkLayout(root) {
