@@ -2257,3 +2257,10 @@ def test_llm_provider_choices_include_standardcompute() -> None:
 
     assert llm["standardcompute"]["label"] == "Standard Compute"
     assert llm["standardcompute"]["base_url"] == "https://api.stdcmpt.com/v1"
+
+
+def test_llm_provider_choices_include_worldrouter() -> None:
+    llm = {item["value"]: item for item in settings_router._provider_choices()["llm"]}
+
+    assert llm["worldrouter"]["label"] == "WorldRouter"
+    assert llm["worldrouter"]["base_url"] == "https://inference-api.worldrouter.ai/v1"

@@ -123,6 +123,11 @@
       "sha256": "b8ba9a992247f59bd2af8206354e76e8cebcb5a39a885150366f3cf1aeaad1c9",
       "source": "Official website asset"
     },
+    "worldrouter.png": {
+      "url": "https://www.worldrouter.ai/apple-touch-icon.png",
+      "sha256": "4da9ab55308ddeea3ad573f07b0d3cbfd685105854d6e33d6d85329ac05cfab4",
+      "source": "Official website asset"
+    },
     "api-route.png": {
       "url": "https://www.api-route.com/apple-touch-icon.png?v=2",
       "sha256": "28866bf8b7c0913c634a34d2839a3201b0eab2019b926e556411a72f4c969e42",
