@@ -3,7 +3,8 @@
 The Cloud key lives in ``data/.../settings/pageindex.json`` (managed by
 ``RuntimeSettingsService``), surfaced to users under Knowledge → RAG pipeline
 settings. A single deployment credential is shared by every ``pageindex`` KB;
-the SDK owns the official Cloud endpoint.
+the SDK owns the official Cloud endpoint. The same settings also hold the
+optional per-stage concurrency for OSS Flash indexing.
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ from dataclasses import dataclass
 @dataclass(frozen=True)
 class PageIndexConfig:
     api_key: str
+    oss_summary_concurrency: int | None = None
 
 
 def get_pageindex_config(*, require_key: bool = True) -> PageIndexConfig:
@@ -31,7 +33,9 @@ def get_pageindex_config(*, require_key: bool = True) -> PageIndexConfig:
             "PageIndex API key is not configured. Add it under "
             "Knowledge → RAG pipeline settings before using a PageIndex knowledge base."
         )
-    return PageIndexConfig(api_key=api_key)
+    return PageIndexConfig(
+        api_key=api_key, oss_summary_concurrency=settings.get("oss_summary_concurrency")
+    )
 
 
 def is_pageindex_configured() -> bool:

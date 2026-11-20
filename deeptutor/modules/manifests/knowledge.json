@@ -188,7 +188,7 @@
     }
   ],
   "requirements": [
-    "pageindex>=0.2.10,<0.3.0",
+    "pageindex>=0.2.20,<0.3.0",
     "llama-index>=0.14.12",
     "bm25s>=0.3.14,<0.4.0",
     "llama-index-retrievers-bm25>=0.7.1,<0.8.0; python_version < '3.14'",

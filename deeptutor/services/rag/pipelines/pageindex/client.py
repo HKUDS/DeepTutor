@@ -9,7 +9,7 @@ from typing import Any
 
 from deeptutor.services.provider_registry import find_by_name, strip_provider_prefix
 
-from .config import PageIndexConfig
+from .config import PageIndexConfig, get_pageindex_config
 
 
 def _sdk_types():
@@ -115,15 +115,21 @@ class PageIndexClient:
         return cls(_cloud_sdk_client(config.api_key))
 
     @classmethod
-    def local(cls, storage_path: str | Path) -> "PageIndexClient":
+    def local(cls, storage_path: str | Path, *, mode: str | None = None) -> "PageIndexClient":
         _, local_type = _sdk_types()
         model, backend = resolve_oss_sdk_config()
+        options: dict[str, Any] = {}
+        # The SDK refuses this Flash-only knob on a Standard submission.
+        concurrency = get_pageindex_config(require_key=False).oss_summary_concurrency
+        if mode != "standard" and concurrency is not None:
+            options["summary_concurrency"] = concurrency
         return cls(
             local_type(
                 storage_path=str(storage_path),
                 index_model=model,
                 summary_model=model,
                 index_backend=backend,
+                **options,
             )
         )
 

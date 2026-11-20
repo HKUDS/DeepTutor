@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from deeptutor.services.config import provider_runtime
 from deeptutor.services.config.model_catalog import ModelCatalogService
 from deeptutor.services.model_selection import tasks
+from deeptutor.services.rag.pipelines.pageindex import client as client_module
 from deeptutor.services.rag.pipelines.pageindex.client import resolve_oss_sdk_config
 
 
@@ -105,3 +107,31 @@ def test_anthropic_base_url_drops_the_version_segment_litellm_appends(catalog) -
     _model, backend = resolve_oss_sdk_config()
 
     assert backend["api_base"] == "https://api.anthropic.com"
+
+
+@pytest.mark.parametrize(
+    "mode, limit, expected",
+    [(None, 2, 2), ("flash", 3, 3), ("standard", 2, None), (None, None, None)],
+)
+def test_oss_client_passes_flash_concurrency_without_breaking_standard(
+    tmp_path: Path, monkeypatch, mode, limit, expected
+) -> None:
+    constructed = []
+
+    def local_type(**kwargs):
+        constructed.append(kwargs)
+        return SimpleNamespace(**kwargs)
+
+    monkeypatch.setattr(client_module, "_sdk_types", lambda: (None, local_type))
+    monkeypatch.setattr(client_module, "resolve_oss_sdk_config", lambda: ("openai/test", {}))
+    monkeypatch.setattr(
+        client_module,
+        "get_pageindex_config",
+        lambda **kwargs: SimpleNamespace(oss_summary_concurrency=limit),
+    )
+
+    client_module.PageIndexClient.local(tmp_path, mode=mode)
+
+    assert constructed[0].get("summary_concurrency") == expected
+    if expected is None:
+        assert "summary_concurrency" not in constructed[0]

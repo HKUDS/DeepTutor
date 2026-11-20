@@ -675,5 +675,9 @@
   "Action": "Action",
   "Chapter": "Chapter",
   "Conversation IDs (optional)": "Conversation IDs (optional)",
-  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle."
+  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.",
+  "Flash concurrency per stage": "Flash 단계별 동시 요청 수",
+  "SDK default (64)": "SDK 기본값(64)",
+  "Enter a whole number from 1 to 128, or leave blank.": "1~128 사이의 정수를 입력하거나 비워 두세요.",
+  "Flash only. Summary and expansion stages each use this limit and may run together. Leave blank for the SDK default.": "Flash에만 적용됩니다. 요약과 확장 단계에 각각 이 한도가 적용되며 동시에 실행될 수 있습니다. 비워 두면 SDK 기본값을 사용합니다."
 }

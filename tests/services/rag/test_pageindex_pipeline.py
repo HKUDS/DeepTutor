@@ -61,6 +61,35 @@ def test_is_supported_file() -> None:
     assert not is_supported_file("b.docx", "pageindex-oss")
 
 
+@pytest.mark.parametrize("mode", [None, "flash", "standard"])
+def test_oss_pipeline_constructs_the_client_for_the_selected_mode(tmp_path, monkeypatch, mode):
+    modes = []
+    client = FakeClient()
+
+    def local_client(storage_path, *, mode=None):
+        modes.append(mode)
+        return client
+
+    monkeypatch.setattr(PageIndexClient, "local", local_client)
+    pipeline = PageIndexPipeline(kb_base_dir=str(tmp_path), provider=storage.OSS_PROVIDER)
+    source = tmp_path / "source.pdf"
+    source.write_bytes(b"%PDF-1.4")
+
+    count = asyncio.run(
+        pipeline._ingest(
+            [str(source)],
+            storage._empty_manifest(storage.OSS_PROVIDER),
+            None,
+            storage_dir=tmp_path / "index",
+            mode=mode,
+        )
+    )
+
+    assert count == 1
+    assert modes == [mode]
+    assert client.modes == [mode]
+
+
 def test_initialize_submits_supported_and_skips_others(tmp_path) -> None:
     client = FakeClient()
     pdf = tmp_path / "a.pdf"

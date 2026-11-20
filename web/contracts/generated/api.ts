@@ -3695,12 +3695,12 @@ export interface paths {
     };
     /**
      * Get Pageindex Pipeline Config
-     * @description Read the PageIndex credential state (key redacted to a boolean).
+     * @description Read PageIndex Cloud credential state and OSS Flash concurrency.
      */
     readonly get: operations["get_pageindex_pipeline_config_api_knowledge_bases_rag_pipelines_pageindex_config_get"];
     /**
      * Update Pageindex Pipeline Config
-     * @description Persist the deployment-level PageIndex Cloud credential.
+     * @description Persist PageIndex Cloud credentials and OSS Flash concurrency independently.
      */
     readonly put: operations["update_pageindex_pipeline_config_api_knowledge_bases_rag_pipelines_pageindex_config_put"];
     readonly post?: never;
@@ -16150,6 +16150,8 @@ export interface components {
     readonly PageIndexConfigUpdate: {
       /** Api Key */
       readonly api_key?: string | null;
+      /** Oss Summary Concurrency */
+      readonly oss_summary_concurrency?: number | null;
     };
     /** PairRequest */
     readonly PairRequest: {

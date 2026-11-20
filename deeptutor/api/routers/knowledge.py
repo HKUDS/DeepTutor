@@ -1519,6 +1519,7 @@ class PageIndexConfigUpdate(BaseModel):
     # Tri-state api_key: omit/None keeps the stored key, "" clears it, any other
     # value replaces it — so the masked UI never round-trips the real secret.
     api_key: str | None = None
+    oss_summary_concurrency: int | None = Field(default=None, strict=True, ge=1, le=128)
 
 
 def _pageindex_config_payload() -> dict:
@@ -1529,12 +1530,13 @@ def _pageindex_config_payload() -> dict:
     return {
         "api_key_set": bool(settings.get("api_key")),
         "configured": bool(settings.get("api_key")),
+        "oss_summary_concurrency": settings.get("oss_summary_concurrency"),
     }
 
 
 @router.get("/knowledge-bases/rag-pipelines/pageindex/config")
 async def get_pageindex_pipeline_config():
-    """Read the PageIndex credential state (key redacted to a boolean)."""
+    """Read PageIndex Cloud credential state and OSS Flash concurrency."""
     try:
         return _pageindex_config_payload()
     except Exception as e:
@@ -1544,7 +1546,7 @@ async def get_pageindex_pipeline_config():
 
 @router.put("/knowledge-bases/rag-pipelines/pageindex/config")
 async def update_pageindex_pipeline_config(payload: PageIndexConfigUpdate):
-    """Persist the deployment-level PageIndex Cloud credential."""
+    """Persist PageIndex Cloud credentials and OSS Flash concurrency independently."""
     try:
         from deeptutor.services.config import get_runtime_settings_service
 
@@ -1555,7 +1557,10 @@ async def update_pageindex_pipeline_config(payload: PageIndexConfigUpdate):
         if payload.api_key is not None:
             api_key = payload.api_key.strip()
 
-        service.save_pageindex({"api_key": api_key})
+        current["api_key"] = api_key
+        if "oss_summary_concurrency" in payload.model_fields_set:
+            current["oss_summary_concurrency"] = payload.oss_summary_concurrency
+        service.save_pageindex(current)
 
         return _pageindex_config_payload()
     except Exception as e:

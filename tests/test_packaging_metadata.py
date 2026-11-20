@@ -68,7 +68,7 @@ def test_docling_parser_avoids_source_only_build_dependencies():
         ("core", "json-repair>=0.57.0,<1.0.0"),
         ("core", "pyte>=0.8.1"),
         ("partners", "qrcode>=7.4.0,<9.0.0"),
-        ("knowledge", "pageindex>=0.2.10,<0.3.0"),
+        ("knowledge", "pageindex>=0.2.20,<0.3.0"),
         ("calendar", "croniter>=6.0.0,<7.0.0"),
         ("video-lesson", "edge-tts>=7.0,<8.0"),
         ("parsing", "pdfplumber>=0.11.0"),
