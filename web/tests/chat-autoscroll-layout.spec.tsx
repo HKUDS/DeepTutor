@@ -21,9 +21,15 @@ function flushLayout() {
   });
 }
 
-function Harness({ streaming = true }: { streaming?: boolean }) {
+function Harness({
+  streaming = true,
+  composerHeight = 0,
+}: {
+  streaming?: boolean;
+  composerHeight?: number;
+}) {
   const { containerRef, endRef, handleScroll, shouldAutoScrollRef } = useChatAutoScroll({ hasMessages: true, isStreaming: streaming,
-    composerHeight: 0, messageCount: 2, lastMessageContent: "Reply" });
+    composerHeight, messageCount: 2, lastMessageContent: "Reply" });
   useLayoutEffect(() => { following = shouldAutoScrollRef; }, [shouldAutoScrollRef]);
   return <div data-testid="scroll" onScroll={handleScroll} ref={containerRef}>
     <div><p>Question</p><p>Reply</p><button>Open working notes</button><div ref={endRef} /></div>
@@ -130,4 +136,18 @@ it("lets the reader drag the scrollbar up while the reply is still growing (#207
   expect(following.current).toBe(true);
   height = 1600; flushLayout();
   expect(top).toBe(1400);
+});
+
+it("does not pin the transcript when only the composer height changes (#2745)", () => {
+  const { rerender } = render(<Harness composerHeight={80} />);
+  flushLayout();
+  expect(top).toBe(800);
+  // Reader left the live end; composer autosize must not yank them back.
+  fireEvent.wheel(screen.getByTestId("scroll"), { deltaY: -20 });
+  top = 400;
+  fireEvent.scroll(screen.getByTestId("scroll"));
+  rerender(<Harness composerHeight={160} />);
+  flushLayout();
+  expect(top).toBe(400);
+  expect(following.current).toBe(false);
 });
