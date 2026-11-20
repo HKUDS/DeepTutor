@@ -432,7 +432,8 @@ class AnthropicProvider(LLMProvider):
 
         minimax = (
             minimax_reasoning_kwargs(model_name, effort, anthropic=True)
-            if getattr(self, "_binding", "anthropic") in {"minimax", "minimax_anthropic"}
+            if reasoning_effort != ""
+            and getattr(self, "_binding", "anthropic") in {"minimax", "minimax_anthropic"}
             else None
         )
         if minimax is not None:
@@ -440,10 +441,14 @@ class AnthropicProvider(LLMProvider):
             thinking_enabled = minimax["thinking"]["type"] != "disabled"
         elif thinking_enabled and effort_based:
             # These families reject enabled+budget_tokens with a 400 —
-            # adaptive is their only on-mode, so any real effort level maps
-            # to adaptive (no budget headroom needed). Off-sentinels omit
-            # the param entirely.
+            # adaptive is their on-mode; effort is a separate native control.
+            # Keep legacy `adaptive` choices on the provider's default effort.
             kwargs["thinking"] = {"type": "adaptive"}
+            # Per-model effort support (including xhigh) is declared by the
+            # Models API: https://platform.claude.com/docs/en/build-with-claude/effort
+            # extra_body also works with SDKs predating the typed output_config.
+            if effort in {"low", "medium", "high", "xhigh", "max"}:
+                kwargs.setdefault("extra_body", {})["output_config"] = {"effort": effort}
         elif thinking_enabled:
             # The older families are the mirror image: they take
             # enabled+budget_tokens and reject `adaptive`, so a stored

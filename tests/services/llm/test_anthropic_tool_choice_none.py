@@ -46,9 +46,20 @@ def test_auto_and_default_keep_their_existing_choice(thinking: bool) -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("streaming", [False, True])
-@pytest.mark.parametrize("effort", [None, "high"])
+@pytest.mark.parametrize(
+    "model,effort",
+    [
+        ("claude-sonnet-4-6", None),
+        ("claude-sonnet-4-6", "high"),
+        ("claude-opus-5", "low"),
+        ("claude-opus-5", "medium"),
+        ("claude-opus-5", "high"),
+        ("claude-opus-5", "xhigh"),
+        ("claude-opus-5", "max"),
+    ],
+)
 async def test_default_sdk_sends_explicit_none_on_the_wire(
-    streaming: bool, effort: str | None, monkeypatch: pytest.MonkeyPatch
+    streaming: bool, effort: str | None, model: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     pytest.importorskip("anthropic")
     # Exercise the SDK's actual transport against this local server, not a host proxy.
@@ -64,7 +75,7 @@ async def test_default_sdk_sends_explicit_none_on_the_wire(
                 "id": "msg-fixture",
                 "type": "message",
                 "role": "assistant",
-                "model": "claude-sonnet-4-6",
+                "model": payload["model"],
                 "content": [{"type": "text", "text": "answer"}],
                 "stop_reason": "end_turn",
                 "stop_sequence": None,
@@ -121,13 +132,15 @@ async def test_default_sdk_sends_explicit_none_on_the_wire(
                     "function": {"name": "lookup", "parameters": {"type": "object"}},
                 }
             ],
-            model="claude-sonnet-4-6",
+            model=model,
             reasoning_effort=effort,
             tool_choice="none",
         )
         assert response.content == "answer"
         assert requests[0]["tool_choice"] == {"type": "none"}
         assert requests[0]["tools"][0]["name"] == "lookup"
+        if model == "claude-opus-5":
+            assert requests[0]["output_config"] == {"effort": effort}
         assert len(requests) == 1
     finally:
         await provider._client.close()

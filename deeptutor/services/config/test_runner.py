@@ -18,6 +18,7 @@ from .provider_runtime import (
     resolve_search_runtime_config,
     supported_search_providers_hint,
 )
+from .reasoning_detection import detect_reasoning_levels
 
 
 def _redact(value: str) -> str:
@@ -244,6 +245,23 @@ class ConfigTestRunner:
             "info", f"Resolved model `{llm_config.model}` with binding `{llm_config.binding}`."
         )
         run.emit("info", f"Request target: {llm_config.base_url}")
+        if run.cancelled:
+            return
+        model = get_model_catalog_service().get_active_model(catalog, run.service)
+        reasoning = await detect_reasoning_levels(llm_config, model)
+        run.emit(
+            "reasoning_levels",
+            "Read explicit reasoning-level metadata."
+            if reasoning.levels is not None
+            else "Reasoning levels could not be determined from model metadata.",
+            levels=reasoning.levels,
+            selectable_levels=reasoning.selectable_levels,
+            source=reasoning.source,
+            detected_at=reasoning.detected_at,
+        )
+        if run.cancelled:
+            return
+
         # Reasoning models spend part of the budget on internal thinking;
         # too tight a cap makes them return empty content. Configurable
         # via diagnostics.llm_probe.max_tokens in agents.yaml.

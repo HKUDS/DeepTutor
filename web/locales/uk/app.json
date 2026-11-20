@@ -6686,5 +6686,17 @@
   "Position": "Position",
   "Action": "Action",
   "Conversation IDs (optional)": "Conversation IDs (optional)",
-  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle."
+  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.",
+  "Enabled reasoning levels": "Увімкнені рівні міркування",
+  "Enable the levels your model accepts, then choose one in chat. No selection uses the provider default.": "Увімкніть рівні, які підтримує ваша модель, а потім виберіть один у чаті. Якщо нічого не вибрано, використовується налаштування постачальника за замовчуванням.",
+  "Provider reasoning mode": "Режим міркування постачальника",
+  "Other tasks: default reasoning": "Інші завдання: міркування за замовчуванням",
+  "Supported reasoning levels": "Підтримувані рівні міркування",
+  "Use detected levels": "Застосувати виявлені рівні",
+  "No configurable reasoning levels reported.": "Налаштовувані рівні міркування не вказані.",
+  "Managed model catalog": "Керований каталог моделей",
+  "Provider model metadata": "Метадані моделі постачальника",
+  "Enable reasoning in model capabilities to use these levels.": "Увімкніть міркування в можливостях моделі, щоб застосувати ці рівні.",
+  "Reasoning levels could not be determined. Keep your manual selection.": "Не вдалося визначити рівні міркування. Збережіть ручний вибір.",
+  "Selectable through this connection: {{levels}}": "Доступні через це з’єднання рівні: {{levels}}"
 }

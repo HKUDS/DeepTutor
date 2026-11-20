@@ -1919,10 +1919,9 @@ class ResearchPipeline:
                     stage="reporting",
                     iter_meta=iter_meta,
                     max_tokens=max_tokens,
-                    # Report prose is the reader-facing body; thinking on a
-                    # reasoning model comes out of the same max_tokens budget
-                    # and is the usual cause of first-attempt truncation.
-                    reasoning_effort="none",
+                    # Respect the conversation on the first attempt; reduce
+                    # reasoning only when recovering an incomplete report.
+                    reasoning_effort=self.reasoning_effort if attempt == 1 else "none",
                     # Buffer body text until validation succeeds. Passing
                     # ``final_meta`` here would stream a failed attempt and
                     # make a clean retry impossible without duplicated prose.

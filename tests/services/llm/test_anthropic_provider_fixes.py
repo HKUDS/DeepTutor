@@ -192,6 +192,21 @@ def test_effort_based_families_map_real_effort_to_adaptive_thinking() -> None:
         assert kwargs["max_tokens"] == 1024, model  # no budget headroom inflation
 
 
+@pytest.mark.parametrize("effort", ["low", "medium", "high", "xhigh", "max"])
+def test_effort_based_models_preserve_the_selected_native_effort(effort: str) -> None:
+    kwargs = _kwargs_with_effort(_provider(), "claude-opus-5", effort)
+    assert kwargs["thinking"] == {"type": "adaptive"}
+    assert kwargs["extra_body"]["output_config"] == {"effort": effort}
+    assert "output_config" not in kwargs  # compatible with older SDK signatures
+
+
+def test_legacy_adaptive_keeps_the_provider_default_effort() -> None:
+    kwargs = _kwargs_with_effort(_provider(), "claude-opus-5", "adaptive")
+    assert kwargs["thinking"] == {"type": "adaptive"}
+    assert "output_config" not in kwargs
+    assert "output_config" not in kwargs.get("extra_body", {})
+
+
 @pytest.mark.parametrize(
     "model",
     [

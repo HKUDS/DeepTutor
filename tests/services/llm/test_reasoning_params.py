@@ -142,3 +142,22 @@ def test_qwen_thinking_models_keep_native_controls(binding, effort, enabled) -> 
     assert build_openai_compatible_reasoning_kwargs(
         spec=None, binding=binding, model="qwen3-235b-a22b", reasoning_effort=effort
     ) == {"extra_body": {"enable_thinking": enabled}}
+
+
+@pytest.mark.parametrize(
+    "binding,model",
+    [
+        ("minimax", "minimax-m3.1-flash"),
+        ("deepseek", "deepseek-reasoner"),
+        ("gemini", "gemini-3-pro"),
+    ],
+)
+def test_explicit_auto_omits_implicit_reasoning_parameters(binding, model):
+    from deeptutor.services.provider_registry import find_by_name
+
+    assert (
+        build_openai_compatible_reasoning_kwargs(
+            spec=find_by_name(binding), binding=binding, model=model, reasoning_effort=""
+        )
+        == {}
+    )

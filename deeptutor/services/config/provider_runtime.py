@@ -974,6 +974,7 @@ def resolve_llm_runtime_config(
     service: ModelCatalogService | None = None,
     llm_selection: dict[str, Any] | LLMSelection | None = None,
     service_name: str = "llm",
+    conversation_reasoning: bool = False,
 ) -> ResolvedLLMConfig:
     """Resolve active LLM config with TutorBot-style provider matching.
 
@@ -1019,6 +1020,21 @@ def resolve_llm_runtime_config(
     # no override is present, preserving today's behavior.
     if selection is not None and selection.reasoning_effort:
         reasoning_effort = selection.reasoning_effort
+    enabled_efforts = (model or {}).get("enabled_reasoning_efforts")
+    if conversation_reasoning:
+        # Interactive turns choose an effort per conversation. Background and
+        # indexing calls keep the legacy model default.
+        declared = (model or {}).get("codex_supported_reasoning_levels")
+        allows_reasoning = ((model or {}).get("capabilities") or {}).get("reasoning") is not False
+        requested = selection.reasoning_effort if selection is not None else None
+        reasoning_effort = (
+            requested
+            if requested is not None
+            and allows_reasoning
+            and (not isinstance(enabled_efforts, list) or requested in enabled_efforts)
+            and (not isinstance(declared, list) or requested in declared)
+            else ""
+        )
     active_extra_headers = _to_headers((profile or {}).get("extra_headers"))
     context_window = _coerce_optional_int((model or {}).get("context_window"))
     if context_window is None:

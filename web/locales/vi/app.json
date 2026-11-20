@@ -6664,5 +6664,17 @@
   "Position": "Position",
   "Action": "Action",
   "Conversation IDs (optional)": "Conversation IDs (optional)",
-  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle."
+  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.",
+  "Enabled reasoning levels": "Các mức suy luận đã bật",
+  "Enable the levels your model accepts, then choose one in chat. No selection uses the provider default.": "Bật các mức mà mô hình hỗ trợ, rồi chọn một mức trong cuộc trò chuyện. Nếu không chọn, hệ thống dùng mặc định của nhà cung cấp.",
+  "Provider reasoning mode": "Chế độ suy luận của nhà cung cấp",
+  "Other tasks: default reasoning": "Tác vụ khác: mức suy luận mặc định",
+  "Supported reasoning levels": "Các mức suy luận được hỗ trợ",
+  "Use detected levels": "Dùng các mức đã phát hiện",
+  "No configurable reasoning levels reported.": "Không có mức suy luận có thể cấu hình được báo cáo.",
+  "Managed model catalog": "Danh mục mô hình được quản lý",
+  "Provider model metadata": "Siêu dữ liệu mô hình của nhà cung cấp",
+  "Enable reasoning in model capabilities to use these levels.": "Bật suy luận trong khả năng của mô hình để dùng các mức này.",
+  "Reasoning levels could not be determined. Keep your manual selection.": "Không xác định được các mức suy luận. Hãy giữ lựa chọn thủ công.",
+  "Selectable through this connection: {{levels}}": "Các mức có thể chọn qua kết nối này: {{levels}}"
 }

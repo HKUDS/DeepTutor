@@ -2334,6 +2334,16 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
               });
               setEmbeddingCapabilities(entry);
             }
+            if (entry.type === "reasoning_levels") {
+              update({
+                reasoning: {
+                  levels: Array.isArray(entry.levels) ? entry.levels : null,
+                  selectableLevels: Array.isArray(entry.selectable_levels) ? entry.selectable_levels : null,
+                  source: entry.source || "unknown",
+                  detectedAt: entry.detected_at,
+                },
+              });
+            }
             // A probe never replaces the catalog or the user's in-progress edits.
             // Metadata is offered to the addressed model for explicit adoption.
             if (entry.type === "completed") finish("success", entry.message);

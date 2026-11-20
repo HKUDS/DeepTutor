@@ -6664,5 +6664,17 @@
   "Position": "Position",
   "Action": "Action",
   "Conversation IDs (optional)": "Conversation IDs (optional)",
-  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle."
+  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.",
+  "Enabled reasoning levels": "有効な推論レベル",
+  "Enable the levels your model accepts, then choose one in chat. No selection uses the provider default.": "モデルが対応するレベルを有効にして、チャットで選択します。選択しない場合は提供元の既定値を使用します。",
+  "Provider reasoning mode": "提供元の推論モード",
+  "Other tasks: default reasoning": "その他のタスクの既定の推論",
+  "Supported reasoning levels": "対応する推論強度",
+  "Use detected levels": "検出した段階を適用",
+  "No configurable reasoning levels reported.": "設定可能な推論段階は報告されていません。",
+  "Managed model catalog": "管理対象モデルカタログ",
+  "Provider model metadata": "プロバイダーのモデルメタデータ",
+  "Enable reasoning in model capabilities to use these levels.": "これらの段階を使用するには、モデルの機能で推論を有効にしてください。",
+  "Reasoning levels could not be determined. Keep your manual selection.": "推論段階を特定できませんでした。手動の選択を維持してください。",
+  "Selectable through this connection: {{levels}}": "この接続で選択できる段階：{{levels}}"
 }

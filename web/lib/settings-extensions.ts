@@ -45,7 +45,7 @@ export async function applyExtensionPayload(
   if (payload == null) throw new Error(`Missing settings payload: ${key}`);
   if (key === "codex-reasoning") {
     const { setCodexReasoningEffort } = await import("@/lib/codex-oauth");
-    for (const [model, effort] of Object.entries(payload as Record<string, string | null>)) {
+    for (const [model, effort] of Object.entries(payload as Record<string, string | string[] | null>)) {
       await setCodexReasoningEffort(model, effort);
     }
     return;

@@ -25,6 +25,14 @@ def _fake_skill_service() -> SimpleNamespace:
 
 @pytest.fixture(autouse=True)
 def _isolate_runtime_services(monkeypatch, tmp_path):
+    from deeptutor.services.config.model_catalog import ModelCatalogService
+
+    catalog_service = ModelCatalogService(tmp_path / "runtime-models.json")
+    catalog_service.save(_model_catalog())
+    monkeypatch.setattr(
+        "deeptutor.services.config.provider_runtime.get_model_catalog_service",
+        lambda: catalog_service,
+    )
     from deeptutor.services.path_service import PathService
     from deeptutor.services.task_board import TaskBoardStore
 
@@ -442,13 +450,24 @@ async def test_turn_runtime_persists_private_provider_response_state(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("capability", ["chat", "deep_research", "deep_question", "deep_solve"])
 async def test_turn_runtime_persists_llm_selection_in_turn_snapshot(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path,
+    capability,
 ) -> None:
     store = SQLiteSessionStore(tmp_path / "chat_history.db")
     runtime = TurnRuntimeManager(store)
     captured: dict[str, object] = {}
+    catalog = _model_catalog()
+    catalog["services"]["llm"]["profiles"][1]["models"][0]["reasoning_effort"] = "low"
+
+    async def observe_title(**_kwargs):
+        from deeptutor.services.llm.config import get_llm_config
+
+        captured["title_effort"] = get_llm_config().reasoning_effort
+
+    monkeypatch.setattr(runtime, "_maybe_generate_session_title", observe_title)
 
     class FakeContextBuilder:
         def __init__(self, *_args, **_kwargs) -> None:
@@ -476,15 +495,23 @@ async def test_turn_runtime_persists_llm_selection_in_turn_snapshot(
             )
             yield StreamEvent(type=StreamEventType.DONE, source="chat")
 
-    def fake_activate(selection):
+    def fake_activate(selection, *, conversation_reasoning=False):
+        assert conversation_reasoning is True
         captured["activated_selection"] = selection
         return SimpleNamespace(
-            model="anthropic/claude-sonnet-4", provider_name="openrouter"
+            model="anthropic/claude-sonnet-4", provider_name="openrouter", reasoning_effort="high"
         ), object()
 
+    from deeptutor.services.config.model_catalog import ModelCatalogService
+
+    catalog_service = ModelCatalogService(tmp_path / "models.json")
+    catalog_service.save(catalog)
     monkeypatch.setattr(
-        "deeptutor.services.config.get_model_catalog_service",
-        lambda: SimpleNamespace(load=_model_catalog),
+        "deeptutor.services.config.get_model_catalog_service", lambda: catalog_service
+    )
+    monkeypatch.setattr(
+        "deeptutor.services.config.provider_runtime.get_model_catalog_service",
+        lambda: catalog_service,
     )
     monkeypatch.setattr(
         "deeptutor.services.model_selection.runtime.activate_llm_selection",
@@ -508,18 +535,18 @@ async def test_turn_runtime_persists_llm_selection_in_turn_snapshot(
     monkeypatch.setattr("deeptutor.services.skill.get_skill_service", _fake_skill_service)
     monkeypatch.setattr("deeptutor.services.persona.get_persona_service", _fake_persona_service)
 
-    selection = {"profile_id": "p-alt", "model_id": "m-alt"}
+    selection = {"profile_id": "p-alt", "model_id": "m-alt", "reasoning_effort": "high"}
     session, turn = await runtime.start_turn(
         {
             "type": "start_turn",
             "content": "use the alt model",
             "session_id": None,
-            "capability": None,
+            "capability": capability,
             "tools": [],
             "knowledge_bases": [],
             "attachments": [],
             "language": "en",
-            "config": {},
+            "config": {"mode": "report", "depth": "quick"} if capability == "deep_research" else {},
             "llm_selection": selection,
         }
     )
@@ -537,6 +564,8 @@ async def test_turn_runtime_persists_llm_selection_in_turn_snapshot(
     assert detail["preferences"]["llm_selection"] == selection
     assert detail["messages"][0]["metadata"]["request_snapshot"]["llmSelection"] == selection
     assert captured["activated_selection"] == selection
+    assert captured["title_effort"] == "low"
+    assert captured["builder_llm_config"].reasoning_effort == "high"
     assert captured["builder_llm_config"].model == "anthropic/claude-sonnet-4"
     assert captured["metadata"]["llm_selection"] == selection
     assert captured["metadata"]["llm_model"] == "anthropic/claude-sonnet-4"
@@ -623,7 +652,8 @@ async def test_turn_runtime_persists_reasoning_effort_override(
             )
             yield StreamEvent(type=StreamEventType.DONE, source="chat")
 
-    def fake_activate(sel):
+    def fake_activate(sel, *, conversation_reasoning=False):
+        assert conversation_reasoning is True
         captured["activated_selection"] = sel
         return SimpleNamespace(
             model="anthropic/claude-sonnet-4", provider_name="openrouter"
@@ -908,7 +938,8 @@ async def test_turn_runtime_allows_model_switching_within_same_session(
             )
             yield StreamEvent(type=StreamEventType.DONE, source="chat")
 
-    def fake_activate(selection):
+    def fake_activate(selection, *, conversation_reasoning=False):
+        assert conversation_reasoning is True
         activated.append(dict(selection or {}))
         is_alt = (selection or {}).get("profile_id") == "p-alt"
         return (

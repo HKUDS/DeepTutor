@@ -1,17 +1,17 @@
-"use client";
+'use client'
 
-import { useMemo, useRef, useState } from "react";
-import { Brain, Check } from "lucide-react";
-import { useTranslation } from "react-i18next";
-import { useOutsideClick } from "@/hooks/use-outside-click";
-import Tooltip from "@/shared/ui/Tooltip";
-import type { LLMOption } from "@/lib/llm-options";
+import { useMemo, useRef, useState } from 'react'
+import { Brain, Check } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+import { useOutsideClick } from '@/hooks/use-outside-click'
+import Tooltip from '@/shared/ui/Tooltip'
+import type { LLMOption } from '@/lib/llm-options'
 import {
   effectiveReasoningEffort,
   reasoningEffortOptionsFromSupportedLevels,
   supportedReasoningEffortValues,
   type ReasoningEffortOption,
-} from "@/lib/reasoning-effort";
+} from '@/lib/reasoning-effort'
 
 /**
  * Per-conversation reasoning-effort override (#641), rendered beside the
@@ -32,106 +32,121 @@ export default function ReasoningEffortSelector({
   disabled = false,
 }: {
   /** The option backing the conversation's current model selection. */
-  option: LLMOption | null;
+  option: LLMOption | null
   /** The conversation's override, or null for the provider default. */
-  value: string | null;
-  onChange: (value: string | null) => void;
-  disabled?: boolean;
+  value: string | null
+  onChange: (value: string | null) => void
+  disabled?: boolean
 }) {
-  const { t } = useTranslation();
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
+  const { t } = useTranslation()
+  const [open, setOpen] = useState(false)
+  const rootRef = useRef<HTMLDivElement>(null)
 
-  const options = useMemo<ReasoningEffortOption[]>(
-    () => computeReasoningOptions(option),
-    [option],
-  );
+  const options = useMemo<ReasoningEffortOption[]>(() => computeReasoningOptions(option), [option])
 
-  useOutsideClick(rootRef, open, () => setOpen(false));
+  useOutsideClick(rootRef, open, () => setOpen(false))
 
   // Nothing to choose (only the implicit provider default): hide, per #641.
-  if (!option || !options.some((item) => item.value)) return null;
+  if (!option || !options.some(item => item.value)) return null
 
   // A stored override the selected model does not support is not a
   // selectable level: render Auto as selected instead (#641). The composer
   // resets the persisted override once the model options are loaded.
-  const selected = effectiveReasoningEffort(option, value) ?? "";
-  const selectedLabel =
-    options.find((item) => item.value === selected)?.label ?? selected;
+  const selected = effectiveReasoningEffort(option, value) ?? ''
+  const selectedLabel = options.find(item => item.value === selected)?.label ?? selected
 
   return (
-    <div ref={rootRef} className="relative">
-      <Tooltip label={t("Reasoning effort")} suppressed={open} side="top">
+    <div
+      ref={rootRef}
+      className="relative"
+      onKeyDown={event => {
+        if (event.key === 'Escape') {
+          setOpen(false)
+          rootRef.current?.querySelector<HTMLButtonElement>('button')?.focus()
+        }
+        if (open && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
+          event.preventDefault()
+          const items = Array.from(
+            rootRef.current?.querySelectorAll<HTMLButtonElement>('[data-effort-option]') ?? []
+          )
+          const index = items.indexOf(document.activeElement as HTMLButtonElement)
+          const next = index < 0
+            ? (event.key === 'ArrowDown' ? 0 : items.length - 1)
+            : (index + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length
+          items[next]?.focus()
+        }
+      }}
+    >
+      <Tooltip label={t('Reasoning effort')} suppressed={open} side="top">
         <button
           type="button"
           disabled={disabled}
-          onClick={() => setOpen((current) => !current)}
-          aria-label={t("Reasoning effort")}
+          onClick={() => setOpen(current => !current)}
+          aria-label={t('Reasoning effort')}
           aria-expanded={open}
-          className={`inline-flex h-8 shrink-0 items-center gap-1 rounded-lg px-2 text-[14px] font-medium transition-[background-color,color,transform] duration-150 active:scale-[0.97] ${
+          aria-haspopup="dialog"
+          className={`inline-flex h-8 shrink-0 items-center gap-1 rounded-lg px-2 text-[14px] font-medium transition-[background-color,color,transform] duration-150 motion-reduce:transition-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--ring)] active:scale-[0.97] ${
             disabled
-              ? "cursor-not-allowed text-[var(--border)]"
+              ? 'cursor-not-allowed text-[var(--border)]'
               : open
-                ? "bg-[var(--muted)] text-[var(--foreground)]"
-                : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]/55 hover:text-[var(--foreground)]"
+                ? 'bg-[var(--muted)] text-[var(--foreground)]'
+                : 'text-[var(--muted-foreground)] hover:bg-[var(--muted)]/55 hover:text-[var(--foreground)]'
           }`}
         >
           <Brain size={16} strokeWidth={1.7} className="shrink-0" />
           <span className="min-w-0 whitespace-nowrap">
-            {selected ? t(selectedLabel) : t("Auto")}
+            {selected ? t(selectedLabel) : t('Auto')}
           </span>
         </button>
       </Tooltip>
 
       {open && !disabled && (
-        <div className="absolute right-0 bottom-full z-50 mb-1.5 w-[min(220px,calc(100vw-32px))] overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--popover)] py-1 shadow-lg backdrop-blur-md">
-          {options.map((item) => {
-            const isSelected = item.value === selected;
+        <div
+          role="dialog"
+          aria-label={t('Reasoning effort')}
+          className="absolute right-0 bottom-full z-50 mb-1.5 w-[min(192px,calc(100vw-32px))] overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--popover)] py-1 shadow-lg backdrop-blur-md"
+        >
+          <div className="px-3 py-2 text-[11px] text-[var(--muted-foreground)] truncate">
+            {option.model_name}
+          </div>
+          {options.map(item => {
+            const isSelected = item.value === selected
             return (
               <button
-                key={item.value || "default"}
+                key={item.value || 'default'}
+                data-effort-option
+                aria-pressed={isSelected}
                 type="button"
                 onClick={() => {
-                  onChange(item.value || null);
-                  setOpen(false);
+                  onChange(item.value || null)
+                  setOpen(false)
+                  rootRef.current?.querySelector<HTMLButtonElement>('button')?.focus()
                 }}
-                className={`flex w-full items-center gap-2 px-3 py-1.5 text-left transition-colors active:bg-[var(--muted)]/70 ${
-                  isSelected
-                    ? "bg-[var(--primary)]/[0.06]"
-                    : "hover:bg-[var(--muted)]/45"
+                className={`flex w-full items-center gap-2 px-3 py-1.5 text-left transition-colors motion-reduce:transition-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-[var(--ring)] active:bg-[var(--muted)]/70 ${
+                  isSelected ? 'bg-[var(--primary)]/[0.06]' : 'hover:bg-[var(--muted)]/45'
                 }`}
               >
                 <span
                   className={`min-w-0 flex-1 truncate text-[12.5px] font-medium ${
-                    isSelected
-                      ? "text-[var(--primary)]"
-                      : "text-[var(--foreground)]"
+                    isSelected ? 'text-[var(--primary)]' : 'text-[var(--foreground)]'
                   }`}
                 >
                   {t(item.label)}
                 </span>
                 {isSelected && (
-                  <Check
-                    size={14}
-                    strokeWidth={2}
-                    className="shrink-0 text-[var(--primary)]"
-                  />
+                  <Check size={14} strokeWidth={2} className="shrink-0 text-[var(--primary)]" />
                 )}
               </button>
-            );
+            )
           })}
         </div>
       )}
     </div>
-  );
+  )
 }
 
-function computeReasoningOptions(
-  option: LLMOption | null,
-): ReasoningEffortOption[] {
+function computeReasoningOptions(option: LLMOption | null): ReasoningEffortOption[] {
   // Only levels the selected model supports, narrowed to the wire
   // vocabulary — the stored override is never re-added (#641).
-  return reasoningEffortOptionsFromSupportedLevels(
-    supportedReasoningEffortValues(option),
-  );
+  return reasoningEffortOptionsFromSupportedLevels(supportedReasoningEffortValues(option))
 }

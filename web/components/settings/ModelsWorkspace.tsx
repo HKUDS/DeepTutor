@@ -1,5 +1,7 @@
 "use client";
 
+import { configuredReasoningLevels } from "@/lib/reasoning-effort";
+import ReasoningLevelSettings from "./ReasoningLevelSettings";
 import { scrollToSettingsElement } from "@/features/settings/navigation/settings-scroll";
 import Tooltip from "@/shared/ui/Tooltip";
 import { stageRegistryAction, type RegistryEdit } from "@/lib/provider-registry";
@@ -992,7 +994,7 @@ function ModelEditor({
         {model && (service === "tts" || service === "stt") ? (
           <VoiceModelFields service={service} provider={speechProvider} model={model}
             options={speechOptions} preset={speechPreset} update={update} disabled={managed} />
-        ) : model && <ModelParameters service={service} model={model} update={update} managed={managed} />}
+        ) : model && <ModelParameters binding={speechProvider} service={service} model={model} update={update} managed={managed} />}
         {service === "tts" && model ? <VoicePreviewPanel profileId={profile.id} modelId={model.id} maxChars={Math.min(500, speechPreset?.max_input_chars ?? 500)} /> : (service === "search" || service === "stt" || service === "imagegen" || service === "videogen") ? <ServicePreviewPanel service={service} profile={profile} model={model} /> : <ModelTestPanel service={service} profile={profile} model={model} />}
         {(service === "search" || service === "imagegen" || service === "videogen") && <p className="text-[13px] leading-relaxed text-[var(--muted-foreground)]">
           {t("settings.serviceConfig.tools")} {" "}
@@ -1034,6 +1036,7 @@ function ModelEditor({
 }
 
 function ModelParameters({
+  binding,
   service,
   model,
   update,
@@ -1043,6 +1046,7 @@ function ModelParameters({
   model: CatalogModel;
   update: (field: keyof CatalogModel, value: unknown) => void;
   managed: boolean;
+  binding: string;
 }) {
   const { t } = useTranslation();
   const contextId = useId();
@@ -1122,6 +1126,7 @@ function ModelParameters({
                 )}
               </p>
             </div>
+            {service === "task" ? (
             <div className="space-y-1.5">
               <p className="flex min-h-5 items-center text-[13px] font-medium">
                 {t("Reasoning effort")}
@@ -1153,6 +1158,22 @@ function ModelParameters({
                 ))}
               </select>
             </div>
+            ) : (
+            <ReasoningLevelSettings
+                binding={binding}
+                onDefaultChange={(value) => update("reasoning_effort", value)}
+              model={model}
+              onToggle={level => {
+                const enabled = configuredReasoningLevels(model, binding)
+                update(
+                  'enabled_reasoning_efforts',
+                  enabled.includes(level)
+                    ? enabled.filter(item => item !== level)
+                    : [...enabled, level]
+                )
+              }}
+            />
+            )}
           </div>
           <details className={`p-3.5 ${subPanelClass}`}>
             <summary className="cursor-pointer select-none rounded text-[13px] font-medium marker:text-[var(--muted-foreground)]">

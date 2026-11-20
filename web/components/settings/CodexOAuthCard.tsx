@@ -7,7 +7,8 @@ import { useTranslation } from "react-i18next";
 
 import Button from "@/components/ui/Button";
 import { invalidateLLMOptionsCache } from "@/lib/llm-options";
-import { reasoningEffortOptionsFromSupportedLevels } from "@/lib/reasoning-effort";
+import ReasoningLevelSettings from "./ReasoningLevelSettings";
+import { VALID_REASONING_EFFORTS } from "@/lib/reasoning-effort";
 import {
   buildSshForwardCommand,
   cancelCodexLogin,
@@ -33,7 +34,7 @@ export function CodexOAuthCard() {
   const { t } = useTranslation();
   const { catalogEditable, reloadSettings, hasUnsavedChanges, setToast } =
     useSettings();
-  const [liveEfforts, setLiveEfforts] = useState<Record<string, string | null>>({});
+  const [liveEfforts, setLiveEfforts] = useState<Record<string, string | string[] | null>>({});
   const [efforts, setEfforts] = useStagedSettings("codex-reasoning", liveEfforts, setLiveEfforts);
   const [status, setStatus] = useState<CodexOAuthStatus | null>(null);
   const [pending, setPending] = useState(false);
@@ -51,7 +52,7 @@ export function CodexOAuthCard() {
 
   const recordStatus = useCallback((nextStatus: CodexOAuthStatus) => {
     setStatus(nextStatus);
-    setLiveEfforts(Object.fromEntries(nextStatus.models.map((model) => [model.model, model.reasoning_effort || null])));
+    setLiveEfforts(Object.fromEntries(nextStatus.models.map((model) => [model.model, model.enabled_reasoning_efforts ?? model.reasoning_effort ?? null])));
     const terminalOperation =
       nextStatus.operation_state === "completed" ||
       nextStatus.operation_state === "cancelled" ||
@@ -289,9 +290,15 @@ export function CodexOAuthCard() {
     }
   };
 
-  const updateReasoningEffort = (model: CodexReasoningModel, value: string) => {
-    setEfforts((current) => ({ ...current, [model.model]: value || null }));
-
+  const enabledLevels = (model: CodexReasoningModel): string[] => {
+    const staged = efforts[model.model];
+    return Array.isArray(staged) ? staged :
+      (model.enabled_reasoning_efforts ?? model.supported_reasoning_levels.filter(level => VALID_REASONING_EFFORTS.has(level)));
+  };
+  const updateReasoningEffort = (model: CodexReasoningModel, level: string) => {
+    const levels = enabledLevels(model);
+    setEfforts(current => ({ ...current, [model.model]: levels.includes(level)
+      ? levels.filter(value => value !== level) : [...levels, level] }));
   };
 
   const submitCallbackUrl = async () => {
@@ -369,36 +376,16 @@ export function CodexOAuthCard() {
                 </p>
                 <div className="mt-3 space-y-3">
                   {status.models.map((model) => {
-                    const options = reasoningEffortOptionsFromSupportedLevels(
-                      model.supported_reasoning_levels,
-                    );
-                    if (options.length === 0) return null;
+                    if (!model.supported_reasoning_levels.length) return null;
                     return (
-                      <label key={model.model} className="block">
-                        <span className="mb-1 block truncate text-xs font-medium">
-                          {model.name}
-                        </span>
-                        <select
-                          className="h-9 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--ring)] disabled:cursor-not-allowed disabled:opacity-60"
-                          value={model.model in efforts ? efforts[model.model] || "" : model.reasoning_effort || ""}
-                          disabled={pending}
-                          onChange={(event) =>
-                            void updateReasoningEffort(
-                              model,
-                              event.target.value,
-                            )
-                          }
-                        >
-                          {options.map((option) => (
-                            <option
-                              key={option.value || "auto"}
-                              value={option.value}
-                            >
-                              {t(option.label)}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
+                      <fieldset key={model.model} disabled={pending}>
+                        <legend className="mb-2 text-xs font-medium">{model.name}</legend>
+                        <ReasoningLevelSettings binding="openai_codex" model={{
+                          id: model.model, name: model.name, model: model.model,
+                          enabled_reasoning_efforts: enabledLevels(model),
+                          codex_supported_reasoning_levels: model.supported_reasoning_levels,
+                        }} onToggle={level => updateReasoningEffort(model, level)} />
+                      </fieldset>
                     );
                   })}
                 </div>
