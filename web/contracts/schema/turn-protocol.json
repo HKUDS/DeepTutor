@@ -551,6 +551,19 @@
           "default": null,
           "title": "Locator"
         },
+        "region": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Region"
+        },
         "selection": {
           "anyOf": [
             {

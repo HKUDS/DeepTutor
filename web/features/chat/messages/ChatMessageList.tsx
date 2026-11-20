@@ -1838,6 +1838,20 @@ export const UserMessage = memo(function UserMessage({
                     : undefined
                 }
               />
+            ) : snap?.readingRegion ? (
+              // A marked area has no words to quote: name it, and link back.
+              <ReadingPassageQuote
+                quote={t("Area on page {{page}}", { page: snap.readingRegion.locator })}
+                href={
+                  snap.readingMaterialId
+                    ? readingPassageHref(
+                        snap.readingMaterialId,
+                        snap.readingRegion.locator,
+                        snap.readingMaterialRevision,
+                      )
+                    : undefined
+                }
+              />
             ) : null}
             {(msg.attachments ?? []).filter(isQuoteAttachment).map((a, qi) => (
               <div

@@ -202,6 +202,29 @@ def test_the_asked_about_passage_is_persisted_with_the_user_message() -> None:
     )
 
 
+def test_the_marked_area_is_persisted_with_the_user_message() -> None:
+    """A regenerate crops the same area; the bubble names the page."""
+    snapshot = _snapshot(
+        {
+            "reading_material_id": "0123456789abcdef",
+            "reading_viewport": {
+                "locator": 3,
+                "region": {"locator": 2, "box": [0.5, 0.4, 0.1, 0.2]},
+            },
+        }
+    )
+    assert snapshot["readingRegion"] == {"locator": 2, "box": [0.1, 0.2, 0.5, 0.4]}
+    assert "readingRegion" not in _snapshot(
+        {"reading_viewport": {"locator": 2, "region": {"locator": 2, "box": [0.1, 0.2, 0.5, 0.4]}}}
+    )
+    assert "readingRegion" not in _snapshot(
+        {
+            "reading_material_id": "0123456789abcdef",
+            "reading_viewport": {"locator": 2, "region": {"locator": 2, "box": [0, 0, 0, 0]}},
+        }
+    )
+
+
 def test_workspace_mode_is_persisted_independently_of_the_action() -> None:
     snapshot = _snapshot(
         {

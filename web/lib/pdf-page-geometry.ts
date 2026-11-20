@@ -44,6 +44,51 @@ export interface NormalisedBox {
 /** A box covering the whole page — what "no cropping" means. */
 export const FULL_PAGE_BOX: NormalisedBox = { x0: 0, y0: 0, x1: 1, y1: 1 };
 
+/**
+ * Smallest side of a marked area, as a share of the page. Anything smaller is
+ * a click or a tap, not a region. The server applies the same floor.
+ */
+export const MIN_REGION_SIDE = 0.01;
+
+/**
+ * The page area a pointer drag from `start` to `end` marks.
+ *
+ * Both points are client coordinates; `surface` is the client rect of the
+ * whole-page surface (not the cropped strip on screen), so the result is
+ * normalised against the full page — the frame the server crops in. The drag
+ * may run in any direction and past the page edge; the box is ordered and
+ * clamped to the page. Returns `null` for a drag too small to mean an area.
+ */
+export function regionFromDrag(
+  start: { x: number; y: number },
+  end: { x: number; y: number },
+  surface: { left: number; top: number; width: number; height: number },
+): NormalisedBox | null {
+  if (!(surface.width > 0) || !(surface.height > 0)) return null;
+  const clamp = (value: number) => Math.min(1, Math.max(0, value));
+  const ax = clamp((start.x - surface.left) / surface.width);
+  const bx = clamp((end.x - surface.left) / surface.width);
+  const ay = clamp((start.y - surface.top) / surface.height);
+  const by = clamp((end.y - surface.top) / surface.height);
+  if (![ax, bx, ay, by].every(Number.isFinite)) return null;
+  const box = {
+    x0: Math.min(ax, bx),
+    y0: Math.min(ay, by),
+    x1: Math.max(ax, bx),
+    y1: Math.max(ay, by),
+  };
+  if (box.x1 - box.x0 < MIN_REGION_SIDE || box.y1 - box.y0 < MIN_REGION_SIDE) {
+    return null;
+  }
+  return box;
+}
+
+/** A box in the wire's `[x0, y0, x1, y1]` order, rounded to 4 places. */
+export function boxToTuple(box: NormalisedBox): [number, number, number, number] {
+  const round = (value: number) => Math.round(value * 10000) / 10000;
+  return [round(box.x0), round(box.y0), round(box.x1), round(box.y1)];
+}
+
 /** Width used for the throwaway render the ink box is measured from. */
 const SAMPLE_WIDTH = 200;
 /** Pixels lighter than this (average luma) count as paper, not ink. */

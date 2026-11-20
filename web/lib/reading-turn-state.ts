@@ -19,12 +19,25 @@ import {
 export const READING_CAPABILITY = READING_WORKSPACE_MODE;
 export { READING_WORKSPACE_MODE };
 
+/**
+ * A page area the learner marked: the page and its `[x0, y0, x1, y1]` box,
+ * normalised against the whole page as displayed (see `regionFromDrag`).
+ */
+// A type alias, not an interface: the generated wire contract types `region`
+// as an open record, which an interface (no implicit index signature) is not.
+export type ReadingRegion = {
+  locator: number;
+  box: [number, number, number, number];
+};
+
 export interface ReadingTurnState {
   workspaceId: string | null;
   materialId: string | null;
   materialRevision: number | null;
   locator: number;
   selection: string;
+  /** A marked page area the next turn is about. */
+  region: ReadingRegion | null;
   timeSeconds: number | null;
 }
 
@@ -34,8 +47,23 @@ const state: ReadingTurnState = {
   materialRevision: null,
   locator: 0,
   selection: "",
+  region: null,
   timeSeconds: null,
 };
+
+/** Validate a marked area from wire/storage before it rides a turn. */
+export function normalizeReadingRegion(value: unknown): ReadingRegion | null {
+  if (!value || typeof value !== "object") return null;
+  const record = value as { locator?: unknown; box?: unknown };
+  const locator = Number(record.locator);
+  if (!Number.isSafeInteger(locator) || locator <= 0) return null;
+  if (!Array.isArray(record.box) || record.box.length !== 4) return null;
+  const box = record.box.map(Number);
+  if (!box.every((n) => Number.isFinite(n) && n >= 0 && n <= 1)) return null;
+  const [x0, y0, x1, y1] = box;
+  if (!(x1 > x0 && y1 > y0)) return null;
+  return { locator, box: [x0, y0, x1, y1] };
+}
 
 /**
  * Validate persisted/wire material ids before they become reader addresses.
@@ -66,6 +94,7 @@ export function setReadingWorkspace(workspaceId: string | null): void {
     state.materialRevision = null;
     state.locator = 0;
     state.selection = "";
+    state.region = null;
     state.timeSeconds = null;
   }
 }
@@ -74,6 +103,9 @@ export function setReadingMaterial(
   materialId: string | null,
   materialRevision: number | null = null,
 ): void {
+  // A marked area belongs to the page it was drawn on: another document must
+  // never be cropped at its coordinates.
+  if (materialId !== state.materialId) state.region = null;
   state.materialId = materialId;
   state.materialRevision = materialId
     ? normalizeReadingMaterialRevision(materialRevision)
@@ -83,6 +115,7 @@ export function setReadingMaterial(
     // would tell the model the user is looking at a page of a closed file.
     state.locator = 0;
     state.selection = "";
+    state.region = null;
     state.timeSeconds = null;
   }
 }
@@ -90,8 +123,13 @@ export function setReadingMaterial(
 export function setReadingViewport(next: {
   locator?: number;
   selection?: string;
+  /** `null` clears the marked area. */
+  region?: ReadingRegion | null;
   timeSeconds?: number | null;
 }): void {
+  if (next.region !== undefined) {
+    state.region = next.region === null ? null : normalizeReadingRegion(next.region);
+  }
   if (typeof next.locator === "number" && Number.isFinite(next.locator)) {
     state.locator = next.locator > 0 ? Math.floor(next.locator) : 0;
   }
@@ -136,6 +174,7 @@ export function readingTurnFields(
   reading_viewport?: {
     locator?: number;
     selection?: string;
+    region?: ReadingRegion;
     time_seconds?: number;
   };
 } {
@@ -143,10 +182,14 @@ export function readingTurnFields(
   const viewport: {
     locator?: number;
     selection?: string;
+    region?: ReadingRegion;
     time_seconds?: number;
   } = {};
   if (state.locator > 0) viewport.locator = state.locator;
   if (state.selection) viewport.selection = state.selection;
+  if (state.materialId && state.region) {
+    viewport.region = { locator: state.region.locator, box: [...state.region.box] };
+  }
   if (state.timeSeconds !== null) viewport.time_seconds = state.timeSeconds;
   return {
     ...(state.workspaceId ? { reading_workspace_id: state.workspaceId } : {}),
@@ -165,5 +208,6 @@ export function resetReadingTurnState(): void {
   state.materialRevision = null;
   state.locator = 0;
   state.selection = "";
+  state.region = null;
   state.timeSeconds = null;
 }

@@ -7569,5 +7569,12 @@
   "Position": "Position",
   "Action": "Action",
   "Conversation IDs (optional)": "Conversation IDs (optional)",
-  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle."
+  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.",
+  "Mark area": "Marquer une zone",
+  "Mark an area on the page to ask about it": "Marquer une zone de la page pour poser une question",
+  "Drag to mark an area": "Faites glisser pour marquer une zone",
+  "Ask about this area": "Poser une question sur cette zone",
+  "Explain this area": "Explique cette zone",
+  "Remove marked area": "Retirer la zone marquée",
+  "Area on page {{page}}": "Zone de la page {{page}}"
 }

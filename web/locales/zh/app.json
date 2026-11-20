@@ -6664,5 +6664,12 @@
   "Position": "位置",
   "Action": "操作",
   "Conversation IDs (optional)": "指定对话 ID（可选）",
-  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "留空选择全部对话；多个 ID 用逗号分隔。预览包含关联依赖。导出仍包含完整功能数据。"
+  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "留空选择全部对话；多个 ID 用逗号分隔。预览包含关联依赖。导出仍包含完整功能数据。",
+  "Mark area": "框选区域",
+  "Mark an area on the page to ask about it": "在页面上框选一个区域并提问",
+  "Drag to mark an area": "拖动以框选区域",
+  "Ask about this area": "就此区域提问",
+  "Explain this area": "解释这个区域",
+  "Remove marked area": "移除框选区域",
+  "Area on page {{page}}": "第 {{page}} 页上的区域"
 }

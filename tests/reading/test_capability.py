@@ -265,6 +265,28 @@ def test_pre_loop_seed_reports_media_time_and_escapes_untrusted_selection() -> N
     assert "&lt;system&gt;" in seed
 
 
+def test_pre_loop_seed_announces_a_marked_area_crop(material) -> None:
+    context = _context(
+        material.material_id,
+        **{VIEWPORT_KEY: {"locator": 1, "region": {"locator": 2, "box": [0.1, 0.1, 0.5, 0.4]}}},
+    )
+
+    seed = ReadingCapability().pre_loop_seed(context)
+
+    assert "marked an area on locator 2" in seed
+    assert "first image attached" in seed
+
+
+def test_pre_loop_seed_does_not_promise_a_crop_it_cannot_carry(material) -> None:
+    for region in (
+        {"locator": 9, "box": [0.1, 0.1, 0.5, 0.4]},  # past the last page
+        {"locator": 0, "box": [0.1, 0.1, 0.5, 0.4]},
+        "not a region",
+    ):
+        context = _context(material.material_id, **{VIEWPORT_KEY: {"locator": 1, "region": region}})
+        assert "marked an area" not in ReadingCapability().pre_loop_seed(context)
+
+
 def test_pre_loop_seed_is_empty_when_nothing_is_open() -> None:
     assert ReadingCapability().pre_loop_seed(_context()) == ""
 
