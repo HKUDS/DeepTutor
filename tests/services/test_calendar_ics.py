@@ -277,3 +277,19 @@ def test_all_day_events_do_not_widen_the_timezone_window(store):
     onsets = [line.split(":", 1)[1] for line in zone_lines if line.startswith("DTSTART:")]
     assert min(onsets) >= "2025"
     assert "20260329T020000" in onsets
+
+
+@pytest.mark.parametrize(
+    ("start", "end", "ics_start", "ics_end"),
+    [
+        ("2026-11-01T06:30:00Z", "2026-11-01T07:00:00Z", "20261101T063000Z", "20261101T070000Z"),
+        ("2026-11-01T05:30:00Z", "2026-11-01T06:30:00Z", "20261101T053000Z", "20261101T063000Z"),
+    ],
+)
+def test_single_event_export_preserves_the_second_occurrence_of_a_wall_time(
+    store, start, end, ics_start, ics_end
+):
+    create(store, tzid="America/New_York", start=start, end=end)
+    block = vevents(ics(store))[0]
+    assert block["DTSTART"] == [ics_start]
+    assert block["DTEND"] == [ics_end]
