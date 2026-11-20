@@ -6,6 +6,7 @@ It runs inside the originating Python task to preserve account/workspace scopes.
 
 from __future__ import annotations
 
+import json
 from typing import TYPE_CHECKING, Any
 
 from deeptutor.runtime.agentic.messages import (
@@ -372,6 +373,50 @@ class AgentLoopHost:
             ),
         )
 
+    async def _refuse_truncated_tool_calls(self, result: values.LLMCallResult) -> DispatchOutcome:
+        """Tell the model each call in a cut-off round was not executed.
+
+        Display parsing uses the stdlib decoder only. A partial value is never
+        repaired and never passed to a tool.
+        """
+        notice = (
+            "Model output was truncated. No tools in this batch were executed; "
+            "retry with complete arguments."
+        )
+        tool_messages: list[dict[str, Any]] = []
+        for call in result.tool_calls:
+            name = str(call.get("name") or "")
+            raw = call.get("arguments") or ""
+            parsed: Any
+            try:
+                parsed = json.loads(raw) if isinstance(raw, str) else raw
+            except json.JSONDecodeError:
+                parsed = None
+            display = parsed if isinstance(parsed, dict) else {"arguments": raw}
+            await self.stream.tool_call(
+                tool_name=name,
+                args=display,
+                source=self.loop.source,
+                stage=self.loop.stage,
+                metadata={"trace_kind": "tool_call", "truncated": True},
+            )
+            await self.stream.tool_result(
+                tool_name=name,
+                result=notice,
+                source=self.loop.source,
+                stage=self.loop.stage,
+                metadata={"trace_kind": "tool_result", "truncated": True},
+            )
+            tool_messages.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": call.get("id") or "",
+                    "name": name,
+                    "content": notice,
+                }
+            )
+        return DispatchOutcome(tool_messages=tool_messages)
+
     async def dispatch_tools(self) -> dict[str, bool]:
         result = self.result
         assert result is not None
@@ -379,9 +424,9 @@ class AgentLoopHost:
             await self.warning(
                 "notices.tool_call_truncated",
                 (
-                    "The model reached its output token limit while writing a tool call, so the call "
-                    "may be incomplete. If this repeats, raise this capability's max tokens or pick "
-                    "a model that reasons less."
+                    "The model reached its output token limit while writing a tool call. "
+                    "The call was not executed. If this repeats, raise this capability's "
+                    "max tokens or pick a model that reasons less."
                 ),
             )
         tool_names = tuple(str(call.get("name") or "") for call in result.tool_calls)
@@ -404,13 +449,18 @@ class AgentLoopHost:
         if provider_state is not None:
             assistant["_provider_response_state"] = provider_state
         self.messages.append(assistant)
-        self.dispatch = await self.pipeline._dispatch_tool_calls(
-            tool_calls=result.tool_calls,
-            context=self.context,
-            stream=self.stream,
-            iteration_index=self.state.tool_steps,
-            stage=self.loop.stage,
-        )
+        if finish_was_truncated(result.finish_reason):
+            # json-repair would close a cut-off argument string, and a write
+            # tool would then persist that half value. Refuse the whole batch.
+            self.dispatch = await self._refuse_truncated_tool_calls(result)
+        else:
+            self.dispatch = await self.pipeline._dispatch_tool_calls(
+                tool_calls=result.tool_calls,
+                context=self.context,
+                stream=self.stream,
+                iteration_index=self.state.tool_steps,
+                stage=self.loop.stage,
+            )
         self.state.sources.extend(self.dispatch.sources)
         self.messages.extend(self.dispatch.tool_messages)
         extend_transient_model_messages(
