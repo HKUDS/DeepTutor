@@ -182,12 +182,13 @@ def _assistant_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 @pytest.mark.asyncio
-async def test_a_tool_round_replays_its_reasoning() -> None:
+@pytest.mark.parametrize("reasoning", ["I should look this up.", ""])
+async def test_a_tool_round_replays_its_reasoning(reasoning: str) -> None:
     """The strict case: DeepSeek requires it on the turn that called tools."""
     client = await _run(
         [
             [
-                _reasoning_chunk("I should look this up."),
+                _reasoning_chunk(reasoning),
                 _content_chunk("``TOOL``\n"),
                 _tool_call_chunk("c1", "read_source", "{}"),
             ],
@@ -197,16 +198,17 @@ async def test_a_tool_round_replays_its_reasoning() -> None:
 
     second_request = _assistant_messages(client.calls[1])
     assert len(second_request) == 1
-    assert second_request[0]["reasoning_content"] == "I should look this up."
+    assert second_request[0]["reasoning_content"] == reasoning
     assert second_request[0]["tool_calls"]
 
 
 @pytest.mark.asyncio
-async def test_an_intermediate_round_replays_its_reasoning() -> None:
+@pytest.mark.parametrize("reasoning", ["Weighing two framings.", ""])
+async def test_an_intermediate_round_replays_its_reasoning(reasoning: str) -> None:
     client = await _run(
         [
             [
-                _reasoning_chunk("Weighing two framings."),
+                _reasoning_chunk(reasoning),
                 _content_chunk("``THINK``\nstill working"),
             ],
             [_content_chunk("``FINISH``\ndone")],
@@ -214,7 +216,7 @@ async def test_an_intermediate_round_replays_its_reasoning() -> None:
     )
 
     second_request = _assistant_messages(client.calls[1])
-    assert second_request[0]["reasoning_content"] == "Weighing two framings."
+    assert second_request[0]["reasoning_content"] == reasoning
 
 
 @pytest.mark.asyncio

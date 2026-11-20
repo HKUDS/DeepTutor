@@ -45,19 +45,17 @@ def test_assistant_message_with_tool_calls_preserves_order_and_arguments() -> No
     }
 
 
-def test_assistant_message_with_tool_calls_replays_reasoning_content() -> None:
+@pytest.mark.parametrize("reasoning_content", ["Need to look this up.", ""])
+def test_assistant_message_with_tool_calls_replays_reasoning_content(
+    reasoning_content: str,
+) -> None:
     message = assistant_message_with_tool_calls(
-        content="",
-        tool_calls=[{"id": "call-1", "name": "search"}],
-        reasoning_content="Need to look this up.",
-    )
-
-    assert message["reasoning_content"] == "Need to look this up."
-    assert "reasoning_content" not in assistant_message_with_tool_calls(
         content="hi",
         tool_calls=[{"id": "call-1", "name": "search"}],
-        reasoning_content="",
+        reasoning_content=reasoning_content,
     )
+
+    assert message["reasoning_content"] == reasoning_content
 
 
 def test_assistant_message_replays_gemini_thought_signature() -> None:
