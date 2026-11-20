@@ -157,6 +157,22 @@ def test_github_copilot_is_oauth_backed() -> None:
     assert spec.env_key == ""
 
 
+def test_litellm_provider_aliases_and_base_detection() -> None:
+    spec = find_by_name("litellm")
+
+    assert spec is not None
+    assert spec.display_name == "LiteLLM"
+    assert spec.env_key == "LITELLM_MASTER_KEY"
+    assert spec.backend == "openai_compat"
+    assert spec.mode == "local"
+    assert spec.default_api_base == "http://localhost:4000/v1"
+    assert find_by_name("lite-llm") == spec
+    assert find_by_name("lite_llm") == spec
+    assert find_gateway(provider_name="litellm") == spec
+    assert find_gateway(api_base="http://localhost:4000/v1") == spec
+    assert find_gateway(api_base="http://192.168.1.10:4000/v1") == spec
+
+
 def test_orcarouter_is_not_a_builtin_provider() -> None:
     assert find_by_name("orcarouter") is None
     assert find_by_name("orca_router") is None
