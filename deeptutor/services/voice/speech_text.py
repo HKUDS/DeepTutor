@@ -609,7 +609,7 @@ def _speak_sup(inner: str) -> str:
         return " cubed "
     if token in {"-1"}:
         return " inverse "
-    if token in {"T", "t", "top", "intercal"}:
+    if token in {"T", "t", "top", "intercal", "\\top", "\\intercal"}:
         return " transpose "
     if token in {"prime", "'"}:
         return " prime "
