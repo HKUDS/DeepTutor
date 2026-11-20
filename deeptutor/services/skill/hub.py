@@ -59,6 +59,7 @@ import zipfile
 import httpx
 
 from deeptutor.services.path_service import get_path_service
+from deeptutor.utils.zip_names import zip_member_name
 
 from .service import SkillImportError, SkillInstallResult, SkillService
 
@@ -223,7 +224,7 @@ def _extract_skill_zip(zip_path: Path, dest: Path) -> None:
         if len(members) > _ZIP_MAX_ENTRIES:
             raise SkillImportError("Package archive has too many entries.")
         for info in members:
-            raw = info.filename.replace("\\", "/")
+            raw = zip_member_name(info).replace("\\", "/")
             rel = Path(raw)
             if rel.is_absolute() or ".." in rel.parts:
                 raise SkillImportError(f"Illegal path in package archive: {raw}")
