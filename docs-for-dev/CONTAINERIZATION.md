@@ -293,6 +293,11 @@ Then in **Settings → Models**, point the provider Base URL at
 - LM Studio: `http://host.docker.internal:1234/v1`
 - llama.cpp: `http://host.docker.internal:8080/v1`
 - Lemonade: `http://host.docker.internal:13305/api/v1`
+- Rapid-MLX LLM: `http://host.docker.internal:8000/v1`
+- Rapid-MLX embedding: `http://host.docker.internal:8000/v1/embeddings`
+
+For Rapid-MLX running on an Apple Silicon Mac, use the existing `vllm`
+providers and model settings in [Agent setup](AGENT_SETUP.md#local-rapid-mlx-on-apple-silicon).
 
 Docker Desktop (macOS/Windows) usually resolves `host.docker.internal`
 without `--add-host`. On Linux, the flag is the portable way.
