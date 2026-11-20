@@ -24,6 +24,38 @@ describe('notebook migration and generated content', () => {
   it('keeps unfinished math input as ordinary text', () => {
     expect(parseNoteMarkdown('$$\nunclosed', parse)[0].type).toBe('paragraph')
   })
+  it('converts inline math inside table cells', () => {
+    const tableParse = (): NoteBlock[] => [
+      {
+        id: 'table',
+        type: 'table',
+        props: {},
+        content: {
+          type: 'tableContent',
+          rows: [
+            {
+              cells: [
+                {
+                  type: 'tableCell',
+                  content: [
+                    { type: 'text', text: '$P(A\\mid B)=\\dfrac{P(AB)}{P(B)}$', styles: {} },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    ]
+    const blocks = parseNoteMarkdown('table', tableParse)
+    const table = blocks[0].content as {
+      rows: Array<{ cells: Array<{ content: Array<{ type: string; props?: { formula?: string } }> }> }>
+    }
+    const cell = table.rows[0].cells[0].content
+    expect(cell).toHaveLength(1)
+    expect(cell[0].type).toBe('inlineMath')
+    expect(cell[0].props?.formula).toBe('P(A\\mid B)=\\dfrac{P(AB)}{P(B)}')
+  })
   it('persists question payloads without the chat quiz provider', () => {
     const result = resultLearningBlock({
       summary: { results: [{ qa_pair: { question: 'Frequency?', correct_answer: 'Hz' } }] },
