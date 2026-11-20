@@ -742,14 +742,18 @@ class NotebookManager:
 
 
 _instances: dict[str, NotebookManager] = {}
+_instances_lock = threading.Lock()
 
 
 def get_notebook_manager() -> NotebookManager:
     base_dir = get_path_service().get_notebook_dir().resolve()
     key = str(base_dir)
-    if key not in _instances:
-        _instances[key] = NotebookManager(base_dir=str(base_dir))
-    return _instances[key]
+    # Managers own the write locks, so competing first callers must not
+    # construct separate instances for the same directory.
+    with _instances_lock:
+        if key not in _instances:
+            _instances[key] = NotebookManager(base_dir=str(base_dir))
+        return _instances[key]
 
 
 class _NotebookManagerProxy:
