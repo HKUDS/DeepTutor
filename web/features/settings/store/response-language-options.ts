@@ -29,4 +29,5 @@ export const RESPONSE_LANGUAGE_OPTIONS: readonly ResponseLanguageOption[] = [
   { value: "tr", label: "Türkçe" },
   { value: "hi", label: "हिन्दी" },
   { value: "hu", label: "Magyar" },
+  { value: "el", label: "Ελληνικά" },
 ];
