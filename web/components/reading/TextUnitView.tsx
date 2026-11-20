@@ -639,6 +639,7 @@ export function TextUnitView({
                 // image links point anywhere, so they stay unrendered.
                 enableImages={sourceType !== "upload"}
                 variant="prose"
+                className="dt-reader-markdown"
               />
             ) : (
               <TextWithHeadings
