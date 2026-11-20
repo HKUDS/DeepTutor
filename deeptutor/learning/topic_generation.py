@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 from typing import Any
 import uuid
 
@@ -31,8 +32,14 @@ DEFAULT_MODULE_LIMIT = 8
 #: The ceiling, however much material there is. Past this a route stops being
 #: a route and becomes a table of contents.
 MAX_MODULE_LIMIT = 20
-#: Waypoints one region may hold. A strict caller that exceeds it is told.
-_MAX_OBJECTIVES_PER_MODULE = 7
+#: Waypoints one region may hold by default. A strict caller that exceeds the
+#: configured ceiling is told rather than having its tail quietly removed.
+DEFAULT_OBJECTIVES_PER_MODULE = 7
+#: Operator override for that ceiling. Externally authored courses (a
+#: textbook broken into twelve modules of ~24 points each) are not model
+#: drafts that need bounding, and rejecting them at confirm made create and
+#: edit disagree — an existing module was already allowed past the cap.
+MAX_OBJECTIVES_ENV_VAR = "DEEPTUTOR_MAX_OBJECTIVES_PER_MODULE"
 #: Documents named per knowledge base when handing the model its inventory.
 #: A route has to be able to *account for* every file, which means seeing the
 #: list — but a 400-document library would otherwise crowd out the excerpts.
@@ -41,6 +48,29 @@ _MAX_KB_DOCUMENTS = 60
 
 class TopicGenerationError(RuntimeError):
     pass
+
+
+def max_objectives_per_module() -> int:
+    """Waypoint ceiling strict materialisation enforces.
+
+    Read from :data:`MAX_OBJECTIVES_ENV_VAR` on every call so an operator can
+    raise (or lower) it without code changes; an unset or unusable value keeps
+    the :data:`DEFAULT_OBJECTIVES_PER_MODULE` default.
+    """
+    raw = os.environ.get(MAX_OBJECTIVES_ENV_VAR, "").strip()
+    if not raw:
+        return DEFAULT_OBJECTIVES_PER_MODULE
+    try:
+        value = int(raw)
+    except ValueError:
+        logger.warning(
+            "Ignoring invalid %s=%r; falling back to %d",
+            MAX_OBJECTIVES_ENV_VAR,
+            raw,
+            DEFAULT_OBJECTIVES_PER_MODULE,
+        )
+        return DEFAULT_OBJECTIVES_PER_MODULE
+    return max(1, value)
 
 
 def source_documents(source: TopicSource) -> list[str]:
@@ -315,6 +345,7 @@ def materialize_modules(
     existing_objective_counts: dict[str, int] | None = None,
     discarded_modules: list[dict[str, Any]] | None = None,
     module_limit: int = DEFAULT_MODULE_LIMIT,
+    objective_limit: int | None = None,
 ) -> list[LearningModule]:
     """Validate and normalize a route while keeping existing entity identity.
 
@@ -327,6 +358,11 @@ def materialize_modules(
     ``module_limit`` scales with the material: a course whose knowledge base
     holds fourteen documents cannot be covered by eight regions, and the old
     fixed cap is why generated routes stopped part-way through a library.
+
+    ``objective_limit`` overrides the waypoint ceiling for a fully
+    caller-authored structure; when ``None`` it comes from
+    :func:`max_objectives_per_module` (env-configurable, default
+    :data:`DEFAULT_OBJECTIVES_PER_MODULE`).
 
     Position is presentation state, not identity. Existing ids are accepted
     only when the caller proves they belong to this topic; every new entity gets
@@ -388,15 +424,19 @@ def materialize_modules(
             raise TopicGenerationError(
                 f"Route region {module_index + 1} needs at least one waypoint"
             )
-        objective_limit = _MAX_OBJECTIVES_PER_MODULE
+        objective_cap = (
+            max(1, int(objective_limit))
+            if objective_limit is not None
+            else max_objectives_per_module()
+        )
         if module_id in allowed_modules and existing_objective_counts is not None:
-            objective_limit = max(objective_limit, existing_objective_counts.get(module_id, 0))
-        if strict and len(raw_kps) > objective_limit:
+            objective_cap = max(objective_cap, existing_objective_counts.get(module_id, 0))
+        if strict and len(raw_kps) > objective_cap:
             raise TopicGenerationError(
                 f"Route region {module_index + 1} may have at most "
-                f"{objective_limit} waypoints; it has {len(raw_kps)}"
+                f"{objective_cap} waypoints; it has {len(raw_kps)}"
             )
-        for kp_index, raw_kp in enumerate(raw_kps[:objective_limit]):
+        for kp_index, raw_kp in enumerate(raw_kps[:objective_cap]):
             if not isinstance(raw_kp, dict):
                 if strict:
                     raise TopicGenerationError(
@@ -591,11 +631,14 @@ async def generate_topic_draft(
 
 __all__ = [
     "DEFAULT_MODULE_LIMIT",
+    "DEFAULT_OBJECTIVES_PER_MODULE",
     "MAX_MODULE_LIMIT",
+    "MAX_OBJECTIVES_ENV_VAR",
     "TopicGenerationError",
     "generate_topic_draft",
     "ground_topic_sources",
     "materialize_modules",
+    "max_objectives_per_module",
     "module_limit_for",
     "source_documents",
 ]
