@@ -43,7 +43,7 @@ it('lists conversations by day with pinned ones first and filters them by search
     { ...rows[1], session_id: 'old', id: 'old', title: 'Matrices last month', updated_at: now - 30 * 86400, created_at: now - 30 * 86400 },
     { ...rows[2], session_id: 'pin', id: 'pin', title: 'Pinned plan', updated_at: now - 40 * 86400, created_at: now - 40 * 86400, preferences: { pinned: true } },
   ]
-  const view = { sort: 'updatedAt' as const, query: '', searching: false, limit: 30, setSort: vi.fn(), setQuery: vi.fn(), setSearching: vi.fn(), more: vi.fn() }
+  const view = { sort: 'updatedAt' as const, query: '', searching: false, limit: 30, setSort: vi.fn(), setQuery: vi.fn(), setSearching: vi.fn(), more: vi.fn(), resetLimit: vi.fn() }
   const props = { sessions, activeSessionId: null, onSelect: vi.fn(), onRename: vi.fn(), onDelete: vi.fn(), onOrganize: vi.fn() }
   const { container, rerender } = render(<OrganizedSessionList {...props} timeline={view} />)
   const headings = () => [...container.querySelectorAll('.dt-record-group > h2')].map(node => node.textContent)

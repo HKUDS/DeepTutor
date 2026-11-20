@@ -5,9 +5,9 @@ import { RecordGroups, RecordHeader, RecordTime, useRecordView } from './RecordL
 import { useLayoutEffect, useState, type ReactNode } from 'react'
 import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
-import { ChevronRight, ClipboardList, LayoutGrid, MessageCircle, Plus } from 'lucide-react'
+import { ChevronDown, ChevronRight, ClipboardList, LayoutGrid, ListFilter, MessageCircle, Plus } from 'lucide-react'
 import { learningSurface } from '@/components/learning/surfaces'
-import { allLearningActivity, fileLearningSessions, type LearningActivity } from '@/lib/learning-dashboard'
+import { allLearningActivity, fileLearningSessions, learningSessionKind, type LearningActivity, type LearningKind } from '@/lib/learning-dashboard'
 import { isNavigationTargetActive } from '@/lib/navigation'
 import { useLearningIndex } from '@/hooks/useLearningIndex'
 import { useSidebarDrawer } from '@/components/layout/AppShell'
@@ -16,6 +16,12 @@ import { displaySessionTitle } from '@/lib/session-title'
 import type { SessionSummary } from '@/lib/session-api'
 
 const OPEN_KEY = 'deeptutor.navigation.learning.open'
+const FILTER_KINDS = ['mastery', 'practice', 'books', 'reading'] as const
+type KindFilter = 'all' | (typeof FILTER_KINDS)[number]
+
+function matchesKind(kind: LearningKind | null, filter: KindFilter) {
+  return filter === 'all' || (kind === 'watching' ? 'reading' : kind) === filter
+}
 
 /** The learning conversations of this workspace, and how to draw a few of them. */
 export interface LearningSessions {
@@ -52,6 +58,7 @@ export function LearningNavigation({
   const { t } = useTranslation()
   const { sources, loading, failed, retry } = useLearningIndex(active)
   const view = useRecordView('deeptutor.navigation.learning.sort')
+  const [kindFilter, setKindFilter] = useState<KindFilter>('all')
   const pathname = usePathname()
   const query = new URLSearchParams(useSearchParams().toString())
   // A collapsed practice set opens on the question being practised, the same
@@ -80,6 +87,8 @@ export function LearningNavigation({
     }),
     ...filed.loose.map(session => ({ kind: 'session' as const, key: session.session_id, session, time: at(session) })),
   ]
+    // File conversations before filtering, so hidden parents do not leave loose chats behind.
+    .filter(row => matchesKind(row.kind === 'record' ? row.record.kind : learningSessionKind(row.session), kindFilter))
     .filter(row =>
       row.kind === 'session'
         ? matches(titleOf(row.session), view.query)
@@ -108,6 +117,23 @@ export function LearningNavigation({
         view={view}
         searchLabel={t('navigation.searchLearning')}
       />
+      <label className="dt-record-type-filter">
+        <ListFilter size={14} strokeWidth={1.7} aria-hidden />
+        <span className="sr-only">{t('Filter by type')}</span>
+        <select
+          value={kindFilter}
+          onChange={event => {
+            setKindFilter(event.target.value as KindFilter)
+            view.resetLimit()
+          }}
+        >
+          <option value="all">{t('All')}</option>
+          {FILTER_KINDS.map(kind => (
+            <option key={kind} value={kind}>{t(learningSurface(kind).title)}</option>
+          ))}
+        </select>
+        <ChevronDown size={13} strokeWidth={1.7} aria-hidden />
+      </label>
       <div
         className="dt-learning-record-list"
         role="region"
@@ -145,7 +171,7 @@ export function LearningNavigation({
             !loading &&
             !failed.length && (
               <p className="dt-navigation-empty">
-                {t(view.query ? 'navigation.noResults' : 'navigation.noLearning')}
+                {t(view.query || kindFilter !== 'all' ? 'navigation.noResults' : 'navigation.noLearning')}
               </p>
             )
           }

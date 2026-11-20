@@ -52,6 +52,7 @@ export function useRecordView(storageKey: string) {
       if (!open) setQueryState('')
     },
     more: () => setLimit(value => value + PAGE),
+    resetLimit: () => setLimit(PAGE),
   }
 }
 export type RecordView = ReturnType<typeof useRecordView>
