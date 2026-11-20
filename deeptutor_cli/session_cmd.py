@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 
+from rich.text import Text
 import typer
 
 from deeptutor.app import DeepTutorApp
@@ -61,41 +62,45 @@ async def _show_session(session_id: str, fmt: str) -> None:
     client = DeepTutorApp()
     session = await client.get_session(session_id)
     if session is None:
-        console.print(f"[red]Session not found:[/] {session_id}")
+        console.print(Text.assemble(("Session not found:", "red"), f" {session_id}"))
         raise typer.Exit(code=1)
 
     if fmt == "json":
         console.print_json(json.dumps(session, ensure_ascii=False, default=str))
         return
 
-    console.print(f"[bold]{session.get('title', '')}[/] ({session.get('id', '')})")
     console.print(
-        f"[dim]capability={session.get('capability', '') or 'chat'} "
-        f"status={session.get('status', '')} "
-        f"messages={len(session.get('messages', []))}[/]",
-        highlight=False,
+        Text.assemble((str(session.get("title", "")), "bold"), f" ({session.get('id', '')})")
+    )
+    console.print(
+        Text(
+            f"capability={session.get('capability', '') or 'chat'} "
+            f"status={session.get('status', '')} "
+            f"messages={len(session.get('messages', []))}",
+            style="dim",
+        )
     )
     for message in session.get("messages", []):
         role = str(message.get("role", "")).upper()
         content = str(message.get("content", "") or "").strip()
-        console.print(f"\n[cyan]{role}[/]")
+        console.print(Text(f"\n{role}", style="cyan"))
         if content:
-            console.print(content)
+            console.print(Text(content))
 
 
 async def _delete_session(session_id: str) -> None:
     client = DeepTutorApp()
     success = await client.delete_session(session_id)
     if not success:
-        console.print(f"[red]Session not found:[/] {session_id}")
+        console.print(Text.assemble(("Session not found:", "red"), f" {session_id}"))
         raise typer.Exit(code=1)
-    console.print(f"Deleted session {session_id}")
+    console.print(Text(f"Deleted session {session_id}"))
 
 
 async def _rename_session(session_id: str, title: str) -> None:
     client = DeepTutorApp()
     success = await client.rename_session(session_id, title)
     if not success:
-        console.print(f"[red]Session not found:[/] {session_id}")
+        console.print(Text.assemble(("Session not found:", "red"), f" {session_id}"))
         raise typer.Exit(code=1)
-    console.print(f"Renamed {session_id} -> {title}")
+    console.print(Text(f"Renamed {session_id} -> {title}"))
