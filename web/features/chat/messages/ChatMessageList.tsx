@@ -42,6 +42,7 @@ import type { SelectedQuestionEntry } from "@/components/chat/QuestionBankPicker
 import { ActivityFold, FoldCaret } from "@/components/activity";
 import { LearningText } from "@/components/common/LearningText";
 import AssistantResponse from "@/components/common/AssistantResponse";
+import { useUserMessageMath } from "@/hooks/useUserMessageMath";
 import {
   InlineFileCardProvider,
   mergeGeneratedFiles,
@@ -130,6 +131,8 @@ import {
   isConfirmedResearchFollowup,
   researchFollowupStatus,
 } from "@/lib/deep-research-report";
+
+const UserMathText = dynamic(() => import("./UserMathText"), { ssr: false });
 
 const MathAnimatorViewer = dynamic(
   () => import("@/components/math-animator/MathAnimatorViewer"),
@@ -405,6 +408,7 @@ function ProcessFold({
  */
 function SentMidTurn({ messages }: { messages: string[] }) {
   const { t } = useTranslation();
+  const renderMath = useUserMessageMath();
   return (
     <div data-sent-mid-turn="true" className="my-3 flex flex-col items-end gap-1">
       <span className="pr-1 text-[11px] text-[var(--muted-foreground)]">
@@ -416,7 +420,11 @@ function SentMidTurn({ messages }: { messages: string[] }) {
           dir="auto"
           className="max-w-[85%] whitespace-pre-wrap rounded-2xl bg-[var(--secondary)] px-3.5 py-2 text-[13.5px] leading-relaxed text-[var(--foreground)]"
         >
-          <LearningText size={13.5}>{text}</LearningText>
+          {renderMath ? (
+            <UserMathText content={text} size={13.5} />
+          ) : (
+            <LearningText size={13.5}>{text}</LearningText>
+          )}
         </div>
       ))}
     </div>
@@ -1563,6 +1571,7 @@ export const UserMessage = memo(function UserMessage({
   onOpenConsultation?: () => void;
 }) {
   const { t } = useTranslation();
+  const renderMath = useUserMessageMath();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(msg.content);
   const [discarding, setDiscarding] = useState(false);
@@ -1847,7 +1856,13 @@ export const UserMessage = memo(function UserMessage({
                 {quoteText(a)}
               </div>
             ))}
-            <div dir="auto" className="whitespace-pre-wrap"><LearningText size={14}>{msg.content}</LearningText></div>
+            <div dir="auto" className={renderMath ? undefined : "whitespace-pre-wrap"}>
+              {renderMath ? (
+                <UserMathText content={msg.content} />
+              ) : (
+                <LearningText size={14}>{msg.content}</LearningText>
+              )}
+            </div>
           </div>
         )}
         {/* Recovery records are local to this browser. Keep their actions

@@ -14,6 +14,10 @@ import type { CodeBlockThemeId } from "@/components/common/code-block-themes";
 import { CODE_BLOCK_THEME_OPTIONS } from "@/components/common/code-block-themes";
 import { Toggle } from "@/components/settings/Toggle";
 import { useUiSettings } from "@/features/settings/store";
+import {
+  setUserMessageMath,
+  useUserMessageMath,
+} from "@/hooks/useUserMessageMath";
 import { ThemePreviewCard } from "@/components/settings/ThemePreviewCard";
 import {
   SettingRow,
@@ -60,6 +64,7 @@ export default function AppearanceSettingsPage() {
     updateCodeBlockShowLineNumbers,
     updateCodeBlockWrapLongLines,
   } = useUiSettings();
+  const renderUserMath = useUserMessageMath();
 
   // All code-block values come straight from the settings context (backed by
   // AppShellContext, the single source of truth), so the toggles reflect the
@@ -208,6 +213,26 @@ export default function AppearanceSettingsPage() {
             {t("Reset learning text")}
           </button>
         </div>
+      </SettingSection>
+
+      <SettingSection
+        title={t("Chat messages")}
+        description={t(
+          "Choose how the messages you send are displayed. Changes take effect immediately.",
+        )}
+      >
+        <SettingRow
+          title={t("Math in my messages")}
+          description={t(
+            "Render $...$ and $$...$$ formulas in your own chat bubbles. Your message is still sent to the model as plain text.",
+          )}
+          control={
+            <Toggle
+              checked={renderUserMath}
+              onChange={setUserMessageMath}
+            />
+          }
+        />
       </SettingSection>
 
       <SettingSection
