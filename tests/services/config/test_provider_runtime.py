@@ -1458,3 +1458,60 @@ def test_llm_standardcompute_base_url_detection_preserves_openai_binding_compati
     assert resolved.provider_name == "standardcompute"
     assert resolved.provider_mode == "gateway"
     assert resolved.effective_url == "https://api.stdcmpt.com/v1"
+
+
+def test_llm_atmorouter_binding_uses_default_openai_compatible_endpoint() -> None:
+    catalog = _build_catalog(
+        llm_profile={
+            "id": "llm-p",
+            "name": "AtmoRouter",
+            "binding": "atmorouter",
+            "base_url": "",
+            "api_key": "atmorouter-key",
+            "api_version": "",
+            "extra_headers": {},
+            "models": [
+                {
+                    "id": "llm-m",
+                    "name": "GLM 5.3",
+                    "model": "zai/glm-5.3",
+                }
+            ],
+        }
+    )
+
+    resolved = resolve_llm_runtime_config(catalog=catalog)
+
+    assert resolved.provider_name == "atmorouter"
+    assert resolved.provider_mode == "gateway"
+    assert resolved.binding == "atmorouter"
+    assert resolved.model == "zai/glm-5.3"
+    assert resolved.api_key == "atmorouter-key"
+    assert resolved.effective_url == "https://atmorouter.dev/v1"
+
+
+def test_llm_atmorouter_base_url_detection_preserves_openai_binding_compatibility() -> None:
+    catalog = _build_catalog(
+        llm_profile={
+            "id": "llm-p",
+            "name": "OpenAI Compatible",
+            "binding": "openai",
+            "base_url": "https://atmorouter.dev/v1",
+            "api_key": "atmorouter-key",
+            "api_version": "",
+            "extra_headers": {},
+            "models": [
+                {
+                    "id": "llm-m",
+                    "name": "GLM 5.3",
+                    "model": "zai/glm-5.3",
+                }
+            ],
+        }
+    )
+
+    resolved = resolve_llm_runtime_config(catalog=catalog)
+
+    assert resolved.provider_name == "atmorouter"
+    assert resolved.provider_mode == "gateway"
+    assert resolved.effective_url == "https://atmorouter.dev/v1"

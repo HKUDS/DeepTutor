@@ -123,6 +123,11 @@
       "sha256": "b8ba9a992247f59bd2af8206354e76e8cebcb5a39a885150366f3cf1aeaad1c9",
       "source": "Official website asset"
     },
+    "atmorouter.svg": {
+      "url": "https://atmorouter.dev/favicon.svg",
+      "sha256": "c3e132fbbf81a4f168cecd1d6bc260b938d980daf06c7508edac58ef3a79133c",
+      "source": "Official website asset"
+    },
     "api-route.png": {
       "url": "https://www.api-route.com/apple-touch-icon.png?v=2",
       "sha256": "28866bf8b7c0913c634a34d2839a3201b0eab2019b926e556411a72f4c969e42",
