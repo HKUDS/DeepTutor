@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-import hashlib
-import json
 from typing import Any
 
 import httpx
@@ -17,6 +15,7 @@ from deeptutor.services.llm.exceptions import LLMProviderTransportError
 from deeptutor.services.llm.openai_http_client import disable_ssl_verify_enabled
 from deeptutor.services.llm.provider_core.base import LLMProvider, LLMResponse, ToolCallRequest
 from deeptutor.services.llm.provider_core.openai_responses import (
+    build_prompt_cache_key,
     consume_sse,
     convert_messages,
     convert_tool_choice,
@@ -322,21 +321,7 @@ def _pop_session_id(kwargs: dict[str, Any]) -> str | None:
     return str(kwargs.pop("deeptutor_session_id", "") or "").strip() or None
 
 
-def _prompt_cache_key(messages: list[dict[str, Any]], session_id: str | None = None) -> str:
-    # Routing affinity must survive ordinary history growth. A conversation id,
-    # when the caller supplies one, scopes the key to that conversation so two
-    # chats sharing the same system prompt do not share a cache route; it is
-    # hashed so the raw id is not sent upstream. Without one, fall back to the
-    # first system message, which identifies the reusable instructions. Later
-    # system messages (e.g. a rolling summary) can change between calls and
-    # must not move the key. The provider still verifies all tokens.
-    if session_id:
-        return hashlib.sha256(f"session:{session_id}".encode()).hexdigest()
-    prefix = []
-    if messages and messages[0].get("role") == "system":
-        prefix.append({"role": "system", "content": messages[0].get("content")})
-    raw = json.dumps(prefix, ensure_ascii=True, sort_keys=True)
-    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+_prompt_cache_key = build_prompt_cache_key
 
 
 def _friendly_error(status_code: int) -> str:

@@ -568,7 +568,14 @@ class AnthropicProvider(LLMProvider):
             reasoning_effort,
             tool_choice,
         )
-        for key in ("response_format", "seed", "logit_bias", "stream", "stream_options"):
+        for key in (
+            "deeptutor_session_id",
+            "response_format",
+            "seed",
+            "logit_bias",
+            "stream",
+            "stream_options",
+        ):
             extra_kwargs.pop(key, None)
         kwargs.update({k: v for k, v in extra_kwargs.items() if v is not None})
         try:
@@ -599,7 +606,14 @@ class AnthropicProvider(LLMProvider):
             reasoning_effort,
             tool_choice,
         )
-        for key in ("response_format", "seed", "logit_bias", "stream", "stream_options"):
+        for key in (
+            "deeptutor_session_id",
+            "response_format",
+            "seed",
+            "logit_bias",
+            "stream",
+            "stream_options",
+        ):
             extra_kwargs.pop(key, None)
         kwargs.update({k: v for k, v in extra_kwargs.items() if v is not None})
         idle_timeout_s = 90

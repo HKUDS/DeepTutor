@@ -34,6 +34,7 @@ from deeptutor.services.llm.provider_core.base import LLMProvider, LLMResponse, 
 from deeptutor.services.llm.provider_core.openai_responses import (
     ToolArgsDeltaHook,
     adapt_chat_kwargs_to_responses,
+    build_prompt_cache_key,
     consume_sdk_stream,
     convert_messages,
     convert_tool_choice,
@@ -287,13 +288,18 @@ class OpenAICompatProvider(LLMProvider):
             )
         )
         try:
-            self._prompt_cache_options_supported = (
-                "prompt_cache_options"
-                in inspect.signature(self._client.responses.create).parameters
+            responses_params = inspect.signature(self._client.responses.create).parameters
+            self._prompt_cache_options_supported = "prompt_cache_options" in responses_params
+            has_var_keyword = any(
+                param.kind == inspect.Parameter.VAR_KEYWORD for param in responses_params.values()
+            )
+            self._prompt_cache_key_supported = (
+                "prompt_cache_key" in responses_params or has_var_keyword
             )
         except (AttributeError, TypeError, ValueError):
             # Test stubs and older SDK facades may expose no Responses client.
             self._prompt_cache_options_supported = False
+            self._prompt_cache_key_supported = False
         self._responses_failures: dict[str, int] = {}
         self._responses_tripped_at: dict[str, float] = {}
         self._responses_without_message_status_models: set[str] = set()
@@ -733,7 +739,11 @@ class OpenAICompatProvider(LLMProvider):
     def _responses_body_without_prompt_cache(body: dict[str, Any]) -> dict[str, Any]:
         """Strip explicit-cache fields for a provider that rejected them."""
 
-        sanitized = {key: value for key, value in body.items() if key != "prompt_cache_options"}
+        sanitized = {
+            key: value
+            for key, value in body.items()
+            if key not in {"prompt_cache_options", "prompt_cache_key"}
+        }
         input_items = body.get("input")
         if not isinstance(input_items, list):
             return sanitized
@@ -906,6 +916,13 @@ class OpenAICompatProvider(LLMProvider):
         disable_forced_tool_choice_at_runtime(self._binding_name(), target)
         return True
 
+    def _supports_prompt_cache_key(self, model_name: str) -> bool:
+        """Whether Responses requests may send ``prompt_cache_key`` for *model_name*."""
+        if not getattr(self, "_prompt_cache_key_supported", False):
+            return False
+        rejected = getattr(self, "_responses_without_prompt_cache_models", set())
+        return str(model_name or "").strip().lower() not in rejected
+
     def _supports_explicit_prompt_cache(self, model_name: str) -> bool:
         """Gate explicit breakpoints to native OpenAI GPT-5.6+.
 
@@ -937,6 +954,7 @@ class OpenAICompatProvider(LLMProvider):
         temperature: float,
         reasoning_effort: str | None,
         tool_choice: str | dict[str, Any] | None,
+        session_id: str | None = None,
     ) -> dict[str, Any]:
         model_name = model or self.default_model
         if self._spec and self._spec.strip_model_prefix:
@@ -953,6 +971,8 @@ class OpenAICompatProvider(LLMProvider):
             "store": False,
             "stream": False,
         }
+        if self._supports_prompt_cache_key(model_name):
+            body["prompt_cache_key"] = build_prompt_cache_key(messages, session_id)
         if self._supports_explicit_prompt_cache(model_name):
             if mark_stable_history_breakpoint(input_items):
                 # Explicit-only mode: the breakpoint above is the reusable
@@ -1193,6 +1213,7 @@ class OpenAICompatProvider(LLMProvider):
         tool_choice: str | dict[str, Any] | None = None,
         **extra_kwargs: Any,
     ) -> LLMResponse:
+        session_id = str(extra_kwargs.pop("deeptutor_session_id", "") or "").strip() or None
         try:
             if self._should_use_responses_api(model, reasoning_effort, tools):
                 try:
@@ -1204,6 +1225,7 @@ class OpenAICompatProvider(LLMProvider):
                         temperature,
                         reasoning_effort,
                         tool_choice,
+                        session_id=session_id,
                     )
                     body.update(adapt_chat_kwargs_to_responses(extra_kwargs))
                     result = parse_response_output(
@@ -1253,6 +1275,9 @@ class OpenAICompatProvider(LLMProvider):
                     )
                 raise
         except Exception as e:
+            retry_extra_kwargs = (
+                {**extra_kwargs, "deeptutor_session_id": session_id} if session_id else extra_kwargs
+            )
             if self._note_forced_tool_choice_rejected(e, tool_choice, model):
                 # ``"required"`` cannot be refused for the same reason, so this
                 # retries at most once.
@@ -1264,7 +1289,7 @@ class OpenAICompatProvider(LLMProvider):
                     temperature,
                     reasoning_effort,
                     "required",
-                    **extra_kwargs,
+                    **retry_extra_kwargs,
                 )
             if tools and self._is_tool_format_error(e):
                 return await self.chat_stream(
@@ -1275,7 +1300,7 @@ class OpenAICompatProvider(LLMProvider):
                     temperature,
                     reasoning_effort,
                     tool_choice,
-                    **extra_kwargs,
+                    **retry_extra_kwargs,
                 )
             return self._handle_error(e)
 
@@ -1296,6 +1321,7 @@ class OpenAICompatProvider(LLMProvider):
         on_tool_args_delta: ToolArgsDeltaHook | None = None,
         **extra_kwargs: Any,
     ) -> LLMResponse:
+        session_id = str(extra_kwargs.pop("deeptutor_session_id", "") or "").strip() or None
         request_kwargs = self._build_kwargs(
             messages,
             tools,
@@ -1318,6 +1344,7 @@ class OpenAICompatProvider(LLMProvider):
                         temperature,
                         reasoning_effort,
                         tool_choice,
+                        session_id=session_id,
                     )
                     body.update(adapt_chat_kwargs_to_responses(extra_kwargs))
                     body["stream"] = True
@@ -1529,6 +1556,11 @@ class OpenAICompatProvider(LLMProvider):
                 # created, so no part of a response has been streamed yet.
                 # ``"required"`` cannot be refused for the same reason, so
                 # this retries at most once.
+                retry_extra_kwargs = (
+                    {**extra_kwargs, "deeptutor_session_id": session_id}
+                    if session_id
+                    else extra_kwargs
+                )
                 return await self.chat_stream(
                     messages,
                     tools,
@@ -1540,7 +1572,7 @@ class OpenAICompatProvider(LLMProvider):
                     on_content_delta,
                     on_reasoning_delta,
                     on_tool_args_delta,
-                    **extra_kwargs,
+                    **retry_extra_kwargs,
                 )
             return self._handle_error(e)
 

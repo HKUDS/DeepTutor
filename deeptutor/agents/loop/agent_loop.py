@@ -702,7 +702,14 @@ class AgentLoop:
             "stream": True,
             **self.pipeline._completion_kwargs(max_tokens=max_tokens),
         }
-        if threads_session_id(self.pipeline.binding):
+        wire_api = getattr(
+            getattr(self.pipeline, "_client_config", None),
+            "wire_api",
+            None,
+        ) or getattr(getattr(self.pipeline, "llm_config", None), "wire_api", None)
+        if threads_session_id(self.pipeline.binding, wire_api=wire_api) or getattr(
+            self.client, "_threads_session_id", False
+        ):
             kwargs["deeptutor_session_id"] = self.context.session_id
         if self.pipeline.usage is not None:
             kwargs["stream_options"] = {"include_usage": True}
