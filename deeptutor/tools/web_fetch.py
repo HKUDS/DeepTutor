@@ -30,14 +30,16 @@ arguments, not a human):
 
 from __future__ import annotations
 
+import asyncio
 import codecs
 from dataclasses import dataclass
 import ipaddress
 import logging
+import os
 import re
 import socket
 from typing import Any
-from urllib.parse import urljoin, urlparse, urlsplit
+from urllib.parse import urlencode, urljoin, urlparse, urlsplit
 
 import httpx
 
@@ -121,7 +123,6 @@ async def fetch_url_as_markdown(
     host = (parsed.hostname or "").strip()
     if not host:
         return FetchOutcome(ok=False, error="URL is missing a host.")
-    validator = host_validator or _is_disallowed_host
 
     backend_name = _resolve_backend_name(backend)
     if backend_name is None:
@@ -139,7 +140,7 @@ async def fetch_url_as_markdown(
         # replaces the HTTP+extract step, never the decision of whether the
         # URL is safe to contact — otherwise a private URL would be handed
         # to a third party.
-        if validator(host):
+        if await _check_disallowed_host(host, host_validator):
             return FetchOutcome(
                 ok=False,
                 error=f"Refusing to fetch private/loopback host: {host}.",
@@ -168,7 +169,7 @@ async def fetch_url_as_markdown(
                 current_host = (current.hostname or "").strip()
                 if current.scheme.lower() not in ALLOWED_SCHEMES or not current_host:
                     return FetchOutcome(ok=False, error="Redirect target is not a valid HTTP URL.")
-                if validator(current_host):
+                if await _check_disallowed_host(current_host, host_validator):
                     return FetchOutcome(
                         ok=False,
                         error=(
@@ -318,6 +319,94 @@ def _default_client_factory(*, timeout: float, user_agent: str) -> httpx.AsyncCl
     )
 
 
+# Synthetic Fake-IP ranges assigned by local TUN/DNS proxies (Clash, Mihomo,
+# Surge, Stash, sing-box): RFC 2544 IPv4 benchmarking and RFC 5180 IPv6
+# benchmarking. RFC 1918 / RFC 4193 private ranges are intentionally excluded
+# so split-horizon internal hosts can never pass via public DNS answers.
+_SYNTHETIC_FAKE_IP_NETWORKS = (
+    ipaddress.ip_network("198.18.0.0/15"),
+    ipaddress.ip_network("2001:2::/48"),
+)
+_DEFAULT_DOH_JSON_ENDPOINTS = (
+    "https://cloudflare-dns.com/dns-query",
+    "https://dns.google/resolve",
+    "https://dns.alidns.com/resolve",
+)
+_DOH_TIMEOUT_S = 2.5
+
+
+def _unwrap_ip(
+    ip: ipaddress.IPv4Address | ipaddress.IPv6Address,
+) -> ipaddress.IPv4Address | ipaddress.IPv6Address:
+    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
+        return ip.ipv4_mapped
+    return ip
+
+
+def _is_synthetic_fake_ip(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    unwrapped = _unwrap_ip(ip)
+    return any(unwrapped in net for net in _SYNTHETIC_FAKE_IP_NETWORKS)
+
+
+def _doh_json_endpoints() -> tuple[str, ...]:
+    raw = os.getenv("DEEPTUTOR_DOH_ENDPOINTS")
+    if raw is None:
+        return _DEFAULT_DOH_JSON_ENDPOINTS
+    return tuple(item.strip() for item in raw.split(",") if item.strip())
+
+
+def _query_doh_ips(
+    endpoint: str, host: str
+) -> list[ipaddress.IPv4Address | ipaddress.IPv6Address] | None:
+    """Query A and AAAA records via DoH JSON. ``None`` means transport failure."""
+    collected: list[ipaddress.IPv4Address | ipaddress.IPv6Address] = []
+    with httpx.Client(timeout=_DOH_TIMEOUT_S, follow_redirects=False) as client:
+        for record_type, expected_code in (("A", 1), ("AAAA", 28)):
+            sep = "&" if "?" in endpoint else "?"
+            query_url = f"{endpoint}{sep}{urlencode({'name': host, 'type': record_type})}"
+            try:
+                resp = client.get(query_url, headers={"Accept": "application/dns-json"})
+                if resp.status_code != 200:
+                    return None
+                payload = resp.json()
+            except (httpx.HTTPError, ValueError):
+                return None
+            if not isinstance(payload, dict):
+                return None
+            status = payload.get("Status")
+            if status not in (0, None):
+                # NXDOMAIN / SERVFAIL / REFUSED: authoritative non-public or broken name.
+                return []
+            answers = payload.get("Answer") or []
+            if not isinstance(answers, list):
+                return None
+            for ans in answers:
+                if not isinstance(ans, dict) or ans.get("type") != expected_code:
+                    continue
+                data = str(ans.get("data") or "").strip()
+                try:
+                    collected.append(ipaddress.ip_address(data))
+                except ValueError:
+                    return []
+    return collected
+
+
+def _has_verified_public_dns(host: str) -> bool:
+    """Confirm *host* resolves exclusively to public IPs over DoH."""
+    for endpoint in _doh_json_endpoints():
+        ips = _query_doh_ips(endpoint, host)
+        if ips is None:
+            continue
+        return bool(ips) and not any(_is_disallowed_ip(_unwrap_ip(ip)) for ip in ips)
+    return False
+
+
+async def _check_disallowed_host(host: str, host_validator: Any) -> bool:
+    if host_validator is not None:
+        return bool(host_validator(host))
+    return await asyncio.to_thread(_is_disallowed_host, host)
+
+
 def _is_disallowed_host(host: str) -> bool:
     """Block hosts that resolve to private / loopback / link-local IPs.
 
@@ -325,11 +414,16 @@ def _is_disallowed_host(host: str) -> bool:
     names. Every resolved address must be public because the HTTP client later
     connects by hostname and may select any answer. DNS failures and malformed
     answer rows are treated as disallowed so validation fails closed.
+
+    When a hostname (not an IP literal) resolves exclusively to synthetic
+    proxy Fake-IP ranges (``198.18.0.0/15`` or ``2001:2::/48``), verify via
+    HTTPS DoH JSON that its public DNS records resolve exclusively to public
+    addresses before allowing the request through the proxy.
     """
 
     candidate = host.strip("[]")
     try:
-        return _is_disallowed_ip(ipaddress.ip_address(candidate))
+        return _is_disallowed_ip(_unwrap_ip(ipaddress.ip_address(candidate)))
     except ValueError:
         pass
     lower = candidate.lower()
@@ -343,24 +437,30 @@ def _is_disallowed_host(host: str) -> bool:
         return True
     if not infos:
         return True
+    resolved_ips: list[ipaddress.IPv4Address | ipaddress.IPv6Address] = []
     for info in infos:
         try:
             ip = ipaddress.ip_address(info[4][0])
         except (IndexError, TypeError, ValueError):
             return True
-        if _is_disallowed_ip(ip):
-            return True
-    return False
+        resolved_ips.append(_unwrap_ip(ip))
+
+    if not any(_is_disallowed_ip(ip) for ip in resolved_ips):
+        return False
+    if all(_is_synthetic_fake_ip(ip) for ip in resolved_ips):
+        return not _has_verified_public_dns(candidate)
+    return True
 
 
 def _is_disallowed_ip(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    unwrapped = _unwrap_ip(ip)
     return (
-        ip.is_private
-        or ip.is_loopback
-        or ip.is_link_local
-        or ip.is_multicast
-        or ip.is_reserved
-        or ip.is_unspecified
+        unwrapped.is_private
+        or unwrapped.is_loopback
+        or unwrapped.is_link_local
+        or unwrapped.is_multicast
+        or unwrapped.is_reserved
+        or unwrapped.is_unspecified
     )
 
 
