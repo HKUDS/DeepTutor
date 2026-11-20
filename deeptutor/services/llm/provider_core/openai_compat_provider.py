@@ -1021,6 +1021,27 @@ class OpenAICompatProvider(LLMProvider):
         return str(value)
 
     @classmethod
+    def _extract_thinking_content(cls, value: Any) -> str | None:
+        """Text from Mistral-style ``{"type": "thinking", "thinking": [...]}`` blocks.
+
+        Mistral reasoning models deliver thinking inside ``content`` as typed
+        blocks whose inner ``thinking`` is itself a list of text chunks. Other
+        providers use a separate ``reasoning_content`` field; this maps the
+        block form onto the same reasoning channel (#2791).
+        """
+        if not isinstance(value, list):
+            return None
+        parts: list[str] = []
+        for item in value:
+            item_map = cls._maybe_mapping(item)
+            if not item_map or item_map.get("type") != "thinking":
+                continue
+            text = cls._extract_text_content(item_map.get("thinking"))
+            if text:
+                parts.append(text)
+        return "".join(parts) or None
+
+    @classmethod
     def _extract_usage(cls, response: Any) -> dict[str, int]:
         response_map = cls._maybe_mapping(response)
         if response_map is not None:
@@ -1071,6 +1092,8 @@ class OpenAICompatProvider(LLMProvider):
         reasoning_content = getattr(msg, "reasoning_content", None) or None
         if not reasoning_content and getattr(msg, "reasoning", None):
             reasoning_content = msg.reasoning
+        if not reasoning_content:
+            reasoning_content = self._extract_thinking_content(msg.content)
 
         # ``reasoning`` is a private trace on gateways such as OpenRouter.  It
         # must never be promoted to visible content when the provider omits a
@@ -1123,6 +1146,9 @@ class OpenAICompatProvider(LLMProvider):
                 text = cls._extract_text_content(delta.content)
                 if text:
                     content_parts.append(text)
+                thinking = cls._extract_thinking_content(delta.content)
+                if thinking:
+                    reasoning_parts.append(thinking)
             if delta:
                 reasoning = getattr(delta, "reasoning_content", None)
                 if not reasoning:
@@ -1504,6 +1530,11 @@ class OpenAICompatProvider(LLMProvider):
                             )
                             if reasoning_text:
                                 await on_reasoning_delta(reasoning_text)
+                            thinking_text = self._extract_thinking_content(
+                                getattr(delta, "content", None)
+                            )
+                            if thinking_text:
+                                await on_reasoning_delta(thinking_text)
                         if on_content_delta and delta is not None:
                             text = self._extract_text_content(getattr(delta, "content", None))
                             if text:
