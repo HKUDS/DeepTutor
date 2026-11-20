@@ -59,7 +59,7 @@ export default function NoteInsertMenu({
       const rect = root.current?.getBoundingClientRect()
       if (rect)
         setPreviewSide(
-          window.innerWidth - rect.right > 246 ? 'right' : rect.left > 246 ? 'left' : 'inline'
+          window.innerWidth - rect.right > 246 ? 'end' : rect.left > 246 ? 'start' : 'inline'
         )
     }
     measure()

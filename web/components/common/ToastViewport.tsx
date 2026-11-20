@@ -42,7 +42,7 @@ export default function ToastViewport() {
       role="status"
       aria-live="polite"
       aria-atomic="false"
-      className="pointer-events-none fixed bottom-6 right-6 z-[200] flex flex-col gap-2"
+      className="pointer-events-none fixed bottom-6 end-6 z-[200] flex flex-col gap-2"
     >
       {toasts.map((toast) => (
         <div

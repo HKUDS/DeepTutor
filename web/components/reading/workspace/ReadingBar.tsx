@@ -156,7 +156,7 @@ export function ReadingBar({
       >
         {navigatorOpen ? <PanelLeftClose size={14} /> : <PanelLeftOpen size={14} />}
       </BarButton>
-      <nav aria-label={t("navigation.location")} className="dt-reading-crumbs ml-0.5 flex min-w-0 shrink items-center">
+      <nav aria-label={t("navigation.location")} className="dt-reading-crumbs ms-0.5 flex min-w-0 shrink items-center">
         {feature && <span className="dt-reading-feature hidden md:contents"><FeatureCrumb section={feature.section} page={feature.page} /></span>}
         <span className="dt-reading-collection hidden min-w-0 max-w-[220px] shrink-[2] items-center md:inline-flex">
           <InstanceCrumb
@@ -184,9 +184,9 @@ export function ReadingBar({
         </span>
       </nav>
       {/* The open document's place, history and bookmark render here. */}
-      <div ref={docSlot} className="dt-reader-head-slot ml-1 flex shrink-0 items-center gap-1" />
+      <div ref={docSlot} className="dt-reader-head-slot ms-1 flex shrink-0 items-center gap-1" />
 
-      <div className="ml-auto flex shrink-0 items-center gap-0.5">
+      <div className="ms-auto flex shrink-0 items-center gap-0.5">
         {notice && (
           <span className="hidden max-w-[220px] truncate px-2 text-[10px] text-[var(--muted-foreground)] 2xl:inline">
             {notice}
@@ -233,7 +233,7 @@ export function CompanionHead({
 }) {
   const { t } = useTranslation();
   return (
-    <div className="dt-companion-head flex h-12 shrink-0 items-center gap-1 pl-4 pr-2">
+    <div className="dt-companion-head flex h-12 shrink-0 items-center gap-1 ps-4 pe-2">
       <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-[var(--foreground)]">
         {title?.trim() || t("Reading companion title")}
       </span>

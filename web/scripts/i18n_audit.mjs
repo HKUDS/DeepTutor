@@ -99,6 +99,12 @@ const MIN_USED_COVERAGE = new Map([
   ["uk", 0.75],
   // Initial Korean contribution covers navigation, common actions and learning.
   ["ko", 0.07],
+  // Persian is Phase 1 scope: auth, the user/admin shell, navigation, settings
+  // entry points and the reply-language plumbing. Everything behind those is
+  // still English and falls back per key. The floor locks in what Phase 1
+  // delivered; raising it is a Phase 2 task (`DECISIONS.md` F-1 lists the
+  // panels that exist, not the deep settings screens inside them).
+  ["fa", 0.12],
 ]);
 
 function hasTranslation(entries, pluralForms, key) {

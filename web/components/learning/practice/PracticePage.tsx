@@ -229,7 +229,7 @@ function PracticeCollectionPage({ mode, initialImport }: { mode: "practice" | "l
                 className={`border-b-2 px-1 pb-3 text-sm ${tab === view ? "border-primary font-semibold text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}
               >
                 {view === "bank" ? t("Question Bank") : t("Mistakes")}
-                <span className="ml-2 text-xs tabular-nums text-muted-foreground">
+                <span className="ms-2 text-xs tabular-nums text-muted-foreground">
                   {summary ? (view === "bank" ? summary.total : summary.mistakes) : "—"}
                 </span>
               </button>

@@ -428,7 +428,7 @@ export function GrantEditor({
     return (
       <div className="border-t border-[var(--border)] bg-[var(--background)]/40 p-4">
         <div className="flex h-[420px] items-center justify-center rounded-2xl border border-[var(--border)] bg-[var(--card)] text-sm text-[var(--muted-foreground)]">
-          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          <Loader2 className="me-2 h-4 w-4 animate-spin" />
           {t("Loading assignments...")}
         </div>
       </div>

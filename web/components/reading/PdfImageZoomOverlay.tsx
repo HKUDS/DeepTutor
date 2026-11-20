@@ -251,9 +251,9 @@ export function PdfImageZoomOverlay({ doc, locator, box, onClose }: PdfImageZoom
         className="flex shrink-0 items-center justify-end gap-1 px-3 py-2 text-white/90"
         onClick={event => event.stopPropagation()}
       >
-        <span className="mr-auto text-[12px] tabular-nums text-white/60">
+        <span className="me-auto text-[12px] tabular-nums text-white/60">
           {t('Page {{n}}', { n: locator })}
-          <span className="ml-2 text-white/40">{t('Drag to pan, scroll to zoom')}</span>
+          <span className="ms-2 text-white/40">{t('Drag to pan, scroll to zoom')}</span>
         </span>
         <Tooltip label={t('Zoom out')}>
           <button

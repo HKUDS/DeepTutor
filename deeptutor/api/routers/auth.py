@@ -52,6 +52,7 @@ from deeptutor.multi_user.identity import get_user_by_id
 from deeptutor.multi_user.learning_access import learning_policy_for_user
 from deeptutor.multi_user.models import AccountPreset
 from deeptutor.multi_user.paths import local_admin_user
+from deeptutor.multi_user.phone import InvalidPhoneNumber, mask_phone, normalize_phone
 from deeptutor.multi_user.session_handoff import (
     CODE_LIFETIME_SECONDS,
     TICKET_LIFETIME_SECONDS,
@@ -82,6 +83,7 @@ from deeptutor.services.auth import (
     is_first_user,
     list_users,
     register_pb,
+    revoke_user_sessions,
     set_avatar,
     set_learner_profile,
     set_role,
@@ -191,6 +193,18 @@ class LoginRequest(BaseModel):
 
     username: str
     password: str
+
+
+class SetDisabledRequest(BaseModel):
+    """Payload for ``PUT /users/{username}/disabled``."""
+
+    disabled: bool
+
+
+class UpdatePhoneRequest(BaseModel):
+    """Payload for ``PUT /profile/phone``."""
+
+    phone: str = Field(min_length=1, max_length=32)
 
 
 class DeviceLoginRequest(BaseModel):
@@ -2059,6 +2073,124 @@ async def update_user_role(
         f"Admin '{current.username if current else 'local'}' set '{username}' role to {body.role!r}"
     )
     return {"ok": True, "username": username, "role": body.role}
+
+
+@router.put("/users/{username}/disabled", status_code=status.HTTP_200_OK)
+async def set_user_disabled(
+    username: str,
+    body: SetDisabledRequest,
+    current: TokenPayload = Depends(require_admin),
+) -> dict:
+    """Disable or restore an account (admin only).
+
+    Disabling takes effect immediately: ``decode_token`` refuses tokens for a
+    disabled account, so the user is signed out of every device without the
+    admin needing to know how many exist. An admin may not disable themselves -
+    that is the one case where the action can lock the whole panel out.
+    """
+    if current and username == current.username:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You cannot disable your own account",
+        )
+
+    from deeptutor.multi_user.identity import set_disabled
+
+    if not set_disabled(username, body.disabled):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    target = get_user_info(username) or {}
+    log_admin_action(
+        "user.enable" if not body.disabled else "user.disable",
+        target_user_id=str(target.get("id") or ""),
+        summary={"username": username, "disabled": body.disabled},
+    )
+    logger.info(
+        "Admin '%s' set '%s' disabled=%s",
+        current.username if current else "local",
+        username,
+        body.disabled,
+    )
+    return {"ok": True, "username": username, "disabled": body.disabled}
+
+
+@router.post("/users/{username}/revoke-sessions", status_code=status.HTTP_200_OK)
+async def revoke_user_sessions_endpoint(
+    username: str,
+    current: TokenPayload = Depends(require_admin),
+) -> dict:
+    """Sign a user out of every device without disabling the account.
+
+    Distinct from disabling: the account stays usable, it just has to sign in
+    again. This is what an admin reaches for when a phone is lost or a token
+    was pasted somewhere it should not have been.
+    """
+    if current and username == current.username:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You cannot revoke your own sessions from here",
+        )
+
+    if not revoke_user_sessions(username):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    target = get_user_info(username) or {}
+    log_admin_action(
+        "user.revoke_sessions",
+        target_user_id=str(target.get("id") or ""),
+        summary={"username": username},
+    )
+    logger.info(
+        "Admin '%s' revoked sessions for '%s'",
+        current.username if current else "local",
+        username,
+    )
+    return {"ok": True, "username": username, "revoked": True}
+
+
+@router.put("/profile/phone", status_code=status.HTTP_200_OK)
+async def update_profile_phone(
+    body: UpdatePhoneRequest,
+    current: TokenPayload = Depends(require_auth),
+) -> dict:
+    """Attach or change the phone number on the signed-in account.
+
+    Uniqueness is enforced here rather than only at sign-up, because this is
+    the one path that can move a number between accounts. A number that already
+    belongs to someone else is refused with 409 rather than silently stolen.
+    """
+    if not current:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Authentication is disabled on this instance.",
+        )
+
+    from deeptutor.multi_user.identity import set_phone
+
+    try:
+        phone = normalize_phone(body.phone)
+    except InvalidPhoneNumber:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="That does not look like a valid phone number.",
+        ) from None
+
+    owner = get_user_info(phone)
+    if owner is not None and phone != current.username:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="That phone number is already in use.",
+        )
+
+    if not set_phone(current.username, phone):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    log_admin_action(
+        "user.phone_change",
+        target_user_id=current.user_id,
+        summary={"username": current.username},
+    )
+    return {"ok": True, "phone": mask_phone(phone)}
 
 
 @router.put("/users/{username}/password", status_code=status.HTTP_200_OK)

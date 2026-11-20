@@ -28,7 +28,7 @@ export function ObjectiveDetail({
   const evidence = report.evidence ?? [];
   const evidenceCount = report.evidence_count ?? evidence.length;
   return (
-    <div className="mt-1 mb-2 ml-5 space-y-3 border-l border-[var(--border)] pl-3">
+    <div className="mt-1 mb-2 ms-5 space-y-3 border-s border-[var(--border)] ps-3">
       <GateBar report={report} />
 
       {report.review && (
@@ -39,7 +39,7 @@ export function ObjectiveDetail({
                 absolute: formatAbsolute(report.review.due_at, zh),
               })
             : t("Not scheduled")}
-          <span className="ml-2 text-[var(--muted-foreground)]">
+          <span className="ms-2 text-[var(--muted-foreground)]">
             {t("memory {{retrievability}}% · stability {{stability}} days", {
               retrievability: Math.round(report.review.retrievability * 100),
               stability: report.review.stability.toFixed(1),
@@ -91,7 +91,7 @@ export function ObjectiveDetail({
                   <div className="text-[var(--muted-foreground)]">
                     {t("You said: ")}
                     {attempt.answer || t("(blank)")}
-                    <span className="ml-2">
+                    <span className="ms-2">
                       {formatRelative(attempt.at, zh)}
                     </span>
                   </div>
@@ -105,7 +105,7 @@ export function ObjectiveDetail({
       {report.errors.length > 0 && (
         <Row label={t("Error diagnosis")}>
           {report.errors.map((record) => (
-            <span key={record.id} className="mr-2">
+            <span key={record.id} className="me-2">
               {t(record.error_type)}
               {record.retries > 0 &&
                 t(" · {{count}} retries", { count: record.retries })}

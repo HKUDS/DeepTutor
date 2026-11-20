@@ -254,8 +254,8 @@ export default function BookSidebar({
                     <Tooltip label={hint}>
                       <button
                       onClick={() => onSelectPage?.(page.id)}
-                      className={`flex w-full items-start justify-between gap-2 rounded-md py-1.5 pr-2 text-left text-xs ${
-                        page.parent_page_id ? "pl-5" : "pl-2"
+                      className={`flex w-full items-start justify-between gap-2 rounded-md py-1.5 pe-2 text-left text-xs ${
+                        page.parent_page_id ? "ps-5" : "ps-2"
                       } ${
                         active
                           ? "bg-[var(--primary)]/15 text-[var(--foreground)]"

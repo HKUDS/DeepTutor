@@ -46,7 +46,7 @@ interface Room {
 function roomFor(
   trigger: DOMRect,
   preferred: TrayPlacement,
-  align: "start" | "end",
+  align: "left" | "right",
 ): Room {
   const below = window.innerHeight - trigger.bottom - GAP - MARGIN;
   const above = trigger.top - GAP - MARGIN;
@@ -56,7 +56,7 @@ function roomFor(
   const left = Math.max(
     MARGIN,
     Math.min(
-      align === "end" ? trigger.right - width : trigger.left,
+      align === "right" ? trigger.right - width : trigger.left,
       window.innerWidth - width - MARGIN,
     ),
   );
@@ -89,7 +89,7 @@ export function TrayMenu({
   valueIcon,
   fold,
   placement,
-  align = "start",
+  align = "left",
   open: openProp,
   onOpenChange,
   children,
@@ -111,7 +111,7 @@ export function TrayMenu({
   fold?: boolean;
   placement: TrayPlacement;
   /** Which edge of the button the list lines up with. */
-  align?: "start" | "end";
+  align?: "left" | "right";
   /** Controlled open state, for commands that open this list from elsewhere. */
   open?: boolean;
   onOpenChange?: (open: boolean) => void;

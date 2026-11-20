@@ -225,7 +225,7 @@ export default function KbDocumentList({
 
   if (collapsed) {
     return (
-      <aside className="flex h-full w-[44px] shrink-0 flex-col items-center gap-1 border-r border-[var(--border)] bg-[var(--card)]/40 py-2">
+      <aside className="flex h-full w-[44px] shrink-0 flex-col items-center gap-1 border-e border-[var(--border)] bg-[var(--card)]/40 py-2">
         <Tooltip label={t("Expand")} side="top">
           <button
             type="button"
@@ -256,7 +256,7 @@ export default function KbDocumentList({
                 }`}
               >
                 {active && (
-                  <span className="absolute -left-1 top-1/2 h-4 w-[2.5px] -translate-y-1/2 rounded-full bg-[var(--primary)]" />
+                  <span className="absolute -start-1 top-1/2 h-4 w-[2.5px] -translate-y-1/2 rounded-full bg-[var(--primary)]" />
                 )}
                 <Icon size={13} strokeWidth={1.6} className={spec.tint} />
               </button>
@@ -291,7 +291,7 @@ export default function KbDocumentList({
               if (src) void handleMove(src, node.path);
             }}
             style={indent}
-            className={`flex cursor-pointer items-center gap-1 rounded-md py-1.5 pr-2 text-left transition-colors ${
+            className={`flex cursor-pointer items-center gap-1 rounded-md py-1.5 pe-2 text-left transition-colors ${
               isDrop
                 ? "bg-[var(--primary)]/15 ring-1 ring-[var(--primary)]/40"
                 : "hover:bg-[var(--muted)]/50"
@@ -331,7 +331,7 @@ export default function KbDocumentList({
           }}
           onDragEnd={() => setDragPath(null)}
           style={indent}
-          className={`flex items-center gap-2 rounded-md py-1.5 pr-1 text-left transition-colors ${
+          className={`flex items-center gap-2 rounded-md py-1.5 pe-1 text-left transition-colors ${
             active
               ? "bg-[var(--primary)]/10 text-[var(--foreground)]"
               : "hover:bg-[var(--muted)]/50"
@@ -341,7 +341,7 @@ export default function KbDocumentList({
             type="button"
             onClick={() => onSelect(file)}
             aria-label={node.path}
-            className="flex min-w-0 flex-1 items-center gap-2 text-left"
+            className="flex min-w-0 flex-1 items-center gap-2 text-start"
           >
             <Icon
               size={13}
@@ -359,7 +359,7 @@ export default function KbDocumentList({
             </div>
           </button>
           {confirmDeleteFor === node.path ? (
-            <div className="flex shrink-0 items-center gap-0.5 pr-0.5">
+            <div className="flex shrink-0 items-center gap-0.5 pe-0.5">
               <span className="px-0.5 text-[10px] font-medium text-red-600 dark:text-red-400">
                 {t("Delete?")}
               </span>
@@ -425,7 +425,7 @@ export default function KbDocumentList({
               className="fixed inset-0 z-10"
               onClick={() => setMoveMenuFor(null)}
             />
-            <div className="absolute right-1 top-8 z-20 max-h-60 w-44 overflow-y-auto rounded-lg border border-[var(--border)] bg-[var(--card)] py-1 shadow-lg">
+            <div className="absolute end-1 top-8 z-20 max-h-60 w-44 overflow-y-auto rounded-lg border border-[var(--border)] bg-[var(--card)] py-1 shadow-lg">
               <div className="px-2.5 py-1 text-[10px] uppercase tracking-wide text-[var(--muted-foreground)]">
                 {t("Move to")}
               </div>
@@ -433,7 +433,7 @@ export default function KbDocumentList({
                 <button
                   type="button"
                   onClick={() => void handleMove(node.path, "")}
-                  className="block w-full truncate px-2.5 py-1.5 text-left text-[12px] text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]/60"
+                  className="block w-full truncate px-2.5 py-1.5 text-start text-[12px] text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]/60"
                 >
                   / {t("Root")}
                 </button>
@@ -445,7 +445,7 @@ export default function KbDocumentList({
                     key={p}
                     type="button"
                     onClick={() => void handleMove(node.path, p)}
-                    className="block w-full truncate px-2.5 py-1.5 text-left text-[12px] text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]/60"
+                    className="block w-full truncate px-2.5 py-1.5 text-start text-[12px] text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]/60"
                   >
                     {p}
                   </button>
@@ -463,7 +463,7 @@ export default function KbDocumentList({
   };
 
   return (
-    <aside className="flex h-full w-[220px] shrink-0 flex-col border-r border-[var(--border)] bg-[var(--card)]/40">
+    <aside className="flex h-full w-[220px] shrink-0 flex-col border-e border-[var(--border)] bg-[var(--card)]/40">
       <div className="flex items-center justify-between gap-1 px-2.5 pb-1.5 pt-2.5">
         <div className="flex min-w-0 items-center gap-1.5">
           <span className="text-[12px] font-medium text-[var(--foreground)]">
@@ -557,7 +557,7 @@ export default function KbDocumentList({
             <button
               type="button"
               onClick={() => void load(true)}
-              className="ml-1 underline"
+              className="ms-1 underline"
             >
               {t("Retry")}
             </button>

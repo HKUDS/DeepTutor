@@ -170,7 +170,7 @@ export default function PartnerSeat({
                 </button>
                 {askOpen ? (
                   <div
-                    className="absolute bottom-full left-0 z-30 mb-1 w-[210px] overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--popover)] py-1 shadow-xl"
+                    className="absolute bottom-full start-0 z-30 mb-1 w-[210px] overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--popover)] py-1 shadow-xl"
                     onMouseLeave={() => setAskOpen(false)}
                   >
                     <div className="px-2.5 pb-1 pt-0.5 text-[9.5px] text-[var(--muted-foreground)]">
@@ -184,7 +184,7 @@ export default function PartnerSeat({
                           setAskOpen(false);
                           onAskPeer(peer.partner_id);
                         }}
-                        className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left transition-colors hover:bg-[var(--muted)]"
+                        className="flex w-full items-center gap-2 px-2.5 py-1.5 text-start transition-colors hover:bg-[var(--muted)]"
                       >
                         <PartnerAvatar
                           name={peer.name}

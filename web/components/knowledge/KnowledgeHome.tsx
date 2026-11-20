@@ -177,7 +177,7 @@ export default function KnowledgeHome({
         key={provider.id}
         type="button"
         onClick={() => onOpenEngine(provider.id)}
-        className="group flex min-w-0 flex-col gap-2 rounded-2xl border border-[var(--border)] p-3.5 text-left transition-colors hover:border-[var(--ring)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+        className="group flex min-w-0 flex-col gap-2 rounded-2xl border border-[var(--border)] p-3.5 text-start transition-colors hover:border-[var(--ring)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
       >
         <div className="flex items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-2">
@@ -200,7 +200,7 @@ export default function KnowledgeHome({
               </span>
             )}
           {count > 0 && <span>{t("{{count}} KB", { count })}</span>}
-          <ChevronRight className="ml-auto h-3.5 w-3.5 opacity-0 transition-opacity group-hover:opacity-60" />
+          <ChevronRight className="ms-auto h-3.5 w-3.5 opacity-0 transition-opacity group-hover:opacity-60" />
         </div>
       </button>
     );
@@ -211,7 +211,7 @@ export default function KnowledgeHome({
       key={source.id}
       type="button"
       onClick={() => onOpenSource(source.id)}
-      className="group flex min-w-0 flex-col gap-2 rounded-2xl border border-[var(--border)] p-3.5 text-left transition-colors hover:border-[var(--ring)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+      className="group flex min-w-0 flex-col gap-2 rounded-2xl border border-[var(--border)] p-3.5 text-start transition-colors hover:border-[var(--ring)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
     >
       <div className="flex min-w-0 items-center gap-2.5">
         <KnowledgeEngineIcon engine={source.id} size={26} />
@@ -227,7 +227,7 @@ export default function KnowledgeHome({
         {source.count > 0 && (
           <span>{t("{{count}} connected", { count: source.count })}</span>
         )}
-        <ChevronRight className="ml-auto h-3.5 w-3.5 opacity-0 transition-opacity group-hover:opacity-60" />
+        <ChevronRight className="ms-auto h-3.5 w-3.5 opacity-0 transition-opacity group-hover:opacity-60" />
       </div>
     </button>
   );
@@ -319,14 +319,14 @@ export default function KnowledgeHome({
               {kbs.length > 6 && (
                 <div className="relative w-48">
                   <Search
-                    className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--muted-foreground)]"
+                    className="pointer-events-none absolute start-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--muted-foreground)]"
                     aria-hidden
                   />
                   <input
                     value={query}
                     onChange={(event) => setQuery(event.target.value)}
                     placeholder={t("Search knowledge bases…")}
-                    className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] py-1.5 pl-8 pr-3 text-[12px] text-[var(--foreground)] outline-none transition-colors placeholder:text-[var(--muted-foreground)] focus:border-[var(--foreground)]/25"
+                    className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] py-1.5 ps-8 pe-3 text-[12px] text-[var(--foreground)] outline-none transition-colors placeholder:text-[var(--muted-foreground)] focus:border-[var(--foreground)]/25"
                   />
                 </div>
               )}
@@ -365,7 +365,7 @@ export default function KnowledgeHome({
                       key={knowledgeBaseRef(kb)}
                       type="button"
                       onClick={() => onOpenKb(knowledgeBaseRef(kb))}
-                      className="group flex flex-col gap-2 rounded-2xl border border-[var(--border)] p-4 text-left transition-colors hover:border-[var(--ring)]"
+                      className="group flex flex-col gap-2 rounded-2xl border border-[var(--border)] p-4 text-start transition-colors hover:border-[var(--ring)]"
                     >
                       <div className="flex items-start gap-3">
                         <KnowledgeEngineIcon

@@ -115,7 +115,7 @@ export function WorkspaceMenu({
           className="dt-workspace-trigger"
         >
           <WorkspaceGlyph name={currentName} general={!active} />
-          <span className="min-w-0 flex-1 truncate text-left">{currentName}</span>
+          <span className="min-w-0 flex-1 truncate text-start">{currentName}</span>
           <ChevronDown size={14} strokeWidth={1.8} className="shrink-0 opacity-60" />
         </button>
       )}

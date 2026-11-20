@@ -129,7 +129,7 @@ export function AnnotationList({
                     >
                       <span
                         aria-hidden
-                        className="absolute left-0 top-2 bottom-2 w-[3px] rounded-full"
+                        className="absolute start-0 top-2 bottom-2 w-[3px] rounded-full"
                         style={{
                           background:
                             ANNOTATION_SWATCH[
@@ -138,16 +138,16 @@ export function AnnotationList({
                         }}
                       />
                       {annotation.quote && (
-                        <p className="line-clamp-3 pl-1.5 text-[12px] leading-[1.55] text-[var(--foreground)]">
+                        <p className="line-clamp-3 ps-1.5 text-[12px] leading-[1.55] text-[var(--foreground)]">
                           {annotation.quote}
                         </p>
                       )}
                       {annotation.note && (
-                        <p className="mt-1 line-clamp-3 pl-1.5 text-[11px] leading-[1.5] text-[var(--muted-foreground)]">
+                        <p className="mt-1 line-clamp-3 ps-1.5 text-[11px] leading-[1.5] text-[var(--muted-foreground)]">
                           {annotation.note}
                         </p>
                       )}
-                      <div className="mt-1 flex items-center gap-1.5 pl-1.5">
+                      <div className="mt-1 flex items-center gap-1.5 ps-1.5">
                         {annotation.author === "assistant" && (
                           <span className="inline-flex items-center gap-1 rounded-full bg-[color-mix(in_srgb,var(--primary)_10%,transparent)] px-1.5 py-[1px] text-[10px] font-medium text-[var(--primary)]">
                             <Bot size={9} />
@@ -178,7 +178,7 @@ export function AnnotationList({
                           </span>
                         )}
                       </div>
-                      <span className="absolute right-1.5 top-1.5 opacity-0 transition focus-within:opacity-100 group-hover/anno:opacity-100">
+                      <span className="absolute end-1.5 top-1.5 opacity-0 transition focus-within:opacity-100 group-hover/anno:opacity-100">
                         <Tooltip label={t("Delete annotation")}>
                           <button
                             type="button"

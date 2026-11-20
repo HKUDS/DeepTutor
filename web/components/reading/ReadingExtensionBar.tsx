@@ -290,7 +290,7 @@ function ExtensionToolbar({
         >
           <Volume2 size={14} />
           <span>{t("Reading aloud")}</span>
-          <span className="ml-auto">
+          <span className="ms-auto">
             <Tooltip label={t("Stop reading aloud")}>
               <button
                 type="button"
@@ -409,11 +409,11 @@ export function ExtensionResult({
             type="button"
             onClick={onClose}
             aria-label={closeLabel}
-            className="absolute right-2 top-2 text-[var(--muted-foreground)]"
+            className="absolute end-2 top-2 text-[var(--muted-foreground)]"
           >
             <X size={14} />
           </button>
-          <h3 className="pr-6 font-semibold">{result.title}</h3>
+          <h3 className="pe-6 font-semibold">{result.title}</h3>
         </>
       )}
       {result.message ? (
@@ -427,21 +427,21 @@ export function ExtensionResult({
         <p className="mt-1 text-[var(--muted-foreground)]">{translation.note}</p>
       ) : null}
       {translation.alternatives.length ? (
-        <ul className="mt-2 list-disc space-y-1 pl-5 text-[var(--muted-foreground)]">
+        <ul className="mt-2 list-disc space-y-1 ps-5 text-[var(--muted-foreground)]">
           {translation.alternatives.map((alternative, index) => (
             <li key={`${index}-${alternative}`}>{alternative}</li>
           ))}
         </ul>
       ) : null}
       {items.length ? (
-        <ul className="mt-2 list-disc space-y-1 pl-5">
+        <ul className="mt-2 list-disc space-y-1 ps-5">
           {items.map((item, index) => (
             <li key={`${index}-${item}`}>{item}</li>
           ))}
         </ul>
       ) : null}
       {steps.length ? (
-        <ol className="mt-2 list-decimal space-y-1 pl-5">
+        <ol className="mt-2 list-decimal space-y-1 ps-5">
           {steps.map((step, index) => (
             <li key={`${index}-${step}`}>{step}</li>
           ))}
@@ -556,7 +556,7 @@ function QuizQuestions({
                   onClick={() => {
                     void persistAnswer(question, index, choiceIndex);
                   }}
-                  className="rounded-md bg-[var(--muted)]/50 px-2 py-1.5 text-left text-[var(--muted-foreground)] transition hover:bg-[var(--muted)] aria-pressed:bg-[color-mix(in_srgb,var(--primary)_10%,transparent)] aria-pressed:text-[var(--foreground)]"
+                  className="rounded-md bg-[var(--muted)]/50 px-2 py-1.5 text-start text-[var(--muted-foreground)] transition hover:bg-[var(--muted)] aria-pressed:bg-[color-mix(in_srgb,var(--primary)_10%,transparent)] aria-pressed:text-[var(--foreground)]"
                 >
                   {String.fromCharCode(65 + choiceIndex)}. {choice}
                 </button>

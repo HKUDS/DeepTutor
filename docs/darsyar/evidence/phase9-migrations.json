@@ -1,0 +1,39 @@
+{
+  "phase": 9,
+  "captured_by": "/tmp/dtvenv/bin/python (script in this commit's message)",
+  "backend": "sqlite",
+  "note": "Round-trip evidence for V0014 and V0015. A migration whose DOWN was never executed is a migration whose DOWN is a guess.",
+  "steps": [
+    {
+      "action": "apply_pending",
+      "to": 15,
+      "plan_prices": true,
+      "entitlement_decisions": true,
+      "custom_providers": true
+    },
+    {
+      "action": "rollback_to(13)",
+      "to": 13,
+      "plan_prices": false,
+      "entitlement_decisions": false,
+      "custom_providers": false
+    },
+    {
+      "action": "apply_pending (re-up)",
+      "to": 15,
+      "plan_prices": true,
+      "entitlement_decisions": true,
+      "custom_providers": true
+    },
+    {
+      "action": "rollback_to(14)",
+      "to": 14,
+      "custom_providers": false
+    },
+    {
+      "action": "apply_pending (final)",
+      "to": 15
+    }
+  ],
+  "result": "PASS"
+}

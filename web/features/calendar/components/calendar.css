@@ -38,7 +38,7 @@
 /* The navigation keeps its width in the bar; the tools wrap instead. */
 .dt-page-bar-instance:has(> .dt-cal-toolbar) {
   flex-shrink: 0;
-  margin-left: 6px;
+  margin-inline-start: 6px;
 }
 .dt-calendar.has-bar-toolbar .dt-cal-workspace {
   border-top: 1px solid var(--border);
@@ -53,7 +53,7 @@
 }
 .dt-cal-today {
   height: 30px;
-  margin-left: 4px;
+  margin-inline-start: 4px;
   padding: 0 12px !important;
   border-radius: 8px !important;
   box-shadow: inset 0 0 0 1px var(--border);
@@ -66,7 +66,7 @@
 .dt-cal-views {
   display: flex;
   gap: 2px;
-  margin-left: 6px;
+  margin-inline-start: 6px;
   padding: 2px;
   border-radius: 9px;
   background: var(--secondary);
@@ -90,7 +90,7 @@
 }
 .dt-cal-new {
   height: 30px;
-  margin-left: 8px;
+  margin-inline-start: 8px;
   padding: 0 12px 0 10px !important;
   border-radius: 8px !important;
   font-size: 13px;
@@ -128,7 +128,7 @@
   color: var(--primary-foreground) !important;
 }
 .dt-cal-search {
-  margin-left: auto;
+  margin-inline-start: auto;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -169,7 +169,7 @@
   flex-direction: column;
   flex: 0 0 248px;
   padding: 16px 14px 14px 16px;
-  border-right: 1px solid var(--border);
+  border-inline-end: 1px solid var(--border);
   overflow-y: auto;
   font-size: 13px;
   scrollbar-width: thin;
@@ -338,7 +338,7 @@ button.dt-cal-rail-link {
   height: 30px;
   padding: 0 6px;
   border-radius: 6px;
-  text-align: left;
+  text-align: start;
 }
 .dt-cal-calendar-row:hover {
   background: var(--accent, var(--secondary));
@@ -389,7 +389,7 @@ button.dt-cal-rail-link {
   height: 30px;
   padding: 0 6px;
   border-radius: 6px;
-  text-align: left;
+  text-align: start;
   color: var(--muted-foreground);
   font-size: 12.5px;
 }
@@ -456,7 +456,7 @@ button.dt-cal-rail-link {
   align-items: center;
   justify-content: center;
   position: relative;
-  border-left: 1px solid var(--border);
+  border-inline-start: 1px solid var(--border);
   min-height: 65px;
 }
 .dt-cal-day-label {
@@ -498,7 +498,7 @@ button.dt-cal-rail-link {
   font-size: 10px;
   color: var(--muted-foreground);
   padding: 8px 5px;
-  text-align: right;
+  text-align: end;
 }
 .dt-cal-span-area {
   position: relative;
@@ -506,7 +506,7 @@ button.dt-cal-rail-link {
   flex: 1;
 }
 .dt-cal-span-cell {
-  border-left: 1px solid var(--border);
+  border-inline-start: 1px solid var(--border);
 }
 .dt-cal-scroll {
   flex: 1;
@@ -535,7 +535,7 @@ button.dt-cal-rail-link {
 }
 .dt-cal-column {
   position: relative;
-  border-left: 1px solid var(--border);
+  border-inline-start: 1px solid var(--border);
   background: repeating-linear-gradient(
     to bottom,
     transparent 0,
@@ -577,7 +577,7 @@ button.dt-cal-rail-link {
   position: absolute;
   overflow: hidden;
   border-radius: 4px;
-  border-left: 3px solid var(--ev);
+  border-inline-start: 3px solid var(--ev);
   background: color-mix(in srgb, var(--ev) 16%, var(--background));
   color: var(--foreground);
   z-index: 2;
@@ -594,7 +594,7 @@ button.dt-cal-rail-link {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  text-align: left;
+  text-align: start;
   overflow: hidden;
 }
 .dt-cal-block-title {
@@ -659,13 +659,13 @@ button.dt-cal-rail-link {
   min-height: 50px;
 }
 .dt-cal-cell {
-  border-right: 1px solid var(--border);
+  border-inline-end: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
   min-width: 0;
   position: relative;
 }
 .dt-cal-cell:last-of-type {
-  border-right: 0;
+  border-inline-end: 0;
 }
 .dt-cal-cell[data-outside] {
   background: color-mix(in srgb, var(--secondary) 55%, transparent);
@@ -701,7 +701,7 @@ button.dt-cal-rail-link {
   place-items: center;
   width: 18px;
   height: 18px;
-  margin-left: auto;
+  margin-inline-start: auto;
   border-radius: 999px;
   transition: background-color 120ms;
 }
@@ -723,7 +723,7 @@ button.dt-cal-rail-link {
 }
 .dt-cal-timegrid[data-days='1'] .dt-cal-day-head {
   justify-content: flex-start;
-  padding-left: 6px;
+  padding-inline-start: 6px;
 }
 .dt-cal-hours > span[data-hidden] {
   visibility: hidden;
@@ -737,7 +737,7 @@ button.dt-cal-rail-link {
   overflow: hidden;
   min-width: 0;
   white-space: nowrap;
-  text-align: left;
+  text-align: start;
   font-size: 11.5px;
   line-height: 17px;
   z-index: 2;
@@ -749,7 +749,7 @@ button.dt-cal-rail-link {
 .dt-cal-chip[data-variant='span'] {
   background: color-mix(in srgb, var(--ev) 18%, var(--background));
   color: var(--foreground);
-  border-left: 2px solid var(--ev);
+  border-inline-start: 2px solid var(--ev);
 }
 .dt-cal-chip[data-selected] {
   outline: 1px solid var(--ev);
@@ -818,7 +818,7 @@ button.dt-cal-rail-link {
   width: 100%;
   gap: 10px;
   align-items: center;
-  text-align: left;
+  text-align: start;
   padding: 9px 6px;
   border-radius: 5px;
 }
@@ -1083,10 +1083,10 @@ button.dt-cal-rail-link {
     gap: 2px;
   }
   .dt-cal-toolbar h2 {
-    margin-right: auto;
+    margin-inline-end: auto;
   }
   .dt-cal-search {
-    margin-left: 0;
+    margin-inline-start: 0;
     flex: 1;
     max-width: none;
   }
@@ -1138,7 +1138,7 @@ button.dt-cal-rail-link {
   border-radius: 4px;
 }
 .dt-cal-calendar-item .dt-cal-calendar-row {
-  padding-right: 24px;
+  padding-inline-end: 24px;
 }
 .dt-cal-calendar-menu {
   top: 28px;
@@ -1188,7 +1188,7 @@ button.dt-cal-rail-link {
   align-items: center;
   gap: 7px;
   align-self: flex-start;
-  text-align: left;
+  text-align: start;
 }
 .dt-cal-agenda-num {
   font-size: 24px;
@@ -1325,7 +1325,7 @@ button.dt-cal-rail-link {
 .dt-cal-editor.is-quick .dt-cal-field-input {
   flex: 1;
   width: 100%;
-  margin-left: -8px;
+  margin-inline-start: -8px;
 }
 .dt-cal-editor.is-quick textarea.dt-cal-field-input {
   height: auto;
@@ -1341,7 +1341,7 @@ button.dt-cal-rail-link {
   display: flex;
   align-items: center;
   gap: 4px;
-  margin-left: -8px;
+  margin-inline-start: -8px;
   color: var(--muted-foreground);
   font-variant-numeric: tabular-nums;
 }
@@ -1352,7 +1352,7 @@ button.dt-cal-rail-link {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-left: -8px;
+  margin-inline-start: -8px;
 }
 .dt-cal-editor .dt-cal-switch {
   display: inline-flex;
@@ -1399,12 +1399,12 @@ button.dt-cal-rail-link {
   box-shadow: 0 0 0 2px var(--ring);
 }
 .dt-cal-editor.is-quick .dt-cal-inline-select {
-  padding-right: 22px;
+  padding-inline-end: 22px;
   color: var(--muted-foreground);
   font-size: 12.5px;
 }
 .dt-cal-field-row > .dt-cal-inline-select {
-  margin-left: -8px;
+  margin-inline-start: -8px;
   color: var(--foreground);
   font-size: 13px;
 }
@@ -1456,7 +1456,7 @@ button.dt-cal-rail-link {
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
-  margin-left: -2px;
+  margin-inline-start: -2px;
 }
 .dt-cal-reminder-chip {
   display: inline-flex;

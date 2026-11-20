@@ -105,7 +105,7 @@ export default function SettingsOverview() {
                   event.target.value as typeof responseLanguage,
                 )
               }
-              className={`${selectClass} min-w-[200px] pr-8`}
+              className={`${selectClass} min-w-[200px] pe-8`}
             >
               {RESPONSE_LANGUAGE_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
@@ -127,7 +127,7 @@ export default function SettingsOverview() {
               aria-label={t("Interface layout")}
               value={stagedUiLayout}
               onChange={(event) => stageUiLayout(event.target.value as UiLayout)}
-              className={`${selectClass} min-w-[200px] pr-8`}
+              className={`${selectClass} min-w-[200px] pe-8`}
             >
               {UI_LAYOUTS.map((layout) => (
                 <option key={layout} value={layout} className={selectOptionClass}>

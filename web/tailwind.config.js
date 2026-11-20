@@ -35,6 +35,10 @@ module.exports = {
         // pairs a Latin serif with a proper 宋体 rather than a stray fallback.
         sans: [
           'var(--font-sans)',
+          // Vazirmatn is self-hosted (see app/fonts.css) and carries Persian
+          // first. A `fa` page resolves the Persian glyphs here before any
+          // CJK face can claim them; `--font-sans` still leads for Latin.
+          'Vazirmatn',
           'PingFang SC',
           'Hiragino Sans GB',
           'Microsoft YaHei',
@@ -44,6 +48,9 @@ module.exports = {
         ],
         serif: [
           'var(--font-serif)',
+          // Same reasoning as `sans`: Persian prose stays in Vazirmatn
+          // rather than falling through to a CJK serif.
+          'Vazirmatn',
           'Songti SC',
           'STSong',
           'Noto Serif SC',

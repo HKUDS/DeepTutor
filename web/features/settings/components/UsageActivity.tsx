@@ -65,7 +65,7 @@ export default function UsageActivity({
       </div>
       <div className="overflow-x-auto pb-2" ref={grid}>
         <div style={{ minWidth: weeks.length * 14 + 28 }}>
-          <div className="relative ml-7 mb-2 h-4 text-[10px] text-[var(--muted-foreground)]">
+          <div className="relative ms-7 mb-2 h-4 text-[10px] text-[var(--muted-foreground)]">
             {months.map(month => (
               <span key={month.label} className="absolute" style={{ left: month.week * 14 }}>
                 {month.label}

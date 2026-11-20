@@ -128,7 +128,7 @@ function SubagentLine({ channel, text }: { channel: string; text: string }) {
       );
     case "reasoning":
       return (
-        <div className="whitespace-pre-wrap break-words pl-4 text-[12px] italic leading-[1.6] text-[var(--muted-foreground)]">
+        <div className="whitespace-pre-wrap break-words ps-4 text-[12px] italic leading-[1.6] text-[var(--muted-foreground)]">
           {text}
         </div>
       );
@@ -136,13 +136,13 @@ function SubagentLine({ channel, text }: { channel: string; text: string }) {
       return <ToolResultBlock text={text} />;
     case "error":
       return (
-        <div className="whitespace-pre-wrap break-words pl-4 leading-[1.55] text-red-600 dark:text-red-400">
+        <div className="whitespace-pre-wrap break-words ps-4 leading-[1.55] text-red-600 dark:text-red-400">
           {text}
         </div>
       );
     default:
       return (
-        <div className="whitespace-pre-wrap break-all pl-4 text-[12px] leading-[1.55] text-[var(--muted-foreground)]/70">
+        <div className="whitespace-pre-wrap break-all ps-4 text-[12px] leading-[1.55] text-[var(--muted-foreground)]/70">
           {text}
         </div>
       );
@@ -159,7 +159,7 @@ function ToolResultBlock({ text }: { text: string }) {
     open || !overflow ? lines : lines.slice(0, RESULT_PREVIEW_LINES);
   const hidden = lines.length - RESULT_PREVIEW_LINES;
   return (
-    <div className="ml-4 rounded-md border border-[var(--border)]/60 bg-[var(--muted)]/50 px-2.5 py-1.5">
+    <div className="ms-4 rounded-md border border-[var(--border)]/60 bg-[var(--muted)]/50 px-2.5 py-1.5">
       <pre
         className={`m-0 whitespace-pre-wrap break-all text-[12px] leading-[1.55] text-[var(--muted-foreground)] ${
           open ? "" : "max-h-20 overflow-hidden"

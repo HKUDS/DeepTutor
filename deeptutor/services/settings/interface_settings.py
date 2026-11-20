@@ -68,6 +68,9 @@ _RESPONSE_LANGUAGE_ALIASES: dict[str, str] = {
     "हिंदी": "hi",
     "hungarian": "hu",
     "magyar": "hu",
+    "persian": "fa",
+    "farsi": "fa",
+    "فارسی": "fa",
 }
 
 
@@ -115,6 +118,7 @@ def _normalize_language(language: Any, default: str = "en") -> str:
     - vi/vietnamese/tiếng việt -> vi
     - ja/jp/japanese -> ja
     - hu/hungarian/magyar -> hu
+    - fa/persian/farsi/فارسی -> fa
 
     An unknown code falls back to ``default`` rather than raising, so this is
     also the gate that decides which languages exist at all: a locale shipped
@@ -150,6 +154,8 @@ def _normalize_language(language: Any, default: str = "en") -> str:
             return "ja"
         if s in {"hungarian", "magyar"} or base == "hu":
             return "hu"
+        if s in {"persian", "farsi", "فارسی"} or base == "fa":
+            return "fa"
 
     # Fall back to default
     if isinstance(default, str):

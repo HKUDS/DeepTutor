@@ -273,7 +273,7 @@ export function ThemePreviewCard({
       >
         <MiniPreview palette={palette} />
         {selected && (
-          <div className="absolute right-1.5 top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-[var(--foreground)] text-[var(--background)]">
+          <div className="absolute end-1.5 top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-[var(--foreground)] text-[var(--background)]">
             <Check className="h-2.5 w-2.5" strokeWidth={3} />
           </div>
         )}

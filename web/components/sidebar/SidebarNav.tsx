@@ -341,7 +341,7 @@ export function SidebarNav({
       </Fragment>
     );
     const rowClass =
-      "flex min-h-8 items-center gap-2 rounded-md py-1.5 pl-2.5 pr-7 text-[13px] transition-colors";
+      "flex min-h-8 items-center gap-2 rounded-md py-1.5 ps-2.5 pe-7 text-[13px] transition-colors";
 
     return (
       <div
@@ -393,7 +393,7 @@ export function SidebarNav({
           aria-label={t("Arrange {{feature}}", { feature: label })}
           aria-haspopup="menu"
           aria-expanded={menuOpen}
-          className={`absolute right-1 top-1/2 -translate-y-1/2 rounded-md p-1 text-[var(--muted-foreground)] transition-colors hover:bg-background/70 hover:text-[var(--foreground)] ${
+          className={`absolute end-1 top-1/2 -translate-y-1/2 rounded-md p-1 text-[var(--muted-foreground)] transition-colors hover:bg-background/70 hover:text-[var(--foreground)] ${
             menuOpen
               ? "opacity-100"
               : "opacity-0 focus-visible:opacity-100 group-hover/nav:opacity-100"
@@ -436,7 +436,7 @@ export function SidebarNav({
                 className={`${EASE_CLASS} transition-transform ${moreExpanded ? "" : "-rotate-90"}`}
               />
             </span>
-            <span className="min-w-0 flex-1 truncate text-left">
+            <span className="min-w-0 flex-1 truncate text-start">
               {t("More")}
             </span>
             {/* Fades and shrinks away rather than vanishing — the count answers
@@ -588,7 +588,7 @@ export function SidebarHome({
             className={`${className} cursor-not-allowed text-muted-foreground/40`}
           >
             {content}
-            <Lock size={13} className="ml-auto" />
+            <Lock size={13} className="ms-auto" />
           </div>
         </Tooltip>
       ) : (
@@ -645,7 +645,7 @@ function RailRow({
           <Lock
             size={10}
             strokeWidth={2}
-            className="absolute bottom-1 right-1 text-muted-foreground/70"
+            className="absolute bottom-1 end-1 text-muted-foreground/70"
           />
         </div>
       </Tooltip>
@@ -715,7 +715,7 @@ function MenuRow({
       type="button"
       role="menuitem"
       onClick={onClick}
-      className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]"
+      className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-start text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]"
     >
       <Icon size={13} strokeWidth={1.7} className="shrink-0" />
       <span className="min-w-0 flex-1 truncate">{label}</span>

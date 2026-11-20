@@ -52,7 +52,7 @@ export function LearningDashboard() {
         <div className="flex flex-wrap gap-1" role="group" aria-label={t('navigation.learningFilter')}>
           {[{ kind: 'all', title: 'navigation.allLearning' }, ...LEARNING_SURFACES].map(surface => <button key={surface.kind} type="button" aria-pressed={kind === surface.kind} onClick={() => { setKind(surface.kind as LearningKind | 'all'); setLimit(24) }} className={`rounded-full px-3 py-1.5 text-xs transition-colors ${kind === surface.kind ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted/60'}`}>{t(surface.title)}</button>)}
         </div>
-        <input aria-label={t('navigation.searchLearning')} placeholder={t('navigation.searchLearning')} value={query} onChange={event => { setQuery(event.target.value); setLimit(24) }} className="ml-auto h-9 rounded-lg border border-border bg-transparent px-3 text-xs outline-none focus:border-ring" />
+        <input aria-label={t('navigation.searchLearning')} placeholder={t('navigation.searchLearning')} value={query} onChange={event => { setQuery(event.target.value); setLimit(24) }} className="ms-auto h-9 rounded-lg border border-border bg-transparent px-3 text-xs outline-none focus:border-ring" />
       </div>
       {selectedSurface && <Link href={scopedUrl(selectedSurface.href)} prefetch={false} className="mb-5 inline-flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground">{t('Open')} {t(selectedSurface.title)} <span aria-hidden>↗</span></Link>}
       {failed.length > 0 && (
