@@ -882,11 +882,11 @@ def print_session_table(sessions: list[dict[str, Any]]) -> None:
     table.add_column("Messages", justify="right")
     for session in sessions:
         table.add_row(
-            str(session.get("id", "")),
-            str(session.get("title", "")),
-            str(session.get("capability", "") or "chat"),
-            str(session.get("status", "")),
-            str(session.get("message_count", 0)),
+            Text(str(session.get("id", ""))),
+            Text(str(session.get("title", ""))),
+            Text(str(session.get("capability", "") or "chat")),
+            Text(str(session.get("status", ""))),
+            Text(str(session.get("message_count", 0))),
         )
     console.print(table)
 
