@@ -301,6 +301,48 @@ async def test_native_history_uses_selected_branch_and_advances_summary_only_for
     assert any("branch-specific-11" in str(m["content"]) for m in result.model_history)
 
 
+@pytest.mark.asyncio
+async def test_native_compaction_reloads_branch_after_turn_deletion(
+    native, sqlite_store, monkeypatch
+):
+    from deeptutor.services.llm.config import LLMConfig
+    from deeptutor.services.session.context_builder import ContextBuilder
+    import deeptutor.services.session.native_history as bridge
+    from deeptutor.services.session.sqlite_store import SQLiteSessionStore
+
+    monkeypatch.setenv("DEEPTUTOR_CHAT_ENGINE", "typescript-native")
+    monkeypatch.setattr("deeptutor.runtime.ts_engine.config.compatibility_reason", lambda _: "")
+    monkeypatch.setattr(bridge, "get_engine_client", lambda: native.client)
+    sid = (await sqlite_store.create_session())["id"]
+    removed = await sqlite_store.add_message(sid, "user", "Optics fixture " * 2000)
+    await sqlite_store.add_message(sid, "assistant", "Study lenses")
+    leaf = await sqlite_store.add_message(sid, "user", "Study vectors")
+    writer = SQLiteSessionStore(sqlite_store.db_path)
+
+    async def delete_before_commit(event):
+        if event.metadata.get("call_state") == "complete":
+            assert (await writer.delete_turn_by_message(sid, removed))["deleted"]
+
+    result = await ContextBuilder(sqlite_store).build(
+        session_id=sid,
+        leaf_message_id=leaf,
+        on_event=delete_before_commit,
+        llm_config=LLMConfig(
+            binding="openai",
+            model="fixture",
+            api_key="fixture",
+            context_window=4096,
+            base_url=native.endpoint.removesuffix("/chat/completions"),
+        ),
+    )
+    assert len(native.requests) == 1
+    assert "Optics fixture" in str(native.requests[0]["messages"])
+    assert result.conversation_summary == ""
+    assert result.model_history == [{"role": "user", "content": "Study vectors"}]
+    session = await writer.get_session(sid)
+    assert (session["compressed_summary"], session["summary_up_to_msg_id"]) == ("", 0)
+
+
 def test_unsupported_providers_are_routed_before_native_effects(monkeypatch):
     from dataclasses import replace
 

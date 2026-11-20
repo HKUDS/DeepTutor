@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
@@ -742,6 +743,117 @@ async def _seed_compaction_session(
         metadata={"provider_response_state": {"reasoning_content": "private replay state"}},
     )
     return session_id, watermark, await store.get_messages_for_context(session_id)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "prior_summary,first_call_fails,mastery",
+    [
+        (False, False, False),
+        (True, False, False),
+        (True, True, False),
+        (True, False, True),
+    ],
+)
+async def test_delete_during_compaction_discards_the_inflight_context(
+    sqlite_store, monkeypatch, prior_summary, first_call_fails, mastery
+):
+    from deeptutor.capabilities.mastery.memory import MasteryContextBuilder
+    from deeptutor.services.session.model_history import summary_snapshot
+
+    monkeypatch.setenv("DEEPTUTOR_CHAT_ENGINE", "python")
+    writer = SQLiteSessionStore(sqlite_store.db_path)
+    sid = (await sqlite_store.create_session())["id"]
+    removed = await sqlite_store.add_message(sid, "user", "Study optics")
+    first_answer = await sqlite_store.add_message(sid, "assistant", "Start with optics")
+    if prior_summary:
+        await sqlite_store.update_summary(sid, "Previous optics summary", first_answer)
+    await sqlite_store.add_message(sid, "user", "Study vectors")
+    vector_answer = "vector " * 600
+    metadata = {}
+    if prior_summary:
+        metadata["model_turn"] = {
+            "version": 1,
+            "messages": [
+                summary_snapshot("Previous optics summary"),
+                {"role": "user", "content": "Study vectors"},
+                {"role": "assistant", "content": vector_answer},
+            ],
+        }
+    surviving = await sqlite_store.add_message(sid, "assistant", vector_answer, metadata=metadata)
+    await sqlite_store.begin_turn(sid, "chat")
+    leaf = await sqlite_store.add_message(sid, "user", "Next question")
+
+    builder = MasteryContextBuilder(sqlite_store) if mastery else ContextBuilder(sqlite_store)
+    monkeypatch.setattr(builder, "_history_budget", lambda _: 512)
+    started, resume = asyncio.Event(), asyncio.Event()
+    sources = []
+
+    async def summarize(**kwargs):
+        sources.append(kwargs["source_text"])
+        if len(sources) == 1:
+            started.set()
+            await resume.wait()
+            if first_call_fails:
+                raise RuntimeError("Fixture provider unavailable")
+            return "Obsolete optics summary", []
+        return "Retained vector summary", []
+
+    monkeypatch.setattr(builder, "_summarize", summarize)
+    config = _small_window_cfg()
+    config.context_window = 128000
+    pending = asyncio.create_task(
+        builder.build(session_id=sid, leaf_message_id=leaf, llm_config=config)
+    )
+    try:
+        await asyncio.wait_for(started.wait(), 5)
+        assert (await writer.delete_turn_by_message(sid, removed))["deleted"]
+    finally:
+        resume.set()
+        current = await asyncio.wait_for(pending, 5)
+    session = await writer.get_session(sid)
+    assert "optics" in sources[0]
+    assert all("optics" not in source for source in sources[1:])
+    assert "optics" not in session["compressed_summary"]
+    assert surviving in [row["id"] for row in await writer.get_messages_for_context(sid)]
+    following = await ContextBuilder(writer).build(
+        session_id=sid, leaf_message_id=leaf, llm_config=config
+    )
+    for result in (current, following):
+        assert "optics" not in result.context_text
+        assert "optics" not in str(result.model_history)
+        assert "optics" not in str(result.previous_model_turn)
+        assert "Next question" in result.context_text
+    if mastery:
+        assert "optics" not in str(current.history_sources)
+        assert "vector" in str(current.history_sources)
+
+
+@pytest.mark.asyncio
+async def test_compaction_accepts_append_and_deletion_outside_source_branch(sqlite_store):
+    store = sqlite_store
+    sid = (await store.create_session())["id"]
+    question = await store.add_message(sid, "user", "Study goal?")
+    sibling = await store.add_message(sid, "assistant", "Study optics", parent_message_id=question)
+    answer = await store.add_message(sid, "assistant", "Study vectors", parent_message_id=question)
+    prior, rows = await store.get_context_snapshot(sid, answer)
+    writer = SQLiteSessionStore(store.db_path)
+    await writer.add_message(sid, "user", "Next question", parent_message_id=answer)
+    assert (await writer.delete_turn_by_message(sid, sibling))["deleted"]
+
+    assert await store.finish_compaction(
+        sid,
+        [row["id"] for row in rows],
+        prior["compressed_summary"],
+        prior["summary_up_to_msg_id"],
+        "Study vectors",
+        answer,
+    )
+    session = await writer.get_session(sid)
+    assert (session["compressed_summary"], session["summary_up_to_msg_id"]) == (
+        "Study vectors",
+        answer,
+    )
 
 
 @pytest.mark.asyncio
