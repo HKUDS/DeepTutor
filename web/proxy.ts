@@ -7,11 +7,13 @@ import {
   COOKIE_NAME,
   LOGIN_PATH,
   classifyToken,
+  isAdminPagePath,
   isAuthExempt,
   isBackendPath,
   isCodexCallbackPath,
   isRetiredPagePath,
   isWebSocketPath,
+  tokenRole,
 } from "./lib/proxy-policy";
 
 // Backend base URL for `/api/*` and `/ws/*` rewrites. The container entrypoint
@@ -86,6 +88,28 @@ export function proxy(req: NextRequest): NextResponse {
   const token = req.cookies.get(COOKIE_NAME)?.value;
   if (classifyToken(token, Date.now()) !== "valid") {
     return redirectToLogin(req, { clearCookie: Boolean(token) });
+  }
+
+  // 3. Admin gate. Authenticated is not the same as authorised: a signed-in
+  //    student must not receive the admin shell at all. F-1 requires this
+  //    server-side, because the page's own `useEffect` redirect only runs after
+  //    the document has been sent.
+  //
+  //    The role is read from the token WITHOUT verifying it. That is sound here
+  //    and only here: the backend re-verifies every API call, and these pages
+  //    render nothing until those calls succeed. A forged claim gets an empty
+  //    shell, not data.
+  if (isAdminPagePath(pathname) && tokenRole(token) !== "admin") {
+    // A signed-in student goes home, not to /login: they *are* signed in, and
+    // bouncing them to a sign-in screen reads as a session failure. The token
+    // already passed the `valid` check above, so this branch means "real
+    // session, insufficient role".
+    //
+    // `/` redirects to /chat in next.config.js, so this stays one hop.
+    const home = req.nextUrl.clone();
+    home.pathname = "/";
+    home.search = "";
+    return NextResponse.redirect(home);
   }
 
   return NextResponse.next();

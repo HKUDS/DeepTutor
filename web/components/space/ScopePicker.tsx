@@ -77,7 +77,7 @@ export default function ScopePicker({
                 sessions: totalSessions,
               })}
           {selectedSessions > 0 ? (
-            <span className="ml-1.5 font-medium text-[var(--foreground)]">
+            <span className="ms-1.5 font-medium text-[var(--foreground)]">
               · {t("{{count}} selected", { count: selectedSessions })}
             </span>
           ) : null}
@@ -100,7 +100,7 @@ export default function ScopePicker({
         </div>
       </div>
 
-      <div className="max-h-[44vh] space-y-1.5 overflow-y-auto pr-1">
+      <div className="max-h-[44vh] space-y-1.5 overflow-y-auto pe-1">
         {groups.map((group) => {
           const checked = selected.has(group.key);
           const isOpen = expanded.has(group.key);
@@ -130,7 +130,7 @@ export default function ScopePicker({
                 <button
                   type="button"
                   onClick={() => toggleExpand(group.key)}
-                  className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                  className="flex min-w-0 flex-1 items-center gap-2 text-start"
                 >
                   {isOpen ? (
                     <ChevronDown
@@ -170,7 +170,7 @@ export default function ScopePicker({
                   {group.sessions.map((session) => (
                     <li
                       key={session.externalId}
-                      className="flex items-center gap-2.5 px-3 py-2 pl-9"
+                      className="flex items-center gap-2.5 px-3 py-2 ps-9"
                     >
                       <span className="min-w-0 flex-1 truncate text-[12px] text-[var(--muted-foreground)]">
                         {session.provisionalTitle || t("Untitled conversation")}

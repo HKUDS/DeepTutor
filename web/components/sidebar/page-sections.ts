@@ -1,5 +1,5 @@
 import { CalendarDays } from 'lucide-react'
-import { Columns3, LayoutGrid, MessageCircle, PenLine, Plus, type LucideIcon } from 'lucide-react'
+import { Columns3, LayoutGrid, MessageCircle, PenLine, Plus, ShieldCheck, UserRound, type LucideIcon } from 'lucide-react'
 import {
   HomeShelfIcon,
   LearningShelfIcon,
@@ -23,10 +23,16 @@ export interface PageEntry {
   icon: LucideIcon
   /** Account-level: the same in every workspace, so no workspace is shown. */
   account?: boolean
+  /**
+   * Reachable but not built yet. `DECISIONS.md` F-1 allows unbuilt features in
+   * the navigation only as an explicit placeholder — never as a working entry
+   * that leads to a dead route or a mocked API.
+   */
+  soon?: boolean
 }
 
 export interface PageSection {
-  id: 'home' | 'learning' | 'resources' | 'partners' | 'personalization'
+  id: 'home' | 'learning' | 'resources' | 'partners' | 'personalization' | 'admin'
   label: string
   icon: LucideIcon
   /** Everything in it travels with the account rather than the workspace. */
@@ -47,11 +53,18 @@ export function pageSections({
   zh,
   allowedSurfaces,
   isAvailable,
+  isAdmin = false,
 }: {
   t: (key: string) => string
   zh: boolean
   allowedSurfaces: readonly string[] | null
   isAvailable: ((name: string) => boolean) | null
+  /**
+   * Whether to offer the admin panel entry. Authorisation is enforced on the
+   * server (see proxy.ts); this only decides whether to *show* a door the user
+   * cannot open.
+   */
+  isAdmin?: boolean
 }): PageSection[] {
   const surfaceAllowed = (kind: string) =>
     !allowedSurfaces || allowedSurfaces.includes(kind === 'mastery' || kind === 'practice' ? 'chat' : kind)
@@ -109,6 +122,20 @@ export function pageSections({
       ],
     },
   ]
+
+  // The admin panel is a separate surface with its own layout, so it is a
+  // section of its own rather than a page inside a user shelf. Shown only to
+  // administrators: a visible door that always refuses is worse than no door.
+  if (isAdmin) {
+    sections.push({
+      id: 'admin',
+      label: t('navigation.admin'),
+      icon: ShieldCheck,
+      account: true,
+      pages: [{ href: '/admin/users', label: t('navigation.users'), icon: UserRound }],
+    })
+  }
+
   return sections.map(section =>
     section.account ? { ...section, pages: section.pages.map(page => ({ ...page, account: true })) } : section
   )

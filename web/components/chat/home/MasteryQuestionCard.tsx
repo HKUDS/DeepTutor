@@ -72,7 +72,7 @@ function OptionRow({
       onClick={onPick}
       disabled={disabled}
       className={
-        "group -mx-2 flex items-baseline gap-3 rounded-lg px-2 py-1.5 text-left transition-colors " +
+        "group -mx-2 flex items-baseline gap-3 rounded-lg px-2 py-1.5 text-start transition-colors " +
         (disabled
           ? "cursor-default"
           : "hover:bg-[color-mix(in_srgb,var(--foreground)_3.5%,transparent)]")
@@ -207,7 +207,7 @@ const SingleMasteryQuestionCard = memo(function SingleMasteryQuestionCard({
   };
 
   return (
-    <div className={"my-4 border-l-2 pl-4 transition-colors sm:pl-5 " + rule}>
+    <div className={"my-4 border-s-2 ps-4 transition-colors sm:ps-5 " + rule}>
       {meta.length > 0 ? (
         <div className="text-[11px] leading-5 text-[var(--muted-foreground)]">
           {meta.join(" · ")}
@@ -265,7 +265,7 @@ const SingleMasteryQuestionCard = memo(function SingleMasteryQuestionCard({
               type="button"
               onClick={() => setFreeSelected(true)}
               disabled={locked}
-              className="-mx-2 flex items-baseline gap-3 rounded-lg px-2 py-1.5 text-left text-[13px] text-[var(--muted-foreground)] transition-colors hover:bg-[color-mix(in_srgb,var(--foreground)_3.5%,transparent)] hover:text-[var(--foreground)] disabled:cursor-default"
+              className="-mx-2 flex items-baseline gap-3 rounded-lg px-2 py-1.5 text-start text-[13px] text-[var(--muted-foreground)] transition-colors hover:bg-[color-mix(in_srgb,var(--foreground)_3.5%,transparent)] hover:text-[var(--foreground)] disabled:cursor-default"
             >
               <span className="relative top-px flex h-[19px] w-[19px] shrink-0 items-center justify-center rounded-full border border-dashed border-[var(--border)] text-[10.5px] font-semibold">
                 +

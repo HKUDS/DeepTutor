@@ -269,7 +269,7 @@ export default function BlockRenderer({
         </div>
       )}
       {hasActions && (
-        <div className="pointer-events-none absolute -top-3 right-2 z-10 flex translate-y-1 items-center gap-1 rounded-lg bg-[var(--card)] px-1 py-0.5 text-[var(--muted-foreground)] opacity-0 shadow-[var(--dt-shadow-sm,0_1px_3px_rgba(0,0,0,.12))] transition group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:translate-y-0 group-focus-within:opacity-100">
+        <div className="pointer-events-none absolute -top-3 end-2 z-10 flex translate-y-1 items-center gap-1 rounded-lg bg-[var(--card)] px-1 py-0.5 text-[var(--muted-foreground)] opacity-0 shadow-[var(--dt-shadow-sm,0_1px_3px_rgba(0,0,0,.12))] transition group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:translate-y-0 group-focus-within:opacity-100">
           {onMove && (
             <>
               <Tooltip label={t("Move up")}>
@@ -305,7 +305,7 @@ export default function BlockRenderer({
                 </button>
               </Tooltip>
               {showTypeMenu && (
-                <div className="absolute right-0 top-full mt-1 max-h-60 w-44 overflow-y-auto rounded-md border border-[var(--border)] bg-[var(--card)] p-1 shadow-lg">
+                <div className="absolute end-0 top-full mt-1 max-h-60 w-44 overflow-y-auto rounded-md border border-[var(--border)] bg-[var(--card)] p-1 shadow-lg">
                   {CHANGEABLE_TYPES.filter((type) => type !== block.type).map(
                     (type) => (
                       <button
@@ -314,7 +314,7 @@ export default function BlockRenderer({
                           setShowTypeMenu(false);
                           onChangeType(block, type);
                         }}
-                        className="block w-full rounded px-2 py-1 text-left text-xs hover:bg-[var(--background)] hover:text-[var(--foreground)]"
+                        className="block w-full rounded px-2 py-1 text-start text-xs hover:bg-[var(--background)] hover:text-[var(--foreground)]"
                       >
                         {t(type)}
                       </button>

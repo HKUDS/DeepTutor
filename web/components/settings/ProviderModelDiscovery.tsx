@@ -137,7 +137,7 @@ function DiscoveryForm({
             }
           >
             {result.status === "connected" && (
-              <CheckCircle2 size={14} className="mr-1 inline" />
+              <CheckCircle2 size={14} className="me-1 inline" />
             )}
             {t(
               result.status === "connected" && !result.models.length

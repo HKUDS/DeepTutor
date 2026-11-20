@@ -132,12 +132,12 @@ function FollowupRound(props: RoundProps) {
   return (
     // The aside is indented to read as a consequence of the round above, but a
     // narrow viewport needs that width for the prose itself.
-    <section data-turn-key={round.turnId} className="ml-2 sm:ml-[38px]">
+    <section data-turn-key={round.turnId} className="ms-2 sm:ms-[38px]">
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
         data-turn-bubble
-        className="group/head flex w-full items-center gap-1.5 rounded py-1 text-left text-[10.5px] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
+        className="group/head flex w-full items-center gap-1.5 rounded py-1 text-start text-[10.5px] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
       >
         <ChevronDown
           size={12}
@@ -151,7 +151,7 @@ function FollowupRound(props: RoundProps) {
         <span className="h-px flex-1 bg-[var(--border)]" />
       </button>
       {open ? (
-        <div className="mt-2 border-l border-[var(--border)] pl-2.5 sm:pl-4">
+        <div className="mt-2 border-s border-[var(--border)] ps-2.5 sm:ps-4">
           <SeatList {...props} hideInvocations />
         </div>
       ) : null}
@@ -213,7 +213,7 @@ function SeatList({
           {seat.message?.invocation &&
           (!hideInvocations || seat.message.invocation.parent_turn_id === round.turnId) &&
           seat.message.invocation.status !== "completed" ? (
-            <div className="mt-1 sm:pl-[38px]">
+            <div className="mt-1 sm:ps-[38px]">
               <InvocationCard
                 invocation={seat.message.invocation}
                 busy={pendingActions.has(seat.message.invocation.invocation_id)}

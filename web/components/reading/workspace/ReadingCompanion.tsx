@@ -365,7 +365,7 @@ export function ReadingCompanion({
   );
 
   return (
-    <aside className="dt-reading-companion absolute inset-y-0 right-0 z-30 flex w-[min(420px,100%)] min-h-0 min-w-0 flex-col bg-[var(--card)] shadow-[-18px_0_42px_rgba(0,0,0,.12)] dark:bg-[var(--background)] xl:static xl:row-span-2 xl:row-start-1 xl:w-auto xl:shadow-none xl:[grid-column:-2/-1]">
+    <aside className="dt-reading-companion absolute inset-y-0 end-0 z-30 flex w-[min(420px,100%)] min-h-0 min-w-0 flex-col bg-[var(--card)] shadow-[-18px_0_42px_rgba(0,0,0,.12)] dark:bg-[var(--background)] xl:static xl:row-span-2 xl:row-start-1 xl:w-auto xl:shadow-none xl:[grid-column:-2/-1]">
       {head}
       {/* Its own header on its own sheet: what the companion is doing and
           its three controls sit with it, not across the page in the bar.
@@ -374,7 +374,7 @@ export function ReadingCompanion({
       {turnsOpen && (
         <div className="relative z-50 h-0">
           <div className="fixed inset-0" onClick={closeTurns} />
-          <div className="absolute right-2 top-2 w-60 rounded-2xl border border-[var(--border)] bg-[var(--card)] p-1.5 text-[12px] shadow-[0_20px_50px_rgba(0,0,0,.18)] dark:border-[var(--border)] dark:bg-[var(--popover)]">
+          <div className="absolute end-2 top-2 w-60 rounded-2xl border border-[var(--border)] bg-[var(--card)] p-1.5 text-[12px] shadow-[0_20px_50px_rgba(0,0,0,.18)] dark:border-[var(--border)] dark:bg-[var(--popover)]">
             <p className="flex w-full items-center gap-1.5 px-2.5 py-2 text-[10px] font-medium uppercase tracking-wide text-[var(--muted-foreground)]">
               <ListOrdered size={11} />
               {t("Jump to a question")}
@@ -388,7 +388,7 @@ export function ReadingCompanion({
                     closeTurns();
                     jumpToTurn(entry.key);
                   }}
-                  className="flex w-full items-start gap-2 rounded-md px-2.5 py-2 text-left transition hover:bg-[var(--muted)]"
+                  className="flex w-full items-start gap-2 rounded-md px-2.5 py-2 text-start transition hover:bg-[var(--muted)]"
                 >
                   <span className="mt-[1px] shrink-0 text-[9px] tabular-nums text-[var(--muted-foreground)]">
                     {entry.ordinal}

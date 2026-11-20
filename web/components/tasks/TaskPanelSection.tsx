@@ -96,7 +96,7 @@ export default function TaskPanelSection({
           ))}
         </select>
         {card.archived && (
-          <span className="ml-2 text-xs text-[var(--muted-foreground)]">{t('Archive')}</span>
+          <span className="ms-2 text-xs text-[var(--muted-foreground)]">{t('Archive')}</span>
         )}
       </div>
     ))

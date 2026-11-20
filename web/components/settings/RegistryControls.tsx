@@ -428,7 +428,7 @@ export function RegistryModelIdField({
       <label htmlFor={id} className="block text-[13px] font-medium">
         {label}
         {required && (
-          <span aria-hidden className="ml-0.5 text-[var(--muted-foreground)]">
+          <span aria-hidden className="ms-0.5 text-[var(--muted-foreground)]">
             *
           </span>
         )}
@@ -448,7 +448,7 @@ export function RegistryModelIdField({
           aria-describedby={invalid ? `${id}-error` : undefined}
           required={required}
           disabled={disabled}
-          className={`${inputClass} pr-9 font-mono placeholder:font-sans`}
+          className={`${inputClass} pe-9 font-mono placeholder:font-sans`}
           value={value}
           placeholder={placeholder}
           onChange={(event) => {
@@ -471,7 +471,7 @@ export function RegistryModelIdField({
               setActive(-1);
               setOpen((current) => !current);
             }}
-            className="absolute inset-y-0 right-0 flex w-9 items-center justify-center text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
+            className="absolute inset-y-0 end-0 flex w-9 items-center justify-center text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
           >
             <ChevronDown
               size={15}

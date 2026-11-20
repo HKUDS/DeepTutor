@@ -90,7 +90,7 @@ export default function DeepDiveBlock({
                     // Only the topic being generated locks, plus the others while a
                     // generation is in flight. Choosing one no longer retires the rest.
                     disabled={isPending || (anyPending && !existingPageId)}
-                    className="group flex w-full items-start justify-between gap-3 rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 py-2 text-left transition hover:border-[var(--primary)]/40 disabled:opacity-60"
+                    className="group flex w-full items-start justify-between gap-3 rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 py-2 text-start transition hover:border-[var(--primary)]/40 disabled:opacity-60"
                   >
                     <div className="flex-1">
                       <div className="flex items-center gap-1.5 text-sm font-medium text-[var(--foreground)]">

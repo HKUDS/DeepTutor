@@ -211,7 +211,7 @@ export function SourceNavigator({
     <aside
       className={`dt-reading-navigator min-h-0 min-w-0 flex-col bg-[var(--background)] ${
         open
-          ? "absolute inset-y-0 left-0 z-30 flex w-[min(300px,88vw)] shadow-[18px_0_42px_rgba(0,0,0,.12)] lg:static lg:row-start-2 lg:w-auto lg:shadow-none"
+          ? "absolute inset-y-0 start-0 z-30 flex w-[min(300px,88vw)] shadow-[18px_0_42px_rgba(0,0,0,.12)] lg:static lg:row-start-2 lg:w-auto lg:shadow-none"
           : "hidden"
       }`}
     >
@@ -296,9 +296,9 @@ export function SourceNavigator({
                     <button
                       type="button"
                       onClick={() => onNavigate(row.locator)}
-                      className="flex min-w-0 flex-1 items-baseline gap-2 px-2 py-1.5 text-left"
+                      className="flex min-w-0 flex-1 items-baseline gap-2 px-2 py-1.5 text-start"
                     >
-                      <span className="w-7 shrink-0 text-right text-[11px] tabular-nums text-[var(--muted-foreground)]">
+                      <span className="w-7 shrink-0 text-end text-[11px] tabular-nums text-[var(--muted-foreground)]">
                         {row.locator}
                       </span>
                       {/* A bookmark saved without a label is "this page", so it
@@ -316,7 +316,7 @@ export function SourceNavigator({
                       type="button"
                       onClick={() => onRemoveBookmark(row.bookmark_id)}
                       aria-label={t("Remove this bookmark")}
-                      className="mr-1 shrink-0 rounded-md p-1 text-[var(--muted-foreground)] opacity-0 transition hover:bg-[var(--accent)] hover:text-[var(--foreground)] focus-visible:opacity-100 group-hover:opacity-100"
+                      className="me-1 shrink-0 rounded-md p-1 text-[var(--muted-foreground)] opacity-0 transition hover:bg-[var(--accent)] hover:text-[var(--foreground)] focus-visible:opacity-100 group-hover:opacity-100"
                     >
                       <Trash2 size={11} />
                     </button>
@@ -371,7 +371,7 @@ export function SourceNavigator({
                           type="button"
                           onClick={() => selectMaterial(candidate)}
                           aria-current={active ? "true" : undefined}
-                          className="flex min-w-0 flex-1 items-center gap-2 px-2 py-2 text-left"
+                          className="flex min-w-0 flex-1 items-center gap-2 px-2 py-2 text-start"
                         >
                           {busy ? (
                             <Loader2 size={12} className="shrink-0 animate-spin" />
@@ -394,7 +394,7 @@ export function SourceNavigator({
                                 return next;
                               })
                             }
-                            className="mr-1 shrink-0 rounded-md p-1 text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
+                            className="me-1 shrink-0 rounded-md p-1 text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
                             aria-expanded={expanded}
                             aria-label={
                               expanded
@@ -413,7 +413,7 @@ export function SourceNavigator({
                           <button
                             type="button"
                             onClick={() => onRemoveMaterial(candidate)}
-                            className="mr-1 shrink-0 rounded-md p-1 text-[var(--muted-foreground)] transition hover:bg-[var(--muted)] hover:text-[var(--destructive)]"
+                            className="me-1 shrink-0 rounded-md p-1 text-[var(--muted-foreground)] transition hover:bg-[var(--muted)] hover:text-[var(--destructive)]"
                             aria-label={t("Remove from collection")}
                           >
                             <X size={10} />
@@ -422,7 +422,7 @@ export function SourceNavigator({
                       </div>
 
                       {expanded && (
-                        <div className="ml-2 mt-0.5 border-l border-[rgb(var(--dt-ink,55_53_47)/0.08)] pl-1">
+                        <div className="ms-2 mt-0.5 border-s border-[rgb(var(--dt-ink,55_53_47)/0.08)] ps-1">
                           {mediaSource ? (
                             rows.map((row) => (
                               <button
@@ -483,7 +483,7 @@ export function SourceNavigator({
                                         10 + (Math.min(heading.level, 4) - 1) * 10
                                       }px`,
                                     }}
-                                    className={`mb-0.5 block w-full truncate rounded-lg py-1.5 pr-2 text-left text-[12px] leading-[1.4] transition ${
+                                    className={`mb-0.5 block w-full truncate rounded-lg py-1.5 pe-2 text-left text-[12px] leading-[1.4] transition ${
                                       activeHeadingId === heading.id
                                         ? "bg-[var(--muted)] font-medium text-[var(--primary)]"
                                         : "text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
@@ -594,7 +594,7 @@ export function WorkspaceOutlineBranch({
 }) {
   const { t } = useTranslation();
   return (
-    <ul className={depth ? "ml-2 border-l border-[rgb(var(--dt-ink,55_53_47)/0.08)] pl-1" : ""}>
+    <ul className={depth ? "ms-2 border-s border-[rgb(var(--dt-ink,55_53_47)/0.08)] ps-1" : ""}>
       {nodes.map((node) => {
         const key = `${node.row.locator}-${node.row.title}`;
         const active = node.row === activeRow;
@@ -616,10 +616,10 @@ export function WorkspaceOutlineBranch({
               }
               onNavigate(node.row.locator);
             }}
-            className="flex min-w-0 flex-1 items-baseline gap-2 px-2 py-1.5 text-left"
+            className="flex min-w-0 flex-1 items-baseline gap-2 px-2 py-1.5 text-start"
           >
             {showLocator && (
-              <span className="w-7 shrink-0 text-right text-[11px] tabular-nums text-[var(--muted-foreground)]">
+              <span className="w-7 shrink-0 text-end text-[11px] tabular-nums text-[var(--muted-foreground)]">
                 {node.row.locator}
               </span>
             )}
@@ -654,7 +654,7 @@ export function WorkspaceOutlineBranch({
                   aria-label={
                     collapsed ? t("Expand section") : t("Collapse section")
                   }
-                  className="mr-1 shrink-0 rounded-md p-1 text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
+                  className="me-1 shrink-0 rounded-md p-1 text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
                 >
                   {collapsed ? <ChevronRight size={11} /> : <ChevronDown size={11} />}
                 </button>

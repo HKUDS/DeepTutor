@@ -97,8 +97,8 @@ export default function KnowledgeSelector({
           <span
             className={`flex min-w-0 items-center gap-1 overflow-hidden whitespace-nowrap transition-[max-width,opacity,margin-left] duration-300 ease-out ${
               expanded
-                ? "ml-1.5 max-w-[160px] opacity-100"
-                : "ml-0 max-w-0 opacity-0"
+                ? "ms-1.5 max-w-[160px] opacity-100"
+                : "ms-0 max-w-0 opacity-0"
             }`}
           >
             <span className="min-w-0 truncate">{label}</span>
@@ -115,7 +115,7 @@ export default function KnowledgeSelector({
           className={
             embedded
               ? "w-full"
-              : `dt-popup-up absolute right-0 z-50 ${menuPlacementClass} w-[min(280px,calc(100vw-32px))] overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--popover)] shadow-lg backdrop-blur-md`
+              : `dt-popup-up absolute end-0 z-50 ${menuPlacementClass} w-[min(280px,calc(100vw-32px))] overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--popover)] shadow-lg backdrop-blur-md`
           }
         >
           {embedded && knowledgeBases.length > 0 && (
@@ -172,7 +172,7 @@ export default function KnowledgeSelector({
                       <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium text-[var(--foreground)]">
                         {kb.name}
                         {kb.provenance_label && (
-                          <span className="ml-2 opacity-60">
+                          <span className="ms-2 opacity-60">
                             {kb.provenance_label}
                           </span>
                         )}

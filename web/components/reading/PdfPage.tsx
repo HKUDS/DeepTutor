@@ -486,7 +486,7 @@ export function PdfPage({
         )}
         <div
           ref={textLayerRef}
-          className="textLayer absolute left-0 top-0 [&_span]:pointer-events-auto"
+          className="textLayer absolute start-0 top-0 [&_span]:pointer-events-auto"
           // Only text spans take pointer events; gaps must reach image hotspots.
           style={
             {

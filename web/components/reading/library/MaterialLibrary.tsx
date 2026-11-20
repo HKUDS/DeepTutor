@@ -161,7 +161,7 @@ export function MaterialLibraryPage() {
             </button>
           )}
         </label>
-        <div className="flex items-center gap-2 sm:ml-auto">
+        <div className="flex items-center gap-2 sm:ms-auto">
           <span className="text-[11px] text-[var(--muted-foreground)]">
             {t("{{count}} materials", { count: tally.all })}
           </span>
@@ -205,7 +205,7 @@ export function MaterialLibraryPage() {
         <span className="min-w-0">{t("reading.column.material")}</span>
         <span className="hidden min-w-0 lg:block">{t("Type")}</span>
         <span className="hidden min-w-0 sm:block">{t("In collections")}</span>
-        <span className="text-right">{t("Added")}</span>
+        <span className="text-end">{t("Added")}</span>
         <span />
       </div>
 
@@ -387,7 +387,7 @@ function MaterialRow({
           )}
         </button>
 
-        <button type="button" onClick={open} className="min-w-0 text-left">
+        <button type="button" onClick={open} className="min-w-0 text-start">
           <span className="flex min-w-0 items-center gap-1.5">
             <span className="min-w-0 truncate text-[12.5px] font-medium">
               {material.title}
@@ -478,7 +478,7 @@ function MaterialRow({
           )}
         </span>
 
-        <span className="text-right text-[10.5px] text-[var(--muted-foreground)]">
+        <span className="text-end text-[10.5px] text-[var(--muted-foreground)]">
           {failed ? (
             <button
               type="button"
@@ -507,11 +507,11 @@ function MaterialRow({
       </div>
 
       {menuOpen && (
-        <div className="absolute right-1 top-[calc(100%-8px)] z-10 w-44 rounded-lg border border-[var(--border)] bg-[var(--card)] p-1 text-[11.5px] shadow-md dark:bg-[var(--popover)]">
+        <div className="absolute end-1 top-[calc(100%-8px)] z-10 w-44 rounded-lg border border-[var(--border)] bg-[var(--card)] p-1 text-[11.5px] shadow-md dark:bg-[var(--popover)]">
           <button
             type="button"
             onClick={onAssign}
-            className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left hover:bg-[var(--muted)]"
+            className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-start hover:bg-[var(--muted)]"
           >
             <FolderPlus size={12} />
             {t("Add to a collection")}
@@ -519,7 +519,7 @@ function MaterialRow({
           <button
             type="button"
             onClick={onDelete}
-            className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-[var(--destructive)] hover:bg-[var(--muted)]"
+            className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-start text-[var(--destructive)] hover:bg-[var(--muted)]"
           >
             <Trash2 size={12} />
             {t("Delete material")}
@@ -613,7 +613,7 @@ function AssignDialog({
                     )
                     .finally(() => setWorking(""));
                 }}
-                className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left hover:bg-[var(--muted)] disabled:opacity-60"
+                className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-start hover:bg-[var(--muted)] disabled:opacity-60"
               >
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-serif text-[13px] font-semibold">

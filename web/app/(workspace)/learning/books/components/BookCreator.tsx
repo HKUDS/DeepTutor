@@ -175,7 +175,7 @@ export default function BookCreator({
         <button
           type="button"
           onClick={() => setFormCollapsed(v => !v)}
-          className="flex w-full items-center justify-between gap-3 rounded-t-[18px] px-5 py-3.5 text-left transition-colors hover:bg-[rgb(var(--dt-ink,55_53_47)/0.025)]"
+          className="flex w-full items-center justify-between gap-3 rounded-t-[18px] px-5 py-3.5 text-start transition-colors hover:bg-[rgb(var(--dt-ink,55_53_47)/0.025)]"
         >
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
@@ -262,7 +262,7 @@ export default function BookCreator({
                     onChange={e => {
                       setLanguage(e.target.value)
                     }}
-                    className="dt-soft-input ml-1 rounded-md bg-[var(--background)] px-1.5 py-0.5 text-xs text-[var(--foreground)] outline-none"
+                    className="dt-soft-input ms-1 rounded-md bg-[var(--background)] px-1.5 py-0.5 text-xs text-[var(--foreground)] outline-none"
                   >
                     {BOOK_LANGUAGES.map(option => (
                       <option key={option.code} value={option.code}>

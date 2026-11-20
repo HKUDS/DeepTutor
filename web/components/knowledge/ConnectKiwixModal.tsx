@@ -72,7 +72,7 @@ export default function ConnectKiwixModal({ onClose, onConnect }: Props) {
       <div className="flex justify-end gap-2">
         <button type="button" onClick={onClose} disabled={!!busy} className="rounded-lg px-3 py-2 text-[13px] text-[var(--muted-foreground)]">{t("Cancel")}</button>
         <button type="button" onClick={() => void connect()} disabled={!!busy || !name.trim() || !serverUrl.trim() || !zimName.trim()} className="rounded-lg bg-[var(--primary)] px-3 py-2 text-[13px] font-medium text-[var(--primary-foreground)] disabled:opacity-50">
-          {busy === "connect" && <Loader2 className="mr-1 inline h-3.5 w-3.5 animate-spin" />}{t("Connect archive")}
+          {busy === "connect" && <Loader2 className="me-1 inline h-3.5 w-3.5 animate-spin" />}{t("Connect archive")}
         </button>
       </div>
     }>
@@ -89,7 +89,7 @@ export default function ConnectKiwixModal({ onClose, onConnect }: Props) {
             <input value={catalogQuery} onChange={(event) => setCatalogQuery(event.target.value)} className={inputClass} placeholder={t("Search loaded archives")} />
           </label>
           <button type="button" onClick={() => void browse()} disabled={!serverUrl.trim() || !!busy || browsing} className="mt-5 shrink-0 rounded-lg border border-[var(--border)] px-3 py-2 text-[12px] font-medium disabled:opacity-50">
-            {browsing && <Loader2 className="mr-1 inline h-3.5 w-3.5 animate-spin" />}{t("Browse archives")}
+            {browsing && <Loader2 className="me-1 inline h-3.5 w-3.5 animate-spin" />}{t("Browse archives")}
           </button>
         </div>
         {archives.length > 0 && (
@@ -106,7 +106,7 @@ export default function ConnectKiwixModal({ onClose, onConnect }: Props) {
         </label>
         <div className="flex items-center gap-3">
           <button type="button" onClick={() => void probe()} disabled={!!busy || !serverUrl.trim() || !zimName.trim()} className="rounded-lg border border-[var(--border)] px-3 py-2 text-[12px] font-medium disabled:opacity-50">
-            {busy === "probe" && <Loader2 className="mr-1 inline h-3.5 w-3.5 animate-spin" />}{t("Check connection")}
+            {busy === "probe" && <Loader2 className="me-1 inline h-3.5 w-3.5 animate-spin" />}{t("Check connection")}
           </button>
           {verifiedTitle && <span className="min-w-0 truncate text-[12px] text-emerald-600">{t("Ready")}: {verifiedTitle}</span>}
         </div>

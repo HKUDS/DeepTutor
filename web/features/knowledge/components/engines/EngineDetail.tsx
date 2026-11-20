@@ -1736,7 +1736,7 @@ function CheckRow({
       <div className="min-w-0">
         <span className="text-[12px] text-[var(--foreground)]">{t(label)}</span>
         {optional && (
-          <span className="ml-1.5 text-[10px] text-[var(--muted-foreground)]">
+          <span className="ms-1.5 text-[10px] text-[var(--muted-foreground)]">
             ({t("optional")})
           </span>
         )}
@@ -1783,7 +1783,7 @@ function EnvRequirements({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center justify-between rounded-lg py-1 text-left"
+        className="flex w-full items-center justify-between rounded-lg py-1 text-start"
         aria-expanded={open}
       >
         <span className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-wide text-[var(--muted-foreground)]">

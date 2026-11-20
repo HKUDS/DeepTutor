@@ -369,7 +369,7 @@ function SideChatTile({
           <button
             type="button"
             onClick={() => onOpen(DITO)}
-            className={`flex w-full min-w-0 items-center gap-2.5 rounded-l-xl pl-3 pr-1 text-left text-[12.5px] font-medium text-[var(--foreground)] transition-colors ${ACTIVITY_ROW_HOVER} ${ROW_FOCUS}`}
+            className={`flex w-full min-w-0 items-center gap-2.5 rounded-l-xl ps-3 pe-1 text-left text-[12.5px] font-medium text-[var(--foreground)] transition-colors ${ACTIVITY_ROW_HOVER} ${ROW_FOCUS}`}
           >
             <MessagesSquare
               size={15}
@@ -399,7 +399,7 @@ function SideChatTile({
       {menuOpen ? (
         <div
           role="menu"
-          className="absolute left-0 top-full z-20 mt-1.5 max-h-[320px] w-[248px] overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--popover,var(--card))] p-1 text-[var(--foreground)] shadow-lg"
+          className="absolute start-0 top-full z-20 mt-1.5 max-h-[320px] w-[248px] overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--popover,var(--card))] p-1 text-[var(--foreground)] shadow-lg"
         >
           <ResponderList
             agents={agents}

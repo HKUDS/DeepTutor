@@ -173,7 +173,7 @@ export default function PageOutlineNav({
 
   return (
     <div
-      className="pointer-events-none absolute right-0 top-1/2 z-20 -translate-y-1/2"
+      className="pointer-events-none absolute end-0 top-1/2 z-20 -translate-y-1/2"
       style={{ transition: `transform 320ms ${EASE}` }}
     >
       {/* Single morphing card. Width / border-radius / x-translate transition
@@ -254,7 +254,7 @@ export default function PageOutlineNav({
                     type="button"
                     onClick={() => handleJump(block.id)}
                     className={[
-                      "group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors duration-150",
+                      "group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-start transition-colors duration-150",
                       isActive
                         ? "bg-[var(--primary)]/10 text-[var(--foreground)]"
                         : "text-[var(--muted-foreground)] hover:bg-[var(--background)] hover:text-[var(--foreground)]",

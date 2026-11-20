@@ -382,7 +382,7 @@ function ProcessFold({
         type="button"
         onClick={() => setUserOpen(!open)}
         aria-expanded={open}
-        className="group/act flex items-center gap-2 text-left text-[12px] font-medium text-[var(--muted-foreground)]/55 transition-colors hover:text-[var(--foreground)]"
+        className="group/act flex items-center gap-2 text-start text-[12px] font-medium text-[var(--muted-foreground)]/55 transition-colors hover:text-[var(--foreground)]"
       >
         {toolCalls > 0
           ? t("{{count}} tool calls", { count: toolCalls })
@@ -407,7 +407,7 @@ function SentMidTurn({ messages }: { messages: string[] }) {
   const { t } = useTranslation();
   return (
     <div data-sent-mid-turn="true" className="my-3 flex flex-col items-end gap-1">
-      <span className="pr-1 text-[11px] text-[var(--muted-foreground)]">
+      <span className="pe-1 text-[11px] text-[var(--muted-foreground)]">
         {t("You, while it worked")}
       </span>
       {messages.map((text, index) => (
@@ -622,7 +622,7 @@ export function GeneratedFileCards({
               <button
                 type="button"
                 onClick={onOpen ? () => onOpen(a) : undefined}
-                className="group block w-full overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)] text-left shadow-sm transition hover:border-[var(--border)]"
+                className="group block w-full overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)] text-start shadow-sm transition hover:border-[var(--border)]"
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
@@ -669,7 +669,7 @@ export function GeneratedFileCards({
               <button
                 type="button"
                 onClick={onOpen ? () => onOpen(a) : undefined}
-                className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left transition hover:bg-[var(--muted)]/30"
+                className="flex w-full items-center justify-between gap-2 px-3 py-2 text-start transition hover:bg-[var(--muted)]/30"
               >
                 <span className="min-w-0">
                   <span className="block truncate text-[12.5px] font-medium text-[var(--foreground)]">
@@ -700,7 +700,7 @@ export function GeneratedFileCards({
             <button
               type="button"
               onClick={onOpen ? () => onOpen(a) : undefined}
-              className="group flex w-full items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 py-2.5 text-left shadow-sm transition hover:border-[var(--border)] hover:bg-[var(--muted)]/30"
+              className="group flex w-full items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--card)] px-3 py-2.5 text-start shadow-sm transition hover:border-[var(--border)] hover:bg-[var(--muted)]/30"
             >
               <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--background)]">
                 <Icon className={`h-[18px] w-[18px] ${spec.tint}`} />
@@ -1765,7 +1765,7 @@ export const UserMessage = memo(function UserMessage({
         {handedTo ? (
           <HandedToBadge kind={handedTo.kind} id={handedTo.id} agentKind={agentKinds[handedTo.id]} />
         ) : showModeBadge ? (
-          <div className="flex justify-end pr-1">
+          <div className="flex justify-end pe-1">
             <span className="text-[10px] tracking-wide text-[var(--muted-foreground)]">
               {t(getModeBadgeLabel(msg.capability))}
             </span>
@@ -1855,7 +1855,7 @@ export const UserMessage = memo(function UserMessage({
         {!editing && msg.failedSubmission ? (
           <div
             data-unsent="true"
-            className="flex items-center gap-1 pr-1 text-[11px] font-medium text-[var(--destructive)]"
+            className="flex items-center gap-1 pe-1 text-[11px] font-medium text-[var(--destructive)]"
           >
             <AlertCircle className="h-3.5 w-3.5" aria-hidden="true" />
             {t("Not sent")}
@@ -1865,21 +1865,21 @@ export const UserMessage = memo(function UserMessage({
                 if (retrying || typeof msg.id !== "number") return;
                 setRetrying(true);
                 try { await onRetryFailedSubmission(msg.id); } finally { setRetrying(false); }
-              }} className="ml-2 rounded-md px-2 py-1 disabled:opacity-40">{t("Retry")}</button>
+              }} className="ms-2 rounded-md px-2 py-1 disabled:opacity-40">{t("Retry")}</button>
             )}
             {onDiscardFailedSubmission && typeof msg.id === "number" && msg.id < 0 && (
               <button type="button" onClick={() => void discardDraft()} disabled={editDisabled || discarding}
-                className="ml-2 rounded-md px-2 py-1 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)]/50 disabled:cursor-not-allowed disabled:opacity-40">
+                className="ms-2 rounded-md px-2 py-1 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)]/50 disabled:cursor-not-allowed disabled:opacity-40">
                 {discarding ? t("Discarding…") : t("Discard unsent draft")}
               </button>
             )}
           </div>
         ) : null}
-        {discardFailed && <p role="alert" className="max-w-full text-right text-xs text-[var(--destructive)]">
+        {discardFailed && <p role="alert" className="max-w-full text-end text-xs text-[var(--destructive)]">
           {t("This draft could not be discarded. Please retry or copy it before leaving.")}
         </p>}
         {!editing && refTreeItems.length > 0 && (
-          <div className="pr-1">
+          <div className="pe-1">
             <ContextReferenceTree
               items={refTreeItems}
               direction="down"
@@ -2554,7 +2554,7 @@ export const ChatMessageList = memo(function ChatMessageList({
                 {costSummary && !compactActions && (
                   // The room left beside the actions is what the usage pill
                   // measures itself against (see UsageFooter).
-                  <div className="flex min-w-0 flex-1 justify-end pl-2 [container-type:inline-size]">
+                  <div className="flex min-w-0 flex-1 justify-end ps-2 [container-type:inline-size]">
                     <UsageFooter turn={costSummary} session={usageByRow.get(i) ?? costSummary} />
                   </div>
                 )}
@@ -2595,7 +2595,7 @@ function HandedToBadge({
   const partner = usePartner(kind === "partner" ? id : null);
   const name = partner?.name ?? id;
   return (
-    <div className="flex items-center justify-end gap-1.5 pr-1 text-[11px] text-[var(--muted-foreground)]">
+    <div className="flex items-center justify-end gap-1.5 pe-1 text-[11px] text-[var(--muted-foreground)]">
       <AnswererMark answerer={{ kind, id, name, agent: agentKind }} size={14} />
       <span>{t("trace.answerer.handedTo", { name })}</span>
     </div>

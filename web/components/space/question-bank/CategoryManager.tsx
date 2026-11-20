@@ -102,7 +102,7 @@ export default function CategoryManager({
               <>
                 <span className="min-w-0 flex-1 truncate text-[12.5px] text-[var(--foreground)]">
                   {category.name}
-                  <span className="ml-1.5 tabular-nums text-[11px] text-[var(--muted-foreground)]">
+                  <span className="ms-1.5 tabular-nums text-[11px] text-[var(--muted-foreground)]">
                     {category.entry_count}
                   </span>
                 </span>

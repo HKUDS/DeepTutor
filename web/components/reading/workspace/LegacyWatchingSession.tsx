@@ -21,6 +21,6 @@ export default function LegacyWatchingSession({ sessionId }: { sessionId: string
   }, [sessionId, router, retry, t]);
   return <div className="p-6 text-sm" role={error ? "alert" : "status"}>
     {error || t("Loading…")}
-    {error && <button type="button" className="ml-3 underline" onClick={() => { setError(""); setRetry(value => value + 1); }}>{t("Retry")}</button>}
+    {error && <button type="button" className="ms-3 underline" onClick={() => { setError(""); setRetry(value => value + 1); }}>{t("Retry")}</button>}
   </div>;
 }

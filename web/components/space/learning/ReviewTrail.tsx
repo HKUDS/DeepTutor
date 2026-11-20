@@ -379,7 +379,7 @@ export function ReviewTrail({
               <button
                 type="button"
                 onClick={() => onSelect(review.knowledge_point_id)}
-                className="min-w-0 flex-1 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]/40"
+                className="min-w-0 flex-1 text-start focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]/40"
               >
                 <span className="block truncate text-xs font-medium text-[var(--foreground)]">
                   {review.knowledge_point_name}
@@ -388,13 +388,13 @@ export function ReviewTrail({
                   {review.due
                     ? t("Ready now")
                     : formatRelative(review.due_at, zh)}
-                  <span className="ml-2">
+                  <span className="ms-2">
                     {t("risk {{risk}}%", {
                       risk: Math.round(review.forgetting_risk * 100),
                     })}
                   </span>
                   {review.recent_failure && (
-                    <span className="ml-2 text-red-600 dark:text-red-400">
+                    <span className="ms-2 text-red-600 dark:text-red-400">
                       {t("recent failure")}
                     </span>
                   )}
@@ -422,7 +422,7 @@ export function ReviewTrail({
             <button
               type="button"
               onClick={() => setExpanded((value) => !value)}
-              className="mt-1 w-full rounded-md px-2.5 py-2 text-left text-[11px] font-medium text-[var(--primary)] hover:bg-[var(--muted)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]/40"
+              className="mt-1 w-full rounded-md px-2.5 py-2 text-start text-[11px] font-medium text-[var(--primary)] hover:bg-[var(--muted)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]/40"
             >
               {expanded
                 ? t("Show fewer")

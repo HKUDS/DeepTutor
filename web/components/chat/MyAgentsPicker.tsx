@@ -360,12 +360,12 @@ export default function MyAgentsPicker({
 
           <div className="mb-4 flex items-center gap-2">
             <div className="relative flex-1">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted-foreground)]" />
+              <Search className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted-foreground)]" />
               <input
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder={t("Search conversations by title or last message")}
-                className="w-full rounded-xl border border-[var(--border)] bg-[var(--card)] py-2.5 pl-9 pr-3 text-[13px] text-[var(--foreground)] outline-none transition focus:border-[var(--primary)]/50 focus:ring-2 focus:ring-[var(--primary)]/15"
+                className="w-full rounded-xl border border-[var(--border)] bg-[var(--card)] py-2.5 ps-9 pe-3 text-[13px] text-[var(--foreground)] outline-none transition focus:border-[var(--primary)]/50 focus:ring-2 focus:ring-[var(--primary)]/15"
               />
             </div>
             <button
@@ -419,7 +419,7 @@ export default function MyAgentsPicker({
                         <button
                           type="button"
                           onClick={() => toggleExpand(group.key)}
-                          className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                          className="flex min-w-0 flex-1 items-center gap-2 text-start"
                         >
                           {isOpen ? (
                             <ChevronDown
@@ -463,7 +463,7 @@ export default function MyAgentsPicker({
                                 <button
                                   type="button"
                                   onClick={() => toggleSession(row.id)}
-                                  className="flex min-w-0 flex-1 items-start gap-3 py-3 pl-10 pr-2 text-left"
+                                  className="flex min-w-0 flex-1 items-start gap-3 py-3 ps-10 pe-2 text-start"
                                 >
                                   <div
                                     className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-all ${
@@ -498,7 +498,7 @@ export default function MyAgentsPicker({
                                     type="button"
                                     onClick={() => void openPreview(row)}
                                     aria-label={t("Preview")}
-                                    className="mr-3 mt-3 shrink-0 rounded-lg border border-transparent p-1.5 text-[var(--muted-foreground)] opacity-0 transition-all hover:border-[var(--border)] hover:text-[var(--foreground)] focus:opacity-100 group-hover/row:opacity-100"
+                                    className="me-3 mt-3 shrink-0 rounded-lg border border-transparent p-1.5 text-[var(--muted-foreground)] opacity-0 transition-all hover:border-[var(--border)] hover:text-[var(--foreground)] focus:opacity-100 group-hover/row:opacity-100"
                                   >
                                     <Eye size={15} />
                                   </button>

@@ -153,7 +153,7 @@ export function ReadingLibraryPage() {
             </button>
           )}
         </label>
-        <div className="flex items-center gap-2 sm:ml-auto">
+        <div className="flex items-center gap-2 sm:ms-auto">
           <span className="text-[11px] text-[var(--muted-foreground)]">
             {t("{{count}} collections", { count: rows.length })}
           </span>
@@ -310,7 +310,7 @@ function FolderTile({
           {preparing && (
             <Loader2
               size={13}
-              className="absolute bottom-1 right-1 animate-spin text-white"
+              className="absolute bottom-1 end-1 animate-spin text-white"
               aria-label={t("Preparing")}
             />
           )}
@@ -334,7 +334,7 @@ function FolderTile({
         onClick={onToggleMenu}
         aria-label={t("Collection menu")}
         aria-expanded={menuOpen}
-        className="absolute right-1.5 top-1.5 flex size-7 items-center justify-center rounded-md text-[var(--muted-foreground)] opacity-100 transition hover:bg-[var(--muted)] sm:opacity-0 sm:focus:opacity-100 sm:group-hover:opacity-100 aria-expanded:opacity-100"
+        className="absolute end-1.5 top-1.5 flex size-7 items-center justify-center rounded-md text-[var(--muted-foreground)] opacity-100 transition hover:bg-[var(--muted)] sm:opacity-0 sm:focus:opacity-100 sm:group-hover:opacity-100 aria-expanded:opacity-100"
       >
         <MoreHorizontal size={14} />
       </button>
@@ -343,12 +343,12 @@ function FolderTile({
           <div className="fixed inset-0 z-10" onClick={onCloseMenu} />
           <div
             role="menu"
-            className="absolute right-1.5 top-9 z-20 w-44 rounded-lg border border-[var(--border)] bg-[var(--card)] p-1 text-[12px] shadow-md dark:bg-[var(--popover)]"
+            className="absolute end-1.5 top-9 z-20 w-44 rounded-lg border border-[var(--border)] bg-[var(--card)] p-1 text-[12px] shadow-md dark:bg-[var(--popover)]"
           >
             <Link
               role="menuitem"
               href={readingCollectionRoute(collection.workspace_id, contentWorkspace)}
-              className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left hover:bg-[var(--muted)]"
+              className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-start hover:bg-[var(--muted)]"
             >
               <BookOpen size={12} />
               {t("Start reading")}
@@ -357,7 +357,7 @@ function FolderTile({
               type="button"
               role="menuitem"
               onClick={onEdit}
-              className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left hover:bg-[var(--muted)]"
+              className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-start hover:bg-[var(--muted)]"
             >
               <Palette size={12} />
               {t("Rename or recolor")}
@@ -366,7 +366,7 @@ function FolderTile({
               type="button"
               role="menuitem"
               onClick={onDelete}
-              className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-[var(--destructive)] hover:bg-[var(--muted)]"
+              className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-start text-[var(--destructive)] hover:bg-[var(--muted)]"
             >
               <Trash2 size={12} />
               {t("Delete collection")}
@@ -407,7 +407,7 @@ function UnsettledRow({
           ? t("{{title}} could not be prepared", { title: material.title })
           : t("Preparing {{title}}", { title: material.title })}
         {failed && readingFailureMessage(material, t) ? (
-          <span className="ml-1.5 text-[10.5px] text-[var(--muted-foreground)]">
+          <span className="ms-1.5 text-[10.5px] text-[var(--muted-foreground)]">
             {readingFailureMessage(material, t)}
           </span>
         ) : null}

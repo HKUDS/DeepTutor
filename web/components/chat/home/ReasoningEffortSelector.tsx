@@ -84,7 +84,7 @@ export default function ReasoningEffortSelector({
       </Tooltip>
 
       {open && !disabled && (
-        <div className="absolute right-0 bottom-full z-50 mb-1.5 w-[min(220px,calc(100vw-32px))] overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--popover)] py-1 shadow-lg backdrop-blur-md">
+        <div className="absolute end-0 bottom-full z-50 mb-1.5 w-[min(220px,calc(100vw-32px))] overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--popover)] py-1 shadow-lg backdrop-blur-md">
           {options.map((item) => {
             const isSelected = item.value === selected;
             return (

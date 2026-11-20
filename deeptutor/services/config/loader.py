@@ -126,6 +126,26 @@ def load_config_with_main(config_file: str, project_root: Path | None = None) ->
     return _inject_runtime_paths(_load_yaml_file(config_path))
 
 
+def load_main_config(project_root: Path | None = None) -> dict[str, Any]:
+    """Load ``main.yaml`` or raise :class:`SetupRequiredError`.
+
+    Call this at *use* time, never at import time. A missing settings file means
+    the runtime home has not been initialized; that is an operator action, not
+    an import bug, so the caller can turn it into an HTTP 503, a CLI message or
+    a Settings banner instead of crashing the whole module graph.
+    """
+    from deeptutor.core.errors import SetupRequiredError
+
+    if project_root is None:
+        project_root = PROJECT_ROOT
+    settings_dir = get_runtime_settings_dir(project_root)
+    try:
+        config_path, _ = resolve_config_path("main.yaml", project_root)
+    except FileNotFoundError as exc:
+        raise SetupRequiredError("main.yaml", str(settings_dir)) from exc
+    return _inject_runtime_paths(_load_yaml_file(config_path))
+
+
 async def load_config_with_main_async(
     config_file: str, project_root: Path | None = None
 ) -> dict[str, Any]:

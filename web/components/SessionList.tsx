@@ -268,7 +268,7 @@ export default function SessionList({
                   }`}
                 >
                   {active && (
-                    <span className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full bg-[var(--primary)]" />
+                    <span className="absolute start-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-e-full bg-[var(--primary)]" />
                   )}
                   <div className="flex items-start gap-1.5">
                     <div className="min-w-0 flex-1">
