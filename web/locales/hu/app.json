@@ -6664,5 +6664,19 @@
   "Position": "Position",
   "Action": "Action",
   "Conversation IDs (optional)": "Conversation IDs (optional)",
-  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle."
+  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.",
+  "Search annotations…": "Megjegyzések keresése…",
+  "No matching annotations": "Nincs megfelelő megjegyzés",
+  "Try a different word, or clear the search.": "Próbáljon másik szót, vagy törölje a keresést.",
+  "Download annotated PDF": "Megjegyzésekkel ellátott PDF letöltése",
+  "Download as Markdown": "Letöltés Markdown formátumban",
+  "Annotated original when available, otherwise the marks": "Az eredeti fájl megjegyzésekkel, ha elérhető, egyébként a megjegyzések",
+  "Change colour": "Szín módosítása",
+  "Document order": "Dokumentum szerinti sorrend",
+  "Select annotations": "Megjegyzések kijelölése",
+  "Filter by colour": "Szűrés szín szerint",
+  "All colours": "Minden szín",
+  "Could not copy to the clipboard.": "Nem sikerült a vágólapra másolni.",
+  "Some annotations could not be removed.": "Néhány megjegyzést nem sikerült törölni.",
+  "This annotation was removed. Copy your draft before closing.": "Ezt a megjegyzést törölték. Bezárás előtt másolja ki a piszkozatot."
 }

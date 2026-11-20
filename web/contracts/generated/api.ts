@@ -12143,6 +12143,11 @@ export interface components {
       readonly quote: string;
       /** Rects */
       readonly rects: readonly (readonly number[])[];
+      /**
+       * Resolution
+       * @default resolved
+       */
+      readonly resolution: string;
       /** Selectors */
       readonly selectors?: readonly {
         readonly [key: string]: unknown;
@@ -12175,6 +12180,8 @@ export interface components {
        * @default yellow
        */
       readonly color: string;
+      /** Expected Updated At */
+      readonly expected_updated_at?: number | null;
       /**
        * Kind
        * @default highlight
@@ -36169,7 +36176,9 @@ export interface operations {
   };
   readonly delete_annotation_api_reading_materials__material_id__annotations__annotation_id__delete: {
     readonly parameters: {
-      readonly query?: never;
+      readonly query?: {
+        readonly expected_updated_at?: number | null;
+      };
       readonly header?: {
         readonly Authorization?: string | null;
       };

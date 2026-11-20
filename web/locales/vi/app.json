@@ -6664,5 +6664,19 @@
   "Position": "Position",
   "Action": "Action",
   "Conversation IDs (optional)": "Conversation IDs (optional)",
-  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle."
+  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.",
+  "Search annotations…": "Tìm chú thích…",
+  "No matching annotations": "Không có chú thích phù hợp",
+  "Try a different word, or clear the search.": "Thử từ khác hoặc xóa tìm kiếm.",
+  "Download annotated PDF": "Tải PDF có chú thích",
+  "Download as Markdown": "Tải dưới dạng Markdown",
+  "Annotated original when available, otherwise the marks": "Bản gốc có chú thích nếu có, nếu không thì các đánh dấu",
+  "Change colour": "Đổi màu",
+  "Document order": "Thứ tự tài liệu",
+  "Select annotations": "Chọn chú thích",
+  "Filter by colour": "Lọc theo màu",
+  "All colours": "Tất cả màu",
+  "Could not copy to the clipboard.": "Không thể sao chép vào bộ nhớ tạm.",
+  "Some annotations could not be removed.": "Không thể xóa một số chú thích.",
+  "This annotation was removed. Copy your draft before closing.": "Chú thích này đã bị xóa. Hãy sao chép bản nháp trước khi đóng."
 }

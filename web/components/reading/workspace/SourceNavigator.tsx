@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import {
   BookmarkCheck,
   ChevronDown,
@@ -33,9 +34,14 @@ import {
 } from "@/lib/reading-workspace-api";
 import { formatMediaTime, timeFromSourceHref } from "@/lib/reading-media-time";
 import Tooltip from "@/shared/ui/Tooltip";
-import { AnnotationList } from "../AnnotationList";
+import { applyMarkUpdate } from "@/lib/reading-mark-update";
 import { iconForMaterial } from "./WorkspaceChrome";
 import { type TranscriptRow } from "./types";
+
+const AnnotationList = dynamic(
+  () => import("../AnnotationList").then((module) => module.AnnotationList),
+  { ssr: false },
+);
 
 export function SourceNavigator({
   material,
@@ -106,6 +112,18 @@ export function SourceNavigator({
   );
   const notesAvailable = Boolean(onOpenAnnotation) && !mediaSourceOf(material);
   const showNotes = notesAvailable && view === "notes";
+  /**
+   * Edit a mark from the navigator's list.
+   *
+   * The reader pane and this navigator both mount the annotation list — in a
+   * workspace the navigator is the one that shows it — so both need the update
+   * path, or editing works in one layout and silently does nothing in the other.
+   */
+  const updateMark = (
+    annotation: AnnotationItem,
+    changes: { note?: string; color?: string; kind?: AnnotationItem["kind"] },
+  ): Promise<boolean> => applyMarkUpdate(annotation, changes, reading.saveMark);
+
   const openAnnotation = (annotation: AnnotationItem) => {
     setActiveAnnotationId(annotation.annotation_id);
     onOpenAnnotation?.(annotation.locator, annotation.quote || undefined);
@@ -251,11 +269,14 @@ export function SourceNavigator({
       {showNotes && material ? (
         <div className="min-h-0 flex-1">
           <AnnotationList
+            key={material.material_id}
             annotations={reading.annotations}
             unit={reading.material?.unit ?? "page"}
             activeId={activeAnnotationId}
             onSelect={openAnnotation}
-            onDelete={(annotation) => void reading.removeMark(annotation)}
+            onDelete={(annotation) => reading.removeMark(annotation)}
+            onEditNote={(annotation, note) => updateMark(annotation, { note })}
+            onChangeMark={updateMark}
           />
         </div>
       ) : (

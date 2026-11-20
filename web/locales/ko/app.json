@@ -675,5 +675,19 @@
   "Action": "Action",
   "Chapter": "Chapter",
   "Conversation IDs (optional)": "Conversation IDs (optional)",
-  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle."
+  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.",
+  "Search annotations…": "주석 검색…",
+  "No matching annotations": "일치하는 주석이 없습니다",
+  "Try a different word, or clear the search.": "다른 단어를 입력하거나 검색어를 지우세요.",
+  "Download annotated PDF": "주석이 포함된 PDF 다운로드",
+  "Download as Markdown": "Markdown으로 다운로드",
+  "Annotated original when available, otherwise the marks": "가능한 경우 주석이 포함된 원본, 그 외에는 주석 내보내기",
+  "Change colour": "색상 변경",
+  "Document order": "문서 순서",
+  "Select annotations": "주석 선택",
+  "Filter by colour": "색상별 필터",
+  "All colours": "모든 색상",
+  "Could not copy to the clipboard.": "클립보드에 복사하지 못했습니다.",
+  "Some annotations could not be removed.": "일부 주석을 삭제하지 못했습니다.",
+  "This annotation was removed. Copy your draft before closing.": "이 주석은 삭제되었습니다. 닫기 전에 초안을 복사하세요."
 }

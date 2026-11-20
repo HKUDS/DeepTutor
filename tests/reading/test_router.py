@@ -960,3 +960,50 @@ def test_collection_color_round_trips_through_create_and_patch(client: TestClien
         json={"title": "Slow reading", "color": "green"},
     ).json()["workspace"]
     assert (patched["title"], patched["color"]) == ("Slow reading", "green")
+
+
+def test_annotation_conditional_put_and_delete_reject_stale_versions(client: TestClient) -> None:
+    material = _upload(client)
+    base = f"/api/reading/materials/{material['material_id']}/annotations"
+    original = client.put(base, json={"locator": 1, "note": "original"}).json()
+    fresh = client.put(
+        base, json={**original, "note": "newer", "expected_updated_at": original["updated_at"]}
+    )
+    assert fresh.status_code == 200
+    assert fresh.json()["resolution"] == "resolved"
+    assert (
+        client.put(
+            base, json={**original, "note": "stale", "expected_updated_at": original["updated_at"]}
+        ).status_code
+        == 409
+    )
+    target = f"{base}/{original['annotation_id']}"
+    assert (
+        client.delete(target, params={"expected_updated_at": original["updated_at"]}).status_code
+        == 409
+    )
+    assert client.get(base).json()[0]["note"] == "newer"
+    assert (
+        client.delete(
+            target, params={"expected_updated_at": fresh.json()["updated_at"]}
+        ).status_code
+        == 200
+    )
+    assert client.get(base).json() == []
+
+
+@pytest.mark.parametrize("version", [-1, "NaN", "Infinity"])
+def test_annotation_version_preconditions_must_be_finite_nonnegative(
+    client: TestClient, version
+) -> None:
+    material = _upload(client)
+    base = f"/api/reading/materials/{material['material_id']}/annotations"
+    assert (
+        client.put(
+            base, json={"locator": 1, "note": "invalid", "expected_updated_at": version}
+        ).status_code
+        == 422
+    )
+    assert (
+        client.delete(f"{base}/missing", params={"expected_updated_at": version}).status_code == 422
+    )

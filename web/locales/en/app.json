@@ -6664,5 +6664,19 @@
   "Position": "Position",
   "Action": "Action",
   "Conversation IDs (optional)": "Conversation IDs (optional)",
-  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle."
+  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.",
+  "Search annotations…": "Search annotations…",
+  "No matching annotations": "No matching annotations",
+  "Try a different word, or clear the search.": "Try a different word, or clear the search.",
+  "Download annotated PDF": "Download annotated PDF",
+  "Download as Markdown": "Download as Markdown",
+  "Annotated original when available, otherwise the marks": "Annotated original when available, otherwise the marks",
+  "Change colour": "Change colour",
+  "Document order": "Document order",
+  "Select annotations": "Select annotations",
+  "Filter by colour": "Filter by colour",
+  "All colours": "All colours",
+  "Could not copy to the clipboard.": "Could not copy to the clipboard.",
+  "Some annotations could not be removed.": "Some annotations could not be removed.",
+  "This annotation was removed. Copy your draft before closing.": "This annotation was removed. Copy your draft before closing."
 }
