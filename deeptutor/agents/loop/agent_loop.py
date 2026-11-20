@@ -85,6 +85,7 @@ from deeptutor.services.llm.request_compat import (
     is_transient_transport_error,
     logged_error_text,
 )
+from deeptutor.services.llm.stream_timeout import get_stream_idle_timeout_seconds
 from deeptutor.services.llm.usage_frame import usage_breakdown
 from deeptutor.services.llm.utils import unreachable_endpoint_hint
 
@@ -112,15 +113,15 @@ MAX_REASONING_ONLY_RECOVERIES = 2
 # user-visible output. Once output is visible, replay is unsafe because it can
 # duplicate prose or tool calls.
 _PROVIDER_RETRY_DELAYS = (0.5, 1.5)
-_STREAM_IDLE_TIMEOUT_SECONDS = 90.0
 
 
 async def _bounded_stream_chunks(stream: Any):
     """#1421: a connected provider that never produces a chunk must settle."""
     iterator = stream.__aiter__()
+    idle_timeout_s = get_stream_idle_timeout_seconds()
     while True:
         try:
-            yield await asyncio.wait_for(iterator.__anext__(), _STREAM_IDLE_TIMEOUT_SECONDS)
+            yield await asyncio.wait_for(iterator.__anext__(), idle_timeout_s)
         except StopAsyncIteration:
             return
         except TimeoutError:
@@ -885,7 +886,7 @@ class AgentLoop:
                 # reads so cold-start failures cannot park a durable turn.
                 response_stream = await asyncio.wait_for(
                     self._create_response_stream(kwargs, trace_meta, stage),
-                    _STREAM_IDLE_TIMEOUT_SECONDS,
+                    get_stream_idle_timeout_seconds(),
                 )
                 # A declared vision capability is not evidence of delivered
                 # pixels when the provider actually falls back to text.

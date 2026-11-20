@@ -117,6 +117,13 @@ use `DEEPTUTOR_HOME` consistently.
 
 ## 4. Apply configuration
 
+Provider stream idle reads default to 90 seconds. Set
+`llm_stream_idle_timeout_seconds` in `data/user/settings/system.json` to
+adjust it; values are clamped to 30–1800 seconds.
+The process environment variable `DEEPTUTOR_STREAM_IDLE_TIMEOUT_SECONDS`
+overrides the saved setting. Invalid values fall back to 90 seconds, and
+changes apply to the next provider call without a restart.
+
 Write a UTF-8 JSON file such as `setup.json`, replacing the model placeholder
 with the user's choice:
 
