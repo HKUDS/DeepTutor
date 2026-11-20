@@ -135,6 +135,8 @@ class CodeBuddyAuthService:
         except asyncio.CancelledError:
             async with self._lock:
                 if self._generation == generation:
+                    if self._flow is not None:
+                        self._schedule_flow_cancel(self._flow)
                     self._flow = None
                     self._task = None
                     self._connection = "disconnected"
@@ -143,6 +145,8 @@ class CodeBuddyAuthService:
         except Exception as exc:  # noqa: BLE001 - converted to stable public state
             async with self._lock:
                 if self._generation == generation:
+                    if isinstance(exc, TimeoutError) and self._flow is not None:
+                        self._schedule_flow_cancel(self._flow)
                     self._flow = None
                     self._task = None
                     self._mark_error(exc)
@@ -233,7 +237,11 @@ class CodeBuddyAuthService:
             if getattr(flow, "auth_url", ""):
                 await _cancel_flow(flow)
                 return "available", None
-            result = await _await_flow(flow, _PROBE_TIMEOUT, self._track_task)
+            try:
+                result = await _await_flow(flow, _PROBE_TIMEOUT, self._track_task)
+            except (asyncio.CancelledError, TimeoutError):
+                self._schedule_flow_cancel(flow)
+                raise
             return "connected", result
         except Exception as exc:  # noqa: BLE001 - converted to stable public state
             return "error", exc
@@ -270,17 +278,15 @@ class CodeBuddyAuthService:
             return None
 
     async def _wait_for_login(self, flow: Any, generation: int) -> None:
-        flow_task = asyncio.create_task(_await_flow(flow, _LOGIN_TIMEOUT, self._track_task))
-        async with self._lock:
-            self._track_task(flow_task)
-
         try:
-            result = await flow_task
+            result = await _await_flow(flow, _LOGIN_TIMEOUT, self._track_task)
         except asyncio.CancelledError:
             return
         except Exception as exc:  # noqa: BLE001 - converted to stable public state
             async with self._lock:
                 if self._generation == generation and self._flow is flow:
+                    if isinstance(exc, TimeoutError):
+                        self._schedule_flow_cancel(flow)
                     self._flow = None
                     self._task = None
                     self._mark_error(exc)
@@ -291,6 +297,11 @@ class CodeBuddyAuthService:
                 self._flow = None
                 self._task = None
                 self._mark_connected(result)
+
+    def _schedule_flow_cancel(self, flow: Any) -> None:
+        # Cancelling the Python await does not necessarily release SDK resources.
+        # Keep cleanup owned without delaying a request that already timed out.
+        self._track_task(asyncio.create_task(_cancel_flow(flow, self._track_task)))
 
     def _track_task(self, task: asyncio.Task[Any]) -> None:
         """Track a task so it stays owned until it finishes."""
@@ -352,9 +363,9 @@ async def _await_flow(
         task.add_done_callback(lambda done: None if done.cancelled() else done.exception())
 
 
-async def _cancel_flow(flow: Any) -> None:
+async def _cancel_flow(flow: Any, track: Callable[[asyncio.Task[Any]], None] | None = None) -> None:
     try:
-        await _await_flow(flow.cancel(), 5.0)
+        await _await_flow(flow.cancel(), 5.0, track)
     except Exception:  # noqa: BLE001 - advisory, bounded cancellation
         pass
 

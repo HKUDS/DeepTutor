@@ -260,6 +260,75 @@ class _StuckFlow:
         self.cancel_calls += 1
 
 
+class _FlowRequiringSDKCancel(FakeFlow):
+    def __init__(self, auth_url: str) -> None:
+        super().__init__(auth_url)
+        self.entered = asyncio.Event()
+        self.settled = asyncio.Event()
+        self.cancel_calls = 0
+
+    async def wait(self):
+        self.entered.set()
+        try:
+            try:
+                await self.ready.wait()
+            except asyncio.CancelledError:
+                await self.ready.wait()
+        finally:
+            self.settled.set()
+
+    async def cancel(self) -> None:
+        self.cancel_calls += 1
+        self.ready.set()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "operation",
+    ["caller-cancel", "start-timeout", "status-timeout", "browser-timeout", "explicit-cancel"],
+)
+async def test_interrupted_sdk_flow_releases_its_resources(monkeypatch, operation) -> None:
+    browser = operation == "browser-timeout"
+    flow = _FlowRequiringSDKCancel("https://codebuddy.example/login" if browser else "")
+    service = CodeBuddyAuthService()
+    monkeypatch.setattr(service, "_probe_local_login", lambda: _value(None))
+    monkeypatch.setattr(codebuddy_auth, "_start_sdk_authenticate", lambda: _value(flow))
+    if operation in {"start-timeout", "status-timeout"}:
+        monkeypatch.setattr(codebuddy_auth, "_PROBE_TIMEOUT", 0.05)
+    if browser:
+        monkeypatch.setattr(codebuddy_auth, "_LOGIN_TIMEOUT", 0.05)
+
+    request = asyncio.create_task(
+        service.status() if operation == "status-timeout" else service.start_login()
+    )
+    try:
+        await asyncio.wait_for(flow.entered.wait(), 1.0)
+        if operation == "caller-cancel":
+            request.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await request
+            assert service.public_status()["operation_state"] == "cancelled"
+        elif operation == "explicit-cancel":
+            status = await asyncio.wait_for(service.cancel_login(), 1.0)
+            assert status["operation_state"] == "cancelled"
+        else:
+            await asyncio.wait_for(request, 1.0)
+            browser_task = service._task if browser else None
+            if browser_task is not None:
+                await asyncio.wait_for(asyncio.shield(browser_task), 1.0)
+            assert service.public_status()["error_code"] == "login_timeout"
+
+        try:
+            await asyncio.wait_for(flow.settled.wait(), 0.5)
+        except TimeoutError:
+            pytest.fail(f"SDK flow did not settle (cancel calls: {flow.cancel_calls})")
+        assert flow.cancel_calls == 1, "the SDK cleanup method must be called once"
+    finally:
+        flow.ready.set()
+        await asyncio.gather(request, return_exceptions=True)
+        await asyncio.gather(*service._tasks, return_exceptions=True)
+
+
 @pytest.mark.asyncio
 async def test_concurrent_status_polls_share_a_single_probe(monkeypatch) -> None:
     """Regression: concurrent status requests must not spawn separate SDK flows."""
@@ -456,6 +525,7 @@ async def test_cancelling_one_status_poller_does_not_cancel_the_shared_probe(mon
     result = await asyncio.wait_for(second, 0.5)
     assert result["user_label"] == "Shared"
     assert calls == 1
+    assert not flow.cancelled
 
 
 @pytest.mark.asyncio
