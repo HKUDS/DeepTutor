@@ -563,13 +563,9 @@ function DoclingPanel({
               </div>
             }
           />
-          <div className="px-1 pb-4">
-            <span className="text-[12px] text-[var(--muted-foreground)]">
-              {t(
-                  "Apply pending settings using the bar below.",
-                )}
-            </span>
-          </div>
+          <p className="px-1 pb-4 text-[12px] text-[var(--muted-foreground)] empty:hidden">
+            {t("Apply pending settings using the bar below.")}
+          </p>
         </SettingSection>
       )}
 
@@ -794,13 +790,9 @@ function TikaPanel({
           </div>
         }
       />
-      <div className="px-1 pb-4">
-        <span className="text-[12px] text-[var(--muted-foreground)]">
-          {t(
-            "Apply pending settings using the bar below.",
-          )}
-        </span>
-      </div>
+      <p className="px-1 pb-4 text-[12px] text-[var(--muted-foreground)] empty:hidden">
+        {t("Apply pending settings using the bar below.")}
+      </p>
     </SettingSection>
   );
 }

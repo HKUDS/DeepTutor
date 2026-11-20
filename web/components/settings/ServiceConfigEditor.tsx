@@ -559,7 +559,7 @@ export function ServiceConfigEditor({
             </p>
           </div>
           {serviceChanged && (
-            <span className="text-xs text-amber-600 dark:text-amber-400">
+            <span className="text-xs text-amber-600 dark:text-amber-400 empty:hidden">
               {t("Apply pending settings using the bar below.")}
             </span>
           )}

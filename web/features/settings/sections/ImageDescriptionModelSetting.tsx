@@ -68,7 +68,7 @@ export function ImageDescriptionModelSetting({
           </option>
         ))}
       </select>
-      <p className="mt-2 text-xs text-[var(--muted-foreground)]">
+      <p className="mt-2 text-xs text-[var(--muted-foreground)] empty:hidden">
         {t(
           'Select a vision model for image descriptions in documents.'
         )}

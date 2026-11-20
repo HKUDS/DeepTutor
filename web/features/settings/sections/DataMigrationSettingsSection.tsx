@@ -37,7 +37,7 @@ const endpoint = '/api/settings/workspace/data'
 const labels: Record<string, [string, string]> = {
   chat: ['Conversations', '对话'],
   book: ['Books', '书籍'],
-  learning: ['Mastery Path', '掌握路径'],
+  learning: ['Mastery Path', '精通之路'],
   reading: ['Immersive Reading', '沉浸式阅读'],
   timed_media: ['Immersive Watching', '沉浸式观看'],
   notebook: ['Notebooks', '笔记本'],
@@ -193,22 +193,19 @@ export default function DataMigrationSettingsSection() {
     <section className="space-y-5">
       <h2 className="text-lg font-semibold">{text('Data migration', '数据迁移')}</h2>
       <p className="text-sm leading-relaxed text-[var(--muted-foreground)]">
-        {text(
-          'Discover stored learning data, move it with its related conversations, or download an archive. Verified recovery copies are retained after migration.',
-          '查找已有学习数据，将资料和关联对话一并迁移，或下载备份。迁移后会保留经过校验的恢复副本。'
+        {t(
+          'Discover stored learning data, move it with its related conversations, or download an archive. Verified recovery copies are retained after migration.'
         )}
       </p>
       <p className="text-sm leading-relaxed text-[var(--muted-foreground)]">
-        {text(
-          'Learning data moves as a complete feature bundle. Preview includes related sources and conversations. Choose a destination with no existing data for these features.',
-          '学习数据按功能整体迁移，预览会列出关联资料和对话。目标工作区中对应功能应为空，以免覆盖已有学习记录。'
+        {t(
+          'Learning data moves as a complete feature bundle. Preview includes related sources and conversations. Choose a destination with no existing data for these features.'
         )}
       </p>
       {selected.some(key => key.startsWith('historical_')) ? (
         <p className="text-sm text-[var(--muted-foreground)]">
-          {text(
-            'Historical data is retained as an archive inside the destination workspace. It is not automatically merged into current learning records.',
-            '历史数据将作为档案保存在目标工作区内，不会自动合并到当前学习记录。'
+          {t(
+            'Historical data is retained as an archive inside the destination workspace. It is not automatically merged into current learning records.'
           )}
         </p>
       ) : null}
@@ -334,9 +331,8 @@ export default function DataMigrationSettingsSection() {
             </p>
             {preview.dependencies.length ? (
               <p className="text-xs text-[var(--muted-foreground)]">
-                {text(
-                  'Related source data included to preserve references',
-                  '为保留引用，额外包含关联来源数据'
+                {t(
+                  'Related source data included to preserve references'
                 )}
                 : {preview.dependencies.map(label).join('、')}
               </p>
@@ -359,9 +355,8 @@ export default function DataMigrationSettingsSection() {
       </fieldset>
       {busy ? (
         <p role="status" className="text-sm">
-          {text(
-            'Processing. You can return to this page to view the result.',
-            '正在处理。可以稍后回到此页查看结果。'
+          {t(
+            'Processing. You can return to this page to view the result.'
           )}
         </p>
       ) : null}

@@ -21,7 +21,7 @@
   "Resource missing or access removed": "资源已不存在或访问权限已取消",
   "{{count}} resources selected": "已选择 {{count}} 项资源",
   "None selected. This resource type is unavailable in this workspace.": "尚未选择。此 workspace 将无法使用这类资源。",
-  "Changes apply to subsequent turns. Existing conversations and files are kept.": "更改从后续轮次开始生效，已有对话和文件会保留。",
+  "Changes apply to subsequent turns. Existing conversations and files are kept.": "更改从下一轮对话起生效。已有对话和文件会保留。",
   "Account resource library. Manage resources here and assign them to workspaces in Settings.": "账户资源库：在此管理资源，在设置中将资源分配给 workspace。",
   "Skill library": "技能库",
   "Account shared skills": "账户共享技能",

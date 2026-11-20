@@ -59,7 +59,7 @@ export function VoicePlaybackPrefs() {
         <h2 className="text-[15px] font-semibold tracking-tight text-[var(--foreground)]">
           {t("Playback")}
         </h2>
-        <p className="mt-1 text-[12.5px] leading-relaxed text-[var(--muted-foreground)]">
+        <p className="mt-1 text-[12.5px] leading-relaxed text-[var(--muted-foreground)] empty:hidden">
           {t("How spoken replies behave in chat.")}
         </p>
       </div>

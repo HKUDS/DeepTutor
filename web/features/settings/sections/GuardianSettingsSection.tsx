@@ -182,7 +182,7 @@ export default function GuardianSettingsPage() {
   return (
     <main className="mx-auto max-w-3xl px-6 py-8">
       <h1 className="text-xl font-semibold">{t("Guardian management")}</h1>
-      <p className="mt-1 text-sm text-[var(--muted-foreground)]">
+      <p className="mt-1 text-sm text-[var(--muted-foreground)] empty:hidden">
         {t("Review authorized learners and their approved learning materials.")}
       </p>
 

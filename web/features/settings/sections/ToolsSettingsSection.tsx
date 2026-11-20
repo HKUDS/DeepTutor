@@ -72,7 +72,7 @@ type ToolSection = {
 // capability id. Falls back to the raw id for any unmapped capability.
 const CAPABILITY_LABELS: Record<string, { zh: string; en: string }> = {
   solve: { zh: "深度解题", en: "Deep Solve" },
-  mastery: { zh: "精通路径", en: "Mastery Path" },
+  mastery: { zh: "精通之路", en: "Mastery Path" },
 };
 
 export default function ToolsSettingsPage() {
@@ -159,9 +159,9 @@ export default function ToolsSettingsPage() {
     if (experience.length) {
       out.push({
         key: "experience",
-        label: zh ? "体验增强" : t("Experience Enhancement"),
+        label: zh ? "可选工具" : t("Experience Enhancement"),
         hint: zh
-          ? "用户可选；按需为 chat agent 开启或关闭。"
+          ? ""
           : t("User-toggleable. Switch on or off to shape the chat agent's behavior."),
         tools: experience,
       });
@@ -171,7 +171,7 @@ export default function ToolsSettingsPage() {
         key: "builtin",
         label: zh ? "内置工具" : t("Built-in Tools"),
         hint: zh
-          ? "Chat agent 在需要时自动挂载，无需手动开关。"
+          ? "对话中按需自动启用。"
           : t("Mounted automatically by the chat agent when needed. Not user-toggleable."),
         tools: builtin,
       });
@@ -183,7 +183,7 @@ export default function ToolsSettingsPage() {
         key: `cap:${cap}`,
         label: zh ? `${label} · 能力工具` : t("{{label}} · Capability Tools", { label }),
         hint: zh
-          ? "该能力的专属工具，仅在此能力运行时挂载。"
+          ? "仅在使用该能力时启用。"
           : t("Tools specific to this capability; mounted only when it runs."),
         tools: list,
       });
@@ -321,7 +321,7 @@ export default function ToolsSettingsPage() {
                     <h2 className="text-[14px] font-semibold tracking-tight text-[var(--foreground)]">
                       {section.label}
                     </h2>
-                    <p className="mt-0.5 text-[11.5px] text-[var(--muted-foreground)]">
+                    <p className="mt-0.5 text-[11.5px] text-[var(--muted-foreground)] empty:hidden">
                       {section.hint}
                     </p>
                   </div>

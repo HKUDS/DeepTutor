@@ -100,3 +100,14 @@ it("fails on translated placeholder drift in French and Ukrainian", () => {
   expect(result.stderr).toContain("fr: 1 interpolation placeholder mismatches");
   expect(result.stderr).toContain("uk: 1 interpolation placeholder mismatches");
 });
+
+it("allows intentional empty omissions matching English and rejects unexpected empty translations", () => {
+  const source = 't("Keep"); t("Optional hint");';
+  const en = { Keep: "Keep", "Optional hint": "" };
+  const ok = runAudit(source, en, { Keep: "保留", "Optional hint": "" });
+  expect(ok.status, ok.stderr + ok.stdout).toBe(0);
+
+  const bad = runAudit(source, en, { Keep: "", "Optional hint": "" });
+  expect(bad.status).toBe(1);
+  expect(bad.stderr).toContain("zh: 1 empty translations where English is non-empty");
+});
