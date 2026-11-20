@@ -195,6 +195,93 @@ def test_new_format_round_trip_is_idempotent() -> None:
     assert rendered == again
 
 
+def test_round_trip_keeps_literal_marker_text_when_another_bullet_is_cited() -> None:
+    """A citation label defined on one bullet must not be attached to another
+    bullet whose text merely ends in the same numeric token."""
+    literal_id = "m_01HZK1ABCDEFGHJKMNPQRSTVWX"
+    cited_id = "m_01HZK1ABCDEFGHJKMNPQRSTVWY"
+    doc = Document(
+        title="T",
+        sections=[
+            (
+                "S",
+                [
+                    Entry(id=literal_id, section="S", text="quoted footnote marker [^1]"),
+                    Entry(id=cited_id, section="S", text="cited", refs=["notebook:abc"]),
+                ],
+            )
+        ],
+    )
+
+    parsed = parse(serialize(doc)).all_entries()
+
+    assert parsed[0].text == "quoted footnote marker [^1]"
+    assert parsed[0].refs == []
+    assert parsed[1].text == "cited"
+    assert parsed[1].refs == ["notebook:abc"]
+
+
+def test_round_trip_keeps_literal_marker_text_beside_a_real_citation() -> None:
+    entry_id = "m_01HZK1ABCDEFGHJKMNPQRSTVWX"
+    doc = Document(
+        title="T",
+        sections=[
+            (
+                "S",
+                [Entry(id=entry_id, section="S", text="see [^1]", refs=["notebook:abc"])],
+            )
+        ],
+    )
+
+    parsed = parse(serialize(doc)).all_entries()[0]
+
+    assert parsed.text == "see [^1]"
+    assert parsed.refs == ["notebook:abc"]
+
+
+def test_round_trip_keeps_literal_marker_separators() -> None:
+    entry_id = "m_01HZK1ABCDEFGHJKMNPQRSTVWX"
+    doc = Document(
+        title="T",
+        sections=[("S", [Entry(id=entry_id, section="S", text="quoted markers [^7], [^8]")])],
+    )
+
+    parsed = parse(serialize(doc)).all_entries()[0]
+
+    assert parsed.text == "quoted markers [^7], [^8]"
+    assert parsed.refs == []
+
+
+def test_parse_keeps_separators_of_unresolved_markers_in_a_legacy_bullet() -> None:
+    """Documents saved before the escape existed still parse losslessly."""
+    md = """# T
+
+## S
+
+- quoted markers [^7], [^8] <!--m_01HZK1ABCDEFGHJKMNPQRSTVWX-->"""
+
+    parsed = parse(md).all_entries()[0]
+
+    assert parsed.text == "quoted markers [^7], [^8]"
+    assert parsed.refs == []
+
+
+def test_round_trip_preserves_integer_footnote_like_token_without_a_definition() -> None:
+    """A numeric ``[^1]`` in the entry text is not a citation when no footnote
+    definition exists, so it must survive serialize -> parse. Before the fix the
+    parser treated any numeric marker as a citation and silently dropped it."""
+    entry_id = "m_01HZK1ABCDEFGHJKMNPQRSTVWX"
+    doc = Document(
+        title="T",
+        sections=[("S", [Entry(id=entry_id, section="S", text="quoted footnote marker [^1]")])],
+    )
+
+    reparsed = parse(serialize(doc)).all_entries()[0]
+
+    assert reparsed.text == "quoted footnote marker [^1]"
+    assert reparsed.refs == []
+
+
 def test_round_trip_preserves_footnote_like_token_in_text() -> None:
     """A ``[^token]`` that is part of the entry text (not a real citation
     marker) must survive serialize → parse. ``serialize`` only emits integer
