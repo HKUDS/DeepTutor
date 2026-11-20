@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 
 import httpx
@@ -10,6 +11,7 @@ import pytest
 from deeptutor.services.config.provider_runtime import STT_PROVIDERS, TTS_PROVIDERS
 from deeptutor.services.voice.adapters.mistral import MistralSTTAdapter, MistralTTSAdapter
 from deeptutor.services.voice.adapters.xai import XaiSTTAdapter, XaiTTSAdapter
+from deeptutor.services.voice.base import VoiceProviderError
 from deeptutor.services.voice.config import STTConfig, TTSConfig
 from deeptutor.services.voice.options import voice_options
 
@@ -138,6 +140,38 @@ async def test_mistral_tts_payload(monkeypatch) -> None:
             voice="eve",
         ),
     ) == (b"ID3", "audio/mpeg")
+
+
+@pytest.mark.asyncio
+async def test_mistral_tts_decodes_json_audio_data(monkeypatch) -> None:
+    def handle(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"audio_data": base64.b64encode(b"RIFFwav").decode()})
+
+    transport(monkeypatch, handle)
+    assert await MistralTTSAdapter().synthesize(
+        "Bonjour",
+        TTSConfig(
+            model="voxtral-mini-tts-2603",
+            api_key="test-key",
+            base_url="https://api.mistral.ai/v1",
+            response_format="wav",
+        ),
+    ) == (b"RIFFwav", "audio/wav")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("body", [{"audio_data": "not base64!"}, {"audio_data": ""}, {}])
+async def test_mistral_tts_rejects_json_without_audio(monkeypatch, body) -> None:
+    transport(monkeypatch, lambda request: httpx.Response(200, json=body))
+    with pytest.raises(VoiceProviderError, match="Mistral TTS"):
+        await MistralTTSAdapter().synthesize(
+            "Bonjour",
+            TTSConfig(
+                model="voxtral-mini-tts-2603",
+                api_key="test-key",
+                base_url="https://api.mistral.ai/v1",
+            ),
+        )
 
 
 @pytest.mark.asyncio
