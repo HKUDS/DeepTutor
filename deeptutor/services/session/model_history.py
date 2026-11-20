@@ -41,66 +41,77 @@ _MESSAGE_KEYS = frozenset(
 )
 
 
-def normalize_model_turn(value: Any) -> dict[str, Any] | None:
-    """Read an internal turn record only when its tool protocol is complete.
+def _is_complete_model_turn(value: Any) -> bool:
+    """Acceptance checks shared with :func:`normalize_model_turn`.
 
-    Unknown versions and incomplete writes fall back to the displayed exchange.
-    Do not truncate reasoning, image blocks or tool arguments during replay.
+    Existence-only callers (grouping, budget guards) must not pay for the
+    cleaning and deep copy: re-serializing whole requests on the event loop
+    starved long sessions (#2788).
     """
     if not isinstance(value, dict) or value.get("version") != MODEL_TURN_VERSION:
-        return None
+        return False
     if "system" in value and not isinstance(value["system"], str):
-        return None
+        return False
     tools = value.get("tools")
     if tools is not None:
         if not isinstance(tools, list):
-            return None
+            return False
         for tool in tools:
             if (
                 not isinstance(tool, dict)
                 or not isinstance(tool.get("function"), dict)
                 or not isinstance(tool["function"].get("name"), str)
             ):
-                return None
+                return False
     route = value.get("route")
     if route is not None and (
         not isinstance(route, dict)
         or any(not isinstance(route.get(key), str) for key in ("provider", "model"))
     ):
-        return None
+        return False
     messages = value.get("messages")
     if not isinstance(messages, list) or not messages:
-        return None
+        return False
     pending: set[str] = set()
-    cleaned: list[dict[str, Any]] = []
     for message in messages:
         if not isinstance(message, dict):
-            return None
+            return False
         role = message.get("role")
         if role not in {"system", "user", "assistant", "tool"}:
-            return None
+            return False
         if role == "tool":
             call_id = message.get("tool_call_id")
             if not isinstance(call_id, str) or call_id not in pending:
-                return None
+                return False
             pending.remove(call_id)
         elif pending:
-            return None
+            return False
         calls = message.get("tool_calls") or []
         if not isinstance(calls, list) or (calls and role != "assistant"):
-            return None
+            return False
         for call in calls:
             if not isinstance(call, dict) or not isinstance(call.get("function"), dict):
-                return None
+                return False
             call_id = call.get("id")
             if not isinstance(call_id, str) or not call_id or call_id in pending:
-                return None
+                return False
             pending.add(call_id)
         if message.get("content") is not None and not isinstance(message["content"], (str, list)):
-            return None
-        cleaned.append({k: v for k, v in message.items() if k in _MESSAGE_KEYS})
-    if pending:
+            return False
+    return not pending
+
+
+def normalize_model_turn(value: Any) -> dict[str, Any] | None:
+    """Read an internal turn record only when its tool protocol is complete.
+
+    Unknown versions and incomplete writes fall back to the displayed exchange.
+    Do not truncate reasoning, image blocks or tool arguments during replay.
+    """
+    if not _is_complete_model_turn(value):
         return None
+    cleaned: list[dict[str, Any]] = []
+    for message in value["messages"]:
+        cleaned.append({k: v for k, v in message.items() if k in _MESSAGE_KEYS})
     record = {"version": MODEL_TURN_VERSION, "messages": cleaned}
     for key in ("system", "tools", "route", "request_fingerprint"):
         if key in value:
@@ -118,13 +129,19 @@ def model_turn(row: dict[str, Any]) -> dict[str, Any] | None:
     )
 
 
+def has_model_turn(row: dict[str, Any]) -> bool:
+    """Whether the row carries an admissible private turn, without copying it."""
+    metadata = row.get("metadata")
+    return isinstance(metadata, dict) and _is_complete_model_turn(metadata.get(MODEL_TURN_KEY))
+
+
 def history_groups(rows: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
     """Keep an admitted user and its assistant together across budget cuts."""
     groups: list[list[dict[str, Any]]] = []
     for row in rows:
         if (
             row.get("role") == "assistant"
-            and model_turn(row) is not None
+            and has_model_turn(row)
             and groups
             and groups[-1][-1].get("role") == "user"
         ):
