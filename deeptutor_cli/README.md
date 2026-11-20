@@ -206,11 +206,19 @@ deeptutor kb delete <name> --force               # 删除
 ### `session` — 会话
 
 ```bash
-deeptutor session list [--limit 20]
+deeptutor session list [--limit 20] [--offset 0] [--format rich|json]
 deeptutor session show <id>
 deeptutor session open <id>                      # 进入 REPL 继续对话
 deeptutor session rename <id> --title "新标题"
 deeptutor session delete <id>
+```
+
+`session list` 默认显示 Rich 表格；`--limit` 必须大于 0，`--offset` 必须大于等于 0。
+使用 `--format json` 输出包含完整会话 ID 的原始会话摘要 JSON 数组，保留 Unicode 和字面文本；
+空页输出 `[]`，正常退出，诊断信息写入 stderr。例如，获取下一页：
+
+```bash
+deeptutor session list --limit 20 --offset 20 --format json
 ```
 
 ### `notebook` — 笔记本

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from enum import Enum
 import json
 
 import typer
@@ -12,13 +13,22 @@ from .chat import ChatState, _chat_repl
 from .common import console, maybe_run, print_session_table
 
 
+class ListFormat(str, Enum):
+    rich = "rich"
+    json = "json"
+
+
 def register(app: typer.Typer) -> None:
     @app.command("list")
     def list_sessions(
-        limit: int = typer.Option(20, "--limit", help="Maximum sessions to show."),
+        limit: int = typer.Option(20, "--limit", min=1, help="Maximum sessions to show."),
+        offset: int = typer.Option(0, "--offset", min=0, help="Number of sessions to skip."),
+        fmt: ListFormat = typer.Option(
+            ListFormat.rich, "--format", help="Output format: rich | json."
+        ),
     ) -> None:
         """List existing sessions."""
-        maybe_run(_list_sessions(limit))
+        maybe_run(_list_sessions(limit, offset, fmt))
 
     @app.command("show")
     def show_session(
@@ -51,9 +61,12 @@ def register(app: typer.Typer) -> None:
         maybe_run(_rename_session(session_id, title))
 
 
-async def _list_sessions(limit: int) -> None:
+async def _list_sessions(limit: int, offset: int, fmt: ListFormat) -> None:
     client = DeepTutorApp()
-    sessions = await client.list_sessions(limit=limit)
+    sessions = await client.list_sessions(limit=limit, offset=offset)
+    if fmt == ListFormat.json:
+        typer.echo(json.dumps(sessions, ensure_ascii=False, default=str))
+        return
     print_session_table(sessions)
 
 
