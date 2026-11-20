@@ -2,6 +2,7 @@
 
 import { COMMAND_CONFIRMATION_FAILED } from "@/features/chat/transport/command-delivery";
 
+import { useChatPartnerChoice } from "@/features/chat/controllers/useChatPartnerChoice";
 import { ResourceReuseContext, useResourceReusePolicy } from "@/components/chat/home/ResourceReuse";
 import { retainedKnowledgeBases } from "@/lib/resource-reuse";
 import { knowledgeBaseRef } from "@/lib/knowledge-helpers";
@@ -1983,12 +1984,12 @@ export default function ChatWorkspace() {
   // How many times DeepTutor may consult the selected agent this turn. Seeded
   // from the configured default; the composer's stepper overrides it per turn.
   const [subagentBudget, setSubagentBudget] = useState<number | null>(null);
-  const [selectedPartner, setSelectedPartner] = useState<string | null>(null);
-  const [selectedPartnerGroup, setSelectedPartnerGroup] = useState<string | null>(null);
+  const { selectedPartner, selectedPartnerGroup, setChoice: setPartnerChoice } =
+    useChatPartnerChoice(state, resourceReuse.policy);
   // Who answers instead of DeepTutor. The conversation holds it, so a
   // hand-over lasts until the learner takes it back, survives the draft
   // becoming a session, and never follows them to another chat.
-  const answerBy = state.answerBy;
+  const answerBy = selectedPartner || selectedPartnerGroup ? null : state.answerBy;
 
   useEffect(() => {
     void getSubagentSettings()
@@ -2140,8 +2141,8 @@ export default function ChatWorkspace() {
       if (selectedAgent && subagentBudget) {
         config = { ...(config ?? {}), subagent_consult_budget: subagentBudget };
       }
-      if (selectedPartner) config = { ...(config ?? {}), consult_partner_id: selectedPartner };
-      if (selectedPartnerGroup) config = { ...(config ?? {}), partner_discussion_group_id: selectedPartnerGroup };
+      if (selectedPartner) config = { ...(config ?? {}), consult_partner_id: selectedPartner, answer_by: "" };
+      if (selectedPartnerGroup) config = { ...(config ?? {}), partner_discussion_group_id: selectedPartnerGroup, answer_by: "" };
       config = { ...(config ?? {}),
         _resource_reuse: resourceReuse.policy,
         _persistent_knowledge_bases: retainedKnowledgeBases(state.knowledgeBases, agentNameSet, resourceReuse.policy),
@@ -2213,8 +2214,8 @@ export default function ChatWorkspace() {
       if (!resourceReuse.policy.persona) setPersonaSelection("");
       setResourceSelection({skills: resourceReuse.policy.skills ? state.resourceSelection.skills : [], mcp: resourceReuse.policy.mcp ? state.resourceSelection.mcp : []});
       shouldAutoScrollRef.current = true;
-      if (!resourceReuse.policy.partner) setSelectedPartner(null);
-      if (!resourceReuse.policy.partner_group) setSelectedPartnerGroup(null);
+      if ((selectedPartner && !resourceReuse.policy.partner) ||
+          (selectedPartnerGroup && !resourceReuse.policy.partner_group)) setPartnerChoice(null);
       // A quote belongs to the message it was sent with, whatever the policy.
       setAttachments((prev) =>
         resourceReuse.policy.attachments ? prev.filter((a) => !isQuoteAttachment(a)) : [],
@@ -2264,6 +2265,7 @@ export default function ChatWorkspace() {
       subagentBudget,
       selectedPartnerGroup,
       selectedPartner,
+      setPartnerChoice,
       submitUserReply,
       t,
       visualizeConfig,
@@ -2427,17 +2429,17 @@ export default function ChatWorkspace() {
   // Asking someone and handing the turn to someone exclude each other, and
   // so do the three ways of asking: one helper per turn.
   const handleSelectPartnerGroup = useCallback((id: string | null) => {
-    setSelectedPartnerGroup(id);
-    if (id) { setSelectedPartner(null); handleSelectAgent(null); setAnswerBy(null); }
-  }, [handleSelectAgent, setAnswerBy]);
+    setPartnerChoice(id ? `group:${id}` : null);
+    if (id) { handleSelectAgent(null); setAnswerBy(null); }
+  }, [handleSelectAgent, setAnswerBy, setPartnerChoice]);
   const handleSelectPartner = useCallback((id: string | null) => {
-    setSelectedPartner(id);
-    if (id) { setSelectedPartnerGroup(null); handleSelectAgent(null); setAnswerBy(null); }
-  }, [handleSelectAgent, setAnswerBy]);
+    setPartnerChoice(id ? `partner:${id}` : null);
+    if (id) { handleSelectAgent(null); setAnswerBy(null); }
+  }, [handleSelectAgent, setAnswerBy, setPartnerChoice]);
   const handleAnswerBy = useCallback((value: string | null) => {
     setAnswerBy(value);
-    if (value) { setSelectedPartner(null); setSelectedPartnerGroup(null); handleSelectAgent(null); }
-  }, [handleSelectAgent, setAnswerBy]);
+    if (value) { setPartnerChoice(null); handleSelectAgent(null); }
+  }, [handleSelectAgent, setAnswerBy, setPartnerChoice]);
 
   // Honor `?agent=<name>` once its connection KB has loaded: preselect it so a
   // partner opened from the partner list starts the chat already targeting it.
@@ -2959,7 +2961,7 @@ export default function ChatWorkspace() {
                 knowledgeBases={kbOptions}
                 connectedAgents={agentOptions}
                 selectedAgent={selectedPartnerGroup || selectedPartner ? null : selectedAgent}
-                onSelectAgent={(name) => { if (name) { setSelectedPartnerGroup(null); setSelectedPartner(null); setAnswerBy(null); } handleSelectAgent(name); }}
+                onSelectAgent={(name) => { if (name) { setPartnerChoice(null); setAnswerBy(null); } handleSelectAgent(name); }}
         selectedPartnerGroup={selectedPartnerGroup}
         onSelectPartnerGroup={handleSelectPartnerGroup}
         answerBy={answerBy}
