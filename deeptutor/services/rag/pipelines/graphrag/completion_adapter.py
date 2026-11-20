@@ -2,13 +2,18 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 import json
 import threading
 from typing import Any
 from urllib.parse import urlparse
 
 from pydantic import BaseModel, ValidationError
+
+from deeptutor.services.rag.pipelines.oauth_completion import (
+    OAUTH_PROVIDER,
+    OAuthCompletion,
+    oauth_binding,
+)
 
 from .errors import (
     MODEL_INCOMPATIBLE_MESSAGE,
@@ -21,7 +26,7 @@ from .provider import COMPLETION_TYPE
 
 _CAPABILITY_LOCK = threading.RLock()
 _JSON_OBJECT_CAPABILITIES: set[tuple[str, str, str]] = set()
-_ADAPTER_CLASS: type | None = None
+_ADAPTER_CLASSES: tuple[type, type] | None = None
 
 
 def _capability_key(model_config: Any) -> tuple[str, str, str]:
@@ -52,6 +57,8 @@ def _uses_prompt_only_structured_output(model_config: Any) -> bool:
     avoiding assumptions beyond the configured endpoint's base protocol.
     """
     provider = str(getattr(model_config, "model_provider", "") or "").lower()
+    if provider == OAUTH_PROVIDER:
+        return True
     if provider != "anthropic":
         return False
 
@@ -187,11 +194,11 @@ async def _fallback_async(
             instance._metrics_store.update_metrics(metrics=request_metrics)
 
 
-def _get_adapter_class() -> type:
-    global _ADAPTER_CLASS
+def _get_adapter_classes() -> tuple[type, type]:
+    global _ADAPTER_CLASSES
     with _CAPABILITY_LOCK:
-        if _ADAPTER_CLASS is not None:
-            return _ADAPTER_CLASS
+        if _ADAPTER_CLASSES is not None:
+            return _ADAPTER_CLASSES
 
         from graphrag_llm.completion.lite_llm_completion import LiteLLMCompletion
 
@@ -236,16 +243,47 @@ def _get_adapter_class() -> type:
                         _remember_json_object(self._model_config)
                     return formatted
 
-        _ADAPTER_CLASS = DeepTutorLiteLLMCompletion
-        return _ADAPTER_CLASS
+        class DeepTutorOAuthCompletion(DeepTutorLiteLLMCompletion):
+            """Bind an indexing or query operation to its DeepTutor credential owner."""
+
+            def __init__(self, *, model_config: Any, **kwargs: Any) -> None:
+                from deeptutor.services.llm.config import LLMConfig
+
+                binding = str(getattr(model_config, "oauth_binding", ""))
+                config = LLMConfig(
+                    model=model_config.model,
+                    api_key="",
+                    binding=binding,
+                    provider_name=binding,
+                    provider_mode="oauth",
+                    reasoning_effort=getattr(model_config, "oauth_reasoning_effort", None),
+                )
+                if model_config.model_provider != OAUTH_PROVIDER or not oauth_binding(config):
+                    raise ValueError("GraphRAG OAuth settings require a DeepTutor OAuth binding.")
+                self._oauth_completion = OAuthCompletion.for_current_user(config)
+                super().__init__(model_config=model_config, **kwargs)
+
+            def completion(self, /, **kwargs: Any) -> Any:
+                with self._oauth_completion.activate():
+                    return super().completion(**kwargs)
+
+            async def completion_async(self, /, **kwargs: Any) -> Any:
+                with self._oauth_completion.activate():
+                    return await super().completion_async(**kwargs)
+
+        _ADAPTER_CLASSES = DeepTutorLiteLLMCompletion, DeepTutorOAuthCompletion
+        return _ADAPTER_CLASSES
 
 
 def register_completion_adapter() -> None:
     """Register DeepTutor's completion type through GraphRAG's public factory API."""
     from graphrag_llm.completion import register_completion
 
-    initializer: Callable[..., Any] = _get_adapter_class()
+    initializer, oauth_initializer = _get_adapter_classes()
     register_completion(COMPLETION_TYPE, initializer, scope="singleton")
+    # GraphRAG's singleton cache is process-wide. Never share an OAuth
+    # completion instance across account contexts.
+    register_completion(OAUTH_PROVIDER, oauth_initializer, scope="transient")
 
 
 __all__ = ["clear_capability_cache", "register_completion_adapter"]

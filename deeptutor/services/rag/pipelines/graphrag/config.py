@@ -31,6 +31,7 @@ from urllib.parse import urlsplit, urlunsplit
 
 from deeptutor.services.config.embedding_endpoint import canonical_embedding_provider_name
 from deeptutor.services.embedding.request_options import should_send_embedding_dimensions
+from deeptutor.services.rag.pipelines.oauth_completion import OAUTH_PROVIDER, oauth_binding
 
 from .errors import GraphRagEmbeddingProviderUnsupportedError
 from .provider import (
@@ -218,6 +219,17 @@ def _embedding_model_entry(
 
 
 def _completion_model_entry(llm_cfg: Any, *, api_base: str | None) -> dict[str, Any]:
+    if binding := oauth_binding(llm_cfg):
+        entry = {
+            "type": OAUTH_PROVIDER,
+            "model_provider": OAUTH_PROVIDER,
+            "model": llm_cfg.model,
+            "oauth_binding": binding,
+        }
+        if reasoning_effort := getattr(llm_cfg, "reasoning_effort", None):
+            entry["oauth_reasoning_effort"] = reasoning_effort
+        return entry
+
     entry: dict[str, Any] = {
         "type": COMPLETION_TYPE,
         "model_provider": resolve_completion_provider(llm_cfg),

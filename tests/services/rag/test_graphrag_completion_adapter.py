@@ -15,7 +15,6 @@ from deeptutor.services.rag.pipelines.graphrag import engine
 from deeptutor.services.rag.pipelines.graphrag.errors import (
     GraphRagStructuredOutputError,
     GraphRagStructuredOutputTruncatedError,
-    GraphRagUnsupportedProviderError,
 )
 
 
@@ -528,8 +527,80 @@ def test_provider_resolution_uses_backend_contracts() -> None:
         "anthropic"
     )
     assert resolve_completion_provider(_Cfg("model", "u", "k", binding="custom")) == "openai"
-    with pytest.raises(GraphRagUnsupportedProviderError):
+    assert (
         resolve_completion_provider(_Cfg("gpt", "u", "k", binding="openai_codex"))
+        == "deeptutor_oauth"
+    )
+
+
+@pytest.mark.parametrize("binding", ["openai_codex", "github_copilot", "codebuddy", "claude_code"])
+def test_oauth_settings_persist_model_identity_without_credentials(binding: str) -> None:
+    selection = _Cfg("fixture-model", "https://oauth.test/v1", "fixture-token", binding=binding)
+    selection.extra_headers = {"X-Private": "fixture-header"}
+    settings = gr_config.build_settings(
+        llm_cfg=selection,
+        embedding_cfg=_Cfg("embedding-model", "https://embedding.test/v1", "fixture-key"),
+    )
+    assert settings["completion_models"][gr_config.COMPLETION_MODEL_ID] == {
+        "type": "deeptutor_oauth",
+        "model_provider": "deeptutor_oauth",
+        "model": "fixture-model",
+        "oauth_binding": binding,
+    }
+
+
+@pytest.mark.asyncio
+async def test_oauth_completion_probe_and_query_use_the_native_provider(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    pytest.importorskip("graphrag")
+
+    from deeptutor.multi_user.context import get_current_user
+    from deeptutor.multi_user.models import CurrentUser, UserScope
+    from deeptutor.multi_user.paths import user_context
+    from deeptutor.services.llm import provider_factory
+    from deeptutor.services.llm.provider_core.base import LLMResponse
+
+    calls = []
+
+    class Provider:
+        async def chat(self, **kwargs):
+            calls.append(get_current_user().id)
+            content = str(kwargs["messages"])
+            return LLMResponse(
+                content=json.dumps(_report_payload()) if "JSON schema" in content else "Answer",
+                usage={"prompt_tokens": 3, "completion_tokens": 2},
+            )
+
+        async def aclose(self):
+            pass
+
+    def build_provider(config):
+        assert config.binding == "openai_codex"
+        assert config.model == "gpt-6-luna"
+        assert config.api_key == ""
+        return Provider()
+
+    monkeypatch.setattr(provider_factory, "build_isolated_provider", build_provider)
+    cfg = _Cfg("gpt-6-luna", "", "", binding="openai_codex")
+    alice = CurrentUser("alice", "alice", "user", UserScope("user", "alice", tmp_path / "alice"))
+    bob = CurrentUser("bob", "bob", "user", UserScope("user", "bob", tmp_path / "bob"))
+    with user_context(alice):
+        probe, report_schema = engine._create_probe_completion(cfg)
+        await engine._validate_probe_completion(probe, report_schema)
+        completion = _load_completion(tmp_path, binding="openai_codex", model="gpt-6-luna", url="")
+    with user_context(bob):
+        other = _load_completion(tmp_path, binding="openai_codex", model="gpt-6-luna", url="")
+
+    response = await asyncio.to_thread(completion.completion, messages="Answer this.")
+    assert response.content == "Answer"
+    assert response.usage.total_tokens == 5
+    stream = await other.completion_async(messages="Answer this.", stream=True)
+    chunks = [chunk async for chunk in stream]
+    assert "".join(chunk.choices[0].delta.content or "" for chunk in chunks if chunk.choices) == (
+        "Answer"
+    )
+    assert calls == ["alice", "alice", "bob"]
 
 
 def test_cached_fallback_is_safe_under_concurrent_sync_calls(

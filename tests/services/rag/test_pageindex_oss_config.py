@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 
 import pytest
@@ -71,11 +72,51 @@ def test_task_model_indexes_while_chat_stays_on_oauth(catalog) -> None:
     assert backend["api_key"] == "sk-test"
 
 
-def test_inherited_task_model_still_rejects_an_oauth_chat_model(catalog) -> None:
+def test_inherited_task_model_uses_the_oauth_chat_model(catalog) -> None:
     catalog(llm=_codex_llm())
 
-    with pytest.raises(RuntimeError, match="OAuth-only"):
-        resolve_oss_sdk_config()
+    assert resolve_oss_sdk_config() == ("deeptutor_oauth/gpt-6-luna", {})
+
+
+@pytest.mark.asyncio
+async def test_local_indexing_uses_the_native_provider_on_the_sdk_worker(
+    catalog, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pytest.importorskip("pageindex")
+    from pageindex.local_api import LocalAPI
+    from pageindex.utils import llm_acompletion, llm_completion
+
+    from deeptutor.services.llm import provider_factory
+    from deeptutor.services.llm.provider_core.base import LLMResponse
+    from deeptutor.services.rag.pipelines.pageindex.client import PageIndexClient
+
+    class Provider:
+        async def chat(self, **kwargs):
+            assert kwargs["model"] == "gpt-6-luna"
+            assert kwargs["messages"] == [{"role": "user", "content": "Summarize this page."}]
+            return LLMResponse(content="A sample page.")
+
+        async def aclose(self):
+            pass
+
+    def build_provider(config):
+        assert config.binding == "openai_codex"
+        return Provider()
+
+    def index(self, _file_path):
+        summary = llm_completion(self._model, "Summarize this page.")
+        assert asyncio.run(llm_acompletion(self._summary_model, "Summarize this page.")) == summary
+        return [{"title": summary, "start_index": 1, "end_index": 1}], summary
+
+    catalog(llm=_codex_llm())
+    monkeypatch.setattr(provider_factory, "build_isolated_provider", build_provider)
+    monkeypatch.setattr(LocalAPI, "_extract_page_texts", lambda *_: ["Sample page"])
+    monkeypatch.setattr(LocalAPI, "_index_flash", index)
+    doc = tmp_path / "example.pdf"
+    doc.touch()
+    client = PageIndexClient.local(tmp_path / "library")
+
+    assert (await client.submit_document(doc)).startswith("pi-")
 
 
 def test_inherited_task_model_uses_the_api_key_chat_model(catalog) -> None:

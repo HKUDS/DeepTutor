@@ -20,6 +20,7 @@ from typing import Any, TypeVar
 from .config import (
     COMPLETION_MODEL_ID,
     DEFAULT_MODE,
+    _completion_model_entry,
     normalize_mode,
     query_config_from_settings,
 )
@@ -37,9 +38,6 @@ from .errors import (
 from .pandas_compat import prepare_pandas_arrow_extensions
 from .provider import (
     COMPLETION_TYPE,
-    resolve_completion_call_args,
-    resolve_completion_model,
-    resolve_completion_provider,
     resolve_persisted_completion_provider,
 )
 
@@ -151,18 +149,8 @@ def _create_probe_completion(llm_cfg: Any):
     from .completion_adapter import register_completion_adapter
 
     api_base = getattr(llm_cfg, "effective_url", None) or getattr(llm_cfg, "base_url", None)
-    call_args = resolve_completion_call_args(llm_cfg)
     register_completion_adapter()
-    model_config = ModelConfig(
-        type=COMPLETION_TYPE,
-        model_provider=resolve_completion_provider(llm_cfg),
-        model=resolve_completion_model(llm_cfg),
-        api_base=api_base,
-        api_version=getattr(llm_cfg, "api_version", None),
-        api_key=getattr(llm_cfg, "api_key", None) or "sk-no-key-required",
-        auth_method="api_key",
-        call_args=call_args,
-    )
+    model_config = ModelConfig(**_completion_model_entry(llm_cfg, api_base=api_base))
     return create_completion(model_config), CommunityReportResponse
 
 
