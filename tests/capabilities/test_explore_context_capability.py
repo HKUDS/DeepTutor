@@ -342,7 +342,7 @@ async def test_a_stalled_pre_pass_stream_times_out(monkeypatch: pytest.MonkeyPat
     test fails on a hang (not just on a missing symbol) if the bound is ever
     removed from the call site.
     """
-    monkeypatch.setattr(explorer_mod, "_STREAM_IDLE_TIMEOUT_SECONDS", 0.1, raising=False)
+    monkeypatch.setattr(explorer_mod, "get_stream_idle_timeout_seconds", lambda: 0.1)
 
     explorer = explorer_mod.ContextExplorer.__new__(explorer_mod.ContextExplorer)
     explorer.model = "m"
@@ -385,7 +385,7 @@ async def test_loop_falls_back_to_single_pass_when_stream_stalls(
     ``pre_loop`` await never completed, the turn stayed ``running`` forever,
     and the lease kept renewing so recovery never claimed it.
     """
-    monkeypatch.setattr(explorer_mod, "_STREAM_IDLE_TIMEOUT_SECONDS", 0.1, raising=False)
+    monkeypatch.setattr(explorer_mod, "get_stream_idle_timeout_seconds", lambda: 0.1)
 
     class _StalledClient:
         def __init__(self) -> None:
@@ -616,7 +616,7 @@ async def test_a_stalled_connection_setup_also_times_out(
     A provider that hangs while connecting parks the turn exactly like one
     that stalls mid-stream, and the answer loop already bounds both halves.
     """
-    monkeypatch.setattr(explorer_mod, "_STREAM_IDLE_TIMEOUT_SECONDS", 0.1)
+    monkeypatch.setattr(explorer_mod, "get_stream_idle_timeout_seconds", lambda: 0.1)
 
     explorer = explorer_mod.ContextExplorer.__new__(explorer_mod.ContextExplorer)
     explorer.model = "m"

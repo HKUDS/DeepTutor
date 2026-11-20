@@ -60,6 +60,7 @@ from deeptutor.services.llm.request_compat import (
     is_stream_options_unsupported,
     is_tool_schema_unsupported,
 )
+from deeptutor.services.llm.stream_timeout import get_stream_idle_timeout_seconds
 
 # Reasoning models (Qwen, Deepseek-R1 via certain proxies, etc.) sometimes
 # inline a literal ``<think>...</think>`` block in the content stream before
@@ -84,8 +85,6 @@ _THINK_CLOSE_RE = re.compile(
 # We keep at most this many trailing chars of the prelude unsent so a close
 # tag that arrives split across chunks is still detectable.
 _THINK_CLOSE_TAIL_GUARD = 24
-# Match the chat loop's idle watchdog before a complete answer is available.
-_STREAM_IDLE_TIMEOUT_S = 90.0
 # Once a provider has explicitly sent ``finish_reason`` the text generation is
 # done. Some OpenAI-compatible gateways keep the SSE connection open while
 # waiting for an optional usage trailer; wait briefly for that frame, then
@@ -497,16 +496,15 @@ async def run_labeled_step(
                 return await client.chat.completions.create(**kwargs)
             raise
 
+    idle_timeout_s = get_stream_idle_timeout_seconds()
     try:
-        response_stream = await asyncio.wait_for(
-            _create_response_stream(), timeout=_STREAM_IDLE_TIMEOUT_S
-        )
+        response_stream = await asyncio.wait_for(_create_response_stream(), timeout=idle_timeout_s)
     except asyncio.TimeoutError:
         raise LLMProviderTransportError("The model provider connection timed out.") from None
     try:
         stream_iter = response_stream.__aiter__()
         while True:
-            timeout = _STREAM_IDLE_TIMEOUT_S
+            timeout: float = idle_timeout_s
             if finish_reason_seen:
                 if usage is not None and usage_seen is None and not usage_trailer_waited:
                     timeout = _USAGE_TRAILER_GRACE_TIMEOUT_S

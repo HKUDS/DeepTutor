@@ -210,7 +210,7 @@ async def test_stalled_incomplete_stream_raises_transport_error_and_closes(
     monkeypatch: pytest.MonkeyPatch,
     content: str | list[str] | None,
 ) -> None:
-    monkeypatch.setattr(labeled_step_module, "_STREAM_IDLE_TIMEOUT_S", 0.01, raising=False)
+    monkeypatch.setattr(labeled_step_module, "get_stream_idle_timeout_seconds", lambda: 0.01)
     monkeypatch.setattr(labeled_step_module, "_FINAL_LABEL_IDLE_TIMEOUT_S", 0.01)
     texts = content if isinstance(content, list) else [content]
     chunks = [_chunk(text) for text in texts if text is not None]
@@ -230,7 +230,7 @@ async def test_stalled_connection_raises_transport_error(
     monkeypatch: pytest.MonkeyPatch,
     reject_stream_options: bool,
 ) -> None:
-    monkeypatch.setattr(labeled_step_module, "_STREAM_IDLE_TIMEOUT_S", 0.01)
+    monkeypatch.setattr(labeled_step_module, "get_stream_idle_timeout_seconds", lambda: 0.01)
     client = _Client([])
     create_cancelled = asyncio.Event()
 
@@ -257,7 +257,7 @@ async def test_stalled_connection_raises_transport_error(
 async def test_incomplete_stream_resets_idle_timeout_for_each_chunk(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(labeled_step_module, "_STREAM_IDLE_TIMEOUT_S", 0.03)
+    monkeypatch.setattr(labeled_step_module, "get_stream_idle_timeout_seconds", lambda: 0.03)
 
     class SlowStream(_Stream):
         async def __anext__(self) -> SimpleNamespace:

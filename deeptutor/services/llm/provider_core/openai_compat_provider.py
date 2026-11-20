@@ -51,6 +51,7 @@ from deeptutor.services.llm.request_compat import (
     is_forced_tool_choice_unsupported,
     is_response_format_unsupported,
 )
+from deeptutor.services.llm.stream_timeout import get_stream_idle_timeout_seconds
 from deeptutor.services.llm.usage_frame import usage_breakdown
 from deeptutor.services.provider_registry import model_overrides_for, normalize_wire_api
 from deeptutor.services.session.provider_response_state import (
@@ -1306,7 +1307,7 @@ class OpenAICompatProvider(LLMProvider):
             tool_choice,
         )
         request_kwargs.update({k: v for k, v in extra_kwargs.items() if v is not None})
-        idle_timeout_s = 90
+        idle_timeout_s = get_stream_idle_timeout_seconds()
         try:
             if self._should_use_responses_api(model, reasoning_effort, tools):
                 try:

@@ -18,6 +18,7 @@ import json_repair
 
 from deeptutor.services.llm.provider_core.base import LLMProvider, LLMResponse, ToolCallRequest
 from deeptutor.services.llm.reasoning_params import minimax_reasoning_kwargs
+from deeptutor.services.llm.stream_timeout import get_stream_idle_timeout_seconds
 from deeptutor.services.llm.types import CONTEXT_LENGTH_EXCEEDED_FINISH
 from deeptutor.services.provider_registry import ANTHROPIC_EFFORT_BASED_FAMILIES
 from deeptutor.services.session.provider_response_state import (
@@ -602,7 +603,7 @@ class AnthropicProvider(LLMProvider):
         for key in ("response_format", "seed", "logit_bias", "stream", "stream_options"):
             extra_kwargs.pop(key, None)
         kwargs.update({k: v for k, v in extra_kwargs.items() if v is not None})
-        idle_timeout_s = 90
+        idle_timeout_s = get_stream_idle_timeout_seconds()
         try:
             async with self._client.messages.stream(**kwargs) as stream:
                 if on_content_delta or on_reasoning_delta:
