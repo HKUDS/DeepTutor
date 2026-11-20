@@ -1215,6 +1215,11 @@ body[data-picker-open] .dt-breathing-text {
     transform var(--viewer-dur) var(--viewer-ease),
     visibility 0s linear var(--viewer-dur);
 }
+/* The glass card is translucent. Give the overlay an opaque base so
+   conversation text cannot show through its header and activity list. */
+.theme-glass .dt-viewer-panel {
+  background-color: var(--background);
+}
 .dt-viewer-panel[data-open="true"] {
   transform: translateX(0);
   visibility: visible;
