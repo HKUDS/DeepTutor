@@ -156,3 +156,15 @@ def test_bibtex_to_markdown_does_not_insert_spaces_between_joined_values() -> No
     assert "## 1. Subword" in result
     assert "**DOI:** 10.1000/example" in result
     assert "**Year:** 2026" in result
+
+
+def test_string_macro_expands_in_later_fields() -> None:
+    markdown = bibtex_to_markdown(
+        '@string{jname = "Journal of Testing"}\n'
+        "@string{short = {J. Test.}}\n"
+        '@article{key, title={T}, year=2024, journal=jname, publisher=short # " Press"}'
+    )
+
+    assert "**Journal:** Journal of Testing" in markdown
+    assert "J. Test. Press" in markdown
+    assert "**Year:** 2024" in markdown
