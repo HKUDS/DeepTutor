@@ -150,3 +150,30 @@ async def test_abandoned_producer_failure_is_cleaned_up_and_can_be_retried() -> 
         assert not unhandled
     finally:
         loop.set_exception_handler(previous_handler)
+
+
+@pytest.mark.asyncio
+async def test_completed_hint_is_cached_after_the_original_waiter_leaves() -> None:
+    subject = cache([1.0])
+    started = asyncio.Event()
+    release = asyncio.Event()
+    calls = 0
+
+    async def produce() -> Value:
+        nonlocal calls
+        calls += 1
+        started.set()
+        await release.wait()
+        return Value("generated hint", 1.0)
+
+    first = asyncio.create_task(subject.get_or_create("key", produce))
+    await started.wait()
+    pending = subject.inflight["key"]
+    first.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await first
+
+    release.set()
+    await pending
+    assert await subject.get_or_create("key", produce) == Value("generated hint", 1.0)
+    assert calls == 1
