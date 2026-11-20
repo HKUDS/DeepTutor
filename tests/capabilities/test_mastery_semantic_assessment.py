@@ -4,6 +4,7 @@ import pytest
 
 from deeptutor.learning.models import InteractionStatus
 from deeptutor.learning.service import MasteryInteractionError
+from tests.capabilities.test_mastery_adapted_source_binding import supported_source_decision
 from tests.capabilities.test_mastery_question_groups import group, leaf
 
 pytest_plugins = ["tests.capabilities.test_mastery_question_groups"]
@@ -377,11 +378,7 @@ async def test_partial_packet_binds_only_exact_question_and_rejects_forged_origi
     monkeypatch.setattr(lesson_evidence, "validate_evidence", lambda *args, **kwargs: None)
 
     async def request(*args, **kwargs):
-        return {
-            "supported": True,
-            "citations": [{"index": 0, "quote": "alpha is the first letter"}],
-            "provenance": "original",
-        }
+        return supported_source_decision("alpha is the first letter", provenance="original")
 
     monkeypatch.setattr(semantic, "_request", request)
     question = leaf()
@@ -403,7 +400,7 @@ async def test_question_support_must_quote_real_evidence(service, monkeypatch):
     monkeypatch.setattr(lesson_evidence, "validate_evidence", lambda *args, **kwargs: None)
 
     async def request(*args, **kwargs):
-        return {"supported": True, "citations": [{"index": 0, "quote": "fabricated fact"}]}
+        return supported_source_decision("fabricated fact")
 
     monkeypatch.setattr(semantic, "_request", request)
     with pytest.raises(semantic.AssessmentUnavailable, match="absent"):
@@ -424,7 +421,7 @@ async def test_question_support_retries_a_mismatched_quote(service, monkeypatch)
     async def request(config, instruction, *args, **kwargs):
         instructions.append(instruction)
         quote = "alpha comes first" if len(instructions) == 1 else source
-        return {"supported": True, "citations": [{"index": 0, "quote": quote}]}
+        return supported_source_decision(quote)
 
     monkeypatch.setattr(semantic, "_request", request)
     question = leaf()
@@ -468,10 +465,7 @@ async def test_restated_correct_question_is_refused_without_spending_a_request(
 
     async def request(*args, **kwargs):
         calls.append(args)
-        return {
-            "supported": True,
-            "citations": [{"index": 0, "quote": "alpha is the first letter"}],
-        }
+        return supported_source_decision("alpha is the first letter")
 
     monkeypatch.setattr(semantic, "_request", request)
     restated = leaf("q2")
@@ -493,10 +487,7 @@ async def test_distinct_question_on_the_same_objective_is_not_refused(service, m
     service.grade_interaction("p", answer="alpha", question_id="q1")
 
     async def request(*args, **kwargs):
-        return {
-            "supported": True,
-            "citations": [{"index": 0, "quote": "alpha and beta are letters"}],
-        }
+        return supported_source_decision("alpha and beta are letters")
 
     monkeypatch.setattr(semantic, "_request", request)
     distinct = leaf("q2", expected="beta")
@@ -517,10 +508,7 @@ async def test_same_answer_key_with_a_different_stem_is_not_refused(service, mon
     service.grade_interaction("p", answer="alpha", question_id="q1")
 
     async def request(*args, **kwargs):
-        return {
-            "supported": True,
-            "citations": [{"index": 0, "quote": "alpha is the first letter"}],
-        }
+        return supported_source_decision("alpha is the first letter")
 
     monkeypatch.setattr(semantic, "_request", request)
     same_key = leaf("q2", expected="alpha")
@@ -560,11 +548,7 @@ async def test_faithful_citation_tolerates_formatting_only_differences(
     monkeypatch.setattr(lesson_evidence, "validate_evidence", lambda *args, **kwargs: None)
 
     async def request(*args, **kwargs):
-        return {
-            "supported": True,
-            "citations": [{"index": 0, "quote": quote}],
-            "provenance": "adapted",
-        }
+        return supported_source_decision(quote)
 
     monkeypatch.setattr(semantic, "_request", request)
     question = leaf()
@@ -584,7 +568,7 @@ async def test_whitespace_only_quote_still_rejected_after_normalization(service,
     monkeypatch.setattr(lesson_evidence, "validate_evidence", lambda *args, **kwargs: None)
 
     async def request(*args, **kwargs):
-        return {"supported": True, "citations": [{"index": 0, "quote": " \n\t*_`| "}]}
+        return supported_source_decision(" \n\t*_`| ")
 
     monkeypatch.setattr(semantic, "_request", request)
     with pytest.raises(semantic.AssessmentUnavailable, match="absent"):
@@ -592,7 +576,10 @@ async def test_whitespace_only_quote_still_rejected_after_normalization(service,
 
 
 @pytest.mark.asyncio
-async def test_group_source_binding_is_one_call_with_individual_contracts(service, monkeypatch):
+@pytest.mark.parametrize("all_supported", [True, False])
+async def test_group_source_binding_is_one_call_with_individual_contracts(
+    service, monkeypatch, all_supported
+):
     from deeptutor.learning import lesson_evidence
     from deeptutor.learning import semantic_assessment as semantic
 
@@ -604,26 +591,32 @@ async def test_group_source_binding_is_one_call_with_individual_contracts(servic
 
     async def request(config, instruction, payload, **kwargs):
         calls.append(payload)
-        return {
-            "contracts": [
-                {
-                    "question_id": item["question"]["question_id"],
-                    "supported": True,
-                    "citations": [{"index": 0, "quote": "alpha and beta are letters"}],
-                    "provenance": "adapted",
-                }
-                for item in payload["questions"]
-            ]
-        }
+        contracts = [
+            {
+                "question_id": item["question"]["question_id"],
+                **supported_source_decision("alpha and beta are letters"),
+            }
+            for item in payload["questions"]
+        ]
+        if not all_supported:
+            contracts[-1]["requirements"]["asserted_answer_claim"]["outcome"] = "unsupported"
+        return {"contracts": contracts}
 
     monkeypatch.setattr(semantic, "_request", request)
     question = group()
-    await semantic.bind_questions(service.store, progress, question.questions)
+    if all_supported:
+        await semantic.bind_questions(service.store, progress, question.questions)
+        assert (
+            question.questions[0].source_evidence["assessment_contract"]["fingerprint"]
+            != question.questions[1].source_evidence["assessment_contract"]["fingerprint"]
+        )
+    else:
+        with pytest.raises(semantic.AssessmentUnavailable, match="Verify the factual conclusion"):
+            await semantic.bind_questions(service.store, progress, question.questions)
+        assert all(
+            "assessment_contract" not in child.source_evidence for child in question.questions
+        )
     assert len(calls) == 1
-    assert (
-        question.questions[0].source_evidence["assessment_contract"]["fingerprint"]
-        != question.questions[1].source_evidence["assessment_contract"]["fingerprint"]
-    )
 
 
 @pytest.mark.asyncio
@@ -730,7 +723,10 @@ async def test_group_visual_assessment_budgets_unique_pixels_and_retains_source_
 
 
 @pytest.mark.asyncio
-async def test_scoped_group_clarification_resume_and_exactly_once_credit(service, monkeypatch):
+@pytest.mark.parametrize("legacy_binding", [False, True])
+async def test_scoped_group_clarification_resume_and_exactly_once_credit(
+    service, monkeypatch, legacy_binding
+):
     from deeptutor.learning import lesson_evidence
     from deeptutor.learning import semantic_assessment as semantic
     from deeptutor.learning.pending import public_pending_question
@@ -756,11 +752,7 @@ async def test_scoped_group_clarification_resume_and_exactly_once_credit(service
     monkeypatch.setattr(lesson_evidence, "validate_evidence", source_check)
 
     async def support(*args, **kwargs):
-        return {
-            "supported": True,
-            "citations": [{"index": 0, "quote": "alpha and beta are letters"}],
-            "provenance": "adapted",
-        }
+        return supported_source_decision("alpha and beta are letters")
 
     monkeypatch.setattr(semantic, "_request", support)
     progress = service.store.load("p")
@@ -769,6 +761,8 @@ async def test_scoped_group_clarification_resume_and_exactly_once_credit(service
     question = group()
     for child in question.questions:
         await semantic.bind_question(service.store, progress, child)
+        if legacy_binding:
+            del child.source_evidence["assessment_contract"]["requirements"]
     service.register_question("p", question)
     assert "assessment_contract" not in str(public_pending_question(question).to_dict())
     calls = []
@@ -825,7 +819,7 @@ async def test_citation_normalization_does_not_accept_changed_math_or_words(
     monkeypatch.setattr(lesson_evidence, "validate_evidence", lambda *args, **kwargs: None)
 
     async def request(*args, **kwargs):
-        return {"supported": True, "citations": [{"index": 0, "quote": quote}]}
+        return supported_source_decision(quote)
 
     monkeypatch.setattr(semantic, "_request", request)
     with pytest.raises(semantic.AssessmentUnavailable, match="absent"):
@@ -871,10 +865,7 @@ async def test_review_stage_can_repeat_an_answered_question(service, monkeypatch
     monkeypatch.setattr(lesson_evidence, "validate_evidence", lambda *a, **kw: None)
 
     async def support(*a, **kw):
-        return {
-            "supported": True,
-            "citations": [{"index": 0, "quote": "alpha is the first letter"}],
-        }
+        return supported_source_decision("alpha is the first letter")
 
     monkeypatch.setattr(semantic, "_request", support)
     await semantic.bind_question(service.store, progress, leaf("review", expected="alpha"))

@@ -2299,6 +2299,7 @@ async def test_quiz_refuses_a_restatement_of_a_correctly_answered_question(path_
     #2073). The refusal reaches the tutor as a failed, explanatory tool result.
     """
     from deeptutor.learning import lesson_evidence, semantic_assessment
+    from tests.capabilities.test_mastery_adapted_source_binding import supported_source_decision
 
     await _build_basic(path_id)
     status = json.loads((await MasteryStatusTool().execute(_mastery_path_id=path_id)).content)
@@ -2313,10 +2314,7 @@ async def test_quiz_refuses_a_restatement_of_a_correctly_answered_question(path_
     monkeypatch.setattr(lesson_evidence, "validate_evidence", lambda *args, **kwargs: None)
 
     async def support(*args, **kwargs):
-        return {
-            "supported": True,
-            "citations": [{"index": 0, "quote": "alpha is the first letter"}],
-        }
+        return supported_source_decision("alpha is the first letter")
 
     monkeypatch.setattr(semantic_assessment, "_request", support)
     first = tool_payload(
