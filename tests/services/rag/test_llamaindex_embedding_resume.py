@@ -35,13 +35,17 @@ def _records(kb_dir: Path, names: list[str]) -> dict[str, object]:
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("interrupted_swap", [False, True])
+@pytest.mark.parametrize("blocked_preflights", [0, 2])
 async def test_rebuild_resumes_completed_documents_after_failure(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, interrupted_swap: bool
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    interrupted_swap: bool,
+    blocked_preflights: int,
 ) -> None:
     from llama_index.core import Settings
     from llama_index.core.embeddings import MockEmbedding
 
-    from deeptutor.knowledge.indexing_run import IndexingRun, load_run
+    from deeptutor.knowledge.indexing_run import IndexingBusyError, IndexingRun, load_run
     from deeptutor.services.rag.pipelines.llamaindex import storage
     from deeptutor.services.rag.pipelines.llamaindex.pipeline import LlamaIndexPipeline
 
@@ -95,6 +99,16 @@ async def test_rebuild_resumes_completed_documents_after_failure(
 
     if interrupted_swap:
         candidate.rename(candidate.with_name(f".{candidate.name}.previous-crash"))
+
+    for attempt in range(blocked_preflights):
+        with pytest.raises(IndexingBusyError, match="previous worker"):
+            async with IndexingRun(
+                kb_dir,
+                [str(first), str(second)],
+                provider="llamaindex",
+                task_id=f"blocked-{attempt}",
+            ):
+                raise IndexingBusyError("A previous worker is still running.")
 
     monkeypatch.setattr(storage, "_write_embedding_snapshot", original_snapshot)
     embedded_sources: list[str] = []
@@ -182,6 +196,17 @@ def test_resume_requires_exact_source_hashes_and_checkpoint(
         source_records=records,
     )
     assert resolved == candidate
+    for changed_signature in (
+        EmbeddingSignature("test", "other-model", 4, "https://embedding.test", ""),
+        EmbeddingSignature("test", "embedding-resume", 8, "https://embedding.test", ""),
+        EmbeddingSignature("test", "embedding-resume", 4, "https://other.test", ""),
+    ):
+        assert (
+            storage.resolve_resumable_rebuild_dir(
+                kb_dir, changed_signature, previous_run=previous, source_records=records
+            )
+            is None
+        )
     interrupted = {**previous, "state": "interrupted"}
     assert (
         storage.resolve_resumable_rebuild_dir(
