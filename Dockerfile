@@ -445,7 +445,7 @@ python -c "from deeptutor.services.setup.data_volume import check_container_data
 #
 #   environment:
 #     DEEPTUTOR_EXTRAS: "math-animator,partners"
-#     DEEPTUTOR_APT_PACKAGES: "ffmpeg"
+#     DEEPTUTOR_APT_PACKAGES: "build-essential,pkg-config,libcairo2-dev,libpango1.0-dev"
 #
 # Both steps are idempotent — a warm container only pays a check — and neither
 # is allowed to be fatal: a missing wheel leaves that one feature unavailable,
