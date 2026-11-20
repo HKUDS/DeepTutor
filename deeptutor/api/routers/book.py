@@ -313,6 +313,23 @@ def _resolve_book_or_404(
 def _book_payload(book: Any, resolved: ResolvedBook) -> dict[str, Any]:
     data = book.model_dump(mode="json")
     data.update(resolved.capabilities())
+    # Books created before ``Book.sources`` existed still have their inputs
+    # snapshot on disk. Read it so a reopened book shows the notes it was
+    # actually built from instead of an empty source list (#2762).
+    if not data.get("sources"):
+        # Deferred on purpose: importing ``book.engine`` at module scope pulls
+        # the book agents into every API process at startup, which the cold
+        # import boundary forbids (tests/runtime/test_api_import_memory_boundary.py).
+        from deeptutor.book.engine import source_summaries
+
+        try:
+            inputs = resolved.engine.storage.load_inputs(book.id)
+        except Exception:  # noqa: BLE001 - a payload must never fail on this
+            inputs = None
+        if inputs is not None:
+            data["sources"] = [
+                source.model_dump(mode="json") for source in source_summaries(inputs)
+            ]
     if resolved.is_shared:
         metadata = dict(data.get("metadata") or {})
         metadata["page_chat_sessions"] = resolved.learning.load_page_chat_sessions(book.id)

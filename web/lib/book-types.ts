@@ -199,6 +199,21 @@ export interface GenerationSummary extends GenerationOverview {
   failure_categories: Record<string, number>;
 }
 
+/**
+ * One non-KB source a book was created from, as echoed back by the engine.
+ *
+ * A book built from notes used to look sourceless to every surface: the
+ * proposal form only knew about knowledge bases and fell back to "the book
+ * will rely on general knowledge" (#2762).
+ */
+export interface BookSourceSummary {
+  kind?: string;
+  label?: string;
+  source_id?: string;
+  /** False when the source was selected but could not be read at creation. */
+  available?: boolean;
+}
+
 export interface Book extends LearningOrigin {
   id: string;
   revision: number;
@@ -207,6 +222,8 @@ export interface Book extends LearningOrigin {
   status: BookStatus;
   proposal: BookProposal | null;
   knowledge_bases: string[];
+  /** Non-KB sources (notes, chats, documents) this book was created from. */
+  sources?: BookSourceSummary[];
   language: string;
   depth?: BookDepth;
   page_count: number;

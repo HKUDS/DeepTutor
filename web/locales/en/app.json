@@ -1382,6 +1382,8 @@
   "Target level": "Target level",
   "Estimated chapters": "Estimated chapters",
   "Knowledge bases used": "Knowledge bases used",
+  "Sources used": "Sources used",
+  "Selected, but could not be read when this book was created.": "Selected, but could not be read when this book was created.",
   "No knowledge bases selected. The book will rely on general knowledge.": "No knowledge bases selected. The book will rely on general knowledge.",
   "Loading spine…": "Loading spine…",
   "All books": "All books",

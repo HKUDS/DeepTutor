@@ -210,6 +210,27 @@ class BookProposal(BaseModel):
     rationale: str = ""
 
 
+class BookSourceSummary(BaseModel):
+    """A readable echo of one source a book was created from.
+
+    ``BookInputs`` keeps the full snapshot for the engine, but it is an internal
+    record: the reader never sees it, so a book created from notebook notes
+    looked sourceless everywhere in the UI — the proposal form could only list
+    knowledge bases and fell back to "no knowledge bases selected, the book will
+    rely on general knowledge" (#2762). Carrying the *labels* on the book itself
+    lets every surface say which sources were actually captured.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    kind: str = ""
+    label: str = ""
+    source_id: str = ""
+    #: False when the source could not be read at creation time, so the UI can
+    #: say "selected but unavailable" instead of implying it was used.
+    available: bool = True
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Stage 2: Spine
 # ─────────────────────────────────────────────────────────────────────────────
@@ -529,6 +550,9 @@ class Book(BaseModel):
     status: BookStatus = BookStatus.DRAFT
     proposal: BookProposal | None = None
     knowledge_bases: list[str] = Field(default_factory=list)
+    #: The non-KB sources this book was created from, as labels. Persisted so a
+    #: reopened book can show what it was built from, not only its KB list.
+    sources: list[BookSourceSummary] = Field(default_factory=list)
     language: str = "en"
     depth: BookDepth = BookDepth.STANDARD
     page_count: int = 0

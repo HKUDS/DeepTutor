@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { ChevronUp, Database, Loader2, Pencil, Sparkles } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useAppShell } from '@/context/AppShellContext'
-import type { Book, BookDepth, BookProposal } from '@/lib/book-types'
+import type { Book, BookDepth, BookProposal, BookSourceSummary } from '@/lib/book-types'
 import type { TopicSourceInput } from '@/lib/learning-api'
 import {
   catalogTranslate,
@@ -324,6 +324,7 @@ export default function BookCreator({
             onChange={setEditProposal}
             selectedKbs={Array.from(selectedKbs)}
             savedKbs={book?.knowledge_bases}
+            savedSources={book?.sources}
           />
           <div className="flex justify-end">
             <button
@@ -357,6 +358,7 @@ function ProposalForm({
   onChange,
   selectedKbs,
   savedKbs,
+  savedSources,
 }: {
   proposal: BookProposal
   onChange: (p: BookProposal) => void
@@ -364,9 +366,15 @@ function ProposalForm({
   /** KBs already recorded on the book. Reopening a draft restores no local
    *  picker state, so without this the form claims the book has no sources. */
   savedKbs?: string[]
+  /** Non-KB sources (notes, chats, documents) the book was created from.
+   *  Without these the form could only ever list knowledge bases, so a book
+   *  built from notes claimed it would rely on general knowledge (#2762). */
+  savedSources?: BookSourceSummary[]
 }) {
   const { t } = useTranslation()
   const effectiveKbs = selectedKbs.length > 0 ? selectedKbs : (savedKbs ?? [])
+  const usableSources = (savedSources ?? []).filter(source => Boolean(source.label))
+  const hasAnySource = effectiveKbs.length > 0 || usableSources.length > 0
   const update = (patch: Partial<BookProposal>) => onChange({ ...proposal, ...patch })
   return (
     <div className="grid gap-3 sm:grid-cols-2">
@@ -426,22 +434,42 @@ function ProposalForm({
       </label>
       <div className="block sm:col-span-2">
         <span className="text-xs uppercase tracking-wider text-[var(--muted-foreground)]">
-          {t('Knowledge bases used')}
+          {t('Sources used')}
         </span>
         <div className="mt-1.5 flex flex-wrap gap-1.5">
-          {effectiveKbs.length === 0 ? (
+          {!hasAnySource ? (
             <span className="text-xs italic text-[var(--muted-foreground)]">
               {t('No knowledge bases selected. The book will rely on general knowledge.')}
             </span>
           ) : (
-            effectiveKbs.map(kb => (
-              <span
-                key={kb}
-                className="inline-flex items-center rounded-full bg-[rgb(var(--dt-ink,55_53_47)/0.06)] px-2.5 py-0.5 text-[11px] text-[var(--foreground)]"
-              >
-                {kb}
-              </span>
-            ))
+            <>
+              {effectiveKbs.map(kb => (
+                <span
+                  key={`kb:${kb}`}
+                  className="inline-flex items-center gap-1 rounded-full bg-[rgb(var(--dt-ink,55_53_47)/0.06)] px-2.5 py-0.5 text-[11px] text-[var(--foreground)]"
+                >
+                  <Database className="h-3 w-3" />
+                  {kb}
+                </span>
+              ))}
+              {usableSources.map((source, index) => (
+                <span
+                  key={`src:${source.source_id || index}`}
+                  title={
+                    source.available === false
+                      ? t('Selected, but could not be read when this book was created.')
+                      : undefined
+                  }
+                  className={
+                    source.available === false
+                      ? 'inline-flex items-center rounded-full bg-[rgb(var(--dt-ink,55_53_47)/0.04)] px-2.5 py-0.5 text-[11px] text-[var(--muted-foreground)] line-through'
+                      : 'inline-flex items-center rounded-full bg-[rgb(var(--dt-ink,55_53_47)/0.06)] px-2.5 py-0.5 text-[11px] text-[var(--foreground)]'
+                  }
+                >
+                  {source.label}
+                </span>
+              ))}
+            </>
           )}
         </div>
       </div>
