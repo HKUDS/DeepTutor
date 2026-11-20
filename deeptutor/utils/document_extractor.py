@@ -533,15 +533,14 @@ def _extract_xlsx(data: bytes, filename: str) -> str:
         ) from exc
     try:
         sheets: list[str] = []
-        for sheet_name in wb.sheetnames:
-            ws = wb[sheet_name]
+        for ws in wb.worksheets:
             rows: list[str] = []
             for row in ws.iter_rows(values_only=True):
                 row_text = "\t".join(str(cell) if cell is not None else "" for cell in row)
                 if row_text.strip():
                     rows.append(row_text)
             if rows:
-                sheets.append(f"--- Sheet: {sheet_name} ---\n" + "\n".join(rows))
+                sheets.append(f"--- Sheet: {ws.title} ---\n" + "\n".join(rows))
         return "\n\n".join(sheets)
     finally:
         wb.close()
