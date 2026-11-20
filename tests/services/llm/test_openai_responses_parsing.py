@@ -106,6 +106,42 @@ async def test_sdk_arguments_can_be_correlated_by_item_id() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("async_value", [None, False, True])
+async def test_sdk_stream_emits_wire_aliases_for_replay(async_value) -> None:
+    responses = pytest.importorskip("openai.types.responses")
+    reasoning = responses.ResponseReasoningItem(
+        id="rs_fixture", type="reasoning", summary=[], encrypted_content="opaque"
+    )
+    call = responses.ResponseFunctionToolCall(
+        id="fc_fixture",
+        type="function_call",
+        call_id="call_fixture",
+        name="fixture_read",
+        arguments='{"async_":true}',
+        **{"async": async_value},
+    )
+    events = [
+        SimpleNamespace(type="response.output_item.done", item=item) for item in [reasoning, call]
+    ]
+    events.append(SimpleNamespace(type="response.completed"))
+    captured = []
+    _, calls, _, _, _ = await consume_sdk_stream(
+        _sdk_events(events),
+        on_provider_event=lambda kind, payload: captured.append((kind, payload)),
+    )
+    items = [payload for kind, payload in captured if kind == "output_item"]
+    assert items[0]["encrypted_content"] == "opaque"
+    assert "async_" not in items[1]
+    assert "namespace" not in items[1]
+    assert calls[0].id == "call_fixture|fc_fixture"
+    assert calls[0].arguments == {"async_": True}
+    if async_value is None:
+        assert "async" not in items[1]
+    else:
+        assert items[1]["async"] is async_value
+
+
+@pytest.mark.asyncio
 async def test_sdk_preserves_deepseek_reasoning_text_for_next_tool_round() -> None:
     reasoning_item = SimpleNamespace(
         type="reasoning",

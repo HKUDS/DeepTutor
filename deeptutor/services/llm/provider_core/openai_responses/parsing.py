@@ -53,7 +53,7 @@ def _dump_model(value: Any) -> Any:
     if isinstance(value, dict):
         return value
     dump = getattr(value, "model_dump", None)
-    return dump() if callable(dump) else vars(value)
+    return dump(by_alias=True, exclude_none=True) if callable(dump) else vars(value)
 
 
 def _citation_from_annotation(annotation: Any) -> dict[str, str] | None:
@@ -459,9 +459,7 @@ async def consume_sse(
 
 def parse_response_output(response: Any) -> LLMResponse:
     """Parse an SDK Response object into LLMResponse."""
-    if not isinstance(response, dict):
-        dump = getattr(response, "model_dump", None)
-        response = dump() if callable(dump) else vars(response)
+    response = _dump_model(response)
 
     output = response.get("output") or []
     content_parts: list[str] = []
