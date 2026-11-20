@@ -12,7 +12,7 @@
  * update pulls the messages back down and makes them jitter while typing.
  */
 
-import { useCallback, useLayoutEffect, type RefObject } from "react";
+import { useCallback, useLayoutEffect, useRef, type RefObject } from "react";
 
 const MEASUREMENT_STYLES = [
   "box-sizing", "width", "font-family", "font-size", "font-weight",
@@ -25,32 +25,41 @@ const MEASUREMENT_STYLES = [
   "border-left-width", "border-style",
 ] as const;
 
-function measureContentHeight(el: HTMLTextAreaElement): number {
+function measureContentHeight(
+  el: HTMLTextAreaElement,
+  mirrorRef: { current: HTMLTextAreaElement | null },
+): number {
   const doc = el.ownerDocument;
   const computed = doc.defaultView!.getComputedStyle(el);
-  const mirror = doc.createElement("textarea");
+  let mirror = mirrorRef.current;
+  if (!mirror || mirror.ownerDocument !== doc || !mirror.isConnected) {
+    mirror?.remove();
+    mirror = doc.createElement("textarea");
+    mirror.tabIndex = -1;
+    mirror.setAttribute("aria-hidden", "true");
+    Object.assign(mirror.style, {
+      position: "fixed", left: "-10000px", top: "0", visibility: "hidden",
+      height: "auto", minHeight: "0", maxHeight: "none",
+      minWidth: "0", maxWidth: "none", overflow: "hidden",
+      transition: "none", pointerEvents: "none",
+    });
+    mirrorRef.current = mirror;
+  }
   mirror.rows = el.rows;
   mirror.wrap = el.wrap;
   mirror.value = el.value;
-  mirror.tabIndex = -1;
-  mirror.setAttribute("aria-hidden", "true");
   for (const property of MEASUREMENT_STYLES) {
-    mirror.style.setProperty(property, computed.getPropertyValue(property));
+    const value = computed.getPropertyValue(property);
+    if (mirror.style.getPropertyValue(property) !== value) {
+      mirror.style.setProperty(property, value);
+    }
   }
   // No placeholder: wrapped hint text must not grow an empty composer.
   // Copy computed styles because a body-level mirror has different ancestors.
-  Object.assign(mirror.style, {
-    position: "fixed", left: "-10000px", top: "0", visibility: "hidden",
-    height: "auto", minHeight: "0", maxHeight: "none",
-    minWidth: "0", maxWidth: "none", overflow: "hidden",
-    transition: "none", pointerEvents: "none",
-  });
-  doc.body.appendChild(mirror);
-  try {
-    return mirror.scrollHeight;
-  } finally {
-    mirror.remove();
-  }
+  // Reuse one out-of-flow mirror: adding/removing a body child on each key
+  // invalidates styles across long tutoring transcripts.
+  if (!mirror.isConnected) doc.body.appendChild(mirror);
+  return mirror.scrollHeight;
 }
 
 export interface AutoSizedTextareaOptions {
@@ -65,16 +74,22 @@ export function useAutoSizedTextarea(
   value: string,
   { min = 0, max = Number.POSITIVE_INFINITY }: AutoSizedTextareaOptions = {},
 ): void {
+  const mirrorRef = useRef<HTMLTextAreaElement | null>(null);
   const resize = useCallback(() => {
     const el = ref.current;
     if (!el) return;
-    const natural = measureContentHeight(el);
+    const natural = measureContentHeight(el, mirrorRef);
     const bounded = Math.min(Math.max(natural, min), max);
     el.style.height = `${bounded}px`;
     el.style.overflowY = natural > max ? "auto" : "hidden";
   }, [ref, min, max]);
 
   useLayoutEffect(resize, [resize, value]);
+
+  useLayoutEffect(() => () => {
+    mirrorRef.current?.remove();
+    mirrorRef.current = null;
+  }, []);
 
   useLayoutEffect(() => {
     const el = ref.current;
