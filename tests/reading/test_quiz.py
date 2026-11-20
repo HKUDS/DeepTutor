@@ -47,6 +47,17 @@ def _model_response(evidence: str = "verified phrase supports the answer") -> st
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("evidence", ["--------", "1234\n5678"])
+async def test_quiz_rejects_evidence_that_normalizes_to_empty(monkeypatch, evidence):
+    async def complete(**_kwargs):
+        return _model_response(evidence)
+
+    monkeypatch.setattr("deeptutor.reading.quiz.complete", complete)
+    with pytest.raises(ValueError, match="evidence must come from"):
+        await ReadingQuizExtension().run_action("start", _context())
+
+
+@pytest.mark.asyncio
 async def test_quiz_returns_a_bounded_quiz_without_grounding_metadata(monkeypatch):
     calls = []
 
