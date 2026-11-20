@@ -126,6 +126,17 @@ function placeholderMismatches(english, localized) {
   return mismatches;
 }
 
+function unexpectedEmptyTranslations(english, localized) {
+  const unexpected = [];
+  for (const [key, translation] of Object.entries(localized)) {
+    if (translation !== "") continue;
+    if (!Object.hasOwn(english, key) || english[key] !== "") {
+      unexpected.push(key);
+    }
+  }
+  return unexpected;
+}
+
 function reportUntranslatedKeys() {
   const localeDir = path.join(webRoot, "locales");
   if (!fs.existsSync(localeDir)) {
@@ -208,6 +219,16 @@ function reportUntranslatedKeys() {
       console.error(`[i18n:audit] ${locale}: ${mismatches.length} interpolation placeholder mismatches`);
       for (const { key, missing: lost, extra } of mismatches.slice(0, 20)) {
         console.error(`  ${JSON.stringify(key)}: missing [${lost.join(", ")}], extra [${extra.join(", ")}]`);
+      }
+    }
+    const unexpectedEmpty = unexpectedEmptyTranslations(english, entries);
+    if (unexpectedEmpty.length) {
+      process.exitCode = 1;
+      console.error(
+        `[i18n:audit] ${locale}: ${unexpectedEmpty.length} empty translations where English is non-empty`,
+      );
+      for (const key of unexpectedEmpty.slice(0, 20)) {
+        console.error(`  ${JSON.stringify(key)}`);
       }
     }
   }

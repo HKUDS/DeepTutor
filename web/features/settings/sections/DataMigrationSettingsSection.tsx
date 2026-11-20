@@ -37,7 +37,7 @@ const endpoint = '/api/settings/workspace/data'
 const labels: Record<string, [string, string]> = {
   chat: ['Conversations', '对话'],
   book: ['Books', '书籍'],
-  learning: ['Mastery Path', '掌握路径'],
+  learning: ['Mastery Path', '精通之路'],
   reading: ['Immersive Reading', '沉浸式阅读'],
   timed_media: ['Immersive Watching', '沉浸式观看'],
   notebook: ['Notebooks', '笔记本'],

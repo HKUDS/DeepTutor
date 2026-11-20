@@ -219,12 +219,14 @@ export default function AppearanceSettingsPage() {
         )}
       >
         <div className="border-t border-[var(--border)]/50 py-3.5 first:border-t-0">
-          <div className="text-[13.5px] font-medium text-[var(--foreground)]">
-            {t("Preview")}
+          <div className="mb-3">
+            <div className="text-[13.5px] font-medium text-[var(--foreground)]">
+              {t("Preview")}
+            </div>
+            <p className="mt-1 text-[12px] leading-relaxed text-[var(--muted-foreground)] empty:hidden">
+              {t("Updates live as you change the settings below.")}
+            </p>
           </div>
-          <p className="mb-3 mt-1 text-[12px] leading-relaxed text-[var(--muted-foreground)] empty:hidden">
-            {t("Updates live as you change the settings below.")}
-          </p>
           <RichCodeBlockPreview
             raw={CODE_BLOCK_PREVIEW_SNIPPET}
             lang="python"
