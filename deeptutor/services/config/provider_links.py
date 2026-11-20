@@ -120,7 +120,9 @@ def _source_default_url(source: dict, service: str | None) -> str:
 def resolve_profile_provider(
     catalog: dict, service: str, profile: dict, model: dict | None = None
 ) -> dict:
-    ref = (model or {}).get("provider_ref") or profile.get("provider_ref")
+    profile_ref = profile.get("provider_ref")
+    model_ref = (model or {}).get("provider_ref")
+    ref = model_ref or profile_ref
     if not isinstance(ref, dict):
         overrides = profile.get("service_overrides")
         override = (
@@ -192,18 +194,25 @@ def resolve_profile_provider(
         result["base_url"] = normalize_embedding_endpoint_for_display(
             binding, result["base_url"], (model or {}).get("model")
         )
+    # A profile's explicit protocol applies to its own provider (#2451).
+    # When one model selects a different provider, use that source's protocol
+    # alongside its URL and credentials. Reference metadata such as the default
+    # URL does not change which provider the model selects.
+    inherited_ref = profile_ref or (
+        {"connection_id": profile["connection_id"]}
+        if profile.get("connection_id")
+        else {"service": service, "profile_id": profile.get("id")}
+    )
+    uses_profile_provider = not model_ref or (
+        isinstance(inherited_ref, dict)
+        and all(
+            ref.get(key) == inherited_ref.get(key)
+            for key in ("connection_id", "service", "profile_id")
+        )
+    )
     for field in ("api_format", "wire_api"):
-        # Precedence: the profile's explicit (non-default) setting wins over
-        # the linked connection's, which wins over "auto". Previously the
-        # connection unconditionally clobbered the profile — and a profile
-        # that named the Responses API silently lost it even when the
-        # connection left the default alone (#2451, profile-side). A profile
-        # whose own value is empty/"auto" falls through to the connection.
-        explicit = profile.get(field)
-        if explicit and explicit != "auto":
-            result[field] = explicit
-        else:
-            result[field] = source.get(field) or "auto"
+        explicit = profile.get(field) if uses_profile_provider else None
+        result[field] = explicit if explicit and explicit != "auto" else source.get(field) or "auto"
     if source.get("owner_bound"):
         result["owner_bound"] = True
     result["name"] = source.get("name") or profile.get("name", "")
