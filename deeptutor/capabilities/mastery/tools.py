@@ -1174,7 +1174,11 @@ class MasteryQuizTool(BaseTool):
                         " Make the stem self-contained for later practice: include "
                         "all required code, data, scenario details and diagrams "
                         "(Markdown or Mermaid). Do not refer only to a figure or "
-                        "example in an earlier message."
+                        "example in an earlier message. Wrap every formula in "
+                        "$...$ (inline) or $$...$$ (display) — a lone subscripted "
+                        "or superscripted variable counts as a formula: write "
+                        "$f_0$, $B_{0.707}$, $R'_L$, never bare f_0 or B_{0.707}; "
+                        "without the dollars the learner sees raw source text."
                     ),
                 ),
                 ToolParameter(
@@ -1221,7 +1225,12 @@ class MasteryQuizTool(BaseTool):
                             },
                             "body": {
                                 "type": "string",
-                                "description": "The answer text this choice offers.",
+                                "description": (
+                                    "The answer text this choice offers. Wrap every "
+                                    "formula in $...$ — a lone subscripted variable "
+                                    "counts too: write $R'_L$, $B_{0.707}$, never "
+                                    "bare R'_L or B_{0.707}."
+                                ),
                             },
                         },
                         "required": ["label", "body"],

@@ -218,7 +218,7 @@ quiz_step:
 
     {{
       "question_type": "choice" | "concept" | "fill_in_blank" | "short_answer" | "written" | "coding",
-      "question": "the question text shown to the learner (Markdown, math in LaTeX)",
+      "question": "the question text shown to the learner (Markdown; wrap every formula in $...$ — see the math-delimiter rule below)",
       "options": {{"A": "...", "B": "...", "C": "...", "D": "..."}},
       "correct_answer": "see per-type rules below",
       "explanation": "why the correct answer is correct — a clear, learner-facing explanation"
@@ -235,6 +235,7 @@ quiz_step:
     - The question must align tightly with the template's ``topic`` and respect the template's ``difficulty``.
     - The question must NOT duplicate or near-duplicate any entry in "Already-generated questions this turn".
     - Cite sources inline as [source-id] when you used retrieved passages.
+    - Math delimiters: **every formula** in ``question``, each option in ``options``, ``correct_answer`` and ``explanation`` MUST be wrapped in ``$...$`` (inline) or ``$$...$$`` (display) — a lone variable with a subscript or superscript counts as a formula, e.g. ``$f_0$``, ``$B_{{0.707}}$``, ``$R'_L$``. Bare ``f_0`` or ``B_{{0.707}}`` without ``$`` prints as source text to the learner. The ``____`` blank token in fill-in-blank questions is not a formula; leave it unwrapped.
 
     Hard rules for tool calls:
     - Copy tool names, parameter names, and KB names verbatim from the "Enabled tools" / "Knowledge bases" blocks. Never invent.
