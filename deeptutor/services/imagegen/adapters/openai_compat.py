@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -26,11 +27,31 @@ from deeptutor.services.imagegen.config import ImagegenConfig
 
 logger = logging.getLogger(__name__)
 
+_GEMINI_API_HOST = "generativelanguage.googleapis.com"
+
+
+def _is_gemini_target(config: ImagegenConfig) -> bool:
+    if (config.provider_name or "").strip().lower() == "gemini":
+        return True
+    hostname = (urlsplit((config.base_url or "").strip()).hostname or "").lower()
+    return hostname == _GEMINI_API_HOST
+
 
 class OpenAICompatImagegenAdapter(BaseImagegenAdapter):
     """POST ``{base}/images/generations`` with a JSON body, returning image bytes."""
 
     async def generate(
+        self, prompt: str, config: ImagegenConfig, *, n: int = 1
+    ) -> list[tuple[bytes, str]]:
+        # Existing catalogs saved with a manual `custom` override on Google's
+        # host still route transparently through the native Gemini adapter.
+        if _is_gemini_target(config):
+            from deeptutor.services.imagegen.adapters.gemini import GeminiImagegenAdapter
+
+            return await GeminiImagegenAdapter().generate(prompt, config, n=n)
+        return await self._generate_openai_images(prompt, config, n=n)
+
+    async def _generate_openai_images(
         self, prompt: str, config: ImagegenConfig, *, n: int = 1
     ) -> list[tuple[bytes, str]]:
         if not config.base_url:
