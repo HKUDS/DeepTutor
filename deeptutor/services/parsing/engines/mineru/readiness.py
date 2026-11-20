@@ -99,7 +99,8 @@ def mineru_readiness(config) -> ReadinessReport:
     # Local mode.
     from .backend import local_cli_probe
 
-    if not local_cli_probe(config.local_cli_path).get("found"):
+    probe = local_cli_probe(config.local_cli_path)
+    if not probe.get("found"):
         return ReadinessReport(
             ready=False,
             reason="cli_missing",
@@ -110,7 +111,21 @@ def mineru_readiness(config) -> ReadinessReport:
             ),
         )
 
-    if config.allow_local_model_download or mineru_models_ready(config.model_download_source):
+    if config.allow_local_model_download:
+        return ReadinessReport(ready=True)
+
+    if Path(probe.get("path", "")).stem.casefold() == "mineru-kit":
+        return ReadinessReport(
+            ready=False,
+            reason="models_missing",
+            message=(
+                "MinerU 4 uses a separate model runtime; legacy model caches cannot confirm "
+                "readiness. Configure its models outside DeepTutor, then enable “Allow local "
+                "model download” to authorize that runtime, or use text-only / cloud parsing."
+            ),
+        )
+
+    if mineru_models_ready(config.model_download_source):
         return ReadinessReport(ready=True)
 
     return ReadinessReport(

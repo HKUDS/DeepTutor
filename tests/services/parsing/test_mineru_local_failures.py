@@ -28,6 +28,12 @@ from deeptutor.services.parsing.engines.mineru.local import (
 REASONS = list(LocalParseReason)
 
 
+@pytest.fixture(autouse=True)
+def legacy_cli_version(monkeypatch):
+    """Existing lifecycle fakes implement the 3.x command contract."""
+    monkeypatch.setattr(mineru_local, "read_cli_version", lambda command: "3.4.5")
+
+
 @pytest.fixture()
 def pdf(tmp_path: Path) -> Path:
     source = tmp_path / "exam.pdf"
@@ -105,7 +111,7 @@ def test_legacy_cli_input_reports_reason(tmp_path: Path, monkeypatch: pytest.Mon
     source = tmp_path / "lesson.docx"
     source.write_bytes(b"office")
     monkeypatch.setattr(
-        mineru_local.subprocess,
+        subprocess,
         "Popen",
         lambda *_args, **_kwargs: pytest.fail("legacy CLI must not be invoked"),
     )
@@ -200,7 +206,7 @@ def test_internal_exception_reports_reason(
     def boom(*_args, **_kwargs):  # noqa: ANN002, ANN003
         raise subprocess.TimeoutExpired(cmd="mineru", timeout=1)
 
-    monkeypatch.setattr(mineru_local.subprocess, "Popen", boom)
+    monkeypatch.setattr(subprocess, "Popen", boom)
 
     result = parse_document_with_mineru_result(pdf, tmp_path / "out", cli_command="mineru")
 
