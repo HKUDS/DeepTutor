@@ -279,13 +279,48 @@ async def test_server(name: str, payload: ServerPayload) -> dict[str, Any]:
             # No OAuth grant can exist under a name the store refuses (the
             # save-time name rule rejects the same names), so the honest probe
             # result is the missing authorization, not a raised ValueError.
-            return {
-                "ok": False,
-                "tools": [],
-                "error": describe_connect_failure(oauth.AuthorizationRequired(name)),
-            }
+            return _oauth_needs_authorization(name)
+        # A grant is stored under the saved server's name, not under its URL.
+        # Reusing it for an arbitrary draft URL would hand the bearer to another
+        # origin: Test accepts unsaved payloads, so the URL is not trustworthy
+        # until it matches the server the grant belongs to.
+        stored = _stored_oauth_server(owner, name)
+        if stored is None or not _same_origin(stored, resolved):
+            return _oauth_needs_authorization(name)
         server_name = name
     return await probe_server(resolved, owner=owner, server_name=server_name)
+
+
+def _stored_oauth_server(owner: str, name: str) -> MCPServerConfig | None:
+    """The saved OAuth server a grant under *name* belongs to, if any."""
+    stored = load_user_mcp_config(owner)[0].servers.get(name)
+    if stored is None or stored.auth != "oauth":
+        return None
+    try:
+        return _resolve_for_probe(owner, stored)
+    except Exception:  # noqa: BLE001 - a broken stored secret must fail closed
+        logger.warning("Could not resolve the stored OAuth server %r for Test", name)
+        return None
+
+
+def _same_origin(stored: MCPServerConfig, draft: MCPServerConfig) -> bool:
+    """Whether *draft* targets the exact origin the stored grant was issued for."""
+    from deeptutor.services.mcp.network import mcp_origin
+
+    try:
+        return mcp_origin(stored.url) == mcp_origin(draft.url)
+    except ValueError:
+        # A non-http(s), credential-bearing or malformed URL cannot be the
+        # origin an OAuth grant was issued for; fail closed.
+        return False
+
+
+def _oauth_needs_authorization(name: str) -> dict[str, Any]:
+    return {
+        "ok": False,
+        "tools": [],
+        "error": describe_connect_failure(oauth.AuthorizationRequired(name)),
+    }
 
 
 def _resolve_for_probe(owner: str, config: MCPServerConfig) -> MCPServerConfig:
