@@ -226,6 +226,9 @@ class _ServerConnection:
     adapters: list[MCPToolAdapter] = field(default_factory=list)
     session: Any = None
     task: asyncio.Task | None = None
+    #: Owns the ``connecting`` → ``connected``/``error`` transition. Held here so
+    #: the task is not garbage-collected while a cancelled caller no longer is.
+    settle: asyncio.Task | None = None
     shutdown: asyncio.Event = field(default_factory=asyncio.Event)
     # Backoff state for a failed connection (monotonic loop time).
     retry_at: float = 0.0
@@ -652,17 +655,36 @@ class MCPConnectionManager:
         self._connections[(owner, name)] = conn
         ready: asyncio.Future = asyncio.get_running_loop().create_future()
         conn.task = asyncio.create_task(self._run_server(conn, ready), name=f"mcp-server-{name}")
+        # The status transition runs in its own task and is awaited through a
+        # shield (issue #2706). Callers bound this await — the servers page warms
+        # connections under a 5s ``wait_for`` — and cancelling it mid-handshake
+        # must not orphan the row on "connecting" while the connection task,
+        # which that cancellation does not reach, goes live (or fails) anyway.
+        conn.settle = asyncio.create_task(
+            self._settle_connect(conn, ready), name=f"mcp-settle-{name}"
+        )
+        await asyncio.shield(conn.settle)
+
+    async def _settle_connect(self, conn: _ServerConnection, ready: asyncio.Future) -> None:
+        """Wait out *conn*'s handshake and record how it ended."""
+        name = conn.name
         try:
             await asyncio.wait_for(ready, timeout=_CONNECT_TIMEOUT_S)
+            if self._superseded(conn):
+                return
             conn.status = "connected"
             conn.error = ""
             conn.retry_delay = _RETRY_BACKOFF_START_S
             self._register_adapters(conn)
             logger.info("MCP server %r connected (%d tools)", name, len(conn.adapters))
         except asyncio.TimeoutError:
+            if self._superseded(conn):
+                return
             self._mark_failed(conn, f"connect timed out after {_CONNECT_TIMEOUT_S}s")
             logger.error("MCP server %r: %s", name, conn.error)
         except Exception as exc:
+            if self._superseded(conn):
+                return
             # Unwrapped, same as the probe: this string is what the store shows
             # under a server's row, and "unhandled errors in a TaskGroup" tells
             # the reader nothing about the 401 or the DNS failure behind it.
@@ -674,6 +696,16 @@ class MCPConnectionManager:
                 # has consented yet.
                 conn.status = "needs_auth"
             logger.error("MCP server %r failed to connect: %s", name, conn.error)
+
+    def _superseded(self, conn: _ServerConnection) -> bool:
+        """True once *conn* was disconnected or replaced while it was connecting.
+
+        A shielded settle can outlive its caller, so it must not publish a
+        removed server's tools or resurrect its status.
+        """
+        return (
+            conn.status == "disabled" or self._connections.get((conn.owner, conn.name)) is not conn
+        )
 
     def _mark_failed(self, conn: _ServerConnection, error: str) -> None:
         """Record a connect failure and schedule the next attempt."""
