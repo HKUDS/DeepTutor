@@ -44,11 +44,21 @@ export function browserReturnPath(location: BrowserLocationParts): string {
   );
 }
 
+const LOGIN_PAGE = "/login";
+const MAX_NEXT_LENGTH = 2000;
+
 export function loginHref(returnPath: string): string {
+  const url = new URL(normalizeInternalReturnPath(returnPath), RETURN_URL_BASE);
+  // A previous `next` must not be encoded into the new one. That is the loop.
+  url.searchParams.delete("next");
+  if (url.pathname === LOGIN_PAGE) {
+    return LOGIN_PAGE;
+  }
+  const cleaned = `${url.pathname}${url.search}${url.hash}`;
   const query = new URLSearchParams({
-    next: normalizeInternalReturnPath(returnPath),
+    next: cleaned.length > MAX_NEXT_LENGTH ? "/" : cleaned,
   });
-  return `/login?${query.toString()}`;
+  return `${LOGIN_PAGE}?${query.toString()}`;
 }
 
 /**
