@@ -25,6 +25,7 @@ describe('provider branding', () => {
     const generic = new Set([
       'none', 'custom', 'custom_anthropic', 'custom_openai_sdk', 'custom_chat', 'y_api',
       'google_browser_scraper', 'xai', // No bundled verified xAI brand asset yet.
+      'litellm', // No bundled verified LiteLLM brand asset yet.
       'local',
     ])
     expect(ids.size).toBeGreaterThan(50)
