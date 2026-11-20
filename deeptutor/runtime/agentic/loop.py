@@ -36,9 +36,13 @@ from deeptutor.runtime.agentic.messages import (
     extend_transient_model_messages,
     with_transient_model_messages,
 )
-from deeptutor.runtime.agentic.tool_dispatch import DispatchOutcome
+from deeptutor.runtime.agentic.tool_dispatch import (
+    DispatchOutcome,
+    refuse_truncated_tool_calls,
+)
 from deeptutor.runtime.agentic.usage import UsageTracker
 from deeptutor.runtime.stream_bus import StreamBus
+from deeptutor.services.llm import finish_was_truncated
 
 
 @dataclass(frozen=True)
@@ -319,6 +323,23 @@ async def run_agentic_loop(
                     thinking_blocks=list(step.thinking_blocks) or None,
                 )
             )
+            if finish_was_truncated(step.finish_reason):
+                # ``dispatch_tool_calls`` repairs malformed arguments on
+                # purpose — right for a complete call that came back mangled,
+                # wrong for one the provider cut off mid-string, where repair
+                # closes the partial value and the tool runs on it. Refuse the
+                # whole batch here, before any host sees it, and let the next
+                # round retry with complete arguments (the chat loop's #2719
+                # rule, applied at the choke point every other flow uses).
+                messages.extend(
+                    await refuse_truncated_tool_calls(
+                        tool_calls=step.tool_calls,
+                        stream=stream,
+                        source=source,
+                        stage=stage,
+                    )
+                )
+                continue
             outcome = await host.dispatch_tools(
                 iteration=iteration,
                 tool_calls=step.tool_calls,
