@@ -93,10 +93,10 @@ export function availablePort(preferred = 0) {
   });
 }
 
-export function probe(url, { timeout = 2500 } = {}) {
+export function probe(url, { timeout = 2500, signal } = {}) {
   // Node HTTP deliberately bypasses shell/system proxy settings for loopback.
   return new Promise(resolve => {
-    const request = http.get(url, { agent: false }, response => {
+    const request = http.get(url, { agent: false, signal }, response => {
       response.resume();
       resolve(response.statusCode >= 200 && response.statusCode < 400);
     });
@@ -111,8 +111,12 @@ export async function waitReady(url, { signal, alive = () => true, timeout = 180
   while (Date.now() < deadline) {
     signal?.throwIfAborted();
     if (!alive()) throw new Error('A runtime process exited early; see the runtime log');
-    if (await probe(url)) return;
-    await delay(250, undefined, { signal });
+    const ready = await probe(url, { signal, timeout: Math.min(2500, Math.max(1, deadline - Date.now())) });
+    signal?.throwIfAborted();
+    if (!alive()) throw new Error('A runtime process exited early; see the runtime log');
+    if (Date.now() >= deadline) break;
+    if (ready) return;
+    await delay(Math.min(250, deadline - Date.now()), undefined, { signal });
   }
   throw new Error(`Timed out waiting for ${url}`);
 }

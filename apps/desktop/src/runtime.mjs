@@ -139,6 +139,7 @@ export class SourceRuntime extends EventEmitter {
       });
       const versionFile = await readFile(path.join(config.sourcePath, 'deeptutor/__version__.py'), 'utf8');
       const coreVersion = /__version__\s*=\s*['"]([^'"]+)/.exec(versionFile)?.[1] ?? 'dev';
+      this.controller.signal.throwIfAborted();
       this.update({ phase: 'ready', step: 'ready', coreVersion, url, owned: true });
       for (const child of [this.backend, this.frontend]) {
         child.done.then(() => {
