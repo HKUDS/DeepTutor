@@ -6664,5 +6664,10 @@
   "Position": "Position",
   "Action": "Action",
   "Conversation IDs (optional)": "Conversation IDs (optional)",
-  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle."
+  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.",
+  "Skip this knowledge point for now": "Skip this knowledge point for now",
+  "Deferred for now": "Deferred for now",
+  "Confirming mastery counts toward progress and keeps the original assessment unchanged.": "Confirming mastery counts toward progress and keeps the original assessment unchanged.",
+  "Skipping does not count as mastery. You can return to this knowledge point later.": "Skipping does not count as mastery. You can return to this knowledge point later.",
+  "Optional note": "Optional note"
 }

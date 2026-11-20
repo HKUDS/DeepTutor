@@ -1,5 +1,5 @@
 {
-  "fingerprint": "c3b938e1a6af4378a012f1f6faa1887d8c8d2b37042f8f01885deabebeef625a",
+  "fingerprint": "1c04bd014f1a5790ddc5597dee0dbec591602f849f8d2a6d8693015f90206558",
   "routers": {
     "deeptutor.api.routers.auth:router": [
       {
@@ -1340,6 +1340,14 @@
       {
         "path": "/topics/{path_id}/objectives/{kp_id}/override",
         "name": "set_learner_override",
+        "kind": "http",
+        "methods": [
+          "POST"
+        ]
+      },
+      {
+        "path": "/topics/{path_id}/objectives/{kp_id}/defer",
+        "name": "defer_learner_objective",
         "kind": "http",
         "methods": [
           "POST"

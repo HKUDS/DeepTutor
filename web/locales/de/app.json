@@ -6664,5 +6664,10 @@
   "Position": "Position",
   "Action": "Action",
   "Conversation IDs (optional)": "Conversation IDs (optional)",
-  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle."
+  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.",
+  "Skip this knowledge point for now": "Diesen Lernpunkt vorerst überspringen",
+  "Deferred for now": "Vorerst zurückgestellt",
+  "Confirming mastery counts toward progress and keeps the original assessment unchanged.": "Deine Bestätigung zählt zum Lernfortschritt. Die ursprüngliche Bewertung bleibt unverändert.",
+  "Skipping does not count as mastery. You can return to this knowledge point later.": "Überspringen zählt nicht als Beherrschung. Du kannst später zu diesem Lernpunkt zurückkehren.",
+  "Optional note": "Optionale Notiz"
 }

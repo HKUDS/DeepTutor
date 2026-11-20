@@ -853,6 +853,22 @@ export function setMasteryObjectiveOverride(
   );
 }
 
+export function deferMasteryObjective(
+  pathId: string,
+  objectiveId: string,
+  note = "",
+): Promise<{ status: string; path_revision: number; map: MasteryMap }> {
+  return masteryJson(
+    `/api/mastery-paths/topics/${encodeURIComponent(pathId)}/objectives/${encodeURIComponent(objectiveId)}/defer`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ note }),
+    },
+    "defer objective",
+  );
+}
+
 export async function fetchMasteryTopicSessions(
   pathId: string,
   init?: RequestInit,

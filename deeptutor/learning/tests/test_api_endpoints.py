@@ -1079,6 +1079,173 @@ class TestObjectiveReport:
 # -- POST /progress/{book_id}/skip-question -------------------------------
 
 
+class TestManualObjectiveActions:
+    def _path(self, client, app, *, pending=False, group=False):
+        modules = [_module_payload("m1", "kp1"), _module_payload("m2", "kp2")]
+        response = client.post(
+            "/api/mastery-paths/progress/manual/init-modules", json={"modules": modules}
+        )
+        assert response.status_code == 200
+        store = LearningStore(root=app.state.learning_root)
+        if pending:
+            question = PendingQuestion(
+                question_id="manual-question",
+                knowledge_point_id="kp2" if group else "kp1",
+                module_id="m2" if group else "m1",
+                prompt="Explain the missing diagram",
+                expected_answer="" if group else "A diagram is required",
+                question_type="group" if group else "short_answer",
+                questions=[
+                    PendingQuestion(
+                        question_id="leaf-question",
+                        knowledge_point_id="kp1",
+                        module_id="m1",
+                        prompt="Explain the missing diagram",
+                        expected_answer="A diagram is required",
+                    ),
+                    PendingQuestion(
+                        question_id="other-leaf",
+                        knowledge_point_id="kp2",
+                        module_id="m2",
+                        prompt="Explain the second diagram",
+                        expected_answer="A second diagram is required",
+                    ),
+                ]
+                if group
+                else [],
+            )
+            LearningService(store).register_question("manual", question, session_id="session")
+        return store
+
+    @pytest.mark.parametrize("group", [False, True])
+    def test_confirm_mastery_releases_matching_question_and_preserves_evidence(
+        self, client, app, group
+    ):
+        store = self._path(client, app, pending=True, group=group)
+        progress = store.load("manual")
+        progress.quiz_attempts.append(
+            QuizAttempt(
+                question_id="earlier-answer",
+                knowledge_point_id="kp1",
+                is_correct=False,
+                user_answer="An equivalent explanation",
+            )
+        )
+        progress.mastery_levels["kp1"] = 0.2
+        progress.qualitative_mastery["kp1"] = False
+        store.save(progress)
+        before = store.load("manual")
+        response = client.post(
+            "/api/mastery-paths/topics/manual/objectives/kp1/override",
+            json={"mastered": True, "note": "My equivalent answer was marked wrong"},
+        )
+        assert response.status_code == 200
+        progress = store.load("manual")
+        assert progress.pending_question is None
+        assert store.get_active_interaction("manual") is None
+        assert store.get_interaction("manual", "manual-question").status.value == "abandoned"
+        assert progress.quiz_attempts == before.quiz_attempts
+        assert progress.mastery_levels == before.mastery_levels
+        assert progress.qualitative_mastery == before.qualitative_mastery
+        assert progress.learning_evidence == before.learning_evidence
+        assert progress.review_queue == before.review_queue
+        summary = client.get("/api/mastery-paths/progress/manual/map").json()
+        assert summary["next"]["knowledge_point_id"] == "kp2"
+        assert summary["next"]["action"] != "answer_pending"
+        assert summary["map"]["counts"]["mastered"] == 1
+        assert summary["map"]["modules"][0]["knowledge_points"][0]["mastery_source"] == "learner"
+
+        undone = client.post(
+            "/api/mastery-paths/topics/manual/objectives/kp1/override",
+            json={"mastered": False},
+        )
+        assert undone.status_code == 200
+        assert undone.json()["map"]["counts"]["mastered"] == 0
+        assert store.load("manual").pending_question is None
+
+    def test_confirm_other_objective_keeps_pending_question(self, client, app):
+        store = self._path(client, app, pending=True)
+        response = client.post(
+            "/api/mastery-paths/topics/manual/objectives/kp2/override",
+            json={"mastered": True},
+        )
+        assert response.status_code == 200
+        assert store.load("manual").pending_question.question_id == "manual-question"
+        assert store.get_active_interaction("manual") is not None
+
+    @pytest.mark.parametrize("pending", [False, True])
+    def test_defer_moves_on_even_without_a_question_and_earns_no_mastery(
+        self, client, app, pending
+    ):
+        store = self._path(client, app, pending=pending)
+        response = client.post(
+            "/api/mastery-paths/topics/manual/objectives/kp1/defer",
+            json={"note": "The question is missing"},
+        )
+        assert response.status_code == 200, response.text
+        progress = store.load("manual")
+        assert progress.pending_question is None
+        assert store.get_active_interaction("manual") is None
+        assert progress.quiz_attempts == []
+        assert progress.learning_evidence == []
+        assert progress.learner_mastery_overrides == {}
+        assert progress.deferred_objectives["kp1"].note == "The question is missing"
+        summary = response.json()["map"]
+        assert summary["counts"]["mastered"] == 0
+        assert summary["complete"] is False
+        assert summary["modules"][0]["knowledge_points"][0]["deferred"] is True
+        next_step = client.get("/api/mastery-paths/progress/manual/map").json()["next"]
+        assert next_step["knowledge_point_id"] == "kp2"
+        assert next_step["action"] != "answer_pending"
+
+    @pytest.mark.parametrize(
+        "path,objective,body,status",
+        [
+            ("missing", "kp1", {}, 404),
+            ("manual", "missing", {}, 404),
+            ("a\\b", "kp1", {}, 400),
+            ("manual", "kp1", {"note": "x" * 501}, 422),
+        ],
+    )
+    def test_invalid_deferral_preserves_progress(self, client, app, path, objective, body, status):
+        store = self._path(client, app, pending=True)
+        before = store.load("manual")
+        response = client.post(
+            f"/api/mastery-paths/topics/{path}/objectives/{objective}/defer", json=body
+        )
+        assert response.status_code == status, response.text
+        assert store.load("manual") == before
+
+    def test_defer_does_not_remove_earned_mastery(self, client, app):
+        store = self._path(client, app)
+        LearningService(store).set_learner_mastery_override("manual", "kp1", mastered=True)
+        response = client.post("/api/mastery-paths/topics/manual/objectives/kp1/defer", json={})
+        assert response.status_code == 409
+        assert "kp1" in store.load("manual").learner_mastery_overrides
+
+    @pytest.mark.parametrize("action,body", [("override", {"mastered": True}), ("defer", {})])
+    def test_manual_action_waits_for_exclusive_path_access(self, client, app, action, body):
+        store = self._path(client, app, pending=True)
+        before = store.load("manual")
+        store.acquire_path_lease("manual", "__path_api__", "other-mutation", bind_session=False)
+        response = client.post(
+            f"/api/mastery-paths/topics/manual/objectives/kp1/{action}", json=body
+        )
+        assert response.status_code == 409
+        assert store.load("manual") == before
+        assert store.get_active_interaction("manual") is not None
+
+    def test_deferring_last_objective_does_not_complete_the_path(self, client, app):
+        self._path(client, app)
+        for kp_id in ("kp1", "kp2"):
+            response = client.post(
+                f"/api/mastery-paths/topics/manual/objectives/{kp_id}/defer", json={}
+            )
+            assert response.status_code == 200
+        assert response.json()["map"]["counts"]["mastered"] == 0
+        assert response.json()["map"]["complete"] is False
+
+
 class TestSkipPendingQuestion:
     def _path_with_pending_question(self, client, app, book_id: str) -> LearningStore:
         client.post(

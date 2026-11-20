@@ -4347,6 +4347,26 @@ export interface paths {
     readonly patch?: never;
     readonly trace?: never;
   };
+  readonly "/api/mastery-paths/topics/{path_id}/objectives/{kp_id}/defer": {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: never;
+      readonly path?: never;
+      readonly cookie?: never;
+    };
+    readonly get?: never;
+    readonly put?: never;
+    /**
+     * Defer Learner Objective
+     * @description Let the learner move on even when the tutor failed to produce a usable card.
+     */
+    readonly post: operations["defer_learner_objective_api_mastery_paths_topics__path_id__objectives__kp_id__defer_post"];
+    readonly delete?: never;
+    readonly options?: never;
+    readonly head?: never;
+    readonly patch?: never;
+    readonly trace?: never;
+  };
   readonly "/api/mastery-paths/topics/{path_id}/objectives/{kp_id}/override": {
     readonly parameters: {
       readonly query?: never;
@@ -13859,6 +13879,14 @@ export interface components {
       /** Time Seconds */
       readonly time_seconds: number;
     };
+    /** DeferObjectiveRequest */
+    readonly DeferObjectiveRequest: {
+      /**
+       * Note
+       * @default
+       */
+      readonly note: string;
+    };
     /** DeleteBlockRequest */
     readonly DeleteBlockRequest: {
       /** Block Id */
@@ -19246,6 +19274,8 @@ export type SchemaDeeptutorApiRoutersMemoryLlmSelectionPayload =
   components["schemas"]["deeptutor__api__routers__memory__LLMSelectionPayload"];
 export type SchemaDeeptutorApiRoutersVideoLearningProgressRequest =
   components["schemas"]["deeptutor__api__routers__video_learning__ProgressRequest"];
+export type SchemaDeferObjectiveRequest =
+  components["schemas"]["DeferObjectiveRequest"];
 export type SchemaDeleteBlockRequest =
   components["schemas"]["DeleteBlockRequest"];
 export type SchemaDeleteKnowledgeBaseRequest =
@@ -28943,6 +28973,46 @@ export interface operations {
     readonly requestBody: {
       readonly content: {
         readonly "application/json": components["schemas"]["EditTopicMapRequest"];
+      };
+    };
+    readonly responses: {
+      /** @description Successful Response */
+      readonly 200: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": unknown;
+        };
+      };
+      /** @description Validation Error */
+      readonly 422: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  readonly defer_learner_objective_api_mastery_paths_topics__path_id__objectives__kp_id__defer_post: {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: {
+        readonly Authorization?: string | null;
+      };
+      readonly path: {
+        readonly kp_id: string;
+        readonly path_id: string;
+      };
+      readonly cookie?: {
+        readonly dt_token?: string | null;
+      };
+    };
+    readonly requestBody: {
+      readonly content: {
+        readonly "application/json": components["schemas"]["DeferObjectiveRequest"];
       };
     };
     readonly responses: {

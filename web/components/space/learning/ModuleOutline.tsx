@@ -9,6 +9,7 @@ import {
   CircleDot,
   Loader2,
   LockKeyhole,
+  SkipForward,
   Sparkles,
   Undo2,
 } from "lucide-react";
@@ -26,6 +27,7 @@ import { ObjectiveDetail } from "./ObjectiveDetail";
 function statusLabel(point: MapKnowledgePoint, t: Translate) {
   if (point.mastery_source === "learner") return t("Marked as known");
   if (point.status === "mastered") return t("Mastered");
+  if (point.deferred) return t("Deferred for now");
   if (point.status === "learning") return t("In progress");
   return t("Not started");
 }
@@ -82,6 +84,7 @@ export function ModuleOutline({
   zh,
   onSelect,
   onOverride,
+  onDefer,
 }: {
   topic: MasteryTopic;
   revision: number;
@@ -93,6 +96,7 @@ export function ModuleOutline({
     mastered: boolean,
     note: string,
   ) => Promise<void>;
+  onDefer: (objectiveId: string, note: string) => Promise<void>;
 }) {
   const { t } = useTranslation();
   const nextId = topic.next.knowledge_point_id;
@@ -104,10 +108,7 @@ export function ModuleOutline({
     // its own progress, and it is what `mastery_revise` operates on. Blocks are
     // set apart by space and a heading, not by frames: ten framed modules read
     // as ten boxes before they read as an outline.
-    <section
-      id="mastery-outline-start"
-      aria-label={t("Topic outline")}
-    >
+    <section id="mastery-outline-start" aria-label={t("Topic outline")}>
       {topic.map.modules.map((module, moduleIndex) => (
         <div key={module.id} className="dt-outline-module">
           <div>
@@ -134,7 +135,7 @@ export function ModuleOutline({
               )}
             </header>
             <ul>
-              {module.knowledge_points.map((point) => {
+              {module.knowledge_points.map(point => {
                 const selected = point.id === selectedId;
                 const current = point.id === nextId;
                 return (
@@ -171,13 +172,15 @@ export function ModuleOutline({
                     </button>
                     {selected && (
                       <ObjectiveDrawer
-                        key={point.id}
+                        key={`${topic.path_id}:${point.id}`}
                         pathId={topic.path_id}
                         objectiveId={point.id}
                         revision={revision}
                         zh={zh}
                         onClose={() => onSelect(null)}
                         onOverride={onOverride}
+                        onDefer={onDefer}
+                        deferred={Boolean(point.deferred)}
                       />
                     )}
                   </li>
@@ -198,6 +201,8 @@ function ObjectiveDrawer({
   zh,
   onClose,
   onOverride,
+  onDefer,
+  deferred,
 }: {
   pathId: string;
   objectiveId: string;
@@ -209,10 +214,14 @@ function ObjectiveDrawer({
     mastered: boolean,
     note: string,
   ) => Promise<void>;
+  onDefer: (objectiveId: string, note: string) => Promise<void>;
+  deferred: boolean;
 }) {
   const { t } = useTranslation();
   const [report, setReport] = useState<ObjectiveReport | null>(null);
-  const [noteOpen, setNoteOpen] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<
+    "mastery" | "defer" | null
+  >(null);
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -220,7 +229,9 @@ function ObjectiveDrawer({
   useEffect(() => {
     const controller = new AbortController();
     fetchObjectiveReport(pathId, objectiveId, { signal: controller.signal })
-      .then(setReport)
+      .then(result => {
+        if (!controller.signal.aborted) setReport(result);
+      })
       .catch(() => {
         if (!controller.signal.aborted)
           setError(t("Evidence could not be loaded"));
@@ -228,12 +239,18 @@ function ObjectiveDrawer({
     return () => controller.abort();
   }, [objectiveId, pathId, revision, t]);
 
-  const applyOverride = async (mastered: boolean) => {
+  const applyAction = async (action: "mastery" | "defer" | "restore") => {
+    if (busy) return;
     setBusy(true);
     setError(null);
     try {
-      await onOverride(objectiveId, mastered, note);
-      setNoteOpen(false);
+      if (action === "defer") {
+        await onDefer(objectiveId, note);
+      } else {
+        await onOverride(objectiveId, action === "mastery", note);
+      }
+      setConfirmAction(null);
+      setNote("");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : t("Update failed"));
     } finally {
@@ -282,7 +299,7 @@ function ObjectiveDrawer({
                   </div>
                   <button
                     type="button"
-                    onClick={() => void applyOverride(false)}
+                    onClick={() => void applyAction("restore")}
                     disabled={busy}
                     className="inline-flex h-9 items-center gap-2 rounded-xl border border-[var(--border)] px-3 text-xs font-medium hover:bg-[var(--accent)] disabled:opacity-50"
                   >
@@ -294,49 +311,89 @@ function ObjectiveDrawer({
                     {t("Return to assessment")}
                   </button>
                 </div>
-              ) : noteOpen ? (
+              ) : confirmAction ? (
                 <div>
+                  <p className="mb-3 text-xs leading-5 text-[var(--muted-foreground)]">
+                    {confirmAction === "mastery"
+                      ? t(
+                          "Confirming mastery counts toward progress and keeps the original assessment unchanged.",
+                        )
+                      : t(
+                          "Skipping does not count as mastery. You can return to this knowledge point later.",
+                        )}
+                  </p>
                   <label className="text-xs font-medium text-[var(--foreground)]">
-                    {t("Optional: why are you skipping this?")}
+                    {t("Optional note")}
                     <textarea
                       autoFocus
                       value={note}
-                      onChange={(event) => setNote(event.target.value)}
+                      onChange={event => setNote(event.target.value)}
                       rows={2}
                       maxLength={500}
+                      disabled={busy}
                       className="mt-2 w-full resize-none rounded-xl border border-[var(--input)] bg-[var(--background)] p-3 text-xs outline-none focus:border-[var(--ring)]"
                     />
                   </label>
                   <div className="mt-2 flex justify-end gap-2">
                     <button
                       type="button"
-                      onClick={() => setNoteOpen(false)}
+                      onClick={() => {
+                        setConfirmAction(null);
+                        setNote("");
+                        setError(null);
+                      }}
+                      disabled={busy}
                       className="h-9 rounded-xl px-3 text-xs text-[var(--muted-foreground)] hover:bg-[var(--accent)]"
                     >
                       {t("Cancel")}
                     </button>
                     <button
                       type="button"
-                      onClick={() => void applyOverride(true)}
+                      onClick={() => void applyAction(confirmAction)}
                       disabled={busy}
                       className="inline-flex h-9 items-center gap-2 rounded-xl bg-[var(--primary)] px-3 text-xs font-medium text-[var(--primary-foreground)] disabled:opacity-50"
                     >
                       {busy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                      {t("Confirm mastery")}
+                      {confirmAction === "mastery"
+                        ? t("Confirm mastery")
+                        : t("Skip for now")}
                     </button>
                   </div>
                 </div>
               ) : (
-                <button
-                  type="button"
-                  onClick={() => setNoteOpen(true)}
-                  className="inline-flex h-9 items-center gap-2 rounded-xl border border-[var(--border)] px-3 text-xs font-medium hover:bg-[var(--accent)]"
-                >
-                  <LockKeyhole className="h-3.5 w-3.5" />
-                  {t("I already know this — advance")}
-                </button>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setConfirmAction("mastery")}
+                    className="inline-flex h-9 items-center gap-2 rounded-xl border border-[var(--border)] px-3 text-xs font-medium hover:bg-[var(--accent)]"
+                  >
+                    <LockKeyhole className="h-3.5 w-3.5" />
+                    {t("I already know this — advance")}
+                  </button>
+                  {!deferred && (
+                    <button
+                      type="button"
+                      onClick={() => setConfirmAction("defer")}
+                      className="inline-flex min-h-9 items-center gap-2 rounded-xl border border-[var(--border)] px-3 py-2 text-left text-xs font-medium hover:bg-[var(--accent)]"
+                    >
+                      <SkipForward className="h-3.5 w-3.5 shrink-0" />
+                      {t("Skip this knowledge point for now")}
+                    </button>
+                  )}
+                </div>
               )}
-              {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
+              {deferred && report.mastery_source !== "learner" && (
+                <p className="mt-2 text-xs text-[var(--muted-foreground)]">
+                  {t(
+                    "Skipping does not count as mastery. You can return to this knowledge point later.",
+                  )}
+                </p>
+              )}
+              {error && (
+                <p role="alert" className="mt-2 text-xs text-red-600">
+                  {error}
+                </p>
+              )}
             </div>
           )}
         </>

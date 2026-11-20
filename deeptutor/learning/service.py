@@ -32,7 +32,7 @@ from deeptutor.learning.objective_relations import (
     resolve_relation_refs,
     validate_objective_relations,
 )
-from deeptutor.learning.storage import LearningStore
+from deeptutor.learning.storage import LearningStore, LearningTransaction
 
 if TYPE_CHECKING:
     from deeptutor.learning.scheduler import SpacedRepetitionScheduler
@@ -54,6 +54,24 @@ _LEARNER_PROFILE_FIELDS: tuple[str, ...] = (
     "teaching_strategy",
     "notes",
 )
+
+
+def _abandon_objective_question(tx: LearningTransaction, kp_id: str) -> bool:
+    """Release only the outstanding card containing the learner's chosen objective."""
+    abandoned = False
+    pending = tx.progress.pending_question
+    if pending is not None and any(
+        q.knowledge_point_id == kp_id for q in pending.questions or [pending]
+    ):
+        tx.progress.pending_question = None
+        abandoned = True
+    active = tx.active_interaction()
+    if active is not None and any(
+        q.knowledge_point_id == kp_id for q in active.question.questions or [active.question]
+    ):
+        tx.abandon_active_interactions()
+        abandoned = True
+    return abandoned
 
 
 def _source_page_key(source: dict) -> tuple | None:
@@ -2303,12 +2321,14 @@ class LearningService:
             kp, _, _ = find_knowledge_point(tx.progress, kp_id)
             if kp is None:
                 raise MasteryInteractionError(f"Unknown objective {kp_id!r}")
+            abandoned = False
             if mastered:
                 tx.progress.learner_mastery_overrides[kp_id] = LearnerMasteryOverride(
                     knowledge_point_id=kp_id,
                     note=str(note or "").strip()[:500],
                 )
                 tx.progress.deferred_objectives.pop(kp_id, None)
+                abandoned = _abandon_objective_question(tx, kp_id)
                 event_type = "mastery.overridden"
             else:
                 if kp_id not in tx.progress.learner_mastery_overrides:
@@ -2318,7 +2338,11 @@ class LearningService:
             tx.touch()
             tx.emit(
                 event_type,
-                {"knowledge_point_id": kp_id, "mastered": bool(mastered)},
+                {
+                    "knowledge_point_id": kp_id,
+                    "mastered": bool(mastered),
+                    "abandoned_question": abandoned,
+                },
             )
 
         progress, _ = self._store.mutate(book_id, update)
@@ -2769,20 +2793,7 @@ class LearningService:
                 raise MasteryInteractionError(
                     f"{kp.name!r} is already mastered, so there is nothing to defer"
                 )
-            abandoned = False
-            pending = tx.progress.pending_question
-            if pending is not None and any(
-                q.knowledge_point_id == target_id for q in pending.questions or [pending]
-            ):
-                tx.progress.pending_question = None
-                abandoned = True
-            active = tx.active_interaction()
-            if active is not None and any(
-                q.knowledge_point_id == target_id
-                for q in active.question.questions or [active.question]
-            ):
-                tx.abandon_active_interactions()
-                abandoned = True
+            abandoned = _abandon_objective_question(tx, target_id)
             tx.progress.deferred_objectives[target_id] = DeferredObjective(
                 knowledge_point_id=target_id,
                 note=str(note or "").strip()[:500],
