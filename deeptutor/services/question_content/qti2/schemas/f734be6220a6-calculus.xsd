@@ -1,0 +1,146 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<xs:schema 
+  xmlns:xs="http://www.w3.org/2001/XMLSchema"
+  xmlns="http://www.w3.org/1998/Math/MathML"
+  targetNamespace="http://www.w3.org/1998/Math/MathML"
+  elementFormDefault="qualified"
+ >
+
+<xs:annotation>
+  <xs:documentation>
+  This is an XML Schema module for the calculs operators of content
+  MathML.
+  Author: St&#233;phane Dalmas, INRIA.
+  </xs:documentation>
+</xs:annotation>
+
+<!-- "int" -->
+
+<xs:attributeGroup name="int.attlist">  
+  <xs:attributeGroup ref="Definition.attrib"/>
+  <xs:attributeGroup ref="Common.attrib"/>
+</xs:attributeGroup>
+
+<xs:complexType name="int.type">
+  <xs:attributeGroup ref="int.attlist"/>
+</xs:complexType>
+
+<xs:element name="int" type="int.type"/>
+
+<!-- "diff" -->
+
+<xs:attributeGroup name="diff.attlist">
+  <xs:attributeGroup ref="Definition.attrib"/>
+  <xs:attributeGroup ref="Common.attrib"/>
+</xs:attributeGroup>
+
+<xs:complexType name="diff.type">
+  <xs:attributeGroup ref="diff.attlist"/>
+</xs:complexType>
+
+<xs:element name="diff" type="diff.type"/>
+
+<!-- "partialdiff" -->
+
+<xs:attributeGroup name="partialdiff.attlist">
+  <xs:attributeGroup ref="Definition.attrib"/>
+  <xs:attributeGroup ref="Common.attrib"/>
+</xs:attributeGroup>
+
+<xs:complexType name="partialdiff.type">
+  <xs:attributeGroup ref="partialdiff.attlist"/>
+</xs:complexType>
+
+<xs:element name="partialdiff" type="partialdiff.type"/>
+
+<!-- "limit" -->
+
+<xs:attributeGroup name="limit.attlist">
+  <xs:attributeGroup ref="Definition.attrib"/>
+  <xs:attributeGroup ref="Common.attrib"/>
+</xs:attributeGroup>
+
+
+<xs:complexType name="limit.type">
+  <xs:attributeGroup ref="limit.attlist"/>
+</xs:complexType>
+
+<xs:element name="limit" type="limit.type"/>
+
+<!-- "lowlimit" -->
+
+<xs:attributeGroup name="lowlimit.attlist">
+  <xs:attributeGroup ref="Definition.attrib"/>
+  <xs:attributeGroup ref="Common.attrib"/>
+</xs:attributeGroup>
+
+<xs:group name="lowlimit.content">
+  <xs:sequence>
+    <xs:group ref="Content-expr.class"/>
+  </xs:sequence>
+</xs:group>
+
+<xs:complexType name="lowlimit.type">
+  <xs:group ref="lowlimit.content"  minOccurs="1" maxOccurs="unbounded"/>
+  <xs:attributeGroup ref="lowlimit.attlist"/>
+</xs:complexType>
+
+<xs:element name="lowlimit" type="lowlimit.type"/>
+
+<!-- "uplimit" -->
+
+<xs:attributeGroup name="uplimit.attlist">
+  <xs:attributeGroup ref="Definition.attrib"/>
+  <xs:attributeGroup ref="Common.attrib"/>
+</xs:attributeGroup>
+
+<xs:group name="uplimit.content">
+  <xs:sequence>
+    <xs:group ref="Content-expr.class"/>
+  </xs:sequence>
+</xs:group>
+
+<xs:complexType name="uplimit.type">
+  <xs:group ref="uplimit.content"  minOccurs="1" maxOccurs="unbounded"/>
+  <xs:attributeGroup ref="uplimit.attlist"/>
+</xs:complexType>
+
+<xs:element name="uplimit" type="uplimit.type"/>
+
+<!-- "tendsto" -->
+
+<xs:attributeGroup name="tendsto.attlist">
+  <xs:attribute name="type" type="xs:string"/>
+  <xs:attributeGroup ref="Definition.attrib"/>
+  <xs:attributeGroup ref="Common.attrib"/>
+</xs:attributeGroup>
+
+
+<xs:complexType name="tendsto.type">
+  <xs:attributeGroup ref="tendsto.attlist"/>
+</xs:complexType>
+
+<xs:element name="tendsto" type="tendsto.type"/>
+
+<!-- And the group of everything -->
+
+<xs:group name="Content-calculus.class">
+  <xs:choice>
+    <xs:element ref="int"/>
+    <xs:element ref="diff"/>
+    <xs:element ref="partialdiff"/>
+    <xs:element ref="limit"/>
+    <xs:element ref="lowlimit"/>
+    <xs:element ref="uplimit"/>
+    <xs:element ref="tendsto"/>
+  </xs:choice>
+</xs:group>
+
+</xs:schema>
+<!--
+  Copyright &#251; 2002 World Wide Web Consortium, (Massachusetts Institute
+  of Technology, Institut National de Recherche en Informatique et en
+  Automatique, Keio University). All Rights Reserved. See
+  http://www.w3.org/Consortium/Legal/.
+  -->

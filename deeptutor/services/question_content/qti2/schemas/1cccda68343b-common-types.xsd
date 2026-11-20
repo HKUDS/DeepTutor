@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<xs:schema 
+  xmlns:xs="http://www.w3.org/2001/XMLSchema"
+  xmlns="http://www.w3.org/1998/Math/MathML"
+  targetNamespace="http://www.w3.org/1998/Math/MathML"
+  elementFormDefault="qualified"
+ >
+
+<xs:annotation>
+  <xs:documentation>
+  This is an XML Schema module containing some type definitions for MathML.
+  Author: St&#233;phane Dalmas, INRIA.
+  </xs:documentation>
+</xs:annotation>
+
+<!-- Simple sizes -->
+
+<xs:simpleType name="simple-size">
+  <xs:restriction base="xs:string">
+    <xs:enumeration value="small"/>
+    <xs:enumeration value="normal"/>
+    <xs:enumeration value="big"/>
+  </xs:restriction>
+</xs:simpleType>
+
+<!-- Centering values -->
+
+<xs:simpleType name="centering">
+  <xs:restriction base="xs:string">
+    <xs:enumeration value="left"/>
+    <xs:enumeration value="center"/>
+    <xs:enumeration value="right"/>
+  </xs:restriction>
+</xs:simpleType>
+
+<!-- The named spaces -->
+
+<!-- this is also used in the value of the "width" attribute on the
+     "mpadded" element -->
+<xs:simpleType name="named-space">
+   <xs:restriction base="xs:string">
+     <xs:enumeration value="veryverythinmathspace"/>
+     <xs:enumeration value="verythinmathspace"/>
+     <xs:enumeration value="thinmathspace"/>
+     <xs:enumeration value="mediummathspace"/>
+     <xs:enumeration value="thickmathspace"/>
+     <xs:enumeration value="verythickmathspace"/>
+     <xs:enumeration value="veryverythickmathspace"/>
+   </xs:restriction>
+</xs:simpleType>
+
+<!-- Thickness -->
+
+<xs:simpleType name="thickness">
+  <xs:restriction base="xs:string">
+    <xs:enumeration value="thin"/>
+    <xs:enumeration value="medium"/>
+    <xs:enumeration value="thick"/>
+  </xs:restriction>
+</xs:simpleType>
+
+
+<!-- number with units used to specified lengths -->
+
+<xs:simpleType name="length-with-unit">
+  <xs:restriction base="xs:string">
+    <xs:pattern 
+     value="(-?([0-9]+|[0-9]*\.[0-9]+)*(em|ex|px|in|cm|mm|pt|pc|%))|0"/>
+   </xs:restriction>
+</xs:simpleType>
+
+<xs:simpleType name="length-with-optional-unit">
+  <xs:restriction base="xs:string">
+    <xs:pattern 
+      value="-?([0-9]+|[0-9]*\.[0-9]+)*(em|ex|px|in|cm|mm|pt|pc|%)?"/>
+   </xs:restriction>
+</xs:simpleType>
+
+<!-- This is just "infinity" that can be used as a length -->
+
+<xs:simpleType name="infinity">
+  <xs:restriction base="xs:string">
+    <xs:enumeration value="infinity"/>
+  </xs:restriction>
+</xs:simpleType>
+
+<!-- colors defined as RGB -->
+
+<xs:simpleType name="RGB-color">
+  <xs:restriction base="xs:string">
+    <xs:pattern value="#(([0-9]|[a-f]){3}|([0-9]|[a-f]){6})"/>
+  </xs:restriction>
+</xs:simpleType>
+
+</xs:schema>
+
+<!--
+  Copyright &#251; 2002 World Wide Web Consortium, (Massachusetts Institute
+  of Technology, Institut National de Recherche en Informatique et en
+  Automatique, Keio University). All Rights Reserved. See
+  http://www.w3.org/Consortium/Legal/.
+  -->

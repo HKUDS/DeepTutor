@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns="http://www.w3.org/2010/10/synthesis" targetNamespace="http://www.w3.org/2010/10/synthesis" elementFormDefault="qualified">
+    <xsd:annotation>
+        <xsd:documentation>SSML 1.1 (Core Profile) Schema (20081002)</xsd:documentation>
+    </xsd:annotation>
+    <xsd:annotation>
+        <xsd:documentation>
+            Copyright 1998-2008 W3C (MIT, ERCIM, Keio), All Rights Reserved. Permission to use, copy, modify and distribute the SSML schema and its accompanying documentation for any purpose and without fee is hereby granted in perpetuity, provided that the above copyright notice and this paragraph appear in all copies. The copyright holders make no representation about the suitability of the schema for any purpose. It is provided "as is" without expressed or implied warranty.
+        </xsd:documentation>
+    </xsd:annotation>
+    <xsd:annotation>
+        <xsd:documentation>
+            IMS Amendments by Colin Smythe on 2015-04-26:
+            (1) Change the target namespace to 'http://www.w3.org/2001/10/synthesis' to avoid namespace clashes with APIPv1.0 QTI Accessibility Extension that uses SSMLv1.0
+            (2) Change the schema location of the namespace 'http://www.w3.org/XML/1998/namespace' to 'http://www.imsglobal.org/xsd/w3/2001/xml.xsd'
+        </xsd:documentation>
+    </xsd:annotation>
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" schemaLocation="http://www.imsglobal.org/xsd/w3/2001/xml.xsd"/>
+    <xsd:redefine schemaLocation="synthesis-nonamespace.xsd">
+        <xsd:annotation>
+            <xsd:documentation>
+                restriction: version and xml:lang attributes on speak mandatory
+            </xsd:documentation>
+        </xsd:annotation>
+        <xsd:complexType name="speak" mixed="true">
+            <xsd:complexContent>
+                <xsd:restriction base="speak">
+                    <xsd:group ref="speak.class"/>
+                    <xsd:attribute name="version" type="version.datatype" use="required"/>
+                    <xsd:attribute ref="xml:lang" use="required"/>
+                    <xsd:anyAttribute namespace="##other" processContents="lax"/>
+                </xsd:restriction>
+            </xsd:complexContent>
+        </xsd:complexType>
+        <xsd:annotation>
+            <xsd:documentation>restriction: name attribute on mark is mandatory</xsd:documentation>
+        </xsd:annotation>
+        <xsd:complexType name="mark">
+            <xsd:complexContent>
+                <xsd:restriction base="mark">
+                    <xsd:sequence>
+                        <xsd:any namespace="##other" minOccurs="0" maxOccurs="unbounded" processContents="lax"/>
+                    </xsd:sequence>
+                    <xsd:attribute name="name" type="xsd:token" use="required"/>
+                    <xsd:anyAttribute namespace="##other" processContents="lax"/>
+                </xsd:restriction>
+            </xsd:complexContent>
+        </xsd:complexType>
+    </xsd:redefine>
+</xsd:schema>

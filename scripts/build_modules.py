@@ -78,7 +78,7 @@ include = ["deeptutor*", "deeptutor_cli*", "deeptutor_web*"]
 namespaces = true
 [tool.setuptools.package-data]
 "deeptutor_web" = ["**/*", ".next/**/*"]
-"*" = ["*.json", "*.yaml", "*.yml", "*.md", "*.sh", "*.j2", "*.jinja", "*.ts", "*.tsx", "*.mjs", "*.js", "*.css", "*.html", "*.svg", "*.png", "*.woff2"]
+"*" = ["*.json", "*.yaml", "*.yml", "*.md", "*.sh", "*.j2", "*.jinja", "*.ts", "*.tsx", "*.mjs", "*.js", "*.css", "*.html", "*.svg", "*.png", "*.woff2", "*.xsd"]
 """
             if name == "core":
                 config += '\n[project.scripts]\ndeeptutor = "deeptutor_cli.main:main"\n'

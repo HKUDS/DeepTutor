@@ -186,7 +186,8 @@ it("keeps a successful preview available when import saving fails", async () => 
     target: { files: [new File(["q,a"], "questions.csv")] },
   });
   fireEvent.click(await screen.findByRole("button", { name: "Confirm import" }));
-  await screen.findByText("Save unavailable");
+  await screen.findByText("Import failed. Please check your file and try again.");
+  expect(screen.queryByText("Save unavailable")).not.toBeInTheDocument();
   expect(onImported).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole("button", { name: "Confirm import" }));
   await waitFor(() => expect(onImported).toHaveBeenCalledOnce());

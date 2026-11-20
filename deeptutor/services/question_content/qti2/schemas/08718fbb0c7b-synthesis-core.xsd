@@ -1,0 +1,364 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema" elementFormDefault="qualified">
+ <xsd:annotation>
+ <xsd:documentation>SSML 1.0 Core Schema (20040615)</xsd:documentation>
+ </xsd:annotation>
+ <xsd:annotation>
+ <xsd:documentation>
+ Copyright 1998-2004 W3C (MIT, ERCIM, Keio), All Rights Reserved. Permission to use, copy, modify and distribute the SSML core schema and its accompanying documentation for any purpose and without fee is hereby granted in perpetuity, provided that the above copyright notice and this paragraph appear in all copies. The copyright holders make no representation about the suitability of the schema for any purpose. It is provided "as is" without expressed or implied warranty.
+ </xsd:documentation>
+ </xsd:annotation>
+ <xsd:annotation>
+ <xsd:documentation>Importing dependent namespaces</xsd:documentation>
+ </xsd:annotation>
+<xsd:import namespace="http://www.w3.org/XML/1998/namespace" schemaLocation="http://www.imsglobal.org/xsd/w3/2001/xml.xsd"/>
+<xsd:annotation>
+<xsd:documentation>General Datatypes</xsd:documentation>
+</xsd:annotation>
+<xsd:simpleType name="duration">
+<xsd:annotation>
+<xsd:documentation>
+Duration follows "Times" in CCS specification; e.g. "25ms", "3s"
+</xsd:documentation>
+</xsd:annotation>
+<xsd:restriction base="xsd:string">
+<xsd:pattern value="(\+)?([0-9]*\.)?[0-9]+(ms|s)"/>
+</xsd:restriction>
+</xsd:simpleType>
+<xsd:simpleType name="number">
+<xsd:annotation>
+<xsd:documentation>number: e.g. 10, 5.5, 1.5, 9., .45</xsd:documentation>
+</xsd:annotation>
+<xsd:restriction base="xsd:decimal">
+<xsd:minInclusive value="0"/>
+</xsd:restriction>
+</xsd:simpleType>
+<xsd:simpleType name="relative">
+<xsd:annotation>
+<xsd:documentation>Modeled on number datatype: e.g. +4.5, -.45</xsd:documentation>
+</xsd:annotation>
+<xsd:restriction base="xsd:string">
+<xsd:pattern value="[+\-]([0-9]+|[0-9]+.[0-9]*|[0-9]*.[0-9]+)"/>
+</xsd:restriction>
+</xsd:simpleType>
+<xsd:simpleType name="percent">
+<xsd:annotation>
+<xsd:documentation>Modeled on number datatype: e.g. +4.5%, -.45%</xsd:documentation>
+</xsd:annotation>
+<xsd:restriction base="xsd:string">
+<xsd:pattern value="[+\-]?([0-9]+|[0-9]+.[0-9]*|[0-9]*.[0-9]+)%"/>
+</xsd:restriction>
+</xsd:simpleType>
+<xsd:simpleType name="semitone">
+<xsd:annotation>
+<xsd:documentation>Modeled on relative datatype: e.g. +4.5st, -.45st</xsd:documentation>
+</xsd:annotation>
+<xsd:restriction base="xsd:string">
+<xsd:pattern value="[+\-]([0-9]+|[0-9]+.[0-9]*|[0-9]*.[0-9]+)st"/>
+</xsd:restriction>
+</xsd:simpleType>
+<xsd:simpleType name="hertz.number">
+<xsd:annotation>
+<xsd:documentation>
+number Hertz: e.g. 10Hz, 5.5Hz, 1.5Hz,, 9.Hz,, .45Hz
+</xsd:documentation>
+</xsd:annotation>
+<xsd:restriction base="xsd:string">
+<xsd:pattern value="([0-9]+|[0-9]+.[0-9]*|[0-9]*.[0-9]+)Hz"/>
+</xsd:restriction>
+</xsd:simpleType>
+<xsd:simpleType name="hertz.relative">
+<xsd:annotation>
+<xsd:documentation>
+relative Hertz: e.g. +10Hz, -5.5Hz, +1.5Hz, +9.Hz,+.45Hz
+</xsd:documentation>
+</xsd:annotation>
+<xsd:restriction base="xsd:string">
+<xsd:pattern value="[+\-]([0-9]+|[0-9]+.[0-9]*|[0-9]*.[0-9]+)Hz"/>
+</xsd:restriction>
+</xsd:simpleType>
+<xsd:simpleType name="volume.number">
+<xsd:annotation>
+<xsd:documentation>Modeled on number datatype: 0.0 - 100.0</xsd:documentation>
+</xsd:annotation>
+<xsd:restriction base="number">
+<xsd:minInclusive value="0.0"/>
+<xsd:maxInclusive value="100.0"/>
+</xsd:restriction>
+</xsd:simpleType>
+<xsd:simpleType name="height.scale">
+<xsd:annotation>
+<xsd:documentation>descriptive values for height</xsd:documentation>
+</xsd:annotation>
+<xsd:restriction base="xsd:string">
+<xsd:enumeration value="x-high"/>
+<xsd:enumeration value="high"/>
+<xsd:enumeration value="medium"/>
+<xsd:enumeration value="low"/>
+<xsd:enumeration value="x-low"/>
+<xsd:enumeration value="default"/>
+</xsd:restriction>
+</xsd:simpleType>
+<xsd:simpleType name="speed.scale">
+<xsd:annotation>
+<xsd:documentation>descriptive values for speed</xsd:documentation>
+</xsd:annotation>
+<xsd:restriction base="xsd:string">
+<xsd:enumeration value="x-fast"/>
+<xsd:enumeration value="fast"/>
+<xsd:enumeration value="medium"/>
+<xsd:enumeration value="slow"/>
+<xsd:enumeration value="x-slow"/>
+<xsd:enumeration value="default"/>
+</xsd:restriction>
+</xsd:simpleType>
+<xsd:simpleType name="volume.scale">
+<xsd:annotation>
+<xsd:documentation>descriptive values for volume</xsd:documentation>
+</xsd:annotation>
+<xsd:restriction base="xsd:string">
+<xsd:enumeration value="silent"/>
+<xsd:enumeration value="x-soft"/>
+<xsd:enumeration value="soft"/>
+<xsd:enumeration value="medium"/>
+<xsd:enumeration value="loud"/>
+<xsd:enumeration value="x-loud"/>
+<xsd:enumeration value="default"/>
+</xsd:restriction>
+</xsd:simpleType>
+<xsd:simpleType name="pitch.datatype">
+<xsd:union memberTypes="hertz.number hertz.relative percent semitone height.scale"/>
+</xsd:simpleType>
+<xsd:simpleType name="range.datatype">
+<xsd:union memberTypes="hertz.number hertz.relative percent semitone height.scale"/>
+</xsd:simpleType>
+<xsd:simpleType name="rate.datatype">
+<xsd:union memberTypes="number percent speed.scale"/>
+</xsd:simpleType>
+<xsd:simpleType name="volume.datatype">
+<xsd:union memberTypes="volume.number relative percent volume.scale"/>
+</xsd:simpleType>
+<xsd:simpleType name="contourpoint.datatype">
+<xsd:annotation>
+<xsd:documentation>(Number%,pitch.datatype)</xsd:documentation>
+</xsd:annotation>
+<xsd:restriction base="xsd:string">
+<xsd:pattern value="\(([0-9]+|[0-9]+.[0-9]*|[0-9]*.[0-9]+)%,(([0-9]+|[0-9]+.[0-9]*|[0-9]*.[0-9]+)Hz|[+\-]([0-9]+|[0-9]+.[0-9]*|[0-9]*.[0-9]+)Hz|[+\-]?([0-9]+|[0-9]+.[0-9]*|[0-9]*.[0-9]+)%|[+\-]([0-9]+|[0-9]+.[0-9]*|[0-9]*.[0-9]+)st|x-high|high|medium|low|x-low|default)\)"/>
+</xsd:restriction>
+</xsd:simpleType>
+<xsd:simpleType name="contour.datatype">
+<xsd:annotation>
+<xsd:documentation>list of whitespace separated contourpoints</xsd:documentation>
+</xsd:annotation>
+<xsd:list itemType="contourpoint.datatype"/>
+</xsd:simpleType>
+<xsd:simpleType name="gender.datatype">
+<xsd:restriction base="xsd:string">
+<xsd:enumeration value="male"/>
+<xsd:enumeration value="female"/>
+<xsd:enumeration value="neutral"/>
+</xsd:restriction>
+</xsd:simpleType>
+<xsd:simpleType name="level.datatype">
+<xsd:restriction base="xsd:string">
+<xsd:enumeration value="strong"/>
+<xsd:enumeration value="moderate"/>
+<xsd:enumeration value="none"/>
+<xsd:enumeration value="reduced"/>
+</xsd:restriction>
+</xsd:simpleType>
+<xsd:simpleType name="strength.datatype">
+<xsd:restriction base="xsd:string">
+<xsd:enumeration value="none"/>
+<xsd:enumeration value="x-weak"/>
+<xsd:enumeration value="weak"/>
+<xsd:enumeration value="medium"/>
+<xsd:enumeration value="strong"/>
+<xsd:enumeration value="x-strong"/>
+</xsd:restriction>
+</xsd:simpleType>
+<xsd:simpleType name="version.datatype">
+<xsd:restriction base="xsd:NMTOKEN"/>
+</xsd:simpleType>
+<xsd:simpleType name="voicename.datatype">
+<xsd:restriction base="xsd:token">
+<xsd:pattern value="\S+"/>
+</xsd:restriction>
+</xsd:simpleType>
+<xsd:simpleType name="voicenames.datatype">
+<xsd:list itemType="voicename.datatype"/>
+</xsd:simpleType>
+<xsd:simpleType name="alphabet.datatype">
+<xsd:restriction base="xsd:string">
+<xsd:pattern value="(ipa|x-.*)"/>
+</xsd:restriction>
+</xsd:simpleType>
+<xsd:annotation>
+<xsd:documentation>Attributes and Groups</xsd:documentation>
+</xsd:annotation>
+<xsd:attributeGroup name="speak.attribs">
+<xsd:attribute name="version" type="version.datatype"/>
+<xsd:attribute ref="xml:lang"/>
+<xsd:attribute ref="xml:base"/>
+</xsd:attributeGroup>
+<xsd:annotation>
+<xsd:documentation>Content Models</xsd:documentation>
+</xsd:annotation>
+<xsd:group name="allowed-within-sentence">
+<xsd:choice>
+<xsd:element ref="aws"/>
+</xsd:choice>
+</xsd:group>
+<xsd:group name="paragraph.class">
+<xsd:sequence>
+<xsd:choice minOccurs="0" maxOccurs="unbounded">
+<xsd:group ref="allowed-within-sentence"/>
+<xsd:element ref="s"/>
+</xsd:choice>
+</xsd:sequence>
+</xsd:group>
+<xsd:group name="sentence.class">
+<xsd:sequence>
+<xsd:choice minOccurs="0" maxOccurs="unbounded">
+<xsd:group ref="allowed-within-sentence"/>
+</xsd:choice>
+</xsd:sequence>
+</xsd:group>
+<xsd:group name="sentenceAndStructure.class">
+<xsd:sequence>
+<xsd:choice minOccurs="0" maxOccurs="unbounded">
+<xsd:group ref="allowed-within-sentence"/>
+<xsd:group ref="structure"/>
+</xsd:choice>
+</xsd:sequence>
+</xsd:group>
+<xsd:group name="descAndSentenceAndStructure.class">
+<xsd:sequence>
+<xsd:choice minOccurs="0" maxOccurs="unbounded">
+<xsd:group ref="sentenceAndStructure.class"/>
+<xsd:element ref="desc"/>
+</xsd:choice>
+</xsd:sequence>
+</xsd:group>
+<xsd:group name="speak.class">
+<xsd:sequence>
+<xsd:choice minOccurs="0" maxOccurs="unbounded">
+<xsd:element name="meta" type="ssml-meta"/>
+<xsd:element name="metadata" type="ssml-metadata"/>
+<xsd:element name="lexicon" type="ssml-lexicon"/>
+</xsd:choice>
+<xsd:group ref="sentenceAndStructure.class" minOccurs="0" maxOccurs="unbounded"/>
+</xsd:sequence>
+</xsd:group>
+<xsd:annotation>
+<xsd:documentation>Elements</xsd:documentation>
+</xsd:annotation>
+<xsd:element name="aws" abstract="true">
+<xsd:annotation>
+<xsd:documentation>
+The 'allowed-within-sentence' group uses this abstract element.
+</xsd:documentation>
+</xsd:annotation>
+</xsd:element>
+<xsd:element name="struct" abstract="true"/>
+<xsd:group name="structure">
+<xsd:choice>
+<xsd:element ref="struct"/>
+</xsd:choice>
+</xsd:group>
+<xsd:element name="speak" type="speak"/>
+<xsd:complexType name="speak" mixed="true">
+<xsd:group ref="speak.class"/>
+<xsd:attributeGroup ref="speak.attribs"/>
+</xsd:complexType>
+<xsd:element name="p" type="paragraph" substitutionGroup="struct"/>
+<xsd:complexType name="paragraph" mixed="true">
+<xsd:group ref="paragraph.class"/>
+<xsd:attribute ref="xml:lang"/>
+</xsd:complexType>
+<xsd:element name="s" type="sentence" substitutionGroup="struct"/>
+<xsd:complexType name="sentence" mixed="true">
+<xsd:group ref="sentence.class"/>
+<xsd:attribute ref="xml:lang"/>
+</xsd:complexType>
+<xsd:element name="voice" type="voice" substitutionGroup="aws"/>
+<xsd:complexType name="voice" mixed="true">
+<xsd:group ref="sentenceAndStructure.class"/>
+<xsd:attribute name="gender" type="gender.datatype"/>
+<xsd:attribute name="age" type="xsd:nonNegativeInteger"/>
+<xsd:attribute name="variant" type="xsd:positiveInteger"/>
+<xsd:attribute name="name" type="voicenames.datatype"/>
+<xsd:attribute ref="xml:lang"/>
+</xsd:complexType>
+<xsd:element name="prosody" type="prosody" substitutionGroup="aws"/>
+<xsd:complexType name="prosody" mixed="true">
+<xsd:group ref="sentenceAndStructure.class"/>
+<xsd:attribute name="pitch" type="pitch.datatype"/>
+<xsd:attribute name="contour" type="contour.datatype"/>
+<xsd:attribute name="range" type="range.datatype"/>
+<xsd:attribute name="rate" type="rate.datatype"/>
+<xsd:attribute name="duration" type="duration"/>
+<xsd:attribute name="volume" type="volume.datatype" default="100.0"/>
+</xsd:complexType>
+<xsd:element name="audio" type="audio" substitutionGroup="aws"/>
+<xsd:complexType name="audio" mixed="true">
+<xsd:group ref="descAndSentenceAndStructure.class"/>
+<xsd:attribute name="src" type="xsd:anyURI"/>
+</xsd:complexType>
+<xsd:element name="desc" type="desc"/>
+<xsd:complexType name="desc">
+<xsd:simpleContent>
+<xsd:extension base="xsd:string">
+<xsd:attribute ref="xml:lang"/>
+</xsd:extension>
+</xsd:simpleContent>
+</xsd:complexType>
+<xsd:element name="emphasis" type="emphasis" substitutionGroup="aws"/>
+<xsd:complexType name="emphasis" mixed="true">
+<xsd:group ref="sentence.class"/>
+<xsd:attribute name="level" type="level.datatype" default="moderate"/>
+</xsd:complexType>
+<xsd:element name="sub" type="sub" substitutionGroup="aws"/>
+<xsd:complexType name="sub">
+<xsd:simpleContent>
+<xsd:extension base="xsd:string">
+<xsd:attribute name="alias" type="xsd:string" use="required"/>
+</xsd:extension>
+</xsd:simpleContent>
+</xsd:complexType>
+<xsd:element name="say-as" type="say-as" substitutionGroup="aws"/>
+<xsd:complexType name="say-as" mixed="true">
+<xsd:attribute name="interpret-as" type="xsd:NMTOKEN" use="required"/>
+<xsd:attribute name="format" type="xsd:NMTOKEN"/>
+<xsd:attribute name="detail" type="xsd:NMTOKEN"/>
+</xsd:complexType>
+<xsd:element name="phoneme" type="phoneme" substitutionGroup="aws"/>
+<xsd:complexType name="phoneme" mixed="true">
+<xsd:attribute name="ph" type="xsd:string" use="required"/>
+<xsd:attribute name="alphabet" type="alphabet.datatype"/>
+</xsd:complexType>
+<xsd:element name="break" type="break" substitutionGroup="aws"/>
+<xsd:complexType name="break">
+<xsd:attribute name="time" type="duration"/>
+<xsd:attribute name="strength" type="strength.datatype" default="medium"/>
+</xsd:complexType>
+<xsd:element name="mark" type="mark" substitutionGroup="aws"/>
+<xsd:complexType name="mark">
+<xsd:attribute name="name" type="xsd:token"/>
+</xsd:complexType>
+<xsd:complexType name="ssml-metadata">
+<xsd:choice minOccurs="0" maxOccurs="unbounded">
+<xsd:any namespace="##other" processContents="lax"/>
+</xsd:choice>
+<xsd:anyAttribute namespace="##any" processContents="strict"/>
+</xsd:complexType>
+<xsd:complexType name="ssml-meta">
+<xsd:attribute name="name" type="xsd:NMTOKEN"/>
+<xsd:attribute name="content" type="xsd:string" use="required"/>
+<xsd:attribute name="http-equiv" type="xsd:NMTOKEN"/>
+</xsd:complexType>
+<xsd:complexType name="ssml-lexicon">
+<xsd:attribute name="uri" type="xsd:anyURI" use="required"/>
+<xsd:attribute name="type" type="xsd:string"/>
+</xsd:complexType>
+</xsd:schema>

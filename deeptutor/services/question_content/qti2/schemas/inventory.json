@@ -1,0 +1,272 @@
+{
+  "http://www.imsglobal.org/profile/apip/apipv1p0/apipv1p0_qtiextv2p1_v1p0.xsd": {
+    "bytes": 60931,
+    "file": "b7ec7c438ac0-apipv1p0_qtiextv2p1_v1p0.xsd",
+    "sha256": "9c4c35f4a4a6901281152a46d4704d990212ac7c4926113f450403012709df5c"
+  },
+  "http://www.imsglobal.org/xsd/imsmd_loose_v1p3p2.xsd": {
+    "bytes": 93244,
+    "file": "5273b3a6dae0-imsmd_loose_v1p3p2.xsd",
+    "sha256": "1ae9e77aba63b6789574631213c97fd00a3d43aeffb58050ac7befb665fba9f6"
+  },
+  "http://www.imsglobal.org/xsd/qti/qtiv2p1/imsqti_metadata_v2p1p1.xsd": {
+    "bytes": 12864,
+    "file": "ed0028e72c62-imsqti_metadata_v2p1p1.xsd",
+    "sha256": "31ddb2ab45f58f033750eec5da3f2310634984387a0babdc4dad859e9724f9dc"
+  },
+  "http://www.imsglobal.org/xsd/qti/qtiv2p2/imsqti_metadata_v2p2.xsd": {
+    "bytes": 14167,
+    "file": "de51dbb74246-imsqti_metadata_v2p2.xsd",
+    "sha256": "80efc82753b70b83f84e4996d60794f6a10fd8bc674e9b777fd8e0f245e92caf"
+  },
+  "http://www.imsglobal.org/xsd/qti/qtiv2p2/qtiv2p2_csm_v2p2.xsd": {
+    "bytes": 12939,
+    "file": "ef441f4ac556-qtiv2p2_csm_v2p2.xsd",
+    "sha256": "959adcb2b51f399ddcae2b1eeef84e75458c2ae946f5b8d9f7042d746b96915c"
+  },
+  "http://www.imsglobal.org/xsd/w3/2001/XInclude.xsd": {
+    "bytes": 3818,
+    "file": "707a4adb0115-XInclude.xsd",
+    "sha256": "b72e1d2a0ab90aca502b827ce12572bfb4ef787fee89b4dcc1ce474dd3c00df0"
+  },
+  "http://www.imsglobal.org/xsd/w3/2001/ssmlv1p0.xsd": {
+    "bytes": 2745,
+    "file": "41dfa1f68bce-ssmlv1p0.xsd",
+    "sha256": "472ebe085e42d4077f9cc9e7b7a9702ec024d4d8b669a8d6072a96a45085f437"
+  },
+  "http://www.imsglobal.org/xsd/w3/2001/synthesis-core.xsd": {
+    "bytes": 13385,
+    "file": "08718fbb0c7b-synthesis-core.xsd",
+    "sha256": "8a677ebc0797b090731d3417e1db83ed76ba6006cb4e563eb54a681d949d807b"
+  },
+  "http://www.imsglobal.org/xsd/w3/2001/xml.xsd": {
+    "bytes": 9121,
+    "file": "783286e69de2-xml.xsd",
+    "sha256": "1d8a08f612250dcb59b9e4a9568afd764bb5acf0fc52fc5837ae22379f75f630"
+  },
+  "http://www.w3.org/Math/XMLSchema/mathml2/common/common-attribs.xsd": {
+    "bytes": 1362,
+    "file": "5284d1d764be-common-attribs.xsd",
+    "sha256": "4d5de0a3e1be3b0848f7b9cde6474dde4e91c19f691d3c3b989fff37e5544c12"
+  },
+  "http://www.w3.org/Math/XMLSchema/mathml2/common/math.xsd": {
+    "bytes": 3873,
+    "file": "d0ec997d036e-math.xsd",
+    "sha256": "8b5c502d74c3df7f4008dea98d4e876841721a69e492e0a2909ccc324c0c3739"
+  },
+  "http://www.w3.org/Math/XMLSchema/mathml2/common/xlink-href.xsd": {
+    "bytes": 679,
+    "file": "ea1246d9c5e4-xlink-href.xsd",
+    "sha256": "08c9410c87a16bb9e3623f74d818277ec92308c85e61fda1b3857c778b787ecc"
+  },
+  "http://www.w3.org/Math/XMLSchema/mathml2/content/arith.xsd": {
+    "bytes": 2679,
+    "file": "9ff1ff76626d-arith.xsd",
+    "sha256": "b203e803db7010550cd76474f81c4a9316b7588d7567263921ce5e206b334541"
+  },
+  "http://www.w3.org/Math/XMLSchema/mathml2/content/calculus.xsd": {
+    "bytes": 3736,
+    "file": "f734be6220a6-calculus.xsd",
+    "sha256": "839003dc4f19234aae570f351bd5217acdbf30ac2f05a55db32c86208a61be66"
+  },
+  "http://www.w3.org/Math/XMLSchema/mathml2/content/common-attrib.xsd": {
+    "bytes": 887,
+    "file": "da7020bb8031-common-attrib.xsd",
+    "sha256": "1d1698b91f2d425d522dbdd06b0735a81924e0fda8180902ee01ba5950fe3f8d"
+  },
+  "http://www.w3.org/Math/XMLSchema/mathml2/content/constants.xsd": {
+    "bytes": 2352,
+    "file": "7b7d2fd26cd6-constants.xsd",
+    "sha256": "2c9535bd0b0e4f4221dbc64e00fcc6df760711a8fbef405d308a8f839126ba16"
+  },
+  "http://www.w3.org/Math/XMLSchema/mathml2/content/constructs.xsd": {
+    "bytes": 6883,
+    "file": "22e36f94c03d-constructs.xsd",
+    "sha256": "6b66cde43783dcfa5133cbada91b8cdae7eed11065665d3eaa5fea9ed9086780"
+  },
+  "http://www.w3.org/Math/XMLSchema/mathml2/content/elementary-functions.xsd": {
+    "bytes": 3901,
+    "file": "71891bc65368-elementary-functions.xsd",
+    "sha256": "f21e5cf7bf5a4233f6207e8b7d600da428a4acb96c10c42122c8930e38bc2ea3"
+  },
+  "http://www.w3.org/Math/XMLSchema/mathml2/content/functions.xsd": {
+    "bytes": 1951,
+    "file": "022e7e07b9ac-functions.xsd",
+    "sha256": "1fab2b4008fd9ec111620649aea7155608a87566a7e82ce83982714f1eaae8c7"
+  },
+  "http://www.w3.org/Math/XMLSchema/mathml2/content/linear-algebra.xsd": {
+    "bytes": 4620,
+    "file": "a4cd8f03bbbe-linear-algebra.xsd",
+    "sha256": "944dc4cbfd7a2de204e994e06dcdf3e078a5dd92d11dc941814b10484ab675e1"
+  },
+  "http://www.w3.org/Math/XMLSchema/mathml2/content/logic.xsd": {
+    "bytes": 1485,
+    "file": "837adb73f5c9-logic.xsd",
+    "sha256": "704c70b9fcdb3ed2cdf8e42da7b759c1d88882bf170cda08449590da7fdd0184"
+  },
+  "http://www.w3.org/Math/XMLSchema/mathml2/content/relations.xsd": {
+    "bytes": 1665,
+    "file": "b5e913d2a25c-relations.xsd",
+    "sha256": "32c1d030ff75ea3a01731ce5069ad834d9b637a5fdbcab69a7e95af648c85a9e"
+  },
+  "http://www.w3.org/Math/XMLSchema/mathml2/content/semantics.xsd": {
+    "bytes": 2432,
+    "file": "70073b6e3e97-semantics.xsd",
+    "sha256": "6e4f7c1aa901f31f09039cc9a8bee0de04dfbb0e6769c696ed4c4ee5605edb25"
+  },
+  "http://www.w3.org/Math/XMLSchema/mathml2/content/sets.xsd": {
+    "bytes": 6112,
+    "file": "daff3b9e26c0-sets.xsd",
+    "sha256": "2bc963ad8455308046c8c5ff4201a8f730a7c3f50345d3083948cd16b8715d0c"
+  },
+  "http://www.w3.org/Math/XMLSchema/mathml2/content/statistics.xsd": {
+    "bytes": 3488,
+    "file": "13cbd4f5d89b-statistics.xsd",
+    "sha256": "e48517a6b60bd07a9699a62f47dc08eea1ef2573da3ef5dbabb5f368d5c5d2a1"
+  },
+  "http://www.w3.org/Math/XMLSchema/mathml2/content/tokens.xsd": {
+    "bytes": 3280,
+    "file": "2965bac6dd0e-tokens.xsd",
+    "sha256": "33a36e2df4af73a6401359efa4f325894217f0448cf91f78f5fb7991798d145d"
+  },
+  "http://www.w3.org/Math/XMLSchema/mathml2/content/vector-calculus.xsd": {
+    "bytes": 2258,
+    "file": "0006879d3dc7-vector-calculus.xsd",
+    "sha256": "ca678f3018432009f111c78df09be7627652d5f89b40f5095ad9ee710436866b"
+  },
+  "http://www.w3.org/Math/XMLSchema/mathml2/mathml2.xsd": {
+    "bytes": 2250,
+    "file": "431d0ea6fae1-mathml2.xsd",
+    "sha256": "ec7caf6358de24b2011aa7144a1ab4e6e9d00a25ed163a13a03c6dfbb6b80f3e"
+  },
+  "http://www.w3.org/Math/XMLSchema/mathml2/presentation/action.xsd": {
+    "bytes": 1285,
+    "file": "92a4d1c0196f-action.xsd",
+    "sha256": "9e1dfc3d0f9368f2247ef2346cd060e897954da86408a0aa780da302cacec54e"
+  },
+  "http://www.w3.org/Math/XMLSchema/mathml2/presentation/characters.xsd": {
+    "bytes": 1052,
+    "file": "622b94359e2d-characters.xsd",
+    "sha256": "ab3cdba7c60668ed538f5091d66b29ffbceb61c47611f8bdcc8b56a2bfbe56b3"
+  },
+  "http://www.w3.org/Math/XMLSchema/mathml2/presentation/common-attribs.xsd": {
+    "bytes": 4258,
+    "file": "887cb4000a19-common-attribs.xsd",
+    "sha256": "1620530c7d2c69c02b03d2caaad55abe70f9e9cc96a735871a81e5aaca799c3d"
+  },
+  "http://www.w3.org/Math/XMLSchema/mathml2/presentation/common-types.xsd": {
+    "bytes": 2870,
+    "file": "1cccda68343b-common-types.xsd",
+    "sha256": "35038ae8d324d7fb012925a8bc9717dd3a9d62c90d93bcaf36f31ee1c917a719"
+  },
+  "http://www.w3.org/Math/XMLSchema/mathml2/presentation/error.xsd": {
+    "bytes": 1133,
+    "file": "1cfcb8ebfb68-error.xsd",
+    "sha256": "f90f2bc05f50d295c82a2b08dc85d382c42a88a5a61ba9c14613f952fb0de200"
+  },
+  "http://www.w3.org/Math/XMLSchema/mathml2/presentation/layout.xsd": {
+    "bytes": 6336,
+    "file": "1bf53d7f09b0-layout.xsd",
+    "sha256": "533693d7b1758904f88518bbf612ad165dd8a9b39eced28c74f71dd476f62bcf"
+  },
+  "http://www.w3.org/Math/XMLSchema/mathml2/presentation/scripts.xsd": {
+    "bytes": 5302,
+    "file": "a448796ebbde-scripts.xsd",
+    "sha256": "b4a4b3a1671393b16085898a10c81cdfc853cb7ba6ad465f9f7a537780fd4d28"
+  },
+  "http://www.w3.org/Math/XMLSchema/mathml2/presentation/space.xsd": {
+    "bytes": 1671,
+    "file": "adddc4d5210a-space.xsd",
+    "sha256": "3fa2b55a75e9b2721dd25ae372e1cd0027b15f029d76dc080feca3b7a3ad6aec"
+  },
+  "http://www.w3.org/Math/XMLSchema/mathml2/presentation/style.xsd": {
+    "bytes": 2538,
+    "file": "0e37244af805-style.xsd",
+    "sha256": "76ad5dc2f60304b5d80e7a2028bede255e5cf3b84f01095dd39e897d26276e7a"
+  },
+  "http://www.w3.org/Math/XMLSchema/mathml2/presentation/table.xsd": {
+    "bytes": 6722,
+    "file": "934e181a6e5b-table.xsd",
+    "sha256": "c2d3d5c92e4e2ed9af7c4ed29d86a83c4c01f1c6d5ec167483b5f4d5f8aa7982"
+  },
+  "http://www.w3.org/Math/XMLSchema/mathml2/presentation/tokens.xsd": {
+    "bytes": 3603,
+    "file": "95299b8b4bf5-tokens.xsd",
+    "sha256": "e61ddae3b2e16d7fcb5906798ed71891782fe176b284b3d0f2a5cc9db0829ca3"
+  },
+  "https://purl.imsglobal.org/spec/qti/v2p2/schema/xsd/imsqti_v2p2p4.xsd": {
+    "bytes": 2363721,
+    "file": "imsqti_v2p2p4.xsd",
+    "sha256": "aa1ea66908fe7d50f50362a511ee13e7c6ce2b1afea5c1382aaf3c47d3c0f63c"
+  },
+  "https://purl.imsglobal.org/spec/qti/v2p2/schema/xsd/imsqtiv2p2p4_html5_v1p0.xsd": {
+    "bytes": 484489,
+    "file": "8403cf2e4674-imsqtiv2p2p4_html5_v1p0.xsd",
+    "sha256": "05d9d985a70116fa88ac38261eafddda4dabcbaebfe1b18cbc4d29096c0532fb"
+  },
+  "https://purl.imsglobal.org/spec/w3/2001/schema/xsd/xml.xsd": {
+    "bytes": 9061,
+    "file": "3ea4cd0b857b-xml.xsd",
+    "sha256": "4c637d0381d988dbf24b680becde6e1c8301b4c4ceef8bfa45a1ee130e77a682"
+  },
+  "https://www.imsglobal.org/profile/apip/apipv1p0/apipv1p0_qtiextv2p2_v1p0p1.xsd": {
+    "bytes": 65133,
+    "file": "e672bcf5a4c0-apipv1p0_qtiextv2p2_v1p0p1.xsd",
+    "sha256": "b2dd1e5b325af4a7377e258a55e44c5cce605ca8b159b69bd9b0bf1a943ab861"
+  },
+  "https://www.imsglobal.org/xsd/qti/qtiv2p1/imsqti_v2p1p2.xsd": {
+    "bytes": 586794,
+    "file": "imsqti_v2p1p2.xsd",
+    "sha256": "512d67e02f051177a4502700b0fd9970702d771b8f598c9893ad79102fc01337"
+  },
+  "https://www.imsglobal.org/xsd/qti/qtiv2p1/qtiv2p1_imscpv1p2_v1p0.xsd": {
+    "bytes": 31846,
+    "file": "qtiv2p1_imscpv1p2_v1p0.xsd",
+    "sha256": "0c230903d0edabfbbe7bfb84b5cb98b5e3b4d6dd4c9a8839c961bf8fe4021b62"
+  },
+  "https://www.imsglobal.org/xsd/qti/qtiv2p2/qtiv2p2_imscpv1p2_v1p0.xsd": {
+    "bytes": 33615,
+    "file": "qtiv2p2_imscpv1p2_v1p0.xsd",
+    "sha256": "31bdc96aee85d39fcb88ca2bd46b9d8138a8f5ea0bdccfe353ee0665986a3ecb"
+  },
+  "https://www.imsglobal.org/xsd/w3/2001/XInclude.xsd": {
+    "bytes": 3818,
+    "file": "2033af2dee4d-XInclude.xsd",
+    "sha256": "b72e1d2a0ab90aca502b827ce12572bfb4ef787fee89b4dcc1ce474dd3c00df0"
+  },
+  "https://www.imsglobal.org/xsd/w3/2010/ssmlv1p1-core.xsd": {
+    "bytes": 3071,
+    "file": "6ad9fa43ba09-ssmlv1p1-core.xsd",
+    "sha256": "d4d62da89ef8584bf28114512a9e172e156c5824e040fa114456ce27db1dc7d0"
+  },
+  "https://www.imsglobal.org/xsd/w3/2010/synthesis-nonamespace.xsd": {
+    "bytes": 36360,
+    "file": "30c4a1dbbcac-synthesis-nonamespace.xsd",
+    "sha256": "7f519251321f9df15281c58132914a15cfe218e6fe89dd52143ca3750aea541e"
+  },
+  "https://www.imsglobal.org/xsd/w3/Math/XMLSchema/mathml3/mathml3-common.xsd": {
+    "bytes": 4058,
+    "file": "875fb035191a-mathml3-common.xsd",
+    "sha256": "fc20174734a3c8d683a7acc2791dfb3287f7c79d2de8a1a2ca507e1170713780"
+  },
+  "https://www.imsglobal.org/xsd/w3/Math/XMLSchema/mathml3/mathml3-content.xsd": {
+    "bytes": 28448,
+    "file": "dcfd0a87569e-mathml3-content.xsd",
+    "sha256": "6b9fc8cb5b6575001126fd7ee4f9240f8537c55d9819de8d0ee3e088004f8d8d"
+  },
+  "https://www.imsglobal.org/xsd/w3/Math/XMLSchema/mathml3/mathml3-presentation.xsd": {
+    "bytes": 84120,
+    "file": "800d18a179b3-mathml3-presentation.xsd",
+    "sha256": "9ad3a2c03b32d277d2d27fa04a9e571c40bf15bdbbc37ba5397a33c1d2b33645"
+  },
+  "https://www.imsglobal.org/xsd/w3/Math/XMLSchema/mathml3/mathml3-strict-content.xsd": {
+    "bytes": 6837,
+    "file": "93b94650e556-mathml3-strict-content.xsd",
+    "sha256": "3f912e4fdcea82a370dac33cfbceeabfbccaf450d520dea4694680df37dc022e"
+  },
+  "https://www.imsglobal.org/xsd/w3/Math/XMLSchema/mathml3/mathml3.xsd": {
+    "bytes": 432,
+    "file": "c0439de173f0-mathml3.xsd",
+    "sha256": "928ccc49bc68324bc936b1e85602670b24b7d35f5f7be80b6e3ac44e0325d5d0"
+  }
+}
