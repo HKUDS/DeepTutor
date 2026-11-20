@@ -58,8 +58,9 @@ def captured_requests(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
         *,
         verify: bool,
         on_content_delta: Callable[[str], Awaitable[None]] | None = None,
+        on_provider_event: Callable[[str, dict[str, Any]], None] | None = None,
     ) -> tuple[str, list[codex_provider.ToolCallRequest], str]:
-        del url, headers, verify
+        del url, headers, verify, on_provider_event
         captured.append(body)
         if on_content_delta is not None:
             await on_content_delta("ok")

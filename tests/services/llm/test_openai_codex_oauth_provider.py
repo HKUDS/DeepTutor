@@ -716,3 +716,56 @@ async def test_unsupported_reasoning_does_not_bypass_account_validation(
 
     assert result.finish_reason == "error"
     assert "Refresh Codex models" in result.content
+
+
+@pytest.mark.asyncio
+async def test_codex_response_carries_usage_from_stream(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def request(*_args: Any, **kwargs: Any) -> tuple[str, list[Any], str]:
+        kwargs["on_provider_event"](
+            "usage", {"prompt_tokens": 12, "completion_tokens": 5, "total_tokens": 17}
+        )
+        return "ok", [], "stop"
+
+    monkeypatch.setattr(module, "get_codex_oauth_service", lambda: FakeCodexService())
+    monkeypatch.setattr(module, "_request_codex", request)
+
+    result = await OpenAICodexProvider().chat([{"role": "user", "content": "hi"}])
+
+    assert result.usage == {"prompt_tokens": 12, "completion_tokens": 5, "total_tokens": 17}
+
+
+@pytest.mark.asyncio
+async def test_request_codex_forwards_usage_event_from_sse(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sse = (
+        'data: {"type":"response.completed","response":{"status":"completed",'
+        '"usage":{"input_tokens":7,"output_tokens":3,"total_tokens":10}}}\n\n'
+    )
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200, content=sse.encode(), headers={"content-type": "text/event-stream"}
+        )
+
+    real_client = httpx.AsyncClient
+    monkeypatch.setattr(
+        module.httpx,
+        "AsyncClient",
+        lambda **kw: real_client(transport=httpx.MockTransport(handler), **kw),
+    )
+    events: list[tuple[str, dict[str, Any]]] = []
+
+    await module._request_codex(
+        CODEX_RESPONSES_URL,
+        {},
+        {},
+        verify=True,
+        on_provider_event=lambda kind, payload: events.append((kind, payload)),
+    )
+
+    assert events and events[0][0] == "usage"
+    assert events[0][1]["prompt_tokens"] == 7
+    assert events[0][1]["completion_tokens"] == 3
