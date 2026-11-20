@@ -3953,7 +3953,7 @@
   "All Trends": "Tutte le tendenze",
   "First Attempt": "Primo tentativo",
   "Improved": "Migliorato",
-  "Declined": "Rifiutato",
+  "Declined": "Peggiorato",
   "Unchanged": "Invariato",
   "Resolved": "Risolto",
   "Mark Resolved": "Marco risolto",
@@ -6682,5 +6682,6 @@
   "Position": "Position",
   "Action": "Action",
   "Conversation IDs (optional)": "Conversation IDs (optional)",
-  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle."
+  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.",
+  "partners.invocationDeclined": "Rifiutato"
 }
