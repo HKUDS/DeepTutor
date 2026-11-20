@@ -38,6 +38,7 @@ from deeptutor.learning.service import LearningService
 from deeptutor.learning.storage import LearningStore
 from deeptutor.learning.topic_generation import MAX_MODULE_LIMIT
 from deeptutor.services.settings.interface_settings import get_response_language
+from deeptutor.services.workspace.knowledge import knowledge_base_ref_available
 from deeptutor.utils.json_parser import parse_json_response
 
 router = APIRouter()
@@ -449,11 +450,22 @@ def _topic_payload_from_snapshot(
     path_id = progress.book_id
     moment = time.time()
     projected = _read_projection(progress, now=moment)
+    # A stored source says what the learner chose, not that its knowledge base
+    # still exists. Override the flag for this response only; the snapshot is
+    # never rewritten.
+    sources = []
+    for source in topic.sources:
+        payload = source.model_dump(mode="json")
+        if source.kind is TopicSourceKind.KNOWLEDGE_BASE:
+            payload["available"] = knowledge_base_ref_available(source.source_id)
+        elif source.kind is TopicSourceKind.FILE and source.metadata.get("kb_name"):
+            payload["available"] = knowledge_base_ref_available(str(source.metadata["kb_name"]))
+        sources.append(payload)
     return {
         "path_id": path_id,
         "name": learning_policy.path_display_name(progress),
         "metadata": topic.metadata.model_dump(mode="json"),
-        "sources": [source.model_dump(mode="json") for source in topic.sources],
+        "sources": sources,
         "path_revision": progress.version,
         "next": learning_policy.next_objective(
             projected,
