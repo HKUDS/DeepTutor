@@ -64,6 +64,11 @@ test('boot keeps the saved core unless the app ships a newer signed one that has
   assert.deepEqual(startupRuntime({ saved, seed, publicKey }), { current: saved, upgrade: true, seedError: undefined });
   assert.equal(startupRuntime({ saved: seed, seed: saved, publicKey }).upgrade, false);
   assert.equal(startupRuntime({ saved, seed: null, publicKey }).upgrade, false);
+  const retired = generateKeyPairSync('ed25519');
+  const old = { ...saved, signature: sign(null, Buffer.from(canonicalManifest(saved)), retired.privateKey).toString('base64') };
+  assert.deepEqual(startupRuntime({ saved: old, seed, publicKey }), { replaceUntrusted: true });
+  assert.throws(() => startupRuntime({ saved: old, seed: old, publicKey }), /signature/);
+  assert.throws(() => startupRuntime({ saved: old, seed: null, publicKey }), /signature/);
   const tampered = startupRuntime({ saved, seed: { ...seed, coreVersion: '9.0.0' }, publicKey });
   assert.equal(tampered.upgrade, false);
   assert.match(tampered.seedError.message, /signature/);
