@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { UsageFooter } from "./UsageFooter";
 import { cumulativeMessageUsage, messageUsage } from "./usage-summary";
 import {
+  Component,
   memo,
   useCallback,
   useEffect,
@@ -133,6 +134,30 @@ import {
 } from "@/lib/deep-research-report";
 
 const UserMathText = dynamic(() => import("./UserMathText"), { ssr: false });
+
+/**
+ * An optional renderer must never take the transcript down with it. If the
+ * math chunk fails to load or a formula throws mid-render, the bubble falls
+ * back to the literal message text.
+ */
+class UserMathBoundary extends Component<
+  { fallback: ReactNode; children: ReactNode },
+  { failed: boolean }
+> {
+  state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  componentDidCatch(error: unknown) {
+    console.error("User message math rendering failed", error);
+  }
+
+  render() {
+    return this.state.failed ? this.props.fallback : this.props.children;
+  }
+}
 
 const MathAnimatorViewer = dynamic(
   () => import("@/components/math-animator/MathAnimatorViewer"),
@@ -421,7 +446,11 @@ function SentMidTurn({ messages }: { messages: string[] }) {
           className="max-w-[85%] whitespace-pre-wrap rounded-2xl bg-[var(--secondary)] px-3.5 py-2 text-[13.5px] leading-relaxed text-[var(--foreground)]"
         >
           {renderMath ? (
-            <UserMathText content={text} size={13.5} />
+            <UserMathBoundary
+              fallback={<LearningText size={13.5}>{text}</LearningText>}
+            >
+              <UserMathText content={text} size={13.5} />
+            </UserMathBoundary>
           ) : (
             <LearningText size={13.5}>{text}</LearningText>
           )}
@@ -1858,7 +1887,11 @@ export const UserMessage = memo(function UserMessage({
             ))}
             <div dir="auto" className={renderMath ? undefined : "whitespace-pre-wrap"}>
               {renderMath ? (
-                <UserMathText content={msg.content} />
+                <UserMathBoundary
+                  fallback={<LearningText size={14}>{msg.content}</LearningText>}
+                >
+                  <UserMathText content={msg.content} />
+                </UserMathBoundary>
               ) : (
                 <LearningText size={14}>{msg.content}</LearningText>
               )}

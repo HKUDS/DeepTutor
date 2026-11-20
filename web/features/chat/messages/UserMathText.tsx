@@ -10,8 +10,6 @@ type UserMathSegment =
 
 const FENCED_CODE_RE = /(```[\s\S]*?```|~~~[\s\S]*?~~~)/g;
 const INLINE_CODE_RE = /(`[^`\n]*`)/g;
-const DISPLAY_MATH_RE = /(?<!\\)\$\$([\s\S]+?)\$\$/g;
-const INLINE_MATH_RE = /(?<!\\)\$([^$\n]+?)\$/g;
 
 /**
  * Split a learner's message into literal text and explicit math.
@@ -41,33 +39,58 @@ export function splitUserMath(content: string): UserMathSegment[] {
 }
 
 function splitProse(text: string, segments: UserMathSegment[]): void {
-  const parts = text.split(DISPLAY_MATH_RE);
-  parts.forEach((part, index) => {
-    if (index % 2 === 1) {
-      if (part.trim()) {
-        segments.push({ kind: "math", value: part, display: true });
-      } else {
-        appendText(segments, `$$${part}$$`);
-      }
+  let cursor = 0;
+  while (cursor < text.length) {
+    const open = findDollar(text, cursor);
+    if (open === -1) {
+      appendText(segments, text.slice(cursor));
       return;
     }
-    splitInlineMath(part, segments);
-  });
+    const display = text[open + 1] === "$";
+    const bodyStart = open + (display ? 2 : 1);
+    const close = display
+      ? findDoubleDollar(text, bodyStart)
+      : findDollar(text, bodyStart);
+    if (close === -1) {
+      appendText(segments, text.slice(cursor));
+      return;
+    }
+    const body = text.slice(bodyStart, close);
+    const isMath = display
+      ? body.trim().length > 0
+      : looksLikeInlineMath(body);
+    if (isMath) {
+      appendText(segments, text.slice(cursor, open));
+      segments.push({ kind: "math", value: body, display });
+      cursor = close + (display ? 2 : 1);
+    } else {
+      // Keep the opening delimiter literal and keep looking after it.
+      appendText(segments, text.slice(cursor, bodyStart));
+      cursor = bodyStart;
+    }
+  }
 }
 
-function splitInlineMath(text: string, segments: UserMathSegment[]): void {
-  const parts = text.split(INLINE_MATH_RE);
-  parts.forEach((part, index) => {
-    if (index % 2 === 0) {
-      appendText(segments, part);
-      return;
-    }
-    if (looksLikeInlineMath(part)) {
-      segments.push({ kind: "math", value: part, display: false });
-    } else {
-      appendText(segments, `$${part}$`);
-    }
-  });
+function findDollar(text: string, from: number): number {
+  let index = text.indexOf("$", from);
+  while (index !== -1) {
+    if (!isEscaped(text, index)) return index;
+    index = text.indexOf("$", index + 1);
+  }
+  return -1;
+}
+
+function findDoubleDollar(text: string, from: number): number {
+  let index = text.indexOf("$$", from);
+  while (index !== -1) {
+    if (!isEscaped(text, index)) return index;
+    index = text.indexOf("$$", index + 2);
+  }
+  return -1;
+}
+
+function isEscaped(text: string, index: number): boolean {
+  return text[index - 1] === "\\";
 }
 
 /**
@@ -78,7 +101,7 @@ function splitInlineMath(text: string, segments: UserMathSegment[]): void {
  */
 function looksLikeInlineMath(body: string): boolean {
   const value = body.trim();
-  if (!value || value.length > 400) return false;
+  if (!value || value.length > 400 || body.includes("\n")) return false;
   // A price range like `$5-$10` pairs its dollars with a trailing operator.
   if (/[+\-*/]$/.test(value)) return false;
   if (/[\\^_=+\-*/<>()]/.test(value)) return true;
@@ -148,7 +171,8 @@ export default function UserMathText({
   content: string;
   size?: number;
 }) {
-  const segments = useMemo(() => splitUserMath(content), [content]);
+  const source = typeof content === "string" ? content : "";
+  const segments = useMemo(() => splitUserMath(source), [source]);
 
   return (
     <div

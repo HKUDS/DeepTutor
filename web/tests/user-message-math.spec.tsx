@@ -35,6 +35,12 @@ describe("splitUserMath", () => {
     ]);
   });
 
+  it("keeps escaped dollars literal", () => {
+    expect(splitUserMath("价格 \\$5 和 \\$10")).toEqual([
+      { kind: "text", value: "价格 \\$5 和 \\$10" },
+    ]);
+  });
+
   it("keeps inline code and fenced code literal", () => {
     expect(splitUserMath("`$x$`")).toEqual([{ kind: "text", value: "`$x$`" }]);
     expect(splitUserMath("```\n$x$\n```")).toEqual([
