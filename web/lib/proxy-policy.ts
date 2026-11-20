@@ -7,6 +7,7 @@
 // can be unit-tested in the node harness without booting the Next runtime.
 
 export const LOGIN_PATH = "/login";
+export const ADMIN_LOGIN_PATH = "/admin/login";
 export const HANDOFF_PATH = "/handoff";
 export const COOKIE_NAME = "dt_token";
 export const CODEX_CALLBACK_PATH = "/auth/callback";
@@ -53,6 +54,7 @@ const STATIC_ASSET =
 export function isAuthExempt(pathname: string): boolean {
   return (
     pathname.startsWith(LOGIN_PATH) ||
+    pathname.startsWith(ADMIN_LOGIN_PATH) ||
     pathname.startsWith("/register") ||
     pathname === HANDOFF_PATH ||
     pathname.startsWith("/_next") ||
@@ -62,6 +64,48 @@ export function isAuthExempt(pathname: string): boolean {
 }
 
 export type TokenState = "missing" | "malformed" | "expired" | "valid";
+
+/**
+ * Paths that only an administrator may open.
+ *
+ * `DECISIONS.md` F-1 requires the admin surface to be protected *server-side*,
+ * not just by a `useEffect` that calls `router.replace`. A browser guard is a
+ * navigation convenience: it runs after the document has already been handed
+ * over, so anyone who blocks JavaScript, or simply requests the HTML directly,
+ * never reaches it. This list is what the middleware consults.
+ */
+export function isAdminPagePath(pathname: string): boolean {
+  // The admin sign-in page itself is not protected: requiring a session to
+  // reach a sign-in form would redirect it to itself forever.
+  if (pathname === ADMIN_LOGIN_PATH) return false;
+  return pathname === "/admin" || pathname.startsWith("/admin/");
+}
+
+/**
+ * Read the `role` claim from a token **without verifying its signature**.
+ *
+ * This deliberately does not authenticate anything: the backend re-verifies
+ * every API call, and the HTML this gate protects is a shell that renders
+ * nothing until those calls succeed. What it stops is the useful attack —
+ * fetching the admin page document at all — without adding a JWT library to
+ * the Edge runtime for a decision the API already makes.
+ *
+ * Returns `null` when the claim is absent or the token is not a JWT, which
+ * callers treat as "not an administrator" rather than "allow".
+ */
+export function tokenRole(token: string | undefined): string | null {
+  if (!token) return null;
+  const parts = token.split(".");
+  if (parts.length !== 3) return null;
+  try {
+    const payload = JSON.parse(
+      Buffer.from(parts[1], "base64url").toString("utf-8"),
+    ) as { role?: unknown };
+    return typeof payload.role === "string" ? payload.role : null;
+  } catch {
+    return null;
+  }
+}
 
 // Classify the auth cookie WITHOUT trusting its signature — the middleware is a
 // cheap front-line gate, not the authority (the backend does real verification

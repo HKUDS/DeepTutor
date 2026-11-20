@@ -273,7 +273,7 @@ export function TurnNavigator({
         // Negative margins turn the padding into an invisible grab area:
         // the ticks are hairlines, so the pointer must be able to claim
         // the rail from a few px away in the empty gutter around them.
-        className="relative -my-2 -ml-2 py-2 pl-2 pr-4 transition-transform duration-300 ease-out motion-reduce:transition-none"
+        className="relative -my-2 -ms-2 py-2 ps-2 pe-4 transition-transform duration-300 ease-out motion-reduce:transition-none"
         style={{
           transform: `translateX(${hot ? 0 : -IDLE_RETREAT_PX}px)`,
         }}
@@ -354,7 +354,7 @@ export function TurnNavigator({
               exit={{ opacity: 0, x: -4 }}
               transition={{ duration: 0.14, ease: "easeOut" }}
               style={{ top: cardY ?? "50%" }}
-              className="pointer-events-none absolute left-full z-10 ml-2 w-[290px] -translate-y-1/2 rounded-2xl border border-[var(--border)] bg-[var(--popover)] px-3.5 py-3 text-[var(--popover-foreground)] shadow-[0_16px_44px_-18px_var(--overlay)]"
+              className="pointer-events-none absolute start-full z-10 ms-2 w-[290px] -translate-y-1/2 rounded-2xl border border-[var(--border)] bg-[var(--popover)] px-3.5 py-3 text-[var(--popover-foreground)] shadow-[0_16px_44px_-18px_var(--overlay)]"
             >
               <div className="flex items-baseline gap-2 text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--muted-foreground)]">
                 <span className="tabular-nums">

@@ -117,7 +117,7 @@ export default function SelectionActions({
         <button
           type="button"
           onClick={() => onAsk(DITO)}
-          className={`${segment} pr-1.5`}
+          className={`${segment} pe-1.5`}
         >
           <MessagesSquare size={14} strokeWidth={1.8} aria-hidden="true" />
           {t("Ask Dito")}
@@ -142,7 +142,7 @@ export default function SelectionActions({
       {menuOpen ? (
         <div
           role="menu"
-          className={`absolute right-0 overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--popover,var(--card))] p-1 text-[var(--foreground)] shadow-lg ${
+          className={`absolute end-0 overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--popover,var(--card))] p-1 text-[var(--foreground)] shadow-lg ${
             menuAbove ? "bottom-full mb-1.5" : "top-full mt-1.5"
           }`}
           style={{ width: MENU_WIDTH, maxHeight: MENU_MAX_HEIGHT }}

@@ -58,7 +58,7 @@ function WorkspaceRow({ row, run, busy }: { row: ChatWorkspaceRegistration; run:
           </Tooltip>}
         </div>
       </div>
-      <div className="mt-1.5 min-w-0 sm:pl-[30px]">
+      <div className="mt-1.5 min-w-0 sm:ps-[30px]">
         {!custom && <p className="mb-2 text-[12.5px] leading-relaxed text-[var(--muted-foreground)]">{row.kind === 'system' ? t('Sanitized configuration snapshots, Skill files and MCP inventory. API keys and tokens remain in private configuration.') : t('Conversations without a selected workspace share files in this folder.')}</p>}
         <p className="select-all break-all font-mono text-[11.5px] leading-relaxed text-[var(--muted-foreground)]">{row.path}</p>
         {row.archived && <p className="mt-1 text-xs text-[var(--muted-foreground)]">{t('Archived. Existing conversations and files are kept.')}</p>}
@@ -136,7 +136,7 @@ export default function WorkspaceSettingsSection() {
       <SettingsPageHeader title={t('Workspaces')} description={t('Keep conversations, learning materials and progress together in one workspace.')} actions={
         <button type="button" disabled={busy || !catalog} onClick={() => setCreating(!creating)} className={primaryClass}><Plus size={15} />{t('New workspace')}</button>
       } />
-      {error && <div role="alert" className="mb-4 rounded-lg border border-[var(--destructive)] p-3 text-sm text-[var(--destructive)]">{error}{!catalog && <button className="ml-3 underline" onClick={() => void refresh().catch(err => setError(String(err.message)))}>{t('Retry')}</button>}</div>}
+      {error && <div role="alert" className="mb-4 rounded-lg border border-[var(--destructive)] p-3 text-sm text-[var(--destructive)]">{error}{!catalog && <button className="ms-3 underline" onClick={() => void refresh().catch(err => setError(String(err.message)))}>{t('Retry')}</button>}</div>}
       {(busy || notice) && <p role="status" className="mb-4 text-sm text-[var(--muted-foreground)]">{busy ? t('Working. Migration copies and verifies your files; please wait…') : notice}</p>}
       {!catalog ? (!error && <div aria-busy="true" className="h-44 animate-pulse rounded-xl bg-[var(--muted)]" />) : (
         <fieldset disabled={busy} className="min-w-0 disabled:opacity-70">

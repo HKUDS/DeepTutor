@@ -381,7 +381,7 @@
     background-repeat: no-repeat;
     background-position: right 0.7rem center;
     background-size: 14px 14px;
-    padding-right: 2.15rem;
+    padding-inline-end: 2.15rem;
   }
 }
 
@@ -975,7 +975,7 @@
   50% { opacity: 1; transform: scale(1.04); }
 }
 .dt-answerer-name {
-  margin-right: -4px;
+  margin-inline-end: -4px;
   color: var(--foreground);
   font-weight: 600;
 }
@@ -1177,8 +1177,8 @@ body[data-picker-open] .dt-breathing-text {
   transition:
     padding-right var(--viewer-dur) var(--viewer-ease),
     padding-left 240ms cubic-bezier(0.32, 0.72, 0, 1);
-  padding-left: 0;
-  padding-right: 0;
+  padding-inline-start: 0;
+  padding-inline-end: 0;
 }
 /* While the viewer is being drag-resized, kill the squeeze transition so the
    chat column tracks the panel edge frame-for-frame instead of lagging. */
@@ -1189,14 +1189,14 @@ body[data-picker-open] .dt-breathing-text {
   /* The wider composer-side preview drawer (pre-send attachment peek)
      gets the largest squeeze. */
   .chat-preview-shell[data-preview-open="true"] {
-    padding-right: min(560px, 92vw);
+    padding-inline-end: min(560px, 92vw);
   }
   /* Viewer panel (tabbed file/web preview, opened from message attachments
      or assistant links) is next-widest. Wins over the activity panel when
      both are open. Width is user-resizable, so the squeeze tracks the
      ``--viewer-width`` var the panel writes (falls back to 520px). */
   .chat-preview-shell[data-preview-open="false"][data-viewer-open="true"] {
-    padding-right: calc(
+    padding-inline-end: calc(
       min(var(--viewer-width, 520px), 92vw) + var(--viewer-inset)
     );
   }
@@ -1274,7 +1274,7 @@ body[data-picker-open] .dt-breathing-text {
     width: 64%;
   }
   .chat-preview-shell[data-watching-open="true"] {
-    padding-left: 64%;
+    padding-inline-start: 64%;
   }
 }
 
@@ -1558,7 +1558,7 @@ a[href^="#dt-locator-"]:hover {
   gap: 24px 20px;
 }
 .watching-video-card {
-  text-align: left;
+  text-align: start;
   min-width: 0;
   border-radius: 12px;
 }

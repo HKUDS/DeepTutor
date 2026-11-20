@@ -134,14 +134,14 @@ export function StudyOutline({
 
             {/* The rail is the module's spine — one continuous hairline
                 behind the dots, rather than a border on every row. */}
-            <ul className="relative mt-1.5 before:absolute before:bottom-[14px] before:left-[21px] before:top-[14px] before:w-px before:bg-[var(--border)]">
+            <ul className="relative mt-1.5 before:absolute before:bottom-[14px] before:start-[21px] before:top-[14px] before:w-px before:bg-[var(--border)]">
               {module.knowledge_points.map((point) => {
                 const current = point.id === currentPointId;
                 const justMastered = point.id === justMasteredId;
                 return (
                   <li key={point.id} className="relative">
                     <div
-                      className={`flex items-start gap-2 rounded-md py-[5px] pl-[18px] pr-2 ${
+                      className={`flex items-start gap-2 rounded-md py-[5px] ps-[18px] pe-2 ${
                         justMastered
                           ? "mastery-just-mastered-row"
                           : current

@@ -81,7 +81,7 @@
   min-width: 0;
   align-items: center;
   gap: 1px;
-  margin-left: 2px;
+  margin-inline-start: 2px;
   font-size: 13px;
 }
 .dt-note-crumb {
@@ -121,7 +121,7 @@ a.dt-note-crumb:hover {
 }
 .dt-note-status {
   flex-shrink: 0;
-  margin-right: 6px;
+  margin-inline-end: 6px;
   font-size: 12px;
   color: var(--muted-foreground);
   transition: opacity 400ms;
@@ -310,7 +310,7 @@ a.dt-note-crumb:hover {
   place-items: center;
   width: 76px;
   height: 76px;
-  margin-left: -6px;
+  margin-inline-start: -6px;
   border-radius: 10px;
   font-size: 60px;
   line-height: 1;
@@ -387,7 +387,7 @@ a.dt-note-crumb:hover {
   flex-shrink: 0;
   min-height: 0;
   padding: 2px 8px 10px;
-  border-right: 1px solid var(--border);
+  border-inline-end: 1px solid var(--border);
   font-size: 13.5px;
 }
 .dt-note-tree-heading {
@@ -436,7 +436,7 @@ a.dt-note-crumb:hover {
   align-items: center;
   gap: 7px;
   height: 100%;
-  padding-right: 4px;
+  padding-inline-end: 4px;
 }
 .dt-note-tree-toggle {
   display: flex;
@@ -445,7 +445,7 @@ a.dt-note-crumb:hover {
   justify-content: center;
   width: 22px;
   height: 22px;
-  margin-left: 2px;
+  margin-inline-start: 2px;
   border-radius: 4px;
   color: var(--muted-foreground);
 }
@@ -471,7 +471,7 @@ button.dt-note-tree-toggle:hover {
   justify-content: center;
   width: 22px;
   height: 22px;
-  margin-right: 4px;
+  margin-inline-end: 4px;
   border-radius: 4px;
   color: var(--muted-foreground);
   opacity: 0;
@@ -577,7 +577,7 @@ button.dt-note-tree-toggle:hover {
   align-items: center;
   gap: 8px;
   height: 30px;
-  margin-left: -8px;
+  margin-inline-start: -8px;
   padding: 0 8px;
   border-radius: 6px;
   font-size: 13.5px;
@@ -677,10 +677,10 @@ button.dt-note-tree-toggle:hover {
     box-shadow 200ms;
 }
 .dt-note-orb + .dt-note-orb {
-  margin-left: -9px;
+  margin-inline-start: -9px;
 }
 .dt-note-orbs[data-hover] .dt-note-orb + .dt-note-orb {
-  margin-left: -1px;
+  margin-inline-start: -1px;
 }
 .dt-note-orb:hover {
   transform: scale(1.3);
@@ -729,7 +729,7 @@ button.dt-note-tree-toggle:hover {
   margin: -4px 0 0 -4px;
 }
 .dt-note-orb-more {
-  margin-left: 3px;
+  margin-inline-start: 3px;
   font-size: 10px;
   font-variant-numeric: tabular-nums;
   color: var(--muted-foreground);
@@ -820,7 +820,7 @@ button.dt-note-tree-toggle:hover {
   gap: 3px;
   padding: 8px 10px;
   border-radius: 9px;
-  text-align: left;
+  text-align: start;
 }
 .dt-note-thread-row-head {
   display: flex;
@@ -853,7 +853,7 @@ button.dt-note-tree-toggle:hover {
 .dt-note-thread-row-line {
   display: -webkit-box;
   overflow: hidden;
-  padding-left: 16px;
+  padding-inline-start: 16px;
   font-size: 12px;
   line-height: 1.5;
   color: var(--muted-foreground);
@@ -947,7 +947,7 @@ button.dt-note-tree-toggle:hover {
   justify-content: space-between;
   height: 0;
   overflow: hidden;
-  padding-left: 6px;
+  padding-inline-start: 6px;
   font-size: 11.5px;
   font-weight: 500;
   color: var(--muted-foreground);
@@ -976,14 +976,14 @@ button.dt-note-tree-toggle:hover {
   height: 12px;
   padding: 0 4px;
   border-radius: 6px;
-  text-align: left;
+  text-align: start;
   transition:
     height 220ms cubic-bezier(0.2, 0.8, 0.2, 1),
     background-color 100ms;
 }
 .dt-note-outline[data-expanded] li button {
   height: 28px;
-  padding-left: calc(6px + var(--indent, 0px));
+  padding-inline-start: calc(6px + var(--indent, 0px));
 }
 .dt-note-outline[data-expanded] li button:hover {
   background: var(--secondary);
@@ -1016,7 +1016,7 @@ button.dt-note-tree-toggle:hover {
 }
 .dt-note-outline[data-expanded] .dt-note-outline-mark {
   width: 0;
-  margin-right: -8px;
+  margin-inline-end: -8px;
   opacity: 0;
 }
 .dt-note-outline-text {

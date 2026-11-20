@@ -51,7 +51,7 @@ export default function CalloutBlock({ block }: CalloutBlockProps) {
   const Icon = style.icon;
   return (
     <aside
-      className={`relative flex gap-3 border-l-[3px] ${style.rule} ${style.tint} py-2 pl-4 pr-3`}
+      className={`relative flex gap-3 border-s-[3px] ${style.rule} ${style.tint} py-2 ps-4 pe-3`}
     >
       <Icon className={`mt-[3px] h-4 w-4 shrink-0 ${style.accent}`} />
       <div className="min-w-0 space-y-1">

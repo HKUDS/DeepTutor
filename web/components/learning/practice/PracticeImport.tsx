@@ -124,7 +124,7 @@ export function PracticeImport({
             void select(event.target.files?.[0]);
             event.target.value = "";
           }}
-          className="block w-full text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-primary/10 file:px-3 file:py-2 file:text-primary"
+          className="block w-full text-sm file:me-3 file:rounded-lg file:border-0 file:bg-primary/10 file:px-3 file:py-2 file:text-primary"
         />
         <span className="mt-2 block text-xs text-muted-foreground">
           {t(

@@ -165,7 +165,7 @@ export default function UsageSettingsSection() {
                         <th
                           key={label}
                           scope="col"
-                          className={`px-3 py-3 font-medium ${index ? 'text-right' : 'text-left'}`}
+                          className={`px-3 py-3 font-medium ${index ? 'text-end' : 'text-start'}`}
                         >
                           {label}
                         </th>
@@ -180,7 +180,7 @@ export default function UsageSettingsSection() {
                       >
                         <th
                           scope="row"
-                          className="max-w-[220px] break-words px-3 py-3 text-left font-medium"
+                          className="max-w-[220px] break-words px-3 py-3 text-start font-medium"
                         >
                           <span className="block">{model.model}</span>
                           {model.provider && (
@@ -189,19 +189,19 @@ export default function UsageSettingsSection() {
                             </span>
                           )}
                         </th>
-                        <td className="px-3 py-3 text-right font-medium">
+                        <td className="px-3 py-3 text-end font-medium">
                           {n(model.total_tokens)}
                         </td>
-                        <td className="px-3 py-3 text-right">{n(model.prompt_tokens)}</td>
-                        <td className="px-3 py-3 text-right">{n(model.completion_tokens)}</td>
-                        <td className="px-3 py-3 text-right">{percent(model.cache_hit_rate)}</td>
-                        <td className="px-3 py-3 text-right">{n(model.total_calls)}</td>
-                        <td className="whitespace-nowrap px-3 py-3 text-right">
+                        <td className="px-3 py-3 text-end">{n(model.prompt_tokens)}</td>
+                        <td className="px-3 py-3 text-end">{n(model.completion_tokens)}</td>
+                        <td className="px-3 py-3 text-end">{percent(model.cache_hit_rate)}</td>
+                        <td className="px-3 py-3 text-end">{n(model.total_calls)}</td>
+                        <td className="whitespace-nowrap px-3 py-3 text-end">
                           {model.ttft_seconds == null
                             ? '—'
                             : t('{{value}} s', { value: model.ttft_seconds.toFixed(2) })}
                         </td>
-                        <td className="whitespace-nowrap px-3 py-3 text-right">
+                        <td className="whitespace-nowrap px-3 py-3 text-end">
                           {model.tokens_per_second == null
                             ? '—'
                             : t('{{value}} tok/s', { value: model.tokens_per_second.toFixed(1) })}

@@ -319,7 +319,7 @@ export default function WhisperPage() {
           <p className="mt-0.5 text-[11px] text-[var(--muted-foreground)]">
             {t("Dual-seat supervision · seat switch (not split-screen)")}
             {dtSessionId ? (
-              <span className="ml-2 font-mono opacity-70">
+              <span className="ms-2 font-mono opacity-70">
                 {t("Session {{id}}", { id: `${dtSessionId.slice(0, 8)}…` })}
               </span>
             ) : null}

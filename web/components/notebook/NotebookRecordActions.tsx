@@ -100,7 +100,7 @@ export default function NotebookRecordActions({
       {open && (
         <div
           role="menu"
-          className="animate-pop-in absolute right-0 top-full z-50 mt-1 w-[min(240px,calc(100vw-32px))] origin-top-right overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--popover)] shadow-lg backdrop-blur-md"
+          className="animate-pop-in absolute end-0 top-full z-50 mt-1 w-[min(240px,calc(100vw-32px))] origin-top-right overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--popover)] shadow-lg backdrop-blur-md"
         >
           {panel === "root" ? (
             <div className="p-1">
@@ -144,7 +144,7 @@ export default function NotebookRecordActions({
               <button
                 type="button"
                 onClick={() => setPanel("root")}
-                className="mb-0.5 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[11px] font-medium uppercase tracking-wide text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)]/60 hover:text-[var(--foreground)]"
+                className="mb-0.5 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-start text-[11px] font-medium uppercase tracking-wide text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)]/60 hover:text-[var(--foreground)]"
               >
                 <ArrowLeft size={12} />
                 {panel === "move" ? t("Move to") : t("Copy to")}
@@ -162,7 +162,7 @@ export default function NotebookRecordActions({
                         panel === "move" ? "move" : "copy",
                       );
                     }}
-                    className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[12.5px] text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]/70"
+                    className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-start text-[12.5px] text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]/70"
                   >
                     <span
                       aria-hidden

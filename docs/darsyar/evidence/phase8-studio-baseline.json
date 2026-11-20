@@ -1,0 +1,442 @@
+{
+  "phase": 8,
+  "branch": "arena/13c4e9b8-deeptutor",
+  "base_commit": "1dc75fcdf",
+  "generated": "2026-11-16",
+  "status": "completed (mechanism + real output + integrity guards); Gate 8 NOT accepted",
+  "migrations": [
+    {
+      "name": "V0010__media_studio.sql",
+      "tables": [
+        "media_assets",
+        "media_reservations",
+        "media_job_costs"
+      ],
+      "round_trip_ok": true
+    },
+    {
+      "name": "V0011__media_asset_grants.sql",
+      "tables": [
+        "media_asset_grants"
+      ],
+      "round_trip_ok": true,
+      "note": "applied after V0010; rolling back to 10 removes only grants"
+    },
+    {
+      "name": "V0012__media_licence_and_review.sql",
+      "tables": [
+        "media_quality_reviews"
+      ],
+      "round_trip_ok": true,
+      "note": "declarative only; the licence triggers are installed at startup because the migration runner cannot express a compound trigger body"
+    }
+  ],
+  "tests": {
+    "accounting": 17,
+    "jobs": 22,
+    "http": 15,
+    "script": 19,
+    "sharing": 13,
+    "sharing_http": 10,
+    "storage_and_rendering": 18,
+    "total_new": 149,
+    "suite_db_api_modules": "922 passed, 539 skipped",
+    "integrity": 28,
+    "review_http": 7,
+    "full_suite": "14743 passed, 671 skipped (2 deselected: pre-existing env artifacts)"
+  },
+  "mutation_evidence": [
+    {
+      "mutation": "remove owner check in get_asset",
+      "caught_by": "3 ownership tests"
+    },
+    {
+      "mutation": "settle at reserved instead of actual",
+      "caught_by": "2 cost tests"
+    },
+    {
+      "mutation": "no refund on terminal failure",
+      "caught_by": "leak test"
+    },
+    {
+      "mutation": "owner-only ops fall back to read permission",
+      "caught_by": "4 tests",
+      "class": "privilege escalation"
+    },
+    {
+      "mutation": "stop charging storage on store",
+      "caught_by": "2 tests"
+    },
+    {
+      "mutation": "stop releasing storage on delete",
+      "caught_by": "1 test"
+    },
+    {
+      "mutation": "drop the licence requirement",
+      "caught_by": "2 licence tests"
+    },
+    {
+      "mutation": "delete frees the meter but keeps the bytes (the old bug)",
+      "caught_by": "byte test"
+    },
+    {
+      "mutation": "count a self-review as independent",
+      "caught_by": "2 independence tests"
+    },
+    {
+      "mutation": "never install the insert licence trigger",
+      "caught_by": "2 database tests"
+    },
+    {
+      "mutation": "never install the update licence trigger",
+      "caught_by": "1 database test"
+    }
+  ],
+  "real_output": {
+    "renderer": "local (Pillow + stdlib wave); no provider, no network",
+    "persian_shaping": "arabic-reshaper + python-bidi; refused if absent",
+    "artefacts": {
+      "slide_deck": {
+        "mime": "image/png",
+        "bytes": 41968,
+        "real": true
+      },
+      "mind_map": {
+        "mime": "image/png",
+        "bytes": 16816,
+        "real": true
+      },
+      "infographic": {
+        "mime": "image/png",
+        "bytes": 28469,
+        "real": true
+      },
+      "audio_overview": {
+        "mime": "audio/wav",
+        "bytes": 732104,
+        "real": true,
+        "limitation": "placeholder tone, not speech"
+      },
+      "video_lesson": {
+        "mime": "image/png",
+        "bytes": 53159,
+        "real": true,
+        "limitation": "storyboard, not a video"
+      }
+    },
+    "headers_verified": {
+      "png": "\\x89PNG",
+      "wav": "RIFF"
+    }
+  },
+  "live_smoke_two_processes": {
+    "api": "uvicorn deeptutor.api.main:app :3841",
+    "worker": "python -m deeptutor.services.studio.worker (separate process)",
+    "all_five_kinds_rendered": true,
+    "seconds_to_drain_five": 4,
+    "wallet": {
+      "before": 50000,
+      "after": 49837,
+      "open_holds": 0
+    },
+    "storage_used_bytes": 872516,
+    "access_chain": {
+      "owner_download": 200,
+      "stranger_download": 404,
+      "after_grant": 200,
+      "grantee_delete": 404,
+      "grantee_library": 0,
+      "grantee_shared": 1,
+      "after_revoke": 404
+    },
+    "worker_restart_recovery": {
+      "simulated": "lease_owner='dead', lease_expires_at=2000-01-01",
+      "outcome": "reclaimed and completed",
+      "assets": 1,
+      "settlements": 1,
+      "open_holds": 0
+    },
+    "failure_isolation": {
+      "poisoned_job": "empty script -> build_script raises",
+      "worker_survived": true,
+      "next_job_processed": true,
+      "health": {
+        "/health": 200,
+        "/health/ready": 200,
+        "/api/platform/health/live": 200
+      },
+      "graceful_shutdown": "SIGTERM -> 'received signal 15; finishing current job'"
+    }
+  },
+  "cost_reconciliation": {
+    "finding": "DEFAULT_ESTIMATES overestimated by 20x-50x",
+    "rows": [
+      {
+        "kind": "video_lesson",
+        "estimate": 2500,
+        "actual": 42,
+        "ratio": 0.02
+      },
+      {
+        "kind": "audio_overview",
+        "estimate": 800,
+        "actual": 39,
+        "ratio": 0.05
+      },
+      {
+        "kind": "slide_deck",
+        "estimate": 1200,
+        "actual": 37,
+        "ratio": 0.03
+      },
+      {
+        "kind": "infographic",
+        "estimate": 1500,
+        "actual": 35,
+        "ratio": 0.02
+      },
+      {
+        "kind": "mind_map",
+        "estimate": 600,
+        "actual": 10,
+        "ratio": 0.02
+      }
+    ],
+    "caveat": "measured against a local CPU renderer, not a paid provider"
+  },
+  "bugs_found_and_fixed": [
+    {
+      "id": 6,
+      "bug": "grantee could delete the owner's asset and revoke others' grants",
+      "class": "privilege escalation",
+      "fixed_by": "_require_owner"
+    },
+    {
+      "id": 7,
+      "bug": "storage_used_bytes never moved",
+      "fixed_by": "charge on store, release on delete"
+    },
+    {
+      "id": 8,
+      "bug": "mind map hub label overflowed and was clipped",
+      "found_by": "looking at the PNG"
+    },
+    {
+      "id": 9,
+      "bug": "mind map drew its topic twice",
+      "found_by": "looking at the PNG"
+    },
+    {
+      "id": 10,
+      "bug": "branches were isolated words, not concepts",
+      "fixed_by": "prefer recurring phrases"
+    }
+  ],
+  "gate_8": {
+    "cost": "measured against real output, but from a local renderer -- not a paid provider",
+    "quality": "Persian reviewed by the author, defects fixed; the review is now RECORDABLE (media_quality_reviews) and distinguishes self-review from independent review. NOT yet reviewed by an independent teacher: independent_reviews = 0.",
+    "rights": "enforced: cache key, asset row, service check AND before-insert/update triggers. The underlying licence question is still unanswered (Gates 5/6).",
+    "capacity": "5 jobs in ~4s on one machine with a local renderer; no load test, no provider baseline",
+    "accepted": false,
+    "blockers": [
+      "a real provider to record a real monetary cost",
+      "an independent Persian reviewer to fill the checklist",
+      "the licence answer outstanding since Phase 5"
+    ]
+  },
+  "finish_pass": {
+    "gaps_found_after_mechanism_was_complete": [
+      {
+        "id": 11,
+        "gap": "licence_code could be empty for source-derived assets",
+        "why": "the row said where it came from and nothing about what we may do",
+        "fix": "licence_required in service + BEFORE INSERT/UPDATE triggers on the table"
+      },
+      {
+        "id": 12,
+        "gap": "delete freed the storage meter but left the object on disk",
+        "why": "quota said the space was free, the disk said otherwise",
+        "fix": "delete bytes -> release meter -> tombstone the row",
+        "proof": "3 create/delete cycles: disk unchanged (1,055,236 bytes), meter 0"
+      },
+      {
+        "id": 13,
+        "gap": "quality_checklist existed but there was nowhere to record a verdict",
+        "why": "'quality assessed' could only mean 'criteria written down'",
+        "fix": "media_quality_reviews + POST/GET /assets/{id}/reviews"
+      },
+      {
+        "id": 14,
+        "gap": "store.delete returning False (already absent) treated as failure",
+        "found_by": "a test",
+        "fix": "already-absent is the desired state, not an error"
+      }
+    ],
+    "table_level_guarantee": {
+      "mechanism": "SQLite triggers installed by services/studio/integrity.ensure_guards",
+      "why_not_check_constraint": "SQLite cannot ADD CONSTRAINT to an existing table without a full rebuild",
+      "why_not_in_migration": "the migration splitter cannot express BEGIN ... END",
+      "verified": "a raw INSERT that bypasses every service check is refused",
+      "guards": {
+        "insert": true,
+        "update": true
+      }
+    },
+    "live_proof": {
+      "processes": [
+        "uvicorn :3851",
+        "python -m deeptutor.services.studio.worker"
+      ],
+      "licence": {
+        "source_no_licence": 422,
+        "source_with_licence": 202,
+        "prompt_only": 202
+      },
+      "delete": {
+        "before_bytes_present": true,
+        "after_bytes_present": false,
+        "meter_before": 15355,
+        "meter_after": 7471
+      },
+      "review": {
+        "self_review": {
+          "answered": 7,
+          "total": 7,
+          "complete": true,
+          "independent": 0
+        },
+        "after_one_independent": {
+          "independently_reviewed": true,
+          "failures": [
+            "persian_register"
+          ]
+        },
+        "stranger_post": 404,
+        "stranger_get": 404,
+        "invalid_verdict": 422
+      },
+      "leak_closed": {
+        "create_delete_cycles": 3,
+        "disk_bytes_before": 1055236,
+        "disk_bytes_after": 1055236,
+        "growth": 0,
+        "meter_after": 0
+      }
+    }
+  },
+  "gate8": {
+    "verdict": "closed except quality, which requires a human",
+    "columns": {
+      "cost": {
+        "status": "measured",
+        "old_method": "len(text) // 4",
+        "old_method_error_on_persian": 0.601,
+        "old_method_undercount_factor": 2.9,
+        "new_method": "two-script estimator, calibrated against cl100k_base",
+        "new_method_error": 0.006,
+        "reference_sentences": 20,
+        "reference_tokens": 676,
+        "reference_file": "tests/data/cl100k_reference.json",
+        "regenerate": "python scripts/measure_tokens.py --check",
+        "real_tokenizer_when_available": true,
+        "what_this_does_not_cover": "the actual provider invoice: this counts tokens, it does not price them. No provider key existed on this host, so no paid call could be made and no dollar figure is claimed"
+      },
+      "quality": {
+        "status": "open -- requires an independent Persian-speaking human",
+        "mechanism": "media_quality_reviews (D-077)",
+        "independent_reviews_recorded": 0,
+        "why_not_closed": "a verdict I write about my own output is not a quality gate. Manufacturing a reviewer would turn the gate into paperwork"
+      },
+      "rights": {
+        "status": "enforced (whether we hold the licence stays human)",
+        "mechanism": "services/studio/licences.py + attribution on the artefact",
+        "licence_codes": 9,
+        "refusals": [
+          "unknown_licence",
+          "licence_insufficient",
+          "licence_obligation_unsupported"
+        ],
+        "attribution_on_artefact": true,
+        "decisions": [
+          "D-079",
+          "D-080",
+          "D-084"
+        ]
+      },
+      "capacity": {
+        "status": "measured",
+        "script": "scripts/measure_capacity.py",
+        "measurements": [
+          {
+            "concurrency": 1,
+            "jobs": 60,
+            "wall": 0.86,
+            "throughput": 69.78,
+            "errors": 0,
+            "p50_ms": 13.0,
+            "max_ms": 32.0,
+            "rss_growth_mb": 1.0
+          },
+          {
+            "concurrency": 4,
+            "jobs": 60,
+            "wall": 0.702,
+            "throughput": 85.47,
+            "errors": 0,
+            "p50_ms": 44.4,
+            "max_ms": 82.0,
+            "rss_growth_mb": 2.5
+          },
+          {
+            "concurrency": 12,
+            "jobs": 60,
+            "wall": 0.848,
+            "throughput": 70.76,
+            "errors": 0,
+            "p50_ms": 139.6,
+            "max_ms": 463.0,
+            "rss_growth_mb": 6.4
+          },
+          {
+            "concurrency": 24,
+            "jobs": 120,
+            "wall": 1.582,
+            "throughput": 75.84,
+            "errors": 0,
+            "p50_ms": 253.2,
+            "max_ms": 1175.0,
+            "rss_growth_mb": 10.3
+          }
+        ],
+        "bottleneck": "SQLite write serialisation, not rendering",
+        "evidence": {
+          "throughput_flat_until": "concurrency 12",
+          "p50_latency_growth": "13ms -> 253ms from 1 to 24 threads",
+          "memory_growth_at_120_jobs_mb": 10.3,
+          "errors_across_all_levels": 0
+        },
+        "what_this_does_not_cover": "provider rate limits, network latency, GPU throughput: the renderers here are Pillow plus labelled stand-ins"
+      }
+    },
+    "tests_added": {
+      "licences": 17,
+      "tokens": 15,
+      "capacity": 6,
+      "catalogue_http": 9,
+      "total": 47
+    },
+    "mutations": {
+      "count": 18,
+      "caught": 18,
+      "note": "11 from the previous pass plus 7 for licences, tokens and attribution"
+    },
+    "new_endpoints": [
+      "GET /api/studio/licences",
+      "GET /api/studio/cost/method"
+    ],
+    "totals": {
+      "studio_tests": 196,
+      "suite_db_api_modules": "969 passed / 567 skipped"
+    }
+  }
+}

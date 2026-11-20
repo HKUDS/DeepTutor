@@ -200,7 +200,7 @@ function HtmlRenderer({ html }: { html: string }) {
       <button
         type="button"
         onClick={handleOpenInNewTab}
-        className="absolute right-2 top-2 z-10 inline-flex items-center gap-1 rounded-md border border-[var(--border)] bg-[var(--background)]/90 px-2 py-1 text-[10px] font-medium text-[var(--muted-foreground)] backdrop-blur transition-colors hover:text-[var(--foreground)]"
+        className="absolute end-2 top-2 z-10 inline-flex items-center gap-1 rounded-md border border-[var(--border)] bg-[var(--background)]/90 px-2 py-1 text-[10px] font-medium text-[var(--muted-foreground)] backdrop-blur transition-colors hover:text-[var(--foreground)]"
       >
         <ExternalLink size={10} strokeWidth={1.8} />
         {t("Open in new tab")}
@@ -597,7 +597,7 @@ export default function VisualizationViewer({
           <button
             type="button"
             onClick={() => setFullscreen(true)}
-            className="absolute right-2 top-2 z-10 inline-flex items-center gap-1 rounded-md border border-[var(--border)] bg-[var(--background)]/90 px-2 py-1 text-[10px] font-medium text-[var(--muted-foreground)] backdrop-blur transition-colors hover:text-[var(--foreground)]"
+            className="absolute end-2 top-2 z-10 inline-flex items-center gap-1 rounded-md border border-[var(--border)] bg-[var(--background)]/90 px-2 py-1 text-[10px] font-medium text-[var(--muted-foreground)] backdrop-blur transition-colors hover:text-[var(--foreground)]"
           >
             <Maximize2 size={10} strokeWidth={1.8} />
             {t("Fullscreen")}
@@ -630,7 +630,7 @@ export default function VisualizationViewer({
           {copied ? t("Copied") : t("Copy code")}
         </button>
 
-        <span className="ml-auto text-[10px] uppercase tracking-wider text-[var(--muted-foreground)]/50">
+        <span className="ms-auto text-[10px] uppercase tracking-wider text-[var(--muted-foreground)]/50">
           {visualizationLabel(result)}
         </span>
       </div>

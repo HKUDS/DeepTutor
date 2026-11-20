@@ -261,18 +261,18 @@ export default function ToolsSettingsPage() {
           {t("Search tools")}
         </label>
         <div className="relative">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted-foreground)]" />
+          <Search className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted-foreground)]" />
           <input
             id="tools-search"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder={t("Search tools")}
             aria-label={t("Search tools")}
-            className="w-full rounded-xl border border-[var(--border)] bg-[var(--card)] py-2.5 pl-10 pr-10 text-[13px] text-[var(--foreground)] outline-none transition-colors placeholder:text-[var(--muted-foreground)]/60 focus:border-[var(--ring)] focus:ring-2 focus:ring-[var(--ring)]/20"
+            className="w-full rounded-xl border border-[var(--border)] bg-[var(--card)] py-2.5 ps-10 pe-10 text-[13px] text-[var(--foreground)] outline-none transition-colors placeholder:text-[var(--muted-foreground)]/60 focus:border-[var(--ring)] focus:ring-2 focus:ring-[var(--ring)]/20"
             spellCheck={false}
           />
           {query && (
-            <span className="absolute right-2 top-1/2 -translate-y-1/2">
+            <span className="absolute end-2 top-1/2 -translate-y-1/2">
               <Tooltip label={t("Clear")} side="top">
                 <button
                   type="button"
@@ -375,7 +375,7 @@ export default function ToolsSettingsPage() {
                           <button
                             type="button"
                             onClick={() => toggleExpanded(tool.name)}
-                            className="flex min-w-0 flex-1 items-start gap-3 text-left"
+                            className="flex min-w-0 flex-1 items-start gap-3 text-start"
                             aria-expanded={isOpen}
                           >
                             <div className="min-w-0 flex-1">

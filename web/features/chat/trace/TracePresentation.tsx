@@ -528,7 +528,7 @@ function renderNiceToolArgs(
     : [];
   if (questions.length === 0) return null;
   return (
-    <ul className="ml-3 mt-0.5 space-y-0.5 text-[10.5px] leading-[1.5] not-italic">
+    <ul className="ms-3 mt-0.5 space-y-0.5 text-[10.5px] leading-[1.5] not-italic">
       {questions.map((q, idx) => {
         const prompt = String(q.prompt ?? q.question ?? "").trim();
         if (!prompt) return null;
@@ -685,7 +685,7 @@ function ToolExchangeDetail({
 function ScrollableTraceBody({
   children,
   autoScroll,
-  className = "ml-5 mr-3 mt-0.5 max-h-[180px] overflow-y-auto px-3 py-1",
+  className = "ms-5 me-3 mt-0.5 max-h-[180px] overflow-y-auto px-3 py-1",
 }: {
   children: React.ReactNode;
   autoScroll?: boolean;
@@ -1564,7 +1564,9 @@ export function StreamingStatus({
     Boolean(isStreaming),
   );
 
-  const name = agentName?.trim() || "DeepTutor";
+  // The fallback is what the activity row calls the product when no agent
+  // name is set; it must follow the display brand (D-01).
+  const name = agentName?.trim() || t("composer.tray.deeptutor");
   let modeLabel = t("{{name}} Reasoning…", { name });
   if (mode === "tool_using") modeLabel = t("Tool Calling…");
   else if (mode === "planning") modeLabel = t("{{name}} Planning…", { name });
@@ -1764,7 +1766,7 @@ function isFinalAnswerPhase(
 function TraceLoadingRow() {
   const { t } = useTranslation();
   return (
-    <div className="flex items-center gap-2 py-1 pl-1 text-xs text-[var(--muted-foreground)]">
+    <div className="flex items-center gap-2 py-1 ps-1 text-xs text-[var(--muted-foreground)]">
       <span className="size-1.5 animate-pulse rounded-full bg-[var(--muted-foreground)]" />
       {t("Loading the full trace…")}
     </div>

@@ -465,7 +465,7 @@ export default function MemorySection({
       )}
 
       {!forcedTab && showArchivedBanner && latestBackup && (
-        <div className="relative flex items-start gap-2 rounded-xl border border-[var(--border)] bg-[var(--muted)] px-4 py-3 pr-10 text-[13px]">
+        <div className="relative flex items-start gap-2 rounded-xl border border-[var(--border)] bg-[var(--muted)] px-4 py-3 pe-10 text-[13px]">
           <Archive className="mt-0.5 h-4 w-4 shrink-0 text-[var(--muted-foreground)]" />
           <div>
             <p className="font-medium text-[var(--foreground)]">
@@ -482,7 +482,7 @@ export default function MemorySection({
             type="button"
             onClick={dismissArchivedBanner}
             aria-label={t("Dismiss")}
-            className="absolute right-2 top-2 rounded-md p-1.5 text-[var(--muted-foreground)] transition hover:bg-[var(--background)] hover:text-[var(--foreground)]"
+            className="absolute end-2 top-2 rounded-md p-1.5 text-[var(--muted-foreground)] transition hover:bg-[var(--background)] hover:text-[var(--foreground)]"
           >
             <X className="h-3.5 w-3.5" />
           </button>
@@ -622,14 +622,14 @@ function TabStrip({ tab, onChange, l2Count, l3Count, t }: TabStripProps) {
               >
                 {label}
                 {typeof count === "number" && (
-                  <span className="ml-2 rounded-full bg-[var(--muted)] px-1.5 py-0.5 text-[10px] font-normal text-[var(--muted-foreground)]">
+                  <span className="ms-2 rounded-full bg-[var(--muted)] px-1.5 py-0.5 text-[10px] font-normal text-[var(--muted-foreground)]">
                     {count}
                   </span>
                 )}
                 {active && (
                   <span
                     aria-hidden
-                    className="absolute -bottom-px left-0 right-0 h-[2px] bg-[var(--foreground)]"
+                    className="absolute -bottom-px start-0 end-0 h-[2px] bg-[var(--foreground)]"
                   />
                 )}
               </button>
@@ -812,7 +812,7 @@ export function L1View({
               />
             );
           })}
-          <div className="ml-auto flex items-center gap-2">
+          <div className="ms-auto flex items-center gap-2">
             {pendingCount > 0 && (
               <Tooltip
                 label={t(
@@ -1098,12 +1098,12 @@ function EntityRow({ surface, ent, focused, pendingKind, t }: EntityRowProps) {
   );
 
   const focusedRing = focused
-    ? "border-l-[3px] border-l-[var(--primary)] bg-[var(--primary)]/12 ring-1 ring-[var(--primary)]/30"
+    ? "border-s-[3px] border-s-[var(--primary)] bg-[var(--primary)]/12 ring-1 ring-[var(--primary)]/30"
     : pendingKind === "added"
-      ? "border-l-[3px] border-l-emerald-500 bg-emerald-500/5 hover:bg-emerald-500/10"
+      ? "border-s-[3px] border-s-emerald-500 bg-emerald-500/5 hover:bg-emerald-500/10"
       : pendingKind === "modified"
-        ? "border-l-[3px] border-l-amber-500 bg-amber-500/5 hover:bg-amber-500/10"
-        : "border-l-[3px] border-l-transparent hover:bg-[var(--muted)]/40";
+        ? "border-s-[3px] border-s-amber-500 bg-amber-500/5 hover:bg-amber-500/10"
+        : "border-s-[3px] border-s-transparent hover:bg-[var(--muted)]/40";
   const rowClass = `group flex items-start gap-3 border-b border-[var(--border)]/50 px-4 py-2.5 transition-colors last:border-0 ${focusedRing}`;
 
   return (
@@ -1330,12 +1330,12 @@ function DocList({ title, rows, selected, onSelect }: DocListProps) {
             >
               <button
                 onClick={() => onSelect(row.layer, row.key)}
-                className="flex-1 text-left"
+                className="flex-1 text-start"
               >
                 <span className="font-medium text-[var(--foreground)]">
                   {labelFor(row)}
                 </span>
-                <span className="ml-2 text-[11px] text-[var(--muted-foreground)]">
+                <span className="ms-2 text-[11px] text-[var(--muted-foreground)]">
                   {row.entry_count} ·{" "}
                   {formatTimestamp(row.updated_at, t("not built"))}
                 </span>
@@ -1489,7 +1489,7 @@ function StreamPanel({ stages, onDismiss, t }: StreamPanelProps) {
               {s.name ? ` · ${s.name}` : ""}
             </span>
             {typeof s.count === "number" && (
-              <span className="ml-2 text-[var(--muted-foreground)]">
+              <span className="ms-2 text-[var(--muted-foreground)]">
                 {t("Count: {{count}}", { count: s.count })}
               </span>
             )}

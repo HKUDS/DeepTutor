@@ -14,6 +14,7 @@ import { usePathname } from "next/navigation";
 import { Menu } from "lucide-react";
 import { PageChromeProvider } from "./PageChrome";
 import { useTranslation } from "react-i18next";
+import { PRODUCT_NAME_FA } from "@/lib/brand";
 import { useDevice } from "@/hooks/useDevice";
 import type { ReactNode } from "react";
 
@@ -97,7 +98,7 @@ export default function AppShell({ sidebar, pageBar, children, homeHref = "/" }:
             half `max-md:` cannot express, hence useDevice(). */}
         <div
           inert={isMobile && !drawerOpen ? true : undefined}
-          className={`max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-50 max-md:shadow-xl max-md:transition-transform max-md:duration-200 max-md:ease-out ${
+          className={`max-md:fixed max-md:inset-y-0 max-md:start-0 max-md:z-50 max-md:shadow-xl max-md:transition-transform max-md:duration-200 max-md:ease-out ${
             drawerOpen ? "max-md:translate-x-0" : "max-md:-translate-x-full"
           }`}
         >
@@ -118,14 +119,14 @@ export default function AppShell({ sidebar, pageBar, children, homeHref = "/" }:
             <Link href={homeHref} className="flex items-center gap-1.5">
               <Image
                 src="/brand/color-logo.png"
-                alt="DeepTutor"
+                alt={PRODUCT_NAME_FA}
                 width={20}
                 height={20}
                 className="h-5 w-5"
               />
               <Image
                 src="/brand/color-word.png"
-                alt="DeepTutor"
+                alt={PRODUCT_NAME_FA}
                 width={1200}
                 height={310}
                 className="h-[18px] w-auto"

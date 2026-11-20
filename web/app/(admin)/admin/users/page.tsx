@@ -365,7 +365,7 @@ export default function AdminUsersPage() {
             <div className="relative flex-1">
               <Search
                 size={14}
-                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--muted-foreground)]"
+                className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-[var(--muted-foreground)]"
               />
               <input
                 type="search"
@@ -373,7 +373,7 @@ export default function AdminUsersPage() {
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder={t("Search users…")}
                 aria-label={t("Search users")}
-                className="w-full rounded-lg border border-[var(--border)] bg-[var(--card)] py-2 pl-9 pr-3 text-sm
+                className="w-full rounded-lg border border-[var(--border)] bg-[var(--card)] py-2 ps-9 pe-3 text-sm
                            text-[var(--foreground)] placeholder:text-[var(--muted-foreground)]/70
                            outline-none focus:border-[var(--ring)] transition-colors"
               />
@@ -480,7 +480,7 @@ export default function AdminUsersPage() {
           ) : (
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-[var(--border)] text-left text-xs text-[var(--muted-foreground)] uppercase tracking-wider">
+                <tr className="border-b border-[var(--border)] text-start text-xs text-[var(--muted-foreground)] uppercase tracking-wider">
                   <th className="w-12 px-5 py-3">
                     <input
                       type="checkbox"
@@ -508,7 +508,7 @@ export default function AdminUsersPage() {
                   <th className="px-5 py-3 font-medium">{t("Username")}</th>
                   <th className="px-5 py-3 font-medium">{t("Role")}</th>
                   <th className="px-5 py-3 font-medium">{t("Joined")}</th>
-                  <th className="px-5 py-3 font-medium text-right">
+                  <th className="px-5 py-3 font-medium text-end">
                     {t("Actions")}
                   </th>
                 </tr>
@@ -545,7 +545,7 @@ export default function AdminUsersPage() {
                             <span className="min-w-0 truncate font-medium text-[var(--foreground)]">
                               {user.username}
                               {isSelf && (
-                                <span className="ml-2 text-xs font-normal text-[var(--muted-foreground)]">
+                                <span className="ms-2 text-xs font-normal text-[var(--muted-foreground)]">
                                   {t("(you)")}
                                 </span>
                               )}

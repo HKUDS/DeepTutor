@@ -1369,7 +1369,7 @@ function SessionViewerPanelInner(
       role="dialog"
       aria-hidden={!visible}
       data-open={visible ? "true" : "false"}
-      className="dt-viewer-panel fixed right-0 top-0 z-[30] flex h-dvh flex-col bg-[var(--card)] max-md:!w-full md:max-w-[92vw]"
+      className="dt-viewer-panel fixed end-0 top-0 z-[30] flex h-dvh flex-col bg-[var(--card)] max-md:!w-full md:max-w-[92vw]"
       style={{
         // Constant string (not a state value) so SSR and the first client
         // render agree; the real width lives in the var, updated imperatively.
@@ -1384,9 +1384,9 @@ function SessionViewerPanelInner(
         role="separator"
         aria-orientation="vertical"
         aria-label={t("Resize viewer")}
-        className="group/resize absolute inset-y-0 left-0 z-10 w-2 cursor-col-resize max-md:hidden"
+        className="group/resize absolute inset-y-0 start-0 z-10 w-2 cursor-col-resize max-md:hidden"
       >
-        <span className="absolute left-[3px] top-1/2 h-10 w-[3px] -translate-y-1/2 rounded-full bg-transparent transition-colors group-hover/resize:bg-[color-mix(in_srgb,var(--muted-foreground)_35%,transparent)]" />
+        <span className="absolute start-[3px] top-1/2 h-10 w-[3px] -translate-y-1/2 rounded-full bg-transparent transition-colors group-hover/resize:bg-[color-mix(in_srgb,var(--muted-foreground)_35%,transparent)]" />
       </div>
       <TabBar
         tabs={tabs}
@@ -1543,7 +1543,7 @@ function TabBar({
 }) {
   const { t } = useTranslation();
   return (
-    <div className="flex h-12 shrink-0 items-center gap-1 pl-2.5 pr-2">
+    <div className="flex h-12 shrink-0 items-center gap-1 ps-2.5 pe-2">
       <div className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         <button
           type="button"
@@ -1567,7 +1567,7 @@ function TabBar({
                 onClick={() => onSelect(tab.id)}
                 aria-pressed={active}
                 aria-label={tab.label}
-                className={`inline-flex h-full min-w-0 flex-1 items-center gap-1.5 rounded-lg pl-2.5 pr-1 text-left ${TAB_FOCUS}`}
+                className={`inline-flex h-full min-w-0 flex-1 items-center gap-1.5 rounded-lg ps-2.5 pe-1 text-left ${TAB_FOCUS}`}
               >
                 {/* A side chat wears the face of whoever answers it. */}
                 {tab.kind === "side-chat" && tab.context.sideChat ? (
@@ -1588,7 +1588,7 @@ function TabBar({
                     e.stopPropagation();
                     onCloseTab(tab.id);
                   }}
-                  className={`mr-1 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-[var(--muted-foreground)] transition-[opacity,background-color,color] hover:bg-[color-mix(in_srgb,var(--foreground)_8%,transparent)] hover:text-[var(--foreground)] focus-visible:opacity-100 ${TAB_FOCUS} ${
+                  className={`me-1 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-[var(--muted-foreground)] transition-[opacity,background-color,color] hover:bg-[color-mix(in_srgb,var(--foreground)_8%,transparent)] hover:text-[var(--foreground)] focus-visible:opacity-100 ${TAB_FOCUS} ${
                     active ? "opacity-70" : "opacity-0 group-hover:opacity-70"
                   }`}
                   aria-label={t("Close tab")}

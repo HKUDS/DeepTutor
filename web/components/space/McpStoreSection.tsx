@@ -285,14 +285,14 @@ function TabButton({
     >
       {label}
       {typeof count === "number" && (
-        <span className="ml-2 rounded-full bg-[var(--muted)] px-1.5 py-0.5 text-[10px] font-normal text-[var(--muted-foreground)]">
+        <span className="ms-2 rounded-full bg-[var(--muted)] px-1.5 py-0.5 text-[10px] font-normal text-[var(--muted-foreground)]">
           {count}
         </span>
       )}
       {active && (
         <span
           aria-hidden
-          className="absolute -bottom-px left-0 right-0 h-[2px] bg-[var(--foreground)]"
+          className="absolute -bottom-px start-0 end-0 h-[2px] bg-[var(--foreground)]"
         />
       )}
     </button>

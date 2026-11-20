@@ -439,7 +439,7 @@ export default function SkillsSection() {
       >
         <button
           onClick={() => setTagManagerOpen((v) => !v)}
-          className="flex w-full items-center justify-between px-4 py-3 text-left transition-colors hover:bg-[var(--muted)]/30"
+          className="flex w-full items-center justify-between px-4 py-3 text-start transition-colors hover:bg-[var(--muted)]/30"
         >
           <span className="flex items-center gap-2 text-[13px] font-medium text-[var(--foreground)]">
             <TagIcon

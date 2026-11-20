@@ -32,7 +32,7 @@ export function ActivityStack({
       // the block reads as an aside rather than as prose — the status dots
       // already separate the lines, so the gap only has to keep them from
       // touching.
-      className={`space-y-px ${alignUnderOrb ? "ml-[2px]" : ""} ${className}`}
+      className={`space-y-px ${alignUnderOrb ? "ms-[2px]" : ""} ${className}`}
     >
       {children}
     </div>

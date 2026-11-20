@@ -1105,7 +1105,7 @@ export function ReaderPane({
           ref={moreToolsMenuRef}
           role="menu"
           aria-label={t("More")}
-          className={`absolute ${headSlot ? "top-2" : "top-11"} right-2 z-40 w-64 rounded-xl border border-[var(--border)] bg-[var(--background)] p-1.5 shadow-xl`}
+          className={`absolute ${headSlot ? "top-2" : "top-11"} end-2 z-40 w-64 rounded-xl border border-[var(--border)] bg-[var(--background)] p-1.5 shadow-xl`}
         >
           {locationHistory.entries.length > 0 && (
             <MenuToolButton
@@ -1170,7 +1170,7 @@ export function ReaderPane({
       {showHistory && locationHistory.entries.length > 0 && (
         <div
           ref={historyPanelRef}
-          className={`absolute ${headSlot ? "top-2" : "top-11"} right-2 z-30 max-h-72 w-72 overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--background)] p-1.5 shadow-xl`}>
+          className={`absolute ${headSlot ? "top-2" : "top-11"} end-2 z-30 max-h-72 w-72 overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--background)] p-1.5 shadow-xl`}>
           {[...locationHistory.entries]
             .map((entry, index) => ({ entry, index }))
             .reverse()

@@ -115,8 +115,28 @@ async def lifespan(app: FastAPI):
     logger.info("Application startup")
     app.state.ready = False
 
+    # Refuse to serve a configuration that would hand out admin access. Runs
+    # before anything else so a misconfigured deployment fails at the first
+    # request rather than on the first customer (Phase 2, ADR-002).
+    from deeptutor.multi_user.guards import assert_safe_to_start
+
+    assert_safe_to_start()
+
     # Validate configuration consistency
     validate_tool_consistency()
+
+    # Seed the tokenizer cache if this deployment vendored the BPE file, so the
+    # studio's cost figures are exact rather than estimated. A host without the
+    # file keeps working: the estimator takes over and reports its own error.
+    from deeptutor.services.studio import tokens as studio_tokens
+
+    if studio_tokens.install_tokenizer():
+        logger.info("studio: real cl100k tokenizer available for cost accounting")
+    else:
+        logger.info(
+            "studio: no offline tokenizer data; cost is estimated "
+            "(set DEEPTUTOR_TIKTOKEN_BPE to enable exact counting)"
+        )
 
     # Build one process-level dependency graph.  Every adapter resolves turns
     # through this container, so a WebSocket cannot accidentally construct a

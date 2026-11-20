@@ -68,7 +68,7 @@ export default function PickerHeader({
       {trailing}
       <button
         onClick={onClose}
-        className="-mr-1 -mt-1 shrink-0 rounded-lg p-2 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+        className="-me-1 -mt-1 shrink-0 rounded-lg p-2 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
         aria-label={t("Close")}
       >
         <X size={18} />

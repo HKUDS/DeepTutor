@@ -122,7 +122,7 @@ export function ModelCapabilityFields({
                     {t("Not supported")}
                   </option>
                 </select>
-                <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--muted-foreground)]" />
+                <ChevronDown className="pointer-events-none absolute end-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--muted-foreground)]" />
               </span>
             </label>
           );

@@ -1,0 +1,89 @@
+{
+  "_note": "Baseline verified after Phase 3 completed. The original pre-migration snapshot was lost when .gitignore silently excluded docs/ from commits; this file records the verified state so Phase 4 has a trusted starting point. It is NOT a substitute for the pre-DDL capture, which cannot be reconstructed because the DDL already ran.",
+  "captured_at": "2026-11-17T21:45:00Z",
+  "phase": 3,
+  "capture_kind": "post-migration-verified-baseline",
+  "project": {
+    "provider": "supabase",
+    "ref": "jmqgzaqydvkjysqlaloe",
+    "postgres_version": "17.11.0.019",
+    "region": "us-west-2",
+    "schema": "public"
+  },
+  "migrations_ledger": [
+    { "version": 4, "checksum": "7d30ecebfd332ffffadeac110f67147b" },
+    { "version": 5, "checksum": "68d79f56c270d0f5bb25cd76a2fd28ea" }
+  ],
+  "reference_data": {
+    "grades": 12,
+    "majors": 3,
+    "plans": 3,
+    "billing_settings": 1,
+    "_invariant": "These rows are protected. They must never be dropped or truncated."
+  },
+  "business_tables": {
+    "audit_events": 0,
+    "books": 0,
+    "chat_sessions": 0,
+    "job_events": 0,
+    "jobs": 0,
+    "otp_codes": 0,
+    "payment_transactions": 0,
+    "token_usage_logs": 0,
+    "user_files": 0,
+    "user_sessions": 0,
+    "user_wallets": 0,
+    "users": 0,
+    "_note": "All zero. No user data existed at any point during Phase 3, so no data migration was required and none was performed."
+  },
+  "unique_indexes_verified": [
+    "uq_book_page_embedding",
+    "uq_bookpage_book_page",
+    "uq_jobs_dedupe",
+    "uq_otp_codes_phone",
+    "uq_payment_provider_authority",
+    "uq_plans_code",
+    "uq_user_files_content",
+    "uq_user_files_storage_path",
+    "uq_user_sessions_token_nonce",
+    "uq_users_username"
+  ],
+  "tables_present": 17,
+  "tables_note": "16 pre-existing product tables plus deeptutor_schema_migrations (added by Phase 3) and alembic_version (empty legacy artefact from the 14 Nov schema).",
+  "constraint_proofs": [
+    {
+      "violation": "wallet balance mismatch",
+      "result": "rejected",
+      "error": { "code": "23514", "constraint": "ck_wallet_balance" }
+    },
+    {
+      "violation": "duplicate dedupe_key",
+      "result": "rejected",
+      "error": { "code": "23505", "constraint": "uq_jobs_dedupe" }
+    },
+    {
+      "violation": "duplicate (provider, authority)",
+      "result_before_v0005": "accepted",
+      "result_after_v0005": "rejected",
+      "error": { "code": "23505", "constraint": "uq_payment_provider_authority" }
+    }
+  ],
+  "rollback_evidence": {
+    "drill": "V0005 DOWN applied to live database",
+    "dropped": "4 supporting indexes",
+    "retained": "all 10 uq_% indexes, deliberately",
+    "then": "V0005 re-applied",
+    "limitation": "full DROP TABLE ... CASCADE drill was blocked by the Supabase console security filter"
+  },
+  "restore_evidence": {
+    "method": "row exported, deleted, restored",
+    "comparison": "field-by-field identical, including created_at"
+  },
+  "untested_debt": [
+    "psycopg network path never exercised (sandbox cannot reach port 5432); all DDL ran through the Supabase console API",
+    "backfill from users.json never run (database had zero users)",
+    "otp.py not bound to OtpRepository",
+    "FileLibraryStore still runs its own SQLite database",
+    "126 [postgres]-parametrised tests skip in CI"
+  ]
+}

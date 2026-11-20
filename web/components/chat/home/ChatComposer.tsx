@@ -1499,7 +1499,7 @@ export default memo(function ChatComposer({
                         }`}
                       >
                         <CapIcon size={16} strokeWidth={1.7} className="shrink-0" />
-                        <span className="ml-1.5 inline-flex min-w-0 items-center gap-1.5 whitespace-nowrap">
+                        <span className="ms-1.5 inline-flex min-w-0 items-center gap-1.5 whitespace-nowrap">
                           <span className="min-w-0 truncate">{capabilityLabel(activeCap)}</span>
                           <ChevronDown size={13} strokeWidth={2} className={`shrink-0 transition-transform duration-200 ${capMenuOpen ? "rotate-180" : ""}`} />
                         </span>
@@ -1509,7 +1509,7 @@ export default memo(function ChatComposer({
                     {capMenuOpen && (
                       <div
                         ref={capMenuRef}
-                        className="dt-popup-up absolute bottom-full left-0 z-50 mb-1.5 w-[260px] overflow-visible rounded-xl border border-[var(--border)] bg-[var(--popover)] py-1 shadow-lg backdrop-blur-md"
+                        className="dt-popup-up absolute bottom-full start-0 z-50 mb-1.5 w-[260px] overflow-visible rounded-xl border border-[var(--border)] bg-[var(--popover)] py-1 shadow-lg backdrop-blur-md"
                       >
                         {capabilities
                           .filter((cap) => !cap.secondary && !cap.legacy)
@@ -1579,11 +1579,11 @@ export default memo(function ChatComposer({
                                   className="shrink-0 text-[var(--muted-foreground)]"
                                 />
                               </button>
-                              {/* Right flyout. ``pl-1.5`` is a pointer bridge so the
+                              {/* Right flyout. ``ps-1.5`` is a pointer bridge so the
                                 cursor can cross the gap without dropping hover;
                                 click/focus also open it for touch and keyboard. */}
                               <div
-                                className={`absolute bottom-0 left-full z-50 pl-1.5 transition-opacity duration-150 ${
+                                className={`absolute bottom-0 start-full z-50 ps-1.5 transition-opacity duration-150 ${
                                   moreCapsOpen
                                     ? "visible opacity-100"
                                     : "invisible opacity-0"
@@ -1677,7 +1677,7 @@ export default memo(function ChatComposer({
                       type="button"
                       onClick={onCancelStreaming}
                       aria-label={t("Stop generating")}
-                      className="relative ml-1 inline-grid h-8 w-8 shrink-0 place-items-center rounded-full text-[var(--muted-foreground)] ring-1 ring-inset ring-[var(--border)] transition-colors hover:text-[var(--foreground)] active:scale-95"
+                      className="relative ms-1 inline-grid h-8 w-8 shrink-0 place-items-center rounded-full text-[var(--muted-foreground)] ring-1 ring-inset ring-[var(--border)] transition-colors hover:text-[var(--foreground)] active:scale-95"
                     >
                       <span className="pointer-events-none absolute -inset-[3px] rounded-full border-2 border-[color-mix(in_srgb,var(--primary)_15%,transparent)] border-t-[var(--primary)] animate-spin" />
                       <Square size={10} strokeWidth={2.6} className="fill-current" />
@@ -1689,7 +1689,7 @@ export default memo(function ChatComposer({
                     type="button"
                     onClick={handleSendButtonClick}
                     disabled={sendState === "idle"}
-                    className={`group relative ml-1 inline-grid h-8 w-8 shrink-0 place-items-center rounded-full transition-[background-color,box-shadow,transform] duration-200 active:scale-95 ${SEND_STATE_CLASS[sendState]}`}
+                    className={`group relative ms-1 inline-grid h-8 w-8 shrink-0 place-items-center rounded-full transition-[background-color,box-shadow,transform] duration-200 active:scale-95 ${SEND_STATE_CLASS[sendState]}`}
                     aria-label={sendLabel}
                   >
                     {sendState === "streaming" && (

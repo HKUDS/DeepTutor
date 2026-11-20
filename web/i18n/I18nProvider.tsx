@@ -7,6 +7,8 @@ import {
   ensureLanguage,
   initI18n,
   normalizeLanguage,
+  regionalLocale,
+  textDirection,
   type AppLanguage,
 } from "./init";
 
@@ -46,8 +48,19 @@ export function I18nProvider({
         await i18n.changeLanguage(nextLang);
       }
       if (cancelled) return;
-      // Keep <html lang="..."> in sync for accessibility & Intl defaults.
-      document.documentElement.lang = nextLang;
+      // Keep <html lang="..."> in sync for accessibility, `Intl` defaults and
+      // the `:lang()` font stacks in globals.css. The document carries the
+      // *regional* tag (`fa-IR`, not `fa`): CSS `:lang(fa)` still matches a
+      // `fa-IR` element by prefix, while `Intl`/screen readers get the region
+      // they need to pick the Iranian calendar and digit shapes.
+      const root = document.documentElement;
+      root.lang = regionalLocale(nextLang);
+      // Direction is set from the locale's declared property, never guessed
+      // from the script (D-02). Until step 1.3 lands the logical-property
+      // conversion, `rtl` is intentionally inert: the shell is still laid out
+      // with physical properties. The attribute is correct from day one so
+      // the RTL work has a single source of truth to build on.
+      root.dir = textDirection(nextLang);
       setReadyLanguage(nextLang);
     });
     return () => {

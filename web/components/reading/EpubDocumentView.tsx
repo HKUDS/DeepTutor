@@ -728,7 +728,7 @@ export function EpubDocumentView({
             <button
               type="button"
               onClick={() => turnPage("previous")}
-              className="absolute left-2 top-1/2 inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-current/20 bg-[color-mix(in_srgb,currentColor_8%,transparent)] text-inherit shadow-sm backdrop-blur transition hover:bg-[color-mix(in_srgb,currentColor_14%,transparent)]"
+              className="absolute start-2 top-1/2 inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-current/20 bg-[color-mix(in_srgb,currentColor_8%,transparent)] text-inherit shadow-sm backdrop-blur transition hover:bg-[color-mix(in_srgb,currentColor_14%,transparent)]"
               aria-label={t("Previous")}
             >
               <ChevronLeft size={19} />
@@ -736,7 +736,7 @@ export function EpubDocumentView({
             <button
               type="button"
               onClick={() => turnPage("next")}
-              className="absolute right-2 top-1/2 inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-current/20 bg-[color-mix(in_srgb,currentColor_8%,transparent)] text-inherit shadow-sm backdrop-blur transition hover:bg-[color-mix(in_srgb,currentColor_14%,transparent)]"
+              className="absolute end-2 top-1/2 inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-current/20 bg-[color-mix(in_srgb,currentColor_8%,transparent)] text-inherit shadow-sm backdrop-blur transition hover:bg-[color-mix(in_srgb,currentColor_14%,transparent)]"
               aria-label={t("Next")}
             >
               <ChevronRight size={19} />
