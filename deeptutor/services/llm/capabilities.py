@@ -740,8 +740,10 @@ def get_effective_temperature(
 SESSION_SCOPED_BINDINGS: frozenset[str] = frozenset({"codebuddy", "openai_codex", "claude_code"})
 
 
-def threads_session_id(binding: str | None) -> bool:
-    """Whether *binding* expects ``deeptutor_session_id`` on each request."""
+def threads_session_id(binding: str | None, *, wire_api: str | None = None) -> bool:
+    """Whether *binding* or *wire_api* expects ``deeptutor_session_id`` on each request."""
+    if (wire_api or "").strip().lower() == "responses":
+        return True
     return (binding or "").strip().lower() in SESSION_SCOPED_BINDINGS
 
 

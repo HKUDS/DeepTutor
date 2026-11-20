@@ -213,6 +213,7 @@ def _sanitize_chat_client(client: Any) -> Any:
         )
 
         request = dict(kwargs)
+        request.pop("deeptutor_session_id", None)
         if "messages" in request:
             request["messages"] = OpenAICompatProvider._sanitize_messages(request["messages"])
         return await create(**request)
@@ -247,6 +248,9 @@ class _KeyRotatingCompletions:
 class _KeyRotatingClient:
     def __init__(self, key_pool: KeyPool, clients: dict[str, Any]) -> None:
         self._clients = clients
+        self._threads_session_id = any(
+            getattr(client, "_threads_session_id", False) for client in clients.values()
+        )
         self.chat = SimpleNamespace(completions=_KeyRotatingCompletions(key_pool, clients))
 
     async def close(self) -> None:
@@ -447,6 +451,7 @@ class _ProviderOpenAIAdapter:
 
     def __init__(self, provider: Any):
         self._provider = provider
+        self._threads_session_id = provider.__class__.__name__ != "AnthropicProvider"
         self.chat = SimpleNamespace(completions=SimpleNamespace(create=self._create_completion))
 
     async def close(self) -> None:
