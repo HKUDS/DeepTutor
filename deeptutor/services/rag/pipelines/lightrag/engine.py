@@ -493,6 +493,9 @@ async def query_with_sources(
         mode=normalize_mode(mode) or DEFAULT_MODE,
         stream=False,
         include_references=True,
+        # LightRAG defaults rerank on and warns per query when no rerank model
+        # is wired; only request it when one is actually configured.
+        enable_rerank=callable(getattr(rag, "rerank_model_func", None)),
         **query_kwargs_from_settings(),
     )
     result = await rag.aquery_llm(question, param=param)
