@@ -47,6 +47,13 @@ _PROVIDER_DEFAULT_OFF_PATTERNS: dict[str, tuple[str, ...]] = {
 _MINIMAL_NOT_OFF_PATTERNS: dict[str, tuple[str, ...]] = {
     "gemini": ("gemini-3", "gemini-2.5-pro"),
 }
+# Siblings of the table above whose floor is one level higher: they reject
+# ``"minimal"`` as well ("Thinking level MINIMAL is not supported for this
+# model"), so only ``"low"`` and up are accepted (#2702). Keep the three tables
+# beside each other: a model moves between them, never into two at once.
+_LOW_FLOOR_PATTERNS: dict[str, tuple[str, ...]] = {
+    "gemini": ("gemini-3.8-flash",),
+}
 _CUSTOM_MODEL_THINKING_STYLES: tuple[tuple[tuple[str, ...], str], ...] = (
     (("qwen3", "qwen-3", "qwq", "qwen-plus"), "enable_thinking"),
     (("deepseek-v4-pro", "deepseek-reasoner", "deepseek-r1"), "thinking_type"),
@@ -133,6 +140,15 @@ def _disable_thinking_by_default(provider_name: str, model_name: str) -> bool:
     )
 
 
+def _lowest_accepted_effort(provider_name: str, model_name: str) -> str | None:
+    """The lowest effort the model accepts when ``"none"`` is not available."""
+    if _matches(model_name, _LOW_FLOOR_PATTERNS.get(provider_name, ())):
+        return "low"
+    if _matches(model_name, _MINIMAL_NOT_OFF_PATTERNS.get(provider_name, ())):
+        return "minimal"
+    return None
+
+
 def default_reasoning_effort_for(provider: str | None, model: str | None) -> str | None:
     """Return the implicit ``reasoning_effort`` for ``provider``/``model``, if any.
 
@@ -146,9 +162,7 @@ def default_reasoning_effort_for(provider: str | None, model: str | None) -> str
     provider_name = (provider or "").strip().lower()
     off_patterns = _PROVIDER_DEFAULT_OFF_PATTERNS.get(provider_name)
     if off_patterns and _matches(model or "", off_patterns):
-        if _matches(model or "", _MINIMAL_NOT_OFF_PATTERNS.get(provider_name, ())):
-            return "minimal"
-        return "none"
+        return _lowest_accepted_effort(provider_name, model or "") or "none"
     return None
 
 
@@ -156,18 +170,18 @@ def thinking_off_effort_for(provider: str | None, model: str | None) -> str:
     """The lowest effort *model* actually accepts as "thinking off".
 
     ``"none"`` for almost everything, ``"minimal"`` for the families that
-    answer HTTP 400 to it (#734). The rule already existed inside
+    answer HTTP 400 to it (#734), and ``"low"`` for the models that reject
+    ``"minimal"`` in turn (#2702). The rule already existed inside
     :func:`default_reasoning_effort_for`, but that function is consulted only
     when the caller says nothing — so a caller that asks for ``"none"``
     itself, as the reader-facing book blocks do, skipped the narrowing and got
     the 400 the table exists to prevent. Naming it here keeps it beside
-    :data:`_MINIMAL_NOT_OFF_PATTERNS`, so adding a family to that table is
-    still an obvious prompt to check this one.
+    :data:`_MINIMAL_NOT_OFF_PATTERNS` and :data:`_LOW_FLOOR_PATTERNS`, so
+    adding a family to either table is still an obvious prompt to check this
+    one.
     """
     provider_name = (provider or "").strip().lower()
-    if _matches(model or "", _MINIMAL_NOT_OFF_PATTERNS.get(provider_name, ())):
-        return "minimal"
-    return "none"
+    return _lowest_accepted_effort(provider_name, model or "") or "none"
 
 
 def build_openai_compatible_reasoning_kwargs(
@@ -232,6 +246,14 @@ def build_openai_compatible_reasoning_kwargs(
         # An explicit "off" is subject to the same vendor limit as an inferred
         # one — see ``thinking_off_effort_for``.
         resolved_effort = thinking_off_effort_for(provider_name, model_name)
+
+    if isinstance(resolved_effort, str):
+        # A level below the model's floor is rejected even when the caller
+        # names it explicitly, so clamp it here rather than trusting the
+        # request (#2702).
+        floor = _lowest_accepted_effort(provider_name, model_name)
+        if floor and resolved_effort.strip().lower() in _THINKING_OFF_EFFORTS:
+            resolved_effort = floor
 
     semantic_effort: str | None = None
     if isinstance(resolved_effort, str):
