@@ -95,11 +95,23 @@ class ConfigTestRunner:
         thread.start()
         return run
 
-    def get(self, run_id: str) -> TestRun:
-        return self._runs[run_id]
+    def get(self, run_id: str) -> TestRun | None:
+        """Return the run, or ``None`` when the id is unknown or already gone.
 
-    def cancel(self, run_id: str) -> None:
-        self.get(run_id).cancelled = True
+        Runs live in memory only, so a restarted server (or a stale event
+        stream after the page reloaded) hands the API an id it has never
+        seen. Callers decide how to answer that; the lookup itself must not
+        raise.
+        """
+        return self._runs.get(run_id)
+
+    def cancel(self, run_id: str) -> bool:
+        """Mark a run as cancelled; ``False`` when the id is unknown."""
+        run = self._runs.get(run_id)
+        if run is None:
+            return False
+        run.cancelled = True
+        return True
 
     def _run_sync(self, run: TestRun, catalog: dict[str, Any]) -> None:
         try:
