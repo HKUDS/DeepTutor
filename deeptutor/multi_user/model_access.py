@@ -19,6 +19,7 @@ from typing import Any
 from deeptutor.services.config.model_catalog import ModelCatalogService
 from deeptutor.services.config.provider_links import resolve_profile_provider
 from deeptutor.services.model_selection import list_llm_options
+from deeptutor.services.model_selection.llm import declared_reasoning_levels
 
 from .context import get_current_user
 from .grants import load_grant
@@ -102,27 +103,30 @@ def redacted_model_access(user_id: str | None = None) -> dict[str, list[dict[str
                 continue
             if is_owner_bound(effective):
                 continue
-            result["llm"].append(
-                {
-                    "profile_id": profile_id,
-                    "model_id": str(model_id),
-                    "name": (model or {}).get("name") or str(model_id),
-                    "model": (model or {}).get("model") or "",
-                    "provider": effective.get("binding") or "",
-                    "profile_name": effective.get("name") or profile_id,
-                    "reasoning_effort": (model or {}).get("reasoning_effort"),
-                    "supported_reasoning_efforts": (model or {}).get(
-                        "codex_supported_reasoning_levels"
-                    ),
-                    **{
-                        f"declared_{key}": value
-                        for key, value in ((model or {}).get("capabilities") or {}).items()
-                        if key in {"reasoning", "vision"} and type(value) is bool
-                    },
-                    "source": "admin",
-                    "available": model is not None,
-                }
+            option = {
+                "profile_id": profile_id,
+                "model_id": str(model_id),
+                "name": (model or {}).get("name") or str(model_id),
+                "model": (model or {}).get("model") or "",
+                "provider": effective.get("binding") or "",
+                "profile_name": effective.get("name") or profile_id,
+                "reasoning_effort": (model or {}).get("reasoning_effort"),
+                **{
+                    f"declared_{key}": value
+                    for key, value in ((model or {}).get("capabilities") or {}).items()
+                    if key in {"reasoning", "vision"} and type(value) is bool
+                },
+                "source": "admin",
+                "available": model is not None,
+            }
+            # Omit rather than emit null: the admin serializer does the same,
+            # and null made the composer crash for non-admin accounts (#2732).
+            levels = declared_reasoning_levels(
+                (model or {}).get("codex_supported_reasoning_levels")
             )
+            if levels is not None:
+                option["supported_reasoning_efforts"] = levels
+            result["llm"].append(option)
     if user_id == user.id:
         # Only ever the caller's OWN personal models. An administrator
         # inspecting somebody's grants asks for that user's id, and their
@@ -142,8 +146,11 @@ def allowed_llm_options() -> dict[str, Any]:
     llm_service = catalog.get("services", {}).get("llm", {})
     active_profile_id = str(llm_service.get("active_profile_id") or "")
     active_model_id = str(llm_service.get("active_model_id") or "")
-    options = [
-        {
+    options = []
+    for item in redacted_model_access(user.id).get("llm", []):
+        if not item.get("available"):
+            continue
+        option = {
             "profile_id": item.get("profile_id"),
             "model_id": item.get("model_id"),
             "profile_name": item.get("profile_name")
@@ -155,7 +162,6 @@ def allowed_llm_options() -> dict[str, Any]:
             "model": item.get("model") or "",
             "provider": item.get("provider") or "",
             "reasoning_effort": item.get("reasoning_effort"),
-            "supported_reasoning_efforts": item.get("supported_reasoning_efforts"),
             **{key: item[key] for key in ("declared_reasoning", "declared_vision") if key in item},
             "source": item.get("source") or "admin",
             "is_active_default": (
@@ -163,9 +169,10 @@ def allowed_llm_options() -> dict[str, Any]:
                 and item.get("model_id") == active_model_id
             ),
         }
-        for item in redacted_model_access(user.id).get("llm", [])
-        if item.get("available")
-    ]
+        levels = item.get("supported_reasoning_efforts")
+        if isinstance(levels, list):
+            option["supported_reasoning_efforts"] = levels
+        options.append(option)
     # The administrator's active model is often not one of the models an
     # account was granted, which used to leave every option unflagged and the
     # composer showing "Select model" even though the turn path already pins
