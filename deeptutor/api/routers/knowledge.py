@@ -3388,7 +3388,8 @@ async def delete_kb_file(kb_name: str, filename: str):
             resolved_name,
             target.name,
         )
-    VisualAssetStore(kb_dir).remove_source(target.relative_to(raw_dir).as_posix())
+    # Source figures are dropped by remove_raw_document, the layer every
+    # deletion path (this route and both source syncs) shares.
     removal = remove_raw_document(Path(kb_dir), target)
     return {
         "status": "ok",

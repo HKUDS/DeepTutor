@@ -25,6 +25,7 @@ from deeptutor.services.rag.index_probe import provider_failure_summary
 from deeptutor.services.rag.index_versioning import list_kb_versions
 from deeptutor.services.rag.provider_binding import resolve_bound_provider
 from deeptutor.services.rag.service import RAGService
+from deeptutor.services.rag.visual_assets import VisualAssetStore
 from deeptutor.services.setup.data_volume import (
     DataVolumePermissionError,
     ensure_data_volume_writable,
@@ -139,6 +140,13 @@ def remove_raw_document(kb_dir: Path, file_path: Path) -> RawDocumentRemoval:
     vectors from an already-indexed file are cleared by a subsequent re-index,
     which the returned ``was_indexed`` flag lets the caller surface.
 
+    Source figures are dropped here too, because the vector index does not own
+    them: this is the single deletion layer shared by the HTTP route and the
+    GitHub/web source syncs, so cleaning up anywhere else leaves a path that
+    leaks. The manifest is keyed by ``_raw_hash_key`` — the same rule indexing
+    used to record ``source_path`` — so removal cannot miss assets that were
+    published under a nested raw/ path.
+
     ``file_path`` must already be sandbox-resolved under the KB's raw/ dir.
     """
     raw_dir = kb_dir / "raw"
@@ -147,6 +155,14 @@ def remove_raw_document(kb_dir: Path, file_path: Path) -> RawDocumentRemoval:
     target = file_path.resolve()
     if target.exists():
         target.unlink()
+
+    # Best-effort: the manifest may be corrupt or read-only, and reclaiming its
+    # bytes must never turn a user's delete into an error. ``remove_source`` is
+    # idempotent and does not create visual_assets/ for KBs that have none.
+    try:
+        VisualAssetStore(kb_dir).remove_source(hash_key)
+    except Exception as exc:  # noqa: BLE001 - asset cleanup is never fatal
+        logger.warning("Could not remove visual assets for %s: %s", hash_key, exc)
 
     metadata_file = kb_dir / "metadata.json"
     metadata = _read_metadata(metadata_file)
