@@ -31,6 +31,7 @@ from __future__ import annotations
 from typing import Any
 
 from deeptutor.services.config.model_catalog import ModelCatalogService
+from deeptutor.services.model_selection.llm import declared_reasoning_levels
 
 from .paths import get_owner_path_service
 
@@ -104,24 +105,25 @@ def personal_llm_rows() -> list[dict[str, Any]]:
             model_id = str(model.get("id") or "")
             if not model_id:
                 continue
-            rows.append(
-                {
-                    "profile_id": profile_id,
-                    "model_id": model_id,
-                    "name": model.get("name") or model_id,
-                    "model": model.get("model") or "",
-                    "provider": profile.get("binding") or "",
-                    "reasoning_effort": model.get("reasoning_effort"),
-                    "supported_reasoning_efforts": model.get("codex_supported_reasoning_levels"),
-                    **{
-                        f"declared_{key}": value
-                        for key, value in (model.get("capabilities") or {}).items()
-                        if key in {"reasoning", "vision"} and type(value) is bool
-                    },
-                    "source": "personal",
-                    "available": True,
-                }
-            )
+            row = {
+                "profile_id": profile_id,
+                "model_id": model_id,
+                "name": model.get("name") or model_id,
+                "model": model.get("model") or "",
+                "provider": profile.get("binding") or "",
+                "reasoning_effort": model.get("reasoning_effort"),
+                **{
+                    f"declared_{key}": value
+                    for key, value in (model.get("capabilities") or {}).items()
+                    if key in {"reasoning", "vision"} and type(value) is bool
+                },
+                "source": "personal",
+                "available": True,
+            }
+            levels = declared_reasoning_levels(model.get("codex_supported_reasoning_levels"))
+            if levels is not None:
+                row["supported_reasoning_efforts"] = levels
+            rows.append(row)
     return rows
 
 

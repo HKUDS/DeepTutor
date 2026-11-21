@@ -80,6 +80,19 @@ def _llm_service(catalog: dict[str, Any]) -> dict[str, Any]:
     return services.get("llm", {}) if isinstance(services, dict) else {}
 
 
+def declared_reasoning_levels(value: object) -> list[str] | None:
+    """Normalize a model's declared ``codex_supported_reasoning_levels``.
+
+    ``None`` when the catalog declares nothing. Serializers must then omit the
+    field instead of emitting ``null``: a ``null`` here crashed every consumer
+    that guarded with ``!== undefined`` rather than an array check, and only
+    non-admin payloads carried it (#2732, #2833).
+    """
+    if not isinstance(value, list):
+        return None
+    return [str(level).strip().lower() for level in value if str(level).strip()]
+
+
 def list_llm_options(catalog: dict[str, Any]) -> dict[str, Any]:
     """Return a redacted list of configured chat-selectable LLM models."""
     service = _llm_service(catalog)
@@ -138,11 +151,9 @@ def list_llm_options(catalog: dict[str, Any]) -> dict[str, Any]:
             reasoning_effort = str(model.get("reasoning_effort") or "").strip().lower()
             if reasoning_effort:
                 option["reasoning_effort"] = reasoning_effort
-            supported_levels = model.get("codex_supported_reasoning_levels")
-            if isinstance(supported_levels, list):
-                option["supported_reasoning_efforts"] = [
-                    str(level).strip().lower() for level in supported_levels if str(level).strip()
-                ]
+            levels = declared_reasoning_levels(model.get("codex_supported_reasoning_levels"))
+            if levels is not None:
+                option["supported_reasoning_efforts"] = levels
             declared = model.get("capabilities") or {}
             for capability in ("reasoning", "vision"):
                 if type(declared.get(capability)) is bool:
