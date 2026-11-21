@@ -89,3 +89,10 @@ async def test_llm_failure_returns_empty_hint(
 
     assert result["hint"] == ""
     assert result["material_id"] == "material-1"
+
+
+def test_sanitize_strips_list_markers_but_keeps_leading_text() -> None:
+    assert reading_hints._sanitize("- Why add the input back?", "en") == "Why add the input back?"
+    assert reading_hints._sanitize("-1 times the gradient, why?", "en") == (
+        "-1 times the gradient, why?"
+    )
