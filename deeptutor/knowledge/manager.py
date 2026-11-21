@@ -35,6 +35,7 @@ from deeptutor.knowledge.kb_types import (
 from deeptutor.knowledge.manifest import iter_kb_documents
 from deeptutor.knowledge.naming import validate_knowledge_base_name
 from deeptutor.services.file_io import atomic_write_json
+from deeptutor.services.parsing.cache import cache_root_for, reclaim_sources
 from deeptutor.services.rag.factory import (
     DEFAULT_PROVIDER,
     IMA_PROVIDER,
@@ -1851,6 +1852,25 @@ class KnowledgeBaseManager:
             self._delete_marginnote4_store(name, entry)
 
         if dir_exists:
+            # Reclaim the derived parse cache while the raw bytes are still
+            # readable: entries are keyed by each source file's content hash.
+            # Enumerate exactly what ``rmtree`` below will delete — dotfiles
+            # included, symlinks skipped because only the link goes away — and
+            # derive the cache root from this KB's directory, not from the
+            # request scope (library-view requests run in the account scope).
+            # Best-effort: a cache failure must never leave the KB stuck in the
+            # list (cf. the rmtree handling below and issue #370).
+            raw_dir = kb_dir / "raw"
+            source_files = (
+                path for path in raw_dir.rglob("*") if path.is_file() and not path.is_symlink()
+            )
+            try:
+                reclaim_sources(source_files, cache_root=cache_root_for(Path(self.base_dir)))
+            except Exception as exc:  # noqa: BLE001 - cache cleanup is never fatal
+                logger.warning(
+                    f"Could not reclaim the parse cache for KB '{name}': {exc}. "
+                    "Continuing; the KB is still deleted."
+                )
 
             def _on_rmtree_error(func, path, exc_info):
                 exc = exc_info[1]

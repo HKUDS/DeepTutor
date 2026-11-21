@@ -23,7 +23,8 @@ import hashlib
 import json
 import logging
 from pathlib import Path
-from typing import Any, Optional
+import shutil
+from typing import Any, Iterable, Optional
 from uuid import uuid4
 
 from deeptutor.services.file_io import atomic_write_json
@@ -45,8 +46,74 @@ def source_hash_from_path(path: Path) -> str:
     return digest.hexdigest()[:16]
 
 
+def source_dir(cache_root: Path, source_hash: str) -> Path:
+    """Root holding every cached parser signature for one source document."""
+    return cache_root / source_hash[:2] / source_hash
+
+
 def signature_dir(cache_root: Path, source_hash: str, sig_hash: str) -> Path:
-    return cache_root / source_hash[:2] / source_hash / sig_hash
+    return source_dir(cache_root, source_hash) / sig_hash
+
+
+def cache_root_for(kb_base_dir: Path) -> Path:
+    """Parse-cache root that owns the knowledge bases under ``kb_base_dir``.
+
+    ``path_service`` keeps ``parse_cache/`` as a sibling of ``knowledge_bases/``
+    inside the workspace root, so the caller can derive it from the KB directory
+    it is deleting. Deriving it from the resource matters: requests served from
+    the knowledge-base library run in the account scope, so asking the ambient
+    path service for the cache root can name a different workspace than the KB
+    being deleted.
+    """
+    return Path(kb_base_dir).parent / "parse_cache"
+
+
+def reclaim_sources(source_paths: Iterable[Path], *, cache_root: Path) -> int:
+    """Best-effort removal of the cached parse entries for ``source_paths``.
+
+    Call this with the raw files that are *about to* be deleted — one raw
+    document, or every document of a knowledge base. Each file's bytes are
+    hashed while it still exists (the cache key is the content hash, not the
+    name), then the whole ``<cache_root>/<hash[:2]>/<hash>/`` shard is removed:
+    every parser signature for that source. Dropping all signatures is correct
+    because the cache is derived and content-addressed — the next parse
+    re-creates exactly the signature it needs.
+
+    The cache is shared by every parse consumer in the workspace (knowledge-base
+    indexing, chat attachments, reading figures), so a byte-identical copy of a
+    deleted document kept by another consumer shares the same shard. We do not
+    prove liveness: that would mean hashing every live source on every delete,
+    and ``metadata.json`` only records documents that indexed successfully. A
+    duplicate therefore loses its entry and re-parses once on next use — slower,
+    never incorrect. Reclaiming is still scoped strictly to the hashes of the
+    files being deleted; nothing else under the cache root is touched. The key
+    is a truncated 64-bit hash, and the failure mode of a collision here is one
+    extra re-parse, not wrong output.
+
+    Best-effort by design: an unreadable file or a locked cache dir (a stale
+    Windows handle is the common case) must not fail the user's delete, so
+    those failures are logged and skipped. Returns how many shards were removed.
+    """
+    if not cache_root.is_dir():
+        return 0
+
+    reclaimed = 0
+    for source_path in source_paths:
+        try:
+            source_hash = source_hash_from_path(Path(source_path))
+        except OSError as exc:
+            logger.warning("Could not hash %s to reclaim its parse cache: %s", source_path, exc)
+            continue
+        shard = source_dir(cache_root, source_hash)
+        if not shard.exists():
+            continue
+        try:
+            shutil.rmtree(shard)
+        except OSError as exc:
+            logger.warning("Could not reclaim parse cache %s: %s", shard, exc)
+            continue
+        reclaimed += 1
+    return reclaimed
 
 
 def is_ready(workdir: Optional[Path]) -> bool:
@@ -192,7 +259,10 @@ def load_ir(workdir: Path) -> tuple[str, Optional[list[dict]], Optional[Path]]:
 __all__ = [
     "MANIFEST_FILENAME",
     "source_hash_from_path",
+    "source_dir",
     "signature_dir",
+    "cache_root_for",
+    "reclaim_sources",
     "is_ready",
     "lookup",
     "reserve",
