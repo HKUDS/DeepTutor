@@ -615,8 +615,9 @@ class MasteryLoopCapability:
         )
         if grade.get("mastered"):
             lines.append(
-                "This cleared the objective's gate. Say what the attempt showed, "
-                "then continue with mastery_status.next."
+                "The objective's gate is cleared (possibly by earlier evidence). Do not "
+                "claim this attempt was correct if its result was partial or incorrect. "
+                "Say what the attempt showed, then continue with mastery_status.next."
             )
         else:
             lines.append(
@@ -625,6 +626,11 @@ class MasteryLoopCapability:
                 "mastery_quiz when you are ready — that call ends the turn, so "
                 "put it last."
             )
+        # Card answers are pre-graded before the tutor loop. Preserve the
+        # tool's partial-completion guidance here too, not only when the model
+        # explicitly calls mastery_grade in its own turn.
+        if grade.get("instruction"):
+            lines.append(str(grade["instruction"]))
         return "\n".join(lines)
 
 
