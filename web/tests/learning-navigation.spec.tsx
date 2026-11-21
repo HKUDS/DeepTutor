@@ -7,20 +7,27 @@ vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => k
 vi.mock('@/components/learning/LearningCreateMenu', () => ({ LearningCreateMenu: () => <button>Create learning</button> }))
 vi.mock('@/components/layout/AppShell', () => ({ useSidebarDrawer: () => null }))
 const mastery = vi.hoisted(() => ({ topics: [] as unknown[] }))
+const books = vi.hoisted(() => ({ rows: [] as unknown[] }))
+const retry = vi.hoisted(() => vi.fn())
 const practice = vi.hoisted(() => ({
   rows: [
     { id: 1, question: 'Older material, recently studied', created_at: 100, updated_at: 900, content_workspace_id: 'physics' },
     { id: 2, question: 'Newly created material', created_at: 800, updated_at: 800, content_workspace_id: '' },
   ] as unknown[],
 }))
+vi.mock('@/lib/book-api', () => ({
+  bookApi: { delete: vi.fn(async (id: string) => ({ deleted: true, book_id: id })) },
+}))
 vi.mock('@/hooks/useLearningIndex', () => ({ useLearningIndex: () => ({
-  loading: false, failed: [], retry: vi.fn(), sources: {
-    books: [], mastery: mastery.topics, reading: [], watching: [], practice: practice.rows,
+  loading: false, failed: [], retry, sources: {
+    books: books.rows, mastery: mastery.topics, reading: [], watching: [], practice: practice.rows,
   },
 }) }))
 beforeEach(() => {
   localStorage.clear()
   mastery.topics = []
+  books.rows = []
+  retry.mockClear()
   practice.rows = [
     { id: 1, question: 'Older material, recently studied', created_at: 100, updated_at: 900, content_workspace_id: 'physics' },
     { id: 2, question: 'Newly created material', created_at: 800, updated_at: 800, content_workspace_id: '' },
@@ -78,6 +85,36 @@ it('collapses one practice session into a row that expands to its questions', ()
   expect(region.getByText('Q3')).toBeInTheDocument()
   fireEvent.click(region.getByRole('button', { name: 'navigation.hidePracticeQuestions' }))
   expect(region.queryByText('Q3')).toBeNull()
+})
+
+it('removes a duplicated book from the row it was noticed in, after a second click', async () => {
+  const { bookApi } = await import('@/lib/book-api')
+  const remove = vi.mocked(bookApi.delete)
+  remove.mockClear()
+  books.rows = [{
+    id: 'b-dup', title: 'Introduction to DirectX 12', created_at: 10, updated_at: 20,
+    content_workspace_id: 'graphics',
+  }]
+  practice.rows = []
+  render(<LearningNavigation />)
+  const region = within(screen.getByRole('region', { name: 'navigation.learningRecords' }))
+  expect(region.getByRole('link')).toHaveTextContent('Introduction to DirectX 12')
+  // The first click only arms the control; nothing is deleted yet.
+  fireEvent.click(region.getByRole('button', { name: 'Delete book' }))
+  expect(remove).not.toHaveBeenCalled()
+  fireEvent.click(region.getByRole('button', { name: 'Click again to confirm' }))
+  await vi.waitFor(() => expect(remove).toHaveBeenCalledWith('b-dup', 'graphics'))
+  // The list is re-read from the server rather than edited locally.
+  expect(retry).toHaveBeenCalled()
+})
+
+it('only offers removal on books', () => {
+  practice.rows = [
+    { id: 9, question: 'A practice question', created_at: 1, updated_at: 1, content_workspace_id: '' },
+  ]
+  render(<LearningNavigation />)
+  const region = within(screen.getByRole('region', { name: 'navigation.learningRecords' }))
+  expect(region.queryByRole('button', { name: 'Delete book' })).toBeNull()
 })
 
 it('files a conversation under the record it was held in', () => {
