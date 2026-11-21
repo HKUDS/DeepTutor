@@ -12,6 +12,7 @@ import {
   hasInlineMathCandidate,
   mapMarkdownProse,
   normalizeMathMarkup,
+  wrapBareScriptMath,
 } from "./latex-normalize";
 
 /**
@@ -32,7 +33,7 @@ export function hasMarkdownMath(content: string): boolean {
   if (/(^|[^\\])\$\$/.test(value)) return true;
   if (/\\\(|\\\[/.test(value)) return true;
   if (hasInlineMathCandidate(value)) return true;
-  return hasBareLatexTrigger(value);
+  return hasBareLatexTrigger(value) || wrapBareScriptMath(value) !== value;
 }
 
 /**
