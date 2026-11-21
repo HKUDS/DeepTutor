@@ -290,3 +290,35 @@ def test_notebook_create_prints_the_created_notebook(monkeypatch) -> None:
     created = json.loads(result.stdout)
     assert created["name"] == "Fourier [draft]"
     assert created == _fake_manager.get_notebook(created["id"])
+
+
+def test_notebook_show_and_list_print_stored_text_literally(monkeypatch) -> None:
+    """Rich output must not parse notebook names or record titles as markup."""
+    from deeptutor.app import facade
+
+    _patch_facade(monkeypatch)
+    monkeypatch.setattr(
+        facade.DeepTutorApp,
+        "list_notebooks",
+        lambda self: [dict(nb, record_count=1) for nb in _fake_manager.notebooks.values()],
+    )
+    _fake_manager.notebooks.clear()
+
+    notebook = _fake_manager.create_notebook("[b]x[/b]", description="tag [/b]")
+    _fake_manager.add_record(
+        notebook_ids=[notebook["id"]],
+        record_type="chat",
+        title="[INST] :tada:",
+        user_query="",
+        output="",
+    )
+
+    shown = runner.invoke(app, ["notebook", "show", notebook["id"]])
+    assert shown.exit_code == 0, shown.output
+    for text in ("[b]x[/b]", "tag [/b]", "[INST] :tada:"):
+        assert text in shown.stdout
+
+    listed = runner.invoke(app, ["notebook", "list"])
+    assert listed.exit_code == 0, listed.output
+    assert "[b]x[/b]" in listed.stdout
+    assert "tag [/b]" in listed.stdout

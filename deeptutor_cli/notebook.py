@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from rich.text import Text
 import typer
 
 from deeptutor.app import DeepTutorApp
@@ -42,21 +43,25 @@ def register(app: typer.Typer) -> None:
             notebook = client.get_notebook(notebook_id)
         except NotebookCorruptedError as exc:
             # The file is still on disk; say so instead of dumping a traceback.
-            console.print(f"[red]Notebook file is damaged:[/] {exc}")
+            console.print(Text.assemble(("Notebook file is damaged:", "red"), f" {exc}"))
             raise typer.Exit(code=1)
         if notebook is None:
-            console.print(f"[red]Notebook not found:[/] {notebook_id}")
+            console.print(Text.assemble(("Notebook not found:", "red"), f" {notebook_id}"))
             raise typer.Exit(code=1)
         if fmt == "json":
             console.print_json(json.dumps(notebook, ensure_ascii=False, default=str))
             return
-        console.print(f"[bold]{notebook.get('name', '')}[/] ({notebook.get('id', '')})")
-        console.print(str(notebook.get("description", "") or ""))
+        console.print(
+            Text.assemble((str(notebook.get("name", "")), "bold"), f" ({notebook.get('id', '')})")
+        )
+        console.print(Text(str(notebook.get("description", "") or "")))
         for record in notebook.get("records", []):
             console.print(
-                f"\n[cyan]{record.get('id', '')}[/] "
-                f"{record.get('type', '')} "
-                f"{record.get('title', '')}"
+                Text.assemble(
+                    "\n",
+                    (str(record.get("id", "")), "cyan"),
+                    f" {record.get('type', '')} {record.get('title', '')}",
+                )
             )
 
     @app.command("remove-record")
@@ -69,12 +74,12 @@ def register(app: typer.Typer) -> None:
         try:
             success = client.remove_record(notebook_id, record_id)
         except NotebookCorruptedError as exc:
-            console.print(f"[red]Notebook file is damaged:[/] {exc}")
+            console.print(Text.assemble(("Notebook file is damaged:", "red"), f" {exc}"))
             raise typer.Exit(code=1)
         if not success:
-            console.print(f"[red]Record not found:[/] {record_id}")
+            console.print(Text.assemble(("Record not found:", "red"), f" {record_id}"))
             raise typer.Exit(code=1)
-        console.print(f"Removed record {record_id} from notebook {notebook_id}")
+        console.print(Text(f"Removed record {record_id} from notebook {notebook_id}"))
 
     @app.command("add-md")
     def add_md(
@@ -90,7 +95,7 @@ def register(app: typer.Typer) -> None:
         """Add a markdown file as a record to a notebook."""
         path = Path(file_path)
         if not path.exists():
-            console.print(f"[red]File not found:[/] {file_path}")
+            console.print(Text.assemble(("File not found:", "red"), f" {file_path}"))
             raise typer.Exit(code=1)
 
         content = FileTypeRouter.decode_bytes(path.read_bytes())
@@ -106,8 +111,10 @@ def register(app: typer.Typer) -> None:
         )
         record = result.get("record", {})
         console.print(
-            f"[green]Added record[/] {record.get('id', '')} "
-            f"to notebook {notebook_id}: {record_title}"
+            Text.assemble(
+                ("Added record", "green"),
+                f" {record.get('id', '')} to notebook {notebook_id}: {record_title}",
+            )
         )
 
     @app.command("replace-md")
@@ -119,7 +126,7 @@ def register(app: typer.Typer) -> None:
         """Replace a notebook record's output with content from a markdown file."""
         path = Path(file_path)
         if not path.exists():
-            console.print(f"[red]File not found:[/] {file_path}")
+            console.print(Text.assemble(("File not found:", "red"), f" {file_path}"))
             raise typer.Exit(code=1)
 
         content = FileTypeRouter.decode_bytes(path.read_bytes())
@@ -127,6 +134,8 @@ def register(app: typer.Typer) -> None:
         client = DeepTutorApp()
         updated = client.update_record(notebook_id, record_id, output=content)
         if updated is None:
-            console.print(f"[red]Record not found:[/] {record_id}")
+            console.print(Text.assemble(("Record not found:", "red"), f" {record_id}"))
             raise typer.Exit(code=1)
-        console.print(f"[green]Updated record[/] {record_id} in notebook {notebook_id}")
+        console.print(
+            Text.assemble(("Updated record", "green"), f" {record_id} in notebook {notebook_id}")
+        )
