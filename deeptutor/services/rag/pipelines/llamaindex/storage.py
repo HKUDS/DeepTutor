@@ -28,6 +28,9 @@ from deeptutor.services.rag.index_versioning import (
 from . import ingestion, retrievers, vector_store
 from .config import should_show_progress, vector_index_config_from_settings
 
+_EMBEDDING_CHECKPOINT_SOURCE_LIMIT = 16
+_EMBEDDING_CHECKPOINT_INTERVAL_SECONDS = 30.0
+
 
 @dataclass(frozen=True)
 class AddStoragePlan:
@@ -294,7 +297,7 @@ def _write_embedding_snapshot(
     *,
     source_records: dict[str, EmbeddingSourceRecord],
     completed_keys: set[str],
-    document_group: list[Any],
+    checkpoint_documents: list[Any],
     signature: EmbeddingSignature | None,
 ) -> None:
     snapshot = Path(tempfile.mkdtemp(prefix=f".{candidate.name}.checkpoint-", dir=candidate.parent))
@@ -307,7 +310,7 @@ def _write_embedding_snapshot(
             shutil.copy2(existing_catalog, snapshot / existing_catalog.name)
         from deeptutor.services.rag.source_pages import persist_page_catalog
 
-        persist_page_catalog(document_group, snapshot)
+        persist_page_catalog(checkpoint_documents, snapshot)
         atomic_write_json(
             snapshot / ".embedding-checkpoint.json",
             {
@@ -341,7 +344,7 @@ def create_resumable_index(
     show_progress: bool | None = None,
     checkpoint_callback: Callable[[Path, bool], None] | None = None,
 ) -> int:
-    """Build a rebuild candidate one source at a time and snapshot each source."""
+    """Embed sources individually and persist bounded batches as restart checkpoints."""
     if show_progress is None:
         show_progress = should_show_progress()
     if (storage_dir / "meta.json").exists():
@@ -358,9 +361,11 @@ def create_resumable_index(
         for key in sorted(completed_keys):
             checkpoint_callback(source_records[key].path, True)
 
-    for key, document_group in grouped.items():
-        if key in completed_keys:
-            continue
+    remaining = [(key, group) for key, group in grouped.items() if key not in completed_keys]
+    checkpoint_keys: list[str] = []
+    checkpoint_documents: list[Any] = []
+    checkpointed_at = time.monotonic()
+    for position, (key, document_group) in enumerate(remaining, start=1):
         nodes = ingestion.documents_to_nodes(document_group, show_progress=show_progress)
         if index is None:
             storage_context = vector_store.storage_context_for_nodes(
@@ -375,16 +380,32 @@ def create_resumable_index(
         else:
             index.insert_nodes(nodes)
         completed_keys.add(key)
+        checkpoint_keys.append(key)
+        checkpoint_documents.extend(document_group)
+        # A new rebuild gets an early restart point; a resumed one already has it.
+        checkpoint_due = (
+            len(completed_keys) == 1
+            or position == len(remaining)
+            or len(checkpoint_keys) >= _EMBEDDING_CHECKPOINT_SOURCE_LIMIT
+            or time.monotonic() - checkpointed_at >= _EMBEDDING_CHECKPOINT_INTERVAL_SECONDS
+        )
+        if not checkpoint_due:
+            continue
+
         _write_embedding_snapshot(
             index,
             storage_dir,
             source_records=source_records,
             completed_keys=completed_keys,
-            document_group=document_group,
+            checkpoint_documents=checkpoint_documents,
             signature=signature,
         )
         if checkpoint_callback is not None:
-            checkpoint_callback(source_records[key].path, False)
+            for checkpoint_key in checkpoint_keys:
+                checkpoint_callback(source_records[checkpoint_key].path, False)
+        checkpoint_keys.clear()
+        checkpoint_documents.clear()
+        checkpointed_at = time.monotonic()
     return len(documents)
 
 
