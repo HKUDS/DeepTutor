@@ -86,12 +86,20 @@ async def test_local_indexing_uses_the_native_provider_on_the_sdk_worker(
     from pageindex.local_api import LocalAPI
     from pageindex.utils import llm_acompletion, llm_completion
 
+    from deeptutor.multi_user.context import get_current_user_or_none
+    from deeptutor.multi_user.paths import local_admin_user, user_context
     from deeptutor.services.llm import provider_factory
     from deeptutor.services.llm.provider_core.base import LLMResponse
+    from deeptutor.services.rag.pipelines.oauth_completion import OAuthModelAccessError
     from deeptutor.services.rag.pipelines.pageindex.client import PageIndexClient
+
+    loop = asyncio.get_running_loop()
+    owner = local_admin_user()
 
     class Provider:
         async def chat(self, **kwargs):
+            assert asyncio.get_running_loop() is loop
+            assert get_current_user_or_none() == owner
             assert kwargs["model"] == "gpt-6-luna"
             assert kwargs["messages"] == [{"role": "user", "content": "Summarize this page."}]
             return LLMResponse(content="A sample page.")
@@ -114,9 +122,11 @@ async def test_local_indexing_uses_the_native_provider_on_the_sdk_worker(
     monkeypatch.setattr(LocalAPI, "_index_flash", index)
     doc = tmp_path / "example.pdf"
     doc.touch()
-    client = PageIndexClient.local(tmp_path / "library")
-
-    assert (await client.submit_document(doc)).startswith("pi-")
+    with pytest.raises(OAuthModelAccessError, match="explicit DeepTutor user"):
+        PageIndexClient.local(tmp_path / "library")
+    with user_context(owner):
+        client = PageIndexClient.local(tmp_path / "library")
+        assert (await client.submit_document(doc)).startswith("pi-")
 
 
 def test_inherited_task_model_uses_the_api_key_chat_model(catalog) -> None:

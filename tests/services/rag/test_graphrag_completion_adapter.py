@@ -555,16 +555,22 @@ async def test_oauth_completion_probe_and_query_use_the_native_provider(
 ) -> None:
     pytest.importorskip("graphrag")
 
+    from deeptutor.multi_user import model_access
     from deeptutor.multi_user.context import get_current_user
     from deeptutor.multi_user.models import CurrentUser, UserScope
     from deeptutor.multi_user.paths import user_context
+    from deeptutor.services.config.provider_runtime import ResolvedLLMConfig
     from deeptutor.services.llm import provider_factory
+    from deeptutor.services.llm.config import LLMConfig
     from deeptutor.services.llm.provider_core.base import LLMResponse
+    from deeptutor.services.model_selection import runtime
 
     calls = []
+    caller_loop = asyncio.get_running_loop()
 
     class Provider:
         async def chat(self, **kwargs):
+            assert asyncio.get_running_loop() is caller_loop
             calls.append(get_current_user().id)
             content = str(kwargs["messages"])
             return LLMResponse(
@@ -582,12 +588,39 @@ async def test_oauth_completion_probe_and_query_use_the_native_provider(
         return Provider()
 
     monkeypatch.setattr(provider_factory, "build_isolated_provider", build_provider)
-    cfg = _Cfg("gpt-6-luna", "", "", binding="openai_codex")
+    cfg = ResolvedLLMConfig(
+        model="gpt-6-luna",
+        provider_name="openai_codex",
+        provider_mode="oauth",
+        binding="openai_codex",
+    )
     alice = CurrentUser("alice", "alice", "user", UserScope("user", "alice", tmp_path / "alice"))
     bob = CurrentUser("bob", "bob", "user", UserScope("user", "bob", tmp_path / "bob"))
+    monkeypatch.setattr(
+        model_access,
+        "allowed_llm_options",
+        lambda: {
+            "options": [
+                {
+                    "profile_id": get_current_user().id,
+                    "model_id": "codex",
+                    "model": cfg.model,
+                    "provider": cfg.binding,
+                    "source": "personal",
+                    "is_active_default": True,
+                }
+            ]
+        },
+    )
+
+    def resolve(selection):
+        assert selection["profile_id"] == get_current_user().id
+        return LLMConfig(model=cfg.model, api_key="", binding=cfg.binding)
+
+    monkeypatch.setattr(runtime, "resolve_llm_config_for_selection", resolve)
     with user_context(alice):
-        probe, report_schema = engine._create_probe_completion(cfg)
-        await engine._validate_probe_completion(probe, report_schema)
+        result = await engine.probe_completion_model(cfg)
+        assert result["compatible"] is True, result
         completion = _load_completion(tmp_path, binding="openai_codex", model="gpt-6-luna", url="")
     with user_context(bob):
         other = _load_completion(tmp_path, binding="openai_codex", model="gpt-6-luna", url="")
@@ -601,6 +634,89 @@ async def test_oauth_completion_probe_and_query_use_the_native_provider(
         "Answer"
     )
     assert calls == ["alice", "alice", "bob"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("binding", "scoped", "message"),
+    [
+        ("openai_codex", False, "explicit DeepTutor user"),
+        ("openai_codex", True, "unavailable to your account"),
+        ("codebuddy", True, "operator's local sign-in"),
+        ("claude_code", True, "operator's local sign-in"),
+    ],
+)
+async def test_graph_model_reopen_checks_reader_access(
+    binding: str, scoped: bool, message: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pytest.importorskip("graphrag")
+    from contextlib import nullcontext
+
+    from deeptutor.multi_user import model_access
+    from deeptutor.multi_user.models import CurrentUser, UserScope
+    from deeptutor.multi_user.paths import user_context
+    from deeptutor.services.rag.pipelines.graphrag.errors import (
+        GraphRagModelAuthenticationError,
+        classify_model_error,
+    )
+    from deeptutor.services.rag.pipelines.oauth_completion import OAuthModelAccessError
+
+    reader = CurrentUser("reader", "reader", "user", UserScope("user", "reader", tmp_path))
+    monkeypatch.setattr(model_access, "allowed_llm_options", lambda: {"options": []})
+    scope = user_context(reader) if scoped else nullcontext()
+    with scope, pytest.raises(OAuthModelAccessError, match=message) as denied:
+        _load_completion(tmp_path, model="saved-model", binding=binding, url="")
+    classified = classify_model_error(denied.value)
+    assert isinstance(classified, GraphRagModelAuthenticationError)
+    assert message in str(classified)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("status", "code"),
+    [
+        (None, "graphrag_model_authentication_failed"),
+        (401, "graphrag_model_authentication_failed"),
+        (403, "graphrag_model_authentication_failed"),
+        (429, "graphrag_model_rate_limited"),
+    ],
+)
+async def test_graph_oauth_probe_classifies_native_failure(
+    status: int | None, code: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pytest.importorskip("graphrag")
+    from deeptutor.multi_user.paths import local_admin_user, user_context
+    from deeptutor.services.config.provider_runtime import ResolvedLLMConfig
+    from deeptutor.services.llm import provider_factory
+    from deeptutor.services.llm.provider_core.base import LLMResponse
+    from deeptutor.services.llm.provider_core.openai_codex_provider import _friendly_error
+
+    detail = _friendly_error(status) if status is not None else "Sign in to Codex."
+    requests = []
+
+    class FailingProvider:
+        async def chat(self, **_kwargs):
+            requests.append(True)
+            return LLMResponse(
+                content=f"Error calling Codex: {detail} PRIVATE", finish_reason="error"
+            )
+
+        async def aclose(self):
+            pass
+
+    monkeypatch.setattr(provider_factory, "build_isolated_provider", lambda _: FailingProvider())
+    config = ResolvedLLMConfig(
+        model="gpt-6-luna",
+        provider_name="openai_codex",
+        provider_mode="oauth",
+        binding="openai_codex",
+    )
+    with user_context(local_admin_user()):
+        result = await engine.probe_completion_model(config)
+
+    assert result["code"] == code
+    assert "PRIVATE" not in result["message"]
+    assert len(requests) == 1
 
 
 def test_cached_fallback_is_safe_under_concurrent_sync_calls(

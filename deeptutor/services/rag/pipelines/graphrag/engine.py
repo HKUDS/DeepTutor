@@ -13,9 +13,17 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable
+from contextlib import nullcontext
 import logging
 from pathlib import Path
 from typing import Any, TypeVar
+
+from deeptutor.services.model_selection.runtime import llm_config_from_resolved
+from deeptutor.services.rag.pipelines.oauth_completion import (
+    OAuthCompletion,
+    oauth_binding,
+    oauth_caller_loop,
+)
 
 from .config import (
     COMPLETION_MODEL_ID,
@@ -75,12 +83,52 @@ _T = TypeVar("_T")
 
 
 def _load_config(root_dir: Path):
-    from graphrag.config.load_config import load_config
+    from graphrag.config.defaults import graphrag_config_defaults
+    from graphrag.config.models.graph_rag_config import GraphRagConfig
+    from graphrag_common.config import load_config
 
     from .completion_adapter import register_completion_adapter
 
     register_completion_adapter()
-    config = load_config(root_dir=Path(root_dir))
+    root_dir = Path(root_dir).resolve()
+
+    def initialize(**fields: Any) -> GraphRagConfig:
+        defaults = graphrag_config_defaults
+        for name in ("input_storage", "output_storage", "update_output_storage", "reporting"):
+            storage = fields.setdefault(name, {})
+            if storage.get("type", "file") == "file":
+                base_dir = storage.get("base_dir", getattr(defaults, name).base_dir)
+                if base_dir:
+                    storage["base_dir"] = str(root_dir / base_dir)
+        storage = fields.setdefault("cache", {}).setdefault("storage", {})
+        if storage.get("type", "file") == "file":
+            base_dir = storage.get("base_dir", defaults.cache.storage.base_dir)
+            if base_dir:
+                storage["base_dir"] = str(root_dir / base_dir)
+        vector_store = fields.setdefault("vector_store", {})
+        if vector_store.get("type", "lancedb") == "lancedb":
+            vector_store["db_uri"] = str(
+                root_dir / (vector_store.get("db_uri") or defaults.vector_store.db_uri)
+            )
+        for section in (
+            "basic_search",
+            "local_search",
+            "global_search",
+            "drift_search",
+            "extract_graph",
+            "extract_claims",
+            "summarize_descriptions",
+            "community_reports",
+        ):
+            options = fields.get(section, {})
+            for name, path in options.items():
+                if (name == "prompt" or name.endswith("_prompt")) and path:
+                    options[name] = str(root_dir / path)
+        return GraphRagConfig(**fields)
+
+    # GraphRAG's CLI loader changes the process-wide working directory. Keep
+    # paths relative to each KB without affecting the server or other SDK jobs.
+    config = load_config(config_initializer=initialize, config_path=root_dir, set_cwd=False)
     from deeptutor.services.embedding.config import scoped_embedding_config
 
     embedding = scoped_embedding_config()
@@ -125,17 +173,11 @@ async def _run_isolated(work: Callable[[], Awaitable[_T]]) -> _T:
 
     def _runner() -> _T:
         prepare_pandas_arrow_extensions()
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            return loop.run_until_complete(work())
-        finally:
-            try:
-                loop.close()
-            finally:
-                asyncio.set_event_loop(None)
+        with asyncio.Runner() as runner:
+            return runner.run(work())
 
-    return await asyncio.to_thread(_runner)
+    with oauth_caller_loop():
+        return await asyncio.to_thread(_runner)
 
 
 def _create_probe_completion(llm_cfg: Any):
@@ -225,7 +267,13 @@ def _failed_probe_result(llm_cfg: Any, error: Exception) -> dict[str, Any]:
 async def probe_completion_model(llm_cfg: Any) -> dict[str, Any]:
     """Test one completion config against GraphRAG's structured-output contract."""
     try:
-        await _run_isolated(lambda: _probe_completion_model_impl(llm_cfg))
+        scope = (
+            OAuthCompletion.for_current_user(llm_config_from_resolved(llm_cfg)).activate()
+            if oauth_binding(llm_cfg)
+            else nullcontext()
+        )
+        with scope:
+            await _run_isolated(lambda: _probe_completion_model_impl(llm_cfg))
     except Exception as error:  # noqa: BLE001 - converted into a secret-free probe result
         return _failed_probe_result(llm_cfg, error)
     return {

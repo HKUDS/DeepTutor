@@ -34,7 +34,7 @@ def resolve_completion_provider(llm_cfg: Any) -> str:
         return "anthropic"
     if backend == "azure_openai":
         return "azure"
-    if backend in {"openai_codex", "github_copilot"} or spec.is_oauth:
+    if spec.is_oauth:
         return OAUTH_PROVIDER
     if backend == "openai_compat":
         # DeepSeek's LiteLLM provider owns its parameter compatibility logic.

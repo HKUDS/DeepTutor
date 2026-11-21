@@ -9,11 +9,7 @@ from urllib.parse import urlparse
 
 from pydantic import BaseModel, ValidationError
 
-from deeptutor.services.rag.pipelines.oauth_completion import (
-    OAUTH_PROVIDER,
-    OAuthCompletion,
-    oauth_binding,
-)
+from deeptutor.services.rag.pipelines.oauth_completion import OAUTH_PROVIDER, OAuthCompletion
 
 from .errors import (
     MODEL_INCOMPATIBLE_MESSAGE,
@@ -247,20 +243,11 @@ def _get_adapter_classes() -> tuple[type, type]:
             """Bind an indexing or query operation to its DeepTutor credential owner."""
 
             def __init__(self, *, model_config: Any, **kwargs: Any) -> None:
-                from deeptutor.services.llm.config import LLMConfig
-
-                binding = str(getattr(model_config, "oauth_binding", ""))
-                config = LLMConfig(
-                    model=model_config.model,
-                    api_key="",
-                    binding=binding,
-                    provider_name=binding,
-                    provider_mode="oauth",
-                    reasoning_effort=getattr(model_config, "oauth_reasoning_effort", None),
+                self._oauth_completion = OAuthCompletion.for_saved_model(
+                    str(getattr(model_config, "oauth_binding", "")),
+                    model_config.model,
+                    getattr(model_config, "oauth_reasoning_effort", None),
                 )
-                if model_config.model_provider != OAUTH_PROVIDER or not oauth_binding(config):
-                    raise ValueError("GraphRAG OAuth settings require a DeepTutor OAuth binding.")
-                self._oauth_completion = OAuthCompletion.for_current_user(config)
                 super().__init__(model_config=model_config, **kwargs)
 
             def completion(self, /, **kwargs: Any) -> Any:
