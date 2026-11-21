@@ -86,6 +86,59 @@ the app runs can lose recent transactions. Back up the complete runtime-home
 copy as sensitive because it can contain credentials, private conversation
 text, and uploaded learning material.
 
+## Moving Data Between Deployments
+
+The runtime-home tree is self-contained, so moving between deployment shapes
+(for example from the published container to the desktop app, or between
+machines) is a copy of `data/` into the target's runtime home. Upgrading
+between releases needs no migration; this section covers moving the same tree
+to a different deployment.
+
+Default runtime home of the desktop app on macOS:
+`~/Library/Application Support/Open DeepTutor/workspace/data`.
+
+1. **Stop the source and the target.** SQLite write-ahead log files make a copy
+   of a running instance unreliable (see the previous section).
+
+2. **Copy the whole `data/` tree**, including hidden directories such as
+   `data/user/.runtime/`, and every top-level directory (`knowledge_bases/`,
+   `memory/`, `partners/`, `system/`, and so on), not only `user/`. From a Docker
+   named volume:
+
+   ```bash
+   mkdir export
+   docker run --rm -v <volume>:/data -v "$PWD/export":/out alpine \
+     sh -c "cp -a /data/. /out/"
+   ```
+
+   A container can mount a different volume than the one you expect (for
+   example one created by Compose). Check `docker ps -a` and compare the volume
+   sizes before exporting.
+
+3. **Back up the target's existing `data/`**, remove stale
+   `chat_history.db-wal`, `chat_history.db-shm`, `usage.sqlite3-wal` and
+   `usage.sqlite3-shm` files from the target, then copy the exported tree over
+   it, preserving hidden files (for example `rsync -a export/ "<target>/data/"`).
+
+4. **Review environment-specific files** before starting the target:
+   - `data/user/settings/system.json` holds ports, CORS and SSL options that
+     may not suit the new environment. Keep the target's own file if the app
+     does not start.
+   - `data/user/.runtime/workspaces.sqlite3` stores each registered workspace
+     with an absolute `path`. After a container-to-desktop copy, the default
+     workspaces still list the container's `/app/data/...` paths. In the
+     verified run below, they opened with their data intact.
+
+5. **Start the target** and confirm that sessions, knowledge bases and a model
+   response work.
+
+Treat every copy as sensitive: it contains provider credentials and private
+conversation text, so delete exports once the migration is confirmed.
+
+Verified: Docker container 1.7.4 → Open DeepTutor 1.7.4 desktop
+app on macOS (Apple Silicon). Not verified: other platforms, or migrating
+between different releases.
+
 ## Implementation and verification
 
 - [deeptutor/runtime/home.py](../deeptutor/runtime/home.py)
