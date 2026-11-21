@@ -140,6 +140,12 @@ async def test_ui_accepts_extended_response_languages(
     assert response["response_language"] == "hi"
     assert settings_router.load_ui_settings()["response_language"] == "hi"
 
+    response = await settings_router.update_ui_settings(
+        settings_router.UISettingsUpdate(response_language="fa")
+    )
+    assert response["response_language"] == "fa"
+    assert settings_router.load_ui_settings()["response_language"] == "fa"
+
 
 @pytest.mark.asyncio
 async def test_changing_ui_language_to_vietnamese_keeps_an_existing_response_preference(
