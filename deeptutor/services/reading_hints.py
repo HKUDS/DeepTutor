@@ -365,7 +365,8 @@ def _sanitize(raw: str, language: str, last_answer: str = "") -> str:
     text = lines[0].strip()
     if text.startswith("```") or text.endswith("```"):
         return ""
-    text = text.lstrip("-•*# ").strip()
+    # A marker needs trailing space: "-3", "*args" and "#include" are text.
+    text = re.sub(r"^(?:•\s*|[-*#]+\s+)+", "", text).strip()
     if len(text) >= 2 and (text[0], text[-1]) in {
         ('"', '"'),
         ("'", "'"),
