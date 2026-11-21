@@ -25,6 +25,11 @@ class TestDefaultReasoningEffortFor:
             ("gemini-3.6-flash", "minimal"),
             ("gemini-3.6-flash-latest", "minimal"),
             ("models/gemini-3.6-flash", "minimal"),
+            # Its floor is one step higher — it rejects "minimal" too (#2702).
+            ("gemini-3.8-flash", "low"),
+            ("GEMINI-3.8-FLASH", "low"),
+            ("models/gemini-3.8-flash", "low"),
+            ("gemini-3.8-flash-latest", "low"),
         ],
     )
     def test_gemini_thinking_models_default(self, model: str, expected: str) -> None:
@@ -142,3 +147,35 @@ def test_qwen_thinking_models_keep_native_controls(binding, effort, enabled) -> 
     assert build_openai_compatible_reasoning_kwargs(
         spec=None, binding=binding, model="qwen3-235b-a22b", reasoning_effort=effort
     ) == {"extra_body": {"enable_thinking": enabled}}
+
+
+@pytest.mark.parametrize("effort", [None, "none", "minimal", "minimum", "MINIMAL"])
+def test_gemini_flash_38_clamps_anything_below_low(effort: str | None) -> None:
+    """The model answers 400 to "minimal" as well, so nothing below "low" ships.
+
+    Callers reach this three ways — an unset effort, an explicit off, and a
+    saved profile that still says "minimal" — and all three have to land on the
+    same value, otherwise the fix only covers the path that was reported.
+    """
+    from deeptutor.services.llm.reasoning_params import thinking_off_effort_for
+
+    kwargs = build_openai_compatible_reasoning_kwargs(
+        spec=None, binding="gemini", model="gemini-3.8-flash", reasoning_effort=effort
+    )
+    assert kwargs == {"reasoning_effort": "low"}
+    assert thinking_off_effort_for("gemini", "gemini-3.8-flash") == "low"
+    assert thinking_off_effort_for("gemini", "models/gemini-3.8-flash") == "low"
+
+
+def test_gemini_flash_38_clamp_leaves_its_siblings_alone() -> None:
+    # 3.6-flash accepts "minimal", 2.5-flash accepts "none", and explicitly
+    # asking for "high" must never be rewritten by the floor.
+    assert build_openai_compatible_reasoning_kwargs(
+        spec=None, binding="gemini", model="gemini-3.6-flash", reasoning_effort=None
+    ) == {"reasoning_effort": "minimal"}
+    assert build_openai_compatible_reasoning_kwargs(
+        spec=None, binding="gemini", model="gemini-2.5-flash", reasoning_effort=None
+    ) == {"reasoning_effort": "none"}
+    assert build_openai_compatible_reasoning_kwargs(
+        spec=None, binding="gemini", model="gemini-3.8-flash", reasoning_effort="high"
+    ) == {"reasoning_effort": "high"}
