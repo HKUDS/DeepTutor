@@ -43,6 +43,10 @@ export interface LearningActivity {
   count?: number
   /** The individual questions of a collapsed practice set. */
   children?: LearningActivity[]
+  /** The stored record behind the row, for surfaces that can act on it (books today). */
+  id?: string
+  /** The content workspace the record lives in; '' is the default workspace. */
+  workspaceId?: string
 }
 export function isWatchingSession(session: SessionSummary): boolean {
   return (
@@ -120,6 +124,8 @@ export function allLearningActivity(sources: LearningSources): LearningActivity[
       kind: 'books' as const,
       title: book.title,
       href: scopedUrl(bookRoute(book.id, null, ''), book.content_workspace_id || ''),
+      id: book.id,
+      workspaceId: book.content_workspace_id || '',
       updatedAt: book.updated_at,
       createdAt: book.created_at || book.updated_at,
       progress: (book.reading?.percent ?? 0) / 100,
