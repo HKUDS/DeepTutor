@@ -590,11 +590,12 @@ function escapeStrayDollars(text: string): string {
  */
 export function wrapBareScriptMath(content: string): string {
   if (!/\b[A-Za-z]'?[_^]/.test(content)) return content;
+  const scriptedSymbol =
+    /(?<![\p{L}\p{N}_\\/.@'"{}^:\-])[A-Za-z]'?(?:[_^](?:\{(?:\d+(?:\.\d+)?|[A-Za-z])\}|\d+|[A-Za-z])){1,2}(?![\p{L}\p{N}_{}^'"@:(\-]|\.[\p{L}\p{N}])/gu;
   const prose: [number, number][] = [];
   const visit = (node: Nodes): void => {
     // Text inside links is intentionally left alone too. Positions refer to
-    // the original source, so no Markdown serialization or placeholders can
-    // alter code, reference destinations, escaping or filenames.
+    // the original source, so the output preserves the original Markdown.
     if (["link", "linkReference", "image", "imageReference"].includes(node.type)) {
       return;
     }
@@ -606,7 +607,11 @@ export function wrapBareScriptMath(content: string): string {
       node.children.forEach(visit);
     }
   };
-  visit(fromMarkdown(content));
+  // Markdown can pair the underscores in `R'_L … B_{0.707}` as emphasis.
+  // Mask candidate subscripts with a single code unit for parsing only, so
+  // the resulting positions still refer to the original text.
+  const parseSource = content.replace(scriptedSymbol, (symbol) => symbol.replaceAll("_", "\uE000"));
+  visit(fromMarkdown(parseSource));
   const protectedRanges: [number, number][] = [];
   for (const pattern of [
     MATH_SPAN_RE,
@@ -640,7 +645,7 @@ export function wrapBareScriptMath(content: string): string {
   proseIndex = 0;
   protectedIndex = 0;
   return content.replace(
-    /(?<![\p{L}\p{N}_\\/.@'"{}^:\-])[A-Za-z]'?(?:[_^](?:\{(?:\d+(?:\.\d+)?|[A-Za-z])\}|\d+|[A-Za-z])){1,2}(?![\p{L}\p{N}_{}^'"@:(\-]|\.[\p{L}\p{N}])/gu,
+    scriptedSymbol,
     (symbol, offset: number) => {
       const end = offset + symbol.length;
       while (proseIndex < prose.length && prose[proseIndex][1] <= offset) proseIndex++;

@@ -2,6 +2,7 @@ import { Suspense, lazy } from "react";
 import { render, waitFor } from "@testing-library/react";
 import { expect, it, vi } from "vitest";
 import InlineMarkdown from "@/components/common/InlineMarkdown";
+import MarkdownRenderer from "@/components/common/MarkdownRenderer";
 import RichInlineMarkdown from "@/components/common/RichInlineMarkdown";
 
 vi.mock("next/dynamic", () => ({
@@ -20,6 +21,27 @@ it("renders the reported bare scripts through the question's real KaTeX path", a
   expect(Array.from(view.container.querySelectorAll('annotation[encoding="application/x-tex"]'))
     .map((node) => node.textContent)).toEqual(["f_0", "Q_0", "B_{0.707}"]);
 });
+
+it.each(["mastery", "quiz", "practice"] as const)(
+  "renders both bare scripts in one %s choice",
+  async (surface) => {
+    const choice = "R'_L = 0.3125 kΩ，B_{0.707} = 0.4 MHz。 _提示_";
+    const view = render(
+      <Suspense fallback={null}>
+        {surface === "mastery" ? (
+          <InlineMarkdown content={choice} />
+        ) : (
+          <MarkdownRenderer content={choice} enableMath={surface === "quiz" ? true : undefined} />
+        )}
+      </Suspense>,
+    );
+    await waitFor(() => expect(view.container.querySelectorAll(".katex")).toHaveLength(2));
+    expect(Array.from(view.container.querySelectorAll('annotation[encoding="application/x-tex"]'))
+      .map((node) => node.textContent)).toEqual(["R'_L", "B_{0.707}"]);
+    expect(view.container.querySelector(".katex-error")).toBeNull();
+    expect(view.container.querySelector("em")?.textContent).toBe("提示");
+  },
+);
 
 it("preserves code and link destinations even beside a recovered formula", async () => {
   const view = render(
