@@ -430,7 +430,10 @@ def validate_evidence(
         coverage.get("complete", True) is not True or coverage.get("scope") == "focus"
     ):
         raise LessonUnavailable(
-            "This packet supports a teaching slice, not an arbitrary assessment. Prepare assessment-bound source evidence before grading."
+            "This packet supports a teaching slice, not an arbitrary assessment. Prepare "
+            "assessment-bound source evidence before grading: call mastery_prepare_lesson for "
+            "this objective without a focus, since only an objective-scoped packet is kept for "
+            "grading; a focused packet stays usable for teaching and for questions it covers."
         )
 
 
