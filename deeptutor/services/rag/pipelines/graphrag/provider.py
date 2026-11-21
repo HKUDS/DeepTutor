@@ -10,6 +10,7 @@ from deeptutor.services.provider_registry import (
     find_by_name,
     strip_provider_prefix,
 )
+from deeptutor.services.rag.pipelines.oauth_completion import OAUTH_PROVIDER
 
 from .errors import GraphRagUnsupportedProviderError
 
@@ -33,10 +34,8 @@ def resolve_completion_provider(llm_cfg: Any) -> str:
         return "anthropic"
     if backend == "azure_openai":
         return "azure"
-    if backend in {"openai_codex", "github_copilot"} or spec.is_oauth:
-        raise GraphRagUnsupportedProviderError(
-            "GraphRAG cannot use this OAuth-only model provider. Choose an API-key profile."
-        )
+    if spec.is_oauth:
+        return OAUTH_PROVIDER
     if backend == "openai_compat":
         # DeepSeek's LiteLLM provider owns its parameter compatibility logic.
         # Other DeepTutor OpenAI-compatible profiles already expose an OpenAI
@@ -113,7 +112,10 @@ def resolve_persisted_completion_provider(model_config: Any) -> str:
                 service=service,
                 llm_selection={"profile_id": profile_id, "model_id": model_id},
             )
-            return resolve_completion_provider(resolved)
+            provider = resolve_completion_provider(resolved)
+            # Old API-key settings cannot supply the OAuth binding or model
+            # reference required by the native completion adapter.
+            return current if provider == OAUTH_PROVIDER else provider
     except GraphRagUnsupportedProviderError:
         raise
     except Exception:

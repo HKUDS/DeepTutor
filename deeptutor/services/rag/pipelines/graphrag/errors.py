@@ -264,28 +264,35 @@ def classify_embedding_error(error: BaseException) -> GraphRagPipelineError | No
 
 def classify_model_error(error: BaseException) -> GraphRagPipelineError | None:
     """Map known provider failures to stable GraphRAG errors without exposing details."""
+    from deeptutor.services.rag.pipelines.oauth_completion import OAuthModelAccessError
+
+    if isinstance(error, OAuthModelAccessError):
+        return GraphRagModelAuthenticationError(str(error))
     if isinstance(error, GraphRagPipelineError):
         return error
     if is_unsupported_schema_error(error):
         return GraphRagModelIncompatibleError(MODEL_INCOMPATIBLE_MESSAGE)
 
     error_name = type(error).__name__
-    if error_name in {"AuthenticationError", "PermissionDeniedError"}:
+    status_code = _status_code(error)
+    if error_name in {"AuthenticationError", "PermissionDeniedError"} or status_code in {
+        401,
+        403,
+    }:
         return GraphRagModelAuthenticationError(MODEL_AUTHENTICATION_MESSAGE)
-    if error_name == "RateLimitError":
+    if error_name == "RateLimitError" or status_code == 429:
         return GraphRagModelRateLimitError(MODEL_RATE_LIMIT_MESSAGE)
     if error_name in {
         "APIConnectionError",
         "ServiceUnavailableError",
         "Timeout",
         "TimeoutError",
-    }:
+    } or status_code in {408, 504}:
         return GraphRagModelConnectionError(MODEL_CONNECTION_MESSAGE)
-    if error_name in {"NotFoundError"} or getattr(error, "status_code", None) == 404:
+    if error_name == "NotFoundError" or status_code == 404:
         return GraphRagModelEndpointError(
             "The configured GraphRAG model or endpoint was not found. Check its provider URL."
         )
-    status_code = _status_code(error)
     if error_name == "APIError" and isinstance(status_code, int) and status_code >= 500:
         return GraphRagModelConnectionError(MODEL_CONNECTION_MESSAGE)
     return None

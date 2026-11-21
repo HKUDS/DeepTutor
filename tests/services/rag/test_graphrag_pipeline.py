@@ -782,7 +782,6 @@ def test_write_settings_loads_and_builds_cache_via_real_graphrag(tmp_path) -> No
     there; run locally with the ``graphrag`` extra installed to exercise it.
     """
     pytest.importorskip("graphrag")
-    from graphrag.config.load_config import load_config
     from graphrag_cache.cache_factory import create_cache
 
     gr_config.write_settings(
@@ -790,8 +789,16 @@ def test_write_settings_loads_and_builds_cache_via_real_graphrag(tmp_path) -> No
         llm_cfg=_Cfg("m", "u", "k"),
         embedding_cfg=_Cfg("e", "u", "k"),
     )
-    config = load_config(root_dir=tmp_path)
+    cwd = Path.cwd()
+    config = engine._load_config(tmp_path)
+    assert Path.cwd() == cwd
     assert config.cache.type == "json"
+    assert Path(config.input_storage.base_dir) == tmp_path / "input"
+    assert Path(config.output_storage.base_dir) == tmp_path / "output"
+    assert Path(config.update_output_storage.base_dir).parent == tmp_path
+    assert Path(config.reporting.base_dir) == tmp_path / "logs"
+    assert Path(config.vector_store.db_uri) == tmp_path / "output" / "lancedb"
+    assert Path(config.cache.storage.base_dir) == tmp_path / "cache"
 
     cache = create_cache(config.cache)
     assert type(cache).__name__ == "JsonCache"

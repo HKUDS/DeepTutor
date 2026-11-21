@@ -204,6 +204,19 @@ deeptutor provider login openai-codex
 OpenAI Codex uses DeepTutor's own OAuth credentials; the external agent's login
 is not automatically reused. Login does not select a model.
 
+### Local RAG model sign-in
+
+GraphRAG uses the configured language model for indexing and retrieval. Run
+its model compatibility check before indexing to verify structured output. Set
+an embedding model separately. A shared GraphRAG knowledge base built with
+Codex or GitHub Copilot requires readers to have the same model available
+through their own sign-in.
+
+PageIndex OSS uses the configured Task model for indexing, or the active chat
+model when Task inherits it. CodeBuddy and Claude Code use the deployment
+operator's local sign-in and are available to administrators for these local
+RAG operations. PageIndex Cloud continues to use its PageIndex API key.
+
 ## 5. Verify and start
 
 ```bash
