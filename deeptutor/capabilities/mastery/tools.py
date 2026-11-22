@@ -21,6 +21,7 @@ import logging
 import random
 import re
 from typing import TYPE_CHECKING, Any
+import unicodedata
 import uuid
 
 from deeptutor.capabilities.mastery.choices import (
@@ -161,6 +162,73 @@ def _question_bank_type(question_type: str) -> str:
     if qtype == "open":
         return "written"
     return "short_answer"
+
+
+_FULL_WIDTH_ASCII = str.maketrans({chr(c): chr(c - 0xFEE0) for c in range(0xFF01, 0xFF5F)})
+
+
+def _normalize_with_spans(text: str) -> tuple[str, list[tuple[int, int]]]:
+    """Fold formatting wrappers and whitespace while retaining offsets into *text*."""
+    chars: list[str] = []
+    spans: list[tuple[int, int]] = []
+    n = len(text)
+    i = 0
+    while i < n:
+        if text[i : i + 2] in ("**", "__"):
+            i += 2
+            continue
+        if text[i] in ("`", "$"):
+            i += 1
+            continue
+        orig_start = i
+        ch = text[i]
+        i += 1
+        norm_ch = unicodedata.normalize("NFC", ch).translate(_FULL_WIDTH_ASCII)
+        for c in norm_ch:
+            if c.isspace():
+                if chars and chars[-1] == " ":
+                    spans[-1] = (spans[-1][0], i)
+                else:
+                    chars.append(" ")
+                    spans.append((orig_start, i))
+            else:
+                chars.append(c)
+                spans.append((orig_start, i))
+    filtered_chars: list[str] = []
+    filtered_spans: list[tuple[int, int]] = []
+    for idx, c in enumerate(chars):
+        if (
+            c == " "
+            and filtered_chars
+            and idx + 1 < len(chars)
+            and "\u3400" <= filtered_chars[-1] <= "\u9fff"
+            and "\u3400" <= chars[idx + 1] <= "\u9fff"
+        ):
+            continue
+        filtered_chars.append(c)
+        filtered_spans.append(spans[idx])
+    while filtered_chars and filtered_chars[0] == " ":
+        filtered_chars.pop(0)
+        filtered_spans.pop(0)
+    while filtered_chars and filtered_chars[-1] == " ":
+        filtered_chars.pop()
+        filtered_spans.pop()
+    return "".join(filtered_chars), filtered_spans
+
+
+def _find_excerpt_span(published: str, quote: str) -> tuple[int, int] | None:
+    """Locate *quote* in *published*, allowing benign Markdown/LaTeX/spacing differences."""
+    start = published.rfind(quote)
+    if start >= 0:
+        return start, start + len(quote)
+    norm_quote, _ = _normalize_with_spans(quote)
+    if not norm_quote:
+        return None
+    norm_pub, spans = _normalize_with_spans(published)
+    idx = norm_pub.rfind(norm_quote)
+    if idx < 0:
+        return None
+    return spans[idx][0], spans[idx + len(norm_quote) - 1][1]
 
 
 def _duplicate_option_body(options: dict[str, str]) -> str:
@@ -963,7 +1031,16 @@ class MasteryNoteExplainedTool(BaseTool):
     def get_definition(self) -> ToolDefinition:
         return ToolDefinition(
             name="mastery_note_explained",
-            description="After publicly explaining a source-supported slice of an objective, record that delivered explanation with an exact quote. Current source evidence is revalidated. Never record a planned explanation or treat this as complete-objective coverage, assessment or mastery. A quiz is optional until the learner wants practice.",
+            description=(
+                "After publicly explaining a source-supported slice of an objective, record that "
+                "delivered explanation with an exact quote. Write your explanation in the visible "
+                "assistant text of THIS SAME message alongside calling mastery_note_explained (or "
+                "in an earlier visible round of this turn); never call this tool with empty "
+                "assistant text before writing the explanation. Current source evidence is "
+                "revalidated. Never record a planned explanation or treat this as "
+                "complete-objective coverage, assessment or mastery. A quiz is optional until "
+                "the learner wants practice."
+            ),
             parameters=[
                 ToolParameter(
                     name="knowledge_point_id",
@@ -978,7 +1055,12 @@ class MasteryNoteExplainedTool(BaseTool):
                 ToolParameter(
                     name="explanation_quote",
                     type="string",
-                    description="Exact 24-2000 character excerpt of explanation already publicly delivered in this turn; not source text, reasoning or a future plan.",
+                    description=(
+                        "Exact 24-2000 character excerpt copied verbatim from the explanation in "
+                        "the visible assistant text of THIS SAME message or an earlier visible "
+                        "round of this turn; never call this tool with empty assistant text, "
+                        "source text, reasoning or a future plan."
+                    ),
                 ),
             ],
         )
@@ -1031,17 +1113,28 @@ class MasteryNoteExplainedTool(BaseTool):
                 success=False,
             )
         published = "".join(segment[2] for segment in segments)
-        start = published.rfind(quote)
-        if start < 0:
+        span = _find_excerpt_span(published, quote)
+        if span is None:
+            if not published.strip():
+                return ToolResult(
+                    content=(
+                        "No explanation text has been publicly delivered yet in this turn. "
+                        "Write your learner-facing explanation in the visible assistant message "
+                        "together with calling mastery_note_explained (or explain first, then "
+                        "call it); do not call mastery_note_explained with empty assistant text."
+                    ),
+                    success=False,
+                )
             return ToolResult(
                 content="That excerpt has not been publicly delivered in this turn. Explain first, then record only what was taught; do not record a future plan.",
                 success=False,
             )
+        start, end_pos = span
         offset = 0
         matched = []
         for segment in segments:
             end = offset + len(segment[2])
-            if offset < start + len(quote) and end > start:
+            if offset < end_pos and end > start:
                 matched.append(segment)
             offset = end
         provenance = {

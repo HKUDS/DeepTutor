@@ -311,3 +311,51 @@ async def test_legacy_visibility_marker_cannot_retract_public_content():
     )
     snapshot = bus.public_content_snapshot(source="mastery_path", stage="responding")
     assert [part[2] for part in snapshot] == ["discarded", "accepted", "callless"]
+
+
+@pytest.mark.asyncio
+async def test_normalized_quote_matches_across_formatting_spacing_and_segments(lesson):
+    bus = StreamBus(assign_seq=True)
+    await bus.content("Lead-in. ", source="mastery_path", stage="responding")
+    await bus.content("**梯度 下降**（Gradient：", source="mastery_path", stage="responding")
+    await bus.content(" `$loss$`）沿负梯度方向更新。", source="mastery_path", stage="responding")
+    result = await tools.MasteryNoteExplainedTool().execute(
+        _mastery_path_id="p",
+        _session_id="s",
+        _turn_id="t",
+        knowledge_point_id="kp",
+        summary="Explained gradient descent direction.",
+        explanation_quote="梯度下降(Gradient: loss)沿负梯度方向更新。",
+        _teaching_delivery=delivery(bus),
+    )
+    assert result.success, result.content
+    fresh = LearningStore(lesson.store._root).load("p")
+    recorded = fresh.explained_objectives["kp"]
+    assert recorded["delivery"]["event_seq_range"] == [2, 3]
+
+
+@pytest.mark.asyncio
+async def test_empty_published_explanation_gives_same_message_guidance(lesson):
+    bus = StreamBus(assign_seq=True)
+    result = await note(bus)
+    assert not result.success
+    assert "visible assistant message" in result.content
+    assert "empty assistant text" in result.content
+    assert not lesson.store.load("p").explained_objectives
+
+
+@pytest.mark.asyncio
+async def test_wrapper_only_quote_cannot_be_recorded(lesson):
+    bus = StreamBus(assign_seq=True)
+    await bus.content(EXPLANATION, source="mastery_path", stage="responding")
+    result = await tools.MasteryNoteExplainedTool().execute(
+        _mastery_path_id="p",
+        _session_id="s",
+        _turn_id="t",
+        knowledge_point_id="kp",
+        summary="A proposed teaching record.",
+        explanation_quote="$" * 30,
+        _teaching_delivery=delivery(bus),
+    )
+    assert not result.success
+    assert not lesson.store.load("p").explained_objectives
