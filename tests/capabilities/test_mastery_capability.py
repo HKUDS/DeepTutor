@@ -836,3 +836,14 @@ def test_seed_names_the_option_the_learner_picked_not_just_its_letter():
     seed = MasteryLoopCapability()._grade_seed(context)
 
     assert "Idempotency key plus an atomic claim in the backend" in seed
+
+
+def test_unreadable_choice_result_does_not_tell_tutor_to_retry_grade() -> None:
+    from deeptutor.capabilities.mastery.tools import _unreadable_choice_result
+
+    result = _unreadable_choice_result("I haven't learned this yet", {"A": "x", "B": "y"})
+    text = result.content
+    assert result.success is False
+    assert "Do not call mastery_grade again this turn" in text
+    assert "then call mastery_grade" not in text
+    assert "mastery_skip_question" in text

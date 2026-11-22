@@ -500,9 +500,12 @@ def _unreadable_choice_result(answer: str, options: dict[str, str]) -> ToolResul
                 if blank
                 else f"Could not tell which option {answer!r} picks, so it was NOT graded. "
             )
-            + f"The options are: {shown}. Ask the learner which one they choose (or "
-            "call mastery_quiz to put the question back in front of them), then call "
-            "mastery_grade with the option label. Do not treat this as a wrong answer."
+            + f"The options are: {shown}. Do not call mastery_grade again this turn: "
+            "it always grades the learner's own message, not an answer you pass in, so "
+            "retrying will fail the same way. Ask the learner which option they choose "
+            "(or call mastery_quiz to put the question back in front of them); if they "
+            "asked to skip or void the question, call mastery_skip_question or "
+            "mastery_repair_question instead. Do not treat this as a wrong answer."
         ),
         success=False,
     )
