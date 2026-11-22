@@ -5,6 +5,7 @@ import path from 'node:path';
 import { validateConfig } from './config.mjs';
 import { ProcessGroup, availablePort, waitReady, probe } from './processes.mjs';
 import { WINDOWS, runtimePath } from './platform.mjs';
+import { createWakeGrace } from './wake.mjs';
 
 const SKIP = new Set(['node_modules', 'dist', 'out', 'coverage', 'playwright-report', 'test-results', '.git']);
 
@@ -62,7 +63,13 @@ export class SourceRuntime extends EventEmitter {
     this.group = new ProcessGroup(log);
     this.controller = new AbortController();
     this.state = { protocolVersion: 1, phase: 'idle' };
+    // A miss right after the machine wakes is not evidence that the core died
+    // (see wake.mjs); the grace window keeps it out of the failure breaker.
+    this.wakeGrace = createWakeGrace();
   }
+
+  /** The machine just woke: give the core a moment before judging it. */
+  notifyWake() { this.wakeGrace.mark(); }
 
   update(state) { this.state = { ...this.state, ...state }; this.emit('status', this.state); }
 
@@ -149,8 +156,16 @@ export class SourceRuntime extends EventEmitter {
         if (this.checking || this.state.phase !== 'ready') return;
         this.checking = true;
         try {
-          this.misses = await probe(`${backendURL}/health/ready`) ? 0 : (this.misses ?? 0) + 1;
-          if (this.misses >= 3 && this.state.phase === 'ready') await this.fail(new Error('The core failed three health checks in a row. Restart the core.'));
+          const healthy = await probe(`${backendURL}/health/ready`);
+          if (healthy) {
+            this.misses = 0;
+          } else if (this.wakeGrace.shouldTolerate()) {
+            // Inside the post-wake window: the socket may simply not be
+            // listening yet, so do not let this count toward the breaker.
+          } else {
+            this.misses = (this.misses ?? 0) + 1;
+            if (this.misses >= 3 && this.state.phase === 'ready') await this.fail(new Error('The core failed three health checks in a row. Restart the core.'));
+          }
         } finally { this.checking = false; }
       }, 10000);
     } catch (error) {

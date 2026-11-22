@@ -18,6 +18,9 @@ async function stop() {
 
 process.on('message', async message => {
   if (message.type === 'stop') return void stop();
+  // The machine woke: let the health monitor tolerate a brief refusal while the
+  // loopback socket comes back, instead of rebooting a core that is fine.
+  if (message.type === 'wake') return void runtime?.notifyWake();
   if (message.type !== 'start' || runtime || stopping) return;
   try {
     await mkdir(path.dirname(message.logPath), { recursive: true, mode: 0o700 });
