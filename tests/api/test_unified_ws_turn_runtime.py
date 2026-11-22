@@ -995,6 +995,41 @@ async def test_turn_runtime_allows_model_switching_within_same_session(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("authenticated", [False, True])
+async def test_unavailable_chatgpt_plan_preserves_reply_on_regeneration(
+    tmp_path, monkeypatch, authenticated
+):
+    from deeptutor.services import chatgpt_plan
+    from deeptutor.services.chatgpt_plan_context import BINDING, request_scope
+    from deeptutor.services.model_selection import runtime as model_runtime
+
+    monkeypatch.setattr(
+        model_runtime,
+        "resolve_llm_config_for_selection",
+        lambda _: SimpleNamespace(binding=BINDING),
+    )
+
+    async def disconnected():
+        raise chatgpt_plan.PlanError("login_required")
+
+    monkeypatch.setattr(
+        chatgpt_plan, "get_session", lambda: SimpleNamespace(access_token=disconnected)
+    )
+    store = SQLiteSessionStore(tmp_path / "chat_history.db")
+    runtime = TurnRuntimeManager(store)
+    session = await store.create_session(session_id="existing-plan-session")
+    await store.add_message(session["id"], "user", "Original question", capability="chat")
+    reply = await store.add_message(session["id"], "assistant", "Saved answer", capability="chat")
+
+    with request_scope(authenticated, account_id="fixture"):
+        with pytest.raises(RuntimeError, match="ChatGPT Plan"):
+            await runtime.regenerate_last_turn(session["id"])
+
+    messages = await store.get_messages(session["id"])
+    assert any(row["id"] == reply and row["content"] == "Saved answer" for row in messages)
+
+
+@pytest.mark.asyncio
 async def test_regenerate_reuses_snapshot_or_override_llm_selection(tmp_path) -> None:
     store = SQLiteSessionStore(tmp_path / "chat_history.db")
     captured_payloads: list[dict] = []

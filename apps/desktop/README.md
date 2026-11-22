@@ -148,6 +148,26 @@ trialled with the same backup and rollback. A bundled core that fails its trial
 is not tried again, and an older bundled core never replaces a newer one that
 was installed by hand.
 
+## ChatGPT Plan privacy notice
+
+Open DeepTutor Desktop offers an optional ChatGPT Plan connection in **Settings → Providers** for single-user local installations. You sign in on OpenAI's website and decide there whether to allow eligible requests to use your plan. Using the connection in DeepTutor is free. Account eligibility and usage limits are set by OpenAI.
+
+Open **DeepTutor data notice** on the provider card for the in-app privacy information. You can save separate ChatGPT accounts or ChatGPT workspaces, give each registration a recognizable local name, and choose which to activate through OpenAI sign-in. One registration is active at a time.
+
+- **Account data on your device.** DeepTutor keeps the account identifier and display label, the OAuth registration, and encrypted credentials in the local Desktop profile. The operating system's credential store protects the encryption key. DeepTutor uses this information to show the connected account, refresh the connection, list available models, and send requests you initiate.
+- **Requests sent to OpenAI.** When you use a ChatGPT Plan model, DeepTutor sends your message and relevant context. This can include prior messages, instructions, or text from workspace content, depending on your settings and conversation. A manual model connection test sends a short test prompt. Automatic titles and scheduled tasks do not use this connection.
+- **Your controls.** Disconnect in **Settings → Providers → ChatGPT Plan** to stop using the active registration locally and request revocation. The local account label and registration remain for future sign-ins. You can revoke access and manage limits in [ChatGPT usage settings](https://chatgpt.com/settings/usage). Disconnecting preserves your DeepTutor chats. Remove the local Desktop profile to erase its remaining data. Use the [private security reporting form](https://github.com/HKUDS/DeepTutor/security/advisories/new) for security concerns.
+
+DeepTutor detects remote revocation when a subsequent request and token refresh confirm the grant is invalid. It clears the affected registration's tokens and offers sign-in again. Temporary network errors preserve the registration and its credentials.
+
+The encrypted vault is stored outside the workspace so app-managed upgrade backups cannot restore old credentials. If remote revocation fails after disconnecting, DeepTutor retains an encrypted token only for revocation retries. Inference stops locally. Use **Retry revocation** next to that account or revoke access in ChatGPT settings and retry.
+
+Only cores that advertise the isolated vault in their signed manifest can receive the vault key. If a Desktop update rolls back to an older core, the saved connections become available when a compatible core starts.
+
+When you regenerate a ChatGPT Plan reply, DeepTutor keeps existing replies as alternatives. A failed or cancelled regeneration leaves the saved reply in place.
+
+OpenAI processes data it receives under its [Privacy Policy](https://openai.com/policies/privacy-policy/). See the [Sign in with ChatGPT Terms](https://openai.com/policies/sign-in-with-chatgpt-terms/) for the requirements that apply to this connection. Do not submit personal information about children under 13 or the applicable age of digital consent.
+
 ## Verification
 
 `npm test` covers edition names, language resolution, config validation,

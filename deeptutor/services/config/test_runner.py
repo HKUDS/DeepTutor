@@ -9,6 +9,8 @@ import time
 from typing import Any
 from uuid import uuid4
 
+from deeptutor.services.chatgpt_plan_context import request_scope
+
 from .context_window_detection import detect_context_window
 from .embedding_endpoint import redact_embedding_endpoint_for_display
 from .model_catalog import get_model_catalog_service, redact_catalog_secrets
@@ -53,6 +55,7 @@ class TestRun:
     cancelled: bool = False
     # A caller-supplied catalog is a draft, not authorization to apply it.
     persist_results: bool = True
+    chatgpt_plan_account_id: str | None = None
 
     def emit(self, kind: str, message: str, **extra: Any) -> None:
         payload = {
@@ -82,11 +85,18 @@ class ConfigTestRunner:
             cls._instance = cls()
         return cls._instance
 
-    def start(self, service: str, catalog: dict[str, Any] | None = None) -> TestRun:
+    def start(
+        self,
+        service: str,
+        catalog: dict[str, Any] | None = None,
+        *,
+        chatgpt_plan_account_id: str | None = None,
+    ) -> TestRun:
         run = TestRun(
             id=f"{service}-{uuid4().hex[:10]}",
             service=service,
             persist_results=catalog is None,
+            chatgpt_plan_account_id=chatgpt_plan_account_id,
         )
         with self._lock:
             self._runs[run.id] = run
@@ -258,13 +268,16 @@ class ConfigTestRunner:
         run.emit("info", f"Token options: {json.dumps(token_kwargs)}")
         if llm_config.reasoning_effort:
             run.emit("info", f"Reasoning effort: {llm_config.reasoning_effort}")
-        response = await complete_with_config(
-            llm_config,
-            prompt="Reply with OK.",
-            system_prompt="This is a connection test. Respond briefly.",
-            temperature=temperature,
-            **token_kwargs,
-        )
+        with request_scope(
+            bool(run.chatgpt_plan_account_id), account_id=run.chatgpt_plan_account_id
+        ):
+            response = await complete_with_config(
+                llm_config,
+                prompt="Reply with OK.",
+                system_prompt="This is a connection test. Respond briefly.",
+                temperature=temperature,
+                **token_kwargs,
+            )
         snippet = (response or "").strip()
         run.emit("response", "Received LLM response.", snippet=snippet[:400])
         if not snippet:

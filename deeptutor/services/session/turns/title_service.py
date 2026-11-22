@@ -105,12 +105,16 @@ class SessionTitleService:
                 )
 
             async def _collect_title() -> str:
+                from deeptutor.services.chatgpt_plan_context import BINDING
+                from deeptutor.services.llm import get_llm_config
+
+                config = get_llm_config()
+                if config.binding == BINDING:
+                    return ""
                 if os.getenv("DEEPTUTOR_CHAT_ENGINE") == "typescript-native":
                     from deeptutor.runtime.ts_engine.completion import complete_native
                     from deeptutor.runtime.ts_engine.config import compatibility_reason
-                    from deeptutor.services.llm import get_llm_config
 
-                    config = get_llm_config()
                     if not compatibility_reason(config):
                         return await complete_native(
                             config,

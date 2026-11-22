@@ -36,6 +36,13 @@ PROVIDER_CAPABILITIES: dict[str, dict[str, object]] = {
     },
     # Codex uses OpenAI's Responses API and converts image_url message parts
     # into native input_image blocks before sending the request.
+    "openai_chatgpt_plan": {
+        "supports_response_format": False,
+        "supports_streaming": True,
+        "supports_tools": False,
+        "supports_vision": False,
+        "system_in_messages": True,
+    },
     "openai_codex": {
         "supports_vision": True,
     },

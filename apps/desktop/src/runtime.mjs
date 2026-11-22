@@ -66,7 +66,7 @@ export class SourceRuntime extends EventEmitter {
 
   update(state) { this.state = { ...this.state, ...state }; this.emit('status', this.state); }
 
-  async start(input, cachePath) {
+  async start(input, cachePath, planKey, planSessionToken) {
     const config = validateConfig(input);
     this.config = config;
     this.update({ phase: 'starting', step: 'checking', mode: config.mode });
@@ -103,6 +103,8 @@ export class SourceRuntime extends EventEmitter {
       delete env.DEEPTUTOR_LAUNCHER_PID;
       delete env.ELECTRON_RUN_AS_NODE;
       delete env.PYTHONHOME;
+      delete env.DEEPTUTOR_CHATGPT_PLAN_KEY;
+      delete env.DEEPTUTOR_CHATGPT_PLAN_SESSION;
       await this.group.run(config.pythonPath, ['-m', 'deeptutor_cli.main', 'init', '--non-interactive', '--home', config.runtimeHome],
         { cwd: config.runtimeHome, env });
       let auth = {};
@@ -124,7 +126,9 @@ export class SourceRuntime extends EventEmitter {
       this.update({ step: 'startingCore' });
       this.backend = this.group.spawn(config.pythonPath,
         ['-m', 'deeptutor_cli.main', 'serve', '--host', '127.0.0.1', '--port', String(backendPort)],
-        { cwd: config.runtimeHome, env });
+        { cwd: config.runtimeHome, env: config.mode === 'bundled' && !auth.enabled && planKey && planSessionToken
+          ? { ...env, DEEPTUTOR_BACKEND_WORKERS: '1', DEEPTUTOR_CHATGPT_PLAN_KEY: planKey, DEEPTUTOR_CHATGPT_PLAN_SESSION: planSessionToken }
+          : env });
       await waitReady(`${backendURL}/health/ready`, {
         signal: this.controller.signal, alive: () => this.group.alive(this.backend),
       });

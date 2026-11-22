@@ -5,7 +5,7 @@ import Tooltip from "@/shared/ui/Tooltip";
 import { stageRegistryAction, type RegistryEdit } from "@/lib/provider-registry";
 import { useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
-import { Check, Plus, SlidersHorizontal, Trash2 } from "lucide-react";
+import { Check, Plus, RefreshCw, SlidersHorizontal, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { formatConfiguredProviderName } from "@/lib/provider-branding";
 import ProviderIcon from "@/components/common/ProviderIcon";
@@ -52,6 +52,14 @@ import {
   workspaceCardClass,
 } from "./WorkspaceShell";
 
+import {
+  CHATGPT_PLAN_ACCOUNT_URL,
+  CHATGPT_PLAN_LABEL,
+  CHATGPT_PLAN_PROVIDER,
+  requestChatGPTPlan,
+  type PlanModel,
+  type PlanStatus,
+} from "@/lib/chatgpt-plan";
 import { randomUuid } from "@/lib/random-uuid";
 type ModelPage = "llm" | "embedding" | "search" | "voice" | "multimodal";
 const PAGE_SERVICES: Record<ModelPage, ServiceName[]> = {
@@ -92,6 +100,55 @@ export function ModelsWorkspace({
   const [newModelId, setNewModelId] = useState("");
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
+  const planSupported = catalogEditable && page === "llm" &&
+    Boolean(providers.llm?.some((option) => option.value === CHATGPT_PLAN_PROVIDER));
+  const [planAccount, setPlanAccount] = useState<string | null>(null);
+  const [planModels, setPlanModels] = useState<PlanModel[]>([]);
+  const [planLoading, setPlanLoading] = useState(false);
+  const [planError, setPlanError] = useState<string>();
+  const [planRefresh, setPlanRefresh] = useState(0);
+  const planAvailable = planSupported && Boolean(planAccount) && newService === "llm";
+  const addingPlan = adding && newProvider === CHATGPT_PLAN_PROVIDER;
+
+  useEffect(() => {
+    if (!planSupported) return;
+    let request: AbortController | undefined;
+    const refreshAccount = () => {
+      request?.abort();
+      request = new AbortController();
+      const { signal } = request;
+      void requestChatGPTPlan<PlanStatus>("status", "GET", signal)
+        .then((status) => {
+          if (!signal.aborted) setPlanAccount(status.connected && status.sharing && !status.pending
+            ? status.active_account_id : null);
+        })
+        .catch(() => {
+          if (!signal.aborted) setPlanAccount(null);
+        });
+    };
+    refreshAccount();
+    window.addEventListener("focus", refreshAccount);
+    return () => {
+      window.removeEventListener("focus", refreshAccount);
+      request?.abort();
+    };
+  }, [planSupported]);
+
+  useEffect(() => {
+    if (!addingPlan || !planAvailable) return;
+    const controller = new AbortController();
+    const { signal } = controller;
+    setPlanLoading(true);
+    setPlanError(undefined);
+    setPlanModels([]);
+    void requestChatGPTPlan<PlanModel[]>("models", "GET", signal)
+      .then((models) => { if (!signal.aborted) setPlanModels(models); })
+      .catch((reason) => {
+        if (!signal.aborted) setPlanError(reason instanceof Error ? reason.message : "catalog_unavailable");
+      })
+      .finally(() => { if (!signal.aborted) setPlanLoading(false); });
+    return () => controller.abort();
+  }, [addingPlan, planAvailable, planAccount, planRefresh]);
   // The add panel and the selected row are what the URL says they are, so a
   // refresh cannot silently swap one surface for the other.
   const syncQuery = (updates: Record<string, string | null>) => {
@@ -118,6 +175,13 @@ export function ModelsWorkspace({
         requested && services.includes(requested) ? requested : newService;
       if (requested && services.includes(requested)) setNewService(requested);
       const provider = params.get("provider");
+      if (provider === CHATGPT_PLAN_PROVIDER) {
+        if (!planAvailable || effective !== "llm") return;
+        setNewProvider(CHATGPT_PLAN_PROVIDER);
+        setNewModelId(params.get("model") ?? "");
+        restoredPage.current = page;
+        return;
+      }
       const source = provider
         ? selectable.find((p) => p.id === provider)
         : undefined;
@@ -150,7 +214,7 @@ export function ModelsWorkspace({
     }
     // Resolve old profile links after the settings payload arrives.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, draft, providers, connectionTargets]);
+  }, [page, draft, providers, connectionTargets, planAvailable]);
   // Apply refused a blank model and named it here, so the owning page opens
   // that row even when the URL stays on the same route.
   useEffect(() => {
@@ -236,11 +300,12 @@ export function ModelsWorkspace({
     const preferred = new URLSearchParams(window.location.search).get(
       "provider",
     );
+    const selectedPlan = preferred === CHATGPT_PLAN_PROVIDER && planAvailable;
     const source =
       preferred && selectable.some((p) => p.id === preferred)
         ? selectable.find((p) => p.id === preferred)
         : undefined;
-    setNewProvider(source?.id ?? "");
+    setNewProvider(selectedPlan ? CHATGPT_PLAN_PROVIDER : source?.id ?? "");
     setNewModelId(
       source
         ? defaultModelFor(source, newService, connectionTargets, providers)
@@ -249,7 +314,7 @@ export function ModelsWorkspace({
     syncQuery({
       add: "1",
       service: newService,
-      provider: source?.id ?? null,
+      provider: selectedPlan ? CHATGPT_PLAN_PROVIDER : source?.id ?? null,
       profile: null,
       model: null,
     });
@@ -275,7 +340,36 @@ export function ModelsWorkspace({
           },
     );
   };
+  const finishAdd = (profileId: string, modelId: string) => {
+    setSelected(newService === "search" ? `${newService}:${profileId}` : `${newService}:${profileId}:${modelId}`);
+    setAdding(false);
+    setNewModelId("");
+    setQuery("");
+    setFilter("all");
+    syncQuery({ add: null, service: null, provider: null, profile: profileId, model: newService === "search" ? null : modelId });
+  };
   const create = (requested?: string[]) => {
+    if (newProvider === CHATGPT_PLAN_PROVIDER) {
+      const model = planAvailable && !planLoading && planModels.find((entry) => entry.id === newModelId);
+      if (!model) return;
+      const bucket = draft.services.llm;
+      const existing = bucket.profiles.find((entry) => entry.binding === CHATGPT_PLAN_PROVIDER);
+      if (bucket.profiles.some((entry) => entry.binding === CHATGPT_PLAN_PROVIDER && entry.models.some((item) => item.model === model.id))) return;
+      const profileId = existing?.id ?? `llm-profile-${randomUuid()}`;
+      const modelId = `llm-model-${randomUuid()}`;
+      mutateCatalog((next) => {
+        let profile = next.services.llm.profiles.find((entry) => entry.id === profileId);
+        if (!profile) {
+          profile = { id: profileId, name: CHATGPT_PLAN_LABEL, binding: CHATGPT_PLAN_PROVIDER,
+            base_url: "", api_key: "", api_version: "", models: [] };
+          next.services.llm.profiles.push(profile);
+        }
+        profile.models.push({ id: modelId, name: model.label, model: model.id,
+          capabilities: { tools: false, vision: false, json_output: false } });
+      });
+      finishAdd(profileId, modelId);
+      return;
+    }
     const source = selectable.find((p) => p.id === newProvider);
     if (!source) return;
     const modelValue = newService === "search" ? "" : newModelId.trim();
@@ -339,22 +433,7 @@ export function ModelsWorkspace({
         next.services[newService].profiles.push(profile);
       }
     });
-    setSelected(
-      newService === "search"
-        ? `${newService}:${profileId}`
-        : `${newService}:${profileId}:${modelId}`,
-    );
-    setAdding(false);
-    setNewModelId("");
-    setQuery("");
-    setFilter("all");
-    syncQuery({
-      add: null,
-      service: null,
-      provider: null,
-      profile: profileId,
-      model: newService === "search" ? null : modelId,
-    });
+    finishAdd(profileId, modelId);
   };
   if (!catalogEditable)
     return (
@@ -374,7 +453,7 @@ export function ModelsWorkspace({
   );
   return (
     <div className="space-y-5">
-      {!sources.length && (
+      {!sources.some((source) => source.provider !== CHATGPT_PLAN_PROVIDER) && !planAvailable && (
         <div className="rounded-xl border border-[var(--border)] p-5 text-sm">
           <p>{t("Add a provider before adding models.")}</p>
           <Link
@@ -524,7 +603,14 @@ export function ModelsWorkspace({
                   syncQuery({ model: value });
                 }}
                 modelOptions={addModelOptions}
-                sources={selectable}
+                sources={selectable.filter((source) => source.provider !== CHATGPT_PLAN_PROVIDER)}
+                plan={planAvailable ? {
+                  models: planModels,
+                  loading: planLoading,
+                  error: planError,
+                  onRefresh: () => setPlanRefresh((attempt) => attempt + 1),
+                  existing: draft.services.llm.profiles.filter((profile) => profile.binding === CHATGPT_PLAN_PROVIDER).flatMap((profile) => profile.models.map((model) => model.model)),
+                } : undefined}
                 declared={(source) => declared(source, newService)}
                 existingModels={flattenModels(draft, [newService])
                   .filter((row) => modelProvider(draft, row.service, row.profile, row.model)?.id === newProvider)
@@ -607,6 +693,7 @@ function AddModelPanel({
   onModelId,
   modelOptions,
   sources,
+  plan,
   declared,
   onCreate,
   onImport,
@@ -622,6 +709,7 @@ function AddModelPanel({
   onModelId: (value: string) => void;
   modelOptions: string[];
   sources: ProviderSource[];
+  plan?: { models: PlanModel[]; loading: boolean; error?: string; onRefresh: () => void; existing: string[] };
   declared: (source: ProviderSource) => boolean;
   onCreate: () => void;
   onImport: (models: string[]) => void;
@@ -630,6 +718,8 @@ function AddModelPanel({
 }) {
   const { t } = useTranslation();
   const [custom, setCustom] = useState(false);
+  const isPlan = provider === CHATGPT_PLAN_PROVIDER;
+  const canCreatePlan = Boolean(plan && !plan.loading && plan.models.some((model) => model.id === modelId) && !plan.existing.includes(modelId));
   const visible = sources.filter(source => declared(source) || (service !== "search" && custom && source.source.service_overrides?.[service === "task" ? "llm" : service]?.enabled !== false));
   const title = t(
     page === "search" ? "Add search configuration" : "Add model",
@@ -671,6 +761,7 @@ function AddModelPanel({
             onChange={(e) => onProvider(e.target.value)}
           >
             <option value="">{t("Choose a provider")}</option>
+            {plan && <option value={CHATGPT_PLAN_PROVIDER}>{CHATGPT_PLAN_LABEL}</option>}
             <ProviderOptions sources={visible} declared={declared} />
           </select>
         </label>
@@ -690,7 +781,46 @@ function AddModelPanel({
       {/* A model row cannot be created without an ID, so the field lives here
           rather than only in the editor: the empty row used to reach the draft
           and blocked Apply from a page that could not show it. */}
-      {service !== "search" && (
+      {isPlan ? (
+        <div className="mt-4 max-w-lg space-y-2">
+          <div className="flex flex-wrap items-end gap-2">
+            <label className="block min-w-44 flex-1 space-y-1.5 text-[13px] font-medium">
+              <span>{t("Model ID")}</span>
+              <select
+                className={selectClass}
+                value={modelId}
+                required
+                disabled={!plan?.models.length || plan.loading}
+                onChange={(event) => onModelId(event.target.value)}
+              >
+                <option value="" disabled hidden>
+                  {t(plan?.loading ? "Loading models" : plan?.models.length ? "Choose a model" : "No models loaded")}
+                </option>
+                {plan?.models.map((model) => (
+                  <option key={model.id} value={model.id} disabled={plan.existing.includes(model.id)}>
+                    {model.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {plan && (
+              <button type="button" className={registryButton} disabled={plan.loading} onClick={plan.onRefresh}>
+                <RefreshCw size={14} aria-hidden />{t("Refresh models")}
+              </button>
+            )}
+          </div>
+          {plan?.error && (
+            <p role="alert" className="text-[13px] text-[var(--muted-foreground)]">
+              {t(plan.error === "login_required" ? "Reconnect your ChatGPT account to continue." : "Could not load the ChatGPT model list. Refresh models to try again.")}
+            </p>
+          )}
+          {(!plan || plan.error === "login_required") && (
+            <Link className="text-[13px] text-[var(--primary)] hover:underline" href={CHATGPT_PLAN_ACCOUNT_URL}>
+              {t("Manage ChatGPT account")}
+            </Link>
+          )}
+        </div>
+      ) : service !== "search" && (
         <div className="mt-4 max-w-md">
           <RegistryModelIdField
             label={t("Model ID")}
@@ -714,7 +844,7 @@ function AddModelPanel({
         <button
           type="button"
           disabled={
-            !provider ||
+            isPlan ? !canCreatePlan : !provider ||
             !visible.some(source => source.id === provider) ||
             (service !== "search" && !modelId.trim())
           }

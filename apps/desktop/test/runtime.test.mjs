@@ -27,11 +27,12 @@ test('source data cannot share the checkout', () => {
   assert.equal(validateConfig({ ...config, runtimeHome: '/tmp/data' }).runtimeHome, path.resolve('/tmp/data'));
 });
 
-test('update signatures bind version, checksum and architecture', () => {
+test('update signatures bind version, checksum, architecture and vault support', () => {
   const { privateKey, publicKey } = generateKeyPairSync('ed25519');
-  const manifest = { formatVersion: 1, protocolVersion: 1, platform: process.platform, arch: 'arm64', runtimeId: '1.7.0-test-arm64', archive: 'core.tar.gz', sha256: 'a'.repeat(64) };
+  const manifest = { formatVersion: 1, protocolVersion: 1, platform: process.platform, arch: 'arm64', runtimeId: '1.7.0-test-arm64', archive: 'core.tar.gz', sha256: 'a'.repeat(64), chatGPTPlanVaultVersion: 1 };
   manifest.signature = sign(null, Buffer.from(canonicalManifest(manifest)), privateKey).toString('base64');
   assert.equal(verifyManifest(manifest, publicKey, 'arm64'), manifest);
+  assert.throws(() => verifyManifest({ ...manifest, chatGPTPlanVaultVersion: 2 }, publicKey, 'arm64'));
   assert.throws(() => verifyManifest({ ...manifest, sha256: 'b'.repeat(64) }, publicKey, 'arm64'));
   assert.throws(() => verifyManifest(manifest, publicKey, 'x64'));
   assert.throws(() => verifyManifest({ ...manifest, runtimeId: '../outside' }, publicKey, 'arm64'));

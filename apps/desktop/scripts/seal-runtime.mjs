@@ -39,9 +39,12 @@ if (target.platform === 'darwin') {
     path.join(appRoot, 'assets/entitlements.runtime.mac.plist'));
 }
 execFileSync(systemTar(), ['-czf', path.join(target.seed, archive), '-C', target.runtime, '.'], { stdio: 'inherit', env: { ...process.env, COPYFILE_DISABLE: '1' } });
+const isolatedVault = await access(path.join(target.runtime, 'core', 'deeptutor', 'services', 'chatgpt_plan', 'vault.py'))
+  .then(() => true, () => false);
 const manifest = {
   formatVersion: 1, protocolVersion: 1, platform: target.platform, arch: target.arch,
   runtimeId, coreVersion, commit, archive, sha256: await sha256(path.join(target.seed, archive)),
+  ...(isolatedVault ? { chatGPTPlanVaultVersion: 1 } : {}),
 };
 manifest.signature = sign(null, Buffer.from(canonicalManifest(manifest)), privateKey).toString('base64');
 await writeFile(path.join(target.seed, 'runtime.json'), JSON.stringify(manifest, null, 2) + '\n');

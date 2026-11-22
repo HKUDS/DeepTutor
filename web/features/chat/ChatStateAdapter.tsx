@@ -381,6 +381,8 @@ export interface ReadingSelectionSnapshot {
 }
 
 export interface MessageItem {
+  /** Saved branch to return to if an optimistic ChatGPT Plan variant fails. */
+  planPriorReplyId?: number;
   id?: number;
   role: "user" | "assistant" | "system";
   content: string;
@@ -486,7 +488,7 @@ type Action =
     }
   | { type: "SET_SUBMISSION_PERSISTENCE"; key: string; submissionId: string; saved: boolean }
   | { type: "POP_LAST_ASSISTANT"; key: string }
-  | { type: "RESTORE_ASSISTANT"; key: string; message: MessageItem }
+  | { type: "RESTORE_ASSISTANT"; key: string; message: MessageItem; keepPlaceholder?: boolean }
   | { type: "STREAM_START"; key: string; startedAt: number; capability?: string | null }
   | { type: "QUEUE_MESSAGE"; key: string; message: QueuedMessage }
   | { type: "OFFER_QUEUED"; key: string; ids: string[]; turnId: string }
@@ -1065,18 +1067,31 @@ function reduce(state: ProviderState, action: Action): ProviderState {
       const session = state.sessions[action.key];
       if (!session) return state;
       const messages = [...session.messages];
+      let selectedBranches = session.selectedBranches;
       // Admission and transport failures can attach an error to the
       // optimistic placeholder before rollback. It is still the retry's
       // bubble, so discard it rather than leaving two assistant rows.
       const placeholder = messages[messages.length - 1];
-      if (
+      const hasPlaceholder =
         placeholder?.role === "assistant" &&
         typeof placeholder.id === "number" &&
-        placeholder.id < 0
-      ) {
-        messages.pop();
+        placeholder.id < 0;
+      if (action.keepPlaceholder) {
+        if (messages.some((message) => message.id === action.message.id)) return state;
+        if (hasPlaceholder && placeholder.id !== undefined) {
+          const parent = action.message.parentMessageId ?? null;
+          messages[messages.length - 1] = {
+            ...placeholder,
+            parentMessageId: parent,
+            planPriorReplyId: selectedBranches[String(parent)] ?? action.message.id,
+          };
+          selectedBranches = selectChildBranch(selectedBranches, parent, placeholder.id);
+        }
+        messages.splice(messages.length - (hasPlaceholder ? 1 : 0), 0, action.message);
+      } else {
+        if (hasPlaceholder) messages.pop();
+        messages.push(action.message);
       }
-      messages.push(action.message);
       return {
         ...state,
         sessions: {
@@ -1084,6 +1099,7 @@ function reduce(state: ProviderState, action: Action): ProviderState {
           [action.key]: {
             ...session,
             messages,
+            selectedBranches,
             updatedAt: Date.now(),
           },
         },
@@ -1241,6 +1257,14 @@ function reduce(state: ProviderState, action: Action): ProviderState {
     }
     case "STREAM_END": {
       const ending = state.sessions[action.key];
+      const lastReply = ending?.messages.at(-1);
+      const failed = ["cancelled", "failed", "rejected"].includes(action.status ?? "");
+      let selectedBranches = ending?.selectedBranches ?? {};
+      const replyParent = lastReply?.parentMessageId ?? null;
+      if (failed && lastReply?.planPriorReplyId !== undefined &&
+          selectedBranches[String(replyParent)] === lastReply.id) {
+        selectedBranches = selectChildBranch(selectedBranches, replyParent, lastReply.planPriorReplyId);
+      }
       // A submission the server never received (#1594): drop the empty
       // STREAM_START placeholder so the failure cannot read as an assistant
       // reply that errored, and flag the optimistic user row as unsent
@@ -1320,8 +1344,9 @@ function reduce(state: ProviderState, action: Action): ProviderState {
             metadata: { turn_terminal: true, status: action.status, retryable: action.status !== "cancelled" },
           }];
         }
-        if (repaired === last.content && trace === last.trace && events === last.events) return messages;
-        messages[messages.length - 1] = { ...last, content: repaired, trace, events };
+        if (repaired === last.content && trace === last.trace && events === last.events &&
+            last.planPriorReplyId === undefined) return messages;
+        messages[messages.length - 1] = { ...last, content: repaired, trace, events, planPriorReplyId: undefined };
         return messages;
       })();
       const endedTurnId = action.turnId || ending?.activeTurnId || null;
@@ -1338,6 +1363,7 @@ function reduce(state: ProviderState, action: Action): ProviderState {
           [action.key]: {
             ...(state.sessions[action.key] ?? createSessionEntry(action.key)),
             messages: settled,
+            selectedBranches,
             isStreaming: false,
             currentStage: "",
             // What the ended turn never read waits for the next one.
@@ -2303,6 +2329,13 @@ export function ChatStateAdapterProvider({
           event.turn_id ||
           null;
         if (sessionId) {
+          if (event.metadata?.keep_plan_reply_variants === true) {
+            const prior = pendingRegenerateRef.current.get(effectiveKey) ??
+              pendingResendRef.current.get(effectiveKey);
+            if (prior && (typeof prior.id === "string" || (prior.id ?? 0) > 0)) {
+              dispatch({ type: "RESTORE_ASSISTANT", key: effectiveKey, message: prior, keepPlaceholder: true });
+            }
+          }
           const pendingSubmission = pendingSubmissionIdsRef.current.get(effectiveKey);
           const draftSession = stateRef.current.sessions[effectiveKey];
           const movedIds = pendingSubmission && !draftSession?.sessionId

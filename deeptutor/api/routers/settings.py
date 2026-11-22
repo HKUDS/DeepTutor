@@ -669,6 +669,8 @@ def _codex_http_exception(error: CodexAuthError) -> HTTPException:
 
 def _provider_choices() -> dict[str, list[dict[str, Any]]]:
     """Build dropdown options for provider selection, keyed by service type."""
+    from deeptutor.services.chatgpt_plan import available
+    from deeptutor.services.chatgpt_plan_context import BINDING
     from deeptutor.services.config.provider_runtime import (
         DEPRECATED_SEARCH_PROVIDERS,
         EMBEDDING_PROVIDERS,
@@ -709,6 +711,7 @@ def _provider_choices() -> dict[str, list[dict[str, Any]]]:
                 "status": "legacy" if s.is_legacy else "supported",
             }
             for s in PROVIDERS
+            if s.name != BINDING or available()
         ],
         key=lambda p: p["label"].lower(),
     )
@@ -986,6 +989,79 @@ async def get_settings():
         # cannot list a task DeepTutor no longer makes — or miss a new one.
         "task_kinds": task_kind_payload(),
     }
+
+
+def _require_desktop_plan(request: Request) -> None:
+    from deeptutor.api.chatgpt_plan_origin import is_desktop_frontend
+    from deeptutor.services.chatgpt_plan import available
+
+    _require_settings_admin()
+    if not available():
+        raise HTTPException(status_code=404, detail="desktop_required")
+    if not is_desktop_frontend(request.scope):
+        raise HTTPException(status_code=403, detail="desktop_required")
+
+
+@router.get("/providers/chatgpt-plan/status")
+async def chatgpt_plan_status(request: Request) -> dict[str, Any]:
+    from deeptutor.services.chatgpt_plan import PlanError, get_session
+
+    _require_desktop_plan(request)
+    try:
+        return get_session().status()
+    except PlanError as exc:
+        raise HTTPException(status_code=503, detail=exc.code) from None
+
+
+@router.get("/providers/chatgpt-plan/models")
+async def chatgpt_plan_models(request: Request) -> list[dict[str, str]]:
+    import httpx
+
+    from deeptutor.services.chatgpt_plan import PlanError, get_session
+
+    _require_desktop_plan(request)
+    try:
+        return await get_session().models()
+    except PlanError as exc:
+        raise HTTPException(status_code=400, detail=exc.code) from None
+    except (httpx.HTTPError, ValueError, OSError):
+        raise HTTPException(status_code=503, detail="catalog_unavailable") from None
+
+
+class ChatGPTPlanAccountPayload(BaseModel):
+    account_id: str | None = Field(default=None, pattern=r"^[0-9a-f]{24}$")
+    label: str | None = Field(default=None, max_length=80)
+
+
+@router.post("/providers/chatgpt-plan/{action}")
+async def chatgpt_plan_action(
+    action: Literal["start", "add", "cancel", "disconnect", "dismiss-welcome"],
+    request: Request,
+    payload: ChatGPTPlanAccountPayload | None = None,
+) -> dict[str, Any]:
+    from deeptutor.services.chatgpt_plan import PlanError, get_session
+
+    _require_desktop_plan(request)
+    try:
+        session = get_session()
+        if action in {"start", "add"}:
+            url = await session.start(
+                payload.account_id if payload and action == "start" else None,
+                add=action == "add",
+                label=payload.label.strip() if payload and payload.label else None,
+            )
+            return {"authorize_url": url}
+        if action == "cancel":
+            await session.cancel()
+            return session.status()
+        if action == "dismiss-welcome":
+            await session.dismiss_welcome()
+            return session.status()
+        return {"revoked": await session.disconnect(payload.account_id if payload else None)}
+    except PlanError as exc:
+        raise HTTPException(status_code=400, detail=exc.code) from None
+    except (OSError, ValueError):
+        raise HTTPException(status_code=503, detail="connection_failed") from None
 
 
 @router.post("/providers/openai-codex/oauth/start")
@@ -2463,7 +2539,10 @@ async def preview_service(service: str, payload: ServicePreviewPayload):
 
 
 @router.post("/tests/{service}/start")
-async def start_service_test(service: str, payload: CatalogPayload | None = None):
+async def start_service_test(service: str, request: Request, payload: CatalogPayload | None = None):
+    from deeptutor.api.chatgpt_plan_origin import is_desktop_frontend
+    from deeptutor.services.chatgpt_plan import active_account_id
+
     _require_settings_admin()
     catalog = None
     if payload is not None:
@@ -2477,7 +2556,13 @@ async def start_service_test(service: str, payload: CatalogPayload | None = None
         )
         catalog = restore_catalog_secrets(catalog, current)
         catalog = catalog_service.resolve_connections(catalog)
-    run = get_config_test_runner().start(service, catalog)
+    run = get_config_test_runner().start(
+        service,
+        catalog,
+        chatgpt_plan_account_id=active_account_id()
+        if service == "llm" and is_desktop_frontend(request.scope)
+        else None,
+    )
     return {"run_id": run.id}
 
 

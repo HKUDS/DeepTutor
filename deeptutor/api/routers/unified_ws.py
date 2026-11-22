@@ -15,11 +15,14 @@ from typing import Any
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic import TypeAdapter, ValidationError
 
+from deeptutor.api.chatgpt_plan_origin import is_desktop_frontend
 from deeptutor.api.contracts.turn_protocol import (
     PROTOCOL_VERSION,
     ClientCommand,
     StartTurnCommand,
 )
+from deeptutor.services.chatgpt_plan import active_account_id
+from deeptutor.services.chatgpt_plan_context import request_scope
 from deeptutor.services.session.protocol import NoLlmAccess
 from deeptutor.services.workspace.models import WorkspaceError
 
@@ -62,6 +65,7 @@ async def unified_websocket(ws: WebSocket) -> None:
         container = get_application_container()
         await container.start()
     turns = container.turns
+    desktop = is_desktop_frontend(ws.scope)
 
     async def safe_send(data: dict[str, Any]) -> None:
         nonlocal closed
@@ -220,13 +224,16 @@ async def unified_websocket(ws: WebSocket) -> None:
 
             if msg_type in {"message", "start_turn"}:
                 try:
-                    _, turn = await turns.start_turn(
-                        {
-                            key: value
-                            for key, value in msg.items()
-                            if key not in {"type", "protocol_version"}
-                        }
-                    )
+                    with request_scope(
+                        desktop, account_id=active_account_id() if desktop else None
+                    ):
+                        _, turn = await turns.start_turn(
+                            {
+                                key: value
+                                for key, value in msg.items()
+                                if key not in {"type", "protocol_version"}
+                            }
+                        )
                 except NoLlmAccess as exc:
                     await send_protocol_error(
                         str(exc),
@@ -343,7 +350,10 @@ async def unified_websocket(ws: WebSocket) -> None:
                     continue
                 overrides = msg.get("overrides") if isinstance(msg.get("overrides"), dict) else None
                 try:
-                    _, turn = await turns.regenerate_last_turn(session_id, overrides=overrides)
+                    with request_scope(
+                        desktop, account_id=active_account_id() if desktop else None
+                    ):
+                        _, turn = await turns.regenerate_last_turn(session_id, overrides=overrides)
                 except (RuntimeError, WorkspaceError) as exc:
                     await send_error(
                         str(exc),

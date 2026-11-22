@@ -35,6 +35,7 @@ from enum import StrEnum
 import logging
 from typing import Any
 
+from deeptutor.services.chatgpt_plan_context import request_scope
 from deeptutor.services.config.model_catalog import get_model_catalog_service
 from deeptutor.services.llm.config import LLMConfig
 
@@ -219,6 +220,12 @@ def task_llm_scope(kind: TaskKind) -> Iterator[LLMConfig | None]:
     that the settings page can list every call that runs on a task model; a new
     call site with no kind to name is a new :class:`TaskKind` member.
     """
+    with request_scope(False), _task_model_scope(kind) as config:
+        yield config
+
+
+@contextmanager
+def _task_model_scope(kind: TaskKind) -> Iterator[LLMConfig | None]:
     try:
         catalog = catalog_for_task(get_model_catalog_service().load(), kind)
     except Exception:

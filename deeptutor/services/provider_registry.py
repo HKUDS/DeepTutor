@@ -493,6 +493,15 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         model_overrides=_OPENAI_REASONING_OVERRIDES,
     ),
     ProviderSpec(
+        name="openai_chatgpt_plan",
+        keywords=(),
+        env_key="",
+        display_name="ChatGPT Plan",
+        backend="openai_chatgpt_plan",
+        is_oauth=True,
+        default_api_base="https://api.openai.com/v1",
+    ),
+    ProviderSpec(
         name="openai_codex",
         keywords=("openai-codex",),
         env_key="",

@@ -352,6 +352,12 @@ def _build_anthropic_adapter(config: LLMClientConfig, spec: Any) -> Any:
     return _ProviderOpenAIAdapter(anthropic_provider)
 
 
+def _build_chatgpt_plan_adapter(config: LLMClientConfig, spec: Any) -> Any:
+    from deeptutor.services.llm.provider_core.chatgpt_plan_provider import ChatGPTPlanProvider
+
+    return _ProviderOpenAIAdapter(ChatGPTPlanProvider(config.model or ""))
+
+
 def _build_codex_adapter(config: LLMClientConfig, spec: Any) -> Any:
     from deeptutor.services.codex_auth.constants import CODEX_DEFAULT_MODEL_ID
     from deeptutor.services.llm.provider_core import OpenAICodexProvider
@@ -408,6 +414,7 @@ def _build_direct_openai_adapter(config: LLMClientConfig, spec: Any) -> Any:
 _NATIVE_ADAPTER_BUILDERS: dict[str, Callable[[LLMClientConfig, Any], Any]] = {
     "anthropic": _build_anthropic_adapter,
     "openai_codex": _build_codex_adapter,
+    "openai_chatgpt_plan": _build_chatgpt_plan_adapter,
     "github_copilot": _build_copilot_adapter,
     "codebuddy": _build_codebuddy_adapter,
     "claude_code": _build_claude_code_adapter,
@@ -847,6 +854,8 @@ def can_use_native_tool_calling(
        To opt a cloud provider out, add its binding to
        ``_NATIVE_TOOL_BLOCKED_BINDINGS``.
     """
+    if binding == "openai_chatgpt_plan":
+        return False
     declared = catalog_capability_override(binding, model, "supports_tools")
     if declared is not None:
         return declared

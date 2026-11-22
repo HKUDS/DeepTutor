@@ -1,5 +1,5 @@
 {
-  "fingerprint": "c3b938e1a6af4378a012f1f6faa1887d8c8d2b37042f8f01885deabebeef625a",
+  "fingerprint": "19bc4e9145ce3ae53a4da7ef2e0b5f6419dd21eb4ac0fe1f943c711ea7d90aaf",
   "routers": {
     "deeptutor.api.routers.auth:router": [
       {
@@ -3535,6 +3535,30 @@
         "kind": "http",
         "methods": [
           "GET"
+        ]
+      },
+      {
+        "path": "/providers/chatgpt-plan/status",
+        "name": "chatgpt_plan_status",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/providers/chatgpt-plan/models",
+        "name": "chatgpt_plan_models",
+        "kind": "http",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "path": "/providers/chatgpt-plan/{action}",
+        "name": "chatgpt_plan_action",
+        "kind": "http",
+        "methods": [
+          "POST"
         ]
       },
       {

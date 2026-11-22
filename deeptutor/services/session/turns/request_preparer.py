@@ -95,6 +95,33 @@ _REPLAY_SNAPSHOT_FIELDS: dict[str, str] = {
 }
 
 
+async def _check_plan_access(selection: dict[str, Any] | None) -> bool:
+    from deeptutor.services.chatgpt_plan_context import BINDING, request_allowed
+    from deeptutor.services.llm.exceptions import LLMError
+    from deeptutor.services.model_selection.runtime import resolve_llm_config_for_selection
+
+    try:
+        config = resolve_llm_config_for_selection(selection)
+    except (ValueError, LLMError):
+        return False
+    if getattr(config, "binding", None) != BINDING:
+        return False
+    if not request_allowed.get():
+        raise RuntimeError("ChatGPT Plan requires an authenticated Desktop request.")
+
+    import httpx
+
+    from deeptutor.services.chatgpt_plan import PlanError, get_session
+
+    try:
+        await get_session().access_token()
+    except (PlanError, httpx.HTTPError, ValueError, OSError) as exc:
+        raise RuntimeError(
+            "Check your ChatGPT Plan connection in Providers and try again."
+        ) from exc
+    return True
+
+
 def _tutor_thread_preferences(context: dict[str, Any]) -> dict[str, Any]:
     preferences: dict[str, Any] = {}
     if context.get("selected_text"):
@@ -592,6 +619,15 @@ class TurnRequestPreparer:
                 )
             except ValueError as exc:
                 raise RuntimeError(str(exc)) from exc
+        # A repeated submission can replace an existing reply too. Check the
+        # plan before registering a turn or writing its preferences.
+        plan_turn = False
+        if (
+            payload.get("regenerate")
+            or replace_assistant_message_id is not None
+            or payload.get("client_submission_id")
+        ):
+            plan_turn = await _check_plan_access(llm_selection or None)
         # If the caller didn't pin a per-turn tool list (e.g. non-web
         # channels or the new web UI which sources tools from
         # /settings/tools), back-fill from the user's saved toggleable-tool
@@ -869,6 +905,8 @@ class TurnRequestPreparer:
             }
             if replace_assistant_message_id is None:
                 replace_assistant_message_id = prior_assistant_id
+        if plan_turn and (payload.get("regenerate") or replace_assistant_message_id is not None):
+            payload["_keep_plan_reply_variants"] = True
         execution = _TurnExecution(
             turn_id=turn["id"],
             session_id=session["id"],
@@ -958,6 +996,8 @@ class TurnRequestPreparer:
             session_metadata["superseded_turn_id"] = str(superseded_turn_id)
         if payload.get("regenerate"):
             session_metadata["regenerate"] = True
+        if payload.get("_keep_plan_reply_variants"):
+            session_metadata["keep_plan_reply_variants"] = True
         if capability_route is not None:
             session_metadata["capability_route"] = capability_route.as_metadata()
         try:
@@ -974,7 +1014,7 @@ class TurnRequestPreparer:
             # admission (including workspace, capability, and model access),
             # while no execution task has been scheduled yet. A rejected replay
             # must leave the original assistant row and its id intact.
-            if replace_assistant_message_id is not None:
+            if replace_assistant_message_id is not None and not plan_turn:
                 if not await self.store.delete_message(replace_assistant_message_id):
                     raise RuntimeError("Unable to replace the previous assistant message")
             async with self._lock:

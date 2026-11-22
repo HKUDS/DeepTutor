@@ -171,6 +171,8 @@ async def test_provider_api_preserves_other_saved_drafts_and_restores_draft_secr
 async def test_model_probe_uses_draft_key_without_saving_or_changing_default(tmp_path, monkeypatch):
     from types import SimpleNamespace
 
+    from fastapi import Request
+
     from deeptutor.api.routers import settings as router
     from deeptutor.services.config.settings_draft import SettingsDraftService
 
@@ -187,16 +189,20 @@ async def test_model_probe_uses_draft_key_without_saving_or_changing_default(tmp
         router,
         "get_config_test_runner",
         lambda: SimpleNamespace(
-            start=lambda service, catalog: (
-                received.append((service, catalog)) or SimpleNamespace(id="test-run")
+            start=lambda service, catalog, *, chatgpt_plan_account_id: (
+                received.append((service, catalog, chatgpt_plan_account_id))
+                or SimpleNamespace(id="test-run")
             )
         ),
     )
     await router.start_service_test(
-        "task", router.CatalogPayload(catalog=redact_catalog_secrets(parked))
+        "task",
+        Request({"type": "http"}),
+        router.CatalogPayload(catalog=redact_catalog_secrets(parked)),
     )
     assert received[0][0] == "task"
     assert received[0][1]["services"]["task"]["profiles"][0]["api_key"] == "test-new-task-key"
+    assert received[0][2] is None
     assert store.load() == current
 
 

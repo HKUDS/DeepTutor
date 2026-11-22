@@ -29,7 +29,7 @@ process.on('message', async message => {
     log.write(`\n--- Desktop runtime ${new Date().toISOString()} ---\n`);
     runtime = new SourceRuntime({ log: chunk => log.write(chunk) });
     runtime.on('status', send);
-    await runtime.start(message.config, message.cachePath);
+    await runtime.start(message.config, message.cachePath, message.planKey, message.planSessionToken);
   } catch (error) {
     send({ phase: 'error', message: error.message });
     await runtime?.stop();

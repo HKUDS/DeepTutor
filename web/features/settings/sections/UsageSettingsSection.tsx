@@ -8,9 +8,12 @@ import { SettingsPageHeader } from '@/components/settings/shared'
 import { fetchUsageStatistics, usageYear, type UsageStatistics } from '@/lib/usage-statistics'
 import UsageActivity from '../components/UsageActivity'
 import { isApiError } from '@/shared/api/errors'
+import { CHATGPT_PLAN_PROVIDER, CHATGPT_PLAN_USAGE_URL } from '@/lib/chatgpt-plan'
+import { useSettings } from '@/features/settings/store/SettingsStore'
 
 export default function UsageSettingsSection() {
   const { t, i18n } = useTranslation()
+  const { providers } = useSettings()
   const router = useRouter()
   const search = useSearchParams()
   const currentYear = new Date().getFullYear()
@@ -60,6 +63,12 @@ export default function UsageSettingsSection() {
         title={t('Usage statistics')}
         description={t('Model usage across conversations, personalized learning, and background tasks.')}
       />
+      {providers.llm.some((provider) => provider.value === CHATGPT_PLAN_PROVIDER) && (
+        <a className="mb-5 inline-block text-sm font-medium text-[var(--primary)] underline-offset-2 hover:underline"
+          href={CHATGPT_PLAN_USAGE_URL} target="_blank" rel="noreferrer">
+          {t('Manage ChatGPT usage')}
+        </a>
+      )}
       <div className="mb-6 flex items-center justify-between gap-3">
         <div className="inline-flex items-center gap-3 rounded-lg border border-[var(--border)] px-1 py-1">
           <button
