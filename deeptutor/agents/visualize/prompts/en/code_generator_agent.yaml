@@ -165,8 +165,15 @@ rules_html: |
   - For a cyclic or staged process, build a stepper: one panel per stage, dots or
     pills showing position, a Next button that wraps from the last stage back to
     the first. Each panel owns its own content so nothing collides.
-  - Within these constraints, choose layout, color, and interaction freely to
-    make the page clear, beautiful, and easy to learn from.
+  - The page is themed by the host: if you do not declare a `color-scheme`
+    yourself, the host injects one matching the app's palette. Use
+    theme-aware colors — CSS system colors (`Canvas` / `CanvasText`), or
+    `light-dark()` / `@media (prefers-color-scheme)` — or always pair an
+    explicit text color with an explicit background. Never rely on the
+    canvas being white (dark text on no background disappears in dark themes).
+  - Within these constraints, choose layout and interaction freely, and pick
+    color per the themed-page rule above to make the page clear, beautiful,
+    and easy to learn from.
 
 user_template: |
   User request:

@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from collections import deque
 from datetime import datetime, timezone
+import errno
 import hashlib
 import json
+import logging
 import mimetypes
 import os
 from pathlib import Path, PurePosixPath
@@ -216,13 +218,28 @@ class ContentWorkspaceService(WorkspaceCatalogMixin):
             output.mkdir(parents=True, exist_ok=True)
             resolved_output = output.resolve()
             resolved_output.relative_to(root)
-            probe = output / f".deeptutor-write-probe-{uuid.uuid4().hex}"
+            # Keep the probe name short: a deep custom root on Windows can be
+            # close to MAX_PATH, and the old 55-character name pushed the probe
+            # over the limit. That failure surfaced as "not writable" even
+            # though the folder was fine (#2354).
+            probe = output / f".dt-wp-{uuid.uuid4().hex[:12]}"
             probe.touch(exist_ok=False)
-            probe.unlink()
         except ValueError as exc:
             raise WorkspaceError("The workspace outputs folder leaves the workspace.") from exc
         except OSError as exc:
+            if getattr(exc, "winerror", None) == 206 or exc.errno == errno.ENAMETOOLONG:
+                raise WorkspaceError(
+                    "The workspace path is too long for this system. Choose a shorter folder."
+                ) from exc
             raise WorkspaceError("The workspace outputs folder is not writable.") from exc
+        # A delete guard can reject cleanup after the write already succeeded
+        # (#2453). Do not misreport a usable workspace as unwritable.
+        try:
+            probe.unlink(missing_ok=True)
+        except Exception:
+            logging.getLogger(__name__).warning(
+                "Could not remove workspace write probe %s", probe, exc_info=True
+            )
 
     def validate(self, path: str | Path | None) -> dict[str, Any]:
         if path is not None and not str(path).strip():

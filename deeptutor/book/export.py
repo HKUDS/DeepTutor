@@ -93,6 +93,32 @@ _LABELS: dict[str, dict[str, str]] = {
         "not_generated": "(Bu bölüm henüz oluşturulmadı.)",
         "omitted": "({kind} atlandı: metin karşılığı yok.)",
     },
+    "it": {
+        "takeaway": "Concetto chiave",
+        "answer": "Risposta",
+        "front": "Fronte",
+        "back": "Retro",
+        "sources": "Fonti",
+        "chapters": "Capitoli",
+        "note": "Nota",
+        "untitled_book": "Libro senza titolo",
+        "untitled_chapter": "Capitolo senza titolo",
+        "not_generated": "(Questo capitolo non è ancora stato generato.)",
+        "omitted": "({kind} omesso — nessuna rappresentazione testuale.)",
+    },
+    "hu": {
+        "takeaway": "Kulcsgondolat",
+        "answer": "Válasz",
+        "front": "Előlap",
+        "back": "Hátlap",
+        "sources": "Források",
+        "chapters": "Fejezetek",
+        "note": "Megjegyzés",
+        "untitled_book": "Névtelen könyv",
+        "untitled_chapter": "Névtelen fejezet",
+        "not_generated": "(Ez a fejezet még nem készült el.)",
+        "omitted": "({kind} kihagyva — nincs szöveges megfelelője.)",
+    },
 }
 
 
@@ -177,8 +203,8 @@ def _render_flash_cards(payload: dict[str, Any], labels: dict[str, str]) -> str:
     for card in cards:
         if not isinstance(card, dict):
             continue
-        front = _payload_text(card, "front").replace("|", "\\|")
-        back = _payload_text(card, "back").replace("|", "\\|")
+        front = _payload_text(card, "front").replace("|", "\\|").replace("\n", "<br>")
+        back = _payload_text(card, "back").replace("|", "\\|").replace("\n", "<br>")
         rows.append(f"| {front} | {back} |")
     return "\n".join(rows) if len(rows) > 2 else ""
 

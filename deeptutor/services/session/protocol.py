@@ -17,6 +17,15 @@ SUBMISSION_ASSISTANT_FIELD = "_submission_assistant_message_id"
 SUBMISSION_PREVIOUS_TURN_FIELD = "_submission_previous_turn_id"
 
 
+class NoLlmAccess(RuntimeError):
+    """The current user has no usable LLM assigned."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            "No LLM model is assigned to your account. Please contact an administrator."
+        )
+
+
 class ActiveTurnConflict(RuntimeError):
     """A session already owns a turn that has not reached a terminal state.
 

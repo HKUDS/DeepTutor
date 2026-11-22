@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import errno
 import json
 from pathlib import Path
 import sqlite3
 import time
+from types import SimpleNamespace
 
 import pytest
 
@@ -360,6 +362,48 @@ def test_upsert_notebook_entries_persists_all(store: SQLiteSessionStore) -> None
     result = asyncio.run(store.list_notebook_entries())
     assert result["total"] == 3
     assert all(e["session_title"] == "Test" for e in result["items"])
+
+
+def test_notebook_navigation_names_each_entrys_session(store: SQLiteSessionStore) -> None:
+    """Navigation can collapse one practice session's questions into a row.
+
+    Each identity row carries the session its entry was recorded in — the
+    durable grouping id — while an entry without a session keeps ``None`` so
+    it stays an individual row. No answers travel with them.
+    """
+    session = asyncio.run(store.create_session(title="Physics set", session_id="set-1"))
+    asyncio.run(
+        store.upsert_notebook_entries(
+            session["id"],
+            _make_items(("q1", "Q1?", False), ("q2", "Q2?", True)),
+        )
+    )
+    asyncio.run(
+        store.upsert_notebook_entries(
+            None,
+            [
+                {
+                    "origin_type": "external_import",
+                    "origin_ref": "import-a",
+                    "question_id": "i1",
+                    "question": "Imported?",
+                    "question_type": "choice",
+                    "user_answer": "A",
+                    "correct_answer": "B",
+                    "is_correct": False,
+                }
+            ],
+        )
+    )
+
+    rows = {row["id"]: row for row in asyncio.run(store.list_notebook_navigation())}
+    set_rows = [row for row in rows.values() if row["session_id"] == "set-1"]
+    assert sorted(row["question"] for row in set_rows) == ["Q1?", "Q2?"]
+    assert all(row["session_title"] == "Physics set" for row in set_rows)
+    loose = next(row for row in rows.values() if row["question"] == "Imported?")
+    assert loose["session_id"] is None
+    assert loose["session_title"] == ""
+    assert not any("correct_answer" in row or "user_answer" in row for row in rows.values())
 
 
 def test_list_notebook_entries_intersects_session_filters(
@@ -1258,3 +1302,67 @@ def test_branch_context_messages_carry_private_metadata(store: SQLiteSessionStor
     messages = asyncio.run(store.get_messages_for_context(session["id"], leaf_message_id=leaf))
 
     assert messages[-1]["metadata"]["provider_response_state"] == state
+
+
+def test_schema_setup_takes_the_windows_lock_without_fcntl(tmp_path, monkeypatch) -> None:
+    # Workers opening the store together race the WAL switch ("database is
+    # locked") and CREATE TRIGGER ("already exists") unless setup is
+    # serialized across processes on Windows too.
+    import deeptutor.services.session.migration_lock as module
+
+    calls: list[int] = []
+
+    def locking(_fileno: int, mode: int, length: int) -> None:
+        assert length == 1
+        calls.append(mode)
+
+    monkeypatch.setattr(module, "fcntl", None)
+    monkeypatch.setattr(
+        module,
+        "msvcrt",
+        SimpleNamespace(LK_LOCK=1, LK_UNLCK=0, locking=locking),
+        raising=False,
+    )
+
+    SQLiteSessionStore(tmp_path / "chat_history.db")
+
+    assert calls == [1, 0]
+
+
+def _msvcrt_failing_first_lock(calls: list[int], error: OSError) -> SimpleNamespace:
+    def locking(_fileno: int, mode: int, length: int) -> None:
+        calls.append(mode)
+        if calls == [1]:
+            raise error
+
+    return SimpleNamespace(LK_LOCK=1, LK_UNLCK=0, locking=locking)
+
+
+def test_windows_schema_lock_keeps_waiting_after_lk_lock_gives_up(tmp_path, monkeypatch) -> None:
+    # LK_LOCK raises EDEADLK after about ten seconds, but another worker's
+    # one-time upgrade of a large database can hold the lock for longer.
+    import deeptutor.services.session.migration_lock as module
+
+    calls: list[int] = []
+    timeout = OSError(errno.EDEADLK, "Resource deadlock avoided")
+    monkeypatch.setattr(module, "fcntl", None)
+    monkeypatch.setattr(module, "msvcrt", _msvcrt_failing_first_lock(calls, timeout), raising=False)
+
+    SQLiteSessionStore(tmp_path / "chat_history.db")
+
+    assert calls == [1, 1, 0]
+
+
+def test_windows_schema_lock_raises_other_lock_errors(tmp_path, monkeypatch) -> None:
+    import deeptutor.services.session.migration_lock as module
+
+    calls: list[int] = []
+    denied = OSError(errno.EACCES, "Permission denied")
+    monkeypatch.setattr(module, "fcntl", None)
+    monkeypatch.setattr(module, "msvcrt", _msvcrt_failing_first_lock(calls, denied), raising=False)
+
+    with pytest.raises(OSError) as exc_info:
+        SQLiteSessionStore(tmp_path / "chat_history.db")
+
+    assert exc_info.value.errno == errno.EACCES
+    assert calls == [1]

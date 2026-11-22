@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
+from pathlib import Path
 import re
 import time
 from typing import Any, Callable, Literal
@@ -506,7 +507,9 @@ class TelegramChannel(BaseChannel):
                         **thread_kwargs,
                     )
             except Exception as e:
-                filename = media_path.rsplit("/", 1)[-1]
+                # The chat only gets the file name, never the server's path
+                # (a Windows path has no "/" to split on).
+                filename = Path(media_path).name
                 logger.error("Failed to send media {}: {}", media_path, e)
                 await self._app.bot.send_message(
                     chat_id=chat_id,

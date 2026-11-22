@@ -26,6 +26,7 @@ export type ClientCommand = GeneratedClientCommand;
 export type ServerEvent = GeneratedServerEvent;
 export type StreamEventType = GeneratedStreamEventType;
 export type LLMSelection = GeneratedLLMSelection;
+export const NO_LLM_ACCESS = "no_llm_access";
 
 export type StreamEvent = Omit<
   GeneratedStreamEvent,

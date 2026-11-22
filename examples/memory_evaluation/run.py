@@ -9,13 +9,25 @@ from pathlib import Path
 import httpx
 import tiktoken
 
-from deeptutor.services.memory.evaluation import ReaderResult, evaluate, load_cases
+from deeptutor.services.memory.evaluation import (
+    Adapter,
+    ReaderResult,
+    evaluate,
+    lexical_top2,
+    load_cases,
+    memory_snapshot,
+    raw_recent,
+)
 
 READER_PROMPT = (
     "Answer the question using only the supplied evidence. Prefer the latest explicit correction. "
     "Put only the requested fact in the answer field. Use UNKNOWN when the fact is absent."
 )
 READER_OPTIONS = {"temperature": 0, "seed": 42, "num_predict": 256, "num_ctx": 4096}
+EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+EMBEDDING_REVISION = "1110a243fdf4706b3f48f1d95db1a4f5529b4d41"  # pragma: allowlist secret
+RERANKER_MODEL = "cross-encoder/ms-marco-MiniLM-L6-v2"
+RERANKER_REVISION = "233902d25c440f23af6f7d6e94d2946bac0bee0a"  # pragma: allowlist secret
 
 
 def main() -> None:
@@ -23,6 +35,20 @@ def main() -> None:
     parser.add_argument("--cases", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--budget", type=int, default=512)
+    parser.add_argument(
+        "--raw-rag",
+        action="store_true",
+        help="Opt in to local dense retrieval and reranking models",
+    )
+    parser.add_argument("--retrieval-candidates", type=int, default=128)
+    parser.add_argument("--retrieval-top-k", type=int, default=15)
+    parser.add_argument("--window-chars", type=int, default=600)
+    parser.add_argument("--window-overlap", type=int, default=150)
+    parser.add_argument("--retrieval-device", default="cpu")
+    parser.add_argument("--embedding-model", default=EMBEDDING_MODEL)
+    parser.add_argument("--embedding-revision")
+    parser.add_argument("--reranker-model", default=RERANKER_MODEL)
+    parser.add_argument("--reranker-revision")
     parser.add_argument(
         "--model", help="Optional installed local Ollama model; omission makes no reader calls"
     )
@@ -98,6 +124,50 @@ def main() -> None:
 
         reader = local_reader
     encoding = tiktoken.get_encoding("cl100k_base")
+    adapters: dict[str, Adapter] | None = None
+    if args.raw_rag:
+        from deeptutor.services.memory.evaluation_rag import (
+            RetrievalConfig,
+            local_sentence_transformer_adapters,
+        )
+
+        embedding_revision = args.embedding_revision or (
+            EMBEDDING_REVISION if args.embedding_model == EMBEDDING_MODEL else None
+        )
+        reranker_revision = args.reranker_revision or (
+            RERANKER_REVISION if args.reranker_model == RERANKER_MODEL else None
+        )
+        if not embedding_revision or not reranker_revision:
+            parser.error("Custom retrieval models require explicit full commit revisions")
+        try:
+            config = RetrievalConfig(
+                args.window_chars,
+                args.window_overlap,
+                args.retrieval_candidates,
+                args.retrieval_top_k,
+            )
+            retrieval_adapters, model_info = local_sentence_transformer_adapters(
+                config,
+                embedding_model=args.embedding_model,
+                embedding_revision=embedding_revision,
+                reranker_model=args.reranker_model,
+                reranker_revision=reranker_revision,
+                device=args.retrieval_device,
+            )
+        except ImportError as exc:
+            parser.error(
+                "Raw-RAG needs optional rag-rerank dependencies and "
+                f"sentence-transformers>=5.1.2,<6: {exc}"
+            )
+        except (OSError, ValueError) as exc:
+            parser.error(f"Raw-RAG model/configuration setup failed: {exc}")
+        metadata["retrieval_models"] = model_info
+        adapters = {
+            "raw_recent": raw_recent,
+            "lexical_top2": lexical_top2,
+            "native_l3_snapshot": memory_snapshot,
+            **retrieval_adapters,
+        }
     report = asyncio.run(
         evaluate(
             cases,
@@ -105,6 +175,7 @@ def main() -> None:
             tokenizer="cl100k_base",
             budget=args.budget,
             reader=reader,
+            adapters=adapters,
         )
     )
     report.update(metadata)
@@ -114,7 +185,9 @@ def main() -> None:
         limitations=[
             "Development fixtures, not an independent benchmark",
             "Hand-authored snapshots; no production consolidation measured",
-            "Lexical retrieval is not dense retrieval plus reranking",
+            "Lexical top-two is an ablation; dense baselines require explicit --raw-rag",
+            "Dense retrieval uses character windows; this is not a paper reproduction",
+            "Chunk source-ID coverage is not fact/span recall or answer accuracy",
             "Normalized exact match and lexical F1 are not semantic judgments",
         ],
     )

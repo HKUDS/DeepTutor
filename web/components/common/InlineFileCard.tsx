@@ -75,7 +75,11 @@ export function extractStreamedArtifacts(
         }>;
       };
     };
-    const workspaceItems = meta.tool_metadata?.workspace_items ?? [];
+    // Older Redis event serialization could turn empty arrays into {}.
+    // Validate stored/streamed metadata before iterating so old chats render.
+    const workspaceItems = Array.isArray(meta.tool_metadata?.workspace_items)
+      ? meta.tool_metadata.workspace_items
+      : [];
     for (const item of workspaceItems) {
       if (!item?.url || !item.workspace_item_id) continue;
       out.push({
@@ -95,7 +99,10 @@ export function extractStreamedArtifacts(
       });
     }
     if (workspaceItems.length) continue;
-    for (const a of meta.tool_metadata?.artifacts ?? []) {
+    const artifacts = Array.isArray(meta.tool_metadata?.artifacts)
+      ? meta.tool_metadata.artifacts
+      : [];
+    for (const a of artifacts) {
       if (!a?.url) continue;
       out.push({
         type: a.mime_type?.startsWith("image/") ? "image" : "document",

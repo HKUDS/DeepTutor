@@ -184,17 +184,18 @@ def prepare_visual(
         raise ValueError(
             "answer_cues must be none, visible or unverified; masking requires independently verified regions."
         )
-    # Page text can reveal a table value directly. Treat it as guided reading,
-    # even when the caller mistakenly declares no visible cue.
+    # Pixels the model never saw cannot be graded or corrected into mastery
+    # evidence. Refuse the visual instead of registering that card (#2494).
     inspected = (
         all(ref.get("image_sha256") in inspected_image_hashes for ref in resolved)
         if inspected_image_hashes is not None
         else bool(request.get("pixels_inspected"))
     )
     if not inspected:
-        verified = False
-        cues = "unverified"
-    elif any(
+        raise ValueError("No matching source pixels were verified in the tutor's model input")
+    # Page text can reveal a table value directly. Treat it as guided reading,
+    # even when the caller mistakenly declares no visible cue.
+    if any(
         ref.get("page")
         and not ref.get("asset_id")
         and (not ref.get("region") or ref.get("visible_answer_text"))

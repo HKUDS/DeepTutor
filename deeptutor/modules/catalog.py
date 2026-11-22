@@ -115,6 +115,22 @@ def installed(name: str) -> bool:
         return False
 
 
+def installed_distributions() -> list[str]:
+    """Feature distributions this installation actually owns.
+
+    Core is deliberately excluded: callers update it separately and pin the
+    whole set to one target version. Source checkouts return nothing because
+    their modules are not separate distributions.
+    """
+    if source_checkout():
+        return []
+    return [
+        str(row["distribution"])
+        for name, row in manifests().items()
+        if name != "core" and row.get("distribution") and installed(name)
+    ]
+
+
 def module_enabled(name: str, *, selected: dict[str, bool] | None = None) -> bool:
     if name not in manifests():
         raise ValueError(f"Unknown module: {name}")

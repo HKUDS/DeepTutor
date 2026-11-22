@@ -59,6 +59,9 @@ class Evidence:
 class AdapterResult:
     evidence: tuple[Evidence, ...]
     original_source_ids: bool = False
+    # Optional chunk-to-history provenance; recall counts unique retained events.
+    source_ids: Mapping[str, str] | None = None
+    metadata: Mapping[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -287,8 +290,16 @@ async def evaluate(
                     evidence_tokens=count_tokens(context),
                     preparation_seconds=time.perf_counter() - started,
                 )
+                sources = ids
+                if result.source_ids is not None:
+                    sources = list(
+                        dict.fromkeys(result.source_ids[identifier] for identifier in ids)
+                    )
+                    row["selected_source_ids"] = sources
+                if result.metadata is not None:
+                    row["adapter_metadata"] = dict(result.metadata)
                 if result.original_source_ids and case.evidence_ids:
-                    row["source_id_recall"] = len(set(ids) & case.evidence_ids) / len(
+                    row["source_id_recall"] = len(set(sources) & case.evidence_ids) / len(
                         case.evidence_ids
                     )
                 if reader is not None:

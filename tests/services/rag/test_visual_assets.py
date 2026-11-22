@@ -52,6 +52,115 @@ def _fixture(tmp_path: Path, *, suffix: str = ".pdf", engine: str = "mineru"):
     return kb_dir, source, image, parsed
 
 
+def test_source_visual_matching_resolves_paths_linearly(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Figure-heavy documents must not resolve every block path for every image."""
+    from dataclasses import replace
+
+    import deeptutor.services.rag.source_visuals  # load before counting filesystem operations
+
+    kb_dir, source, image, parsed = _fixture(tmp_path)
+    images = [image] + [image.parent / f"figure-{index:03}.png" for index in range(1, 24)]
+    pixels = image.read_bytes()
+    for path in images[1:]:
+        path.write_bytes(pixels)
+    blocks = [{"type": "text", "text": f"Paragraph {index}"} for index in range(64)]
+    blocks.extend(
+        {
+            "type": "image",
+            "img_path": str(path),
+            "page_idx": index,
+            "image_caption": [f"Figure {index + 1}"],
+        }
+        for index, path in enumerate(images)
+    )
+    parsed = replace(parsed, blocks=blocks)
+    resolve = Path.resolve
+    resolve_calls = 0
+
+    def counted_resolve(path: Path, strict: bool = False) -> Path:
+        nonlocal resolve_calls
+        resolve_calls += 1
+        return resolve(path, strict=strict)
+
+    monkeypatch.setattr(Path, "resolve", counted_resolve)
+    candidates = collect_visual_assets(parsed, source, kb_dir)
+    assert len(candidates) == len(images)
+    records = {candidate.path.name: candidate.record for candidate in candidates}
+    for index, path in enumerate(images):
+        assert records[path.name]["caption"] == f"Figure {index + 1}"
+        assert records[path.name]["page_index"] == index
+        assert records[path.name]["source_locator"] == f"blocks.json#/{64 + index}"
+    # Allow fixed/per-image validation work, but reject image-count * block-count scans.
+    assert resolve_calls <= 8 * len(images) + 2 * len(blocks) + 16
+
+
+def test_source_visual_path_index_preserves_first_reference_and_context(tmp_path: Path):
+    """Aliases and repeated references retain the first block's original provenance."""
+    from dataclasses import replace
+
+    kb_dir, source, image, parsed = _fixture(tmp_path)
+    alias = image.parent / ".." / image.parent.name / image.name
+    blocks = [
+        None,
+        {"type": "text", "text": "Before the table"},
+        {
+            "type": "table",
+            "path": str(alias),
+            "page_idx": 4,
+            "bbox": [10, 20, 100, 200],
+            "table_caption": ["Table 3"],
+            "table_body": "<table><tr><td>value</td></tr></table>",
+            "table_footnote": ["Measured values"],
+            "section_title": "Results",
+            "group_id": "table-group",
+        },
+        {"type": "text", "text": "After the table"},
+    ]
+    first = collect_visual_assets(replace(parsed, blocks=blocks), source, kb_dir)[0].record
+    duplicate = {
+        "type": "image",
+        "img_path": str(image),
+        "page_idx": 99,
+        "image_caption": ["Later duplicate"],
+    }
+    actual = collect_visual_assets(replace(parsed, blocks=blocks + [duplicate]), source, kb_dir)[
+        0
+    ].record
+    assert actual == first
+    assert actual["caption"] == "Table 3"
+    assert actual["context"] == "Before the table After the table"
+    assert actual["source_locator"] == "blocks.json#/2"
+    assert actual["page_index"] == 4
+    assert actual["page_number"] == 5
+    assert actual["bbox"] == [10, 20, 100, 200]
+    assert actual["kind"] == "table"
+    assert actual["section"] == "Results"
+    assert actual["group_id"] == "table-group"
+    assert actual["table_html"] == blocks[2]["table_body"]
+    assert actual["notes"] == "Measured values"
+
+
+def test_discarded_images_do_not_resolve_block_paths(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Invalid image bytes are rejected before inspecting their block references."""
+    from dataclasses import replace
+
+    kb_dir, source, image, parsed = _fixture(tmp_path)
+    image.write_bytes(b"not an image")
+    parsed = replace(parsed, blocks=[{"img_path": "unused-image.png"}])
+    resolve = Path.resolve
+
+    def guarded_resolve(path: Path, strict: bool = False) -> Path:
+        assert path.name != "unused-image.png"
+        return resolve(path, strict=strict)
+
+    monkeypatch.setattr(Path, "resolve", guarded_resolve)
+    assert collect_visual_assets(parsed, source, kb_dir) == []
+
+
 @pytest.mark.parametrize(
     ("suffix", "engine"),
     [(".pdf", "mineru"), (".epub", "pymupdf4llm")],

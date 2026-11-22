@@ -110,3 +110,38 @@ def test_old_embedding_context_cannot_pick_up_next_jobs_callback(monkeypatch) ->
 
     assert old == [(1, 1)]
     assert new == [(1, 1)]
+
+
+def test_concurrent_embedding_setup_stays_off_loop_and_binds_each_scope(monkeypatch):
+    import asyncio
+    import threading
+
+    from deeptutor.services.embedding.config import (
+        EmbeddingConfig,
+        embedding_config_scope,
+        scoped_embedding_config,
+    )
+    from deeptutor.services.rag.pipelines.llamaindex import embedding_adapter
+    from deeptutor.services.rag.pipelines.llamaindex.pipeline import LlamaIndexPipeline
+
+    loop_thread = threading.get_ident()
+    pipeline = LlamaIndexPipeline.__new__(LlamaIndexPipeline)
+
+    def configure():
+        assert threading.get_ident() != loop_thread
+        cfg = scoped_embedding_config()
+        return cfg.model if cfg else None
+
+    monkeypatch.setattr(pipeline, "_configure_settings", configure)
+
+    async def scoped(name):
+        with embedding_config_scope(EmbeddingConfig(model=name, api_key="")):
+            await pipeline._configure_settings_async()
+            await asyncio.sleep(0)
+            return embedding_adapter.current_embedding()
+
+    async def exercise():
+        await pipeline._configure_settings_async()
+        assert await asyncio.gather(scoped("a"), scoped("b")) == ["a", "b"]
+
+    asyncio.run(exercise())

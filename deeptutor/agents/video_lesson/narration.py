@@ -90,7 +90,11 @@ def _configured_voice(language: str) -> str | None:
     voice = getattr(config, "voice", "") or ""
     if getattr(config, "provider_name", "") != "edge" or not voice:
         return None
-    return voice if voice.lower().startswith(_lang(language)) else None
+    # Compare against the lesson's own language, not ``_lang``: that collapses
+    # every non-Chinese language to "en", so a French lesson would reject a
+    # configured ``fr-FR`` voice and accept an ``en-US`` one instead.
+    base = (language or "").strip().lower().replace("_", "-").split("-", 1)[0]
+    return voice if base and voice.lower().startswith(f"{base}-") else None
 
 
 def _settings_provider() -> str | None:

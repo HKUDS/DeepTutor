@@ -21,6 +21,14 @@ What this module does *not* do:
   console scripts hard-code the absolute path of the interpreter that created
   them, so the build has to happen *at* the final path — which is exactly why the
   rollback restores that same path rather than promoting a staging directory.
+* **Guess which directory holds the good copy.** A leftover ``<env>.old``
+  means a previous installation left unresolved backup material: an
+  unfinished rollback is one cause, a backup cleanup after a successful
+  update that could not fully remove it is another. The installer does not
+  guess — installing over it could destroy recovery material. Such an
+  install is refused until an admin has inspected and recovered the
+  directories, and a rollback that cannot complete keeps the backup rather
+  than trying a second destructive cleanup.
 """
 
 from __future__ import annotations
@@ -29,6 +37,7 @@ import asyncio
 from dataclasses import dataclass
 import logging
 import os
+from pathlib import Path
 import shutil
 import subprocess
 import sys
@@ -44,6 +53,7 @@ from deeptutor.services.cli_apps.paths import (
     ensure_root,
     executable_path,
     install_log_path,
+    interpreter_path,
     runtime_dir,
 )
 from deeptutor.services.cli_apps.state import (
@@ -125,10 +135,39 @@ def _install_blocking(entry: CliAppEntry) -> InstallOutcome:
     env_dir = runtime_dir(entry.id, runtime)
     backup = env_dir.with_name(f"{env_dir.name}.old")
 
-    shutil.rmtree(backup, ignore_errors=True)
+    if backup.exists():
+        # A backup that survived means a previous installation left
+        # unresolved backup material: an unfinished rollback is one cause,
+        # a backup cleanup after a successful update that could not fully
+        # remove it is another. Which directory — if either — holds the
+        # working environment is not ours to guess, and overwriting the
+        # backup or building over a partial environment could destroy
+        # recovery material — refuse and let the admin recover.
+        return InstallOutcome(
+            ok=False,
+            app_id=entry.id,
+            code="cli.install_failed",
+            message=(
+                f"a previous installation of {entry.display_name} left "
+                f"unresolved backup material: {backup} is still present. "
+                f"Inspect and recover the directories ({backup} and any "
+                f"environment at {env_dir}) before installing again."
+            ),
+        )
+
     had_previous = env_dir.exists()
     if had_previous:
-        os.replace(env_dir, backup)
+        try:
+            os.replace(env_dir, backup)
+        except OSError as exc:
+            # Nothing was built yet, so there is nothing to roll back: leave
+            # the working environment and the recorded state untouched.
+            return InstallOutcome(
+                ok=False,
+                app_id=entry.id,
+                code="cli.install_failed",
+                message=str(exc),
+            )
 
     chunks: list[str] = []
     try:
@@ -145,16 +184,12 @@ def _install_blocking(entry: CliAppEntry) -> InstallOutcome:
             )
     except (_StepFailed, OSError) as exc:
         log = _write_log(entry.id, chunks + [f"\nFAILED: {exc}"])
-        shutil.rmtree(env_dir, ignore_errors=True)
-        if had_previous:
-            # Put the working install back at exactly the path its console
-            # scripts' shebangs name.
-            os.replace(backup, env_dir)
+        message = _restore_after_failure(env_dir, backup, had_previous, str(exc))
         return InstallOutcome(
             ok=False,
             app_id=entry.id,
             code="cli.install_failed",
-            message=str(exc),
+            message=message,
             log=log,
         )
 
@@ -177,6 +212,36 @@ def _install_blocking(entry: CliAppEntry) -> InstallOutcome:
         log=_write_log(entry.id, chunks),
         app=app,
     )
+
+
+def _restore_after_failure(env_dir: Path, backup: Path, had_previous: bool, reason: str) -> str:
+    """Clear the partial environment and put the previous one back.
+
+    Returns the failure *reason*, extended with a recovery warning when the
+    restore could not complete. In that case both directories are left as
+    they lie: a second destructive attempt is how the last good copy of a
+    working install gets lost.
+    """
+    shutil.rmtree(env_dir, ignore_errors=True)
+    if not had_previous:
+        return reason
+    try:
+        if env_dir.exists():
+            return (
+                f"{reason}. The partial environment at {env_dir} could not be "
+                f"removed, so the previous environment was kept at {backup} "
+                "for recovery; resolve both directories before installing again."
+            )
+        # Put the working install back at exactly the path its console
+        # scripts' shebangs name.
+        os.replace(backup, env_dir)
+    except OSError as restore_error:
+        return (
+            f"{reason}. Restoring the previous environment failed "
+            f"({restore_error}); it was kept at {backup} for recovery — "
+            "resolve it before installing again."
+        )
+    return reason
 
 
 def _uninstall_blocking(app_id: str) -> InstallOutcome:
@@ -206,7 +271,7 @@ def _steps(entry: CliAppEntry, env_dir) -> list[tuple[list[str], dict[str, str]]
             ([sys.executable, "-m", "venv", str(env_dir)], base),
             (
                 [
-                    str(env_dir / "bin" / "python"),
+                    str(interpreter_path(env_dir)),
                     "-m",
                     "pip",
                     "install",

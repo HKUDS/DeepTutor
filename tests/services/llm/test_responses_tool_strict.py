@@ -1,4 +1,4 @@
-"""``convert_tools`` keeps an explicit ``strict`` setting on function tools (#1975)."""
+"""Responses conversion preserves strict choices and optional argument semantics."""
 
 from __future__ import annotations
 
@@ -39,8 +39,18 @@ def test_explicit_strict_is_preserved(strict: bool) -> None:
 
 
 @pytest.mark.parametrize("fields", [{}, {"strict": None}])
-def test_unset_strict_is_omitted(fields) -> None:
-    assert "strict" not in convert_tools([_tool(**fields)])[0]
+def test_unset_strict_preserves_non_strict_chat_default(fields) -> None:
+    tool = _tool(**fields)
+    tool["function"]["parameters"]["properties"]["limit"] = {"type": "integer"}
+    original = copy.deepcopy(tool)
+
+    converted = convert_tools([tool])[0]
+
+    assert converted["strict"] is False
+    assert converted["parameters"] == original["function"]["parameters"]
+    assert converted["parameters"]["required"] == ["query"]
+    assert "limit" not in converted["parameters"]["required"]
+    assert tool == original
 
 
 def test_native_web_search_ignores_strict() -> None:
@@ -48,3 +58,18 @@ def test_native_web_search_ignores_strict() -> None:
     tool["function"]["name"] = "web_search"
 
     assert convert_tools([tool], native_web_search=True) == [{"type": "web_search"}]
+
+
+def test_mastery_quiz_resume_id_can_be_absent() -> None:
+    from deeptutor.capabilities.mastery.tools import MasteryQuizTool
+
+    tool = MasteryQuizTool().get_definition().to_openai_schema()
+    original = copy.deepcopy(tool)
+
+    converted = convert_tools([tool])[0]
+
+    assert converted["strict"] is False
+    assert "resume_question_id" in converted["parameters"]["properties"]
+    assert "resume_question_id" not in converted["parameters"].get("required", [])
+    assert converted["parameters"] == original["function"]["parameters"]
+    assert tool == original

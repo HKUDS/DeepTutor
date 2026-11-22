@@ -347,7 +347,13 @@ class BookStorage:
                 result.append(Page.model_validate(data))
             except Exception as exc:
                 logger.warning(f"Skipping invalid page file {child}: {exc}")
-        result.sort(key=lambda p: (p.order, p.created_at))
+        spine = self.load_spine(book_id)
+        positions = {
+            pid: (index, section)
+            for index, chapter in enumerate(spine.chapters if spine else [])
+            for section, pid in enumerate(chapter.page_ids)
+        }
+        result.sort(key=lambda p: (*positions.get(p.id, (p.order, 100000)), p.created_at))
         return result
 
     def delete_page(self, book_id: str, page_id: str) -> bool:

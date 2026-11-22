@@ -309,3 +309,24 @@ def test_fallback_skips_uninstalled_engines(
     result = service.parse(_txt(tmp_path))
 
     assert result.engine == "markitdown"
+
+
+def test_upload_policy_matches_available_parser_routes(monkeypatch):
+    primary = _NamedFakeParser(name="text_only", formats=frozenset({".pdf", ".txt"}))
+    optional = _NamedFakeParser(name="markitdown", formats=frozenset({".xls"}))
+    _use_map(monkeypatch, {"text_only": primary, "markitdown": optional})
+    monkeypatch.setattr(svc_mod, "load_document_parsing_settings", lambda: {"engine": "text_only"})
+    monkeypatch.setattr(optional, "is_available", lambda: False)
+    assert ParseService().accepted_extensions() == {".pdf", ".txt"}
+    assert svc_mod._find_fallback_engine("old.xls", "text_only") is None
+    monkeypatch.setattr(optional, "is_available", lambda: True)
+    assert ParseService().accepted_extensions() == {".pdf", ".txt", ".xls"}
+    assert svc_mod._find_fallback_engine("old.xls", "text_only")[0] == "markitdown"
+    monkeypatch.setattr(svc_mod, "load_document_parsing_settings", lambda: {"engine": "markitdown"})
+    assert ".xls" in ParseService().accepted_extensions()
+
+
+def test_explicit_tika_delegates_upload_type_detection(monkeypatch):
+    _use_map(monkeypatch, {"tika": _NamedFakeParser(name="tika", formats=frozenset())})
+    monkeypatch.setattr(svc_mod, "load_document_parsing_settings", lambda: {"engine": "tika"})
+    assert ParseService().accepted_extensions() == set()

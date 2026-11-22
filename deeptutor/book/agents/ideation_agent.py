@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from deeptutor.agents.base_agent import BaseAgent
+from deeptutor.book.generation_context import BookAgent
 from deeptutor.services.llm.structured_retry import json_with_reasoning_retry
 from deeptutor.services.llm.types import StreamOutcome
 
@@ -18,7 +18,7 @@ from ..inputs import IdeationContext
 from ..models import BookProposal
 
 
-class IdeationAgent(BaseAgent):
+class IdeationAgent(BookAgent):
     """LLM call that proposes a book given the four-source IdeationContext."""
 
     def __init__(

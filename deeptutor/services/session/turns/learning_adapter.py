@@ -116,6 +116,51 @@ class LearningTurnAdapter:
                 exc_info=True,
             )
 
+    async def _is_mismatched_card_replay(
+        self,
+        *,
+        path_id: str,
+        submission: dict[str, Any],
+        receipt: dict[str, Any],
+    ) -> bool:
+        """Identify a single-card replay that does not assess this submission.
+
+        Compare the actual final receipt, not only a pre-grading snapshot, so
+        another conversation completing the question cannot bypass the check.
+        Use the stored question's choice mapping for equivalent answer forms;
+        preserve ordinary retry and grouped-answer semantics. Never mutate the
+        committed interaction or grade a different pending question.
+        """
+        result = receipt.get("result") or {}
+        if (
+            not receipt.get("replayed")
+            or result.get("results") is not None
+            or result.get("final") is False
+        ):
+            return False
+        answers = submission.get("answers")
+        current = str(
+            answers.get(submission["question_id"], submission.get("text") or "")
+            if isinstance(answers, dict)
+            else submission.get("text") or ""
+        ).strip()
+        previous = str(result.get("learner_answer") or "").strip()
+        if current == previous:
+            return False
+
+        from deeptutor.learning.pending import is_readable_choice_answer, resolve_choice_submission
+        from deeptutor.learning.storage import LearningStore
+
+        interaction = await asyncio.to_thread(
+            LearningStore().get_interaction, path_id, submission["question_id"]
+        )
+        if interaction is not None and interaction.question.question_type == "choice":
+            options = interaction.question.choice_map
+            if is_readable_choice_answer(current, options):
+                resolved = resolve_choice_submission(current, options)
+                return not resolved or resolved != resolve_choice_submission(previous, options)
+        return True
+
     async def _grade_submitted_card_answer(
         self,
         execution: _TurnExecution,
@@ -172,6 +217,17 @@ class LearningTurnAdapter:
         if not result.success or not isinstance(payload, dict):
             await self._publish_mastery_group_rejection(execution, question_id)
             return None
+        try:
+            mismatched = await self._is_mismatched_card_replay(
+                path_id=path_id, submission=answer, receipt=payload
+            )
+        except Exception:
+            # A replay we cannot verify must not become a new answer's verdict.
+            logger.warning("Could not verify mastery card replay", exc_info=True)
+            mismatched = True
+        if mismatched:
+            await self._publish_mastery_group_rejection(execution, question_id, reason="stale_card")
+            return {"question_id": question_id, "reason": "stale_card"}
         # One complete trace group, the same shape the dispatcher emits for a
         # tool the model called: a lone result with no terminal status renders
         # as a row that never stops running.
@@ -215,7 +271,7 @@ class LearningTurnAdapter:
         return payload
 
     async def _publish_mastery_group_rejection(
-        self, execution: _TurnExecution, question_id: str
+        self, execution: _TurnExecution, question_id: str, *, reason: str = ""
     ) -> None:
         """Reopen an optimistically submitted card without fabricating a verdict."""
         call_id = f"mastery-grade-{execution.turn_id}-{question_id}"
@@ -227,7 +283,11 @@ class LearningTurnAdapter:
             trace_id=call_id,
             tool="mastery_grade",
         )
-        message = "These answers could not be submitted. Please review or retry."
+        message = (
+            "This question was already completed. This reply was not graded; request a new practice question."
+            if reason == "stale_card"
+            else "These answers could not be submitted. Please review or retry."
+        )
         await self._publish_live_event(
             execution,
             StreamEvent(
@@ -239,7 +299,11 @@ class LearningTurnAdapter:
                     **trace,
                     "trace_kind": "tool_result",
                     "tool_metadata": {
-                        "mastery_answer_rejected": {"question_id": question_id, "message": message}
+                        "mastery_answer_rejected": {
+                            "question_id": question_id,
+                            "message": message,
+                            **({"reason": reason} if reason else {}),
+                        }
                     },
                 },
             ),

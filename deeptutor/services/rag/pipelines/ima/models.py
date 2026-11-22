@@ -123,6 +123,11 @@ class ImaPageCursor:
 _DOCUMENT_KEYS: tuple[str, ...] = ("knowledge_list", "info_list")
 _FOLDER_KEYS: tuple[str, ...] = ("folder_list", "folders")
 
+# ``search_knowledge`` returns folder-name hits inside the document array with a
+# ``folder_`` media id and ``media_type`` 99, and no ``folder_id`` field (#2326).
+_FOLDER_MEDIA_ID_PREFIX = "folder_"
+_FOLDER_MEDIA_TYPE = 99
+
 
 def parse_knowledge_page(data: Mapping[str, Any]) -> ImaKnowledgePage:
     """Decode one page of ``get_knowledge_list`` / ``search_knowledge``."""
@@ -133,13 +138,14 @@ def parse_knowledge_page(data: Mapping[str, Any]) -> ImaKnowledgePage:
     unverified = 0
 
     for raw in _entries(data, _DOCUMENT_KEYS):
-        # A folder can appear inside the document array (search matches folder
-        # names, and a listing mixes both), identified by carrying a folder id
-        # and no media id. Route it to the folder list instead of inventing a
-        # content-less document.
-        folder = _folder_from(raw)
-        if folder is not None and not _text(raw, "media_id"):
-            if folder.folder_id not in seen_folders:
+        # A folder can appear inside the document array. A listing identifies
+        # one by a folder id and no media id. ``search_knowledge`` folder-name
+        # hits instead carry a ``folder_`` media id and media_type 99, with no
+        # folder_id (#2326). Treating those as documents spends the hydration
+        # budget on ids ``get_media_info`` rejects.
+        if _is_document_array_folder(raw):
+            folder = _folder_from(raw)
+            if folder is not None and folder.folder_id not in seen_folders:
                 seen_folders.add(folder.folder_id)
                 folders.append(folder)
             continue
@@ -278,8 +284,40 @@ def _document_from(raw: Mapping[str, Any]) -> ImaDocument | None:
     )
 
 
+def _is_document_array_folder(raw: Mapping[str, Any]) -> bool:
+    """True when a document-array entry must not be hydrated as a file.
+
+    Listings mix folders into the document array as ``folder_id`` with no
+    ``media_id``. Search folder-name hits omit ``folder_id`` and instead send
+    ``media_id`` ``folder_…`` and/or ``media_type`` 99.
+    """
+    if _text(raw, "folder_id") and not _text(raw, "media_id"):
+        return True
+    if _embedded_folder_media_id(raw):
+        return True
+    media_type = raw.get("media_type")
+    return media_type is not None and _int(media_type) == _FOLDER_MEDIA_TYPE
+
+
+def _embedded_folder_media_id(raw: Mapping[str, Any]) -> str:
+    """Folder id that arrived in the document array as ``media_id``.
+
+    Either the ``folder_`` prefix or ``media_type`` 99 is enough on its own.
+    Live responses carry both, and a response that drops one of them is still
+    a folder.
+    """
+    media_id = _text(raw, "media_id")
+    if not media_id:
+        return ""
+    if media_id.startswith(_FOLDER_MEDIA_ID_PREFIX):
+        return media_id
+    if _int(raw.get("media_type")) == _FOLDER_MEDIA_TYPE:
+        return media_id
+    return ""
+
+
 def _folder_from(raw: Mapping[str, Any]) -> ImaFolder | None:
-    folder_id = _text(raw, "folder_id")
+    folder_id = _text(raw, "folder_id") or _embedded_folder_media_id(raw)
     if not folder_id:
         return None
     return ImaFolder(

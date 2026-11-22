@@ -302,7 +302,7 @@ def _partner_session_entity(
     records: list[dict] = []
     try:
         with path.open("r", encoding="utf-8") as fh:
-            for raw in fh:
+            for line_number, raw in enumerate(fh, 1):
                 raw = raw.strip()
                 if not raw:
                     continue
@@ -310,8 +310,18 @@ def _partner_session_entity(
                     obj = json.loads(raw)
                 except json.JSONDecodeError:
                     continue
-                if isinstance(obj, dict):
-                    records.append(obj)
+                if not isinstance(obj, dict):
+                    continue
+                content = obj.get("content")
+                if not isinstance(content, str):
+                    if content is not None:
+                        logger.warning(
+                            "partner snapshot skipped non-text message in %s at line %d",
+                            path,
+                            line_number,
+                        )
+                    continue
+                records.append(obj)
     except OSError:
         return None
 

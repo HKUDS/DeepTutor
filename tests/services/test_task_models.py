@@ -329,7 +329,7 @@ def test_every_task_model_call_site_names_a_kind() -> None:
     for path in root.rglob("*.py"):
         if path.name == "tasks.py" and path.parent.name == "model_selection":
             continue
-        for match in re.finditer(r"task_llm_scope\(([^)]*)\)", path.read_text()):
+        for match in re.finditer(r"task_llm_scope\(([^)]*)\)", path.read_text(encoding="utf-8")):
             calls.append((path.name, match.group(1).strip()))
 
     assert calls, "no task model call sites found — did the module move?"

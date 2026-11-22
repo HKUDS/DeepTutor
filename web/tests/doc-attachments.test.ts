@@ -42,6 +42,7 @@ test("classifyFile: doc via extension fallback when MIME empty", () => {
 test("classifyFile: accepts text & code", () => {
   assert.equal(classifyFile(makeFile("notes.txt", "text/plain")), "doc");
   assert.equal(classifyFile(makeFile("README.md", "text/markdown")), "doc");
+  assert.equal(classifyFile(makeFile("guide.mdx")), "doc");
   assert.equal(classifyFile(makeFile("main.py", "text/x-python")), "doc");
   // Empty MIME (common for code files) still accepted via extension
   assert.equal(classifyFile(makeFile("script.js")), "doc");
@@ -114,6 +115,7 @@ test("docIconFor: json/config/data/markup categories", () => {
   assert.ok(docIconFor("run.sh").tint.includes("slate"));
   assert.ok(docIconFor("table.csv").tint.includes("emerald"));
   assert.ok(docIconFor("doc.md").tint.includes("sky"));
+  assert.ok(docIconFor("guide.mdx").tint.includes("sky"));
   assert.ok(docIconFor("style.css").tint.includes("pink"));
 });
 

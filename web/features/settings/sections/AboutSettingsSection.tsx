@@ -14,6 +14,8 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { normalizeLanguage } from "@/i18n/languages";
+import { formatDate } from "@/lib/datetime";
 
 import { Toggle } from "@/components/settings/Toggle";
 import {
@@ -181,10 +183,10 @@ export default function AboutSettingsPage() {
     if (!status?.checked_at) return "";
     const parsed = new Date(status.checked_at);
     if (Number.isNaN(parsed.getTime())) return "";
-    return parsed.toLocaleString(
-      i18n.language?.toLowerCase().startsWith("zh") ? "zh-CN" : "en-US",
-      { dateStyle: "medium", timeStyle: "short" },
-    );
+    return formatDate(parsed, normalizeLanguage(i18n.language), {
+      dateStyle: "medium",
+      timeStyle: "short",
+    });
   }, [i18n.language, status?.checked_at]);
 
   const installMode = status?.installation.mode ?? "unknown";

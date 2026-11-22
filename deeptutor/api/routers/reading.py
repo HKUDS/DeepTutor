@@ -49,7 +49,7 @@ from deeptutor.reading import (
     ReadingUpgradeConflict,
     SourceKind,
     export_material,
-    render_outline,
+    format_outline,
 )
 from deeptutor.reading.captions import caption_material_media, captions_enabled
 from deeptutor.reading.ingestion import (
@@ -1085,14 +1085,16 @@ async def upload_material(
             service = ReadingIngestionService(store, _catalog())
             record = await service.queue_media(tmp_path, filename=filename)
             background_tasks.add_task(service.process_media, record.material_id)
-            return _detail(store, store.manifest(record.material_id))
+            return await _detail_off_loop(store, store.manifest(record.material_id))
         else:
-            manifest = store.ingest(tmp_path, filename=filename)
+            # Parsing a document walks an entire EPUB spine or every PDF page;
+            # run it in a worker thread so the loop keeps serving requests.
+            manifest = await asyncio.to_thread(store.ingest, tmp_path, filename=filename)
             catalog = _catalog()
             if reuse or catalog.get_material(manifest.material_id) is None:
                 catalog.register_manifest(manifest)
                 _schedule_media_captions(background_tasks, store, manifest.material_id)
-                return _detail(store, manifest)
+                return await _detail_off_loop(store, manifest)
             # A separate material over the same extracted content: the bytes
             # are stored once, while annotations and reading position are kept
             # apart because the user asked for a second, independent copy.
@@ -1107,7 +1109,7 @@ async def upload_material(
                 status=IngestionStatus.READY,
             )
             _schedule_media_captions(background_tasks, store, record.material_id)
-            return _detail(store, store.manifest(record.material_id))
+            return await _detail_off_loop(store, store.manifest(record.material_id))
     except HTTPException:
         raise
     except Exception as exc:
@@ -1121,7 +1123,7 @@ async def get_material(material_id: str) -> MaterialDetail:
     store = _store()
     try:
         assert_learning_material(material_id)
-        return _detail(store, store.manifest(material_id))
+        return await _detail_off_loop(store, store.manifest(material_id))
     except Exception as exc:
         raise _http_error(exc) from exc
 
@@ -1551,10 +1553,24 @@ def _detail(store: ReadingStore, manifest: Any) -> MaterialDetail:
         | {
             "annotation_count": len(store.annotations(manifest.material_id)),
             "outline": [entry.to_dict() for entry in outline],
-            "outline_text": render_outline(store, manifest.material_id),
+            # Render from the rows already loaded above: asking render_outline
+            # to reload them re-reads outline.json, and for an EPUB whose rows
+            # still lack publisher anchors each read can re-parse the whole
+            # package (#2054).
+            "outline_text": format_outline(manifest, outline),
             "unit_refs": [entry.to_dict() for entry in store.unit_references(manifest.material_id)],
         }
     )
+
+
+async def _detail_off_loop(store: ReadingStore, manifest: Any) -> MaterialDetail:
+    """Build a material detail without parking the API event loop.
+
+    Extracting, reading units and loading an outline are synchronous file and
+    parser work. Running them inline in an async route stalls every other
+    request on the worker while a large document is read (#2054).
+    """
+    return await asyncio.to_thread(_detail, store, manifest)
 
 
 def _annotation_info(row: Annotation) -> AnnotationInfo:

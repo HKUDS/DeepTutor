@@ -64,6 +64,17 @@ class TestParseJsonResponseMarkdown:
         result = parse_json_response(response)
         assert result == {"a": 1}
 
+    def test_code_snippet_block_before_json_block(self) -> None:
+        response = (
+            "The question uses this snippet:\n```python\nprint(len([1, 2]))\n```\n"
+            'Here is the result:\n```json\n{"answer": 2}\n```'
+        )
+        assert parse_json_response(response) == {"answer": 2}
+
+    def test_malformed_json_block_after_code_snippet_is_repaired(self) -> None:
+        response = '```python\nx = 1\n```\n```json\n{"answer": 2,}\n```'
+        assert parse_json_response(response) == {"answer": 2}
+
     def test_fenced_code_inside_json_string_is_not_extracted(self) -> None:
         payload = {
             "content": "Use this example:\n```python\nprint('hello')\n```",
@@ -222,3 +233,13 @@ class TestParseJsonResponseThinkTags:
     def test_unclosed_think_prelude_without_braces(self) -> None:
         response = '<think>reasoning here, no JSON yet\n{"real":1}'
         assert parse_json_response(response, fallback=None) == {"real": 1}
+
+
+def test_explicit_json_fence_wins_over_unlabeled_example() -> None:
+    response = '```\n{"example": "longer example value"}\n```\n```JSON\n{"answer": 2}\n```'
+    assert parse_json_response(response) == {"answer": 2}
+
+
+def test_other_language_fences_are_not_json_candidates() -> None:
+    response = '```javascript\n{"example": "longer example value"}\n```\n{"answer": 2}'
+    assert parse_json_response(response) == {"answer": 2}

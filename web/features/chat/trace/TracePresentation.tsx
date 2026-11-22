@@ -567,6 +567,8 @@ const PROVIDER_LABELS: Record<string, string> = {
   iqs: "IQS",
   bocha: "Bocha",
   zhipu: "Zhipu",
+  deepseek: "DeepSeek",
+  specstream: "SpecStream",
 };
 
 function providerLabel(slug: string): string {

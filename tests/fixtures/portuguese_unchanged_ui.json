@@ -135,5 +135,9 @@
   "Docker": "Docker",
   "Normal": "Normal",
   "language.turkish": "Türkçe",
-  "language.japanese": "日本語"
+  "language.japanese": "日本語",
+  "language.korean": "한국어 (일부 번역)",
+  "OAuth": "OAuth",
+  "language.italian": "Italiano",
+  "language.hungarian": "Magyar"
 }

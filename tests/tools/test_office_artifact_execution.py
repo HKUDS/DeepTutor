@@ -231,13 +231,15 @@ def test_docx_xlsx_dependencies_cover_pip_source_cli_and_docker() -> None:
     root = Path(__file__).parents[2]
     import tomllib
 
-    core = tomllib.loads((root / "pyproject.toml").read_text())["project"]
-    cli = tomllib.loads((root / "packaging/deeptutor-cli/pyproject.toml").read_text())["project"]
+    core = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))["project"]
+    cli = tomllib.loads(
+        (root / "packaging/deeptutor-cli/pyproject.toml").read_text(encoding="utf-8")
+    )["project"]
     assert "dependencies" in cli["dynamic"]
 
     def requirements(path):
         lines = []
-        for line in path.read_text().splitlines():
+        for line in path.read_text(encoding="utf-8").splitlines():
             if line.startswith("-r "):
                 lines.extend(requirements(path.parent / line[3:].strip()).splitlines())
             else:
@@ -248,7 +250,7 @@ def test_docx_xlsx_dependencies_cover_pip_source_cli_and_docker() -> None:
         "core and CLI wheel": "\n".join(core["dependencies"]),
         "source CLI": requirements(root / "requirements/cli.txt"),
         "full source and Docker": requirements(root / "requirements.txt"),
-        "docker runner": (root / "Dockerfile.runner").read_text(),
+        "docker runner": (root / "Dockerfile.runner").read_text(encoding="utf-8"),
     }.items():
         assert "python-docx" in text, deployment
         assert "openpyxl" in text, deployment

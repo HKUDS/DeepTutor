@@ -611,7 +611,7 @@ def test_broad_objective_can_use_more_pages_but_remains_bounded(material, monkey
         return {
             "sources": [
                 {**d.metadata, "chunk_id": f"n{i}", "evidence_text": d.text}
-                for i, d in enumerate(material.documents[:count])
+                for i, d in enumerate(material.documents[10 : 10 + count])
             ]
         }
 
@@ -627,8 +627,10 @@ def test_broad_objective_can_use_more_pages_but_remains_bounded(material, monkey
                 "selected": [
                     {
                         "id": f"c{i}",
-                        "quote": f"Unrelated section {i}.",
+                        "quote": f"Unrelated section {i + 10}.",
                         "reason": "Part of objective",
+                        # The top pick's context-only neighbour goes first over the cap.
+                        "neighbor": -1 if i == 0 else 0,
                     }
                     for i in range(count)
                 ],
@@ -640,16 +642,12 @@ def test_broad_objective_can_use_more_pages_but_remains_bounded(material, monkey
         "deeptutor.services.rag.pipelines.llamaindex.pipeline.LlamaIndexPipeline.search", search
     )
     monkeypatch.setattr(lessons, "_ask", ask)
-    if count > lessons.MAX_LESSON_PAGES:
-        with pytest.raises(lessons.LessonUnavailable, match="selection count"):
-            asyncio.run(lessons.prepare_lesson(material.store, "path", "kp", material.config))
-        assert not material.store.load("path").lesson_evidence
-    else:
-        evidence = asyncio.run(
-            lessons.prepare_lesson(material.store, "path", "kp", material.config)
-        )
-        assert len(evidence["sources"]) == count
-        assert batches == [2, 2]
+    evidence = asyncio.run(lessons.prepare_lesson(material.store, "path", "kp", material.config))
+    # An over-long selection keeps the model's top-ranked pages within the cap.
+    kept = min(count + 1, lessons.MAX_LESSON_PAGES)
+    assert len(evidence["sources"]) == kept
+    assert all(source["quote"] for source in evidence["sources"]) == (count >= kept)
+    assert batches == [2] * (kept // 2) + [1] * (kept % 2)
 
 
 @pytest.mark.parametrize("action", ["neighbor", "crop", "search"])
@@ -1148,6 +1146,37 @@ def test_page_limit_counts_physical_pages_not_multiple_quotes_from_one_page(mate
     assert len(evidence["sources"]) == 1
 
 
+def test_missing_neighbor_page_is_skipped_not_fatal(material, monkeypatch):
+    last = next(d for d in material.documents if d.metadata.get("page_index") == 71)
+    _install_preparation(
+        material,
+        monkeypatch,
+        rankings=[
+            {
+                "sufficient": True,
+                "selected": [
+                    {
+                        "id": "c0",
+                        "quote": "Unrelated section 71.",
+                        "reason": "Last page",
+                        "neighbor": 1,
+                    }
+                ],
+            }
+        ],
+    )
+
+    async def search(self, query, kb_name, **kwargs):
+        return {"sources": [{**last.metadata, "chunk_id": "n71", "evidence_text": last.text}]}
+
+    monkeypatch.setattr(
+        "deeptutor.services.rag.pipelines.llamaindex.pipeline.LlamaIndexPipeline.search", search
+    )
+    evidence = asyncio.run(lessons.prepare_lesson(material.store, "path", "kp", material.config))
+    # The document has no page after 71; the chosen page still makes the lesson.
+    assert [s["ref"]["page_index"] for s in evidence["sources"]] == [71]
+
+
 def test_page_enrichment_never_discards_the_hit_near_end_of_a_long_page(material, monkeypatch):
     hit = "Membrane lipids form a bilayer."
     monkeypatch.setattr(
@@ -1341,8 +1370,9 @@ def test_stale_source_blocks_grading_without_erasing_history(material, monkeypat
         pdf.saveIncr()
         pdf.close()
     elif change == "index":
+        # The re-index no longer publishes the page the question cites.
         catalog = json.loads((material.storage / "source_pages.json").read_text())
-        catalog["pages"][0]["parser_signature"] = "replacement"
+        catalog["pages"] = [p for p in catalog["pages"] if p.get("page_index") != 70]
         (material.storage / "source_pages.json").write_text(json.dumps(catalog))
     else:
         material.store.put_topic(TopicMetadata(path_id="path"), [])
@@ -1351,6 +1381,78 @@ def test_stale_source_blocks_grading_without_erasing_history(material, monkeypat
         service.grade_interaction("path", question_id="q", answer="lipids")
     after = material.store.load("path").model_dump()
     assert after == before
+
+
+def _reindex_with_added_document(material, monkeypatch):
+    """Publish a new index version whose catalog also covers another document."""
+    catalog = json.loads((material.storage / "source_pages.json").read_text())
+    added = {**catalog["pages"][0], "document_key": "week-2.pdf", "source_digest": "f" * 64}
+    catalog["pages"].append(added)
+    storage = material.storage.parent / "version-2"
+    storage.mkdir()
+    (storage / "source_pages.json").write_text(json.dumps(catalog))
+    monkeypatch.setattr(
+        "deeptutor.services.rag.index_versioning.resolve_storage_dir_for_read",
+        lambda *args: storage,
+    )
+    return storage
+
+
+def _whole_kb_topic(material):
+    material.store.put_topic(
+        TopicMetadata(path_id="path"),
+        [
+            TopicSource(
+                id="s",
+                kind=TopicSourceKind.KNOWLEDGE_BASE,
+                label="Course KB",
+                source_id="selected",
+            )
+        ],
+    )
+
+
+def test_issued_question_survives_reindex_that_keeps_its_cited_pages(material, monkeypatch):
+    # #2650: adding material to the KB re-indexes it; a pending card whose
+    # cited pages are unchanged must still be gradable, and the answer kept.
+    _whole_kb_topic(material)
+    _install_preparation(material, monkeypatch)
+    asyncio.run(lessons.prepare_lesson(material.store, "path", "kp", material.config))
+    service = LearningService(material.store)
+    service.register_question(
+        "path", PendingQuestion(question_id="q", knowledge_point_id="kp", expected_answer="lipids")
+    )
+    _reindex_with_added_document(material, monkeypatch)
+    progress = material.store.load("path")
+    # Teaching packets still re-prepare against the new index ...
+    with pytest.raises(lessons.LessonUnavailable, match="index changed"):
+        lessons.validate_evidence(material.store, progress, "kp", progress.lesson_evidence["kp"])
+    # ... but the issued question is bound to its own pages and is graded.
+    progress, interaction, replayed = service.grade_interaction(
+        "path", question_id="q", answer="lipids"
+    )
+    assert not replayed and interaction.result["is_correct"] is True
+    assert [a.user_answer for a in progress.quiz_attempts] == ["lipids"]
+
+
+def test_reindexed_changed_cited_page_names_the_recovery_tool(material, monkeypatch):
+    _whole_kb_topic(material)
+    _install_preparation(material, monkeypatch)
+    asyncio.run(lessons.prepare_lesson(material.store, "path", "kp", material.config))
+    service = LearningService(material.store)
+    service.register_question(
+        "path", PendingQuestion(question_id="q", knowledge_point_id="kp", expected_answer="lipids")
+    )
+    storage = _reindex_with_added_document(material, monkeypatch)
+    catalog = json.loads((storage / "source_pages.json").read_text())
+    for page in catalog["pages"]:
+        if page.get("page_index") == 70 and page["document_key"] == "lesson.pdf":
+            page["source_digest"] = "e" * 64
+    (storage / "source_pages.json").write_text(json.dumps(catalog))
+    before = material.store.load("path").model_dump()
+    with pytest.raises(MasteryInteractionError, match="mastery_skip_question"):
+        service.grade_interaction("path", question_id="q", answer="lipids")
+    assert material.store.load("path").model_dump() == before
 
 
 def test_outline_reorder_keeps_evidence_identity(material):

@@ -53,7 +53,7 @@ import {
   type ReadingConversation,
   type ReadingLibraryMaterial,
 } from "@/lib/reading-workspace-api";
-import { READER_ASK_EVENT } from "@/components/reading/ReaderPane";
+import { READER_ASK_EVENT } from "@/components/reading/reading-actions-context";
 import {
   focusReadingComposer,
   useReadingActions,
@@ -477,6 +477,7 @@ export function ReadingCompanion({
           <CompanionWelcome hasMaterial={Boolean(material)} />
         )}
         <ReadingActionCards
+          selection={selection}
           sessionId={state.sessionId}
           onFollowUp={followUpCard}
         />
