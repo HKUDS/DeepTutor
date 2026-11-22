@@ -115,29 +115,35 @@ Default runtime home of the desktop app on macOS:
    example one created by Compose). Check `docker ps -a` and compare the volume
    sizes before exporting.
 
-3. **Back up the target's existing `data/`**, remove stale
+3. **Back up the target's existing `data/`**, and set aside the target's own
+   copies of the environment-specific files listed in step 4. Remove stale
    `chat_history.db-wal`, `chat_history.db-shm`, `usage.sqlite3-wal` and
    `usage.sqlite3-shm` files from the target, then copy the exported tree over
    it, preserving hidden files (for example `rsync -a export/ "<target>/data/"`).
 
-4. **Review environment-specific files** before starting the target:
+4. **Keep the target's environment-specific files.** Put the target's own
+   copies back after the copy (or exclude them from it):
    - `data/user/settings/system.json` holds ports, CORS and SSL options that
-     may not suit the new environment. Keep the target's own file if the app
-     does not start.
-   - `data/user/.runtime/workspaces.sqlite3` stores each registered workspace
-     with an absolute `path`. After a container-to-desktop copy, the default
-     workspaces still list the container's `/app/data/...` paths. In the
-     verified run below, they opened with their data intact.
+     may not suit the new environment.
+   - `data/user/.runtime/workspaces.sqlite3` registers each workspace with an
+     absolute `path`. A registry copied from a container lists `/app/data/...`
+     paths, which do not exist on the host; the desktop app then fails to start
+     new conversations with "The selected workspace folder does not exist."
+     Workspace IDs for the default workspaces are the same in both
+     deployments, so the target's registry keeps pointing at the copied
+     `data/user/workspaces/ws_*` directories.
 
 5. **Start the target** and confirm that sessions, knowledge bases and a model
-   response work.
+   response work, and that you can start a new conversation.
 
 Treat every copy as sensitive: it contains provider credentials and private
 conversation text, so delete exports once the migration is confirmed.
 
-Verified: Docker container 1.7.4 → Open DeepTutor 1.7.4 desktop
-app on macOS (Apple Silicon). Not verified: other platforms, or migrating
-between different releases.
+Verified: published container (named volume, image 1.7.4) → Open DeepTutor
+1.7.4 desktop app on macOS (Apple Silicon), with the two default workspaces.
+Not verified: other platforms, migrating between releases, or workspaces
+registered beyond the defaults (their registry entries are not carried over
+when the target's registry is kept).
 
 ## Implementation and verification
 
