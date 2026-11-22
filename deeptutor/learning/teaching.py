@@ -18,10 +18,21 @@ class TeachingUpdate(BaseModel):
     op: Literal["upsert", "remove"]
     key: str = Field(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
     text: str = Field(default="", max_length=400)
-    knowledge_point_id: str = Field(default="", max_length=200)
+    knowledge_point_id: str = Field(
+        default="",
+        max_length=200,
+        description="For kind='observation' only (omit for kind='preference').",
+    )
     basis: Literal["learner_report", "tentative"] = "tentative"
-    strategy: str = Field(default="", max_length=300)
-    outcome: Literal["unknown", "helped", "not_helped"] = "unknown"
+    strategy: str = Field(
+        default="",
+        max_length=300,
+        description="For kind='observation' only (omit for kind='preference').",
+    )
+    outcome: Literal["unknown", "helped", "not_helped"] = Field(
+        default="unknown",
+        description="For kind='observation' only (leave 'unknown' for kind='preference').",
+    )
     evidence: str = Field(default="", max_length=300)
 
     @field_validator("text", "knowledge_point_id", "strategy", "evidence")
