@@ -91,6 +91,31 @@ test("processLatexContent: delegates to convertLatexDelimiters", () => {
   assert.ok(out.includes("$x$"));
 });
 
+test("processLatexContent: moves display fences off the formula line", () => {
+  // The shape a tutor writes for a matrix: both `$$` hug the environment.
+  const input = [
+    "矩阵如下：",
+    "",
+    "$$P=\\begin{pmatrix}",
+    "0.5 & 0.5 \\\\",
+    "0.5 & 0.5",
+    "\\end{pmatrix}$$",
+    "",
+    "问：比例是多少？",
+  ].join("\n");
+
+  const out = processLatexContent(input);
+  const lines = out.split("\n");
+
+  assert.ok(lines.includes("$$"), out);
+  assert.ok(lines.includes("P=\\begin{pmatrix}"), out);
+  assert.ok(lines.includes("\\end{pmatrix}"), out);
+  // remark-math needs each fence alone on its line; while they hug the
+  // formula it parses the block as inline maths and KaTeX chokes on `&`.
+  assert.ok(!lines.some((line) => /^\$\$.+\$\$$/.test(line)), out);
+  assert.ok(!lines.some((line) => line.startsWith("$$P=")), out);
+});
+
 // ---------------------------------------------------------------------------
 // processMarkdownContent — heading normalisation
 // ---------------------------------------------------------------------------

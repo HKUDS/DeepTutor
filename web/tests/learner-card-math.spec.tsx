@@ -58,6 +58,68 @@ describe("learner-facing cards render the tutor's markup", () => {
     expect(container).not.toHaveTextContent("$V^\\pi$");
   });
 
+  it("renders a matrix written as a bare LaTeX environment on an answer card", async () => {
+    // The tutor writes the state-transition matrix with no delimiters around
+    // it; the card used to show `\begin{pmatrix} …` as source.
+    const matrix = String.raw`\begin{pmatrix} 0.5 & 0.5 & 0 & 0\\ 0.5 & 0.5 & 0 & 0\\ 0.2 & 0 & 0.4 & 0.4\\ 0 & 0.3 & 0.3 & 0.4 \end{pmatrix}`;
+    const { container } = render(
+      <MasteryQuestionCard
+        question={{
+          ...masteryQuestion(),
+          prompt: `单步转移矩阵如下：\n\n${matrix}\n\n长期来看处在状态 1 的时间比例是多少？`,
+        }}
+        grade={null}
+        answered={false}
+        submittedAnswer=""
+        onSubmit={() => undefined}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(
+        container.querySelectorAll(".katex").length,
+      ).toBeGreaterThanOrEqual(1);
+    });
+    expect(container.querySelector(".katex-error")).toBeNull();
+    // KaTeX renders an environment as a MathML table, not a run of text.
+    expect(container.querySelector(".katex mtable")).not.toBeNull();
+  });
+
+  it("renders a display matrix whose $$ fences hug the environment", async () => {
+    // Exactly what a mastery question carried: remark-math only reads a
+    // multi-line display block with each `$$` on its own line, so this used
+    // to reach KaTeX as inline maths and fail on its first `&`.
+    const prompt = [
+      "某四状态时齐马尔可夫链的单步转移矩阵如下：",
+      "",
+      "$$P=\\begin{pmatrix}",
+      "0.5 & 0.5 & 0 & 0\\\\",
+      "0.5 & 0.5 & 0 & 0\\\\",
+      "0.2 & 0 & 0.4 & 0.4\\\\",
+      "0 & 0.3 & 0.3 & 0.4",
+      "\\end{pmatrix}$$",
+      "",
+      "问：长期来看，处在状态 1 的时间比例是多少？",
+    ].join("\n");
+    const { container } = render(
+      <MasteryQuestionCard
+        question={{ ...masteryQuestion(), prompt }}
+        grade={null}
+        answered={false}
+        submittedAnswer=""
+        onSubmit={() => undefined}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(container.querySelectorAll(".katex").length).toBeGreaterThanOrEqual(
+        1,
+      );
+    });
+    expect(container.querySelector(".katex-error")).toBeNull();
+    expect(container.querySelector(".katex mtable")).not.toBeNull();
+  });
+
   it("renders math and emphasis on an ask_user card", async () => {
     const { container } = render(
       <AskUserOptions
