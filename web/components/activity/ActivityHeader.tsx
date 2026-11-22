@@ -69,7 +69,11 @@ export function ActivityHeader({
 
   const inner = (
     <>
-      {mark ?? (showOrb ? <ActivityOrb state={orb} speed={orbSpeed} /> : null)}
+      {mark ?? (
+        showOrb ? (
+          <ActivityOrb state={orb} speed={orbSpeed} paused={settled} />
+        ) : null
+      )}
       {lead}
       <span className={breathing}>{label}</span>
       {duration ? (

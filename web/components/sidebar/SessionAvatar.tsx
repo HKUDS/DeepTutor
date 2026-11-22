@@ -209,12 +209,17 @@ export function SessionAvatar({
           running ? "scale-100 opacity-100" : "scale-[0.45] opacity-0"
         }`}
       >
-        <ActivityOrb
-          state="composing"
-          speed={LIVE_SPEED}
-          box={size}
-          tone="live"
-        />
+        {/* Mount only while the session is actually running: a mounted orb
+            keeps its canvas rAF loop alive even when CSS hides it, so an
+            idle sidebar row used to burn CPU for a mark nobody can see. */}
+        {running ? (
+          <ActivityOrb
+            state="composing"
+            speed={LIVE_SPEED}
+            box={size}
+            tone="live"
+          />
+        ) : null}
       </span>
       <span
         className={`absolute inset-0 flex items-center justify-center transition-[opacity,transform] duration-300 ease-out ${
