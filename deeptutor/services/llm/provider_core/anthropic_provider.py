@@ -7,6 +7,7 @@ prompt caching, extended thinking, tool calls, and streaming.
 from __future__ import annotations
 
 import asyncio
+import base64
 from collections.abc import Awaitable, Callable
 import re
 import secrets
@@ -17,6 +18,7 @@ import json_repair
 
 from deeptutor.services.llm.provider_core.base import LLMProvider, LLMResponse, ToolCallRequest
 from deeptutor.services.llm.reasoning_params import minimax_reasoning_kwargs
+from deeptutor.services.llm.types import CONTEXT_LENGTH_EXCEEDED_FINISH
 from deeptutor.services.provider_registry import ANTHROPIC_EFFORT_BASED_FAMILIES
 from deeptutor.services.session.provider_response_state import (
     normalize_provider_response_state,
@@ -148,11 +150,22 @@ class AnthropicProvider(LLMProvider):
         return system, self._merge_consecutive(raw)
 
     @staticmethod
+    def _tool_id(raw: Any) -> str:
+        # Preserve native IDs, but encode foreign IDs without collapsing distinct
+        # calls ("a|b" and "a_b"). Reserve the prefix by also encoding raw IDs
+        # that start with it, so a native ID cannot collide with an encoded one.
+        value = str(raw or "")
+        prefix = "dt_encoded_"
+        if not value or (re.fullmatch(r"[a-zA-Z0-9_-]+", value) and not value.startswith(prefix)):
+            return value
+        return prefix + base64.urlsafe_b64encode(value.encode("utf-8")).decode("ascii").rstrip("=")
+
+    @staticmethod
     def _tool_result_block(msg: dict[str, Any]) -> dict[str, Any]:
         content = msg.get("content")
         block: dict[str, Any] = {
             "type": "tool_result",
-            "tool_use_id": msg.get("tool_call_id", ""),
+            "tool_use_id": AnthropicProvider._tool_id(msg.get("tool_call_id", "")),
         }
         if isinstance(content, (str, list)):
             block["content"] = content
@@ -193,6 +206,8 @@ class AnthropicProvider(LLMProvider):
                         "signature": tb.get("signature", ""),
                     }
                 )
+            elif isinstance(tb, dict) and tb.get("type") == "redacted_thinking":
+                blocks.append({"type": "redacted_thinking", "data": tb["data"]})
 
         if isinstance(content, str) and content:
             blocks.append({"type": "text", "text": content})
@@ -212,7 +227,7 @@ class AnthropicProvider(LLMProvider):
             blocks.append(
                 {
                     "type": "tool_use",
-                    "id": tc.get("id") or _gen_tool_id(),
+                    "id": AnthropicProvider._tool_id(tc.get("id")) or _gen_tool_id(),
                     "name": func.get("name", ""),
                     "input": args,
                 }
@@ -302,14 +317,14 @@ class AnthropicProvider(LLMProvider):
         tool_choice: str | dict[str, Any] | None,
         thinking_enabled: bool = False,
     ) -> dict[str, Any] | None:
+        if tool_choice == "none":
+            return {"type": "none"}
         if thinking_enabled:
             return {"type": "auto"}
         if tool_choice is None or tool_choice == "auto":
             return {"type": "auto"}
         if tool_choice == "required":
             return {"type": "any"}
-        if tool_choice == "none":
-            return None
         if isinstance(tool_choice, dict):
             name = tool_choice.get("function", {}).get("name")
             if name:
@@ -481,8 +496,20 @@ class AnthropicProvider(LLMProvider):
                         "signature": getattr(block, "signature", ""),
                     }
                 )
+            elif block.type == "redacted_thinking":
+                thinking_blocks.append({"type": "redacted_thinking", "data": block.data})
 
-        stop_map = {"tool_use": "tool_calls", "end_turn": "stop", "max_tokens": "length"}
+        stop_map = {
+            "tool_use": "tool_calls",
+            "end_turn": "stop",
+            "stop_sequence": "stop",
+            "max_tokens": "length",
+            # The *input* context filled up. This is not an output cap, so it must
+            # not map to "length": callers read that as "continue the answer",
+            # which would resend the same full history.
+            "model_context_window_exceeded": CONTEXT_LENGTH_EXCEEDED_FINISH,
+            "refusal": "content_filter",
+        }
         finish_reason = stop_map.get(response.stop_reason or "", response.stop_reason or "stop")
 
         usage: dict[str, int] = {}
@@ -509,7 +536,9 @@ class AnthropicProvider(LLMProvider):
             # provider-agnostic consumer reads, including the trace. Without
             # it a non-streaming call reported no reasoning at all.
             reasoning_content="\n".join(
-                str(block.get("thinking") or "") for block in thinking_blocks
+                str(block.get("thinking") or "")
+                for block in thinking_blocks
+                if block["type"] == "thinking"
             ).strip()
             or None,
             thinking_blocks=thinking_blocks or None,

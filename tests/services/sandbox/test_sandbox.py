@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import asyncio
 import os
+from pathlib import Path
 import shlex
 import sys
+import tempfile
 
 import pytest
 
@@ -214,6 +216,36 @@ def test_restricted_subprocess_request_path_keeps_virtualenv_first(
     env = backend._build_env({"PATH": os.pathsep.join(["turn-tools", str(bin_dir)])})
 
     assert env["PATH"].split(os.pathsep) == [str(bin_dir.resolve()), "turn-tools"]
+
+
+def test_restricted_subprocess_passes_the_windows_home_and_temp(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for key in ("USERPROFILE", "TEMP", "TMP"):
+        monkeypatch.setenv(key, str(tmp_path / key.lower()))
+    monkeypatch.setenv("DEEPTUTOR_TEST_PROVIDER_KEY", "not-for-model-code")
+
+    env = RestrictedSubprocessBackend(inherit_virtualenv=False)._build_env({})
+
+    assert env["USERPROFILE"] == str(tmp_path / "userprofile")
+    assert env["TEMP"] == str(tmp_path / "temp")
+    assert env["TMP"] == str(tmp_path / "tmp")
+    assert "DEEPTUTOR_TEST_PROVIDER_KEY" not in env
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows home and temp resolution")
+def test_restricted_subprocess_code_finds_home_and_temp_on_windows(tmp_path) -> None:
+    probe = "from pathlib import Path; import tempfile; print(Path.home()); print(tempfile.gettempdir())"
+    result = asyncio.run(
+        RestrictedSubprocessBackend().exec(
+            ExecRequest.of_argv([sys.executable, "-c", probe], workdir=str(tmp_path))
+        )
+    )
+
+    assert result.exit_code == 0, result.stderr
+    home, temp = result.stdout.strip().splitlines()
+    assert home == str(Path.home())
+    assert temp == tempfile.gettempdir()
 
 
 def test_backends_inherit_the_conda_environment_that_launched_deeptutor(

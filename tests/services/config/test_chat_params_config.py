@@ -25,6 +25,26 @@ def _write_agents_yaml(tmp_path: Path, content: dict[str, Any]) -> Path:
 class TestGetChatParams:
     """Verify get_chat_params() correctly resolves capabilities.chat."""
 
+    def test_reasoning_recovery_policy_round_trips(self, tmp_path, monkeypatch):
+        project_root = _write_agents_yaml(
+            tmp_path,
+            {
+                "capabilities": {
+                    "chat": {
+                        "reasoning_budget_recovery": {
+                            "strategy": "increase_output_budget",
+                            "max_tokens": 16000,
+                        },
+                    }
+                }
+            },
+        )
+        monkeypatch.setattr(loader_module, "PROJECT_ROOT", project_root)
+        assert get_chat_params()["reasoning_budget_recovery"] == {
+            "strategy": "increase_output_budget",
+            "max_tokens": 16000,
+        }
+
     def test_returns_defaults_when_file_missing(self, tmp_path: Path, monkeypatch):
         monkeypatch.setattr(loader_module, "PROJECT_ROOT", tmp_path)
         params = get_chat_params()

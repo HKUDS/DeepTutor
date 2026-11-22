@@ -13,6 +13,7 @@ import hashlib
 import json
 import math
 from pathlib import Path
+import re
 import time
 from typing import Any
 import unicodedata
@@ -349,8 +350,20 @@ def scope_snapshot(
 
 
 def validate_evidence(
-    store: Any, progress: Any, kp_id: str, evidence: dict[str, Any], *, allow_partial: bool = False
+    store: Any,
+    progress: Any,
+    kp_id: str,
+    evidence: dict[str, Any],
+    *,
+    allow_partial: bool = False,
+    pinned_pages: bool = False,
 ) -> None:
+    """Fail closed unless ``evidence`` still authorizes this objective.
+
+    ``pinned_pages`` is for an already issued question: it is bound to the
+    exact pages it cites, so a re-index that leaves those pages unchanged
+    (e.g. another document added to the same KB) does not strand it (#2650).
+    """
     topic = store.get_topic(progress.book_id, progress=progress)
     scope = selected_scope(topic, progress, kp_id)
     if not scope:
@@ -367,11 +380,32 @@ def validate_evidence(
         )
     if evidence.get("objective_fingerprint") != objective_fingerprint(progress, kp_id):
         raise LessonUnavailable("The objective changed since this lesson or question was prepared.")
-    scope_key, _ = scope_snapshot(topic, progress, kp_id)
+    scope_key, indices = scope_snapshot(topic, progress, kp_id)
     if scope_key != evidence.get("scope_fingerprint"):
-        raise LessonUnavailable(
-            "The selected sources or their index changed. Prepare the lesson again."
-        )
+        if not pinned_pages:
+            raise LessonUnavailable(
+                "The selected sources or their index changed. Prepare the lesson again."
+            )
+        published = {
+            (kb, page.get("document_key"), page.get("page_index"), page.get("source_digest"))
+            for kb, snapshot in indices.items()
+            for page in snapshot["pages"]
+        }
+        for entry in evidence.get("sources", []):
+            ref = entry.get("ref") or {}
+            cited = (
+                ref.get("kb_ref"),
+                ref.get("document_key"),
+                ref.get("page_index"),
+                ref.get("source_digest"),
+            )
+            if cited not in published:
+                raise LessonUnavailable(
+                    "This question's cited source pages changed after it was asked, so its "
+                    "answer key can no longer be verified; the answer was not graded. Tell the "
+                    "learner, close the question with mastery_skip_question, then call "
+                    "mastery_prepare_lesson and ask a new question."
+                )
     from deeptutor.services.workspace.knowledge import learning_source_access
 
     try:
@@ -420,44 +454,98 @@ def question_snapshot(store: Any, progress: Any, kp_id: str) -> dict[str, Any]:
     return json.loads(json.dumps(evidence))
 
 
-def _json_response(text: str) -> dict[str, Any]:
-    text = text.strip()
-    if text.startswith("```"):
-        text = text.split("\n", 1)[1].rsplit("```", 1)[0]
+_NO_JSON = object()
+# Reasoning models can put drafts, often with JSON in them, inside <think> or
+# <thinking> blocks before the answer, and add prose or a fence around it
+# (#2367). A complete reply is parsed first, so tags inside its strings stay.
+_REASONING_BLOCK_RE = re.compile(
+    r"<\s*think(?:ing)?\b[^>]*>.*?<\s*/\s*think(?:ing)?\s*>", re.DOTALL | re.IGNORECASE
+)
+# A reply that still opens with reasoning was cut off before its answer.
+_OPEN_REASONING_RE = re.compile(r"\s*<\s*think(?:ing)?\b", re.IGNORECASE)
+_JSON_START_RE = re.compile(r"[\[{]")
+
+
+def _first_json_value(text: str) -> Any:
+    """The reply's JSON value: the first object, else the first array."""
     try:
-        result = json.loads(text)
-    except (ValueError, TypeError) as exc:
+        return json.loads(text)
+    except ValueError:
+        pass
+    text = _REASONING_BLOCK_RE.sub("", text)
+    if _OPEN_REASONING_RE.match(text):
+        return _NO_JSON
+    decoder = json.JSONDecoder()
+    found: Any = _NO_JSON
+    index = 0
+    while (start := _JSON_START_RE.search(text, index)) is not None:
+        try:
+            value, end = decoder.raw_decode(text, start.start())
+        except json.JSONDecodeError as exc:
+            # Resume past the failure: an opener inside a truncated value
+            # would only yield a fragment of it, never the reply.
+            index = max(start.start() + 1, exc.pos)
+            continue
+        except RecursionError:
+            break
+        if isinstance(value, dict):
+            return value
+        if found is _NO_JSON:
+            found = value
+        index = end
+    return found
+
+
+def _json_response(text: str) -> dict[str, Any]:
+    result = _first_json_value((text or "").strip())
+    if result is _NO_JSON:
         raise LessonUnavailable(
             "The model returned an invalid source-selection response. Please retry."
-        ) from exc
+        )
     if not isinstance(result, dict):
         raise LessonUnavailable("The source-selection response is not an object.")
     return result
 
 
+async def _complete_json(config: Any, **request: Any) -> dict[str, Any]:
+    """Request one JSON object, retrying once with reasoning turned down.
+
+    A reasoning model pays for hidden tokens out of ``max_tokens``. At a high
+    effort it can spend the budget before the JSON is complete (#2367). The
+    retry follows the project rule in ``services.llm.structured_retry``.
+    """
+    from deeptutor.services.llm.factory import complete_with_config
+    from deeptutor.services.llm.reasoning_params import RETRY_REASONING_EFFORT
+
+    response = await complete_with_config(config=config, prompt="", **request)
+    try:
+        return _json_response(response)
+    except LessonUnavailable:
+        retry = config.model_copy(update={"reasoning_effort": RETRY_REASONING_EFFORT})
+        return _json_response(await complete_with_config(config=retry, prompt="", **request))
+
+
 async def _ask(
     config: Any, instruction: str, payload: Any, images: list[dict[str, Any]] | None = None
 ) -> dict[str, Any]:
-    from deeptutor.services.llm.factory import complete_with_config
-
     content = [{"type": "text", "text": json.dumps(payload, ensure_ascii=False)}]
     content.extend(images or [])
     try:
-        response = await complete_with_config(
-            config=config,
-            prompt="",
+        return await _complete_json(
+            config,
             messages=[
                 {"role": "system", "content": instruction},
                 {"role": "user", "content": content},
             ],
-            max_tokens=1800,
+            max_tokens=8192,
             allow_image_fallback=False,
         )
+    except LessonUnavailable:
+        raise
     except Exception as exc:
         raise LessonUnavailable(
             "The configured model could not complete source preparation. Check the model connection and retry."
         ) from exc
-    return _json_response(response)
 
 
 def image_message(sources: list[dict[str, Any]]) -> dict[str, Any]:
@@ -833,7 +921,9 @@ async def prepare_lesson(
                     None,
                 )
                 if page is None:
-                    raise LessonUnavailable("The requested neighboring page is unavailable.")
+                    # Context page only (e.g. past the document's edge): skip it
+                    # rather than discard the pages that were actually chosen.
+                    continue
                 neighbor_ref = ref.model_copy(
                     update={
                         "page_index": page["page_index"],
@@ -853,9 +943,10 @@ async def prepare_lesson(
                         }
                     )
         if len(sources) > MAX_LESSON_PAGES:
-            raise LessonUnavailable(
-                "Invalid source selection count: too many distinct physical pages."
-            )
+            # Models often exceed the cap they were given; keep their ranked
+            # picks and drop context-only neighbour pages first.
+            primary = [s for s in sources if s["quote"] or s["text"]]
+            sources = (primary + [s for s in sources if s not in primary])[:MAX_LESSON_PAGES]
         return sources
 
     # One preparation has immutable learning context. Its single repair may

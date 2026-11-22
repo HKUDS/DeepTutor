@@ -88,7 +88,8 @@ function stream(seq: number, type = "content"): Record<string, unknown> {
   };
 }
 
-function harness() {
+function harness(options: { factoryFailures?: number } = {}) {
+  let factoryFailures = options.factoryFailures ?? 0;
   const sockets: FakeSocket[] = [];
   const scheduler = new FakeScheduler();
   const events: Array<{ type?: string; seq?: number }> = [];
@@ -97,6 +98,10 @@ function harness() {
   const reconciliations: unknown[] = [];
   const client = new TurnRuntimeClient({
     socketFactory: () => {
+      if (factoryFailures > 0) {
+        factoryFailures -= 1;
+        throw new SyntaxError("Invalid URL: wss://secret-host.example/ws");
+      }
       const socket = new FakeSocket();
       sockets.push(socket);
       return socket;
@@ -433,4 +438,193 @@ test("acknowledged commands get a generated command_id when crypto.randomUUID is
   } finally {
     if (cryptoObject) cryptoObject.randomUUID = original;
   }
+});
+
+test("Stop after dispatch waits for admission and keeps terminal frames fenced until teardown ACK", async () => {
+  const { client, events, sockets } = harness();
+  client.connect();
+  sockets[0].open();
+  client.send({
+    type: "start_turn",
+    content: "first",
+    protocol_version: "2.0",
+  } as never);
+  const stopping = client.cancelCurrentTurn();
+  assert.equal(sockets[0].readyState, SOCKET_OPEN);
+  assert.equal(
+    sockets[0].sent.filter((x) => x.type === "cancel_turn").length,
+    0,
+  );
+  sockets[0].message(stream(1, "session"));
+  const cancel = sockets[0].sent.find((x) => x.type === "cancel_turn")!;
+  assert.equal(cancel.turn_id, "turn-1");
+  sockets[0].message({
+    ...stream(2, "error"),
+    metadata: { turn_terminal: true, status: "cancelled" },
+  });
+  sockets[0].message({
+    ...stream(3, "done"),
+    metadata: { status: "cancelled" },
+  });
+  assert.deepEqual(
+    events.map((x) => x.type),
+    ["session"],
+  );
+  sockets[0].message({
+    type: "command_ack",
+    protocol_version: "2.0",
+    command_id: cancel.command_id,
+    command_type: "cancel_turn",
+    turn_id: "turn-1",
+    accepted: true,
+    error_code: "",
+    message: "",
+  });
+  assert.equal(await stopping, true);
+  assert.deepEqual(
+    events.map((x) => x.type),
+    ["session", "command_ack", "error", "done"],
+  );
+  client.stop();
+});
+
+test("Stop of an undispatched start removes it without creating a backend turn", async () => {
+  const { client, sockets } = harness();
+  client.connect();
+  client.send({
+    type: "start_turn",
+    content: "never sent",
+    protocol_version: "2.0",
+  } as never);
+  assert.equal(await client.cancelCurrentTurn(), true);
+  sockets[0].open();
+  assert.equal(
+    sockets[0].sent.filter((x) => x.type === "start_turn").length,
+    0,
+  );
+  client.stop();
+});
+
+test("an unconfirmed Stop keeps terminal state fenced and can be retried", async () => {
+  const { client, events, scheduler, sockets } = harness();
+  client.setResumeCursor("turn-1", 0);
+  client.connect();
+  sockets[0].open();
+  const first = client.cancelCurrentTurn();
+  assert.equal(client.cancelCurrentTurn(), first);
+  const rejected = assert.rejects(first, CommandDeliveryError);
+  scheduler.runNext();
+  await rejected;
+  sockets[0].message({
+    ...stream(1, "done"),
+    metadata: { status: "cancelled" },
+  });
+  assert.equal(
+    events.some((x) => x.type === "done"),
+    false,
+  );
+  const retry = client.cancelCurrentTurn();
+  const cancel = sockets[0].sent
+    .filter((x) => x.type === "cancel_turn")
+    .at(-1)!;
+  sockets[0].message({
+    type: "command_ack",
+    protocol_version: "2.0",
+    command_id: cancel.command_id,
+    command_type: "cancel_turn",
+    turn_id: "turn-1",
+    accepted: true,
+    error_code: "",
+    message: "",
+  });
+  assert.equal(await retry, true);
+  assert.equal(
+    events.some((x) => x.type === "done"),
+    true,
+  );
+  client.stop();
+});
+
+test("a synchronous socketFactory failure schedules the reconnect backoff with a generic diagnostic", () => {
+  const { client, diagnostics, scheduler } = harness({
+    factoryFailures: Infinity,
+  });
+
+  assert.doesNotThrow(() => client.connect());
+  assert.equal(client.state, "connecting");
+  assert.equal(scheduler.tasks.length, 1);
+  assert.equal(diagnostics.length, 1);
+  assert.doesNotMatch(
+    diagnostics.join(" "),
+    /secret-host|wss:|Invalid URL|SyntaxError/,
+  );
+});
+
+test("a transient factory failure recovers with the active cursor and flushes the queued durable command once", () => {
+  const { client, scheduler, sockets, states } = harness({
+    factoryFailures: 1,
+  });
+
+  client.setResumeCursor("turn-1", 5);
+  client.send(
+    buildSubmitUserReply({
+      turnId: "turn-1",
+      text: "continue",
+      commandId: "reply-1",
+    }),
+  );
+  client.connect();
+  assert.equal(states.at(-1), "recovering");
+  assert.equal(scheduler.tasks.length, 1);
+  assert.equal(sockets.length, 0);
+
+  scheduler.runNext();
+  assert.equal(sockets.length, 1);
+  sockets[0].open();
+  assert.deepEqual(sockets[0].sent[0], {
+    type: "resume_from",
+    turn_id: "turn-1",
+    seq: 5,
+    protocol_version: "2.0",
+  });
+  assert.equal(
+    sockets[0].sent.filter((item) => item.type === "submit_user_reply").length,
+    1,
+  );
+  assert.equal(client.state, "connected");
+  assert.deepEqual(client.cursor, { turnId: "turn-1", afterSeq: 5 });
+});
+
+test("persistent factory failures without an active turn exhaust the five-attempt policy into idle", () => {
+  const { client, diagnostics, scheduler } = harness({
+    factoryFailures: Infinity,
+  });
+
+  client.connect();
+  let guard = 0;
+  while (scheduler.tasks.length > 0 && guard < 50) {
+    guard += 1;
+    scheduler.runNext();
+  }
+  assert.ok(guard < 50);
+  assert.equal(client.state, "idle");
+  assert.equal(scheduler.tasks.length, 0);
+  assert.equal(diagnostics.length, 6);
+  assert.doesNotMatch(
+    diagnostics.join(" "),
+    /secret-host|wss:|Invalid URL|SyntaxError/,
+  );
+});
+
+test("stopping cancels a scheduled factory-failure recovery", () => {
+  const { client, scheduler } = harness({ factoryFailures: Infinity });
+
+  client.setResumeCursor("turn-1", 3);
+  client.connect();
+  assert.equal(client.state, "recovering");
+  assert.equal(scheduler.tasks.length, 1);
+
+  client.stop();
+  assert.equal(client.state, "stopped");
+  assert.equal(scheduler.tasks.length, 0);
 });

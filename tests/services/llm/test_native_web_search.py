@@ -77,14 +77,26 @@ class TestConvertToolsNativeWebSearch:
         converted = convert_tools(tools, native_web_search=True)
         assert {"type": "web_search"} in converted
         # Other tools keep their function schema.
-        assert {"type": "function", "name": "rag", "description": "", "parameters": {}} in converted
+        assert {
+            "type": "function",
+            "name": "rag",
+            "description": "",
+            "parameters": {},
+            "strict": False,
+        } in converted
         assert len(converted) == 2
 
     def test_web_search_stays_a_function_by_default(self) -> None:
         tools = [{"type": "function", "function": {"name": "web_search", "parameters": {}}}]
         converted = convert_tools(tools)
         assert converted == [
-            {"type": "function", "name": "web_search", "description": "", "parameters": {}}
+            {
+                "type": "function",
+                "name": "web_search",
+                "description": "",
+                "parameters": {},
+                "strict": False,
+            }
         ]
 
 
@@ -393,7 +405,7 @@ class TestParseServerExecutedWebSearch:
         ]
         provider_events: list[tuple[str, dict]] = []
         content, tool_calls, _ = await consume_sse(
-            _SSEFixture(events),
+            _SSEFixture([*events, {"type": "response.completed"}]),
             on_provider_event=lambda kind, payload: provider_events.append((kind, payload)),
         )
         assert content == "hello"
@@ -418,7 +430,7 @@ class TestParseServerExecutedWebSearch:
         ]
         provider_events: list[tuple[str, dict]] = []
         _, tool_calls, _ = await consume_sse(
-            _SSEFixture(events),
+            _SSEFixture([*events, {"type": "response.completed"}]),
             on_provider_event=lambda kind, payload: provider_events.append((kind, payload)),
         )
         assert tool_calls == []
@@ -446,7 +458,7 @@ class TestParseServerExecutedWebSearch:
         ]
         provider_events: list[tuple[str, dict]] = []
         _, tool_calls, _ = await consume_sse(
-            _SSEFixture(events),
+            _SSEFixture([*events, {"type": "response.completed"}]),
             on_provider_event=lambda kind, payload: provider_events.append((kind, payload)),
         )
         assert tool_calls == []

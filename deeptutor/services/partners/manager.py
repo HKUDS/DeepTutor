@@ -1541,24 +1541,45 @@ class PartnerManager:
             except OSError:
                 logger.exception("Failed to migrate TutorBot souls library")
 
-        for entry in legacy_root.iterdir():
+        for entry in sorted(legacy_root.iterdir()):
             if not entry.is_dir() or entry.name in _RESERVED_NAMES | {"bots"}:
                 continue
             legacy_config = entry / "config.yaml"
             if not legacy_config.is_file():
                 continue
-            partner_id = entry.name
+            legacy_name = entry.name
+            # Partner ids ride in ``/partners/<id>`` URLs and must be ASCII/URL-
+            # safe, like every other creation path (see ``slugify_partner_id``).
+            # Carrying the raw legacy directory name across left CJK-named bots
+            # unreachable ("Partner not found").
+            partner_id = slugify_partner_id(legacy_name)
+            origin = {"type": "tutorbot", "id": legacy_name}
+            if (
+                partner_id != legacy_name
+                and (self._partner_dir(legacy_name) / "config.yaml").exists()
+            ):
+                existing = self.load_config(legacy_name)
+                if existing and existing.soul_origin == origin:
+                    continue
+            base_id = partner_id
+            suffix = 1
+            while (self._partner_dir(partner_id) / "config.yaml").exists():
+                existing = self.load_config(partner_id)
+                if existing and existing.soul_origin == origin:
+                    break
+                suffix += 1
+                partner_id = f"{base_id}-{suffix}"
             if (self._partner_dir(partner_id) / "config.yaml").exists():
                 continue
             try:
                 data = yaml.safe_load(legacy_config.read_text(encoding="utf-8")) or {}
                 config = PartnerConfig(
-                    name=data.get("name", partner_id),
+                    name=data.get("name", legacy_name),
                     description=data.get("description", ""),
                     channels=data.get("channels", {}) or {},
                     llm_selection=data.get("llm_selection"),
                     model=data.get("model"),
-                    soul_origin={"type": "tutorbot", "id": partner_id},
+                    soul_origin=origin,
                 )
                 self._ensure_partner_dirs(partner_id)
                 persona = str(data.get("persona", "") or "").strip()

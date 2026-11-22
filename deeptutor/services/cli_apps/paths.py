@@ -21,7 +21,8 @@ The layout under it::
     data/cli-apps/
       state.json                     # which apps are installed (deployment)
       apps/<app id>/
-        venv/bin/<entry point>       # a python app, one venv each
+        venv/bin/<entry point>       # a python app, one venv each (Windows
+                                      # venvs: Scripts/<entry point>.exe)
         node/bin/<entry point>       # a node app, one prefix each
         install.log                  # last install's output, for the admin
 
@@ -68,20 +69,52 @@ def runtime_dir(app_id: str, runtime: AppRuntime) -> Path:
     return app_dir(app_id) / "venv"
 
 
+def _env_bin_dir(env_dir: Path, runtime: AppRuntime) -> Path:
+    """Where an environment's executables live.
+
+    Only a Windows Python venv keeps them in ``Scripts``; a POSIX venv uses
+    ``bin``. Node environments also resolve to ``bin`` on every platform —
+    that is this app's own chosen, unchanged prefix layout for them, not a
+    claim about where npm natively installs executables on any given OS.
+    """
+    if runtime is AppRuntime.PYTHON and os.name == "nt":
+        return env_dir / "Scripts"
+    return env_dir / "bin"
+
+
 def bin_dir(app_id: str, runtime: AppRuntime) -> Path:
-    return runtime_dir(app_id, runtime) / "bin"
+    return _env_bin_dir(runtime_dir(app_id, runtime), runtime)
+
+
+def interpreter_path(env_dir: Path) -> Path:
+    """The Python interpreter of a venv rooted at *env_dir*.
+
+    The caller supplies the environment directory — the installer drives one
+    it has not recorded in state yet — and the directory choice is shared
+    with :func:`bin_dir`, so the interpreter pip runs under and the entry
+    points it installs can never disagree.
+    """
+    exe = "python.exe" if os.name == "nt" else "python"
+    return _env_bin_dir(env_dir, AppRuntime.PYTHON) / exe
 
 
 def executable_path(app_id: str, runtime: AppRuntime, entry_point: str) -> Path:
     """Absolute path of *entry_point* inside this app's own bin directory.
 
     ``entry_point`` comes from the catalog, so it is re-validated here rather
-    than only where the entry was parsed: this function is what turns it into a
-    path, and a separator or a ``..`` would name a file outside the app.
+    than only where the entry was parsed: this function is what turns it into
+    a path, and a separator or a ``..`` would name a file outside the app.
+
+    The entry is a logical console-script name, not a caller-provided path:
+    on a Windows Python venv the on-disk name is it plus ``.exe``, appended
+    here after validation.
     """
     if ENTRY_POINT_RE.match(entry_point) is None:
         raise ValueError(f"Unusable CLI app entry point {entry_point!r}")
-    return bin_dir(app_id, runtime) / entry_point
+    name = entry_point
+    if runtime is AppRuntime.PYTHON and os.name == "nt":
+        name = f"{entry_point}.exe"
+    return bin_dir(app_id, runtime) / name
 
 
 def install_log_path(app_id: str) -> Path:
@@ -126,6 +159,7 @@ __all__ = [
     "ensure_root",
     "executable_path",
     "install_log_path",
+    "interpreter_path",
     "runtime_dir",
     "state_path",
 ]

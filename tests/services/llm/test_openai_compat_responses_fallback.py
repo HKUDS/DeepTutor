@@ -111,3 +111,26 @@ class TestResponsesReasoningReplayFallback:
 
         assert result.content == "fallback answer"
         assert calls == {"responses": 1, "chat": 1}
+
+
+class TestToolFormatErrorClassification:
+    """Non-streaming tool calls fall back to streaming only when the 400 is a
+    tool-argument-format error. The ``invalid.*parameter.*function`` marker is a
+    regex and must be searched, not membership-tested."""
+
+    @pytest.mark.parametrize(
+        "message",
+        [
+            "error: function.arguments must be valid JSON",
+            "Arguments must be in JSON format",
+            "Invalid request: parameter 'tools[0].function' is invalid",
+            "invalid value for parameter in function definition",
+        ],
+    )
+    def test_tool_format_errors_are_detected(self, message: str) -> None:
+        err = _FakeHTTPError(400, message)
+        assert OpenAICompatProvider._is_tool_format_error(err) is True
+
+    def test_unrelated_error_is_not_a_tool_format_error(self) -> None:
+        err = _FakeHTTPError(500, "internal server error")
+        assert OpenAICompatProvider._is_tool_format_error(err) is False

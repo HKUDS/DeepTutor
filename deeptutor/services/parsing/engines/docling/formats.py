@@ -1,6 +1,6 @@
 """Docling version and input-format compatibility helpers.
 
-The fallback mirrors Docling 2.123.1, the minimum version DeepTutor installs.
+The fallback mirrors Docling 2.148.0, the minimum version DeepTutor installs.
 The list stays static on purpose. Importing even Docling's format-model module
 loads Transformers and PyTorch in current Docling releases. On macOS the
 PyTorch and FAISS wheels bundle different OpenMP runtimes, and putting both in
@@ -15,13 +15,27 @@ import re
 
 from .._versions import package_version
 
-MIN_DOCLING_VERSION = "2.123.1"
+MIN_DOCLING_VERSION = "2.148.0"
 
-# Source: docling.datamodel.base_models.FormatToExtensions in Docling 2.123.1.
+# Source: docling.datamodel.base_models.FormatToExtensions in Docling 2.148.0.
 # Extensions are normalized to lower case and include the leading dot.  This
 # deliberately includes compound suffixes such as .dclg.xml and .tar.gz.
-DOCLING_2_123_1_FORMATS = frozenset(
+DOCLING_2_148_0_FORMATS = frozenset(
     {
+        ".afp",
+        ".gif",
+        ".ical",
+        ".icalendar",
+        ".ics",
+        ".ifb",
+        ".key",
+        ".markdown",
+        ".mht",
+        ".mhtml",
+        ".numbers",
+        ".rtf",
+        ".xltm",
+        ".xltx",
         ".aac",
         ".adoc",
         ".asc",
@@ -106,7 +120,7 @@ def docling_supported_formats() -> frozenset[str]:
     Do not import ``docling`` here. This helper is called by upload-policy and
     file-routing paths that must stay independent of Docling's ML runtime.
     """
-    return DOCLING_2_123_1_FORMATS
+    return DOCLING_2_148_0_FORMATS
 
 
 def installed_docling_version() -> str:
@@ -129,7 +143,7 @@ def docling_version_is_current(version: str | None = None) -> bool:
 
 
 __all__ = [
-    "DOCLING_2_123_1_FORMATS",
+    "DOCLING_2_148_0_FORMATS",
     "MIN_DOCLING_VERSION",
     "docling_supported_formats",
     "docling_version_is_current",

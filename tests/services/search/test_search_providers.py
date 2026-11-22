@@ -8,6 +8,7 @@ passed `proxies`) and Jina used to return every result it got.
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 import pytest
@@ -131,6 +132,7 @@ _EMPTY_BODY: dict[str, Any] = {
     "references": [],  # qianfan
     "pageItems": [],  # aliyun_iqs
     "output": [],  # doubao
+    "results": [],  # deepseek
 }
 
 
@@ -148,6 +150,9 @@ _NEW_PROVIDERS = [
     # aliyun_iqs has no count parameter at all — it caps client-side, which
     # `test_aliyun_iqs_caps_results_client_side` covers instead.
     ("aliyun_iqs", "AliyunIQSProvider", None),
+    ("deepseek", "DeepSeekProvider", _limit_in_json("count")),
+    # specstream also caps client-side (`test_specstream_caps_sources_client_side`).
+    ("specstream", "SpecStreamProvider", None),
 ]
 
 
@@ -342,6 +347,151 @@ def test_aliyun_iqs_caps_results_client_side(monkeypatch) -> None:
     assert result.citations[0].date.count("-") == 2
 
 
+_SPECSTREAM_FACT_BODY: dict[str, Any] = {
+    "data": {
+        "kind": "fact",
+        "query": "Who is the CEO of Stripe",
+        "answer": {
+            "value": "Patrick Collison",
+            "page": "https://en.wikipedia.org/wiki/Patrick_Collison",
+            "seen_at": "2026-11-05T01:06:52+00:00",
+        },
+        "rows": [
+            {
+                "name": "Patrick Collison",
+                "page": "https://en.wikipedia.org/wiki/Patrick_Collison",
+                "probability": 0.64,
+            },
+            {"name": "John Collison", "page": "https://e/john", "probability": 0.2},
+        ],
+        "sources": [
+            {
+                "url": "https://en.wikipedia.org/wiki/Patrick_Collison",
+                "title": "Patrick Collison - Wikipedia",
+                "site": "en.wikipedia.org",
+                "snippet": "Irish businessman",
+                "published": "2026-01-02T03:04:05+00:00",
+                "cited": True,
+            },
+            {
+                "url": "https://www.forbes.com/profile/patrick-collison/",
+                "title": "Patrick Collison - Forbes",
+                "site": "forbes.com",
+                "snippet": "Stripe cofounder",
+                "cited": False,
+            },
+        ],
+        "id": "a1",
+        "request_id": "req-1",
+        "took_ms": 2404,
+        "price_usd": 0.005,
+    }
+}
+
+
+class _SpecStreamCapture:
+    """Fake requests.get that records the call and replies with a set body."""
+
+    def __init__(self, body: dict[str, Any]) -> None:
+        self.calls: list[dict[str, Any]] = []
+        self._body = body
+
+    def get(self, url: str, **kwargs: Any) -> _FakeResponse:
+        self.calls.append({"method": "GET", "url": url, **kwargs})
+        return _FakeResponse(self._body)
+
+
+def test_specstream_sends_bearer_key_and_plain_query(monkeypatch) -> None:
+    capture = _SpecStreamCapture(_SPECSTREAM_FACT_BODY)
+    monkeypatch.setattr("deeptutor.services.search.providers.specstream.requests", capture)
+
+    from deeptutor.services.search.providers.specstream import SpecStreamProvider
+
+    SpecStreamProvider(api_key="k").search("Who is the CEO of Stripe?")
+
+    call = capture.calls[-1]
+    assert call["method"] == "GET"
+    assert call["url"] == "https://api.specstream.ai/v1/web-search"
+    assert call["headers"]["Authorization"] == "Bearer k"
+    assert call["params"] == {"q": "Who is the CEO of Stripe?"}
+
+
+def test_specstream_caps_sources_client_side(monkeypatch) -> None:
+    """web-search has no count parameter; every source read comes back."""
+    body = {
+        "data": {
+            "kind": "fact",
+            "answer": None,
+            "rows": [],
+            "sources": [
+                {"url": f"https://e/{i}", "title": f"t{i}", "site": "e", "snippet": "s"}
+                for i in range(6)
+            ],
+        }
+    }
+    capture = _SpecStreamCapture(body)
+    monkeypatch.setattr("deeptutor.services.search.providers.specstream.requests", capture)
+
+    from deeptutor.services.search.providers.specstream import SpecStreamProvider
+
+    result = SpecStreamProvider(api_key="k").search("q", max_results=2)
+    assert len(result.search_results) == 2
+    assert len(result.citations) == 2
+    assert [c.id for c in result.citations] == [1, 2]
+
+
+def test_specstream_maps_answer_sources_and_rows(monkeypatch) -> None:
+    capture = _SpecStreamCapture(_SPECSTREAM_FACT_BODY)
+    monkeypatch.setattr("deeptutor.services.search.providers.specstream.requests", capture)
+
+    from deeptutor.services.search.providers.specstream import SpecStreamProvider
+
+    result = SpecStreamProvider(api_key="k").search("Who is the CEO of Stripe?")
+    # The confirmed answer is the provider's own; consolidation must not rewrite it.
+    assert result.answer == "Patrick Collison"
+    assert result.provider == "specstream"
+    top = result.citations[0]
+    assert top.url == "https://en.wikipedia.org/wiki/Patrick_Collison"
+    assert top.title == "Patrick Collison - Wikipedia"
+    assert top.snippet == "Irish businessman"
+    assert top.source == "en.wikipedia.org"
+    assert top.website == "en.wikipedia.org"
+    assert top.date == "2026-01-02T03:04:05+00:00"
+    assert result.metadata["kind"] == "fact"
+    assert result.metadata["request_id"] == "req-1"
+    assert result.metadata["took_ms"] == 2404
+    # List rows survive in metadata: on a list request they are the results.
+    assert result.metadata["rows"][0] == {
+        "name": "Patrick Collison",
+        "page": "https://en.wikipedia.org/wiki/Patrick_Collison",
+        "probability": 0.64,
+    }
+
+
+def test_specstream_surfaces_http_errors(monkeypatch) -> None:
+    class _ErrorResponse:
+        status_code = 402
+        text = "insufficient_balance"
+
+    class _FakeRequests:
+        @staticmethod
+        def get(url: str, **kwargs: Any) -> _ErrorResponse:
+            return _ErrorResponse()
+
+    monkeypatch.setattr("deeptutor.services.search.providers.specstream.requests", _FakeRequests)
+
+    from deeptutor.services.search.providers.specstream import SpecStreamProvider
+
+    with pytest.raises(Exception, match="402"):
+        SpecStreamProvider(api_key="k").search("q")
+
+
+def test_specstream_is_registered() -> None:
+    from deeptutor.services.search.providers import list_providers
+
+    assert "specstream" in list_providers()
+
+
 def test_bocha_surfaces_an_error_carried_inside_a_200(monkeypatch) -> None:
     class _FakeRequests:
         @staticmethod
@@ -378,7 +528,7 @@ _SERPLY_BODIES: dict[str, dict[str, Any]] = {
             "entries": [
                 {
                     "title": f"Story {i}",
-                    "link": f"https://news.example/{i}",
+                    "link": f"https://news.google.com/articles/{i}",
                     "summary": "<a href='x'>Genuine</a> attention &amp; chatbots",
                     "published": "Mon, 25 Aug 2026 09:00:00 GMT",
                     "source": "Example Times",
@@ -497,6 +647,234 @@ def test_serply_rejects_an_unknown_mode() -> None:
 
     with pytest.raises(ValueError, match="mode"):
         SerplyProvider(api_key="k").search("q", mode="images")
+
+
+# --------------------------------------------------------------------------
+# SearchApi: one key, three Google engines (google / google_news /
+# google_scholar) behind a single GET endpoint selected by `engine`. Google no
+# longer honors `num` for web and news, so those rows are cut client-side.
+# --------------------------------------------------------------------------
+
+_SEARCHAPI_BODIES: dict[str, dict[str, Any]] = {
+    "google": {
+        "organic_results": [
+            {
+                "position": i + 1,
+                "title": f"Result {i}" if i else "[1706.03762] Attention Is All You Need",
+                "link": f"https://example.org/{i}" if i else "https://arxiv.org/abs/1706.03762",
+                "source": "arXiv",
+                "domain": "arxiv.org",
+                "snippet": "We propose a new simple network architecture, the Transformer...",
+                "date": "Jun 12, 2017",
+            }
+            for i in range(10)
+        ],
+        "related_searches": [{"query": "transformer paper"}],
+        "knowledge_graph": {"title": "Attention Is All You Need"},
+    },
+    "google_news": {
+        "organic_results": [
+            {
+                "position": i + 1,
+                "title": f"Story {i}",
+                "link": f"https://news.google.com/articles/{i}",
+                "source": "Example Times",
+                "date": "8 hours ago",
+                "iso_date": "2026-11-10T11:00:00Z",
+                "snippet": "Genuine attention & chatbots",
+            }
+            for i in range(10)
+        ]
+    },
+    "google_scholar": {
+        "organic_results": [
+            {
+                "position": 1,
+                "title": "Attention is all you need",
+                "data_cid": "5Gohgn6QFikJ",
+                "link": "https://proceedings.neurips.cc/paper/7181-attention-is-all-you-need",
+                "publication": "A Vaswani, N Shazeer, N Parmar - Advances in neural ..., 2017",
+                "snippet": "The dominant sequence transduction models...",
+                "inline_links": {
+                    "cited_by": {"total": 281445, "link": "https://scholar.google.com/x"}
+                },
+                "resource": {"name": "[PDF]", "link": "https://example.org/attention.pdf"},
+                "authors": [{"name": "A Vaswani"}, {"name": "N Shazeer"}],
+            },
+            {
+                "position": 2,
+                "title": "Is Attention All You Need?",
+                "data_cid": "QEhbjTxy5DIJ",
+                "link": "https://link.springer.com/chapter/10.1007/978-3-031-84300-6_13",
+                "snippet": "We show how transformers...",
+                "inline_links": {"cited_by": {"total": 14}},
+                # Scholar renders a dead "[PDF]" badge as a javascript: href.
+                "resource": {
+                    "name": "[PDF]",
+                    "link": "https://scholar.google.comjavascript:void(0)",
+                },
+                "authors": [{"name": "P Mineault"}],
+            },
+        ]
+    },
+}
+
+
+@pytest.fixture
+def searchapi_calls(monkeypatch):
+    """Capture SearchApi GETs and answer each with the fixture body for its engine."""
+    captured: list[dict[str, Any]] = []
+
+    def _get(url: str, **kwargs: Any) -> _FakeResponse:
+        captured.append({"method": "GET", "url": url, **kwargs})
+        return _FakeResponse(_SEARCHAPI_BODIES[kwargs["params"]["engine"]])
+
+    class _FakeRequests:
+        get = staticmethod(_get)
+
+    monkeypatch.setattr("deeptutor.services.search.providers.searchapi.requests", _FakeRequests)
+    return captured
+
+
+def test_searchapi_sends_bearer_header_params_proxy_and_base_url_root(searchapi_calls) -> None:
+    from deeptutor.services.search.providers.searchapi import SearchApiProvider
+
+    provider = SearchApiProvider(api_key="k", proxy=PROXY)
+    provider.search("attention & focus", max_results=3, base_url="https://gateway.example/v1/")
+
+    call = searchapi_calls[-1]
+    assert call["url"] == "https://gateway.example/v1/search"
+    assert call["params"] == {"engine": "google", "q": "attention & focus"}
+    assert "num" not in call["params"]
+    assert "api_key" not in call["params"] and "k" not in call["url"]
+    assert call["headers"]["Authorization"] == "Bearer k"
+    assert call["headers"]["User-Agent"] == "DeepTutor"
+    assert call["proxies"] == {"http": PROXY, "https": PROXY}
+
+
+def test_searchapi_forwards_gl_and_hl_only_when_given(searchapi_calls) -> None:
+    from deeptutor.services.search.providers.searchapi import SearchApiProvider
+
+    SearchApiProvider(api_key="k").search("q", gl="br", hl="pt")
+    assert searchapi_calls[-1]["params"]["gl"] == "br"
+    assert searchapi_calls[-1]["params"]["hl"] == "pt"
+    assert "proxies" not in searchapi_calls[-1]
+
+
+def test_searchapi_metadata_comes_from_the_spec_table() -> None:
+    from deeptutor.services.config import SEARCH_PROVIDERS
+    from deeptutor.services.search.providers import list_providers
+    from deeptutor.services.search.providers.searchapi import SearchApiProvider
+
+    spec = SEARCH_PROVIDERS["searchapi"]
+    assert "searchapi" in list_providers()
+    assert SearchApiProvider.display_name == spec.label == "SearchApi"
+    assert SearchApiProvider.requires_api_key is True
+    assert SearchApiProvider.supports_answer is False
+    # Paid provider: never quietly turn a billed key into DuckDuckGo.
+    assert spec.soft_fallback is False
+
+
+def test_searchapi_web_rows_map_and_are_cut_to_max_results(searchapi_calls) -> None:
+    from deeptutor.services.search.providers.searchapi import SearchApiProvider
+
+    response = SearchApiProvider(api_key="k").search("attention is all you need", max_results=3)
+
+    assert response.provider == "searchapi"
+    assert response.model == "searchapi-google"
+    assert response.answer == ""
+    assert len(response.search_results) == len(response.citations) == 3
+    row = response.search_results[0]
+    assert row.url == "https://arxiv.org/abs/1706.03762"
+    assert row.source == "arXiv"
+    assert row.date == "Jun 12, 2017"
+    assert response.citations[0].reference == "[1]"
+    assert response.metadata["relatedSearches"] == [{"query": "transformer paper"}]
+    assert response.metadata["knowledgeGraph"] == {"title": "Attention Is All You Need"}
+
+
+def test_searchapi_news_preserves_links_and_trims_client_side(searchapi_calls) -> None:
+    from deeptutor.services.search.providers.searchapi import SearchApiProvider
+
+    response = SearchApiProvider(api_key="k").search("chatbots", mode="news", max_results=4)
+
+    params = searchapi_calls[-1]["params"]
+    assert params["engine"] == "google_news"
+    assert "link" not in params
+    assert response.search_results[0].url == "https://news.google.com/articles/0"
+    assert "num" not in params
+    assert len(response.search_results) == 4
+    assert response.search_results[0].snippet == "Genuine attention & chatbots"
+    assert response.search_results[0].source == "Example Times"
+    assert response.search_results[0].date == "2026-11-10T11:00:00Z"
+
+
+def test_searchapi_scholar_rows_render_through_the_academic_template(searchapi_calls) -> None:
+    from deeptutor.services.search.consolidation import AnswerConsolidator
+    from deeptutor.services.search.providers.searchapi import SearchApiProvider
+
+    response = SearchApiProvider(api_key="k").search("attention", mode="scholar", max_results=50)
+
+    params = searchapi_calls[-1]["params"]
+    assert params["engine"] == "google_scholar"
+    assert params["num"] == 20  # Scholar still honors num, capped at its 20
+    assert response.provider == "searchapi_scholar"
+    first, second = response.search_results
+    assert first.attributes == {
+        "publicationInfo": "A Vaswani, N Shazeer, N Parmar - Advances in neural ..., 2017",
+        "citedBy": 281445,
+        "pdfUrl": "https://example.org/attention.pdf",
+        "paperId": "5Gohgn6QFikJ",
+    }
+    # No publication string: fall back to the author names; dead PDF badge dropped.
+    assert second.attributes == {
+        "publicationInfo": "P Mineault",
+        "citedBy": 14,
+        "paperId": "QEhbjTxy5DIJ",
+    }
+    rendered = AnswerConsolidator().consolidate(response).answer
+    assert "Cited by: 281445" in rendered
+    assert "[PDF](https://example.org/attention.pdf)" in rendered
+    assert "javascript:" not in rendered
+
+
+def test_searchapi_surfaces_the_api_error_message(monkeypatch) -> None:
+    from deeptutor.services.search.providers.searchapi import SearchApiProvider
+
+    class _Unauthorized(_FakeResponse):
+        status_code = 401
+        text = '{"error":"Invalid API key."}'
+
+    class _FakeRequests:
+        get = staticmethod(lambda url, **kwargs: _Unauthorized({"error": "Invalid API key."}))
+
+    monkeypatch.setattr("deeptutor.services.search.providers.searchapi.requests", _FakeRequests)
+    with pytest.raises(Exception, match="401 - Invalid API key."):
+        SearchApiProvider(api_key="bad").search("q")
+
+
+def test_searchapi_rejects_a_non_json_body(monkeypatch) -> None:
+    from deeptutor.services.search.providers.searchapi import SearchApiProvider
+
+    class _Garbled(_FakeResponse):
+        text = "<html>upstream timeout</html>"
+
+        def json(self) -> dict[str, Any]:
+            raise ValueError("No JSON object could be decoded")
+
+    class _FakeRequests:
+        get = staticmethod(lambda url, **kwargs: _Garbled({}))
+
+    monkeypatch.setattr("deeptutor.services.search.providers.searchapi.requests", _FakeRequests)
+    with pytest.raises(Exception, match="not valid JSON"):
+        SearchApiProvider(api_key="k").search("q")
+
+
+def test_searchapi_rejects_an_unknown_mode() -> None:
+    from deeptutor.services.search.providers.searchapi import SearchApiProvider
+
+    with pytest.raises(ValueError, match="mode"):
+        SearchApiProvider(api_key="k").search("q", mode="images")
 
 
 # --------------------------------------------------------------------------
@@ -622,6 +1000,167 @@ def test_youcom_surfaces_http_errors(monkeypatch) -> None:
 
     with pytest.raises(Exception, match="429 - rate limit exceeded"):
         YouComProvider(api_key="k").search("q")
+
+
+# --------------------------------------------------------------------------
+# DeepSeek: the standalone SERP engine (`POST /v1/tools/search`), separate
+# from DeepSeek's model-side web_search tool. Billed per request, so a missing
+# key raises instead of falling through to DuckDuckGo.
+# --------------------------------------------------------------------------
+
+_DEEPSEEK_BODY: dict[str, Any] = {
+    "results": [
+        {
+            "rerank_score": 2.4,
+            "title": "DeepSeek V4 model released",
+            "url": "https://example.com/deepseek-v4",
+            "snippet": "DeepSeek V4 is now available, with tool calling support.",
+            "summary": "DeepSeek has released the V4 model. The release adds improved tool calling.",
+            "content": "",
+            "site_name": "Example News",
+            "site_icon": "https://example.com/favicon.ico",
+            "date": "2026-06-01T00:00:00+00:00",
+            "authority": 3,
+        },
+        # Bare row: no summary, no site_name — the model-facing blurb falls
+        # back to `snippet` and the source to the URL host.
+        {
+            "title": "Bare row",
+            "url": "https://example.org/bare",
+            "snippet": "Snippet only",
+        },
+    ]
+}
+
+
+@pytest.fixture
+def deepseek_calls(monkeypatch):
+    captured: list[dict[str, Any]] = []
+
+    def _post(url: str, **kwargs: Any) -> _FakeResponse:
+        captured.append({"method": "POST", "url": url, **kwargs})
+        return _FakeResponse(_DEEPSEEK_BODY)
+
+    class _FakeRequests:
+        post = staticmethod(_post)
+
+    monkeypatch.setattr("deeptutor.services.search.providers.deepseek.requests", _FakeRequests)
+    return captured
+
+
+def test_deepseek_rejects_missing_key_before_network(deepseek_calls, monkeypatch) -> None:
+    from deeptutor.services.search.providers.deepseek import DeepSeekProvider
+
+    monkeypatch.setattr(DeepSeekProvider, "_get_api_key", lambda self: "")
+    with pytest.raises(ValueError, match="requires an API key"):
+        DeepSeekProvider(proxy=PROXY).search("attention")
+    assert deepseek_calls == []
+
+
+def test_deepseek_posts_bearer_query_count_and_need_content(deepseek_calls) -> None:
+    from deeptutor.services.search.providers.deepseek import DeepSeekProvider
+
+    DeepSeekProvider(api_key="k").search("attention", max_results=3)
+    DeepSeekProvider(api_key="k").search("attention", max_results=3, need_content=True)
+
+    default_call, content_call = deepseek_calls[-2:]
+    assert default_call["url"] == "https://api.deepseek.com/v1/tools/search"
+    assert default_call["headers"]["Authorization"] == "Bearer k"
+    assert default_call["json"] == {"query": "attention", "count": 3, "need_content": False}
+    assert content_call["json"]["need_content"] is True
+
+
+def test_deepseek_prefers_summary_and_carries_ranking_attributes(deepseek_calls) -> None:
+    from deeptutor.services.search.providers.deepseek import DeepSeekProvider
+
+    response = DeepSeekProvider(api_key="k").search("attention", max_results=2)
+
+    assert response.provider == "deepseek"
+    assert response.answer == ""
+    assert response.model == "deepseek-search"
+    first, second = response.search_results
+    assert first.title == "DeepSeek V4 model released"
+    assert (
+        first.snippet
+        == "DeepSeek has released the V4 model. The release adds improved tool calling."
+    )
+    assert first.source == "Example News"
+    assert first.date == "2026-06-01T00:00:00+00:00"
+    assert first.attributes == {"authority": 3, "rerank_score": 2.4}
+    assert second.snippet == "Snippet only"
+    assert second.source == "example.org"
+    assert second.attributes == {}
+    citation = response.citations[0]
+    assert citation.reference == "[1]"
+    assert citation.icon == "https://example.com/favicon.ico"
+    assert citation.website == "Example News"
+
+
+def test_deepseek_keeps_page_markdown_when_present(monkeypatch) -> None:
+    body = {
+        "results": [
+            {
+                "title": "Page",
+                "url": "https://e/1",
+                "snippet": "s",
+                "summary": "long summary",
+                "content": "# Page\n\nbody markdown",
+            }
+        ]
+    }
+
+    class _FakeRequests:
+        @staticmethod
+        def post(url: str, **kwargs: Any) -> _FakeResponse:
+            return _FakeResponse(body)
+
+    monkeypatch.setattr("deeptutor.services.search.providers.deepseek.requests", _FakeRequests)
+
+    from deeptutor.services.search.providers.deepseek import DeepSeekProvider
+
+    response = DeepSeekProvider(api_key="k").search("q", need_content=True)
+    (row,) = response.search_results
+    assert row.snippet == "long summary"
+    assert row.content == "# Page\n\nbody markdown"
+    assert response.citations[0].content == "# Page\n\nbody markdown"
+
+
+def test_deepseek_metadata_comes_from_the_spec_table() -> None:
+    from deeptutor.services.config import SEARCH_PROVIDERS
+    from deeptutor.services.search.providers import list_providers
+    from deeptutor.services.search.providers.deepseek import DeepSeekProvider
+
+    spec = SEARCH_PROVIDERS["deepseek"]
+    assert "deepseek" in list_providers()
+    assert DeepSeekProvider.display_name == spec.label
+    assert DeepSeekProvider.requires_api_key is True
+    assert DeepSeekProvider.supports_answer is False
+    # Paid per-request engine: never quietly turn a billed key into DuckDuckGo.
+    assert spec.soft_fallback is False
+
+
+@pytest.mark.parametrize("status", [401, 402, 429])
+def test_deepseek_surfaces_http_errors(monkeypatch, status) -> None:
+    class _ErrorResponse:
+        text = "error body"
+
+        def __init__(self) -> None:
+            self.status_code = status
+
+        def json(self) -> dict[str, Any]:
+            return {}
+
+    class _FakeRequests:
+        @staticmethod
+        def post(url: str, **kwargs: Any) -> _ErrorResponse:
+            return _ErrorResponse()
+
+    monkeypatch.setattr("deeptutor.services.search.providers.deepseek.requests", _FakeRequests)
+
+    from deeptutor.services.search.providers.deepseek import DeepSeekProvider
+
+    with pytest.raises(Exception, match=f"{status} - error body"):
+        DeepSeekProvider(api_key="k").search("q")
 
 
 def test_perplexity_client_sends_integration_header() -> None:
@@ -797,3 +1336,55 @@ def test_gbs_metadata_comes_from_the_spec_table() -> None:
     assert GoogleBrowserScraperProvider.requires_api_key is False
     assert GoogleBrowserScraperProvider.supports_answer is False
     assert search_missing_credential("google_browser_scraper", "", "") == "base_url"
+
+
+# --------------------------------------------------------------------------
+# Zhipu's request engine is configurable (issue #2617): the search profile's
+# `search_engine`/`engine` field flows in through the constructor kwargs.
+# Preserve all previously supported engine IDs; only unknown values fall back.
+# --------------------------------------------------------------------------
+
+
+def test_zhipu_defaults_to_search_std(new_calls) -> None:
+    """No configuration anywhere: the payload carries the historical engine."""
+    provider = _provider_class("zhipu", "ZhipuProvider")(api_key="k")
+    response = provider.search("q", max_results=3)
+    assert new_calls[-1]["json"]["search_engine"] == "search_std"
+    assert response.model == "search_std"
+
+
+def test_zhipu_provider_config_selects_search_pro(new_calls) -> None:
+    zhipu = _provider_class("zhipu", "ZhipuProvider")
+    # What the Settings > Search profile flows in as a constructor kwarg.
+    response = zhipu(api_key="k", search_engine="search_pro").search("q")
+    assert new_calls[-1]["json"]["search_engine"] == "search_pro"
+    assert response.model == "search_pro"
+    # `engine` is accepted as the config alias...
+    zhipu(api_key="k", engine="search_pro").search("q")
+    assert new_calls[-1]["json"]["search_engine"] == "search_pro"
+    # ...and an explicit call-time value wins over the config.
+    zhipu(api_key="k", search_engine="search_pro").search("q", search_engine="search_std")
+    assert new_calls[-1]["json"]["search_engine"] == "search_std"
+
+
+@pytest.mark.parametrize("engine", ["search_pro_sogou", "search_pro_quark"])
+def test_zhipu_preserves_existing_engine_profiles_and_request_overrides(new_calls, engine) -> None:
+    zhipu = _provider_class("zhipu", "ZhipuProvider")
+    for config in ({"search_engine": engine}, {"engine": engine}):
+        response = zhipu(api_key="k", **config).search("q")
+        assert new_calls[-1]["json"]["search_engine"] == engine
+        assert response.model == engine
+    zhipu(api_key="k", search_engine="search_std").search("q", search_engine=engine)
+    assert new_calls[-1]["json"]["search_engine"] == engine
+
+
+def test_zhipu_invalid_engine_warns_and_falls_back(new_calls, caplog) -> None:
+    zhipu = _provider_class("zhipu", "ZhipuProvider")
+    with caplog.at_level(logging.WARNING):
+        zhipu(api_key="k").search("q", search_engine="totally-bogus")
+    assert new_calls[-1]["json"]["search_engine"] == "search_std"
+    warnings = [
+        record.getMessage() for record in caplog.records if "search_engine" in record.getMessage()
+    ]
+    assert len(warnings) == 1
+    assert "totally-bogus" in warnings[0]

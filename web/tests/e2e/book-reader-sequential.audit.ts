@@ -68,7 +68,7 @@ test("book arrows read the current chapter before turning chapters", async ({
   });
   const book = {
     id: "sequential-fixture",
-    title: "Sequential reading fixture",
+    title: "Sequential reading fixture ".repeat(6).trim(),
     description: "",
     status: "ready",
     proposal: null,
@@ -216,4 +216,8 @@ test("book arrows read the current chapter before turning chapters", async ({
   await expect(
     page.getByRole("heading", { name: "Current long chapter" }),
   ).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.locator(".dt-crumb.is-instance").filter({ hasText: book.title })).toBeInViewport();
+  expect(await reader.evaluate(element => element.scrollHeight > element.clientHeight)).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
 });

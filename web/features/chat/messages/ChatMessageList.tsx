@@ -32,7 +32,6 @@ import {
   Square,
   UserRound,
   UsersRound,
-  Volume2,
   X,
   Trash2,
   type LucideIcon,
@@ -63,11 +62,10 @@ import {
   GeneratedOutputFileActions,
   supportsGeneratedOutputActions,
 } from "@/components/chat/GeneratedOutputFileActions";
-import { useVoiceAutoplay } from "@/hooks/useVoiceAutoplay";
-import {
-  SPEECH_PLAYBACK_FAILURE_MESSAGE,
-  SPEECH_TIMEOUT_MESSAGE,
-} from "@/lib/voice-settings";
+import { PlayAudioButton } from "@/components/voice/SpeechButton";
+export { PlayAudioButton } from "@/components/voice/SpeechButton";
+import { activeWorkspaceId } from "@/lib/workspace-scope";
+import { useVoicePlaybackRate, VOICE_PLAYBACK_RATES } from "@/hooks/useVoicePlaybackRate";
 import { extractMathAnimatorResult } from "@/lib/math-animator-types";
 import { extractVideoLessonResult } from "@/lib/video-lesson-types";
 import {
@@ -183,6 +181,7 @@ interface ChatMessageItem {
   /** The server never accepted this submission (#1594) — rendered as an
    *  unsent message, not an ordinary sent one. */
   failedSubmission?: boolean;
+  failedSubmissionNoLlmAccess?: boolean;
   failedSubmissionNeedsReview?: boolean;
   orphanedFailedTurn?: OrphanedFailedTurn;
 }
@@ -817,6 +816,14 @@ export const AssistantMessage = memo(function AssistantMessage({
   const readingMaterialId = researchRequestSnapshot?.readingMaterialId;
   const readingMaterialRevision =
     researchRequestSnapshot?.readingMaterialRevision;
+  // The language this reply was generated in, as recorded on the turn's
+  // request snapshot when it was sent. Prose is tagged with it rather than
+  // the session's current language so changing the reply language never
+  // re-tags past replies (a Chinese answer keeps zh fonts after the session
+  // moves on to Japanese). Replies without a recorded language — legacy
+  // rows from before snapshots carried it — fall back to the session
+  // language, which is the best guess available for them.
+  const turnLanguage = researchRequestSnapshot?.language || language;
   const resultEvent = useMemo(
     () => msg.events?.find((event) => event.type === "result") ?? null,
     [msg.events],
@@ -1093,14 +1100,14 @@ export const AssistantMessage = memo(function AssistantMessage({
         segments={segments}
         events={events}
         settled={processSettled}
-        language={language}
+        language={turnLanguage}
         isStreaming={isStreaming}
         readingMaterialId={readingMaterialId}
         readingMaterialRevision={readingMaterialRevision}
       />
     ),
     [
-      language,
+      turnLanguage,
       isStreaming,
       readingMaterialId,
       readingMaterialRevision,
@@ -1198,7 +1205,7 @@ export const AssistantMessage = memo(function AssistantMessage({
           {showResearchBody ? (
             <AssistantResponse
               content={msg.content}
-              language={language}
+              language={turnLanguage}
               isStreaming={isStreaming}
               readingMaterialId={readingMaterialId}
               readingMaterialRevision={readingMaterialRevision}
@@ -1216,7 +1223,7 @@ export const AssistantMessage = memo(function AssistantMessage({
           {msg.content ? (
             <AssistantResponse
               content={msg.content}
-              language={language}
+              language={turnLanguage}
               isStreaming={isStreaming}
               readingMaterialId={readingMaterialId}
               readingMaterialRevision={readingMaterialRevision}
@@ -1238,7 +1245,7 @@ export const AssistantMessage = memo(function AssistantMessage({
           {msg.content ? (
             <AssistantResponse
               content={msg.content}
-              language={language}
+              language={turnLanguage}
               isStreaming={isStreaming}
               readingMaterialId={readingMaterialId}
               readingMaterialRevision={readingMaterialRevision}
@@ -1286,7 +1293,7 @@ export const AssistantMessage = memo(function AssistantMessage({
             <AssistantResponse
               key={block.key}
               content={block.segment.text}
-              language={language}
+              language={turnLanguage}
               isStreaming={isStreaming}
               readingMaterialId={readingMaterialId}
               readingMaterialRevision={readingMaterialRevision}
@@ -1297,7 +1304,7 @@ export const AssistantMessage = memo(function AssistantMessage({
       ) : (
         <AssistantResponse
           content={body}
-          language={language}
+          language={turnLanguage}
           isStreaming={isStreaming}
           readingMaterialId={readingMaterialId}
           readingMaterialRevision={readingMaterialRevision}
@@ -1440,238 +1447,6 @@ export function CopyActionButton({
   );
 }
 
-// Speaker button: synthesizes this one reply and plays it. Auto-play of later
-// replies is a Settings preference (`autoPlayFresh`), not a first-click prompt.
-let activePlayback: { owner: object; stop: () => void } | null = null;
-// 50 ms of playable unsigned 8-bit PCM silence; an empty WAV cannot unlock playback.
-const SILENT_UNLOCK_WAV =
-  "data:audio/wav;base64,UklGRrQBAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YZABAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICA";
-
-async function ttsErrorMessage(resp: Response): Promise<string> {
-  try {
-    const body = (await resp.json()) as { detail?: unknown };
-    if (typeof body.detail === "string" && body.detail.trim()) return body.detail;
-    if (Array.isArray(body.detail)) {
-      const first = body.detail[0] as { msg?: string } | undefined;
-      if (typeof first?.msg === "string" && first.msg.trim()) return first.msg;
-    }
-  } catch {
-    /* non-JSON error body */
-  }
-  return "";
-}
-
-type SpeechFrame =
-  | { audio: string; content_type: string; final: boolean }
-  | { detail: string };
-
-async function* readSpeechFrames(response: Response): AsyncGenerator<SpeechFrame> {
-  if (!response.body) throw new Error("Missing speech stream.");
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let pending = "";
-  try {
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) throw new Error("Incomplete speech stream.");
-      pending += decoder.decode(value, { stream: true });
-      for (let newline = pending.indexOf("\n"); newline !== -1; newline = pending.indexOf("\n")) {
-        const frame = JSON.parse(pending.slice(0, newline)) as SpeechFrame;
-        pending = pending.slice(newline + 1);
-        yield frame;
-        if ("detail" in frame || frame.final) return;
-      }
-    }
-  } finally {
-    await reader.cancel().catch(() => {});
-    reader.releaseLock();
-  }
-}
-
-export function PlayAudioButton({
-  content,
-  conversationKey,
-  autoPlayFresh,
-}: {
-  content: string;
-  conversationKey?: string;
-  autoPlayFresh: boolean;
-}) {
-  const { t } = useTranslation();
-  const { autoplayEnabled } = useVoiceAutoplay(conversationKey);
-  const [state, setState] = useState<"idle" | "loading" | "playing">("idle");
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const urlRef = useRef<string | null>(null);
-  const abortRef = useRef<AbortController | null>(null);
-  const genRef = useRef(0);
-  const autoPlayedRef = useRef(false);
-  const playbackOwnerRef = useRef<object>({});
-
-  const cleanup = useCallback(() => {
-    abortRef.current?.abort();
-    abortRef.current = null;
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current = null;
-    }
-    if (urlRef.current) {
-      URL.revokeObjectURL(urlRef.current);
-      urlRef.current = null;
-    }
-  }, []);
-
-  const stop = useCallback(() => {
-    genRef.current += 1;
-    cleanup();
-    setState("idle");
-    if (activePlayback?.owner === playbackOwnerRef.current) activePlayback = null;
-  }, [cleanup]);
-
-  const play = useCallback(async () => {
-    activePlayback?.stop();
-    const gen = ++genRef.current;
-    abortRef.current?.abort();
-    const ac = new AbortController();
-    abortRef.current = ac;
-    activePlayback = { owner: playbackOwnerRef.current, stop };
-    setState("loading");
-
-    // WebKit evaluates media playback eligibility when play() is called. Keep
-    // this element unlocked in the click task, then replace its source after
-    // synthesis completes rather than constructing a new audio element then.
-    const audio = new Audio(SILENT_UNLOCK_WAV);
-    audioRef.current = audio;
-    void Promise.resolve(audio.play()).catch(() => {
-      /* Unlocking playback can fail on clients that already permit it. */
-    });
-
-    try {
-      const resp = await apiFetch(apiUrl("/api/voice/tts"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: content, stream: true }),
-        signal: ac.signal,
-      });
-      if (gen !== genRef.current) return;
-      if (!resp.ok) {
-        const detail = await ttsErrorMessage(resp);
-        if (gen !== genRef.current) return;
-        notify(
-          t(detail || (resp.status === 504 ? SPEECH_TIMEOUT_MESSAGE : SPEECH_PLAYBACK_FAILURE_MESSAGE)),
-          { tone: "error" },
-        );
-        stop();
-        return;
-      }
-      const playClip = async (blob: Blob) => {
-        if (gen !== genRef.current) return;
-        if (urlRef.current) URL.revokeObjectURL(urlRef.current);
-        const url = URL.createObjectURL(blob);
-        urlRef.current = url;
-        audio.src = url;
-        audio.load();
-        const finished = new Promise<void>((resolve) => {
-          const finish = () => {
-            ac.signal.removeEventListener("abort", finish);
-            audio.onended = null;
-            audio.onerror = null;
-            resolve();
-          };
-          audio.onended = finish;
-          audio.onerror = () => {
-            if (gen === genRef.current) {
-              notify(t(SPEECH_PLAYBACK_FAILURE_MESSAGE), { tone: "error" });
-              stop();
-            }
-            finish();
-          };
-          ac.signal.addEventListener("abort", finish, { once: true });
-        });
-        await audio.play();
-        if (gen !== genRef.current) {
-          audio.pause();
-          return;
-        }
-        setState("playing");
-        await finished;
-      };
-
-      if (resp.headers.get("content-type") === "application/x-ndjson") {
-        for await (const frame of readSpeechFrames(resp)) {
-          if (gen !== genRef.current) return;
-          if ("detail" in frame) {
-            notify(t(frame.detail || SPEECH_PLAYBACK_FAILURE_MESSAGE), { tone: "error" });
-            break;
-          }
-          const bytes = Uint8Array.from(atob(frame.audio), (char) => char.charCodeAt(0));
-          await playClip(new Blob([bytes], { type: frame.content_type }));
-        }
-      } else {
-        await playClip(await resp.blob());
-      }
-      if (gen === genRef.current) stop();
-    } catch (err) {
-      if (gen !== genRef.current) return;
-      if (err instanceof Error && err.name === "AbortError") return;
-      notify(t(SPEECH_PLAYBACK_FAILURE_MESSAGE), {
-        tone: "error",
-      });
-      stop();
-    }
-  }, [content, stop, t]);
-
-  const handleClick = useCallback(() => {
-    if (state === "playing" || state === "loading") {
-      stop();
-      return;
-    }
-    void play();
-  }, [play, state, stop]);
-
-  // Auto-play a freshly-generated reply when Settings auto-play is on.
-  useEffect(() => {
-    if (!autoPlayFresh || !autoplayEnabled) return;
-    if (autoPlayedRef.current) return;
-    if (!content.trim()) return;
-    autoPlayedRef.current = true;
-    const id = window.setTimeout(() => void play(), 0);
-    return () => window.clearTimeout(id);
-  }, [autoPlayFresh, autoplayEnabled, content, play]);
-
-  useEffect(() => () => {
-    genRef.current += 1;
-    cleanup();
-    if (activePlayback?.owner === playbackOwnerRef.current) activePlayback = null;
-  }, [cleanup]);
-
-  return (
-    <div className="relative inline-flex">
-      <Tooltip
-        label={state === "playing" ? t("Stop") : t("Play aloud")}
-        side="top"
-      >
-        <button
-          type="button"
-          onClick={handleClick}
-          aria-label={state === "playing" ? t("Stop") : t("Play aloud")}
-          className={`inline-flex items-center justify-center rounded-md p-1 transition-colors ${
-            state === "playing"
-              ? "text-[var(--primary)]"
-              : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]/50 hover:text-[var(--foreground)]"
-          }`}
-        >
-          {state === "loading" ? (
-            <Loader2 size={15} strokeWidth={1.8} className="animate-spin" />
-          ) : state === "playing" ? (
-            <Square size={13} strokeWidth={1.8} className="fill-current" />
-          ) : (
-            <Volume2 size={15} strokeWidth={1.5} />
-          )}
-        </button>
-      </Tooltip>
-    </div>
-  );
-}
 
 function BranchNavigator({
   info,
@@ -2084,7 +1859,8 @@ export const UserMessage = memo(function UserMessage({
           >
             <AlertCircle className="h-3.5 w-3.5" aria-hidden="true" />
             {t("Not sent")}
-            {onRetryFailedSubmission && !msg.failedSubmissionNeedsReview && typeof msg.id === "number" && (
+            {onRetryFailedSubmission && !msg.failedSubmissionNeedsReview &&
+              typeof msg.id === "number" && (
               <button type="button" disabled={editDisabled || retrying} onClick={async () => {
                 if (retrying || typeof msg.id !== "number") return;
                 setRetrying(true);
@@ -2497,6 +2273,10 @@ export const ChatMessageList = memo(function ChatMessageList({
     }
   }
 
+  const { rate: voiceRate, setRate: setVoiceRate } = useVoicePlaybackRate(
+    sessionId ? JSON.stringify([activeWorkspaceId(), sessionId]) : undefined,
+  );
+
   return (
     <>
       {messageRows.map(({ msg, originalIndex, pairedUserMessage }, rowIndex) => {
@@ -2716,13 +2496,28 @@ export const ChatMessageList = memo(function ChatMessageList({
                       />
                     )}
                     {showActions && !compactActions && (
-                      <PlayAudioButton
-                        content={msg.content}
-                        conversationKey={sessionId ?? undefined}
-                        autoPlayFresh={
-                          isLastAssistant && freshlyCompletedIndex === i
-                        }
-                      />
+                      <>
+                        <PlayAudioButton
+                          playbackRate={voiceRate}
+                          content={msg.content}
+                          conversationKey={sessionId ?? undefined}
+                          autoPlayFresh={
+                            isLastAssistant && freshlyCompletedIndex === i
+                          }
+                        />
+                        {i === lastRenderedAssistantIndex && (
+                          <select
+                            aria-label={t("Playback speed")}
+                            className="rounded bg-transparent px-1 text-xs text-[var(--muted-foreground)]"
+                            value={voiceRate}
+                            onChange={(event) => setVoiceRate(Number(event.target.value))}
+                          >
+                            {VOICE_PLAYBACK_RATES.map((rate) => (
+                              <option key={rate} value={rate}>{rate}×</option>
+                            ))}
+                          </select>
+                        )}
+                      </>
                     )}
                     {/* One way to try a turn again. Where the surface can
                         take the turn back into its composer, Retry does that

@@ -226,6 +226,18 @@
         "profile_id": {
           "title": "Profile Id",
           "type": "string"
+        },
+        "reasoning_effort": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reasoning Effort"
         }
       },
       "required": [

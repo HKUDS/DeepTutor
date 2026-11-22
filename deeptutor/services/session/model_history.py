@@ -246,26 +246,8 @@ def replay_history(
     messages: list[dict[str, Any]] = []
     for group in history_groups(rows):
         messages.extend(replay_group(group, route))
-    # Runtime snapshots are current state, not learning history. Keep the
-    # latest per section; keep every user exchange and tool protocol pair.
-    latest: dict[str, int] = {}
-    for index, message in enumerate(messages):
-        if message.get("role") != "user":
-            continue
-        name = message.get("_context_snapshot")
-        if isinstance(name, str):
-            latest[name] = index
-    return [
-        message
-        for index, message in enumerate(messages)
-        if not (
-            message.get("role") == "user"
-            and (
-                isinstance(message.get("_context_snapshot"), str)
-                and latest[message["_context_snapshot"]] != index
-            )
-        )
-    ]
+    # Preserve the sent prefix, including snapshots superseded by later updates.
+    return messages
 
 
 def complete_tool_results(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:

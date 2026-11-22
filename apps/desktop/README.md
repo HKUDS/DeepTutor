@@ -110,23 +110,26 @@ checkout. `npm start` runs the shell against this computer's bundled core.
 
 ## Releases
 
+Starting with the release after v1.7.1, every release must include both macOS
+architectures: Apple Silicon (`macos-arm64`) and Intel (`macos-x64`), alongside
+the Windows installer and portable ZIP. The `verify-release` job requires all
+three builds to succeed and checks that all four versioned downloads and their
+unversioned aliases are uploaded and nonempty. A missing Intel DMG means the
+desktop release is incomplete; fix and rerun the failed build before reporting
+the release as complete.
+
 `.github/workflows/desktop-release.yml` runs when a DeepTutor GitHub Release is
 published. For each target it verifies the tag matches
 `deeptutor/__version__.py`, builds and smoke-tests the runtime, packages the
-app and attaches the downloads to the release. It needs the
-`DESKTOP_RUNTIME_SIGNING_KEY` secret; Developer ID signing and notarization run
-when the Apple secrets listed in the workflow are present. Pull requests that
-touch `apps/desktop` run the same builds with a throwaway key and keep the
-downloads as workflow artifacts instead of publishing them.
+app and attaches the downloads to the release. Signed builds read the runtime
+key and Apple signing and notarization credentials from the protected
+`desktop-release` environment after deployment approval.
 
-Pushes to `dev` that change the desktop app also build all three targets with
-the configured runtime key and Apple signing credentials, keeping the results
-as workflow artifacts without publishing a release. Manual runs default to the
-same validation mode on the selected branch. To attach downloads to an existing
-release, explicitly enable `publish` and supply its tag. GitHub only exposes the
-manual entry point after the workflow reaches the default branch. Apple
-notarization additionally needs `APPLE_ID` and `APPLE_APP_PASSWORD`; a Developer
-ID signature alone does not mean the app is notarized. Windows Authenticode
+Pull requests, pushes to `dev` and manual branch validations use disposable
+runtime keys. To validate signing, dispatch the workflow on a version tag.
+To attach downloads to an existing release, select that same tag as the
+workflow ref and the tag input, and enable `publish`. The notarization
+diagnostics workflow also runs manually on version tags. Windows Authenticode
 signing is not configured by this workflow.
 
 ## Core updates
@@ -138,6 +141,12 @@ installs into a new version directory, backs up the desktop workspace, then
 starts the candidate. A failed or interrupted trial restores the previous
 runtime and workspace. Backups are kept. Automatic update discovery is not
 connected yet.
+
+Installing a newer app over an older one works the same way: on the next start,
+a bundled core whose `coreVersion` is newer than the active one is installed and
+trialled with the same backup and rollback. A bundled core that fails its trial
+is not tried again, and an older bundled core never replaces a newer one that
+was installed by hand.
 
 ## Verification
 

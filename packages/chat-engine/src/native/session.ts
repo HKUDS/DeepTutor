@@ -133,6 +133,7 @@ export class NativeSession implements LoopHost {
           error.message,
           "native-provider",
           error.partialResponse,
+          error.paused,
         );
       throw error;
     }

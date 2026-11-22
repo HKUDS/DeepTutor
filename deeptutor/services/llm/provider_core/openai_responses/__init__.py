@@ -6,7 +6,9 @@ from .converters import (
     convert_tool_choice,
     convert_tools,
     convert_user_message,
+    mark_stable_history_breakpoint,
     split_tool_call_id,
+    supports_explicit_prompt_cache,
 )
 from .parsing import (
     FINISH_REASON_MAP,
@@ -24,6 +26,8 @@ __all__ = [
     "convert_tool_choice",
     "convert_tools",
     "convert_user_message",
+    "mark_stable_history_breakpoint",
+    "supports_explicit_prompt_cache",
     "split_tool_call_id",
     "iter_sse",
     "consume_sse",

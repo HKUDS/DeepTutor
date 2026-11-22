@@ -78,7 +78,7 @@ export default function PartnerWorkspacePicker({
           );
           onChange(
             event.target.value,
-            row ? workspaceLabel(row, zh) : t("Partner private workspace"),
+            row ? workspaceLabel(row, zh, t) : t("Partner private workspace"),
           );
         }}
         className="w-full rounded-xl border border-[var(--border)] bg-[var(--background)] px-3 py-2.5 text-[13px] text-[var(--foreground)] disabled:opacity-50"
@@ -91,7 +91,7 @@ export default function PartnerWorkspacePicker({
         )}
         {rows.map((row) => (
           <option key={row.workspace_id} value={row.workspace_id}>
-            {workspaceLabel(row, zh)}
+            {workspaceLabel(row, zh, t)}
           </option>
         ))}
       </select>

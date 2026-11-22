@@ -23,6 +23,7 @@ import {
   type MasteryDraftRouteGuard,
 } from "@/lib/mastery-study-route";
 import type { MasteryMode } from "@/lib/mastery-mode";
+import { consumePendingLLMSelection } from "@/lib/pending-llm-selection";
 import { MASTERY_WORKSPACE_MODE } from "@/lib/workspace-mode";
 
 /**
@@ -68,6 +69,19 @@ export function useMasteryStudySession(
     previousSessionId: string | null;
   } | null>(null);
   const initializedRouteRef = useRef("");
+  // Retain the one-time handoff across StrictMode setup replay, but not route changes.
+  const openingSelectionRef = useRef<{
+    routeKey: string;
+    selection: ReturnType<typeof consumePendingLLMSelection>;
+  } | null>(null);
+  useEffect(() => {
+    if (
+      openingSelectionRef.current !== null &&
+      openingSelectionRef.current.routeKey !== currentRouteKey
+    ) {
+      openingSelectionRef.current = null;
+    }
+  }, [currentRouteKey]);
   const sessionLoadRef = useRef<AbortController | null>(null);
   const draftRouteGuardRef = useRef<MasteryDraftRouteGuard | null>(null);
   const activity = useMasteryPathActivity(pathId || null);
@@ -158,9 +172,23 @@ export function useMasteryStudySession(
         routeKey,
         previousSessionId: state.sessionId,
       };
-      const draftKey = newSession(
-        sessionConfiguration,
-      );
+      let configuration = sessionConfiguration;
+      if (requestedMode === "outline") {
+        if (
+          openingSelectionRef.current === null ||
+          openingSelectionRef.current.routeKey !== routeKey
+        ) {
+          openingSelectionRef.current = {
+            routeKey,
+            selection: consumePendingLLMSelection(`mastery.outline.${pathId}`),
+          };
+        }
+        configuration = {
+          ...sessionConfiguration,
+          llmSelection: openingSelectionRef.current.selection,
+        };
+      }
+      const draftKey = newSession(configuration);
       // eslint-disable-next-line react-hooks/set-state-in-effect -- record the draft created for this route.
       setDraftBinding({
         routeKey,
@@ -224,6 +252,7 @@ export function useMasteryStudySession(
     loadSession,
     newSession,
     pathId,
+    requestedMode,
     routeSessionId,
     sessionConfiguration,
     showCachedSession,

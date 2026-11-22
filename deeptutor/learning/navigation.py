@@ -237,10 +237,20 @@ def resolve_module(topic: dict[str, Any], module_ref: str) -> dict[str, Any] | N
     for module in modules:
         if str(module["name"]).casefold() == folded:
             return module
-    for module in modules:
-        name = str(module["name"]).casefold()
-        if folded in name or (len(folded) > 3 and name in folded):
-            return module
+    substring_matches = [
+        module
+        for module in modules
+        if folded in (name := str(module["name"]).casefold())
+        or (len(folded) > 3 and name in folded)
+    ]
+    if substring_matches:
+        # Prefer the most specific match — the name whose length is closest to
+        # the phrase — so a longer "Limits and Continuity" is not shadowed by a
+        # shorter "Limits" that also appears as a substring.
+        return min(
+            substring_matches,
+            key=lambda module: abs(len(str(module["name"]).casefold()) - len(folded)),
+        )
     position = _position_in(ref)
     if position is not None and 1 <= position <= len(modules):
         # "lesson N" is 1-based and names the Nth lesson in order. Take it by

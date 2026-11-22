@@ -41,6 +41,7 @@ from .._turn_runtime_shared import (
     _reading_material_id,
     _reading_material_revision,
     _reading_references,
+    _reading_sections_context,
     _reading_viewport,
     _reading_viewport_image_attachments,
     _reading_workspace_id,
@@ -535,6 +536,11 @@ class TurnExecutor:
                         filename=rec.get("filename", ""),
                         mime_type=rec.get("mime_type", ""),
                         id=rec.get("id", ""),
+                        # Prior-turn images are labelled for the model (#2632):
+                        # without the marker the multimodal layer presents them
+                        # like current-turn uploads.
+                        historical=bool(rec.get("historical", False)),
+                        source_message_id=str(rec.get("source_message_id", "") or ""),
                     )
                     for rec in prior_images
                 )
@@ -793,6 +799,12 @@ class TurnExecutor:
                     context_parts.append("[Attached Documents]\n" + "\n\n".join(document_texts))
                 if book_context:
                     context_parts.append(f"[Book Context]\n{book_context}")
+                if reading_references:
+                    reading_context = await asyncio.to_thread(
+                        _reading_sections_context, reading_references
+                    )
+                    if reading_context:
+                        context_parts.append(f"[Reading Sections]\n{reading_context}")
                 if notebook_context:
                     context_parts.append(f"[Notebook Context]\n{notebook_context}")
                 if history_context:
@@ -834,6 +846,7 @@ class TurnExecutor:
             # card is on screen showing only what the learner picked, and the
             # verdict it is waiting for is already server-side.
             mastery_card_grade: dict[str, Any] | None = None
+            mastery_card_rejection: dict[str, Any] | None = None
             mastery_card_skip: dict[str, Any] | None = None
             if workspace_mode == WORKSPACE_MODE_MASTERY:
                 mastery_card_grade = await self._grade_submitted_card_answer(
@@ -841,6 +854,9 @@ class TurnExecutor:
                     path_id=_mastery_path_id(payload.get("mastery_path_id")),
                     answer=payload.get("mastery_answer") or {},
                 )
+                if mastery_card_grade and mastery_card_grade.get("reason") == "stale_card":
+                    mastery_card_rejection = mastery_card_grade
+                    mastery_card_grade = None
                 # And its counterpart: a question the learner declined instead
                 # of answering. Dropped here for the same reason a card answer
                 # is graded here — the path must already be clear of it when
@@ -941,6 +957,37 @@ class TurnExecutor:
                     **parent_kwargs,
                 )
 
+            # The main chat surface is the learner's primary source of
+            # questions. Record it as an L1 trace so the memory backlog and
+            # ``recall.recent_queries`` see ordinary conversation, not only KB
+            # searches. Side chats stay isolated from global memory, regenerate
+            # turns do not persist a user row, and trace capture must never
+            # break the turn.
+            if new_user_message_id is not None and not side_chat_context:
+                trace_text = raw_user_content.strip()
+                if trace_text:
+                    try:
+                        from deeptutor.modules.catalog import module_enabled
+
+                        if module_enabled("memory"):
+                            from deeptutor.services.memory import get_memory_store
+                            from deeptutor.services.memory.trace import TraceEvent
+
+                            await get_memory_store().emit(
+                                TraceEvent.new(
+                                    "chat",
+                                    "query",
+                                    {
+                                        "query": trace_text[:2000],
+                                        "capability": capability_name,
+                                    },
+                                    session_id=session_id,
+                                    turn_id=turn_id,
+                                )
+                            )
+                    except Exception:
+                        logger.warning("chat trace emit failed for turn %s", turn_id, exc_info=True)
+
             if not side_chat_context:
                 from deeptutor.services.task_board import get_task_board_store
                 from deeptutor.services.workspace.context import current_workspace_id
@@ -1015,6 +1062,7 @@ class TurnExecutor:
                     # The ruling this turn opened with, when it opened with one.
                     # The tutor reads it as a seed rather than grading again.
                     "mastery_card_grade": mastery_card_grade or {},
+                    "mastery_card_rejection": mastery_card_rejection or {},
                     # The question this turn opened by dropping, if it did.
                     "mastery_card_skip": mastery_card_skip or {},
                     # Whether the message is a pick on the open card at all,

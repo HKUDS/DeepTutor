@@ -2,10 +2,19 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
+
+import pytest
+
+from deeptutor.services.notebook import NotebookManager
+from deeptutor.tools.builtin import ListFavoritesTool
 from deeptutor.tools.list_notebook import (
+    MAX_FAVORITE_BODY_PAGE_CHARS,
     MAX_NOTEBOOKS_RENDERED,
     MAX_RECORDS_RENDERED,
     list_notebooks_or_records,
+    read_favorite_record,
 )
 
 
@@ -145,3 +154,138 @@ def test_drilldown_caps_huge_record_lists() -> None:
     assert outcome.ok is True
     assert "showing" in outcome.text.lower()
     assert outcome.summary["count"] == MAX_RECORDS_RENDERED + 20
+
+
+def test_favorite_read_pages_restore_original_without_writing(tmp_path) -> None:
+    manager = NotebookManager(base_dir=str(tmp_path))
+    notebook_id = manager.create_notebook("Saved sources")["id"]
+    body = "ORCHID-7391\n\n中文🙂" + ("x\n\n文🙂" * 4000)
+    record_id = manager.add_record(
+        [notebook_id], "chat", "Example", "question", body, summary="brief"
+    )["record"]["id"]
+    notebook_file = manager._get_notebook_file(notebook_id)
+    digest_before = hashlib.sha256(notebook_file.read_bytes()).hexdigest()
+
+    listing = list_notebooks_or_records(notebook_id=notebook_id, notebook_manager=manager)
+    assert "ORCHID-7391" not in listing.text
+    pages = []
+    offset = 0
+    while True:
+        outcome = read_favorite_record(
+            notebook_id=notebook_id,
+            record_id=record_id,
+            offset=offset,
+            notebook_manager=manager,
+        )
+        assert outcome.ok
+        assert outcome.summary["total_chars"] == len(body)
+        assert outcome.summary["offset"] == offset
+        page_length = min(MAX_FAVORITE_BODY_PAGE_CHARS, len(body) - offset)
+        pages.append(outcome.text[-page_length:])
+        if outcome.summary["next_offset"] is None:
+            assert outcome.summary["truncated"] is False
+            break
+        assert outcome.summary["truncated"] is True
+        offset = outcome.summary["next_offset"]
+
+    assert len(pages) > 2
+    assert all(len(page) <= MAX_FAVORITE_BODY_PAGE_CHARS for page in pages)
+    assert "".join(pages) == body
+    assert hashlib.sha256(notebook_file.read_bytes()).hexdigest() == digest_before
+
+
+def test_favorite_read_rejects_invalid_offsets_and_missing_ids(tmp_path) -> None:
+    manager = NotebookManager(base_dir=str(tmp_path / "alice"))
+    own_id = manager.create_notebook("Alice")["id"]
+    record_id = manager.add_record([own_id], "chat", "T", "Q", "secret")["record"]["id"]
+    other = NotebookManager(base_dir=str(tmp_path / "bob"))
+    other_id = other.create_notebook("Bob")["id"]
+    other_record_id = other.add_record([other_id], "chat", "Bob", "Q", "bob-secret")["record"]["id"]
+    for notebook_id, rid, offset in [
+        (own_id, record_id, -1),
+        (own_id, record_id, True),
+        (own_id, record_id, "1"),
+        (own_id, record_id, 6),
+        (own_id, "missing", 0),
+        (other_id, other_record_id, 0),
+        ("../bob/" + other_id, other_record_id, 0),
+        ("", record_id, 0),
+        (own_id, "", 0),
+    ]:
+        outcome = read_favorite_record(
+            notebook_id=notebook_id,
+            record_id=rid,
+            offset=offset,
+            notebook_manager=manager,
+        )
+        assert not outcome.ok
+        assert "secret" not in outcome.error
+        assert "bob-secret" not in outcome.text + outcome.error
+
+
+def test_favorite_read_empty_body(tmp_path) -> None:
+    manager = NotebookManager(base_dir=str(tmp_path))
+    notebook_id = manager.create_notebook("Empty")["id"]
+    record_id = manager.add_record([notebook_id], "chat", "T", "Q", "")["record"]["id"]
+    outcome = read_favorite_record(
+        notebook_id=notebook_id, record_id=record_id, notebook_manager=manager
+    )
+    assert outcome.ok and "empty body" in outcome.text
+    assert outcome.summary["total_chars"] == 0
+    assert outcome.summary["truncated"] is False
+    assert outcome.summary["next_offset"] is None
+    assert not read_favorite_record(
+        notebook_id=notebook_id, record_id=record_id, offset=1, notebook_manager=manager
+    ).ok
+
+
+def test_favorite_read_does_not_repair_legacy_summary_or_missing_index(tmp_path) -> None:
+    manager = NotebookManager(base_dir=str(tmp_path))
+    notebook_id = manager.create_notebook("Legacy")["id"]
+    record_id = manager.add_record([notebook_id], "chat", "T", "Q", "ORCHID-7391")["record"]["id"]
+    notebook_file = manager._get_notebook_file(notebook_id)
+    raw = json.loads(notebook_file.read_text(encoding="utf-8"))
+    raw["records"][0]["summary"] = "<think>private</think>\nbrief"
+    notebook_file.write_text(json.dumps(raw), encoding="utf-8")
+    manager.index_file.unlink()
+    before = hashlib.sha256(notebook_file.read_bytes()).hexdigest()
+
+    outcome = read_favorite_record(
+        notebook_id=notebook_id, record_id=record_id, notebook_manager=manager
+    )
+    assert outcome.ok and "ORCHID-7391" in outcome.text
+    assert "private" not in outcome.text
+    assert hashlib.sha256(notebook_file.read_bytes()).hexdigest() == before
+    assert not manager.index_file.exists()
+
+    # The default service path retains its existing persisted repair behavior.
+    assert manager.get_record(notebook_id, record_id)["summary"] == "brief"
+    assert hashlib.sha256(notebook_file.read_bytes()).hexdigest() != before
+
+
+@pytest.mark.asyncio
+async def test_list_favorites_schema_and_execution_keep_legacy_calls(tmp_path, monkeypatch) -> None:
+    manager = NotebookManager(base_dir=str(tmp_path))
+    notebook_id = manager.create_notebook("Saved sources")["id"]
+    record_id = manager.add_record([notebook_id], "chat", "T", "Q", "body-only-marker")["record"][
+        "id"
+    ]
+    monkeypatch.setattr("deeptutor.services.notebook.get_notebook_manager", lambda: manager)
+    tool = ListFavoritesTool()
+    schema = tool.get_definition().to_openai_schema()["function"]["parameters"]
+    assert set(schema["properties"]) == {"notebook_id", "record_id", "offset"}
+    assert schema["properties"]["offset"]["minimum"] == 0
+    assert not schema["required"]
+
+    index = await tool.execute()
+    records = await tool.execute(notebook_id=notebook_id)
+    assert index.metadata["mode"] == "index"
+    assert records.metadata["mode"] == "records"
+    assert "body-only-marker" not in index.content + records.content
+
+    read = await tool.execute(notebook_id=notebook_id, record_id=record_id)
+    assert "body-only-marker" in read.content
+    assert read.metadata["mode"] == "record"
+    assert read.metadata["next_offset"] is None
+    invalid = await tool.execute(notebook_id=notebook_id, record_id=record_id, offset=True)
+    assert invalid.success is False

@@ -190,12 +190,14 @@ async def stream_turn_as_json(*, app: DeepTutorApp, turn_id: str) -> None:
     "(empty reply)" as the tool result and must proceed on its own.
     """
     async for item in app.stream_turn(turn_id):
-        # One event per line: rich wraps long lines at terminal width and
-        # interprets ``[...]`` as markup, both of which corrupt NDJSON.
+        # One event per line: rich wraps long lines at terminal width,
+        # interprets ``[...]`` as markup and ``:name:`` as emoji codes, all of
+        # which corrupt NDJSON.
         console.print(
             json.dumps(item, ensure_ascii=False),
             soft_wrap=True,
             markup=False,
+            emoji=False,
             highlight=False,
         )
         if _ask_user_payload(item) is not None:

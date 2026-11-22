@@ -1,6 +1,6 @@
 'use client'
 
-import { useId, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import {
   AlertCircle,
   Brain,
@@ -47,6 +47,13 @@ const EMBLEMS: { value: string; Icon: typeof Compass }[] = [
   { value: '📐', Icon: Ruler },
   { value: '🌌', Icon: Orbit },
 ]
+
+// library.failures records the dashboard request kind; two tabs are named
+// differently from the kind that feeds them. Everything else is identity.
+const FIELD_REQUEST_KIND: Record<string, string> = {
+  knowledgeBases: 'knowledge',
+  questionSets: 'practice',
+}
 
 export function GoalStep({
   goal,
@@ -151,10 +158,21 @@ export function SourcesStep({
   const [tab, setTab] = useState<string>('knowledgeBases')
   const tabId = useId()
   const [search, setSearch] = useState('')
+  const searchQuestions = library.questionPage?.search
+  useEffect(() => {
+    if (tab !== 'questionSets' || !searchQuestions) return
+    const timer = window.setTimeout(() => searchQuestions(search), 250)
+    return () => window.clearTimeout(timer)
+  }, [tab, search, searchQuestions])
   const group = groups.find(group => group.key === tab)!
-  const visible = library[group.key].filter(item =>
+  const visible = tab === 'questionSets' && library.questionPage ? library.questionSets : library[group.key].filter(item =>
     `${item.label} ${item.detail}`.toLowerCase().includes(search.toLowerCase())
   )
+  // Gate on the active tab's own request, not the whole library: a ready KB
+  // renders while a large question bank is still loading. Falls back to the
+  // aggregate for a library built without per-kind loading info.
+  const groupLoading = (tab === 'questionSets' && library.questionPage?.loading && !library.questionSets.length) || (library.loadingKinds?.includes(tab) ?? loading)
+  const tabFailed = library.failures.includes(FIELD_REQUEST_KIND[tab] ?? tab)
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -219,7 +237,7 @@ export function SourcesStep({
             </button>
           ))}
       </div>
-      {library.failures.length > 0 && (
+      {tabFailed && (
         <p role="alert" className="text-xs text-destructive">
           {t('navigation.loadError')}
         </p>
@@ -234,7 +252,7 @@ export function SourcesStep({
         aria-labelledby={`${tabId}-${tab}`}
         className="min-h-40 pr-1"
       >
-        {loading ? (
+        {groupLoading ? (
           <div className="flex justify-center py-14">
             <Loader2 className="animate-spin" size={20} />
           </div>
@@ -250,6 +268,9 @@ export function SourcesStep({
             opened={opened}
             onToggleOpen={toggleOpen}
           />
+        )}
+        {tab === 'questionSets' && library.questionPage && (library.questionPage.hasMore || library.questionPage.loading) && (
+          <button type="button" disabled={library.questionPage.loading} onClick={library.questionPage.more} className="mt-3 rounded-lg border px-3 py-2 text-sm">{t(library.questionPage.loading ? 'Loading...' : 'Load more')}</button>
         )}
       </div>
     </div>

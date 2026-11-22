@@ -265,11 +265,17 @@ def detect_installation() -> Installation:
                 command=f"{sys.executable} -m pip install -U deeptutor",
                 reason=SYSTEMD_UPDATE_REASON,
             )
+        from deeptutor.modules.catalog import installed_distributions
+
+        modules = installed_distributions()
+        command = "pip install -U deeptutor"
+        if modules:
+            command = f"{command} {' '.join(modules)}"
         return Installation(
             mode="pypi",
             current_version=__version__,
             automatic_update=True,
-            command="pip install -U deeptutor",
+            command=command,
             reason="",
         )
     return Installation(

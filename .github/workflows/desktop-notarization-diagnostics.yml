@@ -4,16 +4,14 @@ name: Desktop Notarization Diagnostics
 # publishing. Only DeepTutor submissions are included in the saved reports.
 on:
   workflow_dispatch:
-  push:
-    branches: [dev]
-    paths:
-      - .github/workflows/desktop-notarization-diagnostics.yml
 
 permissions:
   contents: read
 
 jobs:
   inspect:
+    if: github.ref_type == 'tag' && startsWith(github.ref_name, 'v')
+    environment: desktop-release
     runs-on: macos-15
     timeout-minutes: 10
     steps:

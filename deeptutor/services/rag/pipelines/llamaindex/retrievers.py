@@ -24,6 +24,10 @@ from .rerank import rerank_nodes
 logger = logging.getLogger(__name__)
 
 BM25_PERSIST_DIRNAME = "bm25_retriever"
+_BM25_TOKEN_PATTERN_FILENAME = "token_pattern.txt"
+# Split word runs before adjacent dotted numbers, retaining single-character terms.
+# Check for an identifier only at the start of a digit run to avoid quadratic scans.
+BM25_TOKEN_PATTERN = r"(?u)\b[vV]\d+(?:\.\d+)+|\d+(?:\.\d+)+|(?:(?!(?<!\d)\d+\.\d)\w)+"
 
 
 class _MatchedOnlyRetriever(BaseRetriever):
@@ -93,6 +97,14 @@ def effective_retrieval_profile(profile: str | None) -> str:
     return normalized
 
 
+@lru_cache(maxsize=4)
+def _rebuilt_bm25_retriever(bm25_cls: Any, index: Any, top_k: int) -> Any:
+    """Reuse a rebuild for this loaded index; published versions load new identities."""
+    return bm25_cls.from_defaults(
+        index=index, similarity_top_k=top_k, token_pattern=BM25_TOKEN_PATTERN
+    )
+
+
 def build_bm25_retriever(index: Any, storage_dir: Path, *, top_k: int) -> Any | None:
     """Build or load LlamaIndex's official BM25 retriever if available."""
     top_k = max(1, int(top_k))
@@ -119,13 +131,21 @@ def build_bm25_retriever(index: Any, storage_dir: Path, *, top_k: int) -> Any | 
     persist_dir = _bm25_persist_dir(storage_dir)
     if persist_dir.exists():
         try:
-            retriever = bm25_cls.from_persist_dir(str(persist_dir))
-            return _set_similarity_top_k(retriever, top_k)
+            pattern_path = persist_dir / _BM25_TOKEN_PATTERN_FILENAME
+            if (
+                pattern_path.is_file()
+                and pattern_path.read_text(encoding="utf-8") == BM25_TOKEN_PATTERN
+            ):
+                retriever = bm25_cls.from_persist_dir(str(persist_dir))
+                # The upstream adapter does not persist its token_pattern.
+                retriever.token_pattern = BM25_TOKEN_PATTERN
+                return _set_similarity_top_k(retriever, top_k)
+            logger.info("Using document-based BM25 for outdated persisted tokenization")
         except Exception as exc:
             logger.warning("Failed to load persisted BM25 retriever from %s: %s", persist_dir, exc)
 
     try:
-        return bm25_cls.from_defaults(index=index, similarity_top_k=top_k)
+        return _rebuilt_bm25_retriever(bm25_cls, index, top_k)
     except Exception as exc:
         logger.warning("Failed to build BM25 retriever; falling back to vector retrieval: %s", exc)
         return None
@@ -147,7 +167,9 @@ def persist_bm25_retriever(index: Any, storage_dir: Path, *, top_k: int) -> bool
         shutil.rmtree(persist_dir, ignore_errors=True)
 
     try:
-        retriever = bm25_cls.from_defaults(index=index, similarity_top_k=top_k)
+        retriever = bm25_cls.from_defaults(
+            index=index, similarity_top_k=top_k, token_pattern=BM25_TOKEN_PATTERN
+        )
     except Exception as exc:
         logger.warning("Failed to build BM25 retriever for persistence: %s", exc)
         return False
@@ -158,6 +180,9 @@ def persist_bm25_retriever(index: Any, storage_dir: Path, *, top_k: int) -> bool
     persist_dir.mkdir(parents=True, exist_ok=True)
     try:
         retriever.persist(str(persist_dir))
+        (persist_dir / _BM25_TOKEN_PATTERN_FILENAME).write_text(
+            BM25_TOKEN_PATTERN, encoding="utf-8"
+        )
         return True
     except Exception as exc:
         logger.warning("Failed to persist BM25 retriever to %s: %s", persist_dir, exc)
@@ -235,8 +260,48 @@ def retrieve_nodes(
     )
 
 
+def _scope_key(value: str) -> str:
+    """Normalise a path-ish document identity for exact, case-sensitive comparison."""
+    return value.replace("\\", "/").strip("/")
+
+
+def _scope_matcher(document_keys: tuple[str, ...], raw_root: Path | None) -> Any:
+    """Membership test for one KB's document keys against its loaded nodes.
+
+    Source-schema nodes carry ``document_key`` (the path relative to the KB's
+    ``raw`` directory). Plain-text documents are ingested with only a
+    ``file_path`` (#2374) — the absolute location under that same ``raw``
+    directory — so those match by raw-relative position instead. A same-named
+    file in another folder is a different document and never matches, and
+    neither does one whose path differs only by case.
+    """
+    keys = {_scope_key(key) for key in document_keys if str(key).strip()}
+    raw_resolved = raw_root.resolve() if raw_root is not None else None
+
+    def node_in_scope(node: Any) -> bool:
+        metadata = getattr(node, "metadata", None)
+        metadata = metadata if isinstance(metadata, dict) else {}
+        key = metadata.get("document_key")
+        if isinstance(key, str) and _scope_key(key) in keys:
+            return True
+        file_path = str(metadata.get("file_path") or "")
+        if not file_path:
+            return False
+        if _scope_key(file_path) in keys:
+            return True
+        if raw_resolved is None:
+            return False
+        try:
+            relative = Path(file_path).resolve().relative_to(raw_resolved)
+        except (OSError, ValueError):
+            return False
+        return _scope_key(relative.as_posix()) in keys
+
+    return node_in_scope
+
+
 @lru_cache(maxsize=4)
-def _scoped_index(index: Any, document_keys: tuple[str, ...]) -> Any:
+def _scoped_index(index: Any, document_keys: tuple[str, ...], raw_root: str = "") -> Any:
     """Reuse stored vectors in an isolated corpus; FAISS ignores node_ids filters.
 
     This never embeds the documents again. The small LRU dies with the loaded
@@ -246,7 +311,7 @@ def _scoped_index(index: Any, document_keys: tuple[str, ...]) -> Any:
 
     from .vector_store import storage_context_for_nodes
 
-    allowed = set(document_keys)
+    in_scope = _scope_matcher(document_keys, Path(raw_root) if raw_root else None)
     # .docs reconstructs all nodes on every access; never call it per vector.
     documents = index.docstore.docs
     store = index.vector_store
@@ -258,15 +323,15 @@ def _scoped_index(index: Any, document_keys: tuple[str, ...]) -> Any:
         by_node = {
             node_id: faiss_index.reconstruct(int(vector_id)).tolist()
             for vector_id, node_id in index.index_struct.nodes_dict.items()
-            if documents[node_id].metadata.get("document_key") in allowed
+            if in_scope(documents[node_id])
         }
     else:
         raise ValueError("This vector backend cannot enforce selected-document retrieval scope.")
     nodes = []
     for node in documents.values():
         if (
-            node.metadata.get("document_key") not in allowed
-            or node.metadata.get("page_status") != "searchable"
+            not in_scope(node)
+            or node.metadata.get("page_status") not in (None, "searchable")
             or node.node_id not in by_node
         ):
             continue
@@ -283,10 +348,17 @@ def _scoped_index(index: Any, document_keys: tuple[str, ...]) -> Any:
 
 
 def retrieve_scoped_nodes(
-    index: Any, query: str, document_keys: list[str], *, top_k: int = 8
+    index: Any,
+    query: str,
+    document_keys: list[str],
+    *,
+    top_k: int = 8,
+    raw_root: Path | None = None,
 ) -> list[Any]:
     """Restrict the corpus before retrieval, including the BM25 component."""
-    index = _scoped_index(index, tuple(sorted(set(document_keys))))
+    index = _scoped_index(
+        index, tuple(sorted(set(document_keys))), str(raw_root) if raw_root else ""
+    )
     if index is None:
         return []
     nodes = list(index.docstore.docs.values())
@@ -295,7 +367,9 @@ def retrieve_scoped_nodes(
     vector = index.as_retriever(similarity_top_k=count)
     bm25_cls = _import_bm25_retriever()
     if bm25_cls is not None:
-        lexical = bm25_cls.from_defaults(nodes=nodes, similarity_top_k=count)
+        lexical = bm25_cls.from_defaults(
+            nodes=nodes, similarity_top_k=count, token_pattern=BM25_TOKEN_PATTERN
+        )
         retriever = QueryFusionRetriever(
             [vector, _MatchedOnlyRetriever(lexical)],
             llm=MockLLM(),
@@ -330,7 +404,13 @@ class _UnstemmedPageRetriever:
     def _tokenize(text):
         import bm25s
 
-        return bm25s.tokenize(text, stopwords="en", stemmer=None, show_progress=False)
+        return bm25s.tokenize(
+            text,
+            stopwords="en",
+            stemmer=None,
+            token_pattern=BM25_TOKEN_PATTERN,
+            show_progress=False,
+        )
 
     def retrieve(self, query: str) -> list[Any]:
         from llama_index.core.schema import NodeWithScore
@@ -356,7 +436,9 @@ def _legacy_page_retriever(directory: Path) -> Any:
     cls = _import_bm25_retriever()
     if cls is None:
         return _UnstemmedPageRetriever(nodes)
-    return cls.from_defaults(nodes=nodes, similarity_top_k=min(8, len(nodes)))
+    return cls.from_defaults(
+        nodes=nodes, similarity_top_k=min(8, len(nodes)), token_pattern=BM25_TOKEN_PATTERN
+    )
 
 
 def retrieve_legacy_pages(directory: Path, query: str, *, top_k: int = 8) -> list[Any]:

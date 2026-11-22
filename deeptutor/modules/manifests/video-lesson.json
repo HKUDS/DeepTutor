@@ -33,7 +33,9 @@
   "commands": [],
   "navigation": [],
   "services": [],
-  "requirements": [],
+  "requirements": [
+    "edge-tts>=7.0,<8.0"
+  ],
   "executables": [
     "node",
     "npm"

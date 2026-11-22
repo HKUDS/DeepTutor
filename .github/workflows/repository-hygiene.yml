@@ -12,6 +12,13 @@ on:
       - dev
       - preview
 
+# A new push supersedes every earlier run for the same PR/branch. Without this,
+# each fix-up commit leaves the previous full matrix running to completion,
+# delaying feedback for the author and every other PR in the queue.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   hygiene:
     name: Check tracked generated files

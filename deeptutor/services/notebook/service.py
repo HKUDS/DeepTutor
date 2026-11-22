@@ -187,12 +187,13 @@ class NotebookManager:
             raise ValueError(f"notebook id escapes base directory: {notebook_id!r}")
         return target
 
-    def _load_notebook(self, notebook_id: str) -> dict | None:
+    def _load_notebook(self, notebook_id: str, *, read_only: bool = False) -> dict | None:
         """Return the notebook, or ``None`` when no such file exists.
 
         A file that exists but cannot be parsed raises
         :class:`NotebookCorruptedError` rather than returning ``None`` —
         conflating the two is what made damaged notebooks look deleted.
+        ``read_only`` sanitizes the returned copy without persisting repairs.
         """
         filepath = self._get_notebook_file(notebook_id)
         if not filepath.exists():
@@ -205,7 +206,7 @@ class NotebookManager:
         except Exception as exc:
             logger.error("notebook %s failed to load from %s: %s", notebook_id, filepath, exc)
             raise NotebookCorruptedError(notebook_id, filepath, exc) from exc
-        if self._sanitize_loaded_notebook(notebook):
+        if self._sanitize_loaded_notebook(notebook) and not read_only:
             try:
                 self._save_notebook(notebook_id, notebook)
             except Exception:
@@ -469,9 +470,24 @@ class NotebookManager:
         wanted = set(record_ids)
         return [record for record in records if str(record.get("id", "")) in wanted]
 
-    def get_record(self, notebook_id: str, record_id: str) -> dict | None:
-        records = self.get_records(notebook_id, [record_id])
-        return records[0] if records else None
+    def get_record(
+        self, notebook_id: str, record_id: str, *, read_only: bool = False
+    ) -> dict | None:
+        """Return one record; preserve the legacy repair behavior by default."""
+        if not read_only:
+            records = self.get_records(notebook_id, [record_id])
+            return records[0] if records else None
+        notebook = self._load_notebook(notebook_id, read_only=True)
+        if not notebook:
+            return None
+        return next(
+            (
+                record
+                for record in notebook.get("records", [])
+                if str(record.get("id", "")) == record_id
+            ),
+            None,
+        )
 
     def update_record(
         self,

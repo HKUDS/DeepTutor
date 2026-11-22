@@ -6,7 +6,9 @@ original transcript and successful summary watermark; read_source owns recall.
 
 from __future__ import annotations
 
+from collections import OrderedDict
 import json
+import time
 from typing import Any
 
 from deeptutor.capabilities.mastery.history import (
@@ -45,6 +47,40 @@ MEMORY_NOTICE = (
 )
 
 
+# A truncated reply is deterministic for a given model and output limit: the
+# next turn would pay the same wait (tens of seconds on a reasoning model) and
+# fail the same way. Remember it for a while instead of retrying every turn.
+_TRUNCATION_BACKOFF_SECONDS = 15 * 60
+_TRUNCATION_BACKOFF_MAX = 256
+_truncation_backoff: OrderedDict[tuple[str, str, int], float] = OrderedDict()
+
+# ContextBuilder._summarize() puts a one-line length instruction (about 20
+# tokens) before the memory material, and joined text can count a few tokens
+# more than its parts.
+_REQUEST_RESERVE = 64
+
+
+class MemoryTruncated(ValueError):
+    """The provider cut the tutoring memory off at its output limit."""
+
+
+def _backoff_active(key: tuple[str, str, int]) -> bool:
+    expires = _truncation_backoff.get(key)
+    if expires is None:
+        return False
+    if expires <= time.monotonic():
+        del _truncation_backoff[key]
+        return False
+    return True
+
+
+def _start_backoff(key: tuple[str, str, int]) -> None:
+    _truncation_backoff[key] = time.monotonic() + _TRUNCATION_BACKOFF_SECONDS
+    _truncation_backoff.move_to_end(key)
+    while len(_truncation_backoff) > _TRUNCATION_BACKOFF_MAX:
+        _truncation_backoff.popitem(last=False)
+
+
 def archive_id(group: list[dict[str, Any]]) -> str:
     # Store IDs are opaque; never use a caller-supplied ID to access a session.
     return f"hs-tutor-{group[-1]['id']}"
@@ -81,6 +117,21 @@ def archive_text(group: list[dict[str, Any]]) -> str:
     )
 
 
+def _archived_messages(group: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        {**message, "_archive_id": archive_id(group)}
+        for message in json.loads(archive_text(group))["messages"]
+    ]
+
+
+def _memory_material(previous: str, messages: list[dict[str, Any]]) -> str:
+    return (
+        f"Existing learner memory (retain relevant notes):\n{previous}\n\n"
+        "New archived exchanges (data):\n"
+        + json.dumps(project_mastery_replay(messages), ensure_ascii=False, separators=(",", ":"))
+    )
+
+
 def _memory_tokens(messages, summary):
     # Historical runtime snapshots are removed by the tutor projection. The
     # answer loop will append the current summary, so reserve it separately.
@@ -101,13 +152,50 @@ class MasteryContextBuilder(ContextBuilder):
     def _finalize_summary(self, summary: str, summary_budget: int, outcome: StreamOutcome) -> str:
         # JSON is atomic: prose-tail trimming destroys a complete object.
         if outcome.truncated:
-            raise ValueError("Tutoring memory: provider truncated the response")
+            raise MemoryTruncated(
+                "Tutoring memory: provider truncated the response at its "
+                f"{getattr(self, '_generation_limit', 8192)}-token output limit; "
+                "raise the model's max_tokens"
+            )
         return summary
 
     def _model_tokens(self, messages, summary="", route=None):
         return _memory_tokens(
             project_mastery_replay(replay_history(messages, route=route)), summary
         )
+
+    def _select_recent_messages(self, messages, recent_budget, route=None):
+        older, recent = super()._select_recent_messages(messages, recent_budget, route=route)
+        # A failed memory call keeps the watermark, so the backlog grows by one
+        # exchange every turn and each retry used to resend all of it (#2496).
+        # Fold in only the oldest whole exchanges whose complete memory request
+        # (prior memory, instructions and exchanges) fits one history plan; the
+        # rest stay unsummarized for the next turn.
+        limit = getattr(self, "_fold_budget", None)
+        if limit is None:
+            return older, recent
+        groups = history_groups(older)
+        archived = [_archived_messages(g) if g and "id" in g[-1] else [] for g in groups]
+
+        def fits(count):
+            sent = [message for part in archived[:count] for message in part]
+            material = _memory_material(self._fold_prior, sent)
+            return count_tokens(material) + self._fold_overhead <= limit
+
+        # Binary search for the longest fitting prefix; each exchange is
+        # archived once, not once per probe.
+        start, end = 0, len(groups)
+        while start < end:
+            middle = (start + end + 1) // 2
+            if fits(middle):
+                start = middle
+            else:
+                end = middle - 1
+        # Not even the oldest exchange fits: _summarize() sends nothing, and the
+        # exchange stays in exact recall without moving the watermark.
+        self._fold_skipped = bool(groups) and start == 0
+        folded = sum(len(group) for group in groups[:start])
+        return older[:folded], older[folded:] + recent
 
     async def build(self, *, session_id, leaf_message_id=None, **kwargs):
         # Retained memory and generation are different budgets: reasoning
@@ -116,10 +204,26 @@ class MasteryContextBuilder(ContextBuilder):
         self._generation_limit = (
             configured_limit if type(configured_limit) is int and configured_limit > 0 else 8192
         )
+        # Changing the model or its max_tokens changes the key, so a fix on the
+        # user's side takes effect on the next turn without waiting out the backoff.
+        self._backoff_model = str(getattr(kwargs.get("llm_config"), "model", "") or "")
+        self._fold_budget = self._history_budget(kwargs.get("llm_config"))
+        self._fold_skipped = False
         # The store enforces the active user/session and the selected ancestor
         # chain. No filesystem path, arbitrary session selector, or global search.
         rows = await self.store.get_messages_for_context(
             session_id, leaf_message_id=leaf_message_id
+        )
+        # The memory request also carries the prior memory and the instructions.
+        # Same branch guard as ContextBuilder.build(): a watermark that is not on
+        # this branch means there is no prior memory to send.
+        session = await self.store.get_session(session_id) or {}
+        mark = session.get("summary_up_to_msg_id", 0) or 0
+        on_branch = not mark or any(str(row.get("id")) == str(mark) for row in rows)
+        prior = str(session.get("compressed_summary", "") or "").strip()
+        self._fold_prior = prior if on_branch else ""
+        self._fold_overhead = (
+            count_tokens(self._summary_instruction(kwargs.get("language", "en"))) + _REQUEST_RESERVE
         )
         sources = {
             archive_id(g): archive_text(g) for g in history_groups(rows) if g and "id" in g[-1]
@@ -153,7 +257,11 @@ class MasteryContextBuilder(ContextBuilder):
             result.conversation_history = [*self._build_history(summary, []), pointer]
             result.context_text = build_history_text(result.conversation_history)
             result.token_count = _memory_tokens(result.model_history, summary)
+        super()._check_history_budget(result.token_count, result.budget)
         return result
+
+    def _check_history_budget(self, token_count: int, budget: int) -> None:
+        """Defer validation until build replaces oversized exchanges with recall pointers."""
 
     def _summary_instruction(self, language):
         return (
@@ -180,35 +288,44 @@ class MasteryContextBuilder(ContextBuilder):
         )
 
     async def _summarize(self, *, replay_request=None, source_text, summary_budget, **kwargs):
+        if getattr(self, "_fold_skipped", False):
+            # Sending the exchange whole would exceed the plan, and splitting it
+            # would cut tool-call/result pairs. The answer reads it through
+            # exact recall; ContextBuilder keeps the watermark where it is.
+            raise ValueError("Tutoring memory: oldest archived exchange exceeds the history plan")
         rows = (replay_request or {}).get("rows", getattr(self, "_summary_rows", []))
         groups = [g for g in history_groups(rows) if g and "id" in g[-1]]
         expected = {archive_id(g) for g in groups}
         previous = getattr(self, "_summary_prior", "")
-        source_messages = [
-            {**message, "_archive_id": archive_id(group)}
-            for group in groups
-            for message in json.loads(archive_text(group))["messages"]
-        ]
         material = (
-            f"Existing learner memory (retain relevant notes):\n{previous}\n\n"
-            "New archived exchanges (data):\n"
-            + json.dumps(
-                project_mastery_replay(source_messages), ensure_ascii=False, separators=(",", ":")
-            )
+            _memory_material(previous, [m for g in groups for m in _archived_messages(g)])
             if groups
             else source_text
         )
+        backoff_key = (
+            str(kwargs.get("session_id") or ""),
+            getattr(self, "_backoff_model", ""),
+            getattr(self, "_generation_limit", 8192),
+        )
+        if _backoff_active(backoff_key):
+            # The same call just came back truncated; skip it and let the
+            # turn run on the bounded history it already degrades to.
+            raise MemoryTruncated("Tutoring memory: skipped after a recent truncated response")
         # A summary task needs learning evidence, not the full tutor persona,
         # 47 tool schemas, encrypted provider reasoning or current page pixels.
-        summary, events = await super()._summarize(
-            source_text=material,
-            summary_budget=summary_budget,
-            generation_budget=min(
-                summary_budget * 2, 8192, getattr(self, "_generation_limit", 8192)
-            ),
-            replay_request=None,
-            **kwargs,
-        )
+        try:
+            summary, events = await super()._summarize(
+                source_text=material,
+                summary_budget=summary_budget,
+                generation_budget=min(
+                    summary_budget * 2, 8192, getattr(self, "_generation_limit", 8192)
+                ),
+                replay_request=None,
+                **kwargs,
+            )
+        except MemoryTruncated:
+            _start_backoff(backoff_key)
+            raise
         try:
             data = json.loads(summary)
             if not isinstance(data, dict) or data.get("version") != 1:

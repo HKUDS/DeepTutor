@@ -6,6 +6,7 @@ import asyncio
 from contextvars import ContextVar
 from dataclasses import dataclass
 import logging
+import threading
 from typing import Any, Callable, List
 
 from llama_index.core import Settings
@@ -204,26 +205,32 @@ def current_embedding():
     return Settings.embed_model
 
 
-def configure_llamaindex_settings(logger=None) -> None:
+_settings_lock = threading.Lock()
+
+
+def bind_operation_embedding(adapter: CustomEmbedding) -> None:
+    _operation_adapter.set(adapter)
+
+
+def configure_llamaindex_settings(logger=None) -> CustomEmbedding | None:
     """Configure LlamaIndex globals for DeepTutor's current embedding config."""
     embedding_cfg = get_embedding_config()
 
-    current = (
-        None if scoped_embedding_config() is not None else getattr(Settings, "_embed_model", None)
-    )
-    configured = False
-    if isinstance(current, CustomEmbedding) and current.matches_config(embedding_cfg):
-        current.refresh_client(embedding_cfg)
-    else:
-        adapter = CustomEmbedding(embedding_config=embedding_cfg)
-        if scoped_embedding_config() is not None:
-            _operation_adapter.set(adapter)
+    with _settings_lock:
+        scoped = scoped_embedding_config() is not None
+        current = None if scoped else getattr(Settings, "_embed_model", None)
+        configured = False
+        if isinstance(current, CustomEmbedding) and current.matches_config(embedding_cfg):
+            current.refresh_client(embedding_cfg)
+            adapter = current
         else:
-            Settings.embed_model = adapter
-        configured = True
-    chunk_size, chunk_overlap = chunk_geometry()
-    Settings.chunk_size = chunk_size
-    Settings.chunk_overlap = chunk_overlap
+            adapter = CustomEmbedding(embedding_config=embedding_cfg)
+            if not scoped:
+                Settings.embed_model = adapter
+            configured = True
+        chunk_size, chunk_overlap = chunk_geometry()
+        Settings.chunk_size = chunk_size
+        Settings.chunk_overlap = chunk_overlap
 
     if logger is not None:
         message = (
@@ -234,6 +241,8 @@ def configure_llamaindex_settings(logger=None) -> None:
             logger.info(message)
         else:
             logger.debug(message)
+
+    return adapter if scoped else None
 
 
 def set_progress_callback(callback) -> None:

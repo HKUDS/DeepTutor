@@ -23,7 +23,7 @@
 
 import { isKnownLatexCommand, isMathTriggerCommand } from "./latex-commands";
 
-const FENCE_LINE_RE = /^ {0,3}(`{3,}|~{3,})/;
+const FENCE_LINE_RE = /^ {0,3}(`{3,}|~{3,})(.*)$/;
 const INLINE_CODE_SPAN_RE = /(`+)([^`\n]+?)\1/g;
 // `$$...$$` first so a display span is never split into two inline ones.
 const MATH_SPAN_RE = /\$\$[\s\S]*?\$\$|\$(?!\s)(?:\\.|[^$\n])*?(?<!\s)\$/g;
@@ -112,11 +112,19 @@ export function mapMarkdownProse(
   };
 
   for (const line of lines) {
-    const marker = FENCE_LINE_RE.exec(line)?.[1];
+    const match = FENCE_LINE_RE.exec(line);
+    const marker = match?.[1];
 
     if (fence) {
       out.push(line);
-      if (marker && marker[0] === fence[0] && marker.length >= fence.length) {
+      // A closing fence carries no info string; a same-char line with one
+      // (```tex inside a ```text block) is code content, not a close.
+      if (
+        marker &&
+        marker[0] === fence[0] &&
+        marker.length >= fence.length &&
+        (match?.[2] ?? "").trim() === ""
+      ) {
         fence = null;
       }
       continue;
@@ -595,6 +603,10 @@ function normalizeProse(text: string, mathContext: boolean): string {
   result = convertBracketDelimiters(result);
   result = convertParenDelimiters(result);
 
+  // Pair the dollars first as well: a loose formula (`$\lim a_n = $ ____`) is
+  // no MATH_SPAN_RE match until it is tightened, and the bare-LaTeX pass would
+  // otherwise wrap its body a second time (`$$\lim a_n =$ $`).
+  result = escapeStrayDollars(result);
   const math = maskSpans(result, MATH_SPAN_RE, "MATH");
   result = math.restore(wrapBareLatex(math.masked));
   result = escapeStrayDollars(result);

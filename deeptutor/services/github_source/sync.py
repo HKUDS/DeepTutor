@@ -1,4 +1,4 @@
-"""Core sync logic: pull Markdown from a GitHub repo into a KB's raw/ dir."""
+"""Core sync logic: pull Markdown and MDX from a GitHub repo into a KB's raw/ dir."""
 
 from __future__ import annotations
 
@@ -18,7 +18,8 @@ from deeptutor.services.github_source.client import (
 logger = logging.getLogger(__name__)
 
 SYNC_INTERVAL_HOURS = 24
-MARKDOWN_EXTENSIONS = (".md", ".markdown")
+# MDX is Markdown plus JSX. Keep the component tags and index the file as text.
+MARKDOWN_EXTENSIONS = (".md", ".markdown", ".mdx")
 
 
 @dataclass
@@ -281,6 +282,18 @@ async def _full_sync(
 ):
     tree = await client.get_tree(repo, branch, path_prefix=path_prefix, glob=glob)
     entries = _filter_markdown_entries(tree, path_prefix, glob)
+    if not entries:
+        detail = (
+            f"{len(tree)} file(s) matched the GitHub source path and glob, "
+            "but none have a supported Markdown extension."
+            if tree
+            else "No files matched the GitHub source path and glob."
+        )
+        return SyncResult(
+            ok=False,
+            error=f"{detail} Check the path and glob settings. "
+            f"Supported extensions: {', '.join(MARKDOWN_EXTENSIONS)}.",
+        )
     downloaded = []
     for entry in entries:
         rel = _raw_rel_path(entry.path, path_prefix)

@@ -51,6 +51,16 @@ def test_settings_edge_voice_is_used_for_its_language(monkeypatch) -> None:
     assert narration._configured_voice("zh") is None
 
 
+def test_settings_edge_voice_matches_languages_beyond_zh_and_en(monkeypatch) -> None:
+    _tts(monkeypatch, provider_name="edge", voice="fr-FR-DeniseNeural")
+    assert narration._configured_voice("fr") == "fr-FR-DeniseNeural"
+    assert narration._configured_voice("en") is None
+
+    _tts(monkeypatch, provider_name="edge", voice="en-US-AndrewMultilingualNeural")
+    assert narration._configured_voice("fr") is None
+    assert narration._configured_voice("pt") is None
+
+
 def test_non_edge_tts_settings_keep_the_default_voice(monkeypatch) -> None:
     _tts(monkeypatch, provider_name="openai", voice="alloy")
     assert narration._configured_voice("en") is None

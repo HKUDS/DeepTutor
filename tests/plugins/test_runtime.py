@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+import subprocess
 import sys
 from types import SimpleNamespace
 
@@ -276,3 +277,29 @@ def test_one_failed_worker_does_not_block_other_managed_extensions(tmp_path, mon
     workers = runtime.load_enabled_workers(registry)
 
     assert isinstance(workers[0], _Capability)
+
+
+_WINDOWS_SYSTEM_ENV = ("SYSTEMROOT", "WINDIR", "TEMP", "TMP", "USERPROFILE", "PATHEXT")
+
+
+def test_worker_env_keeps_windows_system_variables_only(monkeypatch, tmp_path) -> None:
+    for key in _WINDOWS_SYSTEM_ENV:
+        monkeypatch.setenv(key, os.environ.get(key) or str(tmp_path))
+    monkeypatch.setenv("DEEPTUTOR_TEST_PROVIDER_KEY", "not-for-plugins")
+
+    env = runtime._clean_env()
+
+    assert {key: env.get(key) for key in _WINDOWS_SYSTEM_ENV} == {
+        key: os.environ[key] for key in _WINDOWS_SYSTEM_ENV
+    }
+    assert "DEEPTUTOR_TEST_PROVIDER_KEY" not in env
+
+
+def test_worker_env_can_open_a_socket() -> None:
+    # On Windows a child without SYSTEMROOT fails here with WinError 10106,
+    # before any plugin code (asyncio, httpx, ...) gets to run.
+    probe = "import socket; socket.socket().close()"
+    completed = subprocess.run(
+        [sys.executable, "-c", probe], env=runtime._clean_env(), capture_output=True
+    )
+    assert completed.returncode == 0, completed.stderr.decode(errors="replace")

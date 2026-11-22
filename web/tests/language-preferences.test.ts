@@ -31,6 +31,20 @@ test("the locale registry accepts every supported language", () => {
     assert.equal(resolveResponseLanguage(raw, "en"), "tr");
   }
   assert.equal(getLocale("tr"), "tr-TR");
+  for (const raw of ["ko", "ko-KR", "ko_KR", "Korean", "한국어"]) {
+    assert.equal(normalizeLanguage(raw), "ko");
+  }
+  assert.equal(getLocale("ko"), "ko-KR");
+  for (const raw of ["it", "it-IT", "it_IT", "Italian", "Italiano", "italiano"]) {
+    assert.equal(normalizeLanguage(raw), "it");
+    assert.equal(resolveResponseLanguage(raw, "en"), "it");
+  }
+  assert.equal(getLocale("it"), "it-IT");
+  for (const raw of ["hu", "hu-HU", "hu_HU", "Hungarian", "Magyar"]) {
+    assert.equal(normalizeLanguage(raw), "hu");
+    assert.equal(resolveResponseLanguage(raw, "en"), "hu");
+  }
+  assert.equal(getLocale("hu"), "hu-HU");
 });
 
 test("response language remains independent from the interface language", () => {
@@ -59,6 +73,9 @@ test("response language accepts and normalizes the extended registry", () => {
   assert.equal(resolveResponseLanguage("Português", "en"), "pt");
   assert.equal(resolveResponseLanguage("ms-MY", "en"), "ms");
   assert.equal(resolveResponseLanguage("Malay", "en"), "ms");
+  for (const raw of ["hi", "hi-IN", "hi_IN", "Hindi", "हिन्दी", "हिंदी"]) {
+    assert.equal(resolveResponseLanguage(raw, "en"), "hi");
+  }
   assert.equal(resolveResponseLanguage("klingon", "zh"), "zh");
 });
 

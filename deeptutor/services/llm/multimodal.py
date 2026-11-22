@@ -25,6 +25,17 @@ logger = logging.getLogger(__name__)
 MIME_FALLBACK = "image/png"
 _LOCAL_ATTACHMENT_PREFIX = "/files/attachments/"
 
+# Text part inserted immediately before a re-injected prior-turn image
+# (#2632). Without it the image arrives attached to the current user
+# message with no origin marker, so the model treats it as a fresh upload
+# ("in the screenshot you sent...") even when the current message is
+# text-only. Current-turn uploads get no note.
+PRIOR_IMAGE_NOTE = (
+    "[The following image was attached in an earlier message of this "
+    "conversation and is re-included for reference; it was not uploaded "
+    "with the current message.]"
+)
+
 
 @dataclass
 class MultimodalResult:
@@ -210,11 +221,10 @@ def _inject_images(
 
     dropped = 0
     for att in image_attachments:
-        mime = getattr(att, "mime_type", "") or _guess_mime_type(
-            getattr(att, "filename", "image.png")
-        )
+        mime = getattr(att, "mime_type", "") or ""
         b64 = getattr(att, "base64", "") or ""
         url = getattr(att, "url", "") or ""
+        historical = bool(getattr(att, "historical", False))
 
         if not b64 and not url:
             continue
@@ -247,13 +257,23 @@ def _inject_images(
                 dropped += 1
                 continue
 
+        # Fall back to the filename guess only after an explicit mime_type and
+        # the MIME resolved from the stored attachment have both been tried, so
+        # a resolved image/jpeg is not overridden by the image/png default.
+        if not mime:
+            mime = _guess_mime_type(getattr(att, "filename", "image.png"))
+
         if anthropic:
             if not b64:
                 logger.warning("Anthropic image part requires base64; dropping %r", url)
                 dropped += 1
                 continue
+            if historical:
+                content_parts.append({"type": "text", "text": PRIOR_IMAGE_NOTE})
             content_parts.append(_build_anthropic_image_part(base64_data=b64, mime_type=mime))
         else:
+            if historical:
+                content_parts.append({"type": "text", "text": PRIOR_IMAGE_NOTE})
             if b64:
                 # Always prefer inline base64 when available — providers that
                 # reject URL form (Moonshot) accept this; providers that
@@ -359,6 +379,7 @@ def should_degrade_to_text(
 
 __all__ = [
     "MultimodalResult",
+    "PRIOR_IMAGE_NOTE",
     "has_image_parts",
     "prepare_multimodal_messages",
     "should_degrade_to_text",

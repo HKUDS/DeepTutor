@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
-import { ExtensionResult } from "@/components/reading/ReadingExtensionBar";
+import { ExtensionResult, type QuizHelpContext } from "@/components/reading/ReadingExtensionBar";
 import {
   useReadingActions,
   type ReadingActionCard,
@@ -28,9 +28,11 @@ import Tooltip from "@/shared/ui/Tooltip";
  * question into the conversation proper.
  */
 export function ReadingActionCards({
+  selection,
   sessionId,
   onFollowUp,
 }: {
+  selection?: { quote: string; locator: number } | null;
   sessionId?: string | null;
   /** Take the card's passage into the composer as the next question's context. */
   onFollowUp: (card: ReadingActionCard) => void;
@@ -43,6 +45,7 @@ export function ReadingActionCards({
         <ActionCard
           key={card.id}
           card={card}
+          helpContext={{ actions: shared.helpActions, selection: selection?.quote, locator: selection?.locator }}
           sessionId={sessionId}
           onDismiss={() => shared.dismiss(card.id)}
           onRetry={() => {
@@ -63,12 +66,14 @@ export function ReadingActionCards({
 
 function ActionCard({
   card,
+  helpContext,
   sessionId,
   onDismiss,
   onRetry,
   onFollowUp,
 }: {
   card: ReadingActionCard;
+  helpContext: QuizHelpContext;
   sessionId?: string | null;
   onDismiss: () => void;
   onRetry: () => void;
@@ -136,6 +141,7 @@ function ActionCard({
             result={card.result}
             materialId={card.materialId}
             locator={card.locator}
+            helpContext={helpContext}
             sessionId={sessionId}
             closeLabel={t("Dismiss")}
             onClose={onDismiss}

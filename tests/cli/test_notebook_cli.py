@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from typer.testing import CliRunner
@@ -142,6 +143,28 @@ def test_notebook_add_md_creates_record(monkeypatch, tmp_path: Path) -> None:
     assert stored["records"][0]["output"] == "# Hello\n\nThis is a test."
 
 
+def test_notebook_add_md_accepts_non_utf8_markdown(monkeypatch, tmp_path: Path) -> None:
+    """add-md should decode a non-UTF-8 markdown file instead of crashing."""
+    _patch_facade(monkeypatch)
+    _fake_manager.notebooks.clear()
+
+    notebook = _fake_manager.create_notebook("Test Notebook")
+
+    md_file = tmp_path / "latin1.md"
+    md_file.write_bytes(b"# Caf\xe9\n\nnote here")
+
+    result = runner.invoke(
+        app,
+        ["notebook", "add-md", notebook["id"], str(md_file)],
+    )
+
+    assert result.exit_code == 0, result.output
+    stored = _fake_manager.get_notebook(notebook["id"])
+    assert stored is not None
+    assert len(stored["records"]) == 1
+    assert stored["records"][0]["output"] == "# Caf\u00e9\n\nnote here"
+
+
 def test_notebook_add_md_custom_title_and_type(monkeypatch, tmp_path: Path) -> None:
     """add-md should respect --title and --type options."""
     _patch_facade(monkeypatch)
@@ -234,3 +257,36 @@ def test_notebook_replace_md_record_not_found(monkeypatch, tmp_path: Path) -> No
 
     assert result.exit_code == 1
     assert "Record not found" in result.output
+
+
+def test_notebook_show_json_prints_the_stored_notebook(monkeypatch) -> None:
+    """show --format json should print the notebook exactly as stored."""
+    _patch_facade(monkeypatch)
+    _fake_manager.notebooks.clear()
+
+    notebook = _fake_manager.create_notebook("Prompt formats")
+    _fake_manager.add_record(
+        notebook_ids=[notebook["id"]],
+        record_type="chat",
+        title="Llama 2",
+        user_query="How does Llama 2 mark a user turn?",
+        output="Each user turn is wrapped as [INST] question [/INST].",
+    )
+
+    result = runner.invoke(app, ["notebook", "show", notebook["id"], "--format", "json"])
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == _fake_manager.get_notebook(notebook["id"])
+
+
+def test_notebook_create_prints_the_created_notebook(monkeypatch) -> None:
+    """create should print the new notebook as JSON, name included."""
+    _patch_facade(monkeypatch)
+    _fake_manager.notebooks.clear()
+
+    result = runner.invoke(app, ["notebook", "create", "Fourier [draft]"])
+
+    assert result.exit_code == 0, result.output
+    created = json.loads(result.stdout)
+    assert created["name"] == "Fourier [draft]"
+    assert created == _fake_manager.get_notebook(created["id"])

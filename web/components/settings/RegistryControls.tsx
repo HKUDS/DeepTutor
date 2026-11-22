@@ -1,7 +1,7 @@
 "use client";
 
 import Tooltip from "@/shared/ui/Tooltip";
-import { type KeyboardEvent, useEffect, useId, useRef, useState } from "react";
+import { type KeyboardEvent, useCallback, useEffect, useId, useRef, useState } from "react";
 import { Check, ChevronDown, Loader2, Pencil, PlugZap, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { apiFetch, apiUrl } from "@/lib/api";
@@ -115,6 +115,7 @@ export function RegistryProbe({
   discovery,
   onResult,
   listing = false,
+  automatic = false,
   hints = [],
   showCapabilities = true,
 }: {
@@ -122,6 +123,7 @@ export function RegistryProbe({
   discovery?: Discovery;
   onResult: (result: Discovery) => void;
   listing?: boolean;
+  automatic?: boolean;
   hints?: string[];
   showCapabilities?: boolean;
 }) {
@@ -133,6 +135,7 @@ export function RegistryProbe({
       discovery={discovery}
       onResult={onResult}
       listing={listing}
+      automatic={automatic}
       hints={hints}
       showCapabilities={showCapabilities}
     />
@@ -143,6 +146,7 @@ function ProbeForm({
   discovery,
   onResult,
   listing,
+  automatic,
   hints,
   showCapabilities,
 }: {
@@ -150,6 +154,7 @@ function ProbeForm({
   discovery?: Discovery;
   onResult: (result: Discovery) => void;
   listing: boolean;
+  automatic: boolean;
   hints: string[];
   showCapabilities: boolean;
 }) {
@@ -158,7 +163,7 @@ function ProbeForm({
   const [pending, setPending] = useState(false);
   const controller = useRef<AbortController | null>(null);
   useEffect(() => () => { controller.current?.abort(); controller.current = null; }, []);
-  const probe = async () => {
+  const probe = useCallback(async () => {
     controller.current?.abort();
     const request = new AbortController();
     controller.current = request;
@@ -188,7 +193,14 @@ function ProbeForm({
       clearTimeout(timeout);
       if (controller.current === request) setPending(false);
     }
-  };
+  }, [input, onResult]);
+  useEffect(() => {
+    // The keyed form resets on credential/URL/protocol changes. Wait for typing
+    // to settle; cached results and failures keep manual retry under user control.
+    if (!automatic || discovery) return;
+    const timer = setTimeout(() => { void probe(); }, 1200);
+    return () => clearTimeout(timer);
+  }, [automatic, discovery, probe]);
   return (
     <section className={`space-y-3 p-4 ${subPanelClass}`}>
       <div className="flex flex-wrap items-center justify-between gap-3">

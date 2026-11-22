@@ -30,6 +30,9 @@ class DoclingConfig:
     api_token: str = ""
     do_ocr: bool = False
     do_table_structure: bool = True
+    do_formula_enrichment: bool = False
+    do_picture_classification: bool = False
+    do_picture_description: bool = False
     allow_local_model_download: bool = False
 
     @property
@@ -52,6 +55,9 @@ def resolve_docling_config() -> DoclingConfig:
         api_token=str(slice_.get("api_token") or ""),
         do_ocr=bool(slice_.get("do_ocr", False)),
         do_table_structure=bool(slice_.get("do_table_structure", True)),
+        do_formula_enrichment=bool(slice_.get("do_formula_enrichment", False)),
+        do_picture_classification=bool(slice_.get("do_picture_classification", False)),
+        do_picture_description=bool(slice_.get("do_picture_description", False)),
         allow_local_model_download=bool(slice_.get("allow_local_model_download", False)),
     )
 

@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 
 from deeptutor.api.utils.http_headers import content_disposition
 from deeptutor.book import progress as progress_ops
+from deeptutor.book.authoring import BookEdit
 from deeptutor.book.errors import BookPausedError
 from deeptutor.book.export import export_filename, render_book_markdown
 from deeptutor.book.models import (
@@ -150,6 +151,27 @@ class DeepDiveRequest(BaseModel):
     topic: str
     block_id: str | None = None
     content_type: str = "concept"
+    expected_revision: int | None = Field(default=None, ge=1)
+
+
+class AddChapterRequest(BaseModel):
+    title: str = Field(default="", max_length=500)
+    position: int | None = None
+    content_type: str = "theory"
+    learning_objectives: list[str] = Field(default_factory=list)
+    summary: str = ""
+    expected_revision: int | None = Field(default=None, ge=1)
+
+
+class UpdateChapterRequest(BaseModel):
+    title: str | None = Field(default=None, max_length=500)
+    summary: str | None = None
+    learning_objectives: list[str] | None = None
+    expected_revision: int | None = Field(default=None, ge=1)
+
+
+class MoveChapterRequest(BaseModel):
+    new_position: int
     expected_revision: int | None = Field(default=None, ge=1)
 
 
@@ -1069,6 +1091,141 @@ async def change_block_type(req: ChangeBlockTypeRequest) -> dict[str, Any]:
     return {"block": block.model_dump(mode="json"), "book_revision": revision}
 
 
+def _preflight_chapter_mutation(
+    resolved: ResolvedBook,
+    book_id: str,
+    chapter_id: str | None = None,
+    *,
+    deleting: bool = False,
+) -> None:
+    try:
+        exists = resolved.engine.check_chapter_mutation(book_id, chapter_id, deleting=deleting)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if not exists:
+        raise HTTPException(status_code=404, detail="Chapter or book spine not found")
+
+
+@router.post("/books/{book_id}/chapters")
+async def add_chapter(book_id: str, req: AddChapterRequest) -> dict[str, Any]:
+    """Append an empty chapter shell after generation, without recompiling."""
+    if not req.title.strip():
+        raise HTTPException(status_code=400, detail="title is required")
+    resolved = _resolve_book_or_404(book_id, edit=True)
+    engine = resolved.engine
+    _preflight_chapter_mutation(resolved, book_id)
+    revision = _claim_content_mutation(
+        resolved,
+        book_id,
+        req.expected_revision,
+        "add_chapter",
+        extra={"title": req.title.strip(), "position": req.position},
+    )
+    content_type = _coerce_content_type(req.content_type)
+    try:
+        chapter = await engine.add_chapter(
+            book_id=book_id,
+            title=req.title.strip(),
+            position=req.position,
+            content_type=content_type,
+            learning_objectives=req.learning_objectives,
+            summary=req.summary,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.error(f"add_chapter failed: {exc}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(exc))
+    if chapter is None:
+        raise HTTPException(status_code=404, detail="Book spine not found")
+    return {"chapter": chapter.model_dump(mode="json"), "book_revision": revision}
+
+
+@router.patch("/books/{book_id}/chapters/{chapter_id}")
+async def update_chapter(
+    book_id: str, chapter_id: str, req: UpdateChapterRequest
+) -> dict[str, Any]:
+    """Rename a chapter (and carry the title onto its pages) without recompiling."""
+    if req.title is not None and not req.title.strip():
+        raise HTTPException(status_code=400, detail="title cannot be empty")
+    resolved = _resolve_book_or_404(book_id, edit=True)
+    engine = resolved.engine
+    _preflight_chapter_mutation(resolved, book_id, chapter_id)
+    revision = _claim_content_mutation(
+        resolved,
+        book_id,
+        req.expected_revision,
+        "rename_chapter",
+        extra={"chapter_id": chapter_id},
+    )
+    try:
+        chapter = await engine.rename_chapter(
+            book_id=book_id,
+            chapter_id=chapter_id,
+            title=req.title.strip() if req.title is not None else None,
+            summary=req.summary,
+            learning_objectives=req.learning_objectives,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.error(f"rename_chapter failed: {exc}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(exc))
+    if chapter is None:
+        raise HTTPException(status_code=404, detail="Chapter not found")
+    return {"chapter": chapter.model_dump(mode="json"), "book_revision": revision}
+
+
+@router.delete("/books/{book_id}/chapters/{chapter_id}")
+async def delete_chapter(
+    book_id: str,
+    chapter_id: str,
+    expected_revision: int | None = Query(default=None, ge=1),
+) -> dict[str, Any]:
+    """Delete a chapter and only its pages; other compiled pages are untouched."""
+    resolved = _resolve_book_or_404(book_id, edit=True)
+    engine = resolved.engine
+    _preflight_chapter_mutation(resolved, book_id, chapter_id, deleting=True)
+    revision = _claim_content_mutation(
+        resolved,
+        book_id,
+        expected_revision,
+        "delete_chapter",
+        extra={"chapter_id": chapter_id},
+    )
+    try:
+        ok = await engine.delete_chapter(book_id=book_id, chapter_id=chapter_id)
+    except Exception as exc:  # noqa: BLE001
+        logger.error(f"delete_chapter failed: {exc}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(exc))
+    if not ok:
+        raise HTTPException(status_code=404, detail="Chapter not found")
+    return {"ok": True, "book_revision": revision}
+
+
+@router.post("/books/{book_id}/chapters/{chapter_id}/move")
+async def move_chapter(book_id: str, chapter_id: str, req: MoveChapterRequest) -> dict[str, Any]:
+    """Reorder a chapter and carry the new order onto its pages."""
+    resolved = _resolve_book_or_404(book_id, edit=True)
+    engine = resolved.engine
+    _preflight_chapter_mutation(resolved, book_id, chapter_id)
+    revision = _claim_content_mutation(
+        resolved,
+        book_id,
+        req.expected_revision,
+        "move_chapter",
+        extra={"chapter_id": chapter_id, "new_position": req.new_position},
+    )
+    try:
+        ok = await engine.move_chapter(
+            book_id=book_id,
+            chapter_id=chapter_id,
+            new_position=req.new_position,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.error(f"move_chapter failed: {exc}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(exc))
+    if not ok:
+        raise HTTPException(status_code=404, detail="Chapter not found")
+    return {"ok": True, "book_revision": revision}
+
+
 @router.post("/books/deep-dive")
 async def deep_dive(req: DeepDiveRequest) -> dict[str, Any]:
     resolved = _resolve_book_or_404(req.book_id, edit=True)
@@ -1327,6 +1484,16 @@ async def refresh_fingerprints(
     """
     resolved = _resolve_book_or_404(book_id, edit=True)
     engine = resolved.engine
+    # Run the engine's refusal gate before claiming the canonical revision:
+    # the claim bumps book.revision, so a refusal discovered only afterwards
+    # would strand the client's expected_revision on a version its own failed
+    # attempt advanced — and the force retry would 409 forever.
+    try:
+        book_exists = engine.check_refresh_kb_fingerprints(book_id, force=force)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if not book_exists:
+        raise HTTPException(status_code=404, detail="Book not found")
     revision = _claim_content_mutation(
         resolved,
         book_id,
@@ -1337,6 +1504,8 @@ async def refresh_fingerprints(
     try:
         result = engine.refresh_kb_fingerprints(book_id, force=force)
     except ValueError as exc:
+        # Only reachable when a concurrent drift mark lands between the
+        # preflight and this call; degrade to the same 409.
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     if result is None:
         raise HTTPException(status_code=404, detail="Book not found")
@@ -1836,3 +2005,58 @@ async def book_websocket(ws: WebSocket) -> None:
                 reset_current_user(user_token)
             except Exception:
                 logger.debug("Could not reset Book WebSocket user context", exc_info=True)
+
+
+# Book authoring is deliberately proposal-only until an authenticated UI apply.
+class ApplyBookEditRequest(BaseModel):
+    expected_revision: int = Field(ge=1)
+
+
+@router.post("/books/{book_id}/edits/preview")
+async def preview_book_edit(book_id: str, req: BookEdit) -> dict[str, Any]:
+    from deeptutor.book.authoring import preview_edit
+
+    resolved = _resolve_book_or_404(book_id, edit=True)
+    try:
+        return preview_edit(resolved.engine.storage, book_id, req)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.get("/books/{book_id}/edits")
+async def get_book_edits(book_id: str, page_id: str | None = None) -> dict[str, Any]:
+    from deeptutor.book.authoring import list_edits
+
+    resolved = _resolve_book_or_404(book_id, edit=True)
+    try:
+        return {"edits": list_edits(resolved.engine.storage, book_id, page_id)}
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post("/books/{book_id}/edits/{edit_id}/apply")
+async def apply_book_edit(book_id: str, edit_id: str, req: ApplyBookEditRequest) -> dict[str, Any]:
+    from deeptutor.book.authoring import apply_edit
+
+    resolved = _resolve_book_or_404(book_id, edit=True)
+    try:
+        result = apply_edit(resolved.engine.storage, book_id, edit_id, req.expected_revision)
+        log_admin_action("book.edit.apply", summary={"book_id": book_id, "edit_id": edit_id})
+        return result
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post("/books/{book_id}/edits/{edit_id}/undo")
+async def undo_book_edit(book_id: str, edit_id: str, req: ApplyBookEditRequest) -> dict[str, Any]:
+    from deeptutor.book.authoring import apply_edit
+
+    resolved = _resolve_book_or_404(book_id, edit=True)
+    try:
+        result = apply_edit(
+            resolved.engine.storage, book_id, edit_id, req.expected_revision, undo=True
+        )
+        log_admin_action("book.edit.undo", summary={"book_id": book_id, "edit_id": edit_id})
+        return result
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc

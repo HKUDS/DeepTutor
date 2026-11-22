@@ -261,11 +261,14 @@ class DeepQuestionCapability(TurnCapability):
                         source=self.name,
                         stage="exploring",
                     )
-                    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=True) as temp_pdf:
-                        temp_pdf.write(base64.b64decode(pdf_attachment.base64))
-                        temp_pdf.flush()
+                    # The parser reopens the paper by path. Windows refuses that
+                    # while a delete-on-close NamedTemporaryFile still holds it,
+                    # so write the file and close it before parsing.
+                    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp_dir:
+                        temp_pdf = Path(temp_dir) / "paper.pdf"
+                        temp_pdf.write_bytes(base64.b64decode(pdf_attachment.base64))
                         templates, _ = await parse_exam_paper_to_templates(
-                            temp_pdf.name,
+                            temp_pdf,
                             max_questions=max_questions,
                             paper_mode="upload",
                             output_dir=output_dir,
