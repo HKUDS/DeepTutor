@@ -334,6 +334,13 @@ async def bind_questions(store, progress, questions, config=None):
 
     if not 1 <= len(questions) <= 4:
         raise AssessmentUnavailable("Bind one to four questions at a time.")
+    # A source that carries no PDF pages can never authorize a question here,
+    # so name it rather than letting the per-question "source does not support
+    # this question" verdict hide the real reason (#2859). Collected from the
+    # scope check validate_evidence already performs, not a second scan.
+    from deeptutor.learning.lesson_evidence import describe_skipped
+
+    skipped_labels: list[str] = []
     items, located = [], []
     prior_correct = None
     for question in questions:
@@ -341,7 +348,12 @@ async def bind_questions(store, progress, questions, config=None):
             json.dumps(progress.lesson_evidence.get(question.knowledge_point_id, {}))
         )
         validate_evidence(
-            store, progress, question.knowledge_point_id, evidence, allow_partial=True
+            store,
+            progress,
+            question.knowledge_point_id,
+            evidence,
+            allow_partial=True,
+            skipped=skipped_labels,
         )
         question.source_evidence = evidence
         if not evidence:
@@ -365,7 +377,12 @@ async def bind_questions(store, progress, questions, config=None):
         items.append({"question": question_contract(question), "sources": sources})
         located.extend(evidence.get("sources", []))
     if not items:
+        # A question with no bound evidence skips the source check; that is a
+        # legitimate no-op, not a failure. The skipped-material note is surfaced
+        # by validate_evidence's own failure path and by prepare_lesson, so the
+        # tutor still learns why its question was never verified (#2859).
         return
+    skipped_note = describe_skipped(list(dict.fromkeys(skipped_labels)))
     schema = (
         '{"supported":true/false,"citations":[{"index":0,"quote":"exact supporting text"}],'
         '"provenance":"original|adapted"}'
@@ -413,7 +430,7 @@ async def bind_questions(store, progress, questions, config=None):
             for item in items:
                 question_id = item["question"]["question_id"]
                 contracts[question_id] = _support_contract(
-                    by_id[question_id], item["sources"], decisions[question_id]
+                    by_id[question_id], item["sources"], decisions[question_id], skipped_note
                 )
         except SourceQuoteMismatch:
             if attempt:
@@ -424,11 +441,17 @@ async def bind_questions(store, progress, questions, config=None):
             return
 
 
-def _support_contract(question, sources, data):
+def _support_contract(question, sources, data, skipped_note: str = ""):
     citations = data.get("citations")
     if data.get("supported") is not True or not isinstance(citations, list) or not citations:
+        # ``skipped_note`` names selected materials that carry no PDF pages. The
+        # verdict is still true — those materials cannot support an exact
+        # question — but without the note the tutor cannot tell a bad question
+        # from a question about a source that was never in the evidence chain
+        # (#2859).
         raise AssessmentUnavailable(
             "The selected source does not support this exact question and answer key."
+            + skipped_note
         )
     for citation in citations:
         if not isinstance(citation, dict):
