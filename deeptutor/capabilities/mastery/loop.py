@@ -259,6 +259,9 @@ class MasteryLoopCapability:
                         state["quiz_recovery_receipt"] = {
                             **context.metadata["mastery_lesson_objective"],
                             "revision": progress.version,
+                            "lesson_evidence_id": str(
+                                (progress.lesson_evidence.get(kp_id) or {}).get("id") or ""
+                            ),
                         }
 
                 updated["_bind_lesson_objective"] = bind_lesson
@@ -309,11 +312,16 @@ class MasteryLoopCapability:
         ):
             return None
         progress = LearningStore().load(path_id)
-        if (
-            progress is None
-            or progress.version != receipt["revision"]
-            or next_objective(progress).knowledge_point_id != receipt["policy_id"]
-        ):
+        if progress is None or next_objective(progress).knowledge_point_id != receipt["policy_id"]:
+            return None
+        evidence_id = str(receipt.get("lesson_evidence_id") or "")
+        if evidence_id:
+            current_evidence_id = str(
+                (progress.lesson_evidence.get(receipt["kp_id"]) or {}).get("id") or ""
+            )
+            if current_evidence_id != evidence_id:
+                return None
+        elif progress.version != receipt["revision"]:
             return None
         state["quiz_recovery_used"] = True
         return (
