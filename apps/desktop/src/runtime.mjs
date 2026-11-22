@@ -149,7 +149,13 @@ export class SourceRuntime extends EventEmitter {
         if (this.checking || this.state.phase !== 'ready') return;
         this.checking = true;
         try {
-          this.misses = await probe(`${backendURL}/health/ready`) ? 0 : (this.misses ?? 0) + 1;
+          // Readiness may be temporarily unavailable while a long-running
+          // parser or indexer is busy. The supervisor only needs to know
+          // whether the core process is alive here; readiness remains the
+          // startup gate above.
+          this.misses = await probe(`${backendURL}/health/live`, { timeout: 5000 })
+            ? 0
+            : (this.misses ?? 0) + 1;
           if (this.misses >= 3 && this.state.phase === 'ready') await this.fail(new Error('The core failed three health checks in a row. Restart the core.'));
         } finally { this.checking = false; }
       }, 10000);

@@ -144,6 +144,12 @@ test('readiness polling can be cancelled', async () => {
   await assert.rejects(waitReady('http://127.0.0.1:1', { signal: controller.signal }), /abort/i);
 });
 
+test('runtime supervision probes liveness separately from readiness', async () => {
+  const source = await readFile(new URL('../src/runtime.mjs', import.meta.url), 'utf8');
+  assert.match(source, /health\/live/);
+  assert.match(source, /health\/ready/);
+});
+
 test('public placeholders are patched in a cache, preserving immutable bundle', async t => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'Open DeepTutor test '));
   t.after(() => rm(root, { recursive: true, force: true }));

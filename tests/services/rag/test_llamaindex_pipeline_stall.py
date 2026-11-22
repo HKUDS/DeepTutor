@@ -300,6 +300,53 @@ async def test_add_documents_fails_bounded_when_new_index_stalls(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("operation", ["initialize", "add_new", "add_existing"])
+async def test_figure_publication_keeps_event_loop_responsive(
+    tmp_path, monkeypatch: pytest.MonkeyPatch, operation: str
+) -> None:
+    """#2865: figure I/O must not prevent desktop health checks from running."""
+    pipeline_module, storage_module, _ = _llamaindex_modules()
+    pipeline = _make_pipeline(tmp_path, monkeypatch)
+    loop = asyncio.get_running_loop()
+    published = threading.Event()
+    events = []
+
+    def publish(_store, candidates, **kwargs):
+        assert candidates == []
+        assert kwargs == ({"prune_missing": True} if operation == "initialize" else {})
+        # Simulate synchronous file I/O whose completion requires the API loop
+        # to keep serving requests. An inline call cannot run this callback.
+        loop.call_soon_threadsafe(published.set)
+        assert published.wait(timeout=2), "Figure publication blocked the API event loop"
+        events.append("published")
+
+    def index(*args, **kwargs):
+        assert events == ["published"]
+        events.append("indexed")
+        return 1
+
+    monkeypatch.setattr(pipeline_module.VisualAssetStore, "publish", publish)
+    monkeypatch.setattr(storage_module, "create_resumable_index", index)
+    monkeypatch.setattr(storage_module, "create_index", index)
+    monkeypatch.setattr(storage_module, "insert_documents", index)
+    monkeypatch.setattr(storage_module, "verify_persisted_index", lambda path: None)
+    if operation == "add_existing":
+        existing = tmp_path / "kb" / "llamaindex_storage"
+        existing.mkdir(parents=True)
+        monkeypatch.setattr(
+            storage_module,
+            "resolve_add_storage_plan",
+            lambda *_: storage_module.AddStoragePlan(existing, existing),
+        )
+
+    if operation == "initialize":
+        assert await pipeline.initialize("kb", ["doc.pdf"]) is True
+    else:
+        assert await pipeline.add_documents("kb", ["doc.pdf"]) is True
+    assert events == ["published", "indexed"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("operation", ["initialize", "add_new", "add_existing"])
 async def test_failed_figure_publication_does_not_modify_persisted_index(
     tmp_path, monkeypatch: pytest.MonkeyPatch, operation: str
 ) -> None:
