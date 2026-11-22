@@ -15,11 +15,16 @@ vi.mock('next/link', () => ({
 
 const KEY = 'deeptutor.composer-tray'
 
-function renderTray(answer: { open?: boolean; onOpenChange?: (open: boolean) => void } = {}) {
-  const view = render(<ComposerTray placement="down" answer={answer} />)
+function renderTray(
+  answer: { open?: boolean; onOpenChange?: (open: boolean) => void } = {},
+  position: 'above' | 'below' = 'below'
+) {
+  const view = render(
+    <ComposerTray placement={position === 'above' ? 'up' : 'down'} position={position} answer={answer} />
+  )
   const tray = view.container.querySelector('.dt-composer-tray') as HTMLElement
   // jsdom has no stylesheet; give the sheet the travel the stylesheet sets.
-  tray.style.setProperty('--dt-tray-travel', '23px')
+  tray.style.setProperty('--dt-tray-travel', position === 'above' ? '-23px' : '23px')
   return { ...view, tray }
 }
 
@@ -108,6 +113,26 @@ it('answers the arrow keys on its grip', () => {
   fireEvent.keyDown(screen.getByRole('button', { name: 'Collapse' }), { key: 'ArrowUp' })
   expect(tray).toHaveAttribute('data-folded')
   fireEvent.keyDown(screen.getByRole('button', { name: 'Expand' }), { key: 'ArrowDown' })
+  expect(tray).not.toHaveAttribute('data-folded')
+})
+
+it('sits above the box and folds down from its top grip', () => {
+  const { tray } = renderTray({}, 'above')
+  expect(tray).toHaveAttribute('data-position', 'above')
+  const grip = screen.getByRole('button', { name: 'Collapse' })
+
+  drag(grip, 300, 320)
+  expect(tray).toHaveAttribute('data-folded')
+
+  drag(tray, 320, 300)
+  expect(tray).not.toHaveAttribute('data-folded')
+})
+
+it('answers the arrow keys on an above-box grip', () => {
+  const { tray } = renderTray({}, 'above')
+  fireEvent.keyDown(screen.getByRole('button', { name: 'Collapse' }), { key: 'ArrowDown' })
+  expect(tray).toHaveAttribute('data-folded')
+  fireEvent.keyDown(screen.getByRole('button', { name: 'Expand' }), { key: 'ArrowUp' })
   expect(tray).not.toHaveAttribute('data-folded')
 })
 

@@ -502,9 +502,10 @@ export default memo(function ChatComposer({
   const { value: pageCustomization } = usePageCustomization();
   const controls = customizable ? pageCustomization.chat.controls : undefined;
   const capabilities = customizable ? allCapabilities.filter(cap => !pageCustomization.chat.hidden_modes.includes(cap.value)) : allCapabilities;
+  const uiLayout = useUiLayout();
   // The modern layout picks the mode in the tray and writes it at the start
   // of the message; the classic one keeps its chip in the toolbar.
-  const modeInTray = useUiLayout() === "modern" && showCapabilityChip;
+  const modeInTray = uiLayout === "modern" && showCapabilityChip;
   const canSelectPartner = Boolean(onSelectPartner || onAnswerByChange);
   const canSelectGroup = Boolean(onSelectPartnerGroup);
   const {
@@ -1319,10 +1320,38 @@ export default memo(function ChatComposer({
     });
   }
 
+  // The classic layout keeps the tray under the box; the modern sheet moves
+  // above it in a conversation so the input stays on the bottom edge.
+  const trayAbove = hasMessages && uiLayout === "modern";
+
+  const composerTray =
+    trayMode ||
+    (resourceCatalog && resourceSelection && onResourceSelectionChange) ||
+    trayCreate ||
+    answerMode ||
+    partnerLinks ||
+    trayEnd ? (
+      <ComposerTray
+        controls={controls}
+        placement={hasMessages || docked ? "up" : "down"}
+        position={trayAbove ? "above" : "below"}
+        mode={trayMode}
+        resources={
+          resourceCatalog && resourceSelection && onResourceSelectionChange
+            ? { catalog: resourceCatalog, selection: resourceSelection, onChange: onResourceSelectionChange }
+            : undefined
+        }
+        create={trayCreate}
+        partners={partnerLinks}
+        answer={answerMode}
+        end={trayEnd}
+      />
+    ) : null;
+
   return (
     <div
       ref={composerRef}
-      className={`relative ${spaceMenuOpen || personaSelectorOpen ? "z-[61]" : "z-20"} mx-auto w-full shrink-0 ${
+      className={`relative ${trayAbove ? "flex flex-col" : ""} ${spaceMenuOpen || personaSelectorOpen ? "z-[61]" : "z-20"} mx-auto w-full shrink-0 ${
         // Docked in a pane: the pane is the frame, so the composer keeps a
         // narrow margin instead of the page's wide gutter.
         docked ? "px-3 pb-3 pt-1" : `px-6 pb-5 ${hasMessages ? "pt-1 max-w-[960px]" : "max-w-[768px]"}`
@@ -1334,6 +1363,8 @@ export default memo(function ChatComposer({
       {hasMessages && !docked && (
         <div className="pointer-events-none absolute inset-x-0 top-0 h-6 bg-gradient-to-b from-transparent to-[var(--background)]/72" />
       )}
+
+      {trayAbove ? composerTray : null}
 
       <div className="relative">
         <div
@@ -1721,22 +1752,7 @@ export default memo(function ChatComposer({
             </div>
           </div>
         </div>
-        {trayMode || (resourceCatalog && resourceSelection && onResourceSelectionChange) || trayCreate || answerMode || partnerLinks || trayEnd ? (
-          <ComposerTray
-            controls={controls}
-            placement={hasMessages || docked ? "up" : "down"}
-            mode={trayMode}
-            resources={
-              resourceCatalog && resourceSelection && onResourceSelectionChange
-                ? { catalog: resourceCatalog, selection: resourceSelection, onChange: onResourceSelectionChange }
-                : undefined
-            }
-            create={trayCreate}
-            partners={partnerLinks}
-            answer={answerMode}
-            end={trayEnd}
-          />
-        ) : null}
+        {trayAbove ? null : composerTray}
       </div>
     </div>
   );

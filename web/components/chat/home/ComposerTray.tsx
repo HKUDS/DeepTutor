@@ -124,12 +124,13 @@ export interface TrayCreate {
  * about people, not tools: who DeepTutor works with (partners) and who
  * answers at all.
  *
- * A grip at the middle of its lower edge folds it up behind the box, by a
- * drag or a click, until only that edge shows.
+ * A grip on the edge away from the box folds it behind the box, by a drag
+ * or a click, until only that edge shows.
  */
 export function ComposerTray({
   controls,
   placement,
+  position = "below",
   mode,
   resources,
   create,
@@ -139,6 +140,8 @@ export function ComposerTray({
 }: {
   /** Lists open toward the page's free space: below on the home screen, above in a conversation. */
   placement: TrayPlacement;
+  /** Which side of the composer box the sheet sits on. Defaults to its original place below. */
+  position?: "above" | "below";
   controls?: ComposerControls;
   mode?: TrayMode;
   resources?: TrayResources;
@@ -150,12 +153,13 @@ export function ComposerTray({
 }) {
   const { t } = useTranslation();
   const rowId = useId();
-  const fold = useTrayFold(Boolean(answer?.open));
+  const fold = useTrayFold(Boolean(answer?.open), position === "above");
   const gripLabel = fold.away ? t("Expand") : t("Collapse");
   return (
     <m.div
       className="dt-composer-tray"
       data-placement={placement}
+      data-position={position}
       data-folded={fold.away || undefined}
       data-dragging={fold.dragging || undefined}
       style={{ "--dt-tray-reveal": fold.reveal } as MotionStyle}
