@@ -32,6 +32,7 @@ async def test_start_turn_preserves_workspace_and_parent_field_presence(monkeypa
         )
 
         def __init__(self):
+            self.scope = {"type": "websocket"}
             self.incoming = iter(
                 [
                     {
