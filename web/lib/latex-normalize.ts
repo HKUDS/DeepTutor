@@ -31,6 +31,9 @@ const CJK_RE =
   /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]|[，。、；：？！（）《》「」【】…—]/u;
 const LATEX_STRUCTURE_RE = /\\[a-zA-Z]+|[\^_]|\\\\/;
 // Function names a writer may legitimately spell out inside a formula.
+// Statistics notation such as `Var(X)` and `Cov(X, Y)` is ordinary prose to
+// the Latin-word heuristic unless these names are listed, which used to make
+// `escapeStrayDollars` turn `$Var(N)$` back into literal source.
 const MATH_WORDS = new Set([
   "sin",
   "cos",
@@ -39,6 +42,7 @@ const MATH_WORDS = new Set([
   "sec",
   "csc",
   "log",
+  "ln",
   "exp",
   "lim",
   "max",
@@ -51,6 +55,27 @@ const MATH_WORDS = new Set([
   "lcm",
   "mod",
   "arg",
+  "argmax",
+  "argmin",
+  "var",
+  "cov",
+  "corr",
+  "std",
+  "sd",
+  "mean",
+  "median",
+  "mode",
+  "prob",
+  "pdf",
+  "cdf",
+  "pmf",
+  "mgf",
+  "rank",
+  "tr",
+  "trace",
+  "span",
+  "ker",
+  "deg",
 ]);
 
 // ---------------------------------------------------------------------------
@@ -615,12 +640,32 @@ function normalizeProse(text: string, mathContext: boolean): string {
 }
 
 /**
+ * A tool argument decoded as JSON turns `\begin` into U+0008 followed by
+ * `egin` (`\b` is a JSON escape), `\frac` into U+000C + `rac`, and `\right`
+ * into U+000D + `ight`. Those control characters are never prose, so spell
+ * the escape out again before the maths is parsed; otherwise a matrix stored
+ * while the writer side was broken stays unrenderable for good.
+ *
+ * Tab and newline are left alone: they are ordinary whitespace far more often
+ * than they are `\theta` or `\nabla`.
+ */
+const DECODED_LATEX_ESCAPE_RE = /[\u0008\u000C\u000D](?=[A-Za-z])/g;
+const DECODED_LATEX_ESCAPE: Record<string, string> = {
+  "\u0008": "\\b",
+  "\u000C": "\\f",
+  "\u000D": "\\r",
+};
+
+/**
  * Rewrite a model's maths into delimiters remark-math reads correctly.
  * Idempotent: running it on its own output is a no-op.
  */
 export function normalizeMathMarkup(content: string): string {
   if (!content) return content;
-  const value = String(content);
+  const value = String(content).replace(
+    DECODED_LATEX_ESCAPE_RE,
+    (character) => DECODED_LATEX_ESCAPE[character] ?? character,
+  );
   // Decided once for the whole document, not per paragraph: the evidence that
   // a page is about maths is usually in a different paragraph from the
   // undecorated expression that needs the benefit of the doubt.
