@@ -14,9 +14,8 @@ import secrets
 import string
 from typing import Any
 
-import json_repair
-
 from deeptutor.services.llm.provider_core.base import LLMProvider, LLMResponse, ToolCallRequest
+from deeptutor.services.llm.provider_core.tool_arguments import load_tool_arguments
 from deeptutor.services.llm.reasoning_params import minimax_reasoning_kwargs
 from deeptutor.services.llm.types import CONTEXT_LENGTH_EXCEEDED_FINISH
 from deeptutor.services.provider_registry import ANTHROPIC_EFFORT_BASED_FAMILIES
@@ -223,7 +222,7 @@ class AnthropicProvider(LLMProvider):
             func = tc.get("function", {})
             args = func.get("arguments", "{}")
             if isinstance(args, str):
-                args = json_repair.loads(args)
+                args = load_tool_arguments(args)
             blocks.append(
                 {
                     "type": "tool_use",

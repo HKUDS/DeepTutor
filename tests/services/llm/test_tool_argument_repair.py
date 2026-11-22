@@ -19,6 +19,10 @@ from loguru import logger
 from deeptutor.services.llm.provider_core.openai_responses.parsing import (
     _parse_tool_arguments,
 )
+from deeptutor.services.llm.provider_core.tool_arguments import (
+    load_tool_arguments,
+    preserve_latex_escapes,
+)
 
 
 @contextlib.contextmanager
@@ -84,3 +88,64 @@ def test_arguments_repair_cannot_make_an_object_of_reach_the_tool_as_raw() -> No
 
     assert args == {"raw": "not json at all"}
     assert any("Could not parse" in line for line in lines), lines
+
+
+# ---------------------------------------------------------------------------
+# LaTeX in the arguments
+# ---------------------------------------------------------------------------
+
+# What a model writes for a matrix: single backslashes, invalid JSON.
+_LATEX_MATRIX = (
+    r'{"question": "转移矩阵如下：\begin{pmatrix} 0.5 & 0.5 & 0 & 0\\ '
+    r'0.5 & 0.5 & 0 & 0\end{pmatrix}"}'
+)
+
+
+def test_latex_commands_and_row_breaks_survive_repair() -> None:
+    """``\\b`` and ``\\f`` are JSON escapes; here they are ``\\begin`` and
+    ``\\frac``. Decoding them turned a matrix into a backspace character and
+    an unparseable answer card."""
+    args = _parse_tool_arguments(_LATEX_MATRIX, "mastery_quiz")
+
+    assert args["question"] == (
+        r"转移矩阵如下：\begin{pmatrix} 0.5 & 0.5 & 0 & 0\\ "
+        r"0.5 & 0.5 & 0 & 0\end{pmatrix}"
+    )
+    assert "\x08" not in args["question"]
+    assert "\x0c" not in args["question"]
+
+
+def test_greek_and_relation_commands_survive_repair() -> None:
+    # The unescaped quote forces the repair path; the LaTeX must still arrive.
+    raw = r'{"q": "求 \theta、\right 与 $\frac12$", "bad": "a"b"}'
+    args = load_tool_arguments(raw)
+
+    assert args["q"] == r"求 \theta、\right 与 $\frac12$"
+
+
+def test_a_real_newline_escape_stays_a_newline() -> None:
+    raw = '{"q": "第一行\\n第二行"}'
+    args = load_tool_arguments(raw)
+
+    assert args == {"q": "第一行\n第二行"}
+
+
+def test_valid_json_is_decoded_exactly_as_written() -> None:
+    raw = r'{"q": "\\\\begin{pmatrix} 1 \\\\end{pmatrix}", "n": "a\nb"}'
+
+    assert load_tool_arguments(raw) == {
+        "q": r"\\begin{pmatrix} 1 \\end{pmatrix}",
+        "n": "a\nb",
+    }
+
+
+def test_windows_paths_are_not_mistaken_for_latex() -> None:
+    raw = r'{"file": "C:\Users\frank\x.txt", "bad": "a"b"}'
+
+    assert load_tool_arguments(raw)["file"] == r"C:\Users\frank\x.txt"
+
+
+def test_escaping_leaves_already_escaped_text_alone() -> None:
+    raw = r'{"q": "\\alpha"}'
+
+    assert preserve_latex_escapes(raw) == raw

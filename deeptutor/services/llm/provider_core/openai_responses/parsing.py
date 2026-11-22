@@ -8,10 +8,10 @@ import json
 from typing import Any, AsyncGenerator
 
 import httpx
-import json_repair
 from loguru import logger
 
 from deeptutor.services.llm.provider_core.base import LLMResponse, ToolCallRequest
+from deeptutor.services.llm.provider_core.tool_arguments import repair_tool_arguments
 from deeptutor.services.llm.usage_frame import usage_breakdown
 
 FINISH_REASON_MAP = {
@@ -225,25 +225,26 @@ def _parse_tool_arguments(arguments: Any, tool_name: str) -> dict[str, Any]:
     Strict JSON first, then ``json_repair``. A model writing prose into an
     argument routinely leaves an unescaped quote in it (an option described
     as ``路径名"1"``), which strict parsing rejects and repair recovers
-    losslessly — expected, and logged at debug.
+    losslessly — expected, and logged at debug. Repair keeps the LaTeX a maths
+    prompt carries: ``\begin``/``\frac`` are literal backslashes to the
+    model, and decoding them as JSON escapes is what left matrices and
+    fractions unrenderable on the answer card (see ``tool_arguments``).
 
     Truncated arguments are a different story and stay at warning: repair
     still returns an object, so the call proceeds with content the model
     never finished writing. Only arguments repair cannot make an object of
     reach the tool as ``{"raw": ...}``.
     """
+    if not isinstance(arguments, str):
+        return _as_arguments_dict(arguments)
     try:
-        return _as_arguments_dict(
-            json.loads(arguments) if isinstance(arguments, str) else arguments
-        )
+        return _as_arguments_dict(json.loads(arguments))
     except Exception:
         pass
-    repaired: Any = arguments
-    if isinstance(arguments, str):
-        try:
-            repaired = json_repair.loads(arguments)
-        except Exception:
-            repaired = None
+    try:
+        repaired: Any = repair_tool_arguments(arguments)
+    except Exception:
+        repaired = None
     if not isinstance(repaired, dict):
         logger.warning(
             "Could not parse tool call arguments for '{}': {}",

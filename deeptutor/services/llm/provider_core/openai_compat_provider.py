@@ -18,7 +18,6 @@ import time
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlsplit
 
-import json_repair
 from loguru import logger
 from openai import AsyncOpenAI
 
@@ -44,6 +43,7 @@ from deeptutor.services.llm.provider_core.openai_responses import (
 )
 from deeptutor.services.llm.provider_core.openai_stream import managed_openai_stream
 from deeptutor.services.llm.provider_core.response_recovery import guarded_responses
+from deeptutor.services.llm.provider_core.tool_arguments import load_tool_arguments
 from deeptutor.services.llm.reasoning_params import (
     build_openai_compatible_reasoning_kwargs,
 )
@@ -1055,7 +1055,7 @@ class OpenAICompatProvider(LLMProvider):
         for tc in raw_tool_calls:
             args = tc.function.arguments
             if isinstance(args, str):
-                args = json_repair.loads(args)
+                args = load_tool_arguments(args)
             tool_calls.append(
                 ToolCallRequest(
                     id=_short_tool_id(),
@@ -1139,7 +1139,7 @@ class OpenAICompatProvider(LLMProvider):
                 ToolCallRequest(
                     id=b["id"] or _short_tool_id(),
                     name=b["name"],
-                    arguments=json_repair.loads(b["arguments"]) if b["arguments"] else {},
+                    arguments=load_tool_arguments(b["arguments"]) if b["arguments"] else {},
                 )
                 for _, b in sorted(tc_bufs.items())
             ],

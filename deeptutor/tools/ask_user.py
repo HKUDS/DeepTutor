@@ -23,8 +23,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-import json_repair
-
+from deeptutor.services.llm.provider_core.tool_arguments import repair_tool_arguments
 from deeptutor.utils.text_display import decode_escaped_unicode_for_display
 
 MAX_QUESTIONS = 4
@@ -179,7 +178,7 @@ def build_ask_user_preview(raw_arguments: str) -> dict[str, Any] | None:
     if not text:
         return None
     try:
-        data = json_repair.loads(text)
+        data = repair_tool_arguments(text)
     except Exception:
         return None
     if not isinstance(data, dict):
