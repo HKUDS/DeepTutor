@@ -94,6 +94,14 @@ def has_option_bodies(options: dict[str, str]) -> bool:
     )
 
 
+def _clean_answer_body(value: str) -> str:
+    """Fold whitespace, case, and benign Markdown/LaTeX wrapper tokens."""
+    stripped = str(value or "")
+    for token in ("**", "__", "`", "$"):
+        stripped = stripped.replace(token, "")
+    return _squeezed(stripped)
+
+
 def resolve_answer(answer: str, options: dict[str, str]) -> str:
     """Resolve a label, labelled option, or unique body to its stable label."""
     candidate = str(answer or "").strip()
@@ -113,7 +121,29 @@ def resolve_answer(answer: str, options: dict[str, str]) -> str:
     if len(exact) == 1:
         return exact[0]
     contained = [label for label, text in options.items() if needle in text.casefold()]
-    return contained[0] if len(contained) == 1 else ""
+    if len(contained) == 1:
+        return contained[0]
+
+    squeezed_needle = _squeezed(candidate)
+    if squeezed_needle:
+        squeezed_exact = [
+            label for label, text in options.items() if _squeezed(text) == squeezed_needle
+        ]
+        if len(squeezed_exact) == 1:
+            return squeezed_exact[0]
+
+    clean_needle = _clean_answer_body(candidate)
+    if not clean_needle:
+        return ""
+    clean_exact = [
+        label for label, text in options.items() if _clean_answer_body(text) == clean_needle
+    ]
+    if len(clean_exact) == 1:
+        return clean_exact[0]
+    clean_contained = [
+        label for label, text in options.items() if clean_needle in _clean_answer_body(text)
+    ]
+    return clean_contained[0] if len(clean_contained) == 1 else ""
 
 
 def _squeezed(value: str) -> str:
