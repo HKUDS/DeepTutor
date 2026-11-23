@@ -3729,7 +3729,10 @@ async def _create_knowledge_base_owned(
                 )
         _enforce_provider_formats(rag_provider, files)
         allowed_extensions = FileTypeRouter.accepted_upload_extensions()
-        _validate_upload_batch(files, allowed_extensions=allowed_extensions, rel_paths=rel_paths)
+        # ZIP is an upload container, not a document parser format. Its
+        # members still pass the normal extension and archive safety checks.
+        upload_extensions = allowed_extensions | {".zip"} if allowed_extensions else set()
+        _validate_upload_batch(files, allowed_extensions=upload_extensions, rel_paths=rel_paths)
 
         logger.info(f"Creating KB: {name} (provider={rag_provider})")
         task_id = _build_unique_task_id("kb_init", name)
@@ -3827,7 +3830,7 @@ async def _create_knowledge_base_owned(
             }
 
         uploaded_files, _ = await _save_uploaded_files_off_loop(
-            files, initializer.raw_dir, allowed_extensions=allowed_extensions, rel_paths=rel_paths
+            files, initializer.raw_dir, allowed_extensions=upload_extensions, rel_paths=rel_paths
         )
 
         progress_tracker.update(
