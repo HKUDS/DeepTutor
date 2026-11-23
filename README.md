@@ -43,6 +43,46 @@
 <img src="assets/figs/web-dev/overview.png" alt="DeepTutor Home and workspace navigation" width="900">
 </div>
 
+### Sponsors & Partners
+
+<p align="center">
+  <a href="https://www.amd.com/en/corporate/university-program.html">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="assets/figs/partners/amd-university-program-dark.svg">
+      <source media="(prefers-color-scheme: light)" srcset="assets/figs/partners/amd-university-program.svg">
+      <img src="assets/figs/partners/amd-university-program.svg" alt="AMD University Program" height="42">
+    </picture>
+  </a>
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <a href="https://www.siliconflow.cn/">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="assets/figs/partners/siliconflow-dark.svg">
+      <source media="(prefers-color-scheme: light)" srcset="assets/figs/partners/siliconflow.svg">
+      <img src="assets/figs/partners/siliconflow.svg" alt="SiliconFlow" height="26">
+    </picture>
+  </a>
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <a href="https://modelscope.cn/">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="assets/figs/partners/modelscope-dark.png">
+      <source media="(prefers-color-scheme: light)" srcset="assets/figs/partners/modelscope.png">
+      <img src="assets/figs/partners/modelscope.png" alt="ModelScope" height="26">
+    </picture>
+  </a>
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <a href="https://github.com/VectifyAI/PageIndex">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="assets/figs/partners/pageindex-mark-dark.svg">
+      <source media="(prefers-color-scheme: light)" srcset="assets/figs/partners/pageindex-mark.svg">
+      <img src="assets/figs/partners/pageindex-mark.svg" alt="PageIndex" height="38">
+    </picture>
+  </a>
+</p>
+
+<p align="center">
+  <a href="#policies-of-sponsors--partners">Why am I seeing this?</a>
+</p>
+
 ### 📦 Releases
 
 > **[2026.11.20]** [v1.7.4](https://github.com/HKUDS/DeepTutor/releases/tag/v1.7.4) — Desktop security update for macOS and Windows. Install the new app to trust the replacement runtime signing key.
@@ -915,24 +955,9 @@ Add more registries in `data/user/settings/skill_hubs.json`: a `type: "clawhub"`
 
 </details>
 
-## 🤝 Open Source Partners
+## Policies of Sponsors & Partners
 
-<p align="center">
-  <a href="https://github.com/VectifyAI/PageIndex" target="_blank">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="assets/figs/partners/pageindex-mark-dark.svg">
-      <source media="(prefers-color-scheme: light)" srcset="assets/figs/partners/pageindex-mark.svg">
-      <img src="assets/figs/partners/pageindex-mark.svg" alt="PageIndex" height="38">
-    </picture>
-  </a>
-  &nbsp;&nbsp;&nbsp;
-  <a href="https://www.siliconflow.cn/">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="web/public/partners/powered-by-siliconflow-dark.svg">
-      <img src="web/public/partners/powered-by-siliconflow.svg" alt="Powered by SiliconFlow" height="38">
-    </picture>
-  </a>
-</p>
+We hope DeepTutor can iterate independently, freely, and efficiently, and our sponsors make that possible. We welcome sponsorship in any form and offer sponsors whatever visibility or support we can. We also welcome open-source partners. Through collaboration and discussion with the open-source community, we hope to keep finding valuable directions for iteration and work together to build a valuable ecosystem.
 
 <p align="center">
   Using code: <b><code>DEEPTUTOR20</code></b> — get $20 off for your first <a href="https://developer.pageindex.ai/">PageIndex subscription</a>!
