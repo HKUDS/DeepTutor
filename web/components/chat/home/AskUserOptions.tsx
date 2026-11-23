@@ -5,6 +5,8 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import InlineMarkdown from "@/components/common/InlineMarkdown";
+import { extractStreamedArtifacts, mergeGeneratedFiles, unlinkedGeneratedFiles } from "@/components/common/InlineFileCard";
+import type { MessageAttachment } from "@/features/chat/ChatStateAdapter";
 import { useCardSubmission } from "@/hooks/use-card-submission";
 import { REPLY_NOT_DELIVERED } from "@/lib/ask-user-state";
 import { decodeEscapedUnicodeForDisplay } from "@/lib/markdown-display";
@@ -302,6 +304,7 @@ export type MessageSegment =
       toolCallId: string | null;
       key: string;
     }
+  | { kind: "published_images"; images: MessageAttachment[]; key: string }
   /**
    * One run of work — tool calls, their results, the reasoning around them —
    * rendered exactly where it happened, between the text that introduced it
@@ -356,7 +359,7 @@ export function extractMessageSegments(
    * (Previews are not part of a persisted turn's event preview either, so a
    * reloaded message never has one to begin with.)
    */
-  { streaming = false }: { streaming?: boolean } = {},
+  { streaming = false, inlinePublishedImages = false, attachments = [] }: { streaming?: boolean; inlinePublishedImages?: boolean; attachments?: MessageAttachment[] } = {},
 ): MessageSegment[] {
   if (!events || events.length === 0) return [];
 
@@ -369,6 +372,17 @@ export function extractMessageSegments(
   // matching card to resolved mode without a second pass.
   const byToolCall = new Map<string, number>();
   const seenAskUserCards = new Set<string>();
+  const seenPublishedImages = new Set<string>();
+  const publishedImages = new Map<string, MessageAttachment>();
+  if (inlinePublishedImages) {
+    for (const file of mergeGeneratedFiles(attachments, events)) {
+      if (file.origin === "workspace" && file.generated && file.mime_type?.startsWith("image/") && file.url) publishedImages.set(file.url, file);
+    }
+  }
+  const unlinkedImageUrls = new Set(
+    unlinkedGeneratedFiles(answerContent, [...publishedImages.values()], { imagesOnly: true }).map(file => file.url),
+  );
+  const hasLiveContent = events.some(shouldAppendEventContent);
   // Preview cards, by the call they preview, so each successive draft
   // updates its own card in place and the dispatched result later replaces
   // that same segment — the card never unmounts and never duplicates.
@@ -528,6 +542,30 @@ export function extractMessageSegments(
         toolMetadata && typeof toolMetadata === "object"
           ? (toolMetadata as Record<string, unknown>).ask_user
           : null;
+      if (inlinePublishedImages && !askUser) {
+        const images: MessageAttachment[] = [];
+        for (const file of extractStreamedArtifacts([event])) {
+          if (file.origin !== "workspace" || !file.generated || !file.mime_type?.startsWith("image/") || !file.url || seenPublishedImages.has(file.url)) continue;
+          seenPublishedImages.add(file.url);
+          images.push(file);
+        }
+        const unlinked = images.filter(file => unlinkedImageUrls.has(file.url));
+        if (unlinked.length) {
+          appendTraceEvent(event);
+          const offset = typeof meta.assistant_content_offset === "number"
+            ? meta.assistant_content_offset
+            : pendingTraceIdx !== null ? answerOffsets.get(pendingTraceIdx) : undefined;
+          // A compacted trace without a call boundary cannot place the image
+          // reliably on reload; leave its normal trailing card instead.
+          if (offset === undefined && !hasLiveContent) continue;
+          pendingTextIdx = null;
+          pendingTraceIdx = null;
+          const index = segments.length;
+          segments.push({ kind: "published_images", images: unlinked, key: `img${seq++}` });
+          if (offset !== undefined) answerOffsets.set(index, offset);
+          continue;
+        }
+      }
       const normalised = normaliseAskUserPayload(askUser);
       if (!normalised) {
         // Any other tool's result is trace material for the region.

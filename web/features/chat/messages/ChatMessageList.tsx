@@ -463,7 +463,7 @@ function buildMessageBlocks(
     }
   };
   segments.forEach((segment, index) => {
-    if (segment.kind === "mastery_question") preserveTeachingBefore(index);
+    if (segment.kind === "mastery_question" || segment.kind === "published_images") preserveTeachingBefore(index);
   });
   // Keep Mastery teaching/feedback visible before an assessment arrives and
   // when a turn ends with bookkeeping without posing an assessment at all.
@@ -481,6 +481,7 @@ function buildMessageBlocks(
       segment.kind === "mastery_question" ||
       // A presented lesson page is part of the lesson, not working-out.
       segment.kind === "source_view" ||
+      segment.kind === "published_images" ||
       // The learner's own words are conversation, not working-out to fold.
       segment.kind === "user_input"
     ) {
@@ -589,22 +590,24 @@ export function GeneratedFileCards({
   events,
   content,
   onOpen,
+  excludeUrls,
 }: {
   attachments: MessageAttachment[];
   events?: StreamEvent[];
   /** The reply text, used to tell which images are already shown inline. */
   content?: string;
   onOpen?: (attachment: MessageAttachment) => void;
+  excludeUrls?: Set<string>;
 }) {
   const { t } = useTranslation();
   const files = useMemo(() => {
-    const merged = mergeGeneratedFiles(attachments, events);
+    const merged = mergeGeneratedFiles(attachments, events).filter(file => !file.url || !excludeUrls?.has(file.url));
     if (!content) return merged;
     const unlinked = new Set(unlinkedGeneratedFiles(content, merged, { imagesOnly: true }));
     return merged.filter(
       (file) => !file.mime_type?.startsWith("image/") || unlinked.has(file),
     );
-  }, [attachments, events, content]);
+  }, [attachments, events, content, excludeUrls]);
   if (!files.length) return null;
   return (
     <div className="mt-3 flex flex-col gap-2">
@@ -744,12 +747,14 @@ export const AssistantMessage = memo(function AssistantMessage({
   masteryGrades,
   masterySkips,
   masteryAnswerRejections,
+  onPreviewAttachment,
 }: {
   msg: {
     id?: number;
     content: string;
     capability?: string;
     events?: StreamEvent[];
+    attachments?: MessageAttachment[];
     trace?: MessageTraceMetadata;
   };
   isStreaming?: boolean;
@@ -763,6 +768,7 @@ export const AssistantMessage = memo(function AssistantMessage({
    *  for the same reason: the skip lands on a later turn than the card. */
   masterySkips?: Set<string>;
   masteryAnswerRejections?: Map<string, MasteryAnswerRejection>;
+  onPreviewAttachment?: (attachment: MessageAttachment) => void;
   outlineStatus?: "editing" | "researching" | "done" | "failed";
   sessionId?: string | null;
   language?: string;
@@ -1002,9 +1008,11 @@ export const AssistantMessage = memo(function AssistantMessage({
       useInlineSegments
         ? extractMessageSegments(msg.events, msg.content, {
             streaming: isStreaming,
+            inlinePublishedImages: true,
+            attachments: msg.attachments,
           })
         : [],
-    [useInlineSegments, msg.events, msg.content, isStreaming],
+    [useInlineSegments, msg.events, msg.content, msg.attachments, isStreaming],
   );
   // Pages already drawn at the tool call that presented them; the fallback
   // below only stacks the ones this layout had no place for.
@@ -1016,6 +1024,13 @@ export const AssistantMessage = memo(function AssistantMessage({
     }
     return urls;
   }, [useInlineSegments, messageSegments]);
+  const placedImageUrls = useMemo(() => {
+    const urls = new Set<string>();
+    for (const seg of messageSegments) {
+      if (seg.kind === "published_images") seg.images.forEach(image => image.url && urls.add(image.url));
+    }
+    return urls;
+  }, [messageSegments]);
   // Either card kind: a clarifying ask_user, or a posed mastery question.
   const hasInlineCards =
     useInlineSegments &&
@@ -1280,6 +1295,8 @@ export const AssistantMessage = memo(function AssistantMessage({
               </div>
             ) : block.segment.kind === "source_view" ? (
               <MasterySourcePages key={block.key} pages={block.segment.pages} />
+            ) : block.segment.kind === "published_images" ? (
+              <GeneratedFileCards key={block.key} attachments={block.segment.images} onOpen={onPreviewAttachment} />
             ) : block.segment.kind === "ask_user" ? (
               <AskUserOptions
                 key={block.key}
@@ -1336,6 +1353,13 @@ export const AssistantMessage = memo(function AssistantMessage({
       {partnerDraft ? <PartnerDraftCard data={partnerDraft} /> : null}
       {creationDraft ? <CreationDraftCard data={creationDraft} /> : null}
       {masteryHandoffs.length > 0 && <MasteryHandoffCards handoffs={masteryHandoffs} />}
+      <GeneratedFileCards
+        attachments={msg.attachments ?? []}
+        events={events}
+        content={msg.content}
+        onOpen={onPreviewAttachment}
+        excludeUrls={placedImageUrls}
+      />
     </>
   );
 });
@@ -2436,14 +2460,9 @@ export const ChatMessageList = memo(function ChatMessageList({
                 masteryGrades={masteryGrades}
                 masterySkips={masterySkips}
                 masteryAnswerRejections={masteryAnswerRejections}
+                onPreviewAttachment={onPreviewAttachment}
               />
             </InlineFileCardProvider>
-            <GeneratedFileCards
-              attachments={msg.attachments ?? []}
-              events={msg.events}
-              content={msg.content}
-              onOpen={onPreviewAttachment}
-            />
             {(() => {
               // A turn that died (LLM/provider failure, interruption) ends
               // with a turn_terminal error event. Surface it as an error
