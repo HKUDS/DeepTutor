@@ -612,7 +612,7 @@ IMAGEGEN_PROVIDERS: dict[str, GenerationProviderSpec] = {
     "openai": GenerationProviderSpec(
         label="OpenAI",
         default_api_base="https://api.openai.com/v1",
-        default_model="gpt-image-2",
+        default_model="gpt-image-2.6-flare",
     ),
     "xai": GenerationProviderSpec(
         label="xAI (Grok Imagine)",
