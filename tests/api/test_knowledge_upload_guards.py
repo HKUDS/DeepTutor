@@ -20,6 +20,7 @@ import importlib
 import io
 import json
 from pathlib import Path
+import zipfile
 
 import pytest
 
@@ -315,6 +316,34 @@ def test_two_uploads_dispatch_two_distinct_tasks(monkeypatch, tmp_path: Path) ->
     ]["kb"]
     assert entry["status"] == "processing"
     assert entry["progress"]["task_id"] == second_task
+
+
+def test_append_zip_without_optional_markitdown(monkeypatch, tmp_path: Path) -> None:
+    from deeptutor.services.parsing import service as parsing
+
+    manager = _real_manager(monkeypatch, tmp_path)
+    _seed_kb(manager)
+    _install_dispatch_recorder(monkeypatch)
+    monkeypatch.setattr(parsing.ParseService, "active_engine", lambda self: "text_only")
+    real_get_parser = parsing.get_parser
+
+    def get_parser(name):
+        if name == "markitdown":
+            raise ImportError("optional parser not installed")
+        return real_get_parser(name)
+
+    monkeypatch.setattr(parsing, "get_parser", get_parser)
+    assert ".zip" not in knowledge_router_module.FileTypeRouter.accepted_upload_extensions()
+    archive = io.BytesIO()
+    with zipfile.ZipFile(archive, "w") as zipped:
+        zipped.writestr("notes.md", "# lesson")
+    with TestClient(_build_app()) as client:
+        response = client.post(
+            "/api/knowledge-bases/kb/upload",
+            files=_upload("notes.zip", archive.getvalue()),
+        )
+    assert response.status_code == 200, response.text
+    assert (manager.base_dir / "kb" / "raw" / "notes.md").read_text() == "# lesson"
 
 
 # ---------------------------------------------------------------------------

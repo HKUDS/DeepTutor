@@ -3,10 +3,12 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import importlib
+import io
 import json
 import logging
 from pathlib import Path
 from types import SimpleNamespace
+import zipfile
 
 import pytest
 from starlette.routing import Match
@@ -894,6 +896,90 @@ def test_create_normalizes_uploaded_extension_to_lowercase(monkeypatch, tmp_path
     assert response.status_code == 200
     assert response.json()["files"] == ["报告.pdf"]
     assert (tmp_path / "knowledge_bases" / "kb-uppercase" / "raw" / "报告.pdf").exists()
+
+
+def test_create_extracts_zip_without_optional_markitdown(monkeypatch, tmp_path: Path) -> None:
+    from deeptutor.services.parsing import service as parsing
+
+    manager = _FakeKBManager(tmp_path / "knowledge_bases")
+    monkeypatch.setattr(knowledge_router_module, "get_kb_manager", lambda: manager)
+    monkeypatch.setattr(knowledge_router_module, "KnowledgeBaseInitializer", _FakeInitializer)
+    monkeypatch.setattr(knowledge_router_module, "_kb_base_dir", manager.base_dir)
+    monkeypatch.setattr(parsing.ParseService, "active_engine", lambda self: "text_only")
+    real_get_parser = parsing.get_parser
+
+    def get_parser(name):
+        if name == "markitdown":
+            raise ImportError("optional parser not installed")
+        return real_get_parser(name)
+
+    monkeypatch.setattr(parsing, "get_parser", get_parser)
+    assert ".zip" not in knowledge_router_module.FileTypeRouter.accepted_upload_extensions()
+
+    async def noop(*_args, **_kwargs):
+        pass
+
+    monkeypatch.setattr(knowledge_router_module, "run_initialization_task", noop)
+    archive = io.BytesIO()
+    with zipfile.ZipFile(archive, "w") as zipped:
+        zipped.writestr("notes.md", "# lesson")
+        zipped.writestr("../../escape.md", "# safe basename")
+        zipped.writestr("ignored.exe", b"ignored")
+        zipped.writestr("nested.zip", b"PK\x03\x04")
+    with TestClient(_build_app()) as client:
+        response = client.post(
+            "/api/knowledge-bases",
+            data={"name": "kb-zip", "rag_provider": "llamaindex"},
+            files=[("files", ("notes.zip", archive.getvalue(), "application/zip"))],
+        )
+    assert response.status_code == 200, response.text
+    assert sorted(response.json()["files"]) == ["escape.md", "notes.md"]
+    raw = manager.base_dir / "kb-zip" / "raw"
+    assert (raw / "notes.md").read_text() == "# lesson"
+    assert not (raw / "notes.zip").exists()
+    assert not (raw / "ignored.exe").exists()
+    assert not (raw / "nested.zip").exists()
+    assert not (manager.base_dir / "escape.md").exists()
+
+
+@pytest.mark.parametrize("payload", [b"not a zip", b"PK\x03\x04"])
+def test_create_rejects_invalid_zip_without_writing_documents(
+    monkeypatch, tmp_path: Path, payload: bytes
+) -> None:
+    from deeptutor.services.parsing.service import ParseService
+
+    manager = _FakeKBManager(tmp_path / "knowledge_bases")
+    monkeypatch.setattr(knowledge_router_module, "get_kb_manager", lambda: manager)
+    monkeypatch.setattr(knowledge_router_module, "KnowledgeBaseInitializer", _FakeInitializer)
+    monkeypatch.setattr(knowledge_router_module, "_kb_base_dir", manager.base_dir)
+    monkeypatch.setattr(ParseService, "active_engine", lambda self: "text_only")
+    with TestClient(_build_app()) as client:
+        response = client.post(
+            "/api/knowledge-bases",
+            data={"name": "kb-invalid-zip", "rag_provider": "llamaindex"},
+            files=[("files", ("broken.zip", payload, "application/zip"))],
+        )
+    assert response.status_code == 400
+    assert not list((manager.base_dir / "kb-invalid-zip" / "raw").glob("*"))
+
+
+def test_create_pageindex_oss_still_rejects_zip(monkeypatch, tmp_path: Path) -> None:
+    manager = _FakeKBManager(tmp_path / "knowledge_bases")
+    monkeypatch.setattr(knowledge_router_module, "get_kb_manager", lambda: manager)
+    monkeypatch.setattr(knowledge_router_module, "_kb_base_dir", manager.base_dir)
+    monkeypatch.setattr(knowledge_router_module, "_assert_provider_ready", lambda _provider: None)
+    archive = io.BytesIO()
+    with zipfile.ZipFile(archive, "w") as zipped:
+        zipped.writestr("notes.md", "# lesson")
+    with TestClient(_build_app()) as client:
+        response = client.post(
+            "/api/knowledge-bases",
+            data={"name": "kb-oss-zip", "rag_provider": "pageindex-oss"},
+            files=[("files", ("notes.zip", archive.getvalue(), "application/zip"))],
+        )
+    assert response.status_code == 400
+    assert "pageindex" in response.json()["detail"].lower()
+    assert "kb-oss-zip" not in manager.config["knowledge_bases"]
 
 
 @pytest.mark.parametrize(("role", "fail"), [("user", False), ("admin", True)])
