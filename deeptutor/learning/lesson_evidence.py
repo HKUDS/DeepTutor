@@ -267,13 +267,36 @@ def selected_scope(topic: Any, progress: Any, kp_id: str) -> dict[str, list[str]
     return scope
 
 
+def ready_index_storage(kb_ref: str, kb_dir: Path) -> Path | None:
+    """Return the completed index that the knowledge base's own provider reads.
+
+    Only LlamaIndex keys its versions by embedding signature, and it reads the
+    version of the KB's bound embedding, not the global default. PageIndex,
+    GraphRAG and LightRAG publish a provider signature instead, so their newest
+    provider-ready version is the index they read.
+    """
+    from deeptutor.multi_user.knowledge_access import resolve_kb_metadata
+    from deeptutor.services.rag.embedding_binding import entry_signature
+    from deeptutor.services.rag.factory import (
+        normalize_provider_name,
+        provider_uses_embedding_versions,
+    )
+    from deeptutor.services.rag.index_probe import latest_ready_provider_version
+    from deeptutor.services.rag.index_versioning import resolve_storage_dir_for_read
+
+    entry = resolve_kb_metadata(kb_ref) or {}
+    provider = normalize_provider_name(entry.get("rag_provider"))
+    if provider_uses_embedding_versions(provider):
+        return resolve_storage_dir_for_read(kb_dir, entry_signature(entry))
+    ready = latest_ready_provider_version(kb_dir, provider)
+    return Path(str(ready["storage_path"])) if ready else None
+
+
 def scope_snapshot(
     topic: Any, progress: Any, kp_id: str, *, prepare_legacy: bool = False
 ) -> tuple[str, dict[str, Any]]:
     """Authorize KBs first, then fingerprint published page catalogs and selection."""
     from deeptutor.multi_user.knowledge_access import resolve_for_rag
-    from deeptutor.services.rag.embedding_signature import signature_from_embedding_config
-    from deeptutor.services.rag.index_versioning import resolve_storage_dir_for_read
     from deeptutor.services.workspace.knowledge import learning_source_access
 
     scope = selected_scope(topic, progress, kp_id)
@@ -289,7 +312,7 @@ def scope_snapshot(
             if resource is None:
                 raise LessonUnavailable("Access to a selected knowledge base is unavailable.")
             directory = Path(resource.base_dir) / resource.name
-            storage = resolve_storage_dir_for_read(directory, signature_from_embedding_config())
+            storage = ready_index_storage(kb, directory)
             if storage is None:
                 raise LessonUnavailable(
                     "A selected knowledge base has no compatible completed index. Re-index it or select a ready knowledge base."
