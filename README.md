@@ -312,6 +312,18 @@ DeepTutor is an agent-native learning workspace that connects tutoring, research
 
 Choose the installation path that fits how you want to use DeepTutor. Terminal-based installs share one runtime home: private settings live in `data/user/settings/` under the launch directory, or under `DEEPTUTOR_HOME` / `deeptutor start --home` when set explicitly. After starting the app, configure a provider and model in **Settings → Providers** and **Language models**.
 
+### Let your agent setup for you
+
+Copy this prompt into an agent with terminal access to your DeepTutor installation, such as Codex or Claude Code:
+
+```text
+Help me configure my existing DeepTutor installation: https://github.com/HKUDS/DeepTutor.
+First read SKILL.md and docs-for-dev/AGENT_SETUP.md in the matching checkout (or in that repository if no local source is available).
+Identify the installation, version, running instance, account, and runtime home. Reuse my environment and preserve existing files, settings, and pending drafts.
+Help me connect a provider and select a chat model; configure embedding, search, and other services only as needed. Ask for missing model choices or credential sources; do not ask me to paste API keys into chat or print them.
+Follow the guide and the installed CLI's --help to configure and verify this same instance. Finish with what changed, actual check results, and any remaining steps.
+```
+
 <details>
 <summary><b>Desktop — macOS and Windows (Preview)</b></summary>
 
