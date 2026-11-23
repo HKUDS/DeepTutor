@@ -29,7 +29,7 @@
   <a href="assets/README/README_PL.md"><img alt="Polski" height="40" src="https://img.shields.io/badge/Polski-CDCFD4"></a>
 </p>
 
-[![License](https://img.shields.io/badge/License-Apache_2.0-blue?style=flat-square)](LICENSE) [![GitHub release](https://img.shields.io/github/v/release/HKUDS/DeepTutor?style=flat-square&color=brightgreen)](https://github.com/HKUDS/DeepTutor/releases) [![arXiv](https://img.shields.io/badge/arXiv-2604.26962-b31b1b?style=flat-square&logo=arxiv&logoColor=white)](https://arxiv.org/abs/2604.26962) [![Discord](https://img.shields.io/badge/Discord-Community-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/eRsjPgMU4t) [![Feishu](https://img.shields.io/badge/Feishu-Group-00D4AA?style=flat-square&logo=feishu&logoColor=white)](./Communication.md) [![WeChat](https://img.shields.io/badge/WeChat-Group-07C160?style=flat-square&logo=wechat&logoColor=white)](https://github.com/HKUDS/DeepTutor/issues/78)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue?style=flat-square)](LICENSE) [![GitHub release](https://img.shields.io/github/v/release/HKUDS/DeepTutor?style=flat-square&color=brightgreen)](https://github.com/HKUDS/DeepTutor/releases) [![arXiv](https://img.shields.io/badge/arXiv-2604.26962-b31b1b?style=flat-square&logo=arxiv&logoColor=white)](https://arxiv.org/abs/2604.26962) [![Discord](https://img.shields.io/badge/Discord-Community-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/eRsjPgMU4t) [![Feishu](https://img.shields.io/badge/Feishu-Group-00D4AA?style=flat-square&logo=feishu&logoColor=white)](assets/figs/community/feishu-group.png) [![WeChat](https://img.shields.io/badge/WeChat-Group-07C160?style=flat-square&logo=wechat&logoColor=white)](https://ucn26x8r4a7l.feishu.cn/wiki/DmEJwWEowimznCkcdeycLGhunCg?from=from_copylink)
 
 [Features](#-key-features) · [Get Started](#-get-started) · [Explore](#-explore-deeptutor) · [CLI](#%EF%B8%8F-deeptutor-cli--agent-native-interface) · [Ecosystem](#-ecosystem--eduhub--the-skills-community) · [Community](#-community)
 
@@ -58,7 +58,7 @@
         </picture>
       </a>
     </td>
-    <td valign="middle">ModelGo is an AI API platform that provides unified access to mainstream models, including Claude, GPT, Gemini, and DeepSeek, through a single API key. Developers can integrate and switch between models without managing separate provider connections.</td>
+    <td valign="middle">ModelGo is an AI API platform that provides unified access to mainstream models, including Claude, GPT, Gemini, and DeepSeek (60% off v4.1 Flash). <a href="https://modelgo.ai/?utm_source=deeptutor&amp;utm_medium=sponsorship&amp;utm_content=readme&amp;campaign_id=deeptutor&amp;ad_group_id=readme">Sign up</a> and receive a $10 bonus with your first top-up.</td>
   </tr>
   <tr>
     <td width="240" align="center" valign="middle">
@@ -70,19 +70,7 @@
         </picture>
       </a>
     </td>
-    <td valign="middle">The AMD University Program supports academic research, teaching, and innovation through collaboration with universities. Its support helps DeepTutor sustain independent open-source development and explore efficient AI-powered learning experiences.</td>
-  </tr>
-  <tr>
-    <td width="240" align="center" valign="middle">
-      <a href="https://www.siliconflow.cn/">
-        <picture>
-          <source media="(prefers-color-scheme: dark)" srcset="assets/figs/partners/siliconflow-dark.svg">
-          <source media="(prefers-color-scheme: light)" srcset="assets/figs/partners/siliconflow.svg">
-          <img src="assets/figs/partners/siliconflow.svg" alt="SiliconFlow" height="26">
-        </picture>
-      </a>
-    </td>
-    <td valign="middle">SiliconFlow provides AI infrastructure and model inference services for developers. Its support helps DeepTutor maintain flexible model integrations and continue improving the open-source learning experience.</td>
+    <td valign="middle">The AMD University Program supports academic research, teaching, and innovation in computing and AI.</td>
   </tr>
 </table>
 
@@ -102,6 +90,14 @@
       <source media="(prefers-color-scheme: dark)" srcset="assets/figs/partners/pageindex-mark-dark.svg">
       <source media="(prefers-color-scheme: light)" srcset="assets/figs/partners/pageindex-mark.svg">
       <img src="assets/figs/partners/pageindex-mark.svg" alt="PageIndex" height="38">
+    </picture>
+  </a>
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <a href="https://www.siliconflow.cn/">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="assets/figs/partners/siliconflow-dark.svg">
+      <source media="(prefers-color-scheme: light)" srcset="assets/figs/partners/siliconflow.svg">
+      <img src="assets/figs/partners/siliconflow.svg" alt="SiliconFlow" height="26">
     </picture>
   </a>
 </p>
