@@ -108,7 +108,7 @@ const KIND_FEATURES: Record<string, KindFeatures> = {
     forwardImages: false,
   },
   antigravity: {
-    effort: true, // --effort low|medium|high
+    effort: true, // --effort low|medium|high|xhigh|max
     systemPrompt: true,
     permissionMode: true, // permissive modes map onto --dangerously-skip-permissions
     codexSandbox: false,
@@ -189,6 +189,7 @@ const DISPLAY_NAMES: Record<string, string> = {
   claude_code: "Claude Code",
   codex: "Codex",
   grok: "Grok CLI",
+  antigravity: "Antigravity CLI",
   kimi: "Kimi CLI",
   opencode: "opencode",
   mimo: "MiMo Code",
@@ -204,6 +205,10 @@ const SYSTEM_PROMPT_HINT: Record<string, Lang> = {
   grok: {
     zh: "通过 Grok CLI 的 rules 参数传入额外教学或委派指令。",
     en: "Additional teaching or delegation instructions are passed through Grok CLI's rules option.",
+  },
+  antigravity: {
+    zh: "Antigravity CLI 没有系统提示 flag——该指令会前缀在每个新会话的第一条消息上。",
+    en: "Antigravity CLI has no system-prompt flag — the instruction is prefixed to each new session's first message.",
   },
   claude_code: {
     zh: "追加到该智能体的系统提示（--append-system-prompt）。",
@@ -429,6 +434,21 @@ export function SubagentSettingsEditor({ kind }: { kind: string }) {
     [options, config.effort, save],
   );
 
+  const catalogSourceLabel = useMemo(() => {
+    switch (options?.catalog_source) {
+      case "sdk":
+        return tr({ zh: "来源：Claude Agent SDK", en: "Source: Claude Agent SDK" });
+      case "tui":
+        return tr({ zh: "来源：CLI /model 缓存", en: "Source: CLI /model cache" });
+      case "cache":
+        return tr({ zh: "来源：本地 CLI 缓存", en: "Source: local CLI cache" });
+      case "cli":
+        return tr({ zh: "来源：CLI 实时模型列表", en: "Source: live CLI model list" });
+      default:
+        return "";
+    }
+  }, [options?.catalog_source, tr]);
+
   const displayName = options?.display_name ?? DISPLAY_NAMES[kind] ?? kind;
 
   return (
@@ -532,18 +552,23 @@ export function SubagentSettingsEditor({ kind }: { kind: string }) {
                       en: "No model catalog is assumed. Enter a model supported by your Grok CLI; sync only detects the CLI again.",
                     })
                   : options.synced_at
-                    ? t("Last synced: {{when}}", {
+                    ? `${t("Last synced: {{when}}", {
                         when: formatTs(options.synced_at, i18n.language),
-                      })
-                    : isRemote
+                      })}${catalogSourceLabel ? ` · ${catalogSourceLabel}` : ""}`
+                    : options.catalog_source === "fallback"
                       ? tr({
-                          zh: "远程网关当前不提供模型枚举；可以留空使用网关默认值，或手动填写模型名。",
-                          en: "The remote gateway does not currently enumerate models here; use its default or enter a model name manually.",
+                          zh: "当前显示内置常用别名（未命中实时 SDK/缓存）；点击同步拉取当前账号可用模型。",
+                          en: "Showing built-in fallback aliases (no synced SDK/cache catalog yet); click Sync to pull your account's models.",
                         })
-                      : tr({
-                          zh: "该 CLI 无可枚举的模型接口，下方为常用别名，可自定义任意模型名。",
-                          en: "This CLI has no model-list API; below are the common aliases, and any model name is accepted.",
-                        })
+                      : isRemote
+                        ? tr({
+                            zh: "远程网关当前不提供模型枚举；可以留空使用网关默认值，或手动填写模型名。",
+                            en: "The remote gateway does not currently enumerate models here; use its default or enter a model name manually.",
+                          })
+                        : tr({
+                            zh: "该 CLI 无可枚举的模型接口，下方为常用别名，可自定义任意模型名。",
+                            en: "This CLI has no model-list API; below are the common aliases, and any model name is accepted.",
+                          })
               }
               control={
                 isRemote ? (

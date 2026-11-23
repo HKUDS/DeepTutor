@@ -9267,6 +9267,74 @@ export interface paths {
     readonly patch?: never;
     readonly trace?: never;
   };
+  readonly "/api/settings/providers/github-copilot/auth/cancel": {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: never;
+      readonly path?: never;
+      readonly cookie?: never;
+    };
+    readonly get?: never;
+    readonly put?: never;
+    /** Cancel Github Copilot Auth */
+    readonly post: operations["cancel_github_copilot_auth_api_settings_providers_github_copilot_auth_cancel_post"];
+    readonly delete?: never;
+    readonly options?: never;
+    readonly head?: never;
+    readonly patch?: never;
+    readonly trace?: never;
+  };
+  readonly "/api/settings/providers/github-copilot/auth/logout": {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: never;
+      readonly path?: never;
+      readonly cookie?: never;
+    };
+    readonly get?: never;
+    readonly put?: never;
+    /** Logout Github Copilot Auth */
+    readonly post: operations["logout_github_copilot_auth_api_settings_providers_github_copilot_auth_logout_post"];
+    readonly delete?: never;
+    readonly options?: never;
+    readonly head?: never;
+    readonly patch?: never;
+    readonly trace?: never;
+  };
+  readonly "/api/settings/providers/github-copilot/auth/start": {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: never;
+      readonly path?: never;
+      readonly cookie?: never;
+    };
+    readonly get?: never;
+    readonly put?: never;
+    /** Start Github Copilot Auth */
+    readonly post: operations["start_github_copilot_auth_api_settings_providers_github_copilot_auth_start_post"];
+    readonly delete?: never;
+    readonly options?: never;
+    readonly head?: never;
+    readonly patch?: never;
+    readonly trace?: never;
+  };
+  readonly "/api/settings/providers/github-copilot/auth/status": {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: never;
+      readonly path?: never;
+      readonly cookie?: never;
+    };
+    /** Get Github Copilot Auth Status */
+    readonly get: operations["get_github_copilot_auth_status_api_settings_providers_github_copilot_auth_status_get"];
+    readonly put?: never;
+    readonly post?: never;
+    readonly delete?: never;
+    readonly options?: never;
+    readonly head?: never;
+    readonly patch?: never;
+    readonly trace?: never;
+  };
   readonly "/api/settings/providers/openai-codex/models/reasoning-effort": {
     readonly parameters: {
       readonly query?: never;
@@ -14391,6 +14459,31 @@ export interface components {
       /** Sources */
       readonly sources?: readonly components["schemas"]["TopicSourceRequest"][];
     };
+    /**
+     * GitHubCopilotAuthStatusResponse
+     * @description Strict public contract for GitHub Copilot web auth endpoints.
+     */
+    readonly GitHubCopilotAuthStatusResponse: {
+      /** Account Id */
+      readonly account_id?: string | null;
+      /**
+       * Connection
+       * @enum {string}
+       */
+      readonly connection:
+        "disconnected" | "authorizing" | "connected" | "error";
+      /** Error Code */
+      readonly error_code?: string | null;
+      /** Expires At */
+      readonly expires_at?: number | null;
+      /** Operation State */
+      readonly operation_state?:
+        ("waiting" | "completed" | "cancelled" | "failed") | null;
+      /** User Code */
+      readonly user_code?: string | null;
+      /** Verification Uri */
+      readonly verification_uri?: string | null;
+    };
     /** GitHubSourceInfo */
     readonly GitHubSourceInfo: {
       /**
@@ -19304,6 +19397,8 @@ export type SchemaGenerateFromReadingRequest =
   components["schemas"]["GenerateFromReadingRequest"];
 export type SchemaGenerateTopicDraftRequest =
   components["schemas"]["GenerateTopicDraftRequest"];
+export type SchemaGitHubCopilotAuthStatusResponse =
+  components["schemas"]["GitHubCopilotAuthStatusResponse"];
 export type SchemaGitHubSourceInfo = components["schemas"]["GitHubSourceInfo"];
 export type SchemaGrantPayload = components["schemas"]["GrantPayload"];
 export type SchemaGraphRagConfigUpdate =
@@ -40420,6 +40515,138 @@ export interface operations {
           readonly "application/json": {
             readonly [key: string]: unknown;
           };
+        };
+      };
+      /** @description Validation Error */
+      readonly 422: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  readonly cancel_github_copilot_auth_api_settings_providers_github_copilot_auth_cancel_post: {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: {
+        readonly Authorization?: string | null;
+      };
+      readonly path?: never;
+      readonly cookie?: {
+        readonly dt_token?: string | null;
+      };
+    };
+    readonly requestBody?: never;
+    readonly responses: {
+      /** @description Successful Response */
+      readonly 200: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["GitHubCopilotAuthStatusResponse"];
+        };
+      };
+      /** @description Validation Error */
+      readonly 422: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  readonly logout_github_copilot_auth_api_settings_providers_github_copilot_auth_logout_post: {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: {
+        readonly Authorization?: string | null;
+      };
+      readonly path?: never;
+      readonly cookie?: {
+        readonly dt_token?: string | null;
+      };
+    };
+    readonly requestBody?: never;
+    readonly responses: {
+      /** @description Successful Response */
+      readonly 200: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["GitHubCopilotAuthStatusResponse"];
+        };
+      };
+      /** @description Validation Error */
+      readonly 422: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  readonly start_github_copilot_auth_api_settings_providers_github_copilot_auth_start_post: {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: {
+        readonly Authorization?: string | null;
+      };
+      readonly path?: never;
+      readonly cookie?: {
+        readonly dt_token?: string | null;
+      };
+    };
+    readonly requestBody?: never;
+    readonly responses: {
+      /** @description Successful Response */
+      readonly 200: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["GitHubCopilotAuthStatusResponse"];
+        };
+      };
+      /** @description Validation Error */
+      readonly 422: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  readonly get_github_copilot_auth_status_api_settings_providers_github_copilot_auth_status_get: {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: {
+        readonly Authorization?: string | null;
+      };
+      readonly path?: never;
+      readonly cookie?: {
+        readonly dt_token?: string | null;
+      };
+    };
+    readonly requestBody?: never;
+    readonly responses: {
+      /** @description Successful Response */
+      readonly 200: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["GitHubCopilotAuthStatusResponse"];
         };
       };
       /** @description Validation Error */

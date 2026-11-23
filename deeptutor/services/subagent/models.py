@@ -29,12 +29,16 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable
+from contextlib import suppress
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 import json
 import logging
 import os
 from pathlib import Path
 import re
+import signal
+import time
 from typing import Any
 
 from deeptutor.services.subagent.process import (
@@ -57,8 +61,12 @@ _CLAUDE_MODELS = (
 )
 _CLAUDE_EFFORTS = ("low", "medium", "high", "xhigh", "max")
 
-# Antigravity CLI: ``--effort`` accepts exactly these three.
-_ANTIGRAVITY_EFFORTS = ("low", "medium", "high")
+# Antigravity CLI: ``--effort`` accepts low|medium|high|xhigh|max.
+_ANTIGRAVITY_EFFORTS = ("low", "medium", "high", "xhigh", "max")
+_ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
+_AGY_SLUG_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]*$")
+_AGY_HEADER_SLUGS = frozenset({"model", "models", "id", "slug"})
+_AGY_HEADER_NAMES = frozenset({"name", "display", "display name", "description"})
 
 # opencode family: ``--variant`` — provider-relative reasoning effort.
 _OPENCODE_EFFORTS = ("minimal", "high", "max")
@@ -118,6 +126,9 @@ class BackendOptions:
     allow_custom_model: bool = False
     # Freshness of a synced source, if any (Codex cache fetch time).
     synced_at: str = ""
+    # Where the current ``models`` list came from: "sdk", "tui", "cache", "cli",
+    # "fallback", or "none" when the backend has no enumerable catalog.
+    catalog_source: str = ""
     detail: str = ""
 
     def to_dict(self) -> dict[str, Any]:
@@ -131,6 +142,7 @@ class BackendOptions:
             "efforts": list(self.efforts),
             "allow_custom_model": self.allow_custom_model,
             "synced_at": self.synced_at,
+            "catalog_source": self.catalog_source,
             "detail": self.detail,
         }
 
@@ -154,13 +166,13 @@ def _codex_default_model() -> str:
 
 
 async def _claude_options() -> BackendOptions:
-    from deeptutor.services.subagent.claude_models import load_cached_claude_models
+    from deeptutor.services.subagent.claude_models import load_cached_claude_catalog
 
     backend = get_backend("claude_code")
     ok, text = await probe_version([backend.cli_command, "--version"]) if backend else (False, "")
-    # Prefer a live-synced catalog (scraped from ``/model``); fall back to the
-    # curated aliases until the user syncs.
-    cached, synced_at = load_cached_claude_models()
+    # Prefer a live-synced catalog (SDK handshake or ``/model`` scrape); fall
+    # back to curated aliases until the user syncs.
+    cached, synced_at, cached_source = load_cached_claude_catalog()
     pairs = [(m["slug"], m["display_name"]) for m in cached] or list(_CLAUDE_MODELS)
     return BackendOptions(
         kind="claude_code",
@@ -175,6 +187,7 @@ async def _claude_options() -> BackendOptions:
         efforts=list(_CLAUDE_EFFORTS),
         allow_custom_model=True,
         synced_at=synced_at,
+        catalog_source=cached_source if cached else "fallback",
         detail="" if ok else (text or "claude CLI not found on PATH"),
     )
 
@@ -220,6 +233,7 @@ async def _codex_options() -> BackendOptions:
         efforts=["none", "minimal", "low", "medium", "high", "xhigh"],
         allow_custom_model=True,
         synced_at=synced_at,
+        catalog_source="cache" if models else "none",
         detail="" if ok else (version or "codex CLI not found on PATH"),
     )
 
@@ -231,23 +245,146 @@ async def _probe(kind: str) -> tuple[bool, str]:
     return await probe_version([backend.cli_command, "--version"])
 
 
-async def _antigravity_options() -> BackendOptions:
+def _parse_antigravity_models(text: str) -> list[ModelOption]:
+    """Parse ``agy models`` output into ``ModelOption`` entries.
+
+    Non-TTY stdout uses ``<slug>\\t<display name>``; TTY output uses padded
+    columns (2+ spaces) and may prepend spinner frames separated by ``\\r``.
+    """
+    models: list[ModelOption] = []
+    seen: set[str] = set()
+    for raw in text.splitlines():
+        line = _ANSI_ESCAPE_RE.sub("", raw.rsplit("\r", 1)[-1]).strip()
+        if not line:
+            continue
+        parts = re.split(r"\t+|\s{2,}", line, maxsplit=1)
+        slug = parts[0].strip()
+        display = parts[1].strip() if len(parts) > 1 else ""
+        if (
+            not slug
+            or slug.endswith(".")
+            or ".." in slug
+            or not _AGY_SLUG_RE.match(slug)
+        ):
+            continue
+        if slug.lower() in _AGY_HEADER_SLUGS and display.lower() in _AGY_HEADER_NAMES:
+            continue
+        if slug in seen:
+            continue
+        seen.add(slug)
+        models.append(
+            ModelOption(
+                slug=slug,
+                display_name=display or slug,
+                efforts=list(_ANTIGRAVITY_EFFORTS),
+            )
+        )
+    return models
+
+
+_ANTIGRAVITY_CACHE_TTL_S = 300.0
+_antigravity_models_cache: tuple[str, list[ModelOption], str, float] | None = None
+
+
+async def _terminate_subprocess(
+    process: asyncio.subprocess.Process,
+    *,
+    force_group: bool = False,
+) -> None:
+    """Terminate a timed-out or cancelled subprocess (and its POSIX process group).
+
+    When ``force_group`` is true, signal the POSIX process group even if the
+    group leader already exited (a descendant may still hold stdout open).
+    """
+    if process.returncode is not None and not force_group:
+        return
+    if os.name == "posix":
+        with suppress(ProcessLookupError, PermissionError, OSError):
+            os.killpg(process.pid, signal.SIGKILL)
+    if process.returncode is None:
+        with suppress(ProcessLookupError, OSError):
+            process.kill()
+        with suppress(TimeoutError, asyncio.TimeoutError, OSError):
+            await asyncio.wait_for(process.wait(), timeout=2.0)
+
+
+async def _list_antigravity_models(cli_command: str) -> list[ModelOption]:
+    """Run ``agy models`` and return its live account model catalog."""
+    cmd = resolve_cli_command([cli_command, "models"])
+    process: asyncio.subprocess.Process | None = None
+    timed_out_or_cancelled = False
+    spawn_kwargs: dict[str, Any] = {
+        "stdin": asyncio.subprocess.DEVNULL,
+        "stdout": asyncio.subprocess.PIPE,
+        "stderr": asyncio.subprocess.DEVNULL,
+    }
+    if os.name == "posix":
+        spawn_kwargs["start_new_session"] = True
+    try:
+        process = await asyncio.create_subprocess_exec(*cmd, **spawn_kwargs)
+        out, _ = await asyncio.wait_for(process.communicate(), timeout=20.0)
+    except FileNotFoundError:
+        return []
+    except (TimeoutError, asyncio.TimeoutError):
+        timed_out_or_cancelled = True
+        return []
+    except asyncio.CancelledError:
+        timed_out_or_cancelled = True
+        raise
+    except Exception:  # pragma: no cover - defensive
+        logger.warning("failed to enumerate %s models", cli_command, exc_info=True)
+        return []
+    finally:
+        if process is not None and (process.returncode is None or timed_out_or_cancelled):
+            await asyncio.shield(
+                _terminate_subprocess(process, force_group=timed_out_or_cancelled)
+            )
+    if process.returncode != 0:
+        return []
+    return _parse_antigravity_models((out or b"").decode("utf-8", "replace"))
+
+
+async def _antigravity_options(
+    *,
+    include_models: bool = True,
+    refresh: bool = False,
+) -> BackendOptions:
+    global _antigravity_models_cache
     from deeptutor.services.subagent.antigravity import (
         _NOT_FOUND_DETAIL as _ANTIGRAVITY_NOT_FOUND,
     )
 
+    backend = get_backend("antigravity")
+    cli = backend.cli_command if backend else "agy"
     ok, version = await _probe("antigravity")
+    models: list[ModelOption] = []
+    synced_at = ""
+    if ok and include_models:
+        now = time.monotonic()
+        cached = _antigravity_models_cache
+        if (
+            not refresh
+            and cached is not None
+            and cached[0] == cli
+            and now - cached[3] < _ANTIGRAVITY_CACHE_TTL_S
+        ):
+            models = list(cached[1])
+            synced_at = cached[2]
+        else:
+            models = await _list_antigravity_models(cli)
+            synced_at = datetime.now(timezone.utc).isoformat() if models else ""
+            if models:
+                _antigravity_models_cache = (cli, list(models), synced_at, now)
     return BackendOptions(
         kind="antigravity",
         display_name="Antigravity CLI",
         available=ok,
         version=version if ok else "",
-        # `agy models` prints the live list, and the slugs move with the Gemini
-        # releases behind them; naming a stale set here would be worse than
-        # letting the operator paste the one they ran.
-        models=[],
+        models=models,
         efforts=list(_ANTIGRAVITY_EFFORTS),
         allow_custom_model=True,
+        synced_at=synced_at,
+        catalog_source="cli" if models else "none",
         detail="" if ok else not_found_detail(version, _ANTIGRAVITY_NOT_FOUND),
     )
 
@@ -262,6 +399,7 @@ async def _kimi_options() -> BackendOptions:
         models=[],  # no model-list surface; free text only
         efforts=[],
         allow_custom_model=True,
+        catalog_source="none",
         detail="" if ok else (version or "kimi CLI not found on PATH"),
     )
 
@@ -279,6 +417,7 @@ async def _grok_options() -> BackendOptions:
         models=[],
         efforts=[],
         allow_custom_model=True,
+        catalog_source="none",
         detail=detected.detail if detected else "Grok CLI backend unavailable",
     )
 
@@ -329,6 +468,8 @@ async def _opencode_family_options(
         models=models,
         efforts=list(_OPENCODE_EFFORTS),
         allow_custom_model=True,
+        synced_at=datetime.now(timezone.utc).isoformat() if models else "",
+        catalog_source="cli" if models else "none",
         detail="" if ok else (version or f"{cli} CLI not found on PATH"),
     )
 
@@ -361,6 +502,7 @@ async def _free_text_options(
         models=[],
         efforts=list(efforts),
         allow_custom_model=True,
+        catalog_source="none",
         detail="" if available else not_found_detail(version, f"{cli} CLI not found on PATH"),
     )
 
@@ -380,6 +522,7 @@ async def _hermes_remote_options() -> BackendOptions:
         models=[],
         efforts=list(_HERMES_EFFORTS),
         allow_custom_model=True,
+        catalog_source="none",
         detail=detected.detail if detected else "incompatible",
     )
 
@@ -410,9 +553,15 @@ _PROVIDERS: dict[str, Callable[..., Awaitable[BackendOptions]]] = {
 }
 
 
-async def list_backend_options() -> list[BackendOptions]:
+async def list_backend_options(*, include_account_catalogs: bool = True) -> list[BackendOptions]:
     """Synced model/effort options for every backend (the /settings sync source)."""
-    results = await asyncio.gather(*(provider() for provider in _PROVIDERS.values()))
+
+    async def _run(kind: str, provider: Callable[..., Awaitable[BackendOptions]]) -> BackendOptions:
+        if kind == "antigravity" and not include_account_catalogs:
+            return await _antigravity_options(include_models=False)
+        return await provider()
+
+    results = await asyncio.gather(*(_run(k, p) for k, p in _PROVIDERS.items()))
     return list(results)
 
 
@@ -421,14 +570,17 @@ async def sync_backend_options(kind: str) -> BackendOptions:
 
     Claude Code has no machine-readable catalog, so we actively scrape its
     ``/model`` TUI and cache the result. Codex's cache is maintained by its own
-    CLI (a fresh read suffices), and the opencode family re-runs ``models
-    --refresh``. The rest have nothing external to refresh.
+    CLI (a fresh read suffices), Antigravity re-runs ``agy models``, and the
+    opencode family re-runs ``models --refresh``. The rest have nothing
+    external to refresh.
     """
     if kind == "claude_code":
         from deeptutor.services.subagent.claude_models import sync_claude_models
 
         await sync_claude_models()  # writes the cache that _claude_options reads
         return await _claude_options()
+    if kind == "antigravity":
+        return await _antigravity_options(include_models=True, refresh=True)
     if kind in ("opencode", "mimo"):
         return await _PROVIDERS[kind](refresh=True)
     provider = _PROVIDERS.get(kind, _codex_options)

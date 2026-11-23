@@ -108,7 +108,10 @@ async def _login_github_copilot() -> None:
         if not models:
             raise RuntimeError("No usable GitHub Copilot models are available for this account.")
         await validate_github_copilot_model(models[0])
-    except (httpx.HTTPError, OSError, RuntimeError, ValueError, KeyError) as exc:
+    except OSError as exc:
+        typer.echo("GitHub Copilot login failed: could not access local credential storage.")
+        raise typer.Exit(code=1) from exc
+    except (httpx.HTTPError, RuntimeError, ValueError, KeyError) as exc:
         typer.echo(f"GitHub Copilot login failed: {exc}")
         raise typer.Exit(code=1) from exc
     account = getattr(token, "account_id", None) or "current account"

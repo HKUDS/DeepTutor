@@ -43,25 +43,46 @@ def _cache_path():
     return get_path_service().get_settings_file(_CACHE_FILE)
 
 
-def load_cached_claude_models() -> tuple[list[dict[str, str]], str]:
-    """Return ``(models, fetched_at)`` from the cache, or ``([], "")`` if none.
+def load_cached_claude_catalog() -> tuple[list[dict[str, str]], str, str]:
+    """Return ``(models, fetched_at, source)`` from the cache.
 
-    Each model is ``{"slug", "display_name"}``. Pure read — no capture.
+    Each model is ``{"slug", "display_name"}``. ``source`` is ``"sdk"`` or
+    ``"tui"`` for caches written with provenance, ``"cache"`` for legacy caches
+    that predate source tracking, or ``""`` when no cached models exist.
     """
     path = _cache_path()
     if not path.exists():
-        return [], ""
+        return [], "", ""
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except Exception:
         logger.warning("failed to read %s; ignoring", path, exc_info=True)
-        return [], ""
+        return [], "", ""
+    if not isinstance(data, dict):
+        return [], "", ""
     models = [
         {"slug": str(m["slug"]), "display_name": str(m.get("display_name") or m["slug"])}
         for m in data.get("models", [])
         if isinstance(m, dict) and m.get("slug")
     ]
-    return models, str(data.get("fetched_at") or "")
+    fetched_at = str(data.get("fetched_at") or "")
+    raw_source = str(data.get("source") or "").strip().lower()
+    if not models:
+        source = ""
+    elif raw_source in {"sdk", "tui"}:
+        source = raw_source
+    else:
+        source = "cache"
+    return models, fetched_at, source
+
+
+def load_cached_claude_models() -> tuple[list[dict[str, str]], str]:
+    """Return ``(models, fetched_at)`` from the cache, or ``([], "")`` if none.
+
+    Each model is ``{"slug", "display_name"}``. Pure read — no capture.
+    """
+    models, fetched_at, _ = load_cached_claude_catalog()
+    return models, fetched_at
 
 
 async def sync_claude_models() -> tuple[list[dict[str, str]], str]:
@@ -79,7 +100,7 @@ async def sync_claude_models() -> tuple[list[dict[str, str]], str]:
         models = []
     if models:
         fetched_at = datetime.now(timezone.utc).isoformat()
-        _write_cache(models, fetched_at)
+        _write_cache(models, fetched_at, source="sdk")
         return models, fetched_at
 
     try:
@@ -94,7 +115,7 @@ async def sync_claude_models() -> tuple[list[dict[str, str]], str]:
         logger.warning("claude /model capture parsed no models")
         return [], ""
     fetched_at = datetime.now(timezone.utc).isoformat()
-    _write_cache(models, fetched_at)
+    _write_cache(models, fetched_at, source="tui")
     return models, fetched_at
 
 
@@ -104,10 +125,12 @@ async def _discover_sdk_models() -> list[dict[str, str]]:
     return await discover_models()
 
 
-def _write_cache(models: list[dict[str, str]], fetched_at: str) -> None:
+def _write_cache(models: list[dict[str, str]], fetched_at: str, source: str = "") -> None:
     path = _cache_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    payload = {"fetched_at": fetched_at, "models": models}
+    payload: dict[str, object] = {"fetched_at": fetched_at, "models": models}
+    if source:
+        payload["source"] = source
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
@@ -248,4 +271,4 @@ def _cleanup_dir(path: str) -> None:
     shutil.rmtree(path, ignore_errors=True)
 
 
-__all__ = ["load_cached_claude_models", "sync_claude_models"]
+__all__ = ["load_cached_claude_catalog", "load_cached_claude_models", "sync_claude_models"]

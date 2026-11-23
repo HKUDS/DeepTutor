@@ -276,6 +276,35 @@ def reset_runtime_provider_pool() -> None:
         _schedule_close(provider, loop)
 
 
+def evict_runtime_providers_for_owner(owner_identity: str) -> None:
+    """Retire only cached providers belonging to ``owner_identity`` on their owning loop."""
+    if not owner_identity:
+        return
+    with _provider_pool_lock:
+        matching_keys = [key for key in _provider_pool if key and key[-1] == owner_identity]
+        evicted: list[tuple[asyncio.AbstractEventLoop, LLMProvider]] = []
+        for key in matching_keys:
+            entry = _provider_pool.pop(key)
+            entry.retired = True
+            if not entry.users:
+                evicted.append((key[0], entry.provider))
+    if not evicted:
+        return
+    try:
+        current_loop: asyncio.AbstractEventLoop | None = asyncio.get_running_loop()
+    except RuntimeError:
+        current_loop = None
+    for owner_loop, provider in evicted:
+        if owner_loop is current_loop and current_loop is not None:
+            _schedule_close(provider, current_loop)
+        elif owner_loop.is_running() and not owner_loop.is_closed():
+            with contextlib.suppress(RuntimeError):
+                owner_loop.call_soon_threadsafe(_schedule_close, provider, owner_loop)
+        elif current_loop is None:
+            with contextlib.suppress(Exception):
+                asyncio.run(provider.aclose())
+
+
 def runtime_provider_pool_size() -> int:
     """Expose the bounded size for diagnostics and regression tests."""
     with _provider_pool_lock:
@@ -286,6 +315,7 @@ __all__ = [
     "acquire_runtime_provider",
     "build_isolated_provider",
     "close_runtime_provider_pool",
+    "evict_runtime_providers_for_owner",
     "get_runtime_provider",
     "reset_runtime_provider_pool",
     "runtime_provider_pool_size",

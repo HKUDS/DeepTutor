@@ -37,6 +37,7 @@ import { ProviderServices } from "./ProviderServices";
 import { AddProviderPanel, ProviderProtocol, type CustomProviderInput } from "./AddProviderPanel";
 import { CodexOAuthCard } from "./CodexOAuthCard";
 import { CodeBuddyAuthCard } from "./CodeBuddyAuthCard";
+import { GitHubCopilotAuthCard } from "./GitHubCopilotAuthCard";
 import { stringifyExtraHeaders, subPanelClass } from "./shared";
 import {
   WorkspaceDetailEmpty,
@@ -293,6 +294,8 @@ export function ProvidersWorkspace() {
                 <div className="space-y-6 p-4 sm:p-6">
                   {managed ? (
                     <CodexOAuthCard />
+                  ) : source.provider === "github_copilot" ? (
+                    <GitHubCopilotAuthCard />
                   ) : (
                     <>
                       {source.provider === "codebuddy" && <CodeBuddyAuthCard />}

@@ -12,11 +12,13 @@ import importlib.util
 from deeptutor.services.codebuddy_credentials import FALLBACK_MODEL_CATALOG, cached_model_catalog
 
 
-async def fetch_codebuddy_models(api_key: str | None = None) -> list[str]:
-    """Return the model ids available to the signed-in CodeBuddy account."""
+async def fetch_codebuddy_models_with_source(
+    api_key: str | None = None,
+) -> tuple[list[str], str]:
+    """Return ``(models, source)`` where ``source`` is ``"cache"``, ``"cli"``, or ``"fallback"``."""
     cached = cached_model_catalog()
     if cached:
-        return cached
+        return cached, "cache"
 
     if importlib.util.find_spec("codebuddy_agent_sdk") is not None:
         from deeptutor.services.llm.provider_core.codebuddy_provider import (
@@ -28,9 +30,15 @@ async def fetch_codebuddy_models(api_key: str | None = None) -> list[str]:
         except Exception:  # noqa: BLE001 - CLI probe is best effort
             models = []
         if models:
-            return models
+            return models, "cli"
 
-    return list(FALLBACK_MODEL_CATALOG)
+    return list(FALLBACK_MODEL_CATALOG), "fallback"
 
 
-__all__ = ["fetch_codebuddy_models"]
+async def fetch_codebuddy_models(api_key: str | None = None) -> list[str]:
+    """Return the model ids available to the signed-in CodeBuddy account."""
+    models, _ = await fetch_codebuddy_models_with_source(api_key)
+    return models
+
+
+__all__ = ["fetch_codebuddy_models", "fetch_codebuddy_models_with_source"]

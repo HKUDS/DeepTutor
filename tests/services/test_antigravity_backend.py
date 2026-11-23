@@ -90,8 +90,17 @@ def test_cautious_modes_keep_the_clis_soft_deny(mode: str) -> None:
     assert "--dangerously-skip-permissions" not in cmd
 
 
+@pytest.mark.parametrize("effort", ["low", "medium", "high", "xhigh", "max"])
+def test_supported_efforts_are_passed_through(effort: str) -> None:
+    cmd = AntigravityBackend()._build_command(
+        "hi", session_id=None, config=BackendConfig(effort=effort)
+    )
+
+    assert cmd[cmd.index("--effort") + 1] == effort
+
+
 def test_unknown_effort_is_dropped_rather_than_passed_through() -> None:
-    """`--effort` only accepts low/medium/high; anything else exits non-zero."""
+    """`--effort` only accepts low/medium/high/xhigh/max; anything else exits non-zero."""
     cmd = AntigravityBackend()._build_command(
         "hi", session_id=None, config=BackendConfig(effort="ultra")
     )
@@ -258,14 +267,133 @@ def test_gemini_cli_is_retired_from_the_subagent_registry() -> None:
 
 
 @pytest.mark.asyncio
-async def test_options_expose_the_effort_flag_and_free_text_models() -> None:
-    from deeptutor.services.subagent.models import sync_backend_options
+async def test_options_expose_live_models_and_full_effort_scale(monkeypatch) -> None:
+    from deeptutor.services.subagent import models as models_mod
+    from deeptutor.services.subagent.models import ModelOption, sync_backend_options
+
+    async def fake_probe(_kind: str) -> tuple[bool, str]:
+        return True, "1.5.15"
+
+    async def fake_list(_cli: str) -> list[ModelOption]:
+        return [
+            ModelOption(
+                slug="gemini-4-neon-xhigh",
+                display_name="Gemini 4 Neon (XHigh)",
+                efforts=list(models_mod._ANTIGRAVITY_EFFORTS),
+            )
+        ]
+
+    monkeypatch.setattr(models_mod, "_probe", fake_probe)
+    monkeypatch.setattr(models_mod, "_list_antigravity_models", fake_list)
 
     options = await sync_backend_options("antigravity")
 
     assert options.kind == "antigravity"
-    assert [e for e in options.efforts] == ["low", "medium", "high"]
+    assert options.efforts == ["low", "medium", "high", "xhigh", "max"]
     assert options.allow_custom_model is True
+    assert options.catalog_source == "cli"
+    assert options.synced_at
+    assert [m.slug for m in options.models] == ["gemini-4-neon-xhigh"]
+    assert options.models[0].display_name == "Gemini 4 Neon (XHigh)"
+
+
+def test_parse_antigravity_models_handles_tsv_padded_and_spinner_noise() -> None:
+    from deeptutor.services.subagent.models import _parse_antigravity_models
+
+    raw = (
+        "\r⠋ Fetching available models...\r⠙ Fetching available models...\r"
+        "gemini-4-neon-high\tGemini 4 Neon (High)\n"
+        "\x1b[32mgemini-4-neon-xhigh\x1b[0m   Gemini 4 Neon (XHigh)\n"
+        "MODEL   DISPLAY NAME\n"
+        "gemini-4-neon-high\tDuplicate Should Be Dropped\n"
+        "Fetching available models...\n"
+        "claude-opus-5-5-high\tClaude Opus 5.5 (High)\n"
+    )
+    parsed = _parse_antigravity_models(raw)
+
+    assert [(m.slug, m.display_name) for m in parsed] == [
+        ("gemini-4-neon-high", "Gemini 4 Neon (High)"),
+        ("gemini-4-neon-xhigh", "Gemini 4 Neon (XHigh)"),
+        ("claude-opus-5-5-high", "Claude Opus 5.5 (High)"),
+    ]
+    assert parsed[0].efforts == ["low", "medium", "high", "xhigh", "max"]
+
+
+@pytest.mark.asyncio
+async def test_list_antigravity_models_ignores_nonzero_exit(monkeypatch) -> None:
+    from deeptutor.services.subagent import models as models_mod
+
+    class _FailedProc:
+        returncode = 1
+
+        async def communicate(self):
+            return b"not-logged-in\tShould Not Parse\n", b""
+
+    async def fake_exec(*_args, **_kwargs):
+        return _FailedProc()
+
+    monkeypatch.setattr(models_mod.asyncio, "create_subprocess_exec", fake_exec)
+    monkeypatch.setattr(models_mod, "resolve_cli_command", lambda cmd: cmd)
+
+    assert await models_mod._list_antigravity_models("agy") == []
+
+
+@pytest.mark.asyncio
+async def test_list_antigravity_models_terminates_subprocess_on_cancel(monkeypatch) -> None:
+    import asyncio
+
+    from deeptutor.services.subagent import models as models_mod
+
+    started = asyncio.Event()
+    killed = False
+
+    class _HangingProc:
+        pid = 999_999_999
+        returncode = None
+
+        async def communicate(self):
+            started.set()
+            await asyncio.Event().wait()
+
+        def kill(self):
+            nonlocal killed
+            killed = True
+            self.returncode = -9
+
+        async def wait(self):
+            return -9
+
+    async def fake_exec(*_args, **_kwargs):
+        return _HangingProc()
+
+    monkeypatch.setattr(models_mod.asyncio, "create_subprocess_exec", fake_exec)
+    monkeypatch.setattr(models_mod, "resolve_cli_command", lambda cmd: cmd)
+
+    task = asyncio.create_task(models_mod._list_antigravity_models("agy"))
+    await started.wait()
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert killed is True
+
+
+@pytest.mark.asyncio
+async def test_antigravity_options_skip_account_models_for_non_admin(monkeypatch) -> None:
+    from deeptutor.services.subagent import models as models_mod
+
+    async def fake_probe(_kind: str) -> tuple[bool, str]:
+        return True, "1.5.15"
+
+    async def forbidden_list(_cli: str):
+        raise AssertionError("agy models must not run when include_models=False")
+
+    monkeypatch.setattr(models_mod, "_probe", fake_probe)
+    monkeypatch.setattr(models_mod, "_list_antigravity_models", forbidden_list)
+
+    opts = await models_mod._antigravity_options(include_models=False)
+    assert opts.available is True
+    assert opts.models == []
+    assert opts.catalog_source == "none"
 
 
 def test_missing_cli_detail_says_something_the_status_chip_does_not() -> None:

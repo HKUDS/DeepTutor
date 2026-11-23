@@ -62,13 +62,17 @@ async def detect_subagents():
 @router.get("/backends/options")
 async def backend_options():
     """Synced model + reasoning-effort options per backend (settings page sync)."""
+    from deeptutor.multi_user.context import get_current_user
     from deeptutor.services.subagent.models import list_backend_options
 
-    options = await list_backend_options()
+    if get_current_user().is_admin:
+        options = await list_backend_options()
+    else:
+        options = await list_backend_options(include_account_catalogs=False)
     return {"backends": [o.to_dict() for o in options]}
 
 
-@router.post("/backends/{kind}/sync")
+@router.post("/backends/{kind}/sync", dependencies=[Depends(require_admin)])
 async def sync_backend(kind: str):
     """Re-pull one backend's model catalog (the settings "sync" button).
 
