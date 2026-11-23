@@ -607,9 +607,11 @@ class AgentLoop:
         from deeptutor.services.llm.provider_core.openai_compat_provider import (
             OpenAICompatProvider,
         )
+        from deeptutor.services.provider_registry import find_by_name
 
         model = str(kwargs.get("model") or "")
-        if not OpenAICompatProvider.supports_prompt_caching_for(model):
+        spec = find_by_name(self.pipeline.binding)
+        if not OpenAICompatProvider.supports_prompt_caching_for(model, spec):
             return
         if not self._binding_supports_prompt_caching():
             return
@@ -635,7 +637,7 @@ class AgentLoop:
         spec = find_by_name(self.pipeline.binding)
         if spec is None or not spec.supports_prompt_caching:
             return False
-        return spec.backend == "openai_compat"
+        return spec.backend in {"openai_compat", "deeptutor"}
 
     async def _call_llm(
         self,

@@ -486,7 +486,10 @@ def _static_capability(
     binding_lower = (binding or "openai").lower()
 
     # 1. Check model-specific overrides first
-    if model:
+    from deeptutor.services.provider_registry import find_by_name
+
+    spec = find_by_name(binding_lower)
+    if model and not (spec and spec.opaque_model_ids):
         # Google's model list returns resource names ("models/gemini-2.5-flash")
         # while every MODEL_OVERRIDES key is a bare id, so a catalog-supplied id
         # missed each vendor rule and fell through to the binding default. The
@@ -737,7 +740,9 @@ def get_effective_temperature(
 #: supplies, so each request carries the turn's own session id. Stated here
 #: rather than tested inline: the chat loop and the explore capability both
 #: need it, and neither should have to name a provider to run a turn.
-SESSION_SCOPED_BINDINGS: frozenset[str] = frozenset({"codebuddy", "openai_codex", "claude_code"})
+SESSION_SCOPED_BINDINGS: frozenset[str] = frozenset(
+    {"codebuddy", "openai_codex", "claude_code", "deeptutor"}
+)
 
 
 def threads_session_id(binding: str | None) -> bool:

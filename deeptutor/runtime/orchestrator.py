@@ -194,6 +194,9 @@ class ChatOrchestrator:
                 error_code = getattr(exc, "error_code", None)
                 if isinstance(error_code, str) and error_code:
                     error_metadata["error_code"] = error_code
+                action_url = getattr(exc, "action_url", None)
+                if isinstance(action_url, str) and action_url:
+                    error_metadata["action_url"] = action_url
                 retryable = getattr(exc, "retryable", None)
                 if isinstance(retryable, bool):
                     error_metadata["retryable"] = retryable

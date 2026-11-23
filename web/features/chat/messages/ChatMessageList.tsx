@@ -2374,6 +2374,13 @@ export const ChatMessageList = memo(function ChatMessageList({
           (terminalError?.metadata as { retryable?: boolean } | undefined)
             ?.retryable,
         );
+        const creditsLink = terminalError?.metadata?.action_url;
+        const showCreditsLink =
+          typeof creditsLink === "string" &&
+          /^(https:\/\/|http:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?:[:/]))/.test(creditsLink) &&
+          ["paid_credit_required", "paid_account_required", "insufficient_credit"].includes(
+            String(terminalError?.metadata?.error_code),
+          );
         const isLastAssistant = i === lastRenderedAssistantIndex;
         const showRegenerate =
           !isStreaming &&
@@ -2464,6 +2471,16 @@ export const ChatMessageList = memo(function ChatMessageList({
                       ? t("The turn was interrupted.")
                       : t("No response was generated. Please try again."))}
                   </span>
+                  {showCreditsLink && (
+                    <a
+                      href={creditsLink}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="shrink-0 rounded-md px-2 py-1 text-[11.5px] font-medium text-[var(--destructive)] hover:bg-[var(--destructive)]/10"
+                    >
+                      {t("Buy credits")}
+                    </a>
+                  )}
                   {showRegenerate ? (
                     <button
                       type="button"

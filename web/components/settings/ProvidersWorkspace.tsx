@@ -36,6 +36,7 @@ import {
 import { ProviderServices } from "./ProviderServices";
 import { AddProviderPanel, ProviderProtocol, type CustomProviderInput } from "./AddProviderPanel";
 import { CodexOAuthCard } from "./CodexOAuthCard";
+import { DeepTutorAccountCard } from "./DeepTutorAccountCard";
 import { CodeBuddyAuthCard } from "./CodeBuddyAuthCard";
 import { stringifyExtraHeaders, subPanelClass } from "./shared";
 import {
@@ -44,6 +45,9 @@ import {
   WorkspaceSplit,
   workspaceCardClass,
 } from "./WorkspaceShell";
+
+const pinnedProviders: Readonly<Record<string, number>> = { deeptutor: 0, siliconflow: 1 };
+const personalProvider = { value: "deeptutor", label: "DeepTutor", services: ["llm"] as ServiceName[] };
 
 export function ProvidersWorkspace() {
   const { t, i18n } = useTranslation();
@@ -61,7 +65,7 @@ export function ProvidersWorkspace() {
     mutateCatalog((next) => stageRegistryAction(next, edit));
     return true;
   };
-  const sources = providerRegistry(draft);
+  const sources = catalogEditable ? providerRegistry(draft) : [];
   const editorRef = useRef<HTMLDivElement>(null);
   const [selected, setSelected] = useState<string | null>(null);
   // Below xl the detail pane sits under the rail, so anything that changes what
@@ -100,7 +104,7 @@ export function ProvidersWorkspace() {
     const params = new URLSearchParams(window.location.search);
     if (params.get("add") === "1") setAdding(true);
     const id = params.get("provider");
-    if (id && sources.some((p) => p.id === id))
+    if (id && (id === "deeptutor" || sources.some((p) => p.id === id)))
       setSelected((current) => current || id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sources.length]);
@@ -117,10 +121,10 @@ export function ProvidersWorkspace() {
   // Protocol-specific aliases still resolve saved accounts, but new accounts
   // use the vendor once and select their protocol in the connection editor.
   const addableOptions = options.filter((p) => p.status !== "legacy").sort(
-    (a, b) => Number(b.value === "siliconflow") - Number(a.value === "siliconflow"),
+    (a, b) => (pinnedProviders[a.value] ?? 2) - (pinnedProviders[b.value] ?? 2),
   );
   const optionLabel = (provider: string) => formatProviderLabel(provider, options.find(p => p.value === provider)?.label ?? provider, uiLanguage);
-  const source = sources.find((p) => p.id === selected);
+  const source = sources.find((p) => p.id === selected || (selected === "deeptutor" && p.provider === "deeptutor"));
   const option = options.find((p) => p.value === source?.provider);
   const managed = source?.provider === "openai_codex";
   const connection = source?.source;
@@ -136,6 +140,14 @@ export function ProvidersWorkspace() {
       });
   };
   const create = (custom?: CustomProviderInput) => {
+    if (vendor === "deeptutor") {
+      setSelected("deeptutor");
+      setAuth("");
+      setAdding(false);
+      syncQuery({ add: null, provider: "deeptutor" });
+      return;
+    }
+    if (!catalogEditable) return;
     const option = addableOptions.find((o) => o.value === vendor);
     if (!option) return;
     if (option.value === "openai_codex") {
@@ -167,12 +179,6 @@ export function ProvidersWorkspace() {
     setAuth("");
     syncQuery({ add: null, provider: `connection:${id}` });
   };
-  if (!catalogEditable)
-    return (
-      <p className="text-sm text-[var(--muted-foreground)]">
-        {t("Only administrators can manage providers.")}
-      </p>
-    );
   const savedIds = new Set(providerRegistry(catalog).map((p) => p.id));
   const saved = Boolean(source && savedIds.has(source.id));
   const filtered = sources.filter((p) =>
@@ -184,7 +190,7 @@ export function ProvidersWorkspace() {
     return (
       <div ref={editorRef} className="min-w-0 scroll-mt-4">
         <AddProviderPanel
-          options={addableOptions}
+          options={catalogEditable ? addableOptions : [personalProvider]}
           vendor={vendor}
           onVendor={setVendor}
           onCreate={create}
@@ -206,6 +212,7 @@ export function ProvidersWorkspace() {
               <button
                 type="button"
                 onClick={() => {
+                  setVendor("");
                   setAdding(true);
                   syncQuery({ add: "1", provider: selected });
                 }}
@@ -230,17 +237,18 @@ export function ProvidersWorkspace() {
             }
           >
             {filtered.map((p) => {
-              const editing = !adding && !auth && p.id === selected;
+              const editing = !adding && !auth && p.id === source?.id;
               return (
                 <button
                   key={p.id}
                   type="button"
                   aria-pressed={editing}
                   onClick={() => {
-                    setSelected(p.id);
+                    const id = p.provider === "deeptutor" ? "deeptutor" : p.id;
+                    setSelected(id);
                     setAdding(false);
                     setAuth("");
-                    syncQuery({ add: null, provider: p.id });
+                    syncQuery({ add: null, provider: id });
                   }}
                   className={workspaceCardClass(editing)}
                 >
@@ -268,6 +276,8 @@ export function ProvidersWorkspace() {
           <div ref={editorRef} className="min-w-0 scroll-mt-4">
             {auth === "openai_codex" ? (
               <CodexOAuthCard />
+            ) : selected === "deeptutor" || source?.provider === "deeptutor" ? (
+              <DeepTutorAccountCard />
             ) : source && connection ? (
               <section
                 aria-label={t("Provider settings")}

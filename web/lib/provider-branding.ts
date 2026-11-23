@@ -21,6 +21,7 @@ export const PROVIDER_ICONS: Readonly<Record<string, ProviderIconSpec>> = {
   cohere: { file: "cohere-color.svg" },
   dashscope: { file: "bailian-color.svg" },
   deepseek: { file: "deepseek-color.svg" },
+  deeptutor: { file: "/brand/color-logo.png" },
   doubao: { file: "doubao.png" },
   duckduckgo: { file: "duckduckgo.svg" },
   edge: { file: "microsoft-color.svg" },
@@ -128,6 +129,10 @@ const CHINESE_NAMES: Readonly<Record<string, { name: string; labels: string[] }>
 export function canonicalProviderBrand(provider?: string | null): string {
   const key = provider?.trim().toLowerCase() ?? "";
   return Object.hasOwn(PROVIDER_ALIASES, key) ? PROVIDER_ALIASES[key] : key;
+}
+
+export function providerIconUrl(file: string): string {
+  return file.startsWith("/") ? file : `/provider-icons/${file}`;
 }
 
 export function providerIconSpec(provider?: string | null): ProviderIconSpec | undefined {

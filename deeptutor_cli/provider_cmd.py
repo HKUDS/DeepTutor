@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import suppress
 import webbrowser
 
 import httpx
 import typer
 
 from deeptutor.services.codex_auth import CodexAuthError, get_codex_oauth_service
+from deeptutor.services.deeptutor_account import get_deeptutor_account
+from deeptutor.services.deeptutor_account.client import DeepTutorAccountError
 
 from .common import maybe_run
 
@@ -20,12 +23,24 @@ def register(app: typer.Typer) -> None:
             ...,
             help=(
                 "Provider: openai-codex (OAuth login) | github-copilot "
-                "(GitHub device login) | codebuddy (validate CodeBuddy SDK auth)"
+                "(GitHub device login) | codebuddy (validate CodeBuddy SDK auth) | "
+                "deeptutor (Studio device login)"
             ),
+        ),
+        no_browser: bool = typer.Option(
+            False, "--no-browser", help="Print the Studio sign-in code."
+        ),
+        base_url: str | None = typer.Option(
+            None, "--base-url", help="Override the Studio gateway."
         ),
     ) -> None:
         """Authenticate or validate provider access."""
         key = provider.strip().lower().replace("-", "_")
+        if key == "deeptutor":
+            maybe_run(_login_deeptutor(no_browser, base_url))
+            return
+        if no_browser or base_url is not None:
+            raise typer.BadParameter("--no-browser and --base-url are supported for deeptutor.")
         if key == "openai_codex":
             maybe_run(_login_openai_codex())
             return
@@ -36,8 +51,77 @@ def register(app: typer.Typer) -> None:
             maybe_run(_login_codebuddy())
             return
         raise typer.BadParameter(
-            f"Unknown provider `{provider}`. Supported: openai-codex, github-copilot, codebuddy"
+            f"Unknown provider `{provider}`. Supported: openai-codex, github-copilot, codebuddy, deeptutor"
         )
+
+    @app.command("status")
+    def provider_status(provider: str) -> None:
+        """Show the DeepTutor Studio device connection."""
+        if provider.lower().strip() != "deeptutor":
+            raise typer.BadParameter("Supported provider: deeptutor")
+        maybe_run(_deeptutor_status())
+
+    @app.command("logout")
+    def provider_logout(provider: str) -> None:
+        """Sign out of the DeepTutor Studio device connection."""
+        if provider.lower().strip() != "deeptutor":
+            raise typer.BadParameter("Supported provider: deeptutor")
+        maybe_run(_logout_deeptutor())
+
+
+async def _login_deeptutor(no_browser: bool, base_url: str | None) -> None:
+    account = get_deeptutor_account()
+    try:
+        sign_in = await account.start(base_url)
+        typer.echo(f"Open {sign_in.verification_uri}")
+        typer.echo(f"Enter the device code {sign_in.user_code}")
+        if not no_browser:
+            with suppress(webbrowser.Error):
+                webbrowser.open(sign_in.verification_uri_complete)
+        try:
+            access = await account.finish(sign_in)
+        finally:
+            with suppress(DeepTutorAccountError):
+                await account.cancel(sign_in)
+        await _deeptutor_status()
+        try:
+            models = await account.refresh_models(access)
+        except DeepTutorAccountError as exc:
+            if exc.error_code == "invalid_grant":
+                raise
+            typer.echo(f"Could not load models. {exc.message} Refresh them in Settings.", err=True)
+        else:
+            count = sum(item["available"] for item in models)
+            typer.echo(f"Available DeepTutor models: {count}.")
+            if not count:
+                status = await account.status()
+                typer.echo(f"Manage paid credits at {status['public_url']}/account/credits")
+    except DeepTutorAccountError as exc:
+        typer.echo(exc.message, err=True)
+        raise typer.Exit(code=1) from None
+
+
+async def _deeptutor_status() -> None:
+    try:
+        status = await get_deeptutor_account().status()
+    except DeepTutorAccountError as exc:
+        typer.echo(exc.message, err=True)
+        raise typer.Exit(code=1) from None
+    if status["state"] == "connected":
+        typer.echo(
+            f"Signed in to DeepTutor Studio as {status['user']['email']} ({status['account']['name']})."
+        )
+    else:
+        typer.echo("DeepTutor Studio is signed out.")
+
+
+async def _logout_deeptutor() -> None:
+    try:
+        await get_deeptutor_account().logout()
+    except DeepTutorAccountError as exc:
+        typer.echo(exc.message, err=True)
+        raise typer.Exit(code=1) from None
+    typer.echo("Signed out of DeepTutor Studio.")
 
 
 async def _login_openai_codex() -> None:

@@ -8,7 +8,7 @@ import { SettingsPageHeader } from "@/components/settings/shared";
 export default function ConnectionsSettingsPage() {
   const { t } = useTranslation();
   return (
-    <div>
+    <div className="space-y-5">
       <SettingsPageHeader
         title={t("Providers")}
         description={t(

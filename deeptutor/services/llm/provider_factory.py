@@ -46,6 +46,10 @@ def _provider_cache_key(config: LLMConfig, loop: asyncio.AbstractEventLoop) -> t
         from deeptutor.services.github_copilot_storage import get_github_copilot_storage
 
         owner_identity = str(get_github_copilot_storage().credentials_path)
+    elif spec and spec.backend == "deeptutor":
+        from deeptutor.multi_user.paths import get_owner_secrets_dir
+
+        owner_identity = str(get_owner_secrets_dir())
     return (
         loop,
         os.getenv("DEEPTUTOR_CHAT_ENGINE", "python"),
@@ -114,6 +118,10 @@ def _build_runtime_provider(
             default_model=llm_config.model,
             configure_env=configure_env,
         )
+    elif backend == "deeptutor":
+        from deeptutor.services.llm.provider_core.deeptutor_provider import DeepTutorProvider
+
+        provider = DeepTutorProvider(default_model=llm_config.model)
     elif backend == "codebuddy":
         from deeptutor.services.llm.provider_core.codebuddy_http_provider import (
             build_codebuddy_provider,

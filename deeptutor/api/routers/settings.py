@@ -20,6 +20,8 @@ from fastapi import APIRouter, HTTPException, Query, Request, status
 from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 
+from . import deeptutor_account
+
 logger = logging.getLogger(__name__)
 
 from deeptutor.multi_user.context import get_current_user
@@ -62,6 +64,7 @@ from deeptutor.services.config.settings_profile import (
     export_settings_profile,
     review_settings_profile_import,
 )
+from deeptutor.services.deeptutor_account.catalog import preserve_managed_profile
 from deeptutor.services.llm.config import clear_llm_config_cache
 from deeptutor.services.model_selection import list_llm_options
 from deeptutor.services.path_service import get_path_service
@@ -90,6 +93,7 @@ from deeptutor.services.settings.starter_settings import (
 from deeptutor.tools.builtin import USER_TOGGLEABLE_TOOL_NAMES
 
 router = APIRouter()
+router.include_router(deeptutor_account.router)
 # Public UI-settings router. The app shell bootstraps the interface language
 # from GET /api/settings/ui, and auth pages (/register, /login) must be
 # able to do the same *before* a session exists — so this one read endpoint
@@ -1827,13 +1831,21 @@ async def get_llm_options():
     return list_llm_options(get_model_catalog_service().load())
 
 
+def _reconcile_provider_catalog(
+    current: dict[str, Any], proposed: dict[str, Any]
+) -> dict[str, Any]:
+    catalog = reconcile_codex_catalog_update(current, proposed)
+    preserve_managed_profile(current, catalog)
+    return catalog
+
+
 @router.put("/catalog")
 async def update_catalog(payload: CatalogPayload):
     _require_settings_admin()
     service = get_model_catalog_service()
     current = service.load()
     restored = restore_catalog_secrets(payload.catalog, current)
-    proposed = reconcile_codex_catalog_update(current, restored)
+    proposed = _reconcile_provider_catalog(current, restored)
     with _runtime_catalog_write():
         catalog = service.save(proposed)
     return {"catalog": redact_catalog_secrets(catalog)}
@@ -1852,7 +1864,7 @@ async def apply_registry_edit(payload: RegistryEditPayload):
     edit = payload.model_dump(exclude_none=True)
     try:
         proposed = merge_registry_edit(current, edit, stored_draft=stored.get("catalog"))
-        proposed = reconcile_codex_catalog_update(current, proposed)
+        proposed = _reconcile_provider_catalog(current, proposed)
         draft_catalog = stored.get("catalog")
         if isinstance(draft_catalog, dict):
             stored["catalog"] = merge_registry_edit(draft_catalog, edit, stored_draft=proposed)
@@ -1893,7 +1905,7 @@ async def apply_provider_edit(payload: ProviderEditPayload):
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    reconciled = reconcile_codex_catalog_update(current, proposed)
+    reconciled = _reconcile_provider_catalog(current, proposed)
     with _runtime_catalog_write():
         service.apply(reconciled)
     catalog = service.load()
@@ -1960,7 +1972,7 @@ async def apply_catalog_service(payload: CatalogServicePayload):
             apply_llm_selection_to_catalog(restored, selection)
         except (ValueError, AttributeError) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
-    reconciled = reconcile_codex_catalog_update(current, restored)
+    reconciled = _reconcile_provider_catalog(current, restored)
     with _runtime_catalog_write():
         runtime = service.apply(reconciled)
     catalog = service.load()
@@ -2049,7 +2061,7 @@ async def apply_catalog(payload: CatalogPayload | None = None):
             if isinstance(draft_catalog, dict)
             else current
         )
-    catalog = reconcile_codex_catalog_update(current, proposed)
+    catalog = _reconcile_provider_catalog(current, proposed)
     with _runtime_catalog_write():
         applied = service.apply(catalog)
     catalog_after = service.load()

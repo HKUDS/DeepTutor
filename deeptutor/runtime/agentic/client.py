@@ -106,6 +106,12 @@ def _client_cache_key(
     serialized_key = json.dumps(config.api_key or "", ensure_ascii=False, separators=(",", ":"))
     secret = hashlib.sha256(serialized_key.encode("utf-8")).hexdigest()[:16]
     headers = json.dumps(config.extra_headers or {}, sort_keys=True, separators=(",", ":"))
+    owner = None
+    spec = find_by_name(config.binding)
+    if spec and spec.backend == "deeptutor":
+        from deeptutor.multi_user.paths import get_owner_secrets_dir
+
+        owner = get_owner_secrets_dir()
     return (
         loop,
         config.binding,
@@ -117,6 +123,7 @@ def _client_cache_key(
         config.wire_api,
         config.api_format,
         disable_ssl_verify,
+        owner,
     )
 
 
@@ -143,6 +150,10 @@ def _build_openai_client(
     # create_ssl_context raise FileNotFoundError mid-__init__, aborting client
     # construction. Drop broken CA paths first so TLS uses its default CA config.
     sanitize_invalid_ssl_env()
+    spec = find_by_name(config.binding)
+    backend = effective_backend(spec, config.api_format)
+    if backend == "deeptutor":
+        return _NATIVE_ADAPTER_BUILDERS[backend](config, spec)
     if isinstance(config.api_key, list):
         keys = [str(key).strip() for key in config.api_key if str(key or "").strip()]
         clients = {
@@ -154,8 +165,6 @@ def _build_openai_client(
             for key in keys
         }
         return _KeyRotatingClient(KeyPool(keys), clients)
-    spec = find_by_name(config.binding)
-    backend = effective_backend(spec, config.api_format)
     wire_api = wire_api_for_provider(config.wire_api, spec)
     if wire_api == "responses":
         from deeptutor.services.llm.provider_core import OpenAICompatProvider
@@ -384,6 +393,12 @@ def _build_codebuddy_adapter(config: LLMClientConfig, spec: Any) -> Any:
     return _ProviderOpenAIAdapter(codebuddy_provider)
 
 
+def _build_deeptutor_adapter(config: LLMClientConfig, spec: Any) -> Any:
+    from deeptutor.services.llm.provider_core.deeptutor_provider import DeepTutorProvider
+
+    return _ProviderOpenAIAdapter(DeepTutorProvider(default_model=config.model or ""))
+
+
 def _build_claude_code_adapter(config: LLMClientConfig, spec: Any) -> Any:
     from deeptutor.services.llm.provider_core import ClaudeCodeProvider
 
@@ -409,6 +424,7 @@ _NATIVE_ADAPTER_BUILDERS: dict[str, Callable[[LLMClientConfig, Any], Any]] = {
     "anthropic": _build_anthropic_adapter,
     "openai_codex": _build_codex_adapter,
     "github_copilot": _build_copilot_adapter,
+    "deeptutor": _build_deeptutor_adapter,
     "codebuddy": _build_codebuddy_adapter,
     "claude_code": _build_claude_code_adapter,
 }

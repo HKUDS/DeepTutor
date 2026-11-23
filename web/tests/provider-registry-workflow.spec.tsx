@@ -198,6 +198,26 @@ beforeEach(() => {
   vi.stubGlobal("matchMedia", () => ({ matches: false }));
 });
 
+it("pins DeepTutor beside SiliconFlow and opens device sign-in only when chosen", async () => {
+  mocks.fetch.mockResolvedValue({ ok: true, json: async () => ({ state: "idle" }) });
+  render(<Harness page="providers" providerOptions={{ llm: [
+    { value: "aihubmix", label: "AiHubMix" },
+    { value: "siliconflow", label: "SiliconFlow" },
+    { value: "deeptutor", label: "DeepTutor" },
+  ] }} />);
+  expect(screen.queryByRole("button", { name: "Sign in to DeepTutor Studio" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Add provider" }));
+  const radios = screen.getAllByRole("radio");
+  expect(radios.slice(0, 2).map(radio => radio.getAttribute("value"))).toEqual(["deeptutor", "siliconflow"]);
+  fireEvent.click(radios[1]);
+  expect(mocks.fetch).not.toHaveBeenCalled();
+  fireEvent.click(radios[0]);
+  fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+  await screen.findByRole("button", { name: "Sign in to DeepTutor Studio" });
+  expect(mocks.fetch.mock.calls.map(([url]) => url)).toEqual(["/api/settings/providers/deeptutor/auth/status"]);
+  expect(mocks.settings.draft.connections).toEqual([]);
+});
+
 it("offers one MiniMax vendor with protocol choices instead of legacy provider aliases", () => {
   render(<Harness page="providers" providerOptions={minimaxProviders} />);
   fireEvent.click(screen.getByRole("button", { name: "Add provider" }));

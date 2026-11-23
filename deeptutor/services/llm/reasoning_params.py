@@ -186,6 +186,8 @@ def build_openai_compatible_reasoning_kwargs(
     """
     provider_name = _spec_name(spec, binding)
     model_name = model or ""
+    if getattr(spec, "opaque_model_ids", False):
+        return {"reasoning_effort": reasoning_effort} if reasoning_effort else {}
     if provider_name == "minimax":
         minimax = minimax_reasoning_kwargs(model_name, (reasoning_effort or "").strip().lower())
         if minimax is not None:

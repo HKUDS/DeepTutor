@@ -4,12 +4,13 @@ import { describe, it, expect } from 'vitest'
 import {
   PROVIDER_ICONS,
   providerIconSpec,
+  providerIconUrl,
   formatProviderLabel,
   formatConfiguredProviderName,
 } from '../lib/provider-branding'
 
 const root = path.resolve(process.cwd(), '..')
-const asset = (file: string) => path.join(root, 'web/public/provider-icons', file)
+const asset = (file: string) => path.join(root, 'web/public', providerIconUrl(file))
 
 describe('provider branding', () => {
   it('covers every branded provider in all service registries', () => {

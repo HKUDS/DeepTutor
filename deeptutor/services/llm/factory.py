@@ -740,6 +740,12 @@ async def fetch_models(
     api_key: str | None = None,
     api_format: str = "auto",
 ) -> list[str]:
+    if canonical_provider_name(binding) == "deeptutor":
+        from deeptutor.services.deeptutor_account import get_deeptutor_account
+
+        models = await get_deeptutor_account().refresh_models()
+        return [model["id"] for model in models if model["available"]]
+
     if canonical_provider_name(binding) == "github_copilot":
         from deeptutor.services.github_copilot_auth import list_github_copilot_models
 

@@ -42,6 +42,8 @@ class ProviderSpec:
     strip_model_prefix: bool = False
     supports_max_completion_tokens: bool = False
     supports_prompt_caching: bool = False
+    cache_markers: str = "model"
+    opaque_model_ids: bool = False
     supports_stream_options: bool = True
     model_overrides: tuple[tuple[str, dict[str, Any]], ...] = ()
     # Bare model-id families too short or generic for substring-based vendor
@@ -513,6 +515,18 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         supports_max_completion_tokens=True,
     ),
     ProviderSpec(
+        name="deeptutor",
+        keywords=("deeptutor",),
+        env_key="",
+        display_name="DeepTutor",
+        backend="deeptutor",
+        is_oauth=True,
+        default_api_base="https://deeptutor.studio/api/gateway/v1",
+        supports_prompt_caching=True,
+        cache_markers="always",
+        opaque_model_ids=True,
+    ),
+    ProviderSpec(
         name="codebuddy",
         keywords=("codebuddy", "workbuddy"),
         env_key="CODEBUDDY_API_KEY",
@@ -933,7 +947,7 @@ def model_overrides_for(model: str | None, spec: ProviderSpec | None) -> dict[st
 
     if spec is not None:
         configured = _matching_overrides(spec, model_lower)
-        if configured:
+        if configured or spec.opaque_model_ids:
             return configured
 
     vendor = find_by_model(model_lower)

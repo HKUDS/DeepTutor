@@ -1,5 +1,5 @@
 import { Bot } from "lucide-react";
-import { providerIconSpec } from "@/lib/provider-branding";
+import { providerIconSpec, providerIconUrl } from "@/lib/provider-branding";
 
 /** Locally bundled provider marks; no third-party request is needed to render them. */
 export default function ProviderIcon({
@@ -23,7 +23,7 @@ export default function ProviderIcon({
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
-        src={`/provider-icons/${spec.file}`}
+        src={providerIconUrl(spec.file)}
         alt=""
         width={size}
         height={size}
@@ -33,7 +33,7 @@ export default function ProviderIcon({
       {spec.darkFile && (
         // eslint-disable-next-line @next/next/no-img-element
         <img
-          src={`/provider-icons/${spec.darkFile}`}
+          src={providerIconUrl(spec.darkFile)}
           alt=""
           width={size}
           height={size}

@@ -428,7 +428,7 @@ class OpenAICompatProvider(LLMProvider):
         return None
 
     @classmethod
-    def supports_prompt_caching_for(cls, model: str | None) -> bool:
+    def supports_prompt_caching_for(cls, model: str | None, spec: Any = None) -> bool:
         """Whether *model* uses explicit ``cache_control`` breakpoints.
 
         Anthropic models reached through an OpenAI-compatible gateway cache
@@ -436,6 +436,8 @@ class OpenAICompatProvider(LLMProvider):
         understand the marker. Kept here so the agent loop and the provider
         agree on the same gate.
         """
+        if spec and getattr(spec, "cache_markers", "model") == "always":
+            return True
         name = str(model or "").lower()
         return name.startswith(("anthropic/", "claude"))
 
@@ -553,9 +555,16 @@ class OpenAICompatProvider(LLMProvider):
         model_name = model or self.default_model
         spec = self._spec
 
-        if spec and spec.supports_prompt_caching:
-            if any(model_name.lower().startswith(k) for k in ("anthropic/", "claude")):
-                messages, tools = self._apply_cache_control(messages, tools)
+        if (
+            spec
+            and spec.supports_prompt_caching
+            and self.supports_prompt_caching_for(model_name, spec)
+        ):
+            messages, tools = self._apply_cache_control(
+                messages,
+                tools,
+                stable_history_end=getattr(spec, "cache_markers", "model") == "always",
+            )
 
         if spec and spec.strip_model_prefix:
             model_name = model_name.split("/")[-1]
