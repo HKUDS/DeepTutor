@@ -58,7 +58,7 @@
         </picture>
       </a>
     </td>
-    <td valign="middle">ModelGo is an AI API platform that provides unified access to mainstream models, including Claude, GPT, Gemini, and DeepSeek (60% off v4.1 Flash). <a href="https://modelgo.ai/?utm_source=deeptutor&amp;utm_medium=sponsorship&amp;utm_content=readme&amp;campaign_id=deeptutor&amp;ad_group_id=readme">Sign up</a> and receive a $10 bonus with your first top-up.</td>
+    <td valign="middle">ModelGo is an AI API platform that provides unified access to mainstream models, including Claude, GPT, Gemini, and DeepSeek (40% off v4.1 Flash). <a href="https://modelgo.ai/?utm_source=deeptutor&amp;utm_medium=sponsorship&amp;utm_content=readme&amp;campaign_id=deeptutor&amp;ad_group_id=readme">Sign up</a> and receive a $10 bonus with your first top-up.</td>
   </tr>
   <tr>
     <td width="240" align="center" valign="middle">
@@ -82,14 +82,6 @@
       <source media="(prefers-color-scheme: dark)" srcset="assets/figs/partners/modelscope-dark.png">
       <source media="(prefers-color-scheme: light)" srcset="assets/figs/partners/modelscope.png">
       <img src="assets/figs/partners/modelscope.png" alt="ModelScope" height="26">
-    </picture>
-  </a>
-  &nbsp;&nbsp;&nbsp;&nbsp;
-  <a href="https://github.com/VectifyAI/PageIndex">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="assets/figs/partners/pageindex-mark-dark.svg">
-      <source media="(prefers-color-scheme: light)" srcset="assets/figs/partners/pageindex-mark.svg">
-      <img src="assets/figs/partners/pageindex-mark.svg" alt="PageIndex" height="38">
     </picture>
   </a>
   &nbsp;&nbsp;&nbsp;&nbsp;
