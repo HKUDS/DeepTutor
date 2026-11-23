@@ -35,11 +35,13 @@ async def test_refresh_discovers_version_gated_model_and_preserves_selection(
     requests: list[httpx.Request] = []
 
     def respond(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "api.github.com":
+            return httpx.Response(503)
         if request.url.host == "registry.npmjs.org":
             return httpx.Response(503)
         requests.append(request)
         version = request.url.params["client_version"]
-        assert version in {"0.145.0", "0.153.4"}
+        assert version in {"0.145.0", "0.171.0"}
         payload = old_payload if version == "0.145.0" else new_payload
         return httpx.Response(200, json=payload, headers={"etag": '"new-catalog"'})
 

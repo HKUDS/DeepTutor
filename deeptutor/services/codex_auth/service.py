@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from copy import deepcopy
 from dataclasses import dataclass
 import hashlib
@@ -23,6 +23,9 @@ from deeptutor.services.config.runtime_settings import load_system_settings
 
 from .catalog import CodexModelCatalog
 from .constants import (
+    CODEX_AUTO_REFRESH_INTERVAL_SECONDS,
+    CODEX_AUTO_REFRESH_FAILURE_BACKOFF_SECONDS,
+    CODEX_AUTO_REFRESH_LEASE_SECONDS,
     CODEX_CALLBACK_PATH,
     CODEX_CALLBACK_PORTS,
     CODEX_LOGIN_TIMEOUT_SECONDS,
@@ -685,30 +688,97 @@ class CodexOAuthService:
         return self.public_status()
 
     async def refresh_models(self) -> dict[str, Any]:
+        return await self._refresh_models(
+            CODEX_AUTO_REFRESH_INTERVAL_SECONDS, CODEX_AUTO_REFRESH_FAILURE_BACKOFF_SECONDS
+        )
+
+    async def _refresh_models(self, interval: int, backoff: int, expected_generation: int | None = None) -> dict[str, Any]:
         async with self._catalog_sync_lock:
-            token = await self.get_token()
-            credentials = self._store.load_credentials()
-            if credentials is None or credentials.generation != token.generation:
-                raise CodexAuthError(
-                    "authentication_changed",
-                    "Codex authentication changed before models could be refreshed.",
-                    409,
-                )
+            attempted_at = int(self._clock())
+            generation = self._store.current_generation()
+            if expected_generation is not None and generation != expected_generation:
+                raise self._store._generation_changed()
+            attempt_generation = generation
             try:
+                token = await self.get_token(expected_generation=expected_generation)
+                attempt_generation = token.generation
+                credentials = self._store.load_credentials()
+                if credentials is None or credentials.generation != attempt_generation:
+                    raise self._store._generation_changed()
                 snapshot = await self._catalog.get(credentials, force=True)
-            except CodexAuthError as exc:
-                if exc.code in {"catalog_unauthorized", "catalog_forbidden"}:
+                # Always acquire model_catalog lock BEFORE store lock (same lock order as
+                # set_reasoning_effort) to prevent cross-process AB-BA deadlocks, and
+                # publish the latest durable cache snapshot so concurrent refreshes never
+                # overwrite a newer managed profile with an older response.
+                with self._model_catalog._interprocess_lock():
+                    with self._store._locked():
+                        if self._store._read_state_unlocked()["generation"] != attempt_generation:
+                            raise self._store._generation_changed()
+                        durable_payload = self._store._read_json(
+                            self._store.catalog_cache_path,
+                            code="catalog_corrupt",
+                            message="Stored Codex model data is invalid.",
+                        )
+                        publish_snapshot = snapshot
+                        if durable_payload is not None:
+                            durable = CatalogSnapshot.from_dict(durable_payload)
+                            if durable.generation == attempt_generation and durable.models_valid:
+                                publish_snapshot = durable
+                        sync_codex_catalog(
+                            self._model_catalog, publish_snapshot, account_id=credentials.account_id
+                        )
+                        self._last_snapshot = publish_snapshot
+                self._store.record_catalog_refresh_result(
+                    generation=attempt_generation, attempted_at=attempted_at,
+                    next_refresh_at=attempted_at + interval, succeeded=True, error_code=None,
+                    client_version=publish_snapshot.client_version,
+                    version_source=publish_snapshot.version_source,
+                )
+            except Exception as exc:
+                if isinstance(exc, CodexAuthError) and exc.code in {"catalog_unauthorized", "catalog_forbidden"}:
                     self._last_snapshot = None
+                if not (isinstance(exc, CodexAuthError) and exc.code == "generation_changed"):
+                    with suppress(CodexAuthError, OSError):
+                        self._store.record_catalog_refresh_result(
+                            generation=attempt_generation, attempted_at=attempted_at,
+                            next_refresh_at=attempted_at + backoff, succeeded=False,
+                            error_code=exc.code if isinstance(exc, CodexAuthError) else "catalog_refresh_failed",
+                        )
                 raise
-            sync_codex_catalog(
-                self._model_catalog,
-                snapshot,
-                account_id=credentials.account_id,
-            )
-            self._last_snapshot = snapshot
             return self.public_status()
 
-    async def get_token(self) -> CodexToken:
+    async def refresh_models_if_due(
+        self, *, min_interval_seconds: int = CODEX_AUTO_REFRESH_INTERVAL_SECONDS,
+        failure_backoff_seconds: int = CODEX_AUTO_REFRESH_FAILURE_BACKOFF_SECONDS,
+        lease_owner: str = "scheduler",
+    ) -> bool:
+        owner = f"{lease_owner}:{secrets.token_hex(16)}"
+        acquired = False
+        try:
+            credentials = self._store.load_credentials()
+            if credentials is None or self._store.authentication_rejected(credentials.generation):
+                return False
+            now = int(self._clock())
+            snapshot = self._status_snapshot(credentials)
+            acquired = self._store.try_acquire_catalog_refresh_lease(
+                owner,
+                now,
+                CODEX_AUTO_REFRESH_LEASE_SECONDS,
+                credentials.generation,
+                min_interval_seconds=min_interval_seconds,
+                snapshot_fetched_at=snapshot.fetched_at if snapshot is not None else None,
+            )
+            if not acquired:
+                return False
+            await self._refresh_models(min_interval_seconds, failure_backoff_seconds, credentials.generation)
+            return True
+        except Exception:
+            return False
+        finally:
+            if acquired:
+                self._store.release_catalog_refresh_lease(owner)
+
+    async def get_token(self, *, expected_generation: int | None = None) -> CodexToken:
         async with self._refresh_lock:
             credentials = self._store.load_credentials()
             if credentials is None:
@@ -717,6 +787,8 @@ class CodexOAuthService:
                     "Sign in to Codex before using this model.",
                     401,
                 )
+            if expected_generation is not None and credentials.generation != expected_generation:
+                raise self._store._generation_changed()
             if self._store.authentication_rejected(credentials.generation):
                 # A refresh was rejected — the stored session no
                 # longer refreshes (revoked, de-authorized). Fail fast with a
@@ -860,32 +932,32 @@ class CodexOAuthService:
         try:
             await self.cancel_login()
             async with self._catalog_sync_lock:
-                credentials = self._store.load_credentials()
-                if credentials is not None:
-                    try:
-                        await self._oauth.revoke(credentials)
-                    except Exception as exc:
-                        # Never log credential material: record only the error
-                        # kind and status so operators know the remote token
-                        # may still be valid.
-                        logger.warning(
-                            "Codex token revocation failed during logout; the "
-                            "remote token may still be valid (error=%s, http_status=%s)",
-                            getattr(exc, "code", None) or type(exc).__name__,
-                            getattr(exc, "http_status", None),
-                        )
-                    self._store.clear_credentials(expected_generation=credentials.generation)
-                else:
-                    self._store.clear_credentials(
-                        expected_generation=self._store.current_generation()
-                    )
-                remove_codex_catalog(self._model_catalog)
+                # Atomically detach credentials and advance generation before awaiting
+                # remote revocation so a concurrent token rotation in another process
+                # cannot race with clear_credentials or resurrect the signed-out session.
+                detached = self._store.detach_credentials()
                 try:
-                    await self._catalog.invalidate()
-                except Exception:
-                    pass
-                self._last_snapshot = None
-                self._operation = None
+                    remove_codex_catalog(self._model_catalog)
+                    try:
+                        await self._catalog.invalidate()
+                    except Exception:
+                        pass
+                    self._last_snapshot = None
+                    self._operation = None
+                finally:
+                    if detached is not None:
+                        try:
+                            await self._oauth.revoke(detached)
+                        except Exception as exc:
+                            # Never log credential material: record only the error
+                            # kind and status so operators know the remote token
+                            # may still be valid.
+                            logger.warning(
+                                "Codex token revocation failed during logout; the "
+                                "remote token may still be valid (error=%s, http_status=%s)",
+                                getattr(exc, "code", None) or type(exc).__name__,
+                                getattr(exc, "http_status", None),
+                            )
                 return self.public_status()
         finally:
             async with self._inference_lock:
@@ -971,7 +1043,16 @@ class CodexOAuthService:
             connection = "disconnected"
 
         snapshot = self._status_snapshot(credentials)
+        try:
+            refresh_state = self._store.load_catalog_refresh_state() if credentials else {}
+        except CodexAuthError:
+            refresh_state = {}
         return {
+            "catalog_client_version": (snapshot.client_version if snapshot else None) or refresh_state.get("catalog_client_version"),
+            "catalog_version_source": (snapshot.version_source if snapshot else None) or refresh_state.get("catalog_version_source"),
+            "catalog_last_attempt_at": refresh_state.get("catalog_last_attempt_at"),
+            "catalog_last_error_code": refresh_state.get("catalog_last_error_code"),
+            "catalog_next_refresh_at": refresh_state.get("catalog_next_refresh_at"),
             "connection": connection,
             "operation_id": operation.operation_id if operation is not None else None,
             "operation_state": (operation.operation_state if operation is not None else None),
@@ -1005,18 +1086,35 @@ class CodexOAuthService:
     ) -> CatalogSnapshot | None:
         if credentials is None:
             return None
-        snapshot = self._last_snapshot
-        if snapshot is not None and snapshot.generation == credentials.generation:
-            return snapshot
         try:
             payload = self._store.load_catalog_cache()
-            if payload is None:
+        except CodexAuthError:
+            self._last_snapshot = None
+            return None
+        if payload is None:
+            # If a real cache file previously existed on disk and was cleared/unlinked,
+            # do not serve a stale in-memory copy. Keep in-memory fallback only for
+            # non-persisting test doubles (e.g. FakeCatalog) that never wrote a file.
+            if getattr(self, "_last_snapshot_persisted", False):
+                self._last_snapshot = None
+                self._last_snapshot_persisted = False
                 return None
+            snapshot = self._last_snapshot
+            if snapshot is not None and snapshot.generation == credentials.generation:
+                return snapshot
+            return None
+        try:
             cached = CatalogSnapshot.from_dict(payload)
         except CodexAuthError:
+            self._last_snapshot = None
+            self._last_snapshot_persisted = False
             return None
         if not cached.models_valid or cached.generation != credentials.generation:
+            self._last_snapshot = None
+            self._last_snapshot_persisted = False
             return None
+        self._last_snapshot = cached
+        self._last_snapshot_persisted = True
         return cached
 
     def _active_codex_model(self) -> str | None:

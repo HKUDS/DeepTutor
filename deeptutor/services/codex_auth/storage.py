@@ -18,6 +18,11 @@ from typing import Any, BinaryIO
 from .contracts import CatalogSnapshot, CodexAuthError, CodexCredentials
 
 _SCHEMA_VERSION = 1
+_REFRESH_KEYS = (
+    "catalog_last_attempt_at", "catalog_last_success_at", "catalog_last_error_code",
+    "catalog_next_refresh_at", "catalog_client_version", "catalog_version_source",
+    "catalog_refresh_lease_until", "catalog_refresh_lease_owner",
+)
 
 
 def _is_reparse_point(path: Path) -> bool:
@@ -234,10 +239,58 @@ class CodexCredentialStore:
                 "schema_version": _SCHEMA_VERSION,
                 "generation": next_generation,
             }
+            try:
+                old_payload = self._read_json(
+                    self.credentials_path, code="credential_corrupt",
+                    message="Stored Codex credentials are invalid.",
+                )
+            except CodexAuthError as exc:
+                if exc.code != "credential_corrupt":
+                    raise
+                old_payload = None
+            if old_payload is None or old_payload.get("account_id") != credentials.account_id:
+                for key in _REFRESH_KEYS:
+                    next_state.pop(key, None)
             next_state.pop("rejected_generation", None)
             _atomic_write_json(self.state_path, next_state)
             _atomic_write_json(self.credentials_path, committed.to_dict())
             return committed
+
+    def detach_credentials(self) -> CodexCredentials | None:
+        """Atomically clear local credentials and advance generation before remote revoke."""
+        with self._locked():
+            state = self._read_state_unlocked()
+            current_generation = int(state["generation"])
+            detached: CodexCredentials | None = None
+            try:
+                payload = self._read_json(
+                    self.credentials_path,
+                    code="credential_corrupt",
+                    message="Stored Codex credentials are invalid.",
+                )
+                if payload is not None:
+                    candidate = CodexCredentials.from_dict(payload)
+                    if candidate.generation == current_generation:
+                        detached = candidate
+            except CodexAuthError as exc:
+                if exc.code != "credential_corrupt":
+                    raise
+            next_generation = current_generation + 1
+            state.pop("rejected_generation", None)
+            for key in _REFRESH_KEYS:
+                state.pop(key, None)
+            _atomic_write_json(
+                self.state_path,
+                {
+                    **state,
+                    "schema_version": _SCHEMA_VERSION,
+                    "generation": next_generation,
+                },
+            )
+            for path in (self.credentials_path, self.catalog_cache_path):
+                _assert_safe_regular_path(path)
+                path.unlink(missing_ok=True)
+            return detached
 
     def clear_credentials(self, expected_generation: int | None = None) -> int:
         with self._locked():
@@ -247,6 +300,8 @@ class CodexCredentialStore:
                 raise self._generation_changed()
             next_generation = current_generation + 1
             state.pop("rejected_generation", None)
+            for key in _REFRESH_KEYS:
+                state.pop(key, None)
             _atomic_write_json(
                 self.state_path,
                 {
@@ -259,6 +314,70 @@ class CodexCredentialStore:
                 _assert_safe_regular_path(path)
                 path.unlink(missing_ok=True)
             return next_generation
+
+    def load_catalog_refresh_state(self) -> dict[str, Any]:
+        with self._locked():
+            state = self._read_state_unlocked()
+            return {key: state.get(key) for key in _REFRESH_KEYS}
+
+    def try_acquire_catalog_refresh_lease(
+        self,
+        owner: str,
+        now: int,
+        lease_seconds: int,
+        expected_generation: int,
+        *,
+        min_interval_seconds: int | None = None,
+        snapshot_fetched_at: int | None = None,
+    ) -> bool:
+        with self._locked():
+            state = self._read_state_unlocked()
+            if state["generation"] != expected_generation:
+                return False
+            rejected = state.get("rejected_generation")
+            if type(rejected) is int and rejected == expected_generation:
+                return False
+            next_at = state.get("catalog_next_refresh_at")
+            if next_at is not None:
+                if next_at > now:
+                    return False
+            elif (
+                min_interval_seconds is not None
+                and snapshot_fetched_at is not None
+                and snapshot_fetched_at + min_interval_seconds > now
+            ):
+                return False
+            if (state.get("catalog_refresh_lease_until") or 0) > now:
+                return False
+            state.update(catalog_refresh_lease_owner=owner,
+                         catalog_refresh_lease_until=now + lease_seconds)
+            _atomic_write_json(self.state_path, state)
+            return True
+
+    def release_catalog_refresh_lease(self, owner: str) -> None:
+        with self._locked():
+            state = self._read_state_unlocked()
+            if state.get("catalog_refresh_lease_owner") == owner:
+                state.update(catalog_refresh_lease_owner=None, catalog_refresh_lease_until=None)
+                _atomic_write_json(self.state_path, state)
+
+    def record_catalog_refresh_result(
+        self, *, generation: int, attempted_at: int, next_refresh_at: int,
+        succeeded: bool, error_code: str | None, client_version: str | None = None,
+        version_source: str | None = None,
+    ) -> None:
+        with self._locked():
+            state = self._read_state_unlocked()
+            if state["generation"] != generation:
+                return
+            state.update(catalog_last_attempt_at=attempted_at,
+                         catalog_next_refresh_at=next_refresh_at,
+                         catalog_last_error_code=error_code)
+            if succeeded:
+                state.update(catalog_last_success_at=attempted_at,
+                             catalog_client_version=client_version,
+                             catalog_version_source=version_source)
+            _atomic_write_json(self.state_path, state)
 
     def load_catalog_cache(self) -> dict[str, Any] | None:
         with self._locked():

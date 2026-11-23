@@ -2666,6 +2666,7 @@
   "codex.oauth.denied": "Codexの認可が拒否されました。",
   "codex.oauth.requestFailed": "Codexのリクエストに失敗しました。もう一度お試しください。",
   "codex.oauth.modelCount": "モデル：{{count}}",
+  "codex.oauth.catalogSyncMeta": "カタログバージョン: {{version}} ({{source}}) · 最終同期: {{syncedAt}}",
   "codex.oauth.reasoningTitle": "推論の強度",
   "codex.oauth.reasoningDescription": "Codexモデルごとにデフォルトを選択します。そのモデルがサポートするレベルのみ選択できます。",
   "codex.oauth.reasoningSaved": "Codexの推論の強度を保存しました。",

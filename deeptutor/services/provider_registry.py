@@ -193,7 +193,7 @@ ANTHROPIC_EFFORT_BASED_FAMILIES: tuple[str, ...] = (
 # HTTP 400 to any other value, on Azure deployments as on OpenAI itself. The
 # services providers' ``_supports_temperature`` skips it for the same names;
 # the agentic Chat Completions path relies on these overrides (#2181).
-OPENAI_REASONING_FAMILIES: tuple[str, ...] = ("gpt-5", "o1", "o3", "o4")
+OPENAI_REASONING_FAMILIES: tuple[str, ...] = ("gpt-6", "gpt-5", "o1", "o3", "o4")
 # ``find_by_model`` maps gpt-* names to OpenAI but not bare o-series ids such
 # as ``o3-mini``, so the bindings that serve them carry the rule themselves.
 _OPENAI_REASONING_OVERRIDES: tuple[tuple[str, dict[str, Any]], ...] = tuple(
@@ -902,6 +902,9 @@ def _matching_overrides(spec: ProviderSpec, model_lower: str) -> dict[str, Any]:
             if pattern.startswith("^")
             else pattern in model_lower
         )
+        if pattern == "gpt-6":
+            family = model_lower.rsplit("/", 1)[-1]
+            matched = family == "gpt-6" or family.startswith(("gpt-6-", "gpt-6."))
         if matched:
             return dict(overrides)
     return {}

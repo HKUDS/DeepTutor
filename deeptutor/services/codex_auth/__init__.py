@@ -1,5 +1,6 @@
 """Independent OpenAI Codex OAuth support for DeepTutor."""
 
+from .scheduler import CodexCatalogRefreshScheduler
 from .contracts import (
     CatalogSnapshot,
     CodexAuthError,
@@ -17,6 +18,7 @@ from .service import (
 
 __all__ = [
     "CatalogSnapshot",
+    "CodexCatalogRefreshScheduler",
     "CodexAuthError",
     "CodexCredentials",
     "CodexModel",

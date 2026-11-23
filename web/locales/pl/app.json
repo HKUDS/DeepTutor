@@ -2683,6 +2683,7 @@
   "codex.oauth.denied": "Autoryzacja Codex została odrzucona.",
   "codex.oauth.requestFailed": "Żądanie Codex nie powiodło się. Spróbuj ponownie.",
   "codex.oauth.modelCount": "Modele: {{count}}",
+  "codex.oauth.catalogSyncMeta": "Wersja katalogu: {{version}} ({{source}}) · Ostatnia synchronizacja: {{syncedAt}}",
   "codex.oauth.reasoningTitle": "Wysiłek wnioskowania",
   "codex.oauth.reasoningDescription": "Wybierz domyślne ustawienia dla każdego modelu Codex. Dostępne są tylko poziomy obsługiwane przez dany model.",
   "codex.oauth.reasoningSaved": "Zapisano domyślne ustawienia wnioskowania Codex.",

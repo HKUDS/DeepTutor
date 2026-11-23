@@ -9,7 +9,10 @@ import httpx
 import pytest
 
 from deeptutor.services.codex_auth.client_version import latest_client_version
-from deeptutor.services.codex_auth.constants import CODEX_MAX_VERSION_BYTES
+from deeptutor.services.codex_auth.constants import (
+    CODEX_GITHUB_MAX_RELEASE_BYTES,
+    CODEX_MAX_VERSION_BYTES,
+)
 
 
 @pytest.mark.asyncio
@@ -88,7 +91,7 @@ async def test_source_failure_is_unavailable(response: httpx.Response | Exceptio
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
         assert await latest_client_version(http) is None
-    assert calls == 1
+    assert calls == 2
 
 
 @pytest.mark.asyncio
@@ -112,7 +115,7 @@ async def test_json_recursion_failure_is_unavailable_and_closes_response(
     monkeypatch.setattr(
         "deeptutor.services.codex_auth.client_version.json.loads", reject_nested_json
     )
-    async with httpx.AsyncClient(transport=httpx.MockTransport(lambda _: response)) as http:
+    async with httpx.AsyncClient(transport=httpx.MockTransport(lambda request: response if request.url.host == "registry.npmjs.org" else httpx.Response(503))) as http:
         assert await latest_client_version(http) is None
     assert response.is_closed
 
@@ -150,21 +153,34 @@ async def test_stream_is_closed_at_size_limit_or_total_deadline(stall: bool) -> 
     class MetadataStream(httpx.AsyncByteStream):
         """Serve slow or oversized chunks without a Content-Length header."""
 
-        closed = False
+        def __init__(self, limit: int) -> None:
+            self.limit = limit
+            self.closed = False
 
         async def __aiter__(self) -> AsyncIterator[bytes]:
             if stall:
                 await asyncio.sleep(60)
-            yield b" " * CODEX_MAX_VERSION_BYTES
+            yield b" " * self.limit
             yield b"x"
             pytest.fail("Metadata discovery must stop consuming the oversized body")
 
         async def aclose(self) -> None:
             self.closed = True
 
-    stream = MetadataStream()
+    streams: list[MetadataStream] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        limit = (
+            CODEX_MAX_VERSION_BYTES
+            if request.url.host == "registry.npmjs.org"
+            else CODEX_GITHUB_MAX_RELEASE_BYTES
+        )
+        stream = MetadataStream(limit)
+        streams.append(stream)
+        return httpx.Response(200, stream=stream)
+
     async with httpx.AsyncClient(
-        transport=httpx.MockTransport(lambda _: httpx.Response(200, stream=stream))
+        transport=httpx.MockTransport(handler)
     ) as http:
         assert await latest_client_version(http) is None
-    assert stream.closed
+    assert streams and all(stream.closed for stream in streams)

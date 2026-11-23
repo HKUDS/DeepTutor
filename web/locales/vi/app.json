@@ -2665,6 +2665,7 @@
   "codex.oauth.denied": "Ủy quyền Codex đã bị từ chối.",
   "codex.oauth.requestFailed": "Yêu cầu Codex thất bại. Hãy thử lại.",
   "codex.oauth.modelCount": "Mô hình: {{count}}",
+  "codex.oauth.catalogSyncMeta": "Phiên bản danh mục: {{version}} ({{source}}) · Đồng bộ lần cuối: {{syncedAt}}",
   "codex.oauth.reasoningTitle": "Mức độ suy luận",
   "codex.oauth.reasoningDescription": "Chọn mức mặc định cho từng mô hình Codex. Chỉ các mức mà mô hình đó hỗ trợ mới khả dụng.",
   "codex.oauth.reasoningSaved": "Đã lưu mức độ suy luận của Codex.",

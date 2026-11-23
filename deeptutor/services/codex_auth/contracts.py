@@ -222,6 +222,8 @@ class CatalogSnapshot:
     account_hash: str
     client_version: str | None = None
     models_valid: bool = True
+    version_source: str | None = None
+    header_schema: int | None = None
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -233,6 +235,8 @@ class CatalogSnapshot:
             "account_hash": self.account_hash,
             "client_version": self.client_version,
             "models_valid": self.models_valid,
+            "version_source": self.version_source,
+            "header_schema": self.header_schema,
         }
 
     @classmethod
@@ -262,6 +266,8 @@ class CatalogSnapshot:
                 account_hash=str(payload["account_hash"]),
                 client_version=client_version,
                 models_valid=models_valid,
+                version_source=payload.get("version_source"),
+                header_schema=payload.get("header_schema"),
             )
         except (KeyError, TypeError, ValueError) as exc:
             raise CodexAuthError(

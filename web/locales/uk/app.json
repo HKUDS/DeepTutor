@@ -2589,6 +2589,7 @@
   "codex.oauth.denied": "В авторизації Codex відмовлено.",
   "codex.oauth.requestFailed": "Запит до Codex не вдався. Спробуйте ще раз.",
   "codex.oauth.modelCount": "Моделі: {{count}}",
+  "codex.oauth.catalogSyncMeta": "Версія каталогу: {{version}} ({{source}}) · Остання синхронізація: {{syncedAt}}",
   "codex.oauth.reasoningTitle": "Рівень міркування",
   "codex.oauth.reasoningDescription": "Оберіть значення за замовчуванням для кожної моделі Codex. Доступні лише рівні, які підтримує ця модель.",
   "codex.oauth.reasoningSaved": "Рівень міркування Codex збережено.",

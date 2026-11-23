@@ -2667,6 +2667,7 @@
   "codex.oauth.denied": "Codex yetkilendirmesi reddedildi.",
   "codex.oauth.requestFailed": "Codex isteği başarısız oldu. Yeniden deneyin.",
   "codex.oauth.modelCount": "Model sayısı: {{count}}",
+  "codex.oauth.catalogSyncMeta": "Katalog sürümü: {{version}} ({{source}}) · Son eşitleme: {{syncedAt}}",
   "codex.oauth.reasoningTitle": "Akıl yürütme düzeyi",
   "codex.oauth.reasoningDescription": "Her Codex modeli için bir varsayılan seçin. Yalnız o modelin desteklediği düzeyler kullanılabilir.",
   "codex.oauth.reasoningSaved": "Codex akıl yürütme düzeyi kaydedildi.",

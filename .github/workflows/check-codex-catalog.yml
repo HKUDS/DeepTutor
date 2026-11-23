@@ -1,0 +1,27 @@
+name: Check Codex catalog version
+on:
+  schedule:
+    - cron: "0 3 * * 1"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install httpx
+      - name: Check upstream version
+        shell: bash
+        run: |
+          set +e
+          python scripts/check_codex_catalog_version.py --github-summary
+          status=$?
+          if [ "$status" = 2 ]; then
+            echo "::warning::A newer stable Codex release is available"
+            exit 0
+          fi
+          exit "$status"

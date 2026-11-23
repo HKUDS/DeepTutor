@@ -647,3 +647,22 @@ test("Logging out clears remote authorization guidance after success", () => {
       logout.indexOf("setLoginStart(null)"),
   );
 });
+
+test("Codex OAuth card renders catalog sync metadata and retryable background error", () => {
+  const source = readFileSync(CODEX_CARD, "utf8");
+  const connectedStatus = status({
+    connection: "connected",
+    model_count: 3,
+    catalog_fetched_at: 1_760_000_000,
+    catalog_client_version: "0.171.0",
+    catalog_version_source: "npm",
+    catalog_last_attempt_at: 1_760_000_000,
+    catalog_last_error_code: "catalog_unavailable",
+    catalog_next_refresh_at: 1_760_604_800,
+  });
+
+  assert.equal(connectedStatus.catalog_client_version, "0.171.0");
+  assert.equal(connectedStatus.catalog_version_source, "npm");
+  assert.match(source, /codex\.oauth\.catalogSyncMeta/);
+  assert.match(source, /status\?\.catalog_last_error_code/);
+});

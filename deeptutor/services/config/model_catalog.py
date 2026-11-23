@@ -1,10 +1,12 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from copy import deepcopy
 import json
 import os
 from pathlib import Path
+import sys
 import tempfile
 import threading
 from typing import Any
@@ -257,6 +259,46 @@ class ModelCatalogService:
     def __init__(self, path: Path | None = None):
         self.path = path or CATALOG_PATH
         self._lock = threading.RLock()
+        self._lock_local = threading.local()
+
+    @contextmanager
+    def _interprocess_lock(self) -> Iterator[None]:
+        """Serialize catalog reads/writes across both threads and processes."""
+        with self._lock:
+            depth = getattr(self._lock_local, "depth", 0)
+            if depth > 0:
+                self._lock_local.depth = depth + 1
+                try:
+                    yield
+                finally:
+                    self._lock_local.depth -= 1
+                return
+            lock_path = self.path.with_name(f".{self.path.name}.lock")
+            lock_path.parent.mkdir(parents=True, exist_ok=True)
+            with lock_path.open("a+b") as handle:
+                handle.seek(0, os.SEEK_END)
+                if handle.tell() == 0:
+                    handle.write(b"\0")
+                    handle.flush()
+                handle.seek(0)
+                if sys.platform == "win32":
+                    import msvcrt
+
+                    msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
+                else:
+                    import fcntl
+
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+                self._lock_local.depth = 1
+                try:
+                    yield
+                finally:
+                    self._lock_local.depth = 0
+                    handle.seek(0)
+                    if sys.platform == "win32":
+                        msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+                    else:
+                        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
     @classmethod
     def get_instance(cls, path: Path | None = None) -> "ModelCatalogService":
@@ -270,7 +312,7 @@ class ModelCatalogService:
         # Reads may migrate defaults. Serialize the complete read/migrate/write
         # with settings updates so an older snapshot cannot overwrite a save
         # or hold the destination open during this instance's replace (#1984).
-        with self._lock:
+        with self._interprocess_lock():
             loaded = self._read_existing_catalog()
             if loaded:
                 catalog = _default_catalog()
@@ -298,7 +340,7 @@ class ModelCatalogService:
         return loaded if isinstance(loaded, dict) else {}
 
     def save(self, catalog: dict[str, Any]) -> dict[str, Any]:
-        with self._lock:
+        with self._interprocess_lock():
             normalized = deepcopy(catalog)
             self._normalize(normalized)
             self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -320,7 +362,7 @@ class ModelCatalogService:
             return normalized
 
     def update(self, mutator: Callable[[dict[str, Any]], None]) -> dict[str, Any]:
-        with self._lock:
+        with self._interprocess_lock():
             catalog = self.load()
             mutator(catalog)
             return self.save(catalog)
