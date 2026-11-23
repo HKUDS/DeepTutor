@@ -45,23 +45,50 @@
 
 ### Sponsors & Partners
 
+#### Sponsors
+
+<table>
+  <tr>
+    <td width="240" align="center" valign="middle">
+      <a href="https://modelgo.ai/?utm_source=deeptutor&amp;utm_medium=sponsorship&amp;utm_content=readme&amp;campaign_id=deeptutor&amp;ad_group_id=readme">
+        <picture>
+          <source media="(prefers-color-scheme: dark)" srcset="assets/figs/partners/modelgo-dark.svg">
+          <source media="(prefers-color-scheme: light)" srcset="assets/figs/partners/modelgo.svg">
+          <img src="assets/figs/partners/modelgo.svg" alt="ModelGo" height="38">
+        </picture>
+      </a>
+    </td>
+    <td valign="middle">ModelGo is an AI API platform that provides unified access to mainstream models, including Claude, GPT, Gemini, and DeepSeek, through a single API key. Developers can integrate and switch between models without managing separate provider connections.</td>
+  </tr>
+  <tr>
+    <td width="240" align="center" valign="middle">
+      <a href="https://www.amd.com/en/corporate/university-program.html">
+        <picture>
+          <source media="(prefers-color-scheme: dark)" srcset="assets/figs/partners/amd-university-program-dark.svg">
+          <source media="(prefers-color-scheme: light)" srcset="assets/figs/partners/amd-university-program.svg">
+          <img src="assets/figs/partners/amd-university-program.svg" alt="AMD University Program" height="42">
+        </picture>
+      </a>
+    </td>
+    <td valign="middle">The AMD University Program supports academic research, teaching, and innovation through collaboration with universities. Its support helps DeepTutor sustain independent open-source development and explore efficient AI-powered learning experiences.</td>
+  </tr>
+  <tr>
+    <td width="240" align="center" valign="middle">
+      <a href="https://www.siliconflow.cn/">
+        <picture>
+          <source media="(prefers-color-scheme: dark)" srcset="assets/figs/partners/siliconflow-dark.svg">
+          <source media="(prefers-color-scheme: light)" srcset="assets/figs/partners/siliconflow.svg">
+          <img src="assets/figs/partners/siliconflow.svg" alt="SiliconFlow" height="26">
+        </picture>
+      </a>
+    </td>
+    <td valign="middle">SiliconFlow provides AI infrastructure and model inference services for developers. Its support helps DeepTutor maintain flexible model integrations and continue improving the open-source learning experience.</td>
+  </tr>
+</table>
+
+#### Partners
+
 <p align="center">
-  <a href="https://www.amd.com/en/corporate/university-program.html">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="assets/figs/partners/amd-university-program-dark.svg">
-      <source media="(prefers-color-scheme: light)" srcset="assets/figs/partners/amd-university-program.svg">
-      <img src="assets/figs/partners/amd-university-program.svg" alt="AMD University Program" height="42">
-    </picture>
-  </a>
-  &nbsp;&nbsp;&nbsp;&nbsp;
-  <a href="https://www.siliconflow.cn/">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="assets/figs/partners/siliconflow-dark.svg">
-      <source media="(prefers-color-scheme: light)" srcset="assets/figs/partners/siliconflow.svg">
-      <img src="assets/figs/partners/siliconflow.svg" alt="SiliconFlow" height="26">
-    </picture>
-  </a>
-  &nbsp;&nbsp;&nbsp;&nbsp;
   <a href="https://modelscope.cn/">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="assets/figs/partners/modelscope-dark.png">
@@ -957,11 +984,7 @@ Add more registries in `data/user/settings/skill_hubs.json`: a `type: "clawhub"`
 
 ## Policies of Sponsors & Partners
 
-We hope DeepTutor can iterate independently, freely, and efficiently, and our sponsors make that possible. We welcome sponsorship in any form and offer sponsors whatever visibility or support we can. We also welcome open-source partners. Through collaboration and discussion with the open-source community, we hope to keep finding valuable directions for iteration and work together to build a valuable ecosystem.
-
-<p align="center">
-  Using code: <b><code>DEEPTUTOR20</code></b> — get $20 off for your first <a href="https://developer.pageindex.ai/">PageIndex subscription</a>!
-</p>
+We hope DeepTutor can iterate independently, freely, and efficiently, and our sponsors make that possible. We welcome sponsorship in any form and offer sponsors whatever visibility or support we can. We also welcome open-source partners. Through collaboration and discussion with the open-source community, we hope to keep finding valuable directions for iteration and work together to build a valuable ecosystem. Content supplied by sponsors or partners is always clearly labeled as such.
 
 ## 🌐 Community
 
