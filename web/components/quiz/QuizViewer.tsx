@@ -41,6 +41,7 @@ import {
   startQuizJudge,
   type QuizJudgeHandle,
 } from "@/lib/quiz-judge";
+import { numericEquivalent } from "@/lib/numeric-answer";
 import { type QuizQuestion } from "@/lib/quiz-types";
 import CategoryMenu from "@/components/space/question-bank/CategoryMenu";
 import {
@@ -185,7 +186,11 @@ function isAnswerCorrect(question: QuizQuestion, answer: AnswerState): boolean {
     const correctTF = resolveConceptAnswer(correct);
     return userAnswer.toLowerCase() === correctTF;
   }
-  return userAnswer.toLowerCase() === correct.toLowerCase();
+  // Numeric keys also accept other notations ("1.250,50" for "1250.50").
+  return (
+    userAnswer.toLowerCase() === correct.toLowerCase() ||
+    numericEquivalent(userAnswer, correct).correct
+  );
 }
 
 export default function QuizViewer({
