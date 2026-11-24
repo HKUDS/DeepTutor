@@ -68,8 +68,14 @@ export function ThinkingOrb({
 
     let raf = 0;
     let running = false;
+    let lastTime = 0;
+    const minInterval = 1000 / 30; // Cap at 30 fps to protect high-refresh screens
     const loop = () => {
-      frame((performance.now() / 1000) * effSpeed);
+      const now = performance.now();
+      if (now - lastTime >= minInterval) {
+        frame((now / 1000) * effSpeed);
+        lastTime = now;
+      }
       if (running) raf = requestAnimationFrame(loop);
     };
     const start = () => {

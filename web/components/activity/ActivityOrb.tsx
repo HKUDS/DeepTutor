@@ -75,6 +75,7 @@ export function ActivityOrb({
   speed = 1,
   box = ORB_BOX,
   tone = "brand",
+  paused = false,
   className = "",
 }: {
   state: OrbState;
@@ -83,6 +84,7 @@ export function ActivityOrb({
   /** CSS box to paint into. Defaults to the tuned inline size. */
   box?: number;
   tone?: OrbTone;
+  paused?: boolean;
   className?: string;
 }) {
   const pickerOpen = usePickerOpen();
@@ -96,7 +98,7 @@ export function ActivityOrb({
         box === ORB_BOX ? ORB_SUPERSAMPLE : superSampleFor(box)
       }
       speed={speed}
-      paused={pickerOpen}
+      paused={pickerOpen || paused}
       // Callers pair the orb with a live region that spells the phase out in
       // words; the orb is the decorative half of that.
       aria-hidden
