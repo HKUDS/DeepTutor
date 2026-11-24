@@ -344,6 +344,22 @@ class TestExactVerdictNumeric:
         assert self._verdict("1234,6", "1234,57") is None
         assert self._verdict("3,49", "3,4833").result == "incorrect"
 
+    def test_fraction_key_rounds_half_away_from_zero(self):
+        assert self._verdict("0,13", "1/8").result == "correct"
+        assert self._verdict("0,12", "1/8").result == "incorrect"
+        assert self._verdict("-0,12", "-1/8").result == "incorrect"
+
+    @pytest.mark.parametrize(
+        ("answer", "expected"),
+        [
+            ("2,49", "2,5"),  # a one-place key cannot settle a finer answer
+            ("416,67", "≈ 417"),  # nor can an integer key
+            ("1.249,60 €", "1.250 €"),
+        ],
+    )
+    def test_unsettled_rounding_sign_or_rate_reaches_the_llm(self, answer, expected):
+        assert self._verdict(answer, expected) is None
+
     def test_multi_part_mismatch_keeps_partial_credit_open(self):
         assert self._verdict("a) 1.000; b) 260", "a) 1.000; b) 250") is None
         assert self._verdict("1250", "Goodwill = 1.250; NCI = 300") is None

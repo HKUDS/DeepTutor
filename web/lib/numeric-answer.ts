@@ -185,14 +185,25 @@ function roundsTo(v: Q, target: Q, decimals: number): boolean {
   return order < 0 || (order === 0 && cmp(abs(v), abs(target)) < 0)
 }
 
+const shift = (decimals: number | null, by: number) =>
+  decimals === null ? null : Math.max(0, decimals + by)
+
 function close(v: Q, key: Q, decimals: number | null, keyDecimals: number | null): Outcome {
-  // The key's own precision decides; integer keys are exact. A fraction key
-  // takes the answer's precision once that has two or more places.
-  const places = keyDecimals ?? ((decimals ?? 0) >= 2 ? decimals : null)
-  if (places ? roundsTo(v, key, places) : cmp(v, key) === 0) return true
-  // "3,48" for "3,4833": the question may ask for two decimals.
+  if (cmp(v, key) === 0) return true
+  // A key with two or more places accepts answers that round to it; a
+  // fraction key must round to the answer's two or more places ("0,13" for 1/8).
+  if (keyDecimals === null) {
+    if (decimals !== null && decimals >= 2 && roundsTo(key, v, decimals)) return true
+  } else if (keyDecimals >= 2 && roundsTo(v, key, keyDecimals)) return true
+  // "3,48" for "3,4833": the question may ask for two decimals. A key with
+  // fewer than two places ("12.5" stored from 12.50, "417") cannot settle a
+  // finer answer that rounds to it.
   const coarser = decimals !== null && (keyDecimals === null || decimals < keyDecimals)
-  return coarser && roundsTo(key, v, decimals) ? 'rounded' : false
+  const finer = decimals !== null && keyDecimals !== null && decimals > keyDecimals
+  if ((coarser && roundsTo(key, v, decimals)) || (finer && roundsTo(v, key, keyDecimals))) {
+    return 'rounded'
+  }
+  return false
 }
 
 function matches(given: NumberToken, key: NumberToken, markGiven: Mark, markKey: Mark): Outcome {
@@ -212,8 +223,7 @@ function matches(given: NumberToken, key: NumberToken, markGiven: Mark, markKey:
   const [v, decimals] = given.readings[markGiven]
   // Compare in the key's written units; a bare "12.5" answers a "12.5%" key.
   const k = key.percent ? 100n : 1n
-  const shift = (given.percent ? 2 : 0) - (key.percent ? 2 : 0)
-  const shifted = decimals === null ? null : Math.max(0, decimals + shift)
+  const shifted = shift(decimals, (given.percent ? 2 : 0) - (key.percent ? 2 : 0))
   const outcome = close(scale(v, k), scale(keyValue, k), shifted, keyDecimals)
   if (outcome !== false) return outcome
   if (key.percent && !given.percent) {

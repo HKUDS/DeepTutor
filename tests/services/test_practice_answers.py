@@ -73,6 +73,7 @@ def test_numeric_text_answers_are_graded(kind, answer, correct):
         ("fill_in_blank", "125.000", "125000"),
         ("fill_in_blank", "12.500 €", "12.5"),
         ("fill_in_blank", "3,4833", "3,48"),
+        ("fill_in_blank", "417", "416,67"),
         ("fill_in_blank", "1250", "about 1250"),
         ("essay", "1250", "1250"),
     ],

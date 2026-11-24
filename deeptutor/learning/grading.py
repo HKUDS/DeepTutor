@@ -223,16 +223,30 @@ def _rounds_to(value: Fraction, target: Fraction, decimals: int) -> bool:
     return diff < half or (diff == half and abs(value) < abs(target))
 
 
+def _shift(decimals: int | None, by: int) -> int | None:
+    return None if decimals is None else max(0, decimals + by)
+
+
 def _close(value: Fraction, key: Fraction, decimals: int | None, key_decimals: int | None):
-    # The key's own precision decides; integer keys are exact. A fraction key
-    # takes the answer's precision once that has two or more places.
-    fine = decimals if (decimals or 0) >= 2 else None
-    places = key_decimals if key_decimals is not None else fine
-    if _rounds_to(value, key, places) if places else value == key:
+    if value == key:
         return True
-    # "3,48" for "3,4833": the question may ask for two decimals.
+    # A key with two or more places accepts answers that round to it; a
+    # fraction key must round to the answer's two or more places ("0,13" for 1/8).
+    if key_decimals is None:
+        if decimals is not None and decimals >= 2 and _rounds_to(key, value, decimals):
+            return True
+    elif key_decimals >= 2 and _rounds_to(value, key, key_decimals):
+        return True
+    # "3,48" for "3,4833": the question may ask for two decimals. A key with
+    # fewer than two places ("12.5" stored from 12.50, "417") cannot settle a
+    # finer answer that rounds to it.
     coarser = decimals is not None and (key_decimals is None or decimals < key_decimals)
-    return _ROUNDED if coarser and _rounds_to(key, value, decimals) else False
+    finer = decimals is not None and key_decimals is not None and decimals > key_decimals
+    if (coarser and _rounds_to(key, value, decimals)) or (
+        finer and _rounds_to(value, key, key_decimals)
+    ):
+        return _ROUNDED
+    return False
 
 
 def _matches(given: _Number, key: _Number, mark_given: str, mark_key: str):
@@ -252,8 +266,7 @@ def _matches(given: _Number, key: _Number, mark_given: str, mark_key: str):
     value, decimals = given.readings[mark_given]
     # Compare in the key's written units; a bare "12.5" answers a "12.5%" key.
     scale = 100 if key.percent else 1
-    shift = 2 * given.percent - 2 * key.percent
-    shifted = None if decimals is None else max(0, decimals + shift)
+    shifted = _shift(decimals, 2 * given.percent - 2 * key.percent)
     outcome = _close(value * scale, key_value * scale, shifted, key_decimals)
     if outcome is not False:
         return outcome
@@ -291,9 +304,10 @@ def numeric_equivalent(user_answer: str, expected_answer: str) -> NumericResult:
       the convention the key proves (``1.234,57``); without proof the answer
       must match under both readings. The answer may borrow the key's
       convention, never the reverse.
-    - The key's last decimal sets the precision, rounding half away from zero
-      (``3.48`` accepts ``[3.475, 3.485)``); integer keys are exact and
-      fraction keys take the answer's rounding from two places (``0.33``).
+    - A key with two or more places sets the precision, rounding half away
+      from zero (``3.48`` accepts ``[3.475, 3.485)``). Keys with fewer places
+      are correct only when equal; a fraction key accepts its own rounding to
+      the answer's two or more places (``0.13`` for ``1/8``).
     - ``12.5%`` equals ``0.125``; a bare ``12.5`` answers a ``12.5%`` key.
     - One trailing unit word may be dropped if the other side has none, except
       single letters, magnitude words (``Mio.``, ``TEUR``) or next to a currency.
@@ -301,8 +315,8 @@ def numeric_equivalent(user_answer: str, expected_answer: str) -> NumericResult:
       position and are correct only if every part is.
 
     ``ambiguous`` is set when some other reading would match: a separator, a
-    key more precise than the answer's rounding (``3,48`` for ``3,4833``), or
-    a bare value below 1 for a percent key.
+    rounding the key cannot settle (``3,48`` for ``3,4833``, ``416,67`` for
+    ``417``), or a bare value below 1 for a percent key.
     """
     keys, given = _numeric_parts(expected_answer), _numeric_parts(user_answer)
     if keys is None or given is None:
