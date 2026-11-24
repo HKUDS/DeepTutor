@@ -44,6 +44,10 @@ test("clientEditionLabel names each desktop edition", () => {
     clientEditionLabel("1.7.1", `${SHELL} (Windows; x64)`),
     "Open DeepTutor for Windows v1.7.1",
   );
+  assert.equal(
+    clientEditionLabel("1.7.1", `${SHELL} (Linux; x64)`),
+    "Open DeepTutor for Linux v1.7.1",
+  );
 });
 
 test("clientEditionLabel has short forms for tight spaces", () => {
@@ -55,6 +59,10 @@ test("clientEditionLabel has short forms for tight spaces", () => {
     clientEditionLabel("1.7.1", `${SHELL} (macOS; x64)`, "short"),
     "MacOS (Intel) v1.7.1",
   );
+  assert.equal(
+    clientEditionLabel("1.7.1", `${SHELL} (Linux; x64)`, "short"),
+    "Linux (x64) v1.7.1",
+  );
   assert.equal(clientEditionLabel("1.7.1", "Mozilla/5.0", "short"), "Web v1.7.1");
 });
 
@@ -62,6 +70,10 @@ test("clientEditionLabel still recognises 1.7.0 shells", () => {
   assert.equal(
     clientEditionLabel("1.7.0", `${SHELL} (macOS)`),
     "Open DeepTutor for MacOS v1.7.0",
+  );
+  assert.equal(
+    clientEditionLabel("1.7.0", `${SHELL} (Linux)`),
+    "Open DeepTutor for Linux v1.7.0",
   );
 });
 
