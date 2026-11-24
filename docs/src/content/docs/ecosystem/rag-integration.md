@@ -1,6 +1,7 @@
 ---
 title: RAG Integration
 description: Choose how DeepTutor retrieves from local indexes, agentic document trees, remote knowledge services, and live study libraries.
+quadrant: how-to
 ---
 
 DeepTutor treats retrieval as an ecosystem boundary rather than one hard-coded vector store. A Knowledge Base in the [Knowledge Center](/explore/knowledge/) is the user-facing container; its **RAG integration** decides how material is indexed, queried, cited, and kept in sync.

@@ -1,6 +1,7 @@
 ---
 title: Multi-User Deployment
 description: Flip on authentication and DeepTutor turns into a multi-tenant deployment with per-user isolated workspaces and admin-curated resources.
+quadrant: how-to
 ---
 
 Flip on authentication and DeepTutor turns into a multi-tenant deployment with **per-user isolated workspaces** and **admin-curated resources**. The first person to register becomes the admin and configures models, API keys, and knowledge bases on behalf of everyone else. Subsequent accounts are created by the admin (invite-only), each gets their own scoped chat history / memory / notebooks / knowledge bases and private personal books. They see assigned LLMs, KBs, and skills; partners they build or receive; and admin-shared books at the granted read or edit level.

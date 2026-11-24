@@ -1,6 +1,7 @@
 ---
 title: Matrix
 description: Configure the Matrix channel for a Partner — any homeserver, long-poll sync, optional end-to-end encryption.
+quadrant: how-to
 ---
 
 <img src="/channel-icons/matrix.svg" alt="" width="40" height="40" />

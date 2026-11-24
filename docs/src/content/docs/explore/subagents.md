@@ -1,6 +1,7 @@
 ---
 title: My Agents
 description: "My Agents — consult a named local harness, configured ACP agent, remote Hermes gateway, or a Partner from a chat turn, and import Claude Code, Codex, or ChatGPT conversations as named, resumable agents."
+quadrant: how-to
 ---
 
 **My Agents** turns other agents into context for DeepTutor. It does two distinct things: it lets you **consult a live agent** (a supported local harness or configured ACP agent, a remote Hermes gateway, or one of your Partners) from inside a chat turn, and it lets you **import Claude Code, Codex, or ChatGPT history** as named, searchable, resumable agents.

@@ -1,6 +1,7 @@
 ---
 title: 从源码安装
 description: 选项 2 —— clone 仓库、editable 安装、前端热重载。适合贡献者和高阶用户。
+quadrant: how-to
 ---
 
 适合基于 checkout 做开发。使用 **Python 3.11–3.14** 和 **Node.js 22 LTS**，与 CI 和 Docker 保持一致。

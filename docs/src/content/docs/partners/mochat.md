@@ -1,6 +1,7 @@
 ---
 title: Mochat
 description: Connect a Partner to a Mochat customer-support panel over Socket.IO with automatic HTTP polling fallback.
+quadrant: how-to
 ---
 
 <img src="/channel-icons/mochat.svg" alt="" width="40" height="40" />

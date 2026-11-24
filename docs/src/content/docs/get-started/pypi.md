@@ -1,6 +1,7 @@
 ---
 title: Install from PyPI
 description: Understand the published package layout, the modular full profile, and migration while preserving runtime data.
+quadrant: how-to
 ---
 
 This page explains the **1.7.x** modular family (the current release is 1.7.4) and migration from the **1.6.15** package layout. Choose the full profile for the Web app or core for terminal chat. For current development features, use [Install from Source](/get-started/from-source/) or build a complete matching local wheel family in a separate environment.

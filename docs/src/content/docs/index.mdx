@@ -1,0 +1,66 @@
+---
+title: Home
+description: Open-source learning workspace for chat, practice, research, and the materials they share.
+template: splash
+hero:
+  title: DeepTutor
+  tagline: Conversations, source materials, practice, and reusable assistance in one workspace.
+  actions:
+    - text: Desktop quickstart
+      link: /get-started/desktop/
+      icon: right-arrow
+    - text: Docker quickstart
+      link: /get-started/docker/
+      icon: rocket
+      variant: minimal
+---
+
+import { CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+## Start here
+
+<CardGrid>
+	<LinkCard title="Desktop" description="Install the app, connect one model, and send a first message." href="/get-started/desktop/" />
+	<LinkCard title="Docker" description="Run the full web app in one container." href="/get-started/docker/" />
+	<LinkCard title="Providers & models" description="Add a language model, then embeddings and search when you need them." href="/get-started/providers/" />
+	<LinkCard title="Changelog" description="What changed in the latest releases." href="/get-started/changelog/" />
+</CardGrid>
+
+## What you can do with DeepTutor
+
+<CardGrid>
+	<LinkCard title="Build a knowledge base and an interactive book" description="Index your materials, then compile them into a book you can quiz and talk to." href="/explore/book/" />
+	<LinkCard title="Solve problems and track mastery" description="Work a solution in Chat, then practice it on a Mastery Path." href="/explore/mastery-path/" />
+	<LinkCard title="Research a question and write it up" description="Run Research from Chat, then keep the result in your notebook." href="/explore/chat-workspace/" />
+	<LinkCard title="Generate math animation and video lessons" description="Choose Visualize, Math Animator, or Video Lesson from the Chat capability menu." href="/explore/chat-workspace/" />
+	<LinkCard title="Customize the tutor" description="Reuse memory, personas, skills, and MCP services across your workspaces." href="/explore/personalization/" />
+	<LinkCard title="Connect an IM companion" description="Give a partner its own materials, then deliver it through a chat channel." href="/explore/partners/" />
+</CardGrid>
+
+## Supported capabilities
+
+Capability names, module ids, and requirements come from `deeptutor/modules/manifests/`. The “What it does” column is a short guide to that manifest. Optional modules are noted in the sentence, not in **Also needs**.
+
+| Capability | Module | Also needs | What it does | Read |
+| --- | --- | --- | --- | --- |
+| `chat` | `core` | — | Everyday agent loop with tools | [Chat](/explore/chat-workspace/) |
+| `ask_questions` | `core` | — | Asks for missing context, then finishes the request | [Chat](/explore/chat-workspace/) |
+| `deep_solve` | `solve` | — | Multi-step worked solutions, including photo problems | [Chat](/explore/chat-workspace/) |
+| `deep_question` | `questions` | `parsing` | Generates a practice set from a topic or a source | [Practice](/explore/practice/) |
+| `deep_research` | `research` | — | Cited research report. The knowledge module is optional | [Chat](/explore/chat-workspace/) |
+| `visualize` | `visualize` | — | SVG, Mermaid, Chart.js, or HTML. The Manim renderer is optional | [Chat](/explore/chat-workspace/) |
+| `math_animator` | `renderer-manim` | — | Manim math video or storyboard | [Chat](/explore/chat-workspace/) |
+| `mastery_path` | `mastery` | `knowledge` | Adaptive path with a per-topic mastery gate | [Mastery Path](/explore/mastery-path/) |
+| `immersive_reading` | `reading` | `knowledge`, `parsing`, `mastery`, `notebook` | Reading beside the thread, with citations back to the source | [Reading](/explore/reading/) |
+| `video_lesson` | `video-lesson` | — | Browser lesson with captions and optional narration | [Chat](/explore/chat-workspace/) |
+
+## More resources
+
+<CardGrid>
+	<LinkCard title="Download Open DeepTutor" description="macOS Apple Silicon, macOS Intel, and Windows." href="/get-started/desktop/" />
+	<LinkCard title="Paper" description="DeepTutor on arXiv." href="https://arxiv.org/abs/2604.26962" />
+	<LinkCard title="GitHub" description="Source, issues, and releases." href="https://github.com/HKUDS/DeepTutor" />
+	<LinkCard title="Discussions" description="Workflows and ideas." href="https://github.com/HKUDS/DeepTutor/discussions" />
+	<LinkCard title="Discord" description="Community chat." href="https://discord.gg/eRsjPgMU4t" />
+	<LinkCard title="Feishu wiki" description="Chinese community group." href="https://ucn26x8r4a7l.feishu.cn/wiki/DmEJwWEowimznCkcdeycLGhunCg" />
+</CardGrid>

@@ -1,6 +1,7 @@
 ---
 title: Python SDK
 description: Embed DeepTutor's turn, session, capability, and notebook runtime directly in an async Python application.
+quadrant: tutorial
 ---
 
 `DeepTutorApp` is DeepTutor's stable, in-process Python facade. It exposes the same turn payload and runtime contracts used by the CLI, without spawning the CLI or sending requests through the HTTP API. Use it when your application already runs in Python and needs native access to streamed events, sessions, capability metadata, or notebooks.

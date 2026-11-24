@@ -1,6 +1,7 @@
 ---
 title: Immersive Reading
 description: Read documents or media beside the thread — verified citations jump to source units or transcript timestamps, explicit navigation can highlight quotes, and PDF highlights export as real annotations.
+quadrant: how-to
 ---
 
 Immersive Reading puts documents or media beside the conversation. The assistant cites **source units** — PDF pages, EPUB chapters, slides, or extracted sections — as `[p.N]`; timed media uses transcript timestamps such as `[MM:SS]` or `[H:MM:SS]`. Verified document locators become links that switch material and jump to the source; quote highlighting uses `reader_goto`. Media tutoring relies on transcripts, not video frames. Without a transcript, playback still works, but the assistant cannot ground explanations in the spoken content.

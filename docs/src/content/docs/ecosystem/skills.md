@@ -1,6 +1,7 @@
 ---
 title: Skills
 description: Add reusable SKILL.md playbooks from built-ins, local authoring, ClawHub, or the EduHub community catalog.
+quadrant: how-to
 ---
 
 Skills are **`SKILL.md` playbooks** the model reads on demand. They teach DeepTutor a workflow, style, or domain behavior without adding a new executable service.

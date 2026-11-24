@@ -1,6 +1,7 @@
 ---
 title: 知识空间
 description: 创建、版本化、同步、检查并复用为主页、伙伴、学习笔记本、书籍等学习界面提供依据的知识库。
+quadrant: how-to
 ---
 
 知识空间是你构建与管理 **RAG** 背后文档库的地方；在 Web UI 中，这个入口显示为 **Knowledge Center / 知识中心**。一个知识库（KB）可以为主页对话、学习笔记本、书籍生成与伙伴对话提供依据。本页聚焦 KB 生命周期；引擎架构与选型归入 [RAG 集成](/zh-cn/ecosystem/rag-integration/)。

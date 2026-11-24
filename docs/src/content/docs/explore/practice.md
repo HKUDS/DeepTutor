@@ -1,6 +1,7 @@
 ---
 title: Practice
 description: Collect questions, import your own, review mistakes, and schedule the next recall attempt.
+quadrant: how-to
 ---
 
 Practice turns questions from your learning activities into repeatable recall. Open **Learning → Practice** (`/learning/practice`) for today's reviews; open **Resources → Question Bank** to organize questions, inspect mistakes or choose a manual set. Both use the workspace's question collection.

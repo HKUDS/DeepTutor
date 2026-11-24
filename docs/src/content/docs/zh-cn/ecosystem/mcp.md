@@ -1,6 +1,7 @@
 ---
 title: MCP 扩展
 description: 按账号连接托管的 Model Context Protocol 服务，或由管理员通过部署注册表管理全局服务器。
+quadrant: how-to
 ---
 
 MCP 服务把 DeepTutor 之外的工具带进与内置工具相同的智能体循环。远程服务连接到个人账号；部署级服务器则由管理员管理。

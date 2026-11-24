@@ -1,6 +1,7 @@
 ---
 title: 伙伴与渠道
 description: DeepTutor Partners 的运维文档：渠道配置、工作区布局和 IM 投递行为。
+quadrant: how-to
 ---
 
 Partners 是可以存在于 Web UI 和外部 IM 应用里的持久 DeepTutor 伙伴。它不是第二套 bot engine。每条入站消息都会变成一个作用域在该 Partner 下的普通 chat-agent turn：

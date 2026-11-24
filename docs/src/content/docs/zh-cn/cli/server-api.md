@@ -1,6 +1,7 @@
 ---
 title: 服务端 API
 description: deeptutor serve 暴露的 HTTP 和 WebSocket 表面 —— 用于自定义前端和集成。
+quadrant: reference
 ---
 
 `deeptutor serve` 在 `http://localhost:8001/` 上启动 FastAPI 后端（除非你改了后端端口）。本页是给自定义前端、移动 App 和服务间集成准备的高密度地图。

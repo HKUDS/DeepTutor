@@ -1,6 +1,7 @@
 ---
 title: 伙伴
 description: 与 DeepTutor 聊天共用同一智能体循环、可接入 IM 渠道的持久学习伙伴——拥有自己的灵魂、资料库、记忆与渠道。
+quadrant: how-to
 ---
 
 伙伴（Partners）是持久的学习伙伴，拥有自己的身份、灵魂（soul）、模型策略、资料库、记忆与渠道配置。它不是另一套机器人引擎：每一条进来的消息——无论来自网页还是 IM 应用——都走**同一个** `ChatOrchestrator → AgenticChatPipeline` 循环，也就是驱动[主页](/zh-cn/explore/chat-workspace/)的那一个。可以把伙伴理解成「一段有了人格、还带了手机号的聊天」。

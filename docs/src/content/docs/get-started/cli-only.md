@@ -1,6 +1,7 @@
 ---
 title: CLI-Only Install
 description: Run current dev from the terminal without frontend setup; understand source CLI and the modular core wheels.
+quadrant: how-to
 ---
 
 For current `dev`, CLI use from source installs the main project and skips frontend Node/npm setup. A checkout contains all modules, so it still needs `requirements/full.txt`. The minimal 1.7.x core wheel supplies chat and SDK separately from feature modules; `deeptutor-cli` is a metadata-only core alias. Do not use the old editable `packaging/deeptutor-cli` project.

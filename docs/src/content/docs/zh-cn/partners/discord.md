@@ -1,6 +1,7 @@
 ---
 title: Discord
 description: 为 Partner 配置 Discord channel —— Developer Portal 应用、Gateway WebSocket、intents、原地编辑的流式回复。
+quadrant: how-to
 ---
 
 <img src="/channel-icons/discord.svg" alt="" width="40" height="40" />

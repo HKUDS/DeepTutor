@@ -1,6 +1,7 @@
 ---
 title: Feishu（飞书）
 description: 为 Partner 配置飞书 / Lark 渠道——开放平台建应用、WebSocket 长连接、CardKit 流式卡片。
+quadrant: how-to
 ---
 
 <img src="/channel-icons/feishu.svg" alt="" width="40" height="40" />

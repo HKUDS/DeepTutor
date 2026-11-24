@@ -1,6 +1,7 @@
 ---
 title: DingTalk（钉钉）
 description: 为 Partner 配置钉钉渠道——企业内部应用、Stream Mode 连接、无需公网回调。
+quadrant: how-to
 ---
 
 <img src="/channel-icons/dingtalk.svg" alt="" width="40" height="40" />

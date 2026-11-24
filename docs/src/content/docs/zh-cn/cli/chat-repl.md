@@ -1,6 +1,7 @@
 ---
 title: 交互式 REPL
 description: 一个长时间运行的终端 chat 会话，内嵌 /slash 命令用于切换 capability、tool、KB 等。
+quadrant: how-to
 ---
 
 `deeptutor chat` 进入一个交互式 REPL —— 适合 **探索性工作**、**多轮调试** 以及 **手动驱动 DeepTutor**（而不是用 `run` 一条条发命令）。

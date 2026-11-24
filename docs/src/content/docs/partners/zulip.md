@@ -1,6 +1,7 @@
 ---
 title: Zulip
 description: Configure the Zulip channel for a Partner — event-queue long polling with stream + topic scoped sessions.
+quadrant: how-to
 ---
 
 <img src="/channel-icons/zulip.svg" alt="" width="40" height="40" />

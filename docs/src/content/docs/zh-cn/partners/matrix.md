@@ -1,6 +1,7 @@
 ---
 title: Matrix
 description: 为 Partner 配置 Matrix channel——任意 homeserver、long-poll sync、可选端到端加密。
+quadrant: how-to
 ---
 
 <img src="/channel-icons/matrix.svg" alt="" width="40" height="40" />

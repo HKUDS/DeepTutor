@@ -1,6 +1,7 @@
 ---
 title: Email
 description: 使用 IMAP 轮询收信、SMTP 回信，为 Partner 配置 email channel。
+quadrant: how-to
 ---
 
 <img src="/channel-icons/email.svg" alt="" width="40" height="40" />

@@ -1,6 +1,7 @@
 ---
 title: Skill 扩展
 description: 使用内置 Skill、本地创作、ClawHub 或 EduHub 社区目录，为 DeepTutor 加入可复用的 SKILL.md 工作手册。
+quadrant: how-to
 ---
 
 Skill 是模型按需读取的 **`SKILL.md` 工作手册**。它不用增加新的可执行服务，就能教给 DeepTutor 一套流程、风格或领域行为。

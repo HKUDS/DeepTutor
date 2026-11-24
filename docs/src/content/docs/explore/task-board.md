@@ -1,6 +1,7 @@
 ---
 title: Task Board
 description: Keep a workspace's next actions visible, move them through progress states, and connect deadlines to the calendar.
+quadrant: how-to
 ---
 
 Open **Home → Task Board** (`/kanban`) to organize the active workspace's tasks. Use it for concrete actions such as “Attempt five integration problems” or “Summarize chapter 4,” while Learning keeps the books, paths and reading activities those actions refer to.

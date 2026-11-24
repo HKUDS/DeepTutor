@@ -1,6 +1,7 @@
 ---
 title: QQ / NapCat
 description: 为 Partner 配置腾讯 QQ 渠道：官方 QQ Bot 与 NapCat / OneBot v11 个人 QQ。
+quadrant: how-to
 ---
 
 <img src="/channel-icons/qq.svg" alt="" width="40" height="40" />

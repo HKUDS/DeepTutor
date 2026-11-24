@@ -1,6 +1,7 @@
 ---
 title: DingTalk
 description: Configure the DingTalk channel for a Partner — internal app setup, Stream Mode connection, no public callback URL.
+quadrant: how-to
 ---
 
 <img src="/channel-icons/dingtalk.svg" alt="" width="40" height="40" />

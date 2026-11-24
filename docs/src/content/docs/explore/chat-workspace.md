@@ -1,6 +1,7 @@
 ---
 title: Chat
 description: "The default DeepTutor agent loop — capabilities, session context, reusable references, tools, the Activity panel, and the models behind it all."
+quadrant: how-to
 ---
 
 Home is the heart of DeepTutor. It is not a plain message box: it is the **default agent loop** that can call tools, read your sources, search knowledge bases, write notes, generate images, consult other agents, ask you clarifying questions, and switch into deeper capabilities — all inside one thread.

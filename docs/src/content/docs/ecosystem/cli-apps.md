@@ -1,6 +1,7 @@
 ---
 title: CLI Apps
 description: Install reviewed command-line applications once per deployment and expose each permitted app as a sandboxed tool.
+quadrant: how-to
 ---
 
 CLI Apps give the agent a real command-line program without giving it a general host shell. DeepTutor installs each app into its own environment, mounts it read-only into the sandbox runner, and exposes one fixed program with a model-authored argument vector.

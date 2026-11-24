@@ -1,6 +1,7 @@
 ---
 title: 参与贡献
 description: 如何为 DeepTutor 贡献代码、文档或修复 bug —— 分支策略、环境搭建、PR 检查清单。
+quadrant: how-to
 ---
 
 感谢你对 DeepTutor 的兴趣。分诊员与维护者招募详情见根目录的 [`CONTRIBUTING.md`](https://github.com/HKUDS/DeepTutor/blob/main/CONTRIBUTING.md)。

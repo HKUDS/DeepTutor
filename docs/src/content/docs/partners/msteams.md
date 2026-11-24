@@ -1,6 +1,7 @@
 ---
 title: Microsoft Teams
 description: Configure the Microsoft Teams channel for a Partner — Azure Bot registration, public messaging endpoint, and inbound JWT validation.
+quadrant: how-to
 ---
 
 <img src="/channel-icons/msteams.svg" alt="" width="40" height="40" />

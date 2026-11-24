@@ -1,6 +1,7 @@
 ---
 title: 快速上手
 description: DeepTutor 提供四种安装方式 —— PyPI、源码、Docker、纯 CLI。挑一个适合你的。
+quadrant: explanation
 ---
 
 DeepTutor 提供 **四种安装路径**，全部使用相同的运行数据目录（runtime home）布局：设置文件位于运行命令所在目录下的 `data/user/settings/`（或者你显式指定的 `DEEPTUTOR_HOME` / `deeptutor start --home` 位置）。知识库、记忆、Partners runtime、多用户账号和审计日志也都在同一棵 `data/` 树里，部署时需要持久化它，以及另外指定的内容工作区目录。运行数据目录是部署的存储根目录，与应用内切换的工作区是不同概念。

@@ -1,6 +1,7 @@
 ---
 title: Knowledge Center
 description: Create, version, sync, inspect, and reuse the Knowledge Bases that ground Home, Partners, Learning notebook, Books, and other learning surfaces.
+quadrant: how-to
 ---
 
 The Knowledge Center is where you build and manage the document libraries behind **RAG**. A knowledge base (KB) can ground Home turns, Learning notebook edits, Book generation, and Partner conversations. This page focuses on the KB lifecycle; engine architecture and selection live under [RAG Integration](/ecosystem/rag-integration/).

@@ -1,6 +1,7 @@
 ---
 title: Settings
 description: The control plane for DeepTutor — appearance, network, workspace, models, parsing, video learning, agents, memory, and updates.
+quadrant: how-to
 ---
 
 Settings is the operational control plane for DeepTutor. Most sections use a **draft-and-apply** model: you edit a draft, test it, then **Apply** — so a bad provider change never takes down a working setup. Values persist to `data/user/settings/*.json` (and a couple of YAML files) in your account.

@@ -1,6 +1,7 @@
 ---
 title: 仅 CLI 安装
 description: 选项 4 —— 给 headless 服务器、agent harness 以及 Claude Code / Codex / Hermes 用的轻量安装方式。
+quadrant: how-to
 ---
 
 当前 `dev` 的源码 CLI 安装使用主项目，并跳过前端 Node/npm 设置。源码包含全部模块，所以仍需安装 `requirements/full.txt`。1.7.x 的精简 core wheel 提供聊天和 SDK，功能模块可另行安装；`deeptutor-cli` 是 core 的元数据兼容别名。不要继续 editable 安装旧 `packaging/deeptutor-cli` 项目。

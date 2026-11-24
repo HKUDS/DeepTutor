@@ -1,6 +1,7 @@
 ---
 title: WhatsApp
 description: Connect a Partner to WhatsApp through an external Node.js bridge that speaks the WhatsApp Web protocol.
+quadrant: how-to
 ---
 
 <img src="/channel-icons/whatsapp.svg" alt="" width="40" height="40" />

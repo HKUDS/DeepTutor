@@ -1,6 +1,7 @@
 ---
 title: Calendar
 description: Plan account-wide events alongside workspace tasks, due reviews, scheduled instructions and learning activity.
+quadrant: how-to
 ---
 
 Open **Home → Calendar** (`/calendar`) to see dates and study time together. **Calendars and events belong to the account**, even though their entry is under Home. Workspace layers add the selected workspace's tasks, due reviews, scheduled instructions and activity footprints. Switching workspaces changes those layers while keeping your personal events.

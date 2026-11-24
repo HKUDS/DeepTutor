@@ -1,6 +1,7 @@
 ---
 title: Troubleshooting
 description: Common errors across install paths, with copy-pasteable fixes.
+quadrant: how-to
 ---
 
 If your install isn't behaving, run `deeptutor doctor` first — it reports what is missing or misconfigured. Then find your symptom below. Errors are grouped by category.

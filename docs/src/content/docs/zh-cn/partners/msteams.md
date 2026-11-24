@@ -1,6 +1,7 @@
 ---
 title: Microsoft Teams
 description: 为 Partner 配置 Microsoft Teams 渠道——Azure Bot 注册、公网 messaging endpoint、入站 JWT 校验。
+quadrant: how-to
 ---
 
 <img src="/channel-icons/msteams.svg" alt="" width="40" height="40" />

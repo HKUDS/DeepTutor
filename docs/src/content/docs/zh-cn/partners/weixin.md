@@ -1,6 +1,7 @@
 ---
 title: WeChat（个人微信）
 description: 使用扫码登录和 HTTP long-poll 为 Partner 配置个人微信渠道。
+quadrant: how-to
 ---
 
 <img src="/channel-icons/weixin.svg" alt="" width="40" height="40" />

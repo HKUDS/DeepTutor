@@ -1,6 +1,7 @@
 ---
 title: Workspaces
 description: Organize conversations, learning records, resources, files, and instructions by subject or project.
+quadrant: how-to
 ---
 
 A workspace is the container for a subject or project. Choose it **before** opening Home, Learning, or Resources: those areas show the selected workspace's work. A workspace is larger than a single conversation or a reading collection.

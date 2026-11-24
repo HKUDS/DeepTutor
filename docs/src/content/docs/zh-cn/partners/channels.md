@@ -1,6 +1,7 @@
 ---
 title: 渠道矩阵
 description: 所有内置 Partner channels 的连接模型、关键字段和适用场景。
+quadrant: reference
 ---
 
 Partner channels 是同一个 Partner brain 外面的投递适配器。它不会创建第二套 agent runtime：一条 IM 入站事件会变成作用域内的 chat turn，最终回复再通过 channel 发回去。

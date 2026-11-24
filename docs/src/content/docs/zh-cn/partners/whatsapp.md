@@ -1,6 +1,7 @@
 ---
 title: WhatsApp
 description: 通过外部 Node.js bridge（WhatsApp Web 协议）把 Partner 接入 WhatsApp。
+quadrant: how-to
 ---
 
 <img src="/channel-icons/whatsapp.svg" alt="" width="40" height="40" />

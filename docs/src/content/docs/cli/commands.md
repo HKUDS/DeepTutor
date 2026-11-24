@@ -1,6 +1,7 @@
 ---
 title: Command Reference
 description: Common deeptutor commands — flags, output schemas, examples.
+quadrant: reference
 ---
 
 This page documents commonly used `deeptutor` subcommands and flags. For interactive REPL usage, see [**Interactive REPL**](/cli/chat-repl/). For automation patterns, see [**Agent handoff**](/cli/agent-handoff/).

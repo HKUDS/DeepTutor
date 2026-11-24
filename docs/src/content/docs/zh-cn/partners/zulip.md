@@ -1,6 +1,7 @@
 ---
 title: Zulip
 description: 为 Partner 配置 Zulip channel —— event-queue long polling，session 按 stream + topic 划分。
+quadrant: how-to
 ---
 
 <img src="/channel-icons/zulip.svg" alt="" width="40" height="40" />

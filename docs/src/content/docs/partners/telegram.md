@@ -1,6 +1,7 @@
 ---
 title: Telegram
 description: Configure the Telegram channel for a Partner — BotFather registration, Bot API long polling, and live-streamed replies.
+quadrant: how-to
 ---
 
 <img src="/channel-icons/telegram.svg" alt="" width="40" height="40" />

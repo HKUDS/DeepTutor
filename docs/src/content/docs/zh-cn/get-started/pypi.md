@@ -1,6 +1,7 @@
 ---
 title: 从 PyPI 安装
 description: 说明模块化 full 安装与旧包迁移，并在升级时保留运行数据。
+quadrant: how-to
 ---
 
 本页介绍 **1.7.x** 模块化包（当前发布版本为 1.7.4）及从 **1.6.15** 旧布局迁移的方法。Web 应用选择 full 安装范围，终端聊天可只安装 core。要体验当前开发版功能，请[从源码安装](/zh-cn/get-started/from-source/)，或在独立环境构建、安装完整且版本一致的本地 wheel 家族。

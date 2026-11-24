@@ -1,6 +1,7 @@
 ---
 title: Mattermost
 description: Configure the Mattermost channel for a Partner — bot account access token, native v4 WebSocket + REST, thread replies, and self-hosted TLS.
+quadrant: how-to
 ---
 
 <img src="/channel-icons/mattermost.svg" alt="" width="40" height="40" />

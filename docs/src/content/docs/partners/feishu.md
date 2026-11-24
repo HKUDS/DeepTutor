@@ -1,6 +1,7 @@
 ---
 title: Feishu
 description: Configure the Feishu / Lark channel for a Partner — Open Platform app setup, WebSocket long connection, and CardKit streaming cards.
+quadrant: how-to
 ---
 
 <img src="/channel-icons/feishu.svg" alt="" width="40" height="40" />

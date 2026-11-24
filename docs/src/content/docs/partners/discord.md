@@ -1,6 +1,7 @@
 ---
 title: Discord
 description: Configure the Discord channel for a Partner — Developer Portal app, Gateway WebSocket, intents, and live-streamed replies.
+quadrant: how-to
 ---
 
 <img src="/channel-icons/discord.svg" alt="" width="40" height="40" />

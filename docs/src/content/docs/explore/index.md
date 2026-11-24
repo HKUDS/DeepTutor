@@ -1,6 +1,7 @@
 ---
 title: A connected learning workflow
 description: Follow one project through workspace-scoped Home, Learning, and Resources, with account-level Partners and Personalization.
+quadrant: tutorial
 ---
 
 The sidebar is a map of **where your work belongs**. Choose a workspace first, then move between its conversations, learning activities, and reusable sources. Your account supplies the companions and preferences you can bring into that work.

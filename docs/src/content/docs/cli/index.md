@@ -1,6 +1,7 @@
 ---
 title: DeepTutor CLI
 description: Drive every DeepTutor capability from the terminal — interactive REPL, single-turn execution, agent handoff.
+quadrant: how-to
 ---
 
 DeepTutor is built around an **agent-native CLI**: core runtime surfaces have terminal mirrors, turn execution can stream JSON for machine consumers, and the supported automation surface is documented in a single skill file that AI agents can read and drive autonomously. Some browser-first workflows (for example Learning notebook editing and Memory Workbench review) still live in the Web UI or HTTP API.

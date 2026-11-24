@@ -1,6 +1,7 @@
 ---
 title: Python SDK
 description: 在异步 Python 应用中直接嵌入 DeepTutor 的回合、会话、能力与笔记本运行时。
+quadrant: tutorial
 ---
 
 `DeepTutorApp` 是 DeepTutor 稳定的进程内 Python facade。它暴露 CLI 所用的同一套回合 payload 与运行时 contract，无需另行启动 CLI，也不必通过 HTTP API 发送请求。你的应用本来就在 Python 中运行，并且需要原生访问流式事件、会话、能力元数据或笔记本时，就适合使用它。

@@ -1,6 +1,7 @@
 ---
 title: Partners & Channels
 description: Operator guide for DeepTutor Partners, channel configuration, workspace layout, and IM delivery behavior.
+quadrant: how-to
 ---
 
 Partners are persistent DeepTutor companions that can live in the web UI and in external IM apps. They are not a second bot engine. Every incoming message becomes a normal chat-agent turn scoped to that Partner:

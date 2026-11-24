@@ -1,6 +1,7 @@
 ---
 title: Telegram
 description: 为 Partner 配置 Telegram channel —— BotFather 注册、Bot API long polling、原地编辑的流式回复。
+quadrant: how-to
 ---
 
 <img src="/channel-icons/telegram.svg" alt="" width="40" height="40" />

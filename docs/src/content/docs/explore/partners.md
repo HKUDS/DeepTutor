@@ -1,6 +1,7 @@
 ---
 title: Partners
 description: Persistent IM-connected companions that run on the same chat agent loop as DeepTutor Chat — with their own soul, library, memory, and channels.
+quadrant: how-to
 ---
 
 Partners are persistent companions with their own identity, soul, model policy, library, memory, and channel configuration. They are not a separate bot engine: every inbound message — from the web or from an IM app — is routed through the **same** `ChatOrchestrator → AgenticChatPipeline` loop that powers [Home](/explore/chat-workspace/). A Partner is "a chat that has a personality and a phone number."

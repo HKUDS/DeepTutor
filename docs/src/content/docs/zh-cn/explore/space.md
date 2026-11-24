@@ -1,6 +1,7 @@
 ---
 title: 资料
 description: 查找当前工作区的对话、收藏、学习日志、题目与知识库。
+quadrant: how-to
 ---
 
 **资料**是当前[工作区](/zh-cn/explore/workspaces/)可复用材料的入口，从侧栏打开（`/space`）。经典布局称其为**学习空间（Learning Space）**。这里保存可带回聊天和学习活动的输入与记录。

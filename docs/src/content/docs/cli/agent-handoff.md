@@ -1,6 +1,7 @@
 ---
 title: Agent Handoff
 description: Hand the deeptutor CLI to Claude Code, Codex, OpenCode, Hermes, or any tool-using LLM — and let them drive.
+quadrant: how-to
 ---
 
 DeepTutor was designed to be **driven by other agents**. Turn execution can emit structured JSON, sessions can be resumed across processes, and the supported surface is documented in a single skill file that any tool-using LLM can read and act on.

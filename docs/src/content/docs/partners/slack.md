@@ -1,6 +1,7 @@
 ---
 title: Slack
 description: Configure the Slack channel for a Partner — Socket Mode app, bot and app tokens, thread replies, and DM policy.
+quadrant: how-to
 ---
 
 <img src="/channel-icons/slack.svg" alt="" width="40" height="40" />

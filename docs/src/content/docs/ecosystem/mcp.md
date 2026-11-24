@@ -1,6 +1,7 @@
 ---
 title: MCP Services
 description: Connect hosted Model Context Protocol services per account, or manage deployment-wide servers through the administrator registry.
+quadrant: how-to
 ---
 
 MCP Services bring tools from outside DeepTutor into the same agent loop as built-in tools. Remote services connect to an individual account; deployment-managed servers are owned by an administrator.

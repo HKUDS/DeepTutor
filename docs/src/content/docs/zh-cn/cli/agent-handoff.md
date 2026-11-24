@@ -1,6 +1,7 @@
 ---
 title: 代理交接
 description: 把 deeptutor CLI 交给 Claude Code、Codex、OpenCode、Hermes 或任何会用 tool 的 LLM —— 让它们来驱动。
+quadrant: how-to
 ---
 
 DeepTutor 从设计之初就是为了 **被其他 agent 驱动** 的：turn 执行可以输出结构化 JSON，session 能跨进程恢复，受支持的 surface 都集中在一个 skill 文件里 —— 任何会用 tool 的 LLM 读完就能直接上手。

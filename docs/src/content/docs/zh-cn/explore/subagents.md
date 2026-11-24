@@ -1,6 +1,7 @@
 ---
 title: 我的智能体
 description: "我的智能体——在一轮聊天里咨询本地 agent harness、已配置的 ACP 智能体、远程 Hermes 网关或某个伙伴，并把 Claude Code / Codex / ChatGPT 对话导入为有名字、可续聊的智能体。"
+quadrant: how-to
 ---
 
 **My Agents**（我的智能体）把其他智能体变成 DeepTutor 的上下文。它做两件不同的事：让你在一轮聊天里**实时咨询一个活的智能体**（本机受支持的 harness 或已配置的 ACP 智能体、远程 Hermes 网关，或你的某个伙伴），以及把 **Claude Code / Codex / ChatGPT 历史对话导入**为有名字、可搜索、可续聊的智能体。

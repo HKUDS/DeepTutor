@@ -1,6 +1,7 @@
 ---
 title: WeChat (Personal Weixin)
 description: Configure the personal WeChat channel for a Partner using QR-code login and HTTP long polling.
+quadrant: how-to
 ---
 
 <img src="/channel-icons/weixin.svg" alt="" width="40" height="40" />

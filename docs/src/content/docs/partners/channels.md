@@ -1,6 +1,7 @@
 ---
 title: Channel Matrix
 description: All built-in Partner channels, their connection model, required fields, and when to use each one.
+quadrant: reference
 ---
 
 Partner channels are delivery adapters around the same Partner brain. They do not create a second agent runtime: an inbound IM event becomes a scoped chat turn, and the reply is delivered back through the channel.

@@ -1,6 +1,7 @@
 ---
 title: DeepTutor 生态
 description: 通过 RAG 集成、可复用 Skill、远程 MCP 服务、沙箱化 CLI App 与 EduHub 扩展 DeepTutor。
+quadrant: explanation
 ---
 
 DeepTutor 的内置学习界面覆盖日常使用；**生态**则让你在不修改核心代码的前提下增加行为与工具：连接检索引擎、教模型一套工作流、连接外部服务、安装命令行应用，或发现社区 Skill。

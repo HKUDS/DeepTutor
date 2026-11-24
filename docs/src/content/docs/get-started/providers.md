@@ -1,5 +1,6 @@
 ---
 title: Provider Configuration
+quadrant: how-to
 ---
 
 

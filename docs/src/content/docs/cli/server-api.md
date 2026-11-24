@@ -1,6 +1,7 @@
 ---
 title: Server API
 description: The HTTP and WebSocket surface exposed by deeptutor serve -- for custom frontends and integrations.
+quadrant: reference
 ---
 
 `deeptutor serve` exposes a FastAPI backend at `http://localhost:8001/` unless you configured a different backend port. This page gives the high-signal map for custom frontends, mobile apps, and service-to-service integrations.

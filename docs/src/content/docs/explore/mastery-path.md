@@ -1,6 +1,7 @@
 ---
 title: Mastery Path
 description: Turn a learning goal and your own materials into a mastery map with recorded evidence, then study each waypoint with a dedicated tutor.
+quadrant: how-to
 ---
 
 Mastery Path turns a broad goal into a route you can actually finish. The route is divided into modules and typed knowledge points, and progress records assessed mastery or an explicit learner declaration, rather than time spent reading.

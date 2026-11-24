@@ -1,6 +1,7 @@
 ---
 title: EduHub
 description: Discover community Skills, inspect them before installation, import them through DeepTutor's safety gate, and publish your own versions.
+quadrant: how-to
 ---
 
 [EduHub](https://eduhub.deeptutor.info) is DeepTutor's community distribution layer for Skills. It sits between a local `SKILL.md` library and a shared catalog: learners discover reusable workflows, authors publish versioned packages, and DeepTutor keeps installation behind an explicit review and security boundary.

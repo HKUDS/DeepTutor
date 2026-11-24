@@ -1,6 +1,7 @@
 ---
 title: RAG 集成
 description: 选择 DeepTutor 如何从本地索引、智能体文档树、远程知识服务与实时学习资料库中检索。
+quadrant: how-to
 ---
 
 DeepTutor 把检索当成一条生态边界，而不是写死成某一种向量库。[知识空间](/zh-cn/explore/knowledge/)里的知识库是用户看到的容器；背后的 **RAG 集成**决定材料如何建索引、查询、引用与同步。

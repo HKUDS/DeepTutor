@@ -1,6 +1,7 @@
 ---
 title: Email
 description: Configure the email channel for a Partner using IMAP polling for inbound mail and SMTP replies.
+quadrant: how-to
 ---
 
 <img src="/channel-icons/email.svg" alt="" width="40" height="40" />

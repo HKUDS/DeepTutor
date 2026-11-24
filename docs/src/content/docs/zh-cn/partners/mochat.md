@@ -1,6 +1,7 @@
 ---
 title: Mochat
 description: 通过 Socket.IO（自动回退 HTTP 轮询）把 Partner 接入 Mochat 客服面板。
+quadrant: how-to
 ---
 
 <img src="/channel-icons/mochat.svg" alt="" width="40" height="40" />

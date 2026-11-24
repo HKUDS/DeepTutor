@@ -1,6 +1,7 @@
 ---
 title: Notebook
 description: Write block-based pages and subpages, reuse favorites and sources, and study or revise beside Dito.
+quadrant: how-to
 ---
 
 The **Learning notebook** is your writing and thinking space within a workspace. Open **Home → Learning notebook** at `/co-writer`; this is the route historically called **Co-Writer**. The current editor uses pages and blocks, with Dito beside the page, rather than the former Markdown source/preview interface.

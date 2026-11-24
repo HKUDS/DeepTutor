@@ -1,5 +1,6 @@
 ---
 title: Provider 配置
+quadrant: how-to
 ---
 
 

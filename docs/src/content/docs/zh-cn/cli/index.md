@@ -1,6 +1,7 @@
 ---
 title: DeepTutor CLI
 description: 在终端里驱动 DeepTutor 的所有能力 —— 交互式 REPL、单次执行、Agent 交接。
+quadrant: how-to
 ---
 
 DeepTutor 是围绕 **agent-native CLI** 设计的：核心运行时在终端里都有对应入口，turn 执行可以流式输出 JSON 给程序消费，自动化 surface 集中在一份 skill 文档里，AI 代理读完就能自驱。部分浏览器优先的工作流（比如 学习笔记本编辑、Memory Workbench）仍然在 Web UI 或 HTTP API 里。

@@ -1,6 +1,7 @@
 ---
 title: Learning
 description: Choose a learning activity, resume your records, and connect reading, structured study and daily practice.
+quadrant: explanation
 ---
 
 **Learning** is the current workspace's study area. Open it from the sidebar to create an activity, search existing records, or continue where you stopped. In the Classic layout this area is called **Personalized Learning**.

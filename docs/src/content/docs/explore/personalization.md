@@ -1,6 +1,7 @@
 ---
 title: Personalization
 description: Manage the agents, personas, skills, connected services, CLI apps, and memory that accompany your account across workspaces.
+quadrant: how-to
 ---
 
 **Personalization** is your account's shelf of reusable behavior and connections. Open it from the sidebar to reach **My Agents**, **Personas**, **Skills**, **MCP Services**, **CLI Apps**, and **Memory**. Switching from a course workspace to a research workspace keeps this shelf available; each workspace decides which resources its turns may use.

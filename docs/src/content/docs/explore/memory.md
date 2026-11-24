@@ -1,6 +1,7 @@
 ---
 title: Memory
 description: Inspectable personalization — an L1 workspace mirror, L2 per-surface summaries, L3 cross-surface synthesis, and a Memory Graph of the references between them.
+quadrant: explanation
 ---
 
 Memory is DeepTutor's **inspectable** personalization system. It is deliberately *not* a hidden vector store — it is a three-layer pipeline you can read, curate, and audit. Claims sit beside their workspace-entity or source-surface references, whose precision is visible rather than overstated.

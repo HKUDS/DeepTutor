@@ -1,6 +1,7 @@
 ---
 title: Resources
 description: Find the current workspace's conversations, favorites, learning journal, questions and knowledge bases.
+quadrant: how-to
 ---
 
 **Resources** is the current [workspace](/explore/workspaces/)'s reusable material shelf. Open it from the sidebar (`/space`). The Classic layout calls this area **Learning Space**. It holds inputs and saved records that you can bring back into Chat and Learning.

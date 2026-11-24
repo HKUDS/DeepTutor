@@ -1,6 +1,7 @@
 ---
 title: DeepTutor Ecosystem
 description: Extend DeepTutor through RAG integrations, reusable Skills, remote MCP services, sandboxed CLI Apps, and EduHub.
+quadrant: explanation
 ---
 
 DeepTutor's built-in learning surfaces cover the everyday product. The **ecosystem** is how you add behavior and tools without changing that core: connect a retrieval engine, teach the model a workflow, connect an external service, install a command-line application, or discover community Skills.

@@ -1,6 +1,7 @@
 ---
 title: Interactive REPL
 description: A long-running terminal chat session with inline /slash commands for switching capabilities, tools, KBs, and more.
+quadrant: how-to
 ---
 
 `deeptutor chat` opens an interactive REPL — useful for **exploratory work**, **multi-turn debugging**, and **driving DeepTutor with your hands** instead of with `run` calls.

@@ -1,6 +1,7 @@
 ---
 title: 设置
 description: DeepTutor 的控制面板——外观、网络、工作区、模型、解析、视频学习、智能体、记忆与更新。
+quadrant: how-to
 ---
 
 设置（Settings）是 DeepTutor 的运维控制面板。大多数版块采用**草稿—应用**（draft-and-apply）模式：你先编辑草稿、测试，再 **Apply**（应用）——这样一次糟糕的提供商改动永远不会搞垮一套正常的配置。配置值持久化到你账户下的 `data/user/settings/*.json`（以及少数几个 YAML 文件）。

@@ -1,6 +1,7 @@
 ---
 title: Get Started
 description: DeepTutor ships four install paths — PyPI, From Source, Docker, and CLI-Only. Pick the one that fits.
+quadrant: explanation
 ---
 
 DeepTutor ships **four installation paths**. They share one runtime-home layout: settings live in `data/user/settings/` under the directory you launch from (or under `DEEPTUTOR_HOME` / `deeptutor start --home` if you set one explicitly). Knowledge bases, memory, Partner runtime state, multi-user accounts, and audit logs also live under the same `data/` tree, so persist that tree and any separately configured content-workspace directories. The runtime home is the deployment storage root; it is distinct from the workspaces selected inside the app.

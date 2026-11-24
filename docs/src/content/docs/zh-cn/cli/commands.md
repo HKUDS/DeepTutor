@@ -1,6 +1,7 @@
 ---
 title: 命令参考
 description: 常用 deeptutor 命令 —— flag、输出 schema、示例。
+quadrant: reference
 ---
 
 本页列出常用 `deeptutor` 子命令和 flag。交互式 REPL 用法见 [**交互式 REPL**](/zh-cn/cli/chat-repl/)。自动化模式见 [**代理交接**](/zh-cn/cli/agent-handoff/)。

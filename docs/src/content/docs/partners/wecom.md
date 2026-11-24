@@ -1,6 +1,7 @@
 ---
 title: WeCom (WeChat Work)
 description: Configure Enterprise WeChat / WeCom AI Bot delivery for a Partner.
+quadrant: how-to
 ---
 
 <img src="/channel-icons/wecom.svg" alt="" width="40" height="40" />

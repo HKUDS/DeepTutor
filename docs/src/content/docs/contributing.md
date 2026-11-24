@@ -1,6 +1,7 @@
 ---
 title: Contributing
 description: How to contribute code, docs, or bug fixes to DeepTutor — branching, setup, and the PR checklist.
+quadrant: how-to
 ---
 
 Thanks for your interest in contributing to DeepTutor. We recruit triagers and maintainers; roles and application details are in [`CONTRIBUTING.md`](https://github.com/HKUDS/DeepTutor/blob/main/CONTRIBUTING.md) at the repo root.

@@ -1,6 +1,7 @@
 ---
 title: WeCom（企业微信）
 description: 为 Partner 配置企业微信 / WeChat Work AI Bot 渠道。
+quadrant: how-to
 ---
 
 <img src="/channel-icons/wecom.svg" alt="" width="40" height="40" />

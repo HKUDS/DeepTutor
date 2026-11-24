@@ -1,6 +1,7 @@
 ---
 title: EduHub
 description: 发现社区 Skill，安装前检查内容，通过 DeepTutor 的安全闸门导入，并发布自己的版本。
+quadrant: how-to
 ---
 
 [EduHub](https://eduhub.deeptutor.info) 是 DeepTutor 面向 Skill 的社区分发层。它连接本地 `SKILL.md` 资料库与共享目录：学习者发现可复用工作流，作者发布带版本的软件包，而 DeepTutor 把安装放在显式审阅与安全边界之后。

@@ -1,6 +1,7 @@
 ---
 title: Mattermost
 description: 为 Partner 配置 Mattermost channel —— bot 账号 access token、原生 v4 WebSocket + REST、线程回复、自托管 TLS。
+quadrant: how-to
 ---
 
 <img src="/channel-icons/mattermost.svg" alt="" width="40" height="40" />

@@ -1,6 +1,7 @@
 ---
 title: Books
 description: Compile your knowledge bases, notebooks, question banks, and chat history into interactive living books — with quizzes, animations, interactive widgets, diagrams, and a per-page chat.
+quadrant: how-to
 ---
 
 Interactive Book turns your materials into a **living book** — not a static PDF, but a reading environment built from typed blocks you can quiz against, watch as animation, manipulate as a live widget, and chat about page by page.

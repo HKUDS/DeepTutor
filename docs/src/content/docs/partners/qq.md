@@ -1,6 +1,7 @@
 ---
 title: QQ / NapCat
 description: "Configure Tencent QQ channels for Partners: official QQ bot accounts and personal QQ through NapCat / OneBot v11."
+quadrant: how-to
 ---
 
 <img src="/channel-icons/qq.svg" alt="" width="40" height="40" />

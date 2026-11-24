@@ -1,6 +1,7 @@
 ---
 title: Favorites
 description: Keep original conversations and results in collections, then bring selected sources into your own learning notes.
+quadrant: how-to
 ---
 
 **Favorites** stores material you want to keep: useful conversations, explanations, research results and other supported learning outputs. Open **Resources → Favorites** (`/notebooks`), create or choose a collection, and reopen the saved records inside it.

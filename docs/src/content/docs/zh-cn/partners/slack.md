@@ -1,6 +1,7 @@
 ---
 title: Slack
 description: 为 Partner 配置 Slack channel —— Socket Mode 应用、bot 和 app 两个 token、线程回复与 DM 策略。
+quadrant: how-to
 ---
 
 <img src="/channel-icons/slack.svg" alt="" width="40" height="40" />

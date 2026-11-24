@@ -1,6 +1,7 @@
 ---
 title: Install from Source
 description: Option 2 — clone, install editable, hot-reload the frontend. For contributors and power users.
+quadrant: how-to
 ---
 
 For development against a checkout. Use **Python 3.11–3.14** and **Node.js 22 LTS** to match CI and Docker.
