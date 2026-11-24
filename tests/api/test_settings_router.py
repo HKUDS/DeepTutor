@@ -2257,3 +2257,10 @@ def test_llm_provider_choices_include_standardcompute() -> None:
 
     assert llm["standardcompute"]["label"] == "Standard Compute"
     assert llm["standardcompute"]["base_url"] == "https://api.stdcmpt.com/v1"
+
+
+def test_llm_provider_choices_include_teamorouter() -> None:
+    llm = {item["value"]: item for item in settings_router._provider_choices()["llm"]}
+
+    assert llm["teamorouter"]["label"] == "TeamoRouter"
+    assert llm["teamorouter"]["base_url"] == "https://api.teamorouter.com/v1"
