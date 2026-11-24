@@ -20,7 +20,9 @@ STATE_REFERENCE_NOTICE = (
     'or {"$mastery_same_value": {"snapshot": "mastery_status_snapshot", "pointer": "/..."}} '
     "inside a tool result means EXACTLY the same JSON value at that "
     "pointer in the named tool result or runtime snapshot's full payload. "
-    "For a mastery status snapshot, the payload is the JSON after its notice. "
+    "For a mastery status snapshot, the payload is the JSON after its notice; "
+    'without "occurrence" it is the first such snapshot in this request, '
+    'with "occurrence": N the N-th one. '
     "The referenced value is included in this request, not external memory. "
     "Only identical repeated state is shared; unique past state and learner "
     "exchanges are retained. Historical status is not current progress."
@@ -41,17 +43,27 @@ _FIELDS = {
 }
 
 
-def project_mastery_replay(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def project_mastery_replay(
+    messages: list[dict[str, Any]], *, keep_snapshots: bool = False
+) -> list[dict[str, Any]]:
     """Project past turns; the loop supplies fresh runtime state and evidence.
 
     Never interpret an unmarked user quotation as runtime context. Tool pairs,
     dialogue and unique historical state stay intact until successful condensing.
+
+    ``keep_snapshots`` is for the tutor's own model request: runtime snapshots
+    already sent stay where they were, and the loop appends only the ones that
+    changed. Dropping them would move every later message up and make each
+    follow-up request diverge from the previous one at its first history
+    message, defeating the provider's prompt cache. Memory material and
+    archives drop them: there they are repeated state, not dialogue.
     """
     projected = deepcopy(
         [
             m
             for m in messages
-            if not (m.get("role") == "user" and (isinstance(m.get("_context_snapshot"), str)))
+            if keep_snapshots
+            or not (m.get("role") == "user" and (isinstance(m.get("_context_snapshot"), str)))
         ]
     )
     reference_history_reads(projected)
@@ -134,11 +146,13 @@ def share_mastery_history(messages: list[dict[str, Any]], history_end: int) -> N
         for call in calls
         if isinstance(call.get("id"), str) and counts[call["id"]] == 1 and results[call["id"]] == 1
     }
-    snapshot_count = sum(m.get("_context_snapshot") == "mastery_status_snapshot" for m in messages)
+    # Snapshot locators count from the start, so replaying later turns never
+    # changes how an earlier message is projected (its cache prefix).
+    snapshot_seen = 0
     anchors: dict[str, dict[str, Any]] = {}
 
     def visit(
-        value: Any, locator: dict[str, str], pointer: str, *, replace: bool
+        value: Any, locator: dict[str, Any], pointer: str, *, replace: bool
     ) -> tuple[Any, bool]:
         if not isinstance(value, (dict, list)):
             return value, False
@@ -172,10 +186,11 @@ def share_mastery_history(messages: list[dict[str, Any]], history_end: int) -> N
             continue
         is_snapshot = (
             message.get("role") == "user"
-            and snapshot_count == 1
             and message.get("_context_snapshot") == "mastery_status_snapshot"
             and content.startswith(_MASTERY_SNAPSHOT_NOTICE)
         )
+        if is_snapshot:
+            snapshot_seen += 1
         name = names.get(message.get("tool_call_id")) if message.get("role") == "tool" else None
         if not is_snapshot and name not in _FIELDS:
             continue
@@ -194,11 +209,13 @@ def share_mastery_history(messages: list[dict[str, Any]], history_end: int) -> N
         if is_snapshot and not isinstance(payload.get("path_id"), str):
             continue
         fields = _FIELDS["mastery_status"] if is_snapshot else _FIELDS[name]
-        locator = (
-            {"snapshot": "mastery_status_snapshot"}
-            if is_snapshot
-            else {"tool_call_id": message["tool_call_id"]}
-        )
+        locator: dict[str, Any]
+        if is_snapshot:
+            locator = {"snapshot": "mastery_status_snapshot"}
+            if snapshot_seen > 1:
+                locator["occurrence"] = snapshot_seen
+        else:
+            locator = {"tool_call_id": message["tool_call_id"]}
         changed = False
         for field in fields:
             if field not in payload:

@@ -133,8 +133,9 @@ def _memory_material(previous: str, messages: list[dict[str, Any]]) -> str:
 
 
 def _memory_tokens(messages, summary):
-    # Historical runtime snapshots are removed by the tutor projection. The
-    # answer loop will append the current summary, so reserve it separately.
+    # Historical runtime snapshots stay in the tutor projection and count like
+    # any other history message. The answer loop will append the current
+    # summary, so reserve it separately.
     tokens = _count_model_context_tokens(deduplicate_user_images(messages))
     snapshot = summary_snapshot(summary)
     return tokens + (_count_model_context_tokens(snapshot) if snapshot else 0)
@@ -161,7 +162,8 @@ class MasteryContextBuilder(ContextBuilder):
 
     def _model_tokens(self, messages, summary="", route=None):
         return _memory_tokens(
-            project_mastery_replay(replay_history(messages, route=route)), summary
+            project_mastery_replay(replay_history(messages, route=route), keep_snapshots=True),
+            summary,
         )
 
     def _select_recent_messages(self, messages, recent_budget, route=None):
@@ -232,7 +234,9 @@ class MasteryContextBuilder(ContextBuilder):
         result = await super().build(
             session_id=session_id, leaf_message_id=leaf_message_id, **kwargs
         )
-        result.model_history = project_mastery_replay(result.model_history or [])
+        result.model_history = project_mastery_replay(
+            result.model_history or [], keep_snapshots=True
+        )
         result.token_count = _memory_tokens(result.model_history, result.conversation_summary)
         result.history_sources = sources
         if result.token_count > result.budget:
