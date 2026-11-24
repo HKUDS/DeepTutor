@@ -69,6 +69,9 @@ jobs:
           - target: windows-x64
             name: Open DeepTutor for Windows
             runner: windows-2025
+          - target: linux-x64
+            name: Open DeepTutor for Linux
+            runner: ubuntu-24.04
     environment: ${{ github.ref_type == 'tag' && startsWith(github.ref_name, 'v') && 'desktop-release' || 'desktop-validation' }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 120
@@ -137,6 +140,16 @@ jobs:
       - name: Install the Windows installer toolchain
         if: runner.os == 'Windows'
         run: choco install nsis --yes --no-progress
+
+      - name: Install the Linux AppImage tool
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          curl -fsSL -o "$RUNNER_TEMP/appimagetool" \
+            "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage"
+          chmod +x "$RUNNER_TEMP/appimagetool"
+          echo "OPEN_DEEPTUTOR_TOOLS=$RUNNER_TEMP" >> "$GITHUB_ENV"
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
 
       - name: Check and test the shell
         run: npm ci && npm run check && npm test
@@ -212,7 +225,7 @@ jobs:
           set -euo pipefail
           # Each platform produces only its own downloads.
           shopt -s nullglob
-          files=(out/*.dmg out/*-Setup.exe out/*-Portable.zip)
+          files=(out/*.dmg out/*-Setup.exe out/*-Portable.zip out/*.AppImage out/*.deb)
           [ ${#files[@]} -gt 0 ] || { echo "No downloads were produced." >&2; exit 1; }
           # Also attach copies without the version in the name, so the README
           # can link to releases/latest/download/<name> and always get the newest build.
@@ -277,6 +290,8 @@ jobs:
               `Open-DeepTutor-MacOS-Intel-${tag}.dmg`,
               `Open-DeepTutor-Windows-${tag}-Setup.exe`,
               `Open-DeepTutor-Windows-${tag}-Portable.zip`,
+              `Open-DeepTutor-Linux-${tag}.AppImage`,
+              `Open-DeepTutor-Linux-${tag}.deb`,
             ];
             const expected = [...versioned, ...versioned.map(name => name.replace(`-${tag}`, ''))];
             const uploaded = new Set(assets
