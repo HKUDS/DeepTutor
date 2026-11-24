@@ -2,7 +2,10 @@
 
 Stricter than ``deeptutor.services.mcp.network`` (which deliberately allows
 RFC1918 because MCP servers are often LAN-hosted): channel media URLs come
-from external IM platforms, so every private/internal range is blocked.
+from external IM platforms, so every private/internal range is blocked. The
+two operator opt-ins in :mod:`deeptutor.services.net_policy` — a Fake-IP
+range declaration and the private-layer switch — apply here as well, so a
+channel behind a TUN proxy behaves like ``web_fetch``.
 
 Ported from nanobot's ``security/network.py``, trimmed to what channels use.
 """
@@ -13,6 +16,12 @@ from contextlib import suppress
 import ipaddress
 import socket
 from urllib.parse import urlparse
+
+from deeptutor.services.net_policy import (
+    current_policy,
+    is_always_refused,
+    is_synthetic_answer,
+)
 
 _BLOCKED_NETWORKS = [
     ipaddress.ip_network("0.0.0.0/8"),
@@ -64,6 +73,12 @@ def validate_url_target(url: str, *, allow_loopback: bool = False) -> tuple[bool
     is loopback. It does not allow RFC1918, link-local, metadata, or public
     DNS names that happen to resolve to loopback.
 
+    The two operator opt-ins from :mod:`deeptutor.services.net_policy` apply
+    here too, so a partner media URL behaves like ``web_fetch``: a Fake-IP
+    proxy's synthetic answer for a hostname is not treated as private, and
+    ``ssrf_protection_enabled=false`` drops the private-network layer.
+    Loopback, link-local and metadata answers stay refused either way.
+
     Returns (ok, error_message). When ok is True, error_message is empty.
     """
     try:
@@ -85,6 +100,7 @@ def validate_url_target(url: str, *, allow_loopback: bool = False) -> tuple[bool
     except socket.gaierror:
         return False, f"Cannot resolve hostname: {hostname}"
 
+    policy = current_policy()
     addrs: list[ipaddress.IPv4Address | ipaddress.IPv6Address] = []
     for info in infos:
         try:
@@ -95,7 +111,11 @@ def validate_url_target(url: str, *, allow_loopback: bool = False) -> tuple[bool
     if allow_loopback and _is_allowed_loopback_target(hostname, addrs):
         return True, ""
     for addr in addrs:
-        if _is_private(addr):
+        if is_always_refused(addr):
+            return False, f"Blocked: {hostname} resolves to private/internal address {addr}"
+        if not policy.protection_enabled:
+            continue
+        if _is_private(addr) and not is_synthetic_answer(addr, host=hostname, policy=policy):
             return False, f"Blocked: {hostname} resolves to private/internal address {addr}"
 
     return True, ""

@@ -420,7 +420,7 @@ restart, do **not** try to drive these with compose env vars.
 
 | File | Purpose |
 |:---|:---|
-| `system.json` | Backend/frontend ports, public API base, CORS, SSL verification, attachment directory |
+| `system.json` | Backend/frontend ports, public API base, CORS, SSL verification, attachment directory, SSRF policy |
 | `auth.json` | Optional auth toggle, username, password hash, token/cookie settings |
 | `integrations.json` | Optional PocketBase and sidecar integration settings |
 | `model_catalog.json` | LLM, embedding, and search provider profiles; API keys; active models |
@@ -440,6 +440,28 @@ The two settings most relevant to a fresh install:
   ports the supervisor binds inside the container. If you change these,
   update the right side of every `-p host:container` mapping (or the
   `HOST_PORT_*` env var that `compose.yaml` reads) to match.
+- **`system.json` → SSRF policy**. One policy
+  (`deeptutor/services/net_policy.py`) covers all three outbound guards: MCP
+  server URLs, `web_fetch`, and partner-channel media downloads.
+
+  - `network_synthetic_ranges` (default `[]`) lists the private CIDRs a local
+    Fake-IP proxy synthesises for public hostnames. Declaring them is what
+    makes public sites load through such a proxy: Clash/Mihomo
+    `["198.18.0.0/15"]`, Loon `["fd27:712::/32"]`, Surge/sing-box as
+    appropriate. Only *hostname* answers inside a declared range are exempt —
+    IP-literal URLs, loopback, link-local and cloud-metadata answers stay
+    refused, and a second private answer for the same hostname still fails the
+    gate.
+  - `ssrf_protection_enabled` (default `true`) set to `false` drops only the
+    RFC1918/CGNAT/ULA layer, for a self-hosted deployment that must reach a
+    LAN MCP server or an intranet page. Loopback, link-local and metadata
+    answers stay refused, so it cannot be used to reach the app process itself
+    or a cloud credential endpoint.
+
+  Deployment overrides: `DEEPTUTOR_SSRF_SYNTHETIC_RANGES` and
+  `DEEPTUTOR_SSRF_PROTECTION_ENABLED`; the MCP-only
+  `DEEPTUTOR_MCP_FAKE_IP_RANGES` from PR #2857 is still honoured. All of it is
+  read at request time, so an edit applies to the next fetch without a restart.
 
 Project-root `.env` files are intentionally ignored as application
 config. The Web **Settings** page is the recommended editor for the

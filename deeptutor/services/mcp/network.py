@@ -23,6 +23,13 @@ is what makes per-user MCP configuration safe to offer at all.
 Validation is deliberately re-run at connect time, not only when a server is
 saved: a check that happens once at save time is defeated by a DNS record that
 changes afterwards.
+
+**Synthetic (Fake-IP) answers.** A local proxy in Fake-IP mode answers public
+hostnames with addresses from a private block. Because the proxy routes by
+hostname, such an answer is not a destination and must not be read as a private
+one; the operator declares those ranges (``services/net_policy.py``) and a
+hostname answer inside them passes the strict policy here too. IP-literal URLs,
+loopback, link-local and metadata answers stay blocked regardless.
 """
 
 from __future__ import annotations
@@ -30,6 +37,12 @@ from __future__ import annotations
 import ipaddress
 import socket
 from urllib.parse import urlparse
+
+from deeptutor.services.net_policy import (
+    current_policy,
+    is_always_refused,
+    is_synthetic_answer,
+)
 
 _BLOCKED_NETWORKS = [
     ipaddress.ip_network("0.0.0.0/8"),
@@ -105,6 +118,9 @@ def validate_mcp_url(
     except socket.gaierror:
         return False, f"Cannot resolve hostname: {hostname}"
 
+    # One snapshot for the whole validation: both the Fake-IP exemption and the
+    # private-layer switch are read from system.json / env here.
+    policy = current_policy()
     resolved = False
     for info in infos:
         try:
@@ -114,9 +130,25 @@ def validate_mcp_url(
         resolved = True
         normalized = _normalize_addr(addr)
         approved_rfc1918 = private_allowed and any(normalized in network for network in _RFC1918)
-        if _is_blocked(addr, strict=False) or (
-            _is_blocked(addr, strict=strict) and not approved_rfc1918
-        ):
+        # A Fake-IP proxy answers public hostnames with synthetic private
+        # addresses and routes by hostname (#2789, #2889). The operator
+        # declares those ranges; an answer inside one is a proxy artefact, not
+        # a destination, so it does not count as private. IP literals and the
+        # always-refused answers stay blocked (see services/net_policy.py).
+        synthetic = strict and is_synthetic_answer(addr, host=hostname, policy=policy)
+        # Loopback, link-local, metadata and unassigned answers are refused
+        # whatever the policy says; the switch below only ever relaxes the
+        # private-network layer of the strict posture. The permissive posture
+        # keeps its original rules — a deployment's own MCP server on
+        # localhost or the LAN stays reachable.
+        hard_blocked = _is_blocked(addr, strict=False) or (strict and is_always_refused(addr))
+        private_blocked = (
+            strict
+            and policy.protection_enabled
+            and _is_blocked(addr, strict=True)
+            and not (approved_rfc1918 or synthetic)
+        )
+        if hard_blocked or private_blocked:
             return False, (
                 f"Blocked: {hostname} resolves to a disallowed address ({addr}). "
                 "A server you configure yourself must be reachable on the public internet."
