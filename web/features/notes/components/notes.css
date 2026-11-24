@@ -1855,7 +1855,7 @@
     0 3px 6px rgb(15 15 15 / 0.08),
     0 9px 24px rgb(15 15 15 / 0.14)
   );
-  animation: dt-pop-in 140ms var(--dt-ease, ease-out);
+  animation: dt-popover-in 140ms var(--dt-ease, ease-out);
 }
 .dt-note-toolbar-panel.is-colors {
   left: auto;
