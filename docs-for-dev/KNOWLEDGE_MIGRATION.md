@@ -73,11 +73,15 @@ their original location.
 5. Wait for parsing and indexing to finish, then confirm a few representative
    notes are retrievable before deleting any source backup.
 
-A **folder upload** preserves its relative directory structure. A `.zip`
-archive is expanded defensively: nested directories are flattened, unsupported
-members are skipped, hidden and system entries are skipped, and duplicate
-basenames after flattening are skipped. Prefer a folder upload when note titles
-repeat in different folders or the folder hierarchy is meaningful.
+A **folder upload** preserves its relative directory structure, and so does a
+`.zip` archive added to an existing knowledge base. The archive is expanded
+defensively: unsupported and unsafe (`..`) members are skipped and listed in
+the upload result, hidden and system entries (`__MACOSX`, dotfiles,
+`Thumbs.db`) are skipped silently. Uploading the same archive again is safe: a
+file whose path already holds identical content is skipped, and a changed file
+is stored next to the existing one as `name (2).ext` instead of replacing it.
+An archive is capped at 200 MB; for a larger export, unzip it and upload the
+folder, where the limit applies per file.
 
 The upload UI reports the supported extensions and per-file limit. The current
 Markdown extensions are `.md` and `.markdown`; other supported text, document,
