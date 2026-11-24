@@ -5,6 +5,7 @@ import { homedir } from 'node:os';
 // build-time differences live in platforms/<target>/.
 
 export const WINDOWS = process.platform === 'win32';
+export const LINUX = process.platform === 'linux';
 
 /** Keep bundled runtimes first, then discover host CLIs when launched from Finder. */
 export function runtimePath(nodePath, pythonPath) {
