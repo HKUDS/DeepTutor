@@ -497,7 +497,9 @@ class _SyntheticSession:
         return None
 
     async def list_tools(self) -> Any:
-        return SimpleNamespace(tools=[SimpleNamespace(name="echo", description="synthetic")])
+        return SimpleNamespace(
+            tools=[SimpleNamespace(name="echo", description="synthetic")], nextCursor=None
+        )
 
 
 @pytest.fixture
