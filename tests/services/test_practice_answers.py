@@ -54,3 +54,27 @@ def test_existing_option_grading_and_legacy_concept_options_are_unchanged():
     }
     assert check_answer(entry, "CA") is True
     assert check_answer(entry, "A") is False
+
+
+@pytest.mark.parametrize("kind", ["fill_in_blank", "short_answer"])
+@pytest.mark.parametrize(
+    ("answer", "correct"),
+    [("1.234,57", True), ("1234.57 €", True), ("1234.67", False), ("-1234.57", False)],
+)
+def test_numeric_text_answers_are_graded(kind, answer, correct):
+    entry = {"question_type": kind, "options_json": "{}", "correct_answer": "1234,57"}
+    assert check_answer(entry, answer) is correct
+
+
+@pytest.mark.parametrize(
+    ("kind", "expected", "answer"),
+    [
+        ("fill_in_blank", "photosynthesis", "photosynthesis"),
+        ("fill_in_blank", "125.000", "125000"),
+        ("fill_in_blank", "1250", "about 1250"),
+        ("essay", "1250", "1250"),
+    ],
+)
+def test_non_numeric_or_ambiguous_text_stays_self_assessed(kind, expected, answer):
+    entry = {"question_type": kind, "options_json": "{}", "correct_answer": expected}
+    assert check_answer(entry, answer) is None
