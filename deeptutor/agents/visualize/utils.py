@@ -57,6 +57,28 @@ def is_valid_html_document(html: str) -> bool:
     return "<html" in lowered or "<!doctype" in lowered or "<body" in lowered or "<div" in lowered
 
 
+def validate_book_widget_html(code: str) -> tuple[bool, str]:
+    """Require a complete document for a book's sandboxed interactive widget."""
+    text = (code or "").strip()
+    if not text:
+        return False, "Generated code is empty."
+    if not re.fullmatch(
+        r"(?:<!doctype\s+html\s*>\s*)?<html(?:\s[^>]*)?>.*</html\s*>",
+        text,
+        re.IGNORECASE | re.DOTALL,
+    ):
+        return False, "Expected a complete HTML document ending in </html>."
+    body = re.search(r"<body(?:\s[^>]*)?>(.*?)</body\s*>", text, re.IGNORECASE | re.DOTALL)
+    if not body or not body.group(1).strip():
+        return False, "Expected a nonempty, closed HTML body."
+    for tag in ("script", "style"):
+        starts = re.findall(rf"<{tag}(?=[\s>])", text, re.IGNORECASE)
+        ends = re.findall(rf"</{tag}\s*>", text, re.IGNORECASE)
+        if len(starts) != len(ends):
+            return False, f"HTML contains an unclosed or unmatched <{tag}> element."
+    return True, ""
+
+
 def build_fallback_html(*, title: str, summary: str = "", note: str = "") -> str:
     """Build a minimal, self-contained fallback HTML page.
 

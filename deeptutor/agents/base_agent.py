@@ -360,6 +360,7 @@ class BaseAgent(ABC):
         attachments: list[Any] | None = None,
         trace_meta: dict[str, Any] | None = None,
         reasoning_effort: str | None = None,
+        outcome: StreamOutcome | None = None,
     ) -> str:
         """
         Unified interface for calling LLM (non-streaming).
@@ -468,6 +469,7 @@ class BaseAgent(ABC):
                 api_version=self.api_version,
                 binding=self.binding,
                 max_retries=max_retries,
+                outcome=outcome,
                 **kwargs,
             )
         except Exception as e:

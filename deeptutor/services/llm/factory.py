@@ -364,6 +364,7 @@ async def _complete_with_resolved_config(
     image_filename: str,
     kwargs: dict[str, Any],
     provider: LLMProvider | None = None,
+    outcome: StreamOutcome | None = None,
 ) -> str:
     """Execute one completion from an already resolved configuration."""
     capability_binding = _capability_binding(config, provider_spec)
@@ -405,6 +406,10 @@ async def _complete_with_resolved_config(
     except Exception as exc:
         raise map_error(exc, provider=config.provider_name) from exc
 
+    if outcome is not None:
+        outcome.finish_reason = str(response.finish_reason or "")
+        outcome.usage = dict(response.usage or {})
+
     if response.finish_reason == "error":
         raise map_error(
             RuntimeError(response.content or "LLM request failed"), provider=config.provider_name
@@ -431,6 +436,7 @@ async def complete(
     retry_delay: float = DEFAULT_RETRY_DELAY,
     exponential_backoff: bool = DEFAULT_EXPONENTIAL_BACKOFF,
     allow_image_fallback: bool | None = None,
+    outcome: StreamOutcome | None = None,
     **kwargs: Any,
 ) -> str:
     caller_extra_headers = kwargs.pop("extra_headers", None)
@@ -462,6 +468,7 @@ async def complete(
         image_mime_type=str(image_mime_type or "image/png"),
         image_filename=str(image_filename or "image.png"),
         kwargs=kwargs,
+        outcome=outcome,
     )
 
 
