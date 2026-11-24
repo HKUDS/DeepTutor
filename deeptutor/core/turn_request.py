@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 import warnings
 
 from pydantic import BaseModel, ConfigDict, Field, StrictStr, field_validator, model_validator
@@ -100,6 +100,10 @@ class TimedMediaViewport(BaseModel):
     time_seconds: float = Field(ge=0)
 
 
+#: An attachment id the server may use as a storage path component.
+SafeAttachmentId = Annotated[StrictStr, Field(pattern=r"^[A-Za-z0-9_-]{1,64}$")]
+
+
 class MasteryCardAnswer(BaseModel):
     """An answer submitted from a mastery question card.
 
@@ -119,19 +123,17 @@ class MasteryCardAnswer(BaseModel):
     #: IDs of this turn's image ``attachments`` that show the learner's own
     #: solution, such as a photo of handwritten working. Single questions only.
     #: At most four; checked below so the browser contract stays a plain list.
-    attachment_ids: list[StrictStr] = Field(default_factory=list)
+    attachment_ids: list[SafeAttachmentId] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def validate_answer_content(self) -> MasteryCardAnswer:
         if self.attachment_ids:
             if self.answers is not None:
                 raise ValueError("answer photos are accepted for single questions only")
-            if (
-                len(self.attachment_ids) > 4
-                or len(set(self.attachment_ids)) != len(self.attachment_ids)
-                or not all(item.strip() for item in self.attachment_ids)
+            if len(self.attachment_ids) > 4 or len(set(self.attachment_ids)) != len(
+                self.attachment_ids
             ):
-                raise ValueError("answer photos require up to four distinct nonempty IDs")
+                raise ValueError("answer photos require up to four distinct IDs")
         elif not self.text:
             raise ValueError("a card answer requires text or answer photos")
         return self

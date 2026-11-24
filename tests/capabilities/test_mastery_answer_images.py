@@ -93,6 +93,11 @@ def test_card_contract_accepts_photo_only_single_answers():
         MasteryCardAnswer(question_id="q", attachment_ids=["a", "b", "c", "d", "e"])
     with pytest.raises(ValidationError):
         MasteryCardAnswer(question_id="g", text="x", answers={"q": "x"}, attachment_ids=["a"])
+    # IDs name stored files, so they must be one safe path segment.
+    for unsafe in ["../other/abc", "a/b", "", " ", "a.png", "x" * 65]:
+        with pytest.raises(ValidationError):
+            MasteryCardAnswer(question_id="q", attachment_ids=[unsafe])
+    assert MasteryCardAnswer(question_id="q", attachment_ids=["Ab_1-2" * 10]).attachment_ids
 
 
 def test_turn_request_requires_named_photos_to_be_uploaded_images():
