@@ -159,7 +159,9 @@ export function SettingRow({
           </p>
         )}
       </div>
-      <div className="max-w-full shrink-0">{control}</div>
+      {/* Below sm the row stacks, so the control takes the full column: a
+          half-width select under a full-width description reads as a mistake. */}
+      <div className="w-full max-w-full shrink-0 sm:w-auto">{control}</div>
     </div>
   );
 }

@@ -44,6 +44,30 @@ export default function SettingsMain({ children }: { children: React.ReactNode }
     }
     router.push(destination)
   }
+  // One gate for every way out of the shell (back button, Escape, scrim click),
+  // so no exit can drop an unsaved draft silently.
+  const requestClose = () => {
+    if (saving || applying || leaving) return
+    if (hasUnsavedChanges) setLeaving(true)
+    else returnToApp()
+  }
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.defaultPrevented) return
+      if (mobileOpen) {
+        event.preventDefault()
+        setMobileOpen(false)
+        return
+      }
+      if (leaving) return
+      event.preventDefault()
+      requestClose()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  })
+
   const returnButton = (
     <button
       type="button"
@@ -64,14 +88,19 @@ export default function SettingsMain({ children }: { children: React.ReactNode }
     <div
       className="fixed inset-0 flex items-center justify-center overflow-hidden bg-[color-mix(in_srgb,var(--foreground)_18%,transparent)] p-0 md:p-6"
       data-settings-shell
+      onMouseDown={event => {
+        // Clicking the scrim behaves like Escape: leave settings, but never
+        // discard a draft without asking.
+        if (event.target === event.currentTarget) requestClose()
+      }}
     >
       <div
         data-settings-card
-        className="flex h-dvh w-full min-w-0 flex-col overflow-hidden bg-[var(--background)] md:h-[min(820px,88dvh)] md:w-[min(1080px,94vw)] md:flex-row md:rounded-2xl md:border md:border-[color-mix(in_srgb,var(--border)_70%,transparent)] md:shadow-[0_28px_70px_-32px_rgba(0,0,0,0.45)]"
+        className="flex h-dvh w-full min-w-0 flex-col overflow-hidden bg-[var(--background)] md:h-[min(820px,88dvh)] md:w-[min(1080px,94vw)] md:rounded-2xl md:border md:border-[color-mix(in_srgb,var(--border)_70%,transparent)] md:shadow-[0_28px_70px_-32px_rgba(0,0,0,0.45)] lg:flex-row"
       >
-        <aside className="hidden w-[224px] shrink-0 flex-col border-r border-[color-mix(in_srgb,var(--border)_55%,transparent)] bg-[color-mix(in_srgb,var(--muted)_18%,var(--background))] md:flex">
-          <div className="flex items-center justify-between gap-1 px-3 pb-1 pt-3">
-            <p className="truncate text-[13px] font-medium text-[var(--foreground)]">
+        <aside className="hidden w-[224px] shrink-0 flex-col border-r border-[color-mix(in_srgb,var(--border)_55%,transparent)] bg-[color-mix(in_srgb,var(--muted)_18%,var(--background))] lg:flex">
+          <div className="flex items-center justify-between gap-1 px-4 pb-2 pt-4">
+            <p className="truncate text-[14px] font-semibold text-[var(--foreground)]">
               {t('Settings')}
             </p>
             {returnButton}
@@ -79,14 +108,17 @@ export default function SettingsMain({ children }: { children: React.ReactNode }
           <SettingsNav />
         </aside>
         <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
-          <div className="flex h-14 shrink-0 items-center justify-between border-b border-[color-mix(in_srgb,var(--border)_50%,transparent)] px-3 md:hidden">
+          <div className="grid h-14 shrink-0 grid-cols-[1fr_auto_1fr] items-center border-b border-[color-mix(in_srgb,var(--border)_50%,transparent)] px-2 lg:hidden">
             {returnButton}
+            <p className="truncate text-center text-[15px] font-semibold text-[var(--foreground)]">
+              {t('Settings')}
+            </p>
             <button
               type="button"
               aria-label={t('Settings sections')}
               aria-expanded={mobileOpen}
               onClick={() => setMobileOpen(true)}
-              className="rounded-md p-2 hover:bg-accent"
+              className="justify-self-end rounded-md p-2 hover:bg-accent"
             >
               <Menu size={20} />
             </button>
