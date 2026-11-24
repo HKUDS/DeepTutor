@@ -263,40 +263,36 @@ def acquire_runtime_provider(config: LLMConfig | None = None) -> Iterator[LLMPro
         with _provider_pool_lock:
             entry.users -= 1
             if entry.retired and not entry.users:
-                _schedule_close(entry.provider, loop)
+                _schedule_close(entry.provider, entry.loop)
 
 
-def _retire_runtime_provider_pool() -> list[LLMProvider]:
-    """Remove all entries and return only clients safe to close immediately."""
+def _retire_runtime_provider_pool() -> list[_ProviderEntry]:
+    """Remove all entries and return only those safe to close immediately."""
     with _provider_pool_lock:
         entries = list(_provider_pool.values())
         _provider_pool.clear()
         for entry in entries:
             entry.retired = True
-        return [entry.provider for entry in entries if not entry.users]
+        return [entry for entry in entries if not entry.users]
 
 
 async def close_runtime_provider_pool() -> None:
     """Retire pooled clients; active requests close theirs on final release."""
-    providers = _retire_runtime_provider_pool()
-    if providers:
-        await asyncio.gather(*(provider.aclose() for provider in providers), return_exceptions=True)
+    loop = asyncio.get_running_loop()
+    owned = []
+    for entry in _retire_runtime_provider_pool():
+        if entry.loop is loop:
+            owned.append(entry.provider.aclose())
+        else:
+            _schedule_close(entry.provider, entry.loop)
+    if owned:
+        await asyncio.gather(*owned, return_exceptions=True)
 
 
 def reset_runtime_provider_pool() -> None:
     """Clear the pool from synchronous cache-invalidation call sites."""
-    providers = _retire_runtime_provider_pool()
-    if not providers:
-        return
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        for provider in providers:
-            with contextlib.suppress(Exception):
-                asyncio.run(provider.aclose())
-        return
-    for provider in providers:
-        _schedule_close(provider, loop)
+    for entry in _retire_runtime_provider_pool():
+        _schedule_close(entry.provider, entry.loop)
 
 
 def runtime_provider_pool_size() -> int:

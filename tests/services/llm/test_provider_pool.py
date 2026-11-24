@@ -338,3 +338,56 @@ async def test_finished_worker_loop_does_not_push_server_clients_out(monkeypatch
     assert provider_factory.get_runtime_provider(_config(model="other")) is other_server_client
     assert server_client.closed == 0
     assert provider_factory.runtime_provider_pool_size() == 2
+
+
+@contextlib.contextmanager
+def _loop_in_thread():
+    """A long-lived loop on its own thread, like the LightRAG worker loop."""
+    import threading
+
+    loop = asyncio.new_event_loop()
+    thread = threading.Thread(target=loop.run_forever, daemon=True)
+    thread.start()
+    try:
+        yield loop
+    finally:
+        loop.call_soon_threadsafe(loop.stop)
+        thread.join(timeout=5)
+        loop.close()
+
+
+async def _wait_closed(provider: _LoopRecordingProvider) -> None:
+    for _ in range(500):
+        if provider.closed_on:
+            return
+        await asyncio.sleep(0.01)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("how", ["close", "reset", "reset_off_loop"])
+async def test_bulk_close_runs_each_provider_on_its_own_loop(monkeypatch, how) -> None:
+    monkeypatch.setattr(
+        provider_factory, "_build_runtime_provider", lambda _config: _LoopRecordingProvider()
+    )
+    server_loop = asyncio.get_running_loop()
+    server_client = provider_factory.get_runtime_provider(_config())
+
+    async def _lookup_on_worker() -> _LoopRecordingProvider:
+        return provider_factory.get_runtime_provider(_config(model="worker"))
+
+    with _loop_in_thread() as worker_loop:
+        worker_client = asyncio.run_coroutine_threadsafe(_lookup_on_worker(), worker_loop).result(
+            timeout=5
+        )
+        if how == "close":
+            await provider_factory.close_runtime_provider_pool()
+        elif how == "reset":
+            provider_factory.reset_runtime_provider_pool()
+        else:  # a synchronous settings reload from a plain thread
+            await asyncio.to_thread(provider_factory.reset_runtime_provider_pool)
+        await asyncio.wait_for(_wait_closed(server_client), timeout=5)
+        await asyncio.wait_for(_wait_closed(worker_client), timeout=5)
+
+    assert server_client.closed_on == [server_loop]
+    assert worker_client.closed_on == [worker_loop]
+    assert provider_factory.runtime_provider_pool_size() == 0
