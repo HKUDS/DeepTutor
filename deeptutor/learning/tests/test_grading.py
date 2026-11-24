@@ -333,3 +333,8 @@ class TestExactVerdictNumeric:
         assert self._verdict("125000", "125.000") is None
         assert self._verdict("about 1250", "1250.50") is None
         assert self._verdict("1300", "1250.50", accepted=["ca. 1300"]).result == "correct"
+
+    def test_multi_part_mismatch_keeps_partial_credit_open(self):
+        assert self._verdict("a) 1.000; b) 260", "a) 1.000; b) 250") is None
+        assert self._verdict("1250", "Goodwill = 1.250; NCI = 300") is None
+        assert self._verdict("a) 1.000; b) 250", "a) 1.000; b) 250").result == "correct"

@@ -114,9 +114,11 @@ def exact_verdict(question, answer):
             confidence=1,
             feedback=question.explanation or "Matches the stored answer.",
         )
-    # Only a short answer is the bare number itself; open answers may explain
-    # one, and an ambiguous separator has two readings, so both stay semantic.
-    if question.question_type == "short" and numeric[0].comparable and not numeric[0].ambiguous:
+    # Only a single short number is final: open answers may explain one, an
+    # ambiguous reading may still be right, and multi-part answers may earn
+    # partial credit, so all of those stay semantic.
+    first = numeric[0]
+    if question.question_type == "short" and len(first.parts) == 1 and not first.ambiguous:
         return Verdict(
             result="incorrect",
             confidence=1,
