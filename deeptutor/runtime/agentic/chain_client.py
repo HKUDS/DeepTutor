@@ -28,9 +28,7 @@ def _client_config(candidate: failover.Candidate, *, template: LLMClientConfig) 
         base_url=getattr(config, "base_url", None) or template.base_url,
         api_version=getattr(config, "api_version", None) or template.api_version,
         extra_headers=getattr(config, "extra_headers", None) or template.extra_headers,
-        reasoning_effort=(
-            getattr(config, "reasoning_effort", None) or template.reasoning_effort
-        ),
+        reasoning_effort=(getattr(config, "reasoning_effort", None) or template.reasoning_effort),
         wire_api=getattr(config, "wire_api", None) or template.wire_api,
         api_format=getattr(config, "api_format", None) or template.api_format,
     )

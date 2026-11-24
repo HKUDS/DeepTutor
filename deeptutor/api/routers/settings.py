@@ -1944,7 +1944,10 @@ def _preserve_llm_fallbacks(
     payload = dict(incoming)
     if service == "llm" and "fallbacks" not in payload:
         existing = (current.get("services") or {}).get("llm", {}).get("fallbacks")
-        payload["fallbacks"] = deepcopy(existing or [])
+        # Only carry a chain that exists: inserting an empty key would make an
+        # otherwise unchanged service look edited and reset the runtime clients.
+        if existing:
+            payload["fallbacks"] = deepcopy(existing)
     return payload
 
 

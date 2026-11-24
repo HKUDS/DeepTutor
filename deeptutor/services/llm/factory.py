@@ -409,9 +409,7 @@ async def _complete_with_resolved_config(
         if provider is None and chain_configured():
             # A declared chain turns this one-shot call into an ordered attempt
             # list; each candidate keeps its own retry budget (#2693 P2).
-            response = await call_with_failover(
-                lambda candidate: _attempt(candidate.config)
-            )
+            response = await call_with_failover(lambda candidate: _attempt(candidate.config))
         else:
             response = await _attempt(config)
     except Exception as exc:
@@ -654,9 +652,7 @@ async def stream(
                 # Switching is only safe before any delta escaped; the attempt
                 # raises `partial_response=True` after output, which is not
                 # switchable, so this cannot splice two answers (#2693 P2).
-                response = await call_with_failover(
-                    lambda candidate: _attempt(candidate.config)
-                )
+                response = await call_with_failover(lambda candidate: _attempt(candidate.config))
             else:
                 response = await _attempt(config)
             if outcome is not None:

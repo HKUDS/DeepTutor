@@ -66,7 +66,6 @@ from deeptutor.runtime.agentic import (
     LLMClientConfig,
     UsageTracker,
     build_completion_kwargs,
-    build_openai_client,
     can_use_native_tool_calling,
     dispatch_tool_calls,
 )

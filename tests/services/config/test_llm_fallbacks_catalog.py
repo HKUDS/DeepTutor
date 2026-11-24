@@ -37,15 +37,11 @@ def test_entries_are_bounded_and_non_list_values_are_ignored() -> None:
 def test_catalog_save_keeps_the_chain(tmp_path) -> None:
     service = ModelCatalogService(tmp_path / "model_catalog.json")
     catalog = service.load()
-    catalog["services"]["llm"]["fallbacks"] = [
-        {"profile_id": "backup", "model_id": "m2"}
-    ]
+    catalog["services"]["llm"]["fallbacks"] = [{"profile_id": "backup", "model_id": "m2"}]
 
     saved = service.save(catalog)
 
-    assert saved["services"]["llm"]["fallbacks"] == [
-        {"profile_id": "backup", "model_id": "m2"}
-    ]
+    assert saved["services"]["llm"]["fallbacks"] == [{"profile_id": "backup", "model_id": "m2"}]
 
 
 def test_catalog_save_drops_malformed_entries(tmp_path) -> None:
@@ -59,11 +55,7 @@ def test_catalog_save_drops_malformed_entries(tmp_path) -> None:
 
 
 def test_apply_without_the_key_keeps_the_existing_chain() -> None:
-    current = {
-        "services": {
-            "llm": {"fallbacks": [{"profile_id": "backup", "model_id": "m2"}]}
-        }
-    }
+    current = {"services": {"llm": {"fallbacks": [{"profile_id": "backup", "model_id": "m2"}]}}}
 
     merged = _preserve_llm_fallbacks("llm", {"active_profile_id": "p"}, current)
 
