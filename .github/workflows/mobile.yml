@@ -97,3 +97,43 @@ jobs:
           -destination 'generic/platform=iOS Simulator'
           -derivedDataPath "$RUNNER_TEMP/deeptutor-mobile"
           CODE_SIGNING_ALLOWED=NO build
+      - name: Launch the iOS development client
+        shell: bash
+        run: |
+          set -euo pipefail
+          device="$(xcrun simctl list devices available -j | node -e '
+            const { devices } = JSON.parse(require("node:fs").readFileSync(0, "utf8"));
+            const phone = Object.entries(devices)
+              .filter(([runtime]) => runtime.includes("SimRuntime.iOS-"))
+              .flatMap(([, entries]) => entries)
+              .find(entry => entry.isAvailable && entry.name.startsWith("iPhone"));
+            if (!phone) throw new Error("No iPhone simulator found");
+            console.log(phone.udid);
+          ')"
+          metro_log="$RUNNER_TEMP/deeptutor-mobile-metro.log"
+          EXPO_OFFLINE=1 CI=1 node node_modules/expo/bin/cli start \
+            --dev-client --localhost --port 8081 --max-workers 2 >"$metro_log" 2>&1 &
+          metro_pid=$!
+          cleanup() {
+            kill "$metro_pid" 2>/dev/null || true
+            xcrun simctl shutdown "$device" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+          xcrun simctl boot "$device"
+          xcrun simctl bootstatus "$device" -b
+          xcrun simctl install "$device" \
+            "$RUNNER_TEMP/deeptutor-mobile/Build/Products/Debug-iphonesimulator/DeepTutorMobile.app"
+          curl --retry 20 --retry-connrefused --retry-delay 1 --max-time 5 \
+            --fail --silent --show-error http://127.0.0.1:8081/status
+          xcrun simctl launch "$device" org.reactjs.native.example.DeepTutorMobile
+          xcrun simctl openurl "$device" \
+            'deeptutor-mobile://expo-development-client/?url=http%3A%2F%2F127.0.0.1%3A8081'
+          for ((attempt = 0; attempt < 60; attempt++)); do
+            if grep -q "iOS Bundled" "$metro_log"; then
+              echo "iOS development client loaded its Metro bundle."
+              exit 0
+            fi
+            sleep 2
+          done
+          tail -n 30 "$metro_log"
+          exit 1
