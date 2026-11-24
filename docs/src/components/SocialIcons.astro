@@ -1,0 +1,235 @@
+---
+// Social icons rendered from the SAME custom marks used on eduhub, at matching
+// optical sizes (GitHub fills its 16-viewBox → 17px; Discord/WeChat sit in a
+// 24-viewBox with vertical padding → 23px) so all three sites look identical.
+const path = Astro.url.pathname;
+const pageURL = `https://deeptutor.info${path}`;
+const issueURL = `https://github.com/HKUDS/DeepTutor/issues/new?template=docs.yml&page=${encodeURIComponent(
+  pageURL,
+)}`;
+const githubURL = "https://github.com/HKUDS/DeepTutor";
+const discordURL = "https://discord.gg/eRsjPgMU4t";
+// WeChat community lives in a pinned GitHub issue (current QR-code thread).
+const wechatURL = "https://github.com/HKUDS/DeepTutor/issues/78";
+---
+
+<div class="dt-actions">
+  <a
+    class="dt-report"
+    href={issueURL}
+    target="_blank"
+    rel="noopener"
+    title="Report a docs issue on this page"
+  >
+    <svg
+      width="13"
+      height="13"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <circle cx="12" cy="12" r="10"></circle>
+      <line x1="12" y1="8" x2="12" y2="12"></line>
+      <line x1="12" y1="16" x2="12.01" y2="16"></line>
+    </svg>
+    <span>Report issue</span>
+  </a>
+  <div class="dt-socials sl-flex">
+    <a href={githubURL} target="_blank" rel="noopener" aria-label="GitHub" title="GitHub">
+      <svg class="dt-ico-gh" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+        <path
+          d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 2-.27c.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"
+        ></path>
+      </svg>
+    </a>
+    <a href={discordURL} target="_blank" rel="noopener" aria-label="Discord" title="Discord">
+      <svg class="dt-ico-dc" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <path
+          d="M19.27 5.33C17.94 4.71 16.5 4.26 15 4a.09.09 0 0 0-.07.03c-.18.33-.39.76-.53 1.09a16.09 16.09 0 0 0-4.8 0c-.14-.34-.35-.76-.54-1.09-.01-.02-.04-.03-.07-.03-1.5.26-2.93.71-4.27 1.33-.01 0-.02.01-.03.02-2.72 4.07-3.47 8.03-3.1 11.95 0 .02.01.04.03.05 1.8 1.32 3.53 2.12 5.24 2.65.03.01.06 0 .07-.02.4-.55.76-1.13 1.07-1.74.02-.04 0-.08-.04-.09-.57-.22-1.11-.48-1.64-.78-.04-.02-.04-.08-.01-.11.11-.08.22-.17.33-.25.02-.02.05-.02.07-.01 3.44 1.57 7.15 1.57 10.55 0 .02-.01.05-.01.07.01.11.09.22.17.33.26.04.03.04.09-.01.11-.52.31-1.07.56-1.64.78-.04.01-.05.06-.04.09.32.61.68 1.19 1.07 1.74.03.01.06.02.09.01 1.72-.53 3.45-1.33 5.25-2.65.02-.01.03-.03.03-.05.44-4.53-.73-8.46-3.1-11.95-.01-.01-.02-.02-.04-.02zM8.52 14.91c-1.03 0-1.89-.95-1.89-2.12s.84-2.12 1.89-2.12c1.06 0 1.9.96 1.89 2.12 0 1.17-.84 2.12-1.89 2.12zm6.97 0c-1.03 0-1.89-.95-1.89-2.12s.84-2.12 1.89-2.12c1.06 0 1.9.96 1.89 2.12 0 1.17-.83 2.12-1.89 2.12z"
+        ></path>
+      </svg>
+    </a>
+    <a
+      href={wechatURL}
+      target="_blank"
+      rel="noopener"
+      aria-label="WeChat community"
+      title="WeChat community"
+    >
+      <svg class="dt-ico-wc" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <path
+          d="M8.69 4C4.55 4 1.2 6.68 1.2 10c0 1.86 1.04 3.51 2.69 4.61l-.7 2.4 2.79-1.5c.83.3 1.74.49 2.7.49.34 0 .67-.02 1-.06-.13-.46-.21-.94-.21-1.43 0-3.07 2.97-5.5 6.7-5.5.33 0 .67.02 1 .07C16.39 6.32 12.86 4 8.69 4ZM6.18 8.5a1 1 0 1 1 0-2 1 1 0 0 1 0 2Zm5 0a1 1 0 1 1 0-2 1 1 0 0 1 0 2Zm5 1c-3.3 0-6 2.24-6 5s2.7 5 6 5c.74 0 1.45-.12 2.1-.34L20.2 20l-.7-2.05c1.07-.95 1.7-2.15 1.7-3.45 0-2.76-2.7-5-6-5Zm-2 4a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5Zm4 0a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5Z"
+        ></path>
+      </svg>
+    </a>
+  </div>
+</div>
+
+<script is:inline>
+  (() => {
+    if (window.__dtLocaleSwitcherPatched) return;
+    window.__dtLocaleSwitcherPatched = true;
+
+    const zhPrefix = "/zh-cn";
+    const isZhPath = (path) => path === zhPrefix || path.startsWith(`${zhPrefix}/`);
+    const toEnglishPath = (path) => {
+      if (path === zhPrefix || path === `${zhPrefix}/`) return "/";
+      return isZhPath(path) ? path.slice(zhPrefix.length) || "/" : path;
+    };
+    const toChinesePath = (path) => {
+      if (isZhPath(path)) return path;
+      return path === "/" ? `${zhPrefix}/` : `${zhPrefix}${path}`;
+    };
+    const withCurrentSuffix = (path) =>
+      `${path}${window.location.search}${window.location.hash}`;
+
+    const langKey = "dt-lang";
+    const readLangPreference = () => {
+      try {
+        const v = localStorage.getItem(langKey);
+        return v === "zh" || v === "en" ? v : null;
+      } catch {
+        return null;
+      }
+    };
+
+    // Auto-detect — first visit with no stored choice follows the browser
+    // locale; an explicit switch always wins. Runs before the selects sync.
+    (() => {
+      const current = window.location.pathname;
+      const stored = readLangPreference();
+      const want = stored
+        ? stored
+        : (navigator.language || "").toLowerCase().startsWith("zh")
+          ? "zh"
+          : "en";
+      if (want === "zh" && !isZhPath(current)) {
+        window.location.replace(withCurrentSuffix(toChinesePath(current)));
+      } else if (want === "en" && isZhPath(current)) {
+        window.location.replace(withCurrentSuffix(toEnglishPath(current)));
+      }
+    })();
+
+    const syncLanguageSelects = () => {
+      const current = window.location.pathname;
+      const englishPath = toEnglishPath(current);
+      const chinesePath = toChinesePath(current);
+      document.querySelectorAll("starlight-lang-select select").forEach((select) => {
+        Array.from(select.options).forEach((option) => {
+          const label = option.textContent?.trim();
+          if (label === "English") option.value = englishPath;
+          if (label === "简体中文") option.value = chinesePath;
+        });
+        select.value = isZhPath(current) ? chinesePath : englishPath;
+      });
+    };
+
+    document.addEventListener(
+      "change",
+      (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLSelectElement)) return;
+        if (!target.closest("starlight-lang-select")) return;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        const nextPath = target.value;
+        try {
+          localStorage.setItem(langKey, isZhPath(nextPath) ? "zh" : "en");
+        } catch {}
+        if (nextPath && nextPath !== window.location.pathname) {
+          window.location.assign(withCurrentSuffix(nextPath));
+        }
+      },
+      true,
+    );
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", syncLanguageSelects);
+    } else {
+      syncLanguageSelects();
+    }
+    window.addEventListener("pageshow", syncLanguageSelects);
+  })();
+</script>
+
+<style>
+  .dt-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .dt-report {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    font-family:
+      "Geist",
+      -apple-system,
+      sans-serif;
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 1;
+    color: var(--sl-color-gray-2);
+    text-decoration: none;
+    border: 1px solid var(--sl-color-hairline);
+    border-radius: 999px;
+    transition:
+      color 0.15s ease,
+      border-color 0.15s ease,
+      background 0.15s ease;
+    white-space: nowrap;
+  }
+  .dt-report:hover {
+    color: var(--sl-color-text);
+    border-color: var(--sl-color-text);
+    background: var(--sl-color-accent-low);
+  }
+  .dt-report svg {
+    flex-shrink: 0;
+  }
+  /* Hide the "Report issue" label on narrow viewports, keep the icon */
+  @media (max-width: 50rem) {
+    .dt-report span {
+      display: none;
+    }
+    .dt-report {
+      padding: 5px 7px;
+    }
+  }
+  /* Social icons — same custom marks + optical sizing as eduhub/landing. */
+  .dt-socials {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+  }
+  .dt-socials a {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 8px;
+    color: var(--sl-color-text);
+    text-decoration: none;
+    transition:
+      background 0.15s ease,
+      color 0.15s ease;
+  }
+  .dt-socials a:hover {
+    background: var(--sl-color-gray-6);
+  }
+  .dt-ico-gh {
+    width: 17px;
+    height: 17px;
+  }
+  .dt-ico-dc,
+  .dt-ico-wc {
+    width: 23px;
+    height: 23px;
+  }
+</style>

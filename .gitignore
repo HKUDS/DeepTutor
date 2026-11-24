@@ -8,9 +8,8 @@
 # Runtime data (knowledge bases, partner workspaces, memory, etc.)
 data/
 /multi-user/
-# Developer and agent documentation is tracked in docs-for-dev/.
+# Public user documentation lives in docs/; developer/agent docs live in docs-for-dev/.
 # Keep obsolete local notes and downloaded references out of the repository.
-/docs/
 /docs-for-use/
 /docs-for-user/
 /design-qa.md

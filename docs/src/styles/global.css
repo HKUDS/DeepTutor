@@ -1,0 +1,69 @@
+@import url("https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..600&family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap");
+
+:root {
+  color-scheme: light;
+
+  /* Palette — editorial scholarly */
+  --paper: #faf8f3;
+  --paper-soft: #f4f1ea;
+  --ink: #18181c;
+  --ink-soft: #5b5c64;
+  --ink-faint: #9b9ca3;
+  --rule: rgba(24, 24, 28, 0.09);
+  --rule-strong: rgba(24, 24, 28, 0.16);
+  --accent: #4d8fbf;
+  --accent-soft: rgba(77, 143, 191, 0.1);
+  --warm-glow: radial-gradient(
+    ellipse at center,
+    rgba(123, 190, 234, 0.14) 0%,
+    rgba(245, 200, 160, 0.06) 50%,
+    transparent 70%
+  );
+
+  --font-display: "Fraunces", "Iowan Old Style", "Charter", Georgia, serif;
+  --font-body: "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI",
+    Helvetica, Arial, sans-serif;
+  --font-mono: Monaco, "Geist Mono", ui-monospace, "SF Mono", Menlo, Consolas,
+    "Courier New", monospace;
+
+  --content-width: 1180px;
+  --reading-width: 720px;
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --paper: #0d0d10;
+  --paper-soft: #16161a;
+  --ink: #f1ede4;
+  --ink-soft: #a3a39b;
+  --ink-faint: #61615b;
+  --rule: rgba(241, 237, 228, 0.1);
+  --rule-strong: rgba(241, 237, 228, 0.18);
+  --accent: #7bbeea;
+  --accent-soft: rgba(123, 190, 234, 0.12);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-feature-settings: "ss01", "ss03", "cv11";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  letter-spacing: -0.005em;
+}
+
+a {
+  color: inherit;
+}
+
+::selection {
+  background: var(--accent);
+  color: var(--paper);
+}
