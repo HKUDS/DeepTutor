@@ -84,6 +84,10 @@ let interfaceWatcher;
 let interfaceTimer;
 let windowStateTimer;
 let windowStateWrite = Promise.resolve();
+// Crisp zoom stops avoid blurry 1px borders caused by fractional zoomLevel steps (1.2^0.5).
+const ZOOM_STEPS = [0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75];
+let zoomFactor = 1;
+let layoutTimer;
 let menuPopups;
 let busy = false;
 let quitting = false;
@@ -119,30 +123,72 @@ function titleBarOverlayOptions(theme, color = currentChromeBackground()) {
   };
 }
 
+function clampZoomFactor(value) {
+  if (!Number.isFinite(value)) return 1;
+  return Math.min(ZOOM_STEPS[ZOOM_STEPS.length - 1], Math.max(ZOOM_STEPS[0], value));
+}
+
+function nearestZoomIndex(value) {
+  let best = 0;
+  let minDiff = Infinity;
+  for (let i = 0; i < ZOOM_STEPS.length; i += 1) {
+    const diff = Math.abs(ZOOM_STEPS[i] - value);
+    if (diff < minDiff) {
+      minDiff = diff;
+      best = i;
+    }
+  }
+  return best;
+}
+
+function applyContentZoom(nextFactor, { persist = true } = {}) {
+  zoomFactor = clampZoomFactor(nextFactor);
+  if (view && !view.webContents.isDestroyed()) {
+    view.webContents.setZoomFactor(zoomFactor);
+  }
+  if (persist) persistWindowState();
+}
+
+function stepContentZoom(direction) {
+  if (!view || state.phase !== 'ready' || view.webContents.isDestroyed()) return;
+  const current = view.webContents.getZoomFactor();
+  const idx = nearestZoomIndex(current);
+  const nextIdx = Math.max(0, Math.min(ZOOM_STEPS.length - 1, idx + direction));
+  applyContentZoom(ZOOM_STEPS[nextIdx]);
+}
+
+function resetContentZoom() {
+  if (!view || state.phase !== 'ready' || view.webContents.isDestroyed()) return;
+  applyContentZoom(1);
+}
+
 function minWindowSize(workArea) {
+  // Keep desktop sidebar + usable content area intact while never exceeding small/high-DPI screens.
   return {
-    minWidth: Math.min(820, workArea.width),
-    minHeight: Math.min(560, workArea.height),
+    minWidth: Math.min(820, Math.max(480, workArea.width)),
+    minHeight: Math.min(560, Math.max(400, workArea.height)),
   };
 }
 
 function defaultWindowBounds() {
   const { workArea } = screen.getPrimaryDisplay();
   const { minWidth, minHeight } = minWindowSize(workArea);
-  const width = Math.min(1360, Math.max(minWidth, Math.round(workArea.width * 0.88)), workArea.width);
-  const height = Math.min(900, Math.max(minHeight, Math.round(workArea.height * 0.88)), workArea.height);
+  const width = Math.min(1360, Math.max(minWidth, Math.round(workArea.width * 0.86)), workArea.width);
+  const height = Math.min(900, Math.max(minHeight, Math.round(workArea.height * 0.86)), workArea.height);
   return {
     x: Math.round(workArea.x + (workArea.width - width) / 2),
     y: Math.round(workArea.y + (workArea.height - height) / 2),
     width,
     height,
     maximized: false,
+    zoomFactor: 1,
   };
 }
 
 function resolveWindowBounds(saved) {
+  const savedZoom = clampZoomFactor(saved?.zoomFactor ?? 1);
   if (!saved || ![saved.x, saved.y, saved.width, saved.height].every(Number.isFinite)) {
-    return defaultWindowBounds();
+    return { ...defaultWindowBounds(), zoomFactor: savedZoom };
   }
   const displays = screen.getAllDisplays();
   const matched = displays.find(({ workArea }) => {
@@ -150,20 +196,26 @@ function resolveWindowBounds(saved) {
     const titleVisibleY = saved.y >= workArea.y - 8 && saved.y <= workArea.y + workArea.height - 60;
     return overlapX >= 120 && titleVisibleY;
   });
-  if (!matched) return defaultWindowBounds();
+  if (!matched) return { ...defaultWindowBounds(), zoomFactor: savedZoom };
   const { workArea } = matched;
   const { minWidth, minHeight } = minWindowSize(workArea);
   const width = Math.min(workArea.width, Math.max(minWidth, Math.round(saved.width)));
   const height = Math.min(workArea.height, Math.max(minHeight, Math.round(saved.height)));
   const x = Math.min(Math.max(Math.round(saved.x), workArea.x), workArea.x + workArea.width - width);
   const y = Math.min(Math.max(Math.round(saved.y), workArea.y), workArea.y + workArea.height - height);
-  return { x, y, width, height, maximized: Boolean(saved.maximized) };
+  return { x, y, width, height, maximized: Boolean(saved.maximized), zoomFactor: savedZoom };
 }
 
 function persistWindowState(immediate = false) {
   clearTimeout(windowStateTimer);
-  if (!WINDOWS || !window || window.isDestroyed()) return windowStateWrite;
-  const payload = { ...window.getNormalBounds(), maximized: window.isMaximized() };
+  if (!window || window.isDestroyed()) return windowStateWrite;
+  // Never overwrite maximized/normal bounds while minimized or in fullscreen.
+  if (window.isMinimized() || window.isFullScreen()) return windowStateWrite;
+  const payload = {
+    ...window.getNormalBounds(),
+    maximized: window.isMaximized(),
+    zoomFactor,
+  };
   const write = () => {
     windowStateWrite = windowStateWrite.then(() => writeJSON(windowStateFile, payload)).catch(console.error);
   };
@@ -454,11 +506,6 @@ function openSettingsPage() {
   view.webContents.focus();
 }
 
-function adjustZoom(delta) {
-  if (!webViewReady()) return;
-  view.webContents.setZoomLevel(view.webContents.getZoomLevel() + delta);
-}
-
 function toggleAlwaysOnTop() {
   if (!window || window.isDestroyed()) return;
   window.setAlwaysOnTop(!window.isAlwaysOnTop());
@@ -492,14 +539,42 @@ function hideContent() {
 }
 
 function layout() {
-  if (!view || !window || window.isDestroyed()) return;
+  if (!view || !window || window.isDestroyed() || window.isMinimized()) return;
   const bounds = window.getContentBounds();
+  if (bounds.width <= 0 || bounds.height <= HEADER_HEIGHT) return;
   view.setBounds({
     x: 0,
     y: HEADER_HEIGHT,
-    width: Math.max(1, bounds.width),
-    height: Math.max(1, bounds.height - HEADER_HEIGHT),
+    width: bounds.width,
+    height: bounds.height - HEADER_HEIGHT,
   });
+}
+
+function scheduleLayout() {
+  layout();
+  clearTimeout(layoutTimer);
+  // Catch post-animation / post-DPI-change final bounds on Windows.
+  layoutTimer = setTimeout(layout, 60);
+}
+
+function syncDisplayConstraints({ clampPosition = false } = {}) {
+  if (!window || window.isDestroyed() || window.isMinimized()) return;
+  const currentBounds = window.getBounds();
+  const display = screen.getDisplayMatching(currentBounds);
+  const { workArea } = display;
+  const { minWidth, minHeight } = minWindowSize(workArea);
+  window.setMinimumSize(minWidth, minHeight);
+
+  if (clampPosition && !window.isMaximized() && !window.isFullScreen()) {
+    const width = Math.min(workArea.width, Math.max(minWidth, currentBounds.width));
+    const height = Math.min(workArea.height, Math.max(minHeight, currentBounds.height));
+    const x = Math.min(Math.max(currentBounds.x, workArea.x), workArea.x + workArea.width - width);
+    const y = Math.min(Math.max(currentBounds.y, workArea.y), workArea.y + workArea.height - height);
+    if (x !== currentBounds.x || y !== currentBounds.y || width !== currentBounds.width || height !== currentBounds.height) {
+      window.setBounds({ x, y, width, height });
+    }
+  }
+  scheduleLayout();
 }
 
 async function openContent(ready) {
@@ -533,13 +608,42 @@ async function openContent(ready) {
   content.on('will-attach-webview', event => event.preventDefault());
   content.on('render-process-gone', () => status({ phase: 'error', step: null, message: t('pageGone') }));
   // 页面每次加载/站内跳转后重新采样侧边栏色，让顶栏贴合当前页面。
-  content.on('did-finish-load', () => scheduleChromeColorSync(120));
+  // Zoom is per-origin and resets on navigation: re-assert the user's factor on
+  // every finished load (initial load, reload, full navigation).
+  content.on('did-finish-load', () => {
+    content.setZoomFactor(zoomFactor);
+    scheduleChromeColorSync(120);
+  });
   content.on('did-navigate-in-page', () => scheduleChromeColorSync(120));
+  // Take full ownership of zoom: automatic Ctrl+wheel zoom is disabled so it cannot
+  // fight the snapped stops below ('manual' still dispatches 'zoom-changed').
+  content.setZoomMode('manual');
+  content.setZoomFactor(zoomFactor);
+  content.on('zoom-changed', (_event, direction) => {
+    stepContentZoom(direction === 'in' ? 1 : -1);
+  });
+  content.on('before-input-event', (event, input) => {
+    if (input.type !== 'keyDown' || !(input.control || input.meta) || input.alt) return;
+    if (input.code === 'NumpadAdd' || (input.key === '+' && input.shift)) {
+      event.preventDefault();
+      stepContentZoom(1);
+    } else if (input.code === 'NumpadSubtract') {
+      event.preventDefault();
+      stepContentZoom(-1);
+    } else if (input.code === 'Numpad0') {
+      event.preventDefault();
+      resetContentZoom();
+    }
+  });
   // Mount and size while hidden so Next.js hydrates at the real viewport width without flashing white.
   window.contentView.addChildView(nextView);
   layout();
   // Load the canonical chat route directly; the Next.js root redirects to it.
   await content.loadURL(new URL('/chat', ready.url).href);
+  // The pre-load setZoomFactor applied to about:blank; re-assert on the real origin.
+  content.setZoomFactor(zoomFactor);
+  // Disable mobile-style pinch visual zoom; needs a live frame (rejects before first load).
+  void content.setVisualZoomLevelLimits(1, 1).catch(() => {});
   if (view === nextView && !quitting) {
     layout();
     nextView.setVisible(true);
@@ -826,9 +930,9 @@ function buildMenu() {
       { label: t('forceReload'), accelerator: 'CmdOrCtrl+Shift+R', enabled: ready, click: () => view?.webContents.reloadIgnoringCache() },
     ] : []),
     { type: 'separator' },
-    { label: t('actualSize'), accelerator: 'CmdOrCtrl+0', enabled: ready, click: () => { if (webViewReady()) view.webContents.setZoomLevel(0); } },
-    { label: t('zoomIn'), accelerator: 'CmdOrCtrl+Plus', enabled: ready, click: () => adjustZoom(0.5) },
-    { label: t('zoomOut'), accelerator: 'CmdOrCtrl+-', enabled: ready, click: () => adjustZoom(-0.5) },
+    { label: t('actualSize'), accelerator: 'CmdOrCtrl+0', click: () => resetContentZoom() },
+    { label: t('zoomIn'), accelerator: 'CmdOrCtrl+=', click: () => stepContentZoom(1) },
+    { label: t('zoomOut'), accelerator: 'CmdOrCtrl+-', click: () => stepContentZoom(-1) },
     { type: 'separator' },
     { role: 'togglefullscreen', label: t('fullscreen') },
   ];
@@ -916,11 +1020,16 @@ else {
       callback(result.response === 1);
     });
 
-    const initialBounds = WINDOWS ? resolveWindowBounds(await readJSON(windowStateFile).catch(() => null)) : null;
-    const size = initialBounds
-      ? { x: initialBounds.x, y: initialBounds.y, width: initialBounds.width, height: initialBounds.height,
-          ...minWindowSize(screen.getDisplayMatching(initialBounds).workArea) }
-      : { width: 1360, height: 920, minWidth: 900, minHeight: 620 };
+    // Window memory and adaptive first-run sizing work on every platform.
+    const initialBounds = resolveWindowBounds(await readJSON(windowStateFile).catch(() => null));
+    zoomFactor = initialBounds.zoomFactor;
+    const size = {
+      x: initialBounds.x,
+      y: initialBounds.y,
+      width: initialBounds.width,
+      height: initialBounds.height,
+      ...minWindowSize(screen.getDisplayMatching(initialBounds).workArea),
+    };
 
     window = new BrowserWindow({
       title: 'Open DeepTutor',
@@ -940,7 +1049,8 @@ else {
 
     // Lock shell chrome zoom to 100% so the custom titlebar stays aligned with WCO controls.
     window.webContents.setZoomFactor(1);
-    void window.webContents.setVisualZoomLevelLimits(1, 1);
+    window.webContents.setZoomMode('disabled');
+    window.webContents.on('zoom-changed', () => window.webContents.setZoomFactor(1));
     window.webContents.on('will-navigate', event => event.preventDefault());
     window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
 
@@ -950,16 +1060,21 @@ else {
     });
 
     const syncLayoutAndState = () => {
-      layout();
+      scheduleLayout();
       persistWindowState();
     };
     window.on('resize', syncLayoutAndState);
     window.on('move', () => persistWindowState());
+    window.on('moved', () => syncDisplayConstraints());
     window.on('maximize', syncLayoutAndState);
     window.on('unmaximize', syncLayoutAndState);
-    window.on('enter-full-screen', layout);
-    window.on('leave-full-screen', layout);
-    screen.on('display-metrics-changed', layout);
+    window.on('restore', () => syncDisplayConstraints());
+    window.on('enter-full-screen', scheduleLayout);
+    window.on('leave-full-screen', scheduleLayout);
+
+    const onDisplayChanged = () => syncDisplayConstraints({ clampPosition: true });
+    screen.on('display-metrics-changed', onDisplayChanged);
+    screen.on('display-removed', onDisplayChanged);
     window.on('close', event => {
       if (!exitAllowed) { event.preventDefault(); app.quit(); }
     });
@@ -991,6 +1106,8 @@ else {
     buildMenu();
     watchInterface();
     await window.loadURL(shellURL);
+    // Pinch visual zoom off for the chrome; needs the loaded frame to accept the limits.
+    void window.webContents.setVisualZoomLevelLimits(1, 1).catch(() => {});
     void boot();
   }).catch(async error => {
     await logStartupFailure(error);
