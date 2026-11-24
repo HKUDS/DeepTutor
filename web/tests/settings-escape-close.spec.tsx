@@ -33,7 +33,13 @@ vi.mock('@/components/common/Modal', () => ({
     isOpen: boolean
     title?: string
     children: React.ReactNode
-  }) => (isOpen ? <div role="dialog">{title}{children}</div> : null),
+  }) =>
+    isOpen ? (
+      <div role="dialog">
+        {title}
+        {children}
+      </div>
+    ) : null,
 }))
 
 const priorScroll = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollTo')
