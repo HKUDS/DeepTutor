@@ -90,3 +90,66 @@ async def test_loaded_outline_schema_survives_a_later_turn_with_provider_loader(
         "mastery_status",
         "not_authorized",
     ]
+
+
+@pytest.mark.parametrize("language", ["en", "zh"])
+def test_session_mode_is_a_snapshot_not_a_system_prompt_change(language):
+    pipeline = MasteryLoopPipeline(language=language)
+    assembler = pipeline._prompt_assembler
+    prompts, snapshots = [], []
+    for mode in ("outline", "study", "review"):
+        context = UnifiedContext(metadata={"mastery_mode": True, "mastery_session_mode": mode})
+        prompts.append([(b.name, b.content) for b in assembler.foundation_blocks(context)])
+        snapshots.append(assembler.session_mode_snapshot(context))
+    # Every mode sees the same foundation, so a switch keeps the cached prefix.
+    assert prompts[0] == prompts[1] == prompts[2]
+    modes = dict(prompts[0])["mastery_session_modes"]
+    assert all(f"### {mode}" in modes for mode in ("outline", "study", "review"))
+    assert len(set(snapshots)) == 3
+    assert all(s.startswith("[Runtime context: mastery_session_mode]\n") for s in snapshots)
+    assert "`review`" in snapshots[2]
+
+
+@pytest.mark.asyncio
+async def test_outline_tools_stay_mounted_after_leaving_outline(monkeypatch):
+    from deeptutor.runtime.registry.deferred_tools import DeferredToolLoader
+
+    state: dict[str, set[str]] = {}
+
+    async def providers(self, context):
+        loader = DeferredToolLoader(
+            registry=self.registry, session_id=context.session_id, loaded=set(), allowed=set()
+        )
+        self._tool_view = ProviderToolView(
+            registry=self.registry, loader=loader, pool=(), manifest=""
+        )
+        self._deferred_loader = loader
+
+    monkeypatch.setattr(AgenticLoopPipeline, "_prepare_deferred_tools", providers)
+    monkeypatch.setattr(
+        "deeptutor.services.mcp.load_loaded_tools", lambda sid: set(state.get(sid, set()))
+    )
+    monkeypatch.setattr(
+        "deeptutor.services.mcp.session_state.record_loaded_tools",
+        lambda sid, names: state.__setitem__(sid, set(names)),
+    )
+
+    def tool_names(mode: str) -> list[str]:
+        return [s["function"]["name"] for s in surfaces[mode]]
+
+    surfaces: dict[str, list[dict]] = {}
+    for mode in ("outline", "study"):
+        pipeline = MasteryLoopPipeline(language="en")
+        context = UnifiedContext(
+            session_id="synthetic",
+            metadata={"mastery_mode": True, "mastery_path_id": "p", "mastery_session_mode": mode},
+        )
+        await pipeline._prepare_deferred_tools(context)
+        schemas = pipeline._build_llm_tool_schemas(
+            pipeline._compose_enabled_tools(context), context
+        )
+        pipeline._tool_view.attach(schemas)
+        surfaces[mode] = schemas
+
+    assert {"mastery_build", "mastery_revise"} <= state["synthetic"]
+    assert sorted(tool_names("outline")) == sorted(tool_names("study"))

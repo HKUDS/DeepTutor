@@ -30,18 +30,24 @@ from deeptutor.agents.loop.prompt_blocks import LoopPromptAssembler, PromptBlock
 from deeptutor.capabilities.mastery.history import STATE_REFERENCE_NOTICE, share_mastery_history
 from deeptutor.capabilities.mastery.loop import NATIVE_LOOP_FLAG
 from deeptutor.capabilities.mastery.memory import MEMORY_NOTICE
-from deeptutor.capabilities.mastery.mode import normalize_mode
+from deeptutor.capabilities.mastery.mode import OUTLINE, REVIEW, STUDY, normalize_mode
 from deeptutor.core.context import UnifiedContext
+
+#: Runtime snapshot naming the conversation's current mode.
+SESSION_MODE_SNAPSHOT = "mastery_session_mode"
 
 
 class MasteryPromptAssembler(LoopPromptAssembler):
     """Open the system prompt with the tutor's protocol, not chat's.
 
-    The one block that varies is what *this* conversation is for. It sits
-    directly after the tutor's identity and before the loop protocol, because
-    a sitting's purpose is the frame everything below it is read through —
-    "design the outline" and "clear what is due" produce very different right
-    answers from the same playbook.
+    What *this* conversation is for — outline, study or review — is the frame
+    everything below is read through, so every mode's section sits directly
+    after the tutor's identity and before the loop protocol. All three are
+    stated, not only the current one: a conversation changes mode often, and a
+    system prompt that changed with it would invalidate the provider's prompt
+    cache from its second block on (and with it every tool schema and history
+    message after it). The current mode is a runtime fact instead, delivered
+    by :meth:`session_mode_snapshot` as an append-only runtime snapshot.
     """
 
     def blocks(self, **kwargs):
@@ -49,11 +55,23 @@ class MasteryPromptAssembler(LoopPromptAssembler):
             kwargs["include_tool_manifest"] = False
         return super().blocks(**kwargs)
 
-    def foundation_blocks(self, context: UnifiedContext) -> list[PromptBlock]:
+    def session_modes_block(self) -> str:
+        sections = [self._t("session_frame")]
+        for kind in (OUTLINE, STUDY, REVIEW):
+            body = self._t(f"session.{kind}")
+            if body:
+                sections.append(f"### {kind}\n{body}")
+        return "\n\n".join(section for section in sections if section)
+
+    def session_mode_snapshot(self, context: UnifiedContext) -> str:
         kind = normalize_mode(context.metadata.get("mastery_session_mode"))
+        text = self._t("session_current", default="Current mode: `{mode}`.")
+        return f"[Runtime context: {SESSION_MODE_SNAPSHOT}]\n{text.replace('{mode}', kind)}"
+
+    def foundation_blocks(self, context: UnifiedContext) -> list[PromptBlock]:
         return [
             PromptBlock("mastery_tutor", self._t("general")),
-            PromptBlock("mastery_session_mode", self._t(f"session.{kind}")),
+            PromptBlock("mastery_session_modes", self.session_modes_block()),
             PromptBlock("runtime_context", self._runtime_context_block()),
             PromptBlock("runtime_policy", self._t("runtime_policy")),
             PromptBlock("mastery_loop", self._t("loop.system")),
@@ -237,7 +255,8 @@ class MasteryLoopPipeline(AgenticLoopPipeline):
     async def _prepare_deferred_tools(self, context):
         await super()._prepare_deferred_tools(context)
         self._deferred_outline_names = set()
-        if normalize_mode(context.metadata.get("mastery_session_mode")) == "outline":
+        if normalize_mode(context.metadata.get("mastery_session_mode")) == OUTLINE:
+            self._remember_outline_tools(context)
             return
         if (
             context.allowed_builtin_tools is not None
@@ -284,6 +303,28 @@ class MasteryLoopPipeline(AgenticLoopPipeline):
         self._deferred_loader = loader
         self._deferred_pool = list(pool)
 
+    def _remember_outline_tools(self, context) -> None:
+        """Keep outline schemas mounted after this conversation leaves outline.
+
+        Outline mode mounts the outline tools eagerly; study and review defer
+        them behind ``load_tools``. Recording them as loaded for the session
+        means a later study turn keeps the same tool list instead of dropping
+        them, so the switch does not invalidate the prompt cache. The tool
+        list of one conversation only grows.
+        """
+        if not context.session_id:
+            return
+        names = {"mastery_build", "mastery_revise", "mastery_revise_batch"}
+        owned = names & set(self._capability_owned_tools(context))
+        if not owned:
+            return
+        from deeptutor.services.mcp import load_loaded_tools
+        from deeptutor.services.mcp.session_state import record_loaded_tools
+
+        loaded = load_loaded_tools(context.session_id)
+        if not owned <= loaded:
+            record_loaded_tools(context.session_id, loaded | owned)
+
     def _compose_enabled_tools(self, context):
         deferred = getattr(self, "_deferred_outline_names", set())
         return [name for name in super()._compose_enabled_tools(context) if name not in deferred]
@@ -301,6 +342,9 @@ class MasteryLoopPipeline(AgenticLoopPipeline):
             enabled_tools,
             context,
             include_tool_manifest=include_tool_manifest,
+        )
+        self._runtime_snapshots[SESSION_MODE_SNAPSHOT] = (
+            self._prompt_assembler.session_mode_snapshot(context)
         )
         snapshot = context.extension("mastery").get("status_snapshot")
         if snapshot:
