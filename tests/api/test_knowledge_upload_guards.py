@@ -20,6 +20,7 @@ import importlib
 import io
 import json
 from pathlib import Path
+import zipfile
 
 import pytest
 
@@ -173,6 +174,22 @@ def test_upload_rejects_oversize_file_without_side_effects(monkeypatch, tmp_path
     assert entry["status"] == "ready"
 
 
+def test_oversize_zip_points_at_folder_upload(monkeypatch, tmp_path: Path) -> None:
+    manager = _real_manager(monkeypatch, tmp_path)
+    kb_dir = _seed_kb(manager, files={})
+    monkeypatch.setattr(DocumentValidator, "MAX_FILE_SIZE", 32)
+
+    with TestClient(_build_app()) as client:
+        response = client.post(
+            "/api/knowledge-bases/kb/upload",
+            files=_upload("course.zip", _course_zip_bytes([("Week1/Slides.pdf", b"x" * 64)])),
+        )
+
+    assert response.status_code == 400
+    assert "upload the folder instead" in response.json()["detail"]
+    assert _staged_files(kb_dir / "raw") == []
+
+
 def test_upload_rejects_duplicate_names_within_one_batch(monkeypatch, tmp_path: Path) -> None:
     manager = _real_manager(monkeypatch, tmp_path)
     _seed_kb(manager, files={})
@@ -315,6 +332,58 @@ def test_two_uploads_dispatch_two_distinct_tasks(monkeypatch, tmp_path: Path) ->
     ]["kb"]
     assert entry["status"] == "processing"
     assert entry["progress"]["task_id"] == second_task
+
+
+def _course_zip_bytes(entries: list[tuple[str, bytes]]) -> bytes:
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        for name, data in entries:
+            zf.writestr(name, data)
+    return buf.getvalue()
+
+
+def test_reimported_course_zip_reports_each_file_instead_of_failing(
+    monkeypatch, tmp_path: Path
+) -> None:
+    manager = _real_manager(monkeypatch, tmp_path)
+    kb_dir = _seed_kb(manager, files={"Week1/Slides.pdf": "v1"})
+    recorder = _install_dispatch_recorder(monkeypatch)
+    payload = _course_zip_bytes(
+        [
+            ("Week1/Slides.pdf", b"v1"),  # already in the KB, identical
+            ("Week2/Slides.pdf", b"w2"),  # new, same basename as above
+            ("Week3/Slides.pdf", b"w3"),
+            ("tools/setup.exe", b"x"),  # unsupported
+        ]
+    )
+
+    with TestClient(_build_app()) as client:
+        first = client.post("/api/knowledge-bases/kb/upload", files=_upload("course.zip", payload))
+        (kb_dir / "raw" / "Week3" / "Slides.pdf").write_bytes(b"edited locally")
+        second = client.post("/api/knowledge-bases/kb/upload", files=_upload("course.zip", payload))
+
+    assert first.status_code == 200, first.text
+    body = first.json()
+    assert sorted(body["files"]) == ["Week2/Slides.pdf", "Week3/Slides.pdf"]
+    assert body["import_report"] == {
+        "duplicates": ["Week1/Slides.pdf"],
+        "renamed": [],
+        "rejected": [
+            {
+                "file": "course.zip/tools/setup.exe",
+                "reason": body["import_report"]["rejected"][0]["reason"],
+            }
+        ],
+    }
+
+    assert second.status_code == 200, second.text
+    report = second.json()["import_report"]
+    assert second.json()["files"] == ["Week3/Slides (2).pdf"]
+    assert report["duplicates"] == ["Week1/Slides.pdf", "Week2/Slides.pdf"]
+    assert report["renamed"] == [
+        {"path": "Week3/Slides (2).pdf", "conflicts_with": "Week3/Slides.pdf"}
+    ]
+    assert len(recorder.calls) == 2
 
 
 # ---------------------------------------------------------------------------
