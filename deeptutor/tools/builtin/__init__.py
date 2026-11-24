@@ -2277,8 +2277,12 @@ class LoadToolsTool(_PromptHintsMixin, BaseTool):
                 + ", ".join(outcome["unknown"])
                 + " (use exact names from the Extended Tools section)"
             )
+        content = "\n".join(parts)
+        # Usage rules for the loaded tools (e.g. setup's confirm-before-apply
+        # protocol) arrive with their schemas, not in the system prompt.
+        content = "\n\n".join([content, *(outcome.get("guides") or [])]).strip()
         return ToolResult(
-            content="\n".join(parts) or "(nothing to load)",
+            content=content or "(nothing to load)",
             success=not outcome["unknown"] or bool(outcome["loaded"]),
             metadata=outcome,
         )

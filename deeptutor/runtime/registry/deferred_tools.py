@@ -145,6 +145,7 @@ class DeferredToolLoader:
         loaded: set[str],
         allowed: set[str] | None = None,
         capability_names: set[str] | None = None,
+        guides: dict[str, str] | None = None,
     ) -> None:
         self._registry = registry
         self._session_id = session_id
@@ -156,6 +157,10 @@ class DeferredToolLoader:
         self._allowed = set(allowed) if allowed is not None else None
         # Capability-owned schemas may be deferred without changing global tools.
         self._capability_names = set(capability_names or ())
+        # Usage rules that travel with a tool's schema instead of living in the
+        # system prompt: returned by ``load`` for every requested name, so the
+        # rules arrive exactly when the model decides it needs the tools.
+        self._guides = {name: text for name, text in (guides or {}).items() if text.strip()}
         # Session state is shared by every loader of the session: a mastery
         # turn records its outline tools there, a later plain chat turn builds
         # a loader that knows nothing about them. Names this loader cannot
@@ -172,6 +177,10 @@ class DeferredToolLoader:
     @property
     def loaded_names(self) -> set[str]:
         return set(self._loaded)
+
+    @property
+    def guides(self) -> dict[str, str]:
+        return dict(self._guides)
 
     def bind_live_schemas(self, schemas: list[dict[str, Any]]) -> None:
         """Attach the turn's live ``tool_schemas`` list (mutated in place)."""
@@ -201,7 +210,11 @@ class DeferredToolLoader:
         return schemas
 
     def load(self, names: list[str]) -> dict[str, list[str]]:
-        """Load the given deferred tools; returns name lists by outcome."""
+        """Load the given deferred tools; returns name lists by outcome.
+
+        ``guides`` lists the usage rules registered for any requested tool
+        that is now callable (newly or already loaded), each text once.
+        """
         loaded: list[str] = []
         already: list[str] = []
         unknown: list[str] = []
@@ -226,7 +239,17 @@ class DeferredToolLoader:
             loaded.append(name)
         if loaded:
             self._persist()
-        return {"loaded": loaded, "already_loaded": already, "unknown": unknown}
+        guides = list(
+            dict.fromkeys(
+                self._guides[name] for name in (*loaded, *already) if name in self._guides
+            )
+        )
+        return {
+            "loaded": loaded,
+            "already_loaded": already,
+            "unknown": unknown,
+            "guides": guides,
+        }
 
     def _persist(self) -> None:
         try:
