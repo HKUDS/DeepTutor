@@ -285,6 +285,7 @@ class LearningTransaction:
             turn_id=row["turn_id"] or "",
             user_answer="" if grouped else row["user_answer"] or "",
             answers=json.loads(row["user_answer"] or "{}") if grouped else {},
+            answer_images=json.loads(row["answer_images_json"] or "[]"),
             result=json.loads(row["result_json"] or "{}"),
             created_at=float(row["created_at"]),
             updated_at=float(row["updated_at"]),
@@ -333,14 +334,15 @@ class LearningTransaction:
             """
             INSERT INTO mastery_interactions (
                 interaction_id, path_id, status, question_json, session_id,
-                turn_id, user_answer, result_json, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                turn_id, user_answer, answer_images_json, result_json, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(interaction_id) DO UPDATE SET
                 status = excluded.status,
                 question_json = excluded.question_json,
                 session_id = excluded.session_id,
                 turn_id = excluded.turn_id,
                 user_answer = excluded.user_answer,
+                answer_images_json = excluded.answer_images_json,
                 result_json = excluded.result_json,
                 updated_at = excluded.updated_at
             """,
@@ -354,6 +356,7 @@ class LearningTransaction:
                 json.dumps(interaction.answers, ensure_ascii=False)
                 if interaction.question.questions
                 else interaction.user_answer,
+                json.dumps(interaction.answer_images, ensure_ascii=False),
                 json.dumps(interaction.result, ensure_ascii=False),
                 interaction.created_at,
                 now,
@@ -558,6 +561,7 @@ class LearningStore:
                         session_id TEXT NOT NULL DEFAULT '',
                         turn_id TEXT NOT NULL DEFAULT '',
                         user_answer TEXT NOT NULL DEFAULT '',
+                        answer_images_json TEXT NOT NULL DEFAULT '[]',
                         result_json TEXT NOT NULL DEFAULT '{}',
                         created_at REAL NOT NULL,
                         updated_at REAL NOT NULL
@@ -674,6 +678,16 @@ class LearningStore:
                     """
                 )
                 self._converge_single_membership(conn)
+                interaction_columns = {
+                    str(row["name"])
+                    for row in conn.execute("PRAGMA table_info(mastery_interactions)")
+                }
+                if "answer_images_json" not in interaction_columns:
+                    # Photos submitted as an answer (additive; older rows have none).
+                    conn.execute(
+                        "ALTER TABLE mastery_interactions "
+                        "ADD COLUMN answer_images_json TEXT NOT NULL DEFAULT '[]'"
+                    )
                 # V2 metadata is a persisted part of every topic, not a
                 # runtime-only fallback. Existing V1 paths receive neutral,
                 # deterministic metadata during schema initialization; their

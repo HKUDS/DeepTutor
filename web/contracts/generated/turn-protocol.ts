@@ -47,6 +47,7 @@ export type ReasoningEffort = string | null;
 export type Answers = {
   [k: string]: string;
 } | null;
+export type AttachmentIds = string[];
 export type QuestionId = string;
 export type Text = string;
 export type MasteryPathId = string | null;
@@ -385,8 +386,9 @@ export interface LLMSelection {
  */
 export interface MasteryCardAnswer {
   answers?: Answers;
+  attachment_ids?: AttachmentIds;
   question_id: QuestionId;
-  text: Text;
+  text?: Text;
 }
 /**
  * A question the learner dropped instead of answering.

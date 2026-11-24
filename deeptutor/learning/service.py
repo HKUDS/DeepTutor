@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from typing import TYPE_CHECKING, Any, Literal
@@ -1067,8 +1068,15 @@ class LearningService:
         interaction_id: str = "",
         session_id: str = "",
         turn_id: str = "",
+        answer_images: list[dict[str, str]] | None = None,
     ) -> MasteryInteraction | None:
-        """Durably record a reply before the LLM gets another reasoning round."""
+        """Durably record a reply before the LLM gets another reasoning round.
+
+        ``answer_images`` are references to photos submitted with the reply
+        (see :mod:`deeptutor.learning.answer_images`); they are part of the
+        answer and are replaced together with it.
+        """
+        from deeptutor.learning.answer_images import image_digests
 
         def record(tx):
             interaction = (
@@ -1112,6 +1120,7 @@ class LearningService:
             }:
                 interaction.status = InteractionStatus.ANSWERED
                 interaction.user_answer = str(answer or "")
+                interaction.answer_images = list(answer_images or [])
                 interaction.session_id = session_id or interaction.session_id
                 interaction.turn_id = turn_id or interaction.turn_id
                 tx.put_interaction(interaction)
@@ -1121,21 +1130,30 @@ class LearningService:
                     session_id=interaction.session_id,
                     turn_id=interaction.turn_id,
                 )
-            elif (
-                interaction.status == InteractionStatus.ANSWERED
-                and interaction.result.get("final") is False
+            elif interaction.status == InteractionStatus.ANSWERED and (
+                interaction.result.get("final") is False
+                # A photo answer whose grading failed before any verdict (a
+                # provider error or the image budget) is revised by the
+                # learner's next card submission instead of blocking it.
+                or (
+                    not interaction.result
+                    and (answer_images or interaction.answer_images)
+                    and image_digests(answer_images) != image_digests(interaction.answer_images)
+                )
             ):
                 tx.emit(
                     "assessment.revised",
                     {
                         "question_id": interaction.interaction_id,
                         "previous_answer": interaction.user_answer,
+                        "previous_answer_images": interaction.answer_images,
                         "previous_result": interaction.result,
                     },
                     session_id=session_id,
                     turn_id=turn_id,
                 )
                 interaction.user_answer = str(answer or "")
+                interaction.answer_images = list(answer_images or [])
                 interaction.session_id = session_id or interaction.session_id
                 interaction.turn_id = turn_id or interaction.turn_id
                 tx.put_interaction(interaction)
@@ -3181,8 +3199,13 @@ class LearningService:
     async def grade_interaction_semantic(self, book_id: str, *, config=None, **kwargs):
         """Evaluate outside the transaction, then fence every input at commit."""
         from deeptutor.learning import semantic_assessment as semantic
+        from deeptutor.learning.answer_images import image_digests
         from deeptutor.learning.lesson_evidence import LessonUnavailable, objective_fingerprint
 
+        # Photos the caller knows were submitted with this answer. They are
+        # graded from the committed interaction, never from this argument; it
+        # only proves the commit carried them.
+        submitted_images = kwargs.pop("answer_images", None)
         question_id = kwargs.get("question_id", "")
         interaction = (
             self._store.get_interaction(book_id, question_id)
@@ -3200,12 +3223,23 @@ class LearningService:
                     interaction_id=question_id,
                     session_id=kwargs.get("session_id", ""),
                     turn_id=kwargs.get("turn_id", ""),
+                    answer_images=submitted_images,
                 )
         if interaction is None or interaction.status in {
             InteractionStatus.GRADED,
             InteractionStatus.ABANDONED,
         }:
             return self.grade_interaction(book_id, **kwargs)
+        if submitted_images and (
+            interaction.status != InteractionStatus.ANSWERED
+            or image_digests(interaction.answer_images) != image_digests(submitted_images)
+        ):
+            # Grading the typed text alone would score a different answer than
+            # the learner submitted.
+            raise MasteryInteractionError(
+                "The answer photos were not recorded with this answer; submit them again. "
+                "No grade was saved."
+            )
         progress = self._store.load(book_id)
         state = semantic.fingerprint(interaction.model_dump())
         pending = interaction.question
@@ -3252,6 +3286,27 @@ class LearningService:
                 objectives[question.knowledge_point_id] = objective_fingerprint(
                     progress, question.knowledge_point_id
                 )
+                learner_images = []
+                if not pending.questions and interaction.answer_images:
+                    from deeptutor.learning.answer_images import load_answer_images
+
+                    try:
+                        learner_images = await asyncio.to_thread(
+                            load_answer_images, interaction.answer_images, config
+                        )
+                    except ValueError as exc:
+                        # Never fall back to grading the typed text alone.
+                        verdicts[question.question_id] = semantic.Verdict(
+                            result="ungraded", confidence=0, feedback=str(exc)
+                        ).receipt()
+                        continue
+                    if question.question_type == "choice":
+                        verdicts[question.question_id] = semantic.Verdict(
+                            result="ungraded",
+                            confidence=0,
+                            feedback="Pick an option to answer a choice question; photos are not graded here.",
+                        ).receipt()
+                        continue
                 if question.visual_context:
                     from deeptutor.learning.visual_practice import (
                         evaluate_visual,
@@ -3261,7 +3316,7 @@ class LearningService:
                     visual_result, diagnosis = evaluate_visual(
                         question, answers[question.question_id]
                     )
-                    if visual_result in {"correct", "incorrect"}:
+                    if visual_result in {"correct", "incorrect"} and not learner_images:
                         continue
                     try:
                         images = verified_visual_images(question)
@@ -3283,10 +3338,17 @@ class LearningService:
                             "answer": answers[question.question_id],
                             "source_evidence": {},
                             "_visual_images": images,
+                            **({"_learner_images": learner_images} if learner_images else {}),
                         }
                     )
                     continue
-                exact = semantic.exact_verdict(question, answers[question.question_id])
+                # A photo is the answer; the typed line beside it is only part
+                # of it, so a text match alone must not decide the verdict.
+                exact = (
+                    None
+                    if learner_images
+                    else semantic.exact_verdict(question, answers[question.question_id])
+                )
                 if exact:
                     verdicts[question.question_id] = exact.receipt()
                 else:
@@ -3295,6 +3357,7 @@ class LearningService:
                             **semantic.question_contract(question),
                             "answer": answers[question.question_id],
                             "source_evidence": question.source_evidence,
+                            **({"_learner_images": learner_images} if learner_images else {}),
                         }
                     )
             if items:
@@ -3361,7 +3424,15 @@ class LearningService:
             )
         answer = next(iter(answers), interaction.user_answer)
         receipt = None
+        learner_images = []
         try:
+            if interaction.answer_images:
+                from deeptutor.learning.answer_images import load_answer_images
+
+                # A photo answer is regraded from its photos, never the text alone.
+                learner_images = await asyncio.to_thread(
+                    load_answer_images, interaction.answer_images, config
+                )
             if question.visual_context:
                 if not question.visual_context.get("pixels_inspected"):
                     # prepare_visual below is not given the original model-input
@@ -3382,8 +3453,8 @@ class LearningService:
             else:
                 images = []
             await semantic.bind_question(self._store, progress, question, config)
-            if answer:
-                exact = semantic.exact_verdict(question, answer)
+            if answer or learner_images:
+                exact = None if learner_images else semantic.exact_verdict(question, answer)
                 if exact:
                     receipt = exact.receipt()
                 else:
@@ -3395,6 +3466,7 @@ class LearningService:
                                 "answer": answer,
                                 "source_evidence": question.source_evidence,
                                 "_visual_images": images,
+                                **({"_learner_images": learner_images} if learner_images else {}),
                             }
                         ],
                     )

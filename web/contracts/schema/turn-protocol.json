@@ -268,20 +268,26 @@
           "default": null,
           "title": "Answers"
         },
+        "attachment_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Attachment Ids",
+          "type": "array"
+        },
         "question_id": {
           "minLength": 1,
           "title": "Question Id",
           "type": "string"
         },
         "text": {
-          "minLength": 1,
+          "default": "",
           "title": "Text",
           "type": "string"
         }
       },
       "required": [
-        "question_id",
-        "text"
+        "question_id"
       ],
       "title": "MasteryCardAnswer",
       "type": "object"

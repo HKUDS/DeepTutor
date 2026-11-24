@@ -157,7 +157,13 @@ class TurnRequestPreparer:
             question_id: str,
             answer: str,
             answers: dict[str, str] | None = None,
+            answer_images: list[dict[str, str]] | None = None,
         ) -> None: ...
+
+        @staticmethod
+        def _card_answer_images(
+            execution: _TurnExecution, answer: dict[str, Any], attachments: Any
+        ) -> list[dict[str, str]]: ...
 
         async def _acquire_mastery_path_lease(
             self,
@@ -896,6 +902,14 @@ class TurnRequestPreparer:
         mastery_lease_acquired = False
         if mastery_binding is not None and mastery_lease_managed:
             try:
+                card_answer = payload.get("mastery_answer") or {}
+                # Before the lease: a card answer whose photos cannot be
+                # described is rejected without holding the path.
+                card_answer_images = (
+                    self._card_answer_images(execution, card_answer, payload.get("attachments"))
+                    if isinstance(card_answer, dict)
+                    else []
+                )
                 await self._acquire_mastery_path_lease(
                     path_id=mastery_binding.path_id,
                     session_id=session["id"],
@@ -903,7 +917,6 @@ class TurnRequestPreparer:
                     owns_path=mastery_binding.owned_by_session,
                 )
                 mastery_lease_acquired = True
-                card_answer = payload.get("mastery_answer") or {}
                 if isinstance(card_answer, dict) and card_answer.get("question_id"):
                     # Commit before the loop starts so the tutor's first
                     # mastery_status already reports this answer.
@@ -918,6 +931,7 @@ class TurnRequestPreparer:
                             if card_answer.get("answers") is not None
                             else {}
                         ),
+                        answer_images=card_answer_images,
                     )
             except Exception as exc:
                 async with self._lock:
