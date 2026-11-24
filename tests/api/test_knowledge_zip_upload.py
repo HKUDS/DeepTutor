@@ -17,6 +17,7 @@ import pytest
 pytest.importorskip("fastapi")
 from fastapi import HTTPException, UploadFile
 
+from deeptutor.api.routers import knowledge as knowledge_router
 from deeptutor.api.routers.knowledge import UploadImportReport, _save_uploaded_files
 from deeptutor.utils.document_validator import DocumentValidator
 
@@ -75,7 +76,7 @@ def test_zip_upload_with_zip_slip_member_stays_in_target(tmp_path: Path) -> None
 
     assert sorted(names) == ["abs/rooted.txt", "safe.txt"]
     assert not list(tmp_path.rglob("escape.txt"))  # refused, did not escape
-    assert report.rejected == [{"file": "evil.zip/../../escape.txt", "reason": "unsafe path"}]
+    assert report.rejected == [{"file": "evil.zip/../../escape.txt", "reason": "Unsafe path"}]
 
 
 def test_invalid_zip_is_rejected(tmp_path: Path) -> None:
@@ -88,7 +89,7 @@ def test_invalid_zip_is_rejected(tmp_path: Path) -> None:
     assert exc_info.value.status_code == 400
 
 
-def test_zip_with_no_supported_members_is_rejected(tmp_path: Path) -> None:
+def test_zip_with_no_supported_members_is_rejected_with_the_reasons(tmp_path: Path) -> None:
     upload = _zip_upload("only-junk.zip", [("a.exe", b"x"), ("b.sh", b"y")])
     raw = tmp_path / "raw"
     raw.mkdir()
@@ -96,6 +97,9 @@ def test_zip_with_no_supported_members_is_rejected(tmp_path: Path) -> None:
     with pytest.raises(HTTPException) as exc_info:
         _save_uploaded_files([upload], raw, allowed_extensions=ALLOWED)
     assert exc_info.value.status_code == 400
+    detail = exc_info.value.detail
+    assert "a.exe (Unsupported file type)" in detail
+    assert "b.sh (Unsupported file type)" in detail
 
 
 def test_zip_keeps_member_folders_like_a_folder_upload(tmp_path: Path) -> None:
@@ -222,8 +226,9 @@ def test_unsupported_members_are_reported_not_silently_dropped(tmp_path: Path) -
         import_report=report,
     )
 
-    assert [item["file"] for item in report.rejected] == ["course.zip/tools/setup.exe"]
-    assert "Unsupported file type" in report.rejected[0]["reason"]
+    assert report.rejected == [
+        {"file": "course.zip/tools/setup.exe", "reason": "Unsupported file type"}
+    ]
 
 
 def test_failed_batch_removes_zip_members_but_keeps_existing_files(tmp_path: Path) -> None:
@@ -250,7 +255,7 @@ def test_oversize_archive_suggests_uploading_the_folder(monkeypatch, tmp_path: P
         _save_uploaded_files([upload], raw, allowed_extensions=ALLOWED)
 
     assert exc_info.value.status_code == 400
-    assert "upload the folder instead" in exc_info.value.detail
+    assert exc_info.value.detail.count("upload the folder instead") == 1
 
 
 def test_member_clashing_with_an_existing_file_is_reported_not_fatal(tmp_path: Path) -> None:
@@ -301,7 +306,7 @@ def test_member_under_a_symlinked_folder_never_leaves_the_kb(tmp_path: Path) -> 
 
     assert names == ["Week2/ok.pdf"]
     assert list(outside.iterdir()) == []
-    assert report.rejected == [{"file": "course.zip/Week1/Slides.pdf", "reason": "unsafe path"}]
+    assert report.rejected == [{"file": "course.zip/Week1/Slides.pdf", "reason": "Unsafe path"}]
 
 
 def test_same_member_in_two_archives_of_one_batch_is_stored_once(tmp_path: Path) -> None:
@@ -336,6 +341,90 @@ def test_rejected_reason_is_short(tmp_path: Path) -> None:
         import_report=report,
     )
 
+    assert report.rejected == [{"file": "course.zip/setup.exe", "reason": "Unsupported file type"}]
+
+
+@pytest.mark.parametrize(
+    "order",
+    [["a.pdf", "a.pdf/x.pdf"], ["a.pdf/x.pdf", "a.pdf"]],
+    ids=["file-first", "folder-first"],
+)
+def test_file_and_folder_with_one_name_reject_only_that_member(
+    tmp_path: Path, order: list[str]
+) -> None:
+    raw = tmp_path / "raw"
+    raw.mkdir()
+    report = UploadImportReport()
+
+    names, _ = _save_uploaded_files(
+        [_zip_upload("course.zip", [(name, b"x") for name in order] + [("ok.md", b"ok")])],
+        raw,
+        allowed_extensions=ALLOWED,
+        import_report=report,
+    )
+
+    assert sorted(names) == sorted([order[0], "ok.md"])
     assert report.rejected == [
-        {"file": "course.zip/setup.exe", "reason": "Unsupported file type: .exe"}
+        {"file": f"course.zip/{order[1]}", "reason": "A file and a folder have the same name"}
     ]
+
+
+def test_unexpected_os_error_never_leaks_the_server_path(monkeypatch, tmp_path: Path) -> None:
+    def _fail(*_args, **_kwargs):
+        raise PermissionError(13, "Permission denied", "/srv/secret/tmpdir/a.pdf")
+
+    monkeypatch.setattr("deeptutor.utils.archive_extractor.safe_extract_zip", _fail)
+    raw = tmp_path / "raw"
+    raw.mkdir()
+
+    with pytest.raises(HTTPException) as exc_info:
+        _save_uploaded_files(
+            [_zip_upload("course.zip", [("a.pdf", b"a")])], raw, allowed_extensions=ALLOWED
+        )
+
+    assert exc_info.value.status_code == 400
+    assert "/srv/secret" not in exc_info.value.detail
+    assert "course.zip" in exc_info.value.detail
+
+
+def test_a_member_that_cannot_be_stored_leaves_no_empty_folder(monkeypatch, tmp_path: Path) -> None:
+    real_stage = knowledge_router.stage_source
+
+    def _stage(source, dest, *args, **kwargs):
+        if dest.name == "broken.pdf":
+            raise OSError(28, "No space left on device", str(dest))
+        return real_stage(source, dest, *args, **kwargs)
+
+    monkeypatch.setattr(knowledge_router, "stage_source", _stage)
+    raw = tmp_path / "raw"
+    raw.mkdir()
+    report = UploadImportReport()
+
+    names, _ = _save_uploaded_files(
+        [_zip_upload("course.zip", [("Week9/Sub/broken.pdf", b"b"), ("ok.md", b"ok")])],
+        raw,
+        allowed_extensions=ALLOWED,
+        import_report=report,
+    )
+
+    assert names == ["ok.md"]
+    assert report.rejected == [
+        {"file": "course.zip/Week9/Sub/broken.pdf", "reason": "Could not be stored"}
+    ]
+    assert not (raw / "Week9").exists()
+
+
+def test_direct_file_and_zip_member_at_one_path_are_indexed_once(tmp_path: Path) -> None:
+    raw = tmp_path / "raw"
+    raw.mkdir()
+    direct = UploadFile(filename="Slides.pdf", file=io.BytesIO(b"direct"))
+
+    names, paths = _save_uploaded_files(
+        [_zip_upload("course.zip", [("Week1/Slides.pdf", b"zipped")]), direct],
+        raw,
+        allowed_extensions=ALLOWED,
+        rel_paths=["", "Week1/Slides.pdf"],
+    )
+
+    assert names == ["Week1/Slides.pdf"]
+    assert paths == [str(raw / "Week1" / "Slides.pdf")]

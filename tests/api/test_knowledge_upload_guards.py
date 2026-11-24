@@ -186,7 +186,7 @@ def test_oversize_zip_points_at_folder_upload(monkeypatch, tmp_path: Path) -> No
         )
 
     assert response.status_code == 400
-    assert "upload the folder instead" in response.json()["detail"]
+    assert response.json()["detail"].count("upload the folder instead") == 1
     assert _staged_files(kb_dir / "raw") == []
 
 

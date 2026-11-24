@@ -358,33 +358,32 @@ class UploadImportReport:
     duplicates: list[str] = field(default_factory=list)
     # Members whose path held a *different* document: stored beside it.
     renamed: list[dict[str, str]] = field(default_factory=list)
-    # Members that were not stored, with the reason (OS junk is not listed).
+    # Members that were not stored, with one of ``_REJECT_REASONS`` (OS junk
+    # is not listed).
     rejected: list[dict[str, str]] = field(default_factory=list)
 
     def as_dict(self) -> dict[str, list]:
         return {"duplicates": self.duplicates, "renamed": self.renamed, "rejected": self.rejected}
 
-    def summary(self) -> str:
-        parts = []
-        if self.duplicates:
-            parts.append(f"{len(self.duplicates)} identical file(s) already present, skipped")
-        if self.renamed:
-            parts.append(f"{len(self.renamed)} changed file(s) stored beside the existing one")
-        if self.rejected:
-            parts.append(f"{len(self.rejected)} file(s) not supported or unsafe, skipped")
-        return "; ".join(parts)
+
+# Extractor skip reasons → the short English sentence the response carries.
+# The web client translates it (the sentence is its i18n key), so keep this
+# vocabulary small and fixed; anything unlisted becomes "Could not be stored".
+_REJECT_REASONS = {
+    "unsafe path": "Unsafe path",
+    "path escapes target directory": "Unsafe path",
+    "path too long": "Path too long",
+    "path conflict": "A file and a folder have the same name",
+    "duplicate path in archive": "Duplicate path in the archive",
+    "nested archive": "Archive inside the archive",
+}
+_UNSTORED_REASON = "Could not be stored"
 
 
-def _make_dirs_recorded(directory: Path, root: Path, created: list[Path]) -> None:
-    """Create ``directory`` below ``root``, recording each folder it adds."""
-    missing: list[Path] = []
-    current = directory
-    while current != root and not current.exists():
-        missing.append(current)
-        current = current.parent
-    for folder in reversed(missing):
-        folder.mkdir()
-        created.append(folder)
+def _reject_reason(reason: str) -> str:
+    if reason.startswith("Unsupported file type"):
+        return "Unsupported file type"
+    return _REJECT_REASONS.get(reason, _UNSTORED_REASON)
 
 
 def _remove_written(files: list[Path], dirs: list[Path]) -> None:
@@ -435,7 +434,11 @@ def _save_zip_archive(
     import tempfile
     import zipfile
 
-    from deeptutor.utils.archive_extractor import ArchiveTooLargeError, safe_extract_zip
+    from deeptutor.utils.archive_extractor import (
+        ArchiveTooLargeError,
+        make_dirs_recorded,
+        safe_extract_zip,
+    )
 
     file.file.seek(0)
     max_size = DocumentValidator.MAX_FILE_SIZE
@@ -451,13 +454,11 @@ def _save_zip_archive(
             for chunk in iter(lambda: file.file.read(8192), b""):
                 written += len(chunk)
                 if written > max_size:
-                    size_str = format_bytes_human_readable(max_size)
                     raise HTTPException(
                         status_code=400,
                         detail=(
                             f"Archive '{sanitized_filename}' exceeds maximum size limit of "
-                            f"{size_str}. Unzip it and upload the folder instead (each file "
-                            f"may be up to {size_str})."
+                            f"{format_bytes_human_readable(max_size)}. {_archive_size_hint()}"
                         ),
                     )
                 tmp.write(chunk)
@@ -481,34 +482,42 @@ def _save_zip_archive(
                     status_code=400,
                     detail=f"'{sanitized_filename}' is not a valid zip archive.",
                 ) from exc
+            except OSError as exc:
+                # Never echo the OS error: it carries the server's temp path.
+                logger.warning("Extracting '%s' failed: %s", sanitized_filename, exc)
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Archive '{sanitized_filename}' could not be unpacked on the server.",
+                ) from exc
 
             def reject(member: str, reason: str) -> None:
-                # The validator lists every allowed type; keep the response small.
-                short = reason.split(" Allowed types:", 1)[0].rstrip(".")
-                report.rejected.append({"file": f"{sanitized_filename}/{member}", "reason": short})
+                report.rejected.append({"file": f"{sanitized_filename}/{member}", "reason": reason})
+
+            archive_rejected_from = len(report.rejected)
 
             for member, reason in result.skipped:
                 if reason != "system file or dotfile":
-                    reject(member, reason)
+                    reject(member, _reject_reason(reason))
             reused: list[Path] = []
             placed_any = False
             for extracted in result.extracted:
                 member = extracted.relative_to(staging_root).as_posix()
                 requested = target_dir / member
                 if not requested.resolve().is_relative_to(kb_root_resolved):
-                    reject(member, "unsafe path")  # a symlinked folder under raw/
+                    reject(member, "Unsafe path")  # a symlinked folder under raw/
                     continue
+                member_dirs: list[Path] = []
                 try:
-                    _make_dirs_recorded(requested.parent, kb_root, created_dirs)
+                    make_dirs_recorded(requested.parent, kb_root, member_dirs)
                     placed, copied = stage_source(extracted, requested)
-                except OSError:
-                    # Never echo the OS error: it carries the server's path.
-                    reject(
-                        member,
-                        "could not be stored: a file or folder with that name is in "
-                        "the way, or the path is too long",
-                    )
+                except OSError as exc:
+                    # A file or folder in the way, a too-long path. Never echo
+                    # the OS error: it carries the server's path.
+                    logger.debug("Could not store '%s': %s", member, exc)
+                    _remove_written([], member_dirs)
+                    reject(member, _UNSTORED_REASON)
                     continue
+                created_dirs.extend(member_dirs)
                 placed_any = True
                 if placed in already_written:
                     continue  # stored by an earlier archive of this upload
@@ -525,9 +534,17 @@ def _save_zip_archive(
                     )
 
         if not placed_any:
+            reasons = "; ".join(
+                f"{item['file'].removeprefix(sanitized_filename + '/')} ({item['reason']})"
+                for item in report.rejected[archive_rejected_from:][:5]
+            )
             raise HTTPException(
                 status_code=400,
-                detail=f"Archive '{sanitized_filename}' contained no supported files.",
+                detail=(
+                    f"Archive '{sanitized_filename}' contained no supported files"
+                    + (f": {reasons}" if reasons else "")
+                    + "."
+                ),
             )
         return stored, reused, created_dirs
     except BaseException:
@@ -700,18 +717,16 @@ def _save_uploaded_files(
                     except OSError:
                         pass
 
-                error_message = (
-                    f"Validation failed for file '{original_filename}': "
-                    f"{format_exception_message(e)}"
-                    f"{_archive_size_hint(original_filename, _get_upload_file_size(file))}"
-                )
+                error_message = _validation_error(original_filename, e, _get_upload_file_size(file))
                 logger.error(error_message, exc_info=True)
                 raise HTTPException(status_code=400, detail=error_message) from e
     except Exception:
         _remove_written(written_file_paths, created_dirs)
         raise
 
-    return uploaded_files, uploaded_file_paths
+    # A direct file at a path an archive member of this batch also used
+    # replaced it (direct uploads overwrite); register that path once.
+    return list(dict.fromkeys(uploaded_files)), list(dict.fromkeys(uploaded_file_paths))
 
 
 async def _save_uploaded_files_off_loop(
@@ -758,16 +773,22 @@ def _get_upload_file_size(file: UploadFile) -> int | None:
         return None
 
 
-def _archive_size_hint(filename: str, size_bytes: int | None) -> str:
+def _archive_size_hint() -> str:
     """Point an oversized ``.zip`` at folder upload, whose cap is per file."""
+    limit = format_bytes_human_readable(DocumentValidator.MAX_FILE_SIZE)
+    return f"Unzip it and upload the folder instead (each file may be up to {limit})."
+
+
+def _validation_error(filename: str, exc: Exception, size_bytes: int | None) -> str:
+    """The 400 detail for a file that failed validation before it was stored."""
+    message = f"Validation failed for file '{filename}': {format_exception_message(exc)}"
     if (
-        size_bytes is not None
+        filename.lower().endswith(".zip")
+        and size_bytes is not None
         and size_bytes > DocumentValidator.MAX_FILE_SIZE
-        and filename.lower().endswith(".zip")
     ):
-        limit = format_bytes_human_readable(DocumentValidator.MAX_FILE_SIZE)
-        return f". Unzip it and upload the folder instead (each file may be up to {limit})."
-    return ""
+        message = f"{message}. {_archive_size_hint()}"
+    return message
 
 
 def _validate_upload_batch(
@@ -789,10 +810,7 @@ def _validate_upload_batch(
                 allowed_extensions=allowed_extensions,
             )
         except Exception as e:
-            error_message = (
-                f"Validation failed for file '{original_filename}': {format_exception_message(e)}"
-                f"{_archive_size_hint(original_filename, size_bytes)}"
-            )
+            error_message = _validation_error(original_filename, e, size_bytes)
             raise HTTPException(status_code=400, detail=error_message) from e
 
         rel = (
@@ -3676,10 +3694,6 @@ async def upload_files(
         get_task_stream_manager().ensure_task(task_id)
 
         logger.info(f"Uploading {len(uploaded_files)} files to KB '{kb_name}'")
-        message = f"Uploaded {len(uploaded_files)} files. Processing in background."
-        if summary := import_report.summary():
-            message = f"{message} Archive: {summary}."
-            _task_log(task_id, f"Archive import: {summary}")
 
         _mark_kb_queued_for_processing(
             manager,
@@ -3701,7 +3715,7 @@ async def upload_files(
         )
 
         return {
-            "message": message,
+            "message": f"Uploaded {len(uploaded_files)} files. Processing in background.",
             "files": uploaded_files,
             "import_report": import_report.as_dict(),
             "task_id": task_id,
