@@ -6,6 +6,37 @@ with streamed replies. The web and mobile clients use the same turn protocol
 and transport. Expo SDK 57 and Expo Dev Client are integrated into the checked-in
 React Native projects. Keep `android/` and `ios/` under source control.
 
+## Client architecture
+
+- `app/` contains the Expo Router routes. The root layout exposes server setup,
+  sign-in, or the authenticated stack according to the current server session.
+  Removing access removes the corresponding screens from navigation history.
+- `src/screens/`, `src/components/`, and `src/theme/` render native UI and own
+  transient UI state such as drafts. They do not make API calls.
+- `src/features/server/` and `src/features/auth/` own the selected origin and
+  the result of the server's auth check. A stored origin is a preference. The
+  server determines whether the user must sign in again.
+- `src/services/` handles HTTP deadlines, cancellation, status and payload
+  errors. `src/storage/` persists the selected origin using AsyncStorage.
+  Passwords are used for sign-in only. Session cookies stay in the native
+  cookie store and are scoped to the selected server.
+- `src/features/chat/` owns the current conversation and live task. Its state
+  belongs to the mounted chat route and resets when the app changes server or
+  loses authorization. Settings can be opened without restarting that route.
+
+The server session and chat runtime each expose a snapshot to React via
+`useSyncExternalStore`. The server session handles the existing
+`/api/auth/status`, `/api/auth/login`, and `/api/auth/logout` endpoints. The
+chat runtime delegates sequencing, replay, and reconnects to the shared
+`TurnRuntimeClient` on `/ws`. The server remains the authority for account and
+conversation data.
+
+Mobile's `@/` alias points to `web/`. It imports the protocol command builders,
+wire types, parsers and transport without pulling in Next.js pages, DOM code,
+or Web storage. Keep these imports narrow. If more clients need the same files,
+move the tested contracts and transport into a shared package and retain Web
+compatibility imports during migration.
+
 ## Run on Android
 
 Install Node.js, JDK 17, and the Android SDK. The Gradle project declares its
@@ -59,12 +90,25 @@ deployment with a model configured. Point the app at the HTTPS origin that
 serves both `/api/auth/status` and `/ws`. Expo runs the mobile development
 toolchain and does not provision a DeepTutor server.
 
+Enter the final origin configured by your HTTPS proxy. The client rejects
+redirects on credentialed requests and does not follow Android WebSocket
+handshake redirects. Development builds may connect to the emulator host or
+loopback using HTTP. Use HTTPS with a trusted certificate on physical devices
+and for deployed instances. If the server limits account login to a private
+frontend host, use the approved proxy origin.
+
+The current native links accept only the four static screen paths. The route
+adapter drops unfamiliar URLs and query parameters before navigation. When
+adding link parameters, review the Expo Router dependency advisories and add
+validation for the values the app accepts.
+
 ## Verify
 
 ```sh
 npm run typecheck
 npm run lint
 npm test -- --runInBand
+npx expo install --check
 ```
 
 The Mobile CI workflow checks TypeScript, ESLint and Jest, builds an Android
@@ -79,3 +123,9 @@ this smoke test against the self-hosted API:
    reconnects and the replayed response has no duplicated fragments.
 4. Try an unreachable address and verify the connection error is visible and
    the form can be retried.
+5. Send another message, send the app to the background, then reopen it. Verify
+   replay completes without duplicate text. Try stopping a turn and doing a
+   new turn after it stops.
+6. Sign out or select another server. Returning to the old screen must require
+   current authorization. Verify independently on Android and iOS, including
+   updating the server port without changing its hostname.
