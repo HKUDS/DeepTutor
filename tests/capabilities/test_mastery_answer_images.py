@@ -447,3 +447,58 @@ async def test_photos_can_be_resubmitted_after_grading_failed_without_a_verdict(
     assert interaction.answer_images == smaller
     assert interaction.result["is_correct"] is True
     assert len(calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_photos_that_overflow_the_shared_image_budget_reopen_the_card(
+    service, attachments, monkeypatch
+):
+    from deeptutor.learning import semantic_assessment as semantic
+
+    refs = []
+    for index in range(4):
+        refs += await attachments.upload(PHOTO + bytes([index]), f"photo-{index}")
+    question = leaf(expected="58")
+    # Three source pages ground the question and travel to the judge as images.
+    question.source_evidence = {
+        "sources": [{"ref": {"kb_ref": "kb", "page_index": page}} for page in range(3)],
+        "assessment_contract": {"fingerprint": "bound"},
+    }
+    monkeypatch.setattr(semantic, "validate_question", lambda *args: None)
+    service.register_question("p", question)
+    service.record_question_answer(
+        "p", "58", interaction_id="q1", session_id="study", turn_id="t", answer_images=refs
+    )
+    calls = []
+    _judge(monkeypatch, calls)
+
+    progress, interaction, _ = await service.grade_interaction_semantic(
+        "p", config=VISION, question_id="q1", answer="58", answer_images=refs
+    )
+
+    assert calls == []
+    assert interaction.result["result"] == "ungraded"
+    assert interaction.result["final"] is False
+    assert "already sends 3 source images" in interaction.result["feedback"]
+    assert "at most 3 photos" in interaction.result["feedback"]
+    assert progress.mastery_levels.get("kp1", 0) == 0
+
+    # Resubmitting three photos fits beside the three pages and is graded.
+    service.record_question_answer(
+        "p", "58", interaction_id="q1", session_id="study", turn_id="t2", answer_images=refs[:3]
+    )
+    _, interaction, _ = await service.grade_interaction_semantic(
+        "p", config=VISION, question_id="q1", answer="58", answer_images=refs[:3]
+    )
+    assert len(calls) == 1
+    assert interaction.result["is_correct"] is True
+
+
+def test_learner_image_overflow_counts_bytes_beside_verified_visuals(monkeypatch):
+    from deeptutor.learning import semantic_assessment as semantic
+
+    monkeypatch.setattr(semantic, "MAX_REQUEST_IMAGE_CHARS", 10)
+    image = {"type": "image_url", "image_url": {"url": "data:123456"}}
+    item = {"question_id": "q", "_visual_images": [image], "_learner_images": [image]}
+    assert "too large" in semantic.learner_image_overflow(item)
+    assert semantic.learner_image_overflow({**item, "_learner_images": []}) == ""

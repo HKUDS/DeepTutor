@@ -115,6 +115,46 @@ def exact_verdict(question, answer):
     return None
 
 
+#: One judge request carries at most this many images, counting source pages,
+#: verified source visuals and learner answer photos together.
+MAX_REQUEST_IMAGES = 6
+#: ...and at most this many characters of image data URLs.
+MAX_REQUEST_IMAGE_CHARS = 16 * 1024 * 1024
+
+
+def learner_image_overflow(item) -> str:
+    """Explain why an item's learner photos do not fit the judge request, else "".
+
+    The photos share :data:`MAX_REQUEST_IMAGES` with the question's own source
+    pages and visuals. Checking before the request turns an over-budget photo
+    answer into an actionable, non-final verdict instead of a failed request.
+    Source pages are rendered inside :func:`_request`, so only their count is
+    known here; their bytes are still checked there.
+    """
+    photos = item.get("_learner_images") or []
+    if not photos:
+        return ""
+    visuals = [part for part in item.get("_visual_images") or [] if part.get("type") == "image_url"]
+    pages = {fingerprint(s["ref"]) for s in item.get("source_evidence", {}).get("sources", [])}
+    used = len(pages) + len(visuals)
+    if used + len(photos) > MAX_REQUEST_IMAGES:
+        room = max(MAX_REQUEST_IMAGES - used, 0)
+        return (
+            f"This question already sends {used} source images to the grader, so at most "
+            f"{room} photos of your solution fit. Submit at most {room} photos"
+            + ("" if room else "; type your answer instead")
+            + ". Mastery is unchanged."
+        )
+    if sum(len(part["image_url"]["url"]) for part in [*visuals, *photos]) > (
+        MAX_REQUEST_IMAGE_CHARS
+    ):
+        return (
+            "The photos of your solution are too large to grade together with this "
+            "question's source images. Submit fewer or smaller photos; mastery is unchanged."
+        )
+    return ""
+
+
 async def _request(config, instruction, payload, sources=None, native_images=None):
     from deeptutor.learning.lesson_evidence import _complete_json
     from deeptutor.services.llm.config import get_llm_config
@@ -149,8 +189,8 @@ async def _request(config, instruction, payload, sources=None, native_images=Non
             if part.get("type") == "image_url"
         ]
         if (
-            len(image_parts) > 6
-            or sum(len(part["image_url"]["url"]) for part in image_parts) > 16 * 1024 * 1024
+            len(image_parts) > MAX_REQUEST_IMAGES
+            or sum(len(part["image_url"]["url"]) for part in image_parts) > MAX_REQUEST_IMAGE_CHARS
         ):
             raise AssessmentUnavailable(
                 "Assessment images exceed the bounded request budget; split the group or "

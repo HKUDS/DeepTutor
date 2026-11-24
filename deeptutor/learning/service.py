@@ -3332,15 +3332,19 @@ class LearningService:
                             result="ungraded", confidence=0, feedback=diagnosis
                         ).receipt()
                         continue
-                    items.append(
-                        {
-                            **semantic.question_contract(question),
-                            "answer": answers[question.question_id],
-                            "source_evidence": {},
-                            "_visual_images": images,
-                            **({"_learner_images": learner_images} if learner_images else {}),
-                        }
-                    )
+                    item = {
+                        **semantic.question_contract(question),
+                        "answer": answers[question.question_id],
+                        "source_evidence": {},
+                        "_visual_images": images,
+                        **({"_learner_images": learner_images} if learner_images else {}),
+                    }
+                    if overflow := semantic.learner_image_overflow(item):
+                        verdicts[question.question_id] = semantic.Verdict(
+                            result="ungraded", confidence=0, feedback=overflow
+                        ).receipt()
+                    else:
+                        items.append(item)
                     continue
                 # A photo is the answer; the typed line beside it is only part
                 # of it, so a text match alone must not decide the verdict.
@@ -3349,17 +3353,20 @@ class LearningService:
                     if learner_images
                     else semantic.exact_verdict(question, answers[question.question_id])
                 )
+                item = {
+                    **semantic.question_contract(question),
+                    "answer": answers[question.question_id],
+                    "source_evidence": question.source_evidence,
+                    **({"_learner_images": learner_images} if learner_images else {}),
+                }
                 if exact:
                     verdicts[question.question_id] = exact.receipt()
+                elif overflow := semantic.learner_image_overflow(item):
+                    verdicts[question.question_id] = semantic.Verdict(
+                        result="ungraded", confidence=0, feedback=overflow
+                    ).receipt()
                 else:
-                    items.append(
-                        {
-                            **semantic.question_contract(question),
-                            "answer": answers[question.question_id],
-                            "source_evidence": question.source_evidence,
-                            **({"_learner_images": learner_images} if learner_images else {}),
-                        }
-                    )
+                    items.append(item)
             if items:
                 decisions = await semantic.judge_answers(config, items)
                 verdicts.update({key: value.receipt() for key, value in decisions.items()})
