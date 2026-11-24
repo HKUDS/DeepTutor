@@ -49,9 +49,11 @@ class _FakeResolvedBook:
         )
         self.book = SimpleNamespace(
             title="Compiled Book",
-            chat_session_id="",
             metadata={"page_chat_sessions": {"page-1": "page-chat-1"}},
         )
+        # Shared books resolve their mapping through the learning overlay, so
+        # the router must read the scope flag even for an owner's book.
+        self.is_shared = False
         self.engine = SimpleNamespace(
             load_book=lambda _: self.book,
             list_pages=lambda _: [self.page],

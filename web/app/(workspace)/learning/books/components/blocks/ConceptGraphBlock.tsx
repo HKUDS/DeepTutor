@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { Compass } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -79,6 +80,12 @@ export default function ConceptGraphBlock({
   const isChapterMap = chapterNodes.length > 0;
   const nodeCount = graph?.nodes.length ?? 0;
   const edgeCount = graph?.edges.length ?? 0;
+  // Clicking a node reveals its stored explanation. The mermaid renderer has
+  // no click directives, so the nodes stay a static visual and this list is
+  // the interaction surface.
+  const [activeNodeId, setActiveNodeId] = useState<string | null>(null);
+  const activeNode =
+    graph?.nodes.find((node) => node.id === activeNodeId) ?? null;
 
   return (
     <section className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,260px)]">
@@ -106,6 +113,48 @@ export default function ConceptGraphBlock({
         <div className="max-h-[60vh] overflow-auto">
           <MarkdownRenderer content={fenced} variant="default" />
         </div>
+        {graph && nodeCount > 0 && (
+          <div className="mt-3 border-t border-[rgb(var(--dt-ink,55_53_47)/0.08)] pt-3">
+            <div
+              className="flex flex-wrap gap-1.5"
+              role="group"
+              aria-label={t("Concept map")}
+            >
+              {graph.nodes.map((node) => {
+                const active = node.id === activeNodeId;
+                return (
+                  <button
+                    key={node.id}
+                    type="button"
+                    aria-expanded={active}
+                    onClick={() =>
+                      setActiveNodeId(active ? null : node.id)
+                    }
+                    className={`rounded-md border px-2 py-1 text-left text-xs font-medium transition-colors ${
+                      active
+                        ? "border-[var(--primary)] bg-[var(--primary)]/10 text-[var(--foreground)]"
+                        : "border-transparent bg-[rgb(var(--dt-ink,55_53_47)/0.035)] text-[var(--muted-foreground)] hover:bg-[rgb(var(--dt-ink,55_53_47)/0.06)] hover:text-[var(--foreground)]"
+                    }`}
+                  >
+                    {node.label}
+                  </button>
+                );
+              })}
+            </div>
+            {activeNode && (
+              <div className="mt-2 rounded-lg bg-[var(--background)] px-3 py-2">
+                <div className="mb-1 text-xs font-semibold text-[var(--foreground)]">
+                  {activeNode.label}
+                </div>
+                {activeNode.description && (
+                  <p className="text-xs leading-relaxed text-[var(--muted-foreground)]">
+                    {activeNode.description}
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </figure>
 
       <aside className="rounded-2xl bg-[rgb(var(--dt-ink,55_53_47)/0.028)] p-3">

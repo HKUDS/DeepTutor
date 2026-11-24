@@ -1298,13 +1298,13 @@ async def quiz_attempt(req: QuizAttemptRequest) -> dict[str, Any]:
         try:
             from deeptutor.services.session import get_sqlite_session_store
 
+            from deeptutor.book.chat_sessions import page_chat_sessions
+
             store = get_sqlite_session_store()
-            metadata = book.metadata if isinstance(book.metadata, dict) else {}
-            page_sessions = metadata.get("page_chat_sessions")
+            # The mapping lives on the book (or its learning overlay when the
+            # book is shared); `Book` has no single-session shorthand field.
             session_id = str(
-                (page_sessions.get(req.page_id) if isinstance(page_sessions, dict) else "")
-                or book.chat_session_id
-                or ""
+                page_chat_sessions(book, resolved).get(req.page_id) or ""
             ).strip()
             has_session = bool(session_id and await store.get_session(session_id) is not None)
             from deeptutor.learning.assessment import (
