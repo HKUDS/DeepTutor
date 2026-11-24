@@ -375,6 +375,32 @@ class UploadImportReport:
         return "; ".join(parts)
 
 
+def _make_dirs_recorded(directory: Path, root: Path, created: list[Path]) -> None:
+    """Create ``directory`` below ``root``, recording each folder it adds."""
+    missing: list[Path] = []
+    current = directory
+    while current != root and not current.exists():
+        missing.append(current)
+        current = current.parent
+    for folder in reversed(missing):
+        folder.mkdir()
+        created.append(folder)
+
+
+def _remove_written(files: list[Path], dirs: list[Path]) -> None:
+    """Best-effort rollback: delete ``files``, then the now-empty ``dirs``."""
+    for path in files:
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            pass
+    for folder in reversed(dirs):
+        try:
+            folder.rmdir()
+        except OSError:
+            pass
+
+
 def _save_zip_archive(
     file: UploadFile,
     sanitized_filename: str,
@@ -382,7 +408,8 @@ def _save_zip_archive(
     allowed_extensions: set[str] | None,
     kb_root: Path,
     report: UploadImportReport,
-) -> tuple[list[Path], list[Path]]:
+    batch_written: list[Path],
+) -> tuple[list[Path], list[Path], list[Path]]:
     """Safely expand an uploaded ``.zip`` into ``target_dir``.
 
     The archive itself is never persisted; each member is validated and
@@ -394,8 +421,15 @@ def _save_zip_archive(
     name. Re-importing an updated course download therefore stores only what
     changed and never fails the whole archive on one existing file.
 
-    Returns ``(stored, reused)``: files this call wrote, and existing files
-    that already held a member's content. Both are recorded in ``report``
+    A member that cannot be placed (a file is where its folder should be,
+    the path is too long, or it would resolve outside ``kb_root`` through a
+    symlink) is rejected on its own. ``batch_written`` holds the files this
+    upload already stored, so a member repeated across its archives is not
+    reported as "already present".
+
+    Returns ``(stored, reused, created_dirs)``: files this call wrote,
+    existing files that already held a member's content, and the folders it
+    created (for the caller's rollback). Outcomes are recorded in ``report``
     relative to ``kb_root``.
     """
     import tempfile
@@ -407,6 +441,9 @@ def _save_zip_archive(
     max_size = DocumentValidator.MAX_FILE_SIZE
     tmp_path: Path | None = None
     stored: list[Path] = []
+    created_dirs: list[Path] = []
+    kb_root_resolved = kb_root.resolve()
+    already_written = set(batch_written)
     try:
         with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
             tmp_path = Path(tmp.name)
@@ -445,36 +482,57 @@ def _save_zip_archive(
                     detail=f"'{sanitized_filename}' is not a valid zip archive.",
                 ) from exc
 
-            report.rejected.extend(
-                {"file": f"{sanitized_filename}/{member}", "reason": reason}
-                for member, reason in result.skipped
-                if reason != "system file or dotfile"
-            )
+            def reject(member: str, reason: str) -> None:
+                # The validator lists every allowed type; keep the response small.
+                short = reason.split(" Allowed types:", 1)[0].rstrip(".")
+                report.rejected.append({"file": f"{sanitized_filename}/{member}", "reason": short})
+
+            for member, reason in result.skipped:
+                if reason != "system file or dotfile":
+                    reject(member, reason)
             reused: list[Path] = []
+            placed_any = False
             for extracted in result.extracted:
-                requested = target_dir / extracted.relative_to(staging_root)
-                placed, copied = stage_source(extracted, requested)
+                member = extracted.relative_to(staging_root).as_posix()
+                requested = target_dir / member
+                if not requested.resolve().is_relative_to(kb_root_resolved):
+                    reject(member, "unsafe path")  # a symlinked folder under raw/
+                    continue
+                try:
+                    _make_dirs_recorded(requested.parent, kb_root, created_dirs)
+                    placed, copied = stage_source(extracted, requested)
+                except OSError:
+                    # Never echo the OS error: it carries the server's path.
+                    reject(
+                        member,
+                        "could not be stored: a file or folder with that name is in "
+                        "the way, or the path is too long",
+                    )
+                    continue
+                placed_any = True
+                if placed in already_written:
+                    continue  # stored by an earlier archive of this upload
                 rel = placed.relative_to(kb_root).as_posix()
                 if not copied:
                     reused.append(placed)
                     report.duplicates.append(rel)
                     continue
                 stored.append(placed)
+                already_written.add(placed)
                 if placed != requested:
                     report.renamed.append(
                         {"path": rel, "conflicts_with": requested.relative_to(kb_root).as_posix()}
                     )
 
-        if not stored and not reused:
+        if not placed_any:
             raise HTTPException(
                 status_code=400,
                 detail=f"Archive '{sanitized_filename}' contained no supported files.",
             )
-        return stored, reused
+        return stored, reused, created_dirs
     except BaseException:
         # A rejected archive leaves none of its members behind in the KB.
-        for path in stored:
-            path.unlink(missing_ok=True)
+        _remove_written(stored, created_dirs)
         raise
     finally:
         if tmp_path is not None:
@@ -532,6 +590,7 @@ def _save_uploaded_files(
     uploaded_files: list[str] = []
     uploaded_file_paths: list[str] = []
     written_file_paths: list[Path] = []
+    created_dirs: list[Path] = []
 
     from deeptutor.services.pocketbase_client import is_pocketbase_enabled
 
@@ -572,14 +631,16 @@ def _save_uploaded_files(
                 if Path(sanitized_filename).suffix.lower() == ".zip":
                     # Expand the archive in place; register each extracted
                     # member instead of the zip itself.
-                    stored, reused = _save_zip_archive(
+                    stored, reused, zip_dirs = _save_zip_archive(
                         file,
                         sanitized_filename,
                         dest_dir,
                         allowed_extensions,
                         kb_root=target_dir,
                         report=report,
+                        batch_written=written_file_paths,
                     )
+                    created_dirs.extend(zip_dirs)
                     uploaded_file_paths.extend(str(path) for path in reused)
                     for dest in stored:
                         written_file_paths.append(dest)
@@ -647,12 +708,7 @@ def _save_uploaded_files(
                 logger.error(error_message, exc_info=True)
                 raise HTTPException(status_code=400, detail=error_message) from e
     except Exception:
-        for written_path in written_file_paths:
-            if written_path.exists():
-                try:
-                    os.unlink(written_path)
-                except OSError:
-                    pass
+        _remove_written(written_file_paths, created_dirs)
         raise
 
     return uploaded_files, uploaded_file_paths

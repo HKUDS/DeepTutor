@@ -251,3 +251,91 @@ def test_oversize_archive_suggests_uploading_the_folder(monkeypatch, tmp_path: P
 
     assert exc_info.value.status_code == 400
     assert "upload the folder instead" in exc_info.value.detail
+
+
+def test_member_clashing_with_an_existing_file_is_reported_not_fatal(tmp_path: Path) -> None:
+    raw = tmp_path / "raw"
+    raw.mkdir()
+    (raw / "notes.md").write_bytes(b"a file, not a folder")
+    report = UploadImportReport()
+
+    names, _ = _save_uploaded_files(
+        [_zip_upload("bundle.zip", [("notes.md/c.md", b"c"), ("Week1/ok.md", b"ok")])],
+        raw,
+        allowed_extensions=ALLOWED,
+        import_report=report,
+    )
+
+    assert names == ["Week1/ok.md"]
+    assert [item["file"] for item in report.rejected] == ["bundle.zip/notes.md/c.md"]
+    assert str(tmp_path) not in report.rejected[0]["reason"]
+    assert (raw / "notes.md").read_bytes() == b"a file, not a folder"
+
+
+def test_failed_batch_removes_folders_the_archive_created(tmp_path: Path) -> None:
+    raw = tmp_path / "raw"
+    (raw / "Week1").mkdir(parents=True)
+    archive = _zip_upload("course.zip", [("Week1/a.pdf", b"a"), ("Week2/Sub/b.pdf", b"b")])
+    bad = UploadFile(filename="notes.exe", file=io.BytesIO(b"x"))
+
+    with pytest.raises(HTTPException):
+        _save_uploaded_files([archive, bad], raw, allowed_extensions=ALLOWED)
+
+    assert sorted(p.relative_to(raw).as_posix() for p in raw.rglob("*")) == ["Week1"]
+
+
+def test_member_under_a_symlinked_folder_never_leaves_the_kb(tmp_path: Path) -> None:
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    raw = tmp_path / "raw"
+    raw.mkdir()
+    (raw / "Week1").symlink_to(outside, target_is_directory=True)
+    report = UploadImportReport()
+
+    names, _ = _save_uploaded_files(
+        [_zip_upload("course.zip", [("Week1/Slides.pdf", b"s"), ("Week2/ok.pdf", b"o")])],
+        raw,
+        allowed_extensions=ALLOWED,
+        import_report=report,
+    )
+
+    assert names == ["Week2/ok.pdf"]
+    assert list(outside.iterdir()) == []
+    assert report.rejected == [{"file": "course.zip/Week1/Slides.pdf", "reason": "unsafe path"}]
+
+
+def test_same_member_in_two_archives_of_one_batch_is_stored_once(tmp_path: Path) -> None:
+    raw = tmp_path / "raw"
+    raw.mkdir()
+    report = UploadImportReport()
+
+    names, paths = _save_uploaded_files(
+        [
+            _zip_upload("part1.zip", [("Week1/Slides.pdf", b"s")]),
+            _zip_upload("part2.zip", [("Week1/Slides.pdf", b"s")]),
+        ],
+        raw,
+        allowed_extensions=ALLOWED,
+        import_report=report,
+    )
+
+    assert names == ["Week1/Slides.pdf"]
+    assert paths == [str(raw / "Week1" / "Slides.pdf")]
+    assert report.duplicates == []  # not "already present": this upload wrote it
+
+
+def test_rejected_reason_is_short(tmp_path: Path) -> None:
+    raw = tmp_path / "raw"
+    raw.mkdir()
+    report = UploadImportReport()
+
+    _save_uploaded_files(
+        [_zip_upload("course.zip", [("ok.pdf", b"s"), ("setup.exe", b"x")])],
+        raw,
+        allowed_extensions=ALLOWED,
+        import_report=report,
+    )
+
+    assert report.rejected == [
+        {"file": "course.zip/setup.exe", "reason": "Unsupported file type: .exe"}
+    ]
