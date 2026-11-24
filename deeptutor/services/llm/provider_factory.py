@@ -182,24 +182,23 @@ def _schedule_close(provider: LLMProvider, loop: asyncio.AbstractEventLoop) -> N
 
     A worker thread running its own loop (``asyncio.run``) shares this pool, so
     the closing caller may be on another thread. A closed loop has nothing left
-    to await on; its client is simply dropped.
+    to await on; its client is simply dropped. The close coroutine is created
+    on *loop* itself, so a loop that never runs again leaves none unawaited.
     """
 
     async def _close() -> None:
         with contextlib.suppress(Exception):
             await provider.aclose()
 
-    if loop.is_closed():
-        return
     try:
         running = asyncio.get_running_loop()
     except RuntimeError:
         running = None
     if running is loop:
         loop.create_task(_close())
-    else:
-        with contextlib.suppress(RuntimeError):  # closed between the check and here
-            asyncio.run_coroutine_threadsafe(_close(), loop)
+        return
+    with contextlib.suppress(RuntimeError):  # the loop is (or just got) closed
+        loop.call_soon_threadsafe(lambda: loop.create_task(_close()))
 
 
 def get_runtime_provider(config: LLMConfig | None = None) -> LLMProvider:

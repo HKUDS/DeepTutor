@@ -391,3 +391,17 @@ async def test_bulk_close_runs_each_provider_on_its_own_loop(monkeypatch, how) -
     assert server_client.closed_on == [server_loop]
     assert worker_client.closed_on == [worker_loop]
     assert provider_factory.runtime_provider_pool_size() == 0
+
+
+def test_close_scheduled_on_a_loop_that_never_runs_again_leaves_no_coroutine() -> None:
+    import gc
+    import warnings
+
+    loop = asyncio.new_event_loop()  # created but not running, like a stopped loop
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        provider_factory._schedule_close(_FakeProvider(), loop)
+        loop.close()
+        gc.collect()
+
+    assert not [w for w in caught if "was never awaited" in str(w.message)]
