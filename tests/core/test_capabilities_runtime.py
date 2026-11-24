@@ -399,6 +399,92 @@ async def test_deep_question_mimic_parses_a_closed_copy_of_the_uploaded_pdf(
 
 
 @pytest.mark.asyncio
+async def test_deep_question_mimic_reads_a_pruned_upload_from_the_attachment_store(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    # The turn executor keeps the uploaded bytes in the attachment store and
+    # clears ``base64`` on every document it extracted, so a web upload reaches
+    # the capability without inline bytes. Mimic must still parse the paper
+    # instead of falling back to the plain-text "[Attached Documents]" hint.
+    import deeptutor.agents.question.history as question_history
+    import deeptutor.agents.question.mimic_source as mimic_source
+    import deeptutor.agents.question.pipeline as question_pipeline
+    import deeptutor.agents.question.request_config as request_config
+    import deeptutor.services.config as services_config
+    import deeptutor.services.storage as storage
+    from deeptutor.services.storage.attachment_store import LocalDiskAttachmentStore
+
+    paper = b"%PDF-1.4\n% final exam\n"
+    store = LocalDiskAttachmentStore(root=tmp_path / "attachments")
+    url = await store.put(
+        session_id="sess-1",
+        attachment_id="att-1",
+        filename="final.pdf",
+        data=paper,
+        mime_type="application/pdf",
+    )
+    captured: dict[str, Any] = {}
+
+    async def fake_parse(paper_path: str | Path, **kwargs: Any) -> tuple[list, dict]:
+        captured["bytes"] = Path(paper_path).read_bytes()
+        captured["paper_mode"] = kwargs["paper_mode"]
+        return [], {}
+
+    class FakePipeline:
+        def __init__(self, **_kwargs: Any) -> None:
+            pass
+
+        async def run(self, **kwargs: Any) -> None:
+            captured["templates_override"] = kwargs.get("templates_override")
+            captured["user_message"] = kwargs["user_message"]
+
+    async def no_history(_session_id: str) -> list:
+        return []
+
+    monkeypatch.setattr(storage, "get_attachment_store", lambda: store)
+    monkeypatch.setattr(mimic_source, "parse_exam_paper_to_templates", fake_parse)
+    monkeypatch.setattr(question_pipeline, "QuestionPipeline", FakePipeline)
+    monkeypatch.setattr(question_history, "load_session_quiz_history", no_history)
+    monkeypatch.setattr(request_config, "build_question_runtime_config", lambda **_kw: {})
+    monkeypatch.setattr(services_config, "load_config_with_main", lambda _name: {})
+
+    context = UnifiedContext(
+        session_id="sess-1",
+        user_message="[Attached Documents]\n--- final.pdf ---\nTask 1 ...\n\nMake questions like this",
+        language="en",
+        attachments=[
+            Attachment(
+                type="pdf",
+                id="att-1",
+                url=url,
+                filename="final.pdf",
+                mime_type="application/pdf",
+                base64="",
+                extracted_text="Task 1 ...",
+            )
+        ],
+        config_overrides={"mode": "mimic"},
+    )
+    capability = DeepQuestionCapability()
+    await _collect_events(
+        lambda bus: capability._run_mimic_mode(
+            context=context,
+            stream=bus,
+            kb_name=None,
+            output_dir=tmp_path / "out",
+            overrides={"mode": "mimic"},
+            history_context="",
+            num_questions=1,
+        )
+    )
+
+    assert captured.get("paper_mode") == "upload"
+    assert captured["bytes"] == paper
+    assert captured["templates_override"] == []
+
+
+@pytest.mark.asyncio
 async def test_deep_research_capability_delegates_to_pipeline(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

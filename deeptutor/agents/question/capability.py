@@ -18,7 +18,7 @@ from typing import Any
 
 from deeptutor.agents._shared.capability_result import emit_capability_result
 from deeptutor.core.capability_protocol import TurnCapability
-from deeptutor.core.context import UnifiedContext
+from deeptutor.core.context import Attachment, UnifiedContext
 from deeptutor.core.trace import merge_trace_metadata
 from deeptutor.i18n import StatusI18n
 from deeptutor.runtime.agentic.usage import UsageTracker
@@ -238,7 +238,8 @@ class DeepQuestionCapability(TurnCapability):
             async with stream.stage("exploring", source=self.name):
                 await stream.thinking(message, source=self.name, stage="exploring")
 
-        if pdf_attachment and pdf_attachment.base64:
+        paper_bytes = await _uploaded_paper_bytes(pdf_attachment, context.session_id)
+        if paper_bytes is not None:
             # Bridge MinerU's progress lines (emitted from the parser worker
             # thread) back onto the event loop so the trace panel streams them
             # live — model downloads and per-page parsing would otherwise look
@@ -266,7 +267,7 @@ class DeepQuestionCapability(TurnCapability):
                     # so write the file and close it before parsing.
                     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp_dir:
                         temp_pdf = Path(temp_dir) / "paper.pdf"
-                        temp_pdf.write_bytes(base64.b64decode(pdf_attachment.base64))
+                        temp_pdf.write_bytes(paper_bytes)
                         templates, _ = await parse_exam_paper_to_templates(
                             temp_pdf,
                             max_questions=max_questions,
@@ -466,3 +467,26 @@ class DeepQuestionCapability(TurnCapability):
                 )
 
         return _trace_bridge
+
+
+async def _uploaded_paper_bytes(attachment: Attachment | None, session_id: str) -> bytes | None:
+    """Bytes of the uploaded exam paper, or ``None`` when the turn has none.
+
+    The turn executor keeps every upload in the attachment store and clears the
+    inline ``base64`` of each document it has extracted, so a paper sent from
+    the web composer arrives here as a stored attachment only.
+    """
+    if attachment is None:
+        return None
+    if attachment.base64:
+        return base64.b64decode(attachment.base64)
+    if not (attachment.id and session_id):
+        return None
+    from deeptutor.services.storage import get_attachment_store
+
+    path = get_attachment_store().resolve_path(
+        session_id=session_id, attachment_id=attachment.id, filename=attachment.filename
+    )
+    if path is None:
+        return None
+    return await asyncio.to_thread(path.read_bytes)
