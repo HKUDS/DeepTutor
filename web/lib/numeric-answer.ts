@@ -203,6 +203,11 @@ function close(v: Q, key: Q, decimals: number | null, keyDecimals: number | null
   if ((coarser && roundsTo(key, v, decimals)) || (finer && roundsTo(v, key, keyDecimals))) {
     return 'rounded'
   }
+  // "1250" for "-1250": the question may ask for the amount of a loss.
+  const negated: Q = [-v[0], v[1]]
+  if (v[0] !== 0n && v[0] < 0n !== key[0] < 0n && close(negated, key, decimals, keyDecimals)) {
+    return 'rounded'
+  }
   return false
 }
 
@@ -233,6 +238,16 @@ function matches(given: NumberToken, key: NumberToken, markGiven: Mark, markKey:
   }
   if (given.percent && !key.percent && close(scale(v, 100n), keyValue, decimals, keyDecimals)) {
     return null // "50%" for "50" may be right; leave it to the caller
+  }
+  // "42" for "0,42" (or the reverse) may be the same rate in percent points.
+  const rate = (q: Q) => q[0] !== 0n && cmp(abs(q), [1n, 1n]) < 0
+  if (
+    !given.percent &&
+    !key.percent &&
+    ((rate(keyValue) && close(v, scale(keyValue, 100n), decimals, shift(keyDecimals, -2))) ||
+      (rate(v) && close(scale(v, 100n), keyValue, shift(decimals, -2), keyDecimals)))
+  ) {
+    return 'rounded'
   }
   return false
 }

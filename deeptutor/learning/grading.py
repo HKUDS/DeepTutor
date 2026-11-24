@@ -246,6 +246,9 @@ def _close(value: Fraction, key: Fraction, decimals: int | None, key_decimals: i
         finer and _rounds_to(value, key, key_decimals)
     ):
         return _ROUNDED
+    # "1250" for "-1250": the question may ask for the amount of a loss.
+    if value and (value < 0) != (key < 0) and _close(-value, key, decimals, key_decimals):
+        return _ROUNDED
     return False
 
 
@@ -276,6 +279,18 @@ def _matches(given: _Number, key: _Number, mark_given: str, mark_key: str):
         return _ROUNDED if outcome and abs(value) < 1 else outcome
     if given.percent and not key.percent and _close(value * 100, key_value, decimals, key_decimals):
         return None  # "50%" for "50" may be right; leave it to the caller
+    # "42" for "0,42" (or the reverse) may be the same rate in percent points.
+    if not (given.percent or key.percent) and (
+        (
+            0 < abs(key_value) < 1
+            and _close(value, key_value * 100, decimals, _shift(key_decimals, -2))
+        )
+        or (
+            0 < abs(value) < 1
+            and _close(value * 100, key_value, _shift(decimals, -2), key_decimals)
+        )
+    ):
+        return _ROUNDED
     return False
 
 
@@ -316,7 +331,8 @@ def numeric_equivalent(user_answer: str, expected_answer: str) -> NumericResult:
 
     ``ambiguous`` is set when some other reading would match: a separator, a
     rounding the key cannot settle (``3,48`` for ``3,4833``, ``416,67`` for
-    ``417``), or a bare value below 1 for a percent key.
+    ``417``), only the sign (``1250`` for ``-1250``), or a rate in the other
+    unit (``0.5`` for ``0.5%``, ``42`` for ``0,42``).
     """
     keys, given = _numeric_parts(expected_answer), _numeric_parts(user_answer)
     if keys is None or given is None:

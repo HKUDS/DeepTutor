@@ -355,6 +355,8 @@ class TestExactVerdictNumeric:
             ("2,49", "2,5"),  # a one-place key cannot settle a finer answer
             ("416,67", "≈ 417"),  # nor can an integer key
             ("1.249,60 €", "1.250 €"),
+            ("1.250", "-1.250"),  # sign only
+            ("42", "0,42"),  # percent points for a fraction key
         ],
     )
     def test_unsettled_rounding_sign_or_rate_reaches_the_llm(self, answer, expected):
