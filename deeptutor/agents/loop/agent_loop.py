@@ -1146,8 +1146,18 @@ class AgentLoop:
                                 )
                             )
                         )
-                    # A 401/429/5xx is not retried here, but it must not reach
-                    # the user as the SDK's bare "Error code: 502" (#2693 P0).
+                    # A 401/429/5xx is not retried on the same provider, but with
+                    # a chain it can still run elsewhere. Still gated on "nothing
+                    # emitted": a partial answer is never replayed (#2693 P1).
+                    if not output_emitted:
+                        switched = await self._advance_fallback_chain(
+                            exc, stage=stage, trace_meta=trace_meta
+                        )
+                        if switched is not None:
+                            attempt += 1
+                            continue
+                    # Otherwise it must not reach the user as the SDK's bare
+                    # "Error code: 502" (#2693 P0).
                     failed_provider, failed_model = provider_label(self.pipeline)
                     annotated = annotate_provider_failure(
                         exc,

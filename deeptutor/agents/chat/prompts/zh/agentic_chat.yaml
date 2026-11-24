@@ -130,6 +130,7 @@ notices:
   tool_call_truncated: "模型在生成工具调用时达到输出 token 上限，该调用可能不完整。若反复出现，请提高该能力的最大输出 token，或改用推理更短的模型。"
   loop_error_finish: "某一步执行失败（{error}），将基于已收集的材料作答。"
   provider_retry: "模型服务连接中断（{provider}），第 {attempt}/{total} 次重试。"
+  provider_switched: "主模型不可用（{reason}），已切换到 {provider} 继续本轮。"
   provider_unavailable: "无法连接模型服务（{provider} / {model}），已尝试 {attempts} 次，本轮已中断。"
   provider_fallbacks_available: "目录中另有 {count} 个 provider 已配置；当前版本不会自动切换，需要手动切换模型。"
   provider_auth_failed: "模型服务认证失败（{provider}），请检查 API key 与账号权限。"
