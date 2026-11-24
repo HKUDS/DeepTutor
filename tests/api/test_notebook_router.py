@@ -618,6 +618,8 @@ def test_quiz_results_keep_a_judged_result(store: SQLiteSessionStore) -> None:
             in resp.json()["content"]
         )
         assert "(Partially correct" in resp.json()["content"]
+        # A pending photo answer is neither right nor wrong in the score.
+        assert resp.json()["content"].endswith("Score: 0/1 (0%), 1 not graded")
         items = client.get("/api/question-notebook/entries").json()["items"]
 
     by_id = {item["question_id"]: item for item in items}

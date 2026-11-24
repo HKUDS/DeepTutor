@@ -147,8 +147,10 @@ class QuizResultsRequest(BaseModel):
 
 
 def _format_quiz_results_message(answers: list[QuizResultItem]) -> str:
-    total = len(answers)
-    correct = sum(1 for item in answers if item.is_correct)
+    # A pending (ungraded) answer is neither right nor wrong in the score.
+    ungraded = sum(1 for item in answers if item.result == "ungraded")
+    total = len(answers) - ungraded
+    correct = sum(1 for item in answers if item.is_correct and item.result != "ungraded")
     score_pct = round((correct / total) * 100) if total else 0
     lines = ["[Quiz Performance]"]
     for idx, item in enumerate(answers, 1):
@@ -163,7 +165,8 @@ def _format_quiz_results_message(answers: list[QuizResultItem]) -> str:
             suffix = f" ({status}, correct: {(item.correct_answer or '').strip()})"
         qid = f"[{item.question_id}] " if item.question_id else ""
         lines.append(f"{idx}. {qid}Q: {question} -> Answered: {user_answer}{suffix}")
-    lines.append(f"Score: {correct}/{total} ({score_pct}%)")
+    pending = f", {ungraded} not graded" if ungraded else ""
+    lines.append(f"Score: {correct}/{total} ({score_pct}%){pending}")
     return "\n".join(lines)
 
 
