@@ -35,20 +35,17 @@ describe("parseQuizVerdict", () => {
     expect(parseQuizVerdict(null)).toBeNull();
   });
 
-  it("never trusts a non-final verdict as graded or its points", () => {
-    const verdict = parseQuizVerdict({ ...judged, result: "correct", final: false });
-    expect(verdict).toMatchObject({ result: "ungraded", is_correct: null });
-    expect(verdict?.awarded_points).toBeUndefined();
+  it("requires a known result and a boolean final", () => {
+    expect(parseQuizVerdict({ result: "correct" })).toBeNull();
+    expect(parseQuizVerdict({ result: "correct", final: "yes" })).toBeNull();
   });
 
-  it("drops malformed steps and inconsistent points", () => {
+  it("drops malformed steps", () => {
     const verdict = parseQuizVerdict({
       ...judged,
-      steps: [{ label: "ok", ok: true }, { label: 3 }, "x"],
-      awarded_points: 9,
+      steps: [{ label: "ok", ok: true }, { label: 3 }, { label: "x", ok: null }, "x"],
     });
     expect(verdict?.steps).toEqual([{ label: "ok", ok: true, comment: "" }]);
-    expect(verdict?.max_points).toBeUndefined();
   });
 });
 
@@ -83,6 +80,13 @@ describe("resolveQuizAssessment", () => {
     ).toEqual({ is_correct: true, result: "correct" });
   });
 
+  it("ignores a verdict that is not final", () => {
+    const unsure = { ...judged, result: "correct" as const, final: false };
+    expect(resolveQuizAssessment({ ...base, verdict: unsure })).toEqual({
+      is_correct: false,
+    });
+  });
+
   it("keeps photo answers ungraded until a final verdict exists", () => {
     expect(
       resolveQuizAssessment({ ...base, hasImages: true, verdict: null }),
@@ -105,6 +109,13 @@ describe("resolveQuizAssessment", () => {
 });
 
 describe("QuizVerdictSummary", () => {
+  it("hides the result badge and points when exact matching decided", () => {
+    render(<QuizVerdictSummary verdict={judged} showResult={false} />);
+    expect(screen.queryByText("Partially correct")).toBeNull();
+    expect(screen.queryByText("3 / 5 points")).toBeNull();
+    expect(screen.getByText("Minority interest")).toBeInTheDocument();
+  });
+
   it("renders badge, points and step feedback", () => {
     render(<QuizVerdictSummary verdict={judged} />);
     expect(screen.getByText("Partially correct")).toBeInTheDocument();

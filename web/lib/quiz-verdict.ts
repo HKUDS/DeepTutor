@@ -42,12 +42,20 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-/** Validate a verdict from the wire or the notebook; ``null`` if unusable. */
+/**
+ * Check the shape of a verdict from the wire or the notebook; ``null`` if
+ * unusable. The server owns ``final``/``is_correct``/points (and the entry
+ * PATCH rejects inconsistent verdicts), so they are not re-derived here.
+ */
 export function parseQuizVerdict(value: unknown): QuizVerdict | null {
-  if (!isRecord(value) || typeof value.result !== "string") return null;
-  if (!RESULTS.has(value.result)) return null;
-  const result = value.result as QuizVerdictResult;
-  const final = value.final === true && result !== "ungraded";
+  if (
+    !isRecord(value) ||
+    typeof value.result !== "string" ||
+    !RESULTS.has(value.result) ||
+    typeof value.final !== "boolean"
+  ) {
+    return null;
+  }
   const steps = Array.isArray(value.steps)
     ? value.steps.flatMap((step) =>
         isRecord(step) &&
@@ -64,15 +72,9 @@ export function parseQuizVerdict(value: unknown): QuizVerdict | null {
       )
     : [];
   const verdict: QuizVerdict = {
-    result: final ? result : "ungraded",
-    // Same mapping as ``Verdict.receipt``: partial is neither right nor wrong.
-    is_correct:
-      final && result === "correct"
-        ? true
-        : final && result === "incorrect"
-          ? false
-          : null,
-    final,
+    result: value.result as QuizVerdictResult,
+    is_correct: typeof value.is_correct === "boolean" ? value.is_correct : null,
+    final: value.final,
     confidence: typeof value.confidence === "number" ? value.confidence : 0,
     steps,
   };
@@ -80,12 +82,8 @@ export function parseQuizVerdict(value: unknown): QuizVerdict | null {
     verdict.feedback = value.feedback;
   }
   if (
-    final &&
     typeof value.awarded_points === "number" &&
-    typeof value.max_points === "number" &&
-    value.max_points > 0 &&
-    value.awarded_points >= 0 &&
-    value.awarded_points <= value.max_points
+    typeof value.max_points === "number"
   ) {
     verdict.awarded_points = value.awarded_points;
     verdict.max_points = value.max_points;

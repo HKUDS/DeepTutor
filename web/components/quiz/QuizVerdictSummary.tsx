@@ -32,29 +32,34 @@ const REASON_LABELS: Record<QuizVerdictReason, string> = {
 
 export default function QuizVerdictSummary({
   verdict,
+  showResult = true,
 }: {
   verdict: QuizVerdict;
+  /** False when exact matching, not the judge, decided the grade. */
+  showResult?: boolean;
 }) {
   const { t } = useTranslation();
   const hasPoints =
     verdict.awarded_points !== undefined && verdict.max_points !== undefined;
   return (
     <div className="mb-2 space-y-1.5" data-testid="quiz-verdict">
-      <div className="flex flex-wrap items-center gap-2">
-        <span
-          className={`rounded-md px-2 py-0.5 text-[11px] font-semibold ${RESULT_STYLES[verdict.result]}`}
-        >
-          {t(RESULT_LABELS[verdict.result])}
-        </span>
-        {hasPoints && (
-          <span className="text-[11px] font-medium text-[var(--muted-foreground)]">
-            {t("{{awarded}} / {{max}} points", {
-              awarded: verdict.awarded_points,
-              max: verdict.max_points,
-            })}
+      {showResult && (
+        <div className="flex flex-wrap items-center gap-2">
+          <span
+            className={`rounded-md px-2 py-0.5 text-[11px] font-semibold ${RESULT_STYLES[verdict.result]}`}
+          >
+            {t(RESULT_LABELS[verdict.result])}
           </span>
-        )}
-      </div>
+          {hasPoints && (
+            <span className="text-[11px] font-medium text-[var(--muted-foreground)]">
+              {t("{{awarded}} / {{max}} points", {
+                awarded: verdict.awarded_points,
+                max: verdict.max_points,
+              })}
+            </span>
+          )}
+        </div>
+      )}
       {verdict.reason && (
         <div className="text-[11px] text-[var(--muted-foreground)]">
           {t(REASON_LABELS[verdict.reason])}

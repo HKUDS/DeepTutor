@@ -397,13 +397,40 @@ describe("QuizViewer smoke", () => {
     });
     expect(screen.getByTestId("quiz-verdict")).toHaveTextContent("Correct");
     expect(screen.getByText("Light reaction")).toBeInTheDocument();
-    // The single question is complete: results carry the judged result.
-    await waitFor(() => {
-      const calls = mocks.recordQuizResults.mock.calls;
-      expect(calls.at(-1)?.[1]).toEqual([
-        expect.objectContaining({ is_correct: true, result: "correct" }),
-      ]);
+    // Results were reported once, when the quiz was complete. The verdict is
+    // stored through the entry PATCH; it must not post another
+    // ``[Quiz Performance]`` chat message.
+    expect(mocks.recordQuizResults).toHaveBeenCalledTimes(1);
+    expect(mocks.recordQuizResults.mock.calls[0][1]).toEqual([
+      expect.objectContaining({ is_correct: false, result: "ungraded" }),
+    ]);
+  });
+
+  it("shows one result badge when exact matching and the judge disagree", async () => {
+    const user = userEvent.setup();
+    renderViewer([choiceQuestion]);
+
+    await user.click(screen.getByRole("button", { name: /Paris/ }));
+    await user.click(screen.getByRole("button", { name: /Check Answer/ }));
+    await user.click(screen.getByRole("button", { name: /AI Judge/ }));
+    act(() => {
+      mocks.judgeHandlers!.onVerdict!({
+        result: "incorrect",
+        is_correct: false,
+        final: true,
+        confidence: 0.9,
+        steps: [{ label: "Capital", ok: false, comment: "Unclear." }],
+      });
+      mocks.judgeHandlers!.onDone("Unclear.");
     });
+
+    // Exact matching accepted the answer, so its badge stays authoritative;
+    // the verdict keeps its step feedback but no contradicting badge.
+    await waitFor(() => {
+      expect(screen.getByText("Capital")).toBeInTheDocument();
+    });
+    expect(screen.getAllByText("Correct")).toHaveLength(1);
+    expect(screen.queryByText("Incorrect")).toBeNull();
   });
 
   it("closes in-flight judge handles on unmount", async () => {

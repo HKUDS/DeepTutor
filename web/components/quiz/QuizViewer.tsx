@@ -453,6 +453,9 @@ export default function QuizViewer({
     ? getAssessment(q, ans, judgments[idx]?.verdict).result
     : undefined;
 
+  // Reported once per set of answers, with the submit-time grade: each post
+  // adds a ``[Quiz Performance]`` chat message, so a verdict that arrives
+  // later is stored through the entry PATCH only (the server keeps it).
   const submittedResults = useMemo(
     () =>
       questions.flatMap((question, questionIdx) => {
@@ -468,15 +471,11 @@ export default function QuizViewer({
             correct_answer: question.correct_answer,
             explanation: question.explanation ?? "",
             difficulty: question.difficulty ?? "",
-            ...getAssessment(
-              question,
-              answer,
-              judgments[questionIdx]?.verdict,
-            ),
+            ...getAssessment(question, answer, null),
           },
         ];
       }),
-    [answers, judgments, questions],
+    [answers, questions],
   );
 
   useEffect(() => {
@@ -1417,7 +1416,11 @@ export default function QuizViewer({
                       )}
                     </div>
                     {judgment.verdict && !judgment.isStreaming && (
-                      <QuizVerdictSummary verdict={judgment.verdict} />
+                      <QuizVerdictSummary
+                        verdict={judgment.verdict}
+                        // Exact matching decided: no contradicting badge.
+                        showResult={judgedResult !== undefined}
+                      />
                     )}
                     {judgment.error ? (
                       <div className="rounded-md border border-red-200 bg-red-50 px-2 py-1 text-[12px] text-red-700 dark:border-red-950/50 dark:bg-red-950/20 dark:text-red-300">
