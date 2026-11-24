@@ -1744,6 +1744,8 @@
   "Public API base": "Public API base",
   "Leave blank for local Docker. Use the externally reachable backend URL, including any proxy path.": "Leave blank for local Docker. Use the externally reachable backend URL, including any proxy path.",
   "CORS origins": "CORS origins",
+  "Fallback chain: {{count}} configured": "Fallback chain: {{count}} configured",
+  "When the active model fails before any output, DeepTutor tries these in order and returns to the primary once its cooldown ends. Edited in the catalog, not on this page.": "When the active model fails before any output, DeepTutor tries these in order and returns to the primary once its cooldown ends. Edited in the catalog, not on this page.",
   "Only required for authenticated cross-origin deployments. Use frontend origins, not API URLs.": "Only required for authenticated cross-origin deployments. Use frontend origins, not API URLs.",
   "Comma, semicolon, and newline separators are accepted. Bare host:port values are stored as http://host:port.": "Comma, semicolon, and newline separators are accepted. Bare host:port values are stored as http://host:port.",
   "Auth is enabled but secure cookies are off. Cross-site HTTPS deployments should set auth.cookie_secure=true and restart so SameSite=None cookies work in modern browsers.": "Auth is enabled but secure cookies are off. Cross-site HTTPS deployments should set auth.cookie_secure=true and restart so SameSite=None cookies work in modern browsers.",
