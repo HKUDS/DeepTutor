@@ -52,6 +52,12 @@ from deeptutor.agents.loop.loop_state import (
     _provider_response_state,
     _reasoning_budget_exhausted,
 )
+from deeptutor.agents.loop.provider_visibility import (
+    annotate_provider_failure,
+    provider_label,
+    retry_notice,
+    unavailable_message,
+)
 from deeptutor.core.context import UnifiedContext
 from deeptutor.core.trace import build_trace_metadata, merge_trace_metadata, new_call_id
 from deeptutor.runtime.agentic.messages import (
@@ -87,6 +93,7 @@ from deeptutor.services.llm.request_compat import (
 )
 from deeptutor.services.llm.usage_frame import usage_breakdown
 from deeptutor.services.llm.utils import unreachable_endpoint_hint
+from deeptutor.services.model_selection.fallbacks import fallback_count
 
 if TYPE_CHECKING:  # pragma: no cover
     from deeptutor.agents.loop.pipeline import AgenticLoopPipeline
@@ -1055,7 +1062,17 @@ class AgentLoop:
                                 )
                             )
                         )
-                    raise
+                    # A 401/429/5xx is not retried here, but it must not reach
+                    # the user as the SDK's bare "Error code: 502" (#2693 P0).
+                    failed_provider, failed_model = provider_label(self.pipeline)
+                    annotated = annotate_provider_failure(
+                        exc,
+                        self.pipeline._t,
+                        provider=failed_provider,
+                        model=failed_model,
+                        fallbacks=fallback_count(),
+                    )
+                    raise annotated from exc
                 can_retry = not output_emitted and attempt < len(_PROVIDER_RETRY_DELAYS)
                 if can_retry:
                     logger.warning(
@@ -1064,10 +1081,14 @@ class AgentLoop:
                         len(_PROVIDER_RETRY_DELAYS) + 1,
                         exc,
                     )
+                    provider, model = provider_label(self.pipeline)
                     await self.stream.progress(
-                        self.pipeline._t(
-                            "notices.provider_retry",
-                            default="The model provider connection was interrupted; retrying.",
+                        retry_notice(
+                            self.pipeline._t,
+                            provider=provider,
+                            model=model,
+                            attempt=attempt + 1,
+                            total=len(_PROVIDER_RETRY_DELAYS) + 1,
                         ),
                         source=self.source,
                         stage=stage,
@@ -1076,6 +1097,7 @@ class AgentLoop:
                             {
                                 "trace_kind": "warning",
                                 "error_code": "provider_transport",
+                                "provider": provider,
                                 "retry_attempt": attempt + 1,
                             },
                         ),
@@ -1084,6 +1106,10 @@ class AgentLoop:
                     continue
 
                 partial_response = output_emitted
+                provider, model = provider_label(self.pipeline)
+                # Read-only: P0 reports how many alternatives exist, it does not
+                # use them. Cheap and only on the failure path.
+                alternatives = fallback_count()
                 if text_parts or reasoning_parts:
                     messages.append(
                         _assistant_round_message(
@@ -1104,23 +1130,29 @@ class AgentLoop:
                             "trace_kind": "call_status",
                             "call_state": "failed",
                             "error_code": "provider_transport",
+                            "provider": provider,
+                            "attempts": attempt + 1,
+                            "fallbacks_configured": alternatives,
                             "retryable": True,
                             "partial_response": partial_response,
                         },
                     ),
                 )
-                message = self.pipeline._t(
-                    (
-                        "notices.provider_stream_interrupted"
-                        if partial_response
-                        else "notices.provider_unavailable"
-                    ),
-                    default=(
-                        "The model provider interrupted this response. Please retry."
-                        if partial_response
-                        else "Unable to reach the model provider. Please retry."
-                    ),
-                )
+                if partial_response:
+                    message = self.pipeline._t(
+                        "notices.provider_stream_interrupted",
+                        default="The model provider interrupted this response. Please retry.",
+                        provider=provider,
+                        model=model,
+                    )
+                else:
+                    message = unavailable_message(
+                        self.pipeline._t,
+                        provider=provider,
+                        model=model,
+                        attempts=attempt + 1,
+                        fallbacks=alternatives,
+                    )
                 if not partial_response:
                     # "Please retry" is the whole story for a cloud endpoint and
                     # none of it for a self-hosted one, where the connection was

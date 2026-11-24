@@ -2994,7 +2994,11 @@ async def test_midloop_transport_failure_retries_current_round(
         if e.type == StreamEventType.PROGRESS
         and e.metadata.get("error_code") == "provider_transport"
     ]
-    assert progress == ["The model provider connection was interrupted; retrying."]
+    # The retry is explicit in the trace, now naming what is being retried and
+    # which attempt this is (#2693 P0).
+    assert len(progress) == 1
+    assert "interrupted" in progress[0]
+    assert "retry 1/" in progress[0]
 
 
 @pytest.mark.asyncio
@@ -3070,6 +3074,8 @@ async def test_first_round_transport_failure_retries_then_becomes_structured_err
     pipeline = AgenticChatPipeline(language="en")
     pipeline.registry = _Registry()
     monkeypatch.setattr(agent_loop_mod, "_PROVIDER_RETRY_DELAYS", (0, 0))
+    # A configured alternative must be reported, not silently promised (#2693 P0).
+    monkeypatch.setattr(agent_loop_mod, "fallback_count", lambda *a, **k: 2)
     monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _context: ["web_search"])
     monkeypatch.setattr(pipeline, "_build_openai_client", lambda: client)
 
@@ -3087,7 +3093,13 @@ async def test_first_round_transport_failure_retries_then_becomes_structured_err
     assert raised.value.error_code == "provider_transport"
     assert raised.value.retryable is True
     assert raised.value.partial_response is False
-    assert str(raised.value) == "Unable to reach the model provider. Please retry."
+    message = str(raised.value)
+    # Names the provider, the attempt count, and that an alternative exists but
+    # was not used — instead of a bare "please retry" (#2693 P0).
+    assert "Could not reach the model provider" in message
+    assert "3 attempt" in message
+    assert "2 other provider(s)" in message
+    assert "does not switch" in message
 
 
 @pytest.mark.asyncio
