@@ -74,7 +74,7 @@ jobs:
 
   ios:
     name: iOS simulator build
-    runs-on: macos-latest
+    runs-on: macos-26
     timeout-minutes: 50
     steps:
       - uses: actions/checkout@v4
