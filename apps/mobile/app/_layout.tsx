@@ -1,9 +1,11 @@
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { AppSessionProvider, useAppSession } from '../src/appSession';
+import { ChatRuntimeProvider } from '../src/chatSession';
 import { useTheme } from '../src/theme/useTheme';
 
 const chatRouteId = () => 'chat';
+const sessionsRouteId = () => 'sessions';
 
 function SessionStack() {
   const { phase } = useAppSession();
@@ -32,6 +34,11 @@ function SessionStack() {
             dangerouslySingular={chatRouteId}
             options={{ headerShown: false }}
           />
+          <Stack.Screen
+            name="sessions"
+            dangerouslySingular={sessionsRouteId}
+            options={{ headerShown: false }}
+          />
           <Stack.Screen name="settings" options={{ title: 'Settings' }} />
         </Stack.Protected>
       </Stack>
@@ -42,7 +49,9 @@ function SessionStack() {
 export default function RootLayout() {
   return (
     <AppSessionProvider>
-      <SessionStack />
+      <ChatRuntimeProvider>
+        <SessionStack />
+      </ChatRuntimeProvider>
     </AppSessionProvider>
   );
 }

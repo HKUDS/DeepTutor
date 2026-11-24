@@ -5,6 +5,7 @@ import { parse } from 'query-string';
 import RootLayout from '../app/_layout';
 import { redirectSystemPath } from '../app/+native-intent';
 import ChatRoute from '../app/chat';
+import SessionsRoute from '../app/sessions';
 import IndexRoute from '../app/index';
 import LoginRoute from '../app/login';
 import ServerRoute from '../app/server';
@@ -25,6 +26,7 @@ const routes = {
   server: ServerRoute,
   login: LoginRoute,
   chat: ChatRoute,
+  sessions: SessionsRoute,
   settings: SettingsRoute,
 };
 
@@ -63,7 +65,11 @@ function mockSession(initial: 'connect' | 'login' | 'chat') {
       origin: phase === 'connect' ? null : origin,
       busy: false,
       error: null,
-      status: { enabled: true, authenticated: phase === 'chat' },
+      status: {
+        enabled: true,
+        authenticated: phase === 'chat',
+        accountId: phase === 'chat' ? 'account-1' : '',
+      },
       connect: async () => setPhase('login'),
       login: async () => setPhase('chat'),
       logout: async () => setPhase('login'),
@@ -74,27 +80,42 @@ function mockSession(initial: 'connect' | 'login' | 'chat') {
   });
 }
 
-beforeEach(() => {
-  send.mockClear();
-  mockChat.mockClear();
-  mockChat.mockReturnValue({
-    connection: 'connected',
+function chatRuntime() {
+  const state = {
+    connection: 'connected' as const,
+    status: 'idle' as const,
+    sessionId: null,
+    sessionTitle: '',
     messages: [],
-    phase: 'ready',
+    history: 'ready' as const,
     waitingPrompt: null,
     canLeaveTurn: false,
+    recovery: null,
     error: null,
+  };
+  return {
+    ...state,
+    getSnapshot: () => state,
     send,
     reply: async () => true,
     cancel: async () => {},
     retryConnection: () => {},
+    retrySession: async () => false,
     reset: () => {},
-  });
+    openSession: async () => false,
+    dismissRecovery: () => {},
+  } as unknown as ReturnType<typeof useChatRuntime>;
+}
+
+beforeEach(() => {
+  send.mockClear();
+  mockChat.mockClear();
+  mockChat.mockReturnValue(chatRuntime());
 });
 
 test('a warm chat link reuses the existing runtime with Settings open', async () => {
   mockSession('chat');
-  const initialChat = mockChat({ origin });
+  const initialChat = mockChat({ origin, account: 'account-1' });
   const mount = jest.fn();
   mockChat.mockImplementation(function useMountedChat() {
     useEffect(mount, []);

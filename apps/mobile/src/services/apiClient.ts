@@ -20,8 +20,10 @@ export class ApiError extends Error {
   }
 }
 
+export type ApiMethod = 'GET' | 'POST' | 'PATCH' | 'DELETE';
+
 type ApiOptions = {
-  method?: 'GET' | 'POST';
+  method?: ApiMethod;
   body?: object;
   signal?: AbortSignal;
 };
@@ -29,7 +31,7 @@ type ApiOptions = {
 type ApiFetch = (
   url: string,
   init: {
-    method: 'GET' | 'POST';
+    method: ApiMethod;
     credentials: 'include';
     redirect: 'manual';
     headers: Record<string, string>;
@@ -54,7 +56,13 @@ export class ApiClient {
     parse: (value: unknown) => T,
     { method = 'GET', body, signal }: ApiOptions = {},
   ): Promise<T> {
-    if (!/^\/api\/(?:[a-z0-9_-]+\/)*[a-z0-9_-]+$/i.test(path)) {
+    // Path segments are alphanumeric plus `-_.%` so encoded identifiers survive,
+    // and the optional query keeps session pagination on the same guard.
+    if (
+      !/^\/api\/(?:[A-Za-z0-9_.%-]+\/)*[A-Za-z0-9_.%-]+(?:\?[A-Za-z0-9_.%=&-]*)?$/.test(
+        path,
+      )
+    ) {
       throw new ApiError('network', 'Invalid DeepTutor API path.');
     }
     if (signal?.aborted) {
@@ -92,7 +100,7 @@ export class ApiClient {
   private async request<T>(
     path: string,
     parse: (value: unknown) => T,
-    method: 'GET' | 'POST',
+    method: ApiMethod,
     body: object | undefined,
     signal: AbortSignal,
   ): Promise<T> {

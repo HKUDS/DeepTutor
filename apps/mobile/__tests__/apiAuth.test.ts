@@ -19,13 +19,18 @@ test('login verifies the native cookie via a second HTTP request', async () => {
     .fn()
     .mockResolvedValueOnce(response(200, { ok: true }))
     .mockResolvedValueOnce(
-      response(200, { enabled: true, authenticated: true, username: 'demo' }),
+      response(200, {
+        enabled: true,
+        authenticated: true,
+        user_id: 'u1',
+        username: 'demo',
+      }),
     );
   const auth = new AuthService(new ApiClient(origin, fetcher));
 
   await expect(
     auth.login(' demo ', 'pass', new AbortController().signal),
-  ).resolves.toEqual({ enabled: true, authenticated: true });
+  ).resolves.toEqual({ enabled: true, authenticated: true, accountId: 'u1' });
   expect(fetcher).toHaveBeenNthCalledWith(
     1,
     `${origin}/api/auth/login`,
@@ -78,6 +83,7 @@ test('handles bad credentials and an expired cookie distinctly', async () => {
   await expect(auth.status(signal)).resolves.toEqual({
     enabled: true,
     authenticated: false,
+    accountId: '',
   });
 });
 
@@ -85,6 +91,9 @@ test.each([
   [response(307), 'redirect'],
   [response(503), 'http'],
   [response(200, { enabled: true }), 'invalid-response'],
+  // An authenticated status with no account id cannot be scoped, so it fails
+  // closed instead of sharing another account's local state.
+  [response(200, { enabled: true, authenticated: true }), 'invalid-response'],
 ])('maps status and schema errors: %p', async (reply, kind) => {
   const fetcher = jest.fn().mockResolvedValue(reply);
   const auth = new AuthService(new ApiClient(origin, fetcher));

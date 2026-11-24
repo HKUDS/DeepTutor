@@ -3,6 +3,11 @@ import { ApiClient, ApiError } from '../../services/apiClient';
 export interface AuthStatus {
   enabled: boolean;
   authenticated: boolean;
+  /**
+   * Stable account identity from the server. Used only to namespace local
+   * recovery state — it is never stored as a credential and never sent back.
+   */
+  accountId: string;
 }
 
 function parseStatus(value: unknown): AuthStatus {
@@ -11,15 +16,25 @@ function parseStatus(value: unknown): AuthStatus {
   }
   const record = value as Record<string, unknown>;
   if (
-    typeof record.enabled !== 'boolean' ||
-    typeof record.authenticated !== 'boolean' ||
-    (record.enabled === false && record.authenticated === false)
+    typeof record.enabled !== 'boolean' || typeof record.authenticated !== 'boolean'
   ) {
     throw new Error('Invalid authentication status');
+  }
+  if (record.enabled === false && record.authenticated === false) {
+    throw new Error('Invalid authentication status');
+  }
+  // `/api/auth/status` reports `user_id` for a signed-in account and
+  // `local-admin` when auth is off. An authenticated response without one
+  // cannot be namespaced safely, so it fails instead of sharing a namespace.
+  const accountId =
+    typeof record.user_id === 'string' ? record.user_id.trim() : '';
+  if (record.authenticated && !accountId) {
+    throw new Error('Authentication status has no account id');
   }
   return {
     enabled: record.enabled,
     authenticated: record.authenticated,
+    accountId,
   };
 }
 
@@ -41,7 +56,7 @@ export class AuthService {
       return await this.api.json('/api/auth/status', parseStatus, { signal });
     } catch (error) {
       if (error instanceof ApiError && error.kind === 'unauthorized') {
-        return { enabled: true, authenticated: false };
+        return { enabled: true, authenticated: false, accountId: '' };
       }
       throw error;
     }

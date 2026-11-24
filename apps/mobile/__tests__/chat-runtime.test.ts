@@ -107,7 +107,7 @@ test('plays two turns, resumes a gap, and ignores duplicate or retired events', 
   resumed.frame(streamEvent('done', 4));
   resumed.frame(streamEvent('content', 3, { content: 'two' }));
   expect(runtime.getSnapshot().messages[0].answer).toBe('One two');
-  expect(runtime.getSnapshot().phase).toBe('ready');
+  expect(runtime.getSnapshot().status).toBe('completed');
 
   expect(runtime.send('Next question')).toBe(true);
   expect(resumed.sent.at(-1)).toMatchObject({
@@ -175,13 +175,13 @@ test('sends cancellation after admission and returns to ready on the server ACK'
   socket.open();
   runtime.send('Slow question');
   await runtime.cancel();
-  expect(runtime.getSnapshot().phase).toBe('stopping');
+  expect(runtime.getSnapshot().status).toBe('cancelling');
   expect(socket.sent).toHaveLength(1);
   socket.frame(streamEvent('session', 1));
   const request = socket.sent[1];
   expect(request).toMatchObject({ type: 'cancel_turn', turn_id: 'turn-1' });
   socket.frame(streamEvent('done', 2, { metadata: { status: 'cancelled' } }));
-  expect(runtime.getSnapshot().phase).toBe('stopping');
+  expect(runtime.getSnapshot().status).toBe('cancelling');
   expect(runtime.send('Wait for ownership to be released')).toBe(false);
   socket.frame({
     type: 'command_ack',
@@ -190,7 +190,7 @@ test('sends cancellation after admission and returns to ready on the server ACK'
     accepted: true,
   });
   await Promise.resolve();
-  expect(runtime.getSnapshot().phase).toBe('ready');
+  expect(runtime.getSnapshot().status).toBe('cancelled');
   expect(runtime.send('Next')).toBe(true);
   runtime.stop();
 });
@@ -201,7 +201,7 @@ test('lets a learner reply to a waiting turn and exits waiting when the server r
   runtime.send('Question');
   socket.frame(streamEvent('wait_for_input', 1, { content: 'Which subject?' }));
   expect(runtime.getSnapshot()).toMatchObject({
-    phase: 'waiting',
+    status: 'waiting_for_input',
     waitingPrompt: 'Which subject?',
   });
   const pending = runtime.reply('Math');
@@ -218,7 +218,7 @@ test('lets a learner reply to a waiting turn and exits waiting when the server r
     accepted: true,
   });
   await expect(pending).resolves.toBe(true);
-  expect(runtime.getSnapshot().phase).toBe('running');
+  expect(runtime.getSnapshot().status).toBe('running');
   socket.frame(streamEvent('wait_for_input', 2, { content: 'Which lesson?' }));
   const next = runtime.reply('Fractions');
   socket.frame({
@@ -229,7 +229,7 @@ test('lets a learner reply to a waiting turn and exits waiting when the server r
   });
   await expect(next).resolves.toBe(false);
   expect(runtime.getSnapshot()).toMatchObject({
-    phase: 'ready',
+    status: 'failed',
     waitingPrompt: null,
     error: expect.any(String),
   });
@@ -247,7 +247,7 @@ test('clears a rejected durable start and recovers from a missing admission resp
     retryable: true,
   });
   expect(runtime.getSnapshot()).toMatchObject({
-    phase: 'ready',
+    status: 'failed',
     error: 'The server rejected the request.',
   });
   sockets[1].open();
@@ -255,7 +255,7 @@ test('clears a rejected durable start and recovers from a missing admission resp
   runtime.send('Server stalls');
   jest.advanceTimersByTime(30_000);
   expect(runtime.getSnapshot()).toMatchObject({
-    phase: 'ready',
+    status: 'failed',
     error: expect.stringContaining('did not confirm'),
   });
   sockets[2].open();
@@ -274,7 +274,7 @@ test('terminal errors release the composer without waiting for DONE', () => {
     }),
   );
   expect(runtime.getSnapshot()).toMatchObject({
-    phase: 'ready',
+    status: 'failed',
     error: 'The server could not finish the response.',
   });
   expect(runtime.send('Next')).toBe(true);
@@ -304,17 +304,17 @@ test('makes a waiting prompt actionable again if reply or cancellation loses its
   jest.advanceTimersByTime(30_000);
   await expect(reply).resolves.toBe(false);
   expect(runtime.getSnapshot()).toMatchObject({
-    phase: 'waiting',
+    status: 'waiting_for_input',
     waitingPrompt: 'What topic?',
     error: expect.stringContaining('confirm your reply'),
   });
 
   const stop = runtime.cancel();
-  expect(runtime.getSnapshot().phase).toBe('stopping');
+  expect(runtime.getSnapshot().status).toBe('cancelling');
   jest.advanceTimersByTime(30_000);
   await stop;
   expect(runtime.getSnapshot()).toMatchObject({
-    phase: 'waiting',
+    status: 'waiting_for_input',
     waitingPrompt: 'What topic?',
     error: expect.stringContaining('confirm the stop request'),
   });
@@ -329,7 +329,7 @@ test('makes a waiting prompt actionable again if reply or cancellation loses its
   });
   await retry;
   expect(runtime.getSnapshot()).toMatchObject({
-    phase: 'waiting',
+    status: 'waiting_for_input',
     waitingPrompt: 'What topic?',
     error: expect.stringContaining('Try Stop again'),
   });
@@ -350,12 +350,12 @@ test('replays retryable subscription failures on the same cursor, then ends a ma
   };
   socket.frame({ ...failure, retryable: false, turn_id: 'retired-turn' });
   expect(runtime.getSnapshot()).toMatchObject({
-    phase: 'waiting',
+    status: 'waiting_for_input',
     error: null,
   });
   socket.frame(failure);
   expect(runtime.getSnapshot()).toMatchObject({
-    phase: 'waiting',
+    status: 'waiting_for_input',
     error: 'The connection could not recover this response.',
   });
   jest.advanceTimersByTime(500);
@@ -371,10 +371,10 @@ test('replays retryable subscription failures on the same cursor, then ends a ma
     retryable: false,
     session_id: 'another-session',
   });
-  expect(runtime.getSnapshot().phase).toBe('waiting');
+  expect(runtime.getSnapshot().status).toBe('waiting_for_input');
   reopened.frame({ ...failure, retryable: false });
   expect(runtime.getSnapshot()).toMatchObject({
-    phase: 'ready',
+    status: 'failed',
     waitingPrompt: null,
     error: 'The connection could not recover this response.',
   });
@@ -409,7 +409,7 @@ test('a silent admitted turn attempts replay and can be left without reusing its
   });
   jest.advanceTimersByTime(30_000);
   expect(runtime.getSnapshot()).toMatchObject({
-    phase: 'running',
+    status: 'running',
     canLeaveTurn: true,
   });
   runtime.reset();
@@ -428,7 +428,7 @@ test.each(['rejected', 'timed out'])(
     socket.frame(streamEvent('session', 1));
     const stop = runtime.cancel();
     socket.frame(streamEvent('done', 2));
-    expect(runtime.getSnapshot().phase).toBe('stopping');
+    expect(runtime.getSnapshot().status).toBe('cancelling');
     if (result === 'timed out') {
       jest.advanceTimersByTime(30_000);
     } else {
@@ -440,7 +440,7 @@ test.each(['rejected', 'timed out'])(
       });
     }
     await stop;
-    expect(runtime.getSnapshot().phase).toBe('ready');
+    expect(runtime.getSnapshot().status).toBe('cancelled');
     expect(runtime.send('Next question')).toBe(true);
     expect(socket.sent.at(-1)).not.toHaveProperty('session_id');
     runtime.stop();
@@ -466,7 +466,7 @@ test('bounds repeated replay failures and lets the learner reconnect without aba
   }
   sockets[3].frame(failure);
   expect(runtime.getSnapshot()).toMatchObject({
-    phase: 'running',
+    status: 'running',
     connection: 'idle',
     error: expect.stringContaining('Reconnect'),
   });
@@ -479,7 +479,7 @@ test('bounds repeated replay failures and lets the learner reconnect without aba
   });
   sockets[4].frame(streamEvent('content', 2, { content: ' answer' }));
   sockets[4].frame(streamEvent('done', 3));
-  expect(runtime.getSnapshot()).toMatchObject({ phase: 'ready', error: null });
+  expect(runtime.getSnapshot()).toMatchObject({ status: 'completed', error: null });
   expect(runtime.getSnapshot().messages[0].answer).toBe('Partial answer');
   runtime.stop();
 });

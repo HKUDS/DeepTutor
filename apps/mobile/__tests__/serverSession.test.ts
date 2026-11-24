@@ -3,6 +3,8 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
   getItem: jest.fn(),
   setItem: jest.fn(),
   removeItem: jest.fn(),
+  getAllKeys: jest.fn(async () => []),
+  multiRemove: jest.fn(async () => {}),
 }));
 
 import type { AuthStatus } from '../src/features/auth/authService';
@@ -12,8 +14,8 @@ import { ServerSession } from '../src/features/server/serverSession';
 
 const first = 'https://tutor.example.com:8443';
 const second = 'https://tutor.example.com:9443';
-const anonymous = { enabled: true, authenticated: false };
-const signedIn = { ...anonymous, authenticated: true };
+const anonymous = { enabled: true, authenticated: false, accountId: '' };
+const signedIn = { ...anonymous, authenticated: true, accountId: 'acct-1' };
 
 function fixture(initial: string | null = null) {
   const events: string[] = [];
@@ -33,6 +35,7 @@ function fixture(initial: string | null = null) {
   const clearCookies = jest.fn(async () => {
     events.push('clear cookies');
   });
+  const clearRecovery = jest.fn(async (_origin: string) => {});
   const storage = {
     read: jest.fn(async () => saved),
     write: jest.fn(async (value: string | null) => {
@@ -43,13 +46,14 @@ function fixture(initial: string | null = null) {
   const session = new ServerSession({
     storage,
     clearCookies,
+    clearRecovery,
     normalizeOrigin: address => serverOrigin(address, false),
     authFor: origin => {
       events.push(`use ${origin}`);
       return auth;
     },
   });
-  return { session, auth, clearCookies, storage, events };
+  return { session, auth, clearCookies, clearRecovery, storage, events };
 }
 
 test('validates the saved origin and current cookie at launch', async () => {
@@ -108,6 +112,20 @@ test('switching port clears cookies before accessing the new origin', async () =
     phase: 'login',
     origin: second,
   });
+});
+
+test('leaving a server drops the task state saved for it', async () => {
+  const { session, auth, clearRecovery } = fixture(first);
+  auth.status.mockResolvedValueOnce(signedIn);
+  await session.restore();
+
+  await session.connect(second);
+  expect(clearRecovery).toHaveBeenCalledWith(first);
+
+  await session.login('learner', 'a-test-password');
+  clearRecovery.mockClear();
+  await session.logout();
+  expect(clearRecovery).toHaveBeenCalledWith(second);
 });
 
 test('a failed cookie clear blocks a server switch before authentication', async () => {

@@ -1,5 +1,6 @@
 import { ApiClient, ApiError } from '../../services/apiClient';
 import { serverStorage, type ServerStorage } from '../../storage/serverStorage';
+import { turnRecoveryStorage } from '../../storage/turnRecovery';
 import { AuthService, type AuthStatus } from '../auth/authService';
 import { clearNativeCookies } from '../auth/nativeCookies';
 import { serverOrigin } from './serverAddress';
@@ -16,6 +17,8 @@ export interface ServerSessionState {
 type SessionDependencies = {
   storage: ServerStorage;
   clearCookies: () => Promise<void>;
+  /** Drop saved task-recovery state belonging to a server being left. */
+  clearRecovery: (origin: string) => Promise<void>;
   authFor: (origin: string) => Pick<AuthService, 'status' | 'login' | 'logout'>;
   normalizeOrigin: (address: string) => string;
 };
@@ -23,6 +26,7 @@ type SessionDependencies = {
 const nativeDependencies: SessionDependencies = {
   storage: serverStorage,
   clearCookies: clearNativeCookies,
+  clearRecovery: origin => turnRecoveryStorage.clearServer(origin),
   authFor: origin => new AuthService(new ApiClient(origin)),
   normalizeOrigin: serverOrigin,
 };
@@ -129,7 +133,8 @@ export class ServerSession {
   readonly connect = (address: string): Promise<void> =>
     this.run(async ({ controller, isCurrent }) => {
       const origin = this.dependencies.normalizeOrigin(address);
-      const switching = origin !== this.state.origin;
+      const previousOrigin = this.state.origin;
+      const switching = origin !== previousOrigin;
       // Unmount the previous chat before touching its process-wide cookie store.
       this.update({
         phase: 'connect',
@@ -138,7 +143,7 @@ export class ServerSession {
         ...(switching ? { origin: null } : {}),
       });
       if (switching) {
-        await this.discardCredentials();
+        await this.discardCredentials(undefined, previousOrigin);
       }
       if (!isCurrent()) return;
       const status = await this.dependencies
@@ -182,7 +187,11 @@ export class ServerSession {
     { controller, isCurrent }: Operation,
     logout: boolean,
   ): Promise<void> {
-    this.applyStatus(origin, { enabled: true, authenticated: false });
+    this.applyStatus(origin, {
+      enabled: true,
+      authenticated: false,
+      accountId: '',
+    });
     let logoutFailure: unknown;
     await this.discardCredentials(
       logout
@@ -194,6 +203,7 @@ export class ServerSession {
             }
           }
         : undefined,
+      origin,
     );
     if (!isCurrent()) return;
     await this.dependencies.storage.write(origin);
@@ -205,30 +215,42 @@ export class ServerSession {
 
   readonly disconnect = (): Promise<void> =>
     this.run(async () => {
+      const previousOrigin = this.state.origin;
       this.update({
         phase: 'connect',
         origin: null,
         status: null,
         network: 'unknown',
       });
-      await this.discardCredentials();
+      await this.discardCredentials(undefined, previousOrigin);
     });
 
-  private async discardCredentials(beforeClear?: () => Promise<void>) {
+  private async discardCredentials(
+    beforeClear?: () => Promise<void>,
+    origin?: string | null,
+  ) {
     // Cookies are the credential. A failed preference write must never skip
     // logout or native cleanup, and a failed cleanup must block new requests.
-    const [saved, cookies] = await Promise.allSettled([
+    const [saved, cookies, recovery] = await Promise.allSettled([
       Promise.resolve().then(() => this.dependencies.storage.write(null)),
       Promise.resolve().then(async () => {
         await beforeClear?.();
         await this.dependencies.clearCookies();
       }),
+      // Recovery state is scoped to the account that produced it; leaving the
+      // server must not leave a resumable pointer behind.
+      origin
+        ? Promise.resolve().then(() => this.dependencies.clearRecovery(origin))
+        : Promise.resolve(),
     ]);
     if (cookies.status === 'rejected') {
       throw new Error('Could not clear the saved session. Try again.');
     }
     if (saved.status === 'rejected') {
       throw new Error('Could not update the saved server address.');
+    }
+    if (recovery.status === 'rejected') {
+      throw new Error('Could not clear the saved task state.');
     }
   }
 

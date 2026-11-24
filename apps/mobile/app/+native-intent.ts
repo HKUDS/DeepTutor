@@ -4,6 +4,7 @@ const nativeRoutes = new Set([
   '/server',
   '/login',
   '/chat',
+  '/sessions',
   '/settings',
 ]);
 const scheme = 'deeptutor-mobile://';
