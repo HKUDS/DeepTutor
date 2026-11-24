@@ -81,6 +81,7 @@ class NotebookEntryItem(BaseModel):
     bookmarked: bool = False
     followup_session_id: str = ""
     ai_judgment: str = ""
+    ai_verdict: dict[str, Any] | None = None
     created_at: float
     updated_at: float
     categories: list[CategoryItem] | None = None
@@ -96,6 +97,11 @@ class EntryUpdateRequest(BaseModel):
     bookmarked: bool | None = None
     followup_session_id: str | None = None
     ai_judgment: str | None = None
+    # Structured AI-judge verdict (see ``quiz_judge`` verdict frame) and the
+    # correctness it implies for answers exact matching cannot grade.
+    ai_verdict: dict[str, Any] | None = None
+    is_correct: bool | None = None
+    result: AssessmentResult | None = None
     resolved: bool | None = None
 
 

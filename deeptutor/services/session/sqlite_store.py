@@ -399,6 +399,7 @@ class SQLiteSessionStore:
                     bookmarked INTEGER DEFAULT 0,
                     followup_session_id TEXT DEFAULT '',
                     ai_judgment TEXT DEFAULT '',
+                    ai_verdict_json TEXT NOT NULL DEFAULT '',
                     created_at REAL NOT NULL,
                     updated_at REAL NOT NULL,
                     UNIQUE(origin_type, origin_ref, turn_id, question_id)
@@ -534,6 +535,8 @@ class SQLiteSessionStore:
             self._migrate_notebook_entries_add_assessment_review(conn)
             self._migrate_notebook_entries_add_assessment_v2(conn)
             self._migrate_notebook_entry_origins(conn)
+            # After the origin rebuild, which copies a fixed column list.
+            self._migrate_notebook_entries_add_ai_verdict(conn)
             self._migrate_assessment_attempt_origins(conn)
             self._migrate_assessment_attempt_link_state(conn)
             self._migrate_turn_runtime_columns(conn)
@@ -783,6 +786,15 @@ class SQLiteSessionStore:
             return
         if "ai_judgment" not in cols:
             conn.execute("ALTER TABLE notebook_entries ADD COLUMN ai_judgment TEXT DEFAULT ''")
+
+    @staticmethod
+    def _migrate_notebook_entries_add_ai_verdict(conn: sqlite3.Connection) -> None:
+        """Add the structured AI-judge verdict (JSON; empty = not judged)."""
+        cols = {row[1] for row in conn.execute("PRAGMA table_info(notebook_entries)").fetchall()}
+        if cols and "ai_verdict_json" not in cols:
+            conn.execute(
+                "ALTER TABLE notebook_entries ADD COLUMN ai_verdict_json TEXT NOT NULL DEFAULT ''"
+            )
 
     @staticmethod
     def _migrate_notebook_entries_add_assessment_review(
@@ -4117,6 +4129,7 @@ class SQLiteSessionStore:
         else:
             result = "correct" if is_correct else "incorrect"
         assessment_type = (row["assessment_type"] or "") if "assessment_type" in keys else ""
+        verdict = _json_loads(row["ai_verdict_json"], None) if "ai_verdict_json" in keys else None
         return {
             "id": int(row["id"]),
             "session_id": (row["session_id"] or "") if "session_id" in keys else "",
@@ -4165,6 +4178,7 @@ class SQLiteSessionStore:
             "bookmarked": bool(row["bookmarked"]),
             "followup_session_id": row["followup_session_id"] or "",
             "ai_judgment": (row["ai_judgment"] or "") if "ai_judgment" in keys else "",
+            "ai_verdict": verdict if isinstance(verdict, dict) else None,
             "created_at": float(row["created_at"]),
             "updated_at": float(row["updated_at"]),
         }
@@ -4318,7 +4332,8 @@ class SQLiteSessionStore:
                 n.assessment_type, n.result, n.mastery_path_id, n.knowledge_point_id,
                 n.attempt_count, n.hints_used, n.confidence, n.response_time, n.quality,
                 n.is_correct, n.resolved, n.bookmarked,
-                n.followup_session_id, n.ai_judgment, n.created_at, n.updated_at
+                n.followup_session_id, n.ai_judgment, n.ai_verdict_json,
+                n.created_at, n.updated_at
             FROM notebook_entries n
             LEFT JOIN sessions s ON s.id = n.session_id{join_sql}
         """  # nosec B608 - join_sql/where_sql are literal fragments; every value binds via ?
@@ -4639,9 +4654,15 @@ class SQLiteSessionStore:
             "user_answer",
             "is_correct",
             "ai_judgment",
+            "ai_verdict",
+            "result",
             "resolved",
         }
         fields = {k: v for k, v in updates.items() if k in allowed}
+        if "ai_verdict" in fields:
+            fields["ai_verdict_json"] = _json_dumps(fields.pop("ai_verdict"))
+        if "result" in fields and fields["result"] not in ASSESSMENT_RESULTS:
+            raise ValueError(f"Unsupported assessment result: {fields['result']}")
         if not fields:
             return False
         fields["updated_at"] = time.time()
