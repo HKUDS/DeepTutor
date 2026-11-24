@@ -63,6 +63,16 @@ def _coerce_filename(filename: str) -> str:
     return cleaned or "file"
 
 
+def _coerce_attachment_id(attachment_id: str) -> str:
+    """Reduce a client-chosen *attachment_id* to one safe path segment.
+
+    It prefixes the stored filename, so ``../other-session/x`` must not reach
+    another session's directory. Safe ids are returned unchanged, so files
+    stored before this check still resolve.
+    """
+    return safe_filename(os.path.basename(attachment_id or ""))
+
+
 @runtime_checkable
 class AttachmentStore(Protocol):
     """Storage backend for chat attachments.
@@ -122,7 +132,7 @@ class LocalDiskAttachmentStore:
         return self._root
 
     def _stored_filename(self, attachment_id: str, filename: str) -> str:
-        return f"{attachment_id}_{_coerce_filename(filename)}"
+        return f"{_coerce_attachment_id(attachment_id)}_{_coerce_filename(filename)}"
 
     def _session_dir(self, session_id: str) -> Path:
         sid = _coerce_filename(session_id)
@@ -168,7 +178,7 @@ class LocalDiskAttachmentStore:
         # is percent-encoded so spaces/Unicode/punctuation in filenames flow
         # through fetch / <iframe> consistently across browsers.
         sid = quote(_coerce_filename(session_id), safe="")
-        aid = quote(attachment_id, safe="")
+        aid = quote(_coerce_attachment_id(attachment_id), safe="")
         name = quote(_coerce_filename(filename), safe="")
         from deeptutor.services.workspace.context import workspace_url
 
@@ -218,7 +228,7 @@ class LocalDiskAttachmentStore:
 
     @staticmethod
     def _delete_attachment_sync(session_dir: Path, attachment_id: str) -> None:
-        prefix = f"{attachment_id}_"
+        prefix = f"{_coerce_attachment_id(attachment_id)}_"
         for entry in session_dir.iterdir():
             if entry.name.startswith(prefix):
                 try:
