@@ -154,5 +154,6 @@ playbook: |-
 notices:
   profile_not_saved: "Storage status: the requested learner-profile update was not saved for future sessions. It can still guide this conversation."
   assessment_not_recorded: "Assessment status: your last answer was not recorded as an assessment for this objective, so your progress is unchanged."
+  assessment_needs_clarification: "Assessment status: not graded yet. Add the missing point; your answer so far will be graded together with it."
   assessment_coverage_gap: "Assessment status: your last answer was not recorded, because the selected materials do not cover this objective well enough to grade it. Your progress is unchanged."
   assessment_covered_only: "Assessment status: your answer was graded only against the parts of this objective that the selected materials cover."

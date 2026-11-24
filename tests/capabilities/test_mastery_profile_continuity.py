@@ -178,6 +178,7 @@ async def test_profile_failure_has_one_repair_round_then_teaching_with_unsaved_n
         ("coverage_gap", "not recorded, because the selected materials"),
         ("not_recorded", "not recorded as an assessment"),
         ("covered_only", "graded only against the parts"),
+        ("needs_clarification", "graded together with it"),
     ],
 )
 def test_assessment_outcome_is_shown_to_the_learner(outcome, notice):
@@ -193,6 +194,16 @@ def test_assessment_outcome_is_shown_to_the_learner(outcome, notice):
     visible = cap.final_text_override(context, "Let us continue.")
     assert visible is not None and notice in visible and visible.endswith("Let us continue.")
     assert cap.final_text_override(context, "Next reply.") is None  # shown once
+
+
+@pytest.mark.parametrize("language", ["en", "zh"])
+def test_every_assessment_outcome_has_a_notice(language):
+    from deeptutor.services.prompt import get_prompt_manager
+    from deeptutor.services.prompt.lookup import prompt_text
+
+    pack = get_prompt_manager().load_prompts("mastery", "mastery_loop", language)
+    for outcome in ("not_recorded", "needs_clarification", "coverage_gap", "covered_only"):
+        assert prompt_text(pack, ("notices", "assessment_" + outcome)).strip()
 
 
 def test_later_recorded_assessment_clears_the_not_recorded_notice():

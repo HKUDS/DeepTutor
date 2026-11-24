@@ -1741,3 +1741,38 @@ async def test_focus_only_complete_packet_names_recovery_and_grades_after_it(mat
     assert payload["result"] == "correct" and payload["mastered"] is True
     # The explanation refused for lack of evidence is graded with the reply.
     assert judged == ["Lipids form a bilayer.\n\nThey shield the cell."]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("session, outcome", [("s1", "needs_clarification"), ("", "not_recorded")])
+async def test_unclear_explanation_reports_whether_it_is_kept(
+    material, monkeypatch, session, outcome
+):
+    """A non-final verdict keeps the answer in a session; the notice must say so."""
+    from deeptutor.capabilities.mastery import tools
+    from deeptutor.learning import semantic_assessment as semantic
+
+    _make_concept(material)
+    _install_preparation(material, monkeypatch)
+    await lessons.prepare_lesson(material.store, "path", "kp", material.config)
+
+    async def judge(_config, items):
+        return {
+            items[0]["question_id"]: semantic.Verdict(
+                result="ungraded", confidence=0.5, feedback="Which layer do you mean?"
+            )
+        }
+
+    monkeypatch.setattr(semantic, "judge_answers", judge)
+    monkeypatch.setattr(tools, "_new_service", lambda: LearningService(material.store))
+    outcomes = []
+    result = await tools.MasteryAssessTool().execute(
+        _mastery_path_id="path",
+        _session_id=session,
+        _turn_id="t1" if session else "",
+        knowledge_point_id="kp",
+        _learner_message="The layer.",
+        _assessment_outcome=outcomes.append,
+    )
+    assert json.loads(result.content)["needs_clarification"] is True
+    assert outcomes == [outcome]

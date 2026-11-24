@@ -150,5 +150,6 @@ playbook: |-
 notices:
   profile_not_saved: "保存状态：本次学习档案更新未能保存到后续会话，但仍可用于当前对话。"
   assessment_not_recorded: "评估状态：你刚才的回答没有被记录为本学习目标的评估，学习进度未变。"
+  assessment_needs_clarification: "评估状态：尚未评分。请补充缺失的要点，你目前的回答会与补充内容一起评分。"
   assessment_coverage_gap: "评估状态：你刚才的回答没有被记录，因为所选资料不足以覆盖本学习目标，无法据此评分。学习进度未变。"
   assessment_covered_only: "评估状态：你的回答只按所选资料覆盖的那部分学习目标进行了评分。"

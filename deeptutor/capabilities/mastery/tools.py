@@ -2177,7 +2177,9 @@ class MasteryAssessTool(BaseTool):
                 success=False,
             )
         if not receipt["final"]:
-            report("not_recorded")
+            # In a session the explanation is kept and graded together with the
+            # follow-up, so "progress unchanged" alone would misstate it.
+            report("needs_clarification" if _resolve_session_id(kwargs) else "not_recorded")
             return _json_result({"knowledge_point_id": kp_id, **receipt}, meta_key="mastery_assess")
         report("covered_only" if receipt.get("assessment_scope") == COVERED_SOURCES else "recorded")
         passed = receipt["result"] == "correct"
