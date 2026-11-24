@@ -9,6 +9,9 @@ import re
 from typing import ClassVar
 import unicodedata
 
+# Characters never kept in a folder segment of a user-supplied relative path.
+_BAD_PATH_CHARS = re.compile(r'[\\:*?"<>|\x00-\x1f]')
+
 
 class DocumentValidator:
     """Document validation utilities"""
@@ -146,6 +149,33 @@ class DocumentValidator:
             )
 
         return safe_name
+
+    @staticmethod
+    def sanitize_relative_dir(rel_path: str | None) -> str:
+        """Return a safe POSIX relative folder path (folders only, no traversal).
+
+        Used for every user-supplied folder layout — a browser folder pick and
+        the members of an uploaded archive — so both land under ``raw/`` the
+        same way. ``\\`` separators are accepted, empty and ``.`` segments
+        are dropped (so an absolute path is re-rooted), unsafe characters are
+        removed and each segment is capped at 128 characters.
+
+        Raises:
+            ValueError: If any segment is ``..``.
+        """
+        if not rel_path:
+            return ""
+        parts: list[str] = []
+        for raw_seg in str(rel_path).replace("\\", "/").split("/"):
+            seg = raw_seg.strip()
+            if seg in ("", "."):
+                continue
+            if seg == "..":
+                raise ValueError("Invalid folder path")
+            safe = _BAD_PATH_CHARS.sub("", seg).strip().strip(".")[:128]
+            if safe:
+                parts.append(safe)
+        return "/".join(parts)
 
     @staticmethod
     def get_file_info(filename: str, file_size: int) -> dict:

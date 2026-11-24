@@ -328,3 +328,125 @@ def test_failed_member_closes_before_cleanup(tmp_path, monkeypatch, failure):
         extractor._extract_member(Archive(), object(), destination, 100)
     assert sinks and all(sink.handle.closed for sink in sinks)
     assert not destination.exists()
+
+
+# ── keep_subdirs: course-download layout (one ``Slides.pdf`` per section) ──
+
+
+def _extracted_rel(result, out: Path) -> list[str]:
+    return sorted(p.relative_to(out.resolve()).as_posix() for p in result.extracted)
+
+
+def test_keep_subdirs_preserves_same_named_members_in_different_folders(tmp_path: Path) -> None:
+    src = _make_zip(
+        tmp_path / "course.zip",
+        [
+            ("Week1/Slides.pdf", b"w1 slides"),
+            ("Week1/Uebung.pdf", b"w1 exercise"),
+            ("Week2/Slides.pdf", b"w2 slides"),
+        ],
+    )
+    out = tmp_path / "out"
+
+    result = safe_extract_zip(src, out, allowed_extensions=DOC_EXTS, keep_subdirs=True)
+
+    assert _extracted_rel(result, out) == [
+        "Week1/Slides.pdf",
+        "Week1/Uebung.pdf",
+        "Week2/Slides.pdf",
+    ]
+    assert (out / "Week2" / "Slides.pdf").read_bytes() == b"w2 slides"
+    assert result.skipped == []
+
+
+def test_keep_subdirs_reads_windows_backslash_member_names(tmp_path: Path) -> None:
+    src = _make_zip(
+        tmp_path / "win.zip",
+        [("Kurs\\Woche 1\\Slides.pdf", b"one"), ("Kurs\\Woche 2\\Slides.pdf", b"two")],
+    )
+    out = tmp_path / "out"
+
+    result = safe_extract_zip(src, out, allowed_extensions=DOC_EXTS, keep_subdirs=True)
+
+    assert _extracted_rel(result, out) == ["Kurs/Woche 1/Slides.pdf", "Kurs/Woche 2/Slides.pdf"]
+
+
+def test_keep_subdirs_never_lets_a_member_escape(tmp_path: Path) -> None:
+    src = _make_zip(
+        tmp_path / "evil.zip",
+        [
+            ("../../escape.txt", b"x"),
+            ("ok/../../escape2.txt", b"x"),
+            ("..\\..\\escape3.txt", b"x"),
+            ("/abs/secret.txt", b"y"),
+            ("C:\\Users\\x\\notes.txt", b"z"),
+        ],
+    )
+    out = tmp_path / "out"
+
+    result = safe_extract_zip(src, out, allowed_extensions=DOC_EXTS, keep_subdirs=True)
+
+    for p in result.extracted:
+        assert out.resolve() in p.resolve().parents
+    # Absolute and drive-qualified names are re-rooted under the target.
+    assert _extracted_rel(result, out) == ["C/Users/x/notes.txt", "abs/secret.txt"]
+    # Traversal members are refused one by one, not silently flattened.
+    refused = {member for member, reason in result.skipped if reason == "unsafe path"}
+    assert refused == {"../../escape.txt", "ok/../../escape2.txt", "..\\..\\escape3.txt"}
+    assert not list(tmp_path.glob("escape*"))
+
+
+def test_keep_subdirs_skips_os_junk_anywhere_in_the_tree(tmp_path: Path) -> None:
+    src = _make_zip(
+        tmp_path / "mac.zip",
+        [
+            ("Week1/Slides.pdf", b"real"),
+            ("__MACOSX/Week1/._Slides.pdf", b"fork"),
+            ("Week1/.DS_Store", b"ds"),
+            ("Week1/.hidden/notes.md", b"hidden dir"),
+            ("Week1/Thumbs.db", b"thumbs"),
+            ("Week1/desktop.ini", b"ini"),
+        ],
+    )
+    out = tmp_path / "out"
+
+    result = safe_extract_zip(src, out, allowed_extensions=DOC_EXTS, keep_subdirs=True)
+
+    assert _extracted_rel(result, out) == ["Week1/Slides.pdf"]
+    assert {reason for _, reason in result.skipped} == {"system file or dotfile"}
+    assert not (out / "__MACOSX").exists()
+
+
+def test_keep_subdirs_still_refuses_an_existing_file_by_default(tmp_path: Path) -> None:
+    src = _make_zip(tmp_path / "a.zip", [("Week1/new.txt", b"new"), ("Week1/old.txt", b"v2")])
+    out = tmp_path / "out"
+    (out / "Week1").mkdir(parents=True)
+    existing = out / "Week1" / "old.txt"
+    existing.write_bytes(b"v1")
+
+    with pytest.raises(FileExistsError):
+        safe_extract_zip(src, out, allowed_extensions=DOC_EXTS, keep_subdirs=True)
+
+    assert existing.read_bytes() == b"v1"
+    assert not (out / "Week1" / "new.txt").exists()
+
+
+def test_keep_subdirs_rejected_archive_removes_created_folders(tmp_path: Path) -> None:
+    src = _make_zip(
+        tmp_path / "a.zip",
+        [("Week1/Sub/notes.txt", b"hello"), ("Week2/bomb.txt", b"A" * 50_000)],
+        deflate=True,
+    )
+    out = tmp_path / "out"
+    (out / "Week1").mkdir(parents=True)  # pre-existing folder must survive
+
+    with pytest.raises(ArchiveTooLargeError):
+        safe_extract_zip(
+            src,
+            out,
+            allowed_extensions=DOC_EXTS,
+            limits=ZipExtractionLimits(max_compression_ratio=10.0),
+            keep_subdirs=True,
+        )
+
+    assert sorted(p.relative_to(out).as_posix() for p in out.rglob("*")) == ["Week1"]

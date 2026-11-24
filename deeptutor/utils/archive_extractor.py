@@ -7,11 +7,14 @@ happily writes any file type. This module extracts members one at a time and
 puts each through the same ``DocumentValidator`` gate as a direct upload:
 
 * member names are collapsed to a sanitized basename, which defuses Zip Slip
-  (no path component survives) and enforces the extension whitelist;
+  (no path component survives) and enforces the extension whitelist; with
+  ``keep_subdirs`` the member's folders are kept instead, each segment
+  sanitized by the same rule as a browser folder upload, and a member with a
+  ``..`` segment is refused;
 * per-entry uncompressed size, cumulative size, entry count and compression
   ratio are all bounded to defeat zip bombs;
-* ``__MACOSX`` resource forks, dotfiles, directories and nested archives are
-  skipped rather than trusted.
+* ``__MACOSX`` resource forks, dotfiles and dot-folders, Windows thumbnail
+  caches, directories and nested archives are skipped rather than trusted.
 
 The extractor is deliberately decoupled from the upload router so it can be
 unit-tested in isolation and reused by any ingestion path.
@@ -29,6 +32,9 @@ import zipfile
 from deeptutor.utils.document_validator import DocumentValidator
 
 logger = logging.getLogger(__name__)
+
+# OS metadata that file managers add to every folder; never user documents.
+_SYSTEM_FILE_NAMES = frozenset({"thumbs.db", "desktop.ini"})
 
 
 class ArchiveTooLargeError(ValueError):
@@ -67,11 +73,12 @@ def _is_within(path: Path, root: Path) -> bool:
 
 
 @contextmanager
-def _remove_on_error(paths: list[Path]) -> Iterator[None]:
-    """Delete ``paths`` if the block raises, then re-raise.
+def _remove_on_error(paths: list[Path], dirs: list[Path] | None = None) -> Iterator[None]:
+    """Delete ``paths`` (then the now-empty ``dirs``) if the block raises.
 
     The caller rejects the whole archive on any error, so members written
-    before the failing one must not stay behind in the target directory.
+    before the failing one must not stay behind in the target directory, and
+    neither must the folders created for them.
     """
     try:
         yield
@@ -80,7 +87,31 @@ def _remove_on_error(paths: list[Path]) -> Iterator[None]:
             # Best effort: a failed unlink must not mask the original error.
             with suppress(OSError):
                 path.unlink(missing_ok=True)
+        for directory in reversed(dirs or []):
+            with suppress(OSError):
+                directory.rmdir()
         raise
+
+
+def _is_system_member(parts: list[str]) -> bool:
+    """True for OS junk: resource forks, dotfiles/dot-folders, thumbnail caches."""
+    return (
+        "__MACOSX" in parts[:-1]
+        or any(part.startswith(".") and part not in (".", "..") for part in parts)
+        or parts[-1].lower() in _SYSTEM_FILE_NAMES
+    )
+
+
+def _make_parents(directory: Path, root: Path, created: list[Path]) -> None:
+    """Create ``directory`` under ``root``, recording each folder it adds."""
+    missing: list[Path] = []
+    current = directory
+    while current != root and not current.exists():
+        missing.append(current)
+        current = current.parent
+    for folder in reversed(missing):
+        folder.mkdir()
+        created.append(folder)
 
 
 def safe_extract_zip(
@@ -89,19 +120,26 @@ def safe_extract_zip(
     *,
     allowed_extensions: set[str],
     limits: ZipExtractionLimits | None = None,
+    keep_subdirs: bool = False,
 ) -> ZipExtractionResult:
-    """Extract ``zip_path`` into ``target_dir``, flattening to safe basenames.
+    """Extract ``zip_path`` into ``target_dir`` under safe names.
 
     Args:
         zip_path: Path to the ``.zip`` archive on disk.
         target_dir: Directory that extracted files are written into (created
-            if missing). Files are written flat — subdirectories in the
-            archive are dropped, so two members with the same basename collide
-            and the later one is skipped as a duplicate. On a case-insensitive
-            filesystem, basenames that differ only in case collide the same way.
+            if missing). By default files are written flat — subdirectories in
+            the archive are dropped, so two members with the same basename
+            collide and the later one is skipped as a duplicate. On a
+            case-insensitive filesystem, names that differ only in case collide
+            the same way.
         allowed_extensions: Extensions a member may have to be extracted.
             ``.zip`` is always excluded to prevent nested-archive recursion.
         limits: Optional size/count bounds; sensible defaults are used.
+        keep_subdirs: Keep each member's sanitized folders instead of
+            flattening, so ``Week1/Slides.pdf`` and ``Week2/Slides.pdf`` are
+            both extracted. A member whose path has a ``..`` segment is skipped
+            as an ``"unsafe path"``; an absolute name is re-rooted under
+            ``target_dir``.
 
     Returns:
         A :class:`ZipExtractionResult` listing written paths and skipped
@@ -124,10 +162,17 @@ def safe_extract_zip(
     extract_extensions = {ext.lower() for ext in allowed_extensions if ext.lower() != ".zip"}
 
     result = ZipExtractionResult()
+    created_dirs: list[Path] = []
     seen_names: set[str] = set()
     total_bytes = 0
+    duplicate_reason = (
+        "duplicate path in archive" if keep_subdirs else "duplicate name after flattening"
+    )
 
-    with zipfile.ZipFile(zip_path) as archive, _remove_on_error(result.extracted):
+    with (
+        zipfile.ZipFile(zip_path) as archive,
+        _remove_on_error(result.extracted, created_dirs),
+    ):
         members = [info for info in archive.infolist() if not info.is_dir()]
         if len(members) > limits.max_entries:
             raise ArchiveTooLargeError(
@@ -136,9 +181,10 @@ def safe_extract_zip(
 
         for info in members:
             member = info.filename
-            basename = member.replace("\\", "/").rsplit("/", 1)[-1]
+            parts = member.replace("\\", "/").split("/")
+            basename = parts[-1]
 
-            if member.startswith("__MACOSX/") or basename.startswith("."):
+            if _is_system_member(parts):
                 result.skipped.append((member, "system file or dotfile"))
                 continue
             if basename.lower().endswith(".zip"):
@@ -173,11 +219,20 @@ def safe_extract_zip(
                 result.skipped.append((member, str(exc)))
                 continue
 
-            if safe_name in seen_names:
-                result.skipped.append((member, "duplicate name after flattening"))
+            rel_dir = ""
+            if keep_subdirs:
+                try:
+                    rel_dir = DocumentValidator.sanitize_relative_dir("/".join(parts[:-1]))
+                except ValueError:
+                    result.skipped.append((member, "unsafe path"))
+                    continue
+            rel_name = f"{rel_dir}/{safe_name}" if rel_dir else safe_name
+
+            if rel_name in seen_names:
+                result.skipped.append((member, duplicate_reason))
                 continue
 
-            destination = (target_root / safe_name).resolve()
+            destination = (target_root / rel_name).resolve()
             if not _is_within(destination, target_root):  # defense in depth
                 result.skipped.append((member, "path escapes target directory"))
                 continue
@@ -186,9 +241,10 @@ def safe_extract_zip(
             # ``readme.md`` is the ``README.md`` this call already wrote: the
             # same flattening collision, not a pre-existing file to refuse.
             if destination.exists() and any(destination.samefile(p) for p in result.extracted):
-                result.skipped.append((member, "duplicate name after flattening"))
+                result.skipped.append((member, duplicate_reason))
                 continue
 
+            _make_parents(destination.parent, target_root, created_dirs)
             written = _extract_member(archive, info, destination, limits.max_entry_bytes)
             if written > info.file_size:
                 # Decompressed more than the header declared → treat as a bomb.
@@ -198,7 +254,7 @@ def safe_extract_zip(
                 )
 
             total_bytes += written
-            seen_names.add(safe_name)
+            seen_names.add(rel_name)
             result.extracted.append(destination)
 
     return result

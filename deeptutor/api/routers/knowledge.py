@@ -13,7 +13,6 @@ import logging
 import mimetypes
 import os
 from pathlib import Path
-import re
 import shutil
 import traceback
 from typing import TYPE_CHECKING, Annotated, Any
@@ -420,36 +419,19 @@ def _save_zip_archive(
 
 
 # Folder organization is purely a human-facing layout: folders are real
-# subdirectories under ``raw/`` (no manifest, no retrieval effect). These
-# helpers keep user-supplied relative paths safe before they touch the FS.
-_BAD_PATH_CHARS = re.compile(r'[\\:*?"<>|\x00-\x1f]')
-
-
-def _sanitize_path_segment(segment: str) -> str:
-    """Sanitize a single folder/file path segment for safe FS use."""
-    cleaned = _BAD_PATH_CHARS.sub("", segment).strip().strip(".")
-    return cleaned[:128]
-
-
+# subdirectories under ``raw/`` (no manifest, no retrieval effect). User-supplied
+# relative paths go through ``DocumentValidator.sanitize_relative_dir`` — the
+# same rule archive members use — before they touch the FS.
 def _sanitize_rel_subdir(rel_path: str | None) -> str:
     """Return a safe POSIX relative subdir (folders only, no traversal).
 
     A leading/trailing or interior ``..``/absolute marker raises 400 so a
     crafted directory upload can never escape ``raw/``.
     """
-    if not rel_path:
-        return ""
-    parts: list[str] = []
-    for raw_seg in str(rel_path).replace("\\", "/").split("/"):
-        seg = raw_seg.strip()
-        if seg in ("", "."):
-            continue
-        if seg == "..":
-            raise HTTPException(status_code=400, detail="Invalid folder path")
-        safe = _sanitize_path_segment(seg)
-        if safe:
-            parts.append(safe)
-    return "/".join(parts)
+    try:
+        return DocumentValidator.sanitize_relative_dir(rel_path)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid folder path") from exc
 
 
 def _safe_join_raw(raw_dir: Path, rel_path: str) -> Path:
