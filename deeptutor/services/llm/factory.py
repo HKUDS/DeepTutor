@@ -386,22 +386,34 @@ async def _complete_with_resolved_config(
         else allow_image_fallback
     )
 
-    try:
+    async def _attempt(active_config: LLMConfig) -> Any:
         # Explicit-config callers own their isolated provider's lifecycle.
         lease = (
             contextlib.nullcontext(provider)
             if provider is not None
-            else acquire_runtime_provider(config)
+            else acquire_runtime_provider(active_config)
         )
         with lease as active_provider:
-            response = await active_provider.chat_with_retry(
+            return await active_provider.chat_with_retry(
                 messages=request_messages,
-                model=config.model,
-                reasoning_effort=config.reasoning_effort,
+                model=active_config.model,
+                reasoning_effort=active_config.reasoning_effort,
                 retry_delays=retry_delays,
                 allow_image_fallback=image_fallback_enabled,
                 **extra_kwargs,
             )
+
+    try:
+        from deeptutor.services.llm.failover import call_with_failover, chain_configured
+
+        if provider is None and chain_configured():
+            # A declared chain turns this one-shot call into an ordered attempt
+            # list; each candidate keeps its own retry budget (#2693 P2).
+            response = await call_with_failover(
+                lambda candidate: _attempt(candidate.config)
+            )
+        else:
+            response = await _attempt(config)
     except Exception as exc:
         raise map_error(exc, provider=config.provider_name) from exc
 
@@ -617,19 +629,36 @@ async def stream(
 
     async def _runner() -> None:
         nonlocal saw_output, in_think_block
-        try:
+
+        async def _attempt(active_config: LLMConfig) -> Any:
             # The worker owns the lease, including cancellation by the reader.
-            with acquire_runtime_provider(config) as provider:
-                response = await provider.chat_stream_with_retry(
+            with acquire_runtime_provider(active_config) as provider:
+                return await provider.chat_stream_with_retry(
                     messages=request_messages,
-                    model=config.model,
-                    reasoning_effort=config.reasoning_effort,
+                    model=active_config.model,
+                    reasoning_effort=active_config.reasoning_effort,
                     on_content_delta=_on_content_delta,
                     on_reasoning_delta=_on_reasoning_delta,
                     retry_delays=retry_delays,
                     allow_image_fallback=image_fallback_enabled,
                     **extra_kwargs,
                 )
+
+        try:
+            from deeptutor.services.llm.failover import (
+                call_with_failover,
+                chain_configured,
+            )
+
+            if chain_configured():
+                # Switching is only safe before any delta escaped; the attempt
+                # raises `partial_response=True` after output, which is not
+                # switchable, so this cannot splice two answers (#2693 P2).
+                response = await call_with_failover(
+                    lambda candidate: _attempt(candidate.config)
+                )
+            else:
+                response = await _attempt(config)
             if outcome is not None:
                 outcome.finish_reason = str(response.finish_reason or "")
                 outcome.usage = dict(response.usage or {})
