@@ -205,11 +205,13 @@ def _owner_handle_from_row(row: dict[str, Any]) -> str:
 def _extract_skill_zip(zip_path: Path, dest: Path) -> None:
     """Extract a package zip preserving subdirectories, defensively.
 
-    The KB upload extractor (:func:`safe_extract_zip`) flattens paths, which
-    would destroy a skill's ``references/`` layout — so this sibling keeps
-    relative paths and instead rejects traversal segments outright. Bomb
-    guards mirror the extractor's posture. Members are streamed through
-    ``ZipFile.open``, so no permission bits or links materialise.
+    Unlike the KB upload extractor (:func:`safe_extract_zip`), which sanitises
+    names, filters by document extension and skips bad members so the rest of
+    a course download still lands, a skill package is installed verbatim or
+    not at all: any file type is kept, names are not rewritten, and one
+    traversal segment rejects the whole package. Bomb guards mirror the
+    extractor's posture. Members are streamed through ``ZipFile.open``, so no
+    permission bits or links materialise.
     """
     dest.mkdir(parents=True, exist_ok=True)
     dest_root = dest.resolve()
