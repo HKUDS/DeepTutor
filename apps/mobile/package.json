@@ -2,18 +2,22 @@
   "name": "DeepTutorMobile",
   "version": "0.0.1",
   "private": true,
+  "main": "index.js",
   "scripts": {
-    "android": "react-native run-android",
-    "ios": "react-native run-ios",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
     "lint": "eslint .",
-    "start": "react-native start",
+    "start": "expo start --dev-client",
     "test": "jest",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "babel-preset-expo": "57.0.17",
+    "expo": "57.0.34",
+    "expo-dev-client": "57.0.22",
     "react": "19.2.3",
     "react-native": "0.86.3",
-    "react-native-safe-area-context": "^5.5.2"
+    "react-native-safe-area-context": "5.7.0"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",

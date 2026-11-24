@@ -1,0 +1,12 @@
+{
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal"
+    },
+    "development-simulator": {
+      "extends": "development",
+      "ios": { "simulator": true }
+    }
+  }
+}

@@ -61,6 +61,7 @@ yarn-error.log
 /vendor/bundle/
 
 # Temporary files created by Metro to check the health of the file watcher
+.expo/
 .metro-health-check*
 
 # testing
