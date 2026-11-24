@@ -1,5 +1,3 @@
-import type { AssessmentResult } from "@/lib/notebook-api";
-
 /**
  * Structured verdict sent by the AI judge as its ``verdict`` frame (see
  * ``deeptutor/api/routers/quiz_judge.py``) and stored on the notebook entry.
@@ -101,7 +99,7 @@ export function parseQuizVerdict(value: unknown): QuizVerdict | null {
 export interface QuizAssessment {
   is_correct: boolean;
   /** Omitted when the stored result should follow ``is_correct``. */
-  result?: AssessmentResult;
+  result?: QuizVerdictResult;
 }
 
 /**
