@@ -40,7 +40,12 @@ function sequence(value: number): number {
  * ``Math.random`` tail is only for a runtime with no Web Crypto at all.
  */
 export function newCommandId(): string {
-  const webCrypto = globalThis.crypto;
+  const { crypto: webCrypto } = globalThis as typeof globalThis & {
+    crypto?: {
+      randomUUID?: () => string;
+      getRandomValues?: (bytes: Uint8Array) => Uint8Array;
+    };
+  };
   if (typeof webCrypto?.randomUUID === "function") return webCrypto.randomUUID();
   const bytes = new Uint8Array(16);
   if (typeof webCrypto?.getRandomValues === "function") {

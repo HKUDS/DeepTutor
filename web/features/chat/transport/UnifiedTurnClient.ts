@@ -2,6 +2,7 @@ import type {
   ClientCommand,
   ServerEvent,
 } from "@/contracts/generated/turn-protocol";
+import { scopedUrl } from "@/lib/workspace-scope";
 
 import {
   NO_LLM_ACCESS,
@@ -98,6 +99,7 @@ export class UnifiedTurnClient {
 
   constructor(onEvent: (event: StreamEvent) => void, onClose?: () => void) {
     this.runtime = new TurnRuntimeClient({
+      url: scopedUrl("/ws"),
       onEvent(event) {
         const streamEvent = toStreamEvent(event);
         if (streamEvent) onEvent(streamEvent);
