@@ -2144,6 +2144,13 @@ class MasteryAssessTool(BaseTool):
                 turn_id=_resolve_turn_id(kwargs),
             )
         except MasteryInteractionError as exc:
+            from deeptutor.learning.lesson_evidence import LessonUnavailable, assessment_evidence
+
+            refusal = kwargs.get("_on_focused_assessment_refusal")
+            if callable(refusal) and isinstance(exc.__cause__, LessonUnavailable):
+                packet = assessment_evidence(progress, kp_id)
+                if packet.get("id") and packet.get("coverage", {}).get("scope") == "focus":
+                    refusal(kp_id, packet["id"], str(exc))
             return ToolResult(content=str(exc), success=False)
         if not receipt["final"]:
             return _json_result({"knowledge_point_id": kp_id, **receipt}, meta_key="mastery_assess")

@@ -182,6 +182,8 @@ class MasteryLoopCapability:
             updated["_mastery_session_mode"] = context.metadata.get("mastery_session_mode")
             updated["_session_id"] = str(context.session_id or "").strip()
             updated["_turn_id"] = str(context.metadata.get("turn_id") or "").strip()
+            if tool_name == "mastery_assess":
+                updated["_on_focused_assessment_refusal"] = _focused_assessment_recorder(context)
             if tool_name == "mastery_profile":
                 updated["_learner_message"] = context.user_message or ""
                 selection = int(state.get("profile_selection", 0)) + 1
@@ -356,7 +358,7 @@ class MasteryLoopCapability:
         return None
 
     def final_text_override(self, context: UnifiedContext, final_text: str) -> str | None:
-        """End the turn on the card once a question has been posed.
+        """End the turn on a posed question or an unchanged assessment refusal.
 
         A posed question used to park the turn inside ``pause_for_user``: the
         runtime moved it to ``waiting_input`` and waited on a reply queue, so
@@ -379,12 +381,19 @@ class MasteryLoopCapability:
         if not self.is_active(context):
             return None
         state = context.extension("mastery")
+        assessment_notice = (
+            _focused_assessment_stop_notice(context)
+            if not final_text.strip()
+            and not state.get("quiz_requested")
+            and not state.get("card_posted")
+            else None
+        )
         notice = ""
         if state.get("profile_write_pending"):
-            if not final_text.strip() and not state.get("card_posted"):
+            if not final_text.strip() and not state.get("card_posted") and not assessment_notice:
                 # This hook also runs after every tool batch. An optional
                 # storage notice cannot end work still in progress; append it
-                # only to a real final answer or an accepted question card.
+                # only when the turn is already ending.
                 return None
             # Optional memory failure must not deadlock otherwise valid tutoring.
             # The native status corrects any unsupported persistence promise;
@@ -404,7 +413,7 @@ class MasteryLoopCapability:
             return notice + ("\n\n" + content if content.strip() else "")
 
         if not state.get("card_posted"):
-            return with_notice(None)
+            return with_notice(assessment_notice)
         if final_text.strip():
             # A tool-less finish round already wrote the answer; the card was
             # posed earlier in the turn and has nothing to override.
@@ -626,6 +635,53 @@ class MasteryLoopCapability:
                 "put it last."
             )
         return "\n".join(lines)
+
+
+def _assessment_binding(context: UnifiedContext) -> tuple[Any, ...]:
+    return (
+        context.session_id,
+        context.metadata.get("turn_id"),
+        context.metadata.get("mastery_path_id"),
+        context.metadata.get("mastery_session_mode"),
+    )
+
+
+def _focused_assessment_recorder(context: UnifiedContext) -> Callable[[str, str, str], None]:
+    binding = _assessment_binding(context)
+    state = context.extension("mastery")
+
+    def record(kp_id: str, packet_id: str, reason: str) -> None:
+        if not context.metadata.get("mastery_mode") or _assessment_binding(context) != binding:
+            return
+        failure = (binding, kp_id, packet_id, reason)
+        # Let the model recover from the first refusal. Changing optional
+        # model feedback does not make the same learner assessment a new one.
+        state["focused_assessment_repeated"] = state.get("focused_assessment_refusal") == failure
+        state["focused_assessment_refusal"] = failure
+
+    return record
+
+
+def _focused_assessment_stop_notice(context: UnifiedContext) -> str | None:
+    state = context.extension("mastery")
+    if not state.get("focused_assessment_repeated"):
+        return None
+    binding, kp_id, packet_id, _ = state["focused_assessment_refusal"]
+    if _assessment_binding(context) != binding:
+        return None
+
+    from deeptutor.learning.lesson_evidence import assessment_evidence
+    from deeptutor.learning.storage import LearningStore
+    from deeptutor.services.prompt import get_prompt_manager
+
+    # Another tool in the same round can prepare assessment evidence. Honor
+    # that progress and let the next model round grade with the new packet.
+    progress = LearningStore().load(str(binding[2] or "").strip())
+    if progress is None or assessment_evidence(progress, kp_id).get("id") != packet_id:
+        return None
+
+    pack = get_prompt_manager().load_prompts("mastery", "mastery_loop", context.language)
+    return _prompt_text(pack, ("notices", "focused_assessment_stopped")) or None
 
 
 def _card_end_marker(context: UnifiedContext) -> Callable[[], None]:
