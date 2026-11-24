@@ -19,6 +19,7 @@ export type ChatScreenProps = {
   messages: readonly Message[];
   phase: 'ready' | 'running' | 'waiting' | 'stopping';
   waitingPrompt: string | null;
+  canLeaveTurn: boolean;
   error: string | null;
   send: (text: string) => boolean;
   reply: (text: string) => Promise<boolean>;
@@ -41,6 +42,7 @@ export function ChatScreen({
   messages,
   phase,
   waitingPrompt,
+  canLeaveTurn,
   error,
   send,
   reply,
@@ -169,7 +171,7 @@ export function ChatScreen({
         ]}
       >
         <ErrorNotice message={actionError || error} />
-        {connection === 'stopped' || connection === 'idle' ? (
+        {connection === 'stopped' || connection === 'idle' || canLeaveTurn ? (
           <Action
             title="Reconnect"
             tone="secondary"
@@ -228,7 +230,8 @@ export function ChatScreen({
                 disabled={replying}
                 onPress={stop}
               />
-            ) : (
+            ) : null}
+            {phase === 'ready' || canLeaveTurn ? (
               <Action
                 title="New chat"
                 tone="secondary"
@@ -239,7 +242,7 @@ export function ChatScreen({
                   setActionError(null);
                 }}
               />
-            )}
+            ) : null}
           </View>
         ) : null}
       </View>

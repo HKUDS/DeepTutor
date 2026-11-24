@@ -248,7 +248,7 @@ test('clears a rejected durable start and recovers from a missing admission resp
   });
   expect(runtime.getSnapshot()).toMatchObject({
     phase: 'ready',
-    error: 'Configure a model first.',
+    error: 'The server rejected the request.',
   });
   sockets[1].open();
   expect(sockets[1].sent).toHaveLength(0);
@@ -269,13 +269,13 @@ test('terminal errors release the composer without waiting for DONE', () => {
   runtime.send('Question');
   socket.frame(
     streamEvent('error', 1, {
-      content: 'Model failed',
+      content: 'PRIVATE_PROVIDER_DETAIL',
       metadata: { turn_terminal: true },
     }),
   );
   expect(runtime.getSnapshot()).toMatchObject({
     phase: 'ready',
-    error: 'Model failed',
+    error: 'The server could not finish the response.',
   });
   expect(runtime.send('Next')).toBe(true);
   runtime.stop();
@@ -356,7 +356,7 @@ test('replays retryable subscription failures on the same cursor, then ends a ma
   socket.frame(failure);
   expect(runtime.getSnapshot()).toMatchObject({
     phase: 'waiting',
-    error: failure.message,
+    error: 'The connection could not recover this response.',
   });
   jest.advanceTimersByTime(500);
   const reopened = sockets[1];
@@ -376,10 +376,76 @@ test('replays retryable subscription failures on the same cursor, then ends a ma
   expect(runtime.getSnapshot()).toMatchObject({
     phase: 'ready',
     waitingPrompt: null,
-    error: failure.message,
+    error: 'The connection could not recover this response.',
   });
   runtime.stop();
 });
+
+test('retries a handshake that never opens and ignores a late socket', () => {
+  const { runtime, socket, sockets } = harness();
+  jest.advanceTimersByTime(13_000);
+  expect(sockets).toHaveLength(2);
+  socket.open();
+  expect(socket.readyState).toBe(3);
+  expect(runtime.getSnapshot().connection).not.toBe('connected');
+  sockets[1].open();
+  expect(runtime.getSnapshot().connection).toBe('connected');
+  runtime.stop();
+  jest.advanceTimersByTime(60_000);
+  expect(sockets).toHaveLength(2);
+});
+
+test('a silent admitted turn attempts replay and can be left without reusing its session', () => {
+  const { runtime, socket, sockets } = harness();
+  socket.open();
+  runtime.send('Question');
+  socket.frame(streamEvent('content', 1, { content: 'Partial answer' }));
+  jest.advanceTimersByTime(60_000);
+  sockets[1].open();
+  expect(sockets[1].sent[0]).toMatchObject({
+    type: 'resume_from',
+    turn_id: 'turn-1',
+    seq: 1,
+  });
+  jest.advanceTimersByTime(30_000);
+  expect(runtime.getSnapshot()).toMatchObject({
+    phase: 'running',
+    canLeaveTurn: true,
+  });
+  runtime.reset();
+  sockets[2].open();
+  expect(runtime.send('New chat')).toBe(true);
+  expect(sockets[2].sent[0]).not.toHaveProperty('session_id');
+  runtime.stop();
+});
+
+test.each(['rejected', 'timed out'])(
+  'a completed turn releases the composer after Stop is %s',
+  async result => {
+    const { runtime, socket } = harness();
+    socket.open();
+    runtime.send('Question');
+    socket.frame(streamEvent('session', 1));
+    const stop = runtime.cancel();
+    socket.frame(streamEvent('done', 2));
+    expect(runtime.getSnapshot().phase).toBe('stopping');
+    if (result === 'timed out') {
+      jest.advanceTimersByTime(30_000);
+    } else {
+      socket.frame({
+        type: 'command_ack',
+        command_id: String(socket.sent.at(-1)?.command_id),
+        command_type: 'cancel_turn',
+        accepted: false,
+      });
+    }
+    await stop;
+    expect(runtime.getSnapshot().phase).toBe('ready');
+    expect(runtime.send('Next question')).toBe(true);
+    expect(socket.sent.at(-1)).not.toHaveProperty('session_id');
+    runtime.stop();
+  },
+);
 
 test('bounds repeated replay failures and lets the learner reconnect without abandoning the turn', () => {
   const { runtime, socket, sockets } = harness();

@@ -122,7 +122,7 @@ test('a failed cookie clear blocks a server switch before authentication', async
   expect(session.getSnapshot()).toMatchObject({
     phase: 'connect',
     origin: null,
-    error: 'Cookie error',
+    error: 'Could not clear the saved session. Try again.',
   });
 });
 
@@ -186,3 +186,24 @@ test('logout clears the native jar even when its HTTP request fails', async () =
     error: 'Offline',
   });
 });
+
+test.each(['logout', 'disconnect'] as const)(
+  '%s still clears the native jar when removing the saved origin fails',
+  async action => {
+    const { session, auth, clearCookies, storage } = fixture(first);
+    auth.status.mockResolvedValueOnce(signedIn);
+    await session.restore();
+    storage.write.mockRejectedValueOnce(
+      new Error('local path or other detail'),
+    );
+
+    await session[action]();
+
+    expect(clearCookies).toHaveBeenCalledTimes(1);
+    expect(auth.logout).toHaveBeenCalledTimes(action === 'logout' ? 1 : 0);
+    expect(session.getSnapshot()).toMatchObject({
+      phase: action === 'logout' ? 'login' : 'connect',
+      error: 'Could not update the saved server address.',
+    });
+  },
+);

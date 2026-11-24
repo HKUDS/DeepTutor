@@ -1,6 +1,7 @@
 import { fireEvent, waitFor } from '@testing-library/react-native';
 import { renderRouter, screen, testRouter } from 'expo-router/testing-library';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { parse } from 'query-string';
 import RootLayout from '../app/_layout';
 import { redirectSystemPath } from '../app/+native-intent';
 import ChatRoute from '../app/chat';
@@ -43,6 +44,14 @@ test('native intents allow known routes and reject input the app does not use', 
   );
   expect(redirectSystemPath({ path: '/unknown' })).toBe('/');
   expect(redirectSystemPath({ path: '/'.repeat(300) })).toBe('/');
+  expect(redirectSystemPath({ path: '/chat?x=%E0%A4' })).toBe('/');
+});
+
+test('query-string still decodes valid and malformed parameters with the SDK-compatible patch', () => {
+  expect(parse('word=hello%20world&word=ok&odd=%E0%A4')).toMatchObject({
+    word: ['hello world', 'ok'],
+    odd: expect.any(String),
+  });
 });
 
 function mockSession(initial: 'connect' | 'login' | 'chat') {
@@ -73,6 +82,7 @@ beforeEach(() => {
     messages: [],
     phase: 'ready',
     waitingPrompt: null,
+    canLeaveTurn: false,
     error: null,
     send,
     reply: async () => true,
@@ -80,6 +90,23 @@ beforeEach(() => {
     retryConnection: () => {},
     reset: () => {},
   });
+});
+
+test('a warm chat link reuses the existing runtime with Settings open', async () => {
+  mockSession('chat');
+  const initialChat = mockChat({ origin });
+  const mount = jest.fn();
+  mockChat.mockImplementation(function useMountedChat() {
+    useEffect(mount, []);
+    return initialChat;
+  });
+  const { getPathname } = renderRouter(routes);
+  await waitFor(() => expect(getPathname()).toBe('/chat'));
+  fireEvent.press(screen.getByRole('button', { name: 'Settings' }));
+  await waitFor(() => expect(getPathname()).toBe('/settings'));
+  testRouter.navigate(redirectSystemPath({ path: 'deeptutor-mobile://chat' }));
+  await waitFor(() => expect(getPathname()).toBe('/chat'));
+  expect(mount).toHaveBeenCalledTimes(1);
 });
 
 test('a protected deep link routes to server setup while disconnected', async () => {

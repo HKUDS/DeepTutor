@@ -14,6 +14,7 @@ import {
 } from '@/features/chat/transport/TurnRuntimeClient';
 import {
   browserSocketFactory,
+  type SocketMessageEvent,
   type TurnSocketFactory,
 } from '@/features/chat/transport/socket';
 import { shouldAppendEventContent } from '@/lib/stream';
@@ -25,6 +26,7 @@ type ChatState = {
   messages: ChatMessage[];
   phase: ChatPhase;
   waitingPrompt: string | null;
+  canLeaveTurn: boolean;
   error: string | null;
 };
 type ChatOptions = {
@@ -40,12 +42,17 @@ type ActiveTurn = {
   cancelRequested: boolean;
   cancelSent: boolean;
   replayRetries: number;
+  terminal?: { error?: string };
+  idleRecovery?: boolean;
 };
 type Timer = ReturnType<typeof setTimeout>;
 
 const ACK_TIMEOUT_MS = 30_000;
 const MAX_REPLAY_RETRIES = 3;
 const START_TIMEOUT_MS = 30_000;
+const SOCKET_OPEN_TIMEOUT_MS = 12_000;
+const TURN_IDLE_TIMEOUT_MS = 60_000;
+const TURN_RECOVERY_TIMEOUT_MS = 30_000;
 const AUTH_PROBE_INTERVAL_MS = 5_000;
 const START_ERRORS = new Set([
   'start_turn_rejected',
@@ -63,6 +70,7 @@ function initialState(): ChatState {
     messages: [],
     phase: 'ready',
     waitingPrompt: null,
+    canLeaveTurn: false,
     error: null,
   };
 }
@@ -76,6 +84,7 @@ export class MobileChatRuntime {
   private sessionId: string | undefined;
   private timer: Timer | undefined;
   private replayTimer: Timer | undefined;
+  private idleTimer: Timer | undefined;
   private visible = true;
   private authProbe: Promise<boolean> | undefined;
   private nextAuthProbeAt = 0;
@@ -99,6 +108,7 @@ export class MobileChatRuntime {
   stop() {
     this.clearStartTimeout();
     this.clearReplayRetry();
+    this.clearIdleTimer();
     this.active = null;
     this.sessionId = undefined;
     this.retiredTurnIds.clear();
@@ -109,24 +119,34 @@ export class MobileChatRuntime {
   setVisible(visible: boolean) {
     const resumed = visible && !this.visible;
     this.visible = visible;
+    if (!visible) this.clearIdleTimer();
     const client = this.client;
     if (!client) return;
     // A socket can still report OPEN after Android/iOS has suspended the app
     // and the route has changed. Reopen it and replay from the live cursor.
     if (resumed && client.state === 'connected') client.manualRetry();
     client.setPageVisible(visible);
+    if (resumed && this.active) this.watchTurn(this.active);
   }
 
   retryConnection = () => {
     if (!this.visible) return;
     this.clearReplayRetry();
-    if (this.active) this.active.replayRetries = 0;
+    if (this.active) {
+      this.active.replayRetries = 0;
+      this.active.idleRecovery = false;
+      this.watchTurn(this.active);
+    }
     this.update({ error: null });
     this.client?.manualRetry();
   };
 
   reset = () => {
-    if (this.active) return;
+    if (this.active && !this.state.canLeaveTurn) return;
+    this.active = null;
+    this.clearIdleTimer();
+    this.clearStartTimeout();
+    this.clearReplayRetry();
     this.sessionId = undefined;
     this.closeTransport();
     // Keep previously seen turn IDs fenced off until the old socket is gone.
@@ -156,6 +176,7 @@ export class MobileChatRuntime {
         { id: messageId, question, answer: '' },
       ],
       phase: 'running',
+      canLeaveTurn: false,
       error: null,
     });
     this.timer = setTimeout(() => {
@@ -211,6 +232,7 @@ export class MobileChatRuntime {
     active.replying = true;
     const prompt = this.state.waitingPrompt;
     this.update({ phase: 'running', waitingPrompt: null, error: null });
+    this.watchTurn(active);
     try {
       const accepted = await this.client.sendAwaitingAck(
         buildSubmitUserReply({ turnId: active.turnId, text }),
@@ -231,6 +253,7 @@ export class MobileChatRuntime {
           error:
             'Could not confirm your reply. Check your connection and try again.',
         });
+        this.watchTurn(active);
       }
       return false;
     } finally {
@@ -248,18 +271,26 @@ export class MobileChatRuntime {
       );
       if (this.active !== active) return;
       if (accepted) {
-        this.finishTurn();
+        this.finishTurn(active.terminal?.error);
         return;
       }
     } catch {
       // Delivery can time out while the owner is still unwinding.
     }
     if (this.active === active) {
+      if (active.terminal) {
+        // The server observed a terminal frame, but ownership release is
+        // unconfirmed. A subsequent question must use a new session.
+        this.sessionId = undefined;
+        this.finishTurn(active.terminal.error);
+        return;
+      }
       active.cancelRequested = false;
       active.cancelSent = false;
       this.update({
         phase: this.state.waitingPrompt ? 'waiting' : 'running',
         error: 'Could not confirm the stop request. Try Stop again.',
+        canLeaveTurn: true,
       });
     }
   }
@@ -272,6 +303,14 @@ export class MobileChatRuntime {
         const socket = factory(url);
         let opened = false;
         let closedByClient = false;
+        let timedOut = false;
+        let handleTimeout: ((event: SocketMessageEvent) => void) | undefined;
+        const openDeadline = setTimeout(() => {
+          timedOut = true;
+          handleTimeout?.({ data: undefined });
+          if (this.client === client) this.checkAuth();
+          socket.close();
+        }, SOCKET_OPEN_TIMEOUT_MS);
         // Keep the shared replay cursor from being changed by frames for a
         // retired turn, or by a second turn while another one is active.
         return {
@@ -281,10 +320,18 @@ export class MobileChatRuntime {
           send: data => socket.send(data),
           close: (code, reason) => {
             closedByClient = true;
+            clearTimeout(openDeadline);
             socket.close(code, reason);
           },
           addEventListener: (type, listener) => {
+            if (type === 'close') handleTimeout = listener;
             socket.addEventListener(type, event => {
+              if (timedOut) {
+                if (type === 'open') socket.close();
+                return;
+              }
+              if (type === 'open' || type === 'close')
+                clearTimeout(openDeadline);
               if (type === 'open') opened = true;
               if (type === 'message') {
                 const parsed = parseTurnEvent(event.data);
@@ -316,7 +363,14 @@ export class MobileChatRuntime {
         if (this.client === client) this.onEvent(event);
       },
       onStateChange: connection => {
-        if (this.client === client) this.update({ connection });
+        if (this.client === client) {
+          this.update({
+            connection,
+            ...(connection === 'idle' && this.active?.turnId
+              ? { canLeaveTurn: true }
+              : {}),
+          });
+        }
       },
     });
     this.client = client;
@@ -383,20 +437,22 @@ export class MobileChatRuntime {
         active.turnId &&
         event.turn_id === active.turnId
       ) {
-        const error =
-          event.message || 'The connection could not recover this response.';
+        const error = 'The connection could not recover this response.';
         if (event.retryable) this.retryReplay(active, error);
         else this.finishTurn(error);
       } else if (START_ERRORS.has(event.error_code) && !active.turnId) {
-        this.finishTurn(event.message || 'The server rejected the request.');
+        this.finishTurn(
+          event.error_code === NO_LLM_ACCESS
+            ? 'Your account does not have access to a model.'
+            : 'The server rejected the request.',
+        );
         // The shared runtime only drops the durable start when it observes a
         // stream event. Remove rejected commands by replacing the transport.
         this.closeTransport();
         this.openTransport();
       } else {
         this.update({
-          error:
-            event.message || 'The connection could not recover this response.',
+          error: 'The connection could not recover this response.',
         });
       }
       return;
@@ -408,6 +464,9 @@ export class MobileChatRuntime {
       this.clearStartTimeout();
     }
     if (event.session_id) this.sessionId = event.session_id;
+    active.idleRecovery = false;
+    if (this.state.canLeaveTurn)
+      this.update({ canLeaveTurn: false, error: null });
     if (active.replayRetries || this.replayTimer !== undefined) {
       active.replayRetries = 0;
       this.clearReplayRetry();
@@ -442,12 +501,12 @@ export class MobileChatRuntime {
         if (event.metadata?.turn_terminal === true) {
           this.observeTerminal(
             active,
-            event.content || 'The server could not finish the response.',
+            'The server could not finish the response.',
           );
           return;
         }
         this.update({
-          error: event.content || 'The server reported an error.',
+          error: 'The server reported an error.',
         });
         break;
       case 'done':
@@ -459,6 +518,7 @@ export class MobileChatRuntime {
         );
         return;
     }
+    this.watchTurn(active);
     if (active.cancelRequested) this.cancelAdmittedTurn(active);
   }
 
@@ -466,6 +526,8 @@ export class MobileChatRuntime {
     // DONE can arrive before the server releases the owner lease. Let the
     // Stop ACK confirm release before allowing another turn to start.
     if (active.cancelSent) {
+      active.terminal = { error };
+      this.clearIdleTimer();
       if (error) this.update({ error });
     } else {
       this.finishTurn(error);
@@ -478,6 +540,7 @@ export class MobileChatRuntime {
       this.update({
         connection: 'idle',
         error: error + ' Reconnect to continue.',
+        canLeaveTurn: true,
       });
       return;
     }
@@ -495,6 +558,39 @@ export class MobileChatRuntime {
     this.replayTimer = undefined;
   }
 
+  private clearIdleTimer() {
+    clearTimeout(this.idleTimer);
+    this.idleTimer = undefined;
+  }
+
+  private watchTurn(active: ActiveTurn) {
+    this.clearIdleTimer();
+    if (!this.visible || !active.turnId || this.state.phase !== 'running')
+      return;
+    this.idleTimer = setTimeout(
+      () => {
+        if (
+          this.active !== active ||
+          !this.visible ||
+          this.state.phase !== 'running'
+        )
+          return;
+        if (active.idleRecovery) {
+          this.update({
+            canLeaveTurn: true,
+            error:
+              'No updates from this response. Reconnect or start a new chat.',
+          });
+          return;
+        }
+        active.idleRecovery = true;
+        this.client?.manualRetry();
+        this.watchTurn(active);
+      },
+      active.idleRecovery ? TURN_RECOVERY_TIMEOUT_MS : TURN_IDLE_TIMEOUT_MS,
+    );
+  }
+
   private updateAnswer(active: ActiveTurn, answer: string, replace: boolean) {
     this.update({
       messages: this.state.messages.map(message =>
@@ -510,6 +606,7 @@ export class MobileChatRuntime {
     this.active = null;
     this.clearStartTimeout();
     this.clearReplayRetry();
+    this.clearIdleTimer();
     if (turnId) {
       this.retiredTurnIds.add(turnId);
       try {
@@ -523,6 +620,7 @@ export class MobileChatRuntime {
     this.update({
       phase: 'ready',
       waitingPrompt: null,
+      canLeaveTurn: false,
       error: error ?? this.state.error,
     });
   }

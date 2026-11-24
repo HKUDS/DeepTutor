@@ -3,7 +3,6 @@ import { ApiClient, ApiError } from '../../services/apiClient';
 export interface AuthStatus {
   enabled: boolean;
   authenticated: boolean;
-  username?: string;
 }
 
 function parseStatus(value: unknown): AuthStatus {
@@ -21,9 +20,6 @@ function parseStatus(value: unknown): AuthStatus {
   return {
     enabled: record.enabled,
     authenticated: record.authenticated,
-    ...(typeof record.username === 'string'
-      ? { username: record.username }
-      : {}),
   };
 }
 

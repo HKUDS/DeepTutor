@@ -138,8 +138,7 @@ export class ServerSession {
         ...(switching ? { origin: null } : {}),
       });
       if (switching) {
-        await this.dependencies.storage.write(null);
-        await this.dependencies.clearCookies();
+        await this.discardCredentials();
       }
       if (!isCurrent()) return;
       const status = await this.dependencies
@@ -184,20 +183,22 @@ export class ServerSession {
     logout: boolean,
   ): Promise<void> {
     this.applyStatus(origin, { enabled: true, authenticated: false });
-    await this.dependencies.storage.write(null);
-    let failure: unknown;
-    if (logout) {
-      try {
-        await this.dependencies.authFor(origin).logout(controller.signal);
-      } catch (error) {
-        failure = error;
-      }
-    }
-    await this.dependencies.clearCookies();
+    let logoutFailure: unknown;
+    await this.discardCredentials(
+      logout
+        ? async () => {
+            try {
+              await this.dependencies.authFor(origin).logout(controller.signal);
+            } catch (error) {
+              logoutFailure = error;
+            }
+          }
+        : undefined,
+    );
     if (!isCurrent()) return;
     await this.dependencies.storage.write(origin);
     if (!isCurrent()) return;
-    if (failure) throw failure;
+    if (logoutFailure) throw logoutFailure;
     if (!logout)
       this.update({ error: 'Sign in again to reconnect to this server.' });
   }
@@ -210,9 +211,26 @@ export class ServerSession {
         status: null,
         network: 'unknown',
       });
-      await this.dependencies.storage.write(null);
-      await this.dependencies.clearCookies();
+      await this.discardCredentials();
     });
+
+  private async discardCredentials(beforeClear?: () => Promise<void>) {
+    // Cookies are the credential. A failed preference write must never skip
+    // logout or native cleanup, and a failed cleanup must block new requests.
+    const [saved, cookies] = await Promise.allSettled([
+      Promise.resolve().then(() => this.dependencies.storage.write(null)),
+      Promise.resolve().then(async () => {
+        await beforeClear?.();
+        await this.dependencies.clearCookies();
+      }),
+    ]);
+    if (cookies.status === 'rejected') {
+      throw new Error('Could not clear the saved session. Try again.');
+    }
+    if (saved.status === 'rejected') {
+      throw new Error('Could not update the saved server address.');
+    }
+  }
 
   /**
    * Check an ambiguous transport failure without interpreting a network outage

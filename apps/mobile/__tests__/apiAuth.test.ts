@@ -25,7 +25,7 @@ test('login verifies the native cookie via a second HTTP request', async () => {
 
   await expect(
     auth.login(' demo ', 'pass', new AbortController().signal),
-  ).resolves.toEqual({ enabled: true, authenticated: true, username: 'demo' });
+  ).resolves.toEqual({ enabled: true, authenticated: true });
   expect(fetcher).toHaveBeenNthCalledWith(
     1,
     `${origin}/api/auth/login`,
