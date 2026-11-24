@@ -245,7 +245,9 @@ export function InstanceCrumb({
             <div className="dt-menu-label">{menuLabel}</div>
             <div className="dt-crumb-rows">
               {rows === null ? (
-                <div className="dt-crumb-empty">{failed ? t('Failed to load') : t('Loading...')}</div>
+                <div className={failed ? 'dt-crumb-empty' : 'dt-crumb-empty dt-delayed-reveal'}>
+                  {failed ? t('Failed to load') : t('Loading...')}
+                </div>
               ) : rows.length === 0 ? (
                 <div className="dt-crumb-empty">{trimmed ? t('No matches') : t('Nothing here yet')}</div>
               ) : (

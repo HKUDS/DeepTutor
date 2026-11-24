@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, expect, it, vi } from 'vitest'
-import PartnerDetailPage from '@/app/(workspace)/partners/[partnerId]/page'
+import PartnerDetailPage from '@/app/(shell)/(workspace)/partners/[partnerId]/page'
 import { loadPartnerSessionKey } from '@/lib/partner-session'
 import { initI18n } from '@/i18n/init'
 

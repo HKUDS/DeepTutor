@@ -31,6 +31,11 @@ import {
 import { readingWorkspaceIdOf, sessionRoute } from "@/lib/mastery-session";
 import { readingCollectionRoute } from "@/lib/learning-routes";
 import { subscribeSessionChanges } from "@/lib/session-events";
+import {
+  readSidebarSessionCache,
+  updateCachedSessions,
+  writeSidebarSessionCache,
+} from "./sidebar-session-cache";
 
 export default function WorkspaceSidebar() {
   const { t } = useTranslation();
@@ -43,15 +48,21 @@ export default function WorkspaceSidebar() {
     sessionStatuses,
     sidebarRefreshToken,
   } = useChatStateAdapter();
-  const [sessions, setSessions] = useState<SessionSummary[]>([]);
-  const [masteryTopics, setMasteryTopics] = useState<MasteryTopicLabel[]>([]);
+  const initialCache = readSidebarSessionCache(activeWorkspaceId());
+  const [sessions, setSessions] = useState<SessionSummary[]>(
+    () => initialCache?.sessions ?? [],
+  );
+  const [masteryTopics, setMasteryTopics] = useState<MasteryTopicLabel[]>(
+    () => initialCache?.masteryTopics ?? [],
+  );
   const [readingCollections, setReadingCollections] = useState<
     ReadingCollectionLabel[]
-  >([]);
+  >(() => initialCache?.readingCollections ?? []);
   const [loadingSessions, setLoadingSessions] = useState(false);
-  const hasLoadedSessionsRef = useRef(false);
+  const hasLoadedSessionsRef = useRef(Boolean(initialCache));
 
   const refreshSessions = useCallback(async () => {
+    const scope = activeWorkspaceId();
     if (!hasLoadedSessionsRef.current) {
       setLoadingSessions(true);
     }
@@ -65,6 +76,12 @@ export default function WorkspaceSidebar() {
           fetchMasteryTopicIndex().catch(() => [] as MasteryTopicLabel[]),
           fetchReadingCollectionIndex().catch(() => [] as ReadingCollectionLabel[]),
         ]);
+      writeSidebarSessionCache(scope, {
+        sessions: nextSessions,
+        masteryTopics: nextTopics,
+        readingCollections: nextCollections,
+      });
+      if (activeWorkspaceId() !== scope) return;
       setSessions(nextSessions);
       setMasteryTopics(nextTopics);
       setReadingCollections(nextCollections);
@@ -161,7 +178,7 @@ export default function WorkspaceSidebar() {
   const handleRenameSession = useCallback(
     async (sessionId: string, title: string) => {
       const updated = await updateSessionTitle(sessionId, title, sessionWorkspaceId(sessions.find(item => item.session_id === sessionId)));
-      setSessions((prev) =>
+      const apply = (prev: SessionSummary[]) =>
         prev.map((session) =>
           session.session_id === sessionId
             ? {
@@ -170,8 +187,9 @@ export default function WorkspaceSidebar() {
                 updated_at: updated.updated_at,
               }
             : session,
-        ),
-      );
+        );
+      setSessions(apply);
+      updateCachedSessions(activeWorkspaceId(), apply);
     },
     [sessions],
   );
@@ -181,9 +199,10 @@ export default function WorkspaceSidebar() {
       if (!window.confirm(t("Permanently delete this chat and its tutor threads? This cannot be undone."))) return;
       const deleted = sessions.find(item => item.session_id === sessionId);
       await deleteSession(sessionId, sessionWorkspaceId(deleted));
-      setSessions((prev) =>
-        prev.filter((session) => session.session_id !== sessionId),
-      );
+      const apply = (prev: SessionSummary[]) =>
+        prev.filter((session) => session.session_id !== sessionId);
+      setSessions(apply);
+      updateCachedSessions(activeWorkspaceId(), apply);
       if (selectedSessionId === sessionId) {
         cancelStreamingTurn();
         newSession({ workspaceId: activeWorkspaceId() || null });
@@ -214,15 +233,16 @@ export default function WorkspaceSidebar() {
       // A conversation moved to another workspace has left this list.
       const movedAway = "workspace_id" in patch &&
         (updated.preferences?.workspace_id || "") !== activeWorkspaceId();
-      setSessions((previous) =>
+      const apply = (previous: SessionSummary[]) =>
         movedAway
           ? previous.filter((session) => session.session_id !== sessionId)
           : previous.map((session) =>
               session.session_id === sessionId
                 ? { ...session, updated_at: updated.updated_at, preferences: updated.preferences }
                 : session,
-            ),
-      );
+            );
+      setSessions(apply);
+      updateCachedSessions(activeWorkspaceId(), apply);
     },
     [configureSession, sessions, selectedSessionId, router],
   );

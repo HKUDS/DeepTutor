@@ -65,7 +65,7 @@ test("saved and book quiz options use the math-capable Markdown renderer", () =>
     readFileSync(
       path.join(
         process.cwd(),
-        "app/(workspace)/learning/books/components/blocks/QuizBlock.tsx",
+        "app/(shell)/(workspace)/learning/books/components/blocks/QuizBlock.tsx",
       ),
       "utf8",
     ),

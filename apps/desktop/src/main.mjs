@@ -1,4 +1,4 @@
-import { app, BrowserWindow, WebContentsView, Menu, ipcMain, shell, dialog, session, nativeTheme } from 'electron';
+import { app, BrowserWindow, WebContentsView, Menu, ipcMain, shell, dialog, session, nativeTheme, screen } from 'electron';
 import { fork } from 'node:child_process';
 import { watch } from 'node:fs';
 import { mkdir, readFile, writeFile, rename, cp, appendFile } from 'node:fs/promises';
@@ -23,20 +23,30 @@ const runtimeHome = path.join(userRoot, 'workspace');
 const logPath = path.join(userRoot, 'logs/runtime.log');
 const activeFile = path.join(userRoot, 'active.json');
 const transactionFile = path.join(userRoot, 'upgrade.json');
+const windowStateFile = path.join(userRoot, 'window-state.json');
 // DeepTutor's own Settings page writes the interface language and theme here.
 const interfaceFile = path.join(runtimeHome, 'data/user/settings/interface.json');
 const seed = app.isPackaged ? path.join(process.resourcesPath, 'seed/runtime.json') : path.join(sourceDirectory, '../.local', targetId(), 'seed/runtime.json');
 const publicKey = await readFile(path.join(sourceDirectory, '../assets/runtime-public.pem'), 'utf8');
-// macOS draws the shell's own title bar under the traffic lights; Windows keeps its native frame and menu bar.
-const HEADER_HEIGHT = WINDOWS ? 0 : 44;
-const BACKGROUND = { light: '#ffffff', dark: '#161618' };
+
+// macOS draws its 44px bar under the traffic lights; Windows uses a 38px WCO bar matching the sidebar tone.
+const HEADER_HEIGHT = WINDOWS ? 38 : 44;
+const BACKGROUND = WINDOWS
+  ? { light: '#f7f7f8', dark: '#171719' }
+  : { light: '#ffffff', dark: '#161618' };
+const OVERLAY_SYMBOL = { light: '#27272a', dark: '#e4e4e7' };
+
 let window;
 let view;
+let contentVisible = false;
 let worker;
 let state = { phase: 'starting', step: 'opening' };
 let ui = { language: 'en', theme: 'light' };
 let interfaceWatcher;
 let interfaceTimer;
+let windowStateTimer;
+let windowStateWrite = Promise.resolve();
+let menuPopups;
 let busy = false;
 let quitting = false;
 let exitAllowed = false;
@@ -59,16 +69,85 @@ function coreVersion() {
   return active?.manifest.coreVersion ?? app.getVersion();
 }
 
+function titleBarOverlayOptions(theme) {
+  return {
+    color: BACKGROUND[theme],
+    symbolColor: OVERLAY_SYMBOL[theme],
+    height: HEADER_HEIGHT,
+  };
+}
+
+function minWindowSize(workArea) {
+  return {
+    minWidth: Math.min(820, workArea.width),
+    minHeight: Math.min(560, workArea.height),
+  };
+}
+
+function defaultWindowBounds() {
+  const { workArea } = screen.getPrimaryDisplay();
+  const { minWidth, minHeight } = minWindowSize(workArea);
+  const width = Math.min(1360, Math.max(minWidth, Math.round(workArea.width * 0.88)), workArea.width);
+  const height = Math.min(900, Math.max(minHeight, Math.round(workArea.height * 0.88)), workArea.height);
+  return {
+    x: Math.round(workArea.x + (workArea.width - width) / 2),
+    y: Math.round(workArea.y + (workArea.height - height) / 2),
+    width,
+    height,
+    maximized: false,
+  };
+}
+
+function resolveWindowBounds(saved) {
+  if (!saved || ![saved.x, saved.y, saved.width, saved.height].every(Number.isFinite)) {
+    return defaultWindowBounds();
+  }
+  const displays = screen.getAllDisplays();
+  const matched = displays.find(({ workArea }) => {
+    const overlapX = Math.min(saved.x + saved.width, workArea.x + workArea.width) - Math.max(saved.x, workArea.x);
+    const titleVisibleY = saved.y >= workArea.y - 8 && saved.y <= workArea.y + workArea.height - 60;
+    return overlapX >= 120 && titleVisibleY;
+  });
+  if (!matched) return defaultWindowBounds();
+  const { workArea } = matched;
+  const { minWidth, minHeight } = minWindowSize(workArea);
+  const width = Math.min(workArea.width, Math.max(minWidth, Math.round(saved.width)));
+  const height = Math.min(workArea.height, Math.max(minHeight, Math.round(saved.height)));
+  const x = Math.min(Math.max(Math.round(saved.x), workArea.x), workArea.x + workArea.width - width);
+  const y = Math.min(Math.max(Math.round(saved.y), workArea.y), workArea.y + workArea.height - height);
+  return { x, y, width, height, maximized: Boolean(saved.maximized) };
+}
+
+function persistWindowState(immediate = false) {
+  clearTimeout(windowStateTimer);
+  if (!WINDOWS || !window || window.isDestroyed()) return windowStateWrite;
+  const payload = { ...window.getNormalBounds(), maximized: window.isMaximized() };
+  const write = () => {
+    windowStateWrite = windowStateWrite.then(() => writeJSON(windowStateFile, payload)).catch(console.error);
+  };
+  if (immediate) write();
+  else windowStateTimer = setTimeout(write, 300);
+  return windowStateWrite;
+}
+
 /** What the shell page shows, already in the user's language. */
 function snapshot() {
   const failed = state.phase === 'error';
   return {
     phase: state.phase, theme: ui.theme, language: ui.language,
+    contentVisible,
     title: failed ? t('errorTitle') : state.phase === 'stopped' ? t('stoppedTitle') : '',
     message: failed ? t('errorBody') : state.step ? t(state.step) : '',
     detail: failed ? state.message ?? '' : '',
     tagline: t('tagline'), retry: t('retry'), logs: t('logs'),
     edition: `${EDITION.full} v${coreVersion()}`,
+    menus: [
+      { id: 'app', label: 'Open DeepTutor' },
+      { id: 'edit', label: t('edit') },
+      { id: 'view', label: t('view') },
+      { id: 'core', label: t('core') },
+      { id: 'window', label: t('window') },
+    ],
   };
 }
 
@@ -78,8 +157,8 @@ function publish() {
 
 function status(next) {
   state = { ...state, ...next };
-  publish();
   if (next.phase && next.phase !== 'ready') hideContent();
+  publish();
 }
 
 async function readInterface() {
@@ -90,12 +169,23 @@ async function readInterface() {
   return { language: resolveLanguage(saved.language), theme: dark ? 'dark' : 'light' };
 }
 
+function applyThemeChrome() {
+  const bg = BACKGROUND[ui.theme];
+  if (window && !window.isDestroyed()) {
+    window.setBackgroundColor(bg);
+    if (WINDOWS) window.setTitleBarOverlay(titleBarOverlayOptions(ui.theme));
+  }
+  if (view && !view.webContents.isDestroyed()) {
+    view.setBackgroundColor(bg);
+  }
+}
+
 async function refreshInterface() {
   const next = await readInterface();
   if (next.language === ui.language && next.theme === ui.theme) return;
   ui = next;
   buildMenu();
-  window?.setBackgroundColor(BACKGROUND[ui.theme]);
+  applyThemeChrome();
   publish();
 }
 
@@ -112,6 +202,7 @@ function watchInterface() {
 }
 
 function hideContent() {
+  contentVisible = false;
   if (!view) return;
   window?.contentView.removeChildView(view);
   view.webContents.close();
@@ -119,19 +210,27 @@ function hideContent() {
 }
 
 function layout() {
-  if (!view || !window) return;
+  if (!view || !window || window.isDestroyed()) return;
   const bounds = window.getContentBounds();
-  view.setBounds({ x: 0, y: HEADER_HEIGHT, width: bounds.width, height: Math.max(1, bounds.height - HEADER_HEIGHT) });
+  view.setBounds({
+    x: 0,
+    y: HEADER_HEIGHT,
+    width: Math.max(1, bounds.width),
+    height: Math.max(1, bounds.height - HEADER_HEIGHT),
+  });
 }
 
-async function openContent(url) {
+async function openContent(ready) {
   hideContent();
-  const origin = new URL(url).origin;
-  view = new WebContentsView({ webPreferences: {
+  const origin = new URL(ready.url).origin;
+  const nextView = new WebContentsView({ webPreferences: {
     contextIsolation: true, sandbox: true, nodeIntegration: false, webSecurity: true,
     partition: 'persist:deeptutor',
   } });
-  const content = view.webContents;
+  view = nextView;
+  nextView.setBackgroundColor(BACKGROUND[ui.theme]);
+  nextView.setVisible(false);
+  const content = nextView.webContents;
   content.setWindowOpenHandler(({ url: target }) => {
     if (target.startsWith(origin + '/') || target.startsWith(`blob:${origin}/`)) {
       return { action: 'allow', overrideBrowserWindowOptions: {
@@ -151,14 +250,29 @@ async function openContent(url) {
   content.on('will-redirect', restrict);
   content.on('will-attach-webview', event => event.preventDefault());
   content.on('render-process-gone', () => status({ phase: 'error', step: null, message: t('pageGone') }));
-  window.contentView.addChildView(view);
+  // Mount and size while hidden so Next.js hydrates at the real viewport width without flashing white.
+  window.contentView.addChildView(nextView);
   layout();
-  await content.loadURL(url);
+  // Load the canonical chat route directly; the Next.js root redirects to it.
+  await content.loadURL(new URL('/chat', ready.url).href);
+  if (view === nextView && !quitting) {
+    layout();
+    nextView.setVisible(true);
+    contentVisible = true;
+    status(ready);
+    content.focus();
+  }
 }
 
 function trustedShell(event) {
   if (event.sender !== window?.webContents || event.senderFrame !== window.webContents.mainFrame
     || event.senderFrame.url !== shellURL) throw new Error('Untrusted desktop IPC caller');
+}
+
+function targetContents() {
+  return view && state.phase === 'ready' && !view.webContents.isDestroyed()
+    ? view.webContents
+    : window?.webContents;
 }
 
 async function stopWorker() {
@@ -187,8 +301,11 @@ async function launchRuntime(installed) {
     let ready = false;
     child.on('message', next => {
       if (worker !== child || quitting) return;
+      if (next.phase === 'ready') {
+        if (!ready) { ready = true; resolve(next); }
+        return;
+      }
       status(next);
-      if (next.phase === 'ready' && !ready) { ready = true; resolve(next); }
       if (next.phase === 'error' && !ready) reject(new Error(next.message));
     });
     child.once('error', reject);
@@ -275,7 +392,7 @@ async function boot() {
     if (transaction) await writeJSON(transactionFile, { ...transaction, phase: 'complete' });
     watchInterface();
     await refreshInterface();
-    await openContent(ready.url);
+    await openContent(ready);
   } catch (error) {
     await logStartupFailure(error);
     if (transaction) {
@@ -314,7 +431,7 @@ async function installUpdate() {
     transaction = { phase: 'testing', previous: active.manifest, candidate: next.manifest, backup };
     await writeJSON(transactionFile, transaction);
     const ready = await launchRuntime(next);
-    await openContent(ready.url);
+    await openContent(ready);
     await writeJSON(activeFile, next.manifest);
     await writeJSON(transactionFile, { ...transaction, phase: 'complete' });
     active = next;
@@ -334,90 +451,178 @@ function buildMenu() {
     message: `${EDITION.full} v${coreVersion()}`,
     detail: t('aboutDetail', { core: active?.manifest.coreVersion ?? '—', runtime: active?.manifest.runtimeId ?? '—' }),
   }) };
+
+  const appSubmenu = WINDOWS ? [about, { type: 'separator' }, { role: 'quit', label: t('quit') }] : [
+    about,
+    { type: 'separator' },
+    { role: 'hide', label: t('hide') }, { role: 'hideOthers', label: t('hideOthers') }, { role: 'unhide', label: t('showAll') },
+    { type: 'separator' },
+    { role: 'quit', label: t('quit') },
+  ];
+
+  const editSubmenu = [
+    { role: 'undo', label: t('undo') }, { role: 'redo', label: t('redo') }, { type: 'separator' },
+    { role: 'cut', label: t('cut') }, { role: 'copy', label: t('copy') }, { role: 'paste', label: t('paste') },
+    { role: 'selectAll', label: t('selectAll') },
+  ];
+
+  // On Windows custom titlebar popups, route Edit actions explicitly to the active content view.
+  const editPopupSubmenu = [
+    { label: t('undo'), accelerator: 'CmdOrCtrl+Z', click: () => targetContents()?.undo() },
+    { label: t('redo'), accelerator: 'CmdOrCtrl+Y', click: () => targetContents()?.redo() },
+    { type: 'separator' },
+    { label: t('cut'), accelerator: 'CmdOrCtrl+X', click: () => targetContents()?.cut() },
+    { label: t('copy'), accelerator: 'CmdOrCtrl+C', click: () => targetContents()?.copy() },
+    { label: t('paste'), accelerator: 'CmdOrCtrl+V', click: () => targetContents()?.paste() },
+    { label: t('selectAll'), accelerator: 'CmdOrCtrl+A', click: () => targetContents()?.selectAll() },
+  ];
+
+  const viewSubmenu = [
+    { label: t('reload'), accelerator: 'CmdOrCtrl+R', click: () => view?.webContents.reload() },
+    { type: 'separator' },
+    { label: t('actualSize'), accelerator: 'CmdOrCtrl+0', click: () => view?.webContents.setZoomLevel(0) },
+    { label: t('zoomIn'), accelerator: 'CmdOrCtrl+Plus', click: () => view?.webContents.setZoomLevel(view.webContents.getZoomLevel() + 0.5) },
+    { label: t('zoomOut'), accelerator: 'CmdOrCtrl+-', click: () => view?.webContents.setZoomLevel(view.webContents.getZoomLevel() - 0.5) },
+    { type: 'separator' },
+    { role: 'togglefullscreen', label: t('fullscreen') },
+  ];
+
+  const coreSubmenu = [
+    { label: t('restartCore'), click: async () => {
+      const choice = await dialog.showMessageBox(window, { message: t('restartConfirm'), buttons: [t('cancel'), t('restart')], defaultId: 0, cancelId: 0 });
+      if (choice.response === 1) void boot();
+    } },
+    { label: t('installUpdate'), click: () => void installUpdate() }, { type: 'separator' },
+    { label: t('openData'), click: () => void shell.openPath(runtimeHome) },
+    { label: t('openLogs'), click: () => void shell.openPath(path.dirname(logPath)) },
+  ];
+
+  const windowSubmenu = WINDOWS ? [{ role: 'minimize', label: t('minimize') }] : [
+    { role: 'minimize', label: t('minimize') }, { role: 'zoom', label: t('zoom') },
+    { type: 'separator' }, { role: 'front', label: t('front') },
+  ];
+
   Menu.setApplicationMenu(Menu.buildFromTemplate([
-    { label: 'Open DeepTutor', submenu: WINDOWS ? [about, { type: 'separator' }, { role: 'quit', label: t('quit') }] : [
-      about,
-      { type: 'separator' },
-      { role: 'hide', label: t('hide') }, { role: 'hideOthers', label: t('hideOthers') }, { role: 'unhide', label: t('showAll') },
-      { type: 'separator' },
-      { role: 'quit', label: t('quit') },
-    ] },
-    { label: t('edit'), submenu: [
-      { role: 'undo', label: t('undo') }, { role: 'redo', label: t('redo') }, { type: 'separator' },
-      { role: 'cut', label: t('cut') }, { role: 'copy', label: t('copy') }, { role: 'paste', label: t('paste') },
-      { role: 'selectAll', label: t('selectAll') },
-    ] },
-    { label: t('view'), submenu: [
-      { label: t('reload'), accelerator: 'CmdOrCtrl+R', click: () => view?.webContents.reload() },
-      { type: 'separator' },
-      { label: t('actualSize'), accelerator: 'CmdOrCtrl+0', click: () => view?.webContents.setZoomLevel(0) },
-      { label: t('zoomIn'), accelerator: 'CmdOrCtrl+Plus', click: () => view?.webContents.setZoomLevel(view.webContents.getZoomLevel() + 0.5) },
-      { label: t('zoomOut'), accelerator: 'CmdOrCtrl+-', click: () => view?.webContents.setZoomLevel(view.webContents.getZoomLevel() - 0.5) },
-      { type: 'separator' },
-      { role: 'togglefullscreen', label: t('fullscreen') },
-    ] },
-    { label: t('core'), submenu: [
-      { label: t('restartCore'), click: async () => {
-        const choice = await dialog.showMessageBox(window, { message: t('restartConfirm'), buttons: [t('cancel'), t('restart')], defaultId: 0, cancelId: 0 });
-        if (choice.response === 1) void boot();
-      } },
-      { label: t('installUpdate'), click: () => void installUpdate() }, { type: 'separator' },
-      { label: t('openData'), click: () => void shell.openPath(runtimeHome) },
-      { label: t('openLogs'), click: () => void shell.openPath(path.dirname(logPath)) },
-    ] },
-    { role: 'windowMenu', label: t('window'), submenu: WINDOWS ? [{ role: 'minimize', label: t('minimize') }] : [
-      { role: 'minimize', label: t('minimize') }, { role: 'zoom', label: t('zoom') },
-      { type: 'separator' }, { role: 'front', label: t('front') },
-    ] },
+    { label: 'Open DeepTutor', submenu: appSubmenu },
+    { label: t('edit'), submenu: editSubmenu },
+    { label: t('view'), submenu: viewSubmenu },
+    { label: t('core'), submenu: coreSubmenu },
+    { role: 'windowMenu', label: t('window'), submenu: windowSubmenu },
   ]));
+
+  if (WINDOWS) menuPopups = new Map([
+    ['app', Menu.buildFromTemplate(appSubmenu)],
+    ['edit', Menu.buildFromTemplate(editPopupSubmenu)],
+    ['view', Menu.buildFromTemplate(viewSubmenu)],
+    ['core', Menu.buildFromTemplate(coreSubmenu)],
+    ['window', Menu.buildFromTemplate(windowSubmenu)],
+  ]);
+
+  // Keep native Win32 menu bar permanently hidden while retaining global shortcuts.
+  if (WINDOWS && window && !window.isDestroyed()) {
+    window.setAutoHideMenuBar(false);
+    window.setMenuBarVisibility(false);
+  }
 }
 
 if (!app.requestSingleInstanceLock()) { app.quit(); }
 else {
-  app.on('second-instance', () => { window?.show(); window?.focus(); });
+  app.on('second-instance', () => {
+    if (!window || window.isDestroyed()) return;
+    if (window.isMinimized()) window.restore();
+    window.show();
+    window.focus();
+  });
   app.on('before-quit', event => {
     if (exitAllowed) return;
     event.preventDefault();
     if (quitting) return;
     quitting = true;
     status({ phase: 'stopping', step: 'stopping' });
-    void stopWorker().finally(() => { exitAllowed = true; app.quit(); });
+    void Promise.all([persistWindowState(true), stopWorker()]).finally(() => { exitAllowed = true; app.quit(); });
   });
   app.on('window-all-closed', () => app.quit());
   // Electron waits for ESM evaluation before emitting ready; do not await ready
   // at module scope or the packaged application deadlocks before its first window.
   app.whenReady().then(async () => {
-  ui = await readInterface();
-  nativeTheme.on('updated', () => void refreshInterface());
-  const coreSession = session.fromPartition('persist:deeptutor');
-  // The web UI reads this marker to name the client, e.g. "Open DeepTutor for MacOS with Apple Silicon".
-  coreSession.setUserAgent(`${coreSession.getUserAgent()} ${agentMarker(app.getVersion())}`);
-  coreSession.setPermissionCheckHandler((_contents, permission) => permission === 'clipboard-sanitized-write');
-  coreSession.setPermissionRequestHandler(async (contents, permission, callback, details) => {
-    if (permission === 'clipboard-sanitized-write') return callback(true);
-    if (permission !== 'media' || contents !== view?.webContents || details.requestingUrl && !details.requestingUrl.startsWith(state.url + '/')) return callback(false);
-    const result = await dialog.showMessageBox(window, { type: 'question', message: t('mediaPrompt'), buttons: [t('deny'), t('allow')], defaultId: 0, cancelId: 0 });
-    callback(result.response === 1);
-  });
-  window = new BrowserWindow({
-    title: 'Open DeepTutor', width: 1360, height: 920, minWidth: 900, minHeight: 620,
-    backgroundColor: BACKGROUND[ui.theme],
-    ...(WINDOWS ? {} : { titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 18, y: 16 } }),
-    webPreferences: { preload: path.join(sourceDirectory, 'preload.cjs'), contextIsolation: true, sandbox: true, nodeIntegration: false },
-  });
-  window.webContents.on('will-navigate', event => event.preventDefault());
-  window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-  window.on('resize', layout);
-  window.on('close', event => { if (!exitAllowed) { event.preventDefault(); app.quit(); } });
-  for (const [channel, handler] of Object.entries({
-    status: () => snapshot(),
-    restart: () => { void boot(); },
-    logs: async () => { await mkdir(path.dirname(logPath), { recursive: true }); await shell.openPath(path.dirname(logPath)); },
-  })) ipcMain.handle(`desktop:${channel}`, (event, ...args) => { trustedShell(event); return handler(...args); });
-  buildMenu();
-  watchInterface();
-  await window.loadURL(shellURL);
-  void boot();
+    ui = await readInterface();
+    nativeTheme.on('updated', () => void refreshInterface());
+    const coreSession = session.fromPartition('persist:deeptutor');
+    // The web UI reads this marker to name the client, e.g. "Open DeepTutor for MacOS with Apple Silicon".
+    coreSession.setUserAgent(`${coreSession.getUserAgent()} ${agentMarker(app.getVersion())}`);
+    coreSession.setPermissionCheckHandler((_contents, permission) => permission === 'clipboard-sanitized-write');
+    coreSession.setPermissionRequestHandler(async (contents, permission, callback, details) => {
+      if (permission === 'clipboard-sanitized-write') return callback(true);
+      if (permission !== 'media' || contents !== view?.webContents || details.requestingUrl && !details.requestingUrl.startsWith(state.url + '/')) return callback(false);
+      const result = await dialog.showMessageBox(window, { type: 'question', message: t('mediaPrompt'), buttons: [t('deny'), t('allow')], defaultId: 0, cancelId: 0 });
+      callback(result.response === 1);
+    });
+
+    const initialBounds = WINDOWS ? resolveWindowBounds(await readJSON(windowStateFile).catch(() => null)) : null;
+    const size = initialBounds
+      ? { x: initialBounds.x, y: initialBounds.y, width: initialBounds.width, height: initialBounds.height,
+          ...minWindowSize(screen.getDisplayMatching(initialBounds).workArea) }
+      : { width: 1360, height: 920, minWidth: 900, minHeight: 620 };
+
+    window = new BrowserWindow({
+      title: 'Open DeepTutor',
+      ...size,
+      show: false,
+      backgroundColor: BACKGROUND[ui.theme],
+      ...(WINDOWS
+        ? { titleBarStyle: 'hidden', titleBarOverlay: titleBarOverlayOptions(ui.theme) }
+        : { titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 18, y: 16 } }),
+      webPreferences: { preload: path.join(sourceDirectory, 'preload.cjs'), contextIsolation: true, sandbox: true, nodeIntegration: false },
+    });
+
+    if (WINDOWS) {
+      window.setAutoHideMenuBar(false);
+      window.setMenuBarVisibility(false);
+    }
+
+    // Lock shell chrome zoom to 100% so the custom titlebar stays aligned with WCO controls.
+    window.webContents.setZoomFactor(1);
+    void window.webContents.setVisualZoomLevelLimits(1, 1);
+    window.webContents.on('will-navigate', event => event.preventDefault());
+    window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+
+    window.once('ready-to-show', () => {
+      if (initialBounds?.maximized) window.maximize();
+      window.show();
+    });
+
+    const syncLayoutAndState = () => {
+      layout();
+      persistWindowState();
+    };
+    window.on('resize', syncLayoutAndState);
+    window.on('move', () => persistWindowState());
+    window.on('maximize', syncLayoutAndState);
+    window.on('unmaximize', syncLayoutAndState);
+    window.on('enter-full-screen', layout);
+    window.on('leave-full-screen', layout);
+    screen.on('display-metrics-changed', layout);
+    window.on('close', event => {
+      if (!exitAllowed) { event.preventDefault(); app.quit(); }
+    });
+
+    for (const [channel, handler] of Object.entries({
+      status: () => snapshot(),
+      restart: () => { void boot(); },
+      logs: async () => { await mkdir(path.dirname(logPath), { recursive: true }); await shell.openPath(path.dirname(logPath)); },
+      popupMenu: (id, position) => new Promise(resolve => {
+        const menu = menuPopups?.get(id);
+        if (!menu || !window || window.isDestroyed()) return resolve();
+        const x = Number.isFinite(position?.x) ? Math.max(0, Math.round(position.x)) : 8;
+        const y = Number.isFinite(position?.y) ? Math.max(0, Math.round(position.y)) : HEADER_HEIGHT;
+        menu.popup({ window, x, y, callback: resolve });
+      }),
+    })) ipcMain.handle(`desktop:${channel}`, (event, ...args) => { trustedShell(event); return handler(...args); });
+
+    buildMenu();
+    watchInterface();
+    await window.loadURL(shellURL);
+    void boot();
   }).catch(async error => {
     await logStartupFailure(error);
     dialog.showErrorBox('Open DeepTutor', error.message);

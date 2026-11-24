@@ -95,7 +95,7 @@ export default function NotebookConsole({
 
   if (library.loading) {
     return (
-      <div className="flex h-full items-center justify-center">
+      <div className="dt-delayed-reveal flex h-full items-center justify-center">
         <Loader2 className="h-5 w-5 animate-spin text-[var(--muted-foreground)]" />
       </div>
     );

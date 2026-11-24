@@ -60,15 +60,21 @@ function messageOf(error: unknown): string {
   return String(error);
 }
 
+// The list rarely changes between visits. Cache it so re-entering /notebooks
+// paints the last known library instead of a spinner while it refreshes.
+let cachedNotebooks: NotebookSummary[] | null = null;
+
 export function useNotebookLibrary(
   initialId?: string | null,
 ): NotebookLibrary {
-  const [notebooks, setNotebooks] = useState<NotebookSummary[]>([]);
+  const [notebooks, setNotebooks] = useState<NotebookSummary[]>(
+    () => cachedNotebooks ?? [],
+  );
   const [selectedId, setSelectedId] = useState<string | null>(
     initialId ?? null,
   );
   const [selected, setSelected] = useState<NotebookDetailState | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => cachedNotebooks === null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
@@ -100,6 +106,7 @@ export function useNotebookLibrary(
     setError(null);
     try {
       const next = await listNotebooks();
+      cachedNotebooks = next;
       setNotebooks(next);
       // Only the route opens a notebook: `/notebooks` itself is the list.
       setSelectedId((current) =>

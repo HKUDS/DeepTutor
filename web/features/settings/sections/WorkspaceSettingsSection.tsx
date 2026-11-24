@@ -2,6 +2,7 @@
 
 import Tooltip from "@/shared/ui/Tooltip";
 import { useCallback, useEffect, useState } from 'react'
+import { Skeleton } from '@/shared/ui/Skeleton'
 import Link from 'next/link'
 import dynamic from 'next/dynamic'
 import { Archive, ArchiveRestore, FileText, Folder, FolderInput, Globe2, Pencil, Plus, Settings2 } from 'lucide-react'
@@ -97,10 +98,14 @@ function WorkspaceRow({ row, run, busy }: { row: ChatWorkspaceRegistration; run:
   )
 }
 
+// Settings round-trips are fast locally; cache the catalog so re-entering the
+// section paints the rows instantly and refreshes silently behind them.
+let cachedCatalog: WorkspaceCatalog | null = null
+
 export default function WorkspaceSettingsSection() {
   const { t } = useTranslation()
-  const [catalog, setCatalog] = useState<WorkspaceCatalog | null>(null)
-  const [root, setRoot] = useState('')
+  const [catalog, setCatalog] = useState<WorkspaceCatalog | null>(() => cachedCatalog)
+  const [root, setRoot] = useState(() => cachedCatalog?.root ?? '')
   const [busy, setBusy] = useState(false)
   const [creating, setCreating] = useState(false)
   const [browsing, setBrowsing] = useState(false)
@@ -112,6 +117,7 @@ export default function WorkspaceSettingsSection() {
   const [notice, setNotice] = useState('')
   const refresh = useCallback(async () => {
     const next = await getWorkspaceCatalog()
+    cachedCatalog = next
     setCatalog(next)
     setRoot(next.root)
     setError('')
@@ -138,7 +144,7 @@ export default function WorkspaceSettingsSection() {
       } />
       {error && <div role="alert" className="mb-4 rounded-lg border border-[var(--destructive)] p-3 text-sm text-[var(--destructive)]">{error}{!catalog && <button className="ml-3 underline" onClick={() => void refresh().catch(err => setError(String(err.message)))}>{t('Retry')}</button>}</div>}
       {(busy || notice) && <p role="status" className="mb-4 text-sm text-[var(--muted-foreground)]">{busy ? t('Working. Migration copies and verifies your files; please wait…') : notice}</p>}
-      {!catalog ? (!error && <div aria-busy="true" className="h-44 animate-pulse rounded-xl bg-[var(--muted)]" />) : (
+      {!catalog ? (!error && <Skeleton className="h-44 w-full rounded-xl" />) : (
         <fieldset disabled={busy} className="min-w-0 disabled:opacity-70">
           <SettingSection title={t('Custom workspaces')} description={t('Books, Mastery Path, Reading, Watching and conversations are isolated by workspace.')}>
             {creating && (

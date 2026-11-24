@@ -18,7 +18,7 @@ import {
 
 const loading = () => (
   <div
-    className="min-h-48 animate-pulse rounded-xl bg-[var(--muted)]/30"
+    className="dt-skeleton min-h-48 rounded-xl bg-muted/60"
     aria-busy="true"
   />
 );

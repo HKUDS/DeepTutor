@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
-import BookChatPanel from "@/app/(workspace)/learning/books/components/BookChatPanel";
+import BookChatPanel from "@/app/(shell)/(workspace)/learning/books/components/BookChatPanel";
 import type { StreamEvent } from "@/features/chat/model/protocol";
 import type { Book, Page } from "@/lib/book-types";
 import { COMMAND_CONFIRMATION_FAILED } from "@/features/chat/transport/command-delivery";

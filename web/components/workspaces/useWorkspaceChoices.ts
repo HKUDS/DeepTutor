@@ -12,9 +12,14 @@ export function useWorkspaceChoices() {
   const { t } = useTranslation()
   const pathname = usePathname() ?? '/'
   const active = useActiveWorkspaceId()
-  const { workspaces } = useChatWorkspaces()
+  const { workspaces, loaded } = useChatWorkspaces()
   const current = workspaces.find(row => row.workspace_id === active)
-  const currentName = active ? (current?.display_name ?? t('Workspace unavailable')) : t('General workspace')
+  // Before the first fetch settles there is no evidence the workspace is
+  // gone, so an empty label — not "Workspace unavailable" — keeps the header
+  // from flashing a wrong state on every route-group remount.
+  const currentName = active
+    ? (current?.display_name ?? (loaded ? t('Workspace unavailable') : ''))
+    : t('General workspace')
   const choices = [
     { workspace_id: '', display_name: t('General workspace') },
     ...workspaces.filter(row => row.workspace_id === active || (!row.archived && row.status === 'ready')),

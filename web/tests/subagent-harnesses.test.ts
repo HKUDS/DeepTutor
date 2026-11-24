@@ -45,7 +45,7 @@ test("Gemini CLI is retired and agent glyphs use official local assets", () => {
   assert.doesNotMatch(registry, /GeminiBackend/);
   const retiredRoute = path.join(
     process.cwd(),
-    "app/(utility)/settings/agents/gemini/page.tsx",
+    "app/(shell)/(utility)/settings/agents/gemini/page.tsx",
   );
   assert.equal(existsSync(retiredRoute), false);
 

@@ -1,6 +1,6 @@
 import { render, waitFor } from '@testing-library/react'
 import { expect, it, vi } from 'vitest'
-import PartnerDetailPage from '@/app/(workspace)/partners/[partnerId]/page'
+import PartnerDetailPage from '@/app/(shell)/(workspace)/partners/[partnerId]/page'
 import { initI18n } from '@/i18n/init'
 
 const getPartner = vi.hoisted(() => vi.fn())
