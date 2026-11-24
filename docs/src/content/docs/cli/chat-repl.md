@@ -138,7 +138,7 @@ This is how you build cross-session context — perfect for "follow-up" research
 Bring in specific records from your notebooks:
 
 ```text
-/notebook add my-notes:rec_abc123,rec_def456
+/notebook add <notebook-id>:a3f9c1e2,7c1b0d45
 /notebook clear
 ```
 
@@ -185,7 +185,7 @@ You> /refs
   tools       [rag, reason]
   kb          [physics, math]
   history     [sess_old_xyz]
-  notebooks   [my-notes:rec_abc123]
+  notebooks   [<notebook-id>:a3f9c1e2]
   language    en
   config      {"difficulty": "hard", "num_questions": 5}
 ```
@@ -261,7 +261,8 @@ You> /quit
 deeptutor session show sess_abc123 --format json | \
   jq -r '.messages[-1].content' > my-answer.md
 
-deeptutor notebook add-md my-notes my-answer.md --title "Chain rule explanation"
+deeptutor notebook add-md <notebook-id> my-answer.md --title "Chain rule explanation"
+# <notebook-id> is the 8-character id from `deeptutor notebook list`, not the notebook name
 ```
 
 ## See also

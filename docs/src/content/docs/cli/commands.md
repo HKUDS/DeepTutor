@@ -379,23 +379,27 @@ deeptutor session delete sess_abc123
 ## `deeptutor notebook` — notebook records
 
 ```bash
-# Create a notebook
+# Create a notebook — it prints its 8-character id (for example a3f9c1e2)
 deeptutor notebook create research-notes --description "Daily reading log"
 
-# Add a markdown record
-deeptutor notebook add-md research-notes paper-summary.md \
+# Look the id up again at any time
+deeptutor notebook list
+
+# Add a markdown record — every subcommand below takes the id, not the name
+deeptutor notebook add-md <notebook-id> paper-summary.md \
   --title "Attention is all you need" --type research
 
 # Replace a record's content
-deeptutor notebook replace-md research-notes rec_abc123 updated-summary.md
+deeptutor notebook replace-md <notebook-id> 7c1b0d45 updated-summary.md
 
 # Remove a record
-deeptutor notebook remove-record research-notes rec_abc123
+deeptutor notebook remove-record <notebook-id> 7c1b0d45
 
 # Inspect
-deeptutor notebook list
-deeptutor notebook show research-notes --format json
+deeptutor notebook show <notebook-id> --format json
 ```
+
+Only `create` takes a notebook name, and `list` takes no argument at all. The other four subcommands need the 8-character id. Only `add-md` hides a mistake: given an unknown id it skips the write and still prints a green "Added record …". `replace-md`, `remove-record` and `show` do exit non-zero — though `replace-md` reports it as "Record not found".
 
 `show --format` is `rich|json`; types: `chat`, `question`, `research`, `solve`, `co_writer`, `tutorbot`, `reading`, `video_learning`.
 

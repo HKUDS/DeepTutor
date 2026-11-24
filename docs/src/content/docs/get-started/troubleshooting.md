@@ -321,7 +321,7 @@ No every-N-turn scheduler fills them automatically.
 Run **Update** there, or call the API with the required layer, key, and mode:
 
 ```bash
-curl -X POST http://localhost:8001/api/v1/memory/runs/start \
+curl -X POST http://localhost:8001/api/memory/runs/start \
   -H 'Content-Type: application/json' \
   -d '{"layer":"L3","key":"recent","mode":"update"}'
 ```

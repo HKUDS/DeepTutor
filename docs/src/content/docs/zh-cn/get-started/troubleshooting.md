@@ -313,7 +313,7 @@ Long-poll / WebSocket 连接偶尔会掉。channel manager 会带退避自动重
 在那里运行 **Update**，或通过 API 提交必填的 layer、key、mode：
 
 ```bash
-curl -X POST http://localhost:8001/api/v1/memory/runs/start \
+curl -X POST http://localhost:8001/api/memory/runs/start \
   -H 'Content-Type: application/json' \
   -d '{"layer":"L3","key":"recent","mode":"update"}'
 ```

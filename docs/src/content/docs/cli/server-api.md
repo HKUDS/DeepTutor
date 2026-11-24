@@ -58,6 +58,7 @@ Start a turn by sending a `type: "start_turn"` or `type: "message"` payload:
 ```json
 {
   "type": "start_turn",
+  "protocol_version": "2.0",
   "content": "Find d/dx [sin(x^2)]",
   "capability": "deep_solve",
   "session_id": null,
@@ -72,7 +73,9 @@ Start a turn by sending a `type: "start_turn"` or `type: "message"` payload:
 }
 ```
 
-The runtime ignores `skills`; `read_skill` exposes every visible skill.
+The example above shows the payload for one turn. Every client frame on `/ws` must also carry `"protocol_version": "2.0"` — `start_turn`, `subscribe_turn`, `cancel_turn`, `ping`, and the rest. A frame that omits it is rejected with a `protocol_error` event (`error_code: "unsupported_protocol_version"`) before the payload is validated against any command model.
+
+`skills` narrows the turn rather than being ignored: the selection is intersected with the workspace allowlist, so a turn that names skills gives `read_skill` only those. Omitting it, or sending an empty list, inherits the workspace's full visible set. A turn selection can never exceed what the workspace permits.
 
 Other client types include `subscribe_turn`, `subscribe_session`, `resume_from`, `unsubscribe`, `cancel_turn`, `submit_user_reply`, `regenerate`, and `ping`; subscriptions replay after `after_seq` and terminal turns end with `done` (`error` first on failure).
 

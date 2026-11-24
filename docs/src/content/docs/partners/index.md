@@ -109,7 +109,7 @@ Partner chats share these slash commands:
 
 ## Web UI vs CLI
 
-Use the Web UI for channel configuration because it renders the live schema from `/api/v1/partners/channels/schema` and masks secret-looking fields. Use the CLI for lifecycle checks:
+Use the Web UI for channel configuration because it renders the live schema from `/api/partners/channels/schema` and masks secret-looking fields. Use the CLI for lifecycle checks:
 
 ```bash
 deeptutor partner list

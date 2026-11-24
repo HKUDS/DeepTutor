@@ -58,6 +58,7 @@ WS /ws
 ```json
 {
   "type": "start_turn",
+  "protocol_version": "2.0",
   "content": "Find d/dx [sin(x^2)]",
   "capability": "deep_solve",
   "session_id": null,
@@ -72,7 +73,9 @@ WS /ws
 }
 ```
 
-`skills` 无效；`read_skill` 暴露可见 skill。
+上面只是单轮 turn 的载荷本身。`/ws` 上的每个 client 帧都必须带 `"protocol_version": "2.0"`——`start_turn`、`subscribe_turn`、`cancel_turn`、`ping` 都一样。缺这个字段的帧会先收到 `protocol_error` 事件（`error_code: "unsupported_protocol_version"`），此时还不会对载荷做任何命令模型的校验。
+
+`skills` 不是无效字段，而是用来收窄本轮的：它会和当前工作区允许的技能取交集，所以指定了 skill 的 turn 里，`read_skill` 只能看到这几个。省略该字段或传空数组表示继承工作区允许的全部可见 skill。turn 的选择永远不会超出工作区允许的范围。
 
 其他 client 类型包括 `subscribe_turn`、`resume_from`、`cancel_turn`、`submit_user_reply`、`regenerate` 等；订阅按 `after_seq` 补帧，终态必收 `done`（失败先 `error`）。
 

@@ -32,7 +32,7 @@ deeptutor start
 - **用户管理**，在 `/admin/users` —— 创建 Standard、Learner 或 Custom 账号（或从 CSV 批量导入），再提升、降级或删除，可单个也可批量。创建 Learner 时会初始化受限学习授权与资料；第一个 admin 出现后公开 `/register` 会关闭，后续账号通过管理员接口创建。
 - **授权编辑器** —— 对每个非 admin 用户，挑选他们可用的 LLM 模型、知识库、skill 和 partner，把系统工具（联网搜索、论文搜索……）、MCP 工具和已安装的 CLI 应用收窄成白名单，也可以彻底关掉代码执行。工具白名单与 partner 配置同语义：*Default* 全部放行，*Custom* 是显式白名单。授权只带**逻辑 ID**；API key 永远不会越过授权边界。
 - **Book access 编辑器** —— 允许创建个人书，为共享管理员书设置默认权限（`none` 或 `read`），并逐书覆盖为 `none`、`read` 或协作 `edit`。共享删除不下放；进度、书签、测验作答、capture 与 Page Chat 关联保持私密。
-- **Hub skill 安装** —— `POST /api/v1/multi-user/admin/skills/install`（admin-only）把 ClawHub 等外部 hub 的 skill 导入 admin catalog。安装 ≠ 分配：在 grant 分配之前，其他用户看不到这个 skill，admin 可以先自己验证。每次安装都进审计追踪。
+- **Hub skill 安装** —— `POST /api/multi-user/admin/skills/install`（admin-only）把 ClawHub 等外部 hub 的 skill 导入 admin catalog。安装 ≠ 分配：在 grant 分配之前，其他用户看不到这个 skill，admin 可以先自己验证。每次安装都进审计追踪。
 - **审计追踪** —— 每次授权变更和被授权资源的访问都会追加到 `data/system/audit/usage.jsonl`。
 
 ## 普通用户得到什么
