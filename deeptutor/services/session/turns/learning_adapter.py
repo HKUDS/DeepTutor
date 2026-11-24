@@ -119,16 +119,19 @@ class LearningTurnAdapter:
             )
 
     @staticmethod
-    def _card_answer_images(
-        execution: _TurnExecution, answer: dict[str, Any], attachments: Any
-    ) -> list[dict[str, str]]:
-        """References to the photos a card answer names among the turn's uploads."""
+    def _card_answer_images(session_id: str, answer: Any, attachments: Any) -> list[dict[str, str]]:
+        """References to the photos a card answer names among the turn's uploads.
+
+        Raises ``ValueError`` when they cannot be described.
+        """
         from deeptutor.learning.answer_images import answer_image_refs
 
+        if not isinstance(answer, dict):
+            return []
         return answer_image_refs(
-            (answer or {}).get("attachment_ids"),
+            answer.get("attachment_ids"),
             attachments if isinstance(attachments, list) else [],
-            session_id=execution.session_id,
+            session_id=session_id,
         )
 
     async def _is_mismatched_card_replay(

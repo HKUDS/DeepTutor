@@ -1486,6 +1486,9 @@ class _TurnExecution:
     coordination_task: asyncio.Task[None] | None = None
     lease_lost: bool = False
     shutdown_requested: bool = False
+    # References to the photos a mastery card answer carried, described once
+    # when the turn is admitted (see deeptutor.learning.answer_images).
+    mastery_card_answer_images: list[dict[str, str]] = field(default_factory=list)
 
 
 # Compatibility for saved requests and clients using passage-based tutoring.

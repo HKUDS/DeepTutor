@@ -304,7 +304,7 @@ async def test_card_replay_with_different_photo_is_a_stale_card(service, attachm
     service.register_question("p", leaf(expected="58"))
     execution = SimpleNamespace(session_id="study", turn_id="t1")
     submission = {"question_id": "q1", "text": "58", "attachment_ids": ["photo-1"]}
-    first = adapter._card_answer_images(execution, submission, [_attachment(PHOTO)])
+    first = adapter._card_answer_images("study", submission, [_attachment(PHOTO)])
     assert first == refs
     monkeypatch.setattr("deeptutor.learning.service.LearningService", lambda: service)
     await adapter._commit_mastery_card_answer(
@@ -324,7 +324,7 @@ async def test_card_replay_with_different_photo_is_a_stale_card(service, attachm
     # Same card, same typed text, a different photo: not the graded submission.
     published.clear()
     replay = SimpleNamespace(session_id="study", turn_id="t2")
-    second = adapter._card_answer_images(replay, submission, [_attachment(OTHER_PHOTO)])
+    second = adapter._card_answer_images("study", submission, [_attachment(OTHER_PHOTO)])
     before = service.store.get_interaction("p", "q1").model_dump()
     result = await adapter._grade_submitted_card_answer(
         replay, path_id="p", answer=submission, answer_images=second
@@ -560,3 +560,50 @@ def test_unreadable_or_oversized_photos_are_refused_before_commit(monkeypatch):
     )
     with pytest.raises(ValueError, match="larger than the configured attachment limit"):
         answer_image_refs(["photo-1"], [_attachment(PHOTO)], session_id="s")
+
+
+@pytest.mark.asyncio
+async def test_start_turn_describes_card_photos_once_and_rejects_bad_ones_without_a_turn(
+    monkeypatch, tmp_path
+):
+    import asyncio
+
+    from deeptutor.learning.storage import LearningStore
+    from deeptutor.services.session.sqlite_store import SQLiteSessionStore
+    from deeptutor.services.session.turn_runtime import TurnRuntimeManager
+    from tests.services.session.test_turn_runtime_subscribe import (
+        _isolate_learning_store,
+        _mastery_payload,
+    )
+
+    _isolate_learning_store(monkeypatch, tmp_path)
+    store = SQLiteSessionStore(tmp_path / "chat_history.db")
+    runtime = TurnRuntimeManager(store)
+    session = await store.ensure_session("session-1")
+    seen = []
+    hold = asyncio.Event()
+
+    async def hold_turn(execution):
+        seen.append(execution.mastery_card_answer_images)
+        await hold.wait()
+
+    monkeypatch.setattr(runtime, "_run_turn", hold_turn)
+    payload = {
+        **_mastery_payload(session["id"], "shared"),
+        "attachments": [_attachment(PHOTO)],
+        "mastery_answer": {"question_id": "q1", "attachment_ids": ["photo-1"]},
+    }
+
+    unreadable = {**payload, "attachments": [{**_attachment(PHOTO), "base64": "@@@"}]}
+    with pytest.raises(RuntimeError, match="could not be read"):
+        await runtime.start_turn(unreadable)
+    assert await store.get_active_turn(session["id"]) is None
+    assert LearningStore().get_path_lease("shared") is None
+
+    _, turn = await runtime.start_turn(payload)
+    await asyncio.sleep(0)
+    assert [ref["attachment_id"] for ref in seen[0]] == ["photo-1"]
+    assert seen[0][0]["session_id"] == session["id"]
+
+    await runtime.cancel_turn(turn["id"])
+    LearningStore().release_path_lease("shared", turn_id=turn["id"])

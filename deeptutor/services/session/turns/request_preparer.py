@@ -162,7 +162,7 @@ class TurnRequestPreparer:
 
         @staticmethod
         def _card_answer_images(
-            execution: _TurnExecution, answer: dict[str, Any], attachments: Any
+            session_id: str, answer: Any, attachments: Any
         ) -> list[dict[str, str]]: ...
 
         async def _acquire_mastery_path_lease(
@@ -477,8 +477,17 @@ class TurnRequestPreparer:
                 requested_path_id=mastery_path_id,
                 remembered_path_id=_mastery_path_id(preferences.get("mastery_path_id")),
             )
+            # Before any turn exists: a card answer whose photos cannot be
+            # described is rejected, never committed or graded as text alone.
+            try:
+                card_answer_images = self._card_answer_images(
+                    session["id"], payload.get("mastery_answer"), payload.get("attachments")
+                )
+            except ValueError as exc:
+                raise RuntimeError(str(exc)) from exc
         else:
             mastery_path_id = configured_mastery_path_id
+            card_answer_images = []
         mastery_lease_managed = bool(
             mastery_binding is not None and _mastery_loop_managed(workspace_mode, capability)
         )
@@ -881,6 +890,7 @@ class TurnRequestPreparer:
             capability=capability,
             payload=dict(payload),
             lease=lease,
+            mastery_card_answer_images=card_answer_images,
         )
         # Publish an ownership marker before trying to recover another path
         # lease. Two start_turn calls can otherwise interleave after the first
@@ -902,14 +912,6 @@ class TurnRequestPreparer:
         mastery_lease_acquired = False
         if mastery_binding is not None and mastery_lease_managed:
             try:
-                card_answer = payload.get("mastery_answer") or {}
-                # Before the lease: a card answer whose photos cannot be
-                # described is rejected without holding the path.
-                card_answer_images = (
-                    self._card_answer_images(execution, card_answer, payload.get("attachments"))
-                    if isinstance(card_answer, dict)
-                    else []
-                )
                 await self._acquire_mastery_path_lease(
                     path_id=mastery_binding.path_id,
                     session_id=session["id"],
@@ -917,6 +919,7 @@ class TurnRequestPreparer:
                     owns_path=mastery_binding.owned_by_session,
                 )
                 mastery_lease_acquired = True
+                card_answer = payload.get("mastery_answer") or {}
                 if isinstance(card_answer, dict) and card_answer.get("question_id"):
                     # Commit before the loop starts so the tutor's first
                     # mastery_status already reports this answer.

@@ -94,11 +94,6 @@ class TurnExecutor:
             answer_images: list[dict[str, str]] | None = None,
         ) -> dict[str, Any] | None: ...
 
-        @staticmethod
-        def _card_answer_images(
-            execution: _TurnExecution, answer: dict[str, Any], attachments: Any
-        ) -> list[dict[str, str]]: ...
-
         async def _skip_card_question(
             self,
             execution: _TurnExecution,
@@ -854,11 +849,9 @@ class TurnExecutor:
             mastery_card_grade: dict[str, Any] | None = None
             mastery_card_rejection: dict[str, Any] | None = None
             mastery_card_skip: dict[str, Any] | None = None
-            mastery_card_answer_images: list[dict[str, str]] = []
+            # Described and validated once, when the turn was admitted.
+            mastery_card_answer_images = execution.mastery_card_answer_images
             if workspace_mode == WORKSPACE_MODE_MASTERY:
-                mastery_card_answer_images = self._card_answer_images(
-                    execution, payload.get("mastery_answer") or {}, payload.get("attachments")
-                )
                 mastery_card_grade = await self._grade_submitted_card_answer(
                     execution,
                     path_id=_mastery_path_id(payload.get("mastery_path_id")),
