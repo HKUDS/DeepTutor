@@ -1093,6 +1093,15 @@ class LearningService:
                 return None
             if interaction_id and interaction.interaction_id != interaction_id:
                 raise StaleInteractionError(interaction_id, interaction.interaction_id)
+            if answer_images and (
+                interaction.question.questions or interaction.question.question_type == "choice"
+            ):
+                # Only a single free-text answer is graded from photos; a pick
+                # or a group's parts are not, so never commit photos beside them.
+                raise MasteryInteractionError(
+                    "Photos can answer a single free-text question only; pick an option "
+                    "or type the answer. Nothing was recorded."
+                )
             if interaction.question.questions:
                 if interaction.status == InteractionStatus.ABANDONED:
                     raise NoPendingInteractionError("The question was abandoned")
@@ -3298,13 +3307,6 @@ class LearningService:
                         # Never fall back to grading the typed text alone.
                         verdicts[question.question_id] = semantic.Verdict(
                             result="ungraded", confidence=0, feedback=str(exc)
-                        ).receipt()
-                        continue
-                    if question.question_type == "choice":
-                        verdicts[question.question_id] = semantic.Verdict(
-                            result="ungraded",
-                            confidence=0,
-                            feedback="Pick an option to answer a choice question; photos are not graded here.",
                         ).receipt()
                         continue
                 if question.visual_context:

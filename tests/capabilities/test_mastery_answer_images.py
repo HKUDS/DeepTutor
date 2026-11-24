@@ -511,3 +511,35 @@ def test_learner_image_overflow_counts_bytes_beside_verified_visuals(monkeypatch
     item = {"question_id": "q", "_visual_images": [image], "_learner_images": [image]}
     assert "too large" in semantic.learner_image_overflow(item)
     assert semantic.learner_image_overflow({**item, "_learner_images": []}) == ""
+
+
+def test_photos_are_never_committed_beside_a_choice_pick(service):
+    from deeptutor.learning.models import PendingQuestion
+
+    service.register_question(
+        "p",
+        PendingQuestion(
+            question_id="c1",
+            knowledge_point_id="kp1",
+            module_id="m",
+            prompt="Pick one.",
+            question_type="choice",
+            options=["A. one", "B. two"],
+            expected_answer="A",
+        ),
+    )
+    refs = [
+        {
+            "session_id": "s",
+            "attachment_id": "a",
+            "filename": "f",
+            "mime_type": "image/png",
+            "sha256": "d",
+        }
+    ]
+
+    with pytest.raises(MasteryInteractionError, match="single free-text question"):
+        service.record_question_answer("p", "A", interaction_id="c1", answer_images=refs)
+    interaction = service.store.get_interaction("p", "c1")
+    assert interaction.status != InteractionStatus.ANSWERED
+    assert interaction.answer_images == []
