@@ -1028,6 +1028,11 @@ class TestParseJudgeVerdict:
         assert verdict["result"] == "incorrect"
         assert verdict["is_correct"] is False
 
+    def test_missing_summary_sentence_does_not_void_the_verdict(self):
+        verdict = quiz_judge.parse_judge_verdict('{"result": "correct", "confidence": 0.9}')
+        assert verdict["result"] == "correct"
+        assert verdict["feedback"] == ""
+
     def test_vision_unavailable_forces_ungraded(self):
         verdict = quiz_judge.parse_judge_verdict(
             _trailer()[len("<verdict>") :], vision_unavailable=True

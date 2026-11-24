@@ -228,6 +228,8 @@ class _JudgeVerdict(Verdict):
     """The learning-path ``Verdict`` plus quiz-only points and step feedback."""
 
     model_config = ConfigDict(extra="ignore")
+    # The prose above the trailer is the feedback; the summary is optional.
+    feedback: str = Field(default="", max_length=2000)
     awarded_points: float | None = Field(default=None, ge=0)
     max_points: float | None = Field(default=None, gt=0)
     steps: list[_JudgeStep] = Field(default_factory=list, max_length=12)
