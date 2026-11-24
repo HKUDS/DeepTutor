@@ -18,18 +18,32 @@
  * page, not like a form to fill in.
  */
 
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { ImagePlus, X } from "lucide-react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+} from "react";
 import { useTranslation } from "react-i18next";
 
 import { LearningText } from "@/components/common/LearningText";
 import InlineMarkdown from "@/components/common/InlineMarkdown";
 import { useCardSubmission } from "@/hooks/use-card-submission";
 import { REPLY_NOT_DELIVERED } from "@/lib/ask-user-state";
+import { loadAttachmentLimits } from "@/lib/attachment-limits";
 import {
+  MASTERY_ANSWER_MAX_PHOTO_BYTES,
+  MASTERY_ANSWER_MAX_PHOTOS,
   MASTERY_ANSWER_REJECTED_MESSAGE,
+  type MasteryAnswerPhoto,
   type MasteryGradeResult,
   type MasteryQuestion,
 } from "@/lib/mastery-question";
+import { readFileAsBase64 } from "@/lib/quiz-judge";
+import { randomUuid } from "@/lib/random-uuid";
 
 /** Difficulty is a three-point scale; anything else is not shown. */
 const DIFFICULTY_LABELS: Record<string, string> = {
@@ -109,6 +123,8 @@ interface MasteryQuestionCardProps {
   onSubmit: (payload: {
     text?: string;
     answers?: Array<{ questionId: string; text: string }>;
+    /** Photos of a handwritten solution; single free-text questions only. */
+    photos?: MasteryAnswerPhoto[];
   }) => void | boolean | Promise<void | boolean>;
   /** Drop this question and let the tutor move on. Absent where the surface
    *  cannot start a turn of its own, which hides the control entirely. */
@@ -135,14 +151,32 @@ const SingleMasteryQuestionCard = memo(function SingleMasteryQuestionCard({
   const acknowledgementKey = grade ? grade.receiptKey ?? JSON.stringify(grade) : undefined;
   const { sending, failed: sendFailed, submit } = useCardSubmission(onSubmit, rejectionKey, acknowledgementKey);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const photoInputRef = useRef<HTMLInputElement>(null);
+  const [photos, setPhotos] = useState<Array<MasteryAnswerPhoto & { size: number; previewUrl: string }>>([]);
+  const [photoError, setPhotoError] = useState("");
+  const previewUrls = useRef<string[]>([]);
+  // The photos already chosen, read when a pick resolves: two picks can
+  // overlap, and each must count the other's photos.
+  const photosRef = useRef(photos);
+  useEffect(() => {
+    photosRef.current = photos;
+  }, [photos]);
 
   useEffect(() => {
     if (freeSelected) textareaRef.current?.focus();
   }, [freeSelected]);
 
+  useEffect(() => () => {
+    for (const url of previewUrls.current) URL.revokeObjectURL(url);
+  }, []);
+
   const hasChoices = question.options.length > 0;
   const usesFreeText = freeSelected || !hasChoices;
   const answer = usesFreeText ? freeText.trim() : picked;
+  // A worked calculation is written on paper more often than typed. Only a
+  // single free-text question takes photos: a choice is answered by its pick,
+  // and a group sends its parts together.
+  const acceptsPhotos = !groupInput && !hasChoices && question.allowFreeText;
   // Skipping settles the card exactly as answering does: the engine closed the
   // question, so there is nothing left on it to send.
   const settled = (answered && grade?.final !== false) || skipped === true;
@@ -163,13 +197,65 @@ const SingleMasteryQuestionCard = memo(function SingleMasteryQuestionCard({
     });
   }, [locked, onSkip, question.questionId]);
 
+  const handlePhotos = useCallback(
+    async (event: ChangeEvent<HTMLInputElement>) => {
+      const files = Array.from(event.target.files ?? []);
+      // Reset so picking the same photo again still fires onChange.
+      event.target.value = "";
+      const attachmentLimits = await loadAttachmentLimits();
+      const maxTotal = Math.min(attachmentLimits.maxTotalBytes, MASTERY_ANSWER_MAX_PHOTO_BYTES);
+      const current = photosRef.current;
+      let total = current.reduce((sum, photo) => sum + photo.size, 0);
+      let error = "";
+      const added: typeof photos = [];
+      for (const file of files) {
+        if (!file.type.startsWith("image/")) continue;
+        if (current.length + added.length >= MASTERY_ANSWER_MAX_PHOTOS) {
+          error = t("You can attach up to {{count}} photos.", { count: MASTERY_ANSWER_MAX_PHOTOS });
+          break;
+        }
+        if (file.size > attachmentLimits.maxFileBytes || total + file.size > maxTotal) {
+          error = t("File too large: {{name}}", { name: file.name });
+          continue;
+        }
+        try {
+          const { base64, mime, name } = await readFileAsBase64(file);
+          const previewUrl = URL.createObjectURL(file);
+          previewUrls.current.push(previewUrl);
+          added.push({ id: randomUuid().replaceAll("-", "").slice(0, 12), base64, mime, name, size: file.size, previewUrl });
+          total += file.size;
+        } catch {
+          /* unreadable file: skip it, the learner can pick it again */
+        }
+      }
+      setPhotoError(error);
+      if (added.length) {
+        setPhotos((latest) => [...latest, ...added].slice(0, MASTERY_ANSWER_MAX_PHOTOS));
+      }
+    },
+    [t],
+  );
+
+  const removePhoto = useCallback((photoId: string) => {
+    setPhotoError("");
+    setPhotos((current) => {
+      const removed = current.find((photo) => photo.id === photoId);
+      if (removed) URL.revokeObjectURL(removed.previewUrl);
+      return current.filter((photo) => photo.id !== photoId);
+    });
+  }, []);
+
+  const hasAnswer = Boolean(answer) || (acceptsPhotos && photos.length > 0);
   const handleSubmit = useCallback(() => {
-    if (locked || !answer || sourceUnavailable) return;
+    if (locked || !hasAnswer || sourceUnavailable) return;
     void submit({
       text: answer,
       answers: [{ questionId: question.questionId, text: answer }],
+      ...(acceptsPhotos && photos.length
+        ? { photos: photos.map(({ id, base64, mime, name }) => ({ id, base64, mime, name })) }
+        : {}),
     });
-  }, [answer, locked, sourceUnavailable, submit, question.questionId]);
+  }, [acceptsPhotos, answer, hasAnswer, locked, photos, sourceUnavailable, submit, question.questionId]);
 
   // Which answer to treat as the learner's, preferring what the graded record
   // committed over what this browser happens to remember.
@@ -276,6 +362,54 @@ const SingleMasteryQuestionCard = memo(function SingleMasteryQuestionCard({
         </div>
       ) : null}
 
+      {acceptsPhotos && !settled ? (
+        <div className="mt-1.5">
+          {photos.length > 0 ? (
+            <ul className="mb-1.5 flex flex-wrap gap-2">
+              {photos.map((photo) => (
+                <li key={photo.id} className="relative">
+                  <img src={photo.previewUrl} alt={photo.name} className="h-16 w-16 rounded-md border border-[var(--border)] object-cover" />
+                  <button
+                    type="button"
+                    onClick={() => removePhoto(photo.id)}
+                    disabled={locked}
+                    aria-label={t("Remove image")}
+                    className="absolute -right-2 -top-2 inline-flex h-6 w-6 items-center justify-center rounded-full bg-black/55 text-white disabled:opacity-40"
+                  >
+                    <X size={11} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          {/* No ``capture``: on a phone the picker then offers the camera and
+              the gallery, so a photo taken earlier can still be used. */}
+          <input
+            ref={photoInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            hidden
+            aria-label={t("Attach an image as your answer")}
+            onChange={(event) => void handlePhotos(event)}
+          />
+          {photos.length < MASTERY_ANSWER_MAX_PHOTOS ? (
+            <button
+              type="button"
+              onClick={() => photoInputRef.current?.click()}
+              disabled={locked}
+              className="inline-flex items-center gap-1.5 rounded-md border border-dashed border-[var(--border)] px-2.5 py-1.5 text-[12px] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)] disabled:cursor-default disabled:opacity-40"
+            >
+              <ImagePlus size={13} />
+              {photos.length === 0 ? t("Attach an image as your answer") : t("Add another image")}
+            </button>
+          ) : null}
+          {photoError ? (
+            <p role="alert" className="mt-1 text-[11px] text-[var(--destructive)]">{photoError}</p>
+          ) : null}
+        </div>
+      ) : null}
+
       {/* The ruling, as prose under a hairline — not another coloured panel. */}
       {grade ? (
         <div className="mt-3 border-t border-[var(--border)] pt-2.5">
@@ -324,7 +458,9 @@ const SingleMasteryQuestionCard = memo(function SingleMasteryQuestionCard({
                 ? t(rejectionKey ? MASTERY_ANSWER_REJECTED_MESSAGE : REPLY_NOT_DELIVERED)
                 : hasChoices
                   ? t("Pick the option you think is right.")
-                  : t("Write your answer to continue.")}
+                  : acceptsPhotos
+                    ? t("Write your answer or attach a photo of your solution.")
+                    : t("Write your answer to continue.")}
           </span>
           <div className="flex shrink-0 items-center gap-1">
             {/* Not a dead end: the engine holds one open question per path, so
@@ -343,7 +479,7 @@ const SingleMasteryQuestionCard = memo(function SingleMasteryQuestionCard({
             <button
               type="button"
               onClick={handleSubmit}
-              disabled={locked || !answer || sourceUnavailable}
+              disabled={locked || !hasAnswer || sourceUnavailable}
               className="rounded-md bg-[var(--primary)] px-3 py-1.5 text-[12px] font-medium text-[var(--primary-foreground)] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {t("Submit")}

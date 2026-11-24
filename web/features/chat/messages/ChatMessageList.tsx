@@ -97,6 +97,7 @@ import {
   collectMasteryGrades,
   collectMasterySkips,
   extractMasteryQuestion,
+  type MasteryAnswerPhoto,
   type MasteryGradeResult,
   type MasteryAnswerRejection,
   type MasteryQuestion,
@@ -802,6 +803,7 @@ export const AssistantMessage = memo(function AssistantMessage({
     questionId: string;
     text: string;
     answers?: Array<{ questionId: string; text: string }>;
+    photos?: MasteryAnswerPhoto[];
   }) => void | boolean | Promise<void | boolean>;
   /** Drop a question the learner does not want to answer. Same turn-starting
    *  shape as answering it, because the engine holds one open question per
@@ -933,12 +935,12 @@ export const AssistantMessage = memo(function AssistantMessage({
           skipped={masterySkips?.has(question.questionId) ?? false}
           submittedAnswer={grade?.learnerAnswer ?? ""}
           rejectionKey={!grade || grade.complete === false || grade.final === false ? masteryAnswerRejections?.get(question.questionId)?.retryKey : undefined}
-          onSubmit={({ text, answers }) =>
+          onSubmit={({ text, answers, photos }) =>
             onAnswerMasteryQuestion
               ? onAnswerMasteryQuestion({
                   questionId: question.questionId,
                   text: String(text ?? ""),
-                  ...(question.questionType === "group" ? { answers } : {}),
+                  ...(question.questionType === "group" ? { answers } : photos?.length ? { photos } : {}),
                 })
               : false
           }
@@ -2035,6 +2037,7 @@ export const ChatMessageList = memo(function ChatMessageList({
     questionId: string;
     text: string;
     answers?: Array<{ questionId: string; text: string }>;
+    photos?: MasteryAnswerPhoto[];
   }) => void | boolean | Promise<void | boolean>;
   /** Drop a question instead of answering it; also starts a turn. */
   onSkipMasteryQuestion?: (

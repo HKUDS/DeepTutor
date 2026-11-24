@@ -299,3 +299,74 @@ export function collectMasteryAnswerRejections(
   }
   return rejected;
 }
+
+/** Photos of a handwritten solution, at most this many per card answer. */
+export const MASTERY_ANSWER_MAX_PHOTOS = 4;
+/** Raw bytes across one answer's photos. The grader accepts 16 MB of base64
+ *  per request (about 12 MB raw), and the question's own visuals share it. */
+export const MASTERY_ANSWER_MAX_PHOTO_BYTES = 10 * 1024 * 1024;
+
+/** A photo the learner attached to a card answer, read into memory. */
+export interface MasteryAnswerPhoto {
+  id: string;
+  base64: string;
+  mime: string;
+  name: string;
+}
+
+/** What answering a card puts on the wire. Both answering surfaces send this. */
+export interface MasteryAnswerTurn {
+  content: string;
+  attachments:
+    | Array<{ type: "image"; id: string; base64: string; filename: string; mime_type: string }>
+    | undefined;
+  masteryAnswer: {
+    question_id: string;
+    text: string;
+    answers?: Record<string, string>;
+    attachment_ids?: string[];
+  };
+}
+
+/**
+ * The turn that answers a mastery card, or null when there is nothing to send.
+ *
+ * Photos ride as the turn's ordinary image attachments, so the tutor sees them
+ * and the runtime stores them like any upload. ``attachment_ids`` tells the
+ * engine which of them are the answer, so the grader receives them as the
+ * learner's work. A photo-only answer still needs a visible message, which is
+ * what ``photoLabel`` is for; the committed answer text stays empty.
+ */
+export function buildMasteryAnswerTurn(
+  answer: {
+    questionId: string;
+    text: string;
+    answers?: Array<{ questionId: string; text: string }>;
+    photos?: MasteryAnswerPhoto[];
+  },
+  photoLabel: string,
+): MasteryAnswerTurn | null {
+  const text = answer.text.trim();
+  const photos = answer.answers ? [] : (answer.photos ?? []);
+  if (!text && photos.length === 0) return null;
+  return {
+    content: text || photoLabel,
+    attachments: photos.length
+      ? photos.map((photo) => ({
+          type: "image" as const,
+          id: photo.id,
+          base64: photo.base64,
+          filename: photo.name,
+          mime_type: photo.mime,
+        }))
+      : undefined,
+    masteryAnswer: {
+      question_id: answer.questionId,
+      text,
+      ...(answer.answers
+        ? { answers: Object.fromEntries(answer.answers.map((item) => [item.questionId, item.text])) }
+        : {}),
+      ...(photos.length ? { attachment_ids: photos.map((photo) => photo.id) } : {}),
+    },
+  };
+}
