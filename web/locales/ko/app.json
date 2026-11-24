@@ -675,5 +675,9 @@
   "Action": "Action",
   "Chapter": "Chapter",
   "Conversation IDs (optional)": "Conversation IDs (optional)",
-  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle."
+  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.",
+  "New files: {{count}}": "새 파일: {{count}}",
+  "Identical files already in this knowledge base, skipped: {{count}}": "이 지식 베이스에 이미 있는 동일한 파일(건너뜀): {{count}}",
+  "Changed files stored next to the existing version: {{count}}": "기존 버전 옆에 저장된 변경된 파일: {{count}}",
+  "Not imported (unsupported or unsafe): {{count}}": "가져오지 않음(지원되지 않거나 안전하지 않음): {{count}}"
 }

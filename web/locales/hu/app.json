@@ -6664,5 +6664,9 @@
   "Position": "Position",
   "Action": "Action",
   "Conversation IDs (optional)": "Conversation IDs (optional)",
-  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle."
+  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.",
+  "New files: {{count}}": "Új fájlok: {{count}}",
+  "Identical files already in this knowledge base, skipped: {{count}}": "Ebben a tudásbázisban már meglévő azonos fájlok, kihagyva: {{count}}",
+  "Changed files stored next to the existing version: {{count}}": "A meglévő verzió mellé mentett módosított fájlok: {{count}}",
+  "Not imported (unsupported or unsafe): {{count}}": "Nem importálva (nem támogatott vagy nem biztonságos): {{count}}"
 }

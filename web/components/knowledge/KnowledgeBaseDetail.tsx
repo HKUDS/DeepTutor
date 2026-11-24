@@ -3,7 +3,10 @@
 import { KnowledgeBaseCrumb } from "@/components/layout/instance-crumbs";
 import Tooltip from "@/shared/ui/Tooltip";
 import { knowledgeBaseRef } from "@/lib/knowledge-helpers";
-import type { EmbeddingModelSelection } from "@/features/knowledge/model/types";
+import type {
+  EmbeddingModelSelection,
+  KnowledgeTaskResponse,
+} from "@/features/knowledge/model/types";
 
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -67,7 +70,7 @@ interface KnowledgeBaseDetailProps {
     kbName: string,
     files: File[],
     destSubdir?: string,
-  ) => Promise<void>;
+  ) => Promise<KnowledgeTaskResponse | void>;
   onLinkFolder: (
     kbName: string,
     folderPath: string,

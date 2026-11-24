@@ -6664,5 +6664,9 @@
   "Position": "Position",
   "Action": "Action",
   "Conversation IDs (optional)": "Conversation IDs (optional)",
-  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle."
+  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.",
+  "New files: {{count}}": "Yeni dosyalar: {{count}}",
+  "Identical files already in this knowledge base, skipped: {{count}}": "Bu bilgi bankasında zaten bulunan aynı dosyalar, atlandı: {{count}}",
+  "Changed files stored next to the existing version: {{count}}": "Mevcut sürümün yanına kaydedilen değişmiş dosyalar: {{count}}",
+  "Not imported (unsupported or unsafe): {{count}}": "İçe aktarılmadı (desteklenmiyor veya güvenli değil): {{count}}"
 }

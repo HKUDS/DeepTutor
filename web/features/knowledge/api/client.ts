@@ -737,11 +737,21 @@ export function knowledgeBaseFilePreviewTextPath(
     .join("/")}${inKnowledgeLibrary() ? "?resource_library=true" : ""}`;
 }
 
+// What happened to each archive member of an upload that was not stored as
+// a new file (see `UploadImportReport` in the knowledge router).
+export interface KnowledgeImportReport {
+  duplicates: string[];
+  renamed: { path: string; conflicts_with: string }[];
+  rejected: { file: string; reason: string }[];
+}
+
 export interface KnowledgeTaskResponse {
   id?: string;
   task_id?: string;
   message?: string;
   noop?: boolean;
+  files?: string[];
+  import_report?: KnowledgeImportReport;
 }
 
 export async function readErrorDetail(

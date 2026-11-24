@@ -6682,5 +6682,9 @@
   "Position": "Position",
   "Action": "Action",
   "Conversation IDs (optional)": "Conversation IDs (optional)",
-  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle."
+  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.",
+  "New files: {{count}}": "Nuovi file: {{count}}",
+  "Identical files already in this knowledge base, skipped: {{count}}": "File identici già presenti in questa knowledge base, saltati: {{count}}",
+  "Changed files stored next to the existing version: {{count}}": "File modificati salvati accanto alla versione esistente: {{count}}",
+  "Not imported (unsupported or unsafe): {{count}}": "Non importati (non supportati o non sicuri): {{count}}"
 }

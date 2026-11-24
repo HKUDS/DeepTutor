@@ -14,6 +14,7 @@ export type {
   ImaProbe,
   IndexingLLMSelection,
   KnowledgeBaseFile,
+  KnowledgeImportReport,
   KnowledgeBaseSummary,
   KnowledgeTaskResponse,
   KnowledgeUploadPolicy,

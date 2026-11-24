@@ -8,4 +8,9 @@ export {
   uploadKnowledgeBaseFiles,
 } from "./client";
 
-export type { KnowledgeBaseFile, KnowledgeUploadPolicy } from "../model/types";
+export type {
+  KnowledgeBaseFile,
+  KnowledgeImportReport,
+  KnowledgeTaskResponse,
+  KnowledgeUploadPolicy,
+} from "../model/types";
