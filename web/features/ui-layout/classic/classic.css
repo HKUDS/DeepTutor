@@ -2,3 +2,8 @@
 :root[data-ui-layout="classic"] {
   --dt-page-title-font: theme("fontFamily.serif");
 }
+
+/* The shared tray tucks under the composer, not over its bottom controls. */
+:root[data-ui-layout="classic"] .dt-composer-surface:has(+ .dt-composer-tray) {
+  z-index: 1;
+}
