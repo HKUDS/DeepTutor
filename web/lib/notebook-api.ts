@@ -1,4 +1,5 @@
 import { apiFetch, apiUrl } from "@/lib/api";
+import type { QuizVerdict } from "@/lib/quiz-verdict";
 
 // ── Notebooks (file-backed under data/user/workspace/notebook) ──
 //
@@ -239,6 +240,8 @@ export interface NotebookEntry {
   followup_session_id: string;
   /** Latest AI-judge text for this entry; empty when never run. */
   ai_judgment?: string;
+  /** Structured AI-judge verdict; parse with ``parseQuizVerdict``. */
+  ai_verdict?: unknown;
   created_at: number;
   updated_at: number;
   categories?: NotebookCategory[];
@@ -424,6 +427,9 @@ export async function updateNotebookEntry(
     bookmarked?: boolean;
     followup_session_id?: string;
     ai_judgment?: string;
+    ai_verdict?: QuizVerdict;
+    is_correct?: boolean;
+    result?: AssessmentResult;
     resolved?: boolean;
   },
 ): Promise<void> {

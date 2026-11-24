@@ -6664,5 +6664,10 @@
   "Position": "Position",
   "Action": "Action",
   "Conversation IDs (optional)": "Conversation IDs (optional)",
-  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle."
+  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.",
+  "{{awarded}} / {{max}} points": "{{awarded}} / {{max}} điểm",
+  "Solution steps": "Các bước giải",
+  "This model cannot read images, so the photo answer was not graded.": "Mô hình này không đọc được hình ảnh nên câu trả lời bằng ảnh chưa được chấm.",
+  "The judge returned no structured verdict, so this answer was not graded.": "Bộ chấm không trả về kết luận có cấu trúc nên câu trả lời này chưa được chấm.",
+  "The judge was not confident enough to grade this answer.": "Bộ chấm chưa đủ chắc chắn để chấm câu trả lời này."
 }

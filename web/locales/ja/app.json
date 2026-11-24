@@ -6664,5 +6664,10 @@
   "Position": "Position",
   "Action": "Action",
   "Conversation IDs (optional)": "Conversation IDs (optional)",
-  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle."
+  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.",
+  "{{awarded}} / {{max}} points": "{{awarded}} / {{max}} 点",
+  "Solution steps": "解答ステップ",
+  "This model cannot read images, so the photo answer was not graded.": "このモデルは画像を読み取れないため、写真の解答は採点されませんでした。",
+  "The judge returned no structured verdict, so this answer was not graded.": "判定から構造化された結果が返されなかったため、この解答は採点されませんでした。",
+  "The judge was not confident enough to grade this answer.": "判定の確信度が不十分なため、この解答は採点されませんでした。"
 }

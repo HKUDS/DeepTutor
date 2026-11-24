@@ -349,6 +349,64 @@ describe("QuizViewer smoke", () => {
     ).toBeNull();
   });
 
+  it("grades a photo answer from the judge verdict and stores it (mock API)", async () => {
+    const user = userEvent.setup();
+    mocks.readFileAsBase64.mockResolvedValue({
+      base64: "QUJD",
+      mime: "image/jpeg",
+      name: "work.jpg",
+    });
+    URL.createObjectURL = vi.fn(() => "blob:x");
+    const { container } = renderViewer([shortAnswerQuestion], {
+      sessionId: "session-1",
+      turnId: "turn-1",
+    });
+
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+    await user.upload(input, new File(["x"], "work.jpg", { type: "image/jpeg" }));
+    await user.click(screen.getByRole("button", { name: /Check Answer/ }));
+
+    // A photo answer is pending, not a mistake, until the judge grades it.
+    await waitFor(() => {
+      expect(mocks.upsertNotebookEntry).toHaveBeenCalledWith(
+        expect.objectContaining({ is_correct: false, result: "ungraded" }),
+      );
+    });
+
+    await user.click(screen.getByRole("button", { name: /AI Judge/ }));
+    const verdict = {
+      result: "correct" as const,
+      is_correct: true,
+      final: true,
+      confidence: 0.92,
+      steps: [{ label: "Light reaction", ok: true, comment: "" }],
+    };
+    act(() => {
+      mocks.judgeHandlers!.onChunk("Well reasoned.");
+      mocks.judgeHandlers!.onVerdict!(verdict);
+      mocks.judgeHandlers!.onDone("Well reasoned.");
+    });
+
+    await waitFor(() => {
+      expect(mocks.updateNotebookEntry).toHaveBeenCalledWith(11, {
+        ai_judgment: "Well reasoned.",
+        ai_verdict: verdict,
+        is_correct: true,
+        result: "correct",
+        resolved: true,
+      });
+    });
+    expect(screen.getByTestId("quiz-verdict")).toHaveTextContent("Correct");
+    expect(screen.getByText("Light reaction")).toBeInTheDocument();
+    // The single question is complete: results carry the judged result.
+    await waitFor(() => {
+      const calls = mocks.recordQuizResults.mock.calls;
+      expect(calls.at(-1)?.[1]).toEqual([
+        expect.objectContaining({ is_correct: true, result: "correct" }),
+      ]);
+    });
+  });
+
   it("closes in-flight judge handles on unmount", async () => {
     const user = userEvent.setup();
     const { unmount } = renderViewer([shortAnswerQuestion]);

@@ -42,6 +42,12 @@ import {
   type QuizJudgeHandle,
 } from "@/lib/quiz-judge";
 import { type QuizQuestion } from "@/lib/quiz-types";
+import {
+  parseQuizVerdict,
+  resolveQuizAssessment,
+  type QuizVerdict,
+} from "@/lib/quiz-verdict";
+import QuizVerdictSummary from "@/components/quiz/QuizVerdictSummary";
 import CategoryMenu from "@/components/space/question-bank/CategoryMenu";
 import {
   addEntryToCategory,
@@ -121,12 +127,14 @@ type JudgmentState = {
   text: string;
   isStreaming: boolean;
   error: string | null;
+  verdict?: QuizVerdict | null;
 };
 
 const EMPTY_JUDGMENT: JudgmentState = {
   text: "",
   isStreaming: false,
   error: null,
+  verdict: null,
 };
 
 type AnswerView = "reference" | "judgment";
@@ -186,6 +194,22 @@ function isAnswerCorrect(question: QuizQuestion, answer: AnswerState): boolean {
     return userAnswer.toLowerCase() === correctTF;
   }
   return userAnswer.toLowerCase() === correct.toLowerCase();
+}
+
+/** Exact matching first; the AI verdict only grades what it cannot. */
+function getAssessment(
+  question: QuizQuestion,
+  answer: AnswerState,
+  verdict: QuizVerdict | null | undefined,
+) {
+  return resolveQuizAssessment({
+    exactCorrect: isAnswerCorrect(question, answer),
+    objective:
+      isMultipleChoice(question) ||
+      isConceptQuizQuestion(question.question_type),
+    hasImages: answer.images.length > 0,
+    verdict,
+  });
 }
 
 export default function QuizViewer({
@@ -303,10 +327,11 @@ export default function QuizViewer({
           // Rehydrate the AI judgment so the learner can keep reading
           // it across page refreshes. We only overwrite when local state
           // is still empty so an in-flight judge run isn't clobbered.
+          const storedVerdict = parseQuizVerdict(entry.ai_verdict);
           if (
             questionIndex !== undefined &&
-            entry.ai_judgment &&
-            entry.ai_judgment.length > 0
+            ((entry.ai_judgment && entry.ai_judgment.length > 0) ||
+              storedVerdict)
           ) {
             setJudgments((prev) => {
               const current = prev[questionIndex];
@@ -317,6 +342,7 @@ export default function QuizViewer({
                   text: entry.ai_judgment ?? "",
                   isStreaming: false,
                   error: null,
+                  verdict: storedVerdict,
                 },
               };
             });
@@ -417,6 +443,12 @@ export default function QuizViewer({
     return isAnswerCorrect(q, ans);
   }, [ans, canShowCorrectness, q]);
 
+  // A final AI verdict on an answer exact matching could not accept replaces
+  // the exact-match badge (the verdict summary shows the judged result).
+  const judgedResult = q
+    ? getAssessment(q, ans, judgments[idx]?.verdict).result
+    : undefined;
+
   const submittedResults = useMemo(
     () =>
       questions.flatMap((question, questionIdx) => {
@@ -432,11 +464,15 @@ export default function QuizViewer({
             correct_answer: question.correct_answer,
             explanation: question.explanation ?? "",
             difficulty: question.difficulty ?? "",
-            is_correct: isAnswerCorrect(question, answer),
+            ...getAssessment(
+              question,
+              answer,
+              judgments[questionIdx]?.verdict,
+            ),
           },
         ];
       }),
-    [answers, questions],
+    [answers, judgments, questions],
   );
 
   useEffect(() => {
@@ -498,7 +534,7 @@ export default function QuizViewer({
           difficulty: question.difficulty ?? "",
           user_answer: getUserAnswer(question, answer),
           user_answer_images: imagePayload,
-          is_correct: isAnswerCorrect(question, answer),
+          ...getAssessment(question, answer, null),
         });
         setEntryIds((prev) => ({ ...prev, [key]: entry.id }));
         setBookmarked((prev) => ({ ...prev, [key]: entry.bookmarked }));
@@ -636,8 +672,9 @@ export default function QuizViewer({
 
     setJudgments((prev) => ({
       ...prev,
-      [idx]: { text: "", isStreaming: true, error: null },
+      [idx]: { text: "", isStreaming: true, error: null, verdict: null },
     }));
+    let verdict: QuizVerdict | null = null;
     setAnswerViews((prev) => ({ ...prev, [idx]: "judgment" }));
 
     // Pass the UI language through; the backend falls back to English for
@@ -671,6 +708,13 @@ export default function QuizViewer({
             };
           });
         },
+        onVerdict: (next) => {
+          verdict = next;
+          setJudgments((prev) => ({
+            ...prev,
+            [idx]: { ...(prev[idx] ?? EMPTY_JUDGMENT), verdict: next },
+          }));
+        },
         onDone: (finalText) => {
           setJudgments((prev) => {
             const current = prev[idx] ?? EMPTY_JUDGMENT;
@@ -689,10 +733,20 @@ export default function QuizViewer({
           // means the next reload won't have the judgment cached.
           const key = q ? getQuestionKey(q, idx) : "";
           const eId = key ? entryIds[key] : undefined;
-          if (eId && finalText.trim().length > 0) {
-            void updateNotebookEntry(eId, { ai_judgment: finalText }).catch(
-              () => {},
-            );
+          if (eId && (finalText.trim().length > 0 || verdict)) {
+            const assessment = q ? getAssessment(q, answer, verdict) : null;
+            void updateNotebookEntry(eId, {
+              ai_judgment: finalText,
+              ...(verdict && assessment
+                ? {
+                    ai_verdict: verdict,
+                    ...assessment,
+                    ...(assessment.result === "correct"
+                      ? { resolved: true }
+                      : {}),
+                  }
+                : {}),
+            }).catch(() => {});
           }
         },
         onError: (message) => {
@@ -1214,7 +1268,7 @@ export default function QuizViewer({
             </button>
           ) : (
             <>
-              {isGradable && isCorrect !== null && (
+              {isGradable && isCorrect !== null && !judgedResult && (
                 <span
                   className={`rounded-md px-2 py-0.5 text-[11px] font-semibold ${
                     isCorrect
@@ -1354,6 +1408,9 @@ export default function QuizViewer({
                         />
                       )}
                     </div>
+                    {judgment.verdict && !judgment.isStreaming && (
+                      <QuizVerdictSummary verdict={judgment.verdict} />
+                    )}
                     {judgment.error ? (
                       <div className="rounded-md border border-red-200 bg-red-50 px-2 py-1 text-[12px] text-red-700 dark:border-red-950/50 dark:bg-red-950/20 dark:text-red-300">
                         {judgment.error}

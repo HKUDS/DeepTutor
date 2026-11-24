@@ -6682,5 +6682,10 @@
   "Position": "Posição",
   "Action": "Ação",
   "Conversation IDs (optional)": "IDs das conversas (opcional)",
-  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Deixe em branco para selecionar todas as conversas. Separe os IDs por vírgulas; a prévia inclui suas dependências. A exportação continua incluindo o pacote completo de funcionalidades."
+  "Leave empty to select all conversations. Separate IDs with commas; preview includes their dependencies. Export still includes the complete feature bundle.": "Deixe em branco para selecionar todas as conversas. Separe os IDs por vírgulas; a prévia inclui suas dependências. A exportação continua incluindo o pacote completo de funcionalidades.",
+  "{{awarded}} / {{max}} points": "{{awarded}} / {{max}} pontos",
+  "Solution steps": "Etapas da solução",
+  "This model cannot read images, so the photo answer was not graded.": "Este modelo não consegue ler imagens, então a resposta em foto não foi avaliada.",
+  "The judge returned no structured verdict, so this answer was not graded.": "O avaliador não retornou um veredito estruturado, então esta resposta não foi avaliada.",
+  "The judge was not confident enough to grade this answer.": "O avaliador não teve confiança suficiente para avaliar esta resposta."
 }
