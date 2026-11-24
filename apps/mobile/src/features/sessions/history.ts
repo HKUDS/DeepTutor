@@ -18,17 +18,28 @@ export interface ChatExchange {
 
 const DEFAULT_FAILURE = 'This response did not finish.';
 
+/**
+ * A stable render key per row. The server normally supplies one; when it does
+ * not, the position in the transcript is the only thing left, and a positional
+ * key is still better than every row collapsing onto the same one.
+ */
+function keyOf(message: SessionMessage, index: number): string {
+  return message.id ? `m${message.id}` : `m#${index}`;
+}
+
 export function toExchanges(messages: readonly SessionMessage[]): ChatExchange[] {
   const exchanges: ChatExchange[] = [];
   // The row a later assistant message may still attach to. Only the newest
   // user row can own a reply, so a stale cursor is never reused.
   let open: ChatExchange | null = null;
+  let index = -1;
 
   for (const message of messages) {
+    index += 1;
     if (message.role === 'system') continue;
     if (message.role === 'user') {
       const exchange: ChatExchange = {
-        id: `m${message.id}`,
+        id: keyOf(message, index),
         question: message.content,
         answer: '',
         failed: message.failedTurn
@@ -47,7 +58,7 @@ export function toExchanges(messages: readonly SessionMessage[]): ChatExchange[]
       continue;
     }
     exchanges.push({
-      id: `m${message.id}`,
+      id: keyOf(message, index),
       question: '',
       answer: message.content,
       failed: null,

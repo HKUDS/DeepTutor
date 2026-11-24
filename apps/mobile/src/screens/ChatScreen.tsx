@@ -105,10 +105,14 @@ export function ChatScreen({
   // reply — but starting a different chat would abandon it.
   const composing = isComposingStatus(status) || awaitingInput;
   const canStartNewChat = isComposingStatus(status);
+  // The transcript has to be in hand before a question is appended to it: a
+  // conversation still loading, or one that failed to load, would otherwise
+  // answer with history the learner cannot see.
+  const transcriptReady = history === 'idle' || history === 'ready';
   const canSubmit =
     composing &&
     connection === 'connected' &&
-    history !== 'loading' &&
+    transcriptReady &&
     !replying &&
     !!draft.trim();
   const progress = progressCopy(status);

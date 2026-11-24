@@ -11,6 +11,7 @@ import type {
   SessionMessage,
 } from '../src/services/sessionApi';
 import type {
+  LastSessionStore,
   RecoveryRecord,
   TurnRecoveryStore,
 } from '../src/storage/turnRecovery';
@@ -63,11 +64,17 @@ function streamEvent(
 }
 
 function message(
-  id: number,
+  id: number | string,
   role: SessionMessage['role'],
   content: string,
 ): SessionMessage {
-  return { id, role, content, createdAt: id, failedTurn: null };
+  return {
+    id: String(id),
+    role,
+    content,
+    createdAt: typeof id === 'number' ? id : 0,
+    failedTurn: null,
+  };
 }
 
 function detail(overrides: Partial<SessionDetail> = {}): SessionDetail {
@@ -128,7 +135,10 @@ const record: RecoveryRecord = {
 function harness(
   api: Partial<SessionApi>,
   recovery: TurnRecoveryStore | null,
-  options: { onAuthExpired?: () => void } = {},
+  options: {
+    onAuthExpired?: () => void;
+    lastSession?: LastSessionStore;
+  } = {},
 ) {
   const sockets: FakeSocket[] = [];
   const runtime = new MobileChatRuntime({
@@ -140,12 +150,27 @@ function harness(
     },
     sessionApi: api as SessionApi,
     recovery: recovery ?? undefined,
+    lastSession: options.lastSession,
     scope: recovery
       ? { origin: 'https://tutor.example.test', account: 'acct-1', workspace: '' }
       : null,
-    ...options,
+    onAuthExpired: options.onAuthExpired,
   });
   return { runtime, sockets };
+}
+
+function lastSessionStore(initial: string | null) {
+  let current = initial;
+  const store = {
+    read: jest.fn(async () => current),
+    write: jest.fn(async (_scope: unknown, sessionId: string) => {
+      current = sessionId;
+    }),
+    clear: jest.fn(async () => {
+      current = null;
+    }),
+  };
+  return { store: store as unknown as LastSessionStore, calls: store, peek: () => current };
 }
 
 async function settle() {
@@ -397,5 +422,136 @@ test('reopening the same conversation keeps one transcript', async () => {
 
   expect(runtime.getSnapshot().messages).toHaveLength(1);
   expect(get).toHaveBeenCalledTimes(2);
+  runtime.stop();
+});
+
+test('a relaunch quietly reopens the conversation that was open last', async () => {
+  const memory = memoryStore(null);
+  const last = lastSessionStore('session-1');
+  const get = jest.fn(async () =>
+    detail({
+      status: 'completed',
+      messages: [
+        message(1, 'user', 'What is a half?'),
+        message(2, 'assistant', 'One of two equal parts.'),
+      ],
+    }),
+  );
+  const { runtime } = harness({ get }, memory.store, { lastSession: last.store });
+
+  runtime.start();
+  await settle();
+
+  expect(get).toHaveBeenCalledWith('session-1');
+  expect(runtime.getSnapshot()).toMatchObject({
+    sessionId: 'session-1',
+    sessionTitle: 'Fractions',
+    status: 'completed',
+    history: 'ready',
+    // Nothing was running, so there is nothing to announce.
+    recovery: null,
+    error: null,
+  });
+  runtime.stop();
+});
+
+test('a remembered conversation the server dropped is forgotten silently', async () => {
+  const memory = memoryStore(null);
+  const last = lastSessionStore('session-1');
+  const get = jest.fn(async () => {
+    throw new ApiError('http', 'The server returned HTTP 404.', 404);
+  });
+  const { runtime } = harness({ get }, memory.store, { lastSession: last.store });
+
+  runtime.start();
+  await settle();
+
+  expect(runtime.getSnapshot()).toMatchObject({
+    sessionId: null,
+    messages: [],
+    history: 'idle',
+    status: 'idle',
+    recovery: null,
+    error: null,
+  });
+  expect(last.calls.clear).toHaveBeenCalled();
+  expect(last.peek()).toBeNull();
+  runtime.stop();
+});
+
+test('a recovery record cannot decorate a conversation opened instead', async () => {
+  const memory = memoryStore(record);
+  let release: (value: SessionDetail) => void = () => {};
+  const get = jest
+    .fn<Promise<SessionDetail>, [string]>()
+    .mockImplementationOnce(
+      () =>
+        new Promise<SessionDetail>(resolve => {
+          release = resolve;
+        }),
+    )
+    .mockImplementationOnce(async () =>
+      detail({
+        id: 'session-2',
+        title: 'Decimals',
+        status: 'completed',
+        messages: [
+          message(3, 'user', 'And decimals?'),
+          message(4, 'assistant', 'They are fractions too.'),
+        ],
+      }),
+    );
+  const { runtime } = harness({ get }, memory.store);
+  runtime.start();
+  await settle();
+
+  await runtime.openSession('session-2');
+  // The abandoned load for the recorded conversation must not land either.
+  release(detail({ activeTurns: [live()] }));
+  await settle();
+
+  expect(runtime.getSnapshot()).toMatchObject({
+    sessionId: 'session-2',
+    sessionTitle: 'Decimals',
+    status: 'completed',
+    // No "finished while you were away" banner: that record was for session-1.
+    recovery: null,
+  });
+  runtime.stop();
+});
+
+test('retrying an unconfirmed start reuses its submission id', () => {
+  const memory = memoryStore(null);
+  const { runtime, sockets } = harness({}, memory.store);
+  runtime.start();
+  const first = sockets.at(-1)!;
+  first.open();
+
+  expect(runtime.send('Explain halves')).toBe(true);
+  const submitted = first.sent.find(frame => frame.type === 'start_turn');
+  const submissionId = submitted?.client_submission_id;
+  expect(typeof submissionId).toBe('string');
+
+  // The server never confirmed; the runtime gives up and reconnects.
+  jest.advanceTimersByTime(30_000);
+  expect(runtime.getSnapshot().status).toBe('failed');
+
+  const retrySocket = sockets.at(-1)!;
+  expect(retrySocket).not.toBe(first);
+  retrySocket.open();
+
+  // Same question: the server can recognise the retry and must not run it twice.
+  expect(runtime.send('Explain halves')).toBe(true);
+  const retried = retrySocket.sent.filter(frame => frame.type === 'start_turn');
+  expect(retried).toHaveLength(1);
+  expect(retried[0].client_submission_id).toBe(submissionId);
+
+  // Once a turn is admitted the id is spent, so a new question is a new submit.
+  retrySocket.frame(streamEvent('content', 1, { content: 'Half of one.' }));
+  retrySocket.frame(streamEvent('done', 2));
+  expect(runtime.send('Now quarters')).toBe(true);
+  const later = retrySocket.sent.filter(frame => frame.type === 'start_turn');
+  expect(later).toHaveLength(2);
+  expect(later[1].client_submission_id).not.toBe(submissionId);
   runtime.stop();
 });

@@ -32,6 +32,28 @@ const row = {
   preferences: { workspace_id: 'w1' },
 };
 
+test('a row id survives whichever store produced it', async () => {
+  const { api: sessions } = api(
+    response(200, {
+      ...row,
+      // PocketBase hands out record strings, SQLite an integer rowid, and a
+      // row without either must still be addressable.
+      messages: [
+        { id: 'a1b2c3d4e5f6g7h', role: 'user', content: 'Hi' },
+        { id: 42, role: 'assistant', content: 'Hello' },
+        { role: 'user', content: 'No id' },
+      ],
+      active_turns: [],
+    }),
+  );
+  const detail = await sessions.get('s1');
+  expect(detail.messages.map(message => message.id)).toEqual([
+    'a1b2c3d4e5f6g7h',
+    '42',
+    '',
+  ]);
+});
+
 test('lists a page and reports whether another page exists', async () => {
   const { api: sessions, fetcher } = api(
     response(200, { sessions: [row] }),
@@ -107,15 +129,15 @@ test('reads a transcript with its failed-turn metadata and active turns', async 
   );
   const detail = await sessions.get('s1');
   expect(detail.messages).toEqual([
-    { id: 1, role: 'user', content: 'Hi', createdAt: 1, failedTurn: null },
+    { id: '1', role: 'user', content: 'Hi', createdAt: 1, failedTurn: null },
     {
-      id: 2,
+      id: '2',
       role: 'user',
       content: 'Retry me',
       createdAt: 2,
       failedTurn: { turnId: 'turn-3', error: 'Provider down', retryable: true },
     },
-    { id: 3, role: 'assistant', content: 'Hello', createdAt: 3, failedTurn: null },
+    { id: '3', role: 'assistant', content: 'Hello', createdAt: 3, failedTurn: null },
   ]);
   expect(detail.activeTurns).toEqual([
     {

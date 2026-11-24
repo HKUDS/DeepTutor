@@ -140,6 +140,28 @@ test('a failed transcript load can be retried', () => {
   expect(retrySession).toHaveBeenCalledTimes(1);
 });
 
+test('a transcript that failed to load does not accept a question', () => {
+  const send = jest.fn(() => true);
+  render(
+    <ChatScreen
+      {...chat({
+        history: 'failed',
+        sessionId: 'session-1',
+        send,
+        error: 'Could not load this conversation.',
+      })}
+    />,
+  );
+  fireEvent.changeText(
+    screen.getByPlaceholderText('Ask a question'),
+    'What about quarters?',
+  );
+  const submit = button('Send');
+  expect(submit.props.accessibilityState?.disabled).toBe(true);
+  fireEvent.press(submit);
+  expect(send).not.toHaveBeenCalled();
+});
+
 test('a failed turn keeps its question and shows the failure', () => {
   render(
     <ChatScreen

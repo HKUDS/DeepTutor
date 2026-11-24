@@ -25,7 +25,12 @@ export interface FailedTurnInfo {
 }
 
 export interface SessionMessage {
-  id: number;
+  /**
+   * The store's row id. SQLite returns an integer rowid and PocketBase a record
+   * string, so it is normalised to a string; an empty value means the payload
+   * carried none and the caller must fall back to a positional key.
+   */
+  id: string;
   role: 'user' | 'assistant' | 'system';
   content: string;
   createdAt: number;
@@ -97,6 +102,13 @@ function count(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0;
 }
 
+/** Row ids arrive as a SQLite integer or a PocketBase record id. */
+function rowId(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  return '';
+}
+
 function turnStatus(value: unknown): TurnStatus {
   return TURN_STATUSES.find(status => status === value) ?? 'idle';
 }
@@ -121,7 +133,7 @@ function parseMessage(value: unknown): SessionMessage {
   }
   const metadata = raw.metadata ? record(raw.metadata, 'message metadata') : {};
   return {
-    id: count(raw.id),
+    id: rowId(raw.id),
     role,
     content: text(raw.content),
     createdAt: count(raw.created_at),

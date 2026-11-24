@@ -5,16 +5,16 @@ import type {
 } from '../src/services/sessionApi';
 
 function message(
-  id: number,
+  id: number | string,
   role: SessionMessage['role'],
   content: string,
   failedTurn?: { turn_id: string; error: string; retryable: boolean },
 ): SessionMessage {
   return {
-    id,
+    id: String(id),
     role,
     content,
-    createdAt: id,
+    createdAt: typeof id === 'number' ? id : 0,
     failedTurn: failedTurn
       ? {
           turnId: failedTurn.turn_id,
@@ -129,4 +129,13 @@ test('a turn still in the active set is resumable', () => {
 
 test('an unknown conversation has nothing to resume', () => {
   expect(resolveTurn(null, 'turn-1')).toEqual({ kind: 'missing' });
+});
+
+test('a transcript without ids still gets one key per exchange', () => {
+  const exchanges = toExchanges([
+    message('', 'user', 'What is a third?'),
+    message('', 'assistant', 'One of three equal parts.'),
+    message('', 'user', 'And a quarter?'),
+  ]);
+  expect(exchanges.map(exchange => exchange.id)).toEqual(['m#0', 'm#2']);
 });

@@ -258,11 +258,13 @@ export function SessionsScreen({
                   <Action
                     title="Rename"
                     tone="secondary"
+                    disabled={Boolean(busySessionId)}
                     onPress={() => openRename(item)}
                   />
                   <Action
                     title="Delete"
                     tone="secondary"
+                    disabled={Boolean(busySessionId)}
                     onPress={() => confirmDelete(item)}
                   />
                 </View>

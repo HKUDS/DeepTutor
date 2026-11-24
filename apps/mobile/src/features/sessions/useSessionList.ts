@@ -84,7 +84,9 @@ export function useSessionList(
     async (mode: 'initial' | 'refresh' | 'more') => {
       const sessionApi = apiRef.current;
       if (!sessionApi) return;
-      if (busy.current) return;
+      // A newer first page or refresh supersedes an older page fetch; only a
+      // second "load more" is dropped, so one offset is never requested twice.
+      if (busy.current && mode === 'more') return;
       if (mode === 'more' && !hasMore.current) return;
       busy.current = true;
       inFlight.current?.abort();

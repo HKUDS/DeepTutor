@@ -17,6 +17,7 @@ export default function SessionsRoute() {
     [session.origin],
   );
   const list = useSessionList(api, undefined);
+  const refreshList = list.refresh;
   const [busySessionId, setBusySessionId] = useState<string | null>(null);
   const [openError, setOpenError] = useState<string | null>(null);
 
@@ -31,17 +32,23 @@ export default function SessionsRoute() {
         // failure still moves to the chat screen so its retry is reachable.
         if (chat.getSnapshot().sessionId === sessionId) {
           router.replace('/chat');
-        } else {
-          setOpenError(
-            chat.getSnapshot().error ??
-              'Could not open this conversation on the server.',
-          );
+          return;
         }
+        const snapshot = chat.getSnapshot();
+        const gone = snapshot.recovery?.kind === 'unavailable';
+        setOpenError(
+          gone
+            ? snapshot.recovery?.message ??
+                'This conversation no longer exists on the server.'
+            : snapshot.error ?? 'Could not open this conversation on the server.',
+        );
+        // A conversation the server no longer has must not linger in the index.
+        if (gone) refreshList();
       } finally {
         setBusySessionId(null);
       }
     },
-    [busySessionId, chat, router],
+    [busySessionId, chat, refreshList, router],
   );
 
   const newChat = useCallback(() => {

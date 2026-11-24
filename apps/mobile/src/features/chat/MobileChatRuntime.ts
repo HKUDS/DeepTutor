@@ -26,6 +26,7 @@ import type {
   TurnStatus,
 } from '../../services/sessionApi';
 import type {
+  LastSessionStore,
   RecoveryRecord,
   RecoveryScope,
   TurnRecoveryStore,
@@ -79,12 +80,16 @@ type ChatOptions = {
   /** Conversation history transport; absent in unit tests that only drive WS. */
   sessionApi?: SessionApi;
   recovery?: TurnRecoveryStore;
+  /** Remembers the conversation to reopen on a later launch. */
+  lastSession?: LastSessionStore;
   /** Null disables persistence entirely (nothing is written without an account). */
   scope?: RecoveryScope | null;
 };
 
 type ActiveTurn = {
   messageId: string;
+  /** The id sent as `client_submission_id`; the server dedupes on it. */
+  submissionId: string;
   turnId: string | null;
   replying: boolean;
   cancelRequested: boolean;
@@ -176,6 +181,12 @@ export class MobileChatRuntime {
   private epoch = 0;
   /** Record read on cold start, consumed by the transcript load it triggered. */
   private pendingRecord: RecoveryRecord | null = null;
+  /**
+   * The last start command the server never confirmed. Reusing its id keeps a
+   * retry idempotent server-side: `start_turn` returns the turn it already
+   * reserved instead of running the question twice.
+   */
+  private unconfirmedSubmission: { id: string; text: string } | null = null;
   private authProbe: Promise<boolean> | undefined;
   private nextAuthProbeAt = 0;
 
@@ -250,11 +261,19 @@ export class MobileChatRuntime {
    * about. A conversation the server no longer has is reported as such instead
    * of being shown as a run that is still going.
    */
-  openSession = async (sessionId: string): Promise<boolean> => {
+  openSession = (sessionId: string): Promise<boolean> =>
+    this.load(sessionId, false);
+
+  private load = async (
+    sessionId: string,
+    silent: boolean,
+  ): Promise<boolean> => {
     if (this.active) {
-      this.update({
-        error: 'Stop the current response before switching conversations.',
-      });
+      if (!silent) {
+        this.update({
+          error: 'Stop the current response before switching conversations.',
+        });
+      }
       return false;
     }
     const api = this.options.sessionApi;
@@ -281,7 +300,7 @@ export class MobileChatRuntime {
       return true;
     } catch (error) {
       if (epoch !== this.epoch) return false;
-      this.failLoad(error);
+      this.failLoad(error, silent);
       return false;
     }
   };
@@ -302,14 +321,27 @@ export class MobileChatRuntime {
     this.clearStartTimeout();
     this.clearReplayRetry();
     this.sessionId = null;
+    this.unconfirmedSubmission = null;
     this.retiredTurnIds.clear();
     this.closeTransport();
     this.update(initialState());
     this.openTransport();
     this.clearPersisted();
+    this.forgetSession();
   };
 
   dismissRecovery = () => this.update({ recovery: null });
+
+  /**
+   * A send needs a transcript the app can append to. Posting while it is still
+   * loading would write into messages the server copy is about to replace;
+   * posting after it failed to load would answer with history nobody can see.
+   * A conversation this runtime created over the socket has no transcript load
+   * at all (`idle`), which is a fine state to post from.
+   */
+  private canPost(): boolean {
+    return this.state.history === 'idle' || this.state.history === 'ready';
+  }
 
   send = (text: string): boolean => {
     const question = text.trim();
@@ -318,15 +350,21 @@ export class MobileChatRuntime {
       this.active ||
       this.client?.state !== 'connected' ||
       !isComposing(this.state.status) ||
-      // Posting before the transcript lands would write into a conversation
-      // whose messages are about to be replaced by the server's copy.
-      this.state.history === 'loading'
+      !this.canPost()
     ) {
       return false;
     }
     const messageId = newCommandId();
+    // Resending the same question after an unconfirmed start reuses the id the
+    // server may already have reserved, so the retry cannot run it twice.
+    const submissionId =
+      this.unconfirmedSubmission?.text === question
+        ? this.unconfirmedSubmission.id
+        : newCommandId();
+    this.unconfirmedSubmission = { id: submissionId, text: question };
     const active: ActiveTurn = {
       messageId,
+      submissionId,
       turnId: null,
       replying: false,
       cancelRequested: false,
@@ -360,12 +398,14 @@ export class MobileChatRuntime {
         buildStartTurn({
           capability: 'chat',
           content: question,
-          client_submission_id: messageId,
+          client_submission_id: submissionId,
           ...(this.sessionId ? { session_id: this.sessionId } : {}),
         }),
       );
       return true;
     } catch {
+      // Nothing reached the transport, so there is no reservation to reuse.
+      this.unconfirmedSubmission = null;
       this.finishTurn(
         'failed',
         'Unable to send this message. Check your connection.',
@@ -435,8 +475,12 @@ export class MobileChatRuntime {
 
   /** Adopt a server transcript, resuming it only if the server says it is live. */
   private applyDetail(detail: SessionDetail) {
-    const record = this.pendingRecord;
+    // A record only describes the conversation it was written for.
+    const record =
+      this.pendingRecord?.sessionId === detail.id ? this.pendingRecord : null;
     this.pendingRecord = null;
+    // The server's transcript settles whether anything is still pending.
+    this.unconfirmedSubmission = null;
     const messages = toExchanges(detail.messages);
     const resolved = resolveTurn(detail, record?.turnId ?? '');
     const title = detail.title || '';
@@ -461,6 +505,7 @@ export class MobileChatRuntime {
       }
       const active: ActiveTurn = {
         messageId,
+        submissionId: record?.clientSubmissionId ?? '',
         turnId: turn.id,
         replying: false,
         cancelRequested: false,
@@ -484,6 +529,7 @@ export class MobileChatRuntime {
       });
       // seq 0 makes the server replay the whole turn so the answer rebuilds
       // from its own log; the persisted sequence is kept for diagnostics only.
+      this.rememberSession(detail.id);
       this.client?.setResumeCursor(turn.id, 0);
       this.client?.manualRetry();
       this.watchTurn(active);
@@ -507,11 +553,20 @@ export class MobileChatRuntime {
           }
         : null,
     });
+    this.rememberSession(detail.id);
     this.clearPersisted();
   }
 
-  private failLoad(error: unknown) {
+  private failLoad(error: unknown, silent = false) {
     const api = error instanceof ApiError ? error : null;
+    if (api?.status === 404 && silent) {
+      // A remembered conversation that is now gone is not an incident: forget
+      // it and open a fresh chat rather than announcing a deletion.
+      this.sessionId = null;
+      this.update(initialState());
+      this.forgetSession();
+      return;
+    }
     if (api?.status === 404) {
       // The conversation is gone on the server. Say so and fall back to a new
       // chat instead of leaving a dead transcript on screen.
@@ -553,18 +608,31 @@ export class MobileChatRuntime {
   }
 
   private async restore() {
-    const { recovery, scope, sessionApi } = this.options;
-    if (!recovery || !scope || !sessionApi || this.active) return;
+    const { recovery, lastSession, scope, sessionApi } = this.options;
+    if (!scope || !sessionApi || this.active) return;
     let record: RecoveryRecord | null = null;
     try {
-      record = await recovery.read(scope);
+      record = recovery ? await recovery.read(scope) : null;
     } catch {
+      record = null;
+    }
+    if (this.active) return;
+    if (record) {
+      this.pendingRecord = record;
+      const opened = await this.load(record.sessionId, false);
+      if (!opened) this.pendingRecord = null;
       return;
     }
-    if (!record || this.active) return;
-    this.pendingRecord = record;
-    const opened = await this.openSession(record.sessionId);
-    if (!opened) this.pendingRecord = null;
+    // Nothing was running: reopen the conversation the learner was reading,
+    // quietly, so a relaunch does not look like the history was lost.
+    let last: string | null = null;
+    try {
+      last = (await lastSession?.read(scope)) ?? null;
+    } catch {
+      last = null;
+    }
+    if (!last || this.active) return;
+    await this.load(last, true);
   }
 
   private persist(force = false) {
@@ -588,12 +656,24 @@ export class MobileChatRuntime {
       version: 1,
       sessionId,
       turnId: active.turnId,
-      clientSubmissionId: active.messageId,
+      clientSubmissionId: active.submissionId || active.messageId,
       lastSeq: this.client?.cursor.afterSeq ?? 0,
       status,
       updatedAt: now,
     };
     recovery.write(scope, record).catch(() => {});
+  }
+
+  private rememberSession(sessionId: string) {
+    const { lastSession, scope } = this.options;
+    if (!lastSession || !scope) return;
+    lastSession.write(scope, sessionId).catch(() => {});
+  }
+
+  private forgetSession() {
+    const { lastSession, scope } = this.options;
+    if (!lastSession || !scope) return;
+    lastSession.clear(scope).catch(() => {});
   }
 
   private clearPersisted() {
@@ -633,6 +713,9 @@ export class MobileChatRuntime {
         error: 'Could not confirm the stop request. Try Stop again.',
         canLeaveTurn: true,
       });
+      // The run is still the server's; keep the idle watchdog armed so a
+      // connection that died during the stop still recovers.
+      this.watchTurn(active);
     }
   }
 
@@ -805,6 +888,8 @@ export class MobileChatRuntime {
       return;
     if (!active.turnId) {
       active.turnId = event.turn_id;
+      // Admitted: the id is spent and must not be reused for a later question.
+      this.unconfirmedSubmission = null;
       this.clearStartTimeout();
     }
     if (event.session_id) this.sessionId = event.session_id;
@@ -821,6 +906,7 @@ export class MobileChatRuntime {
     }
     if (this.state.sessionId !== this.sessionId) {
       this.update({ sessionId: this.sessionId });
+      if (this.sessionId) this.rememberSession(this.sessionId);
     }
     switch (event.type) {
       case 'content':
