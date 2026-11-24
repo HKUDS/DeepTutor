@@ -56,7 +56,7 @@ def test_existing_option_grading_and_legacy_concept_options_are_unchanged():
     assert check_answer(entry, "A") is False
 
 
-@pytest.mark.parametrize("kind", ["fill_in_blank", "short_answer"])
+@pytest.mark.parametrize("kind", ["fill_blank", "fill_in_blank", "short_answer"])
 @pytest.mark.parametrize(
     ("answer", "correct"),
     [("1.234,57", True), ("1234.57 €", True), ("1234.67", False), ("-1234.57", False)],
