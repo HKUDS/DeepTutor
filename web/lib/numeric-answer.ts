@@ -38,7 +38,7 @@ const FOLDED: Record<string, string> = { '\u2212': '-', '\u2013': '-', '\u2019':
 const LABEL =
   /(?<![^\s,;])\s*(?:\(?([a-z]{1,3}|[0-9]{1,2})\)|(\p{L}[\p{L}\p{N}_'[\]]{0,15})\s*[=:])/giu
 const NUMBER =
-  /^([^0-9]*?)([0-9](?:[0-9.,' ]*[0-9])?)(?:\s*\/\s*([0-9]+)|[eE]([+-]?[0-9]{1,2}))?([\s\S]*)$/
+  /^([^0-9]*?)([0-9](?:[0-9.,' ]*[0-9])?)(?:\s*\/\s*([0-9]{1,15})|[eE]([+-]?[0-9]{1,2}))?([\s\S]*)$/
 const PREFIX = /^(?:≈|~|ca\.?|approx\.?)?\s*[+-]?\s*(?:€|\$|£|eur|usd|gbp|chf)?\s*[+-]?$/i
 const UNIT = /^\p{L}+\.?(?:\/\p{L}+)?$/u
 const CURRENCY = new Map(
@@ -185,30 +185,45 @@ function matches(
   if (
     (given.currency && key.currency && given.currency !== key.currency) ||
     (given.unit !== key.unit &&
-      ((given.unit && key.unit) || lone.length < 2 || FIXED_UNITS.has(lone)))
+      ((given.unit && key.unit) ||
+        lone.length < 2 ||
+        FIXED_UNITS.has(lone) ||
+        given.currency ||
+        key.currency))
   ) {
     return null
   }
   let [keyValue, decimals] = key.readings[markKey]
   const [v, givenDecimals] = given.readings[markGiven]
-  if (decimals === null && (givenDecimals ?? 0) >= 2) decimals = givenDecimals // "0.33" for "1/3"
-  // Compare in the key's written units; "12.5" answers "12.5%" and "50%" answers "50".
+  // "0.33" (or "33.33%") rounds "1/3" correctly.
+  if (decimals === null && givenDecimals !== null && givenDecimals >= 2) {
+    decimals = givenDecimals + (given.percent ? 2 : 0)
+  }
+  // Compare in the key's written units; a bare "12.5" answers a "12.5%" key.
   const scale = key.percent ? 100 : 1
-  const candidates = [v * scale]
-  if (key.percent !== given.percent) candidates.push(key.percent ? v : v * 100)
   const tol = tolerance(keyValue * scale, decimals, relTol, absTol)
-  return candidates.some(c => Math.abs(c - keyValue * scale) <= tol)
+  if (Math.abs(v * scale - keyValue * scale) <= tol) return true
+  if (key.percent && !given.percent) return Math.abs(v - keyValue * scale) <= tol
+  if (given.percent && !key.percent && Math.abs(v * 100 - keyValue) <= tol) {
+    return null // "50%" for "50" may be right; leave it to the caller
+  }
+  return false
 }
 
 /** Preferred [given, key] decimal marks first, then the other readings. */
 function conventions(given: NumberToken[], keys: NumberToken[]): [boolean, [Mark, Mark][]] {
   const ownGiven = convention(given)
   const ownKey = convention(keys)
-  const both: [Mark, Mark][] = [
-    ['.', '.'],
-    [',', ','],
-  ]
-  if (!ownGiven && !ownKey) return [false, both]
+  if (!ownGiven && !ownKey) {
+    // Same-convention readings decide; cross readings can only make it ambiguous.
+    const all: [Mark, Mark][] = [
+      ['.', '.'],
+      [',', ','],
+      ['.', ','],
+      [',', '.'],
+    ]
+    return [false, all]
+  }
   const preferred: [Mark, Mark] = [(ownGiven ?? ownKey)!, (ownKey ?? ownGiven)!]
   const options: [Mark, Mark][] = [preferred]
   for (const g of ownGiven ? [ownGiven] : (['.', ','] as Mark[])) {
@@ -253,8 +268,9 @@ export function numericEquivalent(
     outcomes.push(outcome as boolean[])
   }
   const allOk = (o: boolean[]) => o.every(Boolean)
-  const correct = hasPreferred ? allOk(outcomes[0]) : outcomes.every(allOk)
-  const partOk = hasPreferred ? outcomes[0] : pairs.map((_, i) => outcomes.every(o => o[i]))
+  const decisive = outcomes.slice(0, hasPreferred ? 1 : 2)
+  const correct = decisive.every(allOk)
+  const partOk = pairs.map((_, i) => decisive.every(o => o[i]))
   return {
     comparable: true,
     correct,
