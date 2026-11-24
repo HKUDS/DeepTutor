@@ -7,9 +7,9 @@ If your install isn't behaving, run `deeptutor doctor` first — it reports what
 
 ## Ports and processes
 
-### `Address already in use :3782` (or :8001)
+### Port already in use (:3782 or :8001)
 
-Something else is bound to the port. Find it:
+Something else is bound to the port. The launcher stops with "DeepTutor cannot start because port(s) already in use", naming the ports it could not claim. Find the holder:
 
 ```bash
 # macOS
@@ -88,9 +88,9 @@ The provider rejected your API key. Common gotchas:
 
 Re-run `deeptutor init` to re-enter the key, or edit `data/user/settings/model_catalog.json` directly.
 
-### `Failed to fetch /models` during setup
+### Model list won't load during setup
 
-DeepTutor pings the provider's model-list endpoint to populate the model dropdown. If your network blocks it, you'll see this warning — it's **non-fatal**. The wizard falls back to a hardcoded list of common models and continues.
+DeepTutor pings the provider's model-list endpoint to populate the model dropdown. If your network blocks it, the backend logs "Failed to fetch models from …" and the wizard shows a warning — it's **non-fatal**. The wizard falls back to a hardcoded list of common models and continues.
 
 ### `host.docker.internal` not resolving (Docker + local Ollama)
 
@@ -109,11 +109,11 @@ services:
       - "host.docker.internal:host-gateway"
 ```
 
-### `Embedding dimension mismatch` when querying a KB
+### Embedding configuration doesn't match the index
 
-You re-indexed a KB with a different embedding model. The cached dimension no longer matches.
+You re-indexed a KB with a different embedding model. The cached dimension no longer matches, and the UI reports that the active embedding configuration doesn't match any ready index version. GraphRAG states it more directly: the active embedding model returned N dimensions, but DeepTutor is configured for M.
 
-Fix: in the Web UI, navigate to **Knowledge → select KB → Index versions → Re-index now**. Re-indexing isn't exposed as a CLI command.
+Fix: in the Web UI, navigate to **Knowledge → select KB → Index versions → Re-index**. Re-indexing isn't exposed as a CLI command.
 
 ### Embedding endpoint URL keeps coming back wrong
 

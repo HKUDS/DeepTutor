@@ -60,6 +60,7 @@ DeepTutor 的模型 catalog 覆盖 LLM、Task Models、Embedding、Search、语�
 | <img src="/provider-icons/volcengine-color.svg" alt="" width="16" height="16" /> VolcEngine | `volcengine` | `https://ark.cn-beijing.volces.com/api/v3`               |
 | <img src="/provider-icons/volcengine-color.svg" alt="" width="16" height="16" /> VolcEngine Coding Plan | `volcengine_coding_plan` | `https://ark.cn-beijing.volces.com/api/coding/v3`       |
 | <img src="/provider-icons/xiaomimimo.svg" alt="" width="16" height="16" /> Xiaomi MIMO | `xiaomi_mimo` | `https://api.xiaomimimo.com/v1`                          |
+| xAI (Grok)              | `xai`                 | `https://api.x.ai/v1`                                    |
 | Y-API                   | `y_api`               | `https://api.y-api.bestvirtualgoods.com/v1`               |
 | <img src="/provider-icons/zhipu-color.svg" alt="" width="16" height="16" /> Zhipu AI (GLM) | `zhipu` | `https://open.bigmodel.cn/api/paas/v4`                   |
 
@@ -86,6 +87,7 @@ LLM/Task 按提供方选 **API format**，**Auto** 自动路由；默认 URL 随
 | <img src="/provider-icons/azure-color.svg" alt="" width="16" height="16" /> Azure OpenAI | `azure_openai` | 部署名称                  |      —      |
 | <img src="/provider-icons/cohere-color.svg" alt="" width="16" height="16" /> Cohere | `cohere` | `embed-v4.0`              |    1024     |
 | <img src="/provider-icons/jina.svg" alt="" width="16" height="16" /> Jina | `jina` | `jina-embeddings-v3`      |    1024     |
+| <img src="/provider-icons/mistral-color.svg" alt="" width="16" height="16" /> Mistral | `mistral` | `mistral-embed`        |    1024     |
 | <img src="/provider-icons/ollama.svg" alt="" width="16" height="16" /> Ollama | `ollama` | `nomic-embed-text`        |     768     |
 | Lemonade Server       | `lemonade`    | 任意本地 embedding 模型   |      —      |
 | <img src="/provider-icons/vllm-color.svg" alt="" width="16" height="16" /> vLLM / LM Studio | `vllm` | 任意 embedding 模型       |      —      |
@@ -135,6 +137,8 @@ Dimension: 3072
 | Firecrawl   | API key           | 附带整页抽取                     |
 | <img src="/provider-icons/baiducloud-color.svg" alt="" width="16" height="16" /> 百度千帆 | API key | 国内托管                         |
 | 阿里云 IQS  | API key           | 国内托管                         |
+| You.com     | API key           | 直接返回答案                     |
+| Google Browser Scraper | Base URL | 通过本地浏览器抓取 Google      |
 | None        | 无                | 显式关闭网页搜索                 |
 
 ### 配置

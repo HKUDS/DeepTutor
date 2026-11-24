@@ -137,9 +137,9 @@ deeptutor.example.com {
 
 确认 `data/system/auth/users.json` 里第一个用户的 `"role": "admin"`。如果不是，手动改掉并重启。
 
-### 重启后 `Cannot decode JWT`
+### 重启后所有请求都返回 401，像是被登出
 
-`auth_secret` 丢了或被重新生成。从备份恢复，或者接受新的 secret 然后要求所有用户重新登录。
+`auth_secret` 丢了或被重新生成，旧 token 无法解码；服务端不会专门报错，只会当作未认证处理。从备份恢复 secret，或者接受新的 secret 然后要求所有用户重新登录。
 
 ## headless 单用户引导
 

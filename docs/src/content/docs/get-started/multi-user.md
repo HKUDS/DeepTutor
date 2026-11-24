@@ -144,9 +144,9 @@ The frontend bundle may be cached. With Docker, recreate the container. From sou
 
 Confirm `data/system/auth/users.json` has `"role": "admin"` on the first user. If not, manually set it and restart.
 
-### `Cannot decode JWT` after restart
+### Every request returns 401 after a restart
 
-`auth_secret` was lost or regenerated. Restore from backup, or accept the regenerated secret and ask all users to log in again.
+`auth_secret` was lost or regenerated, so existing tokens no longer decode. There is no dedicated error for this: the failure is swallowed and surfaces as a plain 401. Restore the secret from backup, or accept the regenerated one and ask all users to log in again.
 
 ## Headless single-user bootstrap
 

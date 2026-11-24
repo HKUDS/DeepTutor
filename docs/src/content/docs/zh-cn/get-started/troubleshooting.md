@@ -7,9 +7,9 @@ description: 各种安装路径下的常见错误，以及可以直接复制粘�
 
 ## 端口与进程
 
-### `Address already in use :3782`（或 :8001）
+### 端口已被占用（:3782 或 :8001）
 
-有别的东西绑定到这个端口了。找出来：
+有别的东西绑定到这个端口了。启动器会以「DeepTutor cannot start because port(s) already in use」停下，并列出抢不到的端口。找出占用者：
 
 ```bash
 # macOS
@@ -80,9 +80,9 @@ provider 拒绝了你的 API key。常见坑：
 
 重跑 `deeptutor init` 重新输入 key，或者直接编辑 `data/user/settings/model_catalog.json`。
 
-### 配置时 `Failed to fetch /models`
+### 配置时模型列表加载不出来
 
-DeepTutor 会 ping provider 的 model-list 端点来填充模型下拉框。如果你的网络把它挡了，会出现这个警告 —— 这是**非致命**的。向导会 fallback 到一份硬编码的常见模型列表然后继续。
+DeepTutor 会 ping provider 的 model-list 端点来填充模型下拉框。如果你的网络把它挡了，后端日志会写下「Failed to fetch models from …」，向导则给一个警告 —— 这是**非致命**的。向导会 fallback 到一份硬编码的常见模型列表然后继续。
 
 ### `host.docker.internal` 解析不了（Docker + 本地 Ollama）
 
@@ -101,11 +101,11 @@ services:
       - "host.docker.internal:host-gateway"
 ```
 
-### 查询 KB 时报 `Embedding dimension mismatch`
+### 查询 KB 时报 embedding 配置与索引不匹配
 
-你用不同的 embedding 模型重建了 KB。缓存里的维度对不上了。
+你用不同的 embedding 模型重建了 KB，缓存里的维度对不上了。UI 会提示当前 embedding 配置与任何已就绪的索引版本都不匹配；GraphRAG 说得更直接：当前 embedding 模型返回 N 维，而 DeepTutor 配的是 M 维。
 
-修复：在 Web UI 里，**Knowledge → 选 KB → Index versions → Re-index now**。重建索引没有暴露成 CLI 命令。
+修复：在 Web UI 里，**Knowledge → 选 KB → Index versions → Re-index**。重建索引没有暴露成 CLI 命令。
 
 ### Embedding endpoint URL 老是出错
 
