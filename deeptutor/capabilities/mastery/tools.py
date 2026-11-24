@@ -2226,8 +2226,12 @@ class MasteryAssessTool(BaseTool):
                 "Ask the learner one question for exactly this missing element: "
                 + receipt["missing"]
                 + ". If it was not taught yet in this conversation, briefly explain it from the "
-                "sources first, then ask for it. Do not ask other sub-questions before it."
+                "sources first, then ask for it. Do not ask other sub-questions before it. "
+                "Record the reply with mastery_assess."
             )
+            if not mastered:
+                # The generic "explain it again" move would compete with it.
+                payload["instruction"] = payload["next_step"]
         return _json_result(payload, meta_key="mastery_assess")
 
 

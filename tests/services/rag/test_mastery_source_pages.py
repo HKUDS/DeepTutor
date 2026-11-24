@@ -1684,6 +1684,8 @@ async def test_partial_assess_targets_missing_element_and_excludes_sibling_scope
     assert payload["result"] == "partial"
     assert payload["missing"] == "why the bilayer forms a barrier"
     assert "exactly this missing element: why the bilayer forms a barrier" in payload["next_step"]
+    # The generic "explain it again" move would pull the tutor off the gap.
+    assert payload["instruction"] == payload["next_step"]
 
 
 @pytest.mark.asyncio
