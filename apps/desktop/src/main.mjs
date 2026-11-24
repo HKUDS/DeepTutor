@@ -202,11 +202,17 @@ function watchInterface() {
 }
 
 function hideContent() {
+  clearTimeout(chromeSyncTimer);
   contentVisible = false;
-  if (!view) return;
-  window?.contentView.removeChildView(view);
-  view.webContents.close();
+  const current = view;
   view = undefined;
+  if (!current) return;
+  if (window && !window.isDestroyed()) {
+    try { window.contentView.removeChildView(current); } catch { /* ignore */ }
+  }
+  if (!current.webContents.isDestroyed()) {
+    current.webContents.close();
+  }
 }
 
 function layout() {
@@ -605,6 +611,7 @@ else {
     window.on('close', event => {
       if (!exitAllowed) { event.preventDefault(); app.quit(); }
     });
+    window.on('closed', () => { window = undefined; });
 
     for (const [channel, handler] of Object.entries({
       status: () => snapshot(),
