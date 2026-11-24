@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { Search, X } from 'lucide-react'
@@ -26,9 +26,32 @@ export default function SettingsNav({ onNavigate }: { onNavigate?: () => void })
   const access = useSettingsAccess()
   const pages = visibleSettingsPages(access)
   const [query, setQuery] = useState('')
+  const listRef = useRef<HTMLDivElement>(null)
+  const [moreBelow, setMoreBelow] = useState(false)
   const needle = query.trim().toLocaleLowerCase()
   const currentKey = pathname.split('/')[2] || 'general'
   const currentFamily = settingsPageFamily(currentKey)
+
+  // The rail carries more sections than a 820px card can show (Search plus
+  // five groups runs past the viewport), so the list scrolls. Without a cue the
+  // last visible row is simply cut in half and reads as broken layout; the fade
+  // only appears while there is actually more to scroll to, and disappears at
+  // the end so the final row stays fully legible.
+  useEffect(() => {
+    const el = listRef.current
+    if (!el) return
+    const update = () =>
+      setMoreBelow(el.scrollHeight - el.clientHeight - el.scrollTop > 8)
+    update()
+    el.addEventListener('scroll', update, { passive: true })
+    const observer =
+      typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(update)
+    observer?.observe(el)
+    return () => {
+      el.removeEventListener('scroll', update)
+      observer?.disconnect()
+    }
+  }, [needle])
   const matches = pages.filter(page => {
     const navLabel = settingsPageLabel(page.key, page.label)
     return [
@@ -90,43 +113,51 @@ export default function SettingsNav({ onNavigate }: { onNavigate?: () => void })
           </button>
         )}
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto px-2.5 pb-6">
-        {groups
-          .filter(group => group.pages.length)
-          .map(group => (
-            <div key={group.label} className="mb-0.5">
-              <p className="px-2.5 pb-1.5 pt-5 text-[12px] font-medium text-muted-foreground">
-                {t(group.label)}
-              </p>
-              <div className="space-y-0.5">
-                {group.pages.map(page => {
-                  const Icon = needle ? page.icon : settingsPageIcon(page.key, page.icon)
-                  const active = needle ? page.key === currentKey : currentFamily.includes(page.key)
-                  return (
-                    <Tooltip key={page.key} label={t(page.blurb)} as="div" side="right">
-                      <Link
-                        href={settingsAnchorHref(page.key)}
-                        scroll={false}
-                        onClick={onNavigate}
-                        aria-current={active ? 'page' : undefined}
-                        data-tour={`tour-nav-${page.key}`}
-                        className={`flex min-h-9 items-center gap-2 rounded-lg px-2.5 py-2 text-[13px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-[var(--ring)] ${active ? 'bg-[var(--accent)] font-medium text-[var(--foreground)]' : 'text-[var(--foreground)] hover:bg-accent/60'}`}
-                      >
-                        <Icon size={15} strokeWidth={1.8} className="shrink-0" />
-                        <span>
-                          {t(needle ? page.label : settingsPageLabel(page.key, page.label))}
-                        </span>
-                      </Link>
-                    </Tooltip>
-                  )
-                })}
+      <div className="relative min-h-0 flex-1">
+        <div ref={listRef} className="h-full overflow-y-auto px-2.5 pb-6">
+          {groups
+            .filter(group => group.pages.length)
+            .map(group => (
+              <div key={group.label} className="mb-0.5">
+                <p className="px-2.5 pb-1.5 pt-5 text-[12px] font-medium text-muted-foreground">
+                  {t(group.label)}
+                </p>
+                <div className="space-y-0.5">
+                  {group.pages.map(page => {
+                    const Icon = needle ? page.icon : settingsPageIcon(page.key, page.icon)
+                    const active = needle ? page.key === currentKey : currentFamily.includes(page.key)
+                    return (
+                      <Tooltip key={page.key} label={t(page.blurb)} as="div" side="right">
+                        <Link
+                          href={settingsAnchorHref(page.key)}
+                          scroll={false}
+                          onClick={onNavigate}
+                          aria-current={active ? 'page' : undefined}
+                          data-tour={`tour-nav-${page.key}`}
+                          className={`flex min-h-9 items-center gap-2 rounded-lg px-2.5 py-2 text-[13px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-[var(--ring)] ${active ? 'bg-[var(--accent)] font-medium text-[var(--foreground)]' : 'text-[var(--foreground)] hover:bg-accent/60'}`}
+                        >
+                          <Icon size={15} strokeWidth={1.8} className="shrink-0" />
+                          <span>
+                            {t(needle ? page.label : settingsPageLabel(page.key, page.label))}
+                          </span>
+                        </Link>
+                      </Tooltip>
+                    )
+                  })}
+                </div>
               </div>
-            </div>
-          ))}
-        {needle && !matches.length && (
-          <p className="px-2.5 py-5 text-[13px] text-[var(--muted-foreground)]">
-            {t('No settings match “{{query}}”.', { query: query.trim() })}
-          </p>
+            ))}
+          {needle && !matches.length && (
+            <p className="px-2.5 py-5 text-[13px] text-[var(--muted-foreground)]">
+              {t('No settings match “{{query}}”.', { query: query.trim() })}
+            </p>
+          )}
+        </div>
+        {moreBelow && (
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-[color-mix(in_srgb,var(--muted)_18%,var(--background))] to-transparent"
+          />
         )}
       </div>
     </nav>

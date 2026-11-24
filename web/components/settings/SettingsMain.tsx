@@ -72,11 +72,26 @@ export default function SettingsMain({ children }: { children: React.ReactNode }
     <button
       type="button"
       disabled={saving || applying}
-      onClick={() => (hasUnsavedChanges ? setLeaving(true) : returnToApp())}
-      className="flex items-center gap-2 rounded-md px-2.5 py-1.5 text-[13px] font-medium text-foreground outline-none transition-colors hover:bg-accent/60 hover:text-foreground focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:opacity-40"
+      onClick={requestClose}
+      className="flex min-w-0 items-center gap-2 justify-self-start rounded-md px-2.5 py-1.5 text-[13px] font-medium text-foreground outline-none transition-colors hover:bg-accent/60 hover:text-foreground focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:opacity-40"
+    >
+      <ArrowLeft size={16} strokeWidth={1.7} className="shrink-0" />
+      <span className="truncate">{t('Back to app')}</span>
+    </button>
+  )
+  // The 224px rail has no room for "Settings" and a labelled back button side
+  // by side once a locale spells both long ("Einstellungen" / "Zurück zur
+  // App"), so the rail keeps the title and gives the exit an icon with a
+  // tooltip. The phone header has the width and keeps the label.
+  const railReturnButton = (
+    <button
+      type="button"
+      disabled={saving || applying}
+      aria-label={t('Back to app')}
+      onClick={requestClose}
+      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[var(--muted-foreground)] outline-none transition-colors hover:bg-accent hover:text-[var(--foreground)] focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:opacity-40"
     >
       <ArrowLeft size={16} strokeWidth={1.7} />
-      {t('Back to app')}
     </button>
   )
 
@@ -86,7 +101,7 @@ export default function SettingsMain({ children }: { children: React.ReactNode }
     // its own rounded edge, so opening settings no longer replaces the whole
     // window. Phones have no room for a floating card and get the full sheet.
     <div
-      className="fixed inset-0 flex items-center justify-center overflow-hidden bg-[color-mix(in_srgb,var(--foreground)_18%,transparent)] p-0 md:p-6"
+      className="fixed inset-0 flex items-center justify-center overflow-hidden bg-[var(--overlay)] p-0 md:p-6"
       data-settings-shell
       onMouseDown={event => {
         // Clicking the scrim behaves like Escape: leave settings, but never
@@ -99,11 +114,11 @@ export default function SettingsMain({ children }: { children: React.ReactNode }
         className="flex h-dvh w-full min-w-0 flex-col overflow-hidden bg-[var(--background)] md:h-[min(820px,88dvh)] md:w-[min(1080px,94vw)] md:rounded-2xl md:border md:border-[color-mix(in_srgb,var(--border)_70%,transparent)] md:shadow-[0_28px_70px_-32px_rgba(0,0,0,0.45)] lg:flex-row"
       >
         <aside className="hidden w-[224px] shrink-0 flex-col border-r border-[color-mix(in_srgb,var(--border)_55%,transparent)] bg-[color-mix(in_srgb,var(--muted)_18%,var(--background))] lg:flex">
-          <div className="flex items-center justify-between gap-1 px-4 pb-2 pt-4">
-            <p className="truncate text-[14px] font-semibold text-[var(--foreground)]">
+          <div className="flex items-center justify-between gap-2 px-4 pb-2 pt-4">
+            <p className="min-w-0 truncate text-[14px] font-semibold text-[var(--foreground)]">
               {t('Settings')}
             </p>
-            {returnButton}
+            {railReturnButton}
           </div>
           <SettingsNav />
         </aside>
