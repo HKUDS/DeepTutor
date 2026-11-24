@@ -644,6 +644,46 @@ class AgentLoop:
             return False
         return spec.backend == "openai_compat"
 
+    def _attach_retry_observer(self, *, stage: str, trace_meta: dict[str, Any]) -> None:
+        """Make the provider's own retry sleeps visible on the stream.
+
+        The provider retries transient status codes on the configured schedule
+        (5s → 120s per attempt by default). Those waits are invisible to the
+        user, which is how a 502 turns into ten minutes of silence (#2693).
+        """
+        provider = getattr(self.client, "_provider", None)
+        if provider is None or not hasattr(provider, "retry_observer"):
+            return
+        alternatives = fallback_count()
+
+        async def observe(*, attempt: int, total: int, delay: float, detail: str) -> None:
+            provider_name, model = provider_label(self.pipeline)
+            await self.stream.progress(
+                retry_notice(
+                    self.pipeline._t,
+                    provider=provider_name,
+                    model=model,
+                    attempt=attempt,
+                    total=total,
+                ),
+                source=self.source,
+                stage=stage,
+                metadata=merge_trace_metadata(
+                    trace_meta,
+                    {
+                        "trace_kind": "warning",
+                        "error_code": "provider_retry",
+                        "provider": provider_name,
+                        "retry_attempt": attempt,
+                        "retry_total": total,
+                        "retry_delay_s": delay,
+                        "fallbacks_configured": alternatives,
+                    },
+                ),
+            )
+
+        provider.retry_observer = observe
+
     async def _call_llm(
         self,
         *,
@@ -702,6 +742,9 @@ class AgentLoop:
                 {"trace_kind": "call_status", "call_state": "running"},
             ),
         )
+        # Provider-level retries sleep for seconds to minutes and emit nothing on
+        # their own; without this the turn looks frozen (#2693 P0).
+        self._attach_retry_observer(stage=stage, trace_meta=trace_meta)
 
         kwargs: dict[str, Any] = {
             "model": self.pipeline.model,

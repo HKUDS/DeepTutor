@@ -436,6 +436,21 @@ class LLMProvider(ABC):
                 delay,
                 (response.content or "")[:120].lower(),
             )
+            # A retry that sleeps for seconds (the default schedule reaches
+            # 5s→120s per attempt) produces no stream events at all, so the turn
+            # looks frozen (#2693). The observer lets the caller surface each
+            # wait; it must never turn a retry into a failure.
+            observer = getattr(self, "retry_observer", None)
+            if observer is not None:
+                try:
+                    await observer(
+                        attempt=attempt,
+                        total=len(delays) + 1,
+                        delay=delay,
+                        detail=(response.content or "")[:160],
+                    )
+                except Exception:  # pragma: no cover - visibility is best-effort
+                    logger.debug("retry observer failed", exc_info=True)
             await asyncio.sleep(delay)
 
     async def chat_with_retry(
