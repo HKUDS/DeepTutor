@@ -253,6 +253,14 @@ frontend container uses to reach the backend container:
 }
 ```
 
+A `system.json` that cannot be parsed — a stray trailing comma, a truncated
+file — is left exactly as it is on disk, and the defaults are used for that
+process, with a warning in the backend log naming the file and the parse
+error. Fix the JSON to make the edit take effect: loading a document never
+rewrites it, so the settings you wrote are still there to repair. Saving
+settings from the UI does write the document, so repair the file before
+saving.
+
 The entrypoint reads this on every start and exports
 `DEEPTUTOR_API_BASE_URL` for `proxy.ts` (precedence: `next_public_api_base`,
 then `next_public_api_base_external`, then `http://localhost:8001`). Note

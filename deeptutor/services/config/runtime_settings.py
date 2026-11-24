@@ -487,14 +487,42 @@ def _deepcopy_default(defaults: dict[str, Any]) -> dict[str, Any]:
     return deepcopy(defaults)
 
 
-def _json_object(path: Path) -> dict[str, Any]:
+_WARNED_UNREADABLE_DOCUMENTS: set[Path] = set()
+
+
+def _warn_unreadable_document(name: str, path: Path, problem: str) -> None:
+    """Report a settings document that cannot be parsed, once per process."""
+    if path in _WARNED_UNREADABLE_DOCUMENTS:
+        return
+    _WARNED_UNREADABLE_DOCUMENTS.add(path)
+    logger.warning(
+        "Ignoring unreadable %s settings document %s (%s); using defaults for this "
+        "process and leaving the file untouched.",
+        name,
+        path,
+        problem,
+    )
+
+
+def _json_document(path: Path) -> tuple[dict[str, Any], str]:
+    """Read one settings document, reporting why it is not usable.
+
+    Returns ``(document, problem)``. ``problem`` is empty both for a usable
+    document and for a file that is merely absent or empty — the caller then
+    creates it from defaults. A file that exists but does not decode, or
+    decodes to something other than a JSON object, is reported instead of
+    being flattened to ``{}``, so the caller can keep the operator's bytes
+    rather than overwrite them with defaults.
+    """
     if not path.exists() or path.stat().st_size == 0:
-        return {}
+        return {}, ""
     try:
         loaded = json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        return {}
-    return loaded if isinstance(loaded, dict) else {}
+    except Exception as exc:  # noqa: BLE001 - the message is what we report
+        return {}, f"{type(exc).__name__}: {exc}"
+    if not isinstance(loaded, dict):
+        return {}, f"expected a JSON object, found {type(loaded).__name__}"
+    return loaded, ""
 
 
 def _string(value: Any) -> str:
@@ -901,12 +929,21 @@ class RuntimeSettingsService:
         normalizer: Callable[[dict[str, Any]], dict[str, Any]],
     ) -> dict[str, Any]:
         path = self.path_for(name)
-        loaded = _json_object(path)
+        loaded, problem = _json_document(path)
         if loaded:
             normalized = normalizer({**defaults, **loaded})
             if normalized != loaded:
                 _atomic_write_json(path, normalized)
             return normalized
+
+        if problem:
+            # The document exists but is not a JSON object. Keep the operator's
+            # bytes and serve the defaults for this process: rewriting the file
+            # would silently drop settings the operator wrote by hand, and
+            # raising is not an option because load_system also runs per
+            # request.
+            _warn_unreadable_document(name, path, problem)
+            return normalizer(_deepcopy_default(defaults))
 
         normalized = normalizer(_deepcopy_default(defaults))
         _atomic_write_json(path, normalized)
