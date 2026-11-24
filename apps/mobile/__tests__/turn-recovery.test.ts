@@ -18,7 +18,7 @@ jest.mock('@react-native-async-storage/async-storage', () => {
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { turnRecoveryStorage } from '../src/storage/turnRecovery';
+import { turnRecoveryStorage, lastSessionStorage } from '../src/storage/turnRecovery';
 
 const store = (
   AsyncStorage as unknown as { __data: Map<string, string> }
@@ -111,4 +111,39 @@ test('clearing removes one scope and leaving a server removes all of them', asyn
   await expect(
     turnRecoveryStorage.read({ ...scope, account: 'acct-2' }),
   ).resolves.toBeNull();
+});
+
+test('remembers the last open conversation per scope', async () => {
+  await expect(lastSessionStorage.read(scope)).resolves.toBeNull();
+  await lastSessionStorage.write(scope, 'session-9');
+  await expect(lastSessionStorage.read(scope)).resolves.toBe('session-9');
+  // Another account on the same server must not inherit it.
+  await expect(
+    lastSessionStorage.read({ ...scope, account: 'acct-2' }),
+  ).resolves.toBeNull();
+  await lastSessionStorage.clear(scope);
+  await expect(lastSessionStorage.read(scope)).resolves.toBeNull();
+});
+
+test('a last-session entry that is stale, corrupt or empty is ignored', async () => {
+  await lastSessionStorage.write(scope, 'session-9');
+  const key = [...store.keys()].find(k => k.includes('last-session')) as string;
+  expect(key).toBeDefined();
+
+  store.set(key, '{"version":1,"sessionId":"","updatedAt":' + NOW + '}');
+  await expect(lastSessionStorage.read(scope)).resolves.toBeNull();
+
+  store.set(key, '{"version":1,"sessionId":"s","updatedAt":1}');
+  await expect(lastSessionStorage.read(scope)).resolves.toBeNull();
+
+  store.set(key, 'not json');
+  await expect(lastSessionStorage.read(scope)).resolves.toBeNull();
+});
+
+test('leaving a server forgets the conversation as well as the run', async () => {
+  await turnRecoveryStorage.write(scope, record());
+  await lastSessionStorage.write(scope, 'session-9');
+  await turnRecoveryStorage.clearServer(scope.origin);
+  await expect(turnRecoveryStorage.read(scope)).resolves.toBeNull();
+  await expect(lastSessionStorage.read(scope)).resolves.toBeNull();
 });

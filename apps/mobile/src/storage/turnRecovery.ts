@@ -32,18 +32,30 @@ export interface RecoveryScope {
   workspace: string;
 }
 
+/**
+ * The conversation that was open last, so a relaunch lands where the learner
+ * left off instead of on an empty chat. Holds no turn: an in-flight run uses
+ * `RecoveryRecord` above.
+ */
+export interface LastSessionRecord {
+  version: 1;
+  sessionId: string;
+  updatedAt: number;
+}
+
 const PREFIX = 'deeptutor:turn-recovery:v1';
+const LAST_SESSION_PREFIX = 'deeptutor:last-session:v1';
 /** Prune records old enough that no answer is worth chasing. */
 const MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
-function keyFor(scope: RecoveryScope): string {
+function keyFor(prefix: string, scope: RecoveryScope): string {
   // Each scope part is encoded so a delimiter inside an origin or account id
   // cannot make one namespace collide with another. The prefix stays literal —
   // `clearServer` matches on it.
   const parts = [scope.origin, scope.account, scope.workspace].map(part =>
     encodeURIComponent(part),
   );
-  return [PREFIX, ...parts].join(':');
+  return [prefix, ...parts].join(':');
 }
 
 function recordOf(value: unknown): RecoveryRecord | null {
@@ -91,7 +103,7 @@ export interface TurnRecoveryStore {
 
 export const turnRecoveryStorage: TurnRecoveryStore = {
   async read(scope) {
-    const raw = await AsyncStorage.getItem(keyFor(scope));
+    const raw = await AsyncStorage.getItem(keyFor(PREFIX, scope));
     if (!raw) return null;
     try {
       return recordOf(JSON.parse(raw));
@@ -101,17 +113,65 @@ export const turnRecoveryStorage: TurnRecoveryStore = {
   },
 
   write(scope, record) {
-    return AsyncStorage.setItem(keyFor(scope), JSON.stringify(record));
+    return AsyncStorage.setItem(keyFor(PREFIX, scope), JSON.stringify(record));
   },
 
   clear(scope) {
-    return AsyncStorage.removeItem(keyFor(scope));
+    return AsyncStorage.removeItem(keyFor(PREFIX, scope));
   },
 
   async clearServer(origin) {
     const keys = await AsyncStorage.getAllKeys();
-    const prefix = `${PREFIX}:${encodeURIComponent(origin)}:`;
-    const stale = keys.filter(key => key.startsWith(prefix));
+    const scoped = [PREFIX, LAST_SESSION_PREFIX].map(
+      prefix => `${prefix}:${encodeURIComponent(origin)}:`,
+    );
+    const stale = keys.filter(key =>
+      scoped.some(prefix => key.startsWith(prefix)),
+    );
     if (stale.length) await AsyncStorage.multiRemove(stale);
+  },
+};
+
+export interface LastSessionStore {
+  read(scope: RecoveryScope): Promise<string | null>;
+  write(scope: RecoveryScope, sessionId: string): Promise<void>;
+  clear(scope: RecoveryScope): Promise<void>;
+}
+
+export const lastSessionStorage: LastSessionStore = {
+  async read(scope) {
+    const raw = await AsyncStorage.getItem(
+      keyFor(LAST_SESSION_PREFIX, scope),
+    );
+    if (!raw) return null;
+    try {
+      const value: unknown = JSON.parse(raw);
+      if (!value || typeof value !== 'object') return null;
+      const record = value as Partial<LastSessionRecord>;
+      const sessionId =
+        typeof record.sessionId === 'string' ? record.sessionId.trim() : '';
+      const updatedAt =
+        typeof record.updatedAt === 'number' ? record.updatedAt : 0;
+      if (!sessionId || Date.now() - updatedAt > MAX_AGE_MS) return null;
+      return sessionId;
+    } catch {
+      return null;
+    }
+  },
+
+  write(scope, sessionId) {
+    const record: LastSessionRecord = {
+      version: 1,
+      sessionId,
+      updatedAt: Date.now(),
+    };
+    return AsyncStorage.setItem(
+      keyFor(LAST_SESSION_PREFIX, scope),
+      JSON.stringify(record),
+    );
+  },
+
+  clear(scope) {
+    return AsyncStorage.removeItem(keyFor(LAST_SESSION_PREFIX, scope));
   },
 };
