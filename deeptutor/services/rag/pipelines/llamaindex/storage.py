@@ -6,6 +6,7 @@ from collections import OrderedDict
 from dataclasses import asdict, dataclass
 import hashlib
 import json
+import logging
 import os
 from pathlib import Path
 import shutil
@@ -30,6 +31,13 @@ from .config import should_show_progress, vector_index_config_from_settings
 
 _EMBEDDING_CHECKPOINT_SOURCE_LIMIT = 16
 _EMBEDDING_CHECKPOINT_INTERVAL_SECONDS = 30.0
+
+# Candidate top-k for the persisted BM25 sidecar. The sidecar is a retrieval
+# accelerator only: it is rebuilt from the docstore when missing, so checkpoints
+# can skip it and it is written once when the candidate is complete.
+_BM25_SIDECAR_TOP_K = 20
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -303,7 +311,8 @@ def _write_embedding_snapshot(
     snapshot = Path(tempfile.mkdtemp(prefix=f".{candidate.name}.checkpoint-", dir=candidate.parent))
     try:
         index.storage_context.persist(persist_dir=str(snapshot))
-        retrievers.persist_bm25_retriever(index, snapshot, top_k=20)
+        # Building the BM25 sidecar scans the full corpus. Defer it until the
+        # final checkpoint so intermediate snapshots only save resumable state.
         atomic_write_json(snapshot / ".building.json", {"state": "building"})
         existing_catalog = candidate / "source_pages.json"
         if existing_catalog.is_file():
@@ -333,6 +342,92 @@ def _write_embedding_snapshot(
     finally:
         if snapshot.exists():
             shutil.rmtree(snapshot, ignore_errors=True)
+
+
+def _discard_sidecar_debris(storage_dir: Path, target: Path) -> None:
+    """Drop staging/backup directories a crashed sidecar publish may have left."""
+    for stale in storage_dir.glob(".bm25-sidecar-*"):
+        shutil.rmtree(stale, ignore_errors=True)
+    for stale in storage_dir.glob(f".{target.name}.previous-*"):
+        shutil.rmtree(stale, ignore_errors=True)
+
+
+def _persist_bm25_sidecar(index: Any, storage_dir: Path) -> bool:
+    """Write the BM25 sidecar once, after the candidate index is complete.
+
+    Each checkpoint would rebuild the BM25 sidecar from all indexed sources,
+    even when checkpoints are batched. The sidecar can be rebuilt from the
+    docstore, so defer writing it until all sources are indexed.
+
+    The sidecar is staged in a hidden directory inside the candidate, fsynced and
+    swapped in by rename, so a crash mid-write can never publish a partial or
+    stale sidecar (a loadable stale sidecar would silently drop the sources added
+    since it was built). Failures are non-fatal: they remove any older sidecar so
+    the query path rebuilds from the docstore instead of serving a stale corpus.
+    """
+    target = storage_dir / retrievers.BM25_PERSIST_DIRNAME
+    try:
+        _discard_sidecar_debris(storage_dir, target)
+        staging = Path(tempfile.mkdtemp(prefix=".bm25-sidecar-", dir=storage_dir))
+    except OSError as exc:
+        # A path-length/permission failure while preparing the staging directory
+        # must not fail an otherwise complete rebuild (Windows MAX_PATH).
+        logger.warning("Skipped BM25 sidecar for %s: %s", storage_dir, exc)
+        shutil.rmtree(target, ignore_errors=True)
+        return False
+    try:
+        try:
+            persisted = retrievers.persist_bm25_retriever(index, staging, top_k=_BM25_SIDECAR_TOP_K)
+        except Exception as exc:  # noqa: BLE001 - the sidecar is optional
+            # e.g. a path-length or permission error escaping the helper; a
+            # missing accelerator must not fail an otherwise complete rebuild.
+            logger.warning("Failed to build BM25 sidecar for %s: %s", storage_dir, exc)
+            persisted = False
+        if not persisted:
+            # Never leave a sidecar built from an earlier (partial) corpus.
+            shutil.rmtree(target, ignore_errors=True)
+            if retrievers.bm25_available():
+                logger.warning("BM25 sidecar was not persisted for %s", storage_dir)
+            else:
+                logger.debug(
+                    "BM25 retriever package unavailable; skipped sidecar for %s", storage_dir
+                )
+            return False
+        staged = staging / retrievers.BM25_PERSIST_DIRNAME
+        if not staged.is_dir():
+            shutil.rmtree(target, ignore_errors=True)
+            return False
+        # The old path fsynced the sidecar as part of the checkpoint tree; keep
+        # that durability now that it is written outside the snapshot swap.
+        _sync_checkpoint_tree(staged)
+        backup: Path | None = None
+        if target.exists():
+            backup = storage_dir / f".{target.name}.previous-{uuid4().hex}"
+            try:
+                target.replace(backup)
+            except OSError as exc:
+                # Never let an unmovable stale sidecar survive the publish.
+                logger.warning(
+                    "Failed to move the old BM25 sidecar aside in %s: %s", storage_dir, exc
+                )
+                shutil.rmtree(target, ignore_errors=True)
+                backup = None
+        try:
+            staged.replace(target)
+        except OSError as exc:
+            logger.warning("Failed to publish BM25 sidecar to %s: %s", target, exc)
+            # Never keep (or restore) a sidecar that does not match the candidate
+            # corpus: stale BM25 data silently drops sources added afterwards.
+            if target.exists():
+                shutil.rmtree(target, ignore_errors=True)
+            if backup is not None:
+                shutil.rmtree(backup, ignore_errors=True)
+            return False
+        if backup is not None:
+            shutil.rmtree(backup, ignore_errors=True)
+        return True
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
 
 
 def create_resumable_index(
@@ -406,6 +501,8 @@ def create_resumable_index(
         checkpoint_keys.clear()
         checkpoint_documents.clear()
         checkpointed_at = time.monotonic()
+    if index is not None:
+        _persist_bm25_sidecar(index, storage_dir)
     return len(documents)
 
 
@@ -415,7 +512,7 @@ def create_index(
     index, count = ingestion.create_index_from_documents(
         documents, storage_dir, show_progress=show_progress
     )
-    retrievers.persist_bm25_retriever(index, storage_dir, top_k=20)
+    _persist_bm25_sidecar(index, storage_dir)
     from deeptutor.services.rag.source_pages import persist_page_catalog
 
     persist_page_catalog(documents, storage_dir)
@@ -433,7 +530,7 @@ def insert_documents(existing_storage: Path, storage_dir: Path, documents: list[
             index.insert(document)
         count = len(documents)
     index.storage_context.persist(persist_dir=str(storage_dir))
-    retrievers.persist_bm25_retriever(index, storage_dir, top_k=20)
+    _persist_bm25_sidecar(index, storage_dir)
     from deeptutor.services.rag.source_pages import persist_page_catalog
 
     if existing_storage != storage_dir and (existing_storage / "source_pages.json").is_file():
