@@ -35,7 +35,10 @@ it; the system prompt is never touched.
 from __future__ import annotations
 
 from importlib import resources
+import logging
 from typing import Any
+
+import yaml
 
 from deeptutor.capabilities.disclosure import deferral_available
 from deeptutor.capabilities.protocol import PromptBlock
@@ -48,6 +51,8 @@ from deeptutor.capabilities.setup.binding import (
 from deeptutor.capabilities.setup.tools import SETUP_TOOL_NAMES
 from deeptutor.core.context import UnifiedContext
 from deeptutor.services.prompt.lookup import prompt_text as _prompt_text
+
+logger = logging.getLogger(__name__)
 
 
 class SetupCapability:
@@ -84,9 +89,11 @@ class SetupCapability:
             # or leaving setup mode therefore never rewrites the system prompt.
             return None
         content = _protocol(language, prompts)
-        content = f"{content}\n\n{_gaps_section(context)}"
+        content = f"{content}\n\n{_gaps_section(context, language, prompts)}"
         if reason == "intro":
-            content = f"{content}\n\n{_INTRO_SECTION}"
+            intro = _note(language, prompts, "intro")
+            if intro:
+                content = f"{content}\n\n{intro}"
             # Spent only here: an explicit or intent-driven turn must not consume
             # the one proactive offer an unconfigured install gets.
             mark_intro_shown()
@@ -96,50 +103,42 @@ class SetupCapability:
         """The protocol for the four tools, returned when ``load_tools`` loads them."""
         return _protocol(language, prompts)
 
-    def turn_note(self, context: UnifiedContext, *, language: str) -> str:
+    def turn_note(
+        self,
+        context: UnifiedContext,
+        *,
+        language: str,
+        prompts: dict[str, Any] | None = None,
+    ) -> str:
         """Per-turn setup facts for the end of the user message.
 
         Only emitted where deferral is available — otherwise the legacy system
-        block carries the same facts.
+        block carries the same facts. The wording lives in
+        ``prompts/<lang>/notes.yaml``.
         """
         reason = setup_activation(context)
         if not reason or not deferral_available(context):
             return ""
-        zh = str(language or "en").lower().startswith("zh")
+        prompts = prompts or {}
         tools = ", ".join(f"`{name}`" for name in SETUP_TOOL_NAMES)
-        if reason == "explicit":
-            lead = (
-                "用户打开了配置模式，配置工具已加载，按此前给出的配置工具使用规范操作。"
-                if zh
-                else "The user opened setup mode; the setup tools are loaded. Follow the "
-                "rules for using them given when they were loaded."
-            )
-        elif reason == "intent":
-            lead = (
-                "这条消息像是要修改 DeepTutor 自身的配置。配置工具"
-                f"（{tools}）在扩展工具里：先用 `load_tools` 加载需要的那几个，"
-                "它的返回里附有这些工具的使用规范，照规范操作。"
-                "如果这条消息其实和 DeepTutor 的配置无关，忽略这段提示。"
-                if zh
-                else "This message looks like a request to change DeepTutor's own "
-                f"configuration. The setup tools ({tools}) are listed under "
-                "Extended Tools: load the ones you need with `load_tools` first — "
-                "its result includes the rules for using them, follow them. If the "
-                "message is not actually about DeepTutor's configuration, ignore "
-                "this note."
-            )
-        else:  # intro
-            lead = f"{_INTRO_SECTION}\n" + (
-                f"如果用户接受，先用 `load_tools` 加载配置工具（{tools}），它的返回里附有使用规范。"
-                if zh
-                else "If they accept, load the setup tools "
-                f"({tools}) with `load_tools` first; its result includes the "
-                "rules for using them."
+        if reason == "intro":
+            lead = "\n".join(
+                part
+                for part in (
+                    _note(language, prompts, "intro"),
+                    _note(language, prompts, "intro_load", tools=tools),
+                )
+                if part
             )
             # Spent only here, as in the legacy system block.
             mark_intro_shown()
-        header = "[配置助手]" if zh else "[Setup]"
-        parts = [header, _gaps_section(context), lead]
+        else:  # explicit / intent
+            lead = _note(language, prompts, reason, tools=tools)
+        parts = [
+            _note(language, prompts, "header"),
+            _gaps_section(context, language, prompts),
+            lead,
+        ]
         return "\n".join(part for part in parts if part)
 
     def augment_kwargs(
@@ -159,9 +158,12 @@ class SetupCapability:
         return ""
 
 
+def _lang(language: str) -> str:
+    return "zh" if str(language or "en").lower().startswith("zh") else "en"
+
+
 def _load_system_prompt(language: str) -> str:
-    lang = "zh" if str(language or "en").lower().startswith("zh") else "en"
-    prompt = resources.files(__package__).joinpath("prompts", lang, "system.md")
+    prompt = resources.files(__package__).joinpath("prompts", _lang(language), "system.md")
     return prompt.read_text(encoding="utf-8").strip()
 
 
@@ -170,25 +172,48 @@ def _protocol(language: str, prompts: dict[str, Any]) -> str:
     return override or _load_system_prompt(language)
 
 
-def _gaps_section(context: UnifiedContext) -> str:
-    gaps = cached_gaps(context)
-    lines = (
-        "\n".join(f"- {gap.summary} {gap.remedy}".strip() for gap in gaps) if gaps else "- Nothing."
+_NOTES_CACHE: dict[str, dict[str, Any]] = {}
+
+
+def _load_notes(language: str) -> dict[str, Any]:
+    lang = _lang(language)
+    cached = _NOTES_CACHE.get(lang)
+    if cached is not None:
+        return cached
+    try:
+        text = resources.files(__package__).joinpath("prompts", lang, "notes.yaml")
+        data = yaml.safe_load(text.read_text(encoding="utf-8"))
+    except Exception:
+        logger.warning("failed to load setup notes (%s)", lang, exc_info=True)
+        data = None
+    result = data if isinstance(data, dict) else {}
+    _NOTES_CACHE[lang] = result
+    return result
+
+
+def _note(language: str, prompts: dict[str, Any], key: str, **values: str) -> str:
+    """One entry of ``notes.yaml``, a prompt-pack override winning, placeholders filled."""
+    template = _prompt_text(prompts, ("setup", "notes", key)) or _prompt_text(
+        _load_notes(language), (key,)
     )
-    return f"## What this install is currently missing\n{lines}"
+    template = template.strip()
+    if not values or not template:
+        return template
+    try:
+        return template.format(**values)
+    except (KeyError, IndexError, ValueError):
+        # An override with stray braces still says something useful.
+        return template
 
 
-# The user did not raise this subject, so the opening has to earn its place:
-# name the one thing that is missing, offer to fix it, and drop it if they would
-# rather do something else.
-_INTRO_SECTION = (
-    "## This is the user's first conversation\n"
-    "They have not asked about configuration. Answer whatever they "
-    "actually said first. Then, in one or two sentences at the end, "
-    "mention the single most important gap above and offer to set it "
-    "up. Do not list every gap, do not open with it, and do not "
-    "raise it again if they move on."
-)
+def _gaps_section(context: UnifiedContext, language: str, prompts: dict[str, Any]) -> str:
+    gaps = cached_gaps(context)
+    if gaps:
+        lines = "\n".join(f"- {gap.summary} {gap.remedy}".strip() for gap in gaps)
+    else:
+        lines = _note(language, prompts, "gaps_none")
+    heading = _note(language, prompts, "gaps_heading")
+    return "\n".join(part for part in (heading, lines) if part)
 
 
 __all__ = ["SetupCapability"]

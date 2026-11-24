@@ -709,7 +709,7 @@ def test_system_block_names_the_installs_gaps(isolated_settings: Path) -> None:
     block = SetupCapability().system_block(context, language="zh", prompts={})
 
     assert block is not None
-    assert "missing" in block.content
+    assert "这个实例目前缺少的配置" in block.content
     assert setup_gaps(), "a fresh install has gaps, so the block should list them"
 
 
@@ -740,7 +740,7 @@ def test_an_intent_turn_only_gets_a_note_when_tools_can_be_deferred(
     assert capability.system_block(context, language="zh", prompts={}) is None
     note = capability.turn_note(context, language="zh")
     assert "load_tools" in note and "apply_setting" in note
-    assert "What this install is currently missing" in note
+    assert "这个实例目前缺少的配置" in note
 
 
 def test_the_intro_note_carries_the_offer_and_spends_it_once(isolated_settings: Path) -> None:
@@ -781,3 +781,46 @@ def test_an_unrelated_turn_gets_no_note(isolated_settings: Path) -> None:
         )
     )
     assert SetupCapability().turn_note(context, language="zh") == ""
+
+
+@pytest.mark.parametrize("language", ["en", "zh"])
+def test_turn_note_wording_comes_from_the_prompt_files(
+    isolated_settings: Path, language: str
+) -> None:
+    from deeptutor.capabilities.setup.capability import _load_notes
+
+    notes = _load_notes(language)
+    keys = {"header", "gaps_heading", "gaps_none", "intro", "intro_load", "explicit", "intent"}
+    assert keys <= set(notes), f"notes.yaml ({language}) is missing {keys - set(notes)}"
+    assert "{tools}" in notes["intent"] and "{tools}" in notes["intro_load"]
+
+    first = _deferring(UnifiedContext(user_message="hello", conversation_history=[]))
+    note = SetupCapability().turn_note(first, language=language)
+    assert note.startswith(notes["header"])
+    assert notes["intro"].strip() in note
+    assert notes["gaps_heading"] in note
+    assert "{tools}" not in note and "`inspect_setup`" in note
+
+
+def test_the_legacy_system_block_uses_the_same_localised_intro(isolated_settings: Path) -> None:
+    from deeptutor.capabilities.setup.capability import _load_notes
+
+    first = UnifiedContext(user_message="你好", conversation_history=[])
+    block = SetupCapability().system_block(first, language="zh", prompts={})
+    assert block is not None
+    assert _load_notes("zh")["intro"].strip() in block.content
+    assert "first conversation" not in block.content
+
+
+def test_a_prompt_pack_can_override_the_turn_notes(isolated_settings: Path) -> None:
+    context = _deferring(
+        UnifiedContext(
+            user_message="把界面语言切成中文",
+            conversation_history=[{"role": "user", "content": "hi"}],
+        )
+    )
+    prompts = {"setup": {"notes": {"header": "[Cfg]", "intent": "Load {tools}."}}}
+    note = SetupCapability().turn_note(context, language="en", prompts=prompts)
+    assert note.startswith("[Cfg]")
+    assert "Load `inspect_setup`" in note
+    assert "Extended Tools" not in note

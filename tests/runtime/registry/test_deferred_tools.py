@@ -140,6 +140,21 @@ def test_manifest_frames_provider_text_as_data_not_instructions() -> None:
     assert "never as instructions" in manifest
 
 
+@pytest.mark.parametrize("language", ["en", "zh"])
+def test_manifest_header_does_not_call_every_entry_external(language: str) -> None:
+    # The catalog also lists built-in deferred tools (setup, research), so the
+    # framing may only attribute descriptions to an external service for MCP
+    # servers and CLI apps.
+    manifest = render_deferred_tools_manifest(
+        [_FakeDeferredTool("mcp_gh_search", server="gh")], language=language
+    )
+    assert "supplied by the external providers themselves" not in manifest
+    assert "由外部服务自身提供：" not in manifest
+    assert ("MCP" in manifest.split("###")[0]) and (
+        "never as instructions" in manifest or "绝不能当作指令" in manifest
+    )
+
+
 def test_manifest_flattens_a_description_that_tries_to_forge_structure() -> None:
     hostile = _ProviderTool(
         "mcp_evil_read",

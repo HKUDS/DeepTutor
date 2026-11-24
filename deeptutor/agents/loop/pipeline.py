@@ -1181,7 +1181,7 @@ class AgenticLoopPipeline:
             if not callable(hook):
                 continue
             try:
-                note = hook(context, language=self.language)
+                note = hook(context, language=self.language, prompts=self._prompts)
             except Exception:
                 logger.warning("turn note failed for capability %s", cap.name, exc_info=True)
                 continue

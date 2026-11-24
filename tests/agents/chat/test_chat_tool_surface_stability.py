@@ -121,8 +121,8 @@ async def test_one_conversation_keeps_tools_and_system_stable(
     assert "load_tools" in first["names"]
     assert "## setup" not in first["system"]
     # The product behaviour survives: the model hears about the blocking gap.
-    assert "first conversation" in first["note"]
-    assert "What this install is currently missing" in first["note"]
+    assert "这是用户的第一次对话" in first["note"]
+    assert "这个实例目前缺少的配置" in first["note"]
     # Every deferred tool is listed in the catalog from the first turn on.
     for name in (*SETUP_TOOL_NAMES, *SCIENTIFIC_TOOL_NAMES):
         assert name in first["manifest"]
@@ -139,7 +139,7 @@ async def test_one_conversation_keeps_tools_and_system_stable(
     assert switch["tools"] == first["tools"]
     assert switch["system"] == first["system"]
     assert "load_tools" in switch["note"] and "apply_setting" in switch["note"]
-    assert "first conversation" not in switch["note"], "the intro is offered once"
+    assert "第一次对话" not in switch["note"], "the intro is offered once"
 
     # Turn 4: the user's first favorite and saved question appear.
     _isolated_runtime.update(notebooks=True, question_bank=True)
