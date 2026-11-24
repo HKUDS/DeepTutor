@@ -177,12 +177,32 @@ def classify_error(exc: Exception) -> str:
 
 def is_switchable(exc: Exception) -> bool:
     """Whether moving to the next candidate could plausibly help."""
-    reason = classify_error(exc)
-    if reason == "other":
+    # Partial output already reached the user: replaying it on another provider
+    # would splice two answers together.
+    if getattr(exc, "partial_response", False):
         return False
-    if reason == "model_missing":
-        return True
-    return True
+    return classify_error(exc) != "other"
+
+
+def current_owner() -> str:
+    """The account a request is charged to, for per-owner cooldowns."""
+    try:
+        from deeptutor.multi_user.context import get_current_user
+
+        return str(get_current_user().id or "anonymous")
+    except Exception:
+        return "anonymous"
+
+
+def chain_configured() -> bool:
+    """Whether the catalog declares at least one fallback (cheap check)."""
+    try:
+        from deeptutor.services.config import get_model_catalog_service
+        from deeptutor.services.model_selection.fallbacks import configured_fallbacks
+
+        return bool(configured_fallbacks(get_model_catalog_service().load()))
+    except Exception:
+        return False
 
 
 def resolve_candidates(owner_id: str = "anonymous") -> list[Candidate]:

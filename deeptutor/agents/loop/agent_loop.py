@@ -684,6 +684,47 @@ class AgentLoop:
 
         provider.retry_observer = observe
 
+    async def _advance_fallback_chain(
+        self, exc: Exception, *, stage: str, trace_meta: dict[str, Any]
+    ) -> Any:
+        """Move the client to the next healthy candidate, announcing the switch.
+
+        Returns the new candidate, or ``None`` when this client has no chain or
+        no candidate is left; the caller then retries the same provider.
+        """
+        record = getattr(self.client, "record_failure", None)
+        advance = getattr(self.client, "advance", None)
+        if not (callable(record) and callable(advance)):
+            return None
+        reason = record(exc)
+        candidate = advance()
+        if candidate is None:
+            return None
+        await self.stream.progress(
+            self.pipeline._t(
+                "notices.provider_switched",
+                default=(
+                    "The primary model provider failed ({reason}); continuing this "
+                    "turn on {provider}."
+                ),
+                provider=candidate.label,
+                reason=reason,
+            ),
+            source=self.source,
+            stage=stage,
+            metadata=merge_trace_metadata(
+                trace_meta,
+                {
+                    "trace_kind": "warning",
+                    "error_code": "provider_failover",
+                    "provider": candidate.label,
+                    "failover_reason": reason,
+                    "fallbacks_configured": fallback_count(),
+                },
+            ),
+        )
+        return candidate
+
     async def _call_llm(
         self,
         *,
@@ -1124,27 +1165,34 @@ class AgentLoop:
                         len(_PROVIDER_RETRY_DELAYS) + 1,
                         exc,
                     )
-                    provider, model = provider_label(self.pipeline)
-                    await self.stream.progress(
-                        retry_notice(
-                            self.pipeline._t,
-                            provider=provider,
-                            model=model,
-                            attempt=attempt + 1,
-                            total=len(_PROVIDER_RETRY_DELAYS) + 1,
-                        ),
-                        source=self.source,
-                        stage=stage,
-                        metadata=merge_trace_metadata(
-                            trace_meta,
-                            {
-                                "trace_kind": "warning",
-                                "error_code": "provider_transport",
-                                "provider": provider,
-                                "retry_attempt": attempt + 1,
-                            },
-                        ),
+                    # With a configured chain, spend this retry on the next
+                    # candidate instead of the provider that just failed. Only
+                    # here: nothing was emitted, so a replay is safe (#2693 P1).
+                    switched = await self._advance_fallback_chain(
+                        exc, stage=stage, trace_meta=trace_meta
                     )
+                    provider, model = provider_label(self.pipeline)
+                    if switched is None:
+                        await self.stream.progress(
+                            retry_notice(
+                                self.pipeline._t,
+                                provider=provider,
+                                model=model,
+                                attempt=attempt + 1,
+                                total=len(_PROVIDER_RETRY_DELAYS) + 1,
+                            ),
+                            source=self.source,
+                            stage=stage,
+                            metadata=merge_trace_metadata(
+                                trace_meta,
+                                {
+                                    "trace_kind": "warning",
+                                    "error_code": "provider_transport",
+                                    "provider": provider,
+                                    "retry_attempt": attempt + 1,
+                                },
+                            ),
+                        )
                     await asyncio.sleep(_PROVIDER_RETRY_DELAYS[attempt])
                     continue
 
