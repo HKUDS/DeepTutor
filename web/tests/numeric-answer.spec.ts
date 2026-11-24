@@ -48,3 +48,9 @@ describe('numericEquivalent', () => {
     expect(numericEquivalent('3.51', '3.48', { absTol: 0.02 }).correct).toBe(false)
   })
 })
+
+describe('numericEquivalent units', () => {
+  it('does not treat object prototype keys as currencies', () => {
+    expect(numericEquivalent('5 constructor', '5 units').comparable).toBe(false)
+  })
+})

@@ -60,19 +60,24 @@ _TEXT_FOLD = str.maketrans(
     {"\u2212": "-", "\u2013": "-", "\u00a0": " ", "\u202f": " ", "\u2009": " ", "\u2019": "'"}
 )
 _LABEL = re.compile(
-    r"(?<![^\s,;])\s*(?:\(?(?P<item>[a-z]{1,3}|\d{1,2})\)|(?P<name>[^\W\d_][\w'\[\]]{0,15})\s*[=:])",
+    r"(?<![^\s,;])\s*(?:\(?(?P<item>[a-z]{1,3}|[0-9]{1,2})\)|(?P<name>[^\W\d_][\w'\[\]]{0,15})\s*[=:])",
     re.IGNORECASE,
 )
 _NUMBER = re.compile(
-    r"(?P<pre>[^\d]*?)(?P<num>\d(?:[\d.,' ]*\d)?)(?:\s*/\s*(?P<den>\d+)|[eE](?P<exp>[+-]?\d+))?(?P<post>.*)",
-    re.DOTALL | re.ASCII,  # ASCII digits only, as in the web port
+    r"(?P<pre>[^0-9]*?)(?P<num>[0-9](?:[0-9.,' ]*[0-9])?)"
+    r"(?:\s*/\s*(?P<den>[0-9]+)|[eE](?P<exp>[+-]?[0-9]{1,2}))?(?P<post>.*)",
+    re.DOTALL,
 )
 _PREFIX = re.compile(
     r"(?:≈|~|ca\.?|approx\.?)?\s*[+-]?\s*(?:€|\$|£|eur|usd|gbp|chf)?\s*[+-]?", re.I
 )
-_CURRENCY = {"€": "eur", "euro": "eur", "$": "usd", "£": "gbp"}
-_SCALE_WORDS = {"k", "t", "tsd", "tsd.", "teur", "t€", "mio", "mio.", "mrd", "mrd.", "m", "bn"}
-_SCALE_WORDS |= {"thousand", "million", "millionen", "billion", "milliarden"}
+_UNIT = re.compile(r"[^\W\d_]+\.?(?:/[^\W\d_]+)?")
+_CURRENCY = {"€": "eur", "euro": "eur", "$": "usd", "£": "gbp", "eur": "eur", "usd": "usd"}
+_CURRENCY |= {"gbp": "gbp", "chf": "chf"}
+# Words that change the magnitude or meaning and so may never be dropped.
+_FIXED_UNITS = {"tsd", "tsd.", "teur", "mio", "mio.", "mrd", "mrd.", "bn", "pi", "dozen", "dutzend"}
+_FIXED_UNITS |= {"hundred", "hundert", "thousand", "tausend", "million", "millionen"}
+_FIXED_UNITS |= {"milliarde", "milliarden", "billion", "billionen"}
 _EPS = Fraction(1, 10**9)
 
 
@@ -81,6 +86,7 @@ class _Number:
     readings: dict[str, tuple[Fraction, int | None]]  # decimal mark -> (value, decimals)
     implied: str | None  # decimal mark this token proves, if any
     percent: bool
+    currency: str
     unit: str
     text: str
 
@@ -97,8 +103,9 @@ class NumericPart:
 class NumericResult:
     """``comparable`` is False when either side is not a plain numeric answer.
 
-    ``ambiguous`` marks a mismatch that depends on an undecidable separator
-    convention; callers that issue final verdicts should not trust it.
+    ``ambiguous`` marks an answer that is correct under one separator reading
+    but not under the preferred one; callers issuing final verdicts must not
+    treat it as incorrect.
     """
 
     comparable: bool
@@ -108,7 +115,7 @@ class NumericResult:
 
 
 def _value(groups: list[str], frac: str) -> tuple[Fraction, int]:
-    if len(groups) > 1 and not (1 <= len(groups[0]) <= 3 and all(len(g) == 3 for g in groups[1:])):
+    if len(groups) > 1 and not (len(groups[0]) <= 3 and all(len(g) == 3 for g in groups[1:])):
         raise ValueError("invalid digit grouping")
     return Fraction(int("".join(groups) + frac), 10 ** len(frac)), len(frac)
 
@@ -135,19 +142,19 @@ def _parse_number(text: str) -> _Number | None:
     match = _NUMBER.fullmatch(text.translate(_TEXT_FOLD).strip())
     if not match or _PREFIX.fullmatch(match["pre"].strip()) is None:
         return None
+    if len(re.findall(r"[+-]", match["pre"])) > 1 or match["post"][:1].isalpha():
+        return None  # "--5"; "3x" is algebra, not a unit
     post = match["post"].strip()
-    if match["post"][:1].isalpha():
-        return None  # "3x" is algebra, not a unit
-    percent = post.startswith("%") or post.casefold().split(" ")[0] in {"prozent", "percent"}
+    percent = post.startswith("%") or post.lower().split(" ")[0] in {"prozent", "percent"}
     if percent:
         post = post[1:] if post.startswith("%") else post.partition(" ")[2]
-    if re.search(r"[0-9]", post) or len(post) > 20:
-        return None
+    words = post.lower().replace("€", " € ").split()
     currency = re.search(r"[€$£]|eur|usd|gbp|chf", match["pre"], re.IGNORECASE)
-    words = post.casefold().replace("€", " € ").split() + (
-        [currency[0].casefold()] if currency else []
-    )
-    unit = " ".join(sorted(_CURRENCY.get(w, w) for w in words))
+    currencies = {_CURRENCY[w] for w in words if w in _CURRENCY}
+    currencies |= {_CURRENCY[currency[0].lower()]} if currency else set()
+    units = [w for w in words if w not in _CURRENCY]
+    if len(currencies) > 1 or len(units) > 1 or not all(_UNIT.fullmatch(w) for w in units):
+        return None  # prose such as "5 or six", or symbols such as "3²"
     try:
         readings, implied = _readings(match["num"])
     except ValueError:
@@ -165,7 +172,7 @@ def _parse_number(text: str) -> _Number | None:
     sign = -1 if "-" in match["pre"] else 1
     scale = Fraction(1, 100) if percent else 1
     readings = {k: (sign * v * scale, d) for k, (v, d) in readings.items()}
-    return _Number(readings, implied, percent, unit, text.strip())
+    return _Number(readings, implied, percent, "".join(currencies), "".join(units), text.strip())
 
 
 def _numeric_parts(text: str) -> list[tuple[str | None, _Number]] | None:
@@ -179,7 +186,7 @@ def _numeric_parts(text: str) -> list[tuple[str | None, _Number]] | None:
             [(None, chunk)]
             if not labels
             else [
-                ((m["item"] or m["name"]).casefold(), chunk[m.end() : n.start() if n else None])
+                ((m["item"] or m["name"]).lower(), chunk[m.end() : n.start() if n else None])
                 for m, n in zip(labels, [*labels[1:], None])
             ]
         )
@@ -202,24 +209,41 @@ def _convention(numbers: list[_Number]) -> str | None:
 def _tolerance(value: Fraction, decimals: int | None, rel_tol, abs_tol) -> Fraction:
     if rel_tol is not None or abs_tol is not None:
         explicit = max(Fraction(str(abs_tol or 0)), Fraction(str(rel_tol or 0)) * abs(value))
-        return explicit + _EPS * max(1, abs(value))
+        return explicit + _EPS
     # The key's own precision: "3.48" covers [3.475, 3.485]; integers are exact.
-    half_unit = Fraction(1, 2 * 10**decimals) if decimals else Fraction(0)
-    return half_unit + _EPS * max(1, abs(value))
+    return (Fraction(1, 2 * 10**decimals) if decimals else 0) + _EPS
 
 
 def _matches(given: _Number, key: _Number, mark_given: str, mark_key: str, rel_tol, abs_tol):
-    if given.unit != key.unit and (
-        (given.unit and key.unit) or set((given.unit or key.unit).split()) & _SCALE_WORDS
+    lone = given.unit or key.unit
+    if (given.currency and key.currency and given.currency != key.currency) or (
+        given.unit != key.unit
+        and ((given.unit and key.unit) or len(lone) < 2 or lone in _FIXED_UNITS)
     ):
         return None
     key_value, decimals = key.readings[mark_key]
-    value = given.readings[mark_given][0]
-    # Compare in the key's written units; a bare "12.5" may answer a "12.5%" key.
+    value, given_decimals = given.readings[mark_given]
+    if decimals is None and (given_decimals or 0) >= 2:
+        decimals = given_decimals  # "0.33" rounds "1/3" correctly
+    # Compare in the key's written units; "12.5" answers "12.5%" and "50%" answers "50".
     scale = 100 if key.percent else 1
-    candidates = [value * scale] + ([value] if key.percent and not given.percent else [])
+    candidates = [value * scale]
+    if key.percent != given.percent:
+        candidates.append(value if key.percent else value * 100)
     tol = _tolerance(key_value * scale, decimals, rel_tol, abs_tol)
     return any(abs(c - key_value * scale) <= tol for c in candidates)
+
+
+def _conventions(given: list[_Number], keys: list[_Number]):
+    """Preferred (given, key) decimal marks first, then the other readings."""
+    own_given, own_key = _convention(given), _convention(keys)
+    if not (own_given or own_key):
+        return None, [(".", "."), (",", ",")]
+    preferred = (own_given or own_key, own_key or own_given)
+    marks_given = [own_given] if own_given else [".", ","]
+    marks_key = [own_key] if own_key else [".", ","]
+    others = [(g, k) for g in marks_given for k in marks_key if (g, k) != preferred]
+    return preferred, [preferred, *others]
 
 
 def numeric_equivalent(
@@ -232,22 +256,27 @@ def numeric_equivalent(
     """Compare numeric answers deterministically.
 
     Accepted formats: ``1250.5``, ``1250,5``, ``1.250,50``, ``1,250.50``,
-    ``1 250,50``, ``1'250.50``, a leading sign (incl. U+2212), ``≈``/``~``/
+    ``1 250,50``, ``1'250.50``, one leading sign (incl. U+2212), ``≈``/``~``/
     ``ca.``, currencies (€, EUR, $, USD, £, GBP, CHF), ``%``, fractions
-    ``a/b`` and ``1e3``. ``12.5%`` equals ``0.125`` in both directions, and a
-    bare ``12.5`` also answers a ``12.5%`` key. A trailing unit word must
-    match the key's unit unless one side has none; scale words (``Mio.``,
-    ``TEUR``) must always match. Attached letters (``3x``) or prose make the
-    answer non-numeric so callers keep their existing behaviour.
+    ``a/b`` and ``1e3`` (exponent up to two digits). ``12.5%`` equals
+    ``0.125`` in both directions, and a bare ``12.5`` answers a ``12.5%`` key
+    (``50%`` likewise answers ``50``). At most one trailing unit word is
+    allowed; it must match the key's unit unless one side has none, and
+    single letters or magnitude words (``x``, ``Mio.``, ``Tausend``) must
+    always match. Prose, attached letters (``3x``) or symbols (``3²``) make
+    the answer non-numeric so callers keep their existing behaviour.
 
     Separator rule: one ``.`` or ``,`` followed by exactly three digits
-    (``125.000``, ``1,250``) is ambiguous. It is read with the convention the
-    same side proves elsewhere (``1.234,57`` proves a decimal comma),
-    otherwise with the other side's convention. If neither side proves one
-    and the two readings disagree, the result is incorrect and ``ambiguous``.
+    (``125.000``, ``1,250``) is ambiguous. Its preferred reading uses the
+    convention the same side proves elsewhere (``1.234,57`` proves a decimal
+    comma), otherwise the other side's. A match under the preferred reading
+    is correct. A match only under another reading, or under one of two
+    readings when neither side proves a convention, is not correct but
+    ``ambiguous`` (``125000`` vs ``125.000``).
 
     Tolerance is half a unit of the key's last written decimal (``3.48``
-    accepts ``|x - 3.48| <= 0.005``); integer keys and fractions are exact.
+    accepts ``|x - 3.48| <= 0.005``). Integer keys are exact; fraction keys
+    accept a decimal with at least two places that rounds to them.
     ``rel_tol``/``abs_tol`` replace that rule.
 
     Multi-part answers (``a) 12; b) 3,5``, ``x=3, y=4``, ``;``/newline lists)
@@ -269,22 +298,20 @@ def numeric_equivalent(
         (label or given[i][0], by_label[label] if labelled else given[i][1], key)
         for i, (label, key) in enumerate(keys)
     ]
-    mark_given = _convention([g for _, g, _ in pairs])
-    mark_key = _convention([k for _, _, k in pairs])
-    mark_given, mark_key = mark_given or mark_key, mark_key or mark_given
-    options = [(mark_given, mark_key)] if mark_given else [(".", "."), (",", ",")]
+    preferred, options = _conventions([g for _, g, _ in pairs], [k for _, _, k in pairs])
     outcomes = []
     for mg, mk in options:
         outcome = tuple(_matches(g, k, mg, mk, rel_tol, abs_tol) for _, g, k in pairs)
         if None in outcome:
             return NumericResult(False, False)
         outcomes.append(outcome)
-    part_ok = [all(column) for column in zip(*outcomes)]
-    ambiguous = len(set(outcomes)) > 1
+    correct = all(outcomes[0]) if preferred else all(map(all, outcomes))
+    ambiguous = not correct and any(map(all, outcomes))
+    part_ok = outcomes[0] if preferred else [all(column) for column in zip(*outcomes)]
     parts = tuple(
         NumericPart(label, k.text, g.text, ok) for (label, g, k), ok in zip(pairs, part_ok)
     )
-    return NumericResult(True, not ambiguous and all(part_ok), ambiguous, parts)
+    return NumericResult(True, correct, ambiguous, parts)
 
 
 def classify_error(user_answer: str) -> ErrorType:

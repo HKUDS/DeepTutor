@@ -12,6 +12,7 @@ interface NumberToken {
   readings: Record<Mark, Reading>
   implied: Mark | null
   percent: boolean
+  currency: string
   unit: string
   text: string
 }
@@ -27,43 +28,30 @@ export interface NumericResult {
   /** False when either side is not a plain numeric answer. */
   comparable: boolean
   correct: boolean
-  /** The mismatch depends on an undecidable separator convention. */
+  /** Correct only under a non-preferred separator reading; not a final "wrong". */
   ambiguous: boolean
   parts: NumericPart[]
 }
 
-const FOLD: Record<string, string> = {
-  '−': '-',
-  '–': '-',
-  ' ': ' ',
-  ' ': ' ',
-  ' ': ' ',
-  '’': "'",
-}
+const FOLD = /[\u2212\u2013\u00a0\u202f\u2009\u2019]/g
+const FOLDED: Record<string, string> = { '\u2212': '-', '\u2013': '-', '\u2019': "'" }
 const LABEL =
-  /(?<![^\s,;])\s*(?:\(?([a-z]{1,3}|\d{1,2})\)|(\p{L}[\p{L}\p{N}_'[\]]{0,15})\s*[=:])/giu
-const NUMBER = /^([^\d]*?)(\d(?:[\d.,' ]*\d)?)(?:\s*\/\s*(\d+)|[eE]([+-]?\d+))?([\s\S]*)$/
+  /(?<![^\s,;])\s*(?:\(?([a-z]{1,3}|[0-9]{1,2})\)|(\p{L}[\p{L}\p{N}_'[\]]{0,15})\s*[=:])/giu
+const NUMBER =
+  /^([^0-9]*?)([0-9](?:[0-9.,' ]*[0-9])?)(?:\s*\/\s*([0-9]+)|[eE]([+-]?[0-9]{1,2}))?([\s\S]*)$/
 const PREFIX = /^(?:≈|~|ca\.?|approx\.?)?\s*[+-]?\s*(?:€|\$|£|eur|usd|gbp|chf)?\s*[+-]?$/i
-const CURRENCY: Record<string, string> = { '€': 'eur', euro: 'eur', $: 'usd', '£': 'gbp' }
-const SCALE_WORDS = new Set([
-  'k',
-  't',
-  'tsd',
-  'tsd.',
-  'teur',
-  't€',
-  'mio',
-  'mio.',
-  'mrd',
-  'mrd.',
-  'm',
-  'bn',
-  'thousand',
-  'million',
-  'millionen',
-  'billion',
-  'milliarden',
-])
+const UNIT = /^\p{L}+\.?(?:\/\p{L}+)?$/u
+const CURRENCY = new Map(
+  Object.entries({ '€': 'eur', euro: 'eur', $: 'usd', '£': 'gbp', eur: 'eur', usd: 'usd' })
+)
+CURRENCY.set('gbp', 'gbp').set('chf', 'chf')
+// Words that change the magnitude or meaning and so may never be dropped.
+const FIXED_UNITS = new Set(
+  (
+    'tsd tsd. teur mio mio. mrd mrd. bn pi dozen dutzend hundred hundert thousand tausend ' +
+    'million millionen milliarde milliarden billion billionen'
+  ).split(' ')
+)
 const OTHER: Record<Mark, Mark> = { '.': ',', ',': '.' }
 const isMark = (s: string | null | undefined): s is Mark => s === '.' || s === ','
 
@@ -98,10 +86,11 @@ function readings(raw: string): [Record<Mark, Reading>, Mark | null] {
 }
 
 function parseNumber(text: string): NumberToken | null {
-  const match = NUMBER.exec(text.replace(/[−–   ’]/g, c => FOLD[c]).trim())
+  const match = NUMBER.exec(text.replace(FOLD, c => FOLDED[c] ?? ' ').trim())
   if (!match || !PREFIX.test(match[1].trim())) return null
   const [, pre, num, den, exp, rawPost] = match
-  if (/^\p{L}/u.test(rawPost)) return null // "3x" is algebra, not a unit
+  // "--5"; "3x" is algebra, not a unit
+  if ((pre.match(/[+-]/g) ?? []).length > 1 || /^\p{L}/u.test(rawPost)) return null
   let post = rawPost.trim()
   const percent =
     post.startsWith('%') || ['prozent', 'percent'].includes(post.toLowerCase().split(' ')[0])
@@ -109,14 +98,14 @@ function parseNumber(text: string): NumberToken | null {
     const space = post.indexOf(' ')
     post = post.startsWith('%') ? post.slice(1) : space < 0 ? '' : post.slice(space + 1)
   }
-  if (/[0-9]/.test(post) || post.length > 20) return null
-  const currency = /[€$£]|eur|usd|gbp|chf/i.exec(pre)
   const words = post.toLowerCase().replace(/€/g, ' € ').split(/\s+/).filter(Boolean)
-  if (currency) words.push(currency[0].toLowerCase())
-  const unit = words
-    .map(w => CURRENCY[w] ?? w)
-    .sort()
-    .join(' ')
+  const currency = /[€$£]|eur|usd|gbp|chf/i.exec(pre)
+  const currencies = new Set(words.flatMap(w => CURRENCY.get(w) ?? []))
+  if (currency) currencies.add(CURRENCY.get(currency[0].toLowerCase())!)
+  const units = words.filter(w => !CURRENCY.has(w))
+  if (currencies.size > 1 || units.length > 1 || !units.every(w => UNIT.test(w))) {
+    return null // prose such as "5 or six", or symbols such as "3²"
+  }
   let parsed: [Record<Mark, Reading>, Mark | null]
   try {
     parsed = readings(num)
@@ -142,7 +131,8 @@ function parseNumber(text: string): NumberToken | null {
     readings: { '.': scaled(initial['.']), ',': scaled(initial[',']) },
     implied,
     percent,
-    unit,
+    currency: [...currencies].join(''),
+    unit: units.join(''),
     text: text.trim(),
   }
 }
@@ -175,7 +165,8 @@ function convention(numbers: NumberToken[]): Mark | null {
 }
 
 function tolerance(v: number, decimals: number | null, relTol?: number, absTol?: number): number {
-  const eps = 1e-9 * Math.max(1, Math.abs(v))
+  // Absolute like the Python port; the tiny relative term only absorbs float noise.
+  const eps = 1e-9 + 4 * Number.EPSILON * Math.abs(v)
   if (relTol !== undefined || absTol !== undefined) {
     return Math.max(absTol ?? 0, (relTol ?? 0) * Math.abs(v)) + eps
   }
@@ -190,19 +181,42 @@ function matches(
   relTol?: number,
   absTol?: number
 ): boolean | null {
-  const units = (given.unit || key.unit).split(' ')
+  const lone = given.unit || key.unit
   if (
-    given.unit !== key.unit &&
-    ((given.unit && key.unit) || units.some(w => SCALE_WORDS.has(w)))
+    (given.currency && key.currency && given.currency !== key.currency) ||
+    (given.unit !== key.unit &&
+      ((given.unit && key.unit) || lone.length < 2 || FIXED_UNITS.has(lone)))
   ) {
     return null
   }
-  const [keyValue, decimals] = key.readings[markKey]
-  const v = given.readings[markGiven][0]
+  let [keyValue, decimals] = key.readings[markKey]
+  const [v, givenDecimals] = given.readings[markGiven]
+  if (decimals === null && (givenDecimals ?? 0) >= 2) decimals = givenDecimals // "0.33" for "1/3"
+  // Compare in the key's written units; "12.5" answers "12.5%" and "50%" answers "50".
   const scale = key.percent ? 100 : 1
-  const candidates = [v * scale, ...(key.percent && !given.percent ? [v] : [])]
+  const candidates = [v * scale]
+  if (key.percent !== given.percent) candidates.push(key.percent ? v : v * 100)
   const tol = tolerance(keyValue * scale, decimals, relTol, absTol)
   return candidates.some(c => Math.abs(c - keyValue * scale) <= tol)
+}
+
+/** Preferred [given, key] decimal marks first, then the other readings. */
+function conventions(given: NumberToken[], keys: NumberToken[]): [boolean, [Mark, Mark][]] {
+  const ownGiven = convention(given)
+  const ownKey = convention(keys)
+  const both: [Mark, Mark][] = [
+    ['.', '.'],
+    [',', ','],
+  ]
+  if (!ownGiven && !ownKey) return [false, both]
+  const preferred: [Mark, Mark] = [(ownGiven ?? ownKey)!, (ownKey ?? ownGiven)!]
+  const options: [Mark, Mark][] = [preferred]
+  for (const g of ownGiven ? [ownGiven] : (['.', ','] as Mark[])) {
+    for (const k of ownKey ? [ownKey] : (['.', ','] as Mark[])) {
+      if (g !== preferred[0] || k !== preferred[1]) options.push([g, k])
+    }
+  }
+  return [true, options]
 }
 
 export function numericEquivalent(
@@ -216,14 +230,10 @@ export function numericEquivalent(
   if (!keys || !given) return none
   if (keys.length !== given.length) return { ...none, comparable: true }
   const keyLabels = keys.map(([l]) => l)
-  const givenLabels = given.map(([l]) => l)
+  const givenLabels = new Set(given.map(([l]) => l))
   const labelled =
-    ![...keyLabels, ...givenLabels].includes(null) && new Set(keyLabels).size === keys.length
-  if (
-    labelled &&
-    (new Set(givenLabels).size !== keyLabels.length ||
-      !givenLabels.every(l => keyLabels.includes(l)))
-  ) {
+    !keyLabels.includes(null) && !givenLabels.has(null) && new Set(keyLabels).size === keys.length
+  if (labelled && (givenLabels.size !== keys.length || !keyLabels.every(l => givenLabels.has(l)))) {
     return none
   }
   const byLabel = new Map(given)
@@ -232,28 +242,23 @@ export function numericEquivalent(
     given: labelled ? byLabel.get(label)! : given[i][1],
     key,
   }))
-  let markGiven = convention(pairs.map(p => p.given))
-  let markKey = convention(pairs.map(p => p.key))
-  ;[markGiven, markKey] = [markGiven ?? markKey, markKey ?? markGiven]
-  const conventions: [Mark, Mark][] =
-    markGiven && markKey
-      ? [[markGiven, markKey]]
-      : [
-          ['.', '.'],
-          [',', ','],
-        ]
+  const [hasPreferred, marks] = conventions(
+    pairs.map(p => p.given),
+    pairs.map(p => p.key)
+  )
   const outcomes: boolean[][] = []
-  for (const [mg, mk] of conventions) {
+  for (const [mg, mk] of marks) {
     const outcome = pairs.map(p => matches(p.given, p.key, mg, mk, options.relTol, options.absTol))
     if (outcome.includes(null)) return none
     outcomes.push(outcome as boolean[])
   }
-  const partOk = pairs.map((_, i) => outcomes.every(o => o[i]))
-  const ambiguous = new Set(outcomes.map(o => o.join())).size > 1
+  const allOk = (o: boolean[]) => o.every(Boolean)
+  const correct = hasPreferred ? allOk(outcomes[0]) : outcomes.every(allOk)
+  const partOk = hasPreferred ? outcomes[0] : pairs.map((_, i) => outcomes.every(o => o[i]))
   return {
     comparable: true,
-    correct: !ambiguous && partOk.every(Boolean),
-    ambiguous,
+    correct,
+    ambiguous: !correct && outcomes.some(allOk),
     parts: pairs.map((p, i) => ({
       label: p.label,
       expected: p.key.text,
