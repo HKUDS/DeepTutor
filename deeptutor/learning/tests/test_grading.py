@@ -6,7 +6,12 @@ those through the full record -> mastery -> spaced-repetition pipeline and is
 fail-closed: with no stored expected answer the attempt is recorded wrong.
 """
 
-from deeptutor.learning.grading import classify_error, grade_answer
+import json
+from pathlib import Path
+
+import pytest
+
+from deeptutor.learning.grading import classify_error, grade_answer, numeric_equivalent
 from deeptutor.learning.models import (
     ErrorType,
     KnowledgePoint,
@@ -43,6 +48,20 @@ class TestShortGrading:
 
     def test_short_fuzzy_fail(self):
         assert grade_answer("completely different", "photosynthesis", "short") is False
+
+    @pytest.mark.parametrize(
+        ("user", "expected"),
+        [("1250.60", "1250.50"), ("-200", "200"), ("x=3, y=4", "x=3, y=5"), ("125000", "125.000")],
+    )
+    def test_numeric_key_is_never_fuzzy_matched(self, user, expected):
+        assert grade_answer(user, expected, "short") is False
+
+    @pytest.mark.parametrize(
+        ("user", "expected"),
+        [("1.250,50", "1250.50"), ("1250,50 €", "1250.50"), ("1/8", "0.125"), ("12.5%", "0.125")],
+    )
+    def test_numeric_formats_are_accepted(self, user, expected):
+        assert grade_answer(user, expected, "short") is True
 
     def test_short_long_expected_no_fuzzy(self):
         long_expected = "a" * 31  # >30 chars, no fuzzy
@@ -83,6 +102,33 @@ class TestEdgeCases:
 
     def test_unknown_type_returns_false(self):
         assert grade_answer("a", "a", "unknown") is False
+
+
+_VECTORS = json.loads(
+    (Path(__file__).parents[3] / "tests/fixtures/numeric_answers.json").read_text("utf-8")
+)["vectors"]
+
+
+@pytest.mark.parametrize("vector", _VECTORS, ids=lambda v: f"{v['user']!r}~{v['expected']!r}")
+def test_numeric_equivalent_shared_vectors(vector):
+    """The web port consumes the same file, so both implementations agree."""
+    result = numeric_equivalent(vector["user"], vector["expected"])
+    assert result.comparable is vector["comparable"]
+    assert result.correct is vector["correct"]
+    assert result.ambiguous is vector.get("ambiguous", False)
+
+
+class TestNumericEquivalent:
+    def test_parts_report_each_comparison(self):
+        result = numeric_equivalent("b) 3,6; a) 12", "a) 12; b) 3,5")
+        assert [(p.label, p.correct) for p in result.parts] == [("a", True), ("b", False)]
+        assert (result.comparable, result.correct) == (True, False)
+
+    def test_explicit_tolerance_overrides_key_precision(self):
+        assert numeric_equivalent("101", "100").correct is False
+        assert numeric_equivalent("101", "100", rel_tol=0.01).correct is True
+        assert numeric_equivalent("3.49", "3.48", abs_tol=0.02).correct is True
+        assert numeric_equivalent("3.51", "3.48", abs_tol=0.02).correct is False
 
 
 class TestClassifyError:
@@ -248,3 +294,42 @@ class TestGradeAndRecordFailClosed:
         assert progress.review_queue[0].knowledge_point_id == "kp1"
         assert len(progress.learning_evidence) == 1
         assert progress.learning_evidence[0].result == "correct"
+
+
+class TestExactVerdictNumeric:
+    """Mastery's deterministic pre-check before any LLM verdict."""
+
+    @staticmethod
+    def _question(expected, question_type="short", accepted=()):
+        from deeptutor.learning.models import PendingQuestion
+
+        return PendingQuestion(
+            question_id="q1",
+            knowledge_point_id="kp1",
+            prompt="Compute the expected cost.",
+            question_type=question_type,
+            expected_answer=expected,
+            accepted_answers=list(accepted),
+        )
+
+    def _verdict(self, answer, expected, **kwargs):
+        from deeptutor.learning.semantic_assessment import exact_verdict
+
+        return exact_verdict(self._question(expected, **kwargs), answer)
+
+    def test_numeric_match_is_correct_without_llm(self):
+        assert self._verdict("1234,57 €", "1.234,57").result == "correct"
+        assert self._verdict("0.125", "x", accepted=["1/8"]).result == "correct"
+        assert self._verdict("3,48", "3.48", question_type="open").result == "correct"
+
+    def test_numeric_mismatch_on_short_key_is_incorrect(self):
+        verdict = self._verdict("1250.60", "1250.50")
+        assert (verdict.result, verdict.confidence) == ("incorrect", 1)
+        assert verdict.receipt()["final"] is True
+
+    def test_uncertain_cases_still_reach_the_llm(self):
+        # Open answers may explain a number; an ambiguous separator has two readings.
+        assert self._verdict("200", "-200", question_type="open") is None
+        assert self._verdict("125000", "125.000") is None
+        assert self._verdict("about 1250", "1250.50") is None
+        assert self._verdict("1300", "1250.50", accepted=["ca. 1300"]).result == "correct"
