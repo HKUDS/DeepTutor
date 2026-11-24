@@ -132,6 +132,24 @@ def _memory_material(previous: str, messages: list[dict[str, Any]]) -> str:
     )
 
 
+def _memory_archive_ids(memory: str) -> set[str]:
+    """Archive IDs a stored tutoring memory covers or cites; none for legacy prose."""
+    try:
+        data = json.loads(memory)
+    except (TypeError, ValueError):
+        return set()
+    if not isinstance(data, dict):
+        return set()
+    lists = [data.get("covered_archive_ids")] + [
+        entry.get("archive_ids")
+        for section in _SECTIONS
+        if isinstance(data.get(section), list)
+        for entry in data[section]
+        if isinstance(entry, dict)
+    ]
+    return {s for ids in lists if isinstance(ids, list) for s in ids if isinstance(s, str)}
+
+
 def _memory_tokens(messages, summary):
     # Historical runtime snapshots are removed by the tutor projection. The
     # answer loop will append the current summary, so reserve it separately.
@@ -333,9 +351,14 @@ class MasteryContextBuilder(ContextBuilder):
             covered = data.get("covered_archive_ids")
             if not isinstance(covered, list) or not all(isinstance(s, str) for s in covered):
                 raise ValueError("Invalid memory coverage")
-            if set(covered) != expected:
-                raise ValueError("Memory omitted or invented an archived exchange")
             known = getattr(self, "_archive_ids", expected)
+            # Entries may cite IDs retained in the prior memory, and some models
+            # echo them as covered too. Accept those; still reject omitted or
+            # unseen IDs, and store only the newly folded exchanges.
+            retained = _memory_archive_ids(previous) & known
+            if not expected <= set(covered) <= expected | retained:
+                raise ValueError("Memory omitted or invented an archived exchange")
+            data["covered_archive_ids"] = [s for s in dict.fromkeys(covered) if s in expected]
             referenced = set()
             for section in _SECTIONS:
                 notes = data.get(section)

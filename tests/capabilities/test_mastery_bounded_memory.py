@@ -625,3 +625,83 @@ async def test_the_memory_request_counts_prior_memory_and_instructions(monkeypat
     assert sent <= result.budget
     assert [archive_id(g) for g in history_groups(builder._summary_rows)] == ["hs-tutor-4"]
     store.update_summary.assert_not_awaited()
+
+
+def _fold_with(monkeypatch, covered, *, prior=None):
+    """One fold of exchange hs-tutor-4 after hs-tutor-2 was folded and retained."""
+    data = json.loads(memory(["hs-tutor-4"]))
+    data["covered_archive_ids"] = covered
+    data["learner_state"][0]["archive_ids"] = ["hs-tutor-2", "hs-tutor-4"]
+
+    async def stream(_self, **kwargs):
+        kwargs["outcome"].finish_reason = "stop"
+        yield json.dumps(data)
+
+    monkeypatch.setattr(_ContextSummaryAgent, "stream_llm", stream)
+    rows = records(3, 1)
+    builder = MasteryContextBuilder(store_for(rows))
+    builder._archive_ids = {"hs-tutor-2", "hs-tutor-4", "hs-tutor-6"}
+    builder._summary_prior = memory(["hs-tutor-2"]) if prior is None else prior
+    return builder._summarize(
+        session_id="s",
+        language="en",
+        source_text="original",
+        summary_budget=4096,
+        replay_request={"rows": rows[2:4]},
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "covered", [["hs-tutor-2", "hs-tutor-4"], ["hs-tutor-4", "hs-tutor-2", "hs-tutor-4"]]
+)
+async def test_memory_may_list_previously_retained_exchanges_as_covered(monkeypatch, covered):
+    """The prompt lets entries cite retained IDs; echoing them as covered is not invention."""
+    text, _ = await _fold_with(monkeypatch, covered)
+    # Only the newly folded exchange is recorded as covered by this fold.
+    assert json.loads(text)["covered_archive_ids"] == ["hs-tutor-4"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("covered", "prior"),
+    [
+        # Still omits the newly supplied exchange.
+        (["hs-tutor-2"], None),
+        # Invented ID next to the real ones.
+        (["hs-tutor-2", "hs-tutor-4", "hs-tutor-999"], None),
+        # A real exchange on the branch that this fold never saw.
+        (["hs-tutor-4", "hs-tutor-6"], None),
+        # Not retained: the prior memory never covered or cited it.
+        (["hs-tutor-2", "hs-tutor-4"], "plain legacy summary"),
+    ],
+)
+async def test_memory_coverage_still_rejects_omitted_or_unseen_exchanges(
+    monkeypatch, covered, prior
+):
+    with pytest.raises(ValueError, match="omitted or invented"):
+        await _fold_with(monkeypatch, covered, prior=prior)
+
+
+@pytest.mark.asyncio
+async def test_a_fold_that_echoes_retained_coverage_advances_the_watermark(monkeypatch):
+    from deeptutor.capabilities.mastery.memory import archive_id
+    from deeptutor.services.session.model_history import history_groups
+
+    async def stream(_self, **kwargs):
+        new = [archive_id(g) for g in history_groups(builder._summary_rows)]
+        kwargs["outcome"].finish_reason = "stop"
+        yield memory(["hs-tutor-2", *new])
+
+    monkeypatch.setattr(_ContextSummaryAgent, "stream_llm", stream)
+    store = store_for(records(), summary=memory(["hs-tutor-2"]), watermark=2)
+    builder = MasteryContextBuilder(store)
+    config = SimpleNamespace(model="deepseek-flash", context_window=1048576, max_tokens=8192)
+    result = await builder.build(session_id="s", llm_config=config)
+    store.update_summary.assert_awaited_once()
+    _, summary, watermark = store.update_summary.await_args.args
+    new = [archive_id(g) for g in history_groups(builder._summary_rows)]
+    assert new and "hs-tutor-2" not in new
+    assert json.loads(summary)["covered_archive_ids"] == new
+    assert watermark == int(new[-1].removeprefix("hs-tutor-"))
+    assert result.token_count <= result.budget
