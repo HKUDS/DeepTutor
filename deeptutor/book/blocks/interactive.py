@@ -86,6 +86,7 @@ class InteractiveGenerator(BlockGenerator):
                 user_input=user_input,
                 history_context=history_context,
                 analysis=analysis,
+                book_block_id=ctx.block.id,
             )
         except Exception as exc:
             logger.warning(f"InteractiveGenerator failed: {exc}", exc_info=True)

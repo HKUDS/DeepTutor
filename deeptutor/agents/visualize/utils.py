@@ -46,6 +46,17 @@ def extract_code_block(text: str, language: str = "") -> str:
     match = re.search(pattern, text or "", re.IGNORECASE)
     if match:
         return match.group(1).strip()
+    # Truncated outputs often carry an opening fence with no closing one.
+    # Return the fenced body instead of the raw response, which would leak
+    # the ```html marker and surrounding prose into the rendered payload.
+    open_pattern = (
+        rf"```{re.escape(language)}\s*\n([\s\S]*)$"
+        if language
+        else r"```[A-Za-z]*\s*\n([\s\S]*)$"
+    )
+    open_match = re.search(open_pattern, text or "", re.IGNORECASE)
+    if open_match:
+        return open_match.group(1).strip()
     return (text or "").strip()
 
 

@@ -127,6 +127,10 @@ class CodeGeneratorAgent(BaseAgent):
                 end = lower.rfind("</html>")
                 if start != -1 and end != -1 and end > start:
                     extracted = extracted[start : end + len("</html>")]
+                elif start != -1:
+                    # Truncated document: keep from the root tag and let
+                    # validation reject it, rather than leaking prose/fences.
+                    extracted = extracted[start:]
 
         if outcome is not None:
             ok, detail = validate_book_widget_html(extracted)
