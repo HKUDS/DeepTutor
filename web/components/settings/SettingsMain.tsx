@@ -57,39 +57,57 @@ export default function SettingsMain({ children }: { children: React.ReactNode }
   )
 
   return (
+    // Settings is a floating preferences card, the way Claude's desktop
+    // settings behaves: the app stays visible behind a scrim and the card keeps
+    // its own rounded edge, so opening settings no longer replaces the whole
+    // window. Phones have no room for a floating card and get the full sheet.
     <div
-      className="fixed inset-0 flex h-dvh overflow-hidden bg-[var(--background)]"
+      className="fixed inset-0 flex items-center justify-center overflow-hidden bg-[color-mix(in_srgb,var(--foreground)_18%,transparent)] p-0 md:p-6"
       data-settings-shell
     >
-      <aside className="hidden w-[248px] shrink-0 flex-col border-r border-border/60 bg-[color-mix(in_srgb,var(--muted)_25%,var(--background))] md:flex">
-        <div className="px-2.5 pb-1.5 pt-4">{returnButton}</div>
-        <SettingsNav />
-      </aside>
-      <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        <div className="flex h-14 shrink-0 items-center justify-between border-b border-border/50 px-3 md:hidden">
-          {returnButton}
-          <button
-            type="button"
-            aria-label={t('Settings sections')}
-            aria-expanded={mobileOpen}
-            onClick={() => setMobileOpen(true)}
-            className="rounded-md p-2 hover:bg-accent"
+      <div
+        data-settings-card
+        className="flex h-dvh w-full min-w-0 flex-col overflow-hidden bg-[var(--background)] md:h-[min(820px,88dvh)] md:w-[min(1080px,94vw)] md:flex-row md:rounded-2xl md:border md:border-[color-mix(in_srgb,var(--border)_70%,transparent)] md:shadow-[0_28px_70px_-32px_rgba(0,0,0,0.45)]"
+      >
+        <aside className="hidden w-[224px] shrink-0 flex-col border-r border-[color-mix(in_srgb,var(--border)_55%,transparent)] bg-[color-mix(in_srgb,var(--muted)_18%,var(--background))] md:flex">
+          <div className="flex items-center justify-between gap-1 px-3 pb-1 pt-3">
+            <p className="truncate text-[13px] font-medium text-[var(--foreground)]">
+              {t('Settings')}
+            </p>
+            {returnButton}
+          </div>
+          <SettingsNav />
+        </aside>
+        <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
+          <div className="flex h-14 shrink-0 items-center justify-between border-b border-[color-mix(in_srgb,var(--border)_50%,transparent)] px-3 md:hidden">
+            {returnButton}
+            <button
+              type="button"
+              aria-label={t('Settings sections')}
+              aria-expanded={mobileOpen}
+              onClick={() => setMobileOpen(true)}
+              className="rounded-md p-2 hover:bg-accent"
+            >
+              <Menu size={20} />
+            </button>
+          </div>
+          <div
+            ref={scroller}
+            data-settings-scroll
+            className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden [scrollbar-gutter:stable]"
           >
-            <Menu size={20} />
-          </button>
-        </div>
-        <div
-          ref={scroller}
-          data-settings-scroll
-          className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden [scrollbar-gutter:stable]"
-        >
-          <PageContainer ref={content} tabIndex={-1} className="pb-20 outline-none">
-            <SettingsLoadStatusBanner />
-            {children}
-          </PageContainer>
-        </div>
-        <SettingsToolbar />
-      </main>
+            <PageContainer
+              ref={content}
+              tabIndex={-1}
+              className="max-w-[780px] pb-16 pt-5 outline-none md:px-8 md:pt-7"
+            >
+              <SettingsLoadStatusBanner />
+              {children}
+            </PageContainer>
+          </div>
+          <SettingsToolbar />
+        </main>
+      </div>
       <Modal
         isOpen={mobileOpen}
         onClose={() => setMobileOpen(false)}

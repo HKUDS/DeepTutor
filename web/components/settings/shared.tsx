@@ -1,6 +1,5 @@
 "use client";
 
-import { PageHeader } from '@/components/layout/FeaturePage'
 import type {
   CatalogProfile,
   ServiceName,
@@ -149,7 +148,7 @@ export function SettingRow({
   control: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:gap-6 border-t border-[color-mix(in_srgb,var(--border)_50%,transparent)] py-5 first:border-t-0">
+    <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:gap-6 border-t border-[color-mix(in_srgb,var(--border)_50%,transparent)] py-4 first:border-t-0">
       <div className="min-w-0 flex-1">
         <div className="text-[14px] font-medium text-[var(--foreground)]">
           {title}
@@ -166,6 +165,9 @@ export function SettingRow({
 }
 
 // Page-level section group. Title + optional description, then children.
+// Settings renders as a floating preferences card (see SettingsMain), so each
+// section is its own card: one hairline-bordered surface with a quiet header,
+// and the rows inside keep dividing themselves with hairlines.
 export function SettingSection({
   title,
   description,
@@ -176,33 +178,27 @@ export function SettingSection({
   children: React.ReactNode;
 }) {
   return (
-    <section className="mb-10">
-      <header className="mb-3">
-        <h2 className="text-[15px] font-semibold tracking-tight text-[var(--foreground)]">
+    <section className="mb-4 rounded-xl border border-[color-mix(in_srgb,var(--border)_60%,transparent)] bg-[color-mix(in_srgb,var(--muted)_10%,var(--background))] px-4 md:px-5">
+      <header className="pb-1 pt-3.5">
+        <h2 className="text-[13.5px] font-semibold tracking-tight text-[var(--foreground)]">
           {title}
         </h2>
         {description && (
-          <p className="mt-1 text-[13px] leading-relaxed text-[var(--muted-foreground)]">
+          <p className="mt-1 text-[12.5px] leading-relaxed text-[var(--muted-foreground)]">
             {description}
           </p>
         )}
       </header>
-      {/* A rule, not a box. The app divides with hairlines and whitespace —
-          a bordered, tinted panel around rows that already separate
-          themselves with hairlines was dividing the same content twice. The
-          top rule is what tells a section where it starts, and it has to live
-          here rather than on the first row because sections also hold custom
-          content (theme tiles, previews) that draws no rule of its own. */}
-      <div className="border-t border-[color-mix(in_srgb,var(--border)_60%,transparent)]">
-        {children}
-      </div>
+      <div>{children}</div>
     </section>
   );
 }
 
 // Page heading shared across settings sub-pages. The global Save Draft / Apply
 // toolbar (which also shows where this module persists to) lives above this, so
-// each page just owns its title row.
+// each page just owns its title row. Settings is a compact preferences card,
+// not a feature page: the heading stays at card scale (20px) instead of the
+// 30/32px feature-page title, which is scoped to `.dt-page-title`.
 export function SettingsPageHeader({
   title,
   description,
@@ -216,6 +212,32 @@ export function SettingsPageHeader({
   actions?: React.ReactNode;
 }) {
   return (
-    <PageHeader title={title} description={description} action={actions} headingTour="tour-page-heading" />
+    <header
+      data-page-header
+      data-level={1}
+      className="mb-4 flex min-w-0 flex-col gap-3 sm:flex-row sm:items-end sm:justify-between"
+    >
+      <div className="min-w-0">
+        <h1
+          data-tour="tour-page-heading"
+          className="text-[20px] font-semibold leading-tight tracking-[-0.02em] text-[var(--foreground)]"
+        >
+          {title}
+        </h1>
+        {description && (
+          <p className="mt-1 max-w-2xl text-[12.5px] leading-relaxed text-[var(--muted-foreground)]">
+            {description}
+          </p>
+        )}
+      </div>
+      {actions && (
+        <div
+          data-page-actions
+          className="flex max-w-full shrink-0 flex-wrap items-center gap-2 [&>div]:max-w-full [&>div]:flex-wrap"
+        >
+          {actions}
+        </div>
+      )}
+    </header>
   );
 }
