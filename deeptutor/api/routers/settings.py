@@ -11,6 +11,7 @@ import asyncio
 from collections.abc import Iterator
 import contextlib
 from copy import deepcopy
+import ipaddress
 import json
 import logging
 import time
@@ -390,6 +391,10 @@ class NetworkSettingsUpdate(BaseModel):
     frontend_port: int = Field(ge=1, le=65535)
     public_api_base: str = ""
     cors_origins: list[str] = Field(default_factory=list)
+    # SSRF policy (services/net_policy.py). Optional so an older frontend that
+    # predates the card still round-trips the rest of the page.
+    ssrf_protection_enabled: bool | None = None
+    network_synthetic_ranges: list[str] | None = None
 
 
 class ChatAttachmentSettingsUpdate(BaseModel):
@@ -923,6 +928,33 @@ def _api_base_source(system: dict[str, Any]) -> str:
     return "default_backend_url"
 
 
+def _validated_cidrs(values: list[str]) -> list[str]:
+    """Normalize declared Fake-IP ranges, refusing anything that is not a CIDR.
+
+    Every declared range widens one SSRF exemption, so a value that cannot be
+    parsed must be answered with a 422 rather than dropped quietly.
+    """
+    cleaned: list[str] = []
+    invalid: list[str] = []
+    for raw in values:
+        text = str(raw).strip()
+        if not text:
+            continue
+        try:
+            ipaddress.ip_network(text, strict=False)
+        except ValueError:
+            invalid.append(text)
+            continue
+        if text not in cleaned:
+            cleaned.append(text)
+    if invalid:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Not a CIDR range: {', '.join(invalid)}",
+        )
+    return cleaned
+
+
 def _network_settings_payload() -> dict[str, Any]:
     service = get_runtime_settings_service()
     file_system = service.load_system(include_process_overrides=False)
@@ -939,6 +971,10 @@ def _network_settings_payload() -> dict[str, Any]:
     )
     auth_enabled = bool(auth["enabled"])
     cookie_secure = bool(auth["cookie_secure"])
+    stored_ranges = list(file_system["network_synthetic_ranges"])
+    effective_ranges = list(effective_system["network_synthetic_ranges"])
+    stored_protection = bool(file_system["ssrf_protection_enabled"])
+    effective_protection = bool(effective_system["ssrf_protection_enabled"])
     return {
         "settings": {
             "backend_port": file_system["backend_port"],
@@ -947,6 +983,8 @@ def _network_settings_payload() -> dict[str, Any]:
             "cors_origins": normalize_origins(
                 [file_system["cors_origin"], file_system["cors_origins"]]
             ),
+            "ssrf_protection_enabled": stored_protection,
+            "network_synthetic_ranges": stored_ranges,
         },
         "effective": {
             "backend_url": backend_url,
@@ -956,6 +994,13 @@ def _network_settings_payload() -> dict[str, Any]:
             "cors_mode": "explicit" if auth_enabled else "permissive",
             "cors_origins": cors_origins,
             "allow_remote_http_origins": not auth_enabled,
+            "ssrf_protection_enabled": effective_protection,
+            "network_synthetic_ranges": effective_ranges,
+            # A deployment can pin either key through DEEPTUTOR_SSRF_*; the UI
+            # shows that instead of pretending the form is authoritative.
+            "ssrf_policy_env_override": (
+                stored_protection != effective_protection or stored_ranges != effective_ranges
+            ),
         },
         "auth": {
             "enabled": auth_enabled,
@@ -1117,16 +1162,22 @@ async def update_network_settings(payload: NetworkSettingsUpdate):
     _require_settings_admin()
     service = get_runtime_settings_service()
     current = service.load_system(include_process_overrides=False)
-    service.save_system(
-        {
-            **current,
-            "backend_port": payload.backend_port,
-            "frontend_port": payload.frontend_port,
-            "next_public_api_base_external": payload.public_api_base.strip(),
-            "cors_origin": "",
-            "cors_origins": normalize_origins(payload.cors_origins),
-        }
-    )
+    update: dict[str, Any] = {
+        **current,
+        "backend_port": payload.backend_port,
+        "frontend_port": payload.frontend_port,
+        "next_public_api_base_external": payload.public_api_base.strip(),
+        "cors_origin": "",
+        "cors_origins": normalize_origins(payload.cors_origins),
+    }
+    if payload.ssrf_protection_enabled is not None:
+        update["ssrf_protection_enabled"] = payload.ssrf_protection_enabled
+    if payload.network_synthetic_ranges is not None:
+        # Reject a typo here instead of letting the file layer drop it silently:
+        # the operator typed a range because something is being blocked, and a
+        # silently-ignored entry looks like the fix did not work.
+        update["network_synthetic_ranges"] = _validated_cidrs(payload.network_synthetic_ranges)
+    service.save_system(update)
     return _network_settings_payload()
 
 
