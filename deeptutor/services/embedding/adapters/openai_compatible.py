@@ -1,5 +1,6 @@
 """OpenAI-compatible embedding adapter for OpenAI, Azure, HuggingFace, LM Studio, etc."""
 
+from dataclasses import replace
 import json
 import logging
 from typing import Any, Dict
@@ -42,6 +43,22 @@ def rejects_absent_encoding_format(status_code: int, body: str) -> bool:
         return False
     lowered = body.lower()
     return "encoding_format" in lowered and "float" in lowered
+
+
+def _merge_usage(*usages: Dict[str, Any]) -> Dict[str, Any]:
+    """Sum the usage counters of several sub-batches into one response shape.
+
+    Token counts are additive, so they are summed; anything non-numeric keeps
+    its first value, which keeps the merged dict looking like a single call.
+    """
+    merged: Dict[str, Any] = {}
+    for usage in usages:
+        for key, value in usage.items():
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                merged.setdefault(key, value)
+            else:
+                merged[key] = merged.get(key, 0) + value
+    return merged
 
 
 class OpenAICompatibleEmbeddingAdapter(BaseEmbeddingAdapter):
@@ -224,6 +241,47 @@ class OpenAICompatibleEmbeddingAdapter(BaseEmbeddingAdapter):
         return payload
 
     async def embed(self, request: EmbeddingRequest) -> EmbeddingResponse:
+        """Embed ``request.texts``, halving the batch when a gateway refuses it.
+
+        Some OpenAI-compatible gateways answer 400 for a batch they consider
+        too large instead of 413. SiliconFlow's bge-m3, for example, returns
+        ``20015 parameter is invalid`` for a batch of ten 1.0-1.7k-character
+        documents while the same texts embed fine in smaller groups. Losing an
+        hours-long reindex to one such batch costs far more than a few extra
+        requests, so retry each half.
+
+        Order is preserved and usage is summed. A single text that still gets
+        400 propagates unchanged, so a genuinely invalid request ends after
+        ``2n-1`` attempts at worst rather than looping.
+        """
+        texts = list(request.texts or [])
+        # ``contents`` replaces ``texts`` in the payload, so halving the text
+        # list would not reduce what the provider was asked to embed.
+        if len(texts) < 2 or request.contents:
+            return await self._embed_batch(request)
+        try:
+            return await self._embed_batch(request)
+        except EmbeddingProviderError as exc:
+            if exc.status != 400:
+                raise
+            mid = len(texts) // 2
+            logger.warning(
+                "Embedding gateway rejected a batch of %d (lens=%s); retrying as %d + %d",
+                len(texts),
+                [len(text) for text in texts],
+                mid,
+                len(texts) - mid,
+            )
+            left = await self.embed(replace(request, texts=texts[:mid]))
+            right = await self.embed(replace(request, texts=texts[mid:]))
+            return EmbeddingResponse(
+                embeddings=[*left.embeddings, *right.embeddings],
+                model=left.model or right.model,
+                dimensions=left.dimensions or right.dimensions,
+                usage=_merge_usage(left.usage, right.usage),
+            )
+
+    async def _embed_batch(self, request: EmbeddingRequest) -> EmbeddingResponse:
         import asyncio
 
         headers = {"Content-Type": "application/json"}
