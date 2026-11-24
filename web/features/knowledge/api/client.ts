@@ -214,6 +214,8 @@ export interface KnowledgeUploadPolicy {
   accept: string;
   max_file_size_bytes: number;
   allow_any_extension?: boolean;
+  /** Containers "Add documents" also takes; the server expands them. */
+  archive_extensions?: string[];
 }
 
 export interface KnowledgeBaseFile {
@@ -280,6 +282,9 @@ function normalizeUploadPolicy(data: unknown): KnowledgeUploadPolicy {
       typeof payload?.max_file_size_bytes === "number"
         ? payload.max_file_size_bytes
         : 200 * 1024 * 1024,
+    archive_extensions: Array.isArray(payload?.archive_extensions)
+      ? payload.archive_extensions.map((ext) => String(ext).toLowerCase())
+      : [],
   };
 }
 

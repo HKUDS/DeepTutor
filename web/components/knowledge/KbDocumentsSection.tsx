@@ -16,6 +16,7 @@ import {
   resolveKbStatus,
   uploadPolicyForProvider,
   validateFiles,
+  withArchiveUploads,
   type KnowledgeBase,
 } from "@/lib/knowledge-helpers";
 import type { TaskState } from "@/hooks/useKnowledgeProgress";
@@ -94,7 +95,10 @@ export default function KbDocumentsSection({
   const isError = status === "error";
   const provider =
     kb.statistics?.rag_provider || kb.metadata?.rag_provider || "llamaindex";
-  const policyForProvider = uploadPolicyForProvider(uploadPolicy, provider);
+  const policyForProvider = uploadPolicyForProvider(
+    withArchiveUploads(uploadPolicy),
+    provider,
+  );
   const publishedLightRagVersion =
     provider === "lightrag"
       ? kb.statistics?.index_versions?.find(

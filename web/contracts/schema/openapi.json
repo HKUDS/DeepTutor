@@ -12040,6 +12040,13 @@
             "title": "Allow Any Extension",
             "type": "boolean"
           },
+          "archive_extensions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Archive Extensions",
+            "type": "array"
+          },
           "extensions": {
             "items": {
               "type": "string"

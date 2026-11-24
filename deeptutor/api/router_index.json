@@ -1,5 +1,5 @@
 {
-  "fingerprint": "ecf57f2c1dd9984eca5c678226f23141a2485a1b59d0e8f94459ce5f89b070b9",
+  "fingerprint": "41b6addaa28d4c07e24d6fa8378f8914a6d8429f4eff8b6089dd38ff7691ffc3",
   "routers": {
     "deeptutor.api.routers.auth:router": [
       {

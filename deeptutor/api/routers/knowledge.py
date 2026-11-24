@@ -267,6 +267,9 @@ class SupportedFileTypesInfo(BaseModel):
     accept: str
     max_file_size_bytes: int
     allow_any_extension: bool = False
+    # Containers "Add documents" also accepts and expands into the KB (their
+    # members must match ``extensions``). Creating a KB does not take them.
+    archive_extensions: list[str] = Field(default_factory=list)
 
 
 from deeptutor.services.config.lightrag_roles import (
@@ -2245,6 +2248,7 @@ async def get_supported_file_types():
         accept=",".join(dict.fromkeys(accept_items)),
         max_file_size_bytes=DocumentValidator.MAX_FILE_SIZE,
         allow_any_extension=allow_any_extension,
+        archive_extensions=[".zip"],
     )
 
 
