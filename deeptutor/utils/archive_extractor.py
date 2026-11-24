@@ -25,6 +25,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass, field
+import errno
 import logging
 from pathlib import Path
 import zipfile
@@ -240,12 +241,20 @@ def safe_extract_zip(
             # On a case-insensitive filesystem (the Windows and macOS default)
             # ``readme.md`` is the ``README.md`` this call already wrote: the
             # same flattening collision, not a pre-existing file to refuse.
-            if destination.exists() and any(destination.samefile(p) for p in result.extracted):
-                result.skipped.append((member, duplicate_reason))
-                continue
+            try:
+                if destination.exists() and any(destination.samefile(p) for p in result.extracted):
+                    result.skipped.append((member, duplicate_reason))
+                    continue
 
-            _make_parents(destination.parent, target_root, created_dirs)
-            written = _extract_member(archive, info, destination, limits.max_entry_bytes)
+                _make_parents(destination.parent, target_root, created_dirs)
+                written = _extract_member(archive, info, destination, limits.max_entry_bytes)
+            except OSError as exc:
+                # One over-long name (e.g. a CJK folder title past 255 bytes)
+                # is that member's problem, not a reason to drop the archive.
+                if exc.errno != errno.ENAMETOOLONG:
+                    raise
+                result.skipped.append((member, "path too long"))
+                continue
             if written > info.file_size:
                 # Decompressed more than the header declared → treat as a bomb.
                 destination.unlink(missing_ok=True)

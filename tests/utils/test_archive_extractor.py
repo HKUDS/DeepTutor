@@ -450,3 +450,21 @@ def test_keep_subdirs_rejected_archive_removes_created_folders(tmp_path: Path) -
         )
 
     assert sorted(p.relative_to(out).as_posix() for p in out.rglob("*")) == ["Week1"]
+
+
+@pytest.mark.parametrize("keep_subdirs", [False, True])
+def test_name_too_long_for_the_filesystem_skips_only_that_member(
+    tmp_path: Path, keep_subdirs: bool
+) -> None:
+    too_long = "Ü" * 200  # 400 UTF-8 bytes: over every common filesystem limit
+    src = _make_zip(
+        tmp_path / "a.zip",
+        [(f"{too_long}/notes.md", b"x"), (f"Week1/{too_long}.md", b"y"), ("ok.md", b"z")],
+    )
+    out = tmp_path / "out"
+
+    result = safe_extract_zip(src, out, allowed_extensions=DOC_EXTS, keep_subdirs=keep_subdirs)
+
+    names = sorted(p.name for p in result.extracted)
+    assert "ok.md" in names
+    assert any(reason == "path too long" for _, reason in result.skipped)
