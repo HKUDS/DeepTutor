@@ -26,6 +26,7 @@ import {
 
 import type { CodeBlockThemeId } from "@/components/common/code-block-themes";
 import {
+  LANGUAGE_EVENT,
   normalizeCodeBlockTheme,
   writeStoredCodeBlockShowLineNumbers,
   writeStoredCodeBlockTheme,
@@ -43,6 +44,7 @@ import { applyExtensionPayload } from "@/lib/settings-extensions";
 import {
   getStoredThemePreference,
   setTheme as applyThemePreference,
+  THEME_EVENT,
 } from "@/lib/theme";
 import {
   detachProfileConnection,
@@ -961,6 +963,55 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     const stored = getStoredThemePreference();
     if (stored) setTheme(stored);
   }, []);
+
+  // The desktop shell menu changes theme/language outside React (writes
+  // localStorage and dispatches the shared events). Mirror those into the
+  // settings drafts so the preview cards and pickers follow the menu live.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onExternalTheme = (event: Event) => {
+      const next = (event as CustomEvent<{ theme?: unknown }>).detail?.theme;
+      if (
+        next === "system" ||
+        next === "snow" ||
+        next === "light" ||
+        next === "dark" ||
+        next === "glass"
+      ) {
+        serverThemeLoadedRef.current = true;
+        setTheme(next);
+        const pending = pendingRef.current.get("ui") as
+          | Partial<UiSettings>
+          | undefined;
+        if (pending && "theme" in pending) {
+          pendingRef.current.set("ui", { ...pending, theme: next });
+          syncPendingKeys();
+        }
+      }
+    };
+    const onExternalLanguage = (event: Event) => {
+      const next = (event as CustomEvent<{ language?: unknown }>).detail
+        ?.language;
+      if (typeof next !== "string") return;
+      setLanguage(next as UiSettings["language"]);
+      const pending = pendingRef.current.get("ui") as
+        | Partial<UiSettings>
+        | undefined;
+      if (pending && "language" in pending) {
+        pendingRef.current.set("ui", {
+          ...pending,
+          language: next as UiSettings["language"],
+        });
+        syncPendingKeys();
+      }
+    };
+    window.addEventListener(THEME_EVENT, onExternalTheme);
+    window.addEventListener(LANGUAGE_EVENT, onExternalLanguage);
+    return () => {
+      window.removeEventListener(THEME_EVENT, onExternalTheme);
+      window.removeEventListener(LANGUAGE_EVENT, onExternalLanguage);
+    };
+  }, [syncPendingKeys]);
 
   // A language change recreates loadSettings; it must not close an ongoing test.
   useEffect(() => () => eventSourceRef.current?.close(), []);
