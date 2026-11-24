@@ -6,6 +6,8 @@ import json
 import logging
 import os
 from pathlib import Path
+import threading
+import time
 from typing import Any, Callable
 
 from deeptutor.services.file_io import atomic_write_json as _atomic_write_json
@@ -487,14 +489,27 @@ def _deepcopy_default(defaults: dict[str, Any]) -> dict[str, Any]:
     return deepcopy(defaults)
 
 
-_WARNED_UNREADABLE_DOCUMENTS: set[Path] = set()
+# An unparseable document is reported at most once per interval per path.
+# The startup load runs before logging is configured, so that first record
+# reaches only the process output; the throttle lets a later load — after
+# logging is set up — report the same document again, without letting a
+# per-request load flood the log.
+_UNREADABLE_DOCUMENT_WARNING_INTERVAL_SECONDS = 60.0
+_unreadable_document_warned_at: dict[Path, float] = {}
+_unreadable_document_warning_lock = threading.Lock()
 
 
 def _warn_unreadable_document(name: str, path: Path, problem: str) -> None:
-    """Report a settings document that cannot be parsed, once per process."""
-    if path in _WARNED_UNREADABLE_DOCUMENTS:
-        return
-    _WARNED_UNREADABLE_DOCUMENTS.add(path)
+    """Report a settings document that cannot be parsed, once a minute per path."""
+    now = time.monotonic()
+    with _unreadable_document_warning_lock:
+        last_warned_at = _unreadable_document_warned_at.get(path)
+        if (
+            last_warned_at is not None
+            and now - last_warned_at < _UNREADABLE_DOCUMENT_WARNING_INTERVAL_SECONDS
+        ):
+            return
+        _unreadable_document_warned_at[path] = now
     logger.warning(
         "Ignoring unreadable %s settings document %s (%s); using defaults for this "
         "process and leaving the file untouched.",

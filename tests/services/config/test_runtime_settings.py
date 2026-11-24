@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from deeptutor.services.config import runtime_settings
 from deeptutor.services.config.model_catalog import SERVICE_NAMES
 from deeptutor.services.config.runtime_settings import (
     SETTINGS_DERIVED_ENV_KEYS,
@@ -290,7 +291,7 @@ def test_startup_ensure_creates_missing_runtime_jsons_with_defaults(
 
 
 def test_unparseable_system_json_is_not_replaced_with_defaults(
-    tmp_path: Path, caplog: pytest.LogCaptureFixture
+    tmp_path: Path, caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     service = RuntimeSettingsService(tmp_path / "settings", process_env={})
     system_path = service.path_for("system")
@@ -306,13 +307,23 @@ def test_unparseable_system_json_is_not_replaced_with_defaults(
         assert service.load_system()["backend_port"] == 8001
 
     assert system_path.read_bytes() == broken
-    # One report per process, not one per load_system() call.
+    # One report per warning window, not one per load_system() call.
     unreadable = [
         record for record in caplog.records if "unreadable" in record.getMessage().lower()
     ]
     assert len(unreadable) == 1
     assert str(system_path) in unreadable[0].getMessage()
     assert "JSONDecodeError" in unreadable[0].getMessage()
+
+    # The suppression is time-based, not permanent: past the window the same
+    # document is reported again, so a log configured after the startup load
+    # still receives the warning.
+    caplog.clear()
+    with monkeypatch.context() as patch:
+        patch.setattr(runtime_settings, "_UNREADABLE_DOCUMENT_WARNING_INTERVAL_SECONDS", 0.0)
+        with caplog.at_level(logging.WARNING, logger="deeptutor.services.config.runtime_settings"):
+            assert service.load_system()["backend_port"] == 8001
+    assert len([r for r in caplog.records if "unreadable" in r.getMessage().lower()]) == 1
 
     # A document that decodes but is not a JSON object is kept too.
     not_an_object = b"[1, 2, 3]"
