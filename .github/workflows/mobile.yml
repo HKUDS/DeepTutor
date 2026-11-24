@@ -59,9 +59,10 @@ jobs:
           distribution: temurin
           java-version: "17"
       - uses: android-actions/setup-android@v3
+        with:
+          packages: "platforms;android-36 build-tools;36.0.0 ndk;27.1.12297006"
       - uses: gradle/actions/setup-gradle@v4
       - run: npm ci
-      - run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;27.1.12297006"
       - run: bash ./gradlew --no-daemon :app:assembleDebug -PreactNativeArchitectures=x86_64
         working-directory: apps/mobile/android
 
