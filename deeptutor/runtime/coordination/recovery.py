@@ -8,6 +8,7 @@ from deeptutor.services.session.protocol import TurnRepository
 
 from .protocol import RuntimeCoordinator
 from .types import TurnFailureCode, TurnStatus
+from .worker_identity import owner_process_may_be_alive
 
 logger = logging.getLogger(__name__)
 
@@ -27,13 +28,16 @@ class TurnRecoveryService:
         if self.coordinator.mode == "memory":
             # A process restart loses the in-memory lease index entirely. The
             # durable active rows are then the only way to discover old turns.
-            # Admission acquires its lease before inserting the row; the lease
-            # check in _recover_turn protects both new and parked live turns.
+            # CLI and server processes may share a home but cannot see each
+            # other's leases (#2168, #2631). Check the durable owner identity,
+            # including quiet/waiting turns, rather than a time-based grace.
             persisted = await self.repository.list_nonterminal_turns()
             candidates = set(turn_ids)
             for turn in persisted:
                 turn_id = str(turn["id"])
-                if await self.coordinator.get_lease(turn_id) is None:
+                if await self.coordinator.get_lease(
+                    turn_id
+                ) is None and not owner_process_may_be_alive(turn):
                     candidates.add(turn_id)
             turn_ids = sorted(candidates)
         self.backlog = len(turn_ids)
@@ -67,6 +71,12 @@ class TurnRecoveryService:
         # Recheck at recovery time, not just when collecting expired IDs.
         # None also prevents acknowledging a candidate whose lease is live.
         if await self.coordinator.get_lease(turn_id) is not None:
+            return None
+        if (
+            self.coordinator.mode == "memory"
+            and turn_id not in await self.coordinator.list_expired_turn_ids()
+            and owner_process_may_be_alive(turn)
+        ):
             return None
         token = int(turn.get("fencing_token") or 0)
         # Preserve any events still available from an expired worker before

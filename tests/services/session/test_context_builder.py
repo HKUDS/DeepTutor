@@ -2,23 +2,29 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
+from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from deeptutor.services.prompt import get_prompt_manager
+from deeptutor.services.prompt.language import language_label
 from deeptutor.services.session.context_builder import (
     MAX_HISTORY_PLAN_TOKENS,
     MAX_RAW_REBUILD_TOKENS,
     MAX_SUMMARY_OUTPUT_TOKENS,
     ContextBuilder,
     ContextBuildResult,
+    _ContextSummaryAgent,
     build_history_text,
     count_tokens,
     extract_ask_user_clarifications,
     format_messages_as_transcript,
     trim_incomplete_tail,
 )
+from deeptutor.services.session.sqlite_store import SQLiteSessionStore
 
 # ---------------------------------------------------------------------------
 # count_tokens
@@ -595,9 +601,35 @@ def _small_window_cfg() -> MagicMock:
     return cfg
 
 
+class _WordCountEncoding:
+    """Deterministic stand-in for the local tokenizer: one word = one token."""
+
+    def encode(self, text: str) -> list[str]:
+        return text.split()
+
+
+def _pin_exact_token_counts(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Freeze ``count_tokens`` on deterministic exact counts for path tests.
+
+    The rebuild/fold-in decisions under test compare token budgets against
+    boundaries tuned for exact counts, but the locally verified tokenizer
+    only exists on warm machines: with a cold cache (#2522) counting stays
+    on the chars/4 heuristic and the boundaries flip. Pinning the counter
+    keeps the budget-path logic deterministic on every machine while still
+    exercising the real ``count_tokens`` code path.
+    """
+    monkeypatch.setattr(
+        "deeptutor.services.session.context_builder.get_local_encoding",
+        lambda: _WordCountEncoding(),
+    )
+
+
 class TestContextBuilderSummarizePaths:
     @pytest.mark.asyncio
-    async def test_rebuilds_from_raw_when_prefix_fits(self) -> None:
+    async def test_rebuilds_from_raw_when_prefix_fits(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _pin_exact_token_counts(monkeypatch)
         messages = [
             {"id": 1, "role": "user", "content": "RAW_OLDEST_MARKER " + "alpha " * 90},
             {"id": 2, "role": "assistant", "content": "beta " * 90},
@@ -626,7 +658,10 @@ class TestContextBuilderSummarizePaths:
         }
 
     @pytest.mark.asyncio
-    async def test_folds_in_when_prefix_exceeds_rebuild_budget(self) -> None:
+    async def test_folds_in_when_prefix_exceeds_rebuild_budget(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _pin_exact_token_counts(monkeypatch)
         messages = [
             {"id": 1, "role": "user", "content": "RAW_OLDEST_MARKER " + "w1 " * 600},
             {"id": 2, "role": "assistant", "content": "w2 " * 600},
@@ -689,3 +724,126 @@ class TestContextBuilderSummarizePaths:
         assert result.conversation_summary == ""
         assert all(m["role"] != "system" for m in result.conversation_history)
         store.update_summary.assert_not_called()
+
+
+async def _seed_compaction_session(
+    store: SQLiteSessionStore,
+) -> tuple[str, int, list[dict[str, Any]]]:
+    session = await store.create_session()
+    session_id = session["id"]
+    await store.add_message(session_id, "user", "Original question [doc:7]")
+    watermark = await store.add_message(session_id, "assistant", "Original answer")
+    await store.update_summary(session_id, "PRIOR SUMMARY [doc:7]", watermark)
+    await store.add_message(session_id, "user", "RETRY_MARKER [doc:9] " + "material " * 500)
+    await store.add_message(
+        session_id,
+        "assistant",
+        "Recent answer",
+        metadata={"provider_response_state": {"reasoning_content": "private replay state"}},
+    )
+    return session_id, watermark, await store.get_messages_for_context(session_id)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("language", ["en", "zh", "ja", "zh-tw"])
+async def test_compaction_uses_discovered_prompt_and_preserves_sources_and_private_state(
+    sqlite_store: SQLiteSessionStore,
+    monkeypatch: pytest.MonkeyPatch,
+    language: str,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    session_id, _watermark, original = await _seed_compaction_session(sqlite_store)
+    captured: dict[str, Any] = {}
+    summary = "# Goals\nRetain the explanation [doc:7] [doc:9]."
+    monkeypatch.setattr("deeptutor.agents.base_agent.get_agent_params", lambda _module: {})
+
+    async def stream(_self: _ContextSummaryAgent, **kwargs: Any) -> AsyncIterator[str]:
+        captured.update(kwargs)
+        yield f"<think>private drafting notes</think>\n{summary}"
+
+    monkeypatch.setattr(_ContextSummaryAgent, "stream_llm", stream)
+    manager = get_prompt_manager()
+    manager.clear_cache()
+    result = await ContextBuilder(sqlite_store).build(
+        session_id=session_id, llm_config=_small_window_cfg(), language=language
+    )
+
+    prompt = manager.load_prompts("chat", "context_summary_agent", language)["system"]
+    assert (
+        captured["system_prompt"]
+        == prompt.format(summary_language=language_label(language)).strip()
+    )
+    assert language_label(language) in captured["system_prompt"]
+    assert "[doc:7]" in captured["user_prompt"]
+    assert "[doc:9]" in captured["user_prompt"]
+    assert "private replay state" not in captured["user_prompt"]
+    assert result.conversation_summary == summary
+    assert result.conversation_history[-1]["_provider_response_state"] == {
+        "reasoning_content": "private replay state"
+    }
+    session = await sqlite_store.get_session(session_id)
+    assert session["compressed_summary"] == summary
+    assert session["summary_up_to_msg_id"] == original[-2]["id"]
+    assert await sqlite_store.get_messages_for_context(session_id) == original
+    assert "No prompt file found" not in capsys.readouterr().out
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "failure", ["missing_prompt", "empty", "reasoning_only", "exception", "partial_error"]
+)
+async def test_failed_compaction_preserves_durable_history_and_retries(
+    sqlite_store: SQLiteSessionStore,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    failure: str,
+) -> None:
+    session_id, watermark, original = await _seed_compaction_session(sqlite_store)
+    monkeypatch.setattr("deeptutor.agents.base_agent.get_agent_params", lambda _module: {})
+    manager = get_prompt_manager()
+    manager.clear_cache()
+
+    async def stream(_self: _ContextSummaryAgent, **kwargs: Any) -> AsyncIterator[str]:
+        if failure == "missing_prompt":
+            pytest.fail("A missing summary prompt must prevent the request")
+        if failure == "exception":
+            yield "partial summary"
+            raise RuntimeError("stream interrupted")
+        if failure == "partial_error":
+            yield "partial summary"
+            kwargs["outcome"].finish_reason = "error"
+        elif failure == "reasoning_only":
+            yield "<think>private drafting notes</think>"
+        else:
+            yield " \n "
+
+    with monkeypatch.context() as missing:
+        missing.setattr(_ContextSummaryAgent, "stream_llm", stream)
+        if failure == "missing_prompt":
+            missing.setattr(manager, "_candidate_prompt_dirs", lambda _module: [tmp_path])
+        result = await ContextBuilder(sqlite_store).build(
+            session_id=session_id, llm_config=_small_window_cfg()
+        )
+
+    session = await sqlite_store.get_session(session_id)
+    assert session["compressed_summary"] == "PRIOR SUMMARY [doc:7]"
+    assert session["summary_up_to_msg_id"] == watermark
+    assert result.conversation_summary == "PRIOR SUMMARY [doc:7]"
+    assert result.conversation_history[-1]["content"] == "Recent answer"
+    assert result.conversation_history[-1]["_provider_response_state"] == {
+        "reasoning_content": "private replay state"
+    }
+    assert await sqlite_store.get_messages_for_context(session_id) == original
+
+    async def retry(_self: _ContextSummaryAgent, **kwargs: Any) -> AsyncIterator[str]:
+        assert "RETRY_MARKER" in kwargs["user_prompt"]
+        yield "Recovered summary [doc:7] [doc:9]"
+
+    monkeypatch.setattr(_ContextSummaryAgent, "stream_llm", retry)
+    retried = await ContextBuilder(sqlite_store).build(
+        session_id=session_id, llm_config=_small_window_cfg()
+    )
+    assert retried.conversation_summary == "Recovered summary [doc:7] [doc:9]"
+    session = await sqlite_store.get_session(session_id)
+    assert session["summary_up_to_msg_id"] == original[-2]["id"]
+    assert await sqlite_store.get_messages_for_context(session_id) == original

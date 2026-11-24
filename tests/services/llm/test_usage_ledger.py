@@ -1,4 +1,5 @@
 import asyncio
+from contextlib import nullcontext
 from datetime import datetime, timezone
 import json
 from types import SimpleNamespace as NS
@@ -25,7 +26,7 @@ class Provider(LLMProvider):
 async def test_factory_records_background_completion_and_stream_without_turn(monkeypatch):
     config = LLMConfig(model="test-model", api_key="test", binding="openai", provider_name="openai")
     monkeypatch.setattr(factory, "get_llm_config", lambda: config)
-    monkeypatch.setattr(factory, "get_runtime_provider", lambda _: Provider())
+    monkeypatch.setattr(factory, "acquire_runtime_provider", lambda _: nullcontext(Provider()))
     assert metrics.current_usage.get() is None
     assert await factory.complete("private prompt") == "answer"
     assert "".join([part async for part in factory.stream("private prompt")]) == "answer"

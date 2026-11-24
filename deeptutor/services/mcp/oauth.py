@@ -33,14 +33,19 @@ identity another person's consent is recorded against.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 import json
 import logging
+import math
 import os
 from pathlib import Path
 import re
 import stat
+import time
 from typing import TYPE_CHECKING, Any
+from urllib.parse import urlsplit
+from uuid import uuid4
 
 if TYPE_CHECKING:  # pragma: no cover - import-time typing only
     import httpx
@@ -143,12 +148,32 @@ def forget(owner_id: str, server: str) -> None:
         return
 
 
+def usable_store_name(server: str) -> bool:
+    """Whether *server* may address an OAuth store.
+
+    The name becomes a filename under the owner's secrets tree, so anything it
+    refuses can neither hold a grant nor be probed for one. A caller about to
+    build a store (or a probe that would) uses this to tell a name the grant
+    could live under from one that must be answered some other way.
+    """
+    return bool(_SAFE_NAME_RE.match(server))
+
+
 def oauth_state(owner_id: str, server: str) -> OAuthState:
     """Whether *server* is authorized for *owner_id*. Never returns a token."""
     tokens = _read(owner_id, server).get("tokens")
     if not isinstance(tokens, dict) or not tokens.get("access_token"):
         return OAuthState(authorized=False)
     return OAuthState(authorized=True, scope=str(tokens.get("scope") or ""))
+
+
+def authorization_revision(owner_id: str, server: str) -> str:
+    """Identify completed consent without exposing tokens or changing on refresh."""
+    data = _read(owner_id, server)
+    tokens = data.get("tokens")
+    if not isinstance(tokens, dict) or not tokens.get("access_token"):
+        return ""
+    return str(data.get("grant_id") or "legacy")
 
 
 class OwnerTokenStorage:
@@ -178,6 +203,10 @@ class OwnerTokenStorage:
     async def set_tokens(self, tokens: "OAuthToken") -> None:
         data = _read(self._owner, self._server)
         data["tokens"] = tokens.model_dump(mode="json", exclude_none=True)
+        if tokens.expires_in is not None:
+            data["expires_at"] = time.time() + tokens.expires_in
+        else:
+            data.pop("expires_at", None)
         _write(self._owner, self._server, data)
 
     async def get_client_info(self) -> "OAuthClientInformationFull | None":
@@ -270,15 +299,117 @@ def build_auth(
     person clicked may do.
     """
     from mcp.client.auth import OAuthClientProvider
+    from mcp.client.auth.utils import (
+        build_oauth_authorization_server_metadata_discovery_urls,
+        build_protected_resource_metadata_discovery_urls,
+        create_oauth_metadata_request,
+        handle_auth_metadata_response,
+        handle_protected_resource_response,
+        issuers_match,
+    )
+
+    class StoredOAuthClientProvider(OAuthClientProvider):
+        # The SDK alone records issuer provenance. A successful token exchange
+        # can use a resource-origin fallback and cannot establish that binding.
+        # The inner generator keeps discovery inside the SDK's redirect handling.
+        async def _auth_flow(
+            self, request: "httpx.Request"
+        ) -> AsyncGenerator["httpx.Request", "httpx.Response"]:
+            if not self._initialized:
+                await self._initialize()
+            context = self.context
+            if (
+                not context.is_token_valid()
+                and context.can_refresh_token()
+                and context.oauth_metadata is None
+            ):
+                # Discover the endpoint for the issuer that registered this
+                # client before the SDK sends any saved refresh credentials.
+                issuer = getattr(context.client_info, "issuer", None)
+                if not issuer:
+                    raise AuthorizationRequired(server_name)
+                discovery_failure = None
+                for url in build_protected_resource_metadata_discovery_urls(None, server_url):
+                    response = yield create_oauth_metadata_request(url)
+                    if response.status_code >= 500 or response.status_code == 429:
+                        discovery_failure = response.status_code
+                        continue
+                    metadata = await handle_protected_resource_response(response)
+                    if metadata is not None:
+                        await self._validate_resource_match(metadata)
+                        servers = metadata.authorization_servers
+                        if servers and not any(issuers_match(str(url), issuer) for url in servers):
+                            raise AuthorizationRequired(server_name)
+                        context.protected_resource_metadata = metadata
+                        break
+                else:
+                    if discovery_failure is not None:
+                        raise RuntimeError(
+                            f"MCP resource metadata discovery failed (HTTP {discovery_failure})"
+                        )
+                urls = build_oauth_authorization_server_metadata_discovery_urls(issuer, server_url)
+                for url in urls:
+                    response = yield create_oauth_metadata_request(url)
+                    ok, metadata = await handle_auth_metadata_response(response)
+                    if not ok:
+                        raise RuntimeError(
+                            f"MCP OAuth metadata discovery failed (HTTP {response.status_code})"
+                        )
+                    if metadata and metadata.token_endpoint:
+                        expected_issuer = issuer if urlsplit(issuer).path else f"{issuer}/"
+                        if str(metadata.issuer) != expected_issuer:
+                            raise AuthorizationRequired(server_name)
+                        context.oauth_metadata = metadata
+                        context.auth_server_url = issuer
+                        break
+                if context.oauth_metadata is None:
+                    resource_origin = context.get_authorization_base_url(server_url)
+                    if issuer.rstrip("/") != resource_origin.rstrip("/"):
+                        raise AuthorizationRequired(server_name)
+                    # Legacy same-origin servers may expose only /token.
+                    context.auth_server_url = issuer
+
+            flow = super()._auth_flow(request)
+            try:
+                outgoing = await anext(flow)
+                while True:
+                    response = yield outgoing
+                    outgoing = await flow.asend(response)
+            except StopAsyncIteration:
+                return
+            finally:
+                await flow.aclose()
 
     refuse_redirect, refuse_callback = refusing_handlers(server_name)
-    return OAuthClientProvider(
+    provider = StoredOAuthClientProvider(
         server_url=server_url,
         client_metadata=client_metadata(redirect_uri),
         storage=OwnerTokenStorage(owner_id, server_name),
         redirect_handler=redirect_handler or refuse_redirect,
         callback_handler=callback_handler or refuse_callback,
     )
+    # The SDK loads saved tokens without restoring their expiry. Seed its
+    # expiry check so persisted finite-lived tokens can refresh after restart.
+    data = _read(owner_id, server_name)
+    tokens = data.get("tokens")
+    client = data.get("client")
+    if (
+        isinstance(tokens, dict)
+        and tokens.get("expires_in") is not None
+        and (
+            data.get("expires_at") is not None
+            or (tokens.get("refresh_token") and isinstance(client, dict) and client.get("issuer"))
+        )
+    ):
+        expires_at = data.get("expires_at", 1.0)
+        # Legacy or malformed timestamps trigger one refresh. Zero means
+        # "no expiry" to the SDK, so use a positive timestamp in the past.
+        provider.context.token_expiry_time = (
+            float(expires_at)
+            if isinstance(expires_at, (int, float)) and math.isfinite(expires_at) and expires_at > 0
+            else 1.0
+        )
+    return provider
 
 
 def refusing_handlers(server_name: str) -> tuple[Any, Any]:
@@ -346,6 +477,7 @@ async def begin_authorization(
     import asyncio
 
     forget(owner_id, server_name)
+    _write(owner_id, server_name, {"grant_id": uuid4().hex})
     loop = asyncio.get_running_loop()
     url_ready: asyncio.Future[str] = loop.create_future()
     flow = _PendingFlow(owner_id=owner_id, server=server_name, result=loop.create_future())
@@ -435,4 +567,5 @@ __all__ = [
     "oauth_redirect_uri",
     "oauth_state",
     "refusing_handlers",
+    "usable_store_name",
 ]

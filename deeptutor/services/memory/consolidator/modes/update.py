@@ -152,7 +152,12 @@ async def _run_update_l2(
         snap.read_snapshot(surface),
         key=lambda e: (e.ts or "", e.id),
     )
-    seen = meta.seen_entity_refs
+    l2_path = paths.l2_file(surface)
+    # The meta file can outlive the document (manual cleanup, an interrupted
+    # write, a restored workspace). If the document is gone, every entity is
+    # new again; otherwise "seen" would suppress the rebuild forever and the
+    # overview would keep showing exists=False.
+    seen = meta.seen_entity_refs if l2_path.exists() else set()
     new_entities = [e for e in all_entities if f"{surface}:{e.id}" not in seen]
     seen_now = {f"{surface}:{e.id}" for e in all_entities}
 
@@ -209,7 +214,6 @@ async def _run_update_l2(
 
     prompt = load_prompt("update_l2", language)
     focus, sections = surface_focus(language, surface)
-    l2_path = paths.l2_file(surface)
     doc = load_doc(l2_path, default_title=f"{surface} memory")
 
     facts_added = 0

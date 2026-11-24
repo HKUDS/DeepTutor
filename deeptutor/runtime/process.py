@@ -6,6 +6,7 @@ import os
 import signal
 import subprocess
 import time
+from typing import Literal
 
 
 def kill_process_tree(pid: int) -> None:
@@ -85,4 +86,73 @@ def is_process_alive(pid: int | None) -> bool:
     return True
 
 
-__all__ = ["is_process_alive", "kill_process_tree"]
+def _windows_probe_liveness(pid: int) -> Literal["alive", "dead", "unknown"]:
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        win_dll = getattr(ctypes, "WinDLL", None)
+        if win_dll is None:
+            return "unknown"
+        kernel32 = win_dll("kernel32", use_last_error=True)
+        kernel32.OpenProcess.argtypes = (
+            wintypes.DWORD,
+            wintypes.BOOL,
+            wintypes.DWORD,
+        )
+        kernel32.OpenProcess.restype = ctypes.c_void_p
+        kernel32.GetExitCodeProcess.argtypes = (
+            ctypes.c_void_p,
+            ctypes.POINTER(wintypes.DWORD),
+        )
+        kernel32.GetExitCodeProcess.restype = wintypes.BOOL
+        kernel32.CloseHandle.argtypes = (ctypes.c_void_p,)
+        kernel32.CloseHandle.restype = wintypes.BOOL
+
+        handle = kernel32.OpenProcess(0x1000, False, pid)
+        if not handle:
+            # psutil treats OpenProcess error 87 (ERROR_INVALID_PARAMETER)
+            # for a validated DWORD pid as "no such process"; every other
+            # failure (including access denied) stays unknown.
+            return "dead" if ctypes.get_last_error() == 87 else "unknown"  # type: ignore[attr-defined]  # Windows-only API
+        state: Literal["alive", "dead", "unknown"] = "unknown"
+        try:
+            exit_code = wintypes.DWORD()
+            if kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code)):
+                state = "alive" if exit_code.value == 259 else "dead"
+        finally:
+            # A failed close means the handle state is untrustworthy; the
+            # computed state may only be reported when the close succeeded.
+            closed = kernel32.CloseHandle(handle)
+        return state if closed else "unknown"
+    except (AttributeError, ImportError, OSError):
+        return "unknown"
+
+
+def probe_process_liveness(pid: int) -> Literal["alive", "dead", "unknown"]:
+    """Classify ``pid`` as alive, dead or unknown without signalling it.
+
+    ``unknown`` is returned for invalid pids and for any probe failure so
+    callers can stay conservative; only confirmed liveness or exit is
+    reported. Windows never uses ``os.kill``, which terminates processes.
+    """
+
+    if type(pid) is not int or pid <= 0:
+        return "unknown"
+    if os.name == "nt":
+        # CPython implements ordinary os.kill signals with TerminateProcess
+        # on Windows, so os.kill(pid, 0) is destructive rather than a probe.
+        if pid > 0xFFFFFFFF:
+            return "unknown"
+        return _windows_probe_liveness(pid)
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return "dead"
+    except (OverflowError, OSError):
+        # Permission errors and overflow cannot confirm either state.
+        return "unknown"
+    return "alive"
+
+
+__all__ = ["is_process_alive", "kill_process_tree", "probe_process_liveness"]

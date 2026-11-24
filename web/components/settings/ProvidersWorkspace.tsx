@@ -116,7 +116,9 @@ export function ProvidersWorkspace() {
   })).sort((a, b) => a.label.localeCompare(b.label));
   // Protocol-specific aliases still resolve saved accounts, but new accounts
   // use the vendor once and select their protocol in the connection editor.
-  const addableOptions = options.filter((p) => p.status !== "legacy");
+  const addableOptions = options.filter((p) => p.status !== "legacy").sort(
+    (a, b) => Number(b.value === "siliconflow") - Number(a.value === "siliconflow"),
+  );
   const optionLabel = (provider: string) => formatProviderLabel(provider, options.find(p => p.value === provider)?.label ?? provider, uiLanguage);
   const source = sources.find((p) => p.id === selected);
   const option = options.find((p) => p.value === source?.provider);
@@ -153,9 +155,9 @@ export function ProvidersWorkspace() {
       api_version: "",
       ...(custom ? { service_overrides: { llm: { enabled: true, binding: "custom" } } } : {}),
       api_format:
-        custom?.api_format ||
-        (option.default_api_format as CatalogConnection["api_format"]) ||
-        "auto",
+        custom
+          ? "auto"
+          : (option.default_api_format as CatalogConnection["api_format"]) || "auto",
     };
     mutateCatalog((next) => {
       (next.connections ??= []).push(entry);
@@ -390,6 +392,7 @@ export function ProvidersWorkspace() {
                       <RegistryProbe
                         input={{ ...providerProbeInput(source, defaultBaseUrl), api_format: apiFormat }}
                         discovery={connection.discovery}
+                        automatic={Boolean(connection.api_key || (!option?.requires_api_key && (connection.base_url || defaultBaseUrl)))}
                         hints={hints}
                         showCapabilities={false}
                         onResult={(result) => change("discovery", result)}

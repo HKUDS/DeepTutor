@@ -700,6 +700,38 @@ class TestHistory:
         sessions = {s["session_key"]: s for s in client.get("/api/partners/ada/sessions").json()}
         assert sessions["web-a"]["archived"] is True
 
+    @pytest.mark.parametrize("existing_content", ["target text", ""])
+    def test_branch_rejects_existing_destination_and_keeps_active_session(
+        self, client, existing_content
+    ):
+        from deeptutor.api.routers import partners as router_mod
+
+        _create(client)
+        store = router_mod.get_partner_manager().session_store("ada")
+        store.append("web-a", "user", "source text")
+        if existing_content:
+            store.append("web-b", "user", existing_content)
+        else:
+            store._path("web-b").touch()
+        store.set_archived("web-b", True)
+        client.put(
+            "/api/partners/ada/web-continuity",
+            json={"enabled": True, "session_key": "web-a"},
+        )
+        paths = [store._path("web-a"), store._path("web-b"), store._index_path]
+        before = [path.read_bytes() for path in paths]
+
+        response = client.post(
+            "/api/partners/ada/sessions/branch",
+            json={"source_key": "web-a", "new_key": "web-b"},
+        )
+
+        assert response.status_code == 409
+        assert [path.read_bytes() for path in paths] == before
+        assert store.is_archived("web-a") is False
+        assert store.is_archived("web-b") is True
+        assert client.get("/api/partners/ada/web-continuity").json()["session_key"] == "web-a"
+
     def test_delete_session_endpoint(self, client, isolated_root):
         _create(client)
         self._seed_session(isolated_root, "web-a", "bye")
@@ -711,6 +743,37 @@ class TestHistory:
         assert (
             client.post("/api/partners/ada/sessions/delete", json={"session_key": "web-a"})
         ).status_code == 404
+
+    def test_image_only_history_is_paged_and_redacts_private_metadata(self, client):
+        from deeptutor.api.routers import partners as router_mod
+
+        _create(client)
+        store = router_mod.get_partner_manager().session_store("ada")
+        store.append("web-image", "user", "before")
+        attachment = {"type": "image", "filename": "photo.png", "path": "/tmp/photo.png"}
+        store.append("web-image", "user", "", attachments=[attachment])
+        store.append("web-image", "assistant", "saw it", metadata={"model_turn": {"private": True}})
+
+        history = client.get("/api/partners/ada/history?session_key=web-image").json()
+        assert [row["role"] for row in history] == ["user", "user", "assistant"]
+        assert history[1]["attachments"] == [attachment]
+        assert history[2]["metadata"] == {}
+        summary = client.get("/api/partners/ada/sessions").json()[0]
+        assert (summary["message_count"], summary["title"], summary["last_message"]) == (
+            3,
+            "before",
+            "saw it",
+        )
+        page = client.get("/api/partners/ada/history/page?session_key=web-image&limit=2").json()
+        assert page["messages"] == history[1:]
+        assert (page["start"], page["next_before"], page["total"]) == (1, 1, 3)
+
+        store.append("web-image", "user", "later")
+        older = client.get(
+            "/api/partners/ada/history/page?session_key=web-image&limit=2&before=1"
+        ).json()
+        assert older["messages"] == history[:1]
+        assert (older["start"], older["next_before"], older["total"]) == (0, None, 4)
 
     def test_history_pages_reach_the_beginning_with_stable_cursor(self, client):
         from deeptutor.api.routers import partners as router_mod

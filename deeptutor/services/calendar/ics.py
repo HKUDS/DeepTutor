@@ -259,7 +259,9 @@ def _fold(line: str) -> str:
 
 def _vtimezone(tzid: str, events: Sequence[CalendarEvent]) -> list[str]:
     tz = zone(tzid)
-    start, end = _tz_window([event for event in events if event.tzid == tzid])
+    # All-day events are written as floating dates and never reference a
+    # VTIMEZONE, so only timed events in this zone decide its window.
+    start, end = _tz_window([event for event in events if not event.all_day and event.tzid == tzid])
     lines = ["BEGIN:VTIMEZONE", f"TZID:{tzid}"]
     initial_offset = start.astimezone(tz).utcoffset() or timedelta(0)
     lines.extend(

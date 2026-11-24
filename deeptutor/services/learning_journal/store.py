@@ -329,7 +329,11 @@ class LearningJournalStore:
             if sys.platform == "win32":
                 import msvcrt
 
-                if not handle.read(1):
+                # Size the file instead of reading it: Windows locks are
+                # mandatory, so reading byte 0 while another process holds it
+                # fails with PermissionError instead of letting LK_LOCK wait.
+                handle.seek(0, 2)
+                if handle.tell() == 0:
                     handle.write(b"\0")
                     handle.flush()
                 handle.seek(0)

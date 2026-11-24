@@ -97,6 +97,14 @@ test("fenced code is never rewritten", () => {
   assert.equal(normalizeMathMarkup(input), input);
 });
 
+test("an info-bearing inner fence line does not close the block", () => {
+  // The inner ```tex line carries an info string, so per CommonMark it is code
+  // content, not a closing fence. The whole input is one code block and must
+  // pass through untouched.
+  const input = "```text\n```tex\n\\(x+y\\)\n```";
+  assert.equal(normalizeMathMarkup(input), input);
+});
+
 // ---------------------------------------------------------------------------
 // delimiters the model chose instead of $
 // ---------------------------------------------------------------------------
@@ -122,6 +130,20 @@ test("a doubly-escaped delimiter is repaired", () => {
 test("an inline paren formula never merges two table cells", () => {
   const input = "| \\(a | b\\) |\n| --- |\n| x |";
   assert.equal(normalizeMathMarkup(input), input);
+});
+
+test("a loose $ pair around LaTeX is tightened, not wrapped again", () => {
+  // A fill-in-the-blank question: the model closes the formula before the
+  // blank, with a space. The bare-LaTeX pass used to wrap the body a second
+  // time, giving `$$\lim … =$ $`, a display block that never closes.
+  assert.equal(
+    normalizeMathMarkup("si ha $\\lim_{n \\to +\\infty} a_n = $ ____."),
+    "si ha $\\lim_{n \\to +\\infty} a_n =$ ____.",
+  );
+  assert.equal(
+    normalizeMathMarkup("Let $a_n = \\frac{1}{n}$, so $ \\lim a_n = $ ____."),
+    "Let $a_n = \\frac{1}{n}$, so $\\lim a_n =$ ____.",
+  );
 });
 
 test("a loose $ pair is tightened rather than dropped", () => {

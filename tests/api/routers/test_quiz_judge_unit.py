@@ -654,6 +654,35 @@ class TestJudgeImages:
         assert "The learner attached 2 images" in call["prompt"]
         reset_spy.assert_called_once_with(ws_token)
 
+    def test_data_url_mime_is_honored_over_a_mismatched_filename(
+        self, ws_token, reset_spy, monkeypatch, fake_attachment_store, llm_vision
+    ):
+        # A browser embeds the true media type in the data URL. When the
+        # filename extension disagrees (the default is "answer.png"), the
+        # declared JPEG type must win over the filename guess, or a strict
+        # provider rejects the request for a png-labelled jpeg.
+        llm_vision(supports=True)
+        stream = _ScriptedStream(["ok"])
+        client = _judge_client(monkeypatch, stream)
+        payload = _judge_payload(
+            user_answer="",
+            user_answer_images=[
+                {"base64": "data:image/jpeg;base64,QUJD", "filename": "answer.png"}
+            ],
+        )
+
+        with client.websocket_connect("/ws/questions/judge") as ws:
+            ws.send_json(payload)
+            assert ws.receive_json() == {"type": "started"}
+            assert ws.receive_json() == {"type": "text", "content": "ok"}
+            assert ws.receive_json() == {"type": "done"}
+
+        user_content = stream.calls[0]["messages"][1]["content"]
+        assert user_content[1] == {
+            "type": "image_url",
+            "image_url": {"url": "data:image/jpeg;base64,QUJD"},
+        }
+
     def test_non_vision_model_judges_the_typed_answer_text_only(
         self, ws_token, reset_spy, monkeypatch, fake_attachment_store, llm_vision
     ):

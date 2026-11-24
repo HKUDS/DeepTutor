@@ -214,7 +214,16 @@ def check_layout(page: Path, frames: list[int], timeout_s: int = 180) -> list[st
             f"file://{tmp}/host.html",
         ]
         try:
-            proc = subprocess.run(argv, capture_output=True, text=True, timeout=timeout_s)  # nosec B603
+            # --dump-dom is UTF-8 and quotes the lesson's own text; the server's
+            # ANSI code page (cp936, cp932, ...) would mangle it into bad JSON.
+            proc = subprocess.run(  # nosec B603
+                argv,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=timeout_s,
+            )
         except subprocess.TimeoutExpired:
             return None
     if proc.returncode != 0:

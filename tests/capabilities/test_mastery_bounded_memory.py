@@ -23,6 +23,15 @@ def isolated_agent_settings(monkeypatch):
     monkeypatch.setattr("deeptutor.agents.base_agent.get_agent_params", lambda _module: {})
 
 
+@pytest.fixture(autouse=True)
+def fresh_truncation_backoff():
+    from deeptutor.capabilities.mastery import memory as memory_module
+
+    memory_module._truncation_backoff.clear()
+    yield
+    memory_module._truncation_backoff.clear()
+
+
 def records(n=8, padding=2000):
     result = []
     for i in range(n):
@@ -403,3 +412,216 @@ async def test_reasoning_allowance_does_not_replace_the_retained_memory_budget(
     assert store.update_summary.await_count == int(saved)
     assert result.token_count <= 20000
     assert "example 0 failed" in json.dumps(result.history_sources)
+
+
+def _truncating_stream(monkeypatch, calls, *, truncate=lambda kwargs: True):
+    from deeptutor.capabilities.mastery.memory import archive_id
+    from deeptutor.services.session.model_history import history_groups
+
+    async def stream(_self, **kwargs):
+        calls.append(kwargs["max_tokens"])
+        kwargs["outcome"].finish_reason = "max_tokens" if truncate(kwargs) else "stop"
+        yield memory([archive_id(g) for g in history_groups(builder_rows[0]._summary_rows)])
+
+    builder_rows = []
+    monkeypatch.setattr(_ContextSummaryAgent, "stream_llm", stream)
+    return builder_rows
+
+
+async def _build(builder_rows, store, *, max_tokens=4096, model="reasoning-model"):
+    builder = MasteryContextBuilder(store)
+    builder_rows[:] = [builder]
+    return await builder.build(
+        session_id="s",
+        llm_config=SimpleNamespace(model=model, context_window=272000, max_tokens=max_tokens),
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_truncated_memory_is_not_retried_on_every_turn(monkeypatch):
+    """The same call, model and limit would be cut off again after another long wait."""
+    calls = []
+    holder = _truncating_stream(monkeypatch, calls)
+    store = store_for(records())
+
+    first = await _build(holder, store)
+    second = await _build(holder, store)
+    third = await _build(holder, store)
+
+    assert len(calls) == 1
+    store.update_summary.assert_not_awaited()
+    for result in (first, second, third):
+        assert result.token_count <= result.budget
+        assert "example 0 failed" in json.dumps(result.history_sources)
+
+
+@pytest.mark.asyncio
+async def test_raising_the_output_limit_retries_without_waiting_out_the_backoff(monkeypatch):
+    calls = []
+    holder = _truncating_stream(
+        monkeypatch, calls, truncate=lambda kwargs: kwargs["max_tokens"] < 5000
+    )
+    store = store_for(records())
+
+    await _build(holder, store, max_tokens=4096)
+    await _build(holder, store, max_tokens=4096)
+    assert len(calls) == 1
+    store.update_summary.assert_not_awaited()
+
+    await _build(holder, store, max_tokens=8192)
+    assert len(calls) == 2
+    assert store.update_summary.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_the_backoff_expires(monkeypatch):
+    import deeptutor.capabilities.mastery.memory as memory_module
+
+    calls = []
+    holder = _truncating_stream(monkeypatch, calls)
+    store = store_for(records())
+    now = [1000.0]
+    monkeypatch.setattr(memory_module.time, "monotonic", lambda: now[0])
+
+    await _build(holder, store)
+    now[0] += memory_module._TRUNCATION_BACKOFF_SECONDS - 1
+    await _build(holder, store)
+    assert len(calls) == 1
+
+    now[0] += 2
+    await _build(holder, store)
+    assert len(calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_other_failures_are_still_retried_every_turn(monkeypatch):
+    calls = []
+
+    async def stream(_self, **kwargs):
+        calls.append(kwargs["max_tokens"])
+        kwargs["outcome"].finish_reason = "stop"
+        yield "not json"
+
+    monkeypatch.setattr(_ContextSummaryAgent, "stream_llm", stream)
+    store = store_for(records())
+    for _ in range(2):
+        await MasteryContextBuilder(store).build(
+            session_id="s",
+            llm_config=SimpleNamespace(
+                model="reasoning-model", context_window=272000, max_tokens=4096
+            ),
+        )
+    assert len(calls) == 2
+    store.update_summary.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_failed_memory_retries_stay_within_the_history_plan_as_the_session_grows(
+    monkeypatch,
+):
+    """#2496: the watermark stays put, so every retry used to resend the whole backlog."""
+    prompts = []
+
+    async def stream(_self, **kwargs):
+        prompts.append(kwargs["user_prompt"])
+        kwargs["outcome"].finish_reason = "stop"
+        yield memory([])
+
+    monkeypatch.setattr(_ContextSummaryAgent, "stream_llm", stream)
+    rows = records(n=24)
+    config = SimpleNamespace(model="deepseek-flash", context_window=1048576, max_tokens=8192)
+    for turns in (8, 16, 24):
+        store = store_for(rows[: 2 * turns])
+        result = await MasteryContextBuilder(store).build(session_id="s", llm_config=config)
+        store.update_summary.assert_not_awaited()
+        assert result.token_count <= result.budget
+
+    exchanges = [prompt.split("New archived exchanges (data):\n", 1)[1] for prompt in prompts]
+    assert len(exchanges) == 3
+    assert all(count_tokens(sent) <= result.budget for sent in exchanges)
+    # Each retry is the same oldest exchanges, not a call that grows every turn.
+    assert len(set(prompts)) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_long_backlog_is_folded_in_bounded_steps(monkeypatch):
+    from deeptutor.capabilities.mastery.memory import archive_id
+    from deeptutor.services.session.model_history import history_groups
+
+    covered = []
+
+    async def stream(_self, **kwargs):
+        ids = [archive_id(g) for g in history_groups(builders[-1]._summary_rows)]
+        covered.append(ids)
+        kwargs["outcome"].finish_reason = "stop"
+        yield memory(ids)
+
+    monkeypatch.setattr(_ContextSummaryAgent, "stream_llm", stream)
+    builders = []
+    rows = records(n=12)
+    config = SimpleNamespace(model="deepseek-flash", context_window=1048576, max_tokens=8192)
+    summary, watermark = "", 0
+    # About 6k tokens per exchange: three of them fit the 20k history plan.
+    for expected in (
+        ["hs-tutor-2", "hs-tutor-4", "hs-tutor-6"],
+        ["hs-tutor-8", "hs-tutor-10", "hs-tutor-12"],
+    ):
+        store = store_for(rows, summary=summary, watermark=watermark)
+        builders.append(MasteryContextBuilder(store))
+        result = await builders[-1].build(session_id="s", llm_config=config)
+        assert covered[-1] == expected
+        # The watermark moves only past the exchanges the memory covered; the
+        # rest of the backlog is folded in on the next turn.
+        store.update_summary.assert_awaited_once()
+        _, summary, watermark = store.update_summary.await_args.args
+        assert watermark == int(expected[-1].removeprefix("hs-tutor-"))
+        assert result.token_count <= result.budget
+        assert "example 11 failed" in json.dumps(result.history_sources)
+
+
+@pytest.mark.asyncio
+async def test_an_oldest_exchange_over_the_plan_sends_no_memory_call(monkeypatch):
+    """#2510 review: "at least one" exchange sent a single 45k one to a 20k plan."""
+    calls = []
+
+    async def stream(_self, **kwargs):
+        calls.append(kwargs)
+        kwargs["outcome"].finish_reason = "stop"
+        yield "not json"
+
+    monkeypatch.setattr(_ContextSummaryAgent, "stream_llm", stream)
+    store = store_for(records(n=2, padding=15000))
+    config = SimpleNamespace(model="deepseek-flash", context_window=1048576, max_tokens=8192)
+    for _ in range(2):
+        result = await MasteryContextBuilder(store).build(session_id="s", llm_config=config)
+        assert result.token_count <= result.budget
+        assert "distinct-0 " * 15000 in result.history_sources["hs-tutor-2"]
+    assert calls == []
+    store.update_summary.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_the_memory_request_counts_prior_memory_and_instructions(monkeypatch):
+    """#2510 review: two exchanges fit the plan, but not with the memory around them."""
+    from deeptutor.capabilities.mastery.memory import archive_id
+    from deeptutor.services.session.model_history import history_groups
+
+    calls = []
+
+    async def stream(_self, **kwargs):
+        calls.append(kwargs)
+        kwargs["outcome"].finish_reason = "stop"
+        yield "not json"
+
+    monkeypatch.setattr(_ContextSummaryAgent, "stream_llm", stream)
+    prior = json.loads(memory(["hs-tutor-2"]))
+    prior["learner_state"][0]["note"] = "remembered " * 1500
+    store = store_for(records(n=4, padding=3100), summary=json.dumps(prior), watermark=2)
+    builder = MasteryContextBuilder(store)
+    config = SimpleNamespace(model="deepseek-flash", context_window=1048576, max_tokens=8192)
+    result = await builder.build(session_id="s", llm_config=config)
+    assert len(calls) == 1
+    sent = count_tokens(calls[0]["user_prompt"]) + count_tokens(calls[0]["system_prompt"])
+    assert sent <= result.budget
+    assert [archive_id(g) for g in history_groups(builder._summary_rows)] == ["hs-tutor-4"]
+    store.update_summary.assert_not_awaited()

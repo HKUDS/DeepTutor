@@ -40,30 +40,24 @@ def transfer_sessions(
         ).fetchone()
         if live:
             raise WorkspaceError("Wait for active conversations before migrating data.")
-        tables = [
-            ("sessions", f"id IN ({selected})"),
-            ("messages", f"session_id IN ({selected})"),
-            ("turns", f"session_id IN ({selected})"),
-            (
-                "turn_events",
-                f"turn_id IN (SELECT id FROM main.turns WHERE session_id IN ({selected}))",  # nosec B608 - fixed tables and local schema; values bound
-            ),
-            (
-                "notebook_categories",
-                f"id IN (SELECT category_id FROM main.notebook_entry_categories WHERE entry_id IN (SELECT id FROM main.notebook_entries WHERE session_id IN ({selected})))",  # nosec B608 - fixed tables and local schema; values bound
-            ),
-            ("notebook_entries", f"session_id IN ({selected})"),
-            (
-                "notebook_entry_categories",
-                f"entry_id IN (SELECT id FROM main.notebook_entries WHERE session_id IN ({selected}))",  # nosec B608 - fixed tables and local schema; values bound
-            ),
-            ("assessment_attempts", f"session_id IN ({selected})"),
-        ]
+        tables = _transfer_tables(selected)
+        conflicts = _conflicts(conn, selected)
+        if conflicts:
+            raise WorkspaceError("; ".join(conflicts))
+        current_table = "conversation"
         for table, where in tables:
+            current_table = table
             rows = conn.execute(f'SELECT * FROM main."{table}" WHERE {where}').fetchall()  # nosec B608 - fixed tables and local schema; values bound
             if not rows:
                 continue
             columns = rows[0].keys()
+            # ``turn_events.id`` is an AUTOINCREMENT surrogate that nothing
+            # references. Copying it verbatim collides with unrelated events
+            # already in the destination; let the destination allocate a new
+            # id while preserving the event's (turn_id, seq) identity.
+            insert_columns = [
+                name for name in columns if not (table == "turn_events" and name == "id")
+            ]
             # Preserve extension/legacy fields instead of silently discarding
             # them when the target was created by a newer schema version.
             target_columns = {
@@ -78,8 +72,8 @@ def transfer_sessions(
                         else "TEXT"
                     )
                     conn.execute(f'ALTER TABLE target."{table}" ADD COLUMN "{name}" {kind}')
-            column_sql = ",".join(f'"{name}"' for name in columns)
-            placeholders = ",".join("?" for _ in columns)
+            column_sql = ",".join(f'"{name}"' for name in insert_columns)
+            placeholders = ",".join("?" for _ in insert_columns)
             for row in rows:
                 values = dict(row)
                 values = {
@@ -99,16 +93,21 @@ def transfer_sessions(
                         continue
                 conn.execute(
                     f'INSERT INTO target."{table}" ({column_sql}) VALUES ({placeholders})',  # nosec B608 - fixed tables and local schema; values bound
-                    tuple(values[name] for name in columns),
+                    tuple(values[name] for name in insert_columns),
                 )
-                info = conn.execute(f'PRAGMA main.table_info("{table}")').fetchall()
-                keys = [column[1] for column in info if column[5]]
-                predicate = " AND ".join(f'"{name}"=?' for name in keys)
+                if table == "turn_events":
+                    predicate = '"turn_id"=? AND "seq"=?'
+                    keys = ("turn_id", "seq")
+                else:
+                    info = conn.execute(f'PRAGMA main.table_info("{table}")').fetchall()
+                    keys = tuple(column[1] for column in info if column[5])
+                    predicate = " AND ".join(f'"{name}"=?' for name in keys)
                 saved = conn.execute(
                     f'SELECT {column_sql} FROM target."{table}" WHERE {predicate}',  # nosec B608 - fixed tables and local schema; values bound
                     tuple(values[key] for key in keys),
                 ).fetchone()
-                if saved is None or dict(saved) != values:
+                expected = {name: values[name] for name in insert_columns}
+                if saved is None or dict(saved) != expected:
                     raise WorkspaceError("The conversation copy could not be verified.")
         copied = conn.execute(
             f"SELECT count(*) FROM target.sessions WHERE id IN ({selected})"  # nosec B608 - fixed tables and local schema; values bound
@@ -131,10 +130,85 @@ def transfer_sessions(
     except sqlite3.IntegrityError as exc:
         conn.rollback()
         raise WorkspaceError(
-            "The destination contains conflicting conversation or question IDs. Choose an empty workspace."
+            f"The destination already contains {current_table} rows with conflicting IDs. Choose an empty workspace."
         ) from exc
     except Exception:
         conn.rollback()
         raise
     finally:
         conn.close()
+
+
+def _transfer_tables(selected: str):
+    return [
+        ("sessions", f"id IN ({selected})"),
+        ("messages", f"session_id IN ({selected})"),
+        ("turns", f"session_id IN ({selected})"),
+        (
+            "turn_events",
+            f"turn_id IN (SELECT id FROM main.turns WHERE session_id IN ({selected}))",  # nosec B608 - fixed tables and local schema; values bound
+        ),
+        (
+            "notebook_categories",
+            f"id IN (SELECT category_id FROM main.notebook_entry_categories WHERE entry_id IN (SELECT id FROM main.notebook_entries WHERE session_id IN ({selected})))",  # nosec B608 - fixed tables and local schema; values bound
+        ),
+        ("notebook_entries", f"session_id IN ({selected})"),
+        (
+            "notebook_entry_categories",
+            f"entry_id IN (SELECT id FROM main.notebook_entries WHERE session_id IN ({selected}))",  # nosec B608 - fixed tables and local schema; values bound
+        ),
+        ("assessment_attempts", f"session_id IN ({selected})"),
+    ]
+
+
+def _conflicts(conn, selected: str) -> list[str]:
+    conflicts = []
+    for table, where in _transfer_tables(selected):
+        target_info = conn.execute(f'PRAGMA target.table_info("{table}")').fetchall()
+        if not target_info:
+            continue
+        keys = (
+            [("turn_id", "seq")]
+            if table == "turn_events"
+            else [tuple(row[1] for row in sorted(target_info, key=lambda r: r[5]) if row[5])]
+        )
+        for index in conn.execute(f'PRAGMA target.index_list("{table}")').fetchall():
+            if index[2]:
+                name = index[1].replace('"', '""')
+                key = tuple(row[2] for row in conn.execute(f'PRAGMA target.index_info("{name}")'))
+                if key and all(key) and key not in keys:
+                    keys.append(key)
+        for key in keys:
+            if not key or (table == "turn_events" and key == ("id",)):
+                continue
+            quoted_keys = [k.replace('"', '""') for k in key]
+            join = " AND ".join(f'a."{k}"=b."{k}"' for k in quoted_keys)
+            rows = conn.execute(
+                # Fixed table/predicate, quoted schema identifiers, bound selection values.
+                f'SELECT a.* FROM (SELECT * FROM main."{table}" WHERE {where}) a '  # nosec B608
+                f'JOIN target."{table}" b ON {join} LIMIT 5'
+            ).fetchall()
+            for row in rows:
+                if table == "notebook_categories":
+                    other = conn.execute(
+                        "SELECT * FROM target.notebook_categories WHERE id=?", (row["id"],)
+                    ).fetchone()
+                    if dict(row) == dict(other):
+                        continue
+                identity = ", ".join(f"{k}={row[k]!r}" for k in key)
+                conflicts.append(f"Destination conflict in {table}: {identity}.")
+    return list(dict.fromkeys(conflicts))
+
+
+def session_conflicts(source: Path, destination: Path, session_ids: Iterable[str]) -> list[str]:
+    """Inspect exactly the transfer's table predicates and unique identities."""
+    from contextlib import closing
+
+    with closing(sqlite3.connect(source)) as conn:
+        conn.row_factory = sqlite3.Row
+        conn.execute("ATTACH DATABASE ? AS target", (str(destination),))
+        conn.execute("CREATE TEMP TABLE selected_sessions (id TEXT PRIMARY KEY)")
+        conn.executemany(
+            "INSERT INTO selected_sessions VALUES (?)", [(sid,) for sid in set(session_ids)]
+        )
+        return _conflicts(conn, "SELECT id FROM selected_sessions")

@@ -3,6 +3,12 @@
     "schemas": {
       "ActionPayload": {
         "properties": {
+          "help_request_id": {
+            "default": "",
+            "maxLength": 200,
+            "title": "Help Request Id",
+            "type": "string"
+          },
           "locale": {
             "default": "en",
             "maxLength": 32,
@@ -13,6 +19,12 @@
             "minimum": 1.0,
             "title": "Locator",
             "type": "integer"
+          },
+          "question_id": {
+            "default": "",
+            "maxLength": 200,
+            "title": "Question Id",
+            "type": "string"
           },
           "selection": {
             "default": "",
@@ -49,6 +61,58 @@
           "model_id"
         ],
         "title": "ActiveModelUpdate",
+        "type": "object"
+      },
+      "AddChapterRequest": {
+        "properties": {
+          "content_type": {
+            "default": "theory",
+            "title": "Content Type",
+            "type": "string"
+          },
+          "expected_revision": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Revision"
+          },
+          "learning_objectives": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Learning Objectives",
+            "type": "array"
+          },
+          "position": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Position"
+          },
+          "summary": {
+            "default": "",
+            "title": "Summary",
+            "type": "string"
+          },
+          "title": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "title": "AddChapterRequest",
         "type": "object"
       },
       "AddGitHubSourceRequest": {
@@ -505,6 +569,20 @@
           }
         },
         "title": "AnswerRequest",
+        "type": "object"
+      },
+      "ApplyBookEditRequest": {
+        "properties": {
+          "expected_revision": {
+            "minimum": 1.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_revision"
+        ],
+        "title": "ApplyBookEditRequest",
         "type": "object"
       },
       "ApplyOpsRequest": {
@@ -1244,6 +1322,69 @@
           "file"
         ],
         "title": "Body_upload_note_asset_api_documents__doc_id__assets_post",
+        "type": "object"
+      },
+      "BookEdit": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "add_chapter",
+              "rename_chapter",
+              "move_chapter",
+              "delete_chapter",
+              "add_page",
+              "rename_page",
+              "move_page",
+              "delete_page",
+              "insert_block",
+              "extend_page"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "body": {
+            "default": "",
+            "maxLength": 100000,
+            "title": "Body",
+            "type": "string"
+          },
+          "chapter_id": {
+            "default": "",
+            "title": "Chapter Id",
+            "type": "string"
+          },
+          "learning_objectives": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 30,
+            "title": "Learning Objectives",
+            "type": "array"
+          },
+          "page_id": {
+            "default": "",
+            "title": "Page Id",
+            "type": "string"
+          },
+          "position": {
+            "default": 0,
+            "maximum": 10000.0,
+            "minimum": 0.0,
+            "title": "Position",
+            "type": "integer"
+          },
+          "title": {
+            "default": "",
+            "maxLength": 300,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "title": "BookEdit",
         "type": "object"
       },
       "BookPermissionPayload": {
@@ -3853,6 +3994,22 @@
             "title": "Include Historical",
             "type": "boolean"
           },
+          "session_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 1000,
+                "minItems": 1,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Ids"
+          },
           "source_workspace_id": {
             "default": "",
             "title": "Source Workspace Id",
@@ -6121,6 +6278,18 @@
           "profile_id": {
             "title": "Profile Id",
             "type": "string"
+          },
+          "reasoning_effort": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Reasoning Effort"
           }
         },
         "required": [
@@ -6143,7 +6312,9 @@
               "pt",
               "vi",
               "ja",
-              "tr"
+              "tr",
+              "it",
+              "hu"
             ],
             "title": "Language",
             "type": "string"
@@ -8030,6 +8201,31 @@
           "new_position"
         ],
         "title": "MoveBlockRequest",
+        "type": "object"
+      },
+      "MoveChapterRequest": {
+        "properties": {
+          "expected_revision": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Revision"
+          },
+          "new_position": {
+            "title": "New Position",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "new_position"
+        ],
+        "title": "MoveChapterRequest",
         "type": "object"
       },
       "MoveFilePayload": {
@@ -13404,7 +13600,9 @@
                   "pt",
                   "vi",
                   "ja",
-                  "tr"
+                  "tr",
+                  "it",
+                  "hu"
                 ],
                 "type": "string"
               },
@@ -13434,7 +13632,9 @@
                   "uk",
                   "ms",
                   "vi",
-                  "tr"
+                  "tr",
+                  "hi",
+                  "hu"
                 ],
                 "type": "string"
               },
@@ -13704,6 +13904,61 @@
           }
         },
         "title": "UpdateCard",
+        "type": "object"
+      },
+      "UpdateChapterRequest": {
+        "properties": {
+          "expected_revision": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Revision"
+          },
+          "learning_objectives": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Learning Objectives"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "title": "UpdateChapterRequest",
         "type": "object"
       },
       "UpdateDocumentRequest": {
@@ -14988,6 +15243,20 @@
           "enabled"
         ],
         "title": "WebContinuityBody",
+        "type": "object"
+      },
+      "WebFetchSettingsUpdate": {
+        "description": "Web fetch backend selection — the ``web_fetch.backend`` settings row.\n\nThe value names an entry in the backend's ``FETCH_PROVIDERS`` spec table;\nthe endpoint validates against it because the choice set is owned by the\nbackend, not by this schema.",
+        "properties": {
+          "backend": {
+            "title": "Backend",
+            "type": "string"
+          }
+        },
+        "required": [
+          "backend"
+        ],
+        "title": "WebFetchSettingsUpdate",
         "type": "object"
       },
       "WebSourceInfo": {
@@ -19698,6 +19967,754 @@
         ]
       }
     },
+    "/api/books/{book_id}/chapters": {
+      "post": {
+        "description": "Append an empty chapter shell after generation, without recompiling.",
+        "operationId": "add_chapter_api_books__book_id__chapters_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "book_id",
+            "required": true,
+            "schema": {
+              "title": "Book Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddChapterRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Add Chapter Api Books  Book Id  Chapters Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add Chapter",
+        "tags": [
+          "books"
+        ]
+      }
+    },
+    "/api/books/{book_id}/chapters/{chapter_id}": {
+      "delete": {
+        "description": "Delete a chapter and only its pages; other compiled pages are untouched.",
+        "operationId": "delete_chapter_api_books__book_id__chapters__chapter_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "book_id",
+            "required": true,
+            "schema": {
+              "title": "Book Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "chapter_id",
+            "required": true,
+            "schema": {
+              "title": "Chapter Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "expected_revision",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Expected Revision"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Delete Chapter Api Books  Book Id  Chapters  Chapter Id  Delete",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Chapter",
+        "tags": [
+          "books"
+        ]
+      },
+      "patch": {
+        "description": "Rename a chapter (and carry the title onto its pages) without recompiling.",
+        "operationId": "update_chapter_api_books__book_id__chapters__chapter_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "book_id",
+            "required": true,
+            "schema": {
+              "title": "Book Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "chapter_id",
+            "required": true,
+            "schema": {
+              "title": "Chapter Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateChapterRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Update Chapter Api Books  Book Id  Chapters  Chapter Id  Patch",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Chapter",
+        "tags": [
+          "books"
+        ]
+      }
+    },
+    "/api/books/{book_id}/chapters/{chapter_id}/move": {
+      "post": {
+        "description": "Reorder a chapter and carry the new order onto its pages.",
+        "operationId": "move_chapter_api_books__book_id__chapters__chapter_id__move_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "book_id",
+            "required": true,
+            "schema": {
+              "title": "Book Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "chapter_id",
+            "required": true,
+            "schema": {
+              "title": "Chapter Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MoveChapterRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Move Chapter Api Books  Book Id  Chapters  Chapter Id  Move Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Move Chapter",
+        "tags": [
+          "books"
+        ]
+      }
+    },
+    "/api/books/{book_id}/edits": {
+      "get": {
+        "operationId": "get_book_edits_api_books__book_id__edits_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "book_id",
+            "required": true,
+            "schema": {
+              "title": "Book Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Page Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Book Edits Api Books  Book Id  Edits Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Book Edits",
+        "tags": [
+          "books"
+        ]
+      }
+    },
+    "/api/books/{book_id}/edits/preview": {
+      "post": {
+        "operationId": "preview_book_edit_api_books__book_id__edits_preview_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "book_id",
+            "required": true,
+            "schema": {
+              "title": "Book Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BookEdit"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Preview Book Edit Api Books  Book Id  Edits Preview Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Preview Book Edit",
+        "tags": [
+          "books"
+        ]
+      }
+    },
+    "/api/books/{book_id}/edits/{edit_id}/apply": {
+      "post": {
+        "operationId": "apply_book_edit_api_books__book_id__edits__edit_id__apply_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "book_id",
+            "required": true,
+            "schema": {
+              "title": "Book Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "edit_id",
+            "required": true,
+            "schema": {
+              "title": "Edit Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApplyBookEditRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Apply Book Edit Api Books  Book Id  Edits  Edit Id  Apply Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Apply Book Edit",
+        "tags": [
+          "books"
+        ]
+      }
+    },
+    "/api/books/{book_id}/edits/{edit_id}/undo": {
+      "post": {
+        "operationId": "undo_book_edit_api_books__book_id__edits__edit_id__undo_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "book_id",
+            "required": true,
+            "schema": {
+              "title": "Book Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "edit_id",
+            "required": true,
+            "schema": {
+              "title": "Edit Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApplyBookEditRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Undo Book Edit Api Books  Book Id  Edits  Edit Id  Undo Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Undo Book Edit",
+        "tags": [
+          "books"
+        ]
+      }
+    },
     "/api/books/{book_id}/export": {
       "get": {
         "description": "Download the whole book as a single Markdown file.",
@@ -22030,6 +23047,36 @@
             }
           },
           {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Search",
+              "type": "string"
+            }
+          },
+          {
             "in": "header",
             "name": "Authorization",
             "required": false,
@@ -22188,6 +23235,36 @@
             "required": true,
             "schema": {
               "title": "Kind",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Search",
               "type": "string"
             }
           },
@@ -60040,6 +61117,140 @@
         ]
       }
     },
+    "/api/settings/web-fetch": {
+      "get": {
+        "operationId": "get_web_fetch_settings_api_settings_web_fetch_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Web Fetch Settings",
+        "tags": [
+          "settings"
+        ]
+      },
+      "put": {
+        "operationId": "update_web_fetch_settings_api_settings_web_fetch_put",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WebFetchSettingsUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Web Fetch Settings",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
     "/api/settings/workspace": {
       "get": {
         "operationId": "get_workspace_settings_api_settings_workspace_get",
@@ -63714,7 +64925,7 @@
     },
     "/api/space/mcp/servers/{name}/test": {
       "post": {
-        "description": "Probe a definition before saving it.\n\nRuns under the caller's own owner id so the probe obeys the same address\npolicy and redirect rule the real connection will — a Test more permissive\nthan the connection it previews is worse than no Test at all.\n\nDeliberately side-effect free: nothing is written, so the incoming config is\nprobed as given (any literal credential in it is used in memory only). That\nalso means a caller may probe under a scratch name the store would refuse,\nwhich is how the UI tests a draft before it has one.",
+        "description": "Probe a definition before saving it.\n\nRuns under the caller's own owner id so the probe obeys the same address\npolicy and redirect rule the real connection will — a Test more permissive\nthan the connection it previews is worse than no Test at all.\n\nDeliberately side-effect free: nothing is written, so the incoming config is\nprobed as given (any literal credential in it is used in memory only). That\nalso means a caller may probe under a scratch name the store would refuse,\nwhich is how the UI tests a draft before it has one — with one exception:\nan OAuth-backed server's grant lives under the name it is saved under, so\nits probe addresses the OAuth store by the path name. A scratch name no\ngrant could live under is answered the way an unauthorized server is, not\nwith the store's refusal.",
         "operationId": "test_server_api_space_mcp_servers__name__test_post",
         "parameters": [
           {

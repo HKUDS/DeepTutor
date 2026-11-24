@@ -50,10 +50,23 @@ export function useReadingPanelLayout({
   enabled,
   navigatorOpen: preferredNavigatorOpen,
   companionOpen,
+  companionDocked = true,
 }: {
+  /** The frame may be measured and the navigator sized at all. */
   enabled: boolean
   navigatorOpen: boolean
   companionOpen: boolean
+  /**
+   * Whether the companion occupies a column at this width, or is a sheet over
+   * the document.
+   *
+   * `enabled` and this threshold are not the same question. The navigator
+   * docks at `lg`, the companion only at `xl`, so between the two the
+   * navigator must be resizable while the companion is still an overlay. A
+   * sheet must never reserve a track: the document would shrink beside an
+   * empty column. Defaults keep the single-breakpoint callers unchanged.
+   */
+  companionDocked?: boolean
 }) {
   const [element, gridRef] = useState<HTMLDivElement | null>(null)
   const [frame, setFrame] = useState(0)
@@ -64,7 +77,8 @@ export function useReadingPanelLayout({
     readWidth('dt.reader.companionWidth', 380, COMPANION_MIN, 2400)
   )
   const [focus, setFocus] = useState<{ width?: number } | null>(null)
-  const companionFocus = focus !== null && enabled && companionOpen
+  const dockedCompanionOpen = companionDocked && companionOpen
+  const companionFocus = focus !== null && enabled && dockedCompanionOpen
   const navigatorOpen = companionFocus ? false : preferredNavigatorOpen
 
   // A callback ref also observes a grid that appears after the loading screen.
@@ -84,8 +98,8 @@ export function useReadingPanelLayout({
 
   const bounds = readingPanelBounds(
     frame,
-    navigatorOpen,
-    companionOpen,
+    enabled && navigatorOpen,
+    dockedCompanionOpen,
     navigatorWidth,
     companionFocus ? (focus.width ?? frame / 2) : companionWidth
   )
@@ -106,9 +120,9 @@ export function useReadingPanelLayout({
   const measured = enabled && frame > 0
   const gridTemplateColumns = measured
     ? [
-        ...(navigatorOpen ? [`${bounds.navigatorWidth}px`, `${HANDLE}px`] : []),
+        ...(enabled && navigatorOpen ? [`${bounds.navigatorWidth}px`, `${HANDLE}px`] : []),
         'minmax(0,1fr)',
-        ...(companionOpen ? [`${HANDLE}px`, `${bounds.companionWidth}px`] : []),
+        ...(dockedCompanionOpen ? [`${HANDLE}px`, `${bounds.companionWidth}px`] : []),
       ].join(' ')
     : undefined
 
@@ -118,7 +132,7 @@ export function useReadingPanelLayout({
     gridStyle: gridTemplateColumns ? { gridTemplateColumns } : undefined,
     navigatorOpen,
     showNavigatorHandle: measured && navigatorOpen,
-    showCompanionHandle: measured && companionOpen,
+    showCompanionHandle: measured && dockedCompanionOpen,
     companionFocus,
     toggleFocus,
     exitFocus,

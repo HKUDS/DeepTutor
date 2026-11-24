@@ -1,7 +1,8 @@
 'use client'
-import { useCallback, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
+  catalogTranslate,
   useTopicSourceLibrary,
   sourceRequest,
   type SourceCandidate,
@@ -20,10 +21,8 @@ export default function NoteSourcePicker({
   onKnowledge: (name: string, workspace: string) => void
 }) {
   const { t, i18n } = useTranslation()
-  const tr = useCallback(
-    (zh: string, en: string) => (i18n.language.startsWith('zh') ? zh : en),
-    [i18n.language]
-  )
+  const zh = i18n.language.startsWith('zh')
+  const tr = useMemo(() => catalogTranslate(t, zh), [t, zh])
   const { library, loading } = useTopicSourceLibrary(tr)
   const [query, setQuery] = useState('')
   const [busy, setBusy] = useState(false)
@@ -31,6 +30,11 @@ export default function NoteSourcePicker({
   const items = [...library.drafts, ...library.chats, ...library.knowledgeBases].filter(
     row => row.available && row.label.toLowerCase().includes(query.toLowerCase())
   )
+  // Only these three kinds feed this picker, so wait on them rather than the
+  // slow question-bank request the shared hook also fires.
+  const pending = library.loadingKinds
+    ? library.loadingKinds.some(kind => ['drafts', 'chats', 'knowledgeBases'].includes(kind))
+    : loading
   const select = async (row: SourceCandidate) => {
     setBusy(true)
     try {
@@ -86,7 +90,7 @@ export default function NoteSourcePicker({
           onChange={e => setQuery(e.target.value)}
         />
         <div className="max-h-96 overflow-y-auto">
-          {loading ? (
+          {pending && items.length === 0 ? (
             <p>…</p>
           ) : (
             items.map(row => (

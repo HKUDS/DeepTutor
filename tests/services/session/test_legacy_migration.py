@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import errno
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -143,3 +145,85 @@ async def test_empty_and_dry_run_are_safe(tmp_path) -> None:
     applied = await migrator.migrate()
     assert applied.imported == 0
     assert not source.exists()
+
+
+@pytest.mark.asyncio
+async def test_migration_is_serialized_with_msvcrt_when_fcntl_is_missing(
+    tmp_path, monkeypatch
+) -> None:
+    # Every worker runs the migration at startup. Unserialized on Windows,
+    # they copied, imported and moved the same source at once.
+    import deeptutor.services.session.migration_lock as module
+
+    store = SQLiteSessionStore(tmp_path / "chat_history.db")
+    calls: list[int] = []
+
+    def locking(_fileno: int, mode: int, length: int) -> None:
+        assert length == 1
+        calls.append(mode)
+
+    monkeypatch.setattr(module, "fcntl", None)
+    monkeypatch.setattr(
+        module,
+        "msvcrt",
+        SimpleNamespace(LK_LOCK=1, LK_UNLCK=0, locking=locking),
+        raising=False,
+    )
+    source = tmp_path / "sessions.json"
+    _write_legacy(source, [_session("s1")])
+
+    report = await LegacyChatSessionMigrator(store, source, tmp_path / "archive").migrate()
+
+    assert report.imported == 1
+    assert calls == [1, 0]
+
+
+def _msvcrt_failing_first_lock(calls: list[int], error: OSError) -> SimpleNamespace:
+    def locking(_fileno: int, mode: int, length: int) -> None:
+        calls.append(mode)
+        if calls == [1]:
+            raise error
+
+    return SimpleNamespace(LK_LOCK=1, LK_UNLCK=0, locking=locking)
+
+
+@pytest.mark.asyncio
+async def test_windows_migration_lock_keeps_waiting_after_lk_lock_gives_up(
+    tmp_path, monkeypatch
+) -> None:
+    # LK_LOCK raises EDEADLK after about ten seconds, but another worker's
+    # import of a large legacy store can hold the lock for longer.
+    import deeptutor.services.session.migration_lock as module
+
+    store = SQLiteSessionStore(tmp_path / "chat_history.db")
+    calls: list[int] = []
+    timeout = OSError(errno.EDEADLK, "Resource deadlock avoided")
+    monkeypatch.setattr(module, "fcntl", None)
+    monkeypatch.setattr(module, "msvcrt", _msvcrt_failing_first_lock(calls, timeout), raising=False)
+    source = tmp_path / "sessions.json"
+    _write_legacy(source, [_session("s1")])
+
+    report = await LegacyChatSessionMigrator(store, source, tmp_path / "archive").migrate()
+
+    assert report.imported == 1
+    assert calls == [1, 1, 0]
+
+
+@pytest.mark.asyncio
+async def test_windows_migration_lock_raises_other_lock_errors(tmp_path, monkeypatch) -> None:
+    import deeptutor.services.session.migration_lock as module
+
+    store = SQLiteSessionStore(tmp_path / "chat_history.db")
+    calls: list[int] = []
+    denied = OSError(errno.EACCES, "Permission denied")
+    monkeypatch.setattr(module, "fcntl", None)
+    monkeypatch.setattr(module, "msvcrt", _msvcrt_failing_first_lock(calls, denied), raising=False)
+    source = tmp_path / "sessions.json"
+    _write_legacy(source, [_session("s1")])
+
+    with pytest.raises(OSError) as exc_info:
+        await LegacyChatSessionMigrator(store, source, tmp_path / "archive").migrate()
+
+    assert exc_info.value.errno == errno.EACCES
+    assert calls == [1]
+    assert source.exists()

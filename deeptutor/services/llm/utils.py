@@ -160,7 +160,7 @@ def sanitize_url(base_url: str, model: str = "") -> str:
         base_url = f"http://{base_url}"
 
     url = base_url.rstrip("/")
-    if url and not url.startswith(("http://", "https://")):
+    if url and not url.lower().startswith(("http://", "https://")):
         url = "http://" + url
 
     for suffix in [
@@ -187,19 +187,56 @@ def clean_thinking_tags(
     if not content:
         return ""
 
-    closed_pattern = re.compile(
-        r"`?<\s*(?P<tag>think(?:ing)?)\b[^>]*>`?.*?`?<\s*/\s*(?P=tag)\s*>`?",
+    # Mask Markdown code before recognizing protocol tags. Keep offsets intact
+    # so stripping a real reasoning block can still discard its entire body,
+    # including any code inside that block, without rewriting literal examples.
+    masked = list(content)
+    fenced: list[tuple[int, int]] = []
+    cursor = 0
+    opening_fence = re.compile(r"(?m)^[ \t]{0,3}(`{3,}|~{3,})[^\n]*\n")
+    while opening := opening_fence.search(content, cursor):
+        marker = opening[1]
+        closing = re.compile(
+            rf"(?m)^[ \t]{{0,3}}{re.escape(marker[0])}{{{len(marker)},}}[ \t]*(?:\n|$)"
+        ).search(content, opening.end())
+        end = closing.end() if closing else len(content)
+        fenced.append((opening.start(), end))
+        cursor = end
+
+    inline = re.compile(r"(?<!`)(`+)(?!`).*?(?<!`)\1(?!`)", re.DOTALL)
+    wrapped = re.match(
+        r"\s*`<\s*think(?:ing)?\b[^>]*>`.*?`<\s*/\s*think(?:ing)?\s*>`",
+        content,
         re.DOTALL | re.IGNORECASE,
     )
-    cleaned = re.sub(closed_pattern, "", content)
-    # Streaming providers can surface a final partial block if the request is
-    # interrupted after reasoning has started. Never expose that scratchpad.
-    unclosed_pattern = re.compile(
-        r"`?<\s*think(?:ing)?\b[^>]*>`?.*$",
+    ranges = list(fenced)
+    for match in inline.finditer(content):
+        if any(a <= match.start() < b for a, b in fenced):
+            continue
+        # Some adapters wrap individual protocol markers in backticks. Retain
+        # that legacy leading-block form, while protecting whole inline examples.
+        if (
+            wrapped
+            and match.end() <= wrapped.end()
+            and re.fullmatch(r"`<\s*/?\s*think(?:ing)?\b[^>]*>`", match[0], re.IGNORECASE)
+        ):
+            continue
+        ranges.append(match.span())
+    for start, end in ranges:
+        masked[start:end] = ["\n" if char == "\n" else " " for char in content[start:end]]
+
+    # Either spelling closes a real block. An unclosed scratchpad must begin
+    # a line; mentioning an opening marker in ordinary prose is not reasoning.
+    tags = re.compile(
+        r"`?<\s*think(?:ing)?\b[^>]*>`?.*?`?<\s*/\s*think(?:ing)?\s*>`?"
+        r"|(?:\A|\n)[ \t]*`?<\s*think(?:ing)?\b[^>]*>`?"
+        r"(?!.*?<\s*/\s*think(?:ing)?\s*>).*\Z"
+        r"|`?<\s*/\s*think(?:ing)?\s*>`?",
         re.DOTALL | re.IGNORECASE,
     )
-    cleaned = re.sub(unclosed_pattern, "", cleaned)
-    cleaned = re.sub(r"`?<\s*/\s*think(?:ing)?\s*>`?", "", cleaned, flags=re.IGNORECASE)
+    cleaned = content
+    for match in reversed(list(tags.finditer("".join(masked)))):
+        cleaned = cleaned[: match.start()] + cleaned[match.end() :]
     return cleaned.strip()
 
 
@@ -254,8 +291,14 @@ def _extract_content_field(content: object) -> str:
     if isinstance(content, list):
         parts: list[str] = []
         for part in content:
-            if isinstance(part, Mapping) and "text" in part:
-                parts.append(str(part["text"]))
+            if isinstance(part, Mapping):
+                text = part.get("text")
+                # A delta with no text, or an explicit null, contributes
+                # nothing. ``str(None)`` would inject the word "None" into the
+                # reply, which is what a streamed part with an empty text field
+                # used to produce.
+                if text is not None:
+                    parts.append(str(text))
             elif isinstance(part, str):
                 parts.append(part)
         return "".join(parts)

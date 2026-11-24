@@ -26,9 +26,9 @@ type Lang = { zh: string; en: string };
 const backendLabel = agentKindLabel;
 
 export default function ConnectedAgents() {
-  const { i18n } = useTranslation();
+  const { t, i18n } = useTranslation();
   const zh = i18n.language?.toLowerCase().startsWith("zh");
-  const tr = useCallback((l: Lang) => (zh ? l.zh : l.en), [zh]);
+  const tr = useCallback((l: Lang) => (zh ? l.zh : t(l.en)), [zh, t]);
 
   const [backends, setBackends] = useState<SubagentBackendInfo[]>([]);
   const [connections, setConnections] = useState<SubagentConnection[]>([]);
@@ -64,10 +64,10 @@ export default function ConnectedAgents() {
     async (name: string) => {
       if (
         !window.confirm(
-          tr({
-            zh: `断开「${name}」？这只会移除连接，不影响本机的智能体配置。`,
-            en: `Disconnect “${name}”? This only removes the connection; your local agent is untouched.`,
-          }),
+          t(
+            "Disconnect “{{name}}”? This only removes the connection; your local agent is untouched.",
+            { name },
+          ),
         )
       )
         return;
@@ -79,7 +79,7 @@ export default function ConnectedAgents() {
         setBusyName(null);
       }
     },
-    [load, tr],
+    [load, t],
   );
 
   return (
