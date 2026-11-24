@@ -505,3 +505,24 @@ def test_entry_patch_rejects_unknown_results(bank):
     entry = seed(store)
     response = client.patch(f"/bank/entries/{entry['id']}", json={"result": "voided-ish"})
     assert response.status_code == 422
+
+
+def test_a_new_submission_drops_the_previous_verdict_without_erasing_mistakes(bank):
+    store, repo, client = bank
+    entry = seed(store, **_open_question(user_answer="x = 7"))
+    wrong = {
+        "is_correct": False,
+        "result": "incorrect",
+        "ai_verdict": {**_JUDGED, "result": "incorrect"},
+    }
+    client.patch(f"/bank/entries/{entry['id']}", json=wrong)
+
+    # Re-recording results for the same answer keeps the verdict.
+    seed(store, **_open_question(user_answer="x = 7"), result="incorrect")
+    assert client.get(f"/bank/entries/{entry['id']}").json()["ai_verdict"]["result"] == "incorrect"
+
+    # A retry with a new answer clears it, and does not wipe the first mistake.
+    seed(store, **_open_question(user_answer="120"), is_correct=True, user_answer_images=[])
+    stored = client.get(f"/bank/entries/{entry['id']}").json()
+    assert stored["ai_verdict"] is None
+    assert repo.overview("UTC")["mistakes"] == 1

@@ -3517,6 +3517,13 @@ class SQLiteSessionStore:
                         WHEN ? THEN notebook_entries.user_answer_images_json
                         ELSE excluded.user_answer_images_json
                     END,
+                    -- A verdict judges one answer: a fresh submission (which
+                    -- carries its image list) or changed text drops it.
+                    ai_verdict_json = CASE
+                        WHEN ? AND excluded.user_answer = notebook_entries.user_answer
+                        THEN notebook_entries.ai_verdict_json
+                        ELSE ''
+                    END,
                     source = excluded.source,
                     material_id = excluded.material_id,
                     material_title = excluded.material_title,
@@ -3562,6 +3569,7 @@ class SQLiteSessionStore:
                     resolved_on_insert,
                     now,
                     now,
+                    images_json is None,
                     images_json is None,
                 ),
             )

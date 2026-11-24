@@ -76,9 +76,10 @@ def initialize_practice(conn: sqlite3.Connection) -> None:
         -- missed (e.g. a photo). If it is correct or ungraded, a mistake
         -- captured from that provisional result is released unless the
         -- learner has already practised it.
-        CREATE TRIGGER IF NOT EXISTS practice_release_judged
+        DROP TRIGGER IF EXISTS practice_release_judged;
+        CREATE TRIGGER practice_release_judged
         AFTER UPDATE OF ai_verdict_json ON notebook_entries
-        WHEN NEW.ai_verdict_json != OLD.ai_verdict_json
+        WHEN NEW.ai_verdict_json != OLD.ai_verdict_json AND NEW.ai_verdict_json != ''
             AND (NEW.is_correct = 1 OR NEW.result = 'ungraded')
         BEGIN
             UPDATE practice_review_state SET is_mistake = 0, version = version + 1
