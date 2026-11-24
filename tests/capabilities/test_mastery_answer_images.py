@@ -543,3 +543,20 @@ def test_photos_are_never_committed_beside_a_choice_pick(service):
     interaction = service.store.get_interaction("p", "c1")
     assert interaction.status != InteractionStatus.ANSWERED
     assert interaction.answer_images == []
+
+
+def test_unreadable_or_oversized_photos_are_refused_before_commit(monkeypatch):
+    from deeptutor.services.config import runtime_settings
+
+    unreadable = {**_attachment(PHOTO), "base64": "@@@"}
+    with pytest.raises(ValueError, match="could not be read"):
+        answer_image_refs(["photo-1"], [unreadable], session_id="s")
+
+    limits = runtime_settings.get_chat_attachment_limits()
+    monkeypatch.setattr(
+        runtime_settings,
+        "get_chat_attachment_limits",
+        lambda: limits.__class__(**{**limits.__dict__, "max_file_bytes": len(PHOTO) - 1}),
+    )
+    with pytest.raises(ValueError, match="larger than the configured attachment limit"):
+        answer_image_refs(["photo-1"], [_attachment(PHOTO)], session_id="s")

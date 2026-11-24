@@ -27,13 +27,18 @@ def answer_image_refs(
 ) -> list[dict[str, str]]:
     """Describe the turn's attachments named as the learner's answer images.
 
-    Raises ``ValueError`` when an ID does not name a fresh image upload of this
-    turn. A card answer that cannot carry its photos must not be committed as a
+    Raises ``ValueError`` when an ID does not name a fresh, readable image
+    upload of this turn within the configured chat attachment size limits. A
+    card answer that cannot carry its photos must not be committed as a
     text-only answer.
     """
     ids = [str(item) for item in attachment_ids or []]
     if not ids:
         return []
+    from deeptutor.services.config.runtime_settings import get_chat_attachment_limits
+
+    limits = get_chat_attachment_limits()
+    total_bytes = 0
     if len(ids) > MAX_ANSWER_IMAGES or len(set(ids)) != len(ids):
         raise ValueError(f"A card answer can include up to {MAX_ANSWER_IMAGES} distinct photos.")
     by_id = {
@@ -51,18 +56,24 @@ def answer_image_refs(
         ):
             raise ValueError("A card answer photo must be an image uploaded with the same answer.")
         try:
-            digest = sha256(base64.b64decode(str(item["base64"]), validate=False)).hexdigest()
+            data = base64.b64decode(str(item["base64"]), validate=False)
         except (binascii.Error, ValueError):
-            # The runtime cannot store these bytes either. An empty digest
-            # matches nothing, so grading reports the photo as unavailable.
-            digest = ""
+            data = b""
+        if not data:
+            # The runtime cannot store these bytes either.
+            raise ValueError("A card answer photo could not be read; attach it again.")
+        total_bytes += len(data)
+        if len(data) > limits.max_file_bytes or total_bytes > limits.max_total_bytes:
+            raise ValueError(
+                "The photos of a card answer are larger than the configured attachment limit."
+            )
         refs.append(
             {
                 "session_id": session_id,
                 "attachment_id": attachment_id,
                 "filename": str(item.get("filename") or "") or "file",
                 "mime_type": mime_type,
-                "sha256": digest,
+                "sha256": sha256(data).hexdigest(),
             }
         )
     return refs
@@ -78,7 +89,9 @@ def load_answer_images(refs: list[dict[str, Any]], config=None) -> list[dict[str
     Raises ``ValueError`` with a learner-facing explanation when the active
     model cannot see images or a stored image no longer matches its digest.
     The caller turns that into an ``ungraded`` verdict and never grades the
-    typed text alone.
+    typed text alone. Only stores that expose local paths through
+    ``resolve_path`` can return the bytes; on any other store a photo answer
+    stays ungraded.
     """
     from deeptutor.services.llm.capabilities import supports_vision
     from deeptutor.services.llm.config import get_llm_config
