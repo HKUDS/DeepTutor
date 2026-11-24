@@ -18,6 +18,7 @@
     "expo": "57.0.34",
     "expo-constants": "~57.0.25",
     "expo-dev-client": "57.0.22",
+    "expo-font": "~57.0.4",
     "expo-linking": "~57.0.14",
     "expo-router": "~57.0.32",
     "expo-status-bar": "~57.0.1",
@@ -59,6 +60,13 @@
   "overrides": {
     "query-string": {
       "decode-uri-component": "0.5.1"
+    }
+  },
+  "expo": {
+    "doctor": {
+      "appConfigFieldsNotSyncedCheck": {
+        "enabled": false
+      }
     }
   }
 }

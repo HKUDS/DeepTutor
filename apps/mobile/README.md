@@ -83,6 +83,12 @@ or `eas build --profile development-simulator --platform ios`. Keep the
 repository-level `web/` directory in the build upload so Metro can resolve
 the shared transport. Local builds do not require an Expo account.
 
+The checked-in Gradle and Xcode projects are the source of truth for native
+settings. The URL scheme and app IDs match the manifest and Xcode settings,
+and the Router plugin's native settings are reflected in the Podfile and
+Info.plist. Expo Doctor's app-config sync check is disabled for this setup
+because native configuration is maintained directly.
+
 ## Server deployment
 
 Use an existing DeepTutor deployment or the repository's Docker Compose
@@ -99,8 +105,11 @@ frontend host, use the approved proxy origin.
 
 The current native links accept only the four static screen paths. The route
 adapter drops unfamiliar URLs and query parameters before navigation. When
-adding link parameters, review the Expo Router dependency advisories and add
-validation for the values the app accepts.
+adding link parameters, validate the values the app accepts.
+`package.json` pins the fixed `decode-uri-component` 0.5.1 for the SDK 57
+router, and `patches/query-string+7.1.3.patch` bridges its ESM default export
+for the older CommonJS consumer. The install applies that patch automatically.
+Remove the override and patch when an SDK upgrade removes the old consumer.
 
 ## Verify
 
@@ -109,6 +118,7 @@ npm run typecheck
 npm run lint
 npm test -- --runInBand
 npx expo install --check
+npx expo-doctor
 ```
 
 The Mobile CI workflow checks TypeScript, ESLint and Jest, builds an Android

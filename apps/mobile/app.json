@@ -3,7 +3,7 @@
     "name": "DeepTutor",
     "slug": "deeptutor-mobile",
     "scheme": "deeptutor-mobile",
-    "plugins": ["expo-router", "expo-status-bar"],
+    "plugins": ["expo-router", "expo-status-bar", "expo-font"],
     "android": {
       "package": "com.deeptutormobile"
     },
