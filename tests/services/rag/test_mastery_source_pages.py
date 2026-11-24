@@ -1684,3 +1684,58 @@ async def test_partial_assess_targets_missing_element_and_excludes_sibling_scope
     assert payload["result"] == "partial"
     assert payload["missing"] == "why the bilayer forms a barrier"
     assert "exactly this missing element: why the bilayer forms a barrier" in payload["next_step"]
+
+
+@pytest.mark.asyncio
+async def test_focus_only_complete_packet_names_recovery_and_grades_after_it(material, monkeypatch):
+    """#2905: a complete focus packet and no assessment slot must not deadlock the gate.
+
+    Every repeated ``mastery_assess`` used to get the same bare refusal. Each
+    one now says how to get gradable evidence, records nothing and calls no
+    judge; one objective preparation then lets the retained answer be graded.
+    """
+    from deeptutor.capabilities.mastery import tools
+    from deeptutor.learning import semantic_assessment as semantic
+
+    _make_concept(material)
+    _install_preparation(material, monkeypatch)
+    focused = await lessons.prepare_lesson(
+        material.store, "path", "kp", material.config, focus="Explain bilayer structure"
+    )
+    assert focused["coverage"]["scope"] == "focus" and focused["coverage"]["complete"] is True
+    assert not material.store.load("path").assessment_evidence
+    judged = []
+
+    async def judge(_config, items):
+        judged.append(items[0]["answer"])
+        return {
+            items[0]["question_id"]: semantic.Verdict(
+                result="correct", confidence=0.95, feedback="Clear explanation."
+            )
+        }
+
+    monkeypatch.setattr(semantic, "judge_answers", judge)
+    monkeypatch.setattr(tools, "_new_service", lambda: LearningService(material.store))
+    turn = {"_mastery_path_id": "path", "_session_id": "s1", "_turn_id": "t1"}
+    for _ in range(2):
+        result = await tools.MasteryAssessTool().execute(
+            **turn, knowledge_point_id="kp", _learner_message="Lipids form a bilayer."
+        )
+        payload = json.loads(result.content)
+        assert not result.success and payload["status"] == "coverage_gap"
+        assert payload["retry_prepare"] is True
+        instruction = payload["instruction"]
+        assert "mastery_prepare_lesson once for this objective without a focus" in instruction
+    assert not judged and not material.store.load("path").learning_evidence
+
+    objective = await lessons.prepare_lesson(material.store, "path", "kp", material.config)
+    assert material.store.load("path").assessment_evidence["kp"]["id"] == objective["id"]
+    result = await tools.MasteryAssessTool().execute(
+        **{**turn, "_turn_id": "t2"},
+        knowledge_point_id="kp",
+        _learner_message="They shield the cell.",
+    )
+    payload = json.loads(result.content)
+    assert payload["result"] == "correct" and payload["mastered"] is True
+    # The explanation refused for lack of evidence is graded with the reply.
+    assert judged == ["Lipids form a bilayer.\n\nThey shield the cell."]
