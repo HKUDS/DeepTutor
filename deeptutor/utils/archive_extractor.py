@@ -13,8 +13,10 @@ puts each through the same ``DocumentValidator`` gate as a direct upload:
   ``..`` segment is refused;
 * per-entry uncompressed size, cumulative size, entry count and compression
   ratio are all bounded to defeat zip bombs;
-* ``__MACOSX`` resource forks, dotfiles and dot-folders, Windows thumbnail
-  caches, directories and nested archives are skipped rather than trusted.
+* ``__MACOSX`` resource forks, dotfiles, tool/VCS/trash folders (``.git``,
+  ``.ipynb_checkpoints``, ``.Trashes`` …), Windows thumbnail caches,
+  directories and nested archives are skipped rather than trusted. Any other
+  dot-folder (``.NET Basics/``) is ordinary content.
 
 The extractor is deliberately decoupled from the upload router so it can be
 unit-tested in isolation and reused by any ingestion path.
@@ -36,6 +38,19 @@ logger = logging.getLogger(__name__)
 
 # OS metadata that file managers add to every folder; never user documents.
 _SYSTEM_FILE_NAMES = frozenset({"thumbs.db", "desktop.ini"})
+# Folders written by the OS, version control or editors. Any other folder that
+# starts with a dot (``.NET Basics/``) is course content and is kept.
+_SYSTEM_DIR_NAMES = frozenset(
+    {"__macosx", ".git", ".svn", ".hg", ".idea", ".vscode", ".ipynb_checkpoints"}
+)
+# One member's path that cannot exist next to another's (a file where a folder
+# must be, or the reverse) or on this filesystem: skip it, keep the archive.
+_MEMBER_PATH_ERRNOS = {
+    errno.ENOTDIR: "path conflict",
+    errno.EEXIST: "path conflict",
+    errno.EISDIR: "path conflict",
+    errno.ENAMETOOLONG: "path too long",
+}
 
 
 class ArchiveTooLargeError(ValueError):
@@ -95,16 +110,22 @@ def _remove_on_error(paths: list[Path], dirs: list[Path] | None = None) -> Itera
 
 
 def _is_system_member(parts: list[str]) -> bool:
-    """True for OS junk: resource forks, dotfiles/dot-folders, thumbnail caches."""
+    """True for OS junk: resource forks, dotfiles, tool folders, thumbnail caches."""
     return (
-        "__MACOSX" in parts[:-1]
-        or any(part.startswith(".") and part not in (".", "..") for part in parts)
+        parts[-1].startswith(".")
         or parts[-1].lower() in _SYSTEM_FILE_NAMES
+        or any(
+            part.lower() in _SYSTEM_DIR_NAMES or part.startswith(".Trash") for part in parts[:-1]
+        )
     )
 
 
-def _make_parents(directory: Path, root: Path, created: list[Path]) -> None:
-    """Create ``directory`` under ``root``, recording each folder it adds."""
+def make_dirs_recorded(directory: Path, root: Path, created: list[Path]) -> None:
+    """Create ``directory`` under ``root``, appending each folder it adds to ``created``.
+
+    The caller removes exactly those folders (deepest first) to undo a member
+    or an archive, without touching folders that existed before.
+    """
     missing: list[Path] = []
     current = directory
     while current != root and not current.exists():
@@ -241,20 +262,32 @@ def safe_extract_zip(
             # On a case-insensitive filesystem (the Windows and macOS default)
             # ``readme.md`` is the ``README.md`` this call already wrote: the
             # same flattening collision, not a pre-existing file to refuse.
+            member_dirs: list[Path] = []
             try:
                 if destination.exists() and any(destination.samefile(p) for p in result.extracted):
                     result.skipped.append((member, duplicate_reason))
                     continue
 
-                _make_parents(destination.parent, target_root, created_dirs)
+                make_dirs_recorded(destination.parent, target_root, member_dirs)
                 written = _extract_member(archive, info, destination, limits.max_entry_bytes)
             except OSError as exc:
-                # One over-long name (e.g. a CJK folder title past 255 bytes)
-                # is that member's problem, not a reason to drop the archive.
-                if exc.errno != errno.ENAMETOOLONG:
+                # A path that clashes with another member, or one over-long
+                # name (a CJK folder title past 255 bytes), is that member's
+                # problem, not a reason to drop the archive. A regular file
+                # already at the destination is still refused: it is never
+                # overwritten. Anything else (disk full, permissions) aborts.
+                reason = _MEMBER_PATH_ERRNOS.get(exc.errno)
+                if reason is None or (
+                    isinstance(exc, FileExistsError) and not destination.is_dir()
+                ):
+                    created_dirs.extend(member_dirs)
                     raise
-                result.skipped.append((member, "path too long"))
+                for directory in reversed(member_dirs):
+                    with suppress(OSError):
+                        directory.rmdir()
+                result.skipped.append((member, reason))
                 continue
+            created_dirs.extend(member_dirs)
             if written > info.file_size:
                 # Decompressed more than the header declared → treat as a bomb.
                 destination.unlink(missing_ok=True)

@@ -403,7 +403,9 @@ def test_keep_subdirs_skips_os_junk_anywhere_in_the_tree(tmp_path: Path) -> None
             ("Week1/Slides.pdf", b"real"),
             ("__MACOSX/Week1/._Slides.pdf", b"fork"),
             ("Week1/.DS_Store", b"ds"),
-            ("Week1/.hidden/notes.md", b"hidden dir"),
+            ("Week1/.git/notes.md", b"vcs"),
+            (".ipynb_checkpoints/notes-checkpoint.md", b"jupyter"),
+            (".Trashes/501/old.pdf", b"trash"),
             ("Week1/Thumbs.db", b"thumbs"),
             ("Week1/desktop.ini", b"ini"),
         ],
@@ -468,3 +470,51 @@ def test_name_too_long_for_the_filesystem_skips_only_that_member(
     names = sorted(p.name for p in result.extracted)
     assert "ok.md" in names
     assert any(reason == "path too long" for _, reason in result.skipped)
+    if keep_subdirs:
+        # The folder made for the refused ``Week1/<too long>.md`` is not left behind.
+        assert not (out / "Week1").exists()
+
+
+def test_keep_subdirs_keeps_an_ordinary_dot_folder(tmp_path: Path) -> None:
+    """Only known junk folders are dropped; ``.NET Basics/`` is course content."""
+    src = _make_zip(
+        tmp_path / "a.zip",
+        [(".NET Basics/Slides1.pdf", b"s1"), ("Week1/.notes/summary.md", b"sum")],
+    )
+    out = tmp_path / "out"
+
+    result = safe_extract_zip(src, out, allowed_extensions=DOC_EXTS, keep_subdirs=True)
+
+    # The folder-upload sanitizer strips leading dots from a folder name.
+    assert _extracted_rel(result, out) == ["NET Basics/Slides1.pdf", "Week1/notes/summary.md"]
+    assert result.skipped == []
+
+
+@pytest.mark.parametrize(
+    "order",
+    [["a.pdf", "a.pdf/x.pdf"], ["a.pdf/x.pdf", "a.pdf"]],
+    ids=["file-first", "folder-first"],
+)
+def test_keep_subdirs_file_and_folder_with_one_name_skip_only_the_member(
+    tmp_path: Path, order: list[str]
+) -> None:
+    src = _make_zip(tmp_path / "a.zip", [*((name, b"x") for name in order), ("ok.md", b"ok")])
+    out = tmp_path / "out"
+
+    result = safe_extract_zip(src, out, allowed_extensions=DOC_EXTS, keep_subdirs=True)
+
+    assert _extracted_rel(result, out) == sorted([order[0], "ok.md"])
+    assert result.skipped == [(order[1], "path conflict")]
+
+
+def test_keep_subdirs_merges_nfd_and_nfc_spellings_of_a_folder(tmp_path: Path) -> None:
+    """A macOS-made zip spells \u00dc as U + combining diaeresis (NFD)."""
+    src = _make_zip(
+        tmp_path / "a.zip",
+        [("U\u0308bung/a.pdf", b"a"), ("\u00dcbung/b.pdf", b"b")],
+    )
+    out = tmp_path / "out"
+
+    result = safe_extract_zip(src, out, allowed_extensions=DOC_EXTS, keep_subdirs=True)
+
+    assert _extracted_rel(result, out) == ["\u00dcbung/a.pdf", "\u00dcbung/b.pdf"]

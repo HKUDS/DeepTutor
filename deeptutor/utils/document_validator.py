@@ -158,7 +158,9 @@ class DocumentValidator:
         the members of an uploaded archive — so both land under ``raw/`` the
         same way. ``\\`` separators are accepted, empty and ``.`` segments
         are dropped (so an absolute path is re-rooted), unsafe characters are
-        removed and each segment is capped at 128 characters.
+        removed and each segment is capped at 128 characters. Segments are
+        NFC-normalised like file names, so a macOS (NFD) ``Übung/`` and a
+        Windows/Linux (NFC) ``Übung/`` are one folder.
 
         Raises:
             ValueError: If any segment is ``..``.
@@ -166,7 +168,8 @@ class DocumentValidator:
         if not rel_path:
             return ""
         parts: list[str] = []
-        for raw_seg in str(rel_path).replace("\\", "/").split("/"):
+        normalized = unicodedata.normalize("NFC", str(rel_path))
+        for raw_seg in normalized.replace("\\", "/").split("/"):
             seg = raw_seg.strip()
             if seg in ("", "."):
                 continue
