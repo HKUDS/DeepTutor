@@ -10,11 +10,15 @@ from __future__ import annotations
 
 import asyncio
 import base64 as _b64
+import json
 import logging
+import re
 from typing import Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from deeptutor.learning.semantic_assessment import FINAL_CONFIDENCE, Verdict
 from deeptutor.services.config import PROJECT_ROOT, load_config_with_main
 from deeptutor.services.llm import stream as llm_stream
 from deeptutor.services.settings.interface_settings import get_response_language
@@ -149,6 +153,137 @@ _JUDGE_SYSTEM_PROMPTS = {
 SUPPORTED_JUDGE_LANGUAGES: frozenset[str] = frozenset(_JUDGE_SYSTEM_PROMPTS)
 
 
+# Appended to every language's system prompt. The prose above stays the
+# learner-facing judgment; this trailer is the machine-readable verdict the
+# server strips from the stream and sends as a separate ``verdict`` frame.
+_VERDICT_CONTRACT = (
+    "After your feedback, end your reply with exactly one machine-readable verdict "
+    "and nothing after it:\n"
+    '<verdict>{"result": "correct|partial|incorrect|ungraded", "confidence": 0.0-1.0, '
+    '"feedback": "one short sentence", "steps": [{"label": "...", "ok": true, '
+    '"comment": "..."}]}</verdict>\n'
+    "- result: correct = fully right; partial = right approach or some parts right; "
+    "incorrect = wrong; ungraded = you cannot judge it (e.g. unreadable image, "
+    "missing reference).\n"
+    "- confidence: how sure you are of the result.\n"
+    "- steps: for calculations or multi-part answers, one entry per solution step or "
+    "subtask (at most 12); otherwise an empty list.\n"
+    '- Add "awarded_points" and "max_points" only when the question or the reference '
+    "answer states points; never invent a point scheme.\n"
+    "- Write label, comment and feedback in the language of your reply. Valid JSON only."
+)
+
+_VERDICT_OPEN = "<verdict>"
+_VERDICT_OPEN_RE = re.compile(re.escape(_VERDICT_OPEN), re.IGNORECASE)
+_VERDICT_CLOSE_RE = re.compile(r"</verdict\s*>", re.IGNORECASE)
+_JSON_FENCE_RE = re.compile(r"^```(?:json)?\s*|\s*```$", re.IGNORECASE)
+
+
+class _VerdictTrailerSplitter:
+    """Separate streamed prose from the trailing ``<verdict>`` block.
+
+    Text is released as soon as it cannot be the start of the opening tag,
+    so streaming stays incremental and the trailer never reaches the client.
+    """
+
+    def __init__(self) -> None:
+        self._pending = ""
+        self._trailer: str | None = None
+
+    def feed(self, chunk: str) -> str:
+        if self._trailer is not None:
+            self._trailer += chunk
+            return ""
+        text = self._pending + chunk
+        match = _VERDICT_OPEN_RE.search(text)
+        if match:
+            self._pending = ""
+            self._trailer = text[match.end() :]
+            return text[: match.start()]
+        keep = next(
+            (
+                n
+                for n in range(min(len(_VERDICT_OPEN) - 1, len(text)), 0, -1)
+                if _VERDICT_OPEN.startswith(text[-n:].lower())
+            ),
+            0,
+        )
+        self._pending = text[len(text) - keep :] if keep else ""
+        return text[: len(text) - keep]
+
+    def finish(self) -> tuple[str, str | None]:
+        """Return the held-back prose and the raw trailer (``None`` if absent)."""
+        tail, self._pending = self._pending, ""
+        return tail, self._trailer
+
+
+class _JudgeStep(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    label: str = Field(min_length=1, max_length=200)
+    ok: bool
+    comment: str = Field(default="", max_length=600)
+
+
+class _JudgeVerdict(Verdict):
+    """The learning-path ``Verdict`` plus quiz-only points and step feedback."""
+
+    model_config = ConfigDict(extra="ignore")
+    awarded_points: float | None = Field(default=None, ge=0)
+    max_points: float | None = Field(default=None, gt=0)
+    steps: list[_JudgeStep] = Field(default_factory=list, max_length=12)
+
+
+def _ungraded(reason: str) -> dict[str, Any]:
+    return {
+        "result": "ungraded",
+        "final": False,
+        "is_correct": None,
+        "confidence": 0.0,
+        "steps": [],
+        "reason": reason,
+    }
+
+
+def parse_judge_verdict(raw: str | None, *, vision_unavailable: bool = False) -> dict[str, Any]:
+    """Turn the raw trailer body into the ``verdict`` frame payload.
+
+    A missing or invalid trailer is ``ungraded`` — the judge never guesses
+    ``correct``. The ``Verdict.receipt`` confidence gate applies unchanged.
+    """
+    if raw is None:
+        return _ungraded("vision_unavailable" if vision_unavailable else "missing_verdict")
+    body = _VERDICT_CLOSE_RE.split(raw, maxsplit=1)[0].strip()
+    body = _JSON_FENCE_RE.sub("", body).strip()
+    try:
+        parsed = _JudgeVerdict.model_validate(json.loads(body))
+    except (ValueError, ValidationError):
+        return _ungraded("vision_unavailable" if vision_unavailable else "invalid_verdict")
+
+    receipt = parsed.receipt()
+    verdict: dict[str, Any] = {
+        "result": receipt["result"],
+        "final": receipt["final"],
+        "is_correct": receipt["is_correct"],
+        "confidence": receipt["confidence"],
+        "feedback": receipt["feedback"],
+        "steps": [step.model_dump() for step in parsed.steps],
+    }
+    if vision_unavailable:
+        verdict.update(result="ungraded", final=False, is_correct=None)
+        verdict["reason"] = "vision_unavailable"
+    elif parsed.result != "ungraded" and parsed.confidence < FINAL_CONFIDENCE:
+        verdict["reason"] = "low_confidence"
+    points_valid = (
+        parsed.awarded_points is not None
+        and parsed.max_points is not None
+        and parsed.awarded_points <= parsed.max_points
+    )
+    if verdict["final"] and points_valid:
+        verdict["awarded_points"] = parsed.awarded_points
+        verdict["max_points"] = parsed.max_points
+    return verdict
+
+
 def _build_judge_user_prompt(
     *,
     language: str,
@@ -160,6 +295,7 @@ def _build_judge_user_prompt(
     user_answer: str,
     has_image: bool,
     image_count: int = 0,
+    images_unreadable: bool = False,
 ) -> str:
     options_block = ""
     if options:
@@ -192,7 +328,13 @@ def _build_judge_user_prompt(
                 if image_count > 1
                 else "学习者另附了一张图片作为作答内容"
             )
-            parts.append(f"{count_text}，请结合图片中的文字/公式/草图一并判定。")
+            if images_unreadable:
+                parts.append(
+                    f"{count_text}，但当前模型无法读取图片。"
+                    "请在回复中明确说明这一点，只评判文字作答，并将 result 设为 ungraded。"
+                )
+            else:
+                parts.append(f"{count_text}，请结合图片中的文字/公式/草图一并判定。")
         parts.append("请针对该学习者的具体作答给出 AI 评判。")
     elif language == "fr":
         parts = [
@@ -213,7 +355,13 @@ def _build_judge_user_prompt(
                 else "(seule une image a été soumise, sans réponse écrite)"
             )
         )
-        if has_image:
+        if has_image and images_unreadable:
+            parts.append(
+                "L’apprenant a joint des images à sa réponse, mais le modèle actif ne peut pas "
+                "lire d’images. Dis-le explicitement, n’évalue que la "
+                "réponse écrite et mets result à ungraded."
+            )
+        elif has_image:
             if image_count > 1:
                 parts.append(
                     f"L’apprenant a joint {image_count} images à sa réponse. "
@@ -245,7 +393,13 @@ def _build_judge_user_prompt(
                 else "(only an image was submitted, no typed answer)"
             )
         )
-        if has_image:
+        if has_image and images_unreadable:
+            parts.append(
+                f"The learner attached {'images' if image_count > 1 else 'an image'} as part "
+                "of the answer, but the active model cannot read images. Say so explicitly, "
+                "judge only the typed answer, and set result to ungraded."
+            )
+        elif has_image:
             if image_count > 1:
                 parts.append(
                     f"The learner attached {image_count} images as part of the answer. "
@@ -375,7 +529,16 @@ async def websocket_quiz_judge(websocket: WebSocket):
     Server → Client (streaming):
         {"type": "started"}
         {"type": "text", "content": "..."}        # zero or more
+        {"type": "verdict", "verdict": {...}}     # once, before "done"
         {"type": "done"}
+
+    The ``verdict`` frame carries ``result`` (correct|partial|incorrect|
+    ungraded), ``is_correct``, ``final``, ``confidence``, ``feedback``,
+    ``steps`` and, only when the question states points, ``awarded_points``
+    / ``max_points``. ``reason`` explains a server-imposed ``ungraded``
+    (missing_verdict, invalid_verdict, low_confidence, vision_unavailable).
+    The ``<verdict>`` trailer itself is never sent as text, so clients that
+    ignore unknown frames keep rendering the same prose.
         {"type": "error", "content": "..."}
     """
     from deeptutor.api.routers.auth import ws_auth_failed, ws_require_auth
@@ -488,9 +651,32 @@ async def websocket_quiz_judge(websocket: WebSocket):
             )
 
     has_image = bool(image_records)
+    can_read_images = False
+    if has_image:
+        from deeptutor.services.llm import config as _llm_config_mod
+        from deeptutor.services.llm.capabilities import supports_vision
+
+        llm_cfg = _llm_config_mod.get_llm_config()
+        binding = getattr(llm_cfg, "binding", "openai") or "openai"
+        model = getattr(llm_cfg, "model", "") or ""
+        can_read_images = supports_vision(binding, model)
+        if not can_read_images:
+            # Vision-incapable model: judge the typed text, say the images
+            # were not read, and never let the verdict count as graded.
+            logger.info(
+                "Judge: %s/%s does not support vision; dropping %d image(s)",
+                binding,
+                model,
+                len(image_records),
+            )
+    vision_unavailable = has_image and not can_read_images
 
     options_value = data.get("options") if isinstance(data.get("options"), dict) else None
-    system_prompt = _JUDGE_SYSTEM_PROMPTS.get(requested_language, _JUDGE_SYSTEM_PROMPTS["en"])
+    system_prompt = (
+        _JUDGE_SYSTEM_PROMPTS.get(requested_language, _JUDGE_SYSTEM_PROMPTS["en"])
+        + "\n\n"
+        + _VERDICT_CONTRACT
+    )
     user_prompt = _build_judge_user_prompt(
         language=requested_language,
         question=question_text,
@@ -501,6 +687,7 @@ async def websocket_quiz_judge(websocket: WebSocket):
         user_answer=user_answer,
         has_image=has_image,
         image_count=len(image_records),
+        images_unreadable=vision_unavailable,
     )
 
     if not (user_answer.strip() or has_image):
@@ -528,43 +715,41 @@ async def websocket_quiz_judge(websocket: WebSocket):
     # content-parts unchanged (the single-image ``image_data`` kwarg only
     # supports one image).
     stream_kwargs: dict[str, Any] = {}
-    if has_image:
-        from deeptutor.services.llm import config as _llm_config_mod
-        from deeptutor.services.llm.capabilities import supports_vision
-
-        llm_cfg = _llm_config_mod.get_llm_config()
-        binding = getattr(llm_cfg, "binding", "openai") or "openai"
-        model = getattr(llm_cfg, "model", "") or ""
-        if supports_vision(binding, model):
-            user_content = await _build_multimodal_user_content(
-                text=user_prompt,
-                image_records=image_records,
-            )
-            stream_kwargs["messages"] = [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_content},
-            ]
-        else:
-            # Vision-incapable model — fall back to text-only judge so the
-            # learner still gets feedback on their typed answer.
-            logger.info(
-                "Judge: %s/%s does not support vision; dropping %d image(s)",
-                binding,
-                model,
-                len(image_records),
-            )
+    if can_read_images:
+        user_content = await _build_multimodal_user_content(
+            text=user_prompt,
+            image_records=image_records,
+        )
+        stream_kwargs["messages"] = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_content},
+        ]
 
     try:
         async with asyncio.timeout(2 * 60):
+            splitter = _VerdictTrailerSplitter()
+            connected = True
             async for chunk in llm_stream(
                 prompt=user_prompt,
                 system_prompt=system_prompt,
                 **stream_kwargs,
             ):
-                if not chunk:
-                    continue
-                if not await safe_send({"type": "text", "content": chunk}):
+                visible = splitter.feed(chunk) if chunk else ""
+                if visible and not await safe_send({"type": "text", "content": visible}):
+                    connected = False
                     break
+        if connected:
+            tail, raw_verdict = splitter.finish()
+            if tail:
+                await safe_send({"type": "text", "content": tail})
+            await safe_send(
+                {
+                    "type": "verdict",
+                    "verdict": parse_judge_verdict(
+                        raw_verdict, vision_unavailable=vision_unavailable
+                    ),
+                }
+            )
         await safe_send({"type": "done"})
     except TimeoutError:
         await safe_send({"type": "error", "content": "AI judge timed out. Please try again."})

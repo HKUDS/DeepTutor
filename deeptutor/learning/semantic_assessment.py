@@ -41,15 +41,20 @@ class SourceQuoteMismatch(AssessmentUnavailable):
     """The verifier returned a quotation that does not occur in its source."""
 
 
+VerdictResult = Literal["correct", "partial", "incorrect", "ungraded"]
+# A provider verdict below this confidence is recorded as ``ungraded``.
+FINAL_CONFIDENCE = 0.8
+
+
 class Verdict(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    result: Literal["correct", "partial", "incorrect", "ungraded"]
+    result: VerdictResult
     confidence: float = Field(ge=0, le=1)
     feedback: str = Field(min_length=1, max_length=2000)
     reference_answer: str = Field(default="", max_length=6000)
 
     def receipt(self):
-        final = self.result != "ungraded" and self.confidence >= 0.8
+        final = self.result != "ungraded" and self.confidence >= FINAL_CONFIDENCE
         result = self.result if final else "ungraded"
         return {
             "result": result,
