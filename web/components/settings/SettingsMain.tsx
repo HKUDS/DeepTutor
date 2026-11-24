@@ -81,8 +81,8 @@ export default function SettingsMain({ children }: { children: React.ReactNode }
   )
   // The 224px rail has no room for "Settings" and a labelled back button side
   // by side once a locale spells both long ("Einstellungen" / "Zurück zur
-  // App"), so the rail keeps the title and gives the exit an icon with a
-  // tooltip. The phone header has the width and keeps the label.
+  // App"), so the rail keeps the title and gives the exit an icon-only control
+  // with an aria-label. The phone header has the width and keeps the label.
   const railReturnButton = (
     <button
       type="button"
