@@ -73,7 +73,7 @@ export function SettingsToolbar() {
             type="button"
             onClick={applyCatalog}
             disabled={busy}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--foreground)] px-3 py-2 text-xs font-medium text-[var(--background)] disabled:opacity-40"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--foreground)] px-3 py-2 text-xs font-medium text-[var(--background)] transition-transform duration-150 active:scale-[0.97] disabled:opacity-40 disabled:active:scale-100"
           >
             {applying ? (
               <Loader2 size={14} className="animate-spin" />

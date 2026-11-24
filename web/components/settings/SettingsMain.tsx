@@ -101,7 +101,7 @@ export default function SettingsMain({ children }: { children: React.ReactNode }
     // its own rounded edge, so opening settings no longer replaces the whole
     // window. Phones have no room for a floating card and get the full sheet.
     <div
-      className="fixed inset-0 flex items-center justify-center overflow-hidden bg-[var(--overlay)] p-0 md:p-6"
+      className="animate-overlay-in fixed inset-0 flex items-center justify-center overflow-hidden bg-[var(--overlay)] p-0 md:p-6"
       data-settings-shell
       onMouseDown={event => {
         // Clicking the scrim behaves like Escape: leave settings, but never
@@ -111,7 +111,7 @@ export default function SettingsMain({ children }: { children: React.ReactNode }
     >
       <div
         data-settings-card
-        className="flex h-dvh w-full min-w-0 flex-col overflow-hidden bg-[var(--background)] md:h-[min(820px,88dvh)] md:w-[min(1080px,94vw)] md:rounded-2xl md:border md:border-[color-mix(in_srgb,var(--border)_70%,transparent)] md:shadow-[0_28px_70px_-32px_rgba(0,0,0,0.45)] lg:flex-row"
+        className="animate-pop-in flex h-dvh w-full min-w-0 flex-col overflow-hidden bg-[var(--background)] md:h-[min(820px,88dvh)] md:w-[min(1080px,94vw)] md:rounded-2xl md:border md:border-[color-mix(in_srgb,var(--border)_70%,transparent)] md:shadow-[0_28px_70px_-32px_rgba(0,0,0,0.45)] lg:flex-row"
       >
         <aside className="hidden w-[224px] shrink-0 flex-col border-r border-[color-mix(in_srgb,var(--border)_55%,transparent)] bg-[color-mix(in_srgb,var(--muted)_18%,var(--background))] lg:flex">
           <div className="flex items-center justify-between gap-2 px-4 pb-2 pt-4">
