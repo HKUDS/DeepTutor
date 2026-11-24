@@ -1,12 +1,16 @@
 /**
  * Deterministic numeric answer equivalence, ported from
  * `numeric_equivalent` in deeptutor/learning/grading.py (see its docstring
- * for the separator, tolerance, percent and unit rules). Both implementations
- * run against tests/fixtures/numeric_answers.json so they cannot drift.
+ * for the separator, precision, percent and unit rules). Values are exact
+ * rationals like Python's Fraction, and both implementations run against
+ * tests/fixtures/numeric_answers.json so they cannot drift.
  */
 
 type Mark = '.' | ','
-type Reading = [value: number, decimals: number | null]
+/** Exact rational: numerator, positive denominator. */
+type Q = [n: bigint, d: bigint]
+type Reading = [value: Q, decimals: number | null]
+type Outcome = boolean | 'rounded' | null
 
 interface NumberToken {
   readings: Record<Mark, Reading>
@@ -28,7 +32,7 @@ export interface NumericResult {
   /** False when either side is not a plain numeric answer. */
   comparable: boolean
   correct: boolean
-  /** Correct only under a non-preferred separator reading; not a final "wrong". */
+  /** Matches under another reading only; neither a final "right" nor "wrong". */
   ambiguous: boolean
   parts: NumericPart[]
 }
@@ -52,14 +56,22 @@ const FIXED_UNITS = new Set(
     'million millionen milliarde milliarden billion billionen'
   ).split(' ')
 )
+const MAX_DIGITS = 30
 const OTHER: Record<Mark, Mark> = { '.': ',', ',': '.' }
 const isMark = (s: string | null | undefined): s is Mark => s === '.' || s === ','
+const pow10 = (e: number) => 10n ** BigInt(e)
+const scale = ([n, d]: Q, num: bigint, den = 1n): Q => [n * num, d * den]
+const sub = ([a, b]: Q, [c, d]: Q): Q => [a * d - c * b, b * d]
+const abs = ([n, d]: Q): Q => [n < 0n ? -n : n, d]
+const cmp = ([a, b]: Q, [c, d]: Q) => (a * d > c * b ? 1 : a * d < c * b ? -1 : 0)
 
-function value(groups: string[], frac: string): [number, number] {
+function value(groups: string[], frac: string): [Q, number] {
   if (groups.length > 1 && !(groups[0].length <= 3 && groups.slice(1).every(g => g.length === 3))) {
     throw new Error('invalid digit grouping')
   }
-  return [Number(`${groups.join('')}.${frac || '0'}`), frac.length]
+  if (groups.join('').length + frac.length > MAX_DIGITS)
+    throw new Error('not an answer-sized number')
+  return [[BigInt(groups.join('') + frac), pow10(frac.length)], frac.length]
 }
 
 function readings(raw: string): [Record<Mark, Reading>, Mark | null] {
@@ -115,17 +127,20 @@ function parseNumber(text: string): NumberToken | null {
   const [initial, implied] = parsed
   let step = (r: Reading): Reading => r
   if (den !== undefined) {
-    if (Number(den) === 0) return null
-    step = ([v]) => [v / Number(den), null]
+    if (BigInt(den) === 0n) return null
+    step = ([v]) => [scale(v, 1n, BigInt(den)), null]
   }
   if (exp !== undefined) {
     const e = Number(exp)
-    step = ([v, d]) => [e >= 0 ? v * 10 ** e : v / 10 ** -e, d === null ? null : Math.max(0, d - e)]
+    step = ([v, d]) => [
+      e >= 0 ? scale(v, pow10(e)) : scale(v, 1n, pow10(-e)),
+      d === null ? null : Math.max(0, d - e),
+    ]
   }
-  const sign = pre.includes('-') ? -1 : 1
+  const sign = pre.includes('-') ? -1n : 1n
   const scaled = (r: Reading): Reading => {
     const [v, d] = step(r)
-    return [(sign * v) / (percent ? 100 : 1), d]
+    return [scale(v, sign, percent ? 100n : 1n), d]
   }
   return {
     readings: { '.': scaled(initial['.']), ',': scaled(initial[',']) },
@@ -164,23 +179,23 @@ function convention(numbers: NumberToken[]): Mark | null {
   return implied.size === 1 ? [...implied][0] : null
 }
 
-function tolerance(v: number, decimals: number | null, relTol?: number, absTol?: number): number {
-  // Absolute like the Python port; the tiny relative term only absorbs float noise.
-  const eps = 1e-9 + 4 * Number.EPSILON * Math.abs(v)
-  if (relTol !== undefined || absTol !== undefined) {
-    return Math.max(absTol ?? 0, (relTol ?? 0) * Math.abs(v)) + eps
-  }
-  return (decimals ? 0.5 / 10 ** decimals : 0) + eps
+/** Whether `v` rounded half away from zero to `decimals` places is `target`. */
+function roundsTo(v: Q, target: Q, decimals: number): boolean {
+  const order = cmp(abs(sub(v, target)), [1n, 2n * pow10(decimals)])
+  return order < 0 || (order === 0 && cmp(abs(v), abs(target)) < 0)
 }
 
-function matches(
-  given: NumberToken,
-  key: NumberToken,
-  markGiven: Mark,
-  markKey: Mark,
-  relTol?: number,
-  absTol?: number
-): boolean | null {
+function close(v: Q, key: Q, decimals: number | null, keyDecimals: number | null): Outcome {
+  // The key's own precision decides; integer keys are exact. A fraction key
+  // takes the answer's precision once that has two or more places.
+  const places = keyDecimals ?? ((decimals ?? 0) >= 2 ? decimals : null)
+  if (places ? roundsTo(v, key, places) : cmp(v, key) === 0) return true
+  // "3,48" for "3,4833": the question may ask for two decimals.
+  const coarser = decimals !== null && (keyDecimals === null || decimals < keyDecimals)
+  return coarser && roundsTo(key, v, decimals) ? 'rounded' : false
+}
+
+function matches(given: NumberToken, key: NumberToken, markGiven: Mark, markKey: Mark): Outcome {
   const lone = given.unit || key.unit
   if (
     (given.currency && key.currency && given.currency !== key.currency) ||
@@ -193,52 +208,46 @@ function matches(
   ) {
     return null
   }
-  let [keyValue, decimals] = key.readings[markKey]
-  const [v, givenDecimals] = given.readings[markGiven]
-  // "0.33" (or "33.33%") rounds "1/3" correctly.
-  if (decimals === null && givenDecimals !== null && givenDecimals >= 2) {
-    decimals = givenDecimals + (given.percent ? 2 : 0)
-  }
+  const [keyValue, keyDecimals] = key.readings[markKey]
+  const [v, decimals] = given.readings[markGiven]
   // Compare in the key's written units; a bare "12.5" answers a "12.5%" key.
-  const scale = key.percent ? 100 : 1
-  const tol = tolerance(keyValue * scale, decimals, relTol, absTol)
-  if (Math.abs(v * scale - keyValue * scale) <= tol) return true
-  if (key.percent && !given.percent) return Math.abs(v - keyValue * scale) <= tol
-  if (given.percent && !key.percent && Math.abs(v * 100 - keyValue) <= tol) {
+  const k = key.percent ? 100n : 1n
+  const shift = (given.percent ? 2 : 0) - (key.percent ? 2 : 0)
+  const shifted = decimals === null ? null : Math.max(0, decimals + shift)
+  const outcome = close(scale(v, k), scale(keyValue, k), shifted, keyDecimals)
+  if (outcome !== false) return outcome
+  if (key.percent && !given.percent) {
+    const bare = close(v, scale(keyValue, k), decimals, keyDecimals)
+    // "0.5" for "0.5%" may also be the rate written as a fraction (50 %).
+    return bare && cmp(abs(v), [1n, 1n]) < 0 ? 'rounded' : bare
+  }
+  if (given.percent && !key.percent && close(scale(v, 100n), keyValue, decimals, keyDecimals)) {
     return null // "50%" for "50" may be right; leave it to the caller
   }
   return false
 }
 
-/** Preferred [given, key] decimal marks first, then the other readings. */
-function conventions(given: NumberToken[], keys: NumberToken[]): [boolean, [Mark, Mark][]] {
+/**
+ * Decisive [given, key] decimal marks, then every other reading. Only the
+ * key's own notation fixes how the key is read; the answer borrows the key's
+ * convention, never the reverse.
+ */
+function conventions(given: NumberToken[], keys: NumberToken[]): [number, [Mark, Mark][]] {
   const ownGiven = convention(given)
   const ownKey = convention(keys)
-  if (!ownGiven && !ownKey) {
-    // Same-convention readings decide; cross readings can only make it ambiguous.
-    const all: [Mark, Mark][] = [
-      ['.', '.'],
-      [',', ','],
-      ['.', ','],
-      [',', '.'],
-    ]
-    return [false, all]
-  }
-  const preferred: [Mark, Mark] = [(ownGiven ?? ownKey)!, (ownKey ?? ownGiven)!]
-  const options: [Mark, Mark][] = [preferred]
-  for (const g of ownGiven ? [ownGiven] : (['.', ','] as Mark[])) {
-    for (const k of ownKey ? [ownKey] : (['.', ','] as Mark[])) {
-      if (g !== preferred[0] || k !== preferred[1]) options.push([g, k])
+  const marksGiven: Mark[] = ownGiven ? [ownGiven] : ['.', ',']
+  const marksKey: Mark[] = ownKey ? [ownKey] : ['.', ',']
+  const options: [Mark, Mark][] = marksKey.map(k => [ownGiven ?? k, k])
+  const decisive = options.length
+  for (const g of marksGiven) {
+    for (const k of marksKey) {
+      if (!options.some(([og, ok]) => og === g && ok === k)) options.push([g, k])
     }
   }
-  return [true, options]
+  return [decisive, options]
 }
 
-export function numericEquivalent(
-  userAnswer: string,
-  expectedAnswer: string,
-  options: { relTol?: number; absTol?: number } = {}
-): NumericResult {
+export function numericEquivalent(userAnswer: string, expectedAnswer: string): NumericResult {
   const keys = numericParts(expectedAnswer)
   const given = numericParts(userAnswer)
   const none: NumericResult = { comparable: false, correct: false, ambiguous: false, parts: [] }
@@ -257,24 +266,22 @@ export function numericEquivalent(
     given: labelled ? byLabel.get(label)! : given[i][1],
     key,
   }))
-  const [hasPreferred, marks] = conventions(
+  const [decisive, marks] = conventions(
     pairs.map(p => p.given),
     pairs.map(p => p.key)
   )
-  const outcomes: boolean[][] = []
+  const outcomes: Outcome[][] = []
   for (const [mg, mk] of marks) {
-    const outcome = pairs.map(p => matches(p.given, p.key, mg, mk, options.relTol, options.absTol))
+    const outcome = pairs.map(p => matches(p.given, p.key, mg, mk))
     if (outcome.includes(null)) return none
-    outcomes.push(outcome as boolean[])
+    outcomes.push(outcome)
   }
-  const allOk = (o: boolean[]) => o.every(Boolean)
-  const decisive = outcomes.slice(0, hasPreferred ? 1 : 2)
-  const correct = decisive.every(allOk)
-  const partOk = pairs.map((_, i) => decisive.every(o => o[i]))
+  const partOk = pairs.map((_, i) => outcomes.slice(0, decisive).every(o => o[i] === true))
+  const correct = partOk.every(Boolean)
   return {
     comparable: true,
     correct,
-    ambiguous: !correct && outcomes.some(allOk),
+    ambiguous: !correct && outcomes.some(o => o.every(Boolean)),
     parts: pairs.map((p, i) => ({
       label: p.label,
       expected: p.key.text,

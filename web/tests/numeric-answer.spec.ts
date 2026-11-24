@@ -40,13 +40,6 @@ describe('numericEquivalent', () => {
       ['b', false],
     ])
   })
-
-  it('lets explicit tolerances replace the key precision', () => {
-    expect(numericEquivalent('101', '100').correct).toBe(false)
-    expect(numericEquivalent('101', '100', { relTol: 0.01 }).correct).toBe(true)
-    expect(numericEquivalent('3.49', '3.48', { absTol: 0.02 }).correct).toBe(true)
-    expect(numericEquivalent('3.51', '3.48', { absTol: 0.02 }).correct).toBe(false)
-  })
 })
 
 describe('numericEquivalent units', () => {

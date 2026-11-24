@@ -124,11 +124,10 @@ class TestNumericEquivalent:
         assert [(p.label, p.correct) for p in result.parts] == [("a", True), ("b", False)]
         assert (result.comparable, result.correct) == (True, False)
 
-    def test_explicit_tolerance_overrides_key_precision(self):
-        assert numeric_equivalent("101", "100").correct is False
-        assert numeric_equivalent("101", "100", rel_tol=0.01).correct is True
-        assert numeric_equivalent("3.49", "3.48", abs_tol=0.02).correct is True
-        assert numeric_equivalent("3.51", "3.48", abs_tol=0.02).correct is False
+    def test_ambiguous_numbers_fail_closed_without_a_verdict(self):
+        # grade_answer is the no-verdict fallback; it never fuzzy-matches numbers.
+        assert grade_answer("12500", "12.500", "short") is False
+        assert grade_answer("12.5", "12.500 €", "short") is False
 
 
 class TestClassifyError:
@@ -333,6 +332,17 @@ class TestExactVerdictNumeric:
         assert self._verdict("125000", "125.000") is None
         assert self._verdict("about 1250", "1250.50") is None
         assert self._verdict("1300", "1250.50", accepted=["ca. 1300"]).result == "correct"
+
+    def test_ambiguous_key_is_never_read_in_the_answers_notation(self):
+        # "12.500 €" is 12 500 in German notation; a dot answer must not settle it.
+        assert self._verdict("12.5", "12.500 €") is None
+        assert self._verdict("12.5 TEUR", "12.500 TEUR") is None
+        assert self._verdict("12500", "12.500,00 €").result == "correct"
+
+    def test_key_more_precise_than_the_rounding_reaches_the_llm(self):
+        assert self._verdict("3,48", "3,4833") is None
+        assert self._verdict("1234,6", "1234,57") is None
+        assert self._verdict("3,49", "3,4833").result == "incorrect"
 
     def test_multi_part_mismatch_keeps_partial_credit_open(self):
         assert self._verdict("a) 1.000; b) 260", "a) 1.000; b) 250") is None
