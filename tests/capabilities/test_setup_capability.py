@@ -711,3 +711,73 @@ def test_system_block_names_the_installs_gaps(isolated_settings: Path) -> None:
     assert block is not None
     assert "missing" in block.content
     assert setup_gaps(), "a fresh install has gaps, so the block should list them"
+
+
+# ---------------------------------------------------------------------------
+# Deferred disclosure — heuristics must not touch tools[] or the system prompt
+# ---------------------------------------------------------------------------
+
+
+def _deferring(context: UnifiedContext) -> UnifiedContext:
+    from deeptutor.capabilities.disclosure import set_deferral_available
+
+    set_deferral_available(context, True)
+    return context
+
+
+def test_an_intent_turn_only_gets_a_note_when_tools_can_be_deferred(
+    isolated_settings: Path,
+) -> None:
+    context = _deferring(
+        UnifiedContext(
+            user_message="把界面语言切成中文",
+            conversation_history=[{"role": "user", "content": "hi"}],
+        )
+    )
+    capability = SetupCapability()
+
+    assert not capability.is_active(context), "intent must not mount the tools"
+    assert capability.system_block(context, language="zh", prompts={}) is None
+    note = capability.turn_note(context, language="zh")
+    assert "load_tools" in note and "apply_setting" in note
+    assert "What this install is currently missing" in note
+
+
+def test_the_intro_note_carries_the_offer_and_spends_it_once(isolated_settings: Path) -> None:
+    from deeptutor.capabilities.setup.binding import setup_activation
+
+    capability = SetupCapability()
+    first = _deferring(UnifiedContext(user_message="你好", conversation_history=[]))
+    assert not capability.is_active(first)
+    note = capability.turn_note(first, language="en")
+    assert "first conversation" in note and "load_tools" in note
+
+    second = UnifiedContext(user_message="你好", conversation_history=[])
+    assert setup_activation(second) == "", "the offer must not repeat every new chat"
+
+
+def test_explicit_mode_stays_active_but_keeps_the_system_prompt(isolated_settings: Path) -> None:
+    context = _deferring(UnifiedContext(user_message="hello", active_capability="setup"))
+    capability = SetupCapability()
+
+    assert capability.is_active(context)
+    assert capability.system_block(context, language="en", prompts={}) is None
+    assert "setup mode" in capability.turn_note(context, language="en")
+
+
+def test_the_protocol_is_returned_with_the_loaded_tools(isolated_settings: Path) -> None:
+    guide = SetupCapability().deferred_tool_guide(language="en", prompts={})
+    assert "inspect_setup" in guide and "request_credential" in guide
+
+
+def test_an_unrelated_turn_gets_no_note(isolated_settings: Path) -> None:
+    from deeptutor.capabilities.setup.binding import mark_intro_shown
+
+    mark_intro_shown()
+    context = _deferring(
+        UnifiedContext(
+            user_message="帮我总结这篇论文",
+            conversation_history=[{"role": "user", "content": "hi"}],
+        )
+    )
+    assert SetupCapability().turn_note(context, language="zh") == ""

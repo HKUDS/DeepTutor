@@ -8,14 +8,28 @@ surface — knowledge bases, web search, the lot — and these four tools are ad
 on top. An exclusive capability would strip exactly the abilities a
 configuration conversation is often about.
 
-Activation is decided by :func:`~deeptutor.capabilities.setup.binding.is_setup_turn`
+Activation is decided by :func:`~deeptutor.capabilities.setup.binding.setup_activation`
 on objective signals rather than by the model's sense of relevance; see that
 module for why.
 
-The system block carries the install's current gaps. That is what lets the
-model open with something useful ("your knowledge bases can't be built yet —
-no embedding model is selected") instead of a menu, and it costs one filesystem
-pass that ``is_active`` has already paid for.
+How the four tools reach the model depends on why the turn is a setup turn.
+``intent`` (the message pairs "switch" with "model") and ``intro`` (first
+conversation on an install with a blocking gap) are message heuristics: when
+the loop can defer tools (:mod:`deeptutor.capabilities.disclosure`) they no
+longer mount anything. The tools stay listed under Extended Tools on every
+turn, their usage protocol is returned by ``load_tools`` (see
+:meth:`SetupCapability.deferred_tool_guide`), and the turn gets a short note at
+the end of the user message instead (:meth:`SetupCapability.turn_note`). The
+note carries the install's current gaps — what lets the model open with
+something useful ("your knowledge bases can't be built yet — no embedding model
+is selected") instead of a menu. ``tools[]`` and the system prompt therefore
+stay byte-identical whether or not a message happens to mention configuration.
+
+``explicit`` (the user opened setup mode) is a mode switch: the capability is
+active and the pipeline records the tools as loaded, so they join ``tools[]``
+on that turn and stay there after the user leaves the mode. The protocol is put
+in that turn's user message once, the way ``load_tools`` would have returned
+it; the system prompt is never touched.
 """
 
 from __future__ import annotations
@@ -23,11 +37,11 @@ from __future__ import annotations
 from importlib import resources
 from typing import Any
 
+from deeptutor.capabilities.disclosure import deferral_available
 from deeptutor.capabilities.protocol import PromptBlock
 from deeptutor.capabilities.setup.binding import (
     SETUP_CAPABILITY_NAME,
     cached_gaps,
-    is_setup_turn,
     mark_intro_shown,
     setup_activation,
 )
@@ -41,9 +55,17 @@ class SetupCapability:
 
     name = SETUP_CAPABILITY_NAME
     owned_tools = SETUP_TOOL_NAMES
+    #: Offered through ``load_tools`` on every turn that can defer tools.
+    deferred_tools = SETUP_TOOL_NAMES
 
     def is_active(self, context: UnifiedContext) -> bool:
-        return is_setup_turn(context)
+        reason = setup_activation(context)
+        if reason == "explicit":
+            return True
+        # A message heuristic must not change the turn's tool surface or system
+        # prompt; where deferral is available the tools are one ``load_tools``
+        # away and :meth:`turn_note` tells the model so.
+        return bool(reason) and not deferral_available(context)
 
     def system_block(
         self,
@@ -55,32 +77,70 @@ class SetupCapability:
         reason = setup_activation(context)
         if not reason:
             return None
-        override = _prompt_text(prompts, ("setup", "system"))
-        content = override or _load_system_prompt(language)
-
-        gaps = cached_gaps(context)
-        if gaps:
-            lines = "\n".join(f"- {gap.summary} {gap.remedy}".strip() for gap in gaps)
-            content = f"{content}\n\n## What this install is currently missing\n{lines}"
-        else:
-            content = f"{content}\n\n## What this install is currently missing\n- Nothing."
-
+        if deferral_available(context):
+            # Nothing in the system prompt: the protocol travels with the tools
+            # (``load_tools`` result, or this turn's user message when an opened
+            # mode loads them) and the gaps ride in :meth:`turn_note`. Entering
+            # or leaving setup mode therefore never rewrites the system prompt.
+            return None
+        content = _protocol(language, prompts)
+        content = f"{content}\n\n{_gaps_section(context)}"
         if reason == "intro":
-            # The user did not raise this subject, so the opening has to earn its
-            # place: name the one thing that is missing, offer to fix it, and
-            # drop it if they would rather do something else.
-            content = (
-                f"{content}\n\n## This is the user's first conversation\n"
-                "They have not asked about configuration. Answer whatever they "
-                "actually said first. Then, in one or two sentences at the end, "
-                "mention the single most important gap above and offer to set it "
-                "up. Do not list every gap, do not open with it, and do not "
-                "raise it again if they move on."
-            )
+            content = f"{content}\n\n{_INTRO_SECTION}"
             # Spent only here: an explicit or intent-driven turn must not consume
             # the one proactive offer an unconfigured install gets.
             mark_intro_shown()
         return PromptBlock(SETUP_CAPABILITY_NAME, content)
+
+    def deferred_tool_guide(self, *, language: str, prompts: dict[str, Any]) -> str:
+        """The protocol for the four tools, returned when ``load_tools`` loads them."""
+        return _protocol(language, prompts)
+
+    def turn_note(self, context: UnifiedContext, *, language: str) -> str:
+        """Per-turn setup facts for the end of the user message.
+
+        Only emitted where deferral is available — otherwise the legacy system
+        block carries the same facts.
+        """
+        reason = setup_activation(context)
+        if not reason or not deferral_available(context):
+            return ""
+        zh = str(language or "en").lower().startswith("zh")
+        tools = ", ".join(f"`{name}`" for name in SETUP_TOOL_NAMES)
+        if reason == "explicit":
+            lead = (
+                "用户打开了配置模式，配置工具已加载，按此前给出的配置工具使用规范操作。"
+                if zh
+                else "The user opened setup mode; the setup tools are loaded. Follow the "
+                "rules for using them given when they were loaded."
+            )
+        elif reason == "intent":
+            lead = (
+                "这条消息像是要修改 DeepTutor 自身的配置。配置工具"
+                f"（{tools}）在扩展工具里：先用 `load_tools` 加载需要的那几个，"
+                "它的返回里附有这些工具的使用规范，照规范操作。"
+                "如果这条消息其实和 DeepTutor 的配置无关，忽略这段提示。"
+                if zh
+                else "This message looks like a request to change DeepTutor's own "
+                f"configuration. The setup tools ({tools}) are listed under "
+                "Extended Tools: load the ones you need with `load_tools` first — "
+                "its result includes the rules for using them, follow them. If the "
+                "message is not actually about DeepTutor's configuration, ignore "
+                "this note."
+            )
+        else:  # intro
+            lead = f"{_INTRO_SECTION}\n" + (
+                f"如果用户接受，先用 `load_tools` 加载配置工具（{tools}），它的返回里附有使用规范。"
+                if zh
+                else "If they accept, load the setup tools "
+                f"({tools}) with `load_tools` first; its result includes the "
+                "rules for using them."
+            )
+            # Spent only here, as in the legacy system block.
+            mark_intro_shown()
+        header = "[配置助手]" if zh else "[Setup]"
+        parts = [header, _gaps_section(context), lead]
+        return "\n".join(part for part in parts if part)
 
     def augment_kwargs(
         self,
@@ -103,6 +163,32 @@ def _load_system_prompt(language: str) -> str:
     lang = "zh" if str(language or "en").lower().startswith("zh") else "en"
     prompt = resources.files(__package__).joinpath("prompts", lang, "system.md")
     return prompt.read_text(encoding="utf-8").strip()
+
+
+def _protocol(language: str, prompts: dict[str, Any]) -> str:
+    override = _prompt_text(prompts, ("setup", "system"))
+    return override or _load_system_prompt(language)
+
+
+def _gaps_section(context: UnifiedContext) -> str:
+    gaps = cached_gaps(context)
+    lines = (
+        "\n".join(f"- {gap.summary} {gap.remedy}".strip() for gap in gaps) if gaps else "- Nothing."
+    )
+    return f"## What this install is currently missing\n{lines}"
+
+
+# The user did not raise this subject, so the opening has to earn its place:
+# name the one thing that is missing, offer to fix it, and drop it if they would
+# rather do something else.
+_INTRO_SECTION = (
+    "## This is the user's first conversation\n"
+    "They have not asked about configuration. Answer whatever they "
+    "actually said first. Then, in one or two sentences at the end, "
+    "mention the single most important gap above and offer to set it "
+    "up. Do not list every gap, do not open with it, and do not "
+    "raise it again if they move on."
+)
 
 
 __all__ = ["SetupCapability"]

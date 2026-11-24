@@ -26,7 +26,7 @@ import asyncio
 import logging
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 from deeptutor.agents._shared.tool_composition import (
     ToolMountFlags,
@@ -34,7 +34,6 @@ from deeptutor.agents._shared.tool_composition import (
     default_optional_tools,
     partner_can_record_questions,
     user_has_mastery_topics,
-    user_has_memory,
     user_has_notebooks,
     user_has_question_bank,
 )
@@ -95,6 +94,16 @@ logger = logging.getLogger(__name__)
 
 # Chat memory tools a partner turn replaces with the partner_* variants.
 _PARTNER_SUPPRESSED_TOOLS: tuple[str, ...] = ("read_memory", "write_memory")
+
+
+class LocalDeferredTools(NamedTuple):
+    """Built-in/capability tools a turn offers through ``load_tools``."""
+
+    names: tuple[str, ...]
+    #: Names of a mode the user opened; recorded as loaded for the session.
+    eager: set[str]
+    #: Usage rules returned by ``load_tools`` alongside a tool's schema.
+    guides: dict[str, str]
 
 
 LOOP_EXCLUDED_TOOLS: set[str] = set()
@@ -431,17 +440,7 @@ class AgenticLoopPipeline:
         self._exec_enabled = await self._exec_allowed(context)
         enabled_tools = self._compose_enabled_tools(context)
         use_native_tools = bool(enabled_tools) and self._can_use_native_tool_calling()
-        tool_schemas = (
-            self._build_llm_tool_schemas(enabled_tools, context) if use_native_tools else None
-        )
-        if tool_schemas is not None and self._tool_view is not None:
-            self._tool_view.attach(tool_schemas)
-        if tool_schemas:
-            # Reuse the last admitted order, including deferred tools loaded
-            # during that turn. Removed/unauthorized tools stay removed.
-            prior = (context.runtime.previous_model_turn or {}).get("tools") or []
-            order = {item["function"]["name"]: i for i, item in enumerate(prior)}
-            tool_schemas.sort(key=lambda item: order.get(item["function"]["name"], len(order)))
+        tool_schemas = self._turn_tool_schemas(enabled_tools, context) if use_native_tools else None
 
         if (
             os.getenv("DEEPTUTOR_CHAT_ENGINE") == "typescript-native"
@@ -466,6 +465,27 @@ class AgenticLoopPipeline:
         )
         self.last_result = await loop.run()
         return self.last_result
+
+    def _turn_tool_schemas(
+        self, enabled_tools: list[str], context: UnifiedContext
+    ) -> list[dict[str, Any]]:
+        """This turn's ``tools[]``: composed schemas, then the session's loaded ones.
+
+        The list is the first thing in the provider's cache key, so it is laid
+        out in the previous turn's order: with unchanged toggles it is the same
+        bytes, and anything new (a tool loaded last turn, a first favorite)
+        lands at the end.
+        """
+        tool_schemas = self._build_llm_tool_schemas(enabled_tools, context)
+        if self._tool_view is not None:
+            self._tool_view.attach(tool_schemas)
+        if tool_schemas:
+            # Reuse the last admitted order, including deferred tools loaded
+            # during that turn. Removed/unauthorized tools stay removed.
+            prior = (context.runtime.previous_model_turn or {}).get("tools") or []
+            order = {item["function"]["name"]: i for i, item in enumerate(prior)}
+            tool_schemas.sort(key=lambda item: order.get(item["function"]["name"], len(order)))
+        return tool_schemas
 
     def _native_compatibility_reason(self) -> str:
         """Admit explicit recovery policies to the shared effects host."""
@@ -696,6 +716,138 @@ class AgenticLoopPipeline:
         # Kept as a plain list: the context-budget chip counts the provider
         # tools whose schemas never entered the window.
         self._deferred_pool = list(view.pool)
+        self._mount_local_deferred_tools(context)
+
+    # ---- locally deferred tools ------------------------------------------
+    #
+    # Built-in and capability tools that used to be mounted by a per-message
+    # heuristic (research tools when a message says "论文", setup tools when it
+    # says "switch the model", or on an unconfigured install's first message).
+    # Mounting them per message made ``tools[]`` — the very start of the cached
+    # prompt — differ between two turns of one conversation. They are listed in
+    # the Extended Tools catalog instead and reach ``tools[]`` only through the
+    # session's loaded set, which only grows.
+
+    def _deferral_allowed(self, context: UnifiedContext) -> bool:
+        """Whether optional tools can be offered through ``load_tools`` this turn."""
+        if self._exclusive_capability_active(context):
+            return False  # The capability owns the surface; no catalog is shown.
+        allowed = context.allowed_builtin_tools
+        if allowed is not None and "load_tools" not in allowed:
+            return False  # A restricted caller keeps eager access instead.
+        lookup_get = getattr(self.tool_lookup, "get", None)
+        return callable(lookup_get) and lookup_get("load_tools") is not None
+
+    def _local_deferred_tools(self, context: UnifiedContext) -> LocalDeferredTools:
+        """Which built-in/capability tools this turn offers through ``load_tools``.
+
+        ``eager`` names belong to a capability that is active this turn (an
+        explicitly opened setup mode): they are recorded as loaded for the
+        session rather than mounted, so they arrive in the same place and stay
+        after the mode is left.
+        """
+        names: list[str] = []
+        eager: set[str] = set()
+        guides: dict[str, str] = {}
+        builtin_whitelist = context.allowed_builtin_tools
+        from deeptutor.modules.catalog import module_enabled
+
+        if module_enabled("research"):
+            from deeptutor.tools.research_tools import SCIENTIFIC_TOOL_NAMES, scientific_context
+
+            # The message is deliberately not consulted: a regex hit only earns
+            # a hint in the user message (``_turn_disclosure_notes``). Deep
+            # research and the ``paper_search`` toggle are the user's own mode
+            # switches, so there the tools are mounted outright — and leave
+            # with the toggle — exactly like any other toggled tool.
+            if not scientific_context("", context.active_capability, context.enabled_tools or []):
+                names.extend(
+                    name
+                    for name in SCIENTIFIC_TOOL_NAMES
+                    if builtin_whitelist is None or name in builtin_whitelist
+                )
+        from deeptutor.capabilities import all_loop_capabilities
+
+        for cap in all_loop_capabilities(context):
+            cap_names = [str(name) for name in getattr(cap, "deferred_tools", ()) or ()]
+            if not cap_names:
+                continue
+            names.extend(cap_names)
+            if cap.is_active(context):
+                eager.update(cap_names)
+            guide_hook = getattr(cap, "deferred_tool_guide", None)
+            if callable(guide_hook):
+                try:
+                    guide = guide_hook(language=self.language, prompts=self._prompts)
+                except Exception:
+                    logger.warning("deferred tool guide failed for %s", cap.name, exc_info=True)
+                    guide = ""
+                if guide:
+                    for name in cap_names:
+                        guides[name] = guide
+        return LocalDeferredTools(names=tuple(dict.fromkeys(names)), eager=eager, guides=guides)
+
+    def _mount_local_deferred_tools(self, context: UnifiedContext) -> None:
+        """Add this turn's locally deferred tools to the provider tool view."""
+        from deeptutor.capabilities.disclosure import set_deferral_available
+
+        self._local_deferred_names: set[str] = set()
+        self._eager_guides: list[str] = []
+        available = self._deferral_allowed(context)
+        # Recorded before any capability is asked whether it is active, so a
+        # heuristically-triggered capability stays inactive on this turn.
+        set_deferral_available(context, available)
+        if not available:
+            return
+        local = self._local_deferred_tools(context)
+        view = self._tool_view
+        tools = [view.registry.get(name) for name in local.names]
+        tools = [tool for tool in tools if tool is not None]
+        if not tools:
+            return
+        from deeptutor.runtime.registry.deferred_tools import (
+            DeferredToolLoader,
+            render_deferred_tools_manifest,
+        )
+        from deeptutor.services.mcp import load_loaded_tools, record_loaded_tools
+
+        local_names = {tool.name for tool in tools}
+        self._local_deferred_names = local_names
+        pool = (*view.pool, *tools)
+        persisted = load_loaded_tools(context.session_id)
+        loaded = persisted | (view.loader.loaded_names if view.loader else set())
+        eager = local.eager & local_names
+        # Rules for tools that reach ``tools[]`` without a ``load_tools`` call
+        # (an opened mode): delivered once, in this turn's user message.
+        self._eager_guides = list(
+            dict.fromkeys(
+                local.guides[name] for name in sorted(eager - loaded) if name in local.guides
+            )
+        )
+        if not eager <= loaded:
+            loaded |= eager
+            # Persist now: an eagerly-opened mode's tools stay in this
+            # conversation's ``tools[]`` after the mode is left.
+            record_loaded_tools(context.session_id, persisted | eager)
+        loader = DeferredToolLoader(
+            registry=view.registry,
+            session_id=context.session_id,
+            loaded=loaded,
+            allowed={tool.name for tool in pool},
+            capability_names=local_names,
+            guides={name: text for name, text in local.guides.items() if name in local_names},
+        )
+        self._tool_view = ProviderToolView(
+            registry=view.registry,
+            loader=loader,
+            pool=pool,
+            # One catalog for provider and local tools alike: rendering the
+            # whole pool keeps the snapshot a function of the pool, not of how
+            # it was assembled.
+            manifest=render_deferred_tools_manifest(list(pool), language=self.language),
+        )
+        self._deferred_loader = loader
+        self._deferred_pool = list(pool)
 
     def _tool_scope(self, context: UnifiedContext) -> ToolScope:
         """Per-turn policy inputs for the provider layer."""
@@ -790,13 +942,22 @@ class AgenticLoopPipeline:
         is_partner = self._is_partner_turn(context)
         from deeptutor.modules.catalog import module_enabled
 
+        local_deferred = getattr(self, "_local_deferred_names", set())
         scientific = False
         if module_enabled("research"):
-            from deeptutor.tools.research_tools import scientific_context
+            from deeptutor.tools.research_tools import SCIENTIFIC_TOOL_NAMES, scientific_context
 
-            scientific = scientific_context(
+            # Deferred research tools reach ``tools[]`` through the session's
+            # loaded set only; the message regex no longer mounts them.
+            scientific = not set(SCIENTIFIC_TOOL_NAMES) <= local_deferred and scientific_context(
                 context.user_message, context.active_capability, context.enabled_tools or []
             )
+        # Tools gated on the user's *data* (a first favorite, a first saved
+        # question, a first mastery topic) stay mounted for the rest of the
+        # conversation once they appeared: the data showing up mid-session must
+        # not rewrite the cached tool list, and it never disappears again in a
+        # way the model must be shielded from.
+        sticky = self._previously_mounted_tools(context)
 
         def has_book_authoring():
             from deeptutor.modules.catalog import module_enabled
@@ -824,14 +985,20 @@ class AgenticLoopPipeline:
                 # Keep it off the answer surface even when sources are present.
                 has_sources=False,
                 has_book_authoring=has_book_authoring(),
-                has_memory=user_has_memory(),
-                has_notebooks=user_has_notebooks(),
+                # ``read_memory`` (80 tokens) is mounted whenever memory is
+                # on, even before there is anything to read: an empty read is a
+                # valid answer, and gating it on content meant the first
+                # ``write_memory`` of a conversation changed ``tools[]``.
+                has_memory=module_enabled("memory"),
+                has_notebooks="list_favorites" in sticky or user_has_notebooks(),
                 # A partner turn mounts the bank even when it is still empty:
                 # the tool's record action must be available to file the FIRST
                 # wrong question the learner owns up to (#1244). Product chat
                 # keeps the entries-exist gate.
-                has_question_bank=user_has_question_bank() or partner_can_record_questions(),
-                has_skills=bool(context.skills_manifest),
+                has_question_bank="question_bank" in sticky
+                or user_has_question_bank()
+                or partner_can_record_questions(),
+                has_skills="read_skill" in sticky or bool(context.skills_manifest),
                 has_deferred_tools=getattr(self, "_deferred_loader", None) is not None,
                 has_exec=getattr(self, "_exec_enabled", False),
                 # Reaching a mastery topic is a chat-wide affordance, not part
@@ -842,10 +1009,11 @@ class AgenticLoopPipeline:
                 # A mastery turn mounts navigation from the start: its first
                 # turn usually creates the topic, and mounting it only then
                 # grew tools[] on the second turn (one full cache miss).
-                has_mastery_nav=bool(context.metadata.get("mastery_mode"))
+                has_mastery_nav="mastery_sessions" in sticky
+                or bool(context.metadata.get("mastery_mode"))
                 or self._mastery_nav_available(context),
                 has_mastery_topics=(
-                    self._mastery_nav_available(context)
+                    ("mastery_topics" in sticky or self._mastery_nav_available(context))
                     and not context.metadata.get("mastery_mode")
                 ),
             ),
@@ -868,7 +1036,21 @@ class AgenticLoopPipeline:
         lookup_get = getattr(self.tool_lookup, "get", None)
         if callable(lookup_get) and lookup_get("workspace_export") is not None:
             composed.append("workspace_export")
-        return list(dict.fromkeys(composed))
+        # Locally deferred tools arrive through the loader (``attach``), never
+        # through the composed list — even when this turn would have mounted
+        # them — so their position and bytes never depend on the message.
+        return [name for name in dict.fromkeys(composed) if name not in local_deferred]
+
+    @staticmethod
+    def _previously_mounted_tools(context: UnifiedContext) -> set[str]:
+        """Tool names the previous model turn of this conversation was offered."""
+        prior = (context.runtime.previous_model_turn or {}).get("tools") or []
+        names: set[str] = set()
+        for item in prior:
+            function = item.get("function") if isinstance(item, dict) else None
+            if isinstance(function, dict) and function.get("name"):
+                names.add(str(function["name"]))
+        return names
 
     def _mastery_nav_available(self, context: UnifiedContext) -> bool:
         """Whether this turn should be able to point at a mastery topic.
@@ -968,7 +1150,44 @@ class AgenticLoopPipeline:
             for cap in self._active_loop_capabilities(context)
             if (seed := cap.pre_loop_seed(context))
         ]
+        seeds.extend(self._turn_disclosure_notes(context))
         return "\n\n".join(seed for seed in seeds if seed)
+
+    def _turn_disclosure_notes(self, context: UnifiedContext) -> list[str]:
+        """Per-message pointers at deferred tools, for the end of the user message.
+
+        This is where a message heuristic ends up: it costs a sentence in the
+        newest message instead of rewriting ``tools[]`` and the system prompt.
+        """
+        local_deferred = getattr(self, "_local_deferred_names", set())
+        if not local_deferred:
+            return []
+        loader = self._deferred_loader
+        loaded = loader.loaded_names if loader is not None else set()
+        notes: list[str] = list(getattr(self, "_eager_guides", []))
+        from deeptutor.tools.research_tools import SCIENTIFIC_TOOL_NAMES, scientific_context
+
+        research = [n for n in SCIENTIFIC_TOOL_NAMES if n in local_deferred and n not in loaded]
+        if research and scientific_context(context.user_message):
+            notes.append(
+                self._t("notices.research_tools_hint").format(
+                    tools=", ".join(f"`{name}`" for name in research)
+                )
+            )
+        from deeptutor.capabilities import all_loop_capabilities
+
+        for cap in all_loop_capabilities(context):
+            hook = getattr(cap, "turn_note", None)
+            if not callable(hook):
+                continue
+            try:
+                note = hook(context, language=self.language)
+            except Exception:
+                logger.warning("turn note failed for capability %s", cap.name, exc_info=True)
+                continue
+            if note:
+                notes.append(note.strip())
+        return [note for note in notes if note]
 
     def _capability_skips_kb_seed(self, context: UnifiedContext) -> bool:
         """Let an active capability say this turn's message is not a query.

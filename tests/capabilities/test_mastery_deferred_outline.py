@@ -389,3 +389,28 @@ async def test_a_plain_chat_turn_between_mastery_turns_keeps_the_outline_tools(m
     assert {"mastery_build", "mastery_revise"} <= state["synthetic"]
 
     assert await mastery_turn("study") == outline
+
+
+@pytest.mark.asyncio
+async def test_outline_loader_keeps_the_base_pipelines_deferred_tools(monkeypatch, tmp_path):
+    """Mastery replaces the turn's loader; research/setup tools must survive it."""
+    from deeptutor.services.path_service import PathService
+
+    paths = PathService(workspace_root=tmp_path / "data")
+    monkeypatch.setattr(PathService, "_instance", paths)
+    pipeline = MasteryLoopPipeline(language="en")
+    context = UnifiedContext(
+        session_id="synthetic-base",
+        metadata={"mastery_mode": True, "mastery_path_id": "p", "mastery_session_mode": "study"},
+    )
+    await pipeline._prepare_deferred_tools(context)
+    manifest = pipeline._deferred_tools_manifest()
+    for name in ("mastery_build", "inspect_setup", "preprint"):
+        assert name in manifest
+    names = pipeline._compose_enabled_tools(context)
+    assert "inspect_setup" not in names and "preprint" not in names
+    schemas = pipeline._build_llm_tool_schemas(names, context)
+    pipeline._tool_view.attach(schemas)
+    result = pipeline._deferred_loader.load(["preprint", "inspect_setup", "mastery_build"])
+    assert result["loaded"] == ["preprint", "inspect_setup", "mastery_build"]
+    assert result["guides"], "the setup protocol rides along with its tools"
