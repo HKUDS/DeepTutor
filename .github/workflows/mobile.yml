@@ -65,6 +65,12 @@ jobs:
       - run: npm ci
       - run: bash ./gradlew --no-daemon :app:assembleDebug -PreactNativeArchitectures=x86_64
         working-directory: apps/mobile/android
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deeptutor-android-emulator-apk
+          path: apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7
 
   ios:
     name: iOS simulator build
