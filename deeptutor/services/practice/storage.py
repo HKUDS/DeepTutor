@@ -73,14 +73,13 @@ def initialize_practice(conn: sqlite3.Connection) -> None:
             UPDATE practice_review_state SET version=version+1 WHERE entry_id=NEW.id;
         END;
         -- An AI-judge verdict re-grades the same answer that exact matching
-        -- missed (e.g. a photo). If it is correct or ungraded, a mistake
-        -- captured from that provisional result is released unless the
-        -- learner has already practised it.
+        -- missed (e.g. a photo). Once the judged answer is correct, a mistake
+        -- captured from the provisional result is released unless the learner
+        -- has already practised it. An unsure (ungraded) re-judge keeps it.
         DROP TRIGGER IF EXISTS practice_release_judged;
         CREATE TRIGGER practice_release_judged
-        AFTER UPDATE OF ai_verdict_json ON notebook_entries
-        WHEN NEW.ai_verdict_json != OLD.ai_verdict_json AND NEW.ai_verdict_json != ''
-            AND (NEW.is_correct = 1 OR NEW.result = 'ungraded')
+        AFTER UPDATE OF is_correct, result, ai_verdict_json ON notebook_entries
+        WHEN NEW.ai_verdict_json != '' AND NEW.is_correct = 1
         BEGIN
             UPDATE practice_review_state SET is_mistake = 0, version = version + 1
             WHERE entry_id = NEW.id AND is_mistake = 1 AND review_count = 0;

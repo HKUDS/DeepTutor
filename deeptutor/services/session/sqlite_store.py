@@ -3462,14 +3462,27 @@ class SQLiteSessionStore:
             if source not in ASSESSMENT_SOURCES:
                 source = "deep_question"
             is_correct = 1 if item.get("is_correct") else 0
+            user_answer = item.get("user_answer") or ""
             existing = conn.execute(
                 """
-                SELECT is_correct FROM notebook_entries
+                SELECT is_correct, result, user_answer, ai_verdict_json FROM notebook_entries
                 WHERE origin_type = ? AND origin_ref = ?
                   AND turn_id = ? AND question_id = ?
                 """,
                 (origin_type, origin_ref, turn_id, question_id),
             ).fetchone()
+            # A verdict judges one answer: a fresh submission (which carries
+            # its image list) or changed text drops it. While it stands, its
+            # grade does too — a late ``/quiz-results`` post with the
+            # provisional exact-match grade must not re-grade the answer.
+            keep_verdict = (
+                images_json is None
+                and existing is not None
+                and existing["user_answer"] == user_answer
+            )
+            if keep_verdict and existing["ai_verdict_json"]:
+                is_correct = int(existing["is_correct"])
+                item = {**item, "result": existing["result"]}
             previous = bool(existing["is_correct"]) if existing is not None else None
             if previous is None or previous == bool(is_correct):
                 score_trend = "new" if previous is None else "unchanged"
@@ -3517,12 +3530,8 @@ class SQLiteSessionStore:
                         WHEN ? THEN notebook_entries.user_answer_images_json
                         ELSE excluded.user_answer_images_json
                     END,
-                    -- A verdict judges one answer: a fresh submission (which
-                    -- carries its image list) or changed text drops it.
                     ai_verdict_json = CASE
-                        WHEN ? AND excluded.user_answer = notebook_entries.user_answer
-                        THEN notebook_entries.ai_verdict_json
-                        ELSE ''
+                        WHEN ? THEN notebook_entries.ai_verdict_json ELSE ''
                     END,
                     source = excluded.source,
                     material_id = excluded.material_id,
@@ -3561,7 +3570,7 @@ class SQLiteSessionStore:
                     item.get("correct_answer") or "",
                     item.get("explanation") or "",
                     item.get("difficulty") or "",
-                    item.get("user_answer") or "",
+                    user_answer,
                     images_json if images_json is not None else "[]",
                     *provenance,
                     *assessment,
@@ -3570,7 +3579,7 @@ class SQLiteSessionStore:
                     now,
                     now,
                     images_json is None,
-                    images_json is None,
+                    keep_verdict,
                 ),
             )
             upserted += 1

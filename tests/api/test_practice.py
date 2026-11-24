@@ -560,3 +560,68 @@ def test_ungraded_rejudge_keeps_manual_resolution(bank):
         json={"is_correct": False, "result": "ungraded", "ai_verdict": {"result": "ungraded"}},
     )
     assert client.get(f"/bank/entries/{entry['id']}").json()["resolved"] is True
+
+
+def test_stale_quiz_results_cannot_turn_a_judged_answer_back_into_a_mistake(bank):
+    store, repo, client = bank
+    # Submit: exact matching misses the typed answer, so it is a mistake for now.
+    entry = seed(store, **_open_question(user_answer="x = 120"), user_answer_images=[])
+    assert repo.overview("UTC")["mistakes"] == 1
+    patch = {"is_correct": True, "result": "correct", "ai_verdict": _JUDGED}
+    client.patch(f"/bank/entries/{entry['id']}", json=patch)
+    assert repo.overview("UTC")["mistakes"] == 0
+
+    # ``/quiz-results`` posts carry no image list and the provisional grade;
+    # one that lands after the verdict must not re-grade the judged answer.
+    seed(store, **_open_question(user_answer="x = 120"))
+    stored = client.get(f"/bank/entries/{entry['id']}").json()
+    assert (stored["is_correct"], stored["result"], stored["resolved"]) == (True, "correct", True)
+    assert stored["ai_verdict"]["result"] == "correct"
+    assert repo.overview("UTC")["mistakes"] == 0
+
+    seed(store, **_open_question(user_answer="x = 120"), is_correct=True, result="correct")
+    assert repo.overview("UTC")["mistakes"] == 0
+
+
+def test_rejudging_correct_releases_a_stuck_provisional_mistake(bank):
+    store, repo, client = bank
+    entry = seed(store, **_open_question(user_answer="x = 120"))
+    patch = {"is_correct": True, "result": "correct", "ai_verdict": _JUDGED}
+    client.patch(f"/bank/entries/{entry['id']}", json=patch)
+    # A state left behind by an earlier build: judged correct, still a mistake.
+    with repo.connect() as conn:
+        conn.execute(
+            "UPDATE practice_review_state SET is_mistake=1 WHERE entry_id=?", (entry["id"],)
+        )
+    assert repo.overview("UTC")["mistakes"] == 1
+
+    # A byte-identical re-judge heals it.
+    client.patch(f"/bank/entries/{entry['id']}", json=patch)
+    assert repo.overview("UTC")["mistakes"] == 0
+
+
+def test_uncertain_rejudge_keeps_a_confirmed_mistake(bank):
+    store, repo, client = bank
+    entry = seed(store, **_open_question(result="ungraded"))
+    wrong = {
+        "is_correct": False,
+        "result": "incorrect",
+        "ai_verdict": {**_JUDGED, "result": "incorrect", "is_correct": False},
+    }
+    client.patch(f"/bank/entries/{entry['id']}", json=wrong)
+    assert repo.overview("UTC")["mistakes"] == 1
+
+    unsure = {
+        "is_correct": False,
+        "result": "ungraded",
+        "ai_verdict": {
+            "result": "ungraded",
+            "final": False,
+            "is_correct": None,
+            "confidence": 0.4,
+            "steps": [],
+            "reason": "low_confidence",
+        },
+    }
+    assert client.patch(f"/bank/entries/{entry['id']}", json=unsure).status_code == 200
+    assert repo.overview("UTC")["mistakes"] == 1
