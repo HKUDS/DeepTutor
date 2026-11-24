@@ -8323,10 +8323,35 @@
             "title": "Frontend Port",
             "type": "integer"
           },
+          "network_synthetic_ranges": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Network Synthetic Ranges"
+          },
           "public_api_base": {
             "default": "",
             "title": "Public Api Base",
             "type": "string"
+          },
+          "ssrf_protection_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ssrf Protection Enabled"
           }
         },
         "required": [
