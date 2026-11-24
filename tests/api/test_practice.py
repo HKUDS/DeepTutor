@@ -555,10 +555,12 @@ def test_ungraded_rejudge_keeps_manual_resolution(bank):
     store, _, client = bank
     entry = seed(store, **_open_question(result="ungraded"))
     client.patch(f"/bank/entries/{entry['id']}", json={"resolved": True})
-    client.patch(
+    unsure = {"result": "ungraded", "final": False}
+    response = client.patch(
         f"/bank/entries/{entry['id']}",
-        json={"is_correct": False, "result": "ungraded", "ai_verdict": {"result": "ungraded"}},
+        json={"is_correct": False, "result": "ungraded", "ai_verdict": unsure},
     )
+    assert response.status_code == 200
     assert client.get(f"/bank/entries/{entry['id']}").json()["resolved"] is True
 
 
@@ -625,3 +627,29 @@ def test_uncertain_rejudge_keeps_a_confirmed_mistake(bank):
     }
     assert client.patch(f"/bank/entries/{entry['id']}", json=unsure).status_code == 200
     assert repo.overview("UTC")["mistakes"] == 1
+
+
+@pytest.mark.parametrize(
+    "patch",
+    [
+        {"is_correct": False, "result": "correct"},
+        {"is_correct": True, "result": "partial"},
+        {"result": "voided"},
+        {"ai_verdict": {}},
+        {"ai_verdict": {"result": "probably", "final": True}},
+        {"ai_verdict": {"result": "ungraded", "final": True}},
+        {"ai_verdict": {"result": "correct", "final": True, "feedback": "x" * 40_000}},
+    ],
+)
+def test_entry_patch_rejects_contradictory_or_malformed_grades(bank, patch):
+    store, _, client = bank
+    entry = seed(store)
+    assert client.patch(f"/bank/entries/{entry['id']}", json=patch).status_code == 422
+
+
+def test_entry_patch_derives_correctness_from_the_result(bank):
+    store, _, client = bank
+    entry = seed(store, **_open_question(result="ungraded"))
+    client.patch(f"/bank/entries/{entry['id']}", json={"result": "correct"})
+    stored = client.get(f"/bank/entries/{entry['id']}").json()
+    assert (stored["is_correct"], stored["result"], stored["resolved"]) == (True, "correct", True)
