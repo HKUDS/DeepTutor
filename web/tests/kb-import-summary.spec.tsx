@@ -2,10 +2,14 @@ import { render, screen } from "@testing-library/react";
 import { expect, it, vi } from "vitest";
 import KbImportSummary from "@/components/knowledge/KbImportSummary";
 
+const GERMAN: Record<string, string> = {
+  "Unsupported file type": "Nicht unterstützter Dateityp",
+};
+
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
     t: (key: string, values?: Record<string, string | number>) =>
-      key.replace(/\{\{(\w+)\}\}/g, (_, name: string) =>
+      (GERMAN[key] ?? key).replace(/\{\{(\w+)\}\}/g, (_, name: string) =>
         String(values?.[name] ?? `{{${name}}}`),
       ),
   }),
@@ -23,7 +27,7 @@ it("summarises a re-imported course archive file by file", () => {
         rejected: [
           {
             file: "course.zip/tools/setup.exe",
-            reason: "Unsupported file type: .exe",
+            reason: "Unsupported file type",
           },
         ],
       }}
@@ -47,7 +51,7 @@ it("summarises a re-imported course archive file by file", () => {
   ).toBeTruthy();
   expect(
     screen.getByText(
-      "course.zip/tools/setup.exe — Unsupported file type: .exe",
+      "course.zip/tools/setup.exe — Nicht unterstützter Dateityp",
     ),
   ).toBeTruthy();
 });
@@ -65,4 +69,30 @@ it("renders nothing for an upload without archive outcomes", () => {
 it("renders nothing when the backend sent no report", () => {
   const { container } = render(<KbImportSummary files={[]} />);
   expect(container.innerHTML).toBe("");
+});
+
+it("lists a member twice without a React key clash", () => {
+  const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+  render(
+    <KbImportSummary
+      files={[]}
+      report={{
+        duplicates: [],
+        renamed: [],
+        rejected: [
+          { file: "a.zip/x.pdf", reason: "Duplicate path in the archive" },
+          { file: "a.zip/x.pdf", reason: "Duplicate path in the archive" },
+        ],
+      }}
+    />,
+  );
+  expect(
+    screen.getAllByText("a.zip/x.pdf — Duplicate path in the archive"),
+  ).toHaveLength(2);
+  expect(
+    consoleError.mock.calls.some((call) =>
+      String(call[0]).includes("same key"),
+    ),
+  ).toBe(false);
+  consoleError.mockRestore();
 });

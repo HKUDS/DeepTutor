@@ -6686,5 +6686,11 @@
   "New files: {{count}}": "Novos arquivos: {{count}}",
   "Identical files already in this knowledge base, skipped: {{count}}": "Arquivos idênticos já nesta base de conhecimento, ignorados: {{count}}",
   "Changed files stored next to the existing version: {{count}}": "Arquivos alterados salvos ao lado da versão existente: {{count}}",
-  "Not imported (unsupported or unsafe): {{count}}": "Não importados (não suportados ou inseguros): {{count}}"
+  "Not imported (unsupported or unsafe): {{count}}": "Não importados (não suportados ou inseguros): {{count}}",
+  "Unsafe path": "Caminho inseguro",
+  "Path too long": "Caminho longo demais",
+  "A file and a folder have the same name": "Um arquivo e uma pasta têm o mesmo nome",
+  "Duplicate path in the archive": "Caminho duplicado no arquivo compactado",
+  "Archive inside the archive": "Arquivo compactado dentro do arquivo compactado",
+  "Could not be stored": "Não foi possível salvar"
 }

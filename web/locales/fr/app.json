@@ -7573,5 +7573,11 @@
   "New files: {{count}}": "Nouveaux fichiers : {{count}}",
   "Identical files already in this knowledge base, skipped: {{count}}": "Fichiers identiques déjà dans cette base de connaissances, ignorés : {{count}}",
   "Changed files stored next to the existing version: {{count}}": "Fichiers modifiés enregistrés à côté de la version existante : {{count}}",
-  "Not imported (unsupported or unsafe): {{count}}": "Non importés (non pris en charge ou dangereux) : {{count}}"
+  "Not imported (unsupported or unsafe): {{count}}": "Non importés (non pris en charge ou dangereux) : {{count}}",
+  "Unsafe path": "Chemin non sûr",
+  "Path too long": "Chemin trop long",
+  "A file and a folder have the same name": "Un fichier et un dossier portent le même nom",
+  "Duplicate path in the archive": "Chemin en double dans l'archive",
+  "Archive inside the archive": "Archive dans l'archive",
+  "Could not be stored": "Impossible d'enregistrer"
 }

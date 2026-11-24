@@ -6668,5 +6668,11 @@
   "New files: {{count}}": "新文件：{{count}}",
   "Identical files already in this knowledge base, skipped: {{count}}": "知识库中已有的相同文件，已跳过：{{count}}",
   "Changed files stored next to the existing version: {{count}}": "已修改的文件，已保存在现有版本旁边：{{count}}",
-  "Not imported (unsupported or unsafe): {{count}}": "未导入（不支持或不安全）：{{count}}"
+  "Not imported (unsupported or unsafe): {{count}}": "未导入（不支持或不安全）：{{count}}",
+  "Unsafe path": "路径不安全",
+  "Path too long": "路径过长",
+  "A file and a folder have the same name": "文件与文件夹同名",
+  "Duplicate path in the archive": "压缩包中路径重复",
+  "Archive inside the archive": "压缩包内嵌套压缩包",
+  "Could not be stored": "无法保存"
 }

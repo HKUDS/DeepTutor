@@ -6690,5 +6690,11 @@
   "New files: {{count}}": "Нові файли: {{count}}",
   "Identical files already in this knowledge base, skipped: {{count}}": "Ідентичні файли, що вже є в цій базі знань, пропущено: {{count}}",
   "Changed files stored next to the existing version: {{count}}": "Змінені файли збережено поруч із наявною версією: {{count}}",
-  "Not imported (unsupported or unsafe): {{count}}": "Не імпортовано (не підтримується або небезпечно): {{count}}"
+  "Not imported (unsupported or unsafe): {{count}}": "Не імпортовано (не підтримується або небезпечно): {{count}}",
+  "Unsafe path": "Небезпечний шлях",
+  "Path too long": "Шлях задовгий",
+  "A file and a folder have the same name": "Файл і папка мають однакову назву",
+  "Duplicate path in the archive": "Дубльований шлях в архіві",
+  "Archive inside the archive": "Архів усередині архіву",
+  "Could not be stored": "Не вдалося зберегти"
 }

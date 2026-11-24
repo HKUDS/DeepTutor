@@ -6668,5 +6668,11 @@
   "New files: {{count}}": "新しいファイル: {{count}}",
   "Identical files already in this knowledge base, skipped: {{count}}": "このナレッジベースに既にある同一ファイル（スキップ）: {{count}}",
   "Changed files stored next to the existing version: {{count}}": "既存のバージョンの横に保存された変更ファイル: {{count}}",
-  "Not imported (unsupported or unsafe): {{count}}": "インポートされなかったファイル（未対応または安全でない）: {{count}}"
+  "Not imported (unsupported or unsafe): {{count}}": "インポートされなかったファイル（未対応または安全でない）: {{count}}",
+  "Unsafe path": "安全でないパス",
+  "Path too long": "パスが長すぎます",
+  "A file and a folder have the same name": "ファイルとフォルダーの名前が同じです",
+  "Duplicate path in the archive": "アーカイブ内でパスが重複しています",
+  "Archive inside the archive": "アーカイブ内のアーカイブ",
+  "Could not be stored": "保存できませんでした"
 }

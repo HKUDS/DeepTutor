@@ -67,8 +67,11 @@ export default function KbImportSummary({
             })}
           </div>
           <ul className="mt-0.5 list-disc pl-4 font-mono text-[11px]">
-            {report.rejected.map((item) => (
-              <li key={item.file}>{`${item.file} — ${item.reason}`}</li>
+            {report.rejected.map((item, index) => (
+              // One member name can be listed twice (duplicate in the archive).
+              <li key={`${index}:${item.file}`}>
+                {`${item.file} — ${t(item.reason)}`}
+              </li>
             ))}
           </ul>
         </div>

@@ -6668,5 +6668,11 @@
   "New files: {{count}}": "New files: {{count}}",
   "Identical files already in this knowledge base, skipped: {{count}}": "Identical files already in this knowledge base, skipped: {{count}}",
   "Changed files stored next to the existing version: {{count}}": "Changed files stored next to the existing version: {{count}}",
-  "Not imported (unsupported or unsafe): {{count}}": "Not imported (unsupported or unsafe): {{count}}"
+  "Not imported (unsupported or unsafe): {{count}}": "Not imported (unsupported or unsafe): {{count}}",
+  "Unsafe path": "Unsafe path",
+  "Path too long": "Path too long",
+  "A file and a folder have the same name": "A file and a folder have the same name",
+  "Duplicate path in the archive": "Duplicate path in the archive",
+  "Archive inside the archive": "Archive inside the archive",
+  "Could not be stored": "Could not be stored"
 }
