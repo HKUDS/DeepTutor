@@ -229,6 +229,10 @@ export default function QuizViewer({
   const lastReportedSignatureRef = useRef("");
 
   const [entryIds, setEntryIds] = useState<Record<string, number>>({});
+  const entryIdsRef = useRef(entryIds);
+  useEffect(() => {
+    entryIdsRef.current = entryIds;
+  }, [entryIds]);
   const [bookmarked, setBookmarked] = useState<Record<string, boolean>>({});
   // Captured from the notebook entry on lookup so QuizFollowupTabBody
   // can hydrate prior chat history when the follow-up tab opens.
@@ -731,19 +735,23 @@ export default function QuizViewer({
           // Persist the AI judgment text on the notebook entry so it
           // survives a page refresh. Best-effort — a failed write just
           // means the next reload won't have the judgment cached.
+          // Read the id now: the submit upsert may have landed after the
+          // learner clicked the judge button.
           const key = q ? getQuestionKey(q, idx) : "";
-          const eId = key ? entryIds[key] : undefined;
+          const eId = key ? entryIdsRef.current[key] : undefined;
           if (eId && (finalText.trim().length > 0 || verdict)) {
             const assessment = q ? getAssessment(q, answer, verdict) : null;
             void updateNotebookEntry(eId, {
               ai_judgment: finalText,
+              // Always send an explicit result so a re-judge replaces the
+              // previous one; the server derives ``resolved`` from it.
               ...(verdict && assessment
                 ? {
                     ai_verdict: verdict,
-                    ...assessment,
-                    ...(assessment.result === "correct"
-                      ? { resolved: true }
-                      : {}),
+                    is_correct: assessment.is_correct,
+                    result:
+                      assessment.result ??
+                      (assessment.is_correct ? "correct" : "incorrect"),
                   }
                 : {}),
             }).catch(() => {});
@@ -762,7 +770,7 @@ export default function QuizViewer({
       },
     );
     judgeHandlesRef.current.set(idx, handle);
-  }, [answers, entryIds, idx, language, q]);
+  }, [answers, idx, language, q]);
 
   const handleStopAiJudge = useCallback(() => {
     judgeHandlesRef.current.get(idx)?.cancel();

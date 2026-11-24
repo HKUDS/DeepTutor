@@ -1133,3 +1133,18 @@ class TestJudgeVerdictFrame:
         assert verdict["reason"] == "vision_unavailable"
         assert "cannot read images" in stream.calls[0]["prompt"]
         assert "messages" not in stream.calls[0]
+
+
+class TestLenientSteps:
+    def test_bad_steps_are_dropped_or_trimmed_without_losing_the_verdict(self):
+        import json
+
+        steps = [{"label": "", "ok": True}, {"label": "x" * 500, "ok": False, "comment": "y" * 900}]
+        steps += [{"label": f"s{i}", "ok": True} for i in range(20)]
+        steps.append("not a step")
+        raw = json.dumps({"result": "correct", "confidence": 0.9, "steps": steps})
+        verdict = quiz_judge.parse_judge_verdict(raw)
+        assert verdict["result"] == "correct"
+        assert len(verdict["steps"]) == 12
+        assert len(verdict["steps"][0]["label"]) == 200
+        assert len(verdict["steps"][0]["comment"]) == 600

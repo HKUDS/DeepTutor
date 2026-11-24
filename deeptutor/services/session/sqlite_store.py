@@ -4678,10 +4678,21 @@ class SQLiteSessionStore:
             fields["bookmarked"] = 1 if fields["bookmarked"] else 0
         if "is_correct" in fields:
             fields["is_correct"] = 1 if fields["is_correct"] else 0
+            # A re-grade must not leave the previous result behind.
+            fields.setdefault("result", "correct" if fields["is_correct"] else "incorrect")
         if "resolved" in fields:
             fields["resolved"] = 1 if fields["resolved"] else 0
-        set_clause = ", ".join(f"{k} = ?" for k in fields)
-        values = list(fields.values()) + [entry_id]
+        clauses = [f"{k} = ?" for k in fields]
+        values = list(fields.values())
+        if "is_correct" in fields and "resolved" not in fields:
+            # Same resolution rule as the upsert path.
+            clauses.append(
+                "resolved = CASE WHEN ? = 'ungraded' THEN resolved WHEN ? = 1 THEN 1 "
+                "WHEN is_correct = 1 THEN 0 ELSE resolved END"
+            )
+            values += [fields["result"], fields["is_correct"]]
+        set_clause = ", ".join(clauses)
+        values.append(entry_id)
         with self._connect() as conn:
             cur = conn.execute(
                 f"UPDATE notebook_entries SET {set_clause} WHERE id = ?",  # nosec B608

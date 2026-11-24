@@ -393,7 +393,6 @@ describe("QuizViewer smoke", () => {
         ai_verdict: verdict,
         is_correct: true,
         result: "correct",
-        resolved: true,
       });
     });
     expect(screen.getByTestId("quiz-verdict")).toHaveTextContent("Correct");

@@ -16,7 +16,7 @@ import re
 from typing import Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from deeptutor.learning.semantic_assessment import FINAL_CONFIDENCE, Verdict
 from deeptutor.services.config import PROJECT_ROOT, load_config_with_main
@@ -232,7 +232,26 @@ class _JudgeVerdict(Verdict):
     feedback: str = Field(default="", max_length=2000)
     awarded_points: float | None = Field(default=None, ge=0)
     max_points: float | None = Field(default=None, gt=0)
-    steps: list[_JudgeStep] = Field(default_factory=list, max_length=12)
+    steps: list[_JudgeStep] = Field(default_factory=list)
+
+    @field_validator("steps", mode="before")
+    @classmethod
+    def _keep_usable_steps(cls, value: Any) -> Any:
+        """Step feedback is advisory: trim or drop bad steps, keep the verdict."""
+        if not isinstance(value, list):
+            return value
+        steps = []
+        for step in value:
+            if not isinstance(step, dict) or not str(step.get("label") or "").strip():
+                continue
+            steps.append(
+                {
+                    **step,
+                    "label": str(step["label"]).strip()[:200],
+                    "comment": str(step.get("comment") or "")[:600],
+                }
+            )
+        return steps[:12]
 
 
 def _ungraded(reason: str) -> dict[str, Any]:

@@ -526,3 +526,37 @@ def test_a_new_submission_drops_the_previous_verdict_without_erasing_mistakes(ba
     stored = client.get(f"/bank/entries/{entry['id']}").json()
     assert stored["ai_verdict"] is None
     assert repo.overview("UTC")["mistakes"] == 1
+
+
+def test_rejudging_a_correct_answer_keeps_result_and_resolution_consistent(bank):
+    store, repo, client = bank
+    entry = seed(store, **_open_question(result="ungraded"))
+    client.patch(
+        f"/bank/entries/{entry['id']}",
+        json={"is_correct": True, "result": "correct", "ai_verdict": _JUDGED},
+    )
+    assert client.get(f"/bank/entries/{entry['id']}").json()["resolved"] is True
+
+    # An older client re-judges and only sends is_correct=False.
+    client.patch(
+        f"/bank/entries/{entry['id']}",
+        json={"is_correct": False, "ai_verdict": {**_JUDGED, "result": "incorrect"}},
+    )
+    stored = client.get(f"/bank/entries/{entry['id']}").json()
+    assert (stored["is_correct"], stored["result"], stored["resolved"]) == (
+        False,
+        "incorrect",
+        False,
+    )
+    assert repo.overview("UTC")["mistakes"] == 1
+
+
+def test_ungraded_rejudge_keeps_manual_resolution(bank):
+    store, _, client = bank
+    entry = seed(store, **_open_question(result="ungraded"))
+    client.patch(f"/bank/entries/{entry['id']}", json={"resolved": True})
+    client.patch(
+        f"/bank/entries/{entry['id']}",
+        json={"is_correct": False, "result": "ungraded", "ai_verdict": {"result": "ungraded"}},
+    )
+    assert client.get(f"/bank/entries/{entry['id']}").json()["resolved"] is True
