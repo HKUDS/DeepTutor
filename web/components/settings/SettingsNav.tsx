@@ -3,11 +3,11 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Search, X } from 'lucide-react'
+import { ChevronDown, ChevronRight, Search, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import Tooltip from '@/shared/ui/Tooltip'
 import { useSettingsAccess } from '@/features/settings/navigation/SettingsAccessProvider'
-import { settingsAnchorHref } from '@/features/settings/navigation/settings-nav'
+import { settingsAnchorHref, type SettingsLeaf } from '@/features/settings/navigation/settings-nav'
 import {
   SETTINGS_PAGE_GROUPS,
   settingsPageFamily,
@@ -26,9 +26,18 @@ export default function SettingsNav({ onNavigate }: { onNavigate?: () => void })
   const access = useSettingsAccess()
   const pages = visibleSettingsPages(access)
   const [query, setQuery] = useState('')
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({})
   const needle = query.trim().toLocaleLowerCase()
   const currentKey = pathname.split('/')[2] || 'general'
   const currentFamily = settingsPageFamily(currentKey)
+  const resolveKeys = (keys: string[]): SettingsLeaf[] =>
+    keys.flatMap(key => {
+      // If the family representative is restricted, use its first visible member.
+      const page = settingsPageFamily(key)
+        .map(member => pages.find(item => item.key === member))
+        .find(Boolean)
+      return page ? [page] : []
+    })
   const matches = pages.filter(page => {
     const navLabel = settingsPageLabel(page.key, page.label)
     return [
@@ -45,6 +54,7 @@ export default function SettingsNav({ onNavigate }: { onNavigate?: () => void })
       tEn(navLabel),
       tZh(navLabel),
       page.key,
+      page.key === 'quick-setup' ? '快速接入 快速配置 添加模型 API Key DeepSeek 通义百炼 智谱 Kimi 豆包' : '',
       page.key === 'connections' ? 'API Key token base url 密钥 凭据 地址 供应商' : '',
     ]
       .join(' ')
@@ -52,17 +62,40 @@ export default function SettingsNav({ onNavigate }: { onNavigate?: () => void })
       .includes(needle)
   })
   const groups = needle
-    ? [{ label: 'Search results', pages: matches }]
-    : SETTINGS_PAGE_GROUPS.map(group => ({
-        ...group,
-        pages: group.keys.flatMap(key => {
-          // If the family representative is restricted, use its first visible member.
-          const page = settingsPageFamily(key)
-            .map(member => pages.find(item => item.key === member))
-            .find(Boolean)
-          return page ? [page] : []
-        }),
-      }))
+    ? [{ label: 'Search results', pages: matches, collapsible: undefined }]
+    : SETTINGS_PAGE_GROUPS.map(group => {
+        const collapsibleKeySet = new Set(group.collapsible?.keys ?? [])
+        return {
+          label: group.label,
+          pages: resolveKeys(group.keys.filter(key => !collapsibleKeySet.has(key))),
+          collapsible: group.collapsible
+            ? {
+                label: group.collapsible.label,
+                pages: resolveKeys(group.collapsible.keys),
+              }
+            : undefined,
+        }
+      })
+
+  const renderPageLink = (page: SettingsLeaf) => {
+    const Icon = needle ? page.icon : settingsPageIcon(page.key, page.icon)
+    const active = needle ? page.key === currentKey : currentFamily.includes(page.key)
+    return (
+      <Tooltip key={page.key} label={t(page.blurb)} as="div" side="right">
+        <Link
+          href={settingsAnchorHref(page.key)}
+          scroll={false}
+          onClick={onNavigate}
+          aria-current={active ? 'page' : undefined}
+          data-tour={`tour-nav-${page.key}`}
+          className={`flex min-h-9 items-center gap-2 rounded-lg px-2.5 py-2 text-[13px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-[var(--ring)] ${active ? 'bg-[var(--accent)] font-medium text-[var(--foreground)]' : 'text-[var(--foreground)] hover:bg-accent/60'}`}
+        >
+          <Icon size={15} strokeWidth={1.8} className="shrink-0" />
+          <span>{t(needle ? page.label : settingsPageLabel(page.key, page.label))}</span>
+        </Link>
+      </Tooltip>
+    )
+  }
 
   return (
     <nav aria-label={t('Settings sections')} className="flex min-h-0 flex-1 flex-col">
@@ -92,37 +125,52 @@ export default function SettingsNav({ onNavigate }: { onNavigate?: () => void })
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-2.5 pb-6">
         {groups
-          .filter(group => group.pages.length)
-          .map(group => (
-            <div key={group.label} className="mb-0.5">
-              <p className="px-2.5 pb-1.5 pt-5 text-[12px] font-medium text-muted-foreground">
-                {t(group.label)}
-              </p>
-              <div className="space-y-0.5">
-                {group.pages.map(page => {
-                  const Icon = needle ? page.icon : settingsPageIcon(page.key, page.icon)
-                  const active = needle ? page.key === currentKey : currentFamily.includes(page.key)
-                  return (
-                    <Tooltip key={page.key} label={t(page.blurb)} as="div" side="right">
-                      <Link
-                        href={settingsAnchorHref(page.key)}
-                        scroll={false}
-                        onClick={onNavigate}
-                        aria-current={active ? 'page' : undefined}
-                        data-tour={`tour-nav-${page.key}`}
-                        className={`flex min-h-9 items-center gap-2 rounded-lg px-2.5 py-2 text-[13px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-[var(--ring)] ${active ? 'bg-[var(--accent)] font-medium text-[var(--foreground)]' : 'text-[var(--foreground)] hover:bg-accent/60'}`}
-                      >
-                        <Icon size={15} strokeWidth={1.8} className="shrink-0" />
-                        <span>
-                          {t(needle ? page.label : settingsPageLabel(page.key, page.label))}
-                        </span>
-                      </Link>
-                    </Tooltip>
-                  )
-                })}
+          .filter(group => group.pages.length || group.collapsible?.pages.length)
+          .map(group => {
+            const collapsible = group.collapsible
+            const hasActiveCollapsible = Boolean(
+              collapsible?.pages.some(page => currentFamily.includes(page.key))
+            )
+            const isExpanded =
+              expandedGroups[group.label] ?? hasActiveCollapsible
+            return (
+              <div key={group.label} className="mb-0.5">
+                <p className="px-2.5 pb-1.5 pt-5 text-[12px] font-medium text-muted-foreground">
+                  {t(group.label)}
+                </p>
+                <div className="space-y-0.5">
+                  {group.pages.map(renderPageLink)}
+                </div>
+                {collapsible && collapsible.pages.length > 0 && (
+                  <div className="mt-1">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setExpandedGroups(prev => ({
+                          ...prev,
+                          [group.label]: !isExpanded,
+                        }))
+                      }
+                      aria-expanded={isExpanded}
+                      className="flex min-h-8 w-full items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12px] font-medium text-[var(--muted-foreground)] transition-colors hover:bg-accent/50 hover:text-[var(--foreground)]"
+                    >
+                      {isExpanded ? (
+                        <ChevronDown size={13} strokeWidth={2} className="shrink-0" />
+                      ) : (
+                        <ChevronRight size={13} strokeWidth={2} className="shrink-0" />
+                      )}
+                      <span>{t(collapsible.label)}</span>
+                    </button>
+                    {isExpanded && (
+                      <div className="mt-0.5 space-y-0.5 border-l border-[var(--border)]/60 pl-2 ml-3">
+                        {collapsible.pages.map(renderPageLink)}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
+            )
+          })}
         {needle && !matches.length && (
           <p className="px-2.5 py-5 text-[13px] text-[var(--muted-foreground)]">
             {t('No settings match “{{query}}”.', { query: query.trim() })}

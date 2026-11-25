@@ -70,6 +70,10 @@ const Guardian = dynamic(
     loading,
   },
 );
+const QuickSetup = dynamic(
+  () => import("@/features/settings/sections/models/QuickSetupSettingsSection"),
+  { loading },
+);
 const Connections = dynamic(
   () =>
     import("@/features/settings/sections/models/ConnectionsSettingsSection"),
@@ -184,6 +188,7 @@ const PAGES: Record<string, React.ComponentType> = {
   about: About,
   "learner-profile": Learner,
   guardian: Guardian,
+  "quick-setup": QuickSetup,
   connections: Connections,
   llm: Llm,
   "task-models": Task,

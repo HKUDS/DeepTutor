@@ -27,6 +27,7 @@ import {
   ChartNoAxesCombined,
   UserRound,
   Wrench,
+  Zap,
   type LucideIcon,
 } from "lucide-react";
 
@@ -116,6 +117,14 @@ export function visibleSettingsChildren(
 }
 
 const MODEL_CHILDREN: SettingsLeaf[] = [
+  {
+    key: "quick-setup",
+    href: "/settings/quick-setup",
+    label: "Quick setup",
+    blurb: "Pick a provider, paste your API key, and start chatting in seconds.",
+    icon: Zap,
+    tile: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
+  },
   {
     // "Voice" is already a catalog key used by voice-selection UI
     // (音色 = timbre/voice id), so the settings nav row carries its own key.
