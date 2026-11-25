@@ -742,11 +742,13 @@ export default function QuizViewer({
             const assessment = q ? getAssessment(q, answer, verdict) : null;
             void updateNotebookEntry(eId, {
               ai_judgment: finalText,
-              // Always send an explicit result so a re-judge replaces the
-              // previous one; the server derives ``resolved`` from it.
-              ...(verdict && assessment
+              // A final verdict sends an explicit result so a re-judge
+              // replaces the previous one; the server derives ``resolved``
+              // from it. An unsure verdict is no grade: it keeps the stored
+              // one instead of turning a judged-correct answer into a mistake.
+              ...(verdict ? { ai_verdict: verdict } : {}),
+              ...(verdict?.final && assessment
                 ? {
-                    ai_verdict: verdict,
                     is_correct: assessment.is_correct,
                     result:
                       assessment.result ??

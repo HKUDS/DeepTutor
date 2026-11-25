@@ -406,6 +406,62 @@ describe("QuizViewer smoke", () => {
     ]);
   });
 
+  it("keeps the stored grade when a re-judge is unsure (mock API)", async () => {
+    const user = userEvent.setup();
+    renderViewer([shortAnswerQuestion], {
+      sessionId: "session-1",
+      turnId: "turn-1",
+    });
+    await user.type(
+      screen.getByPlaceholderText("Type your answer..."),
+      "Light becomes sugar.",
+    );
+    await user.click(screen.getByRole("button", { name: /Check Answer/ }));
+    await waitFor(() => expect(mocks.upsertNotebookEntry).toHaveBeenCalled());
+
+    const judged = {
+      result: "correct" as const,
+      is_correct: true,
+      final: true,
+      confidence: 0.92,
+      steps: [],
+    };
+    await user.click(screen.getByRole("button", { name: /AI Judge/ }));
+    act(() => {
+      mocks.judgeHandlers!.onVerdict!(judged);
+      mocks.judgeHandlers!.onDone("Right.");
+    });
+    await waitFor(() => {
+      expect(mocks.updateNotebookEntry).toHaveBeenLastCalledWith(11, {
+        ai_judgment: "Right.",
+        ai_verdict: judged,
+        is_correct: true,
+        result: "correct",
+      });
+    });
+
+    // An unsure verdict is no grade: it must not turn the judged-correct
+    // answer back into a mistake.
+    const unsure = {
+      result: "ungraded" as const,
+      is_correct: null,
+      final: false,
+      confidence: 0.4,
+      steps: [],
+    };
+    await user.click(screen.getByRole("button", { name: /Re-judge/ }));
+    act(() => {
+      mocks.judgeHandlers!.onVerdict!(unsure);
+      mocks.judgeHandlers!.onDone("Hard to tell.");
+    });
+    await waitFor(() => {
+      expect(mocks.updateNotebookEntry).toHaveBeenLastCalledWith(11, {
+        ai_judgment: "Hard to tell.",
+        ai_verdict: unsure,
+      });
+    });
+  });
+
   it("shows one result badge when exact matching and the judge disagree", async () => {
     const user = userEvent.setup();
     renderViewer([choiceQuestion]);
