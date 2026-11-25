@@ -1,4 +1,12 @@
 {
+  "Archive current page": "Lưu trữ trang hiện tại",
+  "Delete current page": "Xóa trang hiện tại",
+  "Import document": "Nhập tài liệu",
+  "No archived pages": "Không có trang đã lưu trữ",
+  "No active pages": "Không có trang đang hoạt động",
+  "The Markdown file is empty.": "Tệp Markdown trống.",
+  "Choose a Word, Markdown or PDF document.": "Chọn tài liệu Word, Markdown hoặc PDF.",
+  "No text was found in this PDF. For a scan, run OCR first.": "Không tìm thấy văn bản trong tệp PDF này. Với bản quét, hãy nhận dạng ký tự (OCR) trước.",
   "Partially correct": "Đúng một phần",
   "These answers could not be submitted. Please review or retry.": "Không thể gửi các câu trả lời này. Vui lòng xem lại hoặc thử lại.",
   "The edit could not be sent. Your draft is still here; please retry.": "Không thể gửi bản chỉnh sửa. Bản nháp của bạn vẫn còn ở đây; vui lòng thử lại.",

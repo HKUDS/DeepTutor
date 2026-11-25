@@ -1,4 +1,5 @@
 import { apiFetch, apiUrl } from "@/lib/api";
+import type { NotePage } from "@/lib/notes-api";
 
 const BASE = "/api";
 
@@ -96,14 +97,14 @@ export async function deleteCoWriterDocument(docId: string): Promise<boolean> {
 
 export async function importCoWriterDocx(
   file: File,
-): Promise<CoWriterDocument> {
+): Promise<NotePage> {
   const body = new FormData();
   body.append("file", file);
   const res = await apiFetch(apiUrl(`${BASE}/documents/import/docx`), {
     method: "POST",
     body,
   });
-  return jsonOrThrow<CoWriterDocument>(res);
+  return jsonOrThrow<NotePage>(res);
 }
 
 export async function exportCoWriterDocx(payload: {

@@ -15,12 +15,14 @@ export interface NotePage extends CoWriterDocument {
   icon: string
   cover: string
   pinned: boolean
+  archived?: boolean
 }
 export interface NoteSummary extends CoWriterDocumentSummary {
   parent_id: string | null
   icon: string
   cover?: string
   pinned: boolean
+  archived?: boolean
   revision: number
 }
 export interface NoteSuggestion {

@@ -1,4 +1,12 @@
 {
+  "Archive current page": "Archiver la page actuelle",
+  "Delete current page": "Supprimer la page actuelle",
+  "Import document": "Importer un document",
+  "No archived pages": "Aucune page archivée",
+  "No active pages": "Aucune page active",
+  "The Markdown file is empty.": "Le fichier Markdown est vide.",
+  "Choose a Word, Markdown or PDF document.": "Choisissez un document Word, Markdown ou PDF.",
+  "No text was found in this PDF. For a scan, run OCR first.": "Aucun texte trouvé dans ce PDF. Pour un document numérisé, utilisez d’abord la reconnaissance de caractères (OCR).",
   "Your account changed. Reload settings before applying learning text.": "Votre compte a changé. Rechargez les paramètres avant d’appliquer les préférences de texte d’apprentissage.",
   "Customize the visual theme, learning text, and code blocks. Apply changes using the bar below.": "Personnalisez le thème visuel, le texte d’apprentissage et les blocs de code. Appliquez les modifications à l’aide de la barre ci-dessous.",
   "Learning text": "Texte d’apprentissage",

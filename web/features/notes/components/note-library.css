@@ -12,6 +12,7 @@
   align-items: center;
   gap: 8px;
   width: min(320px, 100%);
+  min-width: 0;
   height: 34px;
   padding: 0 11px;
   border-radius: 9px;
@@ -20,6 +21,10 @@
   transition:
     box-shadow 140ms,
     background-color 140ms;
+}
+.dt-notes-toolbar button[aria-pressed="true"] {
+  background: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--ring);
 }
 .dt-notes-search:focus-within {
   background: var(--background);
@@ -77,6 +82,9 @@
     0 2px 4px rgb(15 15 15 / 0.05),
     0 10px 24px -10px rgb(15 15 15 / 0.16);
 }
+.dt-notes-card.is-menu-open {
+  z-index: 2;
+}
 .dt-notes-card:hover {
   transform: translateY(-1px);
 }
@@ -130,7 +138,7 @@
   line-height: 1.4;
   color: var(--foreground);
 }
-.dt-notes-card p {
+.dt-notes-card-body p {
   display: -webkit-box;
   flex: 1;
   margin-top: 6px;
@@ -176,15 +184,6 @@
   right: 0;
   width: 220px;
   transform-origin: top right;
-}
-.dt-menu-item.is-danger {
-  color: #dc2626;
-}
-.dt-notes-confirm {
-  padding: 4px 8px 6px;
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--muted-foreground);
 }
 .dt-notes-error {
   margin-bottom: 16px;

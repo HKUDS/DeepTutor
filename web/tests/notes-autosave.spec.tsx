@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, expect, it, vi } from 'vitest'
 import NoteWorkspace from '@/features/notes/components/NoteWorkspace'
+import * as coWriter from '@/lib/co-writer-api'
 import {
   getNote,
   listNotes,
@@ -11,7 +12,8 @@ import {
   reviewSuggestion,
 } from '@/lib/notes-api'
 import type { NotePage, NoteSuggestion } from '@/lib/notes-api'
-vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }))
+const router = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn() }))
+vi.mock('next/navigation', () => ({ useRouter: () => router }))
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }))
 vi.mock('@/hooks/useAuthStatus', () => ({
   useAuthStatus: () => ({ statusAvailable: true, loading: false, enabled: false }),
@@ -114,6 +116,29 @@ const proposal: NoteSuggestion = {
   blocks: [{ ...page.blocks![0], content: 'Accepted' }],
   status: 'pending',
 }
+it('deletes the selected child while preserving unsaved edits on its same-named parent', async () => {
+  const parent = { ...page, preview: 'Body' }
+  const child = { ...parent, parent_id: parent.id, id: '123456abcdef' }
+  vi.mocked(listNotes)
+    .mockResolvedValueOnce({ documents: [parent, child] })
+    .mockResolvedValue({ documents: [parent] })
+  vi.mocked(saveNote).mockResolvedValue({ ...page, revision: 2 })
+  const remove = vi.spyOn(coWriter, 'deleteCoWriterDocument').mockResolvedValue(true)
+  render(<NoteWorkspace docId={parent.id} />)
+  fireEvent.click(await screen.findByRole('button', { name: 'Edit block' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Page tree' }))
+  const row = screen.getAllByRole('link', { name: parent.title })
+    .find(link => link.getAttribute('href') === `/co-writer/${child.id}`)!
+  fireEvent.contextMenu(row)
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }))
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Delete page' }))
+  await waitFor(() => expect(remove).toHaveBeenCalledWith(child.id))
+  expect(saveNote).toHaveBeenCalledWith(parent.id, expect.objectContaining({ expected_revision: 1 }))
+  expect(screen.getByTestId('editor-snapshot')).toHaveTextContent('New content')
+  expect(router.replace).not.toHaveBeenCalled()
+  expect(router.push).not.toHaveBeenCalled()
+})
+
 it('flushes a newly typed edit before approval and retains the returned content on remount', async () => {
   let finish!: (value: NotePage) => void
   vi.mocked(getSuggestions).mockResolvedValue({ suggestions: [proposal] })

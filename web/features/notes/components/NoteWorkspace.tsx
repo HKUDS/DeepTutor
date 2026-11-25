@@ -1,7 +1,7 @@
 'use client'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
-import { useCallback, useEffect, useRef, useState, type ComponentType } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType } from 'react'
 import type { NoteCompanionProps } from './note-companion-props'
 import { useRouter } from 'next/navigation'
 import { useTranslation } from 'react-i18next'
@@ -19,7 +19,7 @@ import {
   type NoteSummary,
   type NoteSuggestion,
 } from '@/lib/notes-api'
-import { exportCoWriterDocx } from '@/lib/co-writer-api'
+import { deleteCoWriterDocument, exportCoWriterDocx } from '@/lib/co-writer-api'
 import { notifyCoWriterChanged } from '@/lib/co-writer-events'
 import { browserStorage } from '@/shared/storage'
 import { useAuthStatus } from '@/hooks/useAuthStatus'
@@ -33,10 +33,15 @@ import NoteOutline from './NoteOutline'
 import { blockLineCenter } from './NoteThreadMarkers'
 import { foldIntoOrb } from '../model/fold-motion'
 import { useNoteThreads } from './useNoteThreads'
-import { pageDescendants } from '../model/page-tree'
+import { activePages, pageDescendants } from '../model/page-tree'
+import { noteDocumentTypes } from '../model/import-document'
+import { useNoteImport } from './useNoteImport'
+import { prepareNoteDestination, useNoteDestination } from './useNoteNavigation'
+import { activeWorkspaceId, scopedUrl } from '@/lib/workspace-scope'
+import type { PageAction } from './NotePageActions'
 import { inlineText } from '../model/threads'
 import { learningKind } from '../model/learning-kinds'
-const Editor = dynamic(() => import('./NoteEditor'), {
+const LazyEditor = dynamic(() => import('./NoteEditor'), {
   ssr: false,
   loading: () => <div className="dt-note-editor-loading" aria-hidden />,
 })
@@ -58,12 +63,18 @@ export default function NoteWorkspace({
   const owner =
     auth.statusAvailable && !auth.loading ? (auth.enabled ? auth.userId : 'local') : null
   const [mutating, setMutating] = useState(false)
-  const [page, setPage] = useState<NotePage | null>(null)
-  const [pages, setPages] = useState<NoteSummary[]>([])
+  const initial = useNoteDestination(docId)
+  const [pageActionBusy, setPageActionBusy] = useState(false)
+  const [holdDocument, setHoldDocument] = useState(false)
+  const Editor = initial?.Editor ?? LazyEditor
+  const [page, setPage] = useState<NotePage | null>(initial?.doc ?? null)
+  const [pages, setPages] = useState<NoteSummary[]>(initial?.pages ?? [])
+  const importInput = useRef<HTMLInputElement>(null)
   const [error, setError] = useState('')
   const [reviewErrors, setReviewErrors] = useState<Record<string, string>>({})
   const [status, setStatus] = useState<NoteSaveStatus>('Saved')
-  const [tree, setTreeOpen] = useState(false)
+  const [tree, setTreeOpen] = useState(initial?.treeOpen ?? false)
+  const noteImport = useNoteImport(pages, setError, tree)
   const [outlineOpen, setOutlineOpenState] = useState(true)
   const setOutlineOpen = (open: boolean) => {
     setOutlineOpenState(open)
@@ -84,7 +95,7 @@ export default function NoteWorkspace({
   const [backlinks, setBacklinks] = useState<NoteSummary[]>([])
   const [recovery, setRecovery] = useState<{ title: string; blocks: NoteBlock[] } | null>(null)
   const editor = useRef<NoteEditorHandle | null>(null)
-  const latest = useRef<NotePage | null>(null)
+  const latest = useRef<NotePage | null>(initial?.doc ?? null)
   const version = useRef(0)
   const savedVersion = useRef(0)
   const inflight = useRef<Promise<void> | null>(null)
@@ -183,7 +194,8 @@ export default function NoteWorkspace({
   useEffect(() => {
     if (!draftKey) return
     let cancelled = false
-    void getNote(docId)
+    const load = initial ? Promise.resolve(latest.current!) : getNote(docId)
+    void load
       .then(doc => {
         if (cancelled) return
         const raw = browserStorage.readRaw('local', draftKey)
@@ -217,7 +229,7 @@ export default function NoteWorkspace({
       cancelled = true
       if (timer.current) clearTimeout(timer.current)
     }
-  }, [docId, draftKey, owner, refreshPages, refreshSuggestions])
+  }, [docId, draftKey, owner, refreshPages, refreshSuggestions, initial])
   useEffect(() => {
     const onUnload = (e: BeforeUnloadEvent) => {
       if (version.current !== savedVersion.current) {
@@ -503,7 +515,61 @@ export default function NoteWorkspace({
       setError(String(err))
     }
   }
+  const visiblePages = useMemo(() => activePages(pages), [pages])
   const invalidParents = pageDescendants(pages, docId)
+  const pageAction = async (target: NotePage | NoteSummary, action: PageAction) => {
+    const workspace = activeWorkspaceId()
+    const leaving = (action === 'delete' && target.id === docId) ||
+      (action === 'archive' && pageDescendants(pages, target.id).has(docId))
+    setPageActionBusy(true)
+    setHoldDocument(leaving || target.id === docId || (action === 'delete' && latest.current?.parent_id === target.id))
+    let navigating = false
+    try {
+      await flush()
+      if (!root.current?.isConnected || activeWorkspaceId() !== workspace) return
+      const current = latest.current!
+      if (action === 'delete') {
+        await deleteCoWriterDocument(target.id)
+        if (current.parent_id === target.id) {
+          // Deleting the parent promotes this page and advances its revision once.
+          latest.current = { ...current, parent_id: target.parent_id, revision: current.revision + 1 }
+          setPage(latest.current)
+        }
+      } else {
+        const result = await saveNote(target.id, {
+          archived: action === 'archive',
+          expected_revision: target.id === docId ? current.revision : target.revision,
+        })
+        if (target.id === docId) {
+          latest.current = result
+          setPage(result)
+        }
+      }
+      notifyCoWriterChanged()
+      if (leaving) {
+        // Keep the current view painted while the destination is being prepared.
+        const remaining = action === 'archive'
+          ? pages.map(p => p.id === target.id ? { ...p, archived: true } : p)
+          : pages.filter(p => p.id !== target.id).map(p => p.parent_id === target.id
+              ? { ...p, parent_id: target.parent_id, revision: p.revision + 1 } : p)
+        const parent = target.parent_id ? await getNote(target.parent_id).catch(() => null) : null
+        const loaded = parent ? (await import('./NoteEditor')).default : undefined
+        if (!root.current?.isConnected || activeWorkspaceId() !== workspace) return
+        prepareNoteDestination({ pages: remaining, workspace, doc: parent ?? undefined, Editor: loaded, treeOpen: tree })
+        router.replace(scopedUrl(parent ? `/co-writer/${parent.id}` : '/co-writer', workspace))
+        navigating = true
+      } else {
+        refreshPages()
+      }
+    } catch (err) {
+      setError(String(err))
+    } finally {
+      if (!navigating) {
+        setHoldDocument(false)
+        setPageActionBusy(false)
+      }
+    }
+  }
   const createPage = async (parentId: string | null = null) => {
     setMutating(true)
     try {
@@ -570,12 +636,21 @@ export default function NoteWorkspace({
           })
       }}
     >
+      {noteImport.dialog}
+      <input ref={importInput} type="file" hidden accept={noteDocumentTypes} onChange={event => {
+        const file = event.target.files?.[0]
+        event.target.value = ''
+        if (file) void noteImport.openFile(file, flush)
+      }} />
       <NoteTopBar
         page={page}
-        pages={pages}
+        pages={visiblePages}
+        hasChildren={pages.some(p => p.parent_id === docId)}
+        onAction={pageAction}
+        onImport={() => importInput.current?.click()}
         invalidParents={invalidParents}
         status={status}
-        busy={mutating}
+        busy={mutating || pageActionBusy || noteImport.importing}
         embedded={embedded}
         treeOpen={tree}
         companionOpen={Boolean(threads.open)}
@@ -634,14 +709,15 @@ export default function NoteWorkspace({
         {tree && (
           <NotePageTree
             pages={pages}
+            onAction={pageAction}
             currentId={docId}
-            busy={mutating}
+            busy={mutating || pageActionBusy || noteImport.importing}
             embedded={embedded}
             onNavigate={navigate}
             onCreate={createPage}
           />
         )}
-        <main className="dt-note-main" ref={setMainEl}>
+        <main className="dt-note-main" ref={setMainEl} inert={holdDocument || noteImport.importing}>
           {page && margin !== 'none' && (
             <NoteOutline
               blocks={page.blocks}

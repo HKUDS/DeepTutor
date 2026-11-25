@@ -61,6 +61,9 @@ function openMenu(blocks: NoteBlock[] | null) {
       onMetadata={vi.fn()}
       onInsertFavorite={vi.fn()}
       onExport={onExport}
+      onAction={vi.fn()}
+      onImport={vi.fn()}
+      hasChildren={false}
     />,
   )
   fireEvent.click(screen.getByRole('button', { name: 'More page actions' }))

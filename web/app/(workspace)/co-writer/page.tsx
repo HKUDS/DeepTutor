@@ -14,7 +14,6 @@ import {
   PinOff,
   Plus,
   Search,
-  Trash2,
   Upload,
 } from "lucide-react";
 import {
@@ -22,7 +21,12 @@ import {
   PageHeader,
   pageActionClass,
 } from "@/components/layout/FeaturePage";
-import { deleteCoWriterDocument, importCoWriterDocx } from "@/lib/co-writer-api";
+import { deleteCoWriterDocument } from "@/lib/co-writer-api";
+import NotePageActions, { type PageAction } from "@/features/notes/components/NotePageActions";
+import { noteDocumentTypes } from "@/features/notes/model/import-document";
+import { useNoteImport } from "@/features/notes/components/useNoteImport";
+import { useNoteDestination } from "@/features/notes/components/useNoteNavigation";
+import { activePages } from "@/features/notes/model/page-tree";
 import { notifyCoWriterChanged } from "@/lib/co-writer-events";
 import { createNote, listNotes, saveNote, type NoteSummary } from "@/lib/notes-api";
 import { formatRelativeTime } from "@/lib/relative-time";
@@ -40,7 +44,7 @@ function PageCard({
   locale,
   busy,
   onPin,
-  onDelete,
+  onAction,
 }: {
   page: NoteSummary;
   parent?: NoteSummary;
@@ -48,16 +52,10 @@ function PageCard({
   locale: string;
   busy: boolean;
   onPin: () => void;
-  onDelete: () => void;
+  onAction: (action: PageAction) => void;
 }) {
   const { t } = useTranslation();
-  const [open, setOpenState] = useState(false);
-  const [confirming, setConfirming] = useState(false);
-  const setOpen = (value: boolean | ((current: boolean) => boolean)) => {
-    const next = typeof value === "function" ? value(open) : value;
-    setOpenState(next);
-    if (!next) setConfirming(false);
-  };
+  const [open, setOpen] = useState(false);
   const menu = useMenuPopover<HTMLDivElement>(open, setOpen);
   const title = page.title || t("Untitled");
   return (
@@ -109,31 +107,10 @@ function PageCard({
               {t(page.pinned ? "Unpin" : "Pin to top")}
             </button>
             <div className="dt-menu-divider" />
-            {confirming ? (
-              <>
-                <p className="dt-notes-confirm">
-                  {childCount > 0
-                    ? t("Delete this page? Its subpages move up one level.")
-                    : t("Delete this page? This cannot be undone.")}
-                </p>
-                <button
-                  role="menuitem"
-                  className="dt-menu-item is-danger"
-                  onClick={() => {
-                    setOpen(false);
-                    onDelete();
-                  }}
-                >
-                  <Trash2 size={14} />
-                  {t("Delete page")}
-                </button>
-              </>
-            ) : (
-              <button role="menuitem" className="dt-menu-item is-danger" onClick={() => setConfirming(true)}>
-                <Trash2 size={14} />
-                {t("Delete")}
-              </button>
-            )}
+            <NotePageActions compact page={page} hasChildren={childCount > 0} onAction={action => {
+              setOpen(false);
+              onAction(action);
+            }} />
           </div>
         )}
       </div>
@@ -144,13 +121,15 @@ function PageCard({
 export default function CoWriterHomePage() {
   const router = useRouter();
   const { t, i18n } = useTranslation();
-  const [pages, setPages] = useState<NoteSummary[]>([]);
-  const [loading, setLoading] = useState(true);
+  const initial = useNoteDestination();
+  const [pages, setPages] = useState<NoteSummary[]>(initial?.pages ?? []);
+  const [loading, setLoading] = useState(!initial);
   const [creating, setCreating] = useState(false);
-  const [importing, setImporting] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [showArchived, setShowArchived] = useState(false);
   const [error, setError] = useState("");
+  const { openFile, importing, dialog } = useNoteImport(pages, setError);
   const importInputRef = useRef<HTMLInputElement>(null);
 
   const refresh = useCallback(async () => {
@@ -182,23 +161,6 @@ export default function CoWriterHomePage() {
     }
   }, [creating, router]);
 
-  const handleImportDocx = useCallback(
-    async (file: File | undefined) => {
-      if (!file || creating || importing) return;
-      setImporting(true);
-      setError("");
-      try {
-        const document = await importCoWriterDocx(file);
-        notifyCoWriterChanged();
-        router.push(`/co-writer/${document.id}`);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : String(err));
-        setImporting(false);
-      }
-    },
-    [creating, importing, router],
-  );
-
   const handlePin = async (page: NoteSummary) => {
     setBusyId(page.id);
     try {
@@ -212,10 +174,11 @@ export default function CoWriterHomePage() {
     }
   };
 
-  const handleDelete = async (page: NoteSummary) => {
+  const handleAction = async (page: NoteSummary, action: PageAction) => {
     setBusyId(page.id);
     try {
-      await deleteCoWriterDocument(page.id);
+      if (action === "delete") await deleteCoWriterDocument(page.id);
+      else await saveNote(page.id, { archived: action === "archive", expected_revision: page.revision });
       notifyCoWriterChanged();
       await refresh();
     } catch (err) {
@@ -233,12 +196,13 @@ export default function CoWriterHomePage() {
     return counts;
   }, [pages]);
   const needle = query.trim().toLocaleLowerCase();
+  const scope = showArchived ? pages.filter(page => page.archived) : activePages(pages);
   // Browsing shows the notebook's top level; a search reaches every page.
   const visible = needle
-    ? pages.filter((page) =>
+    ? scope.filter((page) =>
         `${page.title} ${page.preview}`.toLocaleLowerCase().includes(needle),
       )
-    : pages.filter((page) => !page.parent_id || !byId.has(page.parent_id));
+    : scope.filter((page) => showArchived || !page.parent_id || !byId.has(page.parent_id));
   const pinned = visible.filter((page) => page.pinned);
   const rest = visible.filter((page) => !page.pinned);
 
@@ -251,21 +215,22 @@ export default function CoWriterHomePage() {
       locale={i18n.language}
       busy={busyId === page.id}
       onPin={() => void handlePin(page)}
-      onDelete={() => void handleDelete(page)}
+      onAction={action => void handleAction(page, action)}
     />
   );
 
   return (
     <FeaturePage>
+      {dialog}
       <input
         ref={importInputRef}
         type="file"
-        accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        accept={noteDocumentTypes}
         className="hidden"
         onChange={(event) => {
           const file = event.target.files?.[0];
           event.target.value = "";
-          void handleImportDocx(file);
+          if (file && !creating && !importing) void openFile(file);
         }}
       />
       <PageHeader
@@ -282,7 +247,7 @@ export default function CoWriterHomePage() {
               className={pageActionClass("secondary")}
             >
               {importing ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
-              {t("Import Word")}
+              {t("Import document")}
             </button>
             <button
               type="button"
@@ -327,13 +292,17 @@ export default function CoWriterHomePage() {
               className={pageActionClass("secondary")}
             >
               <Upload size={14} />
-              {t("Import Word")}
+              {t("Import document")}
             </button>
           </div>
         </div>
       ) : (
         <>
           <div className="dt-notes-toolbar">
+            <button type="button" className={pageActionClass("secondary")} aria-pressed={showArchived}
+              onClick={() => setShowArchived(!showArchived)}>
+              {t("Archived")}
+            </button>
             <label className="dt-notes-search">
               <Search size={14} strokeWidth={1.8} aria-hidden />
               <input
@@ -345,11 +314,12 @@ export default function CoWriterHomePage() {
               />
             </label>
             <span className="dt-notes-count">
-              {t("{{count}} pages", { count: pages.length })}
+              {t("{{count}} pages", { count: scope.length })}
             </span>
           </div>
           {!visible.length && (
-            <p className="dt-notes-none">{t("No pages match “{{query}}”.", { query: query.trim() })}</p>
+            <p className="dt-notes-none">{needle ? t("No pages match “{{query}}”.", { query: query.trim() })
+              : t(showArchived ? "No archived pages" : "No active pages")}</p>
           )}
           {!!pinned.length && (
             <section className="dt-notes-section" aria-label={t("Pinned pages")}>
