@@ -27,7 +27,9 @@ function keyOf(message: SessionMessage, index: number): string {
   return message.id ? `m${message.id}` : `m#${index}`;
 }
 
-export function toExchanges(messages: readonly SessionMessage[]): ChatExchange[] {
+export function toExchanges(
+  messages: readonly SessionMessage[],
+): ChatExchange[] {
   const exchanges: ChatExchange[] = [];
   // The row a later assistant message may still attach to. Only the newest
   // user row can own a reply, so a stale cursor is never reused.
@@ -106,5 +108,8 @@ export function resolveTurn(
   if (live) return { kind: 'live', turn: live };
   // The turn is no longer in the active set: its outcome is whatever the
   // session's last turn recorded, or a plain end when nothing is left.
-  return { kind: 'settled', status: detail.status };
+  return {
+    kind: 'settled',
+    status: isActiveTurnStatus(detail.status) ? 'idle' : detail.status,
+  };
 }

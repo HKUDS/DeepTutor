@@ -37,6 +37,29 @@ or Web storage. Keep these imports narrow. If more clients need the same files,
 move the tested contracts and transport into a shared package and retain Web
 compatibility imports during migration.
 
+## Recovery boundaries
+
+The signed-in chat opens its last saved conversation on cold start. The
+server transcript and active turn list are authoritative. If an assistant
+message already belongs to the live turn, the app keeps that saved answer
+and consumes replay for status and completion without appending old text.
+This uses turn, assistant-message and parent IDs when present. A payload with
+none of these IDs cannot reliably correlate an assistant row with the live
+turn. A future protocol change could expose the turn ID and persisted sequence
+on every assistant row to cover older or incomplete payloads.
+
+The first event containing the turn and session IDs enables task recovery.
+Before those IDs arrive, an unconfirmed start is not automatically resent.
+On relaunch, an existing saved session can be opened and checked for a live
+turn. A new session whose first frame never arrived has no client-visible
+session ID. The public API has no lookup by `client_submission_id`, so that
+start cannot be recovered automatically. A future design would persist the
+submission ID before send and resolve it through an authenticated,
+workspace-scoped lookup. It would also need an explicit idempotency contract
+across storage implementations. Today an explicit same-session retry reuses
+the ID in the same process, but the server's reservation behavior is
+store-dependent and can restart a terminal failed or cancelled submission.
+
 ## Run on Android
 
 Install Node.js, JDK 17, and the Android SDK. The Gradle project declares its

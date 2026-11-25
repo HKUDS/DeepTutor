@@ -174,7 +174,16 @@ export class ServerSession {
       await this.clearSession(origin, operation, true);
     });
 
-  readonly invalidateAuth = (): void => {
+  readonly invalidateAuth = (expected?: {
+    origin: string;
+    accountId: string;
+  }): void => {
+    if (
+      expected &&
+      (this.state.origin !== expected.origin ||
+        (this.state.status?.accountId ?? '') !== expected.accountId)
+    )
+      return;
     this.run(async operation => {
       const { origin, phase } = this.state;
       if (!origin || phase !== 'chat' || !this.state.status?.enabled) return;

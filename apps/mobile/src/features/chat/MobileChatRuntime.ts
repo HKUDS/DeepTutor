@@ -17,7 +17,11 @@ import {
   type SocketMessageEvent,
   type TurnSocketFactory,
 } from '@/features/chat/transport/socket';
-import { toExchanges, resolveTurn, type ChatExchange } from '../sessions/history';
+import {
+  toExchanges,
+  resolveTurn,
+  type ChatExchange,
+} from '../sessions/history';
 import { shouldAppendEventContent } from '@/lib/stream';
 import { ApiError } from '../../services/apiClient';
 import type {
@@ -87,6 +91,7 @@ type ChatOptions = {
 };
 
 type ActiveTurn = {
+  savedAnswer?: boolean;
   messageId: string;
   /** The id sent as `client_submission_id`; the server dedupes on it. */
   submissionId: string;
@@ -179,14 +184,19 @@ export class MobileChatRuntime {
   private lastPersistedAt = 0;
   /** Bumped by every load or reset so a late reply cannot land in a new one. */
   private epoch = 0;
+  private historyRequest: AbortController | null = null;
   /** Record read on cold start, consumed by the transcript load it triggered. */
-  private pendingRecord: RecoveryRecord | null = null;
   /**
    * The last start command the server never confirmed. Reusing its id keeps a
    * retry idempotent server-side: `start_turn` returns the turn it already
    * reserved instead of running the question twice.
    */
-  private unconfirmedSubmission: { id: string; text: string } | null = null;
+  private unconfirmedSubmission: {
+    id: string;
+    text: string;
+    sessionId: string | null;
+    messageId: string;
+  } | null = null;
   private authProbe: Promise<boolean> | undefined;
   private nextAuthProbeAt = 0;
 
@@ -214,7 +224,9 @@ export class MobileChatRuntime {
     this.clearStartTimeout();
     this.clearReplayRetry();
     this.clearIdleTimer();
-    this.epoch += 1;
+    this.invalidateHistory();
+    this.restored = false;
+    this.unconfirmedSubmission = null;
     this.active = null;
     this.sessionId = null;
     this.retiredTurnIds.clear();
@@ -238,8 +250,8 @@ export class MobileChatRuntime {
     if (resumed && client.state === 'connected') client.manualRetry();
     client.setPageVisible(visible);
     if (resumed && this.active) this.watchTurn(this.active);
-    // Coming back with nothing in memory means the process was reclaimed.
-    if (resumed && !this.active) this.restore().catch(() => {});
+    // A reclaimed process creates a new runtime. Otherwise keep the current
+    // selection and let the existing socket recover from its cursor.
   }
 
   retryConnection = () => {
@@ -267,6 +279,7 @@ export class MobileChatRuntime {
   private load = async (
     sessionId: string,
     silent: boolean,
+    record: RecoveryRecord | null = null,
   ): Promise<boolean> => {
     if (this.active) {
       if (!silent) {
@@ -278,7 +291,9 @@ export class MobileChatRuntime {
     }
     const api = this.options.sessionApi;
     if (!api) return false;
-    const epoch = ++this.epoch;
+    const epoch = this.invalidateHistory();
+    const request = new AbortController();
+    this.historyRequest = request;
     this.active = null;
     this.sessionId = sessionId;
     this.client?.setResumeCursor(null, 0);
@@ -294,16 +309,25 @@ export class MobileChatRuntime {
       error: null,
     });
     try {
-      const detail = await api.get(sessionId);
+      const detail = await api.get(sessionId, request.signal);
       if (epoch !== this.epoch) return false;
-      this.applyDetail(detail);
+      this.applyDetail(detail, record);
       return true;
     } catch (error) {
       if (epoch !== this.epoch) return false;
       this.failLoad(error, silent);
       return false;
+    } finally {
+      if (this.historyRequest === request) this.historyRequest = null;
     }
   };
+
+  private invalidateHistory(): number {
+    this.epoch += 1;
+    this.historyRequest?.abort();
+    this.historyRequest = null;
+    return this.epoch;
+  }
 
   /** Re-run the last failed transcript load. */
   retrySession = async (): Promise<boolean> => {
@@ -315,7 +339,7 @@ export class MobileChatRuntime {
   /** Start a fresh conversation; the server creates it on the next turn. */
   reset = () => {
     if (this.active && !this.state.canLeaveTurn) return;
-    this.epoch += 1;
+    this.invalidateHistory();
     this.active = null;
     this.clearIdleTimer();
     this.clearStartTimeout();
@@ -354,14 +378,22 @@ export class MobileChatRuntime {
     ) {
       return false;
     }
-    const messageId = newCommandId();
-    // Resending the same question after an unconfirmed start reuses the id the
-    // server may already have reserved, so the retry cannot run it twice.
-    const submissionId =
-      this.unconfirmedSubmission?.text === question
-        ? this.unconfirmedSubmission.id
-        : newCommandId();
-    this.unconfirmedSubmission = { id: submissionId, text: question };
+    this.invalidateHistory();
+    const previous = this.unconfirmedSubmission;
+    const retry =
+      previous?.text === question && previous.sessionId === this.sessionId
+        ? previous
+        : null;
+    // Reuse a reservation when supported by the server, within this session only.
+    const messageId = retry?.messageId ?? newCommandId();
+    const submissionId = retry?.id ?? newCommandId();
+    this.unconfirmedSubmission = {
+      id: submissionId,
+      text: question,
+      sessionId: this.sessionId,
+      messageId,
+    };
+    this.lastPersistedAt = 0;
     const active: ActiveTurn = {
       messageId,
       submissionId,
@@ -374,7 +406,7 @@ export class MobileChatRuntime {
     this.active = active;
     this.update({
       messages: [
-        ...this.state.messages,
+        ...this.state.messages.filter(message => message.id !== messageId),
         { id: messageId, question, answer: '', failed: null, retryable: false },
       ],
       status: 'submitting',
@@ -388,8 +420,7 @@ export class MobileChatRuntime {
         'failed',
         'The server did not confirm the request. Check your connection and try again.',
       );
-      // The transport can replay this durable command until it is admitted.
-      // Dispose that queue so the timed-out request cannot start later.
+      // Reconnect without replaying a start whose admission is unknown.
       this.closeTransport();
       this.openTransport();
     }, START_TIMEOUT_MS);
@@ -401,6 +432,7 @@ export class MobileChatRuntime {
           client_submission_id: submissionId,
           ...(this.sessionId ? { session_id: this.sessionId } : {}),
         }),
+        { durable: false },
       );
       return true;
     } catch {
@@ -474,38 +506,63 @@ export class MobileChatRuntime {
   };
 
   /** Adopt a server transcript, resuming it only if the server says it is live. */
-  private applyDetail(detail: SessionDetail) {
-    // A record only describes the conversation it was written for.
-    const record =
-      this.pendingRecord?.sessionId === detail.id ? this.pendingRecord : null;
-    this.pendingRecord = null;
+  private applyDetail(detail: SessionDetail, record: RecoveryRecord | null) {
     // The server's transcript settles whether anything is still pending.
     this.unconfirmedSubmission = null;
-    const messages = toExchanges(detail.messages);
+    let messages = toExchanges(detail.messages);
     const resolved = resolveTurn(detail, record?.turnId ?? '');
     const title = detail.title || '';
     if (resolved.kind === 'live') {
       const turn = resolved.turn;
-      // Rebuild the in-flight answer from the replayed log rather than
-      // trusting whatever local text survived: a persisted window can trail
-      // the server, and appending the replay on top would duplicate it.
-      const last = messages[messages.length - 1];
+      const user = detail.messages.find(
+        message => message.role === 'user' && message.turnId === turn.id,
+      );
+      const assistants = detail.messages.filter(
+        message => message.role === 'assistant',
+      );
+      const children = user?.id
+        ? assistants.filter(message => message.parentMessageId === user.id)
+        : [];
+      const saved =
+        assistants.find(
+          message => message.id && message.id === turn.assistantMessageId,
+        ) ??
+        assistants.find(message => message.turnId === turn.id) ??
+        (children.length === 1 ? children[0] : undefined);
+      const parent =
+        user ??
+        detail.messages.find(
+          message =>
+            message.role === 'user' &&
+            !!message.id &&
+            message.id === saved?.parentMessageId,
+        );
+      if (saved)
+        messages = toExchanges(
+          detail.messages.filter(message => message !== saved),
+        );
+      const exchange = parent?.id
+        ? messages.find(message => message.id === `m${parent.id}`)
+        : undefined;
       let messageId: string;
-      if (last && !last.answer && !last.failed) {
-        messageId = last.id;
+      if (exchange && !exchange.answer && !exchange.failed) {
+        messageId = exchange.id;
+        if (saved) exchange.answer = saved.content;
       } else {
         messageId = `turn:${turn.id}`;
         messages.push({
           id: messageId,
           question: '',
-          answer: '',
+          answer: saved?.content ?? '',
           failed: null,
           retryable: false,
         });
       }
       const active: ActiveTurn = {
+        savedAnswer: !!saved,
         messageId,
-        submissionId: record?.clientSubmissionId ?? '',
+        submissionId:
+          record?.turnId === turn.id ? record.clientSubmissionId : '',
         turnId: turn.id,
         replying: false,
         cancelRequested: false,
@@ -610,17 +667,17 @@ export class MobileChatRuntime {
   private async restore() {
     const { recovery, lastSession, scope, sessionApi } = this.options;
     if (!scope || !sessionApi || this.active) return;
+    const epoch = this.epoch;
+    const current = () => epoch === this.epoch && !this.active;
     let record: RecoveryRecord | null = null;
     try {
       record = recovery ? await recovery.read(scope) : null;
     } catch {
       record = null;
     }
-    if (this.active) return;
+    if (!current()) return;
     if (record) {
-      this.pendingRecord = record;
-      const opened = await this.load(record.sessionId, false);
-      if (!opened) this.pendingRecord = null;
+      await this.load(record.sessionId, false, record);
       return;
     }
     // Nothing was running: reopen the conversation the learner was reading,
@@ -631,7 +688,7 @@ export class MobileChatRuntime {
     } catch {
       last = null;
     }
-    if (!last || this.active) return;
+    if (!last || !current()) return;
     await this.load(last, true);
   }
 
@@ -639,7 +696,14 @@ export class MobileChatRuntime {
     const { recovery, scope } = this.options;
     const active = this.active;
     const sessionId = this.sessionId;
-    if (!recovery || !scope || !active?.turnId || !sessionId) return;
+    if (
+      !recovery ||
+      !scope ||
+      !active?.turnId ||
+      !sessionId ||
+      !active.submissionId
+    )
+      return;
     const status = this.state.status;
     if (
       status !== 'submitting' &&
@@ -656,7 +720,7 @@ export class MobileChatRuntime {
       version: 1,
       sessionId,
       turnId: active.turnId,
-      clientSubmissionId: active.submissionId || active.messageId,
+      clientSubmissionId: active.submissionId,
       lastSeq: this.client?.cursor.afterSeq ?? 0,
       status,
       updatedAt: now,
@@ -873,8 +937,6 @@ export class MobileChatRuntime {
             ? 'Your account does not have access to a model.'
             : 'The server rejected the request.',
         );
-        // The shared runtime only drops the durable start when it observes a
-        // stream event. Remove rejected commands by replacing the transport.
         this.closeTransport();
         this.openTransport();
       } else {
@@ -886,7 +948,8 @@ export class MobileChatRuntime {
     }
     if (!('timestamp' in event) || !event.turn_id || !this.acceptFrame(event))
       return;
-    if (!active.turnId) {
+    const admitted = !active.turnId;
+    if (admitted) {
       active.turnId = event.turn_id;
       // Admitted: the id is spent and must not be reused for a later question.
       this.unconfirmedSubmission = null;
@@ -901,7 +964,10 @@ export class MobileChatRuntime {
       this.clearReplayRetry();
       this.update({ connection: this.client?.state ?? 'idle', error: null });
     }
-    if (this.state.status === 'submitting' || this.state.status === 'recovering') {
+    if (
+      this.state.status === 'submitting' ||
+      this.state.status === 'recovering'
+    ) {
       this.update({ status: 'running' });
     }
     if (this.state.sessionId !== this.sessionId) {
@@ -911,6 +977,7 @@ export class MobileChatRuntime {
     switch (event.type) {
       case 'content':
         if (
+          !active.savedAnswer &&
           shouldAppendEventContent({
             ...event,
             source: event.source ?? '',
@@ -952,13 +1019,15 @@ export class MobileChatRuntime {
         );
         return;
     }
-    this.persist();
+    this.persist(admitted);
     this.watchTurn(active);
     if (active.cancelRequested) this.cancelAdmittedTurn(active);
   }
 
   private observeTerminal(active: ActiveTurn, failed = false) {
-    const error = failed ? 'The server could not finish the response.' : undefined;
+    const error = failed
+      ? 'The server could not finish the response.'
+      : undefined;
     // DONE can arrive before the server releases the owner lease. Let the
     // Stop ACK confirm release before allowing another turn to start.
     if (active.cancelSent) {

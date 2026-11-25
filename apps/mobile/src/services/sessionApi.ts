@@ -34,6 +34,8 @@ export interface SessionMessage {
   role: 'user' | 'assistant' | 'system';
   content: string;
   createdAt: number;
+  turnId?: string;
+  parentMessageId?: string;
   /** Present on a saved user row whose turn failed before any reply existed. */
   failedTurn: FailedTurnInfo | null;
 }
@@ -52,6 +54,7 @@ export interface SessionSummary {
 
 export interface SessionTurn {
   id: string;
+  assistantMessageId?: string;
   status: TurnStatus;
   lastSeq: number;
   error: string;
@@ -81,7 +84,11 @@ const TURN_STATUSES: readonly TurnStatus[] = [
   'idle',
 ];
 
-const ACTIVE_STATUSES: readonly TurnStatus[] = ['queued', 'running', 'waiting_input'];
+const ACTIVE_STATUSES: readonly TurnStatus[] = [
+  'queued',
+  'running',
+  'waiting_input',
+];
 
 export function isActiveTurnStatus(status: TurnStatus): boolean {
   return ACTIVE_STATUSES.includes(status);
@@ -132,12 +139,20 @@ function parseMessage(value: unknown): SessionMessage {
     throw new Error('Unknown message role');
   }
   const metadata = raw.metadata ? record(raw.metadata, 'message metadata') : {};
+  const trace =
+    raw.trace && typeof raw.trace === 'object'
+      ? (raw.trace as Record<string, unknown>)
+      : {};
+  const turnId = text(metadata.turn_id) || text(trace.turn_id);
+  const parentMessageId = rowId(raw.parent_message_id);
   return {
     id: rowId(raw.id),
     role,
     content: text(raw.content),
     createdAt: count(raw.created_at),
     failedTurn: parseFailedTurn(metadata.orphaned_failed_turn),
+    ...(turnId ? { turnId } : {}),
+    ...(parentMessageId ? { parentMessageId } : {}),
   };
 }
 
@@ -161,8 +176,10 @@ function parseTurn(value: unknown): SessionTurn {
   const raw = record(value, 'a session turn');
   const id = text(raw.id) || text(raw.turn_id);
   if (!id) throw new Error('Turn is missing an id');
+  const assistantMessageId = rowId(raw.assistant_message_id);
   return {
     id,
+    ...(assistantMessageId ? { assistantMessageId } : {}),
     status: turnStatus(raw.status),
     lastSeq: count(raw.last_seq),
     error: text(raw.error),
@@ -179,7 +196,8 @@ function parsePage(value: unknown): SessionSummary[] {
 
 function parseDetail(value: unknown): SessionDetail {
   const raw = record(value, 'a session');
-  if (!Array.isArray(raw.messages)) throw new Error('Session has no transcript');
+  if (!Array.isArray(raw.messages))
+    throw new Error('Session has no transcript');
   const summary = parseSummary(raw);
   const activeTurns = Array.isArray(raw.active_turns)
     ? raw.active_turns.map(parseTurn)
@@ -193,7 +211,8 @@ function parseDetail(value: unknown): SessionDetail {
 
 function parseDeleted(value: unknown): void {
   const raw = record(value, 'a deletion acknowledgement');
-  if (raw.deleted !== true) throw new Error('The server did not delete the session');
+  if (raw.deleted !== true)
+    throw new Error('The server did not delete the session');
 }
 
 const MAX_PAGE = 200;
@@ -211,7 +230,10 @@ export type SessionListQuery = {
 export class SessionApi {
   constructor(private readonly client: ApiClient) {}
 
-  async list(query: SessionListQuery, signal?: AbortSignal): Promise<SessionPage> {
+  async list(
+    query: SessionListQuery,
+    signal?: AbortSignal,
+  ): Promise<SessionPage> {
     const limit = Math.min(Math.max(1, Math.trunc(query.limit)), MAX_PAGE);
     const offset = Math.max(0, Math.trunc(query.offset));
     const search = new URLSearchParams({

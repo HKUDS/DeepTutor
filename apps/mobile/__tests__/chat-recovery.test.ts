@@ -74,6 +74,7 @@ function message(
     content,
     createdAt: typeof id === 'number' ? id : 0,
     failedTurn: null,
+    ...(role === 'user' ? { turnId: 'turn-7' } : {}),
   };
 }
 
@@ -119,7 +120,11 @@ function memoryStore(initial: RecoveryRecord | null) {
       current = null;
     }),
   };
-  return { store: store as unknown as TurnRecoveryStore, calls: store, peek: () => current };
+  return {
+    store: store as unknown as TurnRecoveryStore,
+    calls: store,
+    peek: () => current,
+  };
 }
 
 const record: RecoveryRecord = {
@@ -152,7 +157,11 @@ function harness(
     recovery: recovery ?? undefined,
     lastSession: options.lastSession,
     scope: recovery
-      ? { origin: 'https://tutor.example.test', account: 'acct-1', workspace: '' }
+      ? {
+          origin: 'https://tutor.example.test',
+          account: 'acct-1',
+          workspace: '',
+        }
       : null,
     onAuthExpired: options.onAuthExpired,
   });
@@ -170,7 +179,11 @@ function lastSessionStore(initial: string | null) {
       current = null;
     }),
   };
-  return { store: store as unknown as LastSessionStore, calls: store, peek: () => current };
+  return {
+    store: store as unknown as LastSessionStore,
+    calls: store,
+    peek: () => current,
+  };
 }
 
 async function settle() {
@@ -184,6 +197,101 @@ afterEach(() => {
   jest.useRealTimers();
 });
 
+test.each(['select', 'reset', 'stop'])(
+  'ignores a delayed last-session read after %s',
+  async action => {
+    const last = lastSessionStore(null);
+    let resolveRead: (value: string) => void = () => {};
+    last.calls.read.mockImplementationOnce(
+      () =>
+        new Promise(resolve => {
+          resolveRead = resolve;
+        }),
+    );
+    const get = jest.fn(async () => detail({ id: 'session-2' }));
+    const { runtime } = harness({ get }, memoryStore(null).store, {
+      lastSession: last.store,
+    });
+    runtime.start();
+    await settle();
+    expect(last.calls.read).toHaveBeenCalled();
+    if (action === 'select') await runtime.openSession('session-2');
+    else if (action === 'reset') runtime.reset();
+    else runtime.stop();
+    resolveRead('session-1');
+    await settle();
+    expect(get.mock.calls.flat()).not.toContain('session-1');
+    expect(runtime.getSnapshot().sessionId).toBe(
+      action === 'select' ? 'session-2' : null,
+    );
+    runtime.stop();
+  },
+);
+
+test('aborts the REST request and rejects its late response after reset', async () => {
+  let resolveDetail: (value: SessionDetail) => void = () => {};
+  const get = jest.fn(
+    (_id: string, _signal?: AbortSignal) =>
+      new Promise<SessionDetail>(resolve => {
+        resolveDetail = resolve;
+      }),
+  );
+  const { runtime } = harness({ get }, memoryStore(record).store);
+  runtime.start();
+  await settle();
+  expect(get).toHaveBeenCalledTimes(1);
+  runtime.reset();
+  expect(get.mock.calls[0][1]?.aborted).toBe(true);
+  resolveDetail(detail({ activeTurns: [live()] }));
+  await settle();
+  expect(runtime.getSnapshot()).toMatchObject({
+    sessionId: null,
+    status: 'idle',
+  });
+  runtime.stop();
+});
+
+test('reconnecting before admission does not automatically resend the question', async () => {
+  const { runtime, sockets } = harness({}, memoryStore(null).store);
+  runtime.start();
+  await settle();
+  sockets[0].open();
+  expect(runtime.send('A question')).toBe(true);
+  expect(sockets[0].sent[0].type).toBe('start_turn');
+  sockets[0].close(1006);
+  jest.advanceTimersByTime(500);
+  sockets[1].open();
+  expect(sockets[1].sent.some(frame => frame.type === 'start_turn')).toBe(false);
+  runtime.stop();
+});
+
+test.each([true, false])(
+  'a live replay preserves exactly one already-saved answer (linked=%s)',
+  async linked => {
+    const get = jest.fn(async () =>
+      detail({
+        messages: [
+          message(1, 'user', 'Question'),
+          { ...message(2, 'assistant', 'Saved answer'), parentMessageId: '1' },
+        ],
+        activeTurns: [live(linked ? { assistantMessageId: '2' } : {})],
+      }),
+    );
+    const { runtime, sockets } = harness({ get }, memoryStore(record).store);
+    runtime.start();
+    await settle();
+    const socket = sockets.at(-1)!;
+    socket.open();
+    socket.frame(streamEvent('content', 1, { content: 'Saved ' }));
+    socket.frame(streamEvent('content', 2, { content: 'answer' }));
+    socket.frame(streamEvent('done', 3));
+    expect(runtime.getSnapshot().messages).toMatchObject([
+      { question: 'Question', answer: 'Saved answer' },
+    ]);
+    runtime.stop();
+  },
+);
+
 test('cold start resumes a live turn and rebuilds its answer from the log', async () => {
   const memory = memoryStore(record);
   const get = jest.fn(async () => detail({ activeTurns: [live()] }));
@@ -191,7 +299,7 @@ test('cold start resumes a live turn and rebuilds its answer from the log', asyn
 
   runtime.start();
   await settle();
-  expect(get).toHaveBeenCalledWith('session-1');
+  expect(get).toHaveBeenCalledWith('session-1', expect.any(AbortSignal));
 
   const resumed = sockets.at(-1)!;
   resumed.open();
@@ -236,9 +344,9 @@ test('a turn that finished while away is read from the transcript, not resumed',
   const resumed = sockets.at(-1)!;
   resumed.open();
 
-  expect(resumed.sent.filter(frame => frame.type === 'resume_from')).toHaveLength(
-    0,
-  );
+  expect(
+    resumed.sent.filter(frame => frame.type === 'resume_from'),
+  ).toHaveLength(0);
   expect(runtime.getSnapshot()).toMatchObject({
     status: 'completed',
     messages: [{ answer: 'One of two equal parts.' }],
@@ -398,9 +506,9 @@ test('a duplicate submission cannot start a second model call', () => {
   expect(runtime.send('Second')).toBe(false);
   socket.frame(streamEvent('done', 1));
   expect(runtime.send('Third')).toBe(true);
-  expect(
-    socket.sent.filter(frame => frame.type === 'start_turn'),
-  ).toHaveLength(2);
+  expect(socket.sent.filter(frame => frame.type === 'start_turn')).toHaveLength(
+    2,
+  );
   runtime.stop();
 });
 
@@ -437,12 +545,14 @@ test('a relaunch quietly reopens the conversation that was open last', async () 
       ],
     }),
   );
-  const { runtime } = harness({ get }, memory.store, { lastSession: last.store });
+  const { runtime } = harness({ get }, memory.store, {
+    lastSession: last.store,
+  });
 
   runtime.start();
   await settle();
 
-  expect(get).toHaveBeenCalledWith('session-1');
+  expect(get).toHaveBeenCalledWith('session-1', expect.any(AbortSignal));
   expect(runtime.getSnapshot()).toMatchObject({
     sessionId: 'session-1',
     sessionTitle: 'Fractions',
@@ -461,7 +571,9 @@ test('a remembered conversation the server dropped is forgotten silently', async
   const get = jest.fn(async () => {
     throw new ApiError('http', 'The server returned HTTP 404.', 404);
   });
-  const { runtime } = harness({ get }, memory.store, { lastSession: last.store });
+  const { runtime } = harness({ get }, memory.store, {
+    lastSession: last.store,
+  });
 
   runtime.start();
   await settle();

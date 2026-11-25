@@ -4,7 +4,7 @@ import { AppState } from 'react-native';
 import { MobileChatRuntime, type ChatOptions } from './MobileChatRuntime';
 import { ApiClient } from '../../services/apiClient';
 import { SessionApi } from '../../services/sessionApi';
-import { turnRecoveryStorage } from '../../storage/turnRecovery';
+import { recoveryStoresFor } from '../../storage/turnRecovery';
 
 export type UseChatRuntimeOptions = ChatOptions & {
   /** Stable account identity; without it nothing is persisted. */
@@ -38,7 +38,7 @@ export function useChatRuntime(options: UseChatRuntimeOptions) {
         origin,
         socketFactory,
         sessionApi,
-        recovery: turnRecoveryStorage,
+        ...recoveryStoresFor(origin),
         // Signing out drops the scope, which both stops persistence and keeps
         // one account's run from ever being resumed under another.
         scope: account ? { origin, account, workspace } : null,

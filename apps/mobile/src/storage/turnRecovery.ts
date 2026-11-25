@@ -47,6 +47,17 @@ const PREFIX = 'deeptutor:turn-recovery:v1';
 const LAST_SESSION_PREFIX = 'deeptutor:last-session:v1';
 /** Prune records old enough that no answer is worth chasing. */
 const MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+const generations = new Map<string, number>();
+let storageTail: Promise<void> = Promise.resolve();
+
+function enqueue<T>(operation: () => Promise<T>): Promise<T> {
+  const result = storageTail.then(operation);
+  storageTail = result.then(
+    () => {},
+    () => {},
+  );
+  return result;
+}
 
 function keyFor(prefix: string, scope: RecoveryScope): string {
   // Each scope part is encoded so a delimiter inside an origin or account id
@@ -120,17 +131,49 @@ export const turnRecoveryStorage: TurnRecoveryStore = {
     return AsyncStorage.removeItem(keyFor(PREFIX, scope));
   },
 
-  async clearServer(origin) {
-    const keys = await AsyncStorage.getAllKeys();
-    const scoped = [PREFIX, LAST_SESSION_PREFIX].map(
-      prefix => `${prefix}:${encodeURIComponent(origin)}:`,
-    );
-    const stale = keys.filter(key =>
-      scoped.some(prefix => key.startsWith(prefix)),
-    );
-    if (stale.length) await AsyncStorage.multiRemove(stale);
+  clearServer(origin) {
+    generations.set(origin, (generations.get(origin) ?? 0) + 1);
+    return enqueue(async () => {
+      const keys = await AsyncStorage.getAllKeys();
+      const scoped = [PREFIX, LAST_SESSION_PREFIX].map(
+        prefix => `${prefix}:${encodeURIComponent(origin)}:`,
+      );
+      const stale = keys.filter(key =>
+        scoped.some(prefix => key.startsWith(prefix)),
+      );
+      if (stale.length) await AsyncStorage.multiRemove(stale);
+    });
   },
 };
+
+/** Bind both pointers to one runtime lifetime and order them with sign-out. */
+export function recoveryStoresFor(origin: string) {
+  const generation = generations.get(origin) ?? 0;
+  const whileCurrent = <T>(operation: () => Promise<T>, fallback: T) =>
+    enqueue(() =>
+      (generations.get(origin) ?? 0) === generation
+        ? operation()
+        : Promise.resolve(fallback),
+    );
+  const bind = <T>(store: {
+    read(scope: RecoveryScope): Promise<T | null>;
+    write(scope: RecoveryScope, record: T): Promise<void>;
+    clear(scope: RecoveryScope): Promise<void>;
+  }) => ({
+    read: (scope: RecoveryScope) => whileCurrent(() => store.read(scope), null),
+    write: (scope: RecoveryScope, record: T) =>
+      whileCurrent(() => store.write(scope, record), undefined),
+    clear: (scope: RecoveryScope) =>
+      whileCurrent(() => store.clear(scope), undefined),
+  });
+  return {
+    recovery: {
+      ...bind(turnRecoveryStorage),
+      clearServer: turnRecoveryStorage.clearServer,
+    },
+    lastSession: bind(lastSessionStorage),
+  };
+}
 
 export interface LastSessionStore {
   read(scope: RecoveryScope): Promise<string | null>;
@@ -140,9 +183,7 @@ export interface LastSessionStore {
 
 export const lastSessionStorage: LastSessionStore = {
   async read(scope) {
-    const raw = await AsyncStorage.getItem(
-      keyFor(LAST_SESSION_PREFIX, scope),
-    );
+    const raw = await AsyncStorage.getItem(keyFor(LAST_SESSION_PREFIX, scope));
     if (!raw) return null;
     try {
       const value: unknown = JSON.parse(raw);

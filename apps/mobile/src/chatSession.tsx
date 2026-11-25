@@ -5,7 +5,10 @@ import {
   type ReactNode,
 } from 'react';
 import { useAppSession } from './appSession';
-import { useChatRuntime, type UseChatRuntimeOptions } from './features/chat/useChatRuntime';
+import {
+  useChatRuntime,
+  type UseChatRuntimeOptions,
+} from './features/chat/useChatRuntime';
 
 type ChatRuntime = ReturnType<typeof useChatRuntime>;
 
@@ -21,14 +24,14 @@ function ActiveRuntime({
   origin: string;
   account: string;
   refreshAuth: UseChatRuntimeOptions['refreshAuth'];
-  invalidateAuth: () => void;
+  invalidateAuth: (expected: { origin: string; accountId: string }) => void;
   children: ReactNode;
 }) {
   const runtime = useChatRuntime({
     origin,
     account,
     refreshAuth,
-    onAuthExpired: invalidateAuth,
+    onAuthExpired: () => invalidateAuth({ origin, accountId: account }),
   });
   return (
     <ChatRuntimeContext.Provider value={runtime}>
@@ -55,7 +58,7 @@ export function ChatRuntimeProvider({ children }: PropsWithChildren) {
   }
   return (
     <ActiveRuntime
-      key={session.origin}
+      key={JSON.stringify([session.origin, session.status?.accountId ?? ''])}
       origin={session.origin}
       account={session.status?.accountId ?? ''}
       refreshAuth={session.refreshAuth}
