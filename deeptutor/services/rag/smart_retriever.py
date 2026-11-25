@@ -35,7 +35,9 @@ class SmartRetriever:
         passages: list[str] = []
         all_sources: list[dict] = []
         for result in results:
-            if isinstance(result, Exception):
+            # gather(return_exceptions=True) also returns BaseException subclasses
+            # such as CancelledError, which have no .get().
+            if isinstance(result, BaseException):
                 continue
             content = result.get("content") or result.get("answer") or ""
             if content:
