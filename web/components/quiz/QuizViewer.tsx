@@ -33,6 +33,7 @@ import {
   isChoiceQuizQuestion,
   isConceptQuizQuestion,
   isFillInBlankQuizQuestion,
+  normalizeQuizQuestionType,
   resolveChoiceAnswerKey,
   resolveConceptAnswer,
 } from "@/lib/quiz-question-type";
@@ -41,7 +42,7 @@ import {
   startQuizJudge,
   type QuizJudgeHandle,
 } from "@/lib/quiz-judge";
-import { type QuizQuestion } from "@/lib/quiz-types";
+import { QUIZ_TYPE_LABEL_KEYS, type QuizQuestion } from "@/lib/quiz-types";
 import CategoryMenu from "@/components/space/question-bank/CategoryMenu";
 import {
   addEntryToCategory,
@@ -121,6 +122,13 @@ type JudgmentState = {
   text: string;
   isStreaming: boolean;
   error: string | null;
+};
+
+/** i18n keys for the difficulty badge; unknown values are shown as-is. */
+const DIFFICULTY_LABEL_KEYS: Record<string, string> = {
+  easy: "Easy",
+  medium: "Medium",
+  hard: "Hard",
 };
 
 const EMPTY_JUDGMENT: JudgmentState = {
@@ -903,11 +911,11 @@ export default function QuizViewer({
                       : "bg-green-50 text-green-600 dark:bg-green-950/30 dark:text-green-400"
                 }`}
               >
-                {q.difficulty}
+                {t(DIFFICULTY_LABEL_KEYS[q.difficulty] ?? q.difficulty)}
               </span>
             )}
             <span className="rounded-md bg-[var(--muted)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--muted-foreground)]">
-              {q.question_type}
+              {t(QUIZ_TYPE_LABEL_KEYS[normalizeQuizQuestionType(q.question_type)])}
             </span>
           </div>
 
