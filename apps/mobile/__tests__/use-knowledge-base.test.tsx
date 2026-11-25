@@ -259,8 +259,18 @@ test('a failed refresh keeps the record that is already open', async () => {
   );
 });
 
-test('retry explains a refusal instead of pretending the run restarted', async () => {
-  const retry = jest.fn().mockRejectedValue(new ApiError('http', 'no', 409));
+test('retry explains a refusal in the server’s own words', async () => {
+  // The live server answers 409 with the real reason — no embedding model, a run
+  // that already finished, a read-only base. Inventing one from the status code
+  // told the learner something the server never said.
+  const retry = jest.fn().mockRejectedValue(
+    new ApiError(
+      'http',
+      'The server returned HTTP 409.',
+      409,
+      'No embedding model is configured. Set up the embedding profile in Settings before re-indexing.',
+    ),
+  );
   const { api, calls } = stub({ retry });
   const { result } = renderHook(() =>
     useKnowledgeBase(api, 'user:kb:physics'),
@@ -269,9 +279,27 @@ test('retry explains a refusal instead of pretending the run restarted', async (
   await act(async () => {
     await result.current.retry();
   });
-  expect(result.current.error).toContain('not in a failed state');
+  expect(result.current.error).toBe(
+    'No embedding model is configured. Set up the embedding profile in Settings before re-indexing.',
+  );
   expect(result.current.retrying).toBe(false);
   expect(calls.get).toHaveBeenCalledTimes(1);
+});
+
+test('a refusal without an explanation still says what is known, not a guess', async () => {
+  const retry = jest.fn().mockRejectedValue(new ApiError('http', 'no', 409));
+  const { api } = stub({ retry });
+  const { result } = renderHook(() =>
+    useKnowledgeBase(api, 'user:kb:physics'),
+  );
+  await waitFor(() => expect(result.current.status).toBe('ready'));
+  await act(async () => {
+    await result.current.retry();
+  });
+  expect(result.current.error).toBe(
+    'The server refused this change in the base’s current state.',
+  );
+  expect(result.current.retrying).toBe(false);
 });
 
 test('a retry that the server accepts re-reads the base', async () => {

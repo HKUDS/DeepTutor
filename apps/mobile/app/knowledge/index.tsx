@@ -1,26 +1,22 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useRouter } from 'expo-router';
 import { useAppSession } from '../../src/appSession';
+import {
+  knowledgeScope,
+  useKnowledgeApi,
+} from '../../src/features/knowledge/useKnowledgeApi';
 import { useKnowledgeBases } from '../../src/features/knowledge/useKnowledgeBases';
 import { useRefreshOnFocus } from '../../src/features/knowledge/useRefreshOnFocus';
 import { KnowledgeListScreen } from '../../src/screens/knowledge/KnowledgeListScreen';
-import { ApiClient } from '../../src/services/apiClient';
-import {
-  KnowledgeApi,
-  messageFor,
-} from '../../src/services/knowledgeApi';
+import { messageFor } from '../../src/services/knowledgeApi';
 
 export default function KnowledgeRoute() {
   const router = useRouter();
   const session = useAppSession();
   const [creating, setCreating] = useState(false);
 
-  const api = useMemo(
-    () =>
-      session.origin ? new KnowledgeApi(new ApiClient(session.origin)) : null,
-    [session.origin],
-  );
-  const list = useKnowledgeBases(api);
+  const api = useKnowledgeApi(session);
+  const list = useKnowledgeBases(api, knowledgeScope(session));
   // A base deleted from its detail page is gone by the time this screen is
   // visible again, so the catalogue is re-read rather than trusted.
   useRefreshOnFocus(list.refresh);

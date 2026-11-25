@@ -2,12 +2,17 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useAppSession } from '../../src/appSession';
 import { pickDocuments } from '../../src/features/knowledge/pickFiles';
-import { useKnowledgeBase } from '../../src/features/knowledge/useKnowledgeBase';
-import { useUploads } from '../../src/features/knowledge/useUploads';
-import { KnowledgeDetailScreen } from '../../src/screens/knowledge/KnowledgeDetailScreen';
-import { ApiClient } from '../../src/services/apiClient';
 import {
-  KnowledgeApi,
+  knowledgeScope,
+  useKnowledgeApi,
+} from '../../src/features/knowledge/useKnowledgeApi';
+import { useKnowledgeBase } from '../../src/features/knowledge/useKnowledgeBase';
+import {
+  useUploads,
+  type UploadDestination,
+} from '../../src/features/knowledge/useUploads';
+import { KnowledgeDetailScreen } from '../../src/screens/knowledge/KnowledgeDetailScreen';
+import {
   messageFor,
   type UploadPolicy,
 } from '../../src/services/knowledgeApi';
@@ -18,12 +23,8 @@ export default function KnowledgeDetailRoute() {
   const params = useLocalSearchParams<{ ref?: string }>();
   const ref = typeof params.ref === 'string' && params.ref ? params.ref : null;
 
-  const api = useMemo(
-    () =>
-      session.origin ? new KnowledgeApi(new ApiClient(session.origin)) : null,
-    [session.origin],
-  );
-  const detail = useKnowledgeBase(api, ref);
+  const api = useKnowledgeApi(session);
+  const detail = useKnowledgeBase(api, ref, knowledgeScope(session));
   const [policy, setPolicy] = useState<UploadPolicy | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -44,9 +45,22 @@ export default function KnowledgeDetailRoute() {
     };
   }, [api]);
 
+  /**
+   * Where the files on this screen may go. It changes with the server, the
+   * account and the base, and the upload queue treats every change as a reason
+   * to retire what it was holding rather than re-address it.
+   */
+  const destination = useMemo<UploadDestination | null>(() => {
+    if (session.phase !== 'chat' || !session.origin || !ref) return null;
+    return {
+      origin: session.origin,
+      ref,
+      accountId: session.status?.accountId ?? '',
+    };
+  }, [session.phase, session.origin, session.status?.accountId, ref]);
+
   const uploads = useUploads({
-    origin: session.origin,
-    ref,
+    destination,
     policy,
     onUploaded: () => {
       // A finished upload is the moment the server's run may begin; re-reading
@@ -59,6 +73,8 @@ export default function KnowledgeDetailRoute() {
     setActionError(null);
     try {
       const files = await pickDocuments();
+      // If the screen left while the OS picker was open, `upload` sees an
+      // unmounted hook and releases the copies instead of queueing them.
       if (files.length) uploads.upload(files);
     } catch {
       setActionError('Could not open the file picker on this device.');

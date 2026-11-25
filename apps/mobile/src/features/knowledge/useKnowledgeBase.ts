@@ -45,8 +45,17 @@ function emptyState(): KnowledgeBaseState {
  * reports `completed` or `error`. Polling is suspended while the app is in the
  * background — JavaScript is not kept alive there, and a timer that fires on
  * return would only race the foreground refresh.
+ *
+ * `scope` is the identity key — `knowledgeScope(session)`, i.e. server plus
+ * account. It is compared as a primitive rather than the client object so a
+ * caller that rebuilds the client inline cannot make this hook loop, and so a
+ * real sign-out or account switch still drops the previous owner's record.
  */
-export function useKnowledgeBase(api: KnowledgeApi | null, ref: string | null) {
+export function useKnowledgeBase(
+  api: KnowledgeApi | null,
+  ref: string | null,
+  scope = '',
+) {
   const [state, setState] = useState<KnowledgeBaseState>(emptyState);
   const mounted = useRef(true);
   const generation = useRef(0);
@@ -57,10 +66,6 @@ export function useKnowledgeBase(api: KnowledgeApi | null, ref: string | null) {
   const apiRef = useRef<KnowledgeApi | null>(api);
   const refRef = useRef<string | null>(ref);
   const loadRef = useRef<((quiet: boolean) => Promise<void>) | null>(null);
-
-  useEffect(() => {
-    apiRef.current = api;
-  }, [api]);
 
   useEffect(() => {
     mounted.current = true;
@@ -117,20 +122,25 @@ export function useKnowledgeBase(api: KnowledgeApi | null, ref: string | null) {
   }, []);
 
   useEffect(() => {
-    refRef.current = ref;
-  }, [ref]);
-
-  useEffect(() => {
     loadRef.current = load;
   }, [load]);
 
   useEffect(() => {
+    apiRef.current = api;
+  }, [api]);
+
+  useEffect(() => {
+    refRef.current = ref;
+    // A new identity means a different server or account: the record on screen
+    // may belong to someone else, so it is dropped before anything reloads.
+    generation.current += 1;
+    inFlight.current?.abort();
     wasLive.current = false;
     hasFiles.current = false;
     setState(emptyState());
-    if (!ref) return;
+    if (!apiRef.current || !ref) return;
     load(false).catch(() => {});
-  }, [ref, load]);
+  }, [scope, ref, load]);
 
   const live =
     !!state.kb &&
@@ -190,11 +200,9 @@ export function useKnowledgeBase(api: KnowledgeApi | null, ref: string | null) {
     } catch (error) {
       setState(value => ({
         ...value,
-        // Retry is only valid for a failed run; the server says so with 409.
-        error:
-          (error as { status?: number })?.status === 409
-            ? 'This knowledge base is not in a failed state. Refresh to see its current status.'
-            : messageFor(error),
+        // A 409 means the run is no longer retryable — or that indexing cannot
+        // start at all. The server says which; this client does not guess.
+        error: messageFor(error),
       }));
     } finally {
       if (mounted.current) {

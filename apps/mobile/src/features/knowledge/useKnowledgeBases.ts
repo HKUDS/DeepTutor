@@ -27,14 +27,17 @@ const initialState: KnowledgeBasesState = {
  * pagination and no server-side search — so paging is not invented here. A
  * failed refresh keeps the rows already on screen: an empty list would read as
  * "you have no knowledge bases".
+ *
+ * `scope` is the identity key — `knowledgeScope(session)`, i.e. server plus
+ * account. A caller that changes it gets the previous owner's rows removed
+ * before the fresh list is read.
  */
-export function useKnowledgeBases(api: KnowledgeApi | null) {
+export function useKnowledgeBases(api: KnowledgeApi | null, scope = '') {
   const [state, setState] = useState<KnowledgeBasesState>(initialState);
   const mounted = useRef(true);
   const generation = useRef(0);
   const inFlight = useRef<AbortController | null>(null);
   const apiRef = useRef<KnowledgeApi | null>(api);
-  const enabled = api !== null;
 
   useEffect(() => {
     apiRef.current = api;
@@ -82,9 +85,15 @@ export function useKnowledgeBases(api: KnowledgeApi | null) {
   }, []);
 
   useEffect(() => {
-    if (!enabled) return;
+    // A different scope means a different server or account. The rows on screen
+    // belong to the previous identity, so they are dropped instead of being
+    // shown under the new one while the fresh list loads.
+    generation.current += 1;
+    inFlight.current?.abort();
+    setState(initialState);
+    if (!apiRef.current) return;
     load('initial').catch(() => {});
-  }, [enabled, load]);
+  }, [scope, load]);
 
   const refresh = useCallback(() => load('refresh'), [load]);
 

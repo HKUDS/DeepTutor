@@ -1,7 +1,10 @@
 import { act, renderHook, waitFor } from '@testing-library/react-native';
 
 import { discardPickedCopy } from '../src/features/knowledge/pickFiles';
-import { useUploads } from '../src/features/knowledge/useUploads';
+import {
+  useUploads,
+  type UploadDestination,
+} from '../src/features/knowledge/useUploads';
 import { ApiError } from '../src/services/apiClient';
 import type { UploadPolicy } from '../src/services/knowledgeApi';
 import {
@@ -28,6 +31,16 @@ const policy: UploadPolicy = {
   allowAnyExtension: false,
 };
 
+const BASE: UploadDestination = {
+  origin: 'https://tutor.test',
+  ref: 'user:kb:physics',
+  accountId: 'account-1',
+};
+
+function destination(overrides: Partial<UploadDestination> = {}): UploadDestination {
+  return { ...BASE, ...overrides };
+}
+
 function picked(name: string, size = 100) {
   return {
     uri: `file:///cache/${name}`,
@@ -49,25 +62,27 @@ function transfer() {
   return { handle, resolve, reject, abort };
 }
 
-function setup(options: {
-  origin?: string | null;
-  ref?: string | null;
-  policy?: UploadPolicy | null;
-  onUploaded?: () => void;
-} = {}) {
+function setup(
+  options: {
+    destination?: UploadDestination | null;
+    policy?: UploadPolicy | null;
+    onUploaded?: () => void;
+  } = {},
+) {
   const onUploaded = options.onUploaded ?? jest.fn();
   const hook = renderHook(
-    ({ origin, ref }: { origin: string | null; ref: string | null }) =>
+    ({ destination: target }: { destination: UploadDestination | null }) =>
       useUploads({
-        origin,
-        ref,
+        destination: target,
         policy: options.policy === undefined ? policy : options.policy,
         onUploaded,
       }),
     {
       initialProps: {
-        origin: options.origin === undefined ? 'https://tutor.test' : options.origin,
-        ref: options.ref === undefined ? 'user:kb:physics' : options.ref,
+        destination:
+          options.destination === undefined
+            ? destination()
+            : options.destination,
       },
     },
   );
@@ -79,7 +94,7 @@ beforeEach(() => {
   discard.mockClear();
 });
 
-test('a refused file never reaches the network and says why', async () => {
+test('a refused file never reaches the network, says why and releases its copy', async () => {
   const { result } = setup();
   await act(async () => {
     result.current.upload([picked('notes.pdf'), picked('malware.exe')]);
@@ -91,6 +106,8 @@ test('a refused file never reaches the network and says why', async () => {
     retryable: false,
     error: 'This server does not accept .exe files.',
   });
+  // A refused file is never sent, so its cache copy has no further use.
+  expect(discard).toHaveBeenCalledWith('file:///cache/malware.exe');
 
   // A file refused before any bytes moved cannot be retried on its own.
   act(() => result.current.retry(refused!.id));
@@ -180,7 +197,29 @@ test('a failed transfer keeps the file so it can be retried', async () => {
   expect(discard).toHaveBeenCalledWith('file:///cache/a.pdf');
 });
 
-test('cancelling aborts this transfer and says the server keeps what it has', async () => {
+test('a refusal the server explained is shown in its own words', async () => {
+  // A 409 from this backend can mean a missing embedding model, a read-only
+  // base or a run that already finished. Only the server knows which.
+  const failed = transfer();
+  send.mockReturnValueOnce(failed.handle);
+  const { result } = setup();
+
+  await act(async () => {
+    result.current.upload([picked('a.pdf')]);
+  });
+  const reason =
+    'The bound embedding model is unavailable or changed. Check the model settings or select a model to re-index this knowledge base.';
+  await act(async () => {
+    failed.reject(new ApiError('http', 'refused', 409, reason));
+  });
+  expect(result.current.items[0]).toMatchObject({
+    status: 'failed',
+    retryable: true,
+    error: reason,
+  });
+});
+
+test('cancelling aborts this transfer and releases the copy', async () => {
   const running = transfer();
   send.mockReturnValueOnce(running.handle);
   const { result, onUploaded } = setup();
@@ -196,11 +235,10 @@ test('cancelling aborts this transfer and says the server keeps what it has', as
   expect(result.current.items[0].error).toBeNull();
   // Nothing landed, so the document list is not re-read.
   expect(onUploaded).not.toHaveBeenCalled();
-  // A cancelled row cannot be retried, so its copy is removed at once.
   expect(discard).toHaveBeenCalledWith('file:///cache/a.pdf');
 });
 
-test('a queued file can be withdrawn before it starts', async () => {
+test('a queued file can be withdrawn before it starts, and its copy goes too', async () => {
   const running = transfer();
   send.mockReturnValueOnce(running.handle);
   const { result } = setup();
@@ -213,6 +251,7 @@ test('a queued file can be withdrawn before it starts', async () => {
     result.current.cancel(queued.id);
   });
   expect(result.current.items[1].status).toBe('cancelled');
+  expect(discard).toHaveBeenCalledWith('file:///cache/b.pdf');
 
   await act(async () => {
     running.resolve({ taskId: 't1', files: ['a.pdf'], message: '' });
@@ -238,34 +277,151 @@ test('a finished row can be dismissed', async () => {
   expect(discard).toHaveBeenCalledWith('file:///cache/a.pdf');
 });
 
-test('leaving the screen aborts the transfer in flight', async () => {
+test('leaving the screen aborts the transfer and releases every copy', async () => {
   const running = transfer();
   send.mockReturnValueOnce(running.handle);
   const { result, unmount } = setup();
   await act(async () => {
-    result.current.upload([picked('a.pdf')]);
+    result.current.upload([picked('a.pdf'), picked('b.pdf')]);
   });
   unmount();
   expect(running.abort).toHaveBeenCalledTimes(1);
+  // Both the in-flight file and the one still waiting are released; nobody can
+  // retry them from a screen that no longer exists.
+  expect(discard).toHaveBeenCalledWith('file:///cache/a.pdf');
+  expect(discard).toHaveBeenCalledWith('file:///cache/b.pdf');
 });
 
-test('a file picked before the destination is known waits for it', async () => {
-  const running = transfer();
-  send.mockReturnValueOnce(running.handle);
-  const { result, rerender } = setup({ origin: null });
+test('a pick that resolves after the screen closed is released, not queued', async () => {
+  const { result, unmount } = setup();
+  unmount();
+  await act(async () => {
+    result.current.upload([picked('a.pdf'), picked('b.pdf')]);
+  });
+  expect(send).not.toHaveBeenCalled();
+  expect(discard).toHaveBeenCalledWith('file:///cache/a.pdf');
+  expect(discard).toHaveBeenCalledWith('file:///cache/b.pdf');
+});
 
+test('without a destination nothing is queued and no copy is kept', async () => {
+  const { result } = setup({ destination: null });
   await act(async () => {
     result.current.upload([picked('a.pdf')]);
   });
   expect(send).not.toHaveBeenCalled();
-  expect(result.current.items[0].status).toBe('queued');
-
-  rerender({ origin: 'https://tutor.test', ref: 'user:kb:physics' });
-  await act(async () => {});
-  expect(send).toHaveBeenCalledTimes(1);
-  await act(async () => {
-    running.resolve({ taskId: 't1', files: ['a.pdf'], message: '' });
-    await running.handle.promise;
+  expect(result.current.items).toHaveLength(1);
+  expect(result.current.items[0]).toMatchObject({
+    status: 'failed',
+    retryable: false,
+    error: 'This screen is not connected to a server.',
   });
-  await waitFor(() => expect(result.current.items[0].status).toBe('done'));
+  expect(discard).toHaveBeenCalledWith('file:///cache/a.pdf');
+});
+
+test('changing the base retires the queue instead of re-addressing it', async () => {
+  const first = transfer();
+  send.mockReturnValueOnce(first.handle);
+  const { result, rerender } = setup({ destination: destination({ ref: 'kb-a' }) });
+
+  await act(async () => {
+    result.current.upload([picked('a.pdf'), picked('b.pdf')]);
+  });
+  expect(send).toHaveBeenCalledTimes(1);
+  expect(send.mock.calls[0][0]).toMatchObject({ ref: 'kb-a' });
+
+  rerender({ destination: destination({ ref: 'kb-b' }) });
+  await act(async () => {});
+
+  // The transfer in flight is stopped and the queued file is never started.
+  expect(first.abort).toHaveBeenCalledTimes(1);
+  expect(send).toHaveBeenCalledTimes(1);
+  expect(result.current.items.map(item => item.status)).toEqual([
+    'cancelled',
+    'cancelled',
+  ]);
+  expect(result.current.items[0].error).toContain('destination changed');
+  expect(discard).toHaveBeenCalledWith('file:///cache/a.pdf');
+  expect(discard).toHaveBeenCalledWith('file:///cache/b.pdf');
+
+  // A new pick goes to the new base and nowhere else.
+  const second = transfer();
+  send.mockReturnValueOnce(second.handle);
+  await act(async () => {
+    result.current.upload([picked('c.pdf')]);
+  });
+  expect(send.mock.calls[1][0]).toMatchObject({ ref: 'kb-b' });
+});
+
+test('switching account on the same base retires the queue', async () => {
+  const running = transfer();
+  send.mockReturnValueOnce(running.handle);
+  const { result, rerender } = setup();
+
+  await act(async () => {
+    result.current.upload([picked('a.pdf')]);
+  });
+  rerender({ destination: destination({ accountId: 'account-2' }) });
+  await act(async () => {});
+
+  expect(running.abort).toHaveBeenCalledTimes(1);
+  expect(result.current.items[0].status).toBe('cancelled');
+  expect(send).toHaveBeenCalledTimes(1);
+});
+
+test('signing out retires the queue', async () => {
+  const running = transfer();
+  send.mockReturnValueOnce(running.handle);
+  const { result, rerender } = setup();
+
+  await act(async () => {
+    result.current.upload([picked('a.pdf')]);
+  });
+  rerender({ destination: null });
+  await act(async () => {});
+
+  expect(running.abort).toHaveBeenCalledTimes(1);
+  expect(result.current.items[0].status).toBe('cancelled');
+  expect(discard).toHaveBeenCalledWith('file:///cache/a.pdf');
+});
+
+test('a failed row from another destination cannot be retried here', async () => {
+  const failed = transfer();
+  const other = transfer();
+  send.mockReturnValueOnce(failed.handle).mockReturnValueOnce(other.handle);
+  const { result, rerender } = setup();
+
+  await act(async () => {
+    result.current.upload([picked('a.pdf')]);
+  });
+  await act(async () => {
+    failed.reject(new ApiError('network', 'offline'));
+  });
+  const id = result.current.items[0].id;
+
+  rerender({ destination: destination({ origin: 'https://other.test' }) });
+  await act(async () => {});
+  // The retry offer is withdrawn with the destination.
+  expect(result.current.items[0]).toMatchObject({
+    status: 'cancelled',
+    retryable: true,
+  });
+  await act(async () => {
+    result.current.retry(id);
+  });
+  expect(send).toHaveBeenCalledTimes(1);
+  expect(discard).toHaveBeenCalledWith('file:///cache/a.pdf');
+});
+
+test('a file picked before the destination exists is not inherited later', async () => {
+  const { result, rerender } = setup({ destination: null });
+  await act(async () => {
+    result.current.upload([picked('a.pdf')]);
+  });
+  expect(send).not.toHaveBeenCalled();
+
+  rerender({ destination: destination() });
+  await act(async () => {});
+  // Nothing was waiting to be sent once a server appeared.
+  expect(send).not.toHaveBeenCalled();
+  await waitFor(() => expect(result.current.items[0].status).toBe('failed'));
 });
