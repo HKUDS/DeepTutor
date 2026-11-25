@@ -1,8 +1,8 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { initI18n } from "@/i18n/init";
-import BookStructureEditor from "@/app/(workspace)/learning/books/components/BookStructureEditor";
-import BookEditReview from "@/app/(workspace)/learning/books/components/BookEditReview";
+import BookStructureEditor from "@/app/(shell)/(workspace)/learning/books/components/BookStructureEditor";
+import BookEditReview from "@/app/(shell)/(workspace)/learning/books/components/BookEditReview";
 import type { BookDetail } from "@/lib/book-types";
 
 const api = vi.hoisted(() => ({ previewEdit: vi.fn(), applyEdit: vi.fn(), listEdits: vi.fn() }));

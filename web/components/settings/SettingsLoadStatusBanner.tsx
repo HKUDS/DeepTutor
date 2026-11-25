@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AlertTriangle, Loader2, RefreshCw } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
@@ -14,10 +14,23 @@ export function SettingsLoadStatusBanner() {
   const { t } = useTranslation();
   const { settingsLoading, settingsError, reloadSettings } = useSettings();
   const [retrying, setRetrying] = useState(false);
+  const [showLoading, setShowLoading] = useState(false);
+
+  // Local desktop loads settle in well under 200ms; showing the banner for
+  // those only shoves the page down for a few frames. Slow loads still get it.
+  useEffect(() => {
+    if (!settingsLoading) {
+      setShowLoading(false);
+      return;
+    }
+    const timer = window.setTimeout(() => setShowLoading(true), 200);
+    return () => window.clearTimeout(timer);
+  }, [settingsLoading]);
 
   if (settingsLoading) {
+    if (!showLoading) return null;
     return (
-      <div className="mt-3 flex items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--surface-soft)] px-3 py-2 text-sm text-[var(--foreground-soft)]">
+      <div className="mt-3 flex items-center gap-2 rounded-md border border-[var(--border)] bg-muted/40 px-3 py-2 text-sm text-[var(--muted-foreground)]">
         <Loader2 className="h-4 w-4 animate-spin" />
         {t("Loading settings...")}
       </div>

@@ -58,7 +58,7 @@ const OrganizedSessionList = dynamic(
         {[1, 2, 3].map((i) => (
           <div
             key={i}
-            className="h-4 w-3/4 animate-pulse rounded bg-muted/40"
+            className="dt-skeleton h-4 w-3/4 rounded bg-muted/40"
           />
         ))}
       </div>
@@ -300,7 +300,7 @@ export function SidebarShell({
   /* ---- Collapsed state ---- */
   if (collapsed) {
     return (
-      <aside className={`${bodySlot ? "" : "dt-product-sidebar"} dt-rail relative flex h-dvh w-[60px] shrink-0 flex-col items-center bg-[var(--secondary)] py-3 transition-all duration-200`}>
+      <aside className={`${bodySlot ? "" : "dt-product-sidebar"} dt-rail relative flex h-dvh w-[60px] shrink-0 flex-col items-center bg-[var(--secondary)] py-3 transition-[width] duration-200`}>
         {/* The open sidebar's header, stood on end: the workspace (with its
             menu of settings and account), the way back out, then search. */}
         {bodySlot ? (
@@ -425,7 +425,7 @@ export function SidebarShell({
         ref={recentsScrollRef}
         className={`min-h-0 flex-1 ${!bodySlot && ["partners", "learning"].includes(categoryNav.category) ? "overflow-hidden" : "overflow-y-auto overscroll-contain pb-2"}`}
       >
-        <Suspense fallback={<div aria-busy="true" className="mx-4 mt-5 h-3 w-28 rounded bg-muted" />}>
+        <Suspense fallback={<div aria-busy="true" className="dt-skeleton mx-4 mt-5 h-3 w-28 rounded bg-muted" />}>
           {bodySlot ? bodySlot(false) : <CategoryBody nav={categoryNav} collapsed={false} sessions={sessionContent} learningSessions={learningSessions} />}
         </Suspense>
       </div>

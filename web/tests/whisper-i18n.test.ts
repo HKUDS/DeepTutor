@@ -21,7 +21,7 @@ function findWebRoot(): string {
 const WEB = findWebRoot();
 
 const SOURCES = [
-  "app/(workspace)/whisper/page.tsx",
+  "app/(shell)/(workspace)/whisper/page.tsx",
   "components/whisper/WhisperComposer.tsx",
   "components/whisper/WhisperMessageList.tsx",
   "components/whisper/WhisperRoomChip.tsx",

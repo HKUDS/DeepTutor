@@ -2,10 +2,15 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 
 import { render } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import ThemeScript from "@/components/ThemeScript";
-import { THEME_STORAGE_KEY, initializeTheme, setTheme } from "@/lib/theme";
+import {
+  THEME_STORAGE_KEY,
+  initializeTheme,
+  setTheme,
+  subscribeToThemeChanges,
+} from "@/lib/theme";
 
 type SchemeListener = (event: { matches: boolean; media: string }) => void;
 
@@ -77,6 +82,8 @@ function runThemeScript() {
 afterEach(() => {
   localStorage.clear();
   document.documentElement.className = "";
+  delete document.documentElement.dataset.desktopFrame;
+  vi.restoreAllMocks();
 });
 
 describe("system theme follows the OS", () => {
@@ -145,6 +152,31 @@ describe("system theme follows the OS", () => {
 });
 
 describe("theme script before hydration", () => {
+  it.each([
+    ["Mozilla/5.0 (Windows NT 10.0) OpenDeepTutor/1.7.4 (Windows; x64)", "windows"],
+    ["Mozilla/5.0 (Windows NT 10.0) Chrome/131.0.0.0", undefined],
+    ["Mozilla/5.0 OpenDeepTutor/1.7.4 (macOS; arm64)", undefined],
+  ])("sets the desktop frame for the matching user agent: %s", (ua, frame) => {
+    vi.spyOn(window.navigator, "userAgent", "get").mockReturnValue(ua);
+    installColorScheme(false);
+
+    runThemeScript();
+
+    expect(document.documentElement.dataset.desktopFrame).toBe(frame);
+  });
+
+  it("sets the Windows frame even when localStorage is unavailable", () => {
+    vi.spyOn(window.navigator, "userAgent", "get").mockReturnValue(
+      "Mozilla/5.0 OpenDeepTutor/1.7.4 (Windows; x64)",
+    );
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new Error("Storage unavailable");
+    });
+
+    runThemeScript();
+
+    expect(document.documentElement.dataset.desktopFrame).toBe("windows");
+  });
   it("paints the OS theme without writing the fallback into localStorage", () => {
     installColorScheme(true);
 
@@ -175,6 +207,52 @@ describe("theme script before hydration", () => {
     expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe("glass");
     expect(document.documentElement.classList.contains("theme-glass")).toBe(true);
     expect(document.documentElement.classList.contains("dark")).toBe(true);
+  });
+});
+
+describe("desktop theme event", () => {
+  const dispatchTheme = (theme: unknown) =>
+    window.dispatchEvent(new CustomEvent("deeptutor:theme", { detail: { theme } }));
+
+  it("applies an explicit theme pushed from the desktop shell without a reload", () => {
+    installColorScheme(false);
+    initializeTheme();
+    const seen: string[] = [];
+    subscribeToThemeChanges((theme) => seen.push(theme));
+
+    dispatchTheme("glass");
+
+    expect(document.documentElement.classList.contains("theme-glass")).toBe(true);
+    expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe("glass");
+    expect(seen).toContain("glass");
+  });
+
+  it("follows the OS when the shell reports the system preference", () => {
+    const media = installColorScheme(true);
+    initializeTheme();
+
+    dispatchTheme("system");
+
+    expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe("system");
+    expect(document.documentElement.classList.contains("dark")).toBe(true);
+
+    media.setDark(false);
+
+    expect(document.documentElement.classList.contains("theme-snow")).toBe(true);
+    expect(document.documentElement.classList.contains("dark")).toBe(false);
+  });
+
+  it("ignores unknown values instead of storing them", () => {
+    installColorScheme(false);
+    initializeTheme();
+
+    dispatchTheme("neon");
+    dispatchTheme(undefined);
+
+    expect(localStorage.getItem(THEME_STORAGE_KEY)).toBeNull();
+    expect(document.documentElement.classList.contains("dark")).toBe(false);
+    expect(document.documentElement.classList.contains("theme-glass")).toBe(false);
+    expect(document.documentElement.classList.contains("theme-snow")).toBe(true);
   });
 });
 

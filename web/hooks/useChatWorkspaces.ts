@@ -8,6 +8,8 @@ import {
   type ChatWorkspaceRegistration,
 } from "@/lib/workspaces-api";
 
+let cachedWorkspaces: ChatWorkspaceRegistration[] | null = null;
+
 /**
  * The workspaces a conversation can be filed under.
  *
@@ -17,9 +19,17 @@ import {
  * from three different surfaces (composer pill, sidebar row menu, chat header),
  * so every surface reloads on the same signal the session list uses instead of
  * each keeping its own idea of what exists.
+ *
+ * The module-level cache exists so a route-group remount (which happens on
+ * every `(workspace)` ↔ `(utility)` crossing) restores the list in its first
+ * frame instead of flashing an empty workspace name while `listWorkspaces`
+ * runs again.
  */
 export function useChatWorkspaces() {
-  const [workspaces, setWorkspaces] = useState<ChatWorkspaceRegistration[]>([]);
+  const [workspaces, setWorkspaces] = useState<ChatWorkspaceRegistration[]>(
+    () => cachedWorkspaces ?? [],
+  );
+  const [loaded, setLoaded] = useState(() => cachedWorkspaces !== null);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -27,12 +37,18 @@ export function useChatWorkspaces() {
     const refresh = () =>
       void listWorkspaces(true)
         .then((rows) => {
+          const filtered = rows.filter((row) => row.kind === "workspace");
+          cachedWorkspaces = filtered;
           if (!alive) return;
-          setWorkspaces(rows.filter((row) => row.kind === "workspace"));
+          setWorkspaces(filtered);
+          setLoaded(true);
           setError("");
         })
         .catch((err) => {
-          if (alive) setError(err instanceof Error ? err.message : String(err));
+          if (alive) {
+            setLoaded(true);
+            setError(err instanceof Error ? err.message : String(err));
+          }
         });
     refresh();
     const unsubscribe = subscribeSessionChanges(refresh);
@@ -42,5 +58,5 @@ export function useChatWorkspaces() {
     };
   }, []);
 
-  return { workspaces, error };
+  return { workspaces, loaded, error };
 }

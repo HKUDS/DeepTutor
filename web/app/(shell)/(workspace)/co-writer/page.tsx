@@ -24,7 +24,7 @@ import {
 } from "@/components/layout/FeaturePage";
 import { deleteCoWriterDocument, importCoWriterDocx } from "@/lib/co-writer-api";
 import { notifyCoWriterChanged } from "@/lib/co-writer-events";
-import { createNote, listNotes, saveNote, type NoteSummary } from "@/lib/notes-api";
+import { createNote, listNotes, peekCachedNotes, saveNote, type NoteSummary } from "@/lib/notes-api";
 import { formatRelativeTime } from "@/lib/relative-time";
 import { useMenuPopover } from "@/shared/ui/useMenuPopover";
 import "@/features/notes/components/note-library.css";
@@ -144,8 +144,9 @@ function PageCard({
 export default function CoWriterHomePage() {
   const router = useRouter();
   const { t, i18n } = useTranslation();
-  const [pages, setPages] = useState<NoteSummary[]>([]);
-  const [loading, setLoading] = useState(true);
+  const initialPages = peekCachedNotes();
+  const [pages, setPages] = useState<NoteSummary[]>(() => initialPages ?? []);
+  const [loading, setLoading] = useState(() => initialPages === null);
   const [creating, setCreating] = useState(false);
   const [importing, setImporting] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -300,7 +301,7 @@ export default function CoWriterHomePage() {
       {error ? <div className="dt-notes-error" role="alert">{error}</div> : null}
 
       {loading ? (
-        <div className="dt-notes-skeleton" aria-busy="true" aria-label={t("Loading pages…")}>
+        <div className="dt-notes-skeleton dt-delayed-reveal" aria-busy="true" aria-label={t("Loading pages…")}>
           {Array.from({ length: 6 }, (_, i) => (
             <div key={i} />
           ))}

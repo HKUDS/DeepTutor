@@ -209,12 +209,12 @@
 .dt-notes-skeleton > div {
   height: 176px;
   border-radius: 12px;
-  background: var(--secondary);
-  animation: dt-notes-pulse 1.4s ease-in-out infinite;
+  background: color-mix(in srgb, var(--muted) 60%, transparent);
+  animation: dt-notes-pulse 1.6s ease-in-out infinite;
 }
 @keyframes dt-notes-pulse {
   50% {
-    opacity: 0.55;
+    opacity: 0.45;
   }
 }
 .dt-notes-empty {

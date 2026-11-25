@@ -19,16 +19,16 @@ import type { Block, QuizAttempt } from '@/lib/book-types'
 const Geometry = dynamic(() => import('./NoteGeometry'), { ssr: false })
 const Result = dynamic(() => import('./NoteResult'), { ssr: false })
 const Timeline = dynamic(
-  () => import('@/app/(workspace)/learning/books/components/blocks/TimelineBlock'),
+  () => import('@/app/(shell)/(workspace)/learning/books/components/blocks/TimelineBlock'),
   { ssr: false }
 )
 const Task = dynamic(() => import('./NoteTaskBlock'), { ssr: false })
 const Markdown = dynamic(() => import('@/components/common/MarkdownRenderer'), { ssr: false })
-const Quiz = dynamic(() => import('@/app/(workspace)/learning/books/components/blocks/QuizBlock'), {
+const Quiz = dynamic(() => import('@/app/(shell)/(workspace)/learning/books/components/blocks/QuizBlock'), {
   ssr: false,
 })
 const Flashcards = dynamic(
-  () => import('@/app/(workspace)/learning/books/components/blocks/FlashCardsBlock'),
+  () => import('@/app/(shell)/(workspace)/learning/books/components/blocks/FlashCardsBlock'),
   { ssr: false }
 )
 

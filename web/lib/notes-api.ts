@@ -1,4 +1,5 @@
 import { apiFetch, apiUrl } from '@/lib/api'
+import { activeWorkspaceId } from '@/lib/workspace-scope'
 import type { CoWriterDocument, CoWriterDocumentSummary } from '@/lib/co-writer-api'
 
 export interface NoteBlock {
@@ -68,7 +69,25 @@ export async function exportNoteFlashcards(docId?: string): Promise<Blob> {
 }
 
 export const getNote = (id: string) => noteRequest<NotePage>(`/${id}`)
-export const listNotes = () => noteRequest<{ documents: NoteSummary[] }>('')
+
+// Notes belong to the active workspace; cache them per workspace so a revisit
+// (or a route-group remount) paints the last list instantly instead of a
+// skeleton, and a workspace switch never shows another workspace's pages.
+const notesListCache = new Map<string, NoteSummary[]>()
+
+export function peekCachedNotes(workspaceId = activeWorkspaceId()): NoteSummary[] | null {
+  if (typeof window === 'undefined') return null
+  return notesListCache.get(workspaceId) ?? null
+}
+
+export async function listNotes(): Promise<{ documents: NoteSummary[] }> {
+  const scope = activeWorkspaceId()
+  const result = await noteRequest<{ documents: NoteSummary[] }>('')
+  if (typeof window !== 'undefined') {
+    notesListCache.set(scope, result.documents)
+  }
+  return result
+}
 export const saveNote = (id: string, patch: Partial<NotePage> & { expected_revision: number }) =>
   noteRequest<NotePage>(`/${id}`, patch, 'PUT')
 export const createNote = (title = '', parent_id: string | null = null, content = '') =>

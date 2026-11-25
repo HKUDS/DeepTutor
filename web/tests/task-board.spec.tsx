@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import TaskBoardRuntime from '@/components/tasks/TaskBoardRuntime'
-import KanbanPage from '@/app/(workspace)/kanban/page'
+import KanbanPage from '@/app/(shell)/(workspace)/kanban/page'
 import { DEFAULT_TASK_COLORS, type TaskBoard } from '@/lib/task-board-api'
 import translations from '@/locales/en/app.json'
 

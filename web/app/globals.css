@@ -1660,3 +1660,92 @@ a[href^="#dt-locator-"]:hover {
   font-size: 16px;
   line-height: 1.5;
 }
+
+/* ThemeScript stamps the root before hydration. Keep the viewport in the
+   same tone when the workspace, utility, or settings shell is suspended. */
+@media (min-width: 768px) {
+  html[data-desktop-frame="windows"] {
+    --dt-desktop-shell-bg: var(--secondary);
+    --dt-desktop-card-border: rgba(0, 0, 0, 0.06);
+    --dt-desktop-card-shadow: -1px -1px 6px rgba(0, 0, 0, 0.025);
+  }
+
+  html[data-desktop-frame="windows"].theme-snow {
+    --dt-desktop-shell-bg: #f7f7f8;
+  }
+
+  html[data-desktop-frame="windows"].dark {
+    --dt-desktop-shell-bg: #171719;
+    --dt-desktop-card-border: rgba(255, 255, 255, 0.08);
+    --dt-desktop-card-shadow: none;
+  }
+
+  html[data-desktop-frame="windows"].theme-glass {
+    --dt-desktop-shell-bg: #0e0d1a;
+    --dt-desktop-card-border: rgba(255, 255, 255, 0.1);
+    --dt-desktop-card-shadow: none;
+  }
+
+  html[data-desktop-frame="windows"]:not(.theme-glass),
+  html[data-desktop-frame="windows"]:not(.theme-glass) body,
+  html[data-desktop-frame="windows"] [data-desktop-shell] {
+    background: var(--dt-desktop-shell-bg);
+  }
+
+  html[data-desktop-frame="windows"] [data-desktop-sidebar],
+  html[data-desktop-frame="windows"] [data-desktop-sidebar] > *,
+  html[data-desktop-frame="windows"] [data-desktop-sidebar] aside {
+    background: transparent;
+    border-right-width: 0;
+  }
+
+  html[data-desktop-frame="windows"] [data-desktop-main] {
+    background: var(--background);
+    border-top-left-radius: 16px;
+    border-top: 1px solid var(--dt-desktop-card-border);
+    border-left: 1px solid var(--dt-desktop-card-border);
+    box-shadow: var(--dt-desktop-card-shadow);
+  }
+}
+
+/* ─── Delayed Skeleton Reveal ─────────────────────────────────────────────
+   Local desktop requests typically settle in 30–100ms. Keep skeletons
+   transparent for the first 160ms so fast transitions never flash dark/grey
+   placeholder blocks across a white canvas. */
+@keyframes dt-skeleton-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 0.72;
+  }
+}
+
+@keyframes dt-skeleton-pulse {
+  0%,
+  100% {
+    opacity: 0.72;
+  }
+  50% {
+    opacity: 0.38;
+  }
+}
+
+.dt-skeleton {
+  opacity: 0;
+  animation:
+    dt-skeleton-in 180ms ease-out 160ms forwards,
+    dt-skeleton-pulse 1.8s cubic-bezier(0.4, 0, 0.6, 1) 340ms infinite;
+}
+
+.dt-delayed-reveal {
+  opacity: 0;
+  animation: dt-skeleton-in 160ms ease-out 160ms forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dt-skeleton,
+  .dt-delayed-reveal {
+    animation: dt-skeleton-in 0.001ms linear 160ms forwards;
+  }
+}

@@ -4,7 +4,7 @@ import NoteLearningContent from '@/features/notes/components/NoteLearningContent
 import { upsertNotebookEntry } from '@/lib/notebook-api'
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }))
 vi.mock('@/lib/notebook-api', () => ({ upsertNotebookEntry: vi.fn().mockResolvedValue({}) }))
-vi.mock('@/app/(workspace)/learning/books/components/blocks/QuizBlock', () => ({
+vi.mock('@/app/(shell)/(workspace)/learning/books/components/blocks/QuizBlock', () => ({
   default: ({ onAttempt }: { onAttempt: (id: string, args: unknown) => void }) => (
     <button onClick={() => onAttempt('q', { questionId: 'q:1', userAnswer: 'A', isCorrect: true })}>
       Answer quiz
