@@ -8,6 +8,7 @@ import zipfile
 
 from docx import Document as DocxDocument
 from openpyxl import Workbook
+from openpyxl.chart import BarChart, Reference
 from pptx import Presentation
 from pptx.util import Inches
 import pytest
@@ -241,6 +242,22 @@ class TestExtractDocx:
 
 
 class TestExtractXlsx:
+    def test_chartsheet_between_worksheets(self) -> None:
+        workbook = Workbook()
+        scores = workbook.active
+        scores.title = "Scores"
+        scores.append([92])
+        chart = BarChart()
+        chart.add_data(Reference(scores, min_col=1, min_row=1, max_row=1))
+        workbook.create_chartsheet("Chart").add_chart(chart)
+        workbook.create_sheet("Notes").append(["Exam result"])
+        buffer = io.BytesIO()
+        workbook.save(buffer)
+
+        assert extract_text_from_bytes("exam.xlsx", buffer.getvalue()) == (
+            "--- Sheet: Scores ---\n92\n\n--- Sheet: Notes ---\nExam result"
+        )
+
     def test_multiple_sheets(self) -> None:
         data = _make_xlsx(
             {
