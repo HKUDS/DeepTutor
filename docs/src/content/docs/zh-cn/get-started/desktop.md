@@ -48,5 +48,5 @@ Windows 便携 ZIP 在[同一个 Release](https://github.com/HKUDS/DeepTutor/rel
 
 ## 下一步
 
-- [串起一次完整学习](/zh-cn/explore/) — 一个主题、一份材料、一个问题。
+- [串起一次完整学习](/zh-cn/learning-workspace/) — 一个主题、一份材料、一个问题。
 - [更新日志](/zh-cn/get-started/changelog/) — 替换旧版桌面应用前先看这里。v1.7.4 更换了运行时签名密钥，需要安装这个版本的应用本身，而不是把更新导入旧版本。

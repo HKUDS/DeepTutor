@@ -1,0 +1,44 @@
+---
+title: 欢迎
+description: DeepTutor 是一个 agent-native 学习伴侣。用它带着自己的材料学习、练习、做研究，并把每个主题留在各自的工作区里。
+quadrant: explanation
+---
+
+import { CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+DeepTutor 是一个 agent-native 学习伴侣。用它带着自己的材料学习、练习、做研究，并把每个主题留在各自的工作区里。
+
+<img class="dt-welcome-shot" src="/screenshots/dev/overview.png" alt="DeepTutor 工作区：对话旁边是学习相关的入口。" />
+
+## 从这里开始
+
+<div class="dt-welcome-grid">
+  <CardGrid>
+    <LinkCard title="桌面端" description="安装应用，接上一个模型，发出第一条消息。" href="/zh-cn/get-started/desktop/" />
+    <LinkCard title="提供方与模型" description="接上一个语言模型，先测试，再应用设置。" href="/zh-cn/get-started/providers/" />
+    <LinkCard title="更新日志" description="看看最近几个版本改了什么。" href="/zh-cn/get-started/changelog/" />
+  </CardGrid>
+</div>
+
+## 你可以用 DeepTutor 做什么
+
+<div class="dt-welcome-grid">
+  <CardGrid>
+    <LinkCard title="带着材料提问" description="发出一条带上来源的消息，然后阅读回复。" href="/zh-cn/learning-workspace/chat/" />
+    <LinkCard title="从照片解题" description="附上一道题，核对解题步骤。" href="/zh-cn/learning-workspace/vision-solver/" />
+    <LinkCard title="练一个主题" description="生成一套练习，再到题库里复习。" href="/zh-cn/learning-workspace/questions/" />
+    <LinkCard title="研究一个问题" description="问一次，留下带引用的报告。" href="/zh-cn/learning-workspace/research/" />
+    <LinkCard title="把想法呈现出来" description="做一张图、一段数学动画，或一节视频课。" href="/zh-cn/multimodal-studio/" />
+    <LinkCard title="沿着路径学完" description="跟一个主题，直到路径判定你已经掌握。" href="/zh-cn/learning-workspace/mastery/" />
+  </CardGrid>
+</div>
+
+## 更多入口
+
+<div class="dt-welcome-grid">
+  <CardGrid>
+    <LinkCard title="其他安装方式" description="PyPI、Docker、源码，以及纯 CLI。" href="/zh-cn/get-started/" />
+    <LinkCard title="伙伴" description="把一个伙伴接到即时通讯渠道。" href="/zh-cn/channels/" />
+    <LinkCard title="故障排查" description="安装或启动没有完成时从这里看。" href="/zh-cn/self-hosting/troubleshooting/" />
+  </CardGrid>
+</div>

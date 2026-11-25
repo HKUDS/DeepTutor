@@ -48,5 +48,5 @@ Learning data and settings stay in the app’s workspace folder. Replacing the a
 
 ## Next
 
-- [A first study session](/explore/) — one topic, one source, one question.
+- [A first study session](/learning-workspace/) — one topic, one source, one question.
 - [Changelog](/get-started/changelog/) — read this before replacing an older desktop app. v1.7.4 changes the runtime signing key, so install that app itself rather than importing an update into an older build.

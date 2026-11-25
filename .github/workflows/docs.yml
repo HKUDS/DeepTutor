@@ -1,0 +1,61 @@
+name: Docs
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+      - preview
+    paths:
+      - "docs/**"
+      - "deeptutor/modules/manifests/**"
+      - "deeptutor/api/router_index.json"
+      - "assets/figs/web-dev/**"
+      - ".github/workflows/docs.yml"
+  pull_request:
+    paths:
+      - "docs/**"
+      - "deeptutor/modules/manifests/**"
+      - "deeptutor/api/router_index.json"
+      - "assets/figs/web-dev/**"
+      - ".github/workflows/docs.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  docs:
+    name: Build and check the docs site
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: docs
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: docs/package-lock.json
+
+      - name: Check sources
+        working-directory: .
+        run: python3 docs/scripts/check_docs.py
+
+      - name: Install and build
+        run: npm ci
+        env:
+          ASTRO_TELEMETRY_DISABLED: "1"
+
+      - name: Build
+        run: npm run build
+        env:
+          ASTRO_TELEMETRY_DISABLED: "1"
+
+      - name: Check built links
+        working-directory: .
+        run: python3 docs/scripts/check_docs.py dist

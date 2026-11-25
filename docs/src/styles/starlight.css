@@ -346,6 +346,23 @@ dialog[aria-label="Search"] .dialog-frame {
   color: var(--accent);
 }
 
+/* Welcome page: product shot plus three-column link cards, in the
+   spirit of the Cursor docs home. */
+.dt-welcome-shot {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin: 0.25rem 0 1.75rem;
+  border: 1px solid var(--sl-color-gray-5);
+  border-radius: 0.75rem;
+}
+
+@media (min-width: 50rem) {
+  .dt-welcome-grid .card-grid {
+    grid-template-columns: 1fr 1fr 1fr;
+  }
+}
+
 /* Brand icons (channel/provider) embedded in tables and lists: keep them
    inline and vertically centred against the text baseline. */
 .sl-markdown-content img[src^="/channel-icons/"],

@@ -1,66 +1,9 @@
 ---
 title: 首页
-description: 开源学习工作区：对话、练习、研究，以及它们共用的材料。
+description: 开源的 agent-native 学习伴侣。主页、学习和资料跟随工作区；伙伴与个性化属于账户。
 template: splash
-hero:
-  title: DeepTutor
-  tagline: 把对话、原始材料、练习和可复用的协助放在同一个工作区里。
-  actions:
-    - text: 桌面端快速上手
-      link: /zh-cn/get-started/desktop/
-      icon: right-arrow
-    - text: Docker 快速上手
-      link: /zh-cn/get-started/docker/
-      icon: rocket
-      variant: minimal
 ---
 
-import { CardGrid, LinkCard } from '@astrojs/starlight/components';
+import HomeLanding from '../../../components/HomeLanding.astro';
 
-## 从这里开始
-
-<CardGrid>
-	<LinkCard title="桌面端" description="安装应用，接上一个模型，发出第一条消息。" href="/zh-cn/get-started/desktop/" />
-	<LinkCard title="Docker" description="用一个容器跑完整的 Web 应用。" href="/zh-cn/get-started/docker/" />
-	<LinkCard title="提供方与模型" description="先接语言模型，需要时再加嵌入和搜索。" href="/zh-cn/get-started/providers/" />
-	<LinkCard title="更新日志" description="最近几个版本改了什么。" href="/zh-cn/get-started/changelog/" />
-</CardGrid>
-
-## 你可以用 DeepTutor 做什么
-
-<CardGrid>
-	<LinkCard title="做成知识库和交互式书" description="索引你的材料，再编译成可以测验、可以对话的书。" href="/zh-cn/explore/book/" />
-	<LinkCard title="解题并跟上掌握度" description="在对话里做出解答，再到精通之路上练习。" href="/zh-cn/explore/mastery-path/" />
-	<LinkCard title="研究一个问题并写下来" description="在对话里运行 Research，再把结果留在笔记本里。" href="/zh-cn/explore/chat-workspace/" />
-	<LinkCard title="生成数学动画和视频课" description="在对话的能力菜单里选择 Visualize、Math Animator 或 Video Lesson。" href="/zh-cn/explore/chat-workspace/" />
-	<LinkCard title="定制导师" description="记忆、人格、技能和 MCP 服务可以跨你自己的工作区复用。" href="/zh-cn/explore/personalization/" />
-	<LinkCard title="接入一个 IM 伙伴" description="给伙伴自己的材料，再通过聊天渠道发送回复。" href="/zh-cn/explore/partners/" />
-</CardGrid>
-
-## 支持的能力
-
-能力名、模块 id 和依赖来自 `deeptutor/modules/manifests/`。「做什么」是对该声明的简短说明。可选模块写在句子里，不放进**还需要**列。
-
-| 能力 | 模块 | 还需要 | 做什么 | 阅读 |
-| --- | --- | --- | --- | --- |
-| `chat` | `core` | — | 带工具的日常智能体循环 | [对话](/zh-cn/explore/chat-workspace/) |
-| `ask_questions` | `core` | — | 先补齐缺失上下文，再完成原来的请求 | [对话](/zh-cn/explore/chat-workspace/) |
-| `deep_solve` | `solve` | — | 多步解答，包括从图片解题 | [对话](/zh-cn/explore/chat-workspace/) |
-| `deep_question` | `questions` | `parsing` | 按主题或材料生成练习 | [练习](/zh-cn/explore/practice/) |
-| `deep_research` | `research` | — | 带引用的研究报告。知识库模块可选 | [对话](/zh-cn/explore/chat-workspace/) |
-| `visualize` | `visualize` | — | SVG、Mermaid、Chart.js 或 HTML。Manim 渲染器可选 | [对话](/zh-cn/explore/chat-workspace/) |
-| `math_animator` | `renderer-manim` | — | Manim 数学视频或分镜 | [对话](/zh-cn/explore/chat-workspace/) |
-| `mastery_path` | `mastery` | `knowledge` | 带掌握度门槛的自适应路径 | [精通之路](/zh-cn/explore/mastery-path/) |
-| `immersive_reading` | `reading` | `knowledge`、`parsing`、`mastery`、`notebook` | 在线程旁边阅读，并把引用指回来源 | [阅读](/zh-cn/explore/reading/) |
-| `video_lesson` | `video-lesson` | — | 在浏览器播放的课程，带字幕和可选旁白 | [对话](/zh-cn/explore/chat-workspace/) |
-
-## 更多资源
-
-<CardGrid>
-	<LinkCard title="下载 Open DeepTutor" description="macOS Apple Silicon、macOS Intel 和 Windows。" href="/zh-cn/get-started/desktop/" />
-	<LinkCard title="论文" description="arXiv 上的 DeepTutor。" href="https://arxiv.org/abs/2604.26962" />
-	<LinkCard title="GitHub" description="源码、Issue 和 Release。" href="https://github.com/HKUDS/DeepTutor" />
-	<LinkCard title="Discussions" description="用法和想法。" href="https://github.com/HKUDS/DeepTutor/discussions" />
-	<LinkCard title="Discord" description="社区聊天。" href="https://discord.gg/eRsjPgMU4t" />
-	<LinkCard title="飞书知识库" description="中文社区群。" href="https://ucn26x8r4a7l.feishu.cn/wiki/DmEJwWEowimznCkcdeycLGhunCg" />
-</CardGrid>
+<HomeLanding locale="zh" />

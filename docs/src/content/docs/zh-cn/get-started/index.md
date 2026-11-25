@@ -12,10 +12,10 @@ DeepTutor 提供 **四种安装路径**，全部使用相同的运行数据目�
 
 | 方式 | 适用场景 | 页面 |
 |------|---------|------|
-| **PyPI** | 已发布安装包；1.7.x 完整应用使用 [full] | [**PyPI 安装**](/zh-cn/get-started/pypi/) |
-| **源码** | 当前 dev、源码开发与可选热重载 | [**源码安装**](/zh-cn/get-started/from-source/) |
+| **PyPI** | 已发布安装包；1.7.x 完整应用使用 [full] | [**PyPI 安装**](/zh-cn/self-hosting/pypi/) |
+| **源码** | 当前 dev、源码开发与可选热重载 | [**源码安装**](/zh-cn/self-hosting/source/) |
 | **Docker** | 生产部署、托管主机、需要持久化卷 | [**Docker**](/zh-cn/get-started/docker/) |
-| **纯 CLI** | 无界面服务器、被其他 agent 调度、不需要 Web UI | [**纯 CLI 安装**](/zh-cn/get-started/cli-only/) |
+| **纯 CLI** | 无界面服务器、被其他 agent 调度、不需要 Web UI | [**纯 CLI 安装**](/zh-cn/self-hosting/cli-only/) |
 
 > **1.7.x 安装：** `deeptutor[full]` 安装完整 Web 应用，裸 `deeptutor` 安装最小 CLI/SDK。修改模块前停止应用，功能 wheel 与 core 保持同版本。开发时使用源码安装，或[构建本地 wheels](https://github.com/HKUDS/DeepTutor/blob/dev/docs-for-dev/MODULES.md)；升级旧环境前请备份运行目录。
 
@@ -45,9 +45,9 @@ DeepTutor 提供 **四种安装路径**，全部使用相同的运行数据目�
 
 只要你能打开 `http://localhost:3782/`：
 
-- [**探索 DeepTutor**](/zh-cn/explore/) —— 从工作区出发，串起主页、学习、资料、伙伴与个性化
-- [**DeepTutor CLI**](/zh-cn/cli/) —— 在终端里驱动核心运行时与工作区操作
-- [**伙伴：渠道**](/zh-cn/partners/) —— 把持久化的 AI 导师连到 WeChat、WeCom、QQ、Telegram、Slack、飞书等渠道
-- [**多用户部署**](/zh-cn/get-started/multi-user/) —— 部署给一个团队
+- [**探索 DeepTutor**](/zh-cn/learning-workspace/) —— 从工作区出发，串起主页、学习、资料、伙伴与个性化
+- [**DeepTutor CLI**](/zh-cn/developers/guides/cli/) —— 在终端里驱动核心运行时与工作区操作
+- [**伙伴：渠道**](/zh-cn/channels/) —— 把持久化的 AI 导师连到 WeChat、WeCom、QQ、Telegram、Slack、飞书等渠道
+- [**多用户部署**](/zh-cn/self-hosting/multi-user/) —— 部署给一个团队
 
-如果遇到问题，跳到 [**故障排查**](/zh-cn/get-started/troubleshooting/)。
+如果遇到问题，跳到 [**故障排查**](/zh-cn/self-hosting/troubleshooting/)。

@@ -1,0 +1,44 @@
+---
+title: Welcome
+description: DeepTutor is an agent-native learning companion. Use it to study with your own materials, practice, research, and keep each subject in its own workspace.
+quadrant: explanation
+---
+
+import { CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+DeepTutor is an agent-native learning companion. Use it to study with your own materials, practice, research, and keep each subject in its own workspace.
+
+<img class="dt-welcome-shot" src="/screenshots/dev/overview.png" alt="The DeepTutor workspace, with a conversation beside the learning shelves." />
+
+## Start here
+
+<div class="dt-welcome-grid">
+  <CardGrid>
+    <LinkCard title="Desktop" description="Install the app, connect one model, and send a first message." href="/get-started/desktop/" />
+    <LinkCard title="Providers & models" description="Connect a language model, then test it and apply the settings." href="/get-started/providers/" />
+    <LinkCard title="Changelog" description="See what changed in recent releases." href="/get-started/changelog/" />
+  </CardGrid>
+</div>
+
+## What you can do with DeepTutor
+
+<div class="dt-welcome-grid">
+  <CardGrid>
+    <LinkCard title="Ask with your materials" description="Send one message with the source it needs, then read the reply." href="/learning-workspace/chat/" />
+    <LinkCard title="Solve from a photo" description="Attach one problem and check the worked steps." href="/learning-workspace/vision-solver/" />
+    <LinkCard title="Practice a topic" description="Generate one set, then review it from the question bank." href="/learning-workspace/questions/" />
+    <LinkCard title="Research a question" description="Ask once and keep the cited report." href="/learning-workspace/research/" />
+    <LinkCard title="Show the idea" description="Make one figure, one math video, or one video lesson." href="/multimodal-studio/" />
+    <LinkCard title="Follow a path" description="Study one topic until the path says you have it." href="/learning-workspace/mastery/" />
+  </CardGrid>
+</div>
+
+## More resources
+
+<div class="dt-welcome-grid">
+  <CardGrid>
+    <LinkCard title="Other install paths" description="PyPI, Docker, source, and a CLI-only install." href="/get-started/" />
+    <LinkCard title="Partners" description="Connect a companion to an IM channel." href="/channels/" />
+    <LinkCard title="Troubleshooting" description="When install or startup does not finish." href="/self-hosting/troubleshooting/" />
+  </CardGrid>
+</div>
