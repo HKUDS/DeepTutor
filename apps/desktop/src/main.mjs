@@ -32,6 +32,7 @@ const HEADER_HEIGHT = WINDOWS ? 0 : 44;
 const BACKGROUND = { light: '#ffffff', dark: '#161618' };
 let window;
 let view;
+let contentVisible = false;
 let worker;
 let state = { phase: 'starting', step: 'opening' };
 let ui = { language: 'en', theme: 'light' };
@@ -63,23 +64,23 @@ function coreVersion() {
 function snapshot() {
   const failed = state.phase === 'error';
   return {
-    phase: state.phase, theme: ui.theme, language: ui.language,
+    phase: state.phase, step: state.step, contentVisible, theme: ui.theme, language: ui.language,
     title: failed ? t('errorTitle') : state.phase === 'stopped' ? t('stoppedTitle') : '',
     message: failed ? t('errorBody') : state.step ? t(state.step) : '',
     detail: failed ? state.message ?? '' : '',
-    tagline: t('tagline'), retry: t('retry'), logs: t('logs'),
+    tagline: t('tagline'), slowHint: t('slowHint'), retry: t('retry'), logs: t('logs'),
     edition: `${EDITION.full} v${coreVersion()}`,
   };
 }
 
 function publish() {
-  if (window && !window.isDestroyed()) window.webContents.send('desktop:status', snapshot());
+  if (window && !window.isDestroyed() && !window.webContents.isDestroyed()) window.webContents.send('desktop:status', snapshot());
 }
 
 function status(next) {
   state = { ...state, ...next };
-  publish();
   if (next.phase && next.phase !== 'ready') hideContent();
+  publish();
 }
 
 async function readInterface() {
@@ -112,10 +113,16 @@ function watchInterface() {
 }
 
 function hideContent() {
-  if (!view) return;
-  window?.contentView.removeChildView(view);
-  view.webContents.close();
+  contentVisible = false;
+  const current = view;
   view = undefined;
+  if (!current) return;
+  if (window && !window.isDestroyed()) {
+    try { window.contentView.removeChildView(current); } catch { /* ignore */ }
+  }
+  if (!current.webContents.isDestroyed()) {
+    current.webContents.close();
+  }
 }
 
 function layout() {
@@ -124,14 +131,17 @@ function layout() {
   view.setBounds({ x: 0, y: HEADER_HEIGHT, width: bounds.width, height: Math.max(1, bounds.height - HEADER_HEIGHT) });
 }
 
-async function openContent(url) {
+async function openContent(ready) {
   hideContent();
-  const origin = new URL(url).origin;
-  view = new WebContentsView({ webPreferences: {
+  const origin = new URL(ready.url).origin;
+  const nextView = new WebContentsView({ webPreferences: {
     contextIsolation: true, sandbox: true, nodeIntegration: false, webSecurity: true,
     partition: 'persist:deeptutor',
   } });
-  const content = view.webContents;
+  view = nextView;
+  nextView.setBackgroundColor(BACKGROUND[ui.theme]);
+  nextView.setVisible(false);
+  const content = nextView.webContents;
   content.setWindowOpenHandler(({ url: target }) => {
     if (target.startsWith(origin + '/') || target.startsWith(`blob:${origin}/`)) {
       return { action: 'allow', overrideBrowserWindowOptions: {
@@ -151,9 +161,18 @@ async function openContent(url) {
   content.on('will-redirect', restrict);
   content.on('will-attach-webview', event => event.preventDefault());
   content.on('render-process-gone', () => status({ phase: 'error', step: null, message: t('pageGone') }));
-  window.contentView.addChildView(view);
+  // Mount and size while hidden so Next.js hydrates at the real viewport width without flashing white.
+  window.contentView.addChildView(nextView);
   layout();
-  await content.loadURL(url);
+  // Load the canonical chat route directly; the Next.js root redirects to it.
+  await content.loadURL(new URL('/chat', ready.url).href);
+  if (view === nextView && !quitting) {
+    layout();
+    nextView.setVisible(true);
+    contentVisible = true;
+    status(ready);
+    content.focus();
+  }
 }
 
 function trustedShell(event) {
@@ -187,8 +206,11 @@ async function launchRuntime(installed) {
     let ready = false;
     child.on('message', next => {
       if (worker !== child || quitting) return;
+      if (next.phase === 'ready') {
+        if (!ready) { ready = true; resolve(next); }
+        return;
+      }
       status(next);
-      if (next.phase === 'ready' && !ready) { ready = true; resolve(next); }
       if (next.phase === 'error' && !ready) reject(new Error(next.message));
     });
     child.once('error', reject);
@@ -275,8 +297,9 @@ async function boot() {
     if (transaction) await writeJSON(transactionFile, { ...transaction, phase: 'complete' });
     watchInterface();
     await refreshInterface();
-    await openContent(ready.url);
+    await openContent(ready);
   } catch (error) {
+    if (quitting) return;
     await logStartupFailure(error);
     if (transaction) {
       // Restore the previous core and workspace; the next start uses them again.
@@ -314,7 +337,7 @@ async function installUpdate() {
     transaction = { phase: 'testing', previous: active.manifest, candidate: next.manifest, backup };
     await writeJSON(transactionFile, transaction);
     const ready = await launchRuntime(next);
-    await openContent(ready.url);
+    await openContent(ready);
     await writeJSON(activeFile, next.manifest);
     await writeJSON(transactionFile, { ...transaction, phase: 'complete' });
     active = next;
@@ -409,6 +432,10 @@ else {
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   window.on('resize', layout);
   window.on('close', event => { if (!exitAllowed) { event.preventDefault(); app.quit(); } });
+  ipcMain.on('desktop:status-sync', event => {
+    trustedShell(event);
+    event.returnValue = snapshot();
+  });
   for (const [channel, handler] of Object.entries({
     status: () => snapshot(),
     restart: () => { void boot(); },
