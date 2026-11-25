@@ -12,6 +12,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 CONTENT = ROOT / "docs" / "src" / "content" / "docs"
 PUBLIC = ROOT / "docs" / "public" / "screenshots" / "dev"
+GIFS = ROOT / "docs" / "public" / "gifs"
 MANIFEST = ROOT / "assets" / "figs" / "web-dev" / "manifest.json"
 DIST = ROOT / "docs" / "dist"
 CHANNELS = ROOT / "deeptutor" / "partners" / "channels"
@@ -74,6 +75,32 @@ def check_screenshots() -> list[str]:
     for name in sorted(referenced):
         if not (PUBLIC / name).exists():
             errors.append(f"missing screenshot {name}")
+    return errors
+
+
+def check_gifs() -> list[str]:
+    errors = []
+    by_page: dict[str, set[str]] = {}
+    missing = set()
+    for path in list(CONTENT.rglob("*.md")) + list(CONTENT.rglob("*.mdx")):
+        text = re.sub(r"<!--.*?-->", "", path.read_text(), flags=re.DOTALL)
+        names = set(re.findall(r"/gifs/([A-Za-z0-9_.-]+)", text))
+        rel = path.relative_to(CONTENT).as_posix()
+        by_page[rel] = names
+        for name in names:
+            if not (GIFS / name).exists():
+                missing.add(name)
+    for name in sorted(missing):
+        errors.append(f"missing gif {name}")
+    for rel, names in sorted(by_page.items()):
+        if rel.startswith("zh-cn/"):
+            continue
+        zh_rel = f"zh-cn/{rel}"
+        zh_names = by_page.get(zh_rel, set())
+        if names != zh_names:
+            errors.append(
+                f"{rel} gif refs {sorted(names)} != {zh_rel} {sorted(zh_names)}"
+            )
     return errors
 
 
@@ -225,7 +252,7 @@ def check_links() -> list[str]:
 
 def main() -> int:
     mode = sys.argv[1] if len(sys.argv) > 1 else "source"
-    errors = check_parity() + check_screenshots() + check_channel_schema()
+    errors = check_parity() + check_screenshots() + check_gifs() + check_channel_schema()
     if mode == "dist":
         errors.extend(check_links())
     if errors:

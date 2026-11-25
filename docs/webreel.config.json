@@ -1,0 +1,132 @@
+{
+  "$schema": "https://webreel.dev/schema/v1.json",
+  "outDir": "public/gifs",
+  "viewport": { "width": 1280, "height": 720 },
+  "clickDwell": 70,
+  "videos": {
+    "learn-ask-with-source": {
+      "url": "http://localhost:3782/chat?dt_workspace=",
+      "fps": 8,
+      "quality": 55,
+      "waitFor": "textarea[maxlength=\"32000\"]",
+      "output": "learn-ask-with-source.gif",
+      "thumbnail": { "enabled": false },
+      "steps": [
+        { "action": "click", "selector": "button[aria-label=\"Resources\"][aria-haspopup=\"dialog\"]" },
+        { "action": "pause", "ms": 450 },
+        { "action": "click", "selector": "textarea[maxlength=\"32000\"]" },
+        {
+          "action": "type",
+          "text": "Explain why low sampling rates can make two different signals look identical; cite this primer.",
+          "charDelay": 8
+        },
+        { "action": "pause", "ms": 350 }
+      ]
+    },
+    "learn-research-a-question": {
+      "url": "http://localhost:3782/chat?dt_workspace=",
+      "fps": 8,
+      "quality": 55,
+      "waitFor": "textarea[maxlength=\"32000\"]",
+      "output": "learn-research-a-question.gif",
+      "thumbnail": { "enabled": false },
+      "steps": [
+        { "action": "click", "selector": ".dt-tray-bar button.dt-tray-button" },
+        { "action": "pause", "ms": 220 },
+        { "action": "click", "text": "Research", "within": ".dt-tray-popover" },
+        { "action": "pause", "ms": 400 },
+        { "action": "click", "selector": "textarea[maxlength=\"32000\"]" },
+        {
+          "action": "type",
+          "text": "What changed in retrieval-augmented generation after 2023? Cite the papers you use, and stop at six.",
+          "charDelay": 8
+        },
+        { "action": "pause", "ms": 350 }
+      ]
+    },
+    "learn-solve-a-photo": {
+      "url": "http://localhost:3782/chat?dt_workspace=",
+      "fps": 8,
+      "quality": 55,
+      "waitFor": "textarea[maxlength=\"32000\"]",
+      "output": "learn-solve-a-photo.gif",
+      "thumbnail": { "enabled": false },
+      "steps": [
+        { "action": "click", "selector": ".dt-tray-bar button.dt-tray-button" },
+        { "action": "pause", "ms": 220 },
+        { "action": "click", "text": "Solve", "within": ".dt-tray-popover" },
+        { "action": "pause", "ms": 280 },
+        { "action": "click", "selector": "button[aria-label=\"Resources\"][aria-haspopup=\"dialog\"]" },
+        { "action": "pause", "ms": 400 },
+        { "action": "click", "selector": "textarea[maxlength=\"32000\"]" },
+        {
+          "action": "type",
+          "text": "Solve this. Show each step, then the final answer. Stop and ask if the figure is ambiguous.",
+          "charDelay": 8
+        },
+        { "action": "pause", "ms": 350 }
+      ]
+    },
+    "learn-practice-a-topic": {
+      "url": "http://localhost:3782/chat?dt_workspace=",
+      "fps": 8,
+      "quality": 55,
+      "waitFor": "textarea[maxlength=\"32000\"]",
+      "output": "learn-practice-a-topic.gif",
+      "thumbnail": { "enabled": false },
+      "steps": [
+        { "action": "click", "selector": ".dt-tray-bar button.dt-tray-button" },
+        { "action": "pause", "ms": 220 },
+        { "action": "click", "text": "Quiz", "within": ".dt-tray-popover" },
+        { "action": "pause", "ms": 400 },
+        { "action": "click", "selector": "textarea[maxlength=\"32000\"]" },
+        {
+          "action": "type",
+          "text": "Write five short questions on the sampling theorem. Hide the answers.",
+          "charDelay": 8
+        },
+        { "action": "pause", "ms": 350 }
+      ]
+    },
+    "learn-make-a-figure": {
+      "url": "http://localhost:3782/chat?dt_workspace=",
+      "fps": 8,
+      "quality": 55,
+      "waitFor": "textarea[maxlength=\"32000\"]",
+      "output": "learn-make-a-figure.gif",
+      "thumbnail": { "enabled": false },
+      "steps": [
+        { "action": "click", "selector": ".dt-tray-bar button.dt-tray-button" },
+        { "action": "pause", "ms": 220 },
+        { "action": "click", "text": "Visualize", "within": ".dt-tray-popover" },
+        { "action": "pause", "ms": 400 },
+        { "action": "click", "selector": "textarea[maxlength=\"32000\"]" },
+        {
+          "action": "type",
+          "text": "Draw a sine wave I can read. Label the axes.",
+          "charDelay": 8
+        },
+        { "action": "pause", "ms": 350 }
+      ]
+    },
+    "learn-follow-a-path": {
+      "url": "http://localhost:3782/learning/mastery?dt_workspace=",
+      "fps": 8,
+      "quality": 55,
+      "waitFor": { "text": "New topic" },
+      "output": "learn-follow-a-path.gif",
+      "thumbnail": { "enabled": false },
+      "steps": [
+        { "action": "click", "text": "New topic" },
+        { "action": "wait", "selector": "textarea[maxlength=\"2000\"]", "timeout": 8000 },
+        { "action": "click", "selector": "textarea[maxlength=\"2000\"]" },
+        {
+          "action": "type",
+          "text": "I can state the sampling theorem and say when two sampled signals become indistinguishable.",
+          "charDelay": 8
+        },
+        { "action": "pause", "ms": 400 }
+      ]
+    }
+  }
+}

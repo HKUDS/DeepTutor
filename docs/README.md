@@ -123,6 +123,14 @@ Legacy `/explore/`, `/ecosystem/`, `/partners/`, `/tutorbot/`, `/cli/`, and `/co
 
 Use `public/screenshots/dev/` and refer to files as `/screenshots/dev/<name>.png`. Images that also exist in `assets/figs/web-dev/` must keep that manifest's SHA-256. Capture new shots from a local DeepTutor UI with synthetic demo data. Do not include personal history, credentials, or private paths.
 
+## Guide GIFs
+
+Learn-page demos live in `webreel.config.json` ([webreel](https://webreel.dev) schema). One video object per lesson. `npm run update-gifs` records every video in that file, then shortens the GIF by dropping frames. Pass a name after `--` when you want one of them, for example `npm run update-gifs -- learn-ask-with-source`. Each lesson shows the GIF directly under Before you begin.
+
+Adding another learn page is one more object in that JSON, plus the same `/gifs/<name>.gif` image in the English page and the Chinese mirror. Then run `npm run update-gifs` again.
+
+The command attaches to the DeepTutor UI already running at `http://localhost:3782/chat?dt_workspace=`. It does not start or stop DeepTutor, and it does not seed the current home. Keep `dt_workspace` on every URL. Leave login, admin, and settings pages that show credentials or local paths out of the config. webreel downloads Chrome and ffmpeg into `~/.webreel` on first use. A `type` step must not also carry a `selector`: webreel searches for `text` before `selector`, and `charDelay` must not be `0`. Click the field, then type the sentence.
+
 ## Local development
 
 Use Node.js 22, the version CI installs.
