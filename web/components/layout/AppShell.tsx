@@ -82,7 +82,7 @@ export default function AppShell({ sidebar, pageBar, children, homeHref = "/" }:
     <SidebarDrawerContext.Provider value={{ close }}>
       {/* dvh, not vh: iOS Safari's 100vh includes the retracted address bar, so
           a vh-sized shell pushes the composer under it. */}
-      <div className="flex h-dvh overflow-hidden">
+      <div data-desktop-shell className="flex h-dvh overflow-hidden">
         {drawerOpen ? (
           <div
             onClick={close}
@@ -96,6 +96,7 @@ export default function AppShell({ sidebar, pageBar, children, homeHref = "/" }:
             Tab walks the user into a sidebar they cannot see. This is the
             half `max-md:` cannot express, hence useDevice(). */}
         <div
+          data-desktop-sidebar
           inert={isMobile && !drawerOpen ? true : undefined}
           className={`max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-50 max-md:shadow-xl max-md:transition-transform max-md:duration-200 max-md:ease-out ${
             drawerOpen ? "max-md:translate-x-0" : "max-md:-translate-x-full"
@@ -104,7 +105,10 @@ export default function AppShell({ sidebar, pageBar, children, homeHref = "/" }:
           {sidebar}
         </div>
 
-        <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-[var(--background)]">
+        <main
+          data-desktop-main
+          className="flex min-w-0 flex-1 flex-col overflow-hidden bg-[var(--background)]"
+        >
           <div className="flex h-11 shrink-0 items-center gap-1 border-b border-[var(--border)] px-2 md:hidden">
             <button
               type="button"
