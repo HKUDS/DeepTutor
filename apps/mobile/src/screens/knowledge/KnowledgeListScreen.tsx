@@ -23,7 +23,8 @@ export type KnowledgeListScreenProps = {
   refreshing: boolean;
   error: string | null;
   creating: boolean;
-  onCreate: (name: string) => Promise<boolean>;
+  /** Resolves to the reason it failed, or `null` when the base was created. */
+  onCreate: (name: string) => Promise<string | null>;
   onOpen: (ref: string) => void;
   onRefresh: () => void;
   onRetry: () => void;
@@ -58,12 +59,12 @@ export function KnowledgeListScreen({
     const value = name.trim();
     if (!value || creating) return;
     setCreateError(null);
-    const ok = await onCreate(value);
-    if (ok) {
+    const failure = await onCreate(value);
+    if (failure === null) {
       setComposing(false);
       setName('');
     } else {
-      setCreateError('Could not create this knowledge base. Try another name.');
+      setCreateError(failure);
     }
   }, [creating, name, onCreate]);
 

@@ -87,7 +87,7 @@ function list(overrides: Partial<React.ComponentProps<typeof KnowledgeListScreen
       refreshing={false}
       error={null}
       creating={false}
-      onCreate={jest.fn(async () => true)}
+      onCreate={jest.fn(async () => null)}
       onOpen={jest.fn()}
       onRefresh={jest.fn()}
       onRetry={jest.fn()}
@@ -147,7 +147,7 @@ test('opening a row passes the handle the server routes on', () => {
 });
 
 test('creating a base needs a name and keeps the sheet open when refused', async () => {
-  const onCreate = jest.fn(async () => false);
+  const onCreate = jest.fn(async () => 'This knowledge base already exists.');
   list({ onCreate });
 
   fireEvent.press(button('New'));
@@ -159,14 +159,12 @@ test('creating a base needs a name and keeps the sheet open when refused', async
   });
   expect(onCreate).toHaveBeenCalledWith('biology');
   // The name is kept so it can be corrected rather than retyped.
-  expect(
-    screen.getByText('Could not create this knowledge base. Try another name.'),
-  ).toBeTruthy();
+  expect(screen.getByText('This knowledge base already exists.')).toBeTruthy();
   expect(screen.getByLabelText('Name')).toBeTruthy();
 });
 
 test('a created base closes the sheet', async () => {
-  const onCreate = jest.fn(async () => true);
+  const onCreate = jest.fn(async () => null);
   list({ onCreate });
 
   fireEvent.press(button('New'));

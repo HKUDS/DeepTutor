@@ -5,7 +5,10 @@ import { useKnowledgeBases } from '../../src/features/knowledge/useKnowledgeBase
 import { useRefreshOnFocus } from '../../src/features/knowledge/useRefreshOnFocus';
 import { KnowledgeListScreen } from '../../src/screens/knowledge/KnowledgeListScreen';
 import { ApiClient } from '../../src/services/apiClient';
-import { KnowledgeApi } from '../../src/services/knowledgeApi';
+import {
+  KnowledgeApi,
+  messageFor,
+} from '../../src/services/knowledgeApi';
 
 export default function KnowledgeRoute() {
   const router = useRouter();
@@ -24,17 +27,18 @@ export default function KnowledgeRoute() {
 
   const create = useCallback(
     async (name: string) => {
-      if (!api) return false;
+      if (!api) return 'This device is not connected to a server.';
       setCreating(true);
       try {
         const created = await api.create(name);
         await list.refresh();
-        // The server answers with the name it registered; that is a valid ref
-        // for every per-base route, so the new base opens straight away.
+        // The server answers with the name it registered. Every per-base route
+        // resolves a name — the id the creation reply carries is scope-dependent
+        // (`user:kb:` or `admin:kb:`), while the name works in both.
         router.push({ pathname: '/knowledge/detail', params: { ref: created } });
-        return true;
-      } catch {
-        return false;
+        return null;
+      } catch (error) {
+        return messageFor(error);
       } finally {
         setCreating(false);
       }
