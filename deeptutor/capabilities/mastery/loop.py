@@ -39,6 +39,11 @@ _PATH_BINDING_TOOLS = frozenset({"mastery_switch", "mastery_leave"})
 #: module having to import the loop engine back.
 NATIVE_LOOP_FLAG = "mastery_native_loop"
 
+#: Key in ``context.extension("mastery")`` under which the pipeline leaves a
+#: callable that loads every deferred outline tool into the live request.
+#: Called when the turn switches into outline mode (see ``_mode_binder``).
+OUTLINE_TOOL_LOADER = "load_outline_tools"
+
 
 class MasteryLoopCapability:
     """Turn-scoped integration for mastery-path tutoring.
@@ -655,10 +660,16 @@ def _mode_binder(context: UnifiedContext) -> Callable[[str], None]:
     """
 
     def bind(mode: str) -> None:
+        from deeptutor.capabilities.mastery.mode import OUTLINE, normalize_mode
+
         context.metadata["mastery_session_mode"] = mode
         # Read back by the turn runtime after the turn, so the conversation
         # resumes in the mode it ended in rather than the one it began in.
         context.metadata["mastery_session_mode_changed"] = True
+        if normalize_mode(mode) == OUTLINE:
+            load_outline_tools = context.extension("mastery").get(OUTLINE_TOOL_LOADER)
+            if callable(load_outline_tools):
+                load_outline_tools()
 
     return bind
 

@@ -28,7 +28,7 @@ from typing import Any
 from deeptutor.agents.loop.pipeline import AgenticLoopPipeline
 from deeptutor.agents.loop.prompt_blocks import LoopPromptAssembler, PromptBlock
 from deeptutor.capabilities.mastery.history import STATE_REFERENCE_NOTICE, share_mastery_history
-from deeptutor.capabilities.mastery.loop import NATIVE_LOOP_FLAG
+from deeptutor.capabilities.mastery.loop import NATIVE_LOOP_FLAG, OUTLINE_TOOL_LOADER
 from deeptutor.capabilities.mastery.memory import MEMORY_NOTICE
 from deeptutor.capabilities.mastery.mode import OUTLINE, REVIEW, STUDY, normalize_mode
 from deeptutor.core.context import UnifiedContext
@@ -302,6 +302,12 @@ class MasteryLoopPipeline(AgenticLoopPipeline):
         )
         self._deferred_loader = loader
         self._deferred_pool = list(pool)
+        outline_names = sorted(self._deferred_outline_names)
+        # Switching to outline mid-turn loads the whole outline group at once,
+        # the same set the next (outline) turn mounts eagerly. Loading them
+        # one by one through ``load_tools`` left the next turn's tools[] with
+        # a schema more than the request that preceded it: a full cache miss.
+        context.extension("mastery")[OUTLINE_TOOL_LOADER] = lambda: loader.load(outline_names)
 
     def _remember_outline_tools(self, context) -> None:
         """Keep outline schemas mounted after this conversation leaves outline.

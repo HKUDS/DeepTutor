@@ -153,3 +153,56 @@ async def test_outline_tools_stay_mounted_after_leaving_outline(monkeypatch):
 
     assert {"mastery_build", "mastery_revise"} <= state["synthetic"]
     assert sorted(tool_names("outline")) == sorted(tool_names("study"))
+
+
+@pytest.mark.asyncio
+async def test_switching_to_outline_loads_the_tools_the_next_turn_mounts(monkeypatch):
+    """A study turn that switches to outline ends with the outline turn's tools.
+
+    Loading the outline tools one by one left the next turn (in outline mode,
+    which mounts them all eagerly) with a schema more than the last request of
+    the switching turn, so that turn started with a full cache miss.
+    """
+    from deeptutor.capabilities.mastery.loop import _mode_binder
+    from deeptutor.runtime.registry.deferred_tools import DeferredToolLoader
+
+    state: dict[str, set[str]] = {}
+
+    async def providers(self, context):
+        loader = DeferredToolLoader(
+            registry=self.registry, session_id=context.session_id, loaded=set(), allowed=set()
+        )
+        self._tool_view = ProviderToolView(
+            registry=self.registry, loader=loader, pool=(), manifest=""
+        )
+        self._deferred_loader = loader
+
+    monkeypatch.setattr(AgenticLoopPipeline, "_prepare_deferred_tools", providers)
+    monkeypatch.setattr(
+        "deeptutor.services.mcp.load_loaded_tools", lambda sid: set(state.get(sid, set()))
+    )
+    monkeypatch.setattr(
+        "deeptutor.services.mcp.session_state.record_loaded_tools",
+        lambda sid, names: state.__setitem__(sid, set(names)),
+    )
+
+    async def turn(mode: str, *, switch_to: str | None = None) -> list[str]:
+        pipeline = MasteryLoopPipeline(language="en")
+        context = UnifiedContext(
+            session_id="synthetic",
+            metadata={"mastery_mode": True, "mastery_path_id": "p", "mastery_session_mode": mode},
+        )
+        await pipeline._prepare_deferred_tools(context)
+        schemas = pipeline._build_llm_tool_schemas(
+            pipeline._compose_enabled_tools(context), context
+        )
+        pipeline._tool_view.attach(schemas)
+        if switch_to:
+            _mode_binder(context)(switch_to)
+        return [s["function"]["name"] for s in schemas]
+
+    switching = await turn("study", switch_to="outline")
+    following = await turn("outline")
+
+    assert {"mastery_build", "mastery_revise"} <= set(switching)
+    assert sorted(following) == sorted(switching)
