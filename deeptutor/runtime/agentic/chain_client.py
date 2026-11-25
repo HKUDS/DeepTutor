@@ -107,11 +107,22 @@ def build_chain_client(
     owner_id: str | None = None,
     candidates: Iterable[failover.Candidate] | None = None,
 ) -> Any:
-    """Build a ChainClient when a chain is configured, else the plain client."""
+    """Build a ChainClient when a chain is configured, else the plain client.
+
+    The primary is the *template* — the model this turn actually resolved (a
+    user can pick a non-default model in the composer). Reading the catalog's
+    active model instead would silently run the turn on a different model.
+    """
     resolved_owner = owner_id or failover.current_owner()
-    chain = list(
-        candidates if candidates is not None else failover.resolve_candidates(resolved_owner)
-    )
+    if candidates is None:
+        primary = failover.Candidate(
+            str(getattr(template, "binding", "") or "primary"),
+            str(getattr(template, "model", "") or "model"),
+            template,  # type: ignore[arg-type]
+        )
+        chain = [primary, *failover.declared_candidates(resolved_owner)]
+    else:
+        chain = list(candidates)
     healthy = [item for item in chain if failover.REGISTRY.is_available(resolved_owner, item)]
     if not healthy:
         # Everything is cooling down: give the primary one more chance rather

@@ -117,3 +117,32 @@ async def test_rate_limited_primary_continues_on_the_declared_backup() -> None:
     assert failover.REGISTRY.is_available("u1", primary) is False
     codes = [getattr(e, "metadata", {}).get("error_code") for e in events]
     assert "provider_failover" in codes
+
+
+def test_chain_starts_from_the_turn_model_not_the_catalog_default(monkeypatch) -> None:
+    """A per-turn model choice must stay the primary of the chain.
+
+    The user can pick a model in the composer; that turn's client template is
+    built from the pick. Seeding the chain from the catalog's active model would
+    silently run the turn on the wrong model.
+    """
+    from deeptutor.runtime.agentic import chain_client as chain_module
+    from deeptutor.runtime.agentic.client import LLMClientConfig
+
+    backup = failover.Candidate("backup", "backup-model", None)  # type: ignore[arg-type]
+    monkeypatch.setattr(chain_module.failover, "declared_candidates", lambda owner: [backup])
+    built: list[object] = []
+    monkeypatch.setattr(
+        chain_module,
+        "build_openai_client",
+        lambda config: built.append(config) or object(),
+    )
+
+    template = LLMClientConfig(
+        binding="openai", model="user-picked-model", api_key="k", base_url="http://x"
+    )
+    client = chain_module.build_chain_client(template, owner_id="u1")
+
+    assert isinstance(client, chain_module.ChainClient)
+    assert client.current.model_id == "user-picked-model"
+    assert client.remaining == 1

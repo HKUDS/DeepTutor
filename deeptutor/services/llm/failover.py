@@ -206,6 +206,35 @@ def chain_configured() -> bool:
         return False
 
 
+def declared_candidates(owner_id: str = "anonymous") -> list[Candidate]:
+    """Only the catalog's declared fallbacks, resolved and de-duplicated."""
+    from deeptutor.services.config import get_model_catalog_service
+    from deeptutor.services.model_selection.fallbacks import configured_fallbacks
+    from deeptutor.services.model_selection.runtime import resolve_llm_config_for_selection
+
+    try:
+        catalog = get_model_catalog_service().load()
+    except Exception:
+        return []
+    candidates: list[Candidate] = []
+    seen: set[tuple[str, str]] = set()
+    for entry in configured_fallbacks(catalog):
+        key = (entry["profile_id"], entry["model_id"])
+        if key in seen:
+            continue
+        seen.add(key)
+        try:
+            config = resolve_llm_config_for_selection(
+                {"profile_id": entry["profile_id"], "model_id": entry["model_id"]}
+            )
+        except Exception:
+            continue
+        candidates.append(Candidate(entry["profile_id"], entry["model_id"], config))
+        if len(candidates) >= MAX_CANDIDATES - 1:
+            break
+    return candidates
+
+
 def chain_from_config(config: Any, owner_id: str = "anonymous") -> list[Candidate]:
     """Chain for a caller that already resolved its own config (task models).
 
@@ -397,6 +426,7 @@ __all__ = [
     "SwitchReport",
     "active_and_declared",
     "chain_from_config",
+    "declared_candidates",
     "call_with_failover",
     "classify_error",
     "drop_foreign_message_state",
