@@ -80,7 +80,8 @@ import {
   useOptionalQuizFollowupController,
 } from "@/context/QuizFollowupContext";
 import type { GeogebraTabPayload } from "@/context/GeogebraTabContext";
-import { apiUrl } from "@/lib/api";
+import { apiFetch, apiUrl } from "@/lib/api";
+import { isChatFileLink, isChatVideoLessonLink } from "@/lib/chat-file-link";
 import type { MessageAttachment } from "@/features/chat/ChatStateAdapter";
 import type { StreamEvent } from "@/features/chat/model/protocol";
 import Tooltip from "@/shared/ui/Tooltip";
@@ -107,6 +108,9 @@ const ImagePreview = dynamic(
 );
 const VideoPreview = dynamic(
   () => import("@/components/chat/preview/previewers/VideoPreview"),
+);
+const VideoLessonFrame = dynamic(
+  () => import("@/components/video-lesson/VideoLessonViewer").then((mod) => mod.VideoLessonFrame),
 );
 const SvgPreview = dynamic(
   () => import("@/components/chat/preview/previewers/SvgPreview"),
@@ -294,7 +298,7 @@ export interface SessionViewerPanelProps {
 const NO_AGENTS: { name: string; kind?: string }[] = [];
 
 function fileTabIdFor(a: MessageAttachment, fallback: number): string {
-  return `file:${a.id ?? a.filename ?? `idx-${fallback}`}`;
+  return `file:${a.id ?? a.workspace_item_id ?? a.url ?? a.filename ?? `idx-${fallback}`}`;
 }
 
 function webTabIdFor(url: string): string {
@@ -655,7 +659,7 @@ function SessionViewerPanelInner(
           setActiveTabId(id);
           return prev;
         }
-        const label = a.filename || "Attachment";
+        const label = a.title || a.filename || "Attachment";
         const next: ViewerTab = {
           kind: "file",
           id,
@@ -1406,7 +1410,14 @@ function SessionViewerPanelInner(
       />
       <div className="relative min-h-0 flex-1 overflow-hidden bg-[var(--card)]">
         {activeTab?.kind === "file" ? (
-          <FileTabBody source={activeTab.source} />
+          <FileTabBody
+            key={activeTab.id}
+            source={activeTab.source}
+            onBack={() => {
+              closeTab(activeTab.id, { remember: false });
+              onClose();
+            }}
+          />
         ) : activeTab?.kind === "web" ? (
           <WebTabBody key={activeTab.url} url={activeTab.url} />
         ) : activeTab?.kind === "markdown-note" ? (
@@ -1744,12 +1755,73 @@ function FileTabActions({ source }: { source: FilePreviewSource }) {
   );
 }
 
-function FileTabBody({ source }: { source: FilePreviewSource }) {
+function FileTabBody({
+  source,
+  onBack,
+}: {
+  source: FilePreviewSource;
+  onBack: () => void;
+}) {
+  const { t } = useTranslation();
   const previewUrl = useMemo(() => resolveSourceUrl(source, apiUrl), [source]);
+  const fileUrl = source.url && isChatFileLink(source.url) ? previewUrl : null;
+  const [checkedFile, setCheckedFile] = useState<{ url: string; unavailable: boolean }>();
+  useEffect(() => {
+    if (!fileUrl) return;
+    const controller = new AbortController();
+    void apiFetch(fileUrl, {
+      method: "HEAD",
+      signal: controller.signal,
+      skipAuthRedirect: true,
+    }).then(
+      (response) => {
+        if (!controller.signal.aborted) {
+          setCheckedFile({ url: fileUrl, unavailable: !response.ok && response.status !== 405 });
+        }
+      },
+      () => {
+        if (!controller.signal.aborted) setCheckedFile({ url: fileUrl, unavailable: true });
+      },
+    );
+    return () => controller.abort();
+  }, [fileUrl]);
+
+  if (fileUrl && checkedFile?.url !== fileUrl) {
+    return (
+      <div role="status" aria-label={t("Loading")} className="grid h-full place-items-center">
+        <Loader2 aria-hidden="true" className="size-5 animate-spin text-[var(--muted-foreground)]" />
+      </div>
+    );
+  }
+  if (
+    (!previewUrl && source.extractedText === undefined) ||
+    (fileUrl && checkedFile?.unavailable)
+  ) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
+        <p role="status" className="text-sm text-[var(--muted-foreground)]">{t("This file is unavailable.")}</p>
+        <button
+          type="button"
+          onClick={onBack}
+          className={`inline-flex h-8 items-center gap-2 rounded-lg px-3 text-sm text-[var(--foreground)] hover:bg-[var(--muted)]/30 ${TAB_FOCUS}`}
+        >
+          <ArrowLeft size={16} aria-hidden="true" />
+          {t("Back to conversation")}
+        </button>
+      </div>
+    );
+  }
   const kind = previewKindFor(source);
   return (
-    <div className="relative h-full overflow-hidden">
-      <PreviewBody source={source} previewUrl={previewUrl} kind={kind} />
+    <div className="flex h-full flex-col">
+      {fileUrl && source.url?.startsWith("/files/workspace-items/") ? (
+        <div className="shrink-0 border-b border-[var(--border)]/60 px-4 py-1.5 text-xs text-[var(--muted-foreground)]">
+          {t("Conversation snapshot")}
+        </div>
+      ) : null}
+      <div className="relative min-h-0 flex-1 overflow-hidden">
+        <PreviewBody source={source} previewUrl={previewUrl} kind={kind} />
+      </div>
     </div>
   );
 }
@@ -1783,6 +1855,10 @@ const PreviewBody = memo(function PreviewBody({
 
   if (!previewUrl) {
     return <FallbackPreview filename={filename} url={null} reason="legacy" />;
+  }
+
+  if (source.url && isChatVideoLessonLink(source.url)) {
+    return <VideoLessonFrame src={previewUrl} title={filename} className="h-full w-full border-0" />;
   }
 
   switch (kind) {

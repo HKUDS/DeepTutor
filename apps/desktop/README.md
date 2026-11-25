@@ -66,6 +66,12 @@ Quitting stops the services this app started. It does not stop a separately
 running `deeptutor start`. Web content has no preload, Node integration or
 desktop IPC privileges; only the private shell page owns the native bridge.
 
+In Windows conversations, click a file to preview it. The right-click menu
+also lets you save the conversation copy or copy readable text. If the
+workspace original is available, you can choose an associated Windows app,
+select the original in File Explorer, or copy its path. When a file is
+unavailable, use **Back to conversation** to close its preview.
+
 ## Build
 
 Prerequisites (developers only): Node/npm and `uv`. MacOS targets build on a

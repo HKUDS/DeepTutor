@@ -1,11 +1,13 @@
 import { app, BrowserWindow, WebContentsView, Menu, ipcMain, shell, dialog, session, nativeTheme } from 'electron';
 import { fork } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import { watch } from 'node:fs';
 import { mkdir, readFile, writeFile, rename, cp, appendFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { installBundle, bundleConfig, startupRuntime } from './bundles.mjs';
 import { externalURL } from './config.mjs';
+import { mountFileMenu } from './file-menu.mjs';
 import { resolveLanguage, translate } from './i18n.mjs';
 import { WINDOWS, agentMarker, edition, targetId } from './platform.mjs';
 import { killTree } from './processes.mjs';
@@ -13,6 +15,7 @@ import { killTree } from './processes.mjs';
 app.setName('Open DeepTutor');
 if (WINDOWS) app.setAppUserModelId('org.deeptutor.open-desktop');
 const EDITION = edition();
+const desktopFileKey = WINDOWS ? randomBytes(32).toString('hex') : '';
 const sourceDirectory = path.dirname(fileURLToPath(import.meta.url));
 const shellURL = pathToFileURL(path.join(sourceDirectory, 'index.html')).href;
 // Runtimes are large and machine-specific, so Windows keeps them out of the roaming profile.
@@ -124,7 +127,7 @@ function layout() {
   view.setBounds({ x: 0, y: HEADER_HEIGHT, width: bounds.width, height: Math.max(1, bounds.height - HEADER_HEIGHT) });
 }
 
-async function openContent(url) {
+async function openContent(url, installed) {
   hideContent();
   const origin = new URL(url).origin;
   view = new WebContentsView({ webPreferences: {
@@ -132,6 +135,10 @@ async function openContent(url) {
     partition: 'persist:deeptutor',
   } });
   const content = view.webContents;
+  if (WINDOWS) {
+    const { pythonPath } = bundleConfig(installed.destination, runtimeHome, installed.manifest.runtimeId);
+    mountFileMenu(window, content, origin, desktopFileKey, t, pythonPath);
+  }
   content.setWindowOpenHandler(({ url: target }) => {
     if (target.startsWith(origin + '/') || target.startsWith(`blob:${origin}/`)) {
       return { action: 'allow', overrideBrowserWindowOptions: {
@@ -179,7 +186,10 @@ async function launchRuntime(installed) {
   const config = bundleConfig(installed.destination, runtimeHome, installed.manifest.runtimeId);
   const child = fork(path.join(sourceDirectory, 'supervisor.mjs'), [], {
     execPath: config.nodePath, stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
-    env: { ...process.env, ELECTRON_RUN_AS_NODE: '' },
+    env: {
+      ...process.env, ELECTRON_RUN_AS_NODE: '',
+      DEEPTUTOR_DESKTOP_FILE_KEY: desktopFileKey,
+    },
   });
   worker = child;
   child.stderr.on('data', chunk => console.error(chunk.toString()));
@@ -275,7 +285,7 @@ async function boot() {
     if (transaction) await writeJSON(transactionFile, { ...transaction, phase: 'complete' });
     watchInterface();
     await refreshInterface();
-    await openContent(ready.url);
+    await openContent(ready.url, active);
   } catch (error) {
     await logStartupFailure(error);
     if (transaction) {
@@ -314,7 +324,7 @@ async function installUpdate() {
     transaction = { phase: 'testing', previous: active.manifest, candidate: next.manifest, backup };
     await writeJSON(transactionFile, transaction);
     const ready = await launchRuntime(next);
-    await openContent(ready.url);
+    await openContent(ready.url, next);
     await writeJSON(activeFile, next.manifest);
     await writeJSON(transactionFile, { ...transaction, phase: 'complete' });
     active = next;

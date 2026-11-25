@@ -3,7 +3,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Code2, Expand, Image as ImageIcon, Timer, Video } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { ChatFileLink, useInlineFileCardContext } from "@/components/common/InlineFileCard";
 import { apiUrl } from "@/lib/api";
+import { isChatFileLink } from "@/lib/chat-file-link";
 import type { MathAnimatorResult } from "@/lib/math-animator-types";
 import { RenderFileActions } from "./RenderFileActions";
 
@@ -16,6 +18,7 @@ export default function MathAnimatorViewer({
   bare?: boolean;
 }) {
   const { t } = useTranslation();
+  const onOpen = useInlineFileCardContext()?.onOpen;
   const [fullscreenUrl, setFullscreenUrl] = useState<string | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const images = useMemo(
@@ -103,6 +106,15 @@ export default function MathAnimatorViewer({
                 className="aspect-video w-full rounded-xl border border-[var(--border)] bg-black object-contain"
                 src={resolveAssetUrl(item.url)}
               />
+              {onOpen && isChatFileLink(item.url) ? (
+                <ChatFileLink
+                  attachment={{ ...item, mime_type: item.content_type }}
+                  onOpen={onOpen}
+                  className="mt-1 inline-flex rounded-md px-2 py-1 text-[11px] text-[var(--muted-foreground)] hover:bg-[var(--muted)]/30 hover:text-[var(--foreground)]"
+                >
+                  {t("Open")}
+                </ChatFileLink>
+              ) : null}
               <RenderFileActions url={item.url} />
             </div>
           ))}
@@ -114,10 +126,10 @@ export default function MathAnimatorViewer({
           {!bare && <Header icon={ImageIcon} title={t("Image Output")} />}
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             {images.map((item) => (
-              <button
+              <ChatFileLink
                 key={item.url}
-                type="button"
-                onClick={() => setFullscreenUrl(resolveAssetUrl(item.url))}
+                attachment={{ ...item, url: onOpen ? item.url : undefined }}
+                onOpen={() => setFullscreenUrl(resolveAssetUrl(item.url))}
                 className="group relative overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--background)]"
               >
                 <img
@@ -129,7 +141,7 @@ export default function MathAnimatorViewer({
                   <Expand size={12} />
                   {t("Fullscreen")}
                 </span>
-              </button>
+              </ChatFileLink>
             ))}
           </div>
         </section>

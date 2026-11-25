@@ -279,6 +279,18 @@ export default function ChatWorkspace() {
   const { router, sessionId: sessionIdParam } = useChatRouteSession();
   const requestedWorkspaceId = useActiveWorkspaceId() || null;
   const { t } = useTranslation();
+  useEffect(() => {
+    function showDesktopFileNotice(event: Event) {
+      if (!(event instanceof CustomEvent)) return;
+      const message: unknown = event.detail?.message;
+      const tone: unknown = event.detail?.tone;
+      if (typeof message === "string" && (tone === "success" || tone === "error")) {
+        notify(message, { tone });
+      }
+    }
+    window.addEventListener("deeptutor:desktop-file-notice", showDesktopFileNotice);
+    return () => window.removeEventListener("deeptutor:desktop-file-notice", showDesktopFileNotice);
+  }, []);
   const {
     capabilities,
     visibleCapabilities,

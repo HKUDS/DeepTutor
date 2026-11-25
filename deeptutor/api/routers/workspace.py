@@ -5,10 +5,15 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
+from deeptutor.api.desktop_files import (
+    browser_file_media_type,
+    desktop_file_headers,
+    desktop_file_request,
+)
 from deeptutor.api.routers.auth import require_auth
 from deeptutor.api.routers.render_storage import router as render_storage_router
 from deeptutor.multi_user.partner_access import visible_partners
@@ -315,7 +320,7 @@ async def update_workspace(payload: WorkspacePathPayload) -> dict:
 
 
 def _resolve_partner_item(
-    workspace_id: str, workspace_item_id: str
+    workspace_id: str, workspace_item_id: str, *, original: bool = False
 ) -> tuple[Path, WorkspaceItem] | None:
     """Resolve a presentation one of the caller's partners published.
 
@@ -344,9 +349,12 @@ def _resolve_partner_item(
 
         with user_context(partner_user(partner_id)):
             try:
-                return get_content_workspace_service().resolve_published_item(
-                    workspace_id, workspace_item_id
-                )
+                service = get_content_workspace_service()
+                path, item = service.resolve_published_item(workspace_id, workspace_item_id)
+                if original:
+                    source = service.resolve_published_original(item)
+                    return (source, item) if source is not None else None
+                return path, item
             except WorkspaceError:
                 continue
     return None
@@ -357,12 +365,16 @@ def _resolve_partner_item(
 async def read_workspace_item(
     workspace_id: str,
     workspace_item_id: str,
+    request: Request,
     _auth: TokenPayload | None = Depends(require_auth),
 ) -> FileResponse:
+    service = get_content_workspace_service()
+    desktop_request = desktop_file_request(request)
+    original = None
     try:
-        path, item = get_content_workspace_service().resolve_published_item(
-            workspace_id, workspace_item_id
-        )
+        path, item = service.resolve_published_item(workspace_id, workspace_item_id)
+        if desktop_request:
+            original = service.resolve_published_original(item)
     except WorkspaceError as exc:
         resolved = _resolve_partner_item(workspace_id, workspace_item_id)
         if resolved is None:
@@ -370,9 +382,14 @@ async def read_workspace_item(
                 status_code=status.HTTP_404_NOT_FOUND, detail="File not found"
             ) from exc
         path, item = resolved
+        if desktop_request:
+            resolved_original = _resolve_partner_item(
+                workspace_id, workspace_item_id, original=True
+            )
+            original = resolved_original[0] if resolved_original else None
     return FileResponse(
         path,
-        media_type=item.mime_type,
+        media_type=browser_file_media_type(request, path, item.mime_type),
         filename=item.filename,
         content_disposition_type="inline",
         headers={
@@ -386,6 +403,7 @@ async def read_workspace_item(
                 "sandbox; default-src 'none'; img-src data: blob:; "
                 "media-src 'self' blob:; style-src 'unsafe-inline'"
             ),
+            **(desktop_file_headers(original) if desktop_request else {}),
         },
     )
 

@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { docIconFor, formatBytes, isSvgFilename } from "@/lib/doc-attachments";
+import { ChatFileLink } from "@/components/common/InlineFileCard";
 import type { MessageAttachment } from "@/features/chat/ChatStateAdapter";
 import { listSessions, type SessionSummary } from "@/lib/session-api";
 import { listNotebooks, type NotebookSummary } from "@/lib/notebook-api";
@@ -538,9 +539,9 @@ function AttachmentRow({
   return (
     <li className="[&>span]:w-full">
       <Tooltip label={filename} description={diskPath ?? undefined} side="left">
-        <button
-          type="button"
-          onClick={onOpen}
+        <ChatFileLink
+          attachment={attachment}
+          onOpen={onOpen}
           className={`group flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors ${ACTIVITY_ROW_HOVER} focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--ring)]`}
         >
         <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--card)]">
@@ -564,7 +565,7 @@ function AttachmentRow({
           aria-hidden="true"
           className="shrink-0 text-[var(--muted-foreground)]/65 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
         />
-        </button>
+        </ChatFileLink>
       </Tooltip>
     </li>
   );

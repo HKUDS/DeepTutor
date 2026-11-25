@@ -3,6 +3,8 @@
 import { memo, useState } from "react";
 import { ChevronDown, X, type LucideIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { ChatFileLink } from "@/components/common/InlineFileCard";
+import type { MessageAttachment } from "@/features/chat/ChatStateAdapter";
 
 /**
  * One row in the reference tree: an attachment, a Space reference, a
@@ -22,6 +24,8 @@ export interface ContextTreeItem {
   thumbnailUrl?: string;
   /** Optional click action (e.g. open attachment preview). */
   onClick?: () => void;
+  /** A persisted file whose row supports desktop file actions. */
+  attachment?: MessageAttachment;
   /** Optional remove action (composer only). */
   onRemove?: () => void;
 }
@@ -154,16 +158,26 @@ export default memo(function ContextReferenceTree({
             </span>
           </>
         );
+        const actionClass = `flex min-w-0 items-center gap-1.5 rounded-md text-left transition-colors hover:text-[var(--foreground)] [&>span]:hover:text-[var(--foreground)] ${rowDirClass}`;
         return (
           <span
             key={item.key}
             className={`group/ref flex max-w-full items-center gap-1.5 text-[12px] leading-[1.6] ${rowDirClass}`}
           >
-            {item.onClick ? (
+            {item.attachment && item.onClick ? (
+              <ChatFileLink
+                attachment={item.attachment}
+                onOpen={item.onClick}
+                className={actionClass}
+                ariaLabel={`${item.kind} ${item.label}`}
+              >
+                {Inner}
+              </ChatFileLink>
+            ) : item.onClick ? (
               <button
                 type="button"
                 onClick={item.onClick}
-                className={`flex min-w-0 items-center gap-1.5 rounded-md text-left transition-colors hover:text-[var(--foreground)] [&>span]:hover:text-[var(--foreground)] ${rowDirClass}`}
+                className={actionClass}
               >
                 {Inner}
               </button>
