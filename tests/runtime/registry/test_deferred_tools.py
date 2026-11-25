@@ -210,3 +210,22 @@ def test_registry_deferred_tools_filter() -> None:
     assert [t.name for t in deferred] == ["mcp_a"]
     reg.unregister("mcp_a")
     assert reg.deferred_tools() == []
+
+
+def test_loaded_schemas_are_closed_like_mounted_ones() -> None:
+    """A tool must have one byte form in ``tools[]`` however it got there.
+
+    Mounted schemas are sent with ``additionalProperties: false``; a loaded
+    one used to go out without it, so a tool moving between mounted and loaded
+    across turns (a mastery tool after a mode switch) broke the cached prefix.
+    """
+    reg = _registry(_FakeDeferredTool("mcp_gh_search", server="gh"))
+    loader = DeferredToolLoader(registry=reg, session_id="s1", loaded=set())
+    live: list[dict] = []
+    loader.bind_live_schemas(live)
+    loader.load(["mcp_gh_search"])
+
+    restored = DeferredToolLoader(registry=reg, session_id="s1", loaded={"mcp_gh_search"})
+
+    assert live[0]["function"]["parameters"]["additionalProperties"] is False
+    assert restored.initial_schemas() == live

@@ -113,6 +113,23 @@ def render_deferred_tools_manifest(tools: list[BaseTool], *, language: str = "en
     return "\n".join(lines).rstrip()
 
 
+def _loaded_schema(tool: BaseTool) -> dict[str, Any]:
+    """The schema of a loaded tool, closed the same way as a mounted one.
+
+    The chat loop sends every mounted schema with ``additionalProperties:
+    false``. A loaded tool used to go out without it, so the same tool had two
+    different byte forms in ``tools[]`` depending on how it got there — and a
+    tool that moved between mounted and loaded across turns (a mastery tool
+    after a mode switch) rewrote the start of the cached prefix.
+    """
+    schema = tool.get_definition().to_openai_schema()
+    function = schema.get("function") if isinstance(schema, dict) else None
+    parameters = function.get("parameters") if isinstance(function, dict) else None
+    if isinstance(parameters, dict):
+        parameters["additionalProperties"] = False
+    return schema
+
+
 class DeferredToolLoader:
     """Per-turn handle that loads deferred tool schemas into the live list.
 
@@ -166,7 +183,7 @@ class DeferredToolLoader:
                 continue
             if not self._is_allowed(name):
                 continue
-            schemas.append(tool.get_definition().to_openai_schema())
+            schemas.append(_loaded_schema(tool))
         if stale:
             # Server removed/renamed since last turn — drop quietly.
             self._loaded -= stale
@@ -194,7 +211,7 @@ class DeferredToolLoader:
                 unknown.append(name)
                 continue
             if self._live_schemas is not None:
-                self._live_schemas.append(tool.get_definition().to_openai_schema())
+                self._live_schemas.append(_loaded_schema(tool))
             self._loaded.add(name)
             loaded.append(name)
         if loaded:
