@@ -165,6 +165,9 @@
     {"user": "1.251.000", "expected": "1.250", "comparable": true, "correct": false, "note": "a scale mismatch must be exact"},
     {"user": "1.250.400", "expected": "1.250", "comparable": true, "correct": false},
     {"user": "1.250.000 %", "expected": "1.250 %", "comparable": true, "correct": false, "note": "rates have no unit scale"},
+    {"user": "4,5 Mio", "expected": "4,5 Mio.", "comparable": true, "correct": true, "note": "the abbreviation dot does not change a unit"},
+    {"user": "12 Tsd.", "expected": "12 Tsd", "comparable": true, "correct": true},
+    {"user": "5 Stk", "expected": "5 Stk.", "comparable": true, "correct": true},
     {"user": "photosynthesis", "expected": "photosynthesis", "comparable": false, "correct": false},
     {"user": "12", "expected": "twelve", "comparable": false, "correct": false},
     {"user": "", "expected": "5", "comparable": false, "correct": false}

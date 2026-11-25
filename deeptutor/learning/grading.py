@@ -78,7 +78,7 @@ _PREFIX = re.compile(
 _CURRENCY = {"€": "eur", "euro": "eur", "$": "usd", "£": "gbp", "eur": "eur", "usd": "usd"}
 _CURRENCY |= {"gbp": "gbp", "chf": "chf"}
 # Words that change the magnitude or meaning and so may never be dropped.
-_FIXED_UNITS = {"tsd", "tsd.", "teur", "mio", "mio.", "mrd", "mrd.", "bn", "pi", "dozen", "dutzend"}
+_FIXED_UNITS = {"tsd", "teur", "mio", "mrd", "bn", "pi", "dozen", "dutzend"}
 _FIXED_UNITS |= {"hundred", "hundert", "thousand", "tausend", "million", "millionen"}
 _FIXED_UNITS |= {"milliarde", "milliarden", "billion", "billionen"}
 # A part outcome that matches only once the key is rounded to the answer's
@@ -186,7 +186,8 @@ def _parse_number(text: str) -> _Number | None:
     sign = -1 if "-" in match["pre"] else 1
     scale = Fraction(1, 100) if percent else 1
     readings = {k: (sign * v * scale, d) for k, (v, d) in readings.items()}
-    return _Number(readings, implied, percent, "".join(currencies), "".join(units), text.strip())
+    unit = "".join(units).rstrip(".")  # "Mio." is "Mio"
+    return _Number(readings, implied, percent, "".join(currencies), unit, text.strip())
 
 
 def _numeric_parts(text: str) -> list[tuple[str | None, _Number]] | None:

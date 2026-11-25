@@ -52,7 +52,7 @@ CURRENCY.set('gbp', 'gbp').set('chf', 'chf')
 // Words that change the magnitude or meaning and so may never be dropped.
 const FIXED_UNITS = new Set(
   (
-    'tsd tsd. teur mio mio. mrd mrd. bn pi dozen dutzend hundred hundert thousand tausend ' +
+    'tsd teur mio mrd bn pi dozen dutzend hundred hundert thousand tausend ' +
     'million millionen milliarde milliarden billion billionen'
   ).split(' ')
 )
@@ -147,7 +147,7 @@ function parseNumber(text: string): NumberToken | null {
     implied,
     percent,
     currency: [...currencies].join(''),
-    unit: units.join(''),
+    unit: units.join('').replace(/\.$/, ''), // "Mio." is "Mio"
     text: text.trim(),
   }
 }
