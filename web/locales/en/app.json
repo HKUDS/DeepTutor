@@ -1746,6 +1746,7 @@
   "CORS origins": "CORS origins",
   "Fallback chain ({{count}} configured)": "Fallback chain ({{count}} configured)",
   "When the active model fails before any output, DeepTutor tries these in order and returns to the primary once its cooldown ends.": "When the active model fails before any output, DeepTutor tries these in order and returns to the primary once its cooldown ends.",
+  "Applies to chat and to background task models. Image, video, speech, search and embedding models are not affected.": "Applies to chat and to background task models. Image, video, speech, search and embedding models are not affected.",
   "Add fallback": "Add fallback",
   "No fallback configured. The turn fails when the active model fails.": "No fallback configured. The turn fails when the active model fails.",
   "Fallback {{index}}": "Fallback {{index}}",

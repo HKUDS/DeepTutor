@@ -1162,6 +1162,7 @@
   "CORS origins": "CORS 来源",
   "Fallback chain ({{count}} configured)": "回退链（已配置 {{count}} 个）",
   "When the active model fails before any output, DeepTutor tries these in order and returns to the primary once its cooldown ends.": "当前模型在产生输出前失败时，会按顺序尝试这些候选；主模型冷却结束后自动回切。",
+  "Applies to chat and to background task models. Image, video, speech, search and embedding models are not affected.": "作用于聊天与后台任务模型；图像、视频、语音、搜索与嵌入模型不受影响。",
   "Add fallback": "添加回退",
   "No fallback configured. The turn fails when the active model fails.": "尚未配置回退：当前模型失败时，本轮会直接失败。",
   "Fallback {{index}}": "回退 {{index}}",

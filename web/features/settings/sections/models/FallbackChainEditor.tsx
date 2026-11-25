@@ -136,6 +136,11 @@ export function FallbackChainEditor() {
               "When the active model fails before any output, DeepTutor tries these in order and returns to the primary once its cooldown ends.",
             )}
           </div>
+          <div className="mt-0.5 text-[11px] leading-relaxed text-[var(--muted-foreground)]">
+            {t(
+              "Applies to chat and to background task models. Image, video, speech, search and embedding models are not affected.",
+            )}
+          </div>
         </div>
         <button
           type="button"
