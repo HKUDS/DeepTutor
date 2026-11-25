@@ -132,7 +132,15 @@ class NotebookManager:
     def _load_index(self) -> dict:
         try:
             with open(self.index_file, encoding="utf-8") as f:
-                return json.load(f)
+                index = json.load(f)
+            if not isinstance(index, dict) or not isinstance(index.get("notebooks"), list):
+                raise ValueError("notebook index must contain a notebooks list")
+            if any(
+                not isinstance(row, dict) or not isinstance(row.get("id"), str) or not row["id"]
+                for row in index["notebooks"]
+            ):
+                raise ValueError("notebook index rows must contain a notebook id")
+            return index
         except FileNotFoundError:
             return {"notebooks": []}
         except Exception as exc:
@@ -148,8 +156,7 @@ class NotebookManager:
             if path == self.index_file:
                 continue
             try:
-                with open(path, encoding="utf-8") as f:
-                    notebook = json.load(f)
+                notebook = self._load_notebook(path.stem, read_only=True)
             except Exception as exc:
                 # The file is left untouched on disk, so the damage stays
                 # visible and repairable: list_notebooks() re-adopts it as an
@@ -160,7 +167,8 @@ class NotebookManager:
                     exc,
                 )
                 continue
-            entries.append(self._index_row(notebook))
+            if notebook is not None:
+                entries.append(self._index_row(notebook))
         return entries
 
     @staticmethod
@@ -201,6 +209,15 @@ class NotebookManager:
         try:
             with open(filepath, encoding="utf-8") as f:
                 notebook = json.load(f)
+            if (
+                not isinstance(notebook, dict)
+                or not isinstance(notebook.get("id"), str)
+                or not notebook["id"]
+            ):
+                raise ValueError("notebook must be an object with an id")
+            records = notebook.get("records", [])
+            if not isinstance(records, list) or any(not isinstance(row, dict) for row in records):
+                raise ValueError("notebook records must be a list of objects")
         except FileNotFoundError:
             return None
         except Exception as exc:
