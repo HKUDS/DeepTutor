@@ -8,6 +8,11 @@ import json
 from typing import Any
 from urllib.parse import urlparse
 
+from deeptutor.services.generation_http import (
+    DEFAULT_IMAGEGEN_REQUEST_TIMEOUT,
+    DEFAULT_VIDEOGEN_REQUEST_TIMEOUT,
+    resolve_generation_request_timeout,
+)
 from deeptutor.services.imagegen.config import ImagegenConfig
 from deeptutor.services.keypool import primary_api_key
 from deeptutor.services.model_selection import LLMSelection, apply_llm_selection_to_catalog
@@ -1488,6 +1493,11 @@ def resolve_imagegen_runtime_config(
         quality=_as_str((model or {}).get("quality")),
         style=_as_str((model or {}).get("style")),
         response_format=_as_str((model or {}).get("response_format")),
+        request_timeout=resolve_generation_request_timeout(
+            (model or {}).get("request_timeout"),
+            default=DEFAULT_IMAGEGEN_REQUEST_TIMEOUT,
+            label="Image generation",
+        ),
     )
 
 
@@ -1528,6 +1538,11 @@ def resolve_videogen_runtime_config(
         aspect_ratio=_as_str((model or {}).get("aspect_ratio")),
         duration=_as_str((model or {}).get("duration")),
         resolution=_as_str((model or {}).get("resolution")),
+        request_timeout=resolve_generation_request_timeout(
+            (model or {}).get("request_timeout"),
+            default=DEFAULT_VIDEOGEN_REQUEST_TIMEOUT,
+            label="Video generation",
+        ),
     )
 
 

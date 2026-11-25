@@ -11,7 +11,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from deeptutor.services.generation_http import AUTH_BEARER
+from deeptutor.services.generation_http import (
+    AUTH_BEARER,
+    DEFAULT_IMAGEGEN_REQUEST_TIMEOUT,
+)
 
 
 @dataclass(slots=True)
@@ -33,7 +36,9 @@ class ImagegenConfig:
     style: str = ""  # e.g. "natural" | "vivid"
     response_format: str = ""  # "" | "url" | "b64_json"
     # Image generation is slow; allow generous wall-clock per request.
-    request_timeout: int = 120
+    # Configurable per model via the catalog's ``request_timeout`` field
+    # (see resolve_imagegen_runtime_config); this is the unset default.
+    request_timeout: int = DEFAULT_IMAGEGEN_REQUEST_TIMEOUT
     poll_interval: float = 2.0
     poll_timeout: int = 300
 

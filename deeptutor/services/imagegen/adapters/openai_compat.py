@@ -61,6 +61,12 @@ class OpenAICompatImagegenAdapter(BaseImagegenAdapter):
                 images = [
                     await self._materialize(client, item) for item in self._extract_items(resp)
                 ]
+        except httpx.TimeoutException as exc:
+            raise GenerationProviderError(
+                f"Image generation timed out after {config.request_timeout} s. "
+                "If this backend legitimately needs longer, raise the model's "
+                "request timeout in Settings > Media Generation."
+            ) from exc
         except httpx.HTTPError as exc:
             raise GenerationProviderError(f"Image generation request error: {exc}") from exc
         if not images:

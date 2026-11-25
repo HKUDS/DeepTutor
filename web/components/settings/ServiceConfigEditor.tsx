@@ -1212,6 +1212,13 @@ export function ServiceConfigEditor({
                                               />
                                             </div>
                                           </div>
+                                          <GenerationTimeoutField
+                                            service="imagegen"
+                                            activeModel={activeModel}
+                                            updateModelField={
+                                              updateModelField
+                                            }
+                                          />
                                         </>
                                       )}
                                       {service === "videogen" && (
@@ -1278,6 +1285,13 @@ export function ServiceConfigEditor({
                                               />
                                             </div>
                                           </div>
+                                          <GenerationTimeoutField
+                                            service="videogen"
+                                            activeModel={activeModel}
+                                            updateModelField={
+                                              updateModelField
+                                            }
+                                          />
                                         </>
                                       )}
                                     </div>
@@ -1401,6 +1415,54 @@ function formatIsoLocal(value: string | undefined): string {
   return (
     `${parsed.getFullYear()}-${pad(parsed.getMonth() + 1)}-${pad(parsed.getDate())} ` +
     `${pad(parsed.getHours())}:${pad(parsed.getMinutes())}`
+  );
+}
+
+// Bounds for the per-model generation request timeout override (mirrors
+// GENERATION_REQUEST_TIMEOUT_MIN/MAX in services/generation_http.py).
+const MIN_GENERATION_REQUEST_TIMEOUT = 10;
+const MAX_GENERATION_REQUEST_TIMEOUT = 3600;
+
+function GenerationTimeoutField({
+  service,
+  activeModel,
+  updateModelField,
+}: {
+  service: "imagegen" | "videogen";
+  activeModel: CatalogModel;
+  updateModelField: (
+    svc: "imagegen" | "videogen",
+    field: keyof CatalogModel,
+    value: string,
+  ) => void;
+}) {
+  const { t } = useTranslation();
+  const defaultSeconds = service === "imagegen" ? 120 : 60;
+  return (
+    <div>
+      <div className="mb-1.5 text-[12px] text-[var(--muted-foreground)]">
+        {t("Request timeout (seconds)")}
+      </div>
+      <input
+        className={inputClass}
+        type="number"
+        inputMode="numeric"
+        min={MIN_GENERATION_REQUEST_TIMEOUT}
+        max={MAX_GENERATION_REQUEST_TIMEOUT}
+        step={1}
+        value={activeModel.request_timeout ?? ""}
+        onChange={(e) =>
+          updateModelField(service, "request_timeout", e.target.value)
+        }
+        placeholder={String(defaultSeconds)}
+      />
+      <p className="mt-1.5 text-[11px] text-[var(--muted-foreground)]">
+        {t(
+          "10–3600 seconds. Leave blank for {{default}} seconds. Raise this for slow self-hosted backends.",
+          { default: defaultSeconds },
+        )}
+      </p>
+    </div>
   );
 }
 

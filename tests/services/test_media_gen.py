@@ -9,6 +9,7 @@ config resolution, and the public facades.
 from __future__ import annotations
 
 import base64
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +21,7 @@ from deeptutor.services.config.provider_runtime import (
     resolve_videogen_runtime_config,
 )
 from deeptutor.services.generation_http import (
+    DEFAULT_IMAGEGEN_REQUEST_TIMEOUT,
     GenerationProviderError,
     build_auth_headers,
     decode_base64_media,
@@ -191,6 +193,19 @@ async def test_imagegen_adapter_raises_on_http_error(monkeypatch: pytest.MonkeyP
     _patch_http(monkeypatch, post=httpx.Response(404, text="not activated"))
     config = ImagegenConfig(model="m", base_url="https://x/v1", api_key="k")
     with pytest.raises(GenerationProviderError, match="404"):
+        await OpenAICompatImagegenAdapter().generate("x", config)
+
+
+@pytest.mark.asyncio
+async def test_imagegen_adapter_timeout_names_the_limit(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A timeout must say so, with the limit — not an empty request error."""
+
+    def raise_timeout(_url: str, _kwargs: Any) -> httpx.Response:
+        raise httpx.ReadTimeout("")
+
+    _patch_http(monkeypatch, post=raise_timeout)
+    config = ImagegenConfig(model="m", base_url="https://x/v1", api_key="k", request_timeout=120)
+    with pytest.raises(GenerationProviderError, match="timed out after 120 s"):
         await OpenAICompatImagegenAdapter().generate("x", config)
 
 
@@ -762,6 +777,36 @@ def test_resolve_imagegen_config_fills_provider_default_base() -> None:
     assert cfg.base_url == "https://ark.cn-beijing.volces.com/api/v3"
     assert cfg.size == "1024x1024"
     assert cfg.api_key == "ark-key"
+
+
+def test_resolve_imagegen_request_timeout_override() -> None:
+    """A slow-but-valid backend can raise its per-request budget per model."""
+    catalog = deepcopy(_media_catalog())
+    catalog["services"]["imagegen"]["profiles"][0]["models"][0]["request_timeout"] = "300"
+    cfg = resolve_imagegen_runtime_config(catalog=catalog)
+    assert cfg.request_timeout == 300
+
+
+def test_resolve_imagegen_request_timeout_defaults_when_unset() -> None:
+    cfg = resolve_imagegen_runtime_config(catalog=_media_catalog())
+    assert cfg.request_timeout == DEFAULT_IMAGEGEN_REQUEST_TIMEOUT
+
+
+def test_resolve_imagegen_request_timeout_rejects_invalid() -> None:
+    for bad in ("0", "not-a-number", 999999):
+        catalog = deepcopy(_media_catalog())
+        catalog["services"]["imagegen"]["profiles"][0]["models"][0]["request_timeout"] = bad
+        with pytest.raises(ValueError, match="Image generation request timeout"):
+            resolve_imagegen_runtime_config(catalog=catalog)
+
+
+def test_resolve_videogen_request_timeout_override_and_default() -> None:
+    cfg = resolve_videogen_runtime_config(catalog=_media_catalog())
+    assert cfg.request_timeout == 60
+    catalog = deepcopy(_media_catalog())
+    catalog["services"]["videogen"]["profiles"][0]["models"][0]["request_timeout"] = 120
+    cfg = resolve_videogen_runtime_config(catalog=catalog)
+    assert cfg.request_timeout == 120
 
 
 def test_resolve_imagegen_openrouter_uses_chat_adapter() -> None:

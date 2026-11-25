@@ -9,7 +9,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from deeptutor.services.generation_http import AUTH_BEARER
+from deeptutor.services.generation_http import (
+    AUTH_BEARER,
+    DEFAULT_VIDEOGEN_REQUEST_TIMEOUT,
+)
 
 
 @dataclass(slots=True)
@@ -30,8 +33,9 @@ class VideogenConfig:
     resolution: str = ""  # e.g. "720p" | "1080p"
     # Polling budget. ``request_timeout`` bounds each submit/poll HTTP call;
     # ``poll_timeout`` bounds the whole render; ``poll_interval`` is the gap
-    # between status checks.
-    request_timeout: int = 60
+    # between status checks. ``request_timeout`` is configurable per model via
+    # the catalog field of the same name (see resolve_videogen_runtime_config).
+    request_timeout: int = DEFAULT_VIDEOGEN_REQUEST_TIMEOUT
     poll_interval: float = 5.0
     poll_timeout: int = 600
 
