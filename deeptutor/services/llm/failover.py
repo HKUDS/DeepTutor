@@ -31,9 +31,10 @@ from deeptutor.services.llm.exceptions import (
 )
 from deeptutor.services.llm.request_compat import is_transient_transport_error
 
-#: Mirrors the catalog validation bound. A longer chain only lengthens the
-#: failure path (each candidate has its own retry budget).
-MAX_CANDIDATES = 4
+#: Mirrors the catalog validation bound (four *fallbacks*). The chain itself is
+#: the primary plus those, so five entries — the bound that keeps a failure
+#: from multiplying the retry budget.
+MAX_CANDIDATES = 5
 
 #: Cooldowns. Rate limits honour their own hint; transport failures get a short
 #: cooldown because they are often a blip; consecutive failures escalate.
@@ -205,6 +206,35 @@ def chain_configured() -> bool:
         return False
 
 
+def chain_from_config(config: Any, owner_id: str = "anonymous") -> list[Candidate]:
+    """Chain for a caller that already resolved its own config (task models).
+
+    The explicit config stays the primary: `factory.complete(config=...)` may be
+    running a task model, and re-resolving the catalog's active LLM there would
+    silently swap the model the caller asked for.
+    """
+    from deeptutor.services.model_selection.fallbacks import configured_fallbacks
+    from deeptutor.services.model_selection.runtime import resolve_llm_config_for_selection
+
+    primary = Candidate(
+        str(getattr(config, "provider_name", "primary")),
+        str(getattr(config, "model", "model")),
+        config,
+    )
+    candidates = [primary]
+    for entry in configured_fallbacks():
+        try:
+            resolved = resolve_llm_config_for_selection(
+                {"profile_id": entry["profile_id"], "model_id": entry["model_id"]}
+            )
+        except Exception:
+            continue
+        candidates.append(Candidate(entry["profile_id"], entry["model_id"], resolved))
+        if len(candidates) >= MAX_CANDIDATES:
+            break
+    return candidates
+
+
 def resolve_candidates(owner_id: str = "anonymous") -> list[Candidate]:
     """The ordered chain for this request: active model, then declared fallbacks.
 
@@ -296,6 +326,7 @@ async def call_with_failover(
     *,
     owner_id: str = "anonymous",
     on_switch: SwitchHook | None = None,
+    candidates: Sequence[Candidate] | None = None,
 ) -> Any:
     """Run ``call`` against the first healthy candidate, switching on failure.
 
@@ -303,13 +334,13 @@ async def call_with_failover(
     primary again (that is the failback). Raises the last error when every
     candidate is exhausted, after reporting each switch.
     """
-    candidates = resolve_candidates(owner_id)
-    if not candidates:
+    chain = list(candidates) if candidates is not None else resolve_candidates(owner_id)
+    if not chain:
         raise RuntimeError("No LLM candidate is configured")
 
     last_error: Exception | None = None
     attempted: list[str] = []
-    for index, candidate in enumerate(candidates):
+    for index, candidate in enumerate(chain):
         attempted.append(candidate.label)
         if not REGISTRY.is_available(owner_id, candidate):
             continue
@@ -324,7 +355,7 @@ async def call_with_failover(
                 await on_switch(
                     SwitchReport(
                         failed=candidate,
-                        next_candidate=_next_candidate(candidates, index + 1, owner_id),
+                        next_candidate=_next_candidate(chain, index + 1, owner_id),
                         reason=reason,
                         error=str(exc)[:300],
                     )
@@ -365,6 +396,7 @@ __all__ = [
     "REGISTRY",
     "SwitchReport",
     "active_and_declared",
+    "chain_from_config",
     "call_with_failover",
     "classify_error",
     "drop_foreign_message_state",

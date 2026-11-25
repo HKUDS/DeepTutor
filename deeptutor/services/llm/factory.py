@@ -22,6 +22,12 @@ from deeptutor.services.provider_registry import (
 from .capabilities import supports_response_format, supports_vision
 from .config import LLMConfig, get_llm_config
 from .error_mapping import map_error
+from .failover import (
+    call_with_failover,
+    chain_configured,
+    chain_from_config,
+    current_owner,
+)
 from .multimodal import prepare_multimodal_messages
 from .provider_core.base import LLMProvider
 from .provider_factory import (
@@ -377,6 +383,11 @@ async def _complete_with_resolved_config(
         image_filename=str(image_filename or "image.png"),
     )
     retry_delays = _build_retry_delays(max_retries, retry_delay, exponential_backoff)
+    if chain_configured():
+        # Waiting out the full 8x5s->120s schedule on a dead primary is exactly
+        # the ten-minute silence in #2693: with a fallback available, one
+        # attempt per candidate and then move on.
+        retry_delays = retry_delays[:1]
     extra_kwargs = _sanitize_call_kwargs(
         binding=capability_binding, model=config.model, kwargs=kwargs
     )
@@ -404,12 +415,15 @@ async def _complete_with_resolved_config(
             )
 
     try:
-        from deeptutor.services.llm.failover import call_with_failover, chain_configured
-
         if provider is None and chain_configured():
             # A declared chain turns this one-shot call into an ordered attempt
-            # list; each candidate keeps its own retry budget (#2693 P2).
-            response = await call_with_failover(lambda candidate: _attempt(candidate.config))
+            # list starting from the config the caller resolved (which may be a
+            # task model, not the catalog's active LLM) (#2693 P2).
+            response = await call_with_failover(
+                lambda candidate: _attempt(candidate.config),
+                owner_id=current_owner(),
+                candidates=chain_from_config(config),
+            )
         else:
             response = await _attempt(config)
     except Exception as exc:
@@ -590,6 +604,11 @@ async def stream(
         image_filename=str(image_filename or "image.png"),
     )
     retry_delays = _build_retry_delays(max_retries, retry_delay, exponential_backoff)
+    if chain_configured():
+        # Waiting out the full 8x5s->120s schedule on a dead primary is exactly
+        # the ten-minute silence in #2693: with a fallback available, one
+        # attempt per candidate and then move on.
+        retry_delays = retry_delays[:1]
     extra_kwargs = _sanitize_call_kwargs(
         binding=capability_binding, model=config.model, kwargs=kwargs
     )
@@ -643,16 +662,15 @@ async def stream(
                 )
 
         try:
-            from deeptutor.services.llm.failover import (
-                call_with_failover,
-                chain_configured,
-            )
-
             if chain_configured():
                 # Switching is only safe before any delta escaped; the attempt
                 # raises `partial_response=True` after output, which is not
                 # switchable, so this cannot splice two answers (#2693 P2).
-                response = await call_with_failover(lambda candidate: _attempt(candidate.config))
+                response = await call_with_failover(
+                    lambda candidate: _attempt(candidate.config),
+                    owner_id=current_owner(),
+                    candidates=chain_from_config(config),
+                )
             else:
                 response = await _attempt(config)
             if outcome is not None:

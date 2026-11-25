@@ -46,9 +46,14 @@ async def test_complete_falls_back_to_the_declared_candidate(monkeypatch) -> Non
     backup = failover.Candidate("backup", "m2", _config("m2"))
     providers = {"m1": _Provider(fail=True), "m2": _Provider(fail=False)}
 
-    monkeypatch.setattr(failover, "chain_configured", lambda: True)
+    # The factory imported these names at module scope, so patch its namespace.
+    monkeypatch.setattr(factory, "chain_configured", lambda: True)
+    # The factory builds the chain from the caller's resolved config plus the
+    # catalog's declared fallbacks; stand that in with the two fakes.
     monkeypatch.setattr(
-        failover, "resolve_candidates", lambda owner_id="anonymous": [primary, backup]
+        factory,
+        "chain_from_config",
+        lambda config, owner_id="anonymous": [primary, backup],
     )
 
     # The factory resolves a provider per candidate; hand out the matching fake.

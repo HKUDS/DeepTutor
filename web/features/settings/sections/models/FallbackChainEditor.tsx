@@ -32,6 +32,19 @@ export function FallbackChainEditor() {
   const { catalog, reloadSettings } = useSettings();
   const llm = catalog.services.llm;
   const choices = useMemo(() => fallbackChoices(llm.profiles || []), [llm.profiles]);
+  const selectable = useMemo(
+    () =>
+      // The active model is not a fallback of itself: offering it here would
+      // let the operator build a chain entry the save silently drops.
+      choices.filter(
+        (choice) =>
+          !(
+            choice.profileId === llm.active_profile_id &&
+            choice.modelId === llm.active_model_id
+          ),
+      ),
+    [choices, llm.active_model_id, llm.active_profile_id],
+  );
   const stored = useMemo(
     () =>
       (llm.fallbacks ?? []).map((entry) => ({
@@ -119,7 +132,7 @@ export function FallbackChainEditor() {
             setRows((current) => [...current, emptyRow()]);
             setSaved(null);
           }}
-          disabled={rows.length >= MAX_FALLBACKS || choices.length <= rows.length}
+          disabled={rows.length >= MAX_FALLBACKS || selectable.length <= rows.length}
         >
           <Plus className="mr-1 inline h-3.5 w-3.5" />
           {t("Add fallback")}
@@ -149,7 +162,7 @@ export function FallbackChainEditor() {
                   }}
                 >
                   <option value="">{t("Choose a configured model")}</option>
-                  {availableChoices(choices, rows, index).map((choice) => (
+                  {availableChoices(selectable, rows, index).map((choice) => (
                     <option
                       key={`${choice.profileId}:${choice.modelId}`}
                       value={`${choice.profileId}:${choice.modelId}`}

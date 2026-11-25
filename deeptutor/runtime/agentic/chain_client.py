@@ -59,7 +59,20 @@ class ChainClient:
         return len(self._candidates) - self._index - 1
 
     async def _create(self, **kwargs: Any) -> Any:
-        return await self._clients[self._index].chat.completions.create(**kwargs)
+        # The request carries the primary's model name; after a switch the
+        # candidate's own model must be used, or the backup would be asked for a
+        # model it does not serve.
+        model = getattr(self.current.config, "model", "") or kwargs.get("model")
+        if model:
+            kwargs["model"] = model
+        if self._index > 0 and isinstance(kwargs.get("messages"), list):
+            # Another provider's private replay state must not reach this one.
+            kwargs["messages"] = failover.drop_foreign_message_state(kwargs["messages"])
+        response = await self._clients[self._index].chat.completions.create(**kwargs)
+        # Reaching a provider successfully clears its failure ladder, so the
+        # cooldown does not escalate after a recovered blip.
+        self.record_success()
+        return response
 
     def advance(self) -> failover.Candidate | None:
         """Switch to the next candidate that is not cooling down."""
@@ -100,9 +113,14 @@ def build_chain_client(
         candidates if candidates is not None else failover.resolve_candidates(resolved_owner)
     )
     healthy = [item for item in chain if failover.REGISTRY.is_available(resolved_owner, item)]
-    if len(healthy) < 2:
-        # No usable alternative: keep today's single-client behavior exactly.
+    if not healthy:
+        # Everything is cooling down: give the primary one more chance rather
+        # than turning the turn into a "no candidate" error.
         return build_openai_client(template)
+    if len(healthy) == 1:
+        # A single usable candidate may well be the backup (primary cooling), so
+        # the client must be built for that candidate, not for the template.
+        return build_openai_client(_client_config(healthy[0], template=template))
     clients = [build_openai_client(_client_config(item, template=template)) for item in healthy]
     return ChainClient(healthy, clients, owner_id=resolved_owner)
 
