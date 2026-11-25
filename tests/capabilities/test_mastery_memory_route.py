@@ -144,7 +144,7 @@ def _snapshot_turn(row_id: int, question: str, answer: str, snapshot: str | None
     ]
 
 
-async def _build(rows):
+async def _build(rows, context_window=272000):
     store = MagicMock()
     store.get_session = AsyncMock(
         return_value={"compressed_summary": "", "summary_up_to_msg_id": 0}
@@ -155,7 +155,9 @@ async def _build(rows):
     builder._summarize = AsyncMock()
     return await builder.build(
         session_id="synthetic-session",
-        llm_config=SimpleNamespace(model="synthetic-model", context_window=272000, max_tokens=8192),
+        llm_config=SimpleNamespace(
+            model="synthetic-model", context_window=context_window, max_tokens=8192
+        ),
     )
 
 
@@ -186,21 +188,50 @@ async def test_replayed_snapshots_stay_in_place_so_follow_up_turns_extend_the_pr
 
 
 @pytest.mark.asyncio
-async def test_kept_snapshots_do_not_count_against_the_history_budget():
+async def test_one_large_kept_snapshot_does_not_force_a_memory_rewrite():
     """A large status snapshot must not trigger a memory rewrite on its own.
 
     The real DeepSeek run hit this: after two mastery turns an 18k-character
     mastery_status snapshot pushed the replayed history over the 20k budget,
     and the third turn paid a memory call plus a full prefix miss.
     """
-    bulky = "status line\n" * 4000
+    bulky = "status line\n" * 8000
     rows = _snapshot_turn(1, "Explain the chain rule.", "Outside, then inside.", bulky)
 
     built = await _build(rows)
-    plain = await _build(
-        _snapshot_turn(1, "Explain the chain rule.", "Outside, then inside.", None)
-    )
 
+    assert _count_model_context_tokens(built.model_history) > built.budget
     assert built.model_history[0]["_context_snapshot"] == "workspace"
-    assert built.token_count == plain.token_count
-    assert MasteryContextBuilder(MagicMock())._model_tokens(rows) == plain.token_count
+    assert built.model_history[-1]["content"] == "Outside, then inside."
+    assert built.token_count <= built.budget
+
+
+@pytest.mark.asyncio
+async def test_kept_snapshots_stay_bounded_over_a_long_session():
+    """Uncounted snapshots must not grow without limit across short exchanges.
+
+    A quiz-style session adds little dialogue per turn but a changed status
+    snapshot each time, so a dialogue-only count never reaches the budget.
+    """
+    rows = []
+    for turn in range(120):
+        status = " ".join(str((turn + 1) * 7919 * n % 1_000_003) for n in range(400))
+        rows += _snapshot_turn(2 * turn + 1, f"Answer {turn}?", "Correct. Next one.", status)
+
+    built = await _build(rows)
+
+    assert _count_model_context_tokens(built.model_history) <= 2 * built.budget
+    assert built.token_count <= built.budget
+
+
+@pytest.mark.asyncio
+async def test_small_windows_give_kept_snapshots_no_extra_room():
+    rows = []
+    for turn in range(120):
+        status = " ".join(str((turn + 1) * 7919 * n % 1_000_003) for n in range(400))
+        rows += _snapshot_turn(2 * turn + 1, f"Answer {turn}?", "Correct. Next one.", status)
+
+    built = await _build(rows, context_window=32000)
+
+    assert built.budget == 11200
+    assert _count_model_context_tokens(built.model_history) <= built.budget
