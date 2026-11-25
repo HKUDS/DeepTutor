@@ -255,14 +255,19 @@ class MasteryLoopPipeline(AgenticLoopPipeline):
     async def _prepare_deferred_tools(self, context):
         await super()._prepare_deferred_tools(context)
         self._deferred_outline_names = set()
-        if normalize_mode(context.metadata.get("mastery_session_mode")) == OUTLINE:
-            self._remember_outline_tools(context)
-            return
         if (
             context.allowed_builtin_tools is not None
             and "load_tools" not in context.allowed_builtin_tools
         ):
             return  # A restricted caller must retain eager access to owned tools.
+        # Outline mode needs these tools at once, so it marks them loaded; the
+        # loader still owns them. Mounting them eagerly in outline and through
+        # the loader elsewhere moved them in tools[] and dropped ``load_tools``
+        # whenever an outline turn had no other deferred tool: two full cache
+        # misses around every switch.
+        outline = normalize_mode(context.metadata.get("mastery_session_mode")) == OUTLINE
+        if outline:
+            self._remember_outline_tools(context)
         from deeptutor.runtime.providers.view import ProviderToolView
         from deeptutor.runtime.registry.deferred_tools import (
             DeferredToolLoader,
@@ -282,6 +287,8 @@ class MasteryLoopPipeline(AgenticLoopPipeline):
         loaded = load_loaded_tools(context.session_id)
         if view.loader:
             loaded |= view.loader.loaded_names
+        if outline:
+            loaded |= self._deferred_outline_names
         loader = DeferredToolLoader(
             registry=view.registry,
             session_id=context.session_id,

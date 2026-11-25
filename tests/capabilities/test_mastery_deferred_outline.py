@@ -53,7 +53,9 @@ async def test_outline_mode_keeps_immediately_needed_schemas(monkeypatch):
     pipeline = MasteryLoopPipeline(language="en")
     context = UnifiedContext(metadata={"mastery_mode": True, "mastery_session_mode": "outline"})
     await pipeline._prepare_deferred_tools(context)
-    assert "mastery_build" in pipeline._compose_enabled_tools(context)
+    schemas = pipeline._build_llm_tool_schemas(pipeline._compose_enabled_tools(context), context)
+    pipeline._tool_view.attach(schemas)
+    assert "mastery_build" in [s["function"]["name"] for s in schemas]
     context.metadata["mastery_session_mode"] = "study"
     context.allowed_builtin_tools = []
     await pipeline._prepare_deferred_tools(context)
@@ -206,3 +208,50 @@ async def test_switching_to_outline_loads_the_tools_the_next_turn_mounts(monkeyp
 
     assert {"mastery_build", "mastery_revise"} <= set(switching)
     assert sorted(following) == sorted(switching)
+
+
+@pytest.mark.asyncio
+async def test_mode_switches_keep_tools_identical_without_other_deferred_tools(monkeypatch):
+    """A fresh install has no MCP tools, so nothing else keeps a loader alive.
+
+    Outline used to mount its tools eagerly and skip the loader, so an outline
+    turn lost ``load_tools`` and placed the outline tools elsewhere in tools[]
+    than the study turns around it.
+    """
+    state: dict[str, set[str]] = {}
+
+    async def providers(self, context):
+        self._tool_view = ProviderToolView.empty(self.registry)
+        self._deferred_loader = None
+        self._deferred_pool = []
+
+    monkeypatch.setattr(AgenticLoopPipeline, "_prepare_deferred_tools", providers)
+    monkeypatch.setattr(
+        "deeptutor.services.mcp.load_loaded_tools", lambda sid: set(state.get(sid, set()))
+    )
+    monkeypatch.setattr(
+        "deeptutor.services.mcp.session_state.record_loaded_tools",
+        lambda sid, names, **_: state.__setitem__(sid, set(names)),
+    )
+
+    async def turn(mode: str) -> list[dict]:
+        pipeline = MasteryLoopPipeline(language="en")
+        context = UnifiedContext(
+            session_id="synthetic",
+            metadata={"mastery_mode": True, "mastery_path_id": "p", "mastery_session_mode": mode},
+        )
+        await pipeline._prepare_deferred_tools(context)
+        schemas = pipeline._build_llm_tool_schemas(
+            pipeline._compose_enabled_tools(context), context
+        )
+        pipeline._tool_view.attach(schemas)
+        return schemas
+
+    outline = await turn("outline")
+    study = await turn("study")
+    back = await turn("outline")
+
+    names = [s["function"]["name"] for s in outline]
+    assert {"load_tools", "mastery_build", "mastery_revise"} <= set(names)
+    assert json.dumps(study) == json.dumps(outline)
+    assert json.dumps(back) == json.dumps(outline)
