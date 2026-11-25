@@ -46,12 +46,15 @@ export const Field = forwardRef<TextInput, FieldProps>(function LabeledField(
 
 export function Action({
   title,
+  label,
   onPress,
   disabled = false,
   busy = false,
   tone = 'primary',
 }: {
   title: string;
+  /** Announced name when several buttons share a visible title. */
+  label?: string;
   onPress: () => void;
   disabled?: boolean;
   busy?: boolean;
@@ -64,7 +67,7 @@ export function Action({
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={title}
+      accessibilityLabel={label ?? title}
       accessibilityState={{ disabled: disabled || busy, busy }}
       disabled={disabled || busy}
       onPress={onPress}

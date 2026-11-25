@@ -6,6 +6,7 @@ import { useTheme } from '../src/theme/useTheme';
 
 const chatRouteId = () => 'chat';
 const sessionsRouteId = () => 'sessions';
+const knowledgeRouteId = () => 'knowledge';
 
 function SessionStack() {
   const { phase } = useAppSession();
@@ -37,6 +38,15 @@ function SessionStack() {
           <Stack.Screen
             name="sessions"
             dangerouslySingular={sessionsRouteId}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="knowledge/index"
+            dangerouslySingular={knowledgeRouteId}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="knowledge/detail"
             options={{ headerShown: false }}
           />
           <Stack.Screen name="settings" options={{ title: 'Settings' }} />
