@@ -453,6 +453,16 @@ async def get_entry(entry_id: int) -> NotebookEntryItem:
 
 @router.patch("/entries/{entry_id}")
 async def update_entry(entry_id: int, payload: EntryUpdateRequest):
+    if payload.ai_verdict is not None:
+        try:
+            json.dumps(payload.ai_verdict, allow_nan=False)
+        except ValueError:
+            # Stored, ``NaN``/``Infinity`` would break every later read. Not a
+            # model validator: its 422 body echoes the value and cannot be
+            # serialised either.
+            raise HTTPException(
+                status_code=422, detail="ai_verdict must not contain NaN or Infinity"
+            ) from None
     store = get_sqlite_session_store()
     updates = payload.model_dump(exclude_none=True)
     if not updates:

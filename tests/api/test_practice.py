@@ -647,6 +647,26 @@ def test_entry_patch_rejects_contradictory_or_malformed_grades(bank, patch):
     assert client.patch(f"/bank/entries/{entry['id']}", json=patch).status_code == 422
 
 
+def test_entry_patch_rejects_non_finite_verdict_numbers(bank):
+    store, _, client = bank
+    entry = seed(store)
+    # ``json.loads`` accepts these literals; stored, they would break every read.
+    for literal in ("Infinity", "NaN", "1e999"):
+        body = (
+            '{"ai_verdict": {"result": "correct", "final": true, '
+            f'"awarded_points": {literal}}}}}'
+        )
+        response = client.patch(
+            f"/bank/entries/{entry['id']}",
+            content=body,
+            headers={"content-type": "application/json"},
+        )
+        assert response.status_code == 422
+    stored = client.get(f"/bank/entries/{entry['id']}")
+    assert stored.status_code == 200
+    assert stored.json()["ai_verdict"] is None
+
+
 def test_entry_patch_derives_correctness_from_the_result(bank):
     store, _, client = bank
     entry = seed(store, **_open_question(result="ungraded"))
