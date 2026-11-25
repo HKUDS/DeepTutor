@@ -133,7 +133,7 @@ The command attaches to the DeepTutor UI already running at `http://localhost:37
 
 ## Local development
 
-Use Node.js 22, the version CI installs.
+From the `docs/` directory, run `nvm install` to use the Node.js version pinned in `.nvmrc`. Astro 7 requires Node.js 22.23.4 or later.
 
 ```bash
 cd docs
