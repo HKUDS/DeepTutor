@@ -214,3 +214,38 @@ test('a null client never fetches', async () => {
   expect(list).not.toHaveBeenCalled();
   expect(result.current.status).toBe('loading');
 });
+
+test('a refresh supersedes a page that is still loading', async () => {
+  let release: (value: SessionPage) => void = () => {};
+  const list = jest
+    .fn()
+    .mockResolvedValueOnce(page([summary('a')], true))
+    .mockImplementationOnce(
+      () =>
+        new Promise<SessionPage>(resolve => {
+          release = resolve;
+        }),
+    )
+    .mockResolvedValueOnce(page([summary('fresh')], false));
+  const api = fakeApi({ list });
+  const { result } = renderHook(() => useSessionList(api));
+
+  await waitFor(() => expect(result.current.status).toBe('ready'));
+  await act(async () => {
+    result.current.loadMore().catch(() => {});
+  });
+  expect(result.current.loadingMore).toBe(true);
+
+  // Pulling to refresh must not be swallowed by the page in flight.
+  await act(async () => {
+    await result.current.refresh();
+  });
+  expect(result.current.sessions.map(row => row.id)).toEqual(['fresh']);
+  expect(result.current.loadingMore).toBe(false);
+
+  // The abandoned page lands late and is discarded.
+  await act(async () => {
+    release(page([summary('stale')], true));
+  });
+  expect(result.current.sessions.map(row => row.id)).toEqual(['fresh']);
+});
