@@ -241,3 +241,31 @@ __all__ = [
     "is_valid_html_document",
     "validate_visualization",
 ]
+
+
+_MINDMAP_SHAPED = re.compile(r"^[A-Za-z0-9_-]*[\(\[\{]")
+
+
+def sanitize_mindmap_labels(source: str) -> str:
+    """Quote mindmap node labels that contain shape-syntax characters.
+
+    Mermaid's mindmap parser reads ``(``, ``[``, ``{`` in bare labels as node
+    shape delimiters (``f'(c) equals ...`` fails to parse). Wrapping such labels
+    in the quoted square-bracket form keeps them literal. Already-shaped nodes
+    (``root((...))``, ``id[...]``) are left untouched.
+    """
+    out = []
+    for line in (source or "").split("\n"):
+        match = re.match(r"^(\s*)(\S.*)$", line)
+        if not match:
+            out.append(line)
+            continue
+        indent, text = match.groups()
+        if text.startswith("mindmap") or _MINDMAP_SHAPED.match(text):
+            out.append(line)
+            continue
+        if re.search(r"[()\[\]{}]", text):
+            out.append(indent + '["' + text.replace('"', '\\"') + '"]')
+        else:
+            out.append(line)
+    return "\n".join(out)

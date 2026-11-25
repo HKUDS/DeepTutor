@@ -132,8 +132,18 @@ class CodeGeneratorAgent(BaseAgent):
                     # validation reject it, rather than leaking prose/fences.
                     extracted = extracted[start:]
 
+        if analysis.render_type == "mermaid" and extracted.lstrip().startswith("mindmap"):
+            from ..utils import sanitize_mindmap_labels
+
+            extracted = sanitize_mindmap_labels(extracted)
+
         if outcome is not None:
-            ok, detail = validate_book_widget_html(extracted)
+            if analysis.render_type == "html":
+                ok, detail = validate_book_widget_html(extracted)
+            else:
+                # SVG/mermaid/chartjs book figures are validated by their
+                # callers; only the truncation/stop guards apply here.
+                ok, detail = True, ""
             if outcome.truncated:
                 ok = False
                 detail = "Model hit the output token limit while generating interactive HTML."

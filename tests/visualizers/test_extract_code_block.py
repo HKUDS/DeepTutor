@@ -29,3 +29,21 @@ def test_no_fence_returns_trimmed_raw():
 def test_closing_fence_on_content_line():
     text = "```html\n<html></html>```"
     assert extract_code_block(text, "html") == "<html></html>"
+
+
+def test_mindmap_labels_with_shape_chars_are_quoted():
+    from deeptutor.agents.visualize.utils import sanitize_mindmap_labels
+
+    src = (
+        "mindmap\n"
+        "  root((Applications))\n"
+        "    Extrema\n"
+        "      f'(c) equals average rate\n"
+        "    Mean value theorem\n"
+        "      Hypotheses: continuous, differentiable\n"
+    )
+    out = sanitize_mindmap_labels(src)
+    assert '["f\'(c) equals average rate"]' in out
+    assert "root((Applications))" in out
+    assert "      Hypotheses: continuous, differentiable" in out
+    assert "    Extrema" in out
