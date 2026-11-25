@@ -1,23 +1,10 @@
 import { apiFetch, apiUrl } from "@/lib/api";
 import type { NotePage } from "@/lib/notes-api";
 
+import type { CoWriterDocument, CoWriterDocumentSummary } from "./co-writer-types";
+export type { CoWriterDocument, CoWriterDocumentSummary } from "./co-writer-types";
+
 const BASE = "/api";
-
-export interface CoWriterDocumentSummary {
-  id: string;
-  title: string;
-  created_at: number;
-  updated_at: number;
-  preview: string;
-}
-
-export interface CoWriterDocument {
-  id: string;
-  title: string;
-  content: string;
-  created_at: number;
-  updated_at: number;
-}
 
 async function jsonOrThrow<T>(res: Response): Promise<T> {
   if (!res.ok) {
