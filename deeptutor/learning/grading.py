@@ -41,6 +41,9 @@ def grade_answer(user_answer: str, expected_answer: str, question_type: str = "s
         # Without a verdict, ambiguous readings fail closed like every miss.
         if _numeric_parts(expected) is not None:
             return numeric_equivalent(user, expected).correct
+        # A changed digit is never a typo: "1.240,-" is not "1.250,-".
+        if re.sub(r"\D", "", user) != re.sub(r"\D", "", expected):
+            return False
         if len(expected) <= 30:
             return SequenceMatcher(None, user, expected).ratio() >= 0.85
         return False
