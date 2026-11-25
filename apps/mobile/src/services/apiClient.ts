@@ -20,7 +20,7 @@ export class ApiError extends Error {
   }
 }
 
-export type ApiMethod = 'GET' | 'POST' | 'PATCH' | 'DELETE';
+export type ApiMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
 type ApiOptions = {
   method?: ApiMethod;
@@ -35,7 +35,7 @@ type ApiFetch = (
     credentials: 'include';
     redirect: 'manual';
     headers: Record<string, string>;
-    body?: string;
+    body?: string | FormData;
     signal: AbortSignal;
   },
 ) => Promise<
@@ -43,6 +43,12 @@ type ApiFetch = (
 >;
 
 const DEFAULT_TIMEOUT = 12_000;
+
+type RequestInitShape = {
+  method: ApiMethod;
+  headers: Record<string, string>;
+  body?: string | FormData;
+};
 
 export class ApiClient {
   constructor(
@@ -55,6 +61,49 @@ export class ApiClient {
     path: `/api/${string}`,
     parse: (value: unknown) => T,
     { method = 'GET', body, signal }: ApiOptions = {},
+  ): Promise<T> {
+    return this.send(
+      path,
+      parse,
+      signal,
+      {
+        method,
+        headers: body
+          ? { Accept: 'application/json', 'Content-Type': 'application/json' }
+          : { Accept: 'application/json' },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      },
+      this.timeoutMs,
+    );
+  }
+
+  /**
+   * POST a multipart body. No `Content-Type` is set: the platform has to add
+   * the boundary itself, and overriding it would make the server see an
+   * unparseable body. Used where the backend declares `Form(...)` fields —
+   * knowledge-base creation is one — rather than a JSON object.
+   */
+  async form<T>(
+    path: `/api/${string}`,
+    body: FormData,
+    parse: (value: unknown) => T,
+    { signal, timeoutMs }: { signal?: AbortSignal; timeoutMs?: number } = {},
+  ): Promise<T> {
+    return this.send(
+      path,
+      parse,
+      signal,
+      { method: 'POST', headers: { Accept: 'application/json' }, body },
+      timeoutMs ?? this.timeoutMs,
+    );
+  }
+
+  private async send<T>(
+    path: string,
+    parse: (value: unknown) => T,
+    signal: AbortSignal | undefined,
+    init: RequestInitShape,
+    timeoutMs: number,
   ): Promise<T> {
     // Path segments are alphanumeric plus `-_.%` so encoded identifiers survive,
     // and the optional query keeps session pagination on the same guard.
@@ -83,13 +132,13 @@ export class ApiClient {
     const timer = setTimeout(
       () =>
         cancel(new ApiError('timeout', 'The server took too long to respond.')),
-      this.timeoutMs,
+      timeoutMs,
     );
 
     try {
       return await Promise.race([
         cancellation,
-        this.request(path, parse, method, body, controller.signal),
+        this.request(path, parse, init, controller.signal),
       ]);
     } finally {
       clearTimeout(timer);
@@ -100,8 +149,7 @@ export class ApiClient {
   private async request<T>(
     path: string,
     parse: (value: unknown) => T,
-    method: ApiMethod,
-    body: object | undefined,
+    init: RequestInitShape,
     signal: AbortSignal,
   ): Promise<T> {
     let response;
@@ -111,11 +159,7 @@ export class ApiClient {
       response = await this.fetcher(`${this.origin}${path}`, {
         credentials: 'include',
         redirect: 'manual',
-        method,
-        headers: body
-          ? { Accept: 'application/json', 'Content-Type': 'application/json' }
-          : { Accept: 'application/json' },
-        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+        ...init,
         signal,
       });
     } catch {
