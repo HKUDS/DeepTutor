@@ -217,7 +217,7 @@ async function refreshInterface() {
   if (paletteChanged) scheduleChromeColorSync(120);
 }
 
-/** 采样 WebContentsView 左上角（紧贴标题栏下方侧边栏）的实际合成色，消除顶栏与侧边栏色差。 */
+/** Sample the composited sidebar color below the title bar to avoid a seam. */
 async function syncChromeColorFromView() {
   if (!WINDOWS || !webViewReady()) return;
   try {
@@ -233,7 +233,7 @@ async function syncChromeColorFromView() {
         if (el.matches?.('button, a, input, svg, img, span, p')) continue;
         const style = getComputedStyle(el);
         if (style.backgroundImage && style.backgroundImage !== 'none' && style.backgroundImage.includes('gradient')) {
-          return null; // 琉璃等渐变背景交给预设色处理，避免取到透明底
+          return null; // Use the palette preset for gradients instead of a transparent sample.
         }
         const rgba = parse(style.backgroundColor);
         if (!rgba || rgba[3] <= 0.01) continue;
@@ -256,7 +256,7 @@ async function syncChromeColorFromView() {
     ui = { ...ui, chromeBg: nextBg };
     applyThemeChrome();
     publish();
-  } catch { /* 页面切换中忽略 */ }
+  } catch { /* Ignore a sample interrupted by navigation. */ }
 }
 
 function scheduleChromeColorSync(delay = 80) {
@@ -268,7 +268,7 @@ function webViewReady() {
   return Boolean(view && state.phase === 'ready' && !view.webContents.isDestroyed());
 }
 
-/** 弹出「偏好」菜单前，从页面 localStorage 拉取实时状态，保证勾选态 100% 准确。 */
+/** Refresh checked preferences from page storage before showing the menu. */
 async function syncPreferencesFromView() {
   if (!webViewReady()) return;
   try {
@@ -308,10 +308,10 @@ async function syncPreferencesFromView() {
     if (paletteChanged || nextTheme !== prevTheme) applyThemeChrome();
     if (shellChanged) publish();
     if (paletteChanged) scheduleChromeColorSync(60);
-  } catch { /* 页面切换中或未就绪时保留现有状态 */ }
+  } catch { /* Keep the current preferences while the page is unavailable. */ }
 }
 
-/** 优先走后端 /api/settings/ui 持久化，后端未就绪或请求失败时原子写回 interface.json。 */
+/** Persist through the UI API, falling back to an atomic settings-file write. */
 let preferenceWrites = Promise.resolve();
 
 function persistInterfacePatch(patch) {
@@ -328,7 +328,7 @@ async function writeInterfacePreference(patch) {
         body: JSON.stringify(patch),
       });
       if (response.ok) return;
-    } catch { /* 回退到直接写文件 */ }
+    } catch { /* Fall back to the settings file when the API is unavailable. */ }
   }
   try {
     const current = await readJSON(interfaceFile) ?? {};
@@ -365,7 +365,7 @@ async function applyThemePreference(nextPreference) {
   publish();
 
   if (webViewReady()) {
-    // 直接按 web/lib/theme.ts 的规则改 <html> class，即使页面没有事件监听器也 100% 立刻切换。
+    // Mirror web/lib/theme.ts before notifying listeners, including older frontends.
     await view.webContents.executeJavaScript(`(() => {
       const pref = ${JSON.stringify(themePreference)};
       const resolved = pref === 'system'
@@ -379,7 +379,7 @@ async function applyThemePreference(nextPreference) {
       try { localStorage.setItem('deeptutor-theme', pref); } catch {}
       window.dispatchEvent(new CustomEvent('deeptutor:theme', { detail: { theme: pref } }));
     })()`).catch(console.error);
-    // 等页面按新 class 重绘一帧后，同步真实侧边栏颜色到顶部栏
+    // Sample the sidebar after the new palette has repainted.
     scheduleChromeColorSync(80);
   }
   await persistInterfacePatch({ theme: themePreference });
@@ -710,7 +710,7 @@ function buildMenu() {
 
   const activeMoreLang = MORE_LANGUAGES.find(item => item.code === ui.language);
   const preferencesSubmenu = [
-    // 常用语言直接平铺在最上方，使用 checkbox 避免与子菜单跨组产生 Win32 radio 冲突
+    // Separate checkbox groups avoid Win32 radio selection crossing submenus.
     ...PRIMARY_LANGUAGES.map(item => ({
       label: item.label,
       type: 'checkbox',

@@ -680,6 +680,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const stageUiRef = useRef<(patch: Partial<UiSettings>) => Promise<void>>(
     async () => {},
   );
+  const externalUiPatchRef = useRef<Partial<UiSettings> | null>(null);
+  const [externalUiRevision, setExternalUiRevision] = useState(0);
   const [language, setLanguage] = useState<UiSettings["language"]>("en");
   const [responseLanguage, setResponseLanguage] =
     useState<UiSettings["response_language"]>("en");
@@ -978,13 +980,11 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         next === "dark" ||
         next === "glass"
       ) {
-        serverThemeLoadedRef.current = true;
+        // A local preview is not a successful GET from the server.
         setTheme(next);
-        const pending = pendingRef.current.get("ui") as
-          | Partial<UiSettings>
-          | undefined;
-        if (pending && "theme" in pending) {
-          void stageUiRef.current({ theme: next });
+        if (pendingRef.current.has("ui")) {
+          externalUiPatchRef.current = { ...externalUiPatchRef.current, theme: next };
+          setExternalUiRevision((revision) => revision + 1);
         }
       }
     };
@@ -998,11 +998,9 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       }
       const language = detail.language as UiSettings["language"];
       setLanguage(language);
-      const pending = pendingRef.current.get("ui") as
-        | Partial<UiSettings>
-        | undefined;
-      if (pending && "language" in pending) {
-        void stageUiRef.current({ language });
+      if (pendingRef.current.has("ui")) {
+        externalUiPatchRef.current = { ...externalUiPatchRef.current, language };
+        setExternalUiRevision((revision) => revision + 1);
       }
     };
     window.addEventListener(THEME_EVENT, onExternalTheme);
@@ -1093,6 +1091,14 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   }, [liveUi, registerExtension],
   );
   stageUiRef.current = stageUi;
+  // Compare with the new live baseline, not the render preceding the event.
+  // The revision also handles selecting a menu value already in the baseline.
+  useEffect(() => {
+    const patch = externalUiPatchRef.current;
+    if (!patch) return;
+    externalUiPatchRef.current = null;
+    if (pendingRef.current.has("ui")) void stageUi(patch);
+  }, [externalUiRevision, stageUi]);
   const updateTheme = useCallback(async (theme: UiSettings["theme"]) => stageUi({ theme }), [stageUi],
   );
   const updateLanguage = useCallback(async (language: UiSettings["language"]) => stageUi({ language }), [stageUi],
